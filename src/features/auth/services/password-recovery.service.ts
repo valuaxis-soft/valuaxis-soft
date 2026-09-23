@@ -1,6 +1,6 @@
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { createSecureToken, hashToken } from "@/security/tokens/token-hashing";
-import { emailService } from "@/infrastructure/email/email.service";
+import { getEmailService } from "@/infrastructure/email/email.service";
 import { buildPublicAppUrl } from "@/lib/public-url";
 import { PASSWORD_RESET_TTL_MINUTES } from "../constants/auth.constants";
 import { findUserByEmail, updatePassword } from "../repositories/user.repository";
@@ -31,7 +31,7 @@ export async function requestPasswordRecovery(email: string, ip?: string | null,
     },
   });
 
-  await emailService.sendPasswordResetEmail({
+  await getEmailService().sendPasswordResetEmail({
     to: user.SCorreo,
     name: user.SNombre,
     resetUrl: buildPublicAppUrl(`/restablecer-contrasena?token=${encodeURIComponent(token)}`).toString(),

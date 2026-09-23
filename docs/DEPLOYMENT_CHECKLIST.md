@@ -25,6 +25,13 @@ Antes de produccion:
 - Activar rate limiting persistente.
 - Sustituir `DevelopmentMapProvider` por proveedor real.
 - Sustituir `DevelopmentStorageProvider` por S3 privado.
+- Validar la configuración real antes de desplegar; un servidor con variables inválidas no arranca:
+
+```bash
+pnpm env:check
+```
+
+- Aplicar migraciones pendientes (`pnpm exec prisma migrate deploy`) antes de levantar el código nuevo.
 - Ejecutar:
 
 ```bash

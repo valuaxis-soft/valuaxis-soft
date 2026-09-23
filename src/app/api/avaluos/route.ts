@@ -1,22 +1,19 @@
 import { NextResponse } from "next/server";
-import { requireApiUser } from "@/security/guards/api-guard";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
+import { saveValuation } from "@/features/valuations/actions/save-valuation.action";
 import { listValuations } from "@/features/valuations/repositories/valuation.repository";
+import { createValuationSchema } from "@/features/valuations/validations/valuation-api.schemas";
+import { internalError, readJsonBody } from "@/lib/api-response";
+import { requireApiUser } from "@/security/guards/api-guard";
 
 export async function GET() {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.viewValuations);
     if (!auth.ok) return auth.response;
-    const { user } = auth;
 
-    const valuations = await listValuations(user.organizationId);
-
-    return NextResponse.json({ data: valuations });
+    return NextResponse.json({ data: await listValuations(auth.user.organizationId) });
   } catch (error) {
-    return NextResponse.json(
-      { error: "Error al obtener avaluos", details: String(error) },
-      { status: 500 },
-    );
+    return internalError("VALUATIONS_LIST", error, "No se pudieron obtener los avalúos.");
   }
 }
 
@@ -24,35 +21,19 @@ export async function POST(request: Request) {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.createValuations);
     if (!auth.ok) return auth.response;
-    const { user } = auth;
 
-    const body = await request.json();
-    const { saveValuation } = await import("@/features/valuations/actions/save-valuation.action");
-    const {
-      appraisalTypeId,
-      clientName,
-      operationTypeId,
-      propertyTypeId,
-      responsibleUserId,
-      templateId,
-      title,
-    } = body;
-
-    if (!title || !appraisalTypeId || !propertyTypeId || !operationTypeId) {
-      return NextResponse.json(
-        { error: "Faltan campos requeridos para crear el avaluo" },
-        { status: 400 },
-      );
-    }
+    const body = await readJsonBody(request, createValuationSchema);
+    if (!body.ok) return body.response;
+    const input = body.data;
 
     const result = await saveValuation({
-      title,
-      clientName,
-      appraisalTypeId: Number(appraisalTypeId),
-      propertyTypeId: Number(propertyTypeId),
-      operationTypeId: Number(operationTypeId),
-      templateId: templateId ? Number(templateId) : null,
-      responsibleUserId: responsibleUserId ? Number(responsibleUserId) : user.id,
+      title: input.title,
+      clientName: input.clientName,
+      appraisalTypeId: input.appraisalTypeId,
+      propertyTypeId: input.propertyTypeId,
+      operationTypeId: input.operationTypeId,
+      templateId: input.templateId ?? null,
+      responsibleUserId: input.responsibleUserId ?? auth.user.id,
       status: "NUEVO",
     });
 
@@ -65,20 +46,10 @@ export async function POST(request: Request) {
 
     const publicId = result.data?.id;
     return NextResponse.json(
-      {
-        data: {
-          ok: true,
-          publicId,
-          valuationId: publicId,
-          workspaceUrl: `/workspace?id=${publicId}`,
-        },
-      },
+      { data: { ok: true, publicId, valuationId: publicId, workspaceUrl: `/workspace?id=${publicId}` } },
       { status: 201 },
     );
   } catch (error) {
-    return NextResponse.json(
-      { error: "Error al crear avaluo", details: String(error) },
-      { status: 500 },
-    );
+    return internalError("VALUATIONS_CREATE", error, "No se pudo crear el avalúo.");
   }
 }

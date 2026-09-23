@@ -31,6 +31,7 @@ export const authErrorMessages = {
   PASSWORD_RESET_SENT: "Si existe una cuenta asociada a ese correo, enviaremos instrucciones para restablecer la contrasena.",
   EMAIL_VERIFICATION_SENT: "Enviaremos un enlace de verificacion si la cuenta puede recibirlo.",
   GOOGLE_NOT_CONFIGURED: "El acceso con Google todavia no esta configurado.",
+  RATE_LIMITED: "Demasiados intentos. Espera unos minutos antes de volver a intentarlo.",
 } as const;
 
 export type AuthErrorCode = keyof typeof authErrorMessages;
@@ -70,4 +71,5 @@ export const authErrorSeverity = {
   PASSWORD_RESET_SENT: "success",
   EMAIL_VERIFICATION_SENT: "success",
   GOOGLE_NOT_CONFIGURED: "warning",
+  RATE_LIMITED: "warning",
 } satisfies Record<AuthErrorCode, AuthFeedbackSeverity>;

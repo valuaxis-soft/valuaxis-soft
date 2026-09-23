@@ -6,6 +6,8 @@ import { authErrorMessages, authErrorSeverity } from "../constants/auth-errors";
 import type { ActionResult } from "../types/auth.types";
 import { parseRegisterInput } from "../validations/register.schema";
 import { registerLocalUser } from "../services/registration.service";
+import { headers } from "next/headers";
+import { clientIp, rateLimits } from "@/security/rate-limit/rate-limiter";
 
 export type RegisterActionState = ActionResult;
 
@@ -19,6 +21,15 @@ export async function registerAction(_state: RegisterActionState, formData: Form
         message: authErrorMessages.VALIDATION_ERROR,
         severity: authErrorSeverity.VALIDATION_ERROR,
         fieldErrors: parsed.fieldErrors,
+      };
+    }
+
+    if (!rateLimits.register.consume(`register:${clientIp(await headers())}`).allowed) {
+      return {
+        ok: false,
+        code: "RATE_LIMITED",
+        message: authErrorMessages.RATE_LIMITED,
+        severity: authErrorSeverity.RATE_LIMITED,
       };
     }
 

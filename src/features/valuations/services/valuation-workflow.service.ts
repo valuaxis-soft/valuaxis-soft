@@ -23,6 +23,17 @@ type Tx = Omit<
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >;
 
+/**
+ * A failure the caller can explain to the user: its message is safe to return.
+ * Any other error from this service is internal and must not reach the client.
+ */
+export class ValuationWorkflowError extends Error {
+  constructor(message: string, readonly status: 400 | 404 | 409 | 500) {
+    super(message);
+    this.name = "ValuationWorkflowError";
+  }
+}
+
 export type SectionPayload = {
   id?: string;
   label?: string;
@@ -122,14 +133,14 @@ export async function ensureWorkingVersion(input: {
     where: { IdAvaluo: input.avaluoId },
     select: { IdVersionTrabajo: true, INumeroVersionActual: true },
   });
-  if (!avaluo) throw new Error("Avaluo no encontrado");
+  if (!avaluo) throw new ValuationWorkflowError("Avaluo no encontrado", 404);
   if (avaluo.IdVersionTrabajo) return avaluo.IdVersionTrabajo;
 
   const editableState = await client.estadoVersionAvaluo.findFirst({
     where: { BActivo: true, BPermiteEdicion: true, BEsFinal: false },
     orderBy: { IOrden: "asc" },
   });
-  if (!editableState) throw new Error("No existe estado editable de version configurado");
+  if (!editableState) throw new ValuationWorkflowError("No existe estado editable de version configurado", 500);
 
   const version = await client.versionAvaluo.create({
     data: {
@@ -161,7 +172,7 @@ export async function initializeWorkingVersionStructure(input: {
     where: { BActivo: true },
     orderBy: { IOrden: "asc" },
   });
-  if (!nodeType) throw new Error("No existe tipo de nodo activo configurado");
+  if (!nodeType) throw new ValuationWorkflowError("No existe tipo de nodo activo configurado", 500);
 
   const existingSections = await client.seccionDocumento.findMany({
     where: { IdVersionAvaluo: versionId },
@@ -415,11 +426,11 @@ export async function saveValuationSections(input: {
     });
     if (!avaluo) {
       console.error("[VALUATION_SECTIONS] Avaluo no encontrado", { publicId: input.publicId, organizationId: input.organizationId });
-      throw new Error("Avaluo no encontrado");
+      throw new ValuationWorkflowError("Avaluo no encontrado", 404);
     }
     if (avaluo.BBloqueado) {
       console.error("[VALUATION_SECTIONS] Avaluo bloqueado", { publicId: input.publicId });
-      throw new Error("El avaluo esta bloqueado");
+      throw new ValuationWorkflowError("El avaluo esta bloqueado", 409);
     }
 
     const versionId =
@@ -710,8 +721,8 @@ async function getDocumentPersistenceCatalogs(tx: Tx): Promise<DocumentPersisten
       select: { IdTipoColumna: true },
     }),
   ]);
-  if (!origin) throw new Error("No existe origen de dato USUARIO activo");
-  if (!columnType) throw new Error("No existe tipo de columna CAPTURA activo");
+  if (!origin) throw new ValuationWorkflowError("No existe origen de dato USUARIO activo", 500);
+  if (!columnType) throw new ValuationWorkflowError("No existe tipo de columna CAPTURA activo", 500);
 
   return {
     nodeTypes: Object.fromEntries(nodeTypes.map((item) => [item.SClave, item.IdTipoNodoDocumento])),
@@ -909,7 +920,7 @@ async function upsertNodeValue(input: {
     select: { IdNodoDocumento: true, SClave: true, seccionDocumento: { select: { IdVersionAvaluo: true } } },
   });
   const versionId = node?.seccionDocumento.IdVersionAvaluo;
-  if (!versionId) throw new Error("No se pudo resolver la version del nodo");
+  if (!versionId) throw new ValuationWorkflowError("No se pudo resolver la version del nodo", 500);
   const data = valueColumns(input.value);
   logPersistenceOperation("upsert-node-value", {
     nodeId: node.IdNodoDocumento,
@@ -1422,8 +1433,8 @@ export async function concludeValuation(input: {
         versionTrabajo: { include: { seccionesDocumentos: true } },
       },
     });
-    if (!avaluo) throw new Error("Avaluo no encontrado");
-    if (!avaluo.IdVersionTrabajo || !avaluo.versionTrabajo) throw new Error("No existe version de trabajo");
+    if (!avaluo) throw new ValuationWorkflowError("Avaluo no encontrado", 404);
+    if (!avaluo.IdVersionTrabajo || !avaluo.versionTrabajo) throw new ValuationWorkflowError("No existe version de trabajo", 409);
     if (avaluo.BBloqueado) return { id: input.publicId, alreadyConcluded: true };
 
     const finalVersionState = await tx.estadoVersionAvaluo.findFirst({
@@ -1435,14 +1446,14 @@ export async function concludeValuation(input: {
       orderBy: { IOrden: "asc" },
     });
     if (!finalVersionState || !finalValuationState) {
-      throw new Error("Faltan estados finales configurados");
+      throw new ValuationWorkflowError("Faltan estados finales configurados", 500);
     }
 
     const requiredSections = avaluo.versionTrabajo.seccionesDocumentos.filter(
       (section) => section.BObligatoria && section.BVisible,
     );
     if (!requiredSections.length) {
-      throw new Error("No hay secciones obligatorias configuradas para concluir");
+      throw new ValuationWorkflowError("No hay secciones obligatorias configuradas para concluir", 409);
     }
 
     const contentHash = createHash("sha256")
@@ -1496,8 +1507,8 @@ export async function reopenValuation(input: {
   reason: string;
   acceptedText: string;
 }) {
-  if (!input.reason.trim()) throw new Error("El motivo es obligatorio");
-  if (!input.acceptedText.trim()) throw new Error("La aceptacion de terminos es obligatoria");
+  if (!input.reason.trim()) throw new ValuationWorkflowError("El motivo es obligatorio", 400);
+  if (!input.acceptedText.trim()) throw new ValuationWorkflowError("La aceptacion de terminos es obligatoria", 400);
 
   return prisma.$transaction(async (tx) => {
     const avaluo = await tx.avaluo.findFirst({
@@ -1515,8 +1526,8 @@ export async function reopenValuation(input: {
         INumeroVersionActual: true,
       },
     });
-    if (!avaluo) throw new Error("Avaluo no encontrado");
-    if (!avaluo.IdVersionFinal) throw new Error("No existe version final para reabrir");
+    if (!avaluo) throw new ValuationWorkflowError("Avaluo no encontrado", 404);
+    if (!avaluo.IdVersionFinal) throw new ValuationWorkflowError("No existe version final para reabrir", 409);
     if (avaluo.IdVersionTrabajo) return { id: input.publicId, alreadyOpen: true };
 
     const editableVersionState = await tx.estadoVersionAvaluo.findFirst({
@@ -1528,7 +1539,7 @@ export async function reopenValuation(input: {
       orderBy: { IOrden: "asc" },
     });
     if (!editableVersionState || !editableValuationState) {
-      throw new Error("Faltan estados editables configurados");
+      throw new ValuationWorkflowError("Faltan estados editables configurados", 500);
     }
 
     const nextVersionNumber = avaluo.INumeroVersionActual + 1;

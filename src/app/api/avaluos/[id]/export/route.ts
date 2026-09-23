@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { internalError } from "@/lib/api-response";
 import { requireApiUser } from "@/security/guards/api-guard";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { generateValuationPdf, type PdfValuation } from "@/features/reports/services/pdf-generator";
@@ -55,13 +56,11 @@ export async function GET(
     return new NextResponse(Buffer.from(pdfBytes), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="avaluo-${valuation.folio}.pdf"`,
+        // The folio is free text: keep only filename-safe characters.
+        "Content-Disposition": `attachment; filename="avaluo-${valuation.folio.replace(/[^A-Za-z0-9._-]+/g, "-")}.pdf"`,
       },
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: "Error al exportar avaluo", details: String(error) },
-      { status: 500 },
-    );
+    return internalError("VALUATION_EXPORT", error, "No se pudo generar el PDF del avalúo.");
   }
 }

@@ -1,32 +1,29 @@
 import { NextResponse } from "next/server";
-import { requireApiUser } from "@/security/guards/api-guard";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
+import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
 import { reopenValuation } from "@/features/valuations/services/valuation-workflow.service";
+import { reopenValuationSchema } from "@/features/valuations/validations/valuation-api.schemas";
+import { readJsonBody } from "@/lib/api-response";
+import { requireApiUser } from "@/security/guards/api-guard";
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: Request, { params }: RouteContext<"/api/avaluos/[id]/reopen">) {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.reopenValuations);
     if (!auth.ok) return auth.response;
-    const { user } = auth;
 
-    const body = await request.json();
+    const body = await readJsonBody(request, reopenValuationSchema);
+    if (!body.ok) return body.response;
+
     const { id } = await params;
     const result = await reopenValuation({
       publicId: id,
-      organizationId: user.organizationId,
-      user,
-      reason: String(body.reason ?? ""),
-      acceptedText: String(body.acceptedText ?? ""),
+      organizationId: auth.user.organizationId,
+      user: auth.user,
+      reason: body.data.reason,
+      acceptedText: body.data.acceptedText,
     });
-
     return NextResponse.json({ data: result });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Error al reabrir avaluo" },
-      { status: 400 },
-    );
+    return valuationErrorResponse("VALUATION_REOPEN", error, "No se pudo reabrir el avalúo.");
   }
 }

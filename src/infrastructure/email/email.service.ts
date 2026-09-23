@@ -17,4 +17,13 @@ export interface EmailService {
   sendPasswordResetEmail(input: PasswordResetEmailInput): Promise<void>;
 }
 
-export const emailService: EmailService = createEmailService();
+let instance: EmailService | null = null;
+
+/**
+ * Created on first use, not at import: a module that only imports this file
+ * (for example during `next build`) must not fail when email is not configured.
+ */
+export function getEmailService(): EmailService {
+  instance ??= createEmailService();
+  return instance;
+}

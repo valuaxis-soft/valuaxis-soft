@@ -1,3 +1,4 @@
+import { uploadRateLimitResponse } from "@/security/rate-limit/upload-limit";
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/features/auth/session";
@@ -31,6 +32,8 @@ export async function POST(
   try {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    const limited = uploadRateLimitResponse(user.id);
+    if (limited) return limited;
     const { id } = await params;
     const formData = await request.formData();
     const file = formData.get("file");

@@ -5,6 +5,11 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
 const oauthMessages: Record<string, { title: string; description: string; severity: "warning" | "error" }> = {
+  oauth_rate_limited: {
+    title: "Demasiados intentos",
+    description: "Espera unos minutos antes de volver a iniciar sesion con Google.",
+    severity: "warning",
+  },
   oauth_cancelled: {
     title: "Inicio con Google cancelado",
     description: "No se completo la autorizacion con Google. Puedes intentarlo nuevamente cuando quieras.",

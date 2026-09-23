@@ -1,11 +1,7 @@
 import { z } from "zod";
 
 const envSchema = z.object({
-  DATABASE_URL: z
-    .string()
-    .default(
-      "postgresql://devpware_avaluos_user:COLOCAR_CONTRASENA_AQUI@localhost:5432/devpware_avaluos?schema=public",
-    ),
+  DATABASE_URL: z.string().min(1),
 
   APP_URL: z.string().optional(),
   EMAIL_PROVIDER: z.enum(["development", "ses"]).optional(),
@@ -31,13 +27,23 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
+/**
+ * A running production server must not start with a broken configuration, so
+ * invalid variables throw. `next build` imports modules without the runtime
+ * environment, and local tooling may run without every variable, so those only
+ * warn and fall back to the defaults.
+ */
 function loadEnv(): Env {
   const result = envSchema.safeParse(process.env);
-  if (!result.success) {
-    console.warn("Invalid environment variables:", result.error.flatten().fieldErrors);
-    return envSchema.parse({});
+  if (result.success) return result.data;
+
+  const problems = result.error.flatten().fieldErrors;
+  const isBuild = process.env.NEXT_PHASE === "phase-production-build";
+  if (process.env.NODE_ENV === "production" && !isBuild) {
+    throw new Error(`Invalid environment variables: ${JSON.stringify(problems)}`);
   }
-  return result.data;
+  console.warn("Invalid environment variables:", problems);
+  return envSchema.partial({ DATABASE_URL: true }).parse({}) as Env;
 }
 
 export const env = loadEnv();

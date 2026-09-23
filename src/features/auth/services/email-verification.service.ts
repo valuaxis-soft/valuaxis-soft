@@ -1,6 +1,6 @@
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { hashToken, createSecureToken } from "@/security/tokens/token-hashing";
-import { emailService } from "@/infrastructure/email/email.service";
+import { getEmailService } from "@/infrastructure/email/email.service";
 import { buildPublicAppUrl } from "@/lib/public-url";
 import { EMAIL_TOKEN_TTL_MINUTES } from "../constants/auth.constants";
 import { markEmailVerified } from "../repositories/user.repository";
@@ -29,7 +29,7 @@ export async function createEmailVerificationToken(input: {
     },
   });
 
-  await emailService.sendVerificationEmail({
+  await getEmailService().sendVerificationEmail({
     to: input.email,
     name: input.name,
     verificationUrl: buildPublicAppUrl(`/verificar-correo?token=${encodeURIComponent(token)}`).toString(),

@@ -1,3 +1,5 @@
+import { uploadRateLimitResponse } from "@/security/rate-limit/upload-limit";
+import { internalError } from "@/lib/api-response";
 import { NextResponse } from "next/server";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { requireApiUser } from "@/security/guards/api-guard";
@@ -9,6 +11,8 @@ export async function POST(request: Request) {
     const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
     if (!auth.ok) return auth.response;
     const { user } = auth;
+    const limited = uploadRateLimitResponse(user.id);
+    if (limited) return limited;
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
@@ -37,9 +41,6 @@ export async function POST(request: Request) {
     if (error instanceof UploadError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     }
-    return NextResponse.json(
-      { error: "Error al subir archivo", details: String(error) },
-      { status: 500 },
-    );
+    return internalError("UPLOAD", error, "No se pudo subir el archivo.");
   }
 }

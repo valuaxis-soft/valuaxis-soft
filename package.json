@@ -19,7 +19,8 @@
     "auth:create-admin": "tsx scripts/create-initial-admin.ts",
     "email:test": "tsx scripts/send-test-email.ts",
     "postinstall": "prisma generate",
-    "test:integration": "tsx --env-file=.env --test \"tests/integration/**/*.integration.ts\""
+    "test:integration": "tsx --env-file=.env --test \"tests/integration/**/*.integration.ts\"",
+    "env:check": "tsx --env-file-if-exists=.env scripts/check-env.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1073.0",

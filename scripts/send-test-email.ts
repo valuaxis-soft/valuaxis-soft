@@ -4,7 +4,7 @@ import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
 
 async function main() {
-  const { emailService } = await import("../src/infrastructure/email/email.service");
+  const { getEmailService } = await import("../src/infrastructure/email/email.service");
   const to = process.env.TEST_EMAIL_TO;
   const appUrl = process.env.APP_URL;
 
@@ -18,7 +18,7 @@ async function main() {
 
   const verificationUrl = new URL(`/verificar-correo?token=${encodeURIComponent(randomUUID())}`, appUrl).toString();
 
-  await emailService.sendVerificationEmail({
+  await getEmailService().sendVerificationEmail({
     to,
     name: "Prueba Valuo",
     verificationUrl,
