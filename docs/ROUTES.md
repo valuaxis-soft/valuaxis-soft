@@ -20,6 +20,7 @@
 |---|---|
 | `/dashboard` | Resumen y avalúos recientes |
 | `/avaluos` | Lista paginada de avalúos de la organización (20 por página). Parámetros: `?q=` busca en folio, título y cliente; `?estado=` filtra por clave del catálogo de estados (`nuevo`, `en_edicion`, …); `?page=`. Requiere `AVALUO_VER`; "Nuevo avalúo" solo con `AVALUO_CREAR` |
+| `/avaluos/<uuid>/dictamen` | Dictamen completo para imprimir o guardar como PDF: todas las secciones habilitadas con las mismas páginas de la vista previa, en tamaño carta sin márgenes. Muestra lo guardado; el botón "Generar avalúo" del editor guarda antes de abrirlo. Requiere `AVALUO_EXPORTAR` y registra un evento de exportación |
 | `/workspace?action=new` | Crear avalúo |
 | `/workspace?id=<uuid>` | Editor del avalúo |
 | `/workspace/preview-window?id=<uuid>` | Vista previa en segunda ventana |
@@ -36,7 +37,7 @@
 | PUT | `/api/avaluos/[id]/full` | Guarda el avalúo completo |
 | POST | `/api/avaluos/[id]/conclude` | Concluye (botón "Concluir" en el editor) |
 | POST | `/api/avaluos/[id]/reopen` | Reabre con motivo y aceptación (botón "Reabrir" en el editor) |
-| GET | `/api/avaluos/[id]/export` | PDF |
+| GET | `/api/avaluos/[id]/export` | PDF simple generado con pdf-lib (sin membrete, tablas ni imágenes). El editor ya no lo usa: el dictamen se obtiene de `/avaluos/<uuid>/dictamen` |
 | GET, POST | `/api/avaluos/[id]/caratula/imagen-principal` | Imagen principal |
 | GET, POST, DELETE | `/api/avaluos/[id]/caratula/imagen-encabezado` | Imagen de encabezado |
 | GET, POST, DELETE | `/api/avaluos/[id]/datos/imagenes` | Imágenes de Datos generales |

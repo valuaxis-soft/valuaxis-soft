@@ -38,7 +38,7 @@ import type { AuthUser } from "@/features/auth/model";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
 import { canEditProject, canExportProject, hasPermission } from "@/features/auth/permissions";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
-import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { flattenSectionConcepts, resolveSectionConceptsForDisplay } from "./model/section-content";
 import { sectionIconMap } from "./model/section-icons";
@@ -70,6 +70,7 @@ export function ValuationWorkspace({
   action?: string | null;
   initialValuation?: ValuationDetail | null;
 }) {
+  const router = useRouter();
   const {
     editorPanelRef,
     previewPanelRef,
@@ -191,25 +192,11 @@ export function ValuationWorkspace({
   const blocks = useBlockMutations(editor);
   const tables = useTableMutations(editor);
 
+  // The dictamen renders what is saved, so pending changes are saved first.
   const handleExportPdf = async () => {
     if (!valuationId) return;
-    try {
-      toast.loading("Generando PDF...");
-      const res = await fetch(`/api/avaluos/${valuationId}/export`);
-      if (!res.ok) throw new Error("Error al generar PDF");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `avaluo-${meta.folio}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.dismiss();
-      toast.success("PDF generado correctamente");
-    } catch {
-      toast.dismiss();
-      toast.error("Error al generar PDF");
-    }
+    if (hasUnsavedChanges && !(await handleSave())) return;
+    router.push(`/avaluos/${valuationId}/dictamen`);
   };
 
   const editorPanel = (

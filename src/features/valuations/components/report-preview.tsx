@@ -62,15 +62,7 @@ const PRE_MARKET_LAYOUT_SECTION_KEYS = new Set([
   "COSTOS",
 ]);
 
-export function ReportPreview({
-  caratula,
-  companyName,
-  meta,
-  section,
-  comparables,
-  principalCoverImage,
-  documentHeaderImage,
-}: {
+type SectionDocumentProps = {
   caratula: CaratulaFormData;
   companyName: string;
   meta: ValuationMeta;
@@ -78,12 +70,10 @@ export function ReportPreview({
   comparables: Comparable[];
   principalCoverImage: PrincipalCoverImage | null;
   documentHeaderImage?: ImageContent | null;
-}) {
-  const isDatosGenerales =
-    section.id === "datos" || getCanonicalSectionKey(section.id) === "DATOS_GENERALES";
-  const isTerreno = isTerrenoSection(section);
-  const isConstruccion = isConstruccionSection(section);
-  const isCaratula = section.id === "caratula";
+};
+
+export function ReportPreview(props: SectionDocumentProps) {
+  const isCaratula = props.section.id === "caratula";
 
   return (
     <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg">
@@ -94,88 +84,101 @@ export function ReportPreview({
         </CardTitle>
       </CardHeader>
       <CardContent className="min-h-0 flex-1 p-0">
-        <PreviewViewer key={section.id} className="h-full">
+        <PreviewViewer key={props.section.id} className="h-full">
           {/* Carátula: no gray background — page fills the desk naturally */}
-          {isCaratula ? (
-            <div className="min-h-full p-4 sm:p-6 lg:p-8">
-              <DocumentThemeProvider variant="caratula">
-                <div className="light" style={CARATULA_COLOR_VARS}>
-                  <CaratulaPreview
-                    caratula={caratula}
-                    meta={meta}
-                    section={section}
-                    principalImage={principalCoverImage}
-                    header={<DocumentPreviewHeader caratula={caratula} companyName={companyName} headerImage={documentHeaderImage} />}
-                  />
-                </div>
-              </DocumentThemeProvider>
-            </div>
-          ) : (
-            <div className="min-h-full bg-muted/40 p-4 sm:p-6 lg:p-8">
-              <DocumentThemeProvider variant="standard">
-                <div className="light" style={CARATULA_COLOR_VARS}>
-                  {isDatosGenerales ? (
-                    <DatosPreview
-                      header={<DocumentPreviewHeader caratula={caratula} companyName={companyName} headerImage={documentHeaderImage} />}
-                      section={section}
-                    />
-                  ) : isTerreno ? (
-                    <TerrenoPreview
-                      header={<DocumentPreviewHeader caratula={caratula} companyName={companyName} headerImage={documentHeaderImage} />}
-                      section={section}
-                    />
-                  ) : isConstruccion ? (
-                    <ConstruccionPreview
-                      header={<DocumentPreviewHeader caratula={caratula} companyName={companyName} headerImage={documentHeaderImage} />}
-                      section={section}
-                    />
-                  ) : (
-                    <ReportSection
-                      applyConceptLayout={PRE_MARKET_LAYOUT_SECTION_KEYS.has(getCanonicalSectionKey(section.id))}
-                      header={<DocumentPreviewHeader caratula={caratula} companyName={companyName} headerImage={documentHeaderImage} />}
-                      section={section}
-                    />
-                  )}
-
-                  {section.id === "mercadoVenta" && comparables.length ? (
-                    <DocumentPreviewPage
-                      header={<DocumentPreviewHeader caratula={caratula} companyName={companyName} headerImage={documentHeaderImage} />}
-                    >
-                      <section className="px-5 pb-7 sm:px-7">
-                        <h2 className="border-b border-blue-900 pb-1 text-sm font-bold text-blue-950">
-                          COMPARABLES SELECCIONADOS
-                        </h2>
-                        <Table>
-                          <TableCaption>Comparables que pasarían al reporte final.</TableCaption>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>ID</TableHead>
-                              <TableHead>Precio</TableHead>
-                              <TableHead>Área</TableHead>
-                              <TableHead>$/m²</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {comparables.map((item) => (
-                              <TableRow key={item.id}>
-                                <TableCell>{item.id}</TableCell>
-                                <TableCell>{item.price}</TableCell>
-                                <TableCell>{item.area}</TableCell>
-                                <TableCell>{item.pricePerMeter}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </section>
-                    </DocumentPreviewPage>
-                  ) : null}
-                </div>
-              </DocumentThemeProvider>
-            </div>
-          )}
+          <div className={isCaratula ? "min-h-full p-4 sm:p-6 lg:p-8" : "min-h-full bg-muted/40 p-4 sm:p-6 lg:p-8"}>
+            <SectionDocument {...props} />
+          </div>
         </PreviewViewer>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * The printed pages of one section. The editor preview shows one at a time;
+ * the dictamen stacks every enabled section.
+ */
+export function SectionDocument({
+  caratula,
+  companyName,
+  meta,
+  section,
+  comparables,
+  principalCoverImage,
+  documentHeaderImage,
+}: SectionDocumentProps) {
+  const isDatosGenerales =
+    section.id === "datos" || getCanonicalSectionKey(section.id) === "DATOS_GENERALES";
+  const isTerreno = isTerrenoSection(section);
+  const isConstruccion = isConstruccionSection(section);
+  const header = <DocumentPreviewHeader caratula={caratula} companyName={companyName} headerImage={documentHeaderImage} />;
+
+  if (section.id === "caratula") {
+    return (
+      <DocumentThemeProvider variant="caratula">
+        <div className="light" style={CARATULA_COLOR_VARS}>
+          <CaratulaPreview
+            caratula={caratula}
+            meta={meta}
+            section={section}
+            principalImage={principalCoverImage}
+            header={header}
+          />
+        </div>
+      </DocumentThemeProvider>
+    );
+  }
+
+  return (
+    <DocumentThemeProvider variant="standard">
+      <div className="light" style={CARATULA_COLOR_VARS}>
+        {isDatosGenerales ? (
+          <DatosPreview header={header} section={section} />
+        ) : isTerreno ? (
+          <TerrenoPreview header={header} section={section} />
+        ) : isConstruccion ? (
+          <ConstruccionPreview header={header} section={section} />
+        ) : (
+          <ReportSection
+            applyConceptLayout={PRE_MARKET_LAYOUT_SECTION_KEYS.has(getCanonicalSectionKey(section.id))}
+            header={header}
+            section={section}
+          />
+        )}
+
+        {section.id === "mercadoVenta" && comparables.length ? (
+          <DocumentPreviewPage header={header}>
+            <section className="px-5 pb-7 sm:px-7">
+              <h2 className="border-b border-blue-900 pb-1 text-sm font-bold text-blue-950">
+                COMPARABLES SELECCIONADOS
+              </h2>
+              <Table>
+                <TableCaption>Comparables que pasarían al reporte final.</TableCaption>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Precio</TableHead>
+                    <TableHead>Área</TableHead>
+                    <TableHead>$/m²</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {comparables.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.id}</TableCell>
+                      <TableCell>{item.price}</TableCell>
+                      <TableCell>{item.area}</TableCell>
+                      <TableCell>{item.pricePerMeter}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </section>
+          </DocumentPreviewPage>
+        ) : null}
+      </div>
+    </DocumentThemeProvider>
   );
 }
 

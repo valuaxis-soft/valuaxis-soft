@@ -141,24 +141,32 @@
   }
 }
 
+/* Document pages are 816 × 1056 px: US Letter at 96 dpi, printed edge to edge. */
+@page {
+  size: letter;
+  margin: 0;
+}
+
 @media print {
   body {
     background: white;
   }
 
-  main > section:first-child,
-  main > div > :first-child {
+  /* Printing from the editor keeps only the preview panel. The dictamen
+     page (data-print-document) has its own print layout. */
+  main:not([data-print-document]) > section:first-child,
+  main:not([data-print-document]) > div > :first-child {
     display: none;
   }
 
-  main,
-  main > div {
+  main:not([data-print-document]),
+  main:not([data-print-document]) > div {
     display: block;
     padding: 0;
     background: white;
   }
 
-  main > div > :nth-child(2) {
+  main:not([data-print-document]) > div > :nth-child(2) {
     max-height: none;
     padding: 0;
     overflow: visible;
@@ -166,12 +174,12 @@
     border: 0;
   }
 
-  main > div > :nth-child(2) > [data-slot="card-header"],
+  main:not([data-print-document]) > div > :nth-child(2) > [data-slot="card-header"],
   [data-slot="scroll-area-scrollbar"] {
     display: none;
   }
 
-  main > div > :nth-child(2) > [data-slot="card-content"],
+  main:not([data-print-document]) > div > :nth-child(2) > [data-slot="card-content"],
   [data-slot="scroll-area"],
   [data-slot="scroll-area-viewport"] {
     height: auto;

@@ -270,7 +270,7 @@ export function DocumentPreviewPage({
 }) {
   return (
     <article
-      className={`light mx-auto h-[1056px] max-h-[1056px] w-[816px] max-w-[816px] overflow-hidden border border-slate-300 bg-white text-slate-900 shadow-xl shadow-slate-900/10 ${className}`}
+      className={`light mx-auto break-inside-avoid print:break-before-page print:border-0 print:shadow-none h-[1056px] max-h-[1056px] w-[816px] max-w-[816px] overflow-hidden border border-slate-300 bg-white text-slate-900 shadow-xl shadow-slate-900/10 ${className}`}
       data-document-page={pageNumber}
       data-preview-page={pageNumber}
     >
@@ -483,7 +483,7 @@ export function AutoPaginatedDocumentFlow({
       {createPortal(
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute left-[-10000px] top-0 opacity-0"
+          className="pointer-events-none absolute left-[-10000px] top-0 opacity-0 print:hidden"
           ref={measurePageRef}
         >
           <DocumentPreviewPage header={header} className="shadow-none" pageNumber={0}>
@@ -499,7 +499,7 @@ export function AutoPaginatedDocumentFlow({
         document.body,
       )}
 
-      <div className="space-y-6" ref={pagesContainerRef}>
+      <div className="space-y-6 print:space-y-0" ref={pagesContainerRef}>
         {visiblePages.map((pageItems, pageIndex) => (
           <DocumentPreviewPage header={header} key={`${pageKeyPrefix}-page-${pageIndex + 1}`} pageNumber={pageIndex + 1} className={pageClassName}>
             <div {...contentProps} className={contentClassName} style={paginatedContentStyle} data-document-pagination-content="visible">

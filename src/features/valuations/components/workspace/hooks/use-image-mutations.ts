@@ -1,22 +1,19 @@
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api-client";
-import type { ImageContent, PrincipalCoverImage } from "@/features/valuations/model";
+import type { ImageContent } from "@/features/valuations/model";
 import {
   COMPANY_HEADER_BLOCK_ID,
   ensureCompanyHeaderFields,
 } from "@/features/valuations/services/caratula-company-header";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { newId } from "../model/content-factories";
-import {
-  imageContentFromDocumentHeaderImage,
-  mergeDatosImages,
-  mergeDocumentHeaderImage,
-} from "../model/initial-hydration";
+import { imageContentFromDocumentHeaderImage } from "../model/initial-hydration";
 import { textEditGroupKey } from "../model/editor-history";
 import { ensureBlockContentIntegrity, getDocumentHeaderImage } from "../model/section-content";
 import type { EditorState } from "./use-editor-state";
+import { useStoredValuationImages } from "./use-stored-images";
 
 const DOCUMENT_HEADER_IMAGE_ACCEPT = new Set(["image/png", "image/jpeg", "image/webp"]);
 const DOCUMENT_HEADER_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp"]);
@@ -44,60 +41,10 @@ export function useImageMutations({
   canEdit: boolean;
   valuationId: string | null;
 }) {
-  const [principalCoverImage, setPrincipalCoverImage] = useState<PrincipalCoverImage | null>(null);
+  const { principalCoverImage, setPrincipalCoverImage } = useStoredValuationImages({ setSections, valuationId });
   const [uploadingDocumentHeaderImage, setUploadingDocumentHeaderImage] = useState(false);
   const [uploadingCoverImage, setUploadingCoverImage] = useState(false);
   const documentHeaderImage = getDocumentHeaderImage(sections);
-
-  useEffect(() => {
-    let active = true;
-    if (!valuationId) {
-      return;
-    }
-    api.valuations.coverImage
-      .get(valuationId)
-      .then((image) => {
-        if (active) setPrincipalCoverImage(image);
-      })
-      .catch(() => {
-        if (active) setPrincipalCoverImage(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [valuationId]);
-
-  useEffect(() => {
-    let active = true;
-    if (!valuationId) return;
-    api.valuations.documentHeaderImage
-      .get(valuationId)
-      .then((image) => {
-        if (active) setSections((current) => mergeDocumentHeaderImage(current, image));
-      })
-      .catch(() => {
-        // La estructura editable permanece aunque no se pueda renovar la URL temporal.
-      });
-    return () => {
-      active = false;
-    };
-  }, [setSections, valuationId]);
-
-  useEffect(() => {
-    let active = true;
-    if (!valuationId) return;
-    api.valuations.datosImages
-      .list(valuationId)
-      .then((images) => {
-        if (active) setSections((current) => mergeDatosImages(current, images));
-      })
-      .catch(() => {
-        // Los nodos existentes siguen disponibles aunque no se pueda renovar la URL temporal.
-      });
-    return () => {
-      active = false;
-    };
-  }, [setSections, valuationId]);
 
   const handlePrincipalCoverImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
