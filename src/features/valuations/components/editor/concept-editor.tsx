@@ -296,7 +296,7 @@ function ConceptLinkStatus({
             variant="ghost"
             title={title}
             aria-label={title}
-            className={cn(isFull ? "text-blue-600" : "text-green-600")}
+            className={cn(isFull ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400")}
           >
             {isFull ? <Link2 /> : <Link />}
           </Button>
@@ -312,7 +312,7 @@ function ConceptLinkStatus({
               variant="ghost"
               title="Vincular concepto"
               aria-label="Vincular concepto"
-              className={cn(state === "full" && "bg-muted text-blue-600")}
+              className={cn(state === "full" && "bg-muted text-blue-600 dark:text-blue-400")}
               disabled={!onChangeRelation}
               onClick={() => onChangeRelation?.("full")}
             >

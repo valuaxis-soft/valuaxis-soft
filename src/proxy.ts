@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_PUBLIC_PATHS, AUTH_SESSION_COOKIE } from "@/features/auth/constants/auth.constants";
 import { buildPublicAppUrl, getPublicAppUrl } from "@/lib/public-url";
-import { contentSecurityPolicy, createNonce } from "@/security/headers/security-headers";
+import { NONCE_HEADER, contentSecurityPolicy, createNonce } from "@/security/headers/security-headers";
 import { isSameOriginRequest } from "@/security/validation/origin";
 import { safeRedirectPath } from "@/security/validation/redirect-safety";
 
@@ -54,12 +54,15 @@ export async function proxy(request: NextRequest) {
  * and applies the nonce to the scripts it renders.
  */
 function withContentSecurityPolicy(request: NextRequest) {
+  const nonce = createNonce();
   const policy = contentSecurityPolicy({
     development: process.env.NODE_ENV !== "production",
-    nonce: createNonce(),
+    nonce,
   });
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("Content-Security-Policy", policy);
+  // For inline scripts the app renders itself (the theme script).
+  requestHeaders.set(NONCE_HEADER, nonce);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", policy);

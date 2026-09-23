@@ -3,7 +3,9 @@ import test from "node:test";
 import { readJsonBody, internalError } from "../src/lib/api-response";
 import { createRateLimiter, clientIp } from "../src/security/rate-limit/rate-limiter";
 import { isSameOriginRequest } from "../src/security/validation/origin";
-import { contentSecurityPolicy, createNonce, securityHeaders } from "../src/security/headers/security-headers";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { TRUSTED_STYLE_HASHES, contentSecurityPolicy, createNonce, securityHeaders } from "../src/security/headers/security-headers";
 import {
   createValuationSchema,
   reopenValuationSchema,
@@ -90,9 +92,25 @@ test("the CSP allows scripts only with the request nonce", () => {
   assert.match(policy, /upgrade-insecure-requests/);
 });
 
+test("in production, style elements need the nonce or a known hash", () => {
+  const policy = contentSecurityPolicy({ development: false, nonce: "abc123" });
+  const directive = (name: string) => policy.split("; ").find((entry) => entry.startsWith(`${name} `));
+  assert.equal(directive("style-src-elem"), `style-src-elem 'self' 'nonce-abc123' ${TRUSTED_STYLE_HASHES.join(" ")}`);
+  assert.equal(directive("style-src-attr"), "style-src-attr 'unsafe-inline'");
+});
+
+test("the trusted style hashes match the CSS the installed libraries insert", () => {
+  const sonner = readFileSync("node_modules/sonner/dist/index.mjs", "utf8");
+  const call = sonner.match(/__insertCSS\(("(?:[^"\\]|\\.)*")\)/);
+  assert.ok(call, "sonner no longer inserts its CSS with __insertCSS: review TRUSTED_STYLE_HASHES");
+  const hash = createHash("sha256").update(JSON.parse(call[1]) as string).digest("base64");
+  assert.ok(TRUSTED_STYLE_HASHES.includes(`'sha256-${hash}'`), "sonner's CSS changed: update its hash in TRUSTED_STYLE_HASHES");
+});
+
 test("development relaxes only what hot reload needs and skips HSTS", () => {
   const policy = contentSecurityPolicy({ development: true, nonce: "n" });
   assert.match(policy, /'unsafe-eval'/);
+  assert.match(policy, /style-src-elem 'self' 'unsafe-inline'/);
   assert.doesNotMatch(policy, /upgrade-insecure-requests/);
   assert.equal(securityHeaders({ development: true }).some((h) => h.key === "Strict-Transport-Security"), false);
 });

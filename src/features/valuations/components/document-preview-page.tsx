@@ -270,7 +270,7 @@ export function DocumentPreviewPage({
 }) {
   return (
     <article
-      className={`mx-auto h-[1056px] max-h-[1056px] w-[816px] max-w-[816px] overflow-hidden border border-slate-300 bg-white text-slate-900 shadow-xl shadow-slate-900/10 ${className}`}
+      className={`light mx-auto h-[1056px] max-h-[1056px] w-[816px] max-w-[816px] overflow-hidden border border-slate-300 bg-white text-slate-900 shadow-xl shadow-slate-900/10 ${className}`}
       data-document-page={pageNumber}
       data-preview-page={pageNumber}
     >

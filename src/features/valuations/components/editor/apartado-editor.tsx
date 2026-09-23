@@ -66,16 +66,16 @@ export function ApartadoEditor({
         !subBlock.enabled && "border-dashed border-muted-foreground/40 opacity-80",
       )}
     >
-      <div className="mb-4 flex items-start justify-between gap-3 border-b border-[#00285A]/20 pb-3">
+      <div className="mb-4 flex items-start justify-between gap-3 border-b border-[#00285A]/20 dark:border-sky-200/20 pb-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {displayLabel ? (
-            <span className="shrink-0 text-sm font-black uppercase leading-tight text-[#00285A]">
+            <span className="shrink-0 text-sm font-black uppercase leading-tight text-[#00285A] dark:text-sky-200">
               {displayLabel}
             </span>
           ) : null}
           <Input
             aria-label="Título del apartado"
-            className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-black uppercase leading-tight text-[#00285A] shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background"
+            className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-black uppercase leading-tight text-[#00285A] dark:text-sky-200 shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background"
             disabled={readOnly}
             value={subBlock.title}
             onChange={(event) =>

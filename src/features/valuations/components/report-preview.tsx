@@ -99,7 +99,7 @@ export function ReportPreview({
           {isCaratula ? (
             <div className="min-h-full p-4 sm:p-6 lg:p-8">
               <DocumentThemeProvider variant="caratula">
-                <div style={CARATULA_COLOR_VARS}>
+                <div className="light" style={CARATULA_COLOR_VARS}>
                   <CaratulaPreview
                     caratula={caratula}
                     meta={meta}
@@ -113,7 +113,7 @@ export function ReportPreview({
           ) : (
             <div className="min-h-full bg-muted/40 p-4 sm:p-6 lg:p-8">
               <DocumentThemeProvider variant="standard">
-                <div style={CARATULA_COLOR_VARS}>
+                <div className="light" style={CARATULA_COLOR_VARS}>
                   {isDatosGenerales ? (
                     <DatosPreview
                       header={<DocumentPreviewHeader caratula={caratula} companyName={companyName} headerImage={documentHeaderImage} />}

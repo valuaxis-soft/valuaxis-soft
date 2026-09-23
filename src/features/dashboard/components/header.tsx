@@ -13,6 +13,7 @@ import { AUTH_PERMISSIONS, type AuthUser } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { logoutAction } from "@/features/auth/actions/logout.action";
 import { OrganizationScopeSelector } from "@/features/dashboard/components/organization-scope-selector";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { cn } from "@/lib/utils";
 
 const roleLabel: Record<string, string> = {
@@ -67,6 +68,7 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
         </div>
 
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           <OrganizationScopeSelector activeOrganizationName={user.organizationName} />
           <DropdownMenu>
             <DropdownMenuTrigger

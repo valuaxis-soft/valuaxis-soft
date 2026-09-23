@@ -2,9 +2,13 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* The printed document stays light inside a dark app: `.light` restores the
+   light tokens and turns off `dark:` utilities for its subtree. */
+@custom-variant dark (&:is(.dark *):not(:is(.light, .light *)));
 
-:root {
+:root,
+.light {
+  color-scheme: light;
   --background: oklch(0.985 0.004 240);
   --foreground: oklch(0.18 0.025 250);
   --card: oklch(1 0 0);
@@ -40,6 +44,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.16 0.02 250);
   --foreground: oklch(0.96 0.006 240);
   --card: oklch(0.2 0.022 250);

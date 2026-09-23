@@ -49,20 +49,20 @@ export function BlockEditorHeader({
   };
 }) {
   return (
-    <CardHeader className="border-b border-[#00285A]/20 bg-[#00285A]/[0.05]">
+    <CardHeader className="border-b border-[#00285A]/20 dark:border-sky-200/20 bg-[#00285A]/[0.05] dark:bg-sky-200/5">
       <CardTitle className="flex min-w-0 items-center gap-2">
         {dragHandle}
         {badge ? <Badge>{badge}</Badge> : null}
         {titleEdit ? (
           <Input
             aria-label="Título de la sección"
-            className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-black uppercase leading-tight text-[#00285A] shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background"
+            className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-black uppercase leading-tight text-[#00285A] dark:text-sky-200 shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background"
             disabled={titleEdit.disabled}
             value={titleEdit.value}
             onChange={(event) => titleEdit.onChange(event.target.value)}
           />
         ) : (
-          <span className="min-w-0 flex-1 text-sm font-black uppercase leading-tight text-[#00285A]">
+          <span className="min-w-0 flex-1 text-sm font-black uppercase leading-tight text-[#00285A] dark:text-sky-200">
             {title}
           </span>
         )}

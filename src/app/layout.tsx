@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ThemeProvider } from "@/components/theme/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { NONCE_HEADER } from "@/security/headers/security-headers";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_THEME_COLOR, getSiteUrl } from "./_lib/site";
 import "./globals.css";
 
@@ -46,7 +48,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: SITE_THEME_COLOR,
-  colorScheme: "light",
+  colorScheme: "light dark",
 };
 
 export default async function RootLayout({
@@ -56,17 +58,20 @@ export default async function RootLayout({
 }>) {
   // Reading request headers renders every page per request, which the CSP
   // nonce requires: a page built ahead of time would carry no nonce.
-  await headers();
+  const nonce = (await headers()).get(NONCE_HEADER) ?? undefined;
 
   // The root layout stays neutral so pages scroll normally. Routes that need a
   // fixed, non-scrolling shell (the valuation workspace) set it in their own layout.
   return (
-    <html lang="es" className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+    // The theme script sets the `dark` class before hydration.
+    <html lang="es" className={`${geistSans.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning>
       <body className="min-h-dvh bg-background text-foreground">
-        <TooltipProvider>
-          {children}
-          <Toaster />
-        </TooltipProvider>
+        <ThemeProvider nonce={nonce}>
+          <TooltipProvider>
+            {children}
+            <Toaster />
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

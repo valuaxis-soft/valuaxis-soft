@@ -76,7 +76,7 @@ export default async function OAuthResultadoPage({
       <AuthCard title="Google" description="Resultado de autenticación externa.">
         <Alert
           variant={message?.severity === "error" ? "destructive" : "default"}
-          className={message?.severity === "warning" ? "border-amber-500/50 text-amber-700 *:data-[slot=alert-description]:text-amber-700/90" : undefined}
+          className={message?.severity === "warning" ? "border-amber-500/50 text-amber-700 dark:text-amber-400 *:data-[slot=alert-description]:text-amber-700/90 dark:*:data-[slot=alert-description]:text-amber-400/90" : undefined}
         >
           <AlertTitle>{message ? message.title : "Autenticación completada"}</AlertTitle>
           <AlertDescription>

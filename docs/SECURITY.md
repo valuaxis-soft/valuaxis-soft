@@ -19,7 +19,7 @@ Estado real del código al 23 de septiembre de 2026. Este documento describe lo 
 - **Permisos desde la base de datos** aplicados en todas las rutas de API y páginas privadas. Ver [AUTHORIZATION.md](AUTHORIZATION.md).
 - **SQL crudo** solo en el folio, parametrizado.
 - **Cabeceras de seguridad** en todas las respuestas (`src/security/headers`): `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, COOP y HSTS en producción. Sin `X-Powered-By`.
-- **CSP con nonce por petición:** el proxy genera un nonce y Next.js lo pone en sus scripts; `'strict-dynamic'` permite cargar los chunks. Ningún script en línea sin nonce se ejecuta. Los estilos siguen permitiendo `'unsafe-inline'` por los atributos `style` de la interfaz.
+- **CSP con nonce por petición:** el proxy genera un nonce y Next.js lo pone en sus scripts; `'strict-dynamic'` permite cargar los chunks. Ningún script en línea sin nonce se ejecuta. En producción los elementos `<style>` también necesitan el nonce (Base UI y el script de tema lo reciben de `ThemeProvider`) o un hash conocido (`TRUSTED_STYLE_HASHES`: sonner inserta su CSS sin nonce; una prueba recalcula el hash desde `node_modules` y falla si la librería cambia). Solo los atributos `style` siguen permitidos (`style-src-attr 'unsafe-inline'`), porque la interfaz posiciona y colorea elementos con ellos; un atributo `style` no puede cargar recursos fuera de `img-src` ni ejecutar código.
 - **Protección CSRF:** el proxy rechaza con 403 toda petición a `/api` que modifica datos y viene de otro origen (`Origin` o `Sec-Fetch-Site`). Las server actions usan la protección propia de Next.
 - **Validación de entrada con Zod** y límite de tamaño en las rutas de avalúos (`valuation-api.schemas.ts`, `readJsonBody`): 1 MB por defecto, 5 MB para el guardado completo.
 - **Errores sin detalles internos:** las rutas registran el error en el servidor y responden un mensaje genérico. Los errores de negocio (`ValuationWorkflowError`) sí muestran su mensaje.
@@ -28,7 +28,7 @@ Estado real del código al 23 de septiembre de 2026. Este documento describe lo 
 
 ## Pendientes
 
-- **Estilos en línea permitidos** en la CSP (`style-src 'unsafe-inline'`). Quitarlo exige eliminar los atributos `style` de la interfaz.
+- **Atributos `style` permitidos** en la CSP (`style-src-attr 'unsafe-inline'`). Quitarlo exige mover a clases los atributos `style` de la interfaz y del documento.
 - **Límites de intentos en memoria:** sirven con un solo contenedor. Si la app escala a varias instancias, deben moverse a Postgres o Redis.
 
 ## Proveedores

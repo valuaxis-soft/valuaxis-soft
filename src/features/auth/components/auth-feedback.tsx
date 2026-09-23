@@ -4,8 +4,8 @@ import type { AuthFeedbackSeverity } from "../constants/auth-errors";
 
 const severityClassName = {
   info: "",
-  success: "border-emerald-500/40 text-emerald-700 *:data-[slot=alert-description]:text-emerald-700/90",
-  warning: "border-amber-500/50 text-amber-700 *:data-[slot=alert-description]:text-amber-700/90",
+  success: "border-emerald-500/40 text-emerald-700 dark:text-emerald-400 *:data-[slot=alert-description]:text-emerald-700/90 dark:*:data-[slot=alert-description]:text-emerald-400/90",
+  warning: "border-amber-500/50 text-amber-700 dark:text-amber-400 *:data-[slot=alert-description]:text-amber-700/90 dark:*:data-[slot=alert-description]:text-amber-400/90",
   error: "",
 } satisfies Record<AuthFeedbackSeverity, string>;
 
