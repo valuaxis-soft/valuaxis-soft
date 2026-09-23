@@ -1,6 +1,7 @@
 "use client";
 
 import { ConceptCreationControl } from "../editor/concept-creation-control";
+import { isGeneratedBlock } from "@/features/valuations/calculation/market-document";
 import {
   LongTextConceptEditor,
 } from "../editor/concept-editor";
@@ -20,7 +21,8 @@ import { CaratulaEditor, CalculatedValuesEditor, ValuerCompanyEditor } from "../
 
 import { GripVertical, Plus } from "lucide-react";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useMemo, useState, type ReactNode } from "react";
+import { ensureTableV2 } from "@/features/valuations/services/table";
 import { closestCenter, DndContext, DragEndEvent, useSensors } from "@dnd-kit/core";
 import { editorCanScroll } from "../editor/editor-dnd-autoscroll";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
@@ -187,6 +189,8 @@ function collectConceptReferences(sections: AppSection[], currentBlockId: string
 
 export function ValuationEditorPanel(props: {
   section: AppSection;
+  /** Calculation panel of the section (market approach), shown above its blocks. */
+  calculationPanel?: ReactNode;
   allSections: AppSection[];
   readOnly: boolean;
   sensors: ReturnType<typeof useSensors>;
@@ -265,7 +269,9 @@ export function ValuationEditorPanel(props: {
   const conclusionBlocks = editableBlocks.filter(
     (block) => getCaratulaBlockKind(block) === "conclusion",
   );
-  const renderBlockEditor = (block: Block, blockIndex: number, blockCount: number) => (
+  const renderBlockEditor = (block: Block, blockIndex: number, blockCount: number) => isGeneratedBlock(block) ? (
+    <GeneratedBlockNotice key={block.id} block={block} />
+  ) : (
     <SortableBlockEditor
       key={block.id}
       block={block}
@@ -343,6 +349,7 @@ export function ValuationEditorPanel(props: {
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-4">
+        {props.calculationPanel}
         {isCaratula && props.caratula && props.meta && props.onUpdateCaratula && props.onUpdateMeta ? (
           <CaratulaEditor
             caratula={props.caratula}
@@ -866,4 +873,15 @@ function SortableBlockEditor(props: {
   );
 }
 
-
+/** A block written by the calculation: its data is edited in the calculation panel, not here. */
+function GeneratedBlockNotice({ block }: { block: Block }) {
+  const rows = block.tables.reduce((count, table) => count + ensureTableV2(table).rows.length, 0);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
+      <span className="font-medium">{block.sectionLabel ? `${block.sectionLabel} ` : ""}{block.title}</span>
+      <span className="text-xs text-muted-foreground">
+        Generado por el cálculo{rows ? ` · ${rows} filas` : ""}{block.images.length ? ` · ${block.images.length} fotos` : ""}. Se edita en el panel de cálculo.
+      </span>
+    </div>
+  );
+}

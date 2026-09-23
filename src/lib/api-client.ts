@@ -1,3 +1,13 @@
+import type {
+  ComparableDto,
+  ComparableType,
+  MarketCalculationDto,
+  MarketSettingsDto,
+} from "@/features/valuations/calculation/market-types";
+
+/** What the comparable form sends: the comparable without its id, reference and photos. */
+export type ComparableFormValues = Omit<ComparableDto, "id" | "reference" | "photos">;
+
 const BASE = "/api";
 
 type JsonRecord = Record<string, unknown>;
@@ -139,6 +149,25 @@ export const api = {
       upload: (id: ApiId, file: File, slot: "macro" | "micro") =>
         uploadForm<TerrainSketchResponse>(`/avaluos/${id}/info-terreno/croquis`, { file, slot }),
     },
+  },
+  market: {
+    get: (id: ApiId, type: ComparableType) =>
+      request<MarketCalculationDto>(`/avaluos/${id}/mercado?tipo=${type}`),
+    saveSettings: (id: ApiId, settings: MarketSettingsDto) =>
+      request<MarketCalculationDto>(`/avaluos/${id}/mercado`, { method: "PUT", body: JSON.stringify(settings) }),
+    createComparable: (id: ApiId, type: ComparableType, comparable: ComparableFormValues) =>
+      request<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables?tipo=${type}`, { method: "POST", body: JSON.stringify(comparable) }),
+    updateComparable: (id: ApiId, type: ComparableType, comparableId: string, comparable: ComparableFormValues) =>
+      request<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}?tipo=${type}`, { method: "PUT", body: JSON.stringify(comparable) }),
+    deleteComparable: (id: ApiId, type: ComparableType, comparableId: string) =>
+      request<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}?tipo=${type}`, { method: "DELETE" }),
+    uploadPhoto: (id: ApiId, type: ComparableType, comparableId: string, file: File) =>
+      uploadForm<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}`, { file }),
+    deletePhoto: (id: ApiId, type: ComparableType, comparableId: string, photoId: string) =>
+      request<MarketCalculationDto>(
+        `/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}&fotoId=${encodeURIComponent(photoId)}`,
+        { method: "DELETE" },
+      ),
   },
   session: {
     /** Renews an active session; throws SessionExpiredError when it is gone. */

@@ -218,8 +218,12 @@ function ReportDocumentTable({ table }: { table: TableContent }) {
 
   return (
     <div className="w-full overflow-hidden">
-      {/* Wide tables (homologation, costs) must fit the 816 px page. */}
-      <table className={cn("w-full border-collapse table-fixed", tableV2.columns.length > 7 ? "text-[10px]" : "text-sm")}>
+      {/* Up to seven columns the widths follow the content, so amounts stay on one line;
+          wider tables (homologation) use equal columns and a smaller font to fit the page. */}
+      <table className={cn(
+        "w-full border-collapse",
+        tableV2.columns.length > 7 ? "table-fixed text-[10px]" : tableV2.columns.length > 5 ? "text-xs" : "text-sm",
+      )}>
         <colgroup>
           {tableV2.columns.map((column) => (
             <col key={column.id} />
