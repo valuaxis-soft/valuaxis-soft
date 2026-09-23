@@ -101,11 +101,11 @@ export function ValuationWorkspace({
     redoEditorChange,
     saveStatus,
     sections,
-    setSections,
     undoEditorChange,
     updateCaratula,
     updateMeta,
     updateSection,
+    updateSections,
   } = editor;
   const [activeSectionId, setActiveSectionId] = useState(
     initialValuation?.sections?.[0]?.id || "caratula",
@@ -140,7 +140,10 @@ export function ValuationWorkspace({
     () => resolveSectionConceptsForDisplay(rawActiveSection, allConceptsForDisplay),
     [allConceptsForDisplay, rawActiveSection],
   );
-  const selectedComparables = comparables.filter((comparable) => comparable.selected);
+  const selectedComparables = useMemo(
+    () => comparables.filter((comparable) => comparable.selected),
+    [comparables],
+  );
   const externalPreviewPayload = useMemo<ExternalPreviewPayload>(() => ({
     activeSection,
     caratula,
@@ -299,7 +302,7 @@ export function ValuationWorkspace({
             meta={meta}
             onExport={handleExportPdf}
             onExit={handleExit}
-            onReorderSections={(next) => setSections(next)}
+            onReorderSections={(next) => updateSections(() => next)}
             onRedo={redoEditorChange}
             onSave={handleSave}
             onSplitLayoutChange={handleSplitLayoutChange}

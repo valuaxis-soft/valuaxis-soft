@@ -40,23 +40,11 @@ export function useBlockMutations({
   };
 
   const updateBlock = (sectionId: string, blockId: string, patch: Partial<Block>) => {
-    if (process.env.NODE_ENV === "development" && sectionId === "caratula") {
-      updateSectionBlocks(
-        sectionId,
-        (blocks) => {
-          const next = blocks.map((block) => (block.id === blockId ? { ...block, ...patch } : block));
-          return next;
-        },
-        { groupKey: textEditGroupKey(`block:${blockId}`, patch) },
-      );
-    } else {
-      updateSectionBlocks(
-        sectionId,
-        (blocks) =>
-          blocks.map((block) => (block.id === blockId ? { ...block, ...patch } : block)),
-        { groupKey: textEditGroupKey(`block:${blockId}`, patch) },
-      );
-    }
+    updateSectionBlocks(
+      sectionId,
+      (blocks) => blocks.map((block) => (block.id === blockId ? { ...block, ...patch } : block)),
+      { groupKey: textEditGroupKey(`block:${blockId}`, patch) },
+    );
   };
 
   const removeBlock = (sectionId: string, blockId: string) => {

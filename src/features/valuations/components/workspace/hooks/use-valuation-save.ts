@@ -94,8 +94,7 @@ export function useValuationSave({
       const sectionsPayload = buildSectionsPayload(sectionsForSave);
 
       if (valuationId) {
-        await api.valuations.update(valuationId, valuationMetaPayload(meta));
-
+        // One request: the full save updates the metadata and the sections together.
         await api.valuations.saveFull(valuationId, {
           ...valuationMetaPayload(meta),
           sections: sectionsPayload,

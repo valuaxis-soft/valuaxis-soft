@@ -104,7 +104,7 @@ export function createPersistenceStats(sections: SectionPayload[]): PersistenceS
 }
 
 export function logPersistenceStats(stats: PersistenceStats) {
-  if (process.env.VALUATION_PERSISTENCE_DEBUG === "1") {
+  if (process.env.VALUATION_SAVE_DEBUG === "1") {
     console.info("[valuation-persistence]", stats);
   }
 }

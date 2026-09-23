@@ -36,10 +36,11 @@ export function useImageMutations({
   canEdit,
   sections,
   setSections,
+  snapshotRef,
   updateSectionBlocks,
   updateSections,
   valuationId,
-}: Pick<EditorState, "sections" | "setSections" | "updateSectionBlocks" | "updateSections"> & {
+}: Pick<EditorState, "sections" | "setSections" | "snapshotRef" | "updateSectionBlocks" | "updateSections"> & {
   canEdit: boolean;
   valuationId: string | null;
 }) {
@@ -285,7 +286,8 @@ export function useImageMutations({
     apartadoId?: string,
   ) => {
     const isDatos = sectionId === "datos" || sectionId === "datosGenerales";
-    const targetSection = sections.find((section) => section.id === sectionId);
+    const latestSections = snapshotRef.current?.sections ?? sections;
+    const targetSection = latestSections.find((section) => section.id === sectionId);
     const targetBlock = targetSection?.blocks.find((block) => block.id === blockId);
     const targetSubBlock = targetBlock?.apartados.find((subBlock) => subBlock.id === apartadoId);
     // Capture the image for surgical rollback before optimistic removal

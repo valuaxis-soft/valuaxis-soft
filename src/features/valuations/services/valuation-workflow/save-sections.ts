@@ -59,11 +59,9 @@ export async function saveValuationSections(input: {
       throw new ValuationWorkflowError("El avaluo esta bloqueado", 409);
     }
 
-    const versionId =
-      avaluo.IdVersionTrabajo ??
-      (await initializeWorkingVersionStructure({ avaluoId: avaluo.IdAvaluo, userId: input.user.id, tx }));
+    // Creates the working version when it is missing and syncs the registry sections.
+    const versionId = await initializeWorkingVersionStructure({ avaluoId: avaluo.IdAvaluo, userId: input.user.id, tx });
     if (debug) console.log("[VALUATION_SECTIONS] versionId resolved", { versionId, idVersionTrabajo: avaluo.IdVersionTrabajo });
-    await initializeWorkingVersionStructure({ avaluoId: avaluo.IdAvaluo, userId: input.user.id, tx });
     const catalogs = await getDocumentPersistenceCatalogs(tx);
 
     for (const [index, section] of input.sections.entries()) {
@@ -210,33 +208,6 @@ export async function saveValuationSections(input: {
           ],
           stats,
         });
-
-        /*
-        const data = {
-          SClave: blockKey,
-          STitulo: block.title ?? blockKey,
-          IOrden: block.sortOrder ?? blockIndex,
-          BVisible: true,
-          BObligatorio: block.required ?? false,
-          BEliminable: false,
-          JConfiguracion: block as Prisma.InputJsonObject,
-        };
-
-        if (existing) {
-          await tx.nodoDocumento.update({
-            where: { IdNodoDocumento: existing.IdNodoDocumento },
-            data,
-          });
-        } else {
-          await tx.nodoDocumento.create({
-            data: {
-              ...data,
-              IdSeccionDocumento: savedSection.IdSeccionDocumento,
-              IdTipoNodoDocumento: nodeType.IdTipoNodoDocumento,
-            },
-          });
-        }
-        */
       }
 
       await softDeleteMissingRootNodes({
