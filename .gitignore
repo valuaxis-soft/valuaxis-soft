@@ -49,6 +49,8 @@ next-env.d.ts
 
 # uploads content (keep directory)
 public/uploads/*
+# Local storage driver: cover, header and Datos generales images
+/public/organizaciones/
 !public/uploads/.gitkeep
 
 # AI agent artifacts

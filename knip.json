@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
-    "scripts/*.ts",
+    "scripts/**/*.ts",
     "prisma/seed.ts",
     "tests/integration/**/*.integration.ts",
     "tests/integration/**/*.helper.ts"
