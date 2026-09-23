@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import type { TableContent } from "@/features/valuations/model";
 import {
   ensureTableV2,
@@ -151,9 +151,9 @@ function SortableColumnHeader({
 
   // Local draft state — typing is free, normalization happens only on commit
   const [draftName, setDraftName] = useState(column.name);
-  const prevColIdRef = useRef(column.id);
-  if (prevColIdRef.current !== column.id) {
-    prevColIdRef.current = column.id;
+  const [draftColumnId, setDraftColumnId] = useState(column.id);
+  if (draftColumnId !== column.id) {
+    setDraftColumnId(column.id);
     setDraftName(column.name);
   }
 

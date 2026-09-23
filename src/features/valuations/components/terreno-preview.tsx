@@ -10,6 +10,9 @@ import {
 } from "./document-preview-page";
 import { getPreviewFixedModule } from "./preview-fixed-module-registry";
 
+// Resolved once at module scope so the component identity is stable across renders.
+const TerrainRenderer = getPreviewFixedModule("terreno-main");
+
 export function TerrenoPreview({ header, section }: { header: ReactNode; section: AppSection }) {
   const theme = useDocumentTheme();
   const mainBlock = section.blocks.find(
@@ -22,14 +25,11 @@ export function TerrenoPreview({ header, section }: { header: ReactNode; section
 
   const items = [];
 
-  if (mainBlock) {
-    const TerrainRenderer = getPreviewFixedModule("terreno-main");
-    if (TerrainRenderer) {
-      items.push({
-        id: "terreno-main",
-        node: <TerrainRenderer block={mainBlock} />,
-      });
-    }
+  if (mainBlock && TerrainRenderer) {
+    items.push({
+      id: "terreno-main",
+      node: <TerrainRenderer block={mainBlock} />,
+    });
   }
 
   for (const block of additionalBlocks) {

@@ -772,7 +772,17 @@ export function BlockFlowRenderer({
         applyContentMove(result, oldRowIds, blockFlowV2);
       }
     },
-    [resolvedLayout, columnToRowId, onContentLayoutChange, onBlockFlowChange, blockFlowV2],
+    [
+      resolvedLayout,
+      columnToRowId,
+      onContentLayoutChange,
+      onBlockFlowChange,
+      blockFlowV2,
+      block,
+      onApartadoContentLayoutChange,
+      onCrossContainerChange,
+      subBlocksById,
+    ],
   );
 
   const handleApartadoDragEnd = useCallback(

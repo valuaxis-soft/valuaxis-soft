@@ -1,6 +1,15 @@
 "use client";
 
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { usePanelRef } from "react-resizable-panels";
 import { useRouter } from "next/navigation";
 import {
@@ -622,6 +631,16 @@ function caratulaFromValuation(
   };
 }
 
+const subscribeToNothing = () => () => {};
+
+function readStoredExternalPreview(): boolean {
+  try {
+    return localStorage.getItem("valuoExternalPreview") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function ValuationWorkspace({
   currentUser,
   valuationId: propValuationId,
@@ -651,14 +670,18 @@ export function ValuationWorkspace({
     return () => mediaQuery.removeEventListener("change", updateLayout);
   }, []);
 
-  // Hydrate workspace mode from localStorage after mount (runs once).
-  // Server and first client render both use "form"/"horizontal" — no mismatch.
-  useEffect(() => {
-    if (localStorage.getItem("valuoExternalPreview") === "1") {
+  // Hydrate workspace mode from localStorage once on the client (adjusted
+  // during render). `isClient` is false for SSR and the hydration render, so
+  // server and first client render both use "form"/"horizontal" — no mismatch.
+  const isClient = useSyncExternalStore(subscribeToNothing, () => true, () => false);
+  const [storedModeRestored, setStoredModeRestored] = useState(false);
+  if (isClient && !storedModeRestored) {
+    setStoredModeRestored(true);
+    if (readStoredExternalPreview()) {
       setWorkspaceMode("split");
       setSplitLayout("external");
     }
-  }, []);
+  }
   const handleWorkspaceModeChange = (mode: WorkspaceMode) => {
     setWorkspaceMode(mode);
   };
@@ -744,17 +767,34 @@ export function ValuationWorkspace({
   const snapshotRef = useRef<EditorSnapshot | null>(null);
   const historyRef = useRef<EditorHistory>(emptyEditorHistory());
   const savedSnapshotRef = useRef<EditorSnapshot | null>(null);
-  const [, setHistoryVersion] = useState(0);
+  // Mirrors whether historyRef has past/future entries so render never reads the ref.
+  const [historyAvailability, setHistoryAvailability] = useState({ past: false, future: false });
+  const syncHistoryAvailability = () => {
+    const past = historyRef.current.past.length > 0;
+    const future = historyRef.current.future.length > 0;
+    setHistoryAvailability((current) =>
+      current.past === past && current.future === future ? current : { past, future },
+    );
+  };
 
-  if (!snapshotRef.current) {
+  // Lazy ref initialization (null-check pattern allowed during render).
+  if (snapshotRef.current === null) {
     snapshotRef.current = { caratula, meta, sections };
   }
-  if (!savedSnapshotRef.current) {
+  if (savedSnapshotRef.current === null) {
     savedSnapshotRef.current = { caratula, meta, sections };
   }
 
-  const canUndo = canEdit && historyRef.current.past.length > 0;
-  const canRedo = canEdit && historyRef.current.future.length > 0;
+  // Reset undo/redo availability when switching valuations (adjusted during render);
+  // the history refs themselves are reset in the effect below.
+  const [historyValuationId, setHistoryValuationId] = useState(valuationId);
+  if (historyValuationId !== valuationId) {
+    setHistoryValuationId(valuationId);
+    setHistoryAvailability({ past: false, future: false });
+  }
+
+  const canUndo = canEdit && historyAvailability.past;
+  const canRedo = canEdit && historyAvailability.future;
 
   const postExternalPreviewState = useCallback(() => {
     const payload = externalPreviewPayloadRef.current;
@@ -879,12 +919,12 @@ export function ValuationWorkspace({
     history.future = [];
 
     if (groupWithPrevious) {
-      setHistoryVersion((version) => version + 1);
+      syncHistoryAvailability();
       return;
     }
 
     history.past = [...history.past, snapshot].slice(-EDITOR_HISTORY_LIMIT);
-    setHistoryVersion((version) => version + 1);
+    syncHistoryAvailability();
   };
 
   const updateEditorState = (
@@ -911,7 +951,7 @@ export function ValuationWorkspace({
     history.lastPushedAt = 0;
     applyEditorSnapshot(previous);
     setSaveStatus(savedSnapshotRef.current && !editorSnapshotChanged(previous, savedSnapshotRef.current) ? "saved" : "dirty");
-    setHistoryVersion((version) => version + 1);
+    syncHistoryAvailability();
   };
 
   const redoEditorChange = () => {
@@ -926,43 +966,48 @@ export function ValuationWorkspace({
     history.lastPushedAt = 0;
     applyEditorSnapshot(next);
     setSaveStatus(savedSnapshotRef.current && !editorSnapshotChanged(next, savedSnapshotRef.current) ? "saved" : "dirty");
-    setHistoryVersion((version) => version + 1);
+    syncHistoryAvailability();
   };
 
   useEffect(() => {
     snapshotRef.current = { caratula, meta, sections };
   }, [caratula, meta, sections]);
 
+  // Reset history when the valuation changes (not on mount: the lazy ref init
+  // above already holds the initial snapshot). Reads the state current at that commit.
+  const historyResetValuationIdRef = useRef(valuationId);
   useEffect(() => {
+    if (historyResetValuationIdRef.current === valuationId) return;
+    historyResetValuationIdRef.current = valuationId;
     historyRef.current = emptyEditorHistory();
     snapshotRef.current = { caratula, meta, sections };
     savedSnapshotRef.current = { caratula, meta, sections };
-    setHistoryVersion((version) => version + 1);
-  }, [valuationId]);
+  }, [valuationId, caratula, meta, sections]);
+
+  const handleEditorHistoryKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (!canEdit || event.defaultPrevented || (!event.ctrlKey && !event.metaKey)) return;
+    const key = event.key.toLowerCase();
+    const isUndo = key === "z" && !event.shiftKey;
+    const isRedo = key === "y" || (key === "z" && event.shiftKey);
+    if (!isUndo && !isRedo) return;
+
+    if (isUndo && historyRef.current.past.length > 0) {
+      event.preventDefault();
+      undoEditorChange();
+      return;
+    }
+
+    if (isRedo && historyRef.current.future.length > 0) {
+      event.preventDefault();
+      redoEditorChange();
+    }
+  });
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (!canEdit || event.defaultPrevented || (!event.ctrlKey && !event.metaKey)) return;
-      const key = event.key.toLowerCase();
-      const isUndo = key === "z" && !event.shiftKey;
-      const isRedo = key === "y" || (key === "z" && event.shiftKey);
-      if (!isUndo && !isRedo) return;
-
-      if (isUndo && historyRef.current.past.length > 0) {
-        event.preventDefault();
-        undoEditorChange();
-        return;
-      }
-
-      if (isRedo && historyRef.current.future.length > 0) {
-        event.preventDefault();
-        redoEditorChange();
-      }
-    };
-
+    const handleKeyDown = (event: KeyboardEvent) => handleEditorHistoryKeyDown(event);
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canEdit]);
+  }, []);
 
   useEffect(() => {
     let active = true;

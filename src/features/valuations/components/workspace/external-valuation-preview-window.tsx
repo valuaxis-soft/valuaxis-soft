@@ -16,9 +16,19 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
     if (typeof BroadcastChannel === "undefined") return;
 
     const channel = new BroadcastChannel(getExternalPreviewChannelName(valuationId));
+    // Tracked inside the effect (not via the `payload` state, which would be a
+    // stale closure here) so the retry loop stops as soon as state arrives.
+    let retryInterval: ReturnType<typeof setInterval> | null = null;
+    const stopRetrying = () => {
+      if (retryInterval !== null) {
+        clearInterval(retryInterval);
+        retryInterval = null;
+      }
+    };
     channel.onmessage = (event: MessageEvent<ExternalPreviewMessage>) => {
       if (event.data?.type === "preview-state") {
         setPayload(event.data.payload);
+        stopRetrying();
       }
       // After main F5, main broadcasts main-ready; external re-requests state
       if (event.data?.type === "main-ready") {
@@ -30,14 +40,12 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
     // Retry: periodically re-request state until we receive it.
     // This handles main F5 reconnection where main-ready may be missed
     // because the main channel wasn't created yet.
-    const retryInterval = setInterval(() => {
-      if (!payload) {
-        channel.postMessage({ type: "preview-ready" } satisfies ExternalPreviewMessage);
-      }
+    retryInterval = setInterval(() => {
+      channel.postMessage({ type: "preview-ready" } satisfies ExternalPreviewMessage);
     }, 2000);
 
     return () => {
-      clearInterval(retryInterval);
+      stopRetrying();
       channel.close();
     };
   }, [valuationId]);

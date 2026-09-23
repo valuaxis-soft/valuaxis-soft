@@ -223,8 +223,9 @@ export function ConceptEditorList({
 }
 
 function ConceptRowDropZones({ children, isDragging, rowIndex }: { children: ReactNode; isDragging: boolean; rowIndex: number }) {
-  const before = useDroppable({ id: `concept-row:${rowIndex}:before` });
-  const after = useDroppable({ id: `concept-row:${rowIndex}:after` });
+  // Destructured so the compiler does not treat the droppable objects as refs.
+  const { isOver: isOverBefore, setNodeRef: setBeforeNodeRef } = useDroppable({ id: `concept-row:${rowIndex}:before` });
+  const { isOver: isOverAfter, setNodeRef: setAfterNodeRef } = useDroppable({ id: `concept-row:${rowIndex}:after` });
   const zoneClassName = (isOver: boolean) => cn(
     "min-h-1 rounded-sm",
     isDragging && isOver && "min-h-12 border border-dashed border-primary bg-primary/10",
@@ -232,18 +233,19 @@ function ConceptRowDropZones({ children, isDragging, rowIndex }: { children: Rea
 
   return (
     <>
-      <div className={zoneClassName(before.isOver)} ref={before.setNodeRef} />
+      <div className={zoneClassName(isOverBefore)} ref={setBeforeNodeRef} />
       <div className="min-w-0">
         {children}
       </div>
-      <div className={zoneClassName(after.isOver)} ref={after.setNodeRef} />
+      <div className={zoneClassName(isOverAfter)} ref={setAfterNodeRef} />
     </>
   );
 }
 
 function ConceptDropZones({ children, conceptId, isDragging }: { children: ReactNode; conceptId: string; isDragging: boolean }) {
-  const left = useDroppable({ id: `concept:${conceptId}:left` });
-  const right = useDroppable({ id: `concept:${conceptId}:right` });
+  // Destructured so the compiler does not treat the droppable objects as refs.
+  const { isOver: isOverLeft, setNodeRef: setLeftNodeRef } = useDroppable({ id: `concept:${conceptId}:left` });
+  const { isOver: isOverRight, setNodeRef: setRightNodeRef } = useDroppable({ id: `concept:${conceptId}:right` });
   const zoneClassName = (isOver: boolean, side: "left" | "right") => cn(
     "pointer-events-none absolute inset-y-0 z-10 w-1/4 rounded-sm",
     side === "left" ? "left-0" : "right-0",
@@ -253,8 +255,8 @@ function ConceptDropZones({ children, conceptId, isDragging }: { children: React
 
   return (
     <div className="relative min-w-0 w-full max-w-full">
-      <div className={zoneClassName(left.isOver, "left")} ref={left.setNodeRef} />
-      <div className={zoneClassName(right.isOver, "right")} ref={right.setNodeRef} />
+      <div className={zoneClassName(isOverLeft, "left")} ref={setLeftNodeRef} />
+      <div className={zoneClassName(isOverRight, "right")} ref={setRightNodeRef} />
       {children}
     </div>
   );

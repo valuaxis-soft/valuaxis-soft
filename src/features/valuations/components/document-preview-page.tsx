@@ -2,8 +2,10 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -301,7 +303,6 @@ export function AutoPaginatedDocumentFlow({
   const measurePageRef = useRef<HTMLDivElement | null>(null);
   const measureContentRef = useRef<HTMLDivElement | null>(null);
   const itemsRef = useRef(items);
-  itemsRef.current = items;
   const itemLayoutSignature = items
     .map((item) => `${item.id}:${item.startOnNewPage ? "1" : "0"}`)
     .join("|");
@@ -309,7 +310,12 @@ export function AutoPaginatedDocumentFlow({
   // Keep latest signature in a ref so measurement reads the CURRENT revision,
   // not a stale closure value from the first render.
   const itemLayoutSignatureRef = useRef(itemLayoutSignature);
-  itemLayoutSignatureRef.current = itemLayoutSignature;
+  // Refs are synced after commit (layout phase, before any scheduled rAF
+  // measurement can run) instead of during render.
+  useLayoutEffect(() => {
+    itemsRef.current = items;
+    itemLayoutSignatureRef.current = itemLayoutSignature;
+  }, [items, itemLayoutSignature]);
 
   const [availableHeight, setAvailableHeight] = useState(DEFAULT_CONTENT_HEIGHT_PX);
   // Pagination stores ONLY item IDs per page, not full DocumentFlowItem objects.
@@ -321,7 +327,8 @@ export function AutoPaginatedDocumentFlow({
 
   // Single-flight pagination scheduler — at most one measurement per animation frame
   const rafPendingRef = useRef(false);
-  const measureAndPaginate = useRef(() => {
+  // Stable callbacks (empty deps): they only read refs and call state setters.
+  const measureAndPaginate = useCallback(() => {
     const currentItems = itemsRef.current;
     const measurePage = measurePageRef.current;
     const measureContent = measureContentRef.current;
@@ -399,9 +406,9 @@ export function AutoPaginatedDocumentFlow({
       }
       return { itemLayoutSignature: itemLayoutSignatureRef.current, pageItemIds: nextPageIds };
     });
-  }).current;
+  }, []);
 
-  const requestPagination = useRef(() => {
+  const requestPagination = useCallback(() => {
     if (rafPendingRef.current) {
       return;
     }
@@ -410,7 +417,7 @@ export function AutoPaginatedDocumentFlow({
       rafPendingRef.current = false;
       measureAndPaginate();
     });
-  }).current;
+  }, [measureAndPaginate]);
 
   // Content change: schedule one measurement after paint
   useEffect(() => {

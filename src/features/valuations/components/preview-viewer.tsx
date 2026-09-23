@@ -99,15 +99,6 @@ export function PreviewViewer({
     return Math.round(Math.min(scaleX, scaleY) * 100);
   }, []);
 
-  /* --- apply fit mode --- */
-  useEffect(() => {
-    if (fitMode === "fit-width") {
-      setZoom(computeFitWidth());
-    } else if (fitMode === "fit-page") {
-      setZoom(computeFitPage());
-    }
-  }, [fitMode, computeFitWidth, computeFitPage]);
-
   /* --- current page detection via scroll + rAF --- */
   useEffect(() => {
     const scrollEl = scrollRef.current;
@@ -163,14 +154,23 @@ export function PreviewViewer({
     };
   }, [pageCount]);
 
-  /* --- clamp current page when pages decrease --- */
-  useEffect(() => {
+  /* --- clamp current page when pages decrease (adjusted during render) --- */
+  const [clampedForPageCount, setClampedForPageCount] = useState(pageCount);
+  if (clampedForPageCount !== pageCount) {
+    setClampedForPageCount(pageCount);
     setCurrentPage((prev) => Math.min(prev, pageCount));
     setJumpValue((prev) => {
       const num = parseInt(prev, 10);
       return isNaN(num) || num > pageCount ? String(Math.min(num || 1, pageCount)) : prev;
     });
-  }, [pageCount]);
+  }
+
+  /* --- sync jump input with current page (adjusted during render) --- */
+  const [jumpSyncedPage, setJumpSyncedPage] = useState(currentPage);
+  if (jumpSyncedPage !== currentPage) {
+    setJumpSyncedPage(currentPage);
+    setJumpValue(String(currentPage));
+  }
 
   /* --- zoom controls --- */
   const zoomIn = useCallback(() => {
@@ -183,8 +183,17 @@ export function PreviewViewer({
     setZoom((z) => Math.max(z - ZOOM_STEP, ZOOM_MIN));
   }, []);
 
-  const fitWidth = useCallback(() => setFitMode("fit-width"), []);
-  const fitPage = useCallback(() => setFitMode("fit-page"), []);
+  /* --- apply fit mode (zoom is computed when the mode is entered) --- */
+  const fitWidth = useCallback(() => {
+    if (fitMode === "fit-width") return;
+    setFitMode("fit-width");
+    setZoom(computeFitWidth());
+  }, [fitMode, computeFitWidth]);
+  const fitPage = useCallback(() => {
+    if (fitMode === "fit-page") return;
+    setFitMode("fit-page");
+    setZoom(computeFitPage());
+  }, [fitMode, computeFitPage]);
 
   /* --- page navigation --- */
   const scrollToPage = useCallback(
@@ -245,11 +254,6 @@ export function PreviewViewer({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [zoomIn, zoomOut]);
-
-  /* --- sync jump input with current page --- */
-  useEffect(() => {
-    setJumpValue(String(currentPage));
-  }, [currentPage]);
 
   const contextValue = useMemo(
     () => ({ pageCount, currentPage, zoom }),
