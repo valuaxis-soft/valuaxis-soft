@@ -72,6 +72,7 @@ import {
   updateCompanyHeaderFields,
 } from "@/features/valuations/services/caratula-company-header";
 import { createHomologationTable, ensureTableV2 } from "@/features/valuations/services/table";
+import { serializeTableForSave } from "@/features/valuations/services/table-persistence";
 import {
   hasUntitledConcepts,
   isCaratulaIntermediateBlock,
@@ -536,6 +537,26 @@ function parseJsonBoundaryDistanceFormats(value?: string): NonNullable<TableCont
   }
 }
 
+type StoredTableDto = ValuationDetail["sections"][number]["blocks"][number]["tables"][number];
+
+/** Stored tables load as the lossless TableV2; code templates load from the legacy string grid. */
+function hydrateTable(table: StoredTableDto, enabled: boolean): TableContent {
+  const boundaryDistanceFormats = parseJsonBoundaryDistanceFormats(table.boundaryDistanceFormats);
+  const formats = boundaryDistanceFormats.length ? { boundaryDistanceFormats } : {};
+  if (table.table) {
+    return { ...table.table, ...formats, enabled } as unknown as TableContent;
+  }
+  return {
+    id: table.id,
+    title: table.title,
+    columns: parseJsonArray(table.columns),
+    columnKeys: parseJsonArray(table.columnKeys ?? "[]"),
+    rows: parseJsonRows(table.rows),
+    ...formats,
+    enabled,
+  };
+}
+
 function normalizeInitialSections(initialValuation: ValuationDetail): AppSection[] {
   return initialValuation.sections.map((section) => ({
     id: section.id,
@@ -567,18 +588,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
         conceptPresentation: subBlock.conceptPresentation,
         concepts: subBlock.concepts,
         flowSpacingBeforePx: subBlock.flowSpacingBeforePx,
-        tables: subBlock.tables.map((table) => {
-          const boundaryDistanceFormats = parseJsonBoundaryDistanceFormats(table.boundaryDistanceFormats);
-          return {
-            id: table.id,
-            title: table.title,
-            columns: parseJsonArray(table.columns),
-            columnKeys: parseJsonArray(table.columnKeys ?? "[]"),
-            rows: parseJsonRows(table.rows),
-            ...(boundaryDistanceFormats.length ? { boundaryDistanceFormats } : {}),
-            enabled: true,
-          };
-        }),
+        tables: subBlock.tables.map((table) => hydrateTable(table, true)),
         images: subBlock.images.map((image) => ({
           id: image.id,
           title: image.title,
@@ -586,18 +596,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
           ...imageMetadataFromContent({ ...image, enabled: true }),
         })),
       })),
-      tables: block.tables.map((table) => {
-        const boundaryDistanceFormats = parseJsonBoundaryDistanceFormats(table.boundaryDistanceFormats);
-        return {
-          id: table.id,
-          title: table.title,
-          columns: parseJsonArray(table.columns),
-          columnKeys: parseJsonArray(table.columnKeys ?? "[]"),
-          rows: parseJsonRows(table.rows),
-          ...(boundaryDistanceFormats.length ? { boundaryDistanceFormats } : {}),
-          enabled: table.enabled,
-        };
-      }),
+      tables: block.tables.map((table) => hydrateTable(table, table.enabled)),
       images: block.images.map((image) => ({
         id: image.id,
         title: image.title,
@@ -1129,15 +1128,7 @@ export function ValuationWorkspace({
               ...conceptMetadataFromContent({ ...c, enabled: true }),
               rowId: c.rowId,
             })),
-            tables: sb.tables.map((t) => ({
-              id: t.id,
-              title: t.title,
-              columns: t.columns,
-              columnKeys: t.columnKeys,
-              rows: t.rows,
-              boundaryDistanceFormats: t.boundaryDistanceFormats,
-              enabled: true,
-            })),
+            tables: sb.tables.map((t) => serializeTableForSave({ ...t, enabled: true })),
             images: sb.images.map((img) => ({
               id: img.id,
               title: img.title,
@@ -1147,15 +1138,7 @@ export function ValuationWorkspace({
               ...imageMetadataFromContent(img),
             })),
           })),
-          tables: b.tables.map((t) => ({
-            id: t.id,
-            title: t.title,
-            columns: t.columns,
-            columnKeys: t.columnKeys,
-            rows: t.rows,
-            boundaryDistanceFormats: t.boundaryDistanceFormats,
-            enabled: true,
-          })),
+          tables: b.tables.map((t) => serializeTableForSave({ ...t, enabled: true })),
           images: (s.id === "caratula" && b.id === COMPANY_HEADER_BLOCK_ID ? [] : b.images).map((img) => ({
             id: img.id,
             title: img.title,

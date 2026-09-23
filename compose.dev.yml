@@ -1,0 +1,26 @@
+# Base de datos local para desarrollo, con la misma imagen que producción.
+# Uso: docker compose -f compose.dev.yml up -d
+services:
+  db:
+    image: postgis/postgis:18-3.6
+    # PostGIS solo publica imagenes x86; en Apple Silicon corre emulada.
+    platform: linux/amd64
+    container_name: valuaxis-db-dev
+    environment:
+      POSTGRES_DB: valuaxis_dev
+      POSTGRES_USER: valuaxis
+      POSTGRES_PASSWORD: valuaxis
+      TZ: America/Mexico_City
+      PGTZ: America/Mexico_City
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - valuaxis-db-dev:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valuaxis -d valuaxis_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  valuaxis-db-dev:

@@ -17,6 +17,8 @@ import {
   hydrateApartadoMetadata,
 } from "@/features/valuations/metadata";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
+import type { TableCellFormat, TableV2 } from "@/features/valuations/services/table";
+import { decodeStoredTable } from "@/features/valuations/services/table-persistence";
 import { extractStorageKey, isS3Source } from "@/features/valuations/services/image-source";
 
 export type ValuationListItem = {
@@ -112,6 +114,8 @@ export type ValuationTableDto = {
   rows: string;
   boundaryDistanceFormats?: string;
   enabled: boolean;
+  /** Lossless stored table (ids, formulas, formats, schema). Absent for code templates. */
+  table?: TableV2;
 };
 
 export type ValuationImageDto = {
@@ -691,6 +695,7 @@ async function resolveImageUrl(rawSrc: string): Promise<string> {
 
 function mapNodeTables(node: Pick<DbNode, "tablasDocumentos">): ValuationTableDto[] {
   return node.tablasDocumentos
+    .filter((table) => !jsonRecord(table.JConfiguracion)?.removed)
     .slice()
     .sort((a, b) => a.IOrden - b.IOrden)
     .map((table) => {
@@ -711,8 +716,48 @@ function mapNodeTables(node: Pick<DbNode, "tablasDocumentos">): ValuationTableDt
 
       const boundaryDistanceFormats = tableBoundaryDistanceFormats(table.JConfiguracion);
       const schema = tableSchemaFromConfig(table.JConfiguracion);
+      const tableId = tableClientId(table) ?? `table-${table.IOrden + 1}`;
+      const activeRows = table.filas
+        .filter((row) => row.BActivo)
+        .sort((a, b) => a.IOrden - b.IOrden);
+      const stored = decodeStoredTable({
+        id: tableId,
+        title: table.SNombre,
+        enabled: jsonRecord(table.JConfiguracion)?.enabled !== false,
+        schema,
+        columns: columns.map((column) => {
+          const config = jsonRecord(column.JConfiguracion);
+          const clientId = typeof config?.clientId === "string" ? config.clientId : null;
+          const sourceKey = typeof config?.sourceKey === "string" ? config.sourceKey : null;
+          return {
+            id: clientId ?? sourceKey ?? column.SClave,
+            name: column.SNombre,
+            ...(jsonRecord(config?.format) ? { format: config!.format as TableCellFormat } : {}),
+          };
+        }),
+        rows: activeRows.map((row) => {
+          const metadata = jsonRecord(row.JMetadatos);
+          return {
+            id: typeof metadata?.clientId === "string" ? metadata.clientId : null,
+            cells: columns.map((column) => {
+              const cell = row.celdas.find((item) => item.IdColumnaTablaDocumento === column.IdColumnaTablaDocumento);
+              return cell
+                ? {
+                    text: cell.SValorTexto,
+                    numeric: cell.NValorNumerico?.toString() ?? null,
+                    boolean: cell.BValorBooleano,
+                    date: cell.DValorFecha?.toISOString() ?? null,
+                    complex: cell.JValorComplejo,
+                    calculated: cell.BEsCalculado,
+                  }
+                : null;
+            }),
+          };
+        }),
+      });
       return {
-        id: tableClientId(table) ?? `table-${table.IOrden + 1}`,
+        table: stored,
+        id: tableId,
         title: table.SNombre,
         columns: JSON.stringify(columns.map((column) => column.SNombre)),
         columnKeys: JSON.stringify(columns.map((column) => column.SClave)),
@@ -730,6 +775,10 @@ function nodeKind(node: { JConfiguracion: Prisma.JsonValue | null }) {
   }
   const value = (node.JConfiguracion as { kind?: unknown }).kind;
   return typeof value === "string" ? value : null;
+}
+
+function jsonRecord(value: Prisma.JsonValue | null | undefined): Record<string, Prisma.JsonValue> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, Prisma.JsonValue>) : null;
 }
 
 function tableClientId(table: { JConfiguracion: Prisma.JsonValue | null }) {

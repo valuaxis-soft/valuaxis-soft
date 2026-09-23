@@ -23,6 +23,7 @@ Sistema SaaS de avalúos inmobiliarios construido como monolito modular con Next
 
 ```bash
 pnpm install
+docker compose -f compose.dev.yml up -d   # base local PostGIS 18
 cp .env.example .env
 # Configurar variables en .env (ver abajo)
 pnpm exec prisma migrate dev
@@ -48,7 +49,8 @@ APP_URL="http://localhost:3000"
 | `pnpm build` | Build de producción |
 | `pnpm start` | Servidor de producción |
 | `pnpm lint` | Linting con ESLint |
-| `pnpm test` | Tests unitarios e integración |
+| `pnpm test` | Pruebas unitarias |
+| `pnpm test:integration` | Pruebas contra la base local de Docker |
 | `pnpm db:migrate` | Ejecutar migraciones Prisma |
 | `pnpm db:studio` | Abrir Prisma Studio |
 | `pnpm db:seed` | Sembrar base de datos |

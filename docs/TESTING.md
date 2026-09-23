@@ -6,6 +6,18 @@ pnpm test
 
 Usa `node:test` a través de `tsx --test`, sobre `tests/**/*.test.ts` y `tests/**/*.test.tsx`. No hay framework adicional.
 
+## Pruebas de integración
+
+Corren contra una base PostgreSQL local, nunca contra producción:
+
+```bash
+docker compose -f compose.dev.yml up -d   # PostGIS 18, igual que producción
+pnpm exec prisma migrate deploy
+pnpm test:integration
+```
+
+Leen `DATABASE_URL` de `.env` y se niegan a correr si no apunta a `localhost`. Cada prueba crea su propia organización, usuario y avalúo.
+
 ## Convenciones
 
 - Las pruebas verifican **comportamiento**: entradas, salidas y HTML renderizado. No se aceptan pruebas que lean el código fuente como texto y busquen patrones; se rompen con cualquier refactor.
