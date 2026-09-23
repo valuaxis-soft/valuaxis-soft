@@ -51,6 +51,14 @@ export function SortableSectionTab({
   };
 
   const Icon = icon;
+  // Base UI owns the tab semantics (role="tab", roving tabIndex, disabled
+  // state); only the sortable description is taken from dnd-kit.
+  const sortableAttributes = disabled
+    ? {}
+    : {
+        "aria-roledescription": attributes["aria-roledescription"],
+        "aria-describedby": attributes["aria-describedby"],
+      };
 
   return (
     <div
@@ -64,10 +72,11 @@ export function SortableSectionTab({
       <TabsTrigger
         value={sectionId}
         className={cn(
-          "cursor-grab active:cursor-grabbing select-none",
+          "touch-manipulation select-none [-webkit-touch-callout:none] max-lg:min-h-10 max-lg:px-3",
+          !disabled && "cursor-grab active:cursor-grabbing",
           isActive && "data-active:bg-background data-active:shadow-sm",
         )}
-        {...attributes}
+        {...sortableAttributes}
         {...listeners}
       >
         {Icon ? <Icon /> : null}

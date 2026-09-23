@@ -72,7 +72,6 @@ export function ValuationWorkspace({
 }) {
   const {
     editorPanelRef,
-    isDesktopWorkspace,
     previewPanelRef,
     setSplitLayout,
     setWorkspaceMode,
@@ -285,7 +284,7 @@ export function ValuationWorkspace({
     <Tabs value={activeSection.id} onValueChange={setActiveSectionId} className="gap-0 h-full">
       <main className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-hidden">
       <section className="shrink-0 border-b bg-background">
-        <div className="mx-auto grid max-w-[1760px] gap-4 overflow-hidden px-4 py-4 lg:px-6">
+        <div className="mx-auto grid max-w-[1760px] grid-cols-1 gap-3 overflow-hidden px-3 py-3 sm:px-4 lg:gap-4 lg:px-6 lg:py-4">
           <ValuationTopBar
             activeSectionId={activeSection.id}
             canEdit={canEdit}
@@ -322,16 +321,17 @@ export function ValuationWorkspace({
         </div>
       </section>
 
-      <div className="mx-auto w-full max-w-[1760px] p-4 min-h-0 flex-1">
+      <div className="mx-auto w-full max-w-[1760px] p-2 sm:p-4 min-h-0 flex-1">
         {workspaceComposition.showEditor && !workspaceComposition.showPreview ? (
-          <div id="valuation-form" className="h-full min-h-0 overflow-y-auto overscroll-contain pb-4">
+          <div id="valuation-form" className="h-full min-h-0 min-w-0 overflow-y-auto overscroll-contain pb-4">
             {editorPanel}
           </div>
         ) : workspaceComposition.showPreview && !workspaceComposition.showEditor ? (
           <div id="valuation-preview" className="h-full min-h-0 min-w-0 overflow-hidden pb-4">
             {previewPanel}
           </div>
-        ) : isDesktopWorkspace ? (
+        ) : (
+          // Only reachable on desktop: below lg the mode resolves to one pane.
           <ResizablePanelGroup
             orientation={splitLayout === "vertical" ? "horizontal" : "vertical"}
             className="h-full min-h-0 items-stretch"
@@ -375,11 +375,6 @@ export function ValuationWorkspace({
               </ResizablePanel>
             ) : null}
           </ResizablePanelGroup>
-        ) : (
-          <div className="grid gap-4">
-            {workspaceComposition.showPreview ? <div id="valuation-preview">{previewPanel}</div> : null}
-            {workspaceComposition.showEditor ? <div id="valuation-form">{editorPanel}</div> : null}
-          </div>
         )}
       </div>
       <ConcludeValuationDialog

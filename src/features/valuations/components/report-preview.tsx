@@ -86,7 +86,7 @@ export function ReportPreview({
   const isCaratula = section.id === "caratula";
 
   return (
-    <Card className="flex h-fit min-w-0 flex-col overflow-hidden rounded-lg lg:h-full lg:min-h-0">
+    <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg">
       <CardHeader className="shrink-0 border-b">
         <CardTitle className="flex items-center gap-2">
           <FileImage />
@@ -94,7 +94,7 @@ export function ReportPreview({
         </CardTitle>
       </CardHeader>
       <CardContent className="min-h-0 flex-1 p-0">
-        <PreviewViewer key={section.id} className="h-[calc(100vh-10rem)] lg:h-full">
+        <PreviewViewer key={section.id} className="h-full">
           {/* Carátula: no gray background — page fills the desk naturally */}
           {isCaratula ? (
             <div className="min-h-full p-4 sm:p-6 lg:p-8">

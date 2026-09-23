@@ -1,9 +1,13 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { usePanelRef } from "react-resizable-panels";
 
 import {
+  DESKTOP_WORKSPACE_QUERY,
   focusWorkspacePanels,
   getWorkspaceComposition,
+  resolveWorkspaceMode,
+  toCompactPane,
+  type CompactPane,
   type SplitLayout,
   type WorkspaceMode,
 } from "@/features/valuations/components/workspace/valuation-workspace-layout";
@@ -11,23 +15,46 @@ import { readStoredExternalPreview } from "./use-external-preview-sync";
 
 const subscribeToNothing = () => () => {};
 
-/** Workspace mode (form / preview / split), split layout, desktop breakpoint and panel focus. */
+function subscribeToDesktopQuery(onChange: () => void) {
+  const mediaQuery = window.matchMedia(DESKTOP_WORKSPACE_QUERY);
+  mediaQuery.addEventListener("change", onChange);
+  return () => mediaQuery.removeEventListener("change", onChange);
+}
+
+const getDesktopSnapshot = () => window.matchMedia(DESKTOP_WORKSPACE_QUERY).matches;
+// SSR and the hydration render assume the compact layout; CSS hides the
+// controls that do not apply, so there is no visible flash on desktop.
+const getServerDesktopSnapshot = () => false;
+
+/**
+ * Workspace mode (form / preview / split), split layout, desktop breakpoint and
+ * panel focus.
+ *
+ * `workspaceMode` is the mode being rendered. Below the desktop breakpoint it
+ * is a single pane ("form" or "preview") picked with the compact toggle; the
+ * desktop mode is remembered separately and restored when the viewport grows.
+ */
 export function useWorkspaceLayout() {
-  const [isDesktopWorkspace, setIsDesktopWorkspace] = useState(false);
+  const isDesktopWorkspace = useSyncExternalStore(
+    subscribeToDesktopQuery,
+    getDesktopSnapshot,
+    getServerDesktopSnapshot,
+  );
   // Always initialize with default values for hydration safety.
   // localStorage is read during render below to restore external preview state.
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("form");
+  const [desktopMode, setDesktopMode] = useState<WorkspaceMode>("form");
+  const [compactPane, setCompactPane] = useState<CompactPane | null>(null);
   const [splitLayout, setSplitLayout] = useState<SplitLayout>("horizontal");
   const previewPanelRef = usePanelRef();
   const editorPanelRef = usePanelRef();
 
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(min-width: 1024px)");
-    const updateLayout = () => setIsDesktopWorkspace(mediaQuery.matches);
-    updateLayout();
-    mediaQuery.addEventListener("change", updateLayout);
-    return () => mediaQuery.removeEventListener("change", updateLayout);
-  }, []);
+  // Growing back to desktop drops the small-screen pick, so the next time the
+  // viewport shrinks the pane follows the desktop mode again.
+  const [previousIsDesktop, setPreviousIsDesktop] = useState(isDesktopWorkspace);
+  if (previousIsDesktop !== isDesktopWorkspace) {
+    setPreviousIsDesktop(isDesktopWorkspace);
+    if (isDesktopWorkspace) setCompactPane(null);
+  }
 
   // Hydrate workspace mode from localStorage once on the client (adjusted
   // during render). `isClient` is false for SSR and the hydration render, so
@@ -37,28 +64,37 @@ export function useWorkspaceLayout() {
   if (isClient && !storedModeRestored) {
     setStoredModeRestored(true);
     if (readStoredExternalPreview()) {
-      setWorkspaceMode("split");
+      setDesktopMode("split");
       setSplitLayout("external");
     }
   }
 
+  const workspaceMode = resolveWorkspaceMode({
+    compactPane,
+    desktopMode,
+    isDesktop: isDesktopWorkspace,
+  });
+
+  const setWorkspaceMode = useCallback(
+    (mode: WorkspaceMode) => {
+      if (isDesktopWorkspace) {
+        setDesktopMode(mode);
+      } else {
+        setCompactPane(toCompactPane(mode));
+      }
+    },
+    [isDesktopWorkspace],
+  );
+
   useEffect(() => {
     if (workspaceMode !== "split" || splitLayout === "external") return;
-    if (isDesktopWorkspace) {
-      focusWorkspacePanels(previewPanelRef.current, editorPanelRef.current, splitLayout);
-      return;
-    }
-    document.getElementById("valuation-preview")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }, [isDesktopWorkspace, splitLayout, workspaceMode, previewPanelRef, editorPanelRef]);
+    focusWorkspacePanels(previewPanelRef.current, editorPanelRef.current, splitLayout);
+  }, [splitLayout, workspaceMode, previewPanelRef, editorPanelRef]);
 
   const workspaceComposition = getWorkspaceComposition(workspaceMode, splitLayout);
 
   return {
     editorPanelRef,
-    isDesktopWorkspace,
     previewPanelRef,
     setSplitLayout,
     setWorkspaceMode,
