@@ -4,6 +4,9 @@
  * reproduces it exactly; the default follows the rules proposed in
  * docs/fase0/README.md until the appraiser confirms them.
  */
+/** Stored with every calculation (EjecucionCalculo.SVersionCalculo); change it when formulas change. */
+export const ENGINE_VERSION = "motor-2026.09.1";
+
 export type SurfaceOrientation = "reference-over-subject" | "subject-over-reference";
 
 /** Excel ROUND digits (-4 = tens of thousands); `null` = no rounding. */

@@ -216,7 +216,7 @@ export async function copyVersionContent(
 
   const comparables = await tx.comparableAvaluo.findMany({
     where: { IdVersionAvaluo: input.fromVersionId },
-    include: { ajustesComparables: true },
+    include: { ajustesComparables: true, factoresHomologacion: true },
   });
   for (const comparable of comparables) {
     const copied = await tx.comparableAvaluo.create({
@@ -261,7 +261,30 @@ export async function copyVersionContent(
         })),
       });
     }
+    if (comparable.factoresHomologacion.length) {
+      await tx.factorHomologacion.createMany({
+        data: comparable.factoresHomologacion.map((factor) => ({
+          IdComparableAvaluo: copied.IdComparableAvaluo,
+          IdTipoFactorHomologacion: factor.IdTipoFactorHomologacion,
+          SNombre: factor.SNombre,
+          NValor: factor.NValor,
+          NCalificacionSujeto: factor.NCalificacionSujeto,
+          NCalificacionComparable: factor.NCalificacionComparable,
+          SJustificacion: factor.SJustificacion,
+          IdOrigenDato: factor.IdOrigenDato,
+          BConfirmado: factor.BConfirmado,
+          IOrden: factor.IOrden,
+        })),
+      });
+    }
     stats.comparables += 1;
+  }
+
+  // Market approach settings and results, one row per comparable type.
+  const marketApproaches = await tx.enfoqueMercado.findMany({ where: { IdVersionAvaluo: input.fromVersionId } });
+  for (const approach of marketApproaches) {
+    const { IdEnfoqueMercado: _id, DFechaCreacion: _created, DFechaModificacion: _modified, ...data } = approach;
+    await tx.enfoqueMercado.create({ data: { ...data, IdVersionAvaluo: input.toVersionId, JConfiguracion: json(approach.JConfiguracion) } });
   }
 
   return stats;

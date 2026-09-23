@@ -1901,6 +1901,9 @@ model EnfoqueMercado {
   NSuperficieSujeto         Decimal? @map("NSuperficieSujeto") @db.Decimal(18, 4)
   NMontoAdicional           Decimal? @map("NMontoAdicional") @db.Decimal(24, 2)
   NValorMercado             Decimal? @map("NValorMercado") @db.Decimal(24, 2)
+  NPotenciaSuperficie       Decimal? @map("NPotenciaSuperficie") @db.Decimal(8, 4)
+  NSuperficieBase           Decimal? @map("NSuperficieBase") @db.Decimal(18, 4)
+  SJustificacionValor       String?  @map("SJustificacionValor") @db.VarChar(2000)
   JConfiguracion            Json?    @map("JConfiguracion") @db.JsonB
   DFechaCreacion            DateTime @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
   DFechaModificacion        DateTime @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
@@ -2401,6 +2404,8 @@ model FactorHomologacion {
   IdTipoFactorHomologacion Int      @map("IdTipoFactorHomologacion")
   SNombre                  String   @map("SNombre") @db.VarChar(180)
   NValor                   Decimal  @map("NValor") @db.Decimal(16, 8)
+  NCalificacionSujeto      Decimal? @map("NCalificacionSujeto") @db.Decimal(16, 8)
+  NCalificacionComparable  Decimal? @map("NCalificacionComparable") @db.Decimal(16, 8)
   SJustificacion           String?  @map("SJustificacion") @db.VarChar(1000)
   IdOrigenDato             Int      @map("IdOrigenDato")
   BConfirmado              Boolean  @default(false) @map("BConfirmado")
