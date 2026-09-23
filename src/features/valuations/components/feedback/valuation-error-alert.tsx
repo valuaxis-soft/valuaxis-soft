@@ -4,13 +4,15 @@ import { ShieldCheck } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-export function ReadOnlyValuationAlert() {
+export function ReadOnlyValuationAlert({ reason = "role" }: { reason?: "role" | "concluded" }) {
   return (
     <Alert>
       <ShieldCheck />
-      <AlertTitle>Modo consulta</AlertTitle>
+      <AlertTitle>{reason === "concluded" ? "Avalúo concluido" : "Modo consulta"}</AlertTitle>
       <AlertDescription>
-        Tu rol permite ver y exportar proyectos, pero no editar la captura del avaluo.
+        {reason === "concluded"
+          ? "Esta versión está cerrada. Para corregirla, reábrela: se creará una versión nueva y esta se conserva."
+          : "Tu rol permite ver y exportar avalúos, pero no editar su captura."}
       </AlertDescription>
     </Alert>
   );

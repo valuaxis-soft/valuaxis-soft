@@ -96,6 +96,9 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(data),
       }),
+    conclude: (id: ApiId) => request<JsonRecord>(`/avaluos/${id}/conclude`, { method: "POST" }),
+    reopen: (id: ApiId, input: { reason: string; acceptedText: string }) =>
+      request<JsonRecord>(`/avaluos/${id}/reopen`, { method: "POST", body: JSON.stringify(input) }),
     saveFull: (id: ApiId, data: JsonRecord) =>
       request<JsonRecord>(`/avaluos/${id}/full`, {
         method: "PUT",

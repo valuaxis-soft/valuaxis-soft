@@ -22,6 +22,8 @@ Servicios con aislamiento por organización y relación formal con el avalúo (`
 
 ## Pendientes
 
-- **El editor sube los croquis y las imágenes de las demás secciones por `/api/uploads`,** que guarda en `public/uploads` sin relacionarlos con el avalúo. Hay que conectar el croquis a su servicio y crear el equivalente para el resto de secciones.
+- **Las imágenes de todas las secciones salvo Datos generales se suben por `/api/uploads`** y el avalúo guarda la ruta del archivo. En producción van a S3 privado. No quedan relacionadas con el avalúo en `RelacionArchivo`, así que no hay limpieza de archivos huérfanos.
+- **Hasta el 23 de septiembre de 2026 las imágenes de terreno se guardaban con un id en lugar de la ruta** y se perdían al recargar. `scripts/diagnostico-produccion.sql` (sección 8) cuenta las afectadas.
+- **La ruta de croquis (`/api/avaluos/[id]/info-terreno/croquis`) no la usa el editor:** era para dos croquis fijos, y la sección de terreno ahora admite imágenes libres.
 - **No hay ruta autenticada para servir archivos locales.**
 - **Sin escaneo antivirus.**

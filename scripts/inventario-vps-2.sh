@@ -139,6 +139,17 @@ FROM information_schema.tables
 WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name LIKE 'devpware_%'
 ORDER BY filas DESC, tabla;
 
+\echo '== 8. Imágenes de terreno guardadas con un id en lugar de la ruta del archivo (se pierden al recargar)'
+SELECT count(*) AS imagenes_terreno_sin_ruta
+FROM devpware_nodos_documentos n
+JOIN devpware_secciones_documentos s ON s."IdSeccionDocumento" = n."IdSeccionDocumento"
+JOIN devpware_valores_nodos_documentos v ON v."IdNodoDocumento" = n."IdNodoDocumento"
+WHERE n."DFechaEliminacion" IS NULL
+  AND n."JConfiguracion"->>'kind' = 'image'
+  AND upper(regexp_replace(s."SClave", '[^A-Za-z0-9]', '', 'g')) IN ('TERRENO', 'INFOTERRENO')
+  AND coalesce(v."SValorTexto", '') <> ''
+  AND v."SValorTexto" NOT LIKE '%/%';
+
 ROLLBACK;
 SQL
 EOF

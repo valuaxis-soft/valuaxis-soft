@@ -4,11 +4,13 @@ import type React from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
+  CircleCheck,
   Columns2,
   FileDown,
   FileText,
   MonitorUp,
   Redo2,
+  RotateCcw,
   Rows2,
   Save,
   TextInitial,
@@ -68,12 +70,20 @@ const splitLayouts: Array<{
   },
 ];
 
+/** Conclude an open valuation, or reopen a concluded one. */
+export type ValuationLifecycleAction = {
+  kind: "conclude" | "reopen";
+  onClick: () => void;
+  disabled?: boolean;
+};
+
 export function ValuationTopBar({
   activeSectionId,
   canEdit,
   canExport,
   enabledSections,
   iconMap,
+  lifecycleAction = null,
   meta,
   onExport,
   onExit,
@@ -97,6 +107,7 @@ export function ValuationTopBar({
   canExport: boolean;
   enabledSections: AppSection[];
   iconMap: Record<string, LucideIcon>;
+  lifecycleAction?: ValuationLifecycleAction | null;
   meta: ValuationMeta;
   onExport: () => void;
   onExit: () => void;
@@ -272,6 +283,27 @@ export function ValuationTopBar({
       />
 
       <div className="flex flex-none flex-nowrap items-center justify-end gap-2">
+        {lifecycleAction ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={lifecycleAction.disabled}
+            onClick={lifecycleAction.onClick}
+            className="flex-none whitespace-nowrap"
+          >
+            {lifecycleAction.kind === "conclude" ? (
+              <>
+                <CircleCheck data-icon="inline-start" />
+                Concluir
+              </>
+            ) : (
+              <>
+                <RotateCcw data-icon="inline-start" />
+                Reabrir
+              </>
+            )}
+          </Button>
+        ) : null}
 
         <Button
           type="button"

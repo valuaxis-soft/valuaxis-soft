@@ -56,3 +56,15 @@ export function isS3Source(src: string): boolean {
   // Signed URL
   return src.includes("X-Amz-Signature");
 }
+
+/** Sections whose images are stored through a dedicated file service and referenced by id. */
+const RELATION_MANAGED_IMAGE_SECTIONS = new Set(["datos", "datosGenerales"]);
+
+/**
+ * The value the editor persists for an image. Datos generales images live in
+ * their own file service and are linked by id; every other section, including
+ * terreno, persists the storage source so the loader can sign it again.
+ */
+export function imageSourceForSave(sectionId: string, image: { id: string; src: string }): string {
+  return RELATION_MANAGED_IMAGE_SECTIONS.has(sectionId) ? image.id : image.src;
+}

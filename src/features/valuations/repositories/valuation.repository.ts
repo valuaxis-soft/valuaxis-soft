@@ -37,6 +37,8 @@ export type ValuationListItem = {
 };
 
 export type ValuationDetail = ValuationListItem & {
+  /** Concluded valuations are locked until they are reopened. */
+  locked: boolean;
   sections: ValuationSectionDto[];
   comparables: ComparableDto[];
   caratula: CaratulaDto | null;
@@ -317,6 +319,7 @@ async function mapValuationDetail(
     valuationKind: valuation.tipoOperacion.SClave.toLowerCase(),
     propertyKind: valuation.tipoInmueble.SClave.toLowerCase(),
     status: valuation.estadoAvaluo.SClave.toLowerCase(),
+    locked: valuation.BBloqueado,
     createdAt: valuation.DFechaCreacion,
     updatedAt: valuation.DFechaModificacion,
     user: {

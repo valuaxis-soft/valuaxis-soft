@@ -64,7 +64,6 @@ import {
 import { createInitialSections } from "@/features/valuations/sections";
 import {
   ensureTerrenoSections,
-  isTerrenoSection,
 } from "@/features/valuations/sections/terreno";
 import {
   COMPANY_HEADER_BLOCK_ID,
@@ -74,6 +73,7 @@ import {
 } from "@/features/valuations/services/caratula-company-header";
 import { createHomologationTable, ensureTableV2 } from "@/features/valuations/services/table";
 import { serializeTableForSave } from "@/features/valuations/services/table-persistence";
+import { imageSourceForSave } from "@/features/valuations/services/image-source";
 import {
   hasUntitledConcepts,
   isCaratulaIntermediateBlock,
@@ -182,7 +182,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { AuthUser } from "@/features/auth/model";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
-import { canEditProject, canExportProject } from "@/features/auth/permissions";
+import { canEditProject, canExportProject, hasPermission } from "@/features/auth/permissions";
+import { AUTH_PERMISSIONS } from "@/features/auth/model";
+import {
+  ConcludeValuationDialog,
+  REOPEN_ACCEPTANCE_TEXT,
+  ReopenValuationDialog,
+} from "@/features/valuations/components/workspace/valuation-lifecycle-dialogs";
 import { toast } from "sonner";
 import type { SaveStatus } from "@/features/valuations/components/feedback/save-status-indicator";
 import { cn } from "@/lib/utils";
@@ -797,8 +803,15 @@ export function ValuationWorkspace({
     principalCoverImage,
     selectedComparables,
   ]);
-  const canEdit = canEditProject(currentUser);
+  // A concluded valuation is read-only until it is reopened.
+  const locked = initialValuation?.locked ?? false;
+  const canEdit = canEditProject(currentUser) && !locked;
   const canExport = canExportProject(currentUser);
+  const canConclude = !locked && Boolean(valuationId) && hasPermission(currentUser, AUTH_PERMISSIONS.concludeValuations);
+  const canReopen = locked && Boolean(valuationId) && hasPermission(currentUser, AUTH_PERMISSIONS.reopenValuations);
+  const [concludeOpen, setConcludeOpen] = useState(false);
+  const [reopenOpen, setReopenOpen] = useState(false);
+  const [lifecyclePending, setLifecyclePending] = useState(false);
   const snapshotRef = useRef<EditorSnapshot | null>(null);
   const historyRef = useRef<EditorHistory>(emptyEditorHistory());
   const savedSnapshotRef = useRef<EditorSnapshot | null>(null);
@@ -1168,9 +1181,7 @@ export function ValuationWorkspace({
             images: sb.images.map((img) => ({
               id: img.id,
               title: img.title,
-              src: s.id === "datos" || s.id === "datosGenerales" || isTerrenoSection(s)
-                ? img.id
-                : img.src,
+              src: imageSourceForSave(s.id, img),
               ...imageMetadataFromContent(img),
             })),
           })),
@@ -1178,7 +1189,7 @@ export function ValuationWorkspace({
           images: (s.id === "caratula" && b.id === COMPANY_HEADER_BLOCK_ID ? [] : b.images).map((img) => ({
             id: img.id,
             title: img.title,
-            src: s.id === "datos" || s.id === "datosGenerales" ? img.id : img.src,
+            src: imageSourceForSave(s.id, img),
             ...imageMetadataFromContent({ ...img, enabled: true }),
           })),
         })),
@@ -1220,6 +1231,36 @@ export function ValuationWorkspace({
       toast.error(`Error al guardar: ${err instanceof Error ? err.message : "Error desconocido"}`);
       return false;
     }
+  };
+
+  const runLifecycleAction = async (action: () => Promise<unknown>, successMessage: string) => {
+    setLifecyclePending(true);
+    try {
+      await action();
+      toast.success(successMessage);
+      // The loaded document belongs to a version that just changed state: load it again.
+      window.location.reload();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) setSessionExpiredOpen(true);
+      else toast.error(err instanceof Error ? err.message : "No se pudo completar la acción.");
+      setLifecyclePending(false);
+    }
+  };
+
+  const handleConclude = async () => {
+    if (!valuationId) return;
+    if (hasUnsavedChanges && !(await handleSave())) return;
+    setConcludeOpen(false);
+    await runLifecycleAction(() => api.valuations.conclude(valuationId), "Avalúo concluido.");
+  };
+
+  const handleReopen = async (reason: string) => {
+    if (!valuationId) return;
+    setReopenOpen(false);
+    await runLifecycleAction(
+      () => api.valuations.reopen(valuationId, { reason, acceptedText: REOPEN_ACCEPTANCE_TEXT }),
+      "Avalúo reabierto. Ya puedes editar la nueva versión.",
+    );
   };
 
   const sensors = useSensors(
@@ -2139,6 +2180,13 @@ export function ValuationWorkspace({
           <ValuationTopBar
             activeSectionId={activeSection.id}
             canEdit={canEdit}
+            lifecycleAction={
+              canConclude
+                ? { kind: "conclude", onClick: () => setConcludeOpen(true), disabled: saving || lifecyclePending }
+                : canReopen
+                  ? { kind: "reopen", onClick: () => setReopenOpen(true), disabled: lifecyclePending }
+                  : null
+            }
             canExport={canExport}
             enabledSections={enabledSections}
             iconMap={sectionIconMap}
@@ -2161,7 +2209,7 @@ export function ValuationWorkspace({
             workspaceMode={workspaceMode}
           />
 
-          {!canEdit ? <ReadOnlyValuationAlert /> : null}
+          {!canEdit ? <ReadOnlyValuationAlert reason={locked ? "concluded" : "role"} /> : null}
         </div>
       </section>
 
@@ -2225,6 +2273,19 @@ export function ValuationWorkspace({
           </div>
         )}
       </div>
+      <ConcludeValuationDialog
+        open={concludeOpen}
+        onOpenChange={setConcludeOpen}
+        onConfirm={() => void handleConclude()}
+        pending={lifecyclePending || saving}
+        hasUnsavedChanges={hasUnsavedChanges}
+      />
+      <ReopenValuationDialog
+        open={reopenOpen}
+        onOpenChange={setReopenOpen}
+        onConfirm={(reason) => void handleReopen(reason)}
+        pending={lifecyclePending}
+      />
       <AlertDialog open={sessionExpiredOpen} onOpenChange={setSessionExpiredOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
