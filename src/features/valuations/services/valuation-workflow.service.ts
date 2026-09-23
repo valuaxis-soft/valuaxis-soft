@@ -6,6 +6,7 @@ import type { ConceptType, ConceptValueFormat } from "@/features/valuations/mode
 import { extractStorageKey } from "@/features/valuations/services/image-source";
 import { ensureTableV2 } from "@/features/valuations/services/table";
 import { encodeTableCell } from "@/features/valuations/services/table-persistence";
+import { copyVersionContent } from "@/features/valuations/services/valuation-version-copy.service";
 import {
   getCanonicalSectionKey,
   getOrderedValuationSections,
@@ -1246,38 +1247,15 @@ async function softDeleteMissingRootNodes(input: {
   input.stats.nodesSoftDeleted += result.count;
 }
 
+/**
+ * Maps a captured value to its storage column. Text is stored exactly as typed:
+ * converting "7,000.00" to a number or "2026-01-01" to a timestamp loses the
+ * format the appraiser wrote, and that text is what the report prints.
+ */
 export function valueColumns(value: unknown) {
   const empty = emptyValueColumns();
-  if (typeof value === "string" && isDateString(value)) {
-    return {
-      ...empty,
-      DValorFecha: new Date(value),
-    };
-  }
-
   if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return empty;
-    }
-    const date = isDateString(trimmed) ? new Date(trimmed) : null;
-    if (date) {
-      return {
-        ...empty,
-        DValorFecha: date,
-      };
-    }
-    const numeric = parseNumeric(trimmed);
-    if (numeric !== null) {
-      return {
-        ...empty,
-        NValorNumerico: numeric,
-      };
-    }
-    return {
-      ...empty,
-      SValorTexto: trimmed,
-    };
+    return value.trim() ? { ...empty, SValorTexto: value } : empty;
   }
 
   if (typeof value === "number") {
@@ -1508,6 +1486,9 @@ export async function concludeValuation(input: {
   });
 }
 
+/** Reopening copies the whole document; a large valuation can exceed Prisma's 5 s default. */
+const REOPEN_TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 60_000 };
+
 export async function reopenValuation(input: {
   publicId: string;
   organizationId: number;
@@ -1566,45 +1547,10 @@ export async function reopenValuation(input: {
       },
     });
 
-    const finalSections = await tx.seccionDocumento.findMany({
-      where: { IdVersionAvaluo: avaluo.IdVersionFinal },
-      include: { nodos: true },
+    const copied = await copyVersionContent(tx, {
+      fromVersionId: avaluo.IdVersionFinal,
+      toVersionId: newVersion.IdVersionAvaluo,
     });
-    for (const section of finalSections) {
-      const copiedSection = await tx.seccionDocumento.create({
-        data: {
-          IdVersionAvaluo: newVersion.IdVersionAvaluo,
-          IdSeccionPlantilla: section.IdSeccionPlantilla,
-          SClave: section.SClave,
-          SNombre: section.SNombre,
-          SDescripcion: section.SDescripcion,
-          IOrden: section.IOrden,
-          BVisible: section.BVisible,
-          BObligatoria: section.BObligatoria,
-          BEliminable: section.BEliminable,
-          JConfiguracion: section.JConfiguracion ?? Prisma.JsonNull,
-        },
-      });
-      for (const node of section.nodos.filter((item) => item.IdNodoPadre === null)) {
-        await tx.nodoDocumento.create({
-          data: {
-            IdSeccionDocumento: copiedSection.IdSeccionDocumento,
-            IdNodoPlantilla: node.IdNodoPlantilla,
-            IdTipoNodoDocumento: node.IdTipoNodoDocumento,
-            IdTipoDato: node.IdTipoDato,
-            SClave: node.SClave,
-            STitulo: node.STitulo,
-            SDescripcion: node.SDescripcion,
-            IOrden: node.IOrden,
-            BVisible: node.BVisible,
-            BObligatorio: node.BObligatorio,
-            BEliminable: node.BEliminable,
-            BRepetible: node.BRepetible,
-            JConfiguracion: node.JConfiguracion ?? Prisma.JsonNull,
-          },
-        });
-      }
-    }
 
     await tx.reaperturaAvaluo.create({
       data: {
@@ -1640,6 +1586,6 @@ export async function reopenValuation(input: {
       },
     });
 
-    return { id: input.publicId, versionId: newVersion.IdVersionAvaluo };
-  });
+    return { id: input.publicId, versionId: newVersion.IdVersionAvaluo, copied };
+  }, REOPEN_TRANSACTION_OPTIONS);
 }

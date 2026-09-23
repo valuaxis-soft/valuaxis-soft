@@ -1,5 +1,5 @@
 import { prisma } from "@/infrastructure/database/prisma-client";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   getCanonicalSectionKey,
   getOrderedValuationSections,
@@ -149,65 +149,71 @@ export type ComparableDto = {
   antiquity: string | null;
 };
 
-type AvaluoWithRelations = Prisma.AvaluoGetPayload<{
-  include: {
-    usuarioCreador: true;
-    estadoAvaluo: true;
-    tipoAvaluo: true;
-    tipoInmueble: true;
-    tipoOperacion: true;
-    propiedadSujeto: { include: { direccionesPropiedad: true } };
-    versionTrabajo: {
-      include: {
-        seccionesDocumentos: {
-          include: {
-            nodos: {
-              include: {
-                valores: true;
-                tablasDocumentos: {
-                  include: {
-                    columnas: true;
-                    filas: { include: { celdas: true } };
-                  };
-                };
-                nodosHijos: {
-                  include: {
-                    valores: true;
-                    tablasDocumentos: {
-                      include: {
-                        columnas: true;
-                        filas: { include: { celdas: true } };
-                      };
-                    };
-                    nodosHijos: {
-                      include: {
-                        valores: true;
-                        tablasDocumentos: {
-                          include: {
-                            columnas: true;
-                            filas: { include: { celdas: true } };
-                          };
-                        };
-                      };
-                    };
-                  };
-                };
-              };
-            };
-          };
-        };
-        caratula: true;
-        comparables: {
-          include: {
-            propiedad: { include: { tipoInmueble: true; direccionesPropiedad: true } };
-            publicacionPropiedad: { include: { fuenteInmobiliaria: true; tipoOperacion: true; imagenes: true } };
-            tipoComparable: true;
-          };
-        };
-      };
-    };
-  };
-}>;
+/** Everything the editor and the preview need from one version of a valuation. */
+const versionContentInclude = Prisma.validator<Prisma.VersionAvaluoInclude>()({
+  caratula: true,
+  seccionesDocumentos: {
+    include: {
+      nodos: {
+        include: {
+          valores: true,
+          tablasDocumentos: {
+            include: {
+              columnas: true,
+              filas: { include: { celdas: true } },
+            },
+          },
+          nodosHijos: {
+            include: {
+              valores: true,
+              tablasDocumentos: {
+                include: {
+                  columnas: true,
+                  filas: { include: { celdas: true } },
+                },
+              },
+              nodosHijos: {
+                include: {
+                  valores: true,
+                  tablasDocumentos: {
+                    include: {
+                      columnas: true,
+                      filas: { include: { celdas: true } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { IOrden: "asc" },
+  },
+  comparables: {
+    include: {
+      propiedad: { include: { tipoInmueble: true, direccionesPropiedad: true } },
+      publicacionPropiedad: {
+        include: { fuenteInmobiliaria: true, tipoOperacion: true, imagenes: true },
+      },
+      tipoComparable: true,
+    },
+    orderBy: { DFechaSeleccion: "desc" },
+  },
+});
+
+const valuationDetailInclude = Prisma.validator<Prisma.AvaluoInclude>()({
+  usuarioCreador: true,
+  estadoAvaluo: true,
+  tipoAvaluo: true,
+  tipoInmueble: true,
+  tipoOperacion: true,
+  propiedadSujeto: { include: { direccionesPropiedad: true } },
+  versionTrabajo: { include: versionContentInclude },
+});
+
+type AvaluoWithRelations = Prisma.AvaluoGetPayload<{ include: typeof valuationDetailInclude }>;
+
 
 export async function listValuations(organizationId: number): Promise<ValuationListItem[]> {
   const valuations = await prisma.avaluo.findMany({
@@ -259,70 +265,22 @@ export async function getValuationByPublicId(
       BActivo: true,
       DFechaEliminacion: null,
     },
-    include: {
-      usuarioCreador: true,
-      estadoAvaluo: true,
-      tipoAvaluo: true,
-      tipoInmueble: true,
-      tipoOperacion: true,
-      propiedadSujeto: { include: { direccionesPropiedad: true } },
-      versionTrabajo: {
-        include: {
-          caratula: true,
-          seccionesDocumentos: {
-            include: {
-              nodos: {
-                include: {
-                  valores: true,
-                  tablasDocumentos: {
-                    include: {
-                      columnas: true,
-                      filas: { include: { celdas: true } },
-                    },
-                  },
-                  nodosHijos: {
-                    include: {
-                      valores: true,
-                      tablasDocumentos: {
-                        include: {
-                          columnas: true,
-                          filas: { include: { celdas: true } },
-                        },
-                      },
-                      nodosHijos: {
-                        include: {
-                          valores: true,
-                          tablasDocumentos: {
-                            include: {
-                              columnas: true,
-                              filas: { include: { celdas: true } },
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            orderBy: { IOrden: "asc" },
-          },
-          comparables: {
-            include: {
-              propiedad: { include: { tipoInmueble: true, direccionesPropiedad: true } },
-              publicacionPropiedad: {
-                include: { fuenteInmobiliaria: true, tipoOperacion: true, imagenes: true },
-              },
-              tipoComparable: true,
-            },
-            orderBy: { DFechaSeleccion: "desc" },
-          },
-        },
-      },
-    },
+    include: valuationDetailInclude,
   });
 
-  return valuation ? await mapValuationDetail(valuation) : null;
+  if (!valuation) return null;
+
+  // A concluded valuation has no working version: show its final version.
+  const content =
+    valuation.versionTrabajo ??
+    (valuation.IdVersionFinal
+      ? await prisma.versionAvaluo.findUnique({
+          where: { IdVersionAvaluo: valuation.IdVersionFinal },
+          include: versionContentInclude,
+        })
+      : null);
+
+  return mapValuationDetail(valuation, content);
 }
 
 export async function softDeleteValuation(id: string, organizationId: number) {
@@ -340,9 +298,12 @@ export async function softDeleteValuation(id: string, organizationId: number) {
   return { id };
 }
 
-async function mapValuationDetail(valuation: AvaluoWithRelations): Promise<ValuationDetail> {
-  const sections = buildCanonicalValuationSections(valuation.versionTrabajo?.seccionesDocumentos ?? []);
-  const comparables = valuation.versionTrabajo?.comparables.map(mapComparable) ?? [];
+async function mapValuationDetail(
+  valuation: AvaluoWithRelations,
+  content: VersionTrabajo | null,
+): Promise<ValuationDetail> {
+  const sections = buildCanonicalValuationSections(content?.seccionesDocumentos ?? []);
+  const comparables = content?.comparables.map(mapComparable) ?? [];
 
   // Resolve all image URLs to fresh signed URLs (handles expired S3 URLs)
   await resolveSectionImageUrls(sections);
@@ -366,7 +327,7 @@ async function mapValuationDetail(valuation: AvaluoWithRelations): Promise<Valua
     _count: { sections: sections.length, comparables: comparables.length },
     sections,
     comparables,
-    caratula: valuation.versionTrabajo?.caratula ? mapCaratula(valuation.versionTrabajo.caratula) : null,
+    caratula: content?.caratula ? mapCaratula(content.caratula) : null,
   };
 }
 
