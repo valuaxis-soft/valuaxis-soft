@@ -1,52 +1,22 @@
-# Testing
-
-Sistema agregado:
+# Pruebas
 
 ```bash
 pnpm test
 ```
 
-Usa `node:test` via `tsx --test` sin dependencias nuevas.
+Usa `node:test` a través de `tsx --test`, sobre `tests/**/*.test.ts` y `tests/**/*.test.tsx`. No hay framework adicional.
 
-Pruebas actuales:
+## Convenciones
 
-- registro central de secciones;
-- normalizacion de claves;
-- checksum de storage;
-- validacion de MIME;
-- validacion de tamano.
-- politicas de permisos;
-- limites de uso;
-- proveedor de mapas de desarrollo.
-- proveedor Amazon SES con cliente mockeado;
-- seleccion de proveedor de email;
-- validacion de variables faltantes para SES.
-- proveedor Google OAuth con mocks:
-  - scopes minimos;
-  - callback exacto;
-  - variables faltantes;
-  - URL sin client secret;
-  - intercambio de `code` en servidor.
+- Las pruebas verifican **comportamiento**: entradas, salidas y HTML renderizado. No se aceptan pruebas que lean el código fuente como texto y busquen patrones; se rompen con cualquier refactor.
+- Los componentes se prueban con `renderToStaticMarkup`. Si el componente usa portales, importa `tests/support/ssr-portal-shim.ts`.
+- `tests/support/expect.ts` ofrece un `expect()` mínimo sobre `node:assert` para las pruebas migradas de vitest.
+- Un bug conocido que todavía no se corrige se marca con `{ todo: "BUG: ..." }`. La suite sigue en verde y el bug queda visible.
 
-Pendiente:
+## Bugs conocidos marcados como pendientes
 
-- pruebas de integracion OAuth con repositorios mockeados;
-- pruebas de autorizacion multi-organizacion;
-- pruebas de guardado de secciones;
-- pruebas de comparables/snapshots;
-- pruebas de exportacion PDF con permisos/pagos.
+- `valuation-section-deduplication.test.ts`: los marcadores de sección vacíos guardados con etiquetas anteriores ("CONSTRUCCION", "COSTOS", "MERCADO VENTA") ya no se reemplazan por su plantilla.
 
-## Prueba manual Google OAuth
+## Validación de la metodología
 
-Escenarios esperados:
-
-1. Usuario nuevo con Google.
-2. Usuario existente con correo manual que luego entra con Google.
-3. Segundo login con la misma cuenta Google.
-4. Usuario cancela consentimiento.
-5. State invalido.
-6. Usuario bloqueado.
-7. Usuario con varias organizaciones.
-8. Logout despues de Google.
-9. Login manual despues de vincular Google.
-10. Recuperacion de contrasena despues de vincular Google.
+Los scripts de `docs/fase0/metodologia/` recalculan los enfoques del Excel del despacho y los comparan contra los valores de referencia. Ver [fase0/README.md](fase0/README.md).

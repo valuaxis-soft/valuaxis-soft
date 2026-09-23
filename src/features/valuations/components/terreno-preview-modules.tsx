@@ -1,14 +1,12 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { LockKeyhole } from "lucide-react";
 
 import type { Block, Concept, Apartado, TableContent } from "../model";
 import { getTerrenoElementKind } from "../sections/terreno";
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
 import { ensureTableV2 } from "../services/table";
 import { DocumentBlockTitleBar } from "./document-block-title-bar";
-import { DocumentTable } from "./document-table";
 
 const EMPTY_VALUE = "No se proporcionó";
 
@@ -111,15 +109,6 @@ function BoundaryTable({ table }: { table: TableContent }) {
   );
 }
 
-function LongConceptIndicator() {
-  return (
-    <span className="col-span-full flex items-center justify-end gap-0.5 pt-0.5 text-[7.5px] text-slate-400">
-      <LockKeyhole className="size-2.5" />
-      ancho completo
-    </span>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /*  Utilities                                                          */
 /* ------------------------------------------------------------------ */
@@ -130,10 +119,6 @@ function formatDistance(
 ) {
   const distance = value?.trim();
   return distance ? formatNumericValue(distance, format) : EMPTY_VALUE;
-}
-
-function visibleConcepts(concepts: Concept[]) {
-  return concepts.filter((concept) => concept.enabled !== false);
 }
 
 function subBlockLabel(parentLabel: string, index: number) {

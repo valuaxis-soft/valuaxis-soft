@@ -5,7 +5,7 @@ import {
   generateContentLayout,
   resolveContentLayout,
   sanitizeContentLayout,
-} from "../src/features/valuations/services/content-layout";
+} from "../src/features/valuations/services/content-layout-legacy";
 
 /* ------------------------------------------------------------------ */
 /*  Fixtures                                                          */
@@ -202,7 +202,6 @@ test("resolveContentLayout — removes stale reference, preserves remaining cust
 
 test("resolveContentLayout — removing one referenced item preserves all remaining custom order", () => {
   const c1 = concept("c1");
-  const c2 = concept("c2");
   const c3 = concept("c3");
   // Custom order: c3, c1 (c2 was deleted from container)
   const layout = [

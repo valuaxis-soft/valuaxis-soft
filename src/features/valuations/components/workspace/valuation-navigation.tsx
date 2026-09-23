@@ -8,11 +8,6 @@ import { Button } from "@/components/ui/button";
 import type { AppSection } from "@/features/valuations/model";
 import { SectionDndContainer } from "./section-dnd-container";
 
-export type ValuationWorkspaceStats = {
-  sections: number;
-  blocks: number;
-  concepts: number;
-};
 export function ValuationNavigation({
   activeSectionId,
   enabledSections,

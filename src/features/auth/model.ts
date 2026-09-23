@@ -1,6 +1,4 @@
-const authRoles = ["ADMINISTRADOR", "VALUADOR", "REVISOR", "CONSULTA", "USUARIO"] as const;
-
-export type AuthRole = (typeof authRoles)[number];
+export type AuthRole = "ADMINISTRADOR" | "VALUADOR" | "REVISOR" | "CONSULTA" | "USUARIO";
 
 export type AuthUser = {
   id: number;
@@ -12,17 +10,14 @@ export type AuthUser = {
   organizationName: string;
 };
 
-const authPermissions = [
-  "projects.view",
-  "projects.create",
-  "projects.edit",
-  "projects.review",
-  "projects.complete",
-  "projects.reopen",
-  "projects.duplicate",
-  "projects.export",
-  "catalogs.manage",
-  "users.manage",
-] as const;
-
-export type AuthPermission = (typeof authPermissions)[number];
+export type AuthPermission =
+  | "projects.view"
+  | "projects.create"
+  | "projects.edit"
+  | "projects.review"
+  | "projects.complete"
+  | "projects.reopen"
+  | "projects.duplicate"
+  | "projects.export"
+  | "catalogs.manage"
+  | "users.manage";

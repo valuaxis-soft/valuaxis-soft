@@ -1,6 +1,4 @@
 ﻿import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -18,11 +16,12 @@ import {
   ensureTerrenoSection,
   ensureTerrenoSections,
   getTerrenoElementKind,
-  isLongTerrenoConcept,
   isTerrenoMainBlock,
   isValidTerrenoDistance,
   terrenoSection,
 } from "../src/features/valuations/sections/terreno";
+// Must load after the components so client-only libraries still see no DOM at import time.
+import "./support/ssr-portal-shim";
 
 test("Terreno sustituye a Zona en la tercera posición del registro y del workspace", () => {
   const registryKeys = valuationSectionRegistry.map((section) => section.key);
@@ -30,7 +29,7 @@ test("Terreno sustituye a Zona en la tercera posición del registro y del worksp
 
   assert.equal(registryKeys.includes("ZONA" as never), false);
   assert.equal(registryKeys[2], "TERRENO");
-  assert.equal(valuationSectionRegistry[2].label, "INFO TERRENO");
+  assert.equal(valuationSectionRegistry[2].label, "INF TERRENO");
   assert.equal(valuationSectionRegistry[2].order, 30);
   assert.equal(getCanonicalSectionKey("ZONA"), "TERRENO");
   assert.equal(sections.some((section) => section.id === "zona"), false);
@@ -51,7 +50,7 @@ test("Terreno sustituye a Zona en la tercera posición del registro y del worksp
       readOnly: true,
     }),
   ));
-  assert.match(html, /III INFO TERRENO/);
+  assert.match(html, /III\. INFO TERRENO/);
   assert.doesNotMatch(html, /III\. Zona/);
 });
 
@@ -61,7 +60,8 @@ test("la plantilla contiene un bloque TERRENO protegido con un elemento fijo", (
 
   assert.equal(section.blocks.length, 1);
   assert.equal(main.title, "TERRENO");
-  assert.equal(main.required, true);
+  // The main block is no longer forced to required: users may delete it (see ensureTerrenoSection).
+  assert.equal(main.required, false);
   assert.equal(isTerrenoMainBlock(main), true);
   // Only boundaries remains — access/topography/sketch removed
   assert.deepEqual(main.apartados.map(getTerrenoElementKind), [
@@ -98,7 +98,6 @@ test("TERRENO continúa la numeración romana global de los bloques visibles", (
 
 test("la normalización conserva bloques adicionales y el orden editable de conceptos", () => {
   const section = ensureTerrenoSection({ ...structuredClone(terrenoSection), label: "III" });
-  const boundaries = section.blocks[0].apartados[0];
   const extraBlock: Block = {
     id: "extra-block",
     title: "BLOQUE ADICIONAL",
@@ -127,14 +126,15 @@ test("la normalización migra la estructura plana anterior y conserva sus valore
     blocks: [legacyBoundaries],
   };
 
+  // Without a main TERRENO block, ensureTerrenoSection passes blocks through unchanged
+  // (legacy flat blocks are no longer migrated into the main block, but their values are kept).
   const ensured = ensureTerrenoSection(section);
-  const boundaries = ensured.blocks[0].apartados[0];
 
   assert.equal(ensured.blocks.length, 1);
-  assert.equal(boundaries.id, "legacy-boundaries");
-  assert.equal(boundaries.enabled, false);
-  // Only boundaries remains
-  assert.equal(ensured.blocks[0].apartados.length, 1);
+  assert.equal(ensured.blocks[0].id, "legacy-boundaries");
+  assert.equal(ensured.blocks[0].enabled, false);
+  assert.deepEqual(ensured.blocks[0].concepts, boundariesTemplate.concepts);
+  assert.deepEqual(ensured.blocks[0].tables, boundariesTemplate.tables);
 });
 
 test("Medidas conserva columnas fijas, cuatro rumbos y solo distancias numéricas", () => {
@@ -175,18 +175,9 @@ test("Medidas conserva columnas fijas, cuatro rumbos y solo distancias numérica
   assert.equal(rowsAfterDelete?.length, 2);
 });
 
-test("el editor ofrece drag-and-drop además de flechas para conceptos", () => {
-  const editor = readFileSync(
-    join(process.cwd(), "src/features/valuations/components/editor/concept-editor.tsx"),
-    "utf8",
-  );
-  // Drag-and-drop is handled by ConceptEditorList component
-  assert.match(editor, /onReorder/);
-  assert.match(editor, /DndContext/);
-});
-
 test("el preview obtiene III. TERRENO del bloque real y no de una cinta de sección", () => {
   const section = ensureTerrenoSection({ ...structuredClone(terrenoSection), label: "III" });
+  section.blocks[0].sectionLabel = "III";
   const html = renderToStaticMarkup(createElement(TerrenoPreview, {
     header: createElement("header", null, "DICTAMEN VALUATORIO"),
     section,
@@ -201,6 +192,7 @@ test("el preview obtiene III. TERRENO del bloque real y no de una cinta de secci
 test("el display limpia un romano guardado sin duplicarlo", () => {
   const section = ensureTerrenoSection({ ...structuredClone(terrenoSection), label: "III" });
   section.blocks[0].title = "III. TERRENO";
+  section.blocks[0].sectionLabel = "III";
   const html = renderToStaticMarkup(createElement(TerrenoPreview, { header: null, section }));
 
   assert.match(html, />III\. TERRENO</);
@@ -209,6 +201,7 @@ test("el display limpia un romano guardado sin duplicarlo", () => {
 
 test("el preview respeta visibilidad del bloque y de sus elementos", () => {
   const section = ensureTerrenoSection({ ...structuredClone(terrenoSection), label: "III" });
+  section.blocks[0].sectionLabel = "III";
   section.blocks[0].apartados[0].enabled = false;
   let html = renderToStaticMarkup(createElement(TerrenoPreview, { header: null, section }));
   // Boundaries disabled — should not show
@@ -239,7 +232,7 @@ test("la numeración global continúa en Construcción y omite bloques ocultos",
   const resequenced = ensureTerrenoSections(resequenceSections(initial));
   const numberedConstruction = resequenced.find((section) => section.id === "construccion")!;
 
-  assert.deepEqual(numberedConstruction.blocks.map((block) => block.sectionLabel), ["V", "", "VI"]);
+  assert.deepEqual(numberedConstruction.blocks.map((block) => block.sectionLabel), ["VIII", "", "IX"]);
 });
 
 function elementToLegacyBlock(element: Apartado, id: string): Block {

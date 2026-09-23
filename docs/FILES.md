@@ -1,31 +1,27 @@
-# Files
+# Archivos
 
-Contrato tecnico:
+## Almacenamiento
 
-- `StorageProvider`
-- `DevelopmentStorageProvider`
+`src/infrastructure/storage/storage-provider.ts` define `StorageProvider` con dos implementaciones, elegidas con `STORAGE_DRIVER`:
 
-Operaciones:
+- **`local`: `DevelopmentStorageProvider`.** Escribe en `public/` con las funciones de `storage.ts`. Los archivos quedan accesibles sin autenticación. Solo sirve para desarrollo.
+- **`s3`: `S3StorageProvider`.** Sube con `PutObject` y entrega URLs firmadas de 15 minutos para descargar.
 
-- `createUpload`
-- `confirmUpload`
-- `cancelUpload`
-- `getPrivateDownloadUrl`
-- `deleteObject`
-- `calculateChecksum`
-- `validateFile`
+## Subidas
 
-Estado actual:
+`src/features/files/services/upload.ts` valida el MIME, el tamaño (`MAX_UPLOAD_SIZE_MB`, 10 por defecto) y que el formato real coincida con el declarado. Normaliza las imágenes a JPEG de hasta 1920 px, calcula el checksum SHA-256 y registra `CargaArchivo`.
 
-- almacenamiento local de desarrollo;
-- validacion de MIME, tamano y extension;
-- checksum SHA-256;
-- registro de carga en `CargaArchivo`.
-- pruebas de MIME, tamano y checksum.
+Servicios con aislamiento por organización y relación formal con el avalúo (`Archivo` y `RelacionArchivo`):
 
-Pendiente:
+| Servicio | Ruta |
+|---|---|
+| Imagen principal de la carátula | `/api/avaluos/[id]/caratula/imagen-principal` |
+| Imagen de encabezado | `/api/avaluos/[id]/caratula/imagen-encabezado` |
+| Imágenes de Datos generales | `/api/avaluos/[id]/datos/imagenes` |
+| Croquis de terreno | `/api/avaluos/[id]/info-terreno/croquis` |
 
-- `S3StorageProvider`;
-- URLs prefirmadas privadas;
-- relacion formal con entidad mediante `RelacionArchivo`;
-- antivirus/escaneo si se requiere en produccion.
+## Pendientes
+
+- **El editor sube los croquis y las imágenes de las demás secciones por `/api/uploads`,** que guarda en `public/uploads` sin relacionarlos con el avalúo. Hay que conectar el croquis a su servicio y crear el equivalente para el resto de secciones.
+- **No hay ruta autenticada para servir archivos locales.**
+- **Sin escaneo antivirus.**

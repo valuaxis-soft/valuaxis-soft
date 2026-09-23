@@ -42,5 +42,5 @@ test("all valuation sections are active by default for the workspace", () => {
     valuationSectionRegistry.every((section) => section.visibleByDefault),
     true,
   );
-  assert.equal(valuationSectionRegistry.at(-1)?.label, "Indicadores");
+  assert.equal(valuationSectionRegistry.at(-1)?.label, "MAPA COMPARABLES");
 });

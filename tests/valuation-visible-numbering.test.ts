@@ -1,6 +1,6 @@
 ﻿import assert from "node:assert/strict";
 import test from "node:test";
-import type { Block, BlockFlow, Apartado } from "../src/features/valuations/model";
+import type { Block, Apartado } from "../src/features/valuations/model";
 import {
   getVisibleOrdinal,
   formatVisibleChildLabel,

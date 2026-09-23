@@ -6,11 +6,11 @@ import type {
   Concept,
   ContentLayoutItem,
   ContentLayoutPersisted,
-  ContentLayoutV2,
+  ContentLayout as ContentLayoutV2,
   ImageContent,
   TableContent,
 } from "../src/features/valuations/model";
-import { EditableContentLayoutV2 } from "../src/features/valuations/components/editor/editable-content-layout-v2";
+import { EditableContentLayout as EditableContentLayoutV2 } from "../src/features/valuations/components/editor/editable-content-layout-v2";
 
 /* ------------------------------------------------------------------ */
 /*  Fixtures                                                          */
@@ -308,7 +308,7 @@ test("EditableContentLayoutV2 — image callbacks target correct item", () => {
       conceptCallbacks: conceptCbs,
       imageCallbacks: {
         onRemove: noop,
-        onUpdate: (id, patch) => { /* verify no crash */ },
+        onUpdate: () => {},
       },
       tableCallbacks: tableCbs,
       readOnly: false,
@@ -337,7 +337,7 @@ test("EditableContentLayoutV2 — table callbacks target correct item", () => {
         onAddColumn: noop,
         onAddRow: noop,
         onRemove: noop,
-        onUpdate: (id, updater) => { /* verify no crash */ },
+        onUpdate: () => {},
       },
       readOnly: false,
     }),

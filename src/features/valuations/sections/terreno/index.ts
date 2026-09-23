@@ -1,9 +1,8 @@
-import type { AppSection, Block, Concept, ImageContent, Apartado, TableContent } from "../../model";
+import type { AppSection, Block, Concept, Apartado, TableContent } from "../../model";
 import { defineSection } from "../../section-builders";
 import { getCanonicalSectionKey } from "../section-registry";
 
 export const TERRENO_MAIN_BLOCK_ID = "terreno-block-principal";
-export const TERRENO_MACRO_IMAGE_ID = "terreno-croquis-macrolocalizacion";
 
 export const TERRENO_ELEMENT_IDS = {
   // access removed — user creates via canonical ContentLayoutV2
@@ -93,10 +92,6 @@ export function getTerrenoElementKind(
   return (byTitle as TerrenoElementKind | undefined) ?? null;
 }
 
-export function isFixedTerrenoElement(element: Pick<Apartado, "id" | "title">) {
-  return getTerrenoElementKind(element) !== null;
-}
-
 export function isValidTerrenoDistance(value: string) {
   return /^\d*(?:[.,]\d*)?$/.test(value);
 }
@@ -139,9 +134,6 @@ export function ensureTerrenoSection(section: AppSection): AppSection {
     return mergeFixedElement(template, current, kind);
   });
   
-  // Keep custom elements (non-fixed) that user created
-  const customElements = currentElements.filter((element) => getTerrenoElementKind(element) === null);
-  
   // Keep extra blocks that user created
   const extraBlocks = section.blocks.filter(
     (block) => block !== existingMain
@@ -161,17 +153,6 @@ export function ensureTerrenoSection(section: AppSection): AppSection {
       },
       ...extraBlocks,
     ],
-  };
-}
-
-function blockToElement(block: Block): Apartado {
-  return {
-    id: block.id,
-    title: block.title,
-    enabled: block.enabled,
-    concepts: block.concepts,
-    tables: block.tables,
-    images: block.images,
   };
 }
 
@@ -204,43 +185,6 @@ function deduplicateConceptIds(concepts: Concept[]): Concept[] {
     }
     return { ...concept, id: `${concept.id}-${crypto.randomUUID().slice(0, 8)}` };
   });
-}
-
-/**
- * Check if an image is a legacy terrain sketch image (has terrainSlot metadata).
- */
-export function isLegacyTerrainSketchImage(image: Pick<ImageContent, "id" | "terrainSlot" | "src">): boolean {
-  return image.terrainSlot === "macro" || image.terrainSlot === "micro";
-}
-
-/**
- * Check if a legacy terrain image is an empty default slot (no real user data).
- */
-function isEmptyLegacySlot(image: Pick<ImageContent, "src">): boolean {
-  return !image.src.trim();
-}
-
-/**
- * Migrate legacy terrain sketch images to canonical ImageContent.
- * - Empty slots: removed (no longer created by template)
- * - Real images: preserved with same id, src, title, layout metadata
- * - terrainSlot metadata: removed from migrated images
- */
-function migrateLegacySketchImages(images: Apartado["images"]): Apartado["images"] {
-  return images
-    .filter((image) => {
-      // Keep non-legacy images untouched
-      if (!isLegacyTerrainSketchImage(image)) return true;
-      // Remove empty legacy slots
-      return !isEmptyLegacySlot(image);
-    })
-    .map((image) => {
-      // Non-legacy images pass through unchanged
-      if (!isLegacyTerrainSketchImage(image)) return image;
-      // Migrate: preserve all user data, remove terrainSlot
-      const { terrainSlot: _, ...canonical } = image;
-      return canonical;
-    });
 }
 
 function mergeBoundaryTable(template: TableContent, current: TableContent | undefined): TableContent {

@@ -32,7 +32,7 @@ import { DatosPreview } from "./datos-generales-preview";
 import { TerrenoPreview } from "./terreno-preview";
 import { isTerrenoSection } from "@/features/valuations/sections/terreno";
 import { ConstruccionPreview, isConstruccionSection } from "./construccion-preview";
-import { DocumentBlockRenderer, documentBlockFlowItems } from "./document-block-renderer";
+import { documentBlockFlowItems } from "./document-block-renderer";
 import { DocumentPreviewHeader } from "./document-preview-header";
 import {
   AutoPaginatedDocumentFlow,
@@ -209,7 +209,7 @@ function CaratulaPreview({
         {block.title || "No se proporcionó"}
       </h2>
     ),
-    renderApartadoTitle: (_block: Block, subBlock: Apartado, _displayLabel: string) => (
+    renderApartadoTitle: (_block: Block, subBlock: Apartado) => (
       <h3 className={theme.apartadoTitle}>{subBlock.title}</h3>
     ),
   };

@@ -7,7 +7,7 @@ import {
   apartadoMetadataFromContent,
   hydrateApartadoMetadata,
 } from "../src/features/valuations/metadata";
-import { resolveContentLayout } from "../src/features/valuations/services/content-layout";
+import { resolveContentLayout } from "../src/features/valuations/services/content-layout-legacy";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */

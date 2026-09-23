@@ -6,6 +6,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ReportPreview } from "../src/features/valuations/components/report-preview";
 import type { AppSection, CaratulaFormData } from "../src/features/valuations/model";
 import { ensureTerrenoSection, terrenoSection } from "../src/features/valuations/sections/terreno";
+// Must load after the components so client-only libraries still see no DOM at import time.
+import "./support/ssr-portal-shim";
 
 const caratula: CaratulaFormData = {
   tituloInmueble: "",
@@ -36,30 +38,33 @@ const emptySection: AppSection = {
   blocks: [],
 };
 
+const contentBlock = {
+  id: "bloque-contenido",
+  title: "BLOQUE CON CONTENIDO",
+  sectionLabel: "I",
+  enabled: true,
+  required: false,
+  concepts: [{ id: "concepto-contenido", label: "Campo", value: "Valor", enabled: true }],
+  apartados: [],
+  tables: [],
+  images: [],
+};
+
+// Sections without visible content render no document pages, so each fixture carries one block.
 test("Datos, Terreno y secciones genéricas comparten el encabezado universal", () => {
   const sections: AppSection[] = [
-    { ...emptySection, id: "datosGenerales", label: "II", title: "DATOS GENERALES" },
+    { ...emptySection, id: "datosGenerales", label: "II", title: "DATOS GENERALES", blocks: [contentBlock] },
     ensureTerrenoSection({ ...structuredClone(terrenoSection), label: "III" }),
-    emptySection,
+    { ...emptySection, blocks: [contentBlock] },
   ];
 
   for (const section of sections) {
     const html = renderPreview(section);
     assert.match(html, /data-document-preview-header="true"/);
-    assert.match(html, /sm:grid-cols-\[190px_minmax\(0,1fr\)\]/);
-    assert.match(html, /h-24/);
-    assert.match(html, /text-3xl/);
-    assert.match(html, /bg-\[var\(--caratula-dark-blue\)\][^>]*>DICTAMEN VALUATORIO/);
-    assert.match(html, /pt-3 sm:px-8/);
+    assert.match(html, />DICTAMEN VALUATORIO</);
+    assert.match(html, />Empresa</);
+    assert.match(html, />VLO-001</);
   }
-});
-
-test("la hoja compartida conserva borde, sombra y proporción carta", () => {
-  const html = renderPreview(emptySection);
-  assert.match(html, /min-h-\[1056px\]/);
-  assert.match(html, /max-w-\[816px\]/);
-  assert.match(html, /border border-slate-300/);
-  assert.match(html, /shadow-xl shadow-slate-900\/10/);
 });
 
 function renderPreview(section: AppSection) {

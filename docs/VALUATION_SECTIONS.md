@@ -13,23 +13,15 @@ Cada seccion define:
 - permisos;
 - tablas Prisma reales utilizadas.
 
-## Contratos
+## Cómo se guarda
 
-- `GET /api/avaluos/:id/sections`
-- `GET /api/avaluos/:id/sections/:sectionKey`
-- `PATCH /api/avaluos/:id/sections/:sectionKey`
-- Compatibilidad temporal: `PUT` sigue activo.
-- Bloques configurables permanecen bajo `/blocks` y aceptan `sectionKey` o id numerico.
-- `PUT /api/avaluos/:id/full` persiste metadatos y secciones configurables en la version de trabajo.
-
-## Modelo hibrido
-
-- Secciones con reglas fuertes usan tablas normalizadas como `TerrenoAvaluo`, `ConstruccionAvaluo`, `ConclusionAvaluo`.
-- Secciones configurables usan `SeccionDocumento`, `NodoDocumento`, `ValorNodoDocumento`.
+- El editor guarda el avalúo completo con `PUT /api/avaluos/:id/full`. No se guardan secciones o bloques por separado.
+- Todo el contenido se guarda en el árbol genérico `SeccionDocumento` → `NodoDocumento` → `ValorNodoDocumento`, con tablas en `TablaDocumento`. La única tabla normalizada que se escribe es `CaratulaAvaluo`.
+- Los campos `kind` (`normalized`, `document`, `hybrid`), `tables` y `permissions` del registro son declarativos: hoy ningún código los consulta.
 
 ## Versionado
 
-- La creacion de un avaluo asegura `VersionAvaluo` de trabajo.
-- El guardado no crea una version nueva.
-- `POST /api/avaluos/:id/conclude` finaliza la version de trabajo si existen catalogos finales configurados.
-- `POST /api/avaluos/:id/reopen` crea una nueva version de trabajo derivada de la final.
+- Crear un avalúo asegura una `VersionAvaluo` de trabajo. Guardar no crea versión nueva.
+- `POST /api/avaluos/:id/conclude` finaliza la versión de trabajo.
+- `POST /api/avaluos/:id/reopen` crea una nueva versión de trabajo a partir de la final. Hoy solo copia los nodos raíz, sin valores ni tablas.
+- Ninguna de las dos acciones tiene botón en la interfaz.

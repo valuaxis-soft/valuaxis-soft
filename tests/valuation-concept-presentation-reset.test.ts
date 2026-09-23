@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { clearConceptCellPresentations } from "./concept-presentation";
+import { describe, it } from "node:test";
+import { expect } from "./support/expect";
+import { clearConceptCellPresentations } from "../src/features/valuations/services/concept-presentation";
 import type { ContentLayout } from "@/features/valuations/model";
 
 describe("clearConceptCellPresentations", () => {

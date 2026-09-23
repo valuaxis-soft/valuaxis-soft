@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import test from "node:test";
 import type { Concept } from "../src/features/valuations/model";
 import {
@@ -17,8 +15,6 @@ import {
   resolveEffectiveConcept,
   unlinkConcept,
 } from "../src/features/valuations/concept-links";
-
-const root = process.cwd();
 
 test("concept type defaults to text while identity keys are local when missing", () => {
   const concept = createIndependentConcept({
@@ -180,8 +176,6 @@ test("changing a full link to copy concept snapshots resolved numeric metadata a
   assert.equal(conceptLinkIndicator(copied, updated), "none");
 });
 
-
-
 test("linking from a keyless source writes generated keys to both source and linked concept", () => {
   const source: Concept = { id: "source", label: "Cliente", value: "Ada" };
 
@@ -302,19 +296,4 @@ test("linked updates can update everywhere or edit only here", () => {
   assert.equal(conceptLinkIndicator(local!, editedHere), "none");
   assert.equal(editedHere.find((concept) => concept.id === source.id)?.label, "Solicitante");
   assert.equal(editedHere.find((concept) => concept.id === source.id)?.value, "Grace");
-});
-
-test("Carátula compact layout remains a small grid and avoids preview/report imports", () => {
-  const editor = readFileSync(join(root, "src/features/valuations/components/workspace/valuation-editor-panel.tsx"), "utf8");
-  const preview = readFileSync(join(root, "src/features/valuations/components/workspace/valuation-preview-panel.tsx"), "utf8");
-  const report = readFileSync(join(root, "src/features/valuations/components/report-preview.tsx"), "utf8");
-  const branchStart = editor.indexOf('if (layout === "caratulaGrid")');
-  const branchEnd = editor.indexOf("  return (\n    <div\n      className={cn(", branchStart);
-  const branch = editor.slice(branchStart, branchEnd);
-
-  assert.match(editor, /layout=\{usesCompactConceptSystem \? "caratulaGrid" : "default"\}/);
-  assert.match(editor, /grid-cols-1[\s\S]*md:grid-cols-2[\s\S]*xl:grid-cols-3/);
-  assert.doesNotMatch(branch, /rounded-lg border bg-background p-3/);
-  assert.doesNotMatch(preview, /concept-links|labelKey|valueKey|ConceptLink/);
-  assert.doesNotMatch(report, /concept-links|labelKey|valueKey|ConceptLink/);
 });

@@ -47,54 +47,8 @@ export function buildContentColumnDndId(
 }
 
 /* ------------------------------------------------------------------ */
-/*  Scoped drop zone IDs (for useDroppable)                            */
-/* ------------------------------------------------------------------ */
-
-/**
- * Build a globally unique drop zone ID for column LEFT/RIGHT targeting.
- *
- * Format:
- *   drop-col::block::    {blockId}::{columnId}::{intent}
- *   drop-col::apartado:: {blockId}::{apartadoId}::{columnId}::{intent}
- */
-export function buildContentColumnDropDndId(
-  containerRef: ContentContainerRef,
-  columnId: string,
-  intent: "left" | "right",
-): string {
-  if (containerRef.kind === "block") {
-    return `drop-col::block::${containerRef.blockId}::${columnId}::${intent}`;
-  }
-  return `drop-col::apartado::${containerRef.blockId}::${containerRef.apartadoId}::${columnId}::${intent}`;
-}
-
-/**
- * Build a globally unique drop zone ID for row BELOW targeting.
- *
- * Format:
- *   drop-row::block::    {blockId}::{rowId}::below
- *   drop-row::apartado:: {blockId}::{apartadoId}::{rowId}::below
- */
-export function buildContentRowDropDndId(
-  containerRef: ContentContainerRef,
-  rowId: string,
-): string {
-  if (containerRef.kind === "block") {
-    return `drop-row::block::${containerRef.blockId}::${rowId}::below`;
-  }
-  return `drop-row::apartado::${containerRef.blockId}::${containerRef.apartadoId}::${rowId}::below`;
-}
-
-/* ------------------------------------------------------------------ */
 /*  Parse helpers — extract domain IDs from scoped IDs                 */
 /* ------------------------------------------------------------------ */
-
-/**
- * Check if a DnD ID is a scoped content sortable column.
- */
-export function isScopedContentColumnId(id: string): boolean {
-  return id.startsWith("content::block::") || id.startsWith("content::apartado::");
-}
 
 /**
  * Check if a DnD ID is a scoped content column drop zone.
@@ -147,78 +101,6 @@ export function extractDomainColumnIdFromScoped(id: string): string | null {
   }
 
   // Row drop: drop-row::block::blockId::rowId::below
-  // This returns rowId, not columnId — use extractDomainRowIdFromScoped for rows
-  return null;
-}
-
-/**
- * Extract the domain row ID from a scoped row drop zone ID.
- */
-export function extractDomainRowIdFromScoped(id: string): string | null {
-  if (id.startsWith("drop-row::block::")) {
-    const rest = id.slice("drop-row::block::".length);
-    const parts = rest.split("::");
-    // parts: [blockId, rowId, "below"]
-    return parts.length >= 3 ? parts[1] : null;
-  }
-  if (id.startsWith("drop-row::apartado::")) {
-    const rest = id.slice("drop-row::apartado::".length);
-    const parts = rest.split("::");
-    // parts: [blockId, apartadoId, rowId, "below"]
-    return parts.length >= 4 ? parts[2] : null;
-  }
-  return null;
-}
-
-/**
- * Extract the drop zone intent (left/right) from a scoped column drop ID.
- */
-export function extractDropIntentFromScoped(id: string): "left" | "right" | null {
-  if (id.endsWith("::left")) return "left";
-  if (id.endsWith("::right")) return "right";
-  return null;
-}
-
-/**
- * Extract the container ref from a scoped sortable or drop zone ID.
- * Returns the container ref or null if not a scoped content ID.
- */
-export function extractContainerFromScopedId(id: string): ContentContainerRef | null {
-  if (id.startsWith("content::block::")) {
-    const rest = id.slice("content::block::".length);
-    const blockId = rest.split("::")[0];
-    return blockId ? { kind: "block", blockId } : null;
-  }
-  if (id.startsWith("content::apartado::")) {
-    const rest = id.slice("content::apartado::".length);
-    const parts = rest.split("::");
-    return parts.length >= 2
-      ? { kind: "apartado", blockId: parts[0], apartadoId: parts[1] }
-      : null;
-  }
-  if (id.startsWith("drop-col::block::")) {
-    const rest = id.slice("drop-col::block::".length);
-    const blockId = rest.split("::")[0];
-    return blockId ? { kind: "block", blockId } : null;
-  }
-  if (id.startsWith("drop-col::apartado::")) {
-    const rest = id.slice("drop-col::apartado::".length);
-    const parts = rest.split("::");
-    return parts.length >= 2
-      ? { kind: "apartado", blockId: parts[0], apartadoId: parts[1] }
-      : null;
-  }
-  if (id.startsWith("drop-row::block::")) {
-    const rest = id.slice("drop-row::block::".length);
-    const blockId = rest.split("::")[0];
-    return blockId ? { kind: "block", blockId } : null;
-  }
-  if (id.startsWith("drop-row::apartado::")) {
-    const rest = id.slice("drop-row::apartado::".length);
-    const parts = rest.split("::");
-    return parts.length >= 2
-      ? { kind: "apartado", blockId: parts[0], apartadoId: parts[1] }
-      : null;
-  }
+  // Row drop IDs carry a rowId, not a columnId
   return null;
 }

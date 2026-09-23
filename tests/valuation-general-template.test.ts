@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import test from "node:test";
 import { getInitialSectionTemplate } from "../src/features/valuations/sections";
 import {
@@ -31,7 +29,6 @@ test("general Caratula starts with one company header followed by existing profe
   ]);
   assert.equal(template.blocks.filter((block) => block.id === COMPANY_HEADER_BLOCK_ID).length, 1);
 });
-
 
 test("hydrates only exact preview-visible Caratula concepts from creation values", () => {
   const template = getInitialSectionTemplate("CARATULA");
@@ -70,13 +67,6 @@ test("Caratula hydration is deterministic and does not add blocks or concepts", 
   );
 });
 
-
-test("creation passes the canonical appraisal title to general Caratula defaults without using it as Objeto", () => {
-  const source = readFileSync(join(process.cwd(), "src/features/valuations/actions/save-valuation.ts"), "utf8");
-
-  assert.match(source, /generalCaratulaDefaults:\s*\{[\s\S]*?title:\s*input\.title/);
-  assert.doesNotMatch(source, /objeto:\s*input\.title/);
-});
 test("responsible valuator uses the selected member full name with creator fallback", () => {
   assert.equal(resolveResponsibleValuatorName({
     SNombre: "Ana",

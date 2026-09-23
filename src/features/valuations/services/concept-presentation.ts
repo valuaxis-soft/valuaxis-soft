@@ -189,29 +189,12 @@ export function clearColumnPresentation(
       ...row,
       columns: row.columns.map((col) => {
         if (col.id !== columnId) return col;
-        const { conceptPresentation: _, ...rest } = col;
+        const rest = { ...col };
+        delete rest.conceptPresentation;
         return rest;
       }),
     })),
   };
-}
-
-/**
- * Find the column ID that contains a specific item (concept/image/table).
- * Returns undefined if not found.
- */
-export function findColumnIdForItem(
-  layout: ContentLayout,
-  itemId: string,
-): string | undefined {
-  for (const row of layout.rows) {
-    for (const col of row.columns) {
-      if (col.items.some((ref) => ref.id === itemId)) {
-        return col.id;
-      }
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -233,7 +216,8 @@ export function clearConceptCellPresentations(
         // Only clear columns that contain a Concept item
         const hasConcept = col.items.some((ref) => ref.type === "concept" && conceptIds.has(ref.id));
         if (!hasConcept || !col.conceptPresentation) return col;
-        const { conceptPresentation: _, ...rest } = col;
+        const rest = { ...col };
+        delete rest.conceptPresentation;
         return rest;
       }),
     })),

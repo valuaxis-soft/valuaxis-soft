@@ -59,13 +59,11 @@ import {
   getCaratulaBlockKind,
   isCaratulaIntermediateBlock,
   isConclusionNarrativeConcept,
-  UNTITLED_CARATULA_CONCEPT,
 } from "@/features/valuations/services/caratula-blocks";
 import { formatVisibleChildLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
 import { resolveBlockFlowV2, moveBlockFlowV2ApartadoOneStep, canMoveBlockFlowV2ApartadoOneStep } from "@/features/valuations/services/block-flow";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import {
-  isTerrenoMainBlock,
   isTerrenoSection,
 } from "@/features/valuations/sections/terreno";
 import { cn } from "@/lib/utils";
@@ -487,14 +485,12 @@ function SortableBlockEditor(props: {
 }) {
   const { allSections, block, readOnly, section } = props;
   const isCaratula = section.id === "caratula";
-  const isTerreno = isTerrenoSection(section);
   const hasSectionBoundary = hasPreMarketSectionBoundary(section);
   const hasConceptLayoutControls = hasPreMarketConceptControls(section);
   const usesSectionTerminology = hasPreMarketConceptControls(section);
   const blockTerm = usesSectionTerminology ? "sección" : "bloque";
   const subBlockTerm = usesSectionTerminology ? "apartado" : "subbloque";
   const subBlockButtonLabel = usesSectionTerminology ? "Apartado" : "Subbloque";
-  const blockTitleLabel = usesSectionTerminology ? "Título de la sección" : "Título del bloque";
   const caratulaBlockKind = isCaratula ? getCaratulaBlockKind(block) : "intermediate";
   const isIntermediateCaratulaBlock = isCaratula && caratulaBlockKind === "intermediate";
   const isRemovableCaratulaBlock =

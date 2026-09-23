@@ -6,11 +6,9 @@ import {
   ensureTableV2,
   type TableV2,
   type TableCellV2,
-  type TableFormula,
   type TableColumn,
   type FormulaResult,
   type ColumnCapability,
-  type HeaderLayoutCell,
   moveTableColumn,
   moveTableRow,
   insertTableColumn,
@@ -75,7 +73,6 @@ import {
   Calculator,
   Columns3,
   GripVertical,
-  Plus,
   Rows3,
   Trash2,
   X,
@@ -515,8 +512,6 @@ export function TableEditorItem({
   /* ---- Row DnD state ---- */
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [overRowId, setOverRowId] = useState<string | null>(null);
-
-  const isDndDisabled = readOnly || !!formulaMode;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),

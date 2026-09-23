@@ -2,7 +2,6 @@
 
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -13,7 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import type { AppSection, Block, ImageContent } from "../model";
+import type { AppSection } from "../model";
 import { ensureTableV2 } from "../services/table";
 
 export type DocumentFlowItem = {
@@ -344,7 +343,7 @@ export function AutoPaginatedDocumentFlow({
 
     // ID-based measurement: key by item identity, not DOM index
     const heightById = new Map<string, number>();
-    let prevBottomByIndex: number[] = [];
+    const prevBottomByIndex: number[] = [];
     for (let i = 0; i < elements.length; i++) {
       const el = elements[i];
       const id = el.getAttribute("data-document-flow-item-id");
@@ -508,24 +507,6 @@ export function AutoPaginatedDocumentFlow({
       </div>
     </LayoutInvalidationContext.Provider>
   );
-}
-
-export function splitDocumentFlowItems(items: DocumentFlowItem[]) {
-  const pages: DocumentFlowItem[][] = [];
-  let currentPage: DocumentFlowItem[] = [];
-
-  for (const item of items) {
-    if (item.startOnNewPage && currentPage.length) {
-      pages.push(currentPage);
-      currentPage = [];
-    }
-
-    currentPage.push(item);
-  }
-
-  if (currentPage.length) pages.push(currentPage);
-
-  return pages;
 }
 
 function splitDocumentFlowItemIds(items: DocumentFlowItem[]): string[][] {

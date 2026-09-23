@@ -63,7 +63,7 @@ test("ConceptEditorList — empty list renders without error", () => {
 /* ------------------------------------------------------------------ */
 
 test("ImageEditorItem — renders image title and preview", () => {
-  const img = image("i1", "My Photo");
+  const img = { ...image("i1", "My Photo"), src: "/uploads/photo.jpg" };
   const html = renderToStaticMarkup(
     createElement(ImageEditorItem, {
       image: img,
@@ -75,8 +75,7 @@ test("ImageEditorItem — renders image title and preview", () => {
 
   assert.ok(html.includes("My Photo"), "renders image title");
   assert.ok(html.includes("img"), "renders img element");
-  // src="" is stripped by SSR when empty; verify the img tag exists
-  assert.ok(html.includes("<img"), "renders img element");
+  assert.ok(html.includes('src="/uploads/photo.jpg"'), "renders img with its source");
 });
 
 test("ImageEditorItem — readOnly disables inputs", () => {
@@ -93,14 +92,13 @@ test("ImageEditorItem — readOnly disables inputs", () => {
   assert.ok(html.includes('disabled'), "inputs are disabled");
 });
 
-test("ImageEditorItem — calls onRemove with correct id", () => {
-  let removedId: string | null = null;
+test("ImageEditorItem — renders with an onRemove handler", () => {
   const img = image("i1", "Photo");
   // Verify the component renders without error; id is used in callbacks only
   const html = renderToStaticMarkup(
     createElement(ImageEditorItem, {
       image: img,
-      onRemove: (id) => { removedId = id; },
+      onRemove: noop,
       onUpdate: noopUpdate,
       readOnly: false,
     }),
@@ -237,9 +235,7 @@ test("TableEditors — empty returns null", () => {
 /*  Callback targeting                                                 */
 /* ------------------------------------------------------------------ */
 
-test("ImageEditorItem — onUpdate receives image id", () => {
-  let capturedId: string | null = null;
-  let capturedPatch: Partial<ImageContent> | null = null;
+test("ImageEditorItem — renders with onRemove and onUpdate handlers", () => {
   const img = image("i-target");
 
   // Render to verify the component is wired (SSR doesn't fire events,
@@ -247,8 +243,8 @@ test("ImageEditorItem — onUpdate receives image id", () => {
   const html = renderToStaticMarkup(
     createElement(ImageEditorItem, {
       image: img,
-      onRemove: (id) => { capturedId = id; },
-      onUpdate: (id, patch) => { capturedId = id; capturedPatch = patch; },
+      onRemove: noop,
+      onUpdate: noopUpdate,
       readOnly: false,
     }),
   );
@@ -264,7 +260,7 @@ test("TableEditorItem — onUpdate receives table id", () => {
       onAddColumn: noop,
       onAddRow: noop,
       onRemove: noop,
-      onUpdate: (id, updater) => { /* verify no crash */ },
+      onUpdate: () => {},
       readOnly: false,
     }),
   );

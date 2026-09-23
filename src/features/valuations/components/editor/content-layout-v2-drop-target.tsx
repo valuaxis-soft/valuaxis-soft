@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
 import { buildContentColumnDndId, type ContentContainerRef } from "./content-dnd-ids";
@@ -150,13 +149,6 @@ export function parseBfApartadoDropZoneId(id: string): { apartadoId: string; pla
   const placement = rest.slice(sepIdx + BF_SEP.length);
   if (placement !== "left" && placement !== "right") return null;
   return { apartadoId, placement };
-}
-
-/**
- * Check if a droppable ID is a BlockFlow structural zone.
- */
-export function isBfStructuralZone(id: string): boolean {
-  return id.startsWith(BF_ROW_PREFIX) || id.startsWith(BF_APARTADO_PREFIX);
 }
 
 /* ------------------------------------------------------------------ */
@@ -449,55 +441,6 @@ export function BfApartadoDropZones({
           />
         </>
       )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Block-level "inside" drop target (fallback for empty Block)         */
-/* ------------------------------------------------------------------ */
-
-/**
- * A broad semantic target for dropping content into an empty Block's
- * direct content area. Only visible when no more specific structural
- * targets exist.
- */
-export function BfBlockInsideDropZone({
-  blockId,
-  activeColumnId,
-  activeTarget,
-  children,
-}: {
-  blockId: string;
-  activeColumnId: string | null;
-  activeTarget: string | null;
-  children: React.ReactNode;
-}) {
-  const isDragging = activeColumnId !== null;
-  const zoneId = `bfblock-inside-${blockId}`;
-  const { setNodeRef } = useDroppable({
-    id: zoneId,
-    disabled: !isDragging,
-    data: { kind: "block-inside", container: { kind: "block" as const, blockId }, placement: "new-row" as const },
-  });
-
-  const isHovered = activeTarget === zoneId;
-
-  return (
-    <div className="relative">
-      {children}
-      <div
-        ref={setNodeRef}
-        data-bf-block-inside={blockId}
-        className={cn(
-          "absolute inset-0 z-20 flex items-center justify-center rounded-lg border-2 border-dashed transition-colors duration-100",
-          isHovered
-            ? "border-primary/60 bg-primary/5"
-            : isDragging
-              ? "border-transparent bg-transparent hover:border-primary/20 hover:bg-primary/5"
-              : "border-transparent bg-transparent pointer-events-none",
-        )}
-      />
     </div>
   );
 }

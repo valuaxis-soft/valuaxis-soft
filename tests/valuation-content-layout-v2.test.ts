@@ -5,14 +5,14 @@ import type {
   ContentLayoutItem,
   ContentLayoutItemRef,
   ContentLayoutRowV2,
-  ContentLayoutV2,
+  ContentLayout as ContentLayoutV2,
 } from "../src/features/valuations/model";
 import {
-  isContentLayoutV2,
-  normalizeContentLayoutV2,
+  isContentLayout as isContentLayoutV2,
+  normalizeContentLayout as normalizeContentLayoutV2,
   convertContentLayoutV1ToV2,
   CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW,
-} from "../src/features/valuations/services/content-layout-v2";
+} from "../src/features/valuations/services/content-layout";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */

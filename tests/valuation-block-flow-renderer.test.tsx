@@ -4,7 +4,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import test from "node:test";
 import type {
   Block,
-  BlockFlow,
   Concept,
   ImageContent,
   Apartado,
@@ -25,7 +24,7 @@ function image(id: string, title?: string): ImageContent {
 }
 
 function table(id: string, title?: string): TableContent {
-  return { id, title: title ?? `Table ${id}`, columns: [], columnKeys: [], rows: [], enabled: true };
+  return { id, title: title ?? `Table ${id}`, columns: ["A"], columnKeys: [], rows: [["1"]], enabled: true };
 }
 
 function subBlock(id: string, title?: string): Apartado {
@@ -749,8 +748,8 @@ test("V2 numbering — R1, [A,B], R2, C → correct flow indices", () => {
     return createElement("div", { "data-testid": `apartado-${sb.id}` }, sb.title);
   });
 
-  // Content row takes index 0, then A=1, B=2, content row takes 3, C=4
-  assert.ok(labels.includes("a:1"), "A has flow index 1");
-  assert.ok(labels.includes("b:2"), "B has flow index 2");
-  assert.ok(labels.includes("c:4"), "C has flow index 4");
+  // Flow indices number apartados only; content rows do not consume an index
+  assert.ok(labels.includes("a:0"), "A has flow index 0");
+  assert.ok(labels.includes("b:1"), "B has flow index 1");
+  assert.ok(labels.includes("c:2"), "C has flow index 2");
 });

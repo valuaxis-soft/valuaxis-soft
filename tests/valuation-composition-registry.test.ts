@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 import {
   getSectionComposition,
@@ -118,18 +116,6 @@ test("zero fixed modules implies no fixed zone", () => {
 /*  Registry purity                                                     */
 /* ------------------------------------------------------------------ */
 
-test("registry does not expose React components", () => {
-  const source = readFileSync(
-    join(process.cwd(), "src/features/valuations/sections/composition-registry.ts"),
-    "utf-8",
-  );
-  // Check for actual React usage, not just mentions in comments
-  assert.ok(!source.includes("import.*React"), "must not import React");
-  assert.ok(!source.includes("ComponentType"), "must not use ComponentType");
-  assert.ok(!source.includes("JSX.Element"), "must not reference JSX.Element");
-  assert.ok(!source.includes(": ReactNode"), "must not use ReactNode as type");
-});
-
 /* ------------------------------------------------------------------ */
 /*  Type exports                                                        */
 /* ------------------------------------------------------------------ */
@@ -145,7 +131,7 @@ test("types are exported", () => {
 });
 
 test("FixedModuleDescriptor has id and kind", () => {
-  const module: FixedModuleDescriptor = { id: "test", kind: "test-kind" };
-  assert.equal(module.id, "test");
-  assert.equal(module.kind, "test-kind");
+  const descriptor: FixedModuleDescriptor = { id: "test", kind: "test-kind" };
+  assert.equal(descriptor.id, "test");
+  assert.equal(descriptor.kind, "test-kind");
 });

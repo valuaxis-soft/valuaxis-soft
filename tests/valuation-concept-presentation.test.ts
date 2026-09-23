@@ -1,13 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import { expect } from "./support/expect";
 import {
   resolveConceptLabelGuide,
   resolveCellConceptGuide,
   clampGuidePx,
   DEFAULT_GUIDE_PX,
-  MIN_OFFSET_PX,
   MAX_OFFSET_PX,
   type ConceptPresentation,
-} from "./concept-presentation";
+} from "../src/features/valuations/services/concept-presentation";
 
 describe("resolveConceptLabelGuide", () => {
   it("returns default for undefined", () => {
@@ -44,19 +44,19 @@ describe("resolveConceptLabelGuide", () => {
 
   it("converts legacy absolute px to offset", () => {
     // 180px absolute → offset = 180 - 120 = 60
-    const result = resolveConceptLabelGuide({ labelGuidePx: 180 } as any);
+    const result = resolveConceptLabelGuide({ labelGuidePx: 180 } as Parameters<typeof resolveConceptLabelGuide>[0]);
     expect(result).toBe(DEFAULT_GUIDE_PX + 60);
   });
 
   it("converts legacy compact preset to offset", () => {
     // compact = 36% of 690 = 248px → offset = 248 - 120 = 128
-    const result = resolveConceptLabelGuide({ labelGuidePreset: "compact" } as any);
+    const result = resolveConceptLabelGuide({ labelGuidePreset: "compact" } as Parameters<typeof resolveConceptLabelGuide>[0]);
     expect(result).toBe(DEFAULT_GUIDE_PX + 128);
   });
 
   it("converts legacy custom percent to offset", () => {
     // 35% of 690 = 241.5 → rounds to 242 → offset = 242 - 120 = 122
-    const result = resolveConceptLabelGuide({ labelGuidePreset: "custom", labelGuidePercent: 35 } as any);
+    const result = resolveConceptLabelGuide({ labelGuidePreset: "custom", labelGuidePercent: 35 } as Parameters<typeof resolveConceptLabelGuide>[0]);
     expect(result).toBeGreaterThanOrEqual(DEFAULT_GUIDE_PX + 121);
     expect(result).toBeLessThanOrEqual(DEFAULT_GUIDE_PX + 122);
   });

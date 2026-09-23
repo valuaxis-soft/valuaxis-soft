@@ -24,9 +24,7 @@ import type {
   Concept,
   ContentLayoutItemRef,
   ContentLayout,
-  ImageContent,
   Apartado,
-  TableContent,
 } from "../../model";
 import { resolveContentLayout } from "../../services/content-layout";
 import {
@@ -66,7 +64,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import {
-  V2ColumnDropZones,
   V2RowDropTarget,
   parseV2DropZoneId,
   parseV2RowBelowZone,
@@ -82,7 +79,7 @@ import {
   isScopedContentRowDropId,
   type ContentContainerRef,
 } from "./content-dnd-ids";
-import { V2RowContent, renderLayoutItem, columnSpan } from "./editable-content-layout-v2";
+import { V2RowContent, renderLayoutItem } from "./editable-content-layout-v2";
 import { ContentDragPreview } from "./content-layout-drag-preview";
 import { CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW } from "../../services/content-layout";
 import type {
@@ -343,21 +340,6 @@ export function BlockFlowRenderer({
     () => new Set(block.apartados.map((sb) => sb.id)),
     [block.apartados],
   );
-
-  /* ---- Compute which apartados are in singleton rows ---- */
-  const singletonApartadoSet = useMemo(() => {
-    const set = new Set<string>();
-    if (!blockFlowV2) return set;
-    for (const structuralRow of blockFlowV2.rows) {
-      if (
-        structuralRow.items.length === 1 &&
-        structuralRow.items[0].type === "apartado"
-      ) {
-        set.add(structuralRow.items[0].apartadoId);
-      }
-    }
-    return set;
-  }, [blockFlowV2]);
 
   /* ---- DnD state ---- */
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
@@ -915,9 +897,6 @@ export function BlockFlowRenderer({
     [block.id],
   );
 
-  const activeColumn = activeColumnId
-    ? resolvedLayout.rows.flatMap((r) => r.columns).find((c) => c.id === activeColumnId)
-    : null;
   const activeItem = activeColumnId ? columnItemRef.get(activeColumnId) ?? null : null;
 
   /* ---- Render callback ---- */

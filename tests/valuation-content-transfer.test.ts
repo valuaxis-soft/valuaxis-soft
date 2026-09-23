@@ -1,8 +1,8 @@
 ﻿import assert from "node:assert/strict";
 import test from "node:test";
-import type { Block, ContentLayoutV2, Apartado } from "../src/features/valuations/model";
+import type { Block, ContentLayout as ContentLayoutV2, Apartado } from "../src/features/valuations/model";
 import { moveContentItemAcrossContainers } from "../src/features/valuations/services/content-transfer";
-import type { ContentContainerRef, ContentTransferDescriptor } from "../src/features/valuations/services/content-transfer";
+import type { ContentContainerRef } from "../src/features/valuations/services/content-transfer";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */

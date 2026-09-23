@@ -20,11 +20,6 @@ export const NUMERIC_VALUE_FORMAT_OPTIONS: Array<{ value: ConceptValueFormat; la
   { value: "custom", label: "Otra unidad" },
 ];
 
-export const BOUNDARY_DISTANCE_VALUE_FORMAT_OPTIONS = NUMERIC_VALUE_FORMAT_OPTIONS.filter((option) =>
-  option.value === "plain" || option.value === "m" || option.value === "km" ||
-  option.value === "cm" || option.value === "mm" || option.value === "custom",
-);
-
 export function isBoundaryDistanceValueFormat(value: unknown): value is ConceptValueFormat {
   return value === "plain" || value === "m" || value === "km" || value === "cm" ||
     value === "mm" || value === "custom";
@@ -146,11 +141,6 @@ function parseDateInput(value: string): Date | undefined {
   }
 
   return undefined;
-}
-
-/** Capitalize the first letter of a string. */
-function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 /** Capitalize the month name in a Spanish date string like "12 de febrero de 2024". */

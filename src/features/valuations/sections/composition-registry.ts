@@ -114,16 +114,6 @@ export function getFixedModules(
 }
 
 /**
- * Get the document sequence for a section.
- * Returns undefined if no sequence exists (canonical editable zone).
- */
-export function getCompositionSequence(
-  sectionKey: ValuationSectionKey,
-): CompositionSequenceItem[] | undefined {
-  return compositionByKey.get(sectionKey)?.sequence;
-}
-
-/**
  * Check whether a section has a fixed semantic zone.
  */
 export function hasFixedZone(sectionKey: ValuationSectionKey): boolean {

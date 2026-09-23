@@ -3,7 +3,6 @@
 import type { Concept, ContentLayoutPersisted, ImageContent, TableContent } from "@/features/valuations/model";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
-import { useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { resolveConceptLabelGuide } from "@/features/valuations/services/concept-presentation";
 import { DocumentConceptValue } from "./document-concept-value";
 import { DocumentImage } from "./document-image";

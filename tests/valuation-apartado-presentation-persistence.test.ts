@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import { expect } from "./support/expect";
 import type { Apartado } from "@/features/valuations/model";
 
 // Test that presentationMode survives persistence round-trip

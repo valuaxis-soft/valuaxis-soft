@@ -9,12 +9,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChangeEvent, useState, type ReactNode } from "react";
-import { ArrowLeftRight, ArrowUpDown, CalendarIcon, ChevronDown, ChevronUp, Columns3, Copy, EllipsisVertical, Eye, EyeOff, FilePlus2, GripVertical, Hash, ImagePlus, Link, Link2, ListPlus, LockKeyhole, Maximize2, Minimize2, Minus, Plus, Rows3, Trash2, Unlink } from "lucide-react";
+import { ChangeEvent, useState } from "react";
+import { CalendarIcon } from "lucide-react";
 import { es } from "react-day-picker/locale";
 import { type DropdownProps } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 import type { ConceptDateFormat } from "@/features/valuations/model";
 

@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { normalizeContentLayout } from "./content-layout";
+import { describe, it } from "node:test";
+import { expect } from "./support/expect";
+import { normalizeContentLayout } from "../src/features/valuations/services/content-layout";
 import type { ContentLayout } from "@/features/valuations/model";
 
 describe("normalizeContentLayout preserves conceptPresentation", () => {

@@ -413,21 +413,6 @@ function findColumnByItemId(
   return null;
 }
 
-/**
- * Collect the flat item order from all rows (left-to-right, top-to-bottom).
- */
-function flatItemOrder(rows: ContentLayoutRowV2[]): string[] {
-  const order: string[] = [];
-  for (const row of rows) {
-    for (const col of row.columns) {
-      for (const ref of col.items) {
-        order.push(ref.id);
-      }
-    }
-  }
-  return order;
-}
-
 /* ------------------------------------------------------------------ */
 /*  Full-row: order-preserving split                                   */
 /* ------------------------------------------------------------------ */

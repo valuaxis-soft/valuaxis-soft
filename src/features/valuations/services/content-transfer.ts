@@ -14,7 +14,6 @@ import type {
   Block,
   BlockFlowV2,
   ContentLayoutColumnV2,
-  ContentLayoutItemRef,
   ContentLayoutRowV2,
   ContentLayout,
   Apartado,
@@ -555,7 +554,7 @@ export function moveContentItemAcrossContainers(
 
   /* ---- Handle BlockFlowV2 updates ---- */
   if (destination.kind === "block" && newDestRowId && blockFlowPlacement) {
-    let flow = newBlock.blockFlow;
+    const flow = newBlock.blockFlow;
     if (!flow || (typeof flow === "object" && "version" in flow && (flow as { version: number }).version !== 2)) {
       // No V2 flow exists — need to handle this case
       // For now, only proceed if there's already a V2 flow

@@ -1,10 +1,9 @@
 import type { ContentLayoutItem } from "../model";
 import {
-  CONTENT_LAYOUT_COLUMNS,
   CONTENT_LAYOUT_MAX_ITEMS_PER_ROW,
   canFitContentLayoutItem,
 } from "./content-layout-policy";
-import { computeBalancedRowSizes, balancedRowSpan } from "./content-layout-balanced";
+import { balancedRowSpan } from "./content-layout-balanced";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

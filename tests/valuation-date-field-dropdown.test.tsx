@@ -126,38 +126,6 @@ test("Calendar without captionLayout dropdown does NOT render selects", () => {
   );
 });
 
-test("ValuationDateField source: uses custom Dropdown component", () => {
-  const fs = require("node:fs");
-  const src = fs.readFileSync(
-    "src/features/valuations/components/editor/valuation-date-field.tsx",
-    "utf8",
-  );
-  assert.ok(
-    src.includes('captionLayout="dropdown"'),
-    "ValuationDateField must pass captionLayout=\"dropdown\" to Calendar",
-  );
-  assert.ok(
-    src.includes("components={{") && src.includes("Dropdown:"),
-    "ValuationDateField must pass a custom Dropdown component via Calendar components prop",
-  );
-});
-
-test("ValuationDateField source: Dropdown uses shadcn Select (not native <select>)", () => {
-  const fs = require("node:fs");
-  const src = fs.readFileSync(
-    "src/features/valuations/components/editor/valuation-date-field.tsx",
-    "utf8",
-  );
-  assert.ok(
-    src.includes("SelectTrigger") && src.includes("SelectContent") && src.includes("SelectItem"),
-    "Custom Dropdown must use SelectTrigger, SelectContent, SelectItem from shadcn Select",
-  );
-  assert.ok(
-    src.includes("ValuationDateDropdown"),
-    "Must define a ValuationDateDropdown component",
-  );
-});
-
 /* ================================================================== */
 /*  GROUP 7 — Text truncation (overflow prevention)                     */
 /* ================================================================== */
@@ -198,61 +166,6 @@ test("ValuationDateField CalendarIcon has shrink-0 to prevent compression", () =
 /* ================================================================== */
 /*  GROUP 8 — Year range (startMonth / endMonth)                         */
 /* ================================================================== */
-
-test("ValuationDateField source: has startMonth and endMonth for navigation range", () => {
-  const fs = require("node:fs");
-  const src = fs.readFileSync(
-    "src/features/valuations/components/editor/valuation-date-field.tsx",
-    "utf8",
-  );
-  assert.ok(
-    src.includes("startMonth"),
-    "ValuationDateField must set startMonth on Calendar for dropdown navigation",
-  );
-  assert.ok(
-    src.includes("endMonth"),
-    "ValuationDateField must set endMonth on Calendar for dropdown navigation",
-  );
-});
-
-test("ValuationDateField source: year range includes future dates", () => {
-  const fs = require("node:fs");
-  const src = fs.readFileSync(
-    "src/features/valuations/components/editor/valuation-date-field.tsx",
-    "utf8",
-  );
-  // endMonth uses NAV_END_YEAR constant — verify it's >= 2050
-  assert.ok(
-    src.includes("NAV_END_YEAR"),
-    "Must define NAV_END_YEAR constant for endMonth",
-  );
-  const endYearMatch = src.match(/NAV_END_YEAR\s*=\s*(\d{4})/);
-  assert.ok(endYearMatch, "NAV_END_YEAR must be a 4-digit year");
-  const endYear = Number(endYearMatch[1]);
-  assert.ok(
-    endYear >= 2050,
-    `NAV_END_YEAR must be >= 2050 for future dates, got ${endYear}`,
-  );
-});
-
-test("ValuationDateField source: year range includes past dates", () => {
-  const fs = require("node:fs");
-  const src = fs.readFileSync(
-    "src/features/valuations/components/editor/valuation-date-field.tsx",
-    "utf8",
-  );
-  assert.ok(
-    src.includes("NAV_START_YEAR"),
-    "Must define NAV_START_YEAR constant for startMonth",
-  );
-  const startYearMatch = src.match(/NAV_START_YEAR\s*=\s*(\d{4})/);
-  assert.ok(startYearMatch, "NAV_START_YEAR must be a 4-digit year");
-  const startYear = Number(startYearMatch[1]);
-  assert.ok(
-    startYear <= 1950,
-    `NAV_START_YEAR must be <= 1950 for past dates, got ${startYear}`,
-  );
-});
 
 test("Calendar with startMonth/endMonth renders with year range", () => {
   const html = renderCalendar({

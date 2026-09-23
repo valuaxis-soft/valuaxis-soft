@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import { expect } from "./support/expect";
 import type { ApartadoPresentationMode } from "@/features/valuations/model";
 
 // Test that presentationMode is properly typed and defaults correctly

@@ -59,17 +59,6 @@ export type ApartadoMetadata = {
 /* ------------------------------------------------------------------ */
 
 /**
- * Canonical capability contract for structural flow spacing.
- *
- * Shared by AppSection, Block, SubBlock, and future fixed-region targets.
- * The field is optional — absent means no override (legacy-safe).
- * The resolver enforces: finite number >= 0.
- */
-export type FlowSpacingPresentation = {
-  flowSpacingBeforePx?: number;
-};
-
-/**
  * Resolve flow spacing before a structural element.
  *
  * - undefined → defaultValue (caller supplies the current structural default)

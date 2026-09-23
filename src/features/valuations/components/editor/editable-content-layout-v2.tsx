@@ -38,15 +38,10 @@ import { V2SortableColumn } from "./content-layout-v2-sortable-column";
 import {
   V2ColumnDropZones,
   V2RowDropTarget,
-  buildV2DropZoneId,
   parseV2DropZoneId,
-  isV2RowBelowZone,
   parseV2RowBelowZone,
 } from "./content-layout-v2-drop-target";
-import {
-  buildContentColumnDndId,
-  type ContentContainerRef,
-} from "./content-dnd-ids";
+import { buildContentColumnDndId } from "./content-dnd-ids";
 import { ContentDragPreview } from "./content-layout-drag-preview";
 import { CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW } from "../../services/content-layout";
 
@@ -411,9 +406,6 @@ export function EditableContentLayout({
     [container.concepts, container.images, container.tables],
   );
 
-  const activeColumn = activeColumnId
-    ? resolvedLayout.rows.flatMap((r) => r.columns).find((c) => c.id === activeColumnId)
-    : null;
   const activeItem = activeColumnId ? columnItemRef.get(activeColumnId) ?? null : null;
 
   /* ---- Render callbacks ---- */
@@ -524,7 +516,6 @@ export function EditableContentLayout({
 
 export function V2RowContent({
   row,
-  rowIndex,
   activeColumnId,
   activeTarget,
   renderItem,

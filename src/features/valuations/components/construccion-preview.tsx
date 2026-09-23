@@ -51,10 +51,7 @@ export function ConstruccionPreview({
 
 function ConstructionContentRow({
   layoutRow,
-  conceptsById,
-  imagesById,
   tablesById,
-  applyConceptLayout,
 }: {
   layoutRow: { columns: Array<{ id: string; items: Array<{ type: string; id: string }> }> };
   conceptsById: Map<string, { id: string; enabled?: boolean; label: string; layoutSpan?: string; spacingBefore?: number; spacingAfter?: number }>;
@@ -121,7 +118,7 @@ function ConstructionTable({ table }: { table: TableContent }) {
           </tr>
         </thead>
         <tbody>
-          {t2.rows.map((row, rowIndex) => {
+          {t2.rows.map((row) => {
             const emptyVisualRow = columns.every((col) => {
               const cell = row.cells[col.id];
               return !cell || (cell.kind === "value" && !String(cell.value ?? "").trim());

@@ -59,7 +59,7 @@ export function SectionDndContainer({
   onReorder,
   readOnly,
 }: SectionDndContainerProps) {
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

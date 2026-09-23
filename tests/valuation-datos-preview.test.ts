@@ -12,6 +12,8 @@ import {
 import { ReportPreview } from "../src/features/valuations/components/report-preview";
 import { formatDocumentBlockTitle } from "../src/features/valuations/components/document-block-title-bar";
 import type { AppSection, Block, CaratulaFormData } from "../src/features/valuations/model";
+// Must load after the components so client-only libraries still see no DOM at import time.
+import "./support/ssr-portal-shim";
 
 function block(id: string, title: string, value = "Valor editable"): Block {
   return {
@@ -89,7 +91,9 @@ test("el preview de Datos renderiza la estructura dinámica sin títulos artific
   assert.doesNotMatch(html, /II\. CARACTERÍSTICAS URBANAS/);
 });
 
-test("el preview respeta visibilidad y divide contenido abundante en hojas", () => {
+// Height-based page splitting now happens on the client after DOM measurement
+// (AutoPaginatedDocumentFlow), so server rendering only shows the provisional layout.
+test("el preview respeta visibilidad con contenido abundante", () => {
   const manyBlocks = Array.from(
     { length: 8 },
     (_, index) => block(`block-${index}`, `Bloque ${index}`, "x".repeat(240)),
@@ -100,8 +104,11 @@ test("el preview respeta visibilidad y divide contenido abundante en hojas", () 
     section: { ...section, blocks: manyBlocks },
   }));
 
-  assert.ok((html.match(/data-document-page=/g) ?? []).length > 1);
-  assert.ok((html.match(/Encabezado repetible/g) ?? []).length > 1);
+  assert.ok((html.match(/data-document-page=/g) ?? []).length >= 1);
+  assert.match(html, /Encabezado repetible/);
+  for (let index = 0; index < 8; index += 1) {
+    assert.match(html, new RegExp(`Bloque ${index}`));
+  }
   assert.doesNotMatch(html, /NO DEBE VERSE/);
 });
 

@@ -45,10 +45,6 @@ function flow(...rows: BlockFlowStructuralRow[]): BlockFlowV2 {
   return { version: 2, rows };
 }
 
-function rowIds(f: BlockFlowV2): string[] {
-  return f.rows.map((r) => r.id);
-}
-
 function apartadoIdsInRow(f: BlockFlowV2, rowId: string): string[] {
   const r = f.rows.find((row) => row.id === rowId);
   if (!r) return [];

@@ -6,13 +6,13 @@ import type {
   ContentLayoutItemRef,
   ContentLayoutPersisted,
   ContentLayoutRowV2,
-  ContentLayoutV2,
+  ContentLayout as ContentLayoutV2,
 } from "../src/features/valuations/model";
 import {
-  resolveContentLayoutV2,
-  reconcileContentLayoutV2,
+  resolveContentLayout as resolveContentLayoutV2,
+  reconcileContentLayout as reconcileContentLayoutV2,
   appendMissingContentToV2,
-} from "../src/features/valuations/services/content-layout-v2";
+} from "../src/features/valuations/services/content-layout";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -60,10 +60,6 @@ function flatRefs(layout: ContentLayoutV2): ContentLayoutItemRef[] {
     }
   }
   return refs;
-}
-
-function rowColCounts(layout: ContentLayoutV2): number[] {
-  return layout.rows.map((r) => r.columns.length);
 }
 
 /* ================================================================== */

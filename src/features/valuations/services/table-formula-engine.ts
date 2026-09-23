@@ -7,15 +7,11 @@
 
 import type {
   TableV2,
-  TableColumn,
-  TableRow,
-  TableCellV2,
   TableCellFormat,
   FormulaExpression,
   FormulaOperand,
   FormulaBinaryOp,
   FormulaCompareOp,
-  TableFormula,
   TableEvaluationContext,
   FormulaResult,
 } from "./table";
@@ -74,7 +70,6 @@ function resolveRowRef(ctx: TableEvaluationContext, rowId: string): FormulaResul
       const num = parseNumber(cell.value);
       if (num !== null) sum += num;
     } else if (cell?.kind === "formula") {
-      const key = `${rowId}:${col.id}`;
       const result = resolveCellRef(ctx, rowId, col.id);
       if (result.ok) sum += result.value;
     }
@@ -476,90 +471,4 @@ function formatNumber(value: number, format?: TableCellFormat): string {
     default:
       return String(value);
   }
-}
-
-/* ================================================================== */
-/*  DEPENDENCY GRAPH                                                   */
-/* ================================================================== */
-
-export type DependencyEdge = { from: string; to: string };
-
-/**
- * Build a dependency graph from all formulas in a table.
- * Each formula cell depends on the cells it references.
- */
-export function buildDependencyGraph(table: TableV2): DependencyEdge[] {
-  const edges: DependencyEdge[] = [];
-  for (const row of table.rows) {
-    for (const col of table.columns) {
-      const cell = row.cells[col.id];
-      if (cell?.kind !== "formula") continue;
-      const sourceKey = `${row.id}:${col.id}`;
-      const deps = extractOperandKeys(cell.formula.expression);
-      for (const depKey of deps) {
-        edges.push({ from: sourceKey, to: depKey });
-      }
-    }
-  }
-  return edges;
-}
-
-/** Extract all cell reference keys from a formula expression. */
-function extractOperandKeys(expr: FormulaExpression): string[] {
-  const keys: string[] = [];
-  function walk(e: FormulaExpression) {
-    switch (e.type) {
-      case "operand":
-        if (e.operand.type === "cell") {
-          keys.push(`${e.operand.rowId}:${e.operand.columnId}`);
-        } else if (e.operand.type === "range") {
-          for (const c of e.operand.cells) keys.push(`${c.rowId}:${c.columnId}`);
-        }
-        break;
-      case "binary":
-        walk(e.left);
-        walk(e.right);
-        break;
-      case "compare":
-        walk(e.left);
-        walk(e.right);
-        break;
-      case "function":
-        for (const arg of e.args) walk(arg);
-        break;
-      case "constant":
-        break;
-    }
-  }
-  walk(expr);
-  return keys;
-}
-
-/** Detect if a dependency graph contains a cycle. */
-export function detectCycle(edges: DependencyEdge[]): boolean {
-  const adj = new Map<string, string[]>();
-  for (const e of edges) {
-    if (!adj.has(e.from)) adj.set(e.from, []);
-    adj.get(e.from)!.push(e.to);
-  }
-
-  const visited = new Set<string>();
-  const inStack = new Set<string>();
-
-  function dfs(node: string): boolean {
-    if (inStack.has(node)) return true;
-    if (visited.has(node)) return false;
-    visited.add(node);
-    inStack.add(node);
-    for (const neighbor of adj.get(node) ?? []) {
-      if (dfs(neighbor)) return true;
-    }
-    inStack.delete(node);
-    return false;
-  }
-
-  for (const node of adj.keys()) {
-    if (dfs(node)) return true;
-  }
-  return false;
 }

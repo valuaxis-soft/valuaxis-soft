@@ -1,27 +1,32 @@
 # Arquitectura
 
-Valuo se mantiene como monolito modular Next.js App Router con TypeScript, Prisma y PostgreSQL/PostGIS.
+Monolito modular con Next.js 16 (App Router), React 19, TypeScript, Prisma 6 y PostgreSQL con PostGIS. Gestor de paquetes: pnpm.
 
 ## Capas
 
-- `src/app`: rutas, route handlers y composicion de paginas.
-- `src/features`: modulos de dominio y casos de uso.
-- `src/infrastructure`: adaptadores tecnicos, como Prisma y almacenamiento.
-- `src/security`: guards, validacion de redireccion y tokens.
-- `src/components/ui`: biblioteca base shadcn/ui.
-- `src/lib`: utilidades compartidas y shims temporales de compatibilidad.
+| Carpeta | Contenido | Puede depender de |
+|---|---|---|
+| `src/app` | Páginas, layouts y route handlers | `features`, `components`, `security`, `lib` |
+| `src/features` | Módulos de dominio: auth, valuations, files, dashboard, comparables, reports, notifications | `infrastructure`, `security`, `components/ui`, `lib` |
+| `src/infrastructure` | Adaptadores técnicos: Prisma, almacenamiento, email | `lib` |
+| `src/security` | Guards, hashing de tokens, validación de redirecciones | `features/auth` |
+| `src/components/ui` | Componentes shadcn/ui sobre Base UI | nada de dominio |
+| `src/lib` | Utilidades compartidas, cliente de API, variables de entorno | — |
 
-## Reglas
+`infrastructure` no contiene reglas de negocio. `components/ui` no depende de ningún módulo de dominio.
 
-- `app` puede depender de `features`, `components` y `security`.
-- `features` puede depender de `infrastructure`, `security` y `components/ui`.
-- `infrastructure` no contiene reglas de negocio.
-- `components/ui` no depende de modulos de dominio.
+## El editor de avalúos
 
-## Estado de esta etapa
+`ValuationWorkspace` coordina el estado del editor: metadatos, secciones y carátula, con deshacer y rehacer propios. Delega en la barra superior, la navegación de secciones, el panel del editor y el panel de vista previa. Guarda manualmente con `PUT /api/avaluos/[id]` y `PUT /api/avaluos/[id]/full`.
 
-- `features/valuation` fue normalizado a `features/valuations`.
-- Storage, uploads, reportes PDF, comparables y helpers de valuacion fueron movidos a modulos de dominio o infraestructura.
-- Las APIs antiguas de `logout`, `uploads` e `history` siguen disponibles como compatibilidad.
-- El editor de avalúos ahora esta dividido en coordinador, top bar, navegacion, editor, panel de vista previa y feedback.
-- `StorageProvider` separa contrato de almacenamiento de la implementacion local de desarrollo.
+El documento tiene dos capas de presentación, ambas con formato v1 y v2 por compatibilidad con datos guardados:
+
+- **Content layout:** acomodo de conceptos, tablas e imágenes en filas de hasta 3 columnas.
+- **Block flow:** orden intercalado de filas de contenido y apartados dentro de un bloque.
+
+La vista previa pagina midiendo el DOM real en tamaño carta. El PDF (`src/features/reports/services/pdf-generator.ts`) todavía no comparte ese motor.
+
+## Deuda conocida
+
+- `valuation-workspace.tsx` (unas 2,200 líneas) y `valuation-workflow.service.ts` (unas 1,600) concentran demasiada lógica y deben dividirse antes del rediseño.
+- Quedan errores de lint de las reglas de React 19 (refs y `setState` durante el render) en el editor y la vista previa.

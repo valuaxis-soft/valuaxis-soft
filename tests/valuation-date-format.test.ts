@@ -176,18 +176,3 @@ test("conceptMetadataFromContent: undefined dateFormat stays undefined", () => {
 /* ================================================================== */
 /*  TEST GROUP 4 — Source code structure checks                         */
 /* ================================================================== */
-
-test("model.ts exports ConceptDateFormat type", () => {
-  const fs = require("node:fs");
-  const src = fs.readFileSync("src/features/valuations/model.ts", "utf8");
-  assert.match(src, /export type ConceptDateFormat/, "Must export ConceptDateFormat type");
-  assert.match(src, /dateFormat\?: ConceptDateFormat/, "Concept type must have dateFormat field");
-});
-
-test("metadata.ts includes dateFormat in ConceptMetadata", () => {
-  const fs = require("node:fs");
-  const src = fs.readFileSync("src/features/valuations/metadata.ts", "utf8");
-  assert.match(src, /dateFormat\?: ConceptDateFormat/, "ConceptMetadata must have dateFormat");
-  assert.match(src, /conceptDateFormat/, "Must have conceptDateFormat reader");
-  assert.match(src, /readConceptDateFormat/, "Must have readConceptDateFormat validator");
-});

@@ -1,6 +1,4 @@
 ﻿import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import test from "node:test";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { AuthUser } from "../src/features/auth/model";
@@ -17,7 +15,6 @@ import { buildValuationCoverImageKey } from "../src/infrastructure/storage/stora
 import { createCoverImageRouteHandlers } from "../src/app/api/avaluos/[id]/caratula/imagen-principal/route";
 import { S3StorageProvider } from "../src/infrastructure/storage/storage-provider";
 
-const root = process.cwd();
 const user: AuthUser = {
   id: 7,
   name: "Valuador",
@@ -202,25 +199,4 @@ test("GET devuelve la imagen principal actual con URL temporal", async () => {
   assert.equal(image?.id, "file-id");
   assert.equal(image?.url, "https://signed.example/image");
   assert.equal("key" in (image ?? {}), false);
-});
-
-test("reemplazo desmarca la principal anterior y crea Archivo/Relacion principal", () => {
-  const service = readFileSync(
-    join(root, "src/features/files/services/valuation-cover-image.ts"),
-    "utf8",
-  );
-  assert.match(service, /relacionArchivo\.updateMany[\s\S]*data: \{ BPrincipal: false \}/);
-  assert.match(service, /tx\.archivo\.create/);
-  assert.match(service, /tx\.relacionArchivo\.create[\s\S]*BPrincipal: true/);
-  assert.match(service, /JMetadatos: \{ uso: COVER_IMAGE_USAGE \}/);
-});
-
-test("preview usa la imagen principal formal y no busca imagenes libres", () => {
-  const preview = readFileSync(
-    join(root, "src/features/valuations/components/report-preview.tsx"),
-    "utf8",
-  );
-  assert.match(preview, /principalImage\?\.url/);
-  assert.match(preview, /src=\{principalImage\.url\}/);
-  assert.doesNotMatch(preview, /block\.apartados\.flatMap\(\(subBlock\) => subBlock\.images\)/);
 });

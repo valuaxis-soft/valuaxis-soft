@@ -18,10 +18,8 @@
 import type {
   Block,
   BlockFlow,
-  BlockFlowApartadoItem,
   BlockFlowApartadoRef,
   BlockFlowCellItem,
-  BlockFlowContentRowItem,
   BlockFlowItem,
   BlockFlowPersisted,
   BlockFlowStructuralRow,
@@ -72,6 +70,7 @@ export function isBlockFlowV1(value: unknown): value is BlockFlow {
 /**
  * Backward-compatible alias — same as `isBlockFlowV1`.
  * Existing callers continue to work unchanged.
+ * @alias
  */
 export const isBlockFlow = isBlockFlowV1;
 
@@ -287,6 +286,7 @@ export function generateBlockFlowV1(block: Block): BlockFlow | undefined {
 
 /**
  * Backward-compatible alias.
+ * @alias
  */
 export const generateBlockFlow = generateBlockFlowV1;
 
@@ -342,6 +342,7 @@ export function normalizeBlockFlowV1(block: Block, flow: BlockFlow): BlockFlow {
 
 /**
  * Backward-compatible alias.
+ * @alias
  */
 export const normalizeBlockFlow = normalizeBlockFlowV1;
 
@@ -598,6 +599,7 @@ export function resolveBlockFlowV1(block: Block): BlockFlow | undefined {
 /**
  * Backward-compatible resolver — returns V1.
  * Existing callers (renderer, numbering) continue to work unchanged.
+ * @alias
  */
 export const resolveBlockFlow = resolveBlockFlowV1;
 
@@ -1143,8 +1145,6 @@ export function moveContentColumnToBlockFlowBoundary(
     layoutChanged = layoutResult.changed;
   } else {
     // Target is an apartado — remove source column and add new row at end
-    const oldRowIds = new Set(contentLayout.rows.map((r) => r.id));
-
     // Find and remove the source column
     const sourceMoveResult = moveContentLayout(contentLayout, {
       sourceColumnId,

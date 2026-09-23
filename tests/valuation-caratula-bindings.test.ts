@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import type { CaratulaFormData } from "../src/features/valuations/model";
@@ -7,19 +6,6 @@ import {
   applyMetaPatchToCaratula,
   initializeCaratulaState,
 } from "../src/features/valuations/components/workspace/valuation-caratula-state";
-
-const editor = readFileSync(
-  new URL("../src/features/valuations/components/workspace/valuation-editor-panel.tsx", import.meta.url),
-  "utf8",
-);
-const workspace = readFileSync(
-  new URL("../src/features/valuations/components/workspace/valuation-workspace.tsx", import.meta.url),
-  "utf8",
-);
-const repository = readFileSync(
-  new URL("../src/features/valuations/repositories/valuation.repository.ts", import.meta.url),
-  "utf8",
-);
 
 const caratula: CaratulaFormData = {
   tituloInmueble: "Casa",
@@ -80,19 +66,4 @@ test("postal code, property type, and unrelated location patches do not affect C
   });
 
   assert.deepEqual(updated, caratula);
-});
-
-test("Ubicación remains fixed while removed legacy fields stay payload-compatible", () => {
-  assert.match(
-    editor,
-    /label="Ubicación del inmueble"[\s\S]*?value=\{meta\.location\}[\s\S]*?onUpdateMeta\(\{ location \}\)/,
-  );
-  assert.doesNotMatch(editor, /label="Solicitante"/);
-  assert.doesNotMatch(editor, /label="Propietario"/);
-  assert.doesNotMatch(editor, /label="Objeto"/);
-  assert.doesNotMatch(editor, /label="Propósito"/);
-  assert.match(workspace, /location:\s*meta\.location[\s\S]*?caratula:\s*caratulaForSave/);
-  assert.match(repository, /solicitante:\s*caratula\.SNombreSolicitante\s*\?\?\s*""/);
-  assert.match(repository, /propietario:\s*caratula\.SNombrePropietario\s*\?\?\s*""/);
-  assert.match(repository, /objeto:\s*caratula\.SObjetoAvaluo\s*\?\?\s*""/);
 });

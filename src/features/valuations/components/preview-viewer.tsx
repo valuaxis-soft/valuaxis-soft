@@ -3,7 +3,6 @@
 import {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -50,10 +49,6 @@ const PreviewViewerContext = createContext<PreviewViewerContextValue>({
   currentPage: 1,
   zoom: ZOOM_DEFAULT,
 });
-
-export function usePreviewViewer() {
-  return useContext(PreviewViewerContext);
-}
 
 /* ------------------------------------------------------------------ */
 /*  PreviewViewer — the main shell                                     */

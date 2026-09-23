@@ -4,18 +4,16 @@ import type {
   ContentLayoutColumnV2,
   ContentLayoutItemRef,
   ContentLayoutRowV2,
-  ContentLayoutV2,
+  ContentLayout as ContentLayoutV2,
 } from "../src/features/valuations/model";
 import {
-  moveContentLayoutV2,
-  moveContentLayoutRowV2,
-  cleanContentLayoutV2,
+  moveContentLayout as moveContentLayoutV2,
+  moveContentLayoutRow as moveContentLayoutRowV2,
+  cleanContentLayout as cleanContentLayoutV2,
   setItemFullRowPreservingOrder,
   mergeItemToAdjacentRow,
-  type ContentLayoutV2MoveDescriptor,
-  type ContentLayoutV2RowMoveDescriptor,
 } from "../src/features/valuations/services/content-layout-v2-operations";
-import { normalizeContentLayoutV2 } from "../src/features/valuations/services/content-layout-v2";
+import { normalizeContentLayout as normalizeContentLayoutV2 } from "../src/features/valuations/services/content-layout";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */

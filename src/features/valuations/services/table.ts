@@ -379,7 +379,7 @@ function repairPartialV2(table: Record<string, unknown>): TableV2 {
   // Repair columns: must be TableColumn[]
   let columns: TableColumn[];
   if (Array.isArray(table.columns)) {
-    columns = table.columns.map((col: unknown, i: number) => {
+    columns = table.columns.map((col: unknown) => {
       if (typeof col === "object" && col !== null && "id" in col && "name" in col) {
         const c = col as Record<string, unknown>;
         return {
@@ -406,7 +406,7 @@ function repairPartialV2(table: Record<string, unknown>): TableV2 {
   // Repair rows: must be TableRow[]
   let rows: TableRow[];
   if (Array.isArray(table.rows)) {
-    rows = table.rows.map((row: unknown, rowIdx: number) => {
+    rows = table.rows.map((row: unknown) => {
       // Legacy string[][] row
       if (Array.isArray(row)) {
         const cells: Record<string, TableCellV2> = {};
@@ -479,28 +479,6 @@ const DEFAULT_COLUMN_NAME = "Nueva columna";
 function normalizeTableName(name: string | undefined | null, fallback?: string): string {
   const trimmed = (name ?? "").trim();
   return trimmed.length > 0 ? trimmed : (fallback ?? DEFAULT_COLUMN_NAME);
-}
-
-/**
- * Create a new empty V2 table with stable IDs.
- *
- * Use this instead of manually constructing TableContent objects.
- */
-export function createTableV2(
-  title: string,
-  columnNames: string[],
-): TableV2 {
-  const id = generateColumnId();
-  const columns: TableColumn[] = columnNames.map((name) => ({
-    id: generateColumnId(),
-    name,
-  }));
-  const colIds = columns.map((c) => c.id);
-  const cells: Record<string, TableCellV2> = {};
-  colIds.forEach((colId) => { cells[colId] = { kind: "value", value: "" }; });
-  const rows: TableRow[] = [{ id: generateRowId(), cells }];
-
-  return { id, title, version: 2, columns, rows, enabled: true };
 }
 
 /* ================================================================== */
@@ -720,18 +698,12 @@ export function resolveColumnCapability(
 ): ColumnCapability {
   const override = schema?.capabilities?.[columnId];
   const zone = schema ? findZoneForColumn(schema, columnId) : undefined;
-  const isFixed = zone?.kind === "fixed";
   return {
     removable:    override?.removable    ?? (zone?.kind === "dynamic" ? (zone.allowRemove ?? true) : false),
     movable:      override?.movable      ?? (zone?.kind === "dynamic" ? (zone.allowReorder ?? true) : false),
     headerEditable: override?.headerEditable ?? true,
     clearable:    override?.clearable    ?? true,
   };
-}
-
-/** Get header group for a zone, if any. */
-export function getHeaderGroupForZone(schema: TableSchema, zoneId: string): HeaderGroup | undefined {
-  return schema.headerGroups?.find((hg) => hg.zoneId === zoneId);
 }
 
 /** Update a header group title. */
@@ -742,11 +714,6 @@ export function updateHeaderGroupTitle(schema: TableSchema, groupId: string, new
       hg.id === groupId ? { ...hg, title: newTitle } : hg
     ),
   };
-}
-
-/** Get all column IDs that belong to a specific zone. */
-export function getZoneColumnIds(schema: TableSchema, zoneId: string): string[] {
-  return schema.zones.find((z) => z.id === zoneId)?.columnIds ?? [];
 }
 
 /**

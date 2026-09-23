@@ -4,9 +4,9 @@ import type {
   ContentLayoutColumnV2,
   ContentLayoutItemRef,
   ContentLayoutRowV2,
-  ContentLayoutV2,
+  ContentLayout as ContentLayoutV2,
 } from "../src/features/valuations/model";
-import { moveContentLayoutV2 } from "../src/features/valuations/services/content-layout-v2-operations";
+import { moveContentLayout as moveContentLayoutV2 } from "../src/features/valuations/services/content-layout-v2-operations";
 import {
   buildV2DropZoneId,
   parseV2DropZoneId,

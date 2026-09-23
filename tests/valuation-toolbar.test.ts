@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Children, createElement, isValidElement, type ReactNode } from "react";
+import { Children, createElement, isValidElement, type ComponentProps, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { LucideIcon } from "lucide-react";
 
 import { Button } from "../src/components/ui/button";
 import { Tabs } from "../src/components/ui/tabs";
@@ -14,11 +15,14 @@ import {
 import { ValuationTopBar } from "../src/features/valuations/components/workspace/valuation-top-bar";
 
 const sections = createInitialSections();
-const iconMap = {};
+const iconMap: Record<string, LucideIcon> = {};
 const noop = () => {};
 
-function topBarProps(saveStatus: "idle" | "dirty" | "saving" | "saved" | "error" = "idle") {
+function topBarProps(
+  saveStatus: "idle" | "dirty" | "saving" | "saved" | "error" = "idle",
+): ComponentProps<typeof ValuationTopBar> {
   return {
+    activeSectionId: sections[0].id,
     canEdit: true,
     canExport: true,
     enabledSections: sections,
@@ -26,10 +30,18 @@ function topBarProps(saveStatus: "idle" | "dirty" | "saving" | "saved" | "error"
     meta: { ...initialMeta, folio: "VLO-0001" },
     onExport: noop,
     onExit: noop,
+    onReorderSections: noop,
+    onRedo: noop,
     onSave: noop,
+    onUndo: noop,
+    onWorkspaceModeChange: noop,
+    readOnly: false,
+    redoAvailable: false,
     saving: saveStatus === "saving",
     saveStatus,
+    undoAvailable: false,
     valuationId: "valuation-1",
+    workspaceMode: "form",
   };
 }
 
@@ -80,7 +92,13 @@ test("la navegación renderiza secciones y controles horizontales dentro de Tabs
     createElement(
       Tabs,
       { defaultValue: sections[0].id },
-      createElement(ValuationNavigation, { enabledSections: sections, iconMap }),
+      createElement(ValuationNavigation, {
+        activeSectionId: sections[0].id,
+        enabledSections: sections,
+        iconMap,
+        onReorder: noop,
+        readOnly: false,
+      }),
     ),
   );
   assert.match(html, /Desplazar secciones a la izquierda/);

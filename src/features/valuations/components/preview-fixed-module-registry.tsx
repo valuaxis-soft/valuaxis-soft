@@ -24,8 +24,11 @@ import { TerrainMainModule } from "./terreno-preview-modules";
 /*  Registry                                                            */
 /* ------------------------------------------------------------------ */
 
+// Each fixed module takes its own props; callers pass the props for the kind they resolved.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const previewModuleRegistry: Record<string, ComponentType<any>> = {
+type PreviewFixedModule = ComponentType<any>;
+
+const previewModuleRegistry: Record<string, PreviewFixedModule> = {
   "caratula-cover": CaratulaCoverModule,
   "caratula-assumptions": CaratulaAssumptionsModule,
   "caratula-conclusion": CaratulaConclusionModule,
@@ -36,9 +39,8 @@ const previewModuleRegistry: Record<string, ComponentType<any>> = {
  * Resolve a semantic fixed-module kind to its Preview renderer.
  * Returns undefined if no renderer is registered for the kind.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getPreviewFixedModule(
   kind: string,
-): ComponentType<any> | undefined {
+): PreviewFixedModule | undefined {
   return previewModuleRegistry[kind];
 }

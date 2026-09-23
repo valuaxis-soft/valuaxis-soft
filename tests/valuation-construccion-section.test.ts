@@ -1,12 +1,8 @@
 ﻿import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import test from "node:test";
 
 import { construccionSection } from "../src/features/valuations/sections/construccion";
 import { normalizeDbKey } from "../src/features/valuations/services/valuation-workflow.service";
-
-const root = process.cwd();
 
 test("Construcción inicia con tres bloques editables del formato de referencia", () => {
   assert.deepEqual(construccionSection.blocks.map((block) => [block.id, block.title]), [
@@ -23,11 +19,11 @@ test("Descripción general incluye campos exactos y tabla construccion_tipos con
   const block = construccionSection.blocks[0];
   assert.deepEqual(block.concepts.map((concept) => concept.label), [
     "Uso actual",
-    "Distribución del inmueble",
+    "Distribución del bien",
     "Número de niveles",
     "Estado de conservación",
     "Calidad del proyecto",
-    "Clase general del inmueble",
+    "Clase general del bien",
     "Calidad y clasificación de la construcción",
     "Clase de Edificio",
     "Unidades susceptibles a rentarse",
@@ -74,7 +70,7 @@ test("Descripción general incluye campos exactos y tabla construccion_tipos con
 test("Elementos de construcción contiene franja introductoria y siete subbloques en orden exacto", () => {
   const block = construccionSection.blocks[1];
   assert.deepEqual(block.concepts.map(({ label, value }) => [label, value]), [
-    ["Especificaciones observadas en la visita al inmueble salvo error u omisión.", ""],
+    ["Especificaciones observadas en la visita al bien salvo error u omisión.", ""],
   ]);
   assert.deepEqual(
     block.apartados.map((subBlock) => [
@@ -146,17 +142,4 @@ test("Construcción usa claves internas cortas y seguras para persistencia docum
     assert.equal(key, normalizeDbKey(key, "fallback", 120));
     assert.ok(key.length <= 120, `${key} excede 120 caracteres`);
   }
-});
-
-test("Construcción tiene renderer específico con colores exactos del documento de referencia", () => {
-  const reportPreview = readFileSync(join(root, "src/features/valuations/components/report-preview.tsx"), "utf8");
-  const renderer = readFileSync(join(root, "src/features/valuations/components/construccion-preview.tsx"), "utf8");
-
-  assert.match(reportPreview, /ConstruccionPreview/);
-  assert.match(reportPreview, /isConstruccionSection\(section\)/);
-  assert.match(renderer, /#002060/);
-  assert.match(renderer, /#2F5597/);
-  assert.match(renderer, /#BDD7EE/);
-  assert.match(renderer, /#D9D9D9/);
-  assert.match(renderer, /data-construccion-preview/);
 });

@@ -9,7 +9,7 @@ import {
 } from "@/features/valuations/services/concept-layout";
 import { useState, type ReactNode } from "react";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { closestCenter, DndContext, DragEndEvent, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/core";
+import { closestCenter, DndContext, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/core";
 import { editorCanScroll } from "./editor-dnd-autoscroll";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -23,7 +23,7 @@ import { AlignHorizontalDistributeCenter,
          Copy, 
          EllipsisVertical, 
          FilePlus2, Hash, Link, Link2, ListPlus, 
-         LockKeyhole, Minimize2, Minus, Plus, Rows3, Trash2, Unlink } from "lucide-react";
+         LockKeyhole, Minus, Plus, Trash2, Unlink } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { normalizeConceptTitle } from "@/features/valuations/services/concept-title";
 import {
@@ -45,7 +45,7 @@ import type {
   ConceptType,
 } from "@/features/valuations/model";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
-import { DEFAULT_GUIDE_PX, MIN_OFFSET_PX, MAX_OFFSET_PX } from "@/features/valuations/services/concept-presentation";
+import { MIN_OFFSET_PX, MAX_OFFSET_PX } from "@/features/valuations/services/concept-presentation";
 
 import {
   formatMexicanPhone,
@@ -62,21 +62,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   isLongTerrenoConcept,
 } from "@/features/valuations/sections/terreno";
-
-
-/*Seccion de Constantes */
-const CONCEPT_TYPE_LABELS: Record<ConceptType, string> = {
-  text: "Texto",
-  date: "Fecha",
-  phone: "Teléfono",
-  email: "Correo",
-  number: "Número",
-  currency: "Moneda",
-  measurement: "Medida",
-  longText: "Texto largo",
-  url: "Vínculo / URL",
-};
-
 
 
 /*Sección de Funciones */
@@ -96,10 +81,6 @@ function normalizeCaratulaConceptValue(type: ConceptType, value: string) {
   return value;
 }
 
-function conceptTypeLabel(type: ConceptType | undefined) {
-  return CONCEPT_TYPE_LABELS[type ?? "text"];
-}
-
 function isSingleLineConceptType(type: ConceptType | undefined) {
   return type !== "longText";
 }
@@ -111,11 +92,6 @@ function canNormalizeConceptLineBreaks(concept: Pick<Concept, "type" | "value">)
 
 function normalizeConceptLineBreaks(value: string) {
   return value.replace(/(?:\r\n|\r|\n)+/g, " ").replace(/[ \t]{2,}/g, " ");
-}
-
-function conceptPreview(value: string) {
-  const compact = value.trim().replace(/\s+/g, " ");
-  return compact.length > 42 ? `${compact.slice(0, 42)}…` : compact || "Sin dato";
 }
 
 function caratulaInputType(type: ConceptType) {
@@ -637,7 +613,6 @@ function ConceptOptionsMenu({
   currentPresentation,
   enableSpacingControl,
   enableValueFormatControl,
-  enableWidthControl,
   onColumnPresentationChange,
   onMove,
   onRemove,

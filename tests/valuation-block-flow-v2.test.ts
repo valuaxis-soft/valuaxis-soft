@@ -717,12 +717,6 @@ test("normalizeBlockFlowV2 — missing content rows appended as singletons", () 
 });
 
 test("normalizeBlockFlowV2 — missing apartados appended as singletons", () => {
-  const b = block({ apartados: [subBlock("a"), subBlock("b")] });
-  const flow: BlockFlowV2 = {
-    version: 2,
-    rows: [{ id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] }],
-    // note: no r1 in block, but we test apartado appending
-  };
   const bWithRow = block({
     apartados: [subBlock("a"), subBlock("b")],
     contentLayout: { version: 2, rows: [{ id: "r1", columns: [{ id: "c1", items: [] }] }] },

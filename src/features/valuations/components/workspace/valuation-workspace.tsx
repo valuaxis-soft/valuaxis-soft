@@ -54,8 +54,6 @@ import {
 import { createInitialSections } from "@/features/valuations/sections";
 import {
   ensureTerrenoSections,
-  getTerrenoElementKind,
-  isTerrenoMainBlock,
   isTerrenoSection,
 } from "@/features/valuations/sections/terreno";
 import {
@@ -64,7 +62,7 @@ import {
   readCompanyHeaderFields,
   updateCompanyHeaderFields,
 } from "@/features/valuations/services/caratula-company-header";
-import { ensureTableV2 } from "@/features/valuations/services/table";
+import { createHomologationTable, ensureTableV2 } from "@/features/valuations/services/table";
 import {
   hasUntitledConcepts,
   isCaratulaIntermediateBlock,
@@ -266,7 +264,6 @@ function createApartado(): Apartado {
 
 function createTable(preset?: "homologation"): TableContent {
   if (preset === "homologation") {
-    const { createHomologationTable } = require("../../services/table");
     return createHomologationTable() as unknown as TableContent;
   }
   // Create directly as V2 to avoid mixed-state issues
@@ -1753,9 +1750,6 @@ export function ValuationWorkspace({
     try {
       toast.loading("Subiendo imagen...");
       const isDatos = sectionId === "datos" || sectionId === "datosGenerales";
-      const targetSection = sections.find((section) => section.id === sectionId);
-      const targetBlock = targetSection?.blocks.find((block) => block.id === blockId);
-      const targetSubBlock = targetBlock?.apartados.find((subBlock) => subBlock.id === apartadoId);
       if (isDatos && !valuationId) {
         throw new Error("Guarda el avalúo antes de agregar imágenes a Datos generales.");
       }
@@ -1941,7 +1935,6 @@ export function ValuationWorkspace({
   };
 
   const onBlockDragEnd = (sectionId: string, event: DragEndEvent) => {
-    const section = sections.find((item) => item.id === sectionId);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     updateSectionBlocks(sectionId, (blocks) => {

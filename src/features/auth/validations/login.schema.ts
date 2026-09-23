@@ -1,9 +1,3 @@
-export type LoginInput = {
-  email: string;
-  password: string;
-  redirectTo?: string;
-};
-
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }

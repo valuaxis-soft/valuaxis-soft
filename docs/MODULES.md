@@ -1,35 +1,35 @@
-# Modulos y Base de Datos
+# Módulos y base de datos
 
-Fuente de verdad disponible:
+Fuente de verdad del esquema: `prisma/schema.prisma` y `prisma/migrations/`. Las tablas llevan el prefijo `devpware_` y las columnas un prefijo por tipo: `Id`, `U` (UUID), `S` (texto), `B` (booleano), `D` (fecha), `I` (entero), `N` (decimal), `J` (JSON), `G` (geografía).
 
-- `prisma/schema.prisma`
-- `prisma/migrations/`
+## Qué usa el código
 
-## Mapeo
+| Módulo | Modelos en uso |
+|---|---|
+| auth | `Usuario`, `IdentidadUsuario`, `ProveedorIdentidad`, `Sesion`, `IntentoAcceso`, `TokenVerificacionCorreo`, `TokenRecuperacionContrasena`, `SolicitudOAuth`, `Auditoria` (solo Google) |
+| organizaciones | `Organizacion`, `MiembroOrganizacion`, `Rol`, y `Permiso` y `PermisoRol` solo por relación |
+| suscripciones | `Suscripcion` con `Plan` y funcionalidades, solo lectura para el dashboard |
+| avalúos | `Avaluo`, `VersionAvaluo`, `EstadoAvaluo`, `EstadoVersionAvaluo`, `EstadoAvaluoHistorial`, `ReaperturaAvaluo`, `SerieFolioOrganizacion`, `PlantillaAvaluo`, `CaratulaAvaluo` |
+| documento del avalúo | `SeccionDocumento`, `NodoDocumento`, `ValorNodoDocumento`, `TablaDocumento`, `ColumnaTablaDocumento`, `FilaTablaDocumento`, `CeldaTablaDocumento` |
+| archivos | `Archivo`, `RelacionArchivo`, `CargaArchivo`, `TipoArchivo`, `TipoRelacionArchivo` |
+| comparables | `ComparableAvaluo`, `Propiedad`, `DireccionPropiedad`, solo lectura |
 
-auth:
-`Usuario`, `ProveedorIdentidad`, `IdentidadUsuario`, `TokenVerificacionCorreo`, `TokenRecuperacionContrasena`, `SolicitudOAuth`, `Sesion`, `IntentoAcceso`, `Auditoria`.
+El contenido del avalúo vive casi todo en el árbol genérico `SeccionDocumento` → `NodoDocumento` → `ValorNodoDocumento`, con la presentación en columnas JSON `JConfiguracion`.
 
-organizations:
-`Organizacion`, `MiembroOrganizacion`, `Rol`, `Permiso`, `PermisoRol`, concesiones/excepciones pendientes de servicio especifico.
+## Qué existe sin uso
 
-subscriptions:
-`Plan`, `Funcionalidad`, `FuncionalidadPlan`, `PrecioPlan`, `Suscripcion`, `ConcesionFuncionalidad`, consumos y limites definidos en schema.
+De los 135 modelos del esquema, unos 90 no tienen código que los use:
 
-payments:
-Modelos de pagos/facturacion definidos en migraciones; integracion de proveedor queda pendiente.
+- **Datos técnicos normalizados:** terreno, construcción, zonas, colindancias, instalaciones, consideraciones.
+- **Enfoques valuatorios:** costos, mercado, renta, ingresos, resumen de valor, conclusión.
+- **Cálculos, plantillas versionadas, campos personalizados.**
+- **Homologación y comparables avanzados;** geoespacial con PostGIS.
+- **Trabajos, importaciones, snapshots y exportaciones.**
 
-valuations:
-`Avaluo`, `UsuarioAvaluo`, `VersionAvaluo`, `EstadoAvaluo`, `TransicionEstadoAvaluo`, `ReaperturaAvaluo`, `SeccionDocumento`, `NodoDocumento`, `ValorNodoDocumento`, datos tecnicos, enfoques valuatorios y `ConclusionAvaluo`.
+Además, las migraciones 020, 021 y 026 a 028 crean unas 46 tablas (IA, normatividad, pagos, consumos, opciones de permisos) que no están en `schema.prisma`. No usar `prisma db push`: las borraría.
 
-files:
-`Archivo`, `RelacionArchivo`, `VersionArchivo`, `CargaArchivo`.
+Qué se conserva y qué se elimina se decide al cerrar el modelo de datos de Fase 0, con [fase0/README.md](fase0/README.md) como base.
 
-comparables:
-`Propiedad`, `DireccionPropiedad`, `PublicacionPropiedad`, `ComparableAvaluo`, snapshots/historiales, ubicaciones y PostGIS.
+## Catálogos
 
-## Diferencias detectadas
-
-- El codigo previo usaba modelos Prisma inexistentes: `valuation`, `section`, `block`, `concept`, `table`, `image`, `comparable`, `comparableHistory`, `upload`, `user`.
-- El esquema real usa modelos en espanol con tablas `devpware_*`.
-- No se crearon migraciones ni tablas paralelas para cubrir esa diferencia.
+`prisma/seed.ts` está vacío. Los catálogos (estados, tipos de nodo, tipos de archivo, roles, permisos, proveedores de identidad) se insertan en las migraciones. Si faltan, varias rutas responden con error de catálogo faltante.

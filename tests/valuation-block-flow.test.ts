@@ -1297,7 +1297,7 @@ test("integration — full dual-writeback simulation", () => {
 /*  moveContentColumnToBlockFlowBoundary                               */
 /* ================================================================== */
 
-const layoutV2_R1_R2: import("../src/features/valuations/model").ContentLayoutV2 = {
+const layoutV2_R1_R2: import("../src/features/valuations/model").ContentLayout = {
   version: 2,
   rows: [
     { id: "r1", columns: [{ id: "col-x", items: [{ type: "concept", id: "X" }] }] },
@@ -1404,7 +1404,7 @@ test("boundary — source row disappears, no stale R1", () => {
 
 test("boundary — source row stays (multi-column), R1(Y) preserved", () => {
   // R1 has X,Y — X moves out, R1(Y) stays
-  const layoutWithY: import("../src/features/valuations/model").ContentLayoutV2 = {
+  const layoutWithY: import("../src/features/valuations/model").ContentLayout = {
     version: 2,
     rows: [
       { id: "r1", columns: [
@@ -1445,7 +1445,7 @@ test("boundary — source row stays (multi-column), R1(Y) preserved", () => {
 });
 
 test("boundary — paired apartados preserved", () => {
-  const layout: import("../src/features/valuations/model").ContentLayoutV2 = {
+  const layout: import("../src/features/valuations/model").ContentLayout = {
     version: 2,
     rows: [
       { id: "r1", columns: [{ id: "col-x", items: [{ type: "concept", id: "X" }] }] },
