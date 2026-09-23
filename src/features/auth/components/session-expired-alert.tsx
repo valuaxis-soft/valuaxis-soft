@@ -1,8 +1,8 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const messages: Record<string, string> = {
-  expired: "Tu sesion expiro. Inicia sesion nuevamente para continuar.",
-  required: "Inicia sesion para acceder al sistema.",
+  expired: "Tu sesión expiró. Inicia sesión nuevamente para continuar.",
+  required: "Inicia sesión para acceder al sistema.",
   forbidden: "No tienes permisos para acceder a esa ruta.",
 };
 

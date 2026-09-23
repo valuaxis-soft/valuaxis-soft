@@ -83,10 +83,10 @@ export function RegisterForm() {
           {state.code === "EMAIL_ALREADY_REGISTERED" ? (
             <>
               <Link className="font-medium text-foreground underline underline-offset-4" href="/iniciar-sesion">
-                Iniciar sesion
+                Iniciar sesión
               </Link>
               <Link className="font-medium text-foreground underline underline-offset-4" href="/recuperar-contrasena">
-                Recuperar contrasena
+                Recuperar contraseña
               </Link>
             </>
           ) : null}
@@ -138,7 +138,7 @@ export function RegisterForm() {
         </Field>
 
         <Field data-invalid={!state.ok && Boolean(state.fieldErrors?.email)}>
-          <FieldLabel htmlFor="email">Correo electronico</FieldLabel>
+          <FieldLabel htmlFor="email">Correo electrónico</FieldLabel>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input 
@@ -156,7 +156,7 @@ export function RegisterForm() {
         </Field>
 
         <Field>
-          <FieldLabel htmlFor="organizationName">Organizacion</FieldLabel>
+          <FieldLabel htmlFor="organizationName">Organización</FieldLabel>
           <div className="relative">
             <Building2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input 
@@ -171,11 +171,11 @@ export function RegisterForm() {
         </Field>
 
         <Field data-invalid={!state.ok && Boolean(state.fieldErrors?.password)}>
-          <FieldLabel htmlFor="password">Contrasena</FieldLabel>
+          <FieldLabel htmlFor="password">Contraseña</FieldLabel>
           <PasswordField
             id="password"
             name="password"
-            placeholder="Crea una contrasena segura"
+            placeholder="Crea una contraseña segura"
             autoComplete="new-password"
             disabled={pending}
             invalid={!state.ok && Boolean(state.fieldErrors?.password)}
@@ -187,11 +187,11 @@ export function RegisterForm() {
         </Field>
 
         <Field data-invalid={!state.ok && Boolean(state.fieldErrors?.confirmPassword)}>
-          <FieldLabel htmlFor="confirmPassword">Confirmar contrasena</FieldLabel>
+          <FieldLabel htmlFor="confirmPassword">Confirmar contraseña</FieldLabel>
           <PasswordField
             id="confirmPassword"
             name="confirmPassword"
-            placeholder="Repite tu contrasena"
+            placeholder="Repite tu contraseña"
             autoComplete="new-password"
             disabled={pending}
             invalid={!state.ok && Boolean(state.fieldErrors?.confirmPassword)}
@@ -207,7 +207,7 @@ export function RegisterForm() {
             checked={Boolean(formValues.acceptedTerms)}
             onCheckedChange={handleCheckboxChange}
           />
-          <FieldLabel htmlFor="acceptedTerms">Acepto los terminos y condiciones</FieldLabel>
+          <FieldLabel htmlFor="acceptedTerms">Acepto los términos y condiciones</FieldLabel>
           <FieldError>{!state.ok ? state.fieldErrors?.acceptedTerms?.[0] : undefined}</FieldError>
         </Field>
       </FieldGroup>
@@ -221,9 +221,9 @@ export function RegisterForm() {
       <GoogleAuthButton />
 
       <p className="text-center text-sm text-muted-foreground">
-        Ya tienes cuenta?{" "}
+        ¿Ya tienes cuenta?{" "}
         <Link className="text-foreground" href="/iniciar-sesion">
-          Inicia sesion
+          Inicia sesión
         </Link>
       </p>
     </form>

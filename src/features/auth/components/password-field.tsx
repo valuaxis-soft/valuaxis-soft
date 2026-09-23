@@ -47,7 +47,7 @@ export function PasswordField({
         size="icon"
         className="absolute right-1 top-1/2 size-8 -translate-y-1/2"
         onClick={() => setVisible((current) => !current)}
-        aria-label={visible ? "Ocultar contrasena" : "Mostrar contrasena"}
+        aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
       >
         {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
       </Button>

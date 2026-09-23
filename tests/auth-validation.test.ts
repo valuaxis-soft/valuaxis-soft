@@ -75,12 +75,12 @@ test("reset password validation reports missing token and mismatched passwords",
 test("auth domain messages classify recoverable conflicts as warnings", () => {
   assert.equal(
     authErrorMessages.EMAIL_ALREADY_REGISTERED,
-    "Ya existe una cuenta asociada a este correo. Inicia sesion o recupera tu contrasena.",
+    "Ya existe una cuenta asociada a este correo. Inicia sesión o recupera tu contraseña.",
   );
   assert.equal(authErrorSeverity.EMAIL_ALREADY_REGISTERED, "warning");
-  assert.equal(authErrorMessages.INVALID_CREDENTIALS, "El correo o la contrasena son incorrectos.");
+  assert.equal(authErrorMessages.INVALID_CREDENTIALS, "El correo o la contraseña son incorrectos.");
   assert.equal(authErrorSeverity.INVALID_CREDENTIALS, "error");
-  assert.equal(authErrorMessages.EMAIL_NOT_VERIFIED, "Tu correo todavia no ha sido verificado. Revisa tu bandeja o solicita un nuevo enlace.");
+  assert.equal(authErrorMessages.EMAIL_NOT_VERIFIED, "Tu correo todavía no ha sido verificado. Revisa tu bandeja o solicita un nuevo enlace.");
   assert.equal(authErrorSeverity.ACCOUNT_USES_GOOGLE, "warning");
   assert.equal(authErrorSeverity.OAUTH_ACCOUNT_CONFLICT, "warning");
 });

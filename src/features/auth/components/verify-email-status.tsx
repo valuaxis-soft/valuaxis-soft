@@ -18,7 +18,7 @@ export function VerifyEmailStatus({ token, sent }: { token?: string; sent?: stri
       <Alert>
         <CircleAlert className="size-4" />
         <AlertTitle>Enlace requerido</AlertTitle>
-        <AlertDescription>Abre esta pantalla desde el enlace de verificacion.</AlertDescription>
+        <AlertDescription>Abre esta pantalla desde el enlace de verificación.</AlertDescription>
       </Alert>
     );
   }

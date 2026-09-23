@@ -18,6 +18,7 @@ export const LOGIN_LOCK_MINUTES = 15;
 export const DEFAULT_LOGIN_REDIRECT = "/dashboard";
 
 export const AUTH_PUBLIC_PATHS = [
+  "/",
   "/iniciar-sesion",
   "/registro",
   "/verificar-correo",

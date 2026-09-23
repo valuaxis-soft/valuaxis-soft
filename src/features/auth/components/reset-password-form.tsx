@@ -21,11 +21,11 @@ export function ResetPasswordForm({ token }: { token?: string }) {
       {!state.ok ? <AuthFeedback message={state.message} severity={state.severity} /> : null}
       <FieldGroup>
         <Field data-invalid={!state.ok && Boolean(state.fieldErrors?.password)}>
-          <FieldLabel htmlFor="password">Nueva contrasena</FieldLabel>
+          <FieldLabel htmlFor="password">Nueva contraseña</FieldLabel>
           <PasswordField
             id="password"
             name="password"
-            placeholder="Nueva contrasena"
+            placeholder="Nueva contraseña"
             autoComplete="new-password"
             disabled={pending}
             invalid={!state.ok && Boolean(state.fieldErrors?.password)}
@@ -35,11 +35,11 @@ export function ResetPasswordForm({ token }: { token?: string }) {
           <FieldError>{!state.ok ? state.fieldErrors?.password?.[0] : undefined}</FieldError>
         </Field>
         <Field data-invalid={!state.ok && Boolean(state.fieldErrors?.confirmPassword)}>
-          <FieldLabel htmlFor="confirmPassword">Confirmar contrasena</FieldLabel>
+          <FieldLabel htmlFor="confirmPassword">Confirmar contraseña</FieldLabel>
           <PasswordField
             id="confirmPassword"
             name="confirmPassword"
-            placeholder="Repite tu contrasena"
+            placeholder="Repite tu contraseña"
             autoComplete="new-password"
             disabled={pending}
             invalid={!state.ok && Boolean(state.fieldErrors?.confirmPassword)}
@@ -49,7 +49,7 @@ export function ResetPasswordForm({ token }: { token?: string }) {
       </FieldGroup>
       <Button type="submit" disabled={pending} className="w-full">
         {pending ? <Spinner className="size-4" /> : null}
-        Guardar nueva contrasena
+        Guardar nueva contraseña
       </Button>
     </form>
   );

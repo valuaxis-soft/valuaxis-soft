@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_THEME_COLOR, getSiteUrl } from "./_lib/site";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,9 +16,37 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const defaultTitle = `${SITE_NAME} · Plataforma de avalúos inmobiliarios en línea`;
+
 export const metadata: Metadata = {
-  title: "Valuo | Avaluos Web",
-  description: "Sistema web para capturar, ordenar y emitir dictamenes valuatorios.",
+  metadataBase: new URL(getSiteUrl()),
+  applicationName: SITE_NAME,
+  title: {
+    default: defaultTitle,
+    template: `%s · ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    locale: "es_MX",
+    siteName: SITE_NAME,
+    title: defaultTitle,
+    description: SITE_DESCRIPTION,
+    url: "/",
+  },
+  twitter: {
+    card: "summary",
+    title: defaultTitle,
+    description: SITE_DESCRIPTION,
+  },
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: SITE_THEME_COLOR,
+  colorScheme: "light",
 };
 
 export default async function RootLayout({
@@ -29,12 +58,11 @@ export default async function RootLayout({
   // nonce requires: a page built ahead of time would carry no nonce.
   await headers();
 
+  // The root layout stays neutral so pages scroll normally. Routes that need a
+  // fixed, non-scrolling shell (the valuation workspace) set it in their own layout.
   return (
-    <html
-      lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full overflow-hidden antialiased`}
-    >
-      <body className="h-full flex flex-col">
+    <html lang="es" className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className="min-h-dvh bg-background text-foreground">
         <TooltipProvider>
           {children}
           <Toaster />

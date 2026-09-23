@@ -28,7 +28,7 @@ export function ForgotPasswordForm() {
 
       <FieldGroup>
         <Field data-invalid={!state.ok && Boolean(state.fieldErrors?.email)}>
-          <FieldLabel htmlFor="email">Correo electronico</FieldLabel>
+          <FieldLabel htmlFor="email">Correo electrónico</FieldLabel>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input id="email" name="email" type="email" autoComplete="email" disabled={pending} className="pl-10" />
@@ -43,7 +43,7 @@ export function ForgotPasswordForm() {
       </Button>
 
       <Link className="text-center text-sm text-muted-foreground hover:text-foreground" href="/iniciar-sesion">
-        Volver a iniciar sesion
+        Volver a iniciar sesión
       </Link>
     </form>
   );

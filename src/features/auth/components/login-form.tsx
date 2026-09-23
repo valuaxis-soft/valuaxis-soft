@@ -25,7 +25,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
         <AuthFeedback message={state.message} severity={state.severity}>
           {state.code === "INVALID_CREDENTIALS" ? (
             <Link className="font-medium text-foreground underline underline-offset-4" href="/recuperar-contrasena">
-              Recuperar contrasena
+              Recuperar contraseña
             </Link>
           ) : null}
           {state.code === "ACCOUNT_USES_GOOGLE" ? (
@@ -38,7 +38,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
 
       <FieldGroup>
         <Field data-invalid={!state.ok && Boolean(state.fieldErrors?.email)}>
-          <FieldLabel htmlFor="email">Correo electronico</FieldLabel>
+          <FieldLabel htmlFor="email">Correo electrónico</FieldLabel>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -55,11 +55,11 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
         </Field>
 
         <Field data-invalid={!state.ok && Boolean(state.fieldErrors?.password)}>
-          <FieldLabel htmlFor="password">Contrasena</FieldLabel>
+          <FieldLabel htmlFor="password">Contraseña</FieldLabel>
           <PasswordField
             id="password"
             name="password"
-            placeholder="Ingresa tu contrasena"
+            placeholder="Ingresa tu contraseña"
             autoComplete="current-password"
             disabled={pending}
             invalid={!state.ok && Boolean(state.fieldErrors?.password)}
@@ -70,12 +70,12 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
 
       <Button type="submit" disabled={pending} className="w-full">
         {pending ? <Spinner className="size-4" /> : null}
-        Iniciar sesion
+        Iniciar sesión
       </Button>
 
       <div className="flex justify-between text-sm">
         <Link className="text-muted-foreground hover:text-foreground" href="/recuperar-contrasena">
-          Olvide mi contrasena
+          Olvidé mi contraseña
         </Link>
         <Link className="text-muted-foreground hover:text-foreground" href="/registro">
           Crear cuenta
