@@ -51,7 +51,7 @@ export function DocumentImage({ image }: { image: ImageContent }) {
           {caption}
         </figcaption>
       ) : null}
-      {image.src ? (
+      {isRenderableImageSource(image.src) ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           className="mx-auto block h-auto w-full object-contain"
@@ -72,4 +72,13 @@ export function DocumentImage({ image }: { image: ImageContent }) {
       ) : null}
     </figure>
   );
+}
+
+/**
+ * Whether a src can be loaded as is. Datos generales images arrive with their
+ * id until the stored image list replaces it with a URL; requesting the id
+ * would hit a page route and 404.
+ */
+function isRenderableImageSource(src: string) {
+  return /^(data:|blob:|\/)/.test(src) || src.includes("://");
 }

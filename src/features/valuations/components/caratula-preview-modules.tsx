@@ -6,6 +6,7 @@ import type { Block, CaratulaFormData, PrincipalCoverImage } from "../model";
 import type { ValuationMeta } from "../model";
 import { DocumentConceptValue } from "./document-concept-value";
 import { isConclusionNarrativeConcept } from "@/features/valuations/services/caratula-blocks";
+import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
 
 // Module 1: Cover (title, location, principal image)
 export function CaratulaCoverModule({
@@ -99,7 +100,7 @@ export function CaratulaConclusionModule({
       ) : null}
       <div className="mt-1 border-2 border-[var(--caratula-blue)] bg-slate-200/80 px-4 py-1.5 text-center">
         <h3 className="text-sm font-black leading-tight text-[var(--caratula-blue)]">VALOR COMERCIAL DEL INMUEBLE</h3>
-        <p className="pt-1 text-3xl font-medium leading-tight text-[var(--caratula-blue)]">{caratula.valorTotal || "Sin calcular"}</p>
+        <p className="pt-1 text-3xl font-medium leading-tight text-[var(--caratula-blue)]">{caratula.valorTotal ? formatNumericValue(caratula.valorTotal, { valueFormat: "mxn" }) : "Sin calcular"}</p>
         <p className="pt-1 text-sm font-medium uppercase leading-tight text-slate-600">
           {caratula.valorConLetra || "Valor con letra pendiente"}
         </p>

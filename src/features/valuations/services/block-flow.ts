@@ -22,7 +22,7 @@ import type {
   BlockFlowV2,
   ContentLayout,
 } from "../model";
-import { isContentLayout } from "./content-layout";
+import { isContentLayout, resolveContentLayout } from "./content-layout";
 import {
   moveContentLayout,
   type ContentLayoutMoveDescriptor,
@@ -153,15 +153,14 @@ export function newStructuralRowId(): string {
 /* ================================================================== */
 
 /**
- * Extract row IDs directly from the raw persisted ContentLayout.
- *
- * This reads from `block.contentLayout` — the raw stored V2 object —
- * NOT from the reconciled/resolved layout (which may strip empty rows).
- * Row order matches the persisted order.
+ * Extract row IDs from the persisted ContentLayout, in persisted order. This
+ * reads the raw stored layout, not the reconciled one (which may strip empty
+ * rows). A block whose layout was never saved (a template block the user only
+ * filled in) uses the layout bootstrapped from its content, the same one the
+ * renderers build; otherwise its concepts and tables would never show.
  */
 function extractLiveRowIds(block: Block): string[] {
-  const cl = block.contentLayout;
-  if (!cl || !isContentLayout(cl)) return [];
+  const cl = isContentLayout(block.contentLayout) ? block.contentLayout : resolveContentLayout(block);
   return cl.rows
     .filter((r) => r && typeof r === "object" && typeof (r as { id?: unknown }).id === "string")
     .map((r) => (r as { id: string }).id);

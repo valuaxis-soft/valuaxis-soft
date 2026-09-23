@@ -14,7 +14,7 @@
  * Extract the durable S3 storage key from any image source value.
  *
  * Returns:
- *   - the raw key if the source is already a plain key (no protocol)
+ *   - the raw key if the source is already a plain key or a local path (no protocol)
  *   - the path portion of a signed S3 URL (strips query params)
  *   - the original value for non-S3 sources (relative paths, data URIs, etc.)
  *
@@ -24,9 +24,11 @@
 export function extractStorageKey(src: string): string {
   if (!src) return "";
 
-  // Already a plain S3 key (no protocol prefix)
+  // Already a plain key (no protocol prefix). Local storage hands out
+  // "/uploads/..." paths: the key has no leading slash, or the loader would
+  // build "//uploads/...", which browsers read as a host.
   if (!src.includes("://") && !src.startsWith("data:")) {
-    return src;
+    return src.replace(/^\/+/, "");
   }
 
   // Signed S3 URL → extract key from pathname

@@ -6,6 +6,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { TableContent } from "@/features/valuations/model";
+import { cn } from "@/lib/utils";
 import { ensureTableV2, type TableV2, type TableResultGroup, type TableColumn, getTableHeaderLayout } from "../services/table";
 import { evaluateTableFormulas, getCellDisplayValue } from "../services/table-formula-engine";
 
@@ -177,7 +178,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
         {tableV2.title.trim() || EMPTY_VALUE}
       </figcaption>
       <div className="overflow-hidden border border-[var(--caratula-blue)]">
-        <table className="w-full border-collapse table-layout-fixed text-left text-[9px] leading-tight">
+        <table className="w-full border-collapse table-fixed text-left text-[9px] leading-tight">
           <colgroup>
             {columns.map((column) => (
               <col key={column.id} />
@@ -217,7 +218,8 @@ function ReportDocumentTable({ table }: { table: TableContent }) {
 
   return (
     <div className="w-full overflow-hidden">
-      <table className="w-full border-collapse table-layout-fixed text-sm">
+      {/* Wide tables (homologation, costs) must fit the 816 px page. */}
+      <table className={cn("w-full border-collapse table-fixed", tableV2.columns.length > 7 ? "text-[10px]" : "text-sm")}>
         <colgroup>
           {tableV2.columns.map((column) => (
             <col key={column.id} />
@@ -247,7 +249,7 @@ function CompactDocumentTable({ table }: { table: TableContent }) {
   const formulaResults = useMemo(() => evaluateTableFormulas(tableV2), [tableV2]);
 
   return (
-    <table className="w-full border-collapse table-layout-fixed text-[8.5px]">
+    <table className="w-full border-collapse table-fixed text-[8.5px]">
       <colgroup>
         {tableV2.columns.map((column) => (
           <col key={column.id} />

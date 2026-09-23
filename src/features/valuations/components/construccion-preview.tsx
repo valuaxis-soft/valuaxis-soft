@@ -98,7 +98,7 @@ function ConstructionTable({ table }: { table: TableContent }) {
 
   return (
     <div className="mt-1 overflow-hidden">
-      <table className="w-full border-collapse table-layout-fixed text-[9.5px] leading-tight text-[#222]">
+      <table className="w-full border-collapse table-fixed text-[9.5px] leading-tight text-[#222]">
         <colgroup>
           {columns.map((column) => (
             <col key={`${table.id}-col-${column.id}`} />

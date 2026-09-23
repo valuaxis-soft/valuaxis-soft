@@ -673,3 +673,19 @@ test("resolveBlockFlowV2 — completely malformed → generates default", () => 
   assert.equal(flow.version, 2);
   assert.equal(flow.rows.length, 2);
 });
+
+test("a block that never saved a layout still lists its content rows before its apartados", () => {
+  const filledTemplateBlock = block({
+    concepts: [
+      { id: "c-1", label: "Valor del terreno", value: "$1,528,000.00", enabled: true },
+      { id: "c-2", label: "Valor de construcciones", value: "$6,530,000.00", enabled: true },
+    ],
+    apartados: [subBlock("sb-1")],
+  });
+  const flow = generateBlockFlowV2(filledTemplateBlock);
+  assert.ok(flow);
+  const kinds = flow.rows.map((row) => row.items[0].type);
+  assert.ok(kinds.includes("content-row"), "the concepts must have a content row");
+  assert.equal(kinds.at(-1), "apartado");
+  assert.deepEqual(resolveBlockFlowV2(filledTemplateBlock), flow);
+});
