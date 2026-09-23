@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LogOut, UserCircle2, Building2, ChevronDown } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +9,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { AuthUser } from "@/features/auth/model";
+import { AUTH_PERMISSIONS, type AuthUser } from "@/features/auth/model";
+import { hasPermission } from "@/features/auth/permissions";
 import { logoutAction } from "@/features/auth/actions/logout.action";
 import { OrganizationScopeSelector } from "@/features/dashboard/components/organization-scope-selector";
 import { cn } from "@/lib/utils";
@@ -21,20 +23,47 @@ const roleLabel: Record<string, string> = {
   USUARIO: "Usuario",
 };
 
-export function DashboardHeader({ user }: { user: AuthUser }) {
+type NavKey = "dashboard" | "avaluos";
+
+export function DashboardHeader({ user, active }: { user: AuthUser; active?: NavKey }) {
+  const navItems: Array<{ key: NavKey; label: string; href: string }> = [
+    { key: "dashboard", label: "Inicio", href: "/dashboard" },
+    ...(hasPermission(user, AUTH_PERMISSIONS.viewValuations)
+      ? [{ key: "avaluos" as const, label: "Avalúos", href: "/avaluos" }]
+      : []),
+  ];
+
   return (
     <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-[1760px] items-center justify-between px-4 lg:px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-md shadow-primary/20">
-            <Building2 className="size-5 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold tracking-tight">Valuo</h1>
-            <p className="-mt-0.5 text-[11px] font-medium text-muted-foreground/60">
-              Sistema de avaluos web
-            </p>
-          </div>
+        <div className="flex min-w-0 items-center gap-3 sm:gap-6">
+          <Link href="/dashboard" aria-label="Valuaxis, ir al inicio" className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-md shadow-primary/20">
+              <Building2 className="size-5 text-primary-foreground" />
+            </div>
+            <div className="hidden sm:block">
+              <p className="text-base font-bold tracking-tight">Valuaxis</p>
+              <p className="-mt-0.5 text-[11px] font-medium text-muted-foreground/60">
+                Sistema de avalúos web
+              </p>
+            </div>
+          </Link>
+          <nav aria-label="Navegación principal" className="flex items-center gap-1">
+            {navItems.map((item) => (
+              <Link
+                key={item.key}
+                href={item.href}
+                aria-current={active === item.key ? "page" : undefined}
+                className={cn(
+                  buttonVariants({ variant: "ghost", size: "sm" }),
+                  "rounded-lg text-sm",
+                  active === item.key ? "bg-muted text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
         </div>
 
         <div className="flex items-center gap-3">
@@ -63,7 +92,7 @@ export function DashboardHeader({ user }: { user: AuthUser }) {
                 <form action={logoutAction}>
                   <button type="submit" className="flex items-center gap-2">
                     <LogOut className="size-4" />
-                    Cerrar sesion
+                    Cerrar sesión
                   </button>
                 </form>
               </DropdownMenuItem>

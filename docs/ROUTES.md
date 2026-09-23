@@ -17,6 +17,7 @@
 | Ruta | Uso |
 |---|---|
 | `/dashboard` | Resumen y avalúos recientes |
+| `/avaluos` | Lista paginada de avalúos de la organización (20 por página). Parámetros: `?q=` busca en folio, título y cliente; `?estado=` filtra por clave del catálogo de estados (`nuevo`, `en_edicion`, …); `?page=`. Requiere `AVALUO_VER`; "Nuevo avalúo" solo con `AVALUO_CREAR` |
 | `/workspace?action=new` | Crear avalúo |
 | `/workspace?id=<uuid>` | Editor del avalúo |
 | `/workspace/preview-window?id=<uuid>` | Vista previa en segunda ventana |
@@ -28,7 +29,7 @@
 | GET | `/api/auth/google` | Inicia Google OAuth |
 | GET | `/api/auth/google/callback` | Completa Google OAuth |
 | GET, PATCH | `/api/auth/organizations` | Lista y cambia la organización activa |
-| GET, POST | `/api/avaluos` | Lista y crea avalúos |
+| GET, POST | `/api/avaluos` | Lista (máximo 200, los más recientes) y crea avalúos |
 | GET, PUT, DELETE | `/api/avaluos/[id]` | Detalle, metadatos y borrado lógico |
 | PUT | `/api/avaluos/[id]/full` | Guarda el avalúo completo |
 | POST | `/api/avaluos/[id]/conclude` | Concluye; sin botón en la interfaz |

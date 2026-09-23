@@ -217,6 +217,10 @@ const valuationDetailInclude = Prisma.validator<Prisma.AvaluoInclude>()({
 type AvaluoWithRelations = Prisma.AvaluoGetPayload<{ include: typeof valuationDetailInclude }>;
 
 
+/** Upper bound for the unpaginated list served by GET /api/avaluos. */
+const LIST_VALUATIONS_MAX = 200;
+
+/** Most recently created valuations of the organization, capped at LIST_VALUATIONS_MAX. */
 export async function listValuations(organizationId: number): Promise<ValuationListItem[]> {
   const valuations = await prisma.avaluo.findMany({
     where: {
@@ -233,7 +237,8 @@ export async function listValuations(organizationId: number): Promise<ValuationL
       propiedadSujeto: { include: { direccionesPropiedad: true } },
       _count: { select: { comparables: true, versiones: true } },
     },
-    orderBy: { DFechaCreacion: "desc" },
+    orderBy: [{ DFechaCreacion: "desc" }, { IdAvaluo: "desc" }],
+    take: LIST_VALUATIONS_MAX,
   });
 
   return valuations.map((valuation) => ({
@@ -254,6 +259,148 @@ export async function listValuations(organizationId: number): Promise<ValuationL
     },
     _count: { sections: valuation._count.versiones, comparables: valuation._count.comparables },
   }));
+}
+
+export type ValuationPageItem = {
+  id: string;
+  folio: string;
+  title: string;
+  client: string;
+  location: string;
+  /** Lowercase SClave of the operation type. */
+  valuationKind: string;
+  /** Lowercase SClave of the property type. */
+  propertyKind: string;
+  propertyKindName: string;
+  appraisalKindName: string;
+  /** Lowercase SClave of the status. */
+  status: string;
+  statusName: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type ValuationPageQuery = {
+  organizationId: number;
+  page: number;
+  pageSize: number;
+  q?: string | null;
+  /** Status key from the catalog (case-insensitive). */
+  status?: string | null;
+};
+
+const valuationPageSelect = Prisma.validator<Prisma.AvaluoSelect>()({
+  UIdentificadorPublico: true,
+  SFolio: true,
+  STitulo: true,
+  SNombreCliente: true,
+  DFechaCreacion: true,
+  DFechaModificacion: true,
+  estadoAvaluo: { select: { SClave: true, SNombre: true } },
+  tipoAvaluo: { select: { SNombre: true } },
+  tipoInmueble: { select: { SClave: true, SNombre: true } },
+  tipoOperacion: { select: { SClave: true } },
+  propiedadSujeto: {
+    select: {
+      direccionesPropiedad: {
+        where: { BEsDireccionActual: true },
+        select: { SDireccionCompleta: true, BEsDireccionActual: true },
+        take: 1,
+      },
+    },
+  },
+});
+
+function valuationPageWhere(query: ValuationPageQuery): Prisma.AvaluoWhereInput {
+  const search = query.q?.trim();
+  const status = query.status?.trim();
+  return {
+    IdOrganizacion: query.organizationId,
+    BActivo: true,
+    DFechaEliminacion: null,
+    ...(status ? { estadoAvaluo: { SClave: status.toUpperCase() } } : {}),
+    ...(search
+      ? {
+          OR: [
+            { SFolio: { contains: search, mode: "insensitive" } },
+            { STitulo: { contains: search, mode: "insensitive" } },
+            { SNombreCliente: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+}
+
+/** One page of the organization's valuations, most recently modified first, filtered in the database. */
+export async function listValuationsPage(
+  query: ValuationPageQuery,
+): Promise<{ items: ValuationPageItem[]; total: number }> {
+  const pageSize = Math.max(1, Math.min(Math.trunc(query.pageSize), 100));
+  const page = Math.max(1, Math.trunc(query.page));
+  const where = valuationPageWhere(query);
+
+  const [rows, total] = await prisma.$transaction([
+    prisma.avaluo.findMany({
+      where,
+      select: valuationPageSelect,
+      orderBy: [{ DFechaModificacion: "desc" }, { IdAvaluo: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.avaluo.count({ where }),
+  ]);
+
+  return {
+    total,
+    items: rows.map((row) => ({
+      id: row.UIdentificadorPublico,
+      folio: row.SFolio,
+      title: row.STitulo,
+      client: row.SNombreCliente ?? "",
+      location: currentAddress(row.propiedadSujeto?.direccionesPropiedad),
+      valuationKind: row.tipoOperacion.SClave.toLowerCase(),
+      propertyKind: row.tipoInmueble.SClave.toLowerCase(),
+      propertyKindName: row.tipoInmueble.SNombre,
+      appraisalKindName: row.tipoAvaluo.SNombre,
+      status: row.estadoAvaluo.SClave.toLowerCase(),
+      statusName: row.estadoAvaluo.SNombre,
+      createdAt: row.DFechaCreacion,
+      updatedAt: row.DFechaModificacion,
+    })),
+  };
+}
+
+/** Number of active valuations of the organization per lowercase status key. */
+export async function countValuationsByStatus(organizationId: number): Promise<Record<string, number>> {
+  const groups = await prisma.avaluo.groupBy({
+    by: ["IdEstadoAvaluo"],
+    where: { IdOrganizacion: organizationId, BActivo: true, DFechaEliminacion: null },
+    _count: { _all: true },
+  });
+  if (groups.length === 0) return {};
+
+  const statuses = await prisma.estadoAvaluo.findMany({
+    where: { IdEstadoAvaluo: { in: groups.map((group) => group.IdEstadoAvaluo) } },
+    select: { IdEstadoAvaluo: true, SClave: true },
+  });
+  const keyById = new Map(statuses.map((status) => [status.IdEstadoAvaluo, status.SClave.toLowerCase()]));
+
+  const counts: Record<string, number> = {};
+  for (const group of groups) {
+    const key = keyById.get(group.IdEstadoAvaluo);
+    if (key) counts[key] = (counts[key] ?? 0) + group._count._all;
+  }
+  return counts;
+}
+
+/** Active valuation status catalog, in display order, with lowercase keys. */
+export async function listValuationStatuses(): Promise<Array<{ key: string; name: string }>> {
+  const statuses = await prisma.estadoAvaluo.findMany({
+    where: { BActivo: true },
+    select: { SClave: true, SNombre: true },
+    orderBy: [{ IOrden: "asc" }, { IdEstadoAvaluo: "asc" }],
+  });
+  return statuses.map((status) => ({ key: status.SClave.toLowerCase(), name: status.SNombre }));
 }
 
 export async function getValuationByPublicId(

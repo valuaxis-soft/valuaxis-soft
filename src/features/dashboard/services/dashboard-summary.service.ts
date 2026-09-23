@@ -1,6 +1,12 @@
 import { AUTH_PERMISSIONS, type AuthUser } from "@/features/auth/model";
 import { buildAuthorizationContext } from "@/features/auth/services/authorization-context.service";
-import { listValuations } from "@/features/valuations/repositories/valuation.repository";
+import {
+  countValuationsByStatus,
+  listValuationStatuses,
+  listValuationsPage,
+} from "@/features/valuations/repositories/valuation.repository";
+
+const RECENT_VALUATIONS = 5;
 
 export type DashboardSummary = {
   user: {
@@ -34,6 +40,7 @@ export type DashboardSummary = {
       createdAt: Date;
     }>;
     active: number;
+    /** Count per lowercase status key: every active catalog status in catalog order, then any other key found. */
     byStatus: Record<string, number>;
   };
   actions: {
@@ -43,16 +50,22 @@ export type DashboardSummary = {
 };
 
 export async function getDashboardSummary(user: AuthUser): Promise<DashboardSummary> {
-  const [authorizationContext, valuations] = await Promise.all([
+  const [authorizationContext, recentPage, counts, statuses] = await Promise.all([
     buildAuthorizationContext(user.id, user.organizationId),
-    listValuations(user.organizationId),
+    listValuationsPage({ organizationId: user.organizationId, page: 1, pageSize: RECENT_VALUATIONS }),
+    countValuationsByStatus(user.organizationId),
+    listValuationStatuses(),
   ]);
   const permissions = authorizationContext?.permissions ?? new Set<string>();
 
-  const byStatus = valuations.reduce<Record<string, number>>((accumulator, valuation) => {
-    accumulator[valuation.status] = (accumulator[valuation.status] ?? 0) + 1;
-    return accumulator;
-  }, {});
+  const byStatus: Record<string, number> = {};
+  for (const status of statuses) byStatus[status.key] = counts[status.key] ?? 0;
+  for (const [key, count] of Object.entries(counts)) {
+    if (!(key in byStatus)) byStatus[key] = count;
+  }
+
+  const total = recentPage.total;
+  const active = total - (counts.terminado ?? 0);
 
   return {
     user: {
@@ -73,12 +86,21 @@ export async function getDashboardSummary(user: AuthUser): Promise<DashboardSumm
         .map((feature) => feature.key),
     },
     limits: {
-      activeValuations: valuations.filter((valuation) => valuation.status !== "terminado").length,
+      activeValuations: active,
     },
     valuations: {
-      total: valuations.length,
-      recent: valuations.slice(0, 5),
-      active: valuations.filter((valuation) => valuation.status !== "terminado").length,
+      total,
+      recent: recentPage.items.map((valuation) => ({
+        id: valuation.id,
+        folio: valuation.folio,
+        client: valuation.client,
+        location: valuation.location,
+        valuationKind: valuation.valuationKind,
+        propertyKind: valuation.propertyKind,
+        status: valuation.status,
+        createdAt: valuation.createdAt,
+      })),
+      active,
       byStatus,
     },
     actions: {
