@@ -19,7 +19,7 @@ Monolito modular con Next.js 16 (App Router), React 19, TypeScript, Prisma 6 y P
 
 `ValuationWorkspace` coordina el estado del editor: metadatos, secciones y carátula, con deshacer y rehacer propios. Delega en la barra superior, la navegación de secciones, el panel del editor y el panel de vista previa. Guarda manualmente con `PUT /api/avaluos/[id]` y `PUT /api/avaluos/[id]/full`.
 
-El documento tiene dos capas de presentación, ambas con formato v1 y v2 por compatibilidad con datos guardados:
+El documento tiene dos capas de presentación, guardadas en formato v2. Un nodo sin layout guardado recibe uno generado a partir de su contenido:
 
 - **Content layout:** acomodo de conceptos, tablas e imágenes en filas de hasta 3 columnas.
 - **Block flow:** orden intercalado de filas de contenido y apartados dentro de un bloque.
