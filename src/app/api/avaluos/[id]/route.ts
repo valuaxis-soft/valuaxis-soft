@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { saveValuation } from "@/features/valuations/actions/save-valuation.action";
 import {
@@ -42,7 +43,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/avalu
   }
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext<"/api/avaluos/[id]">) {
+export async function DELETE(request: Request, { params }: RouteContext<"/api/avaluos/[id]">) {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
     if (!auth.ok) return auth.response;
@@ -50,6 +51,7 @@ export async function DELETE(_request: Request, { params }: RouteContext<"/api/a
     const { id } = await params;
     const deleted = await softDeleteValuation(id, auth.user.organizationId);
     if (!deleted) return NextResponse.json({ error: "Avaluo no encontrado" }, { status: 404 });
+    await auditValuation({ action: "DELETE", user: auth.user, valuationPublicId: id, request });
 
     return NextResponse.json({ data: { id }, message: "Avaluo eliminado correctamente" });
   } catch (error) {

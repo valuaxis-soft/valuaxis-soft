@@ -1,3 +1,4 @@
+import { setOAuthBinding, statesMatch, takeOAuthBinding } from "../oauth/oauth-binding-cookie";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { safeRedirectPath } from "@/security/validation/redirect-safety";
 import { createSecureToken, hashToken } from "@/security/tokens/token-hashing";
@@ -54,6 +55,9 @@ export async function startGoogleOAuth(input: { request: Request; returnTo?: str
   const provider = new GoogleOAuthProvider(config);
   const state = createSecureToken(32);
   const nonce = createSecureToken(32);
+  // PKCE: the S256 challenge is the base64url SHA-256 of the verifier, which is what hashToken computes.
+  const codeVerifier = createSecureToken(48);
+  const codeChallenge = hashToken(codeVerifier);
   const returnUrl = safeRedirectPath(input.returnTo);
   const expiresAt = new Date(Date.now() + OAUTH_REQUEST_TTL_MINUTES * 60 * 1000);
   const ip = getRequestIp(input.request);
@@ -63,6 +67,7 @@ export async function startGoogleOAuth(input: { request: Request; returnTo?: str
     providerId: providerRecord.IdProveedorIdentidad,
     stateHash: hashToken(state),
     nonceHash: hashToken(nonce),
+    codeChallenge,
     returnUrl,
     ip,
     userAgent,
@@ -80,7 +85,8 @@ export async function startGoogleOAuth(input: { request: Request; returnTo?: str
     metadata: { provider: "google", returnUrl },
   });
 
-  return provider.buildAuthorizationUrl({ state, nonce, returnTo: returnUrl });
+  await setOAuthBinding(state, codeVerifier);
+  return provider.buildAuthorizationUrl({ state, nonce, codeChallenge, returnTo: returnUrl });
 }
 
 export async function completeGoogleOAuth(input: {
@@ -107,13 +113,23 @@ export async function completeGoogleOAuth(input: {
     throw new OAuthFlowError("oauth_invalid_state", "Missing OAuth state.");
   }
 
+  const binding = await takeOAuthBinding();
+  if (!binding || !statesMatch(binding.state, input.state)) {
+    await auditOAuthFailure("oauth_invalid_state", ip, userAgent);
+    throw new OAuthFlowError("oauth_invalid_state", "OAuth state does not belong to this browser.");
+  }
+
   const requestRecord = await consumeOAuthState(input.state);
+  if (requestRecord.SCodeVerifierHash && requestRecord.SCodeVerifierHash !== hashToken(binding.codeVerifier)) {
+    await auditOAuthFailure("oauth_invalid_state", ip, userAgent, requestRecord.IdSolicitudOAuth.toString());
+    throw new OAuthFlowError("oauth_invalid_state", "PKCE verifier does not match the request.");
+  }
   const config = loadGoogleOAuthConfig();
   const provider = new GoogleOAuthProvider(config);
 
   let profile: GoogleOAuthProfile;
   try {
-    const tokens = await provider.exchangeCode(input.code);
+    const tokens = await provider.exchangeCode(input.code, binding.codeVerifier);
     profile = await provider.validateIdToken(tokens.id_token!, requestRecord.SNonceHash ?? "");
   } catch (error) {
     await auditOAuthFailure("oauth_provider_error", ip, userAgent, requestRecord.IdSolicitudOAuth.toString());

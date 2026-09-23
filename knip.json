@@ -3,7 +3,8 @@
   "entry": [
     "scripts/*.ts",
     "prisma/seed.ts",
-    "tests/integration/**/*.integration.ts"
+    "tests/integration/**/*.integration.ts",
+    "tests/integration/**/*.helper.ts"
   ],
   "project": [
     "src/**/*.{ts,tsx}",

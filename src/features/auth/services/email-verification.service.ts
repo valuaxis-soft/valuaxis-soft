@@ -1,4 +1,5 @@
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { recordAuditEvent } from "../repositories/audit.repository";
 import { hashToken, createSecureToken } from "@/security/tokens/token-hashing";
 import { getEmailService } from "@/infrastructure/email/email.service";
 import { buildPublicAppUrl } from "@/lib/public-url";
@@ -53,6 +54,14 @@ export async function consumeEmailVerificationToken(token: string) {
       data: { BUtilizado: true, DFechaUtilizacion: new Date() },
     }),
   ]);
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    userId: record.IdUsuario,
+    entity: "Usuario",
+    entityId: String(record.IdUsuario),
+    action: "EMAIL_VERIFIED",
+    result: "EXITOSO",
+  });
 
   return true;
 }

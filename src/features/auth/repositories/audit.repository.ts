@@ -13,12 +13,16 @@ export async function recordAuditEvent(input: {
   userAgent?: string | null;
   metadata?: Prisma.InputJsonValue;
 }) {
-  const type = await prisma.tipoEventoAuditoria.findFirst({
-    where: { SClave: input.typeKey, BActivo: true },
-  });
-  if (!type) return null;
+  try {
+    const type = await prisma.tipoEventoAuditoria.findFirst({
+      where: { SClave: input.typeKey, BActivo: true },
+    });
+    if (!type) {
+      console.warn(`[AUDIT] Missing audit event type ${input.typeKey}; event ${input.action} not recorded.`);
+      return null;
+    }
 
-  return prisma.auditoria.create({
+    return await prisma.auditoria.create({
     data: {
       IdTipoEventoAuditoria: type.IdTipoEventoAuditoria,
       IdOrganizacion: input.organizationId ?? null,
@@ -31,5 +35,10 @@ export async function recordAuditEvent(input: {
       SAgenteUsuario: input.userAgent ?? null,
       JMetadatos: input.metadata ?? undefined,
     },
-  });
+    });
+  } catch (error) {
+    // Auditing must never break the operation it records.
+    console.error(`[AUDIT] Could not record ${input.action}`, error);
+    return null;
+  }
 }

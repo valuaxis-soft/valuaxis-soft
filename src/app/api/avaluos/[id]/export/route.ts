@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { internalError } from "@/lib/api-response";
 import { requireApiUser } from "@/security/guards/api-guard";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
@@ -6,7 +7,7 @@ import { generateValuationPdf, type PdfValuation } from "@/features/reports/serv
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -52,6 +53,7 @@ export async function GET(
     };
 
     const pdfBytes = await generateValuationPdf(pdfData);
+    await auditValuation({ action: "EXPORT", user, valuationPublicId: id, request });
 
     return new NextResponse(Buffer.from(pdfBytes), {
       headers: {

@@ -4,6 +4,8 @@ import { resolveDefaultOrganization } from "./organization-access.service";
 import { findUserForLogin, incrementLoginFailures, resetLoginFailures } from "../repositories/user.repository";
 import { recordAccessAttempt } from "../repositories/security-event.repository";
 import { isTemporarilyLocked, nextLockDate } from "../rules/authentication.rules";
+import { rateLimits } from "@/security/rate-limit/rate-limiter";
+import { recordAuditEvent } from "../repositories/audit.repository";
 
 export type PasswordAuthenticationFailureReason =
   | "INVALID_CREDENTIALS"
@@ -21,8 +23,15 @@ export async function authenticateWithPassword(input: {
   userAgent?: string | null;
 }): Promise<{ ok: true } | { ok: false; reason: PasswordAuthenticationFailureReason }> {
   const user = await findUserForLogin(input.email);
+  const accountIpKey = `login-fail:${input.email.toLowerCase()}:${input.ip ?? "unknown"}`;
+
+  if (rateLimits.loginFailuresByAccountIp.isBlocked(accountIpKey)) {
+    await recordAccessAttempt({ userId: user?.IdUsuario, email: input.email, success: false, reason: "IP_LOCKED_FOR_ACCOUNT", ip: input.ip });
+    return { ok: false, reason: "ACCOUNT_BLOCKED" };
+  }
 
   if (!user) {
+    rateLimits.loginFailuresByAccountIp.consume(accountIpKey);
     await recordAccessAttempt({ email: input.email, success: false, reason: "NO_MATCH", ip: input.ip });
     return { ok: false, reason: "INVALID_CREDENTIALS" };
   }
@@ -43,8 +52,19 @@ export async function authenticateWithPassword(input: {
 
   const valid = await verifyPassword(input.password, user.SContrasenaHash);
   if (!valid) {
+    rateLimits.loginFailuresByAccountIp.consume(accountIpKey);
     await incrementLoginFailures(user.IdUsuario, nextLockDate(user.IReintentosConsecutivos));
     await recordAccessAttempt({ userId: user.IdUsuario, email: input.email, success: false, reason: "INVALID_PASSWORD", ip: input.ip });
+    await recordAuditEvent({
+      typeKey: "INICIO_SESION",
+      userId: user.IdUsuario,
+      entity: "Usuario",
+      entityId: String(user.IdUsuario),
+      action: "LOGIN_PASSWORD",
+      result: "FALLIDO",
+      ip: input.ip,
+      userAgent: input.userAgent,
+    });
     return { ok: false, reason: "INVALID_CREDENTIALS" };
   }
 
@@ -60,6 +80,7 @@ export async function authenticateWithPassword(input: {
   }
 
   await resetLoginFailures(user.IdUsuario);
+  rateLimits.loginFailuresByAccountIp.reset(accountIpKey);
   await recordAccessAttempt({ userId: user.IdUsuario, email: input.email, success: true, ip: input.ip });
   try {
     await createSecureSession({
@@ -73,6 +94,18 @@ export async function authenticateWithPassword(input: {
     console.error("[AUTH] Session creation failed", error);
     return { ok: false, reason: "SESSION_CREATION_FAILED" };
   }
+
+  await recordAuditEvent({
+    typeKey: "INICIO_SESION",
+    organizationId: organization.organizationId,
+    userId: user.IdUsuario,
+    entity: "Usuario",
+    entityId: String(user.IdUsuario),
+    action: "LOGIN_PASSWORD",
+    result: "EXITOSO",
+    ip: input.ip,
+    userAgent: input.userAgent,
+  });
 
   return { ok: true };
 }

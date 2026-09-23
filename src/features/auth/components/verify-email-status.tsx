@@ -1,10 +1,8 @@
-import Link from "next/link";
 import { CheckCircle2, CircleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { verifyEmailAction } from "../actions/verify-email.action";
+import { VerifyEmailForm } from "./verify-email-form";
 
-export async function VerifyEmailStatus({ token, sent }: { token?: string; sent?: string }) {
+export function VerifyEmailStatus({ token, sent }: { token?: string; sent?: string }) {
   if (sent) {
     return (
       <Alert>
@@ -25,15 +23,5 @@ export async function VerifyEmailStatus({ token, sent }: { token?: string; sent?
     );
   }
 
-  const result = await verifyEmailAction(token);
-  return (
-    <div className="grid gap-4">
-      <Alert variant={result.ok ? "default" : "destructive"}>
-        {result.ok ? <CheckCircle2 className="size-4" /> : <CircleAlert className="size-4" />}
-        <AlertTitle>{result.ok ? "Correo verificado" : "No pudimos verificar el correo"}</AlertTitle>
-        <AlertDescription>{result.ok ? "Tu cuenta ya puede continuar el flujo de acceso." : result.message}</AlertDescription>
-      </Alert>
-      <Button render={<Link href="/iniciar-sesion" />}>Ir a iniciar sesion</Button>
-    </div>
-  );
+  return <VerifyEmailForm token={token} />;
 }

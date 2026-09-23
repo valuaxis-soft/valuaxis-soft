@@ -44,6 +44,13 @@ export function touchSession(sessionId: number) {
   });
 }
 
+export function extendSession(sessionId: number, expiresAt: Date) {
+  return prisma.sesion.updateMany({
+    where: { IdSesion: sessionId, BRevocada: false },
+    data: { DFechaExpiracion: expiresAt, DFechaRotacion: new Date() },
+  });
+}
+
 export function revokeSessionByHash(tokenHash: string) {
   return prisma.sesion.updateMany({
     where: { STokenHash: tokenHash, BRevocada: false },

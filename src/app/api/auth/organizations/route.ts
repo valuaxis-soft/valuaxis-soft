@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordAuditEvent } from "@/features/auth/repositories/audit.repository";
 
 import { getCurrentSession } from "@/features/auth/services/session.service";
 import {
@@ -52,6 +53,17 @@ export async function PATCH(request: Request) {
     const status = result.reason === "ORGANIZATION_ACCESS_DENIED" ? 403 : 409;
     return NextResponse.json({ error: result.reason }, { status });
   }
+
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    organizationId: result.organization.IdOrganizacion,
+    userId: session.user.id,
+    entity: "Sesion",
+    entityId: String(session.sessionId),
+    action: "ORGANIZATION_SWITCH",
+    result: "EXITOSO",
+    metadata: { from: session.organizationId, to: result.organization.IdOrganizacion },
+  });
 
   return NextResponse.json({ data: result.organization });
 }

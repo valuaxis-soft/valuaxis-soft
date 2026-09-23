@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_PUBLIC_PATHS, AUTH_SESSION_COOKIE } from "@/features/auth/constants/auth.constants";
 import { buildPublicAppUrl, getPublicAppUrl } from "@/lib/public-url";
+import { contentSecurityPolicy, createNonce } from "@/security/headers/security-headers";
 import { isSameOriginRequest } from "@/security/validation/origin";
 import { safeRedirectPath } from "@/security/validation/redirect-safety";
 
@@ -37,20 +38,32 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (isPublicPath(pathname) || pathname.startsWith("/_next")) {
-    return NextResponse.next();
-  }
-
-  const hasSessionCookie = Boolean(request.cookies.get(AUTH_SESSION_COOKIE)?.value);
-
-  if (!hasSessionCookie) {
+  const isProtected = !isPublicPath(pathname) && !pathname.startsWith("/_next");
+  if (isProtected && !request.cookies.get(AUTH_SESSION_COOKIE)?.value) {
     const loginUrl = buildPublicAppUrl("/iniciar-sesion");
     loginUrl.searchParams.set("reason", "required");
     loginUrl.searchParams.set("redirectTo", safeRedirectPath(pathname));
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  return withContentSecurityPolicy(request);
+}
+
+/**
+ * Pages get a per-request nonce. Next.js reads the CSP from the request headers
+ * and applies the nonce to the scripts it renders.
+ */
+function withContentSecurityPolicy(request: NextRequest) {
+  const policy = contentSecurityPolicy({
+    development: process.env.NODE_ENV !== "production",
+    nonce: createNonce(),
+  });
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("Content-Security-Policy", policy);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy", policy);
+  return response;
 }
 
 export const config = {

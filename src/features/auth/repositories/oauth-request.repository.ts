@@ -4,6 +4,7 @@ export function createOAuthRequest(input: {
   providerId: number;
   stateHash: string;
   nonceHash: string;
+  codeChallenge: string;
   returnUrl: string;
   ip?: string | null;
   userAgent?: string | null;
@@ -14,6 +15,7 @@ export function createOAuthRequest(input: {
       IdProveedorIdentidad: input.providerId,
       SStateHash: input.stateHash,
       SNonceHash: input.nonceHash,
+      SCodeVerifierHash: input.codeChallenge,
       SURLRetorno: input.returnUrl,
       SDireccionIP: input.ip ?? null,
       SAgenteUsuario: input.userAgent ?? null,

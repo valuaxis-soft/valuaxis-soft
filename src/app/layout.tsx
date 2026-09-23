@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -19,11 +20,15 @@ export const metadata: Metadata = {
   description: "Sistema web para capturar, ordenar y emitir dictamenes valuatorios.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Reading request headers renders every page per request, which the CSP
+  // nonce requires: a page built ahead of time would carry no nonce.
+  await headers();
+
   return (
     <html
       lang="es"

@@ -48,7 +48,7 @@ export class GoogleOAuthProvider {
     private readonly fetcher: typeof fetch = fetch,
   ) {}
 
-  buildAuthorizationUrl(input: { state: string; nonce: string; returnTo: string }) {
+  buildAuthorizationUrl(input: { state: string; nonce: string; codeChallenge: string; returnTo: string }) {
     const url = new URL(GOOGLE_AUTHORIZATION_URL);
     url.searchParams.set("client_id", this.config.clientId);
     url.searchParams.set("redirect_uri", this.config.redirectUri);
@@ -56,15 +56,18 @@ export class GoogleOAuthProvider {
     url.searchParams.set("scope", GOOGLE_SCOPES.join(" "));
     url.searchParams.set("state", input.state);
     url.searchParams.set("nonce", input.nonce);
+    url.searchParams.set("code_challenge", input.codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
     url.searchParams.set("prompt", "select_account");
     return url;
   }
 
-  async exchangeCode(code: string) {
+  async exchangeCode(code: string, codeVerifier: string) {
     const body = new URLSearchParams({
       client_id: this.config.clientId,
       client_secret: this.config.clientSecret,
       code,
+      code_verifier: codeVerifier,
       grant_type: "authorization_code",
       redirect_uri: this.config.redirectUri,
     });

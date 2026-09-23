@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { saveValuation } from "@/features/valuations/actions/save-valuation.action";
 import { listValuations } from "@/features/valuations/repositories/valuation.repository";
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
     }
 
     const publicId = result.data?.id;
+    if (publicId) await auditValuation({ action: "CREATE", user: auth.user, valuationPublicId: publicId, request });
     return NextResponse.json(
       { data: { ok: true, publicId, valuationId: publicId, workspaceUrl: `/workspace?id=${publicId}` } },
       { status: 201 },

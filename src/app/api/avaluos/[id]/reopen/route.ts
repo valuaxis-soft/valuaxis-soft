@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
 import { reopenValuation } from "@/features/valuations/services/valuation-workflow.service";
@@ -21,6 +22,13 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
       user: auth.user,
       reason: body.data.reason,
       acceptedText: body.data.acceptedText,
+    });
+    await auditValuation({
+      action: "REOPEN",
+      user: auth.user,
+      valuationPublicId: id,
+      request,
+      metadata: { reason: body.data.reason },
     });
     return NextResponse.json({ data: result });
   } catch (error) {

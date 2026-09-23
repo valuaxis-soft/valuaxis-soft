@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { recordAuditEvent } from "@/features/auth/repositories/audit.repository";
 import type { AuthPermission, AuthUser } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
-import { getCurrentUser } from "@/features/auth/session";
+import { getCurrentSession, renewCurrentSession } from "@/features/auth/services/session.service";
 
 export type ApiGuardResult =
   | { ok: true; user: AuthUser }
@@ -21,7 +22,25 @@ export function authorizeApiUser(
   return { ok: true, user };
 }
 
-/** Resolves the session user and checks the permission. Use at the top of every route handler. */
+/**
+ * Resolves the session user and checks the permission. Use at the top of every
+ * route handler. An authorized request also renews the session, so a user who
+ * keeps working is not logged out mid-edit.
+ */
 export async function requireApiUser(permission?: AuthPermission): Promise<ApiGuardResult> {
-  return authorizeApiUser(await getCurrentUser(), permission);
+  const session = await getCurrentSession();
+  const result = authorizeApiUser(session?.user ?? null, permission);
+  if (result.ok && session) await renewCurrentSession(session);
+  if (!result.ok && session && permission) {
+    await recordAuditEvent({
+      typeKey: "ACCESO_DENEGADO",
+      organizationId: session.organizationId,
+      userId: session.user.id,
+      entity: "Permiso",
+      entityId: permission,
+      action: "API_PERMISSION_DENIED",
+      result: "RECHAZADO",
+    });
+  }
+  return result;
 }

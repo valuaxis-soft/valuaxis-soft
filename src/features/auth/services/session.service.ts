@@ -1,8 +1,9 @@
 import { clearSessionCookie, getSessionCookie, setSessionCookie } from "@/lib/auth/cookies";
 import { createSecureToken, hashToken } from "@/security/tokens/token-hashing";
-import { buildSessionExpiration } from "../rules/session.rules";
+import { buildSessionExpiration, computeRenewedExpiration } from "../rules/session.rules";
 import {
   createSessionRecord,
+  extendSession,
   findActiveSessionByHash,
   revokeSessionByHash,
   revokeUserSessions as revokeUserSessionsRepository,
@@ -62,8 +63,27 @@ export async function getCurrentSession() {
     sessionId: session.IdSesion,
     user,
     organizationId: session.IdOrganizacion,
+    createdAt: session.DFechaCreacion,
     expiresAt: session.DFechaExpiracion,
   };
+}
+
+export type CurrentSession = NonNullable<Awaited<ReturnType<typeof getCurrentSession>>>;
+
+/**
+ * Extends an active session and its cookie (sliding expiration). Only call it
+ * where cookies can be written: route handlers and server actions.
+ * Returns the session's effective expiration.
+ */
+export async function renewCurrentSession(session: CurrentSession): Promise<Date> {
+  const renewed = computeRenewedExpiration({ createdAt: session.createdAt, expiresAt: session.expiresAt });
+  if (!renewed) return session.expiresAt;
+
+  const token = await getSessionCookie();
+  if (!token) return session.expiresAt;
+  await extendSession(session.sessionId, renewed);
+  await setSessionCookie(token, Math.floor((renewed.getTime() - Date.now()) / 1000));
+  return renewed;
 }
 
 export async function revokeCurrentSession() {

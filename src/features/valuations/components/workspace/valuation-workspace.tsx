@@ -42,6 +42,7 @@ import {
 } from "@/features/valuations/services/valuation-constants";
 import {
   api,
+  SessionExpiredError,
   type DatosImageResponse,
   type DocumentHeaderImageResponse,
 } from "@/lib/api-client";
@@ -190,6 +191,8 @@ const newId = () => crypto.randomUUID();
 const roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII"];
 const EDITOR_HISTORY_LIMIT = 50;
 const TEXT_EDIT_GROUP_MS = 1200;
+/** Heartbeat interval. The server renews once less than half of the 8-hour idle timeout remains. */
+const SESSION_HEARTBEAT_MS = 10 * 60 * 1000;
 
 const sectionIconMap = {
   caratula: ShieldCheck,
@@ -731,8 +734,41 @@ export function ValuationWorkspace({
   const [uploadingCoverImage, setUploadingCoverImage] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
+  const [sessionExpiredOpen, setSessionExpiredOpen] = useState(false);
 
   const saving = saveStatus === "saving";
+  const hasUnsavedChanges = saveStatus === "dirty" || saveStatus === "error";
+
+  // Keep the session alive while the editor is open, and warn early if it is gone.
+  const onHeartbeatFailed = useEffectEvent((error: unknown) => {
+    if (!(error instanceof SessionExpiredError)) return;
+    if (hasUnsavedChanges) setSessionExpiredOpen(true);
+    else toast.warning("Tu sesión expiró. Inicia sesión de nuevo para seguir editando.");
+  });
+  useEffect(() => {
+    const beat = () => {
+      api.session.heartbeat().catch(onHeartbeatFailed);
+    };
+    const interval = window.setInterval(beat, SESSION_HEARTBEAT_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") beat();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
+  // Closing or reloading the tab with unsaved changes asks for confirmation.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasUnsavedChanges]);
   const enabledSections = sections;
   const documentHeaderImage = getDocumentHeaderImage(sections);
   const rawActiveSection =
@@ -1176,8 +1212,12 @@ export function ValuationWorkspace({
       setSaveStatus("saved");
       return true;
     } catch (err) {
-      toast.error(`Error al guardar: ${err instanceof Error ? err.message : "Error desconocido"}`);
       setSaveStatus("error");
+      if (err instanceof SessionExpiredError) {
+        setSessionExpiredOpen(true);
+        return false;
+      }
+      toast.error(`Error al guardar: ${err instanceof Error ? err.message : "Error desconocido"}`);
       return false;
     }
   };
@@ -2185,6 +2225,29 @@ export function ValuationWorkspace({
           </div>
         )}
       </div>
+      <AlertDialog open={sessionExpiredOpen} onOpenChange={setSessionExpiredOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tu sesión expiró</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tus cambios siguen en esta pestaña. Inicia sesión en una pestaña nueva y después vuelve aquí para
+              guardar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              type="button"
+              variant="outline"
+              onClick={() => window.open("/iniciar-sesion?reason=expired", "_blank", "noopener")}
+            >
+              Iniciar sesión en otra pestaña
+            </AlertDialogAction>
+            <AlertDialogAction type="button" onClick={() => void handleSave()} disabled={saving}>
+              Guardar de nuevo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={exitDialogOpen} onOpenChange={setExitDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

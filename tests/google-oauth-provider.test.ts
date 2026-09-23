@@ -22,6 +22,7 @@ test("google oauth provider builds authorization url with minimal scopes and exa
   const url = provider.buildAuthorizationUrl({
     state: "secure-state",
     nonce: "secure-nonce",
+    codeChallenge: "pkce-challenge",
     returnTo: "/dashboard",
   });
 
@@ -30,6 +31,8 @@ test("google oauth provider builds authorization url with minimal scopes and exa
   assert.equal(url.searchParams.get("response_type"), "code");
   assert.equal(url.searchParams.get("state"), "secure-state");
   assert.equal(url.searchParams.get("nonce"), "secure-nonce");
+  assert.equal(url.searchParams.get("code_challenge"), "pkce-challenge");
+  assert.equal(url.searchParams.get("code_challenge_method"), "S256");
   assert.deepEqual(url.searchParams.get("scope")?.split(" "), ["openid", "email", "profile"]);
   assert.equal(url.toString().includes(config.clientSecret), false);
 });
@@ -60,7 +63,7 @@ test("google oauth token exchange rejects responses without id token", async () 
     });
   });
 
-  await assert.rejects(() => provider.exchangeCode("code"), GoogleOAuthProviderError);
+  await assert.rejects(() => provider.exchangeCode("code", "verifier"), GoogleOAuthProviderError);
 });
 
 test("google oauth token exchange sends code only to server token endpoint", async () => {
@@ -73,10 +76,11 @@ test("google oauth token exchange sends code only to server token endpoint", asy
     });
   });
 
-  await provider.exchangeCode("server-code");
+  await provider.exchangeCode("server-code", "pkce-verifier");
 
   assert.match(receivedBody, /grant_type=authorization_code/);
   assert.match(receivedBody, /code=server-code/);
+  assert.match(receivedBody, /code_verifier=pkce-verifier/);
   assert.match(
     receivedBody,
     /redirect_uri=https%3A%2F%2Favaluos\.devpware\.network%2Fapi%2Fauth%2Fgoogle%2Fcallback/,
@@ -97,4 +101,20 @@ test("google oauth config requires redirect uri to match APP_URL callback", () =
       error instanceof GoogleOAuthProviderError &&
       error.message.includes("GOOGLE_REDIRECT_URI"),
   );
+});
+
+test("the OAuth binding cookie parses only well-formed values", async () => {
+  const { parseOAuthBinding, statesMatch } = await import("../src/features/auth/oauth/oauth-binding-cookie");
+  assert.deepEqual(parseOAuthBinding("state123.verifier456"), { state: "state123", codeVerifier: "verifier456" });
+  assert.equal(parseOAuthBinding("only-one-part"), null);
+  assert.equal(parseOAuthBinding("a.b.c"), null);
+  assert.equal(parseOAuthBinding(undefined), null);
+  assert.equal(statesMatch("abc", "abc"), true);
+  assert.equal(statesMatch("abc", "abd"), false);
+  assert.equal(statesMatch("abc", "abcd"), false);
+});
+
+test("the PKCE challenge is the base64url SHA-256 of the verifier (RFC 7636 test vector)", async () => {
+  const { hashToken } = await import("../src/security/tokens/token-hashing");
+  assert.equal(hashToken("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
 });

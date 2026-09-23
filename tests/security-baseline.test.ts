@@ -3,7 +3,7 @@ import test from "node:test";
 import { readJsonBody, internalError } from "../src/lib/api-response";
 import { createRateLimiter, clientIp } from "../src/security/rate-limit/rate-limiter";
 import { isSameOriginRequest } from "../src/security/validation/origin";
-import { contentSecurityPolicy, securityHeaders } from "../src/security/headers/security-headers";
+import { contentSecurityPolicy, createNonce, securityHeaders } from "../src/security/headers/security-headers";
 import {
   createValuationSchema,
   reopenValuationSchema,
@@ -79,16 +79,29 @@ test("production headers forbid framing, sniffing and enable HSTS", () => {
   assert.equal(headers["X-Frame-Options"], "DENY");
   assert.equal(headers["X-Content-Type-Options"], "nosniff");
   assert.match(headers["Strict-Transport-Security"], /max-age=31536000/);
-  assert.match(headers["Content-Security-Policy"], /frame-ancestors 'none'/);
-  assert.match(headers["Content-Security-Policy"], /img-src 'self' data: blob: https:\/\/\*\.amazonaws\.com/);
-  assert.doesNotMatch(headers["Content-Security-Policy"], /unsafe-eval/);
+});
+
+test("the CSP allows scripts only with the request nonce", () => {
+  const policy = contentSecurityPolicy({ development: false, nonce: "abc123" });
+  const scriptSrc = policy.split("; ").find((directive) => directive.startsWith("script-src"));
+  assert.equal(scriptSrc, "script-src 'self' 'nonce-abc123' 'strict-dynamic'");
+  assert.match(policy, /frame-ancestors 'none'/);
+  assert.match(policy, /img-src 'self' data: blob: https:\/\/\*\.amazonaws\.com/);
+  assert.match(policy, /upgrade-insecure-requests/);
 });
 
 test("development relaxes only what hot reload needs and skips HSTS", () => {
-  const policy = contentSecurityPolicy({ development: true });
+  const policy = contentSecurityPolicy({ development: true, nonce: "n" });
   assert.match(policy, /'unsafe-eval'/);
   assert.doesNotMatch(policy, /upgrade-insecure-requests/);
   assert.equal(securityHeaders({ development: true }).some((h) => h.key === "Strict-Transport-Security"), false);
+});
+
+test("each nonce is unique and base64", () => {
+  const a = createNonce();
+  const b = createNonce();
+  assert.notEqual(a, b);
+  assert.match(a, /^[A-Za-z0-9+/]{22}==$/);
 });
 
 /* ------------------------------------------------------------------ */
@@ -169,4 +182,41 @@ test("business errors keep their message and status", async () => {
   const response = valuationErrorResponse("TEST", new ValuationWorkflowError("El avaluo esta bloqueado", 409), "fallback");
   assert.equal(response.status, 409);
   assert.deepEqual(await response.json(), { error: "El avaluo esta bloqueado" });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Session renewal and lockout                                        */
+/* ------------------------------------------------------------------ */
+
+const HOUR = 3_600_000;
+
+test("an active session is renewed once less than half of its idle time remains", async () => {
+  const { computeRenewedExpiration } = await import("../src/features/auth/rules/session.rules");
+  const createdAt = new Date(0);
+  const now = 10 * HOUR;
+  assert.equal(computeRenewedExpiration({ createdAt, expiresAt: new Date(now + 5 * HOUR), now }), null);
+  const renewed = computeRenewedExpiration({ createdAt, expiresAt: new Date(now + 3 * HOUR), now });
+  assert.equal(renewed?.getTime(), now + 8 * HOUR);
+});
+
+test("an expired session is not renewed", async () => {
+  const { computeRenewedExpiration } = await import("../src/features/auth/rules/session.rules");
+  assert.equal(computeRenewedExpiration({ createdAt: new Date(0), expiresAt: new Date(HOUR), now: 2 * HOUR }), null);
+});
+
+test("no session is renewed past 7 days from login", async () => {
+  const { computeRenewedExpiration } = await import("../src/features/auth/rules/session.rules");
+  const createdAt = new Date(0);
+  const sevenDays = 7 * 24 * HOUR;
+  const now = sevenDays - 2 * HOUR;
+  const renewed = computeRenewedExpiration({ createdAt, expiresAt: new Date(now + HOUR), now });
+  assert.equal(renewed?.getTime(), sevenDays);
+  assert.equal(computeRenewedExpiration({ createdAt, expiresAt: new Date(sevenDays), now: sevenDays - HOUR }), null);
+});
+
+test("failed logins lock out the attacking IP, not the account owner", () => {
+  const limiter = createRateLimiter({ limit: 5, windowMs: 15 * 60_000 });
+  for (let i = 0; i < 5; i += 1) limiter.consume("login-fail:perito@example.com:203.0.113.9", 0);
+  assert.equal(limiter.isBlocked("login-fail:perito@example.com:203.0.113.9", 1_000), true);
+  assert.equal(limiter.isBlocked("login-fail:perito@example.com:198.51.100.4", 1_000), false);
 });

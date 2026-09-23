@@ -1,3 +1,5 @@
+import { MAX_LOGIN_FAILURES_PER_IP } from "@/features/auth/constants/auth.constants";
+
 /**
  * Fixed-window rate limiter kept in process memory.
  *
@@ -35,6 +37,11 @@ export function createRateLimiter(options: { limit: number; windowMs: number }) 
       }
       return { allowed: true };
     },
+    /** True when the key is over the limit, without counting an attempt. */
+    isBlocked(key: string, now = Date.now()) {
+      const bucket = buckets.get(key);
+      return Boolean(bucket && bucket.resetAt > now && bucket.count >= options.limit);
+    },
     reset(key: string) {
       buckets.delete(key);
     },
@@ -46,6 +53,8 @@ const MINUTE = 60_000;
 /** Limits per flow. Keys combine the flow with the client IP, or with the user or email. */
 export const rateLimits = {
   login: createRateLimiter({ limit: 10, windowMs: 15 * MINUTE }),
+  /** Failed passwords per account and IP: only the attacking IP gets locked out of the account. */
+  loginFailuresByAccountIp: createRateLimiter({ limit: MAX_LOGIN_FAILURES_PER_IP, windowMs: 15 * MINUTE }),
   passwordResetByIp: createRateLimiter({ limit: 10, windowMs: 60 * MINUTE }),
   passwordResetByEmail: createRateLimiter({ limit: 3, windowMs: 60 * MINUTE }),
   register: createRateLimiter({ limit: 5, windowMs: 60 * MINUTE }),

@@ -50,12 +50,21 @@ export type TerrainSketchResponse = {
   warning?: string;
 };
 
+/** The server answered 401: the session expired or was revoked. */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super("Tu sesión expiró. Inicia sesión de nuevo para continuar.");
+    this.name = "SessionExpiredError";
+  }
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
   });
 
+  if (res.status === 401) throw new SessionExpiredError();
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: "Request failed" }));
     throw new Error(error.error || `HTTP ${res.status}`);
@@ -71,6 +80,7 @@ async function uploadForm<T>(url: string, fields: Record<string, string | Blob |
     if (value !== undefined) formData.append(key, value);
   }
   const res = await fetch(`${BASE}${url}`, { method: "POST", body: formData });
+  if (res.status === 401) throw new SessionExpiredError();
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: "Upload failed" }));
     throw new Error(error.error || "Upload failed");
@@ -126,6 +136,10 @@ export const api = {
       upload: (id: ApiId, file: File, slot: "macro" | "micro") =>
         uploadForm<TerrainSketchResponse>(`/avaluos/${id}/info-terreno/croquis`, { file, slot }),
     },
+  },
+  session: {
+    /** Renews an active session; throws SessionExpiredError when it is gone. */
+    heartbeat: () => request<{ expiresAt: string }>(`/auth/session`),
   },
   uploads: {
     create: (file: File) => uploadForm<UploadResponse>(`/uploads`, { file }),
