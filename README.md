@@ -101,4 +101,4 @@ Las integraciones de SES, Google OAuth, S3, mapas/geocodificación y pagos requi
 
 - Tests estructurales (clase B) pueden fallar por refactoring de código fuente
 - 49 lint errors preexistentes (refs, hooks, require imports)
-- Editor de avaluos requiere refactorización de componentes grandes (valuation-workspace.tsx, valuation-workflow.service.ts)
+- Editor de avaluos: `valuation-workspace.tsx` y `valuation-workflow.service.ts` ya están divididos en hooks y módulos; falta el rediseño de la UI

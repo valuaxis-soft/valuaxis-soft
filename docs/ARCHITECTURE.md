@@ -28,5 +28,5 @@ La vista previa pagina midiendo el DOM real en tamaño carta. El PDF (`src/featu
 
 ## Deuda conocida
 
-- `valuation-workspace.tsx` (unas 2,200 líneas) y `valuation-workflow.service.ts` (unas 1,600) concentran demasiada lógica y deben dividirse antes del rediseño.
+- `valuation-workspace.tsx` ya es solo coordinador: el estado y la lógica del editor viven en `components/workspace/hooks/` (historial, guardado, imágenes, ciclo de vida, vista externa) y `components/workspace/model/` (hidratación, payload de guardado, numeración). `valuation-workflow.service.ts` es un barrel sobre `services/valuation-workflow/`. Los hooks de mutaciones (`use-block-mutations`, `use-image-mutations`) siguen siendo grandes.
 - Quedan errores de lint de las reglas de React 19 (refs y `setState` durante el render) en el editor y la vista previa.
