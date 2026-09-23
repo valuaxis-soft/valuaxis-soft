@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/features/auth/session";
+import { requireSession } from "@/security/guards/require-session";
 import { DashboardHeader } from "@/features/dashboard/components/header";
 import { QuickActions } from "@/features/dashboard/components/quick-actions";
 import { RecentValuations } from "@/features/dashboard/components/recent-valuations";
@@ -8,8 +7,7 @@ import { getDashboardSummary } from "@/features/dashboard/services/dashboard-sum
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function DashboardPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/iniciar-sesion?reason=required");
+  const user = await requireSession("/dashboard");
   const summary = await getDashboardSummary(user);
   const stats = {
     total: summary.valuations.total,

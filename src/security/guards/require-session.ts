@@ -1,13 +1,13 @@
 import { redirect } from "next/navigation";
-import { getCurrentSession } from "@/lib/auth/current-session";
+import { getCurrentUser } from "@/features/auth/session";
 
-export async function requireSession() {
-  const session = await getCurrentSession();
-  if (!session) redirect("/iniciar-sesion?reason=required");
-  return session;
-}
-
-export async function requireOrganization() {
-  const session = await requireSession();
-  return session.organizationId;
+/** For server pages: returns the session user or redirects to the login page. */
+export async function requireSession(redirectTo?: string) {
+  const user = await getCurrentUser();
+  if (!user) {
+    const params = new URLSearchParams({ reason: "required" });
+    if (redirectTo) params.set("redirectTo", redirectTo);
+    redirect(`/iniciar-sesion?${params.toString()}`);
+  }
+  return user;
 }

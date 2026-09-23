@@ -20,6 +20,7 @@ const user: AuthUser = {
   name: "Valuador",
   email: "valuador@example.com",
   role: "VALUADOR",
+  permissions: ["AVALUO_VER", "AVALUO_CREAR", "AVALUO_EDITAR", "AVALUO_CONCLUIR", "AVALUO_REABRIR", "AVALUO_DUPLICAR", "AVALUO_EXPORTAR"],
   active: true,
   organizationId: 3,
   organizationName: "Organizacion",
@@ -104,7 +105,7 @@ test("S3StorageProvider sube con el bucket y key indicados sin llamar AWS real",
 });
 
 test("usuario sin permiso de edicion no puede subir", () => {
-  const readonlyUser = { ...user, role: "CONSULTA" as const };
+  const readonlyUser = { ...user, role: "CONSULTA", permissions: ["AVALUO_VER", "AVALUO_EXPORTAR"] };
   assert.throws(() => assertCoverImageAccess(readonlyUser, valuation, "edit"), CoverImageError);
 });
 

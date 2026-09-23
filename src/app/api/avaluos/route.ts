@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/features/auth/session";
+import { requireApiUser } from "@/security/guards/api-guard";
+import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { listValuations } from "@/features/valuations/repositories/valuation.repository";
 
 export async function GET() {
   try {
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    const auth = await requireApiUser(AUTH_PERMISSIONS.viewValuations);
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
 
     const valuations = await listValuations(user.organizationId);
 
@@ -20,8 +22,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    const auth = await requireApiUser(AUTH_PERMISSIONS.createValuations);
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
 
     const body = await request.json();
     const { saveValuation } = await import("@/features/valuations/actions/save-valuation.action");

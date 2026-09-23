@@ -12,24 +12,22 @@ Estado real del código al 23 de septiembre de 2026. Este documento describe lo 
 - **Redirecciones.** `safeRedirectPath` usa lista blanca de prefijos y rechaza `//`, `\` y caracteres de control.
 - **Subida de imágenes.** Valida MIME, tamaño y el formato real del archivo con sharp. Normaliza a JPEG. Las claves de almacenamiento rechazan `..`.
 - **Aislamiento entre empresas** en la mayoría de las consultas, filtrando por `IdOrganizacion`.
+- **Permisos desde la base de datos** aplicados en todas las rutas de API y páginas privadas. Ver [AUTHORIZATION.md](AUTHORIZATION.md).
 - **SQL crudo** solo en el folio, parametrizado.
 
 ## Pendientes, en orden
 
-1. **Permisos no aplicados en escrituras.** Guardar, editar y borrar avalúos solo exigen sesión. Solo concluir, reabrir y exportar verifican permiso.
-2. **Dos sistemas de permisos incompatibles.** El código usa claves `projects.*` en un mapa fijo por rol (`src/features/auth/permissions.ts`). La base usa `AVALUO_*`. Los guards de `src/security/guards` usan las de la base, pero ninguna ruta los importa. Un rol que no está en el mapa provoca un error 500.
-3. **`requireValuationAccessPolicy` no compara la organización** del avalúo contra la de la sesión.
-4. **Archivos privados servidos públicamente en modo local.** El almacenamiento local escribe bajo `public/`. No hay ruta autenticada para servir archivos.
-5. **Sin validación de esquema en las rutas de API.** Los cuerpos se usan sin validar tipo ni tamaño.
-6. **Errores internos expuestos.** Varias rutas devuelven `details: String(error)` al cliente.
-7. **Sin verificación de `Origin`** en rutas de API que modifican datos. Las server actions sí la tienen por Next.
-8. **Sin límite de intentos por IP** en login, recuperación de contraseña, OAuth ni subidas. La tabla `IntentoAcceso` se llena pero no se consulta. El bloqueo por cuenta permite que un tercero bloquee la cuenta de otro usuario.
-9. **Sin cabeceras de seguridad.** `next.config.ts` no define CSP, HSTS, `X-Frame-Options`, `Referrer-Policy` ni `Permissions-Policy`.
-10. **Sesión sin renovación.** Expira a las 8 horas aunque haya actividad. Los campos de rotación existen en el esquema sin uso.
-11. **La verificación de correo se ejecuta al renderizar la página.** Un escáner de enlaces puede consumir el token.
-12. **El `state` de OAuth no está ligado al navegador** y no se usa PKCE.
-13. **`src/lib/env.ts` no falla** si la configuración es inválida: usa valores por defecto.
-14. **Auditoría parcial.** Solo el flujo de Google registra en `Auditoria`.
+1. **Archivos privados servidos públicamente en modo local.** El almacenamiento local escribe bajo `public/`. No hay ruta autenticada para servir archivos.
+2. **Sin validación de esquema en las rutas de API.** Los cuerpos se usan sin validar tipo ni tamaño.
+3. **Errores internos expuestos.** Varias rutas devuelven `details: String(error)` al cliente.
+4. **Sin verificación de `Origin`** en rutas de API que modifican datos. Las server actions sí la tienen por Next.
+5. **Sin límite de intentos por IP** en login, recuperación de contraseña, OAuth ni subidas. La tabla `IntentoAcceso` se llena pero no se consulta. El bloqueo por cuenta permite que un tercero bloquee la cuenta de otro usuario.
+6. **Sin cabeceras de seguridad.** `next.config.ts` no define CSP, HSTS, `X-Frame-Options`, `Referrer-Policy` ni `Permissions-Policy`.
+7. **Sesión sin renovación.** Expira a las 8 horas aunque haya actividad. Los campos de rotación existen en el esquema sin uso.
+8. **La verificación de correo se ejecuta al renderizar la página.** Un escáner de enlaces puede consumir el token.
+9. **El `state` de OAuth no está ligado al navegador** y no se usa PKCE.
+10. **`src/lib/env.ts` no falla** si la configuración es inválida: usa valores por defecto.
+11. **Auditoría parcial.** Solo el flujo de Google registra en `Auditoria`.
 
 ## Proveedores
 

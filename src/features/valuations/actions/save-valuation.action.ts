@@ -8,7 +8,8 @@ import {
   initializeWorkingVersionStructure,
   saveCaratula,
 } from "@/features/valuations/services/valuation-workflow.service";
-import { requirePermissionPolicy } from "@/features/valuations/policies/valuation-access.policy";
+import { AUTH_PERMISSIONS } from "@/features/auth/model";
+import { hasPermission } from "@/features/auth/permissions";
 import { reserveNextValuationFolio } from "@/features/valuations/services/valuation-folio.service";
 import {
   isSystemGeneralValuationTemplate,
@@ -42,6 +43,10 @@ export async function saveValuation(input: SaveValuationInput) {
 
   try {
     if (input.id) {
+      if (!hasPermission(user, AUTH_PERMISSIONS.editValuations)) {
+        return { ok: false, error: "Permiso insuficiente" };
+      }
+
       const existing = await prisma.avaluo.findFirst({
         where: {
           UIdentificadorPublico: input.id,
@@ -49,11 +54,14 @@ export async function saveValuation(input: SaveValuationInput) {
           BActivo: true,
           DFechaEliminacion: null,
         },
-        select: { IdAvaluo: true, IdPropiedadSujeto: true, IdTipoInmueble: true, SFolio: true },
+        select: { IdAvaluo: true, IdPropiedadSujeto: true, IdTipoInmueble: true, SFolio: true, BBloqueado: true },
       });
 
       if (!existing) {
         return { ok: false, error: "Avaluo no encontrado" };
+      }
+      if (existing.BBloqueado) {
+        return { ok: false, error: "El avaluo concluido no permite edicion" };
       }
 
       await prisma.$transaction(async (tx) => {
@@ -84,9 +92,8 @@ export async function saveValuation(input: SaveValuationInput) {
       };
     }
 
-    const permission = requirePermissionPolicy(user, "projects.create");
-    if (!permission.ok) {
-      return { ok: false, error: permission.error };
+    if (!hasPermission(user, AUTH_PERMISSIONS.createValuations)) {
+      return { ok: false, error: "Permiso insuficiente" };
     }
 
     const catalogError = await validateCreationCatalogs(input, user.organizationId);

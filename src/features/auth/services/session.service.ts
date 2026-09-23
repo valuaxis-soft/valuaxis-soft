@@ -51,6 +51,7 @@ export async function getCurrentSession() {
     name: `${session.usuario.SNombre} ${session.usuario.SApellidoPaterno ?? ""}`.trim(),
     email: session.usuario.SCorreo,
     role: activeOrganization.role,
+    permissions: activeOrganization.permissions,
     active: session.usuario.BActivo,
     emailVerified: session.usuario.BCorreoVerificado,
     organizationId: activeOrganization.organizationId,

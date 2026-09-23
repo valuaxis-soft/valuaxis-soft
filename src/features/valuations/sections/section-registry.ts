@@ -1,4 +1,4 @@
-import type { AuthPermission } from "@/features/auth/model";
+import { AUTH_PERMISSIONS, type AuthPermission } from "@/features/auth/model";
 
 export type ValuationSectionKey =
   | "CARATULA"
@@ -41,7 +41,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["CaratulaAvaluo"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "DATOS_GENERALES",
@@ -52,7 +52,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["DatoGeneralAvaluo"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "TERRENO",
@@ -63,7 +63,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["TerrenoAvaluo", "ViaAccesoAvaluo", "ColindanciaAvaluo", "Orientacion"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "CONSTRUCCION",
@@ -79,7 +79,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
       "ElementoConstruccionAvaluo",
       "InstalacionEspecialAvaluo",
     ],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "CONSIDERACIONES",
@@ -90,7 +90,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["ConsideracionAvaluo"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "COSTOS",
@@ -101,7 +101,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["EnfoqueCosto", "CostoTerreno", "CostoConstruccion", "CostoInstalacion", "CostoIndirecto"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "MERCADO_VENTA",
@@ -112,7 +112,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["EnfoqueMercado", "ComparableAvaluo", "FactorHomologacion", "AjusteComparable"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "MERCADO_RENTAS",
@@ -123,7 +123,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["EnfoqueRenta", "ComparableAvaluo", "FactorHomologacion", "AjusteComparable"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "INGRESOS",
@@ -134,7 +134,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["EnfoqueIngreso", "DeduccionIngreso"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "FOTOS_SUJETO",
@@ -145,7 +145,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["Archivo", "RelacionArchivo", "VersionArchivo", "CargaArchivo"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "CROQUIS_COMPARABLES",
@@ -156,7 +156,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["CapturaMapa", "ComparableAvaluo", "Geocodificacion"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "HOMOLOGACION",
@@ -167,7 +167,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["FactorHomologacion", "AjusteComparable", "TipoFactorHomologacion"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "INDIRECTOS",
@@ -178,7 +178,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["CostoIndirecto"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "CONCLUSIONES",
@@ -189,7 +189,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["ResumenValor", "ConclusionAvaluo"],
-    permissions: ["projects.complete", "projects.edit"],
+    permissions: [AUTH_PERMISSIONS.concludeValuations, AUTH_PERMISSIONS.editValuations],
   },
   {
     key: "MAPA_COMPARABLES",
@@ -200,7 +200,7 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     visibleByDefault: true,
     editable: true,
     tables: ["Propiedad", "DireccionPropiedad", "BusquedaComparable", "ZonaBusquedaComparable"],
-    permissions: ["projects.edit"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
   },
 ];
 

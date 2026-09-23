@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/features/auth/session";
+import { requireApiUser } from "@/security/guards/api-guard";
+import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import {
   getValuationByPublicId,
   softDeleteValuation,
@@ -12,8 +13,9 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    const auth = await requireApiUser(AUTH_PERMISSIONS.viewValuations);
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
 
     const valuation = await getValuationByPublicId(id, user.organizationId);
 
@@ -37,8 +39,8 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
+    if (!auth.ok) return auth.response;
 
     const { saveValuation } = await import("@/features/valuations/actions/save-valuation.action");
 
@@ -71,8 +73,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
 
     const deleted = await softDeleteValuation(id, user.organizationId);
     if (!deleted) {

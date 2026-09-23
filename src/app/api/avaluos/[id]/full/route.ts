@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/features/auth/session";
+import { requireApiUser } from "@/security/guards/api-guard";
+import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { saveValuation } from "@/features/valuations/actions/save-valuation.action";
 import { saveValuationSections } from "@/features/valuations/services/valuation-workflow.service";
 
@@ -11,11 +12,12 @@ export async function PUT(
 
   try {
     const { id } = await params;
-    const user = await getCurrentUser();
-    if (!user) {
+    const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
+    if (!auth.ok) {
       if (debug) console.error("[VALUATION_FULL] No autorizado para guardar", { id });
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+      return auth.response;
     }
+    const { user } = auth;
 
     const body = await request.json();
     if (debug) {

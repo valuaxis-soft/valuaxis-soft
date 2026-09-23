@@ -17,6 +17,7 @@ const user: AuthUser = {
   name: "Valuador",
   email: "valuador@example.com",
   role: "VALUADOR",
+  permissions: ["AVALUO_VER", "AVALUO_CREAR", "AVALUO_EDITAR", "AVALUO_CONCLUIR", "AVALUO_REABRIR", "AVALUO_DUPLICAR", "AVALUO_EXPORTAR"],
   active: true,
   organizationId: 3,
   organizationName: "Organizacion",

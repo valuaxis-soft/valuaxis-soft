@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/features/auth/session";
+import { requireApiUser } from "@/security/guards/api-guard";
+import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { generateValuationPdf, type PdfValuation } from "@/features/reports/services/pdf-generator";
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
-import { requirePermissionPolicy } from "@/features/valuations/policies/valuation-access.policy";
 
 export async function GET(
   _request: Request,
@@ -10,12 +10,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-    const permission = requirePermissionPolicy(user, "projects.export");
-    if (!permission.ok) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
-    }
+    const auth = await requireApiUser(AUTH_PERMISSIONS.exportValuations);
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
 
     const valuation = await getValuationByPublicId(id, user.organizationId);
     if (!valuation) {

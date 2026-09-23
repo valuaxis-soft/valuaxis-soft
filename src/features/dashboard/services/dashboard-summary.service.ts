@@ -1,4 +1,4 @@
-import type { AuthUser } from "@/features/auth/model";
+import { AUTH_PERMISSIONS, type AuthUser } from "@/features/auth/model";
 import { buildAuthorizationContext } from "@/features/auth/services/authorization-context.service";
 import { listValuations } from "@/features/valuations/repositories/valuation.repository";
 
@@ -82,8 +82,8 @@ export async function getDashboardSummary(user: AuthUser): Promise<DashboardSumm
       byStatus,
     },
     actions: {
-      canCreateValuation: permissions.has("projects.create"),
-      canExport: permissions.has("projects.export"),
+      canCreateValuation: permissions.has(AUTH_PERMISSIONS.createValuations),
+      canExport: permissions.has(AUTH_PERMISSIONS.exportValuations),
     },
   };
 }

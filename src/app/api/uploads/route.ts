@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/infrastructure/database/prisma-client";
-import { getCurrentUser } from "@/features/auth/session";
+import { requireApiUser } from "@/security/guards/api-guard";
+import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { saveUpload, UploadError } from "@/features/files/services/upload";
 
 export async function POST(request: Request) {
   try {
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;

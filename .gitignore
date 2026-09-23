@@ -69,3 +69,6 @@ public/uploads/*
 /valuo-datos-preview.png
 # Fase 0: volcado de los Excel del despacho (datos del cliente)
 /docs/fase0/dump/
+
+# Claude Code agent worktrees
+/.claude/worktrees/

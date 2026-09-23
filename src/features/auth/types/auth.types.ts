@@ -19,6 +19,7 @@ export type AuthenticatedUser = {
   name: string;
   email: string;
   role: string;
+  permissions: string[];
   active: boolean;
   emailVerified: boolean;
   organizationId: number;

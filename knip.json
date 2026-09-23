@@ -9,13 +9,6 @@
     "scripts/**/*.ts",
     "tests/**/*.{ts,tsx}"
   ],
-  "ignore": [
-    "src/security/guards/**",
-    "src/features/auth/rules/subscription-access.rules.ts",
-    "src/lib/auth/current-session.ts",
-    "src/features/auth/permissions.ts",
-    "src/features/valuations/policies/valuation-access.policy.ts"
-  ],
   "ignoreExportsUsedInFile": true,
   "rules": {
     "duplicates": "warn"

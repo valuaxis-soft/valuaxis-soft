@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/features/auth/session";
-import { requirePermissionPolicy } from "@/features/valuations/policies/valuation-access.policy";
+import { requireApiUser } from "@/security/guards/api-guard";
+import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { reopenValuation } from "@/features/valuations/services/valuation-workflow.service";
 
 export async function POST(
@@ -8,13 +8,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-
-    const permission = requirePermissionPolicy(user, "projects.reopen");
-    if (!permission.ok) {
-      return NextResponse.json({ error: permission.error }, { status: permission.status });
-    }
+    const auth = await requireApiUser(AUTH_PERMISSIONS.reopenValuations);
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
 
     const body = await request.json();
     const { id } = await params;
