@@ -22,15 +22,15 @@ test("login validation reports each required field", () => {
   const parsed = parseLoginInput(form({}));
 
   assert.equal(parsed.ok, false);
-  assert.deepEqual(parsed.fieldErrors.email, ["Escribe tu correo electronico."]);
-  assert.deepEqual(parsed.fieldErrors.password, ["Escribe tu contrasena."]);
+  assert.deepEqual(parsed.fieldErrors.email, ["Escribe tu correo electrónico."]);
+  assert.deepEqual(parsed.fieldErrors.password, ["Escribe tu contraseña."]);
 });
 
 test("login validation reports invalid email format", () => {
   const parsed = parseLoginInput(form({ email: "correo", password: "secret" }));
 
   assert.equal(parsed.ok, false);
-  assert.deepEqual(parsed.fieldErrors.email, ["Escribe un correo electronico valido."]);
+  assert.deepEqual(parsed.fieldErrors.email, ["Escribe un correo electrónico válido."]);
 });
 
 test("register validation reports required fields, password policy and mismatched confirmation", () => {
@@ -46,16 +46,16 @@ test("register validation reports required fields, password policy and mismatche
   assert.equal(parsed.ok, false);
   assert.deepEqual(parsed.fieldErrors.name, ["Escribe tu nombre."]);
   assert.deepEqual(parsed.fieldErrors.paternalLastName, ["Escribe tu apellido."]);
-  assert.deepEqual(parsed.fieldErrors.email, ["Escribe un correo electronico valido."]);
+  assert.deepEqual(parsed.fieldErrors.email, ["Escribe un correo electrónico válido."]);
   assert.match(parsed.fieldErrors.password?.join(" "), /10 caracteres/);
-  assert.deepEqual(parsed.fieldErrors.confirmPassword, ["Las contrasenas no coinciden."]);
+  assert.deepEqual(parsed.fieldErrors.confirmPassword, ["Las contraseñas no coinciden."]);
   assert.deepEqual(parsed.fieldErrors.acceptedTerms, ["Debes aceptar los terminos para continuar."]);
 });
 
 test("forgot password validation distinguishes missing and invalid email", () => {
-  assert.deepEqual(parseForgotPasswordInput(form({})).fieldErrors.email, ["Escribe tu correo electronico."]);
+  assert.deepEqual(parseForgotPasswordInput(form({})).fieldErrors.email, ["Escribe tu correo electrónico."]);
   assert.deepEqual(parseForgotPasswordInput(form({ email: "bad" })).fieldErrors.email, [
-    "Escribe un correo electronico valido.",
+    "Escribe un correo electrónico válido.",
   ]);
 });
 
@@ -68,8 +68,8 @@ test("reset password validation reports missing token and mismatched passwords",
   );
 
   assert.equal(parsed.ok, false);
-  assert.deepEqual(parsed.fieldErrors.token, ["El enlace no es valido."]);
-  assert.deepEqual(parsed.fieldErrors.confirmPassword, ["Las contrasenas no coinciden."]);
+  assert.deepEqual(parsed.fieldErrors.token, ["El enlace no es válido."]);
+  assert.deepEqual(parsed.fieldErrors.confirmPassword, ["Las contraseñas no coinciden."]);
 });
 
 test("auth domain messages classify recoverable conflicts as warnings", () => {

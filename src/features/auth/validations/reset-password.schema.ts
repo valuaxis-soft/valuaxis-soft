@@ -7,9 +7,9 @@ export function parseResetPasswordInput(formData: FormData) {
   const fieldErrors: Record<string, string[]> = {};
   const passwordResult = validatePasswordPolicy(password);
 
-  if (!token) fieldErrors.token = ["El enlace no es valido."];
+  if (!token) fieldErrors.token = ["El enlace no es válido."];
   if (!passwordResult.valid) fieldErrors.password = passwordResult.errors;
-  if (password !== confirmPassword) fieldErrors.confirmPassword = ["Las contrasenas no coinciden."];
+  if (password !== confirmPassword) fieldErrors.confirmPassword = ["Las contraseñas no coinciden."];
 
   return { ok: Object.keys(fieldErrors).length === 0, data: { token, password }, fieldErrors };
 }

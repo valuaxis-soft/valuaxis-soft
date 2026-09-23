@@ -34,8 +34,8 @@
 | GET, POST | `/api/avaluos` | Lista (máximo 200, los más recientes) y crea avalúos |
 | GET, PUT, DELETE | `/api/avaluos/[id]` | Detalle, metadatos y borrado lógico |
 | PUT | `/api/avaluos/[id]/full` | Guarda el avalúo completo |
-| POST | `/api/avaluos/[id]/conclude` | Concluye; sin botón en la interfaz |
-| POST | `/api/avaluos/[id]/reopen` | Reabre; sin botón en la interfaz |
+| POST | `/api/avaluos/[id]/conclude` | Concluye (botón "Concluir" en el editor) |
+| POST | `/api/avaluos/[id]/reopen` | Reabre con motivo y aceptación (botón "Reabrir" en el editor) |
 | GET | `/api/avaluos/[id]/export` | PDF |
 | GET, POST | `/api/avaluos/[id]/caratula/imagen-principal` | Imagen principal |
 | GET, POST, DELETE | `/api/avaluos/[id]/caratula/imagen-encabezado` | Imagen de encabezado |

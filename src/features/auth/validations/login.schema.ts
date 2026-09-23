@@ -12,9 +12,9 @@ export function parseLoginInput(formData: FormData) {
   const redirectTo = String(formData.get("redirectTo") ?? "");
   const fieldErrors: Record<string, string[]> = {};
 
-  if (!email) fieldErrors.email = ["Escribe tu correo electronico."];
-  else if (!validateEmail(email)) fieldErrors.email = ["Escribe un correo electronico valido."];
-  if (!password) fieldErrors.password = ["Escribe tu contrasena."];
+  if (!email) fieldErrors.email = ["Escribe tu correo electrónico."];
+  else if (!validateEmail(email)) fieldErrors.email = ["Escribe un correo electrónico válido."];
+  if (!password) fieldErrors.password = ["Escribe tu contraseña."];
 
   return {
     ok: Object.keys(fieldErrors).length === 0,
