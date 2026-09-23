@@ -41,12 +41,3 @@
 | POST | `/api/uploads` | Subida genérica de imágenes |
 
 El cierre de sesión es una server action (`logoutAction`), no una ruta de API.
-
-## API sin uso, pendiente de eliminar
-
-Ninguna pantalla las llama. Se eliminan en la limpieza previa a Fase 1:
-
-- `/api/logout`, `/api/auth/logout`, `/api/archivos`, `/api/history`
-- `/api/avaluos/[id]/sections/**`, que incluye el CRUD de bloques
-- `/api/comparables/**`
-- `/api/users`, `/api/dashboard/summary`, `/api/avaluos/catalogs`

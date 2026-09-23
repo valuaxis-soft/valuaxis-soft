@@ -7,7 +7,7 @@ Monolito modular con Next.js 16 (App Router), React 19, TypeScript, Prisma 6 y P
 | Carpeta | Contenido | Puede depender de |
 |---|---|---|
 | `src/app` | Páginas, layouts y route handlers | `features`, `components`, `security`, `lib` |
-| `src/features` | Módulos de dominio: auth, valuations, files, dashboard, comparables, reports, notifications | `infrastructure`, `security`, `components/ui`, `lib` |
+| `src/features` | Módulos de dominio: auth, valuations, files, dashboard, reports, notifications | `infrastructure`, `security`, `components/ui`, `lib` |
 | `src/infrastructure` | Adaptadores técnicos: Prisma, almacenamiento, email | `lib` |
 | `src/security` | Guards, hashing de tokens, validación de redirecciones | `features/auth` |
 | `src/components/ui` | Componentes shadcn/ui sobre Base UI | nada de dominio |
