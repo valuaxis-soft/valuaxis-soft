@@ -478,7 +478,10 @@ function isEmptySectionPlaceholder(
   if (rootNodes.length !== 1) return false;
   const root = rootNodes[0];
   const title = normalizeTemplateIdentity(root.STitulo);
-  return title === normalizeTemplateIdentity(sectionLabel)
+  // The placeholder root is titled with the section name it was created with,
+  // which may be an older label than the registry's current one.
+  const placeholderTitles = [sectionLabel, section.SNombre].map(normalizeTemplateIdentity);
+  return placeholderTitles.includes(title)
     && root.valores.length === 0
     && root.tablasDocumentos.length === 0
     && root.nodosHijos.every((child) => child.DFechaEliminacion !== null)

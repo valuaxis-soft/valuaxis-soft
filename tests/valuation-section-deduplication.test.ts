@@ -34,7 +34,7 @@ test("workspace sections rebuild persisted table columns rows and cells", () => 
   assert.deepEqual(JSON.parse(table?.rows ?? "[]"), [["123.45"]]);
 });
 
-test("workspace replaces only an empty construction placeholder with the base structure", { todo: "BUG: placeholders vacíos guardados con la etiqueta anterior (CONSTRUCCION) ya no se reemplazan por la plantilla; isEmptySectionPlaceholder solo compara contra la etiqueta actual del registro" }, () => {
+test("workspace replaces only an empty construction placeholder with the base structure", () => {
   const sections = buildCanonicalValuationSections([
     dbSection(7, "construccion", "CONSTRUCCION", 3, 0),
   ] as never);
@@ -70,7 +70,7 @@ test("workspace preserves meaningful persisted construction content", () => {
   assert.equal(construction?.blocks[0].title, "CONSTRUCCION PERSONALIZADA");
 });
 
-test("workspace upgrades empty registered placeholders with their matching templates", { todo: "BUG: placeholders vacíos con etiquetas anteriores (COSTOS, MERCADO VENTA) no se actualizan a su plantilla tras renombrar etiquetas del registro (ENF. COSTOS, ENF. MERCADO VENTA)" }, () => {
+test("workspace upgrades empty registered placeholders with their matching templates", () => {
   const sections = buildCanonicalValuationSections([
     dbSection(20, "consideraciones", "CONSIDERACIONES", 4, 0),
     dbSection(21, "costos", "COSTOS", 5, 0),
