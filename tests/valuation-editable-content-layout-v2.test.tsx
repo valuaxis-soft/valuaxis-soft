@@ -4,8 +4,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import test from "node:test";
 import type {
   Concept,
-  ContentLayoutItem,
-  ContentLayoutPersisted,
   ContentLayout as ContentLayoutV2,
   ImageContent,
   TableContent,
@@ -26,10 +24,6 @@ function image(id: string, title = "Image"): ImageContent {
 
 function table(id: string, title = "Table"): TableContent {
   return { id, title, columns: ["A"], rows: [["1"]], enabled: true };
-}
-
-function v1Item(type: "concept" | "image" | "table", id: string, span: 4 | 6 | 8 | 12): ContentLayoutItem {
-  return { type, id, span };
 }
 
 function v2(rows: { id: string; columns: { id: string; items: { type: "concept" | "image" | "table"; id: string }[] }[] }[]): ContentLayoutV2 {
@@ -57,7 +51,7 @@ function renderV2(
     concepts: Concept[];
     images: ImageContent[];
     tables: TableContent[];
-    contentLayout?: ContentLayoutPersisted;
+    contentLayout?: ContentLayoutV2;
   },
   opts: RenderOpts = {},
 ) {
@@ -94,17 +88,20 @@ test("EditableContentLayoutV2 — no persisted layout (missing) resolves from co
   assert.ok(html.includes("Image1"));
 });
 
-test("EditableContentLayoutV2 — V1 persisted layout is converted to V2", () => {
+test("EditableContentLayoutV2 — obsolete flat-array layout is ignored and bootstrapped", () => {
   const container = {
     concepts: [concept("c1", "A"), concept("c2", "B")],
     images: [],
     tables: [],
-    contentLayout: [v1Item("concept", "c2", 6), v1Item("concept", "c1", 6)] as ContentLayoutPersisted,
+    contentLayout: [
+      { type: "concept", id: "c2", span: 6 },
+      { type: "concept", id: "c1", span: 6 },
+    ] as unknown as ContentLayoutV2,
   };
 
   const html = renderV2(container);
 
-  // Both items rendered (V1 order preserved through conversion)
+  // Both items rendered, without crashing
   assert.ok(html.includes("A"));
   assert.ok(html.includes("B"));
 });
@@ -122,7 +119,7 @@ test("EditableContentLayoutV2 — V2 persisted layout is used directly", () => {
           { id: "c-0-1", items: [{ type: "concept", id: "c1" }] },
         ],
       },
-    ]) as ContentLayoutPersisted,
+    ]),
   };
 
   const html = renderV2(container);
@@ -186,7 +183,7 @@ test("EditableContentLayoutV2 — explicit multiple V2 rows", () => {
       { id: "r-0", columns: [{ id: "c-0-0", items: [{ type: "concept", id: "c1" }] }] },
       { id: "r-1", columns: [{ id: "c-1-0", items: [{ type: "concept", id: "c2" }] }] },
       { id: "r-2", columns: [{ id: "c-2-0", items: [{ type: "concept", id: "c3" }] }] },
-    ]) as ContentLayoutPersisted,
+    ]),
   };
 
   const html = renderV2(container);
@@ -213,7 +210,7 @@ test("EditableContentLayoutV2 — 1/2/3 columns", () => {
         { id: "c-2-1", items: [{ type: "concept", id: "c2" }] },
         { id: "c-2-2", items: [{ type: "concept", id: "c3" }] },
       ] },
-    ]) as ContentLayoutPersisted,
+    ]),
   };
 
   const html = renderV2(container);
@@ -234,7 +231,7 @@ test("EditableContentLayoutV2 — item order preserved", () => {
         { id: "c-0-1", items: [{ type: "concept", id: "c2" }] },
         { id: "c-0-2", items: [{ type: "concept", id: "c3" }] },
       ] },
-    ]) as ContentLayoutPersisted,
+    ]),
   };
 
   const html = renderV2(container);
@@ -252,7 +249,7 @@ test("EditableContentLayoutV2 — row order preserved", () => {
     contentLayout: v2([
       { id: "r-0", columns: [{ id: "c-0-0", items: [{ type: "concept", id: "c1" }] }] },
       { id: "r-1", columns: [{ id: "c-1-0", items: [{ type: "concept", id: "c2" }] }] },
-    ]) as ContentLayoutPersisted,
+    ]),
   };
 
   const html = renderV2(container);
@@ -360,7 +357,7 @@ test("EditableContentLayoutV2 — stale/unresolved ref does not crash", () => {
         { id: "c-0-0", items: [{ type: "concept", id: "c1" }] },
         { id: "c-0-1", items: [{ type: "concept", id: "nonexistent" }] },
       ] },
-    ]) as ContentLayoutPersisted,
+    ]),
   };
 
   // Should not throw
@@ -396,7 +393,7 @@ test("EditableContentLayoutV2 — does not mutate the input container", () => {
     tables: [table("t1")],
     contentLayout: v2([
       { id: "r-0", columns: [{ id: "c-0-0", items: [{ type: "concept", id: "c1" }] }] },
-    ]) as ContentLayoutPersisted,
+    ]),
   };
   const containerCopy = JSON.parse(JSON.stringify(container));
 
@@ -413,22 +410,6 @@ test("EditableContentLayoutV2 — no section-specific behavior", () => {
     tables: [],
   });
 
-  assert.ok(html.includes("Label"));
-});
-
-test("EditableContentLayoutV2 — no V1 row/span logic inside component", () => {
-  // The component does not call deriveLayoutRows or inspect span/rowBreakBefore
-  // It delegates entirely to resolveContentLayoutV2
-  const container = {
-    concepts: [concept("c1")],
-    images: [],
-    tables: [],
-    contentLayout: [
-      v1Item("concept", "c1", 4), // span=4 is V1 metadata, ignored by V2
-    ] as ContentLayoutPersisted,
-  };
-
-  const html = renderV2(container);
   assert.ok(html.includes("Label"));
 });
 

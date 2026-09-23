@@ -1,7 +1,6 @@
-import type { BlockFlowPersisted, ConceptDateFormat, ConceptType, ConceptValueFormat, ContentLayoutItem, ContentLayoutPersisted, ImageLayoutWidth, ApartadoPresentationMode } from "@/features/valuations/model";
+import type { BlockFlowV2, ConceptDateFormat, ConceptType, ConceptValueFormat, ContentLayout, ImageLayoutWidth, ApartadoPresentationMode } from "@/features/valuations/model";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
-import { isBlockFlowV1, isBlockFlowV2 } from "@/features/valuations/services/block-flow";
-import { isValidContentLayoutSpan } from "@/features/valuations/services/content-layout-policy";
+import { isBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { isContentLayout, normalizeContentLayout } from "@/features/valuations/services/content-layout";
 
 export type ConceptMetadata = {
@@ -39,8 +38,8 @@ export type SectionMetadata = {
 export type BlockMetadata = {
   enabled: boolean;
   startOnNewPage?: boolean;
-  contentLayout?: ContentLayoutPersisted;
-  blockFlow?: BlockFlowPersisted;
+  contentLayout?: ContentLayout;
+  blockFlow?: BlockFlowV2;
   conceptPresentation?: ConceptPresentation;
   flowSpacingBeforePx?: number;
 };
@@ -48,7 +47,7 @@ export type BlockMetadata = {
 export type ApartadoMetadata = {
   enabled: boolean;
   startOnNewPage?: boolean;
-  contentLayout?: ContentLayoutPersisted;
+  contentLayout?: ContentLayout;
   conceptPresentation?: ConceptPresentation;
   presentationMode?: ApartadoPresentationMode;
   flowSpacingBeforePx?: number;
@@ -409,86 +408,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-const CONTENT_LAYOUT_VALID_TYPES = new Set(["concept", "image", "table"]);
-
 /**
  * Safely parse a stored contentLayout from JConfiguracion JSONB.
  *
- * Shape detection:
- *  - If the stored value is an object with `version === 2` and a `rows` array,
- *    parse it as ContentLayoutV2 using the V2 type guard and normalize it.
- *  - If the stored value is an array, parse it as V1 ContentLayoutItem[]
- *    using the existing V1 logic.
- *  - If malformed or absent, return undefined.
- *
- * Hydration preserves the persisted version — no automatic V1→V2 conversion.
- * Never mutates the input.
+ * Only the row/column format (`version: 2`) is accepted; it is normalized
+ * on the way in. Anything else (absent, malformed, or an obsolete flat
+ * array) returns undefined, so the resolver bootstraps a layout from the
+ * container's concepts/tables/images. Never mutates the input.
  */
-function parseContentLayout(config: unknown): ContentLayoutPersisted | undefined {
+function parseContentLayout(config: unknown): ContentLayout | undefined {
   if (!isRecord(config)) return undefined;
 
   const raw = config.contentLayout ?? (isRecord(config.payload) ? config.payload.contentLayout : undefined);
-  if (raw === undefined || raw === null) return undefined;
-
-  // --- V2 detection: object with version === 2 and rows array ---
-  if (isContentLayout(raw)) {
-    return normalizeContentLayout(raw);
-  }
-
-  // --- V1 detection: array ---
-  if (Array.isArray(raw)) {
-    return parseContentLayoutV1Items(raw);
-  }
-
-  // --- Malformed: neither V1 array nor V2 object ---
-  return undefined;
-}
-
-/**
- * Parse a V1 contentLayout array from raw stored data.
- *
- *  - Returns undefined when not an array or empty.
- *  - Filters out structurally invalid items (bad type, missing id, invalid span).
- *  - Preserves the stored order of valid items.
- *  - Never mutates the input.
- */
-function parseContentLayoutV1Items(raw: unknown[]): ContentLayoutItem[] | undefined {
-  if (raw.length === 0) return undefined;
-
-  const valid: ContentLayoutItem[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== "object") continue;
-    const obj = item as Record<string, unknown>;
-    if (typeof obj.id !== "string" || !obj.id) continue;
-    if (!CONTENT_LAYOUT_VALID_TYPES.has(obj.type as string)) continue;
-    if (!isValidContentLayoutSpan(obj.span)) continue;
-    const parsed: ContentLayoutItem = {
-      type: obj.type as ContentLayoutItem["type"],
-      id: obj.id,
-      span: obj.span as ContentLayoutItem["span"],
-    };
-    if (obj.rowBreakBefore === true) {
-      parsed.rowBreakBefore = true;
-    }
-    valid.push(parsed);
-  }
-
-  return valid.length > 0 ? valid : undefined;
+  if (!isContentLayout(raw)) return undefined;
+  return normalizeContentLayout(raw);
 }
 
 /**
  * Safely parse a stored blockFlow from JConfiguracion JSONB.
  *
- * Detects a valid version-1 or version-2 BlockFlow object.
- * Returns undefined when absent or malformed. Never mutates the input.
+ * Only the structural-row format (`version: 2`) is accepted. Anything else
+ * returns undefined, so the resolver falls back to the implicit order
+ * (content rows, then apartados). Never mutates the input.
  */
-function parseBlockFlow(config: unknown): BlockFlowPersisted | undefined {
+function parseBlockFlow(config: unknown): BlockFlowV2 | undefined {
   if (!isRecord(config)) return undefined;
   const raw = config.blockFlow ?? (isRecord(config.payload) ? config.payload.blockFlow : undefined);
-  if (raw === undefined || raw === null) return undefined;
-  if (isBlockFlowV2(raw)) return raw;
-  if (isBlockFlowV1(raw)) return raw;
-  return undefined;
+  return isBlockFlowV2(raw) ? raw : undefined;
 }
 
 /**

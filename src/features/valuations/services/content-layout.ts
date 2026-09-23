@@ -1,15 +1,11 @@
 import type {
   Block,
   ContentLayoutColumnV2,
-  ContentLayoutItem,
   ContentLayoutItemRef,
-  ContentLayoutPersisted,
   ContentLayoutRowV2,
   ContentLayout,
   Apartado,
 } from "../model";
-import { resolveContentLayout as resolveContentLayoutLegacy } from "./content-layout-legacy";
-import { deriveLayoutRows } from "./content-layout-rows";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -133,65 +129,86 @@ function deterministicColumnId(rowIndex: number, colIndex: number): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Conversion: V1 → V2                                                */
+/*  Bootstrap from the content arrays                                  */
 /* ------------------------------------------------------------------ */
 
 /** A container that owns separate concept/image/table arrays. */
 type ContentContainer = Pick<Block | Apartado, "concepts" | "images" | "tables"> & {
-  contentLayout?: ContentLayoutPersisted;
+  contentLayout?: ContentLayout;
 };
 
+/** Width of the 12-unit grid used to pack bootstrapped rows. */
+const BOOTSTRAP_GRID_WIDTH = 12;
+
+type BootstrapEntry = { ref: ContentLayoutItemRef; width: number };
+
 /**
- * Convert a V1 flat ContentLayoutItem[] to a V2 ContentLayout.
+ * Initial width of each item on the 12-unit grid, derived from its
+ * metadata: full-width concepts 12, other concepts 6; full-width images 12,
+ * other images 8; tables always 12.
+ */
+function collectBootstrapEntries(container: ContentContainer): BootstrapEntry[] {
+  const entries: BootstrapEntry[] = [];
+  for (const concept of container.concepts) {
+    entries.push({
+      ref: { type: "concept", id: concept.id },
+      width: concept.layoutSpan === "full" ? 12 : 6,
+    });
+  }
+  for (const table of container.tables) {
+    entries.push({ ref: { type: "table", id: table.id }, width: 12 });
+  }
+  for (const image of container.images) {
+    entries.push({
+      ref: { type: "image", id: image.id },
+      width: image.layoutWidth === "full" ? 12 : 8,
+    });
+  }
+  return entries;
+}
+
+/**
+ * Build the initial ContentLayout for a container that has no stored layout.
  *
- * The conversion preserves the CURRENT visible V1 layout exactly:
- *
- *  1. Reconciles the V1 layout against the container (removes stale refs,
- *     deduplicates, appends missing items).
- *  2. Derives visual rows using the existing V1 row derivation
- *     (respects explicit rowBreakBefore or balanced fallback).
- *  3. Each V1 visual row → one V2 Row.
- *  4. Each V1 item → one V2 Column containing `[{ type, id }]`.
- *  5. V1 `span` is ignored.
- *  6. `rowBreakBefore` is NOT copied into V2 (used only for row derivation).
- *  7. Mixed Concept/Image/Table order is preserved exactly.
- *  8. Empty container returns `{ version: 2, rows: [] }`.
+ *  1. Items are taken in type order: concepts → tables → images
+ *     (disabled items included, to preserve identity).
+ *  2. Items are packed into rows in that order: an item joins the current
+ *     row while the row has fewer than CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW
+ *     columns and its width still fits the 12-unit grid; otherwise it
+ *     starts a new row.
+ *  3. Each item becomes a single-item column.
  *
  * Row and column IDs are deterministic:
  *  - Row: `r-{rowIndex}`
  *  - Column: `c-{rowIndex}-{colIndex}`
  *
- * Never mutates the input container or layout.
+ * An empty container returns `{ version: 2, rows: [] }`.
+ * Never mutates the input container.
  */
-export function convertContentLayoutV1ToV2(
-  container: ContentContainer,
-  v1Layout?: ContentLayoutItem[],
-): ContentLayout {
-  // Build a container with the V1 layout attached for reconciliation.
-  // Only override contentLayout when an explicit v1Layout is provided;
-  // otherwise use the container's stored layout.
-  const containerForReconcile = v1Layout !== undefined
-    ? { ...container, contentLayout: v1Layout }
-    : container;
-  const reconciled = resolveContentLayoutLegacy(containerForReconcile);
+export function bootstrapContentLayout(container: ContentContainer): ContentLayout {
+  const packed: ContentLayoutItemRef[][] = [];
+  let current: ContentLayoutItemRef[] = [];
+  let usedWidth = 0;
 
-  if (reconciled.length === 0) {
-    return { version: 2, rows: [] };
+  for (const { ref, width } of collectBootstrapEntries(container)) {
+    const fits =
+      current.length < CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW &&
+      usedWidth + width <= BOOTSTRAP_GRID_WIDTH;
+    if (!fits && current.length > 0) {
+      packed.push(current);
+      current = [];
+      usedWidth = 0;
+    }
+    current.push(ref);
+    usedWidth += width;
   }
+  if (current.length > 0) packed.push(current);
 
-  // Derive V1 visual rows (respects explicit rowBreakBefore or balanced fallback)
-  const v1Rows = deriveLayoutRows(reconciled);
-
-  if (v1Rows.length === 0) {
-    return { version: 2, rows: [] };
-  }
-
-  // Convert each V1 row → V2 row
-  const rows: ContentLayoutRowV2[] = v1Rows.map((v1Row, rowIndex) => ({
+  const rows: ContentLayoutRowV2[] = packed.map((refs, rowIndex) => ({
     id: deterministicRowId(rowIndex),
-    columns: v1Row.items.map((item, colIndex) => ({
+    columns: refs.map((ref, colIndex) => ({
       id: deterministicColumnId(rowIndex, colIndex),
-      items: [{ type: item.type, id: item.id }],
+      items: [ref],
     })),
   }));
 
@@ -395,7 +412,7 @@ export function reconcileContentLayout(
 
 /**
  * Collect live content refs from the container that are not referenced
- * in the given reconciled layout. Returns them in legacy type order:
+ * in the given reconciled layout. Returns them in type order:
  * concepts → tables → images.
  */
 function collectMissingRefs(
@@ -450,7 +467,7 @@ function findMaxRowIndex(rows: ContentLayoutRowV2[]): number {
  * Append missing live content to a reconciled V2 layout.
  *
  * Strategy:
- *  - For each missing ref (in legacy type order: concepts → tables → images):
+ *  - For each missing ref (in type order: concepts → tables → images):
  *    - If the last row has fewer than 3 columns, add a new column there.
  *    - Otherwise, create a new row with one column.
  *  - Preserves all existing row/column structure.
@@ -543,15 +560,12 @@ export function appendMissingContentToV2(
  * normalized ContentLayout.
  *
  * Behavior:
- *  1. If container.contentLayout is valid V2:
+ *  1. If container.contentLayout is a valid ContentLayout:
  *     - Normalize it
  *     - Reconcile refs against the live container
  *     - Append any missing live content
- *  2. If container.contentLayout is V1:
- *     - Convert deterministically using convertContentLayoutV1ToV2()
- *  3. If container.contentLayout is missing:
- *     - Bootstrap from legacy arrays using the existing V1 visible behavior
- *     - Then convert to V2
+ *  2. Otherwise (missing or malformed):
+ *     - Bootstrap from the content arrays with bootstrapContentLayout()
  *
  * Always returns: { version: 2, rows: [...] }
  *
@@ -561,28 +575,13 @@ export function appendMissingContentToV2(
 export function resolveContentLayout(container: ContentContainer): ContentLayout {
   const { contentLayout } = container;
 
-  // --- Path 3: missing layout → bootstrap from legacy arrays → convert ---
-  if (contentLayout === undefined || contentLayout === null) {
-    return convertContentLayoutV1ToV2(container);
-  }
-
-  // --- Path 2: V1 array → convert ---
-  if (Array.isArray(contentLayout)) {
-    if (contentLayout.length === 0) {
-      return convertContentLayoutV1ToV2(container);
-    }
-    return convertContentLayoutV1ToV2(container, contentLayout);
-  }
-
-  // --- Path 1: V2 object → normalize, reconcile, append ---
   if (isContentLayout(contentLayout)) {
     const normalized = normalizeContentLayout(contentLayout);
     const reconciled = reconcileContentLayout(container, normalized);
     return appendMissingContentToV2(container, reconciled);
   }
 
-  // --- Fallback: malformed → bootstrap from legacy ---
-  return convertContentLayoutV1ToV2(container);
+  return bootstrapContentLayout(container);
 }
 
 /**

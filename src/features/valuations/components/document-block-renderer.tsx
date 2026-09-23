@@ -1,6 +1,6 @@
 "use client";
 
-import type { Block, Concept, ContentLayoutPersisted, ImageContent, Apartado, TableContent, ContentLayoutRowV2 } from "@/features/valuations/model";
+import type { Block, Concept, ContentLayout, ImageContent, Apartado, TableContent, ContentLayoutRowV2 } from "@/features/valuations/model";
 import { resolveBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { formatVisibleChildLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
@@ -313,7 +313,7 @@ function DocumentContentLayoutRenderer({
   applyConceptLayout,
   containerPresentation,
 }: {
-  container: { concepts: Concept[]; images: ImageContent[]; tables: TableContent[]; contentLayout?: ContentLayoutPersisted };
+  container: { concepts: Concept[]; images: ImageContent[]; tables: TableContent[]; contentLayout?: ContentLayout };
   applyConceptLayout: boolean;
   containerPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation;
 }) {

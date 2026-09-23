@@ -124,16 +124,8 @@ export type PrincipalCoverImage = {
 
 export type ContentLayoutItemType = "concept" | "image" | "table";
 
-export type ContentLayoutItem = {
-  type: ContentLayoutItemType;
-  id: string;
-  span: 4 | 6 | 8 | 12;
-  /** When true, this item starts a new visual row. */
-  rowBreakBefore?: boolean;
-};
-
 /* ------------------------------------------------------------------ */
-/*  Content Layout V2 — Row/Column semantic layout                     */
+/*  Content Layout (version 2) — Row/Column semantic layout            */
 /* ------------------------------------------------------------------ */
 
 /** Lightweight reference to a content item by type and ID. */
@@ -160,39 +152,6 @@ export type ContentLayoutRowV2 = {
 export type ContentLayout = {
   version: 2;
   rows: ContentLayoutRowV2[];
-};
-
-/**
- * Transition type: the contentLayout field in Block/SubBlock may hold
- * either V1 (flat array) or V2 (row/column object) during migration.
- *
- *  - V1: `ContentLayoutItem[]` — flat ordered list with span/rowBreakBefore
- *  - V2: `ContentLayoutV2` — explicit row/column semantic structure
- *
- * Hydration detects the shape at parse time. Serialization preserves whichever
- * version exists. No automatic V1→V2 conversion during hydration.
- */
-export type ContentLayoutPersisted = ContentLayoutItem[] | ContentLayout;
-
-/* ------------------------------------------------------------------ */
-/*  BlockFlow V1 — flat ordered composition layer inside Block          */
-/* ------------------------------------------------------------------ */
-
-export type BlockFlowContentRowItem = {
-  type: "content-row";
-  rowId: string;
-};
-
-export type BlockFlowApartadoItem = {
-  type: "apartado";
-  apartadoId: string;
-};
-
-export type BlockFlowItem = BlockFlowContentRowItem | BlockFlowApartadoItem;
-
-export type BlockFlow = {
-  version: 1;
-  items: BlockFlowItem[];
 };
 
 /* ------------------------------------------------------------------ */
@@ -233,9 +192,6 @@ export type BlockFlowV2 = {
   rows: BlockFlowStructuralRow[];
 };
 
-/** Persisted blockFlow — may be V1 (flat) or V2 (structural rows). */
-export type BlockFlowPersisted = BlockFlow | BlockFlowV2;
-
 export type Apartado = {
   id: string;
   title: string;
@@ -244,7 +200,7 @@ export type Apartado = {
   concepts: Concept[];
   tables: TableContent[];
   images: ImageContent[];
-  contentLayout?: ContentLayoutPersisted;
+  contentLayout?: ContentLayout;
   conceptPresentation?: import("./services/concept-presentation").ConceptPresentation;
   presentationMode?: ApartadoPresentationMode;
   flowSpacingBeforePx?: number;
@@ -261,8 +217,8 @@ export type Block = {
   apartados: Apartado[];
   tables: TableContent[];
   images: ImageContent[];
-  contentLayout?: ContentLayoutPersisted;
-  blockFlow?: BlockFlowPersisted;
+  contentLayout?: ContentLayout;
+  blockFlow?: BlockFlowV2;
   conceptPresentation?: import("./services/concept-presentation").ConceptPresentation;
   flowSpacingBeforePx?: number;
 };

@@ -318,7 +318,7 @@ function getContainerLayout(
     if (cl && typeof cl === "object" && "version" in cl && (cl as { version: number }).version === 2) {
       return cl as ContentLayout;
     }
-    // Auto-convert V1/missing to V2 using canonical resolver
+    // Resolve (or bootstrap when missing) using the canonical resolver
     return resolveContentLayout(block);
   }
   const sb = block.apartados.find((s) => s.id === ref.apartadoId);
@@ -327,7 +327,7 @@ function getContainerLayout(
   if (cl && typeof cl === "object" && "version" in cl && (cl as { version: number }).version === 2) {
     return cl as ContentLayout;
   }
-  // Auto-convert V1/missing to V2 using canonical resolver
+  // Resolve (or bootstrap when missing) using the canonical resolver
   return resolveContentLayout(sb);
 }
 

@@ -7,7 +7,7 @@ import {
   type ValuationSectionDefinition,
 } from "@/features/valuations/sections/section-registry";
 import { getInitialSectionTemplate } from "@/features/valuations/sections";
-import type { Block, BlockFlowPersisted, ConceptType, ConceptValueFormat, ContentLayoutPersisted, Apartado, TableContent } from "@/features/valuations/model";
+import type { Block, BlockFlowV2, ConceptType, ConceptValueFormat, ContentLayout, Apartado, TableContent } from "@/features/valuations/model";
 import { isBoundaryDistanceValueFormat } from "@/features/valuations/services/concept-value-format";
 import {
   hydrateBlockMetadata,
@@ -79,8 +79,8 @@ export type ValuationBlockDto = {
   sortOrder: number;
   startOnNewPage?: boolean;
   flowSpacingBeforePx?: number;
-  contentLayout?: ContentLayoutPersisted;
-  blockFlow?: BlockFlowPersisted;
+  contentLayout?: ContentLayout;
+  blockFlow?: BlockFlowV2;
   conceptPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation;
   concepts: ValuationConceptDto[];
   subBlocks: ValuationApartadoDto[];

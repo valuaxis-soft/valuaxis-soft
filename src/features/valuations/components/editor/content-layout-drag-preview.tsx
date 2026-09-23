@@ -2,19 +2,19 @@
 
 import { GripVertical, ImageIcon, Table2, Text } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ContentLayoutItem } from "../../model";
+import type { ContentLayoutItemRef, ContentLayoutItemType } from "../../model";
 
 /* ------------------------------------------------------------------ */
 /*  Icon mapping by type                                               */
 /* ------------------------------------------------------------------ */
 
-const TYPE_ICONS: Record<ContentLayoutItem["type"], typeof GripVertical> = {
+const TYPE_ICONS: Record<ContentLayoutItemType, typeof GripVertical> = {
   concept: Text,
   image: ImageIcon,
   table: Table2,
 };
 
-const TYPE_LABELS: Record<ContentLayoutItem["type"], string> = {
+const TYPE_LABELS: Record<ContentLayoutItemType, string> = {
   concept: "Concepto",
   image: "Imagen",
   table: "Tabla",
@@ -39,7 +39,7 @@ export function ContentDragPreview({
   className,
 }: {
   /** The content layout item being dragged. */
-  item: ContentLayoutItem;
+  item: ContentLayoutItemRef;
   /** Optional additional CSS class. */
   className?: string;
 }) {

@@ -5,8 +5,7 @@
  * of content rows and Apartados (SubBlocks) within a Block. It stores
  * NO business data — only references to existing row IDs and apartado IDs.
  *
- * V1 (flat): items array of content-row and apartado references.
- * V2 (structural rows): rows of structural rows, each holding 1–2 cell items.
+ * Format (`version: 2`): structural rows, each holding 1–2 cell items.
  *
  * When absent, the current visual order is:
  *   1. Every direct ContentLayout row in existing order
@@ -17,11 +16,8 @@
 
 import type {
   Block,
-  BlockFlow,
   BlockFlowApartadoRef,
   BlockFlowCellItem,
-  BlockFlowItem,
-  BlockFlowPersisted,
   BlockFlowStructuralRow,
   BlockFlowV2,
   ContentLayout,
@@ -35,44 +31,6 @@ import {
 /* ================================================================== */
 /*  TYPE GUARDS                                                        */
 /* ================================================================== */
-
-/* ------------------------------------------------------------------ */
-/*  V1 type guard                                                      */
-/* ------------------------------------------------------------------ */
-
-/**
- * Type guard: returns true if `value` is a valid BlockFlow V1.
- *
- * Checks:
- *  - version === 1
- *  - items is an array
- *  - each item is a valid content-row or apartado reference
- */
-export function isBlockFlowV1(value: unknown): value is BlockFlow {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const obj = value as Record<string, unknown>;
-  if (obj.version !== 1) return false;
-  if (!Array.isArray(obj.items)) return false;
-  for (const item of obj.items) {
-    if (!item || typeof item !== "object") return false;
-    const it = item as Record<string, unknown>;
-    if (it.type === "content-row") {
-      if (typeof it.rowId !== "string" || !it.rowId) return false;
-    } else if (it.type === "apartado") {
-      if (typeof it.apartadoId !== "string" || !it.apartadoId) return false;
-    } else {
-      return false;
-    }
-  }
-  return true;
-}
-
-/**
- * Backward-compatible alias — same as `isBlockFlowV1`.
- * Existing callers continue to work unchanged.
- * @alias
- */
-export const isBlockFlow = isBlockFlowV1;
 
 /* ------------------------------------------------------------------ */
 /*  V2 type guard                                                      */
@@ -110,13 +68,6 @@ export function isBlockFlowV2(value: unknown): value is BlockFlowV2 {
     }
   }
   return true;
-}
-
-/**
- * Generic type guard: returns true if value is either V1 or V2.
- */
-export function isBlockFlowPersisted(value: unknown): value is BlockFlowPersisted {
-  return isBlockFlowV1(value) || isBlockFlowV2(value);
 }
 
 /* ================================================================== */
@@ -222,129 +173,6 @@ function extractLiveRowIds(block: Block): string[] {
 function extractLiveApartadoIds(block: Block): string[] {
   return block.apartados.map((s) => s.id);
 }
-
-/* ================================================================== */
-/*  V1 → V2 CONVERSION                                                 */
-/* ================================================================== */
-
-/**
- * Convert a BlockFlow V1 to V2.
- *
- * Each legacy item becomes one singleton structural row:
- *  - content-row → { id: "bf-c-{rowId}", items: [{ type: "content-row", rowId }] }
- *  - apartado    → { id: "bf-a-{apartadoId}", items: [{ type: "apartado", apartadoId }] }
- *
- * Legacy apartados are NOT automatically paired — each gets its own row.
- * Preserves current visual behavior exactly.
- */
-export function convertBlockFlowV1ToV2(flow: BlockFlow): BlockFlowV2 {
-  const rows: BlockFlowStructuralRow[] = flow.items.map((item) => {
-    if (item.type === "content-row") {
-      return {
-        id: contentRowStructuralId(item.rowId),
-        items: [{ type: "content-row", rowId: item.rowId }],
-      };
-    }
-    // apartado
-    return {
-      id: apartadoStructuralId(item.apartadoId),
-      items: [{ type: "apartado", apartadoId: item.apartadoId }],
-    };
-  });
-
-  return { version: 2, rows };
-}
-
-/* ================================================================== */
-/*  V1 GENERATION — create default V1 flow from block state            */
-/* ================================================================== */
-
-/**
- * Generate a BlockFlow V1 from the current Block state.
- *
- * Order:
- *   1. Every direct ContentLayout row (from raw persisted layout)
- *   2. Every Apartado/SubBlock in array order
- *
- * Returns undefined when the block has no content rows and no sub-blocks.
- */
-export function generateBlockFlowV1(block: Block): BlockFlow | undefined {
-  const liveRowIds = extractLiveRowIds(block);
-  const liveApartadoIds = extractLiveApartadoIds(block);
-  const items: BlockFlowItem[] = [];
-
-  for (const rowId of liveRowIds) {
-    items.push({ type: "content-row", rowId });
-  }
-  for (const apartadoId of liveApartadoIds) {
-    items.push({ type: "apartado", apartadoId });
-  }
-
-  if (items.length === 0) return undefined;
-  return { version: 1, items };
-}
-
-/**
- * Backward-compatible alias.
- * @alias
- */
-export const generateBlockFlow = generateBlockFlowV1;
-
-/* ================================================================== */
-/*  V1 NORMALIZATION                                                   */
-/* ================================================================== */
-
-/**
- * Reconcile a BlockFlow V1 against the live Block state.
- *
- * Preserves valid user-ordered references. Removes stale and duplicate
- * entries. Appends any missing live content rows or apartados.
- */
-export function normalizeBlockFlowV1(block: Block, flow: BlockFlow): BlockFlow {
-  const liveRowIds = new Set(extractLiveRowIds(block));
-  const liveApartadoIds = new Set(extractLiveApartadoIds(block));
-
-  const seenRows = new Set<string>();
-  const seenApartados = new Set<string>();
-  const items: BlockFlowItem[] = [];
-
-  for (const item of flow.items) {
-    if (item.type === "content-row") {
-      if (!liveRowIds.has(item.rowId)) continue;
-      if (seenRows.has(item.rowId)) continue;
-      seenRows.add(item.rowId);
-      items.push(item);
-    } else if (item.type === "apartado") {
-      if (!liveApartadoIds.has(item.apartadoId)) continue;
-      if (seenApartados.has(item.apartadoId)) continue;
-      seenApartados.add(item.apartadoId);
-      items.push(item);
-    }
-  }
-
-  for (const rowId of extractLiveRowIds(block)) {
-    if (!seenRows.has(rowId)) {
-      items.push({ type: "content-row", rowId });
-      seenRows.add(rowId);
-    }
-  }
-
-  for (const apartadoId of extractLiveApartadoIds(block)) {
-    if (!seenApartados.has(apartadoId)) {
-      items.push({ type: "apartado", apartadoId });
-      seenApartados.add(apartadoId);
-    }
-  }
-
-  if (items.length === 0) return { version: 1, items: [] };
-  return { version: 1, items };
-}
-
-/**
- * Backward-compatible alias.
- * @alias
- */
-export const normalizeBlockFlow = normalizeBlockFlowV1;
 
 /* ================================================================== */
 /*  V2 NORMALIZATION / RECONCILIATION                                  */
@@ -546,13 +374,11 @@ export function generateBlockFlowV2(block: Block): BlockFlowV2 | undefined {
 /**
  * Resolve the effective BlockFlow V2 for a block.
  *
- * 1. If block has V2 blockFlow → normalize it against live state
- * 2. If block has V1 blockFlow → convert to V2, then normalize
- * 3. If no blockFlow → generate default V2 from block state
+ * 1. If block has a valid blockFlow → normalize it against live state
+ * 2. Otherwise → generate the default flow from block state
+ *    (every content row, then every apartado)
  *
  * Returns undefined only when the block has no content rows and no sub-blocks.
- *
- * This is the canonical resolver for future V2-native code.
  */
 export function resolveBlockFlowV2(block: Block): BlockFlowV2 | undefined {
   const raw = block.blockFlow;
@@ -561,157 +387,7 @@ export function resolveBlockFlowV2(block: Block): BlockFlowV2 | undefined {
     return normalizeBlockFlowV2(block, raw);
   }
 
-  if (raw && isBlockFlowV1(raw)) {
-    const v2 = convertBlockFlowV1ToV2(raw);
-    return normalizeBlockFlowV2(block, v2);
-  }
-
   return generateBlockFlowV2(block);
-}
-
-/**
- * Resolve the effective BlockFlow V1 for a block.
- *
- * Used by current V1 renderer to maintain backward compatibility.
- *
- * If block has V1 blockFlow → normalize it against live state.
- * If block has V2 blockFlow → convert back to V1 (flattened).
- * If no blockFlow → generate default V1 from block state.
- *
- * Returns undefined only when the block has no content rows and no sub-blocks.
- */
-export function resolveBlockFlowV1(block: Block): BlockFlow | undefined {
-  const raw = block.blockFlow;
-
-  if (raw && isBlockFlowV1(raw)) {
-    return normalizeBlockFlowV1(block, raw);
-  }
-
-  if (raw && isBlockFlowV2(raw)) {
-    // Convert V2 back to V1 (flatten structural rows)
-    const v1 = convertBlockFlowV2ToV1(raw);
-    return normalizeBlockFlowV1(block, v1);
-  }
-
-  return generateBlockFlowV1(block);
-}
-
-/**
- * Backward-compatible resolver — returns V1.
- * Existing callers (renderer, numbering) continue to work unchanged.
- * @alias
- */
-export const resolveBlockFlow = resolveBlockFlowV1;
-
-/* ================================================================== */
-/*  V2 → V1 CONVERSION (for backward compat)                           */
-/* ================================================================== */
-
-/**
- * Convert a BlockFlow V2 back to V1 (flatten structural rows).
- *
- * Each cell item becomes a flat V1 item. Order is preserved.
- * Content-row items and apartado items are interleaved per structural row.
- */
-export function convertBlockFlowV2ToV1(flow: BlockFlowV2): BlockFlow {
-  const items: BlockFlowItem[] = [];
-  for (const row of flow.rows) {
-    for (const item of row.items) {
-      if (item.type === "content-row") {
-        items.push({ type: "content-row", rowId: item.rowId });
-      } else {
-        items.push({ type: "apartado", apartadoId: item.apartadoId });
-      }
-    }
-  }
-  return { version: 1, items };
-}
-
-/* ================================================================== */
-/*  STRUCTURAL MOVE — reorder items within BlockFlow V1                */
-/* ================================================================== */
-
-export type BlockFlowMoveDescriptor = {
-  /** The type of the source item to move. */
-  sourceType: "content-row" | "apartado";
-  /** The ID of the source item (rowId or apartadoId). */
-  sourceId: string;
-  /** The type of the target item. */
-  targetType: "content-row" | "apartado";
-  /** The ID of the target item (rowId or apartadoId). */
-  targetId: string;
-  /** Place the source before or after the target. */
-  placement: "before" | "after";
-};
-
-export type BlockFlowMoveResult = {
-  changed: boolean;
-  flow: BlockFlow;
-};
-
-/**
- * Move an item within a BlockFlow V1 to a new position relative to a target.
- *
- * Currently only supports Apartado as source (structural drag).
- * Content-row sources are NOT supported in this phase.
- *
- * Never mutates the input flow.
- */
-export function moveBlockFlowItem(
-  flow: BlockFlow,
-  descriptor: BlockFlowMoveDescriptor,
-): BlockFlowMoveResult {
-  const { sourceType, sourceId, targetType, targetId, placement } = descriptor;
-
-  if (sourceType !== "apartado") {
-    return { changed: false, flow };
-  }
-
-  const sourceIndex = flow.items.findIndex((item) => {
-    if (item.type === "apartado") {
-      return item.apartadoId === sourceId;
-    }
-    return false;
-  });
-
-  if (sourceIndex < 0) return { changed: false, flow };
-
-  let targetIndex = -1;
-  if (targetType === "content-row") {
-    targetIndex = flow.items.findIndex(
-      (item) => item.type === "content-row" && item.rowId === targetId,
-    );
-  } else if (targetType === "apartado") {
-    targetIndex = flow.items.findIndex(
-      (item) => item.type === "apartado" && item.apartadoId === targetId,
-    );
-  }
-
-  if (targetIndex < 0) return { changed: false, flow };
-  if (sourceIndex === targetIndex) return { changed: false, flow };
-
-  const items = [...flow.items];
-  const [moved] = items.splice(sourceIndex, 1);
-
-  let insertIndex = items.findIndex((item) => {
-    if (targetType === "content-row" && item.type === "content-row") {
-      return item.rowId === targetId;
-    }
-    if (targetType === "apartado" && item.type === "apartado") {
-      return item.apartadoId === targetId;
-    }
-    return false;
-  });
-
-  if (insertIndex < 0) return { changed: false, flow };
-
-  if (placement === "after") {
-    insertIndex += 1;
-  }
-
-  items.splice(insertIndex, 0, moved);
-
-  return { changed: true, flow: { version: 1, items } };
 }
 
 /* ================================================================== */

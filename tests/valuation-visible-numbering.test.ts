@@ -73,12 +73,12 @@ test("getBlockFlowApartadoOrder — BlockFlow R1 B R2 A → [B, A]", () => {
   const b = block({
     apartados: [subBlock("a"), subBlock("b")],
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "content-row", rowId: "r1" },
-        { type: "apartado", apartadoId: "b" },
-        { type: "content-row", rowId: "r2" },
-        { type: "apartado", apartadoId: "a" },
+      version: 2,
+      rows: [
+        { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
+        { id: "bf-a-b", items: [{ type: "apartado", apartadoId: "b" }] },
+        { id: "bf-c-r2", items: [{ type: "content-row", rowId: "r2" }] },
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
       ],
     },
   });
@@ -92,10 +92,10 @@ test("getBlockFlowApartadoOrder — BlockFlow A B → [A, B]", () => {
   const b = block({
     apartados: [subBlock("a"), subBlock("b")],
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "apartado", apartadoId: "a" },
-        { type: "apartado", apartadoId: "b" },
+      version: 2,
+      rows: [
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
+        { id: "bf-a-b", items: [{ type: "apartado", apartadoId: "b" }] },
       ],
     },
   });
@@ -109,10 +109,10 @@ test("getBlockFlowApartadoOrder — BlockFlow B A → [B, A] (reversed)", () => 
   const b = block({
     apartados: [subBlock("a"), subBlock("b")],
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "apartado", apartadoId: "b" },
-        { type: "apartado", apartadoId: "a" },
+      version: 2,
+      rows: [
+        { id: "bf-a-b", items: [{ type: "apartado", apartadoId: "b" }] },
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
       ],
     },
   });
@@ -145,11 +145,11 @@ test("getBlockFlowApartadoOrder — disabled apartados still in order", () => {
   const b = block({
     apartados: [subBlock("a"), subBlock("b", false), subBlock("c")],
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "apartado", apartadoId: "c" },
-        { type: "apartado", apartadoId: "a" },
-        { type: "apartado", apartadoId: "b" },
+      version: 2,
+      rows: [
+        { id: "bf-a-c", items: [{ type: "apartado", apartadoId: "c" }] },
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
+        { id: "bf-a-b", items: [{ type: "apartado", apartadoId: "b" }] },
       ],
     },
   });
@@ -169,10 +169,10 @@ test("numbering — B before A via BlockFlow → B=1, A=2", () => {
   const b = block({
     apartados: [subBlock("a"), subBlock("b")],
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "apartado", apartadoId: "b" },
-        { type: "apartado", apartadoId: "a" },
+      version: 2,
+      rows: [
+        { id: "bf-a-b", items: [{ type: "apartado", apartadoId: "b" }] },
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
       ],
     },
   });
@@ -185,12 +185,12 @@ test("numbering — R1 B R2 A via BlockFlow → B=1, A=2", () => {
   const b = block({
     apartados: [subBlock("a"), subBlock("b")],
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "content-row", rowId: "r1" },
-        { type: "apartado", apartadoId: "b" },
-        { type: "content-row", rowId: "r2" },
-        { type: "apartado", apartadoId: "a" },
+      version: 2,
+      rows: [
+        { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
+        { id: "bf-a-b", items: [{ type: "apartado", apartadoId: "b" }] },
+        { id: "bf-c-r2", items: [{ type: "content-row", rowId: "r2" }] },
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
       ],
     },
   });
@@ -216,9 +216,9 @@ test("getBlockFlowApartadoOrder — missing apartado in flow appended", () => {
   const b = block({
     apartados: [subBlock("a"), subBlock("b"), subBlock("c")],
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "apartado", apartadoId: "a" },
+      version: 2,
+      rows: [
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
         // "c" is missing from flow
       ],
     },
@@ -238,10 +238,10 @@ test("getBlockFlowApartadoOrder — does not mutate block.apartados", () => {
   const b = block({
     apartados: subBlocks,
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "apartado", apartadoId: "b" },
-        { type: "apartado", apartadoId: "a" },
+      version: 2,
+      rows: [
+        { id: "bf-a-b", items: [{ type: "apartado", apartadoId: "b" }] },
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
       ],
     },
   });

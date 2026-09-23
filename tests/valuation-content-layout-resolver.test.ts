@@ -2,9 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   ContentLayoutColumnV2,
-  ContentLayoutItem,
   ContentLayoutItemRef,
-  ContentLayoutPersisted,
   ContentLayoutRowV2,
   ContentLayout as ContentLayoutV2,
 } from "../src/features/valuations/model";
@@ -38,7 +36,7 @@ function makeContainer(opts: {
   concepts?: Array<{ id: string }>;
   tables?: Array<{ id: string }>;
   images?: Array<{ id: string }>;
-  contentLayout?: ContentLayoutPersisted;
+  contentLayout?: ContentLayoutV2;
 }) {
   return {
     concepts: (opts.concepts ?? []).map((c) => ({ id: c.id, label: c.id, value: "" })),
@@ -46,10 +44,6 @@ function makeContainer(opts: {
     images: (opts.images ?? []).map((i) => ({ id: i.id, title: i.id, src: "" })),
     contentLayout: opts.contentLayout,
   };
-}
-
-function v1(type: "concept" | "image" | "table", id: string, span: 4 | 6 | 8 | 12 = 6): ContentLayoutItem {
-  return { type, id, span };
 }
 
 function flatRefs(layout: ContentLayoutV2): ContentLayoutItemRef[] {
@@ -105,86 +99,93 @@ test("missing layout — mixed concepts/tables/images", () => {
   assert.deepEqual(refs[2], ref("image", "i1"));
 });
 
-test("missing layout — legacy visible row behavior preserved", () => {
-  // 5 concepts with default span=6: V1 derives rows [c1,c2] [c3,c4] [c5]
+test("missing layout — half-width concepts pack two per row", () => {
+  // 5 half-width concepts pack two per row: [c1,c2] [c3,c4] [c5]
   const container = makeContainer({
     concepts: [{ id: "c1" }, { id: "c2" }, { id: "c3" }, { id: "c4" }, { id: "c5" }],
   });
   const result = resolveContentLayoutV2(container);
 
-  // V2 should derive 3 rows (from V1 balanced row sizes)
   assert.equal(result.rows.length, 3);
   assert.equal(result.rows[0].columns.length, 2);
   assert.equal(result.rows[1].columns.length, 2);
   assert.equal(result.rows[2].columns.length, 1);
 });
 
-/* ================================================================== */
-/*  V1 — contentLayout is V1 array                                    */
-/* ================================================================== */
-
-test("V1 — resolves to V2", () => {
-  const container = makeContainer({
-    concepts: [{ id: "c1" }, { id: "c2" }],
-    contentLayout: [v1("concept", "c1"), v1("concept", "c2")],
-  });
+test("missing layout — widths from metadata decide row packing", () => {
+  const container = {
+    concepts: [
+      { id: "c1", label: "c1", value: "", layoutSpan: "full" as const },
+      { id: "c2", label: "c2", value: "" },
+    ],
+    tables: [{ id: "t1", title: "t1", columns: [], rows: [] }],
+    images: [
+      { id: "i1", title: "i1", src: "" },
+      { id: "i2", title: "i2", src: "", layoutWidth: "full" as const },
+      { id: "i3", title: "i3", src: "" },
+    ],
+  };
   const result = resolveContentLayoutV2(container);
 
-  assert.equal(result.version, 2);
-  const refs = flatRefs(result);
-  assert.equal(refs.length, 2);
-  assert.deepEqual(refs[0], ref("concept", "c1"));
-  assert.deepEqual(refs[1], ref("concept", "c2"));
+  // full concept (12) | half concept (6) | table (12) | image (8) | full image (12) | image (8)
+  assert.deepEqual(result, v2([
+    row("r-0", [col("c-0-0", [ref("concept", "c1")])]),
+    row("r-1", [col("c-1-0", [ref("concept", "c2")])]),
+    row("r-2", [col("c-2-0", [ref("table", "t1")])]),
+    row("r-3", [col("c-3-0", [ref("image", "i1")])]),
+    row("r-4", [col("c-4-0", [ref("image", "i2")])]),
+    row("r-5", [col("c-5-0", [ref("image", "i3")])]),
+  ]));
 });
 
-test("V1 — explicit row breaks preserved", () => {
+test("missing layout — at most 3 columns per row, deterministic IDs", () => {
+  const container = {
+    concepts: [],
+    tables: [],
+    images: [],
+  };
+  const concepts = ["c1", "c2", "c3"].map((id) => ({ id, label: id, value: "" }));
+  const result = resolveContentLayoutV2({ ...container, concepts });
+
+  // Three half-width concepts: the third no longer fits the 12-unit grid.
+  assert.deepEqual(result, v2([
+    row("r-0", [col("c-0-0", [ref("concept", "c1")]), col("c-0-1", [ref("concept", "c2")])]),
+    row("r-1", [col("c-1-0", [ref("concept", "c3")])]),
+  ]));
+});
+
+/* ================================================================== */
+/*  OBSOLETE FLAT ARRAY — treated as no layout                         */
+/* ================================================================== */
+
+test("obsolete flat array — ignored, layout bootstrapped from content", () => {
   const container = makeContainer({
     concepts: [{ id: "c1" }, { id: "c2" }, { id: "c3" }, { id: "c4" }],
     contentLayout: [
-      v1("concept", "c1"),
-      { ...v1("concept", "c2"), rowBreakBefore: true },
-      v1("concept", "c3"),
-      { ...v1("concept", "c4"), rowBreakBefore: true },
-    ],
+      { type: "concept", id: "c4", span: 12 },
+      { type: "concept", id: "c1", span: 4, rowBreakBefore: true },
+    ] as unknown as ContentLayoutV2,
   });
   const result = resolveContentLayoutV2(container);
 
-  // V1 explicit: [c1] [c2,c3] [c4] → V2: 3 rows
-  assert.equal(result.rows.length, 3);
-  assert.equal(result.rows[0].columns.length, 1);
-  assert.equal(result.rows[1].columns.length, 2);
-  assert.equal(result.rows[2].columns.length, 1);
+  assert.deepEqual(result, resolveContentLayoutV2({ ...container, contentLayout: undefined }));
+  assert.deepEqual(flatRefs(result), [
+    ref("concept", "c1"),
+    ref("concept", "c2"),
+    ref("concept", "c3"),
+    ref("concept", "c4"),
+  ]);
 });
 
-test("V1 — stale/duplicate handled", () => {
-  const container = makeContainer({
-    concepts: [{ id: "c1" }, { id: "c2" }],
-    contentLayout: [
-      v1("concept", "c1"),
-      v1("concept", "c999"), // stale
-      v1("concept", "c1"),   // duplicate
-    ],
-  });
-  const result = resolveContentLayoutV2(container);
-
-  const refs = flatRefs(result);
-  // c999 removed (stale), duplicate c1 removed (dedup)
-  assert.equal(refs.length, 2);
-  assert.deepEqual(refs[0], ref("concept", "c1"));
-  assert.deepEqual(refs[1], ref("concept", "c2"));
-});
-
-test("V1 — empty V1 array falls back to legacy generation", () => {
+test("obsolete flat array — empty array falls back to bootstrap", () => {
   const container = makeContainer({
     concepts: [{ id: "c1" }],
-    contentLayout: [],
+    contentLayout: [] as unknown as ContentLayoutV2,
   });
   const result = resolveContentLayoutV2(container);
 
   assert.equal(result.version, 2);
-  const refs = flatRefs(result);
-  assert.equal(refs.length, 1);
-  assert.deepEqual(refs[0], ref("concept", "c1"));
+  assert.deepEqual(flatRefs(result), [ref("concept", "c1")]);
 });
 
 /* ================================================================== */
@@ -281,14 +282,14 @@ test("V2 — existing IDs preserved", () => {
   assert.deepEqual(result.rows[1].columns[0].id, "my-col-1");
 });
 
-test("V2 — malformed V2 falls back to legacy", () => {
+test("V2 — malformed V2 falls back to bootstrap", () => {
   const container = makeContainer({
     concepts: [{ id: "c1" }, { id: "c2" }],
     contentLayout: { version: 2, rows: "not-an-array" } as unknown as ContentLayoutV2,
   });
   const result = resolveContentLayoutV2(container);
 
-  // Falls back to legacy V1 → V2 conversion
+  // Falls back to bootstrapping from the content arrays
   assert.equal(result.version, 2);
   const refs = flatRefs(result);
   assert.equal(refs.length, 2);
@@ -435,7 +436,7 @@ test("missing content — new row ID avoids collision with existing", () => {
   assert.ok(lastRow.id.startsWith("r-6"));
 });
 
-test("missing content — multiple missing items appended in legacy type order", () => {
+test("missing content — multiple missing items appended in type order", () => {
   const layout = v2([
     row("r-0", [col("c-0-0", [ref("concept", "c1")])]),
   ]);

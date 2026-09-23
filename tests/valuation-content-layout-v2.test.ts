@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   ContentLayoutColumnV2,
-  ContentLayoutItem,
   ContentLayoutItemRef,
   ContentLayoutRowV2,
   ContentLayout as ContentLayoutV2,
@@ -10,17 +9,13 @@ import type {
 import {
   isContentLayout as isContentLayoutV2,
   normalizeContentLayout as normalizeContentLayoutV2,
-  convertContentLayoutV1ToV2,
+  bootstrapContentLayout,
   CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW,
 } from "../src/features/valuations/services/content-layout";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
-
-function ci(type: "concept" | "image" | "table", id: string, span: 4 | 6 | 8 | 12 = 6): ContentLayoutItem {
-  return { type, id, span };
-}
 
 function ref(type: "concept" | "image" | "table", id: string): ContentLayoutItemRef {
   return { type, id };
@@ -42,13 +37,11 @@ function makeContainer(opts: {
   concepts?: Array<{ id: string }>;
   tables?: Array<{ id: string }>;
   images?: Array<{ id: string }>;
-  contentLayout?: ContentLayoutItem[];
 }) {
   return {
     concepts: (opts.concepts ?? []).map((c) => ({ id: c.id, label: c.id, value: "" })),
     tables: (opts.tables ?? []).map((t) => ({ id: t.id, title: t.id, columns: [], rows: [] })),
     images: (opts.images ?? []).map((i) => ({ id: i.id, title: i.id, src: "" })),
-    contentLayout: opts.contentLayout,
   };
 }
 
@@ -153,22 +146,22 @@ test("type guard — ref is null accepted as plausible V2", () => {
 });
 
 /* ================================================================== */
-/*  convertContentLayoutV1ToV2                                         */
+/*  bootstrapContentLayout                                             */
 /* ================================================================== */
 
-test("convert — empty container", () => {
+test("bootstrap — empty container", () => {
   const container = makeContainer({});
-  const result = convertContentLayoutV1ToV2(container);
+  const result = bootstrapContentLayout(container);
 
   assert.equal(result.version, 2);
   assert.equal(result.rows.length, 0);
 });
 
-test("convert — 1 concept", () => {
+test("bootstrap — 1 concept", () => {
   const container = makeContainer({
     concepts: [{ id: "c1" }],
   });
-  const result = convertContentLayoutV1ToV2(container);
+  const result = bootstrapContentLayout(container);
 
   assert.equal(result.version, 2);
   assert.equal(result.rows.length, 1);
@@ -176,11 +169,11 @@ test("convert — 1 concept", () => {
   assert.deepEqual(result.rows[0].columns[0].items, [ref("concept", "c1")]);
 });
 
-test("convert — 2 concepts", () => {
+test("bootstrap — 2 concepts", () => {
   const container = makeContainer({
     concepts: [{ id: "c1" }, { id: "c2" }],
   });
-  const result = convertContentLayoutV1ToV2(container);
+  const result = bootstrapContentLayout(container);
 
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].columns.length, 2);
@@ -188,13 +181,13 @@ test("convert — 2 concepts", () => {
   assert.deepEqual(result.rows[0].columns[1].items, [ref("concept", "c2")]);
 });
 
-test("convert — 3 concepts (default span=6 each, splits into 2 rows)", () => {
+test("bootstrap — 3 concepts (default span=6 each, splits into 2 rows)", () => {
   // Default span for concepts is 6 (half-width).
-  // 3 × span 6 = 18 > 12 columns → V1 splits into [c1,c2] [c3]
+  // 3 × 6 = 18 > 12 grid units → [c1,c2] [c3]
   const container = makeContainer({
     concepts: [{ id: "c1" }, { id: "c2" }, { id: "c3" }],
   });
-  const result = convertContentLayoutV1ToV2(container);
+  const result = bootstrapContentLayout(container);
 
   assert.equal(result.rows.length, 2);
   assert.equal(result.rows[0].columns.length, 2);
@@ -204,14 +197,14 @@ test("convert — 3 concepts (default span=6 each, splits into 2 rows)", () => {
   assert.deepEqual(result.rows[1].columns[0].items, [ref("concept", "c3")]);
 });
 
-test("convert — legacy 5-item layout preserves current V1 rows", () => {
+test("bootstrap — 5 half-width concepts pack two per row", () => {
   // Default span for concepts is 6 (half-width).
-  // V1 row derivation: each row fills up to 12 columns.
+  // Each row fills up to 12 grid units.
   // [c1(6),c2(6)] = 12 → row 0. [c3(6),c4(6)] = 12 → row 1. [c5(6)] = 6 → row 2.
   const container = makeContainer({
     concepts: [{ id: "c1" }, { id: "c2" }, { id: "c3" }, { id: "c4" }, { id: "c5" }],
   });
-  const result = convertContentLayoutV1ToV2(container);
+  const result = bootstrapContentLayout(container);
 
   assert.equal(result.rows.length, 3);
   assert.equal(result.rows[0].columns.length, 2);
@@ -230,32 +223,9 @@ test("convert — legacy 5-item layout preserves current V1 rows", () => {
   assert.deepEqual(result.rows[2].columns[0].items, [ref("concept", "c5")]);
 });
 
-test("convert — explicit rowBreakBefore preserves current V1 rows", () => {
-  // a(6), b(6), c(6), d with rowBreakBefore → V1 explicit: [a,b,c] [d]
-  const container = makeContainer({
-    concepts: [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }],
-    contentLayout: [
-      ci("concept", "a"),
-      ci("concept", "b"),
-      ci("concept", "c"),
-      { ...ci("concept", "d"), rowBreakBefore: true },
-    ],
-  });
-  const result = convertContentLayoutV1ToV2(container);
-
-  // V1 explicit: [a,b,c] [d] → V2: 2 rows
-  assert.equal(result.rows.length, 2);
-  assert.equal(result.rows[0].columns.length, 3);
-  assert.equal(result.rows[1].columns.length, 1);
-  assert.deepEqual(result.rows[0].columns[0].items, [ref("concept", "a")]);
-  assert.deepEqual(result.rows[0].columns[1].items, [ref("concept", "b")]);
-  assert.deepEqual(result.rows[0].columns[2].items, [ref("concept", "c")]);
-  assert.deepEqual(result.rows[1].columns[0].items, [ref("concept", "d")]);
-});
-
-test("convert — mixed Concept/Image/Table", () => {
+test("bootstrap — mixed Concept/Image/Table", () => {
   // Default spans: concept=6, table=12, image=8
-  // V1 order: concepts→tables→images → c1(6), c2(6), t1(12), i1(8)
+  // Order: concepts→tables→images → c1(6), c2(6), t1(12), i1(8)
   // Row derivation: [c1(6),c2(6)] span=12 ✓. t1(12) → new row. i1(8) → doesn't fit after t1(12) → new row.
   // Result: [c1,c2] [t1] [i1]
   const container = makeContainer({
@@ -263,7 +233,7 @@ test("convert — mixed Concept/Image/Table", () => {
     images: [{ id: "i1" }],
     tables: [{ id: "t1" }],
   });
-  const result = convertContentLayoutV1ToV2(container);
+  const result = bootstrapContentLayout(container);
 
   assert.equal(result.rows.length, 3);
   assert.equal(result.rows[0].columns.length, 2);
@@ -275,87 +245,26 @@ test("convert — mixed Concept/Image/Table", () => {
   assert.deepEqual(result.rows[2].columns[0].items, [ref("image", "i1")]);
 });
 
-test("convert — stale refs removed", () => {
-  const container = makeContainer({
-    concepts: [{ id: "c1" }, { id: "c2" }],
-    contentLayout: [
-      ci("concept", "c1"),
-      ci("concept", "c999"), // stale — not in container
-    ],
-  });
-  const result = convertContentLayoutV1ToV2(container);
-
-  // Only c1 survives, c999 removed, c2 appended
-  assert.equal(result.rows.length, 1);
-  assert.equal(result.rows[0].columns.length, 2);
-  assert.deepEqual(result.rows[0].columns[0].items, [ref("concept", "c1")]);
-  assert.deepEqual(result.rows[0].columns[1].items, [ref("concept", "c2")]);
-});
-
-test("convert — duplicates removed (keeps first)", () => {
-  const container = makeContainer({
-    concepts: [{ id: "c1" }],
-    contentLayout: [
-      ci("concept", "c1"),
-      ci("concept", "c1"), // duplicate
-    ],
-  });
-  const result = convertContentLayoutV1ToV2(container);
-
-  assert.equal(result.rows.length, 1);
-  assert.equal(result.rows[0].columns.length, 1);
-  assert.deepEqual(result.rows[0].columns[0].items, [ref("concept", "c1")]);
-});
-
-test("convert — V1 span ignored in V2 output", () => {
-  // V1 row derivation uses span for fitting (c1=12 fills row, c2=4 starts new row).
-  // But V2 column structure does NOT carry span — it only stores { type, id }.
-  const container = makeContainer({
-    concepts: [{ id: "c1" }, { id: "c2" }],
-    contentLayout: [
-      ci("concept", "c1", 12), // span 12 → fills a V1 row
-      ci("concept", "c2", 4),  // span 4 → starts next V1 row
-    ],
-  });
-  const result = convertContentLayoutV1ToV2(container);
-
-  // V1 derives 2 rows (c1 span=12 fills row 0, c2 starts row 1)
-  assert.equal(result.rows.length, 2);
-  assert.equal(result.rows[0].columns.length, 1);
-  assert.equal(result.rows[1].columns.length, 1);
-
-  // V2 columns do NOT carry span — only type and id
-  for (const row of result.rows) {
-    for (const col of row.columns) {
-      for (const item of col.items) {
-        assert.equal("span" in item, false, "V2 item ref must not have span");
-      }
-    }
-  }
-});
-
-test("convert — no mutation of input", () => {
+test("bootstrap — no mutation of input", () => {
   const container = makeContainer({
     concepts: [{ id: "c1" }, { id: "c2" }],
   });
   const originalConcepts = [...container.concepts];
-  const originalLayout = container.contentLayout ? [...container.contentLayout] : undefined;
 
-  const result = convertContentLayoutV1ToV2(container);
+  const result = bootstrapContentLayout(container);
 
   // Input arrays should be unchanged
   assert.deepEqual(container.concepts, originalConcepts);
-  assert.deepEqual(container.contentLayout, originalLayout);
   assert.equal(result.rows.length, 1);
 });
 
-test("convert — deterministic repeated row/column IDs", () => {
+test("bootstrap — deterministic repeated row/column IDs", () => {
   const container = makeContainer({
     concepts: [{ id: "c1" }, { id: "c2" }, { id: "c3" }, { id: "c4" }],
   });
 
-  const result1 = convertContentLayoutV1ToV2(container);
-  const result2 = convertContentLayoutV1ToV2(container);
+  const result1 = bootstrapContentLayout(container);
+  const result2 = bootstrapContentLayout(container);
 
   assert.deepEqual(result1, result2);
   assert.equal(result1.rows[0].id, result2.rows[0].id);
@@ -363,11 +272,30 @@ test("convert — deterministic repeated row/column IDs", () => {
   assert.equal(result1.rows[0].columns[0].id, result2.rows[0].columns[0].id);
 });
 
-test("convert — no contentLayout in container (generates from arrays)", () => {
+test("bootstrap — disabled items included; normal/wide images pack as 8 units", () => {
+  const container = {
+    concepts: [{ id: "c1", label: "c1", value: "", enabled: false }],
+    tables: [],
+    images: [
+      { id: "i1", title: "i1", src: "", layoutWidth: "wide" as const },
+      { id: "i2", title: "i2", src: "", layoutWidth: "normal" as const },
+    ],
+  };
+  const result = bootstrapContentLayout(container);
+
+  // c1(6) alone (i1(8) does not fit next to it), then i1(8) and i2(8) in separate rows
+  assert.deepEqual(result, v2([
+    row("r-0", [col("c-0-0", [ref("concept", "c1")])]),
+    row("r-1", [col("c-1-0", [ref("image", "i1")])]),
+    row("r-2", [col("c-2-0", [ref("image", "i2")])]),
+  ]));
+});
+
+test("bootstrap — no contentLayout in container (generates from arrays)", () => {
   const container = makeContainer({
     concepts: [{ id: "c1" }, { id: "c2" }],
   });
-  const result = convertContentLayoutV1ToV2(container);
+  const result = bootstrapContentLayout(container);
 
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].columns.length, 2);
@@ -375,32 +303,11 @@ test("convert — no contentLayout in container (generates from arrays)", () => 
   assert.deepEqual(result.rows[0].columns[1].items, [ref("concept", "c2")]);
 });
 
-test("convert — rowBreakBefore NOT in V2 output", () => {
-  const container = makeContainer({
-    concepts: [{ id: "a" }, { id: "b" }, { id: "c" }],
-    contentLayout: [
-      ci("concept", "a"),
-      { ...ci("concept", "b"), rowBreakBefore: true },
-      ci("concept", "c"),
-    ],
-  });
-  const result = convertContentLayoutV1ToV2(container);
-
-  // rowBreakBefore used for derivation only, not copied
-  for (const row of result.rows) {
-    for (const col of row.columns) {
-      for (const item of col.items) {
-        assert.equal("rowBreakBefore" in item, false);
-      }
-    }
-  }
-});
-
-test("convert — IDs are generic (no section/block info)", () => {
+test("bootstrap — IDs are generic (no section/block info)", () => {
   const container = makeContainer({
     concepts: [{ id: "c1" }],
   });
-  const result = convertContentLayoutV1ToV2(container);
+  const result = bootstrapContentLayout(container);
 
   // IDs should be pattern-based, not contain section/block names
   assert.match(result.rows[0].id, /^r-/);

@@ -1,12 +1,8 @@
 ﻿import assert from "node:assert/strict";
 import test from "node:test";
-import type { Block, BlockFlow, BlockFlowV2, Apartado } from "../src/features/valuations/model";
+import type { Block, BlockFlowV2, Apartado } from "../src/features/valuations/model";
 import {
-  isBlockFlow,
-  generateBlockFlow,
-  normalizeBlockFlow,
-  resolveBlockFlow,
-  moveBlockFlowItem,
+  resolveBlockFlowV2,
   moveBlockFlowV2Apartado,
   insertContentRowIntoBlockFlowV2,
   removeContentRowsFromBlockFlowV2,
@@ -38,283 +34,10 @@ function block(overrides: Partial<Block> = {}): Block {
 }
 
 /* ================================================================== */
-/*  MODEL / GUARD — isBlockFlow                                        */
+/*  RESOLUTION — resolveBlockFlowV2                                     */
 /* ================================================================== */
 
-test("isBlockFlow — valid empty BlockFlow", () => {
-  assert.equal(isBlockFlow({ version: 1, items: [] }), true);
-});
-
-test("isBlockFlow — valid mixed BlockFlow", () => {
-  const flow: BlockFlow = {
-    version: 1,
-    items: [
-      { type: "content-row", rowId: "r1" },
-      { type: "apartado", apartadoId: "a1" },
-      { type: "content-row", rowId: "r2" },
-    ],
-  };
-  assert.equal(isBlockFlow(flow), true);
-});
-
-test("isBlockFlow — wrong version", () => {
-  assert.equal(isBlockFlow({ version: 2, items: [] }), false);
-});
-
-test("isBlockFlow — missing version", () => {
-  assert.equal(isBlockFlow({ items: [] }), false);
-});
-
-test("isBlockFlow — null", () => {
-  assert.equal(isBlockFlow(null), false);
-});
-
-test("isBlockFlow — undefined", () => {
-  assert.equal(isBlockFlow(undefined), false);
-});
-
-test("isBlockFlow — array", () => {
-  assert.equal(isBlockFlow([]), false);
-});
-
-test("isBlockFlow — items not array", () => {
-  assert.equal(isBlockFlow({ version: 1, items: "bad" }), false);
-});
-
-test("isBlockFlow — unknown item type", () => {
-  assert.equal(
-    isBlockFlow({ version: 1, items: [{ type: "unknown" }] }),
-    false,
-  );
-});
-
-test("isBlockFlow — content-row with empty rowId", () => {
-  assert.equal(
-    isBlockFlow({ version: 1, items: [{ type: "content-row", rowId: "" }] }),
-    false,
-  );
-});
-
-test("isBlockFlow — apartado with empty apartadoId", () => {
-  assert.equal(
-    isBlockFlow({ version: 1, items: [{ type: "apartado", apartadoId: "" }] }),
-    false,
-  );
-});
-
-test("isBlockFlow — content-row with missing rowId", () => {
-  assert.equal(
-    isBlockFlow({ version: 1, items: [{ type: "content-row" }] }),
-    false,
-  );
-});
-
-test("isBlockFlow — item not an object", () => {
-  assert.equal(isBlockFlow({ version: 1, items: ["bad"] }), false);
-});
-
-/* ================================================================== */
-/*  GENERATION — generateBlockFlow                                     */
-/* ================================================================== */
-
-test("generateBlockFlow — content rows R1 R2 + apartados A B → R1 R2 A B", () => {
-  const b = block({
-    apartados: [subBlock("a"), subBlock("b")],
-    contentLayout: {
-      version: 2,
-      rows: [
-        { id: "r1", columns: [{ id: "c1", items: [] }] },
-        { id: "r2", columns: [{ id: "c2", items: [] }] },
-      ],
-    },
-  });
-  const flow = generateBlockFlow(b)!;
-  assert.equal(flow.version, 1);
-  assert.equal(flow.items.length, 4);
-  assert.deepEqual(flow.items[0], { type: "content-row", rowId: "r1" });
-  assert.deepEqual(flow.items[1], { type: "content-row", rowId: "r2" });
-  assert.deepEqual(flow.items[2], { type: "apartado", apartadoId: "a" });
-  assert.deepEqual(flow.items[3], { type: "apartado", apartadoId: "b" });
-});
-
-test("generateBlockFlow — content only", () => {
-  const b = block({
-    contentLayout: {
-      version: 2,
-      rows: [{ id: "r1", columns: [{ id: "c1", items: [] }] }],
-    },
-  });
-  const flow = generateBlockFlow(b)!;
-  assert.equal(flow.items.length, 1);
-  assert.deepEqual(flow.items[0], { type: "content-row", rowId: "r1" });
-});
-
-test("generateBlockFlow — apartados only", () => {
-  const b = block({ apartados: [subBlock("a"), subBlock("b")] });
-  const flow = generateBlockFlow(b)!;
-  assert.equal(flow.items.length, 2);
-  assert.deepEqual(flow.items[0], { type: "apartado", apartadoId: "a" });
-  assert.deepEqual(flow.items[1], { type: "apartado", apartadoId: "b" });
-});
-
-test("generateBlockFlow — empty block → undefined", () => {
-  const b = block();
-  assert.equal(generateBlockFlow(b), undefined);
-});
-
-test("generateBlockFlow — V1 contentLayout treated as empty rows", () => {
-  // V1 layouts resolve via content-layout-v2.ts canonical resolver.
-  // If block has only V1 layout with no V2 rows resolved, only apartados appear.
-  const b = block({
-    contentLayout: [
-      { type: "concept", id: "c1", span: 12 },
-    ],
-    apartados: [subBlock("a")],
-  });
-  const flow = generateBlockFlow(b)!;
-  // V1 items get resolved into V2 rows by the canonical resolver.
-  // At minimum we expect the apartado to be present.
-  const apartadoItems = flow.items.filter((i) => i.type === "apartado");
-  assert.equal(apartadoItems.length, 1);
-});
-
-/* ================================================================== */
-/*  NORMALIZATION — normalizeBlockFlow                                  */
-/* ================================================================== */
-
-test("normalizeBlockFlow — preserve valid order R1 A R2 B", () => {
-  const b = block({
-    apartados: [subBlock("a"), subBlock("b")],
-    contentLayout: {
-      version: 2,
-      rows: [
-        { id: "r1", columns: [{ id: "c1", items: [] }] },
-        { id: "r2", columns: [{ id: "c2", items: [] }] },
-      ],
-    },
-  });
-  const flow: BlockFlow = {
-    version: 1,
-    items: [
-      { type: "content-row", rowId: "r1" },
-      { type: "apartado", apartadoId: "a" },
-      { type: "content-row", rowId: "r2" },
-      { type: "apartado", apartadoId: "b" },
-    ],
-  };
-  const result = normalizeBlockFlow(b, flow);
-  assert.equal(result.items.length, 4);
-  assert.deepEqual(result.items[0], { type: "content-row", rowId: "r1" });
-  assert.deepEqual(result.items[1], { type: "apartado", apartadoId: "a" });
-  assert.deepEqual(result.items[2], { type: "content-row", rowId: "r2" });
-  assert.deepEqual(result.items[3], { type: "apartado", apartadoId: "b" });
-});
-
-test("normalizeBlockFlow — stale row ref removed", () => {
-  const b = block({
-    contentLayout: {
-      version: 2,
-      rows: [{ id: "r1", columns: [{ id: "c1", items: [] }] }],
-    },
-  });
-  const flow: BlockFlow = {
-    version: 1,
-    items: [
-      { type: "content-row", rowId: "r1" },
-      { type: "content-row", rowId: "deleted-row" },
-    ],
-  };
-  const result = normalizeBlockFlow(b, flow);
-  assert.equal(result.items.length, 1);
-  assert.deepEqual(result.items[0], { type: "content-row", rowId: "r1" });
-});
-
-test("normalizeBlockFlow — stale apartado removed", () => {
-  const b = block({
-    apartados: [subBlock("a")],
-  });
-  const flow: BlockFlow = {
-    version: 1,
-    items: [
-      { type: "apartado", apartadoId: "a" },
-      { type: "apartado", apartadoId: "deleted" },
-    ],
-  };
-  const result = normalizeBlockFlow(b, flow);
-  assert.equal(result.items.length, 1);
-  assert.deepEqual(result.items[0], { type: "apartado", apartadoId: "a" });
-});
-
-test("normalizeBlockFlow — duplicate row removed, keeps first", () => {
-  const b = block({
-    contentLayout: {
-      version: 2,
-      rows: [{ id: "r1", columns: [{ id: "c1", items: [] }] }],
-    },
-  });
-  const flow: BlockFlow = {
-    version: 1,
-    items: [
-      { type: "content-row", rowId: "r1" },
-      { type: "content-row", rowId: "r1" },
-    ],
-  };
-  const result = normalizeBlockFlow(b, flow);
-  assert.equal(result.items.length, 1);
-  assert.deepEqual(result.items[0], { type: "content-row", rowId: "r1" });
-});
-
-test("normalizeBlockFlow — duplicate apartado removed, keeps first", () => {
-  const b = block({
-    apartados: [subBlock("a")],
-  });
-  const flow: BlockFlow = {
-    version: 1,
-    items: [
-      { type: "apartado", apartadoId: "a" },
-      { type: "apartado", apartadoId: "a" },
-    ],
-  };
-  const result = normalizeBlockFlow(b, flow);
-  assert.equal(result.items.length, 1);
-  assert.deepEqual(result.items[0], { type: "apartado", apartadoId: "a" });
-});
-
-test("normalizeBlockFlow — missing content row appended", () => {
-  const b = block({
-    contentLayout: {
-      version: 2,
-      rows: [
-        { id: "r1", columns: [{ id: "c1", items: [] }] },
-        { id: "r2", columns: [{ id: "c2", items: [] }] },
-      ],
-    },
-  });
-  const flow: BlockFlow = {
-    version: 1,
-    items: [{ type: "content-row", rowId: "r1" }],
-  };
-  const result = normalizeBlockFlow(b, flow);
-  assert.equal(result.items.length, 2);
-  assert.deepEqual(result.items[0], { type: "content-row", rowId: "r1" });
-  assert.deepEqual(result.items[1], { type: "content-row", rowId: "r2" });
-});
-
-test("normalizeBlockFlow — missing apartado appended", () => {
-  const b = block({
-    apartados: [subBlock("a"), subBlock("b")],
-  });
-  const flow: BlockFlow = {
-    version: 1,
-    items: [{ type: "apartado", apartadoId: "a" }],
-  };
-  const result = normalizeBlockFlow(b, flow);
-  assert.equal(result.items.length, 2);
-  assert.deepEqual(result.items[0], { type: "apartado", apartadoId: "a" });
-  assert.deepEqual(result.items[1], { type: "apartado", apartadoId: "b" });
-});
-
-test("normalizeBlockFlow — no mutation of input flow", () => {
+test("resolveBlockFlowV2 — no blockFlow → generate default", () => {
   const b = block({
     apartados: [subBlock("a")],
     contentLayout: {
@@ -322,70 +45,15 @@ test("normalizeBlockFlow — no mutation of input flow", () => {
       rows: [{ id: "r1", columns: [{ id: "c1", items: [] }] }],
     },
   });
-  const flow: BlockFlow = {
-    version: 1,
-    items: [
-      { type: "content-row", rowId: "r1" },
-      { type: "apartado", apartadoId: "a" },
-    ],
-  };
-  const originalItems = [...flow.items];
-  normalizeBlockFlow(b, flow);
-  assert.deepEqual(flow.items, originalItems);
+  const flow = resolveBlockFlowV2(b)!;
+  assert.equal(flow.version, 2);
+  assert.deepEqual(flow.rows, [
+    { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
+    { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
+  ]);
 });
 
-test("normalizeBlockFlow — no mutation of block", () => {
-  const b = block({
-    apartados: [subBlock("a")],
-    contentLayout: {
-      version: 2,
-      rows: [{ id: "r1", columns: [{ id: "c1", items: [] }] }],
-    },
-  });
-  const flow: BlockFlow = {
-    version: 1,
-    items: [],
-  };
-  normalizeBlockFlow(b, flow);
-  assert.equal(b.apartados.length, 1);
-  assert.equal(b.apartados[0].id, "a");
-});
-
-test("normalizeBlockFlow — empty flow + live data → all appended", () => {
-  const b = block({
-    apartados: [subBlock("a")],
-    contentLayout: {
-      version: 2,
-      rows: [{ id: "r1", columns: [{ id: "c1", items: [] }] }],
-    },
-  });
-  const flow: BlockFlow = { version: 1, items: [] };
-  const result = normalizeBlockFlow(b, flow);
-  assert.equal(result.items.length, 2);
-  assert.deepEqual(result.items[0], { type: "content-row", rowId: "r1" });
-  assert.deepEqual(result.items[1], { type: "apartado", apartadoId: "a" });
-});
-
-/* ================================================================== */
-/*  RESOLUTION — resolveBlockFlow                                       */
-/* ================================================================== */
-
-test("resolveBlockFlow — no blockFlow → generate default", () => {
-  const b = block({
-    apartados: [subBlock("a")],
-    contentLayout: {
-      version: 2,
-      rows: [{ id: "r1", columns: [{ id: "c1", items: [] }] }],
-    },
-  });
-  const flow = resolveBlockFlow(b)!;
-  assert.equal(flow.version, 1);
-  assert.equal(flow.items.length, 2);
-  assert.deepEqual(flow.items[0], { type: "content-row", rowId: "r1" });
-  assert.deepEqual(flow.items[1], { type: "apartado", apartadoId: "a" });
-});
-
-test("resolveBlockFlow — valid blockFlow → normalize", () => {
+test("resolveBlockFlowV2 — valid blockFlow → normalize", () => {
   const b = block({
     apartados: [subBlock("a"), subBlock("b")],
     contentLayout: {
@@ -396,36 +64,60 @@ test("resolveBlockFlow — valid blockFlow → normalize", () => {
       ],
     },
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "apartado", apartadoId: "a" },
-        { type: "content-row", rowId: "r1" },
-        { type: "apartado", apartadoId: "b" },
+      version: 2,
+      rows: [
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
+        { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
+        { id: "bf-a-b", items: [{ type: "apartado", apartadoId: "b" }] },
       ],
     },
   });
-  const flow = resolveBlockFlow(b)!;
+  const flow = resolveBlockFlowV2(b)!;
   // a stays first (user order), r1 second, b third, r2 appended (missing)
-  assert.equal(flow.items.length, 4);
-  assert.deepEqual(flow.items[0], { type: "apartado", apartadoId: "a" });
-  assert.deepEqual(flow.items[1], { type: "content-row", rowId: "r1" });
-  assert.deepEqual(flow.items[2], { type: "apartado", apartadoId: "b" });
-  assert.deepEqual(flow.items[3], { type: "content-row", rowId: "r2" });
+  assert.deepEqual(flow.rows, [
+    { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
+    { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
+    { id: "bf-a-b", items: [{ type: "apartado", apartadoId: "b" }] },
+    { id: "bf-c-r2", items: [{ type: "content-row", rowId: "r2" }] },
+  ]);
 });
 
-test("resolveBlockFlow — malformed blockFlow → generate default", () => {
+test("resolveBlockFlowV2 — malformed blockFlow → generate default", () => {
   const b = block({
     apartados: [subBlock("a")],
     blockFlow: { version: 99, items: [] } as never,
   });
-  const flow = resolveBlockFlow(b)!;
-  assert.equal(flow.items.length, 1);
-  assert.deepEqual(flow.items[0], { type: "apartado", apartadoId: "a" });
+  const flow = resolveBlockFlowV2(b)!;
+  assert.deepEqual(flow.rows, [
+    { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
+  ]);
 });
 
-test("resolveBlockFlow — empty block → undefined", () => {
+test("resolveBlockFlowV2 — obsolete version-1 blockFlow ignored → implicit order", () => {
+  const b = block({
+    apartados: [subBlock("a")],
+    contentLayout: {
+      version: 2,
+      rows: [{ id: "r1", columns: [{ id: "c1", items: [] }] }],
+    },
+    blockFlow: {
+      version: 1,
+      items: [
+        { type: "apartado", apartadoId: "a" },
+        { type: "content-row", rowId: "r1" },
+      ],
+    } as never,
+  });
+  const flow = resolveBlockFlowV2(b)!;
+  assert.deepEqual(flow.rows, [
+    { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
+    { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
+  ]);
+});
+
+test("resolveBlockFlowV2 — empty block → undefined", () => {
   const b = block();
-  assert.equal(resolveBlockFlow(b), undefined);
+  assert.equal(resolveBlockFlowV2(b), undefined);
 });
 
 /* ================================================================== */
@@ -435,34 +127,32 @@ test("resolveBlockFlow — empty block → undefined", () => {
 test("hydrateBlockMetadata — blockFlow present and valid", () => {
   const config = {
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "content-row", rowId: "r1" },
-        { type: "apartado", apartadoId: "a1" },
+      version: 2,
+      rows: [
+        { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
+        { id: "bf-a-a1", items: [{ type: "apartado", apartadoId: "a1" }] },
       ],
     },
   };
   const meta = hydrateBlockMetadata(config);
   assert.ok(meta.blockFlow);
-  assert.equal(meta.blockFlow.version, 1);
-  assert.equal(meta.blockFlow.items.length, 2);
+  assert.equal(meta.blockFlow.version, 2);
+  assert.equal(meta.blockFlow.rows.length, 2);
 });
 
 test("hydrateBlockMetadata — blockFlow under payload", () => {
   const config = {
     payload: {
       blockFlow: {
-        version: 1,
-        items: [{ type: "apartado", apartadoId: "x" }],
+        version: 2,
+        rows: [{ id: "bf-a-x", items: [{ type: "apartado", apartadoId: "x" }] }],
       },
     },
   };
   const meta = hydrateBlockMetadata(config);
   assert.ok(meta.blockFlow);
-  assert.equal(meta.blockFlow.version, 1);
-  if (meta.blockFlow.version === 1) {
-    assert.equal(meta.blockFlow.items.length, 1);
-  }
+  assert.equal(meta.blockFlow.version, 2);
+  assert.equal(meta.blockFlow.rows.length, 1);
 });
 
 test("hydrateBlockMetadata — blockFlow absent → undefined", () => {
@@ -481,14 +171,14 @@ test("hydrateBlockMetadata — config null → undefined blockFlow", () => {
 });
 
 test("blockMetadataFromContent — serializes blockFlow when present", () => {
-  const flow: BlockFlow = {
-    version: 1,
-    items: [{ type: "content-row", rowId: "r1" }],
+  const flow: BlockFlowV2 = {
+    version: 2,
+    rows: [{ id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] }],
   };
   const meta = blockMetadataFromContent({ enabled: true, blockFlow: flow });
   assert.ok(meta.blockFlow);
-  assert.equal(meta.blockFlow.version, 1);
-  assert.equal(meta.blockFlow.items.length, 1);
+  assert.equal(meta.blockFlow.version, 2);
+  assert.equal(meta.blockFlow.rows.length, 1);
 });
 
 test("blockMetadataFromContent — blockFlow undefined when absent", () => {
@@ -497,27 +187,23 @@ test("blockMetadataFromContent — blockFlow undefined when absent", () => {
 });
 
 test("metadata round-trip — serialize then hydrate", () => {
-  const flow: BlockFlow = {
-    version: 1,
-    items: [
-      { type: "content-row", rowId: "r1" },
-      { type: "apartado", apartadoId: "a1" },
+  const flow: BlockFlowV2 = {
+    version: 2,
+    rows: [
+      { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
+      { id: "bf-a-a1", items: [{ type: "apartado", apartadoId: "a1" }] },
     ],
   };
   const serialized = blockMetadataFromContent({ enabled: true, blockFlow: flow });
   const hydrated = hydrateBlockMetadata(serialized);
-  assert.ok(hydrated.blockFlow);
-  assert.equal(hydrated.blockFlow.version, 1);
-  assert.equal(hydrated.blockFlow.items.length, 2);
-  assert.deepEqual(hydrated.blockFlow.items[0], { type: "content-row", rowId: "r1" });
-  assert.deepEqual(hydrated.blockFlow.items[1], { type: "apartado", apartadoId: "a1" });
+  assert.deepEqual(hydrated.blockFlow, flow);
 });
 
 /* ================================================================== */
-/*  BACKWARD COMPATIBILITY                                              */
+/*  NO STORED FLOW                                                      */
 /* ================================================================== */
 
-test("backward compat — old valuation without blockFlow renders identically", () => {
+test("no stored blockFlow — implicit order: content rows, then apartados", () => {
   const b = block({
     apartados: [subBlock("a"), subBlock("b")],
     contentLayout: {
@@ -529,189 +215,22 @@ test("backward compat — old valuation without blockFlow renders identically", 
     },
     // blockFlow is undefined (old valuation)
   });
-  const flow = resolveBlockFlow(b)!;
+  const flow = resolveBlockFlowV2(b)!;
   // Default order: R1, R2, A, B
-  assert.equal(flow.items.length, 4);
-  assert.deepEqual(flow.items, [
-    { type: "content-row", rowId: "r1" },
-    { type: "content-row", rowId: "r2" },
-    { type: "apartado", apartadoId: "a" },
-    { type: "apartado", apartadoId: "b" },
+  assert.deepEqual(flow.rows.map((row) => row.items), [
+    [{ type: "content-row", rowId: "r1" }],
+    [{ type: "content-row", rowId: "r2" }],
+    [{ type: "apartado", apartadoId: "a" }],
+    [{ type: "apartado", apartadoId: "b" }],
   ]);
 });
 
-test("backward compat — blockFlow not auto-written on load", () => {
+test("no stored blockFlow — blockFlow not auto-written on load", () => {
   const b = block({ apartados: [subBlock("a")] });
-  // Simulate: old valuation loaded, blockFlow should remain undefined
   assert.equal(b.blockFlow, undefined);
-  // resolveBlockFlow generates on-the-fly but does NOT mutate block
-  resolveBlockFlow(b);
+  // resolveBlockFlowV2 generates on-the-fly but does NOT mutate block
+  resolveBlockFlowV2(b);
   assert.equal(b.blockFlow, undefined);
-});
-
-/* ================================================================== */
-/*  NO BUSINESS DATA DUPLICATION                                        */
-/* ================================================================== */
-
-test("no business data duplication — BlockFlow items are references only", () => {
-  const flow: BlockFlow = {
-    version: 1,
-    items: [
-      { type: "content-row", rowId: "r1" },
-      { type: "apartado", apartadoId: "a1" },
-    ],
-  };
-  // Verify items contain only string IDs, no Concept/Image/Table/SubBlock objects
-  for (const item of flow.items) {
-    const keys = Object.keys(item);
-    assert.ok(keys.length <= 2); // type + id field
-    assert.ok(!keys.includes("concepts"));
-    assert.ok(!keys.includes("images"));
-    assert.ok(!keys.includes("tables"));
-    assert.ok(!keys.includes("title"));
-    assert.ok(!keys.includes("enabled"));
-  }
-});
-
-/* ================================================================== */
-/*  STRUCTURAL MOVE — moveBlockFlowItem                                */
-/* ================================================================== */
-
-const flowR1AR2B: BlockFlow = {
-  version: 1,
-  items: [
-    { type: "content-row", rowId: "r1" },
-    { type: "apartado", apartadoId: "a" },
-    { type: "content-row", rowId: "r2" },
-    { type: "apartado", apartadoId: "b" },
-  ],
-};
-
-test("moveBlockFlowItem — B before A → R1 B A R2", () => {
-  const result = moveBlockFlowItem(flowR1AR2B, {
-    sourceType: "apartado",
-    sourceId: "b",
-    targetType: "apartado",
-    targetId: "a",
-    placement: "before",
-  });
-  assert.equal(result.changed, true);
-  assert.deepEqual(result.flow.items, [
-    { type: "content-row", rowId: "r1" },
-    { type: "apartado", apartadoId: "b" },
-    { type: "apartado", apartadoId: "a" },
-    { type: "content-row", rowId: "r2" },
-  ]);
-});
-
-test("moveBlockFlowItem — A after R2 → R1 R2 A B", () => {
-  const result = moveBlockFlowItem(flowR1AR2B, {
-    sourceType: "apartado",
-    sourceId: "a",
-    targetType: "content-row",
-    targetId: "r2",
-    placement: "after",
-  });
-  assert.equal(result.changed, true);
-  assert.deepEqual(result.flow.items, [
-    { type: "content-row", rowId: "r1" },
-    { type: "content-row", rowId: "r2" },
-    { type: "apartado", apartadoId: "a" },
-    { type: "apartado", apartadoId: "b" },
-  ]);
-});
-
-test("moveBlockFlowItem — B before R1 → B R1 A R2", () => {
-  const result = moveBlockFlowItem(flowR1AR2B, {
-    sourceType: "apartado",
-    sourceId: "b",
-    targetType: "content-row",
-    targetId: "r1",
-    placement: "before",
-  });
-  assert.equal(result.changed, true);
-  assert.deepEqual(result.flow.items, [
-    { type: "apartado", apartadoId: "b" },
-    { type: "content-row", rowId: "r1" },
-    { type: "apartado", apartadoId: "a" },
-    { type: "content-row", rowId: "r2" },
-  ]);
-});
-
-test("moveBlockFlowItem — invalid source → unchanged", () => {
-  const result = moveBlockFlowItem(flowR1AR2B, {
-    sourceType: "apartado",
-    sourceId: "nonexistent",
-    targetType: "apartado",
-    targetId: "a",
-    placement: "before",
-  });
-  assert.equal(result.changed, false);
-  assert.deepEqual(result.flow.items, flowR1AR2B.items);
-});
-
-test("moveBlockFlowItem — invalid target → unchanged", () => {
-  const result = moveBlockFlowItem(flowR1AR2B, {
-    sourceType: "apartado",
-    sourceId: "a",
-    targetType: "apartado",
-    targetId: "nonexistent",
-    placement: "before",
-  });
-  assert.equal(result.changed, false);
-  assert.deepEqual(result.flow.items, flowR1AR2B.items);
-});
-
-test("moveBlockFlowItem — same source/target → unchanged", () => {
-  const result = moveBlockFlowItem(flowR1AR2B, {
-    sourceType: "apartado",
-    sourceId: "a",
-    targetType: "apartado",
-    targetId: "a",
-    placement: "before",
-  });
-  assert.equal(result.changed, false);
-  assert.deepEqual(result.flow.items, flowR1AR2B.items);
-});
-
-test("moveBlockFlowItem — content-row source → unchanged (not supported yet)", () => {
-  const result = moveBlockFlowItem(flowR1AR2B, {
-    sourceType: "content-row",
-    sourceId: "r1",
-    targetType: "apartado",
-    targetId: "a",
-    placement: "before",
-  });
-  assert.equal(result.changed, false);
-  assert.deepEqual(result.flow.items, flowR1AR2B.items);
-});
-
-test("moveBlockFlowItem — no mutation of input flow", () => {
-  const original = [...flowR1AR2B.items];
-  moveBlockFlowItem(flowR1AR2B, {
-    sourceType: "apartado",
-    sourceId: "b",
-    targetType: "apartado",
-    targetId: "a",
-    placement: "before",
-  });
-  assert.deepEqual(flowR1AR2B.items, original);
-});
-
-test("moveBlockFlowItem — no duplicate/loss of items", () => {
-  const result = moveBlockFlowItem(flowR1AR2B, {
-    sourceType: "apartado",
-    sourceId: "b",
-    targetType: "apartado",
-    targetId: "a",
-    placement: "before",
-  });
-  assert.equal(result.changed, true);
-  assert.equal(result.flow.items.length, flowR1AR2B.items.length);
-  const ids = result.flow.items.map((item) =>
-    item.type === "apartado" ? `a:${item.apartadoId}` : `r:${item.rowId}`,
-  );
-  assert.equal(new Set(ids).size, ids.length, "no duplicates");
 });
 
 /* ================================================================== */

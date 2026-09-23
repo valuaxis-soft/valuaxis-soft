@@ -1,6 +1,6 @@
 "use client";
 
-import type { Concept, ContentLayoutPersisted, ImageContent, TableContent } from "@/features/valuations/model";
+import type { Concept, ContentLayout, ImageContent, TableContent } from "@/features/valuations/model";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
 import { resolveConceptLabelGuide } from "@/features/valuations/services/concept-presentation";
@@ -42,7 +42,7 @@ export function DocumentTechnicalList({
   applyConceptLayout,
   containerPresentation,
 }: {
-  container: { concepts: Concept[]; images: ImageContent[]; tables: TableContent[]; contentLayout?: ContentLayoutPersisted };
+  container: { concepts: Concept[]; images: ImageContent[]; tables: TableContent[]; contentLayout?: ContentLayout };
   applyConceptLayout: boolean;
   containerPresentation?: ConceptPresentation;
 }) {

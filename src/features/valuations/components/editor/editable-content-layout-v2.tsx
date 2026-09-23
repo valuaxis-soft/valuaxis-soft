@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState } from "react";
 import type {
   Concept,
   ContentLayoutItemRef,
-  ContentLayoutPersisted,
   ContentLayout,
   ImageContent,
   TableContent,
@@ -53,7 +52,7 @@ type EditableContentContainer = {
   concepts: Concept[];
   images: ImageContent[];
   tables: TableContent[];
-  contentLayout?: ContentLayoutPersisted;
+  contentLayout?: ContentLayout;
 };
 
 /* ------------------------------------------------------------------ */
@@ -503,7 +502,7 @@ export function EditableContentLayout({
       {content}
       <DragOverlay dropAnimation={null}>
         {activeItem ? (
-          <ContentDragPreview item={{ ...activeItem, span: 12 }} />
+          <ContentDragPreview item={activeItem} />
         ) : null}
       </DragOverlay>
     </DndContext>

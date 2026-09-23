@@ -1198,7 +1198,7 @@ export function BlockFlowRenderer({
       {content}
       <DragOverlay dropAnimation={null}>
         {activeItem ? (
-          <ContentDragPreview item={{ ...activeItem, span: 12 }} />
+          <ContentDragPreview item={activeItem} />
         ) : null}
       </DragOverlay>
     </DndContext>

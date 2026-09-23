@@ -118,12 +118,12 @@ test("BlockFlow R1, A, R2, B → DOM order matches", () => {
       ],
     },
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "content-row", rowId: "r1" },
-        { type: "apartado", apartadoId: "a" },
-        { type: "content-row", rowId: "r2" },
-        { type: "apartado", apartadoId: "b" },
+      version: 2,
+      rows: [
+        { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
+        { id: "bf-c-r2", items: [{ type: "content-row", rowId: "r2" }] },
+        { id: "bf-a-b", items: [{ type: "apartado", apartadoId: "b" }] },
       ],
     },
   });
@@ -181,12 +181,12 @@ test("Apartado first: A, R1, B, R2", () => {
       ],
     },
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "apartado", apartadoId: "a" },
-        { type: "content-row", rowId: "r1" },
-        { type: "apartado", apartadoId: "b" },
-        { type: "content-row", rowId: "r2" },
+      version: 2,
+      rows: [
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
+        { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
+        { id: "bf-a-b", items: [{ type: "apartado", apartadoId: "b" }] },
+        { id: "bf-c-r2", items: [{ type: "content-row", rowId: "r2" }] },
       ],
     },
   });
@@ -249,10 +249,10 @@ test("Stale row ref does not crash", () => {
       ],
     },
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "content-row", rowId: "r-nonexistent" },
-        { type: "content-row", rowId: "r1" },
+      version: 2,
+      rows: [
+        { id: "bf-c-r-nonexistent", items: [{ type: "content-row", rowId: "r-nonexistent" }] },
+        { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
       ],
     },
   });
@@ -274,11 +274,11 @@ test("Stale apartado ref does not crash", () => {
       ],
     },
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "content-row", rowId: "r1" },
-        { type: "apartado", apartadoId: "apartado-nonexistent" },
-        { type: "apartado", apartadoId: "a" },
+      version: 2,
+      rows: [
+        { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
+        { id: "bf-a-apartado-nonexistent", items: [{ type: "apartado", apartadoId: "apartado-nonexistent" }] },
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
       ],
     },
   });
@@ -396,11 +396,11 @@ test("Mixed content types in BlockFlow order", () => {
       ],
     },
     blockFlow: {
-      version: 1,
-      items: [
-        { type: "apartado", apartadoId: "a" },
-        { type: "content-row", rowId: "r2" },
-        { type: "content-row", rowId: "r1" },
+      version: 2,
+      rows: [
+        { id: "bf-a-a", items: [{ type: "apartado", apartadoId: "a" }] },
+        { id: "bf-c-r2", items: [{ type: "content-row", rowId: "r2" }] },
+        { id: "bf-c-r1", items: [{ type: "content-row", rowId: "r1" }] },
       ],
     },
   });
@@ -591,35 +591,6 @@ test("V2 — complex flow: R1, [A,B], R2, C", () => {
 
   // Grid for paired row
   assert.ok(html.includes("grid-cols-2"), "paired row uses grid");
-});
-
-test("V2 — legacy V1 blockFlow renders identically via V2 conversion", () => {
-  const b = block({
-    concepts: [concept("c1")],
-    apartados: [subBlock("a")],
-    contentLayout: {
-      version: 2,
-      rows: [
-        { id: "r1", columns: [{ id: "col-r1", items: [{ type: "concept", id: "c1" }] }] },
-      ],
-    },
-    blockFlow: {
-      version: 1,
-      items: [
-        { type: "content-row", rowId: "r1" },
-        { type: "apartado", apartadoId: "a" },
-      ],
-    },
-  });
-
-  const html = renderBlockFlow(b);
-  const row1 = html.indexOf("content-layout-v2-row");
-  const apartadoA = html.indexOf('data-testid="apartado-a"');
-  assert.ok(row1 >= 0, "R1 renders");
-  assert.ok(apartadoA >= 0, "A renders");
-  assert.ok(row1 < apartadoA, "R1 before A");
-  // V1 conversion produces singleton rows, no grid
-  assert.ok(!html.includes("grid-cols-2"), "V1 conversion does not produce grid");
 });
 
 test("V2 — stale content row ref does not crash", () => {
