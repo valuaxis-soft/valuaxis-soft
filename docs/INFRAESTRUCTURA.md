@@ -49,6 +49,10 @@ Datos reales al 23 sep 2026: 10 organizaciones, 11 usuarios, 19 avalúos, ningun
 - Google OAuth con callback `https://valuaxissoft.com/api/auth/google/callback`.
 - `AUTH_SECRET`, `VALUO_SESSION_SECRET`, `UPLOAD_DIR`, `EMAIL_FROM` e `INITIAL_ADMIN_*` están definidas pero el código no las usa, o solo las usa el script de alta inicial.
 
+## Propiedad de las cuentas
+
+Todas las cuentas son de Álvaro Gutiérrez (Valuadores de los Altos), confirmado el 23 de septiembre de 2026: la cuenta de AWS (S3 y SES), el cliente de Google OAuth, el dominio `devpware.network`, el VPS de Hostinger y el dominio `valuaxissoft.com`. El proveedor anterior y el equipo de imSoft trabajan con accesos que Álvaro otorga.
+
 ## Respaldos
 
 No hay respaldos de base de datos: ni volcados ni tareas programadas que los generen. Solo existen los snapshots manuales de Hostinger.
@@ -56,7 +60,7 @@ No hay respaldos de base de datos: ni volcados ni tareas programadas que los gen
 ## Pendientes
 
 1. Respaldo diario de `devpware_avaluos_local` fuera del servidor.
-2. Confirmar quién es dueño de la cuenta de AWS (S3 y SES), del cliente de Google OAuth y del dominio `devpware.network`.
+2. Revisar quién tiene acceso a cada cuenta y que cada persona use su propio usuario con los permisos mínimos (usuarios IAM en AWS en lugar de llaves compartidas).
 3. Enviar correos desde un dominio de Valuaxis.
 4. Retirar el contenedor de Postgres 17 y las bases sin uso, después de respaldarlas.
 5. Aplicar las 30 actualizaciones y reiniciar en una ventana de bajo uso, con respaldo previo.
