@@ -171,7 +171,7 @@ export function ValuationTopBar({
       : "Guardar cambios";
 
   return (
-    <div className="flex min-w-0 flex-col gap-2 lg:gap-3 xl:flex-row xl:items-center min-[1440px]:relative min-[1440px]:justify-between">
+    <div className="flex min-w-0 flex-col gap-2 lg:gap-3 xl:flex-row xl:items-center">
       <div className="flex min-w-0 shrink-0 items-center gap-2 lg:gap-3">
         <Button
           type="button"

@@ -29,7 +29,7 @@ export function ValuationNavigation({
 
   return (
     <nav
-      className="mx-auto flex w-full min-w-0 max-w-[44rem] items-center gap-1 xl:flex-[1_1_28rem] min-[1440px]:absolute min-[1440px]:left-1/2 min-[1440px]:-translate-x-1/2"
+      className="mx-auto flex w-full min-w-0 max-w-[44rem] items-center gap-1 xl:flex-[1_1_28rem]"
       aria-label="Secciones del avalúo"
     >
       <Button
