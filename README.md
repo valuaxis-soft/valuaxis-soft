@@ -17,16 +17,16 @@ Sistema SaaS de avalúos inmobiliarios construido como monolito modular con Next
 
 - Node.js >= 20
 - PostgreSQL con extensión PostGIS
-- npm
+- pnpm 12 (`corepack enable` o `brew install pnpm`)
 
 ## Instalación
 
 ```bash
-npm install
+pnpm install
 cp .env.example .env
 # Configurar variables en .env (ver abajo)
-npx prisma migrate dev
-npm run dev
+pnpm exec prisma migrate dev
+pnpm dev
 ```
 
 ## Variables de entorno
@@ -44,14 +44,14 @@ APP_URL="http://localhost:3000"
 
 | Comando | Descripción |
 |---------|-------------|
-| `npm run dev` | Servidor de desarrollo |
-| `npm run build` | Build de producción |
-| `npm run start` | Servidor de producción |
-| `npm run lint` | Linting con ESLint |
-| `npm test` | Tests unitarios e integración |
-| `npm run db:migrate` | Ejecutar migraciones Prisma |
-| `npm run db:studio` | Abrir Prisma Studio |
-| `npm run db:seed` | Sembrar base de datos |
+| `pnpm dev` | Servidor de desarrollo |
+| `pnpm build` | Build de producción |
+| `pnpm start` | Servidor de producción |
+| `pnpm lint` | Linting con ESLint |
+| `pnpm test` | Tests unitarios e integración |
+| `pnpm db:migrate` | Ejecutar migraciones Prisma |
+| `pnpm db:studio` | Abrir Prisma Studio |
+| `pnpm db:seed` | Sembrar base de datos |
 
 ## Estructura
 

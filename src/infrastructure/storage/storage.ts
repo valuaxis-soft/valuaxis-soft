@@ -6,7 +6,7 @@ import { env } from "@/lib/env";
  * - S3: Almacenamiento en AWS S3 (produccion)
  *
  * Configuracion AWS S3 (el usuario debe configurar manualmente):
- * 1. Instalar: npm install @aws-sdk/client-s3 @aws-sdk/lib-storage
+ * 1. Instalar: pnpm add @aws-sdk/client-s3 @aws-sdk/lib-storage
  * 2. Crear bucket S3 con acceso publico o CloudFront
  * 3. Configurar variables de entorno:
  *    - AWS_S3_BUCKET=tu-bucket

@@ -28,12 +28,12 @@ Antes de produccion:
 - Ejecutar:
 
 ```bash
-npx prisma validate
-npx prisma generate
-npx tsc --noEmit
-npm run lint
-npm test
-npm run build
+pnpm exec prisma validate
+pnpm exec prisma generate
+pnpm exec tsc --noEmit
+pnpm lint
+pnpm test
+pnpm build
 ```
 
 No usar `prisma db push` ni `prisma migrate reset` contra datos reales.
@@ -41,7 +41,7 @@ No usar `prisma db push` ni `prisma migrate reset` contra datos reales.
 Prueba manual segura de email:
 
 ```bash
-TEST_EMAIL_TO="destino@dominio.com" npm run email:test
+TEST_EMAIL_TO="destino@dominio.com" pnpm email:test
 ```
 
 El script solo envia si `TEST_EMAIL_TO` esta definido y no registra tokens ni credenciales.

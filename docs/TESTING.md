@@ -3,7 +3,7 @@
 Sistema agregado:
 
 ```bash
-npm test
+pnpm test
 ```
 
 Usa `node:test` via `tsx --test` sin dependencias nuevas.
