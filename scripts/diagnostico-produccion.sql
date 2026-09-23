@@ -102,4 +102,10 @@ WHERE n."DFechaEliminacion" IS NULL
   AND coalesce(v."SValorTexto", '') <> ''
   AND v."SValorTexto" NOT LIKE '%/%';
 
+\echo '== 9. ¿Existe la restricción que hacía fallar /api/uploads? (si existe, las imágenes fuera de Datos generales no se podían subir)'
+SELECT
+  EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'devpware_cargas_archivos_completada_check') AS restriccion_existe,
+  (SELECT count(*) FROM devpware_cargas_archivos) AS cargas_registradas,
+  (SELECT count(*) FROM devpware_cargas_archivos WHERE "IdArchivo" IS NULL) AS cargas_sin_archivo;
+
 ROLLBACK;

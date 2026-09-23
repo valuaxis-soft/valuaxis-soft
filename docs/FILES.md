@@ -22,7 +22,8 @@ Servicios con aislamiento por organización y relación formal con el avalúo (`
 
 ## Pendientes
 
-- **Las imágenes de todas las secciones salvo Datos generales se suben por `/api/uploads`** y el avalúo guarda la ruta del archivo. En producción van a S3 privado. No quedan relacionadas con el avalúo en `RelacionArchivo`, así que no hay limpieza de archivos huérfanos.
+- **Las imágenes de todas las secciones salvo Datos generales se suben por `/api/uploads`** y el avalúo guarda la ruta del archivo. En producción van a S3 privado. Cada subida registra su `Archivo` (tipo `OTRO`), pero no queda relacionada con el avalúo en `RelacionArchivo`, así que no hay limpieza de archivos huérfanos.
+- **Hasta el 23 de septiembre de 2026 `/api/uploads` fallaba** en toda base con la restricción `devpware_cargas_archivos_completada_check` (migración 011): registraba la carga como completada sin archivo. `scripts/diagnostico-produccion.sql` (sección 9) dice si producción la tiene.
 - **Hasta el 23 de septiembre de 2026 las imágenes de terreno se guardaban con un id en lugar de la ruta** y se perdían al recargar. `scripts/diagnostico-produccion.sql` (sección 8) cuenta las afectadas.
 - **La ruta de croquis (`/api/avaluos/[id]/info-terreno/croquis`) no la usa el editor:** era para dos croquis fijos, y la sección de terreno ahora admite imágenes libres.
 - **No hay ruta autenticada para servir archivos locales.**
