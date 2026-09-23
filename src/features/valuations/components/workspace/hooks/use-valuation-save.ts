@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -11,6 +11,7 @@ import {
   validateCaratula,
 } from "@/features/valuations/services/caratula-validation";
 import { buildSectionsPayload, valuationMetaPayload } from "../model/save-payload";
+import { AUTOSAVE_DELAY_MS, shouldAutosave, statusAfterSave } from "../model/save-status";
 import type { EditorState } from "./use-editor-state";
 
 /**
@@ -68,25 +69,41 @@ export function useValuationSave({
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [hasUnsavedChanges]);
 
-  const handleSave = async () => {
+  // Autosave stays quiet about validation problems it already reported once.
+  const autosaveWarnedRef = useRef(false);
+
+  /**
+   * Saves the document. `automatic` saves do not jump to the carátula or toast
+   * on success; they report a validation problem once and wait for the user.
+   */
+  const handleSave = async (options: { automatic?: boolean } = {}) => {
     if (!canEdit) return false;
+    const automatic = options.automatic === true;
     const caratulaSection = sections.find((section) => section.id === "caratula");
-    if (hasUntitledConcepts(caratulaSection?.blocks ?? [])) {
+    const validationError = hasUntitledConcepts(caratulaSection?.blocks ?? [])
+      ? "Revisa los campos sin título antes de guardar."
+      : hasCaratulaValidationErrors(validateCaratula(caratula, meta))
+        ? "Revisa los campos marcados antes de guardar."
+        : null;
+    if (validationError) {
+      if (automatic) {
+        if (!autosaveWarnedRef.current) {
+          autosaveWarnedRef.current = true;
+          toast.warning(`Guardado automático en pausa. ${validationError}`);
+        }
+        return false;
+      }
       setActiveSectionId("caratula");
       setSaveStatus("error");
-      toast.error("Revisa los campos sin título antes de guardar.");
+      toast.error(validationError);
       return false;
     }
-    if (hasCaratulaValidationErrors(validateCaratula(caratula, meta))) {
-      setActiveSectionId("caratula");
-      setSaveStatus("error");
-      toast.error("Revisa los campos marcados antes de guardar.");
-      return false;
-    }
+    autosaveWarnedRef.current = false;
     const telefonoEmpresa = formatMexicanPhone(caratula.telefonoEmpresa);
     const caratulaForSave = { ...caratula, telefonoEmpresa };
     const sectionsForSave = updateCompanyHeaderFields(sections, { telefonoEmpresa });
-    snapshotRef.current = { caratula: caratulaForSave, meta, sections: sectionsForSave };
+    const sentSnapshot = { caratula: caratulaForSave, meta, sections: sectionsForSave };
+    snapshotRef.current = sentSnapshot;
     setCaratula(caratulaForSave);
     setSections(sectionsForSave);
     setSaveStatus("saving");
@@ -103,9 +120,9 @@ export function useValuationSave({
       } else {
         throw new Error("Primero crea el avaluo desde el formulario de alta.");
       }
-      toast.success("Avaluo guardado correctamente");
-      savedSnapshotRef.current = snapshotRef.current ? { ...snapshotRef.current } : null;
-      setSaveStatus("saved");
+      if (!automatic) toast.success("Avalúo guardado correctamente");
+      savedSnapshotRef.current = sentSnapshot;
+      setSaveStatus(statusAfterSave(sentSnapshot, snapshotRef.current));
       return true;
     } catch (err) {
       setSaveStatus("error");
@@ -117,6 +134,17 @@ export function useValuationSave({
       return false;
     }
   };
+
+  // Save automatically a few seconds after the last edit.
+  const autosave = useEffectEvent(() => {
+    void handleSave({ automatic: true });
+  });
+  const autosaveEnabled = shouldAutosave({ saveStatus, canEdit, valuationId, sessionExpired: sessionExpiredOpen });
+  useEffect(() => {
+    if (!autosaveEnabled) return;
+    const timer = window.setTimeout(autosave, AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [autosaveEnabled, caratula, meta, sections]);
 
   const handleExit = () => {
     if (saveStatus === "dirty" || saveStatus === "error") {

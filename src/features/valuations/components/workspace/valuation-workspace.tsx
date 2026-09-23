@@ -304,7 +304,7 @@ export function ValuationWorkspace({
             onExit={handleExit}
             onReorderSections={(next) => updateSections(() => next)}
             onRedo={redoEditorChange}
-            onSave={handleSave}
+            onSave={() => void handleSave()}
             onSplitLayoutChange={handleSplitLayoutChange}
             onUndo={undoEditorChange}
             onWorkspaceModeChange={handleWorkspaceModeChange}
