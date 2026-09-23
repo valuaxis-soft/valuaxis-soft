@@ -89,6 +89,7 @@ No se deben borrar migraciones históricas ni usar `prisma db push` para forzar 
 - [Módulos y base de datos](docs/MODULES.md)
 - [Secciones de avaluos](docs/VALUATION_SECTIONS.md)
 - [Comparables](docs/COMPARABLES.md)
+- [Motor de cálculo](docs/MOTOR-CALCULO.md)
 - [Archivos y storage](docs/FILES.md)
 - [Testing](docs/TESTING.md)
 - [Deployment checklist](docs/DEPLOYMENT_CHECKLIST.md)

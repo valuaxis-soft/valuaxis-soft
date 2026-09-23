@@ -45,6 +45,10 @@ python metodologia/tools/verify_cifra.py
 
 Requiere `openpyxl`.
 
+## Motor de cálculo
+
+El sistema ya implementa esta metodología en `src/features/valuations/engine/`, y sus pruebas reproducen estos libros al centavo. Ver [../MOTOR-CALCULO.md](../MOTOR-CALCULO.md).
+
 ## Documentos de detalle
 
 | Documento | Contenido |
