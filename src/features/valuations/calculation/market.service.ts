@@ -17,6 +17,8 @@ import { Trace } from "../engine/trace";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
 import { recomputeCosts } from "./cost.service";
+import { recomputeConclusion } from "./conclusion.service";
+import { recomputeIncome } from "./income.service";
 import type { ComparableInputPayload, MarketSettingsPayload } from "./market-schemas";
 import {
   defaultMarketSettings,
@@ -178,7 +180,7 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
     update: resultColumns,
   });
   if (!engineInput.ok) {
-    if (type === "TERRENO_VENTA") await recomputeCosts(tx, versionId);
+    await recomputeDependents(tx, versionId, type);
     return;
   }
 
@@ -206,8 +208,18 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
       },
     },
   });
-  // The cost approach values the land with the unit value adopted here.
+  await recomputeDependents(tx, versionId, type);
+}
+
+/**
+ * The cost approach values the land, and the income approach the rent, with
+ * the value adopted here; the conclusion takes the sale market value.
+ */
+async function recomputeDependents(tx: Tx, versionId: number, type: ComparableType) {
   if (type === "TERRENO_VENTA") await recomputeCosts(tx, versionId);
+  if (type === "INMUEBLE_RENTA") await recomputeIncome(tx, versionId);
+  // A sale market value is one of the approaches of the conclusion.
+  if (type !== "INMUEBLE_RENTA") await recomputeConclusion(tx, versionId);
 }
 
 /* ------------------------------------------------------------------ */

@@ -282,6 +282,23 @@ export async function copyVersionContent(
 
   await copyCostApproach(tx, input.fromVersionId, input.toVersionId);
 
+  const income = await tx.enfoqueIngreso.findUnique({ where: { IdVersionAvaluo: input.fromVersionId }, include: { deduccionesIngreso: true } });
+  if (income) {
+    const { IdEnfoqueIngreso: _id, DFechaCreacion: _created, DFechaModificacion: _modified, deduccionesIngreso, ...data } = income;
+    const copiedIncome = await tx.enfoqueIngreso.create({ data: { ...data, IdVersionAvaluo: input.toVersionId, JConfiguracion: json(income.JConfiguracion) } });
+    if (deduccionesIngreso.length) {
+      await tx.deduccionIngreso.createMany({
+        data: deduccionesIngreso.map(({ IdDeduccionIngreso: _rowId, DFechaCreacion: _c, DFechaModificacion: _m, ...row }) => ({ ...row, IdEnfoqueIngreso: copiedIncome.IdEnfoqueIngreso })),
+      });
+    }
+  }
+
+  const summary = await tx.resumenValor.findUnique({ where: { IdVersionAvaluo: input.fromVersionId } });
+  if (summary) {
+    const { IdResumenValor: _id, DFechaCreacion: _created, DFechaModificacion: _modified, ...data } = summary;
+    await tx.resumenValor.create({ data: { ...data, IdVersionAvaluo: input.toVersionId, JConfiguracion: json(summary.JConfiguracion) } });
+  }
+
   // Market approach settings and results, one row per comparable type.
   const marketApproaches = await tx.enfoqueMercado.findMany({ where: { IdVersionAvaluo: input.fromVersionId } });
   for (const approach of marketApproaches) {

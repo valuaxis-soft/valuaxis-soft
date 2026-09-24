@@ -1984,6 +1984,7 @@ model ResumenValor {
   NValorConcluido       Decimal? @map("NValorConcluido") @db.Decimal(24, 2)
   SValorConLetra        String?  @map("SValorConLetra") @db.VarChar(500)
   SJustificacion        String?  @map("SJustificacion")
+  JConfiguracion        Json?    @map("JConfiguracion") @db.JsonB
   DFechaCreacion        DateTime @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
   DFechaModificacion    DateTime @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
 

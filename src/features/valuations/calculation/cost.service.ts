@@ -11,6 +11,7 @@ import { DEFAULT_ENGINE_CONFIG, ENGINE_VERSION } from "../engine/config";
 import { computeCostApproach } from "../engine/costs";
 import { Trace } from "../engine/trace";
 import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
+import { recomputeConclusion } from "./conclusion.service";
 import type { CostInputPayload } from "./cost-schemas";
 import {
   DEFAULT_LAND,
@@ -215,8 +216,13 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
   });
 }
 
-/** Recomputes the approach from what is stored and saves the result and its trace. */
+/** Recomputes the approach from what is stored, saves the result and its trace, and updates the conclusion. */
 export async function recomputeCosts(tx: Tx, versionId: number) {
+  await recomputeCostsValues(tx, versionId);
+  await recomputeConclusion(tx, versionId);
+}
+
+async function recomputeCostsValues(tx: Tx, versionId: number) {
   const approach = await tx.enfoqueCosto.findUnique({ where: { IdVersionAvaluo: versionId } });
   if (!approach) return;
   const [input, market] = await Promise.all([loadInput(tx, versionId), landMarket(tx, versionId)]);

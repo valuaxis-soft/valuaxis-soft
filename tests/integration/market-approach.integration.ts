@@ -11,6 +11,9 @@ import {
 import { DEFAULT_FACTOR_SLOTS, type ComparableFactorDto, type FactorType } from "../../src/features/valuations/calculation/market-types";
 import { getCostCalculation, saveCostCalculation } from "../../src/features/valuations/calculation/cost.service";
 import { DEFAULT_LAND, emptyInstallation, type CostInputDto } from "../../src/features/valuations/calculation/cost-types";
+import { getConclusionCalculation, saveConclusionSettings } from "../../src/features/valuations/calculation/conclusion.service";
+import { getIncomeCalculation, saveIncomeCalculation } from "../../src/features/valuations/calculation/income.service";
+import { DEFAULT_DEDUCTIONS } from "../../src/features/valuations/calculation/income-types";
 import { concludeValuation, reopenValuation, saveValuationSections } from "../../src/features/valuations/services/valuation-workflow.service";
 import { createValuationFixture, prisma } from "./support";
 
@@ -65,7 +68,10 @@ async function storedApproach(fixture: Fixture) {
   const avaluo = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
   const versionId = avaluo.IdVersionTrabajo ?? avaluo.IdVersionFinal;
   const approach = await prisma.enfoqueMercado.findFirstOrThrow({ where: { IdVersionAvaluo: versionId ?? -1 } });
-  const executions = await prisma.ejecucionCalculo.findMany({ where: { IdVersionAvaluo: versionId ?? -1 }, include: { resultados: true } });
+  const executions = await prisma.ejecucionCalculo.findMany({
+    where: { IdVersionAvaluo: versionId ?? -1, SClaveCalculo: "MOTOR.MERCADO.TERRENO_VENTA" },
+    include: { resultados: true },
+  });
   return { approach, executions };
 }
 
@@ -210,4 +216,69 @@ test("reopening copies constructions, installations and the cost approach", asyn
   assert.equal(reopened.constructions.length, 1);
   assert.equal(reopened.installations.length, 8);
   assert.equal(reopened.installations[2].unitReplacementCost, 14361.99);
+});
+
+test("the income approach capitalizes the rent adopted in the rent market, as the TCH book", async () => {
+  const fixture = await createValuationFixture();
+  const user = editor(fixture);
+  await saveMarketSettings(fixture.publicId, user, {
+    comparableType: "INMUEBLE_RENTA",
+    subjectArea: 250,
+    baseArea: null,
+    surfacePower: 3,
+    adoptedUnitValue: 30,
+    justification: null,
+    additionalAmount: 0,
+    factorSlots: DEFAULT_FACTOR_SLOTS,
+  });
+  const rent = (location: string, area: number, price: number) => comparable(location, area, price, [neg]);
+  for (const item of [rent("Renta 1", 410, 9500), rent("Renta 2", 400, 9000), rent("Renta 3", 380, 8300), rent("Renta 4", 350, 8000)]) {
+    await createComparable(fixture.publicId, user, "INMUEBLE_RENTA", item);
+  }
+  await saveIncomeCalculation(fixture.publicId, user, {
+    rentableUnits: [{ description: "Casa habitación", area: 250, unitRent: null }],
+    deductions: DEFAULT_DEDUCTIONS,
+    ratingColumns: [1, 3, 1, 2, 2, 0, 4],
+    appliedRate: 0.0886,
+  });
+
+  const income = await getIncomeCalculation(fixture.publicId, fixture.organizationId);
+  assert.equal(income.rentMarket.adoptedUnitRent, 30);
+  const avaluo = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  const stored = await prisma.enfoqueIngreso.findUniqueOrThrow({ where: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1 } });
+  assert.equal(Number(stored.NIngresoBrutoMensual), 7500);
+  assert.equal(Number(stored.NRentaNetaAnual), 62100);
+  assert.ok(Math.abs(Number(stored.NTasaResultante) - 0.08857142857142858) < 1e-8);
+  assert.equal(Number(stored.NValorCapitalizacion), 700902.93);
+
+  // Without a captured rate the table rate applies.
+  await saveIncomeCalculation(fixture.publicId, user, { ...income, appliedRate: null });
+  const withTable = await prisma.enfoqueIngreso.findUniqueOrThrow({ where: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1 } });
+  assert.equal(Number(withTable.NValorCapitalizacion), Number((62100 / 0.08857142857142858).toFixed(2)));
+});
+
+test("the conclusion follows the approaches: Arandas concludes 8,580,000 with the cost approach", async () => {
+  const fixture = await createValuationFixture();
+  const user = await loadArandas(fixture);
+  await saveCostCalculation(fixture.publicId, user, arandasCosts);
+
+  const conclusion = await getConclusionCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual(conclusion.values, { costos: 8580000, mercado: 1528000, ingresos: null });
+  assert.equal(conclusion.marketSource, "TERRENO_VENTA");
+  assert.deepEqual(conclusion.method, { kind: "single", approach: "costos" });
+
+  const avaluo = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  const summary = await prisma.resumenValor.findUniqueOrThrow({ where: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1 } });
+  assert.equal(Number(summary.NValorConcluido), 8580000);
+  assert.equal(summary.SValorConLetra, "( OCHO MILLONES QUINIENTOS OCHENTA MIL PESOS 00/100 M. N.)");
+
+  await saveConclusionSettings(fixture.publicId, user, {
+    method: { kind: "weighted", weights: { costos: 0.5, mercado: 0.5 } },
+    justification: "Ponderación de prueba.",
+  });
+  const weighted = await prisma.resumenValor.findUniqueOrThrow({ where: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1 } });
+  // Each approach is rounded in the summary (market 1,528,000 → 1,530,000):
+  // 0.5 × 8,580,000 + 0.5 × 1,530,000 = 5,055,000 → 5,060,000.
+  assert.equal(Number(weighted.NValorConcluido), 5060000);
+  assert.equal(weighted.SJustificacion, "Ponderación de prueba.");
 });
