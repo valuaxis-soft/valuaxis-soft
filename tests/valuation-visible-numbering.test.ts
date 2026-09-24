@@ -1,6 +1,7 @@
 ﻿import assert from "node:assert/strict";
 import test from "node:test";
 import type { Block, Apartado } from "../src/features/valuations/model";
+import { sectionDisplayName } from "../src/features/valuations/components/workspace/model/section-numbering";
 import {
   getVisibleOrdinal,
   formatVisibleChildLabel,
@@ -248,4 +249,9 @@ test("getBlockFlowApartadoOrder — does not mutate block.apartados", () => {
   getBlockFlowApartadoOrder(b);
   assert.equal(subBlocks[0].id, "a");
   assert.equal(subBlocks[1].id, "b");
+});
+
+test("a hidden section shows its title, not the section key stored as its label", () => {
+  assert.equal(sectionDisplayName({ enabled: true, label: "VII", title: "ENF. MERCADO VENTA" }), "VII. ENF. MERCADO VENTA");
+  assert.equal(sectionDisplayName({ enabled: false, label: "MERCADO_RENTAS", title: "MERCADO RENTAS" }), "MERCADO RENTAS · oculta");
 });

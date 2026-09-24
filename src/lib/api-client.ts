@@ -5,6 +5,8 @@ import type {
   MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
 import type { CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
+import type { ConclusionCalculationDto, ConclusionSettingsDto } from "@/features/valuations/calculation/conclusion-types";
+import type { IncomeCalculationDto, IncomeInputDto } from "@/features/valuations/calculation/income-types";
 
 /** What the comparable form sends: the comparable without its id, reference and photos. */
 export type ComparableFormValues = Omit<ComparableDto, "id" | "reference" | "photos">;
@@ -174,6 +176,16 @@ export const api = {
     get: (id: ApiId) => request<CostCalculationDto>(`/avaluos/${id}/costos`),
     save: (id: ApiId, input: CostInputDto) =>
       request<CostCalculationDto>(`/avaluos/${id}/costos`, { method: "PUT", body: JSON.stringify(input) }),
+  },
+  income: {
+    get: (id: ApiId) => request<IncomeCalculationDto>(`/avaluos/${id}/ingresos`),
+    save: (id: ApiId, input: IncomeInputDto) =>
+      request<IncomeCalculationDto>(`/avaluos/${id}/ingresos`, { method: "PUT", body: JSON.stringify(input) }),
+  },
+  conclusion: {
+    get: (id: ApiId) => request<ConclusionCalculationDto>(`/avaluos/${id}/conclusion`),
+    save: (id: ApiId, settings: ConclusionSettingsDto) =>
+      request<ConclusionCalculationDto>(`/avaluos/${id}/conclusion`, { method: "PUT", body: JSON.stringify(settings) }),
   },
   session: {
     /** Renews an active session; throws SessionExpiredError when it is gone. */

@@ -15,6 +15,29 @@ export const COMPARABLE_TYPE_LABELS: Record<ComparableType, string> = {
   INMUEBLE_RENTA: "Inmuebles en renta",
 };
 
+/** Wording that changes between sale and rent comparables. */
+export const MARKET_LABELS: Record<ComparableType, {
+  title: string;
+  subjectArea: string;
+  price: string;
+  unitValue: string;
+  adopted: string;
+  value: string;
+}> = {
+  TERRENO_VENTA: {
+    title: "Cálculo del enfoque de mercado", subjectArea: "Superficie del sujeto (m²)", price: "Oferta",
+    unitValue: "Valor unitario", adopted: "Valor unitario adoptado ($/m²)", value: "Valor comparativo de mercado",
+  },
+  INMUEBLE_VENTA: {
+    title: "Cálculo del enfoque de mercado", subjectArea: "Superficie construida del sujeto (m²)", price: "Oferta",
+    unitValue: "Valor unitario", adopted: "Valor unitario adoptado ($/m²)", value: "Valor comparativo de mercado",
+  },
+  INMUEBLE_RENTA: {
+    title: "Cálculo del mercado de rentas", subjectArea: "Superficie rentable del sujeto (m²)", price: "Renta mensual",
+    unitValue: "Renta unitaria", adopted: "Renta unitaria adoptada ($/m²/mes)", value: "Renta mensual estimada del sujeto",
+  },
+};
+
 /** Factor types of the catalog (devpware_tipos_factores_homologacion). */
 export const FACTOR_TYPES = [
   "NEGOCIACION", "UBICACION", "SUPERFICIE", "ZONA", "FRENTE", "USO_SUELO", "SERVICIOS", "CLASIFICACION",

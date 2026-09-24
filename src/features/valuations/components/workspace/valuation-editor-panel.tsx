@@ -23,6 +23,7 @@ import { GripVertical, Plus } from "lucide-react";
 
 import { ChangeEvent, useMemo, useState, type ReactNode } from "react";
 import { ensureTableV2 } from "@/features/valuations/services/table";
+import { sectionDisplayName } from "./model/section-numbering";
 import { closestCenter, DndContext, DragEndEvent, useSensors } from "@dnd-kit/core";
 import { editorCanScroll } from "../editor/editor-dnd-autoscroll";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
@@ -320,7 +321,7 @@ export function ValuationEditorPanel(props: {
               ? "Datos generales"
             : isTerreno
               ? `${section.label} ${section.title}`
-            : `${section.label}. ${section.title}`}
+            : sectionDisplayName(section)}
         </CardTitle>
         <CardDescription>
           {isCaratula

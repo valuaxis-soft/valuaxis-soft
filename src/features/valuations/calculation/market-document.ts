@@ -9,6 +9,7 @@ import type { AppSection, Block, TableContent } from "../model";
 import { ensureTableV2 } from "../services/table";
 import {
   COMPARABLE_TYPE_LABELS,
+  MARKET_LABELS,
   RECOMMENDED_MAX_DISPERSION,
   type ComparableType,
   type MarketCalculationDto,
@@ -16,11 +17,16 @@ import {
 
 export const GENERATED_BLOCK_PREFIX = "motor-";
 
-/** Template blocks of the market section that the generated blocks stand in for. */
+/** Template blocks of the market sections that the generated blocks stand in for. */
 export const MARKET_TEMPLATE_BLOCK_IDS = [
   "mercadoVenta-block-1-comparables-de-mercado-en-venta",
   "mercadoVenta-block-2-homologacion-de-comparables-en-venta",
   "mercadoVenta-block-3-resumen-del-enfoque-de-mercado-en-venta",
+];
+export const RENT_TEMPLATE_BLOCK_IDS = [
+  "mercadoRentas-block-1-comparables-de-mercado-de-rentas",
+  "mercadoRentas-block-2-homologacion-de-rentas",
+  "mercadoRentas-block-3-renta-estimada",
 ];
 
 const SUBJECT_LAND_AREA_LABELS = ["superficie total de terreno", "superficie total terreno", "superficie de terreno"];
@@ -74,17 +80,19 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
   if (!comparables.length) return [];
   const prefix = prefixFor(settings.comparableType);
   const label = COMPARABLE_TYPE_LABELS[settings.comparableType].toUpperCase();
+  const words = MARKET_LABELS[settings.comparableType];
+  const perMonth = settings.comparableType === "INMUEBLE_RENTA" ? "/m²/mes" : "/m²";
   const byReference = new Map(result?.homologation.comparables.map((row) => [row.id, row]) ?? []);
 
   const offers = block(`${prefix}-comparables`, `COMPARABLES: ${label}`, {
     tables: [table(`${prefix}-tabla-comparables`, `Comparables: ${COMPARABLE_TYPE_LABELS[settings.comparableType].toLowerCase()}`,
-      ["Ref.", "Ubicación", "Superficie", "Oferta", "Valor unitario", "Fuente", "Observaciones"],
+      ["Ref.", "Ubicación", "Superficie", words.price, words.unitValue, "Fuente", "Observaciones"],
       comparables.map((comparable) => [
         String(comparable.reference),
         comparable.location,
         comparable.area ? area(comparable.area) : "—",
         comparable.price ? money.format(comparable.price) : "—",
-        comparable.area && comparable.price ? `${money.format(comparable.price / comparable.area)} /m²` : "—",
+        comparable.area && comparable.price ? `${money.format(comparable.price / comparable.area)} ${perMonth}` : "—",
         [comparable.sourceName, comparable.contactPhone].filter(Boolean).join(" · ") || "—",
         comparable.notes ?? "—",
       ]))],
@@ -93,7 +101,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
   const slots = settings.factorSlots;
   const homologation = block(`${prefix}-homologacion`, `HOMOLOGACIÓN: ${label}`, {
     tables: [table(`${prefix}-tabla-homologacion`, "Homologación",
-      ["Ref.", "Valor unitario", ...slots.map((slot) => slot.label), "Factor resultante", "Valor homologado"],
+      ["Ref.", words.unitValue, ...slots.map((slot) => slot.label), "Factor resultante", "Valor homologado"],
       comparables.map((comparable) => {
         const row = byReference.get(String(comparable.reference));
         const values = slots.map((slot) => {
@@ -119,17 +127,17 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
   if (result) {
     const stats = result.homologation.stats;
     const concepts: [string, string][] = [
-      ["Valor unitario mínimo homologado", `${money.format(stats.min)} /m²`],
-      ["Valor unitario máximo homologado", `${money.format(stats.max)} /m²`],
-      ["Valor unitario promedio homologado", `${money.format(stats.mean)} /m²`],
+      [`${words.unitValue} mínimo homologado`, `${money.format(stats.min)} ${perMonth}`],
+      [`${words.unitValue} máximo homologado`, `${money.format(stats.max)} ${perMonth}`],
+      [`${words.unitValue} promedio homologado`, `${money.format(stats.mean)} ${perMonth}`],
       ["Dispersión (máximo / mínimo)", `${decimals(2).format(stats.dispersion)}${stats.dispersion > RECOMMENDED_MAX_DISPERSION ? " (mayor a la recomendada de 1.25)" : ""}`],
-      ["Valor unitario adoptado", `${money.format(result.adoptedUnitValue)} /m²`],
-      ["Superficie del sujeto", area(settings.subjectArea ?? 0)],
+      [`${words.unitValue} adoptado`, `${money.format(result.adoptedUnitValue)} ${perMonth}`],
+      [words.subjectArea.replace(" (m²)", ""), area(settings.subjectArea ?? 0)],
       ...(settings.additionalAmount ? [["Monto adicional", money.format(settings.additionalAmount)] as [string, string]] : []),
-      ["Valor comparativo de mercado", money.format(result.value)],
+      [words.value, money.format(result.value)],
       ...(settings.justification ? [["Justificación del valor adoptado", settings.justification] as [string, string]] : []),
     ];
-    blocks.push(block(`${prefix}-resumen`, `RESUMEN DEL ENFOQUE DE MERCADO: ${label}`, {
+    blocks.push(block(`${prefix}-resumen`, settings.comparableType === "INMUEBLE_RENTA" ? "RENTA ESTIMADA" : `RESUMEN DEL ENFOQUE DE MERCADO: ${label}`, {
       concepts: concepts.map(([conceptLabel, value], index) => ({ id: `${prefix}-resumen-${index + 1}`, label: conceptLabel, value, enabled: true })),
     }));
   }

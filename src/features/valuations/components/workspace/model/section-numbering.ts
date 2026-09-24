@@ -9,6 +9,15 @@ export function normalizeEditorSections(sections: AppSection[]) {
   );
 }
 
+/**
+ * Name shown in tabs and headings. Hidden sections have no number (numbering
+ * skips them) and their stored label is only the section key.
+ */
+export function sectionDisplayName(section: Pick<AppSection, "enabled" | "label" | "title">) {
+  if (section.enabled === false) return `${section.title} · oculta`;
+  return section.label ? `${section.label}. ${section.title}` : section.title;
+}
+
 export function resequenceSections(sections: AppSection[]) {
   let sectionIndex = 0;
   let globalBlockIndex = 0;

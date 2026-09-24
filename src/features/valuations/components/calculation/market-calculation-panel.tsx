@@ -16,6 +16,7 @@ import { computeMarketApproach, type MarketApproachResult } from "@/features/val
 import {
   COMPARABLE_TYPE_LABELS,
   FACTOR_TYPE_LABELS,
+  MARKET_LABELS,
   FACTOR_TYPES,
   MIN_COMPARABLES,
   RECOMMENDED_MAX_DISPERSION,
@@ -30,7 +31,7 @@ import {
 import { ComparableDialog, parseDecimal } from "./comparable-dialog";
 import { useSerializedSave } from "./use-serialized-save";
 
-const MARKET_TYPES: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA"];
+const SALE_TYPES: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA"];
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 const text = (value: number | null) => (value === null ? "" : String(value));
 
@@ -70,13 +71,18 @@ function settingsFrom(base: MarketSettingsDto, draft: SettingsDraft): MarketSett
  */
 export function MarketCalculationPanel(props: {
   valuationId: string;
+  /** Comparable types this panel handles: sales in the market section, rents in the rent market. */
+  types?: ComparableType[];
   readOnly: boolean;
   /** Suggested subject area (terreno section) while none is captured. */
   suggestedSubjectArea: number | null;
   onCalculation: (calculation: MarketCalculationDto, result: MarketApproachResult | null) => void;
 }) {
   const { valuationId } = props;
-  const [type, setType] = useState<ComparableType>("TERRENO_VENTA");
+  const types = props.types ?? SALE_TYPES;
+  const [type, setType] = useState<ComparableType>(types[0]);
+  const labels = MARKET_LABELS[type];
+  const perUnit = type === "INMUEBLE_RENTA" ? "/m²/mes" : "/m²";
   const [calculation, setCalculation] = useState<MarketCalculationDto | null>(null);
   const [draft, setDraft] = useState<SettingsDraft | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -174,14 +180,16 @@ export function MarketCalculationPanel(props: {
   const editingComparable = editing === "nuevo" ? null : editing;
 
   return (
-    <section className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby="market-calculation-title">
+    <section className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby="market-calculation-title" data-comparable-type={type}>
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h3 id="market-calculation-title" className="flex items-center gap-2 text-sm font-semibold">
-          <Calculator className="size-4" /> Cálculo del enfoque de mercado
+          <Calculator className="size-4" /> {labels.title}
         </h3>
-        <NativeSelect aria-label="Tipo de comparables" value={type} onChange={(event) => setType(event.target.value as ComparableType)}>
-          {MARKET_TYPES.map((item) => <NativeSelectOption key={item} value={item}>{COMPARABLE_TYPE_LABELS[item]}</NativeSelectOption>)}
-        </NativeSelect>
+        {types.length > 1 ? (
+          <NativeSelect aria-label="Tipo de comparables" value={type} onChange={(event) => setType(event.target.value as ComparableType)}>
+            {types.map((item) => <NativeSelectOption key={item} value={item}>{COMPARABLE_TYPE_LABELS[item]}</NativeSelectOption>)}
+          </NativeSelect>
+        ) : null}
       </header>
 
       {calculation.locked ? (
@@ -190,7 +198,7 @@ export function MarketCalculationPanel(props: {
 
       <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
         <Field>
-          <FieldLabel htmlFor="market-subject-area">Superficie del sujeto (m²)</FieldLabel>
+          <FieldLabel htmlFor="market-subject-area">{labels.subjectArea}</FieldLabel>
           <Input
             id="market-subject-area"
             inputMode="decimal"
@@ -198,7 +206,7 @@ export function MarketCalculationPanel(props: {
             placeholder={props.suggestedSubjectArea ? String(props.suggestedSubjectArea) : undefined}
             onChange={setDraftField("subjectArea")}
           />
-          {!draft.subjectArea && props.suggestedSubjectArea ? (
+          {!draft.subjectArea && props.suggestedSubjectArea && type === "TERRENO_VENTA" ? (
             <Button
               type="button"
               variant="link"
@@ -222,7 +230,7 @@ export function MarketCalculationPanel(props: {
           ) : null}
         </Field>
         <Field>
-          <FieldLabel htmlFor="market-adopted">Valor unitario adoptado ($/m²)</FieldLabel>
+          <FieldLabel htmlFor="market-adopted">{labels.adopted}</FieldLabel>
           <Input
             id="market-adopted"
             inputMode="decimal"
@@ -232,7 +240,7 @@ export function MarketCalculationPanel(props: {
           />
         </Field>
         <Field className="sm:col-span-3">
-          <FieldLabel htmlFor="market-justification">Justificación del valor adoptado</FieldLabel>
+          <FieldLabel htmlFor="market-justification">Justificación de lo adoptado</FieldLabel>
           <Textarea id="market-justification" rows={2} value={draft.justification} onChange={setDraftField("justification")} />
         </Field>
         <Field>
@@ -282,8 +290,8 @@ export function MarketCalculationPanel(props: {
               <th className="px-2 py-1.5 text-left font-medium">Ref.</th>
               <th className="px-2 py-1.5 text-left font-medium">Ubicación</th>
               <th className="px-2 py-1.5 text-right font-medium">Superficie</th>
-              <th className="px-2 py-1.5 text-right font-medium">Oferta</th>
-              <th className="px-2 py-1.5 text-right font-medium">$/m²</th>
+              <th className="px-2 py-1.5 text-right font-medium">{labels.price}</th>
+              <th className="px-2 py-1.5 text-right font-medium">${perUnit}</th>
               <th className="px-2 py-1.5 text-right font-medium">F. resultante</th>
               <th className="px-2 py-1.5 text-right font-medium">Homologado</th>
               <th className="px-2 py-1.5"><span className="sr-only">Acciones</span></th>
@@ -349,7 +357,7 @@ export function MarketCalculationPanel(props: {
 
       {result && stats ? (
         <dl className="grid gap-x-4 gap-y-1 rounded-md border bg-background p-3 text-sm sm:grid-cols-3">
-          <div><dt className="text-xs text-muted-foreground">Promedio homologado</dt><dd className="tabular-nums">{money(stats.mean)} /m²</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Promedio homologado</dt><dd className="tabular-nums">{money(stats.mean)} {perUnit}</dd></div>
           <div><dt className="text-xs text-muted-foreground">Rango</dt><dd className="tabular-nums">{money(stats.min)} – {money(stats.max)}</dd></div>
           <div>
             <dt className="text-xs text-muted-foreground">Dispersión</dt>
@@ -357,14 +365,14 @@ export function MarketCalculationPanel(props: {
               {stats.dispersion.toFixed(2)}{stats.dispersion > RECOMMENDED_MAX_DISPERSION ? " (recomendado menos de 1.25)" : ""}
             </dd>
           </div>
-          <div><dt className="text-xs text-muted-foreground">Valor adoptado</dt><dd className="tabular-nums">{money(result.adoptedUnitValue)} /m²</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Adoptado</dt><dd className="tabular-nums">{money(result.adoptedUnitValue)} {perUnit}</dd></div>
           <div className="sm:col-span-2">
-            <dt className="text-xs text-muted-foreground">Valor comparativo de mercado</dt>
+            <dt className="text-xs text-muted-foreground">{labels.value}</dt>
             <dd className="text-base font-semibold tabular-nums">{money(result.value)}</dd>
           </div>
           {result.adoptedOutsideRange ? (
             <p className="flex items-center gap-1 text-xs text-amber-700 sm:col-span-3 dark:text-amber-400">
-              <AlertTriangle className="size-3.5" /> El valor adoptado queda fuera del rango homologado; justifícalo.
+              <AlertTriangle className="size-3.5" /> Lo adoptado queda fuera del rango homologado; justifícalo.
             </p>
           ) : null}
         </dl>
@@ -379,7 +387,7 @@ export function MarketCalculationPanel(props: {
           onOpenChange={(open) => { if (!open) setEditing(null); }}
           comparable={editingComparable ? comparables.find((item) => item.id === editingComparable.id) ?? editingComparable : null}
           factorSlots={calculation.settings.factorSlots}
-          unitLabel="Precio de oferta ($)"
+          unitLabel={type === "INMUEBLE_RENTA" ? "Renta mensual ($)" : "Precio de oferta ($)"}
           readOnly={readOnly}
           onSubmit={submitComparable(editingComparable)}
           onUploadPhoto={async (file) => {

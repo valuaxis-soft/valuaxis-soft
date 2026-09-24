@@ -46,28 +46,26 @@ Las pruebas `tests/valuation-engine-*.test.ts` alimentan al motor con las entrad
 
 Cada cifra queda en un `TraceStep` con clave estable (`costos.construcciones.T-1.vnrParcial`), etiqueta, fórmula legible, entradas y redondeo. Así un valor del dictamen se sigue hasta el dato capturado.
 
-## Dónde se guarda
+## En el editor
 
-El esquema de Prisma ya tiene las tablas, por versión del avalúo, y los catálogos cargados. El motor no escribe; la capa de persistencia de la Fase 1 lee de estas tablas, llama al motor y guarda resultados y rastro.
+Cada sección de cálculo tiene su panel, arriba de sus bloques:
 
-| Dato | Tabla |
-|---|---|
-| Construcciones: superficie, edad, vida útil, grado, indiviso | `ConstruccionAvaluo`, `TipoConstruccionAvaluo` (se capturan una vez; costos las lee, como en Arandas) |
-| Instalaciones especiales, privativa o común | `InstalacionEspecialAvaluo` (`IdTipoParticipacion`) |
-| Costos: VRN unitario y factores, resultados | `EnfoqueCosto`, `CostoTerreno`, `CostoConstruccion`, `CostoInstalacion`, `CostoIndirecto` |
-| Comparables con fotos y contacto | `Propiedad`, `DireccionPropiedad`, `PublicacionPropiedad` (contacto, teléfono, correo, URL), `ComparableAvaluo` (precio, superficies, fotos en `JImagenesSnapshot`) |
-| Factores de homologación | `FactorHomologacion` por comparable: tipo (catálogo con 15 tipos), valor, justificación, origen (`USUARIO`, `CALCULO`, `IA`) y orden |
-| Mercado, rentas e ingresos | `EnfoqueMercado` (por tipo de comparable), `EnfoqueRenta`, `EnfoqueIngreso`, `DeduccionIngreso` |
-| Resumen y conclusión | `ResumenValor`, `ConclusionAvaluo` |
-| Rastro de cada cálculo | `EjecucionCalculo` (entradas, salidas, redondeo, versión, sobrescritura con motivo) y `ResultadoCalculo` (una fila por `TraceStep`). Claves de `CalculoPermitido`: `VALOR_NETO_REPOSICION`, `VALOR_HOMOLOGADO`, `CAPITALIZACION`, `VALOR_FINAL` |
+| Sección | Panel | Guarda en |
+|---|---|---|
+| Enfoque de mercado en venta | Comparables de terrenos o de inmuebles, superficie del sujeto, lote tipo, potencia n, valor adoptado | `ComparableAvaluo`, `FactorHomologacion`, `EnfoqueMercado` |
+| Mercado de rentas | Comparables en renta y renta unitaria adoptada | Las mismas, tipo `INMUEBLE_RENTA` |
+| Enfoque de costos | Terreno (con el valor adoptado en mercado), construcciones, instalaciones especiales, indirectos | `EnfoqueCosto`, `CostoTerreno`, `ConstruccionAvaluo`, `TipoConstruccionAvaluo`, `CostoConstruccion`, `InstalacionEspecialAvaluo`, `CostoInstalacion`, `CostoIndirecto` |
+| Enfoque de ingresos | Superficie rentable, deducciones, tabla de tasa o tasa capturada | `EnfoqueIngreso`, `DeduccionIngreso` |
+| Conclusión | Enfoque con el que se concluye o ponderación, justificación | `ResumenValor` |
 
-### Cambios de esquema para la Fase 1
+- **El navegador calcula en vivo** con el mismo motor, a cada tecla. **El servidor recalcula** al guardar y guarda los resultados en las columnas de cada tabla y el rastro en `EjecucionCalculo` y `ResultadoCalculo`, una ejecución vigente por enfoque (`MOTOR.MERCADO.<tipo>`, `MOTOR.COSTOS`, `MOTOR.INGRESOS`, `MOTOR.CONCLUSION`).
+- **Los cambios se encadenan en el servidor:** el mercado de terrenos recalcula costos, el de rentas recalcula ingresos, y cada enfoque recalcula la conclusión.
+- **Una sola captura:** las construcciones y las instalaciones del panel de costos llenan también las tablas de la sección de construcciones.
+- **El dictamen sigue a los cálculos:** lo que guarda el servidor se escribe en el documento como bloques generados (ids con prefijo `motor-`), que el editor muestra de solo lectura y que reemplazan a los bloques de plantilla. La conclusión llena los conceptos de su sección y el valor y la cifra en letras de la carátula, sin tocar el texto del perito. El workspace sincroniza al abrir y después de cada cambio; si nada cambió, el documento queda igual.
+- **Los guardados van en fila:** cada panel envía un guardado a la vez con lo último capturado, para que un guardado anterior no pise al más reciente.
+- **Concluido y reabrir:** los avalúos concluidos muestran los cálculos de solo lectura y la API rechaza cambios. Reabrir copia comparables, factores y los cuatro enfoques a la nueva versión.
 
-Se hacen junto con las pantallas de captura:
-
-1. `FactorHomologacion`: columnas para la calificación del sujeto y la del comparable, que hoy el Excel escribe como `=1/1.15`. El factor de superficie se guarda como una fila más, de tipo `SUPERFICIE` y origen `CALCULO`, en su posición.
-2. `EnfoqueMercado` y `EnfoqueRenta`: potencia n, superficie base (lote tipo o sujeto) y escala por hectárea. Hoy caben en `JConfiguracion`; conviene pasarlos a columnas.
-3. Configuración de metodología por organización: perfil base y ajustes (redondeos, factor de edad, dirección del factor de superficie). No existe tabla para esto.
+Esquema: la migración 032 agrega las calificaciones de los factores, la potencia n, la superficie base y la justificación del mercado, y permite ejecuciones del motor sin nodo del documento. La 033 guarda el método de conclusión. Falta la configuración de metodología por organización: hoy todos usan `DEFAULT_ENGINE_CONFIG`.
 
 ## Diferencias a propósito con el Excel
 

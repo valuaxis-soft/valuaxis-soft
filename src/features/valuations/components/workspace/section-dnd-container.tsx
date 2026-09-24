@@ -24,6 +24,7 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { SortableSectionTab } from "../workspace/sortable-section-tab";
+import { sectionDisplayName } from "./model/section-numbering";
 import { TabsList } from "@/components/ui/tabs";
 
 /* ------------------------------------------------------------------ */
@@ -73,7 +74,7 @@ const screenReaderInstructions: ScreenReaderInstructions = {
 function sectionAnnouncements(sections: AppSection[]): Announcements {
   const name = (id: string | number) => {
     const section = sections.find((item) => item.id === String(id));
-    return section ? `${section.label}. ${section.title}` : String(id);
+    return section ? sectionDisplayName(section) : String(id);
   };
   const position = (id: string | number) =>
     sections.findIndex((item) => item.id === String(id)) + 1;
@@ -200,7 +201,7 @@ export function SectionDndContainer({
                 isActive={section.id === activeSectionId}
                 icon={Icon}
                 label={
-                  `${section.label}. ${section.title}`
+                  sectionDisplayName(section)
                 }
               />
             );

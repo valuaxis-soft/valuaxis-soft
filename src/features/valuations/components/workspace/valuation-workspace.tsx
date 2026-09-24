@@ -40,7 +40,9 @@ import { canEditProject, canExportProject, hasPermission } from "@/features/auth
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { ConclusionPanel } from "@/features/valuations/components/calculation/conclusion-panel";
 import { CostCalculationPanel } from "@/features/valuations/components/calculation/cost-calculation-panel";
+import { IncomeCalculationPanel } from "@/features/valuations/components/calculation/income-calculation-panel";
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { flattenSectionConcepts, resolveSectionConceptsForDisplay } from "./model/section-content";
@@ -219,6 +221,18 @@ export function ValuationWorkspace({
               />
             ) : getCanonicalSectionKey(section.id) === "COSTOS" ? (
               <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} />
+            ) : getCanonicalSectionKey(section.id) === "MERCADO_RENTAS" ? (
+              <MarketCalculationPanel
+                valuationId={valuationId}
+                types={["INMUEBLE_RENTA"]}
+                readOnly={!canEdit}
+                suggestedSubjectArea={null}
+                onCalculation={calculationSync.onMarketCalculation}
+              />
+            ) : getCanonicalSectionKey(section.id) === "INGRESOS" ? (
+              <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} />
+            ) : getCanonicalSectionKey(section.id) === "CONCLUSIONES" ? (
+              <ConclusionPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConclusionCalculation} />
             ) : undefined}
             allSections={enabledSections}
             readOnly={!canEdit}
