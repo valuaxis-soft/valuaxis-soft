@@ -83,13 +83,14 @@ test("a weighted conclusion needs weights that add up to 100 %", () => {
   assert.throws(() => concludeValue({ values: { costos: null }, method: { kind: "single", approach: "costos" } }, EXCEL_PROFILES.ARANDAS));
 });
 
-test("the default config corrects the surface factor in all three approaches and keeps the Arandas roundings", () => {
+test("the default config corrects the surface factor, floors the age factor at zero and keeps the Arandas roundings", () => {
   assert.deepEqual(DEFAULT_ENGINE_CONFIG.surfaceOrientation, {
     costs: "reference-over-subject",
     market: "reference-over-subject",
     income: "reference-over-subject",
   });
   assert.deepEqual(DEFAULT_ENGINE_CONFIG.rounding, EXCEL_PROFILES.ARANDAS.rounding);
+  assert.equal(DEFAULT_ENGINE_CONFIG.ageFactor.floor, 0);
 });
 
 test("every pending decision points to a question sent to the appraiser", () => {

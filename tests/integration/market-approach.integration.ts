@@ -9,6 +9,8 @@ import {
   updateComparable,
 } from "../../src/features/valuations/calculation/market.service";
 import { DEFAULT_FACTOR_SLOTS, type ComparableFactorDto, type FactorType } from "../../src/features/valuations/calculation/market-types";
+import { getCostCalculation, saveCostCalculation } from "../../src/features/valuations/calculation/cost.service";
+import { DEFAULT_LAND, emptyInstallation, type CostInputDto } from "../../src/features/valuations/calculation/cost-types";
 import { concludeValuation, reopenValuation, saveValuationSections } from "../../src/features/valuations/services/valuation-workflow.service";
 import { createValuationFixture, prisma } from "./support";
 
@@ -138,4 +140,74 @@ test("a concluded valuation rejects edits, and reopening copies comparables, fac
   assert.equal(reopened.comparables.length, 5);
   assert.equal(reopened.settings.surfacePower, 6);
   assert.equal(reopened.comparables[3].factors.find((item) => item.type === "UBICACION")?.comparableRating, 1.15);
+});
+
+// The Arandas building and its eight special installations.
+const arandasCosts: CostInputDto = {
+  land: { ...DEFAULT_LAND },
+  constructions: [{
+    ref: "T-1", description: "Edificio de uso mixto", classification: "Moderno", quality: "Media",
+    area: 467.27, age: 2, usefulLife: 70, conservation: 0.98, otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: 14361.99,
+  }],
+  installations: ([
+    [6, 30, 9000], [1, 30, 35000], [11.55, 70, 14361.99], [3.54, 70, 14361.99],
+    [4, 10, 30648], [1, 70, 90000], [4, 20, 4000], [4, 20, 3500],
+  ] as const).map(([quantity, usefulLife, unitReplacementCost], index) => ({
+    ...emptyInstallation(index), description: `Instalación ${index + 1}`, quantity, age: 2, usefulLife, conservation: 0.975, unitReplacementCost,
+  })),
+  indirects: [],
+};
+
+test("the cost approach values the land with the adopted market value and gives the Arandas physical value", async () => {
+  const fixture = await createValuationFixture();
+  const user = await loadArandas(fixture);
+  await saveCostCalculation(fixture.publicId, user, arandasCosts);
+
+  const costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.equal(costs.market.adoptedUnitValue, 9000);
+  assert.equal(costs.constructions[0].unitReplacementCost, 14361.99);
+  assert.equal(costs.installations.length, 8);
+
+  const avaluo = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  const approach = await prisma.enfoqueCosto.findUniqueOrThrow({
+    where: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1 },
+    include: { costosConstrucciones: true, costosTerrenos: true },
+  });
+  assert.equal(Number(approach.NValorTerreno), 1528000);
+  assert.equal(Number(approach.NValorConstrucciones), 6530000);
+  assert.equal(Number(approach.NValorInstalaciones), 517000);
+  assert.equal(Number(approach.NValorFisicoTotal), 8580000);
+  // The column keeps cents; the full precision stays in the trace.
+  assert.equal(Number(approach.costosConstrucciones[0].NValorParcialVNR), 6531386.08);
+
+  // A new adopted market value moves the land value of the cost approach.
+  const market = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
+  await saveMarketSettings(fixture.publicId, user, { ...market.settings, adoptedUnitValue: 9500 });
+  const updated = await prisma.enfoqueCosto.findUniqueOrThrow({ where: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1 } });
+  assert.equal(Number(updated.NValorTerreno), 1612900);
+});
+
+test("reopening copies constructions, installations and the cost approach", async () => {
+  const fixture = await createValuationFixture();
+  const user = await loadArandas(fixture);
+  await saveCostCalculation(fixture.publicId, user, arandasCosts);
+  await saveValuationSections({
+    publicId: fixture.publicId,
+    organizationId: fixture.organizationId,
+    user,
+    sections: [{ id: "costos", label: "VI", title: "ENFOQUE DE COSTOS", blocks: [] }],
+  });
+  await concludeValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user });
+  await reopenValuation({
+    publicId: fixture.publicId,
+    organizationId: fixture.organizationId,
+    user: { ...user, permissions: [...user.permissions, "AVALUO_REABRIR"] },
+    reason: "Revisión de costos",
+    acceptedText: "Acepto reabrir el avalúo",
+  });
+  const reopened = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.equal(reopened.locked, false);
+  assert.equal(reopened.constructions.length, 1);
+  assert.equal(reopened.installations.length, 8);
+  assert.equal(reopened.installations[2].unitReplacementCost, 14361.99);
 });

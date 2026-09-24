@@ -40,12 +40,13 @@ import { canEditProject, canExportProject, hasPermission } from "@/features/auth
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { CostCalculationPanel } from "@/features/valuations/components/calculation/cost-calculation-panel";
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { flattenSectionConcepts, resolveSectionConceptsForDisplay } from "./model/section-content";
 import { sectionIconMap } from "./model/section-icons";
 import { useBlockMutations } from "./hooks/use-block-mutations";
-import { useMarketDocumentSync } from "./hooks/use-market-document-sync";
+import { useCalculationDocumentSync } from "./hooks/use-calculation-document-sync";
 import { useEditorState } from "./hooks/use-editor-state";
 import { useExternalPreviewSync } from "./hooks/use-external-preview-sync";
 import { useImageMutations } from "./hooks/use-image-mutations";
@@ -194,7 +195,7 @@ export function ValuationWorkspace({
 
   const blocks = useBlockMutations(editor);
   const tables = useTableMutations(editor);
-  const marketSync = useMarketDocumentSync(editor);
+  const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, valuationId });
 
   // The dictamen renders what is saved, so pending changes are saved first.
   const handleExportPdf = async () => {
@@ -209,13 +210,15 @@ export function ValuationWorkspace({
         <TabsContent value={section.id} key={section.id}>
           <ValuationEditorPanel
             section={section}
-            calculationPanel={valuationId && getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
+            calculationPanel={!valuationId ? undefined : getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
               <MarketCalculationPanel
                 valuationId={valuationId}
                 readOnly={!canEdit}
-                suggestedSubjectArea={marketSync.suggestedSubjectArea}
-                onCalculation={marketSync.onMarketCalculation}
+                suggestedSubjectArea={calculationSync.suggestedSubjectArea}
+                onCalculation={calculationSync.onMarketCalculation}
               />
+            ) : getCanonicalSectionKey(section.id) === "COSTOS" ? (
+              <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} />
             ) : undefined}
             allSections={enabledSections}
             readOnly={!canEdit}

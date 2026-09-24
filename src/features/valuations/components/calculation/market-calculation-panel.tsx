@@ -28,6 +28,7 @@ import {
   type MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
 import { ComparableDialog, parseDecimal } from "./comparable-dialog";
+import { useSerializedSave } from "./use-serialized-save";
 
 const MARKET_TYPES: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA"];
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -132,12 +133,15 @@ export function MarketCalculationPanel(props: {
   // Recomputed on every render: a handful of comparables, and it follows every keystroke.
   const live = calculation && liveSettings ? compute({ settings: liveSettings, comparables: calculation.comparables }) : null;
 
-  const saveSettings = async (settings = liveSettings) => {
-    if (!calculation || !settings || readOnly) return;
-    if (JSON.stringify(settings) === JSON.stringify(calculation.settings)) return;
+  const enqueueSettings = useSerializedSave(async (settings: MarketSettingsDto) => {
     setSavingSettings(true);
     await run(() => api.market.saveSettings(valuationId, settings));
     setSavingSettings(false);
+  });
+  const saveSettings = async (settings = liveSettings) => {
+    if (!calculation || !settings || readOnly) return;
+    if (JSON.stringify(settings) === JSON.stringify(calculation.settings)) return;
+    await enqueueSettings(settings);
   };
 
   const submitComparable = (current: ComparableDto | null) => async (values: ComparableFormValues) =>

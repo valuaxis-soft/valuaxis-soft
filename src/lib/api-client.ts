@@ -4,6 +4,7 @@ import type {
   MarketCalculationDto,
   MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
+import type { CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
 
 /** What the comparable form sends: the comparable without its id, reference and photos. */
 export type ComparableFormValues = Omit<ComparableDto, "id" | "reference" | "photos">;
@@ -168,6 +169,11 @@ export const api = {
         `/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}&fotoId=${encodeURIComponent(photoId)}`,
         { method: "DELETE" },
       ),
+  },
+  costs: {
+    get: (id: ApiId) => request<CostCalculationDto>(`/avaluos/${id}/costos`),
+    save: (id: ApiId, input: CostInputDto) =>
+      request<CostCalculationDto>(`/avaluos/${id}/costos`, { method: "PUT", body: JSON.stringify(input) }),
   },
   session: {
     /** Renews an active session; throws SessionExpiredError when it is gone. */

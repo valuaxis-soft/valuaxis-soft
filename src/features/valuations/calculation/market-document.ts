@@ -151,18 +151,16 @@ export function marketPhotoBlocks(calculation: MarketCalculationDto): Block[] {
 }
 
 /**
- * Replaces the generated blocks of one comparable type in a section, where they
+ * Replaces the generated blocks a calculation owns in a section, where they
  * were or at `position`. Template placeholders they stand in for are dropped
  * once there is generated content. Returns the same section when nothing changes.
  */
-export function withGeneratedBlocks(
+export function replaceGeneratedBlocks(
   section: AppSection,
-  type: ComparableType,
+  owns: (block: Block) => boolean,
   blocks: Block[],
-  options: { placeholderIds?: string[]; position?: "start" | "end"; kind?: "calculo" | "fotos" } = {},
+  options: { placeholderIds?: string[]; position?: "start" | "end" } = {},
 ): AppSection {
-  const prefix = options.kind === "fotos" ? `${prefixFor(type)}-fotos` : prefixFor(type);
-  const owns = (item: Block) => item.id.startsWith(prefix) && (options.kind === "fotos" || !item.id.endsWith("-fotos"));
   // Saved block ids come back in lower case.
   const placeholders = new Set((blocks.length ? options.placeholderIds ?? [] : []).map((id) => id.toLowerCase()));
   const isPlaceholder = (item: Block) => placeholders.has(item.id.toLowerCase());
@@ -174,6 +172,20 @@ export function withGeneratedBlocks(
     ? section.blocks.slice(0, firstIndex).filter((item) => kept.includes(item)).length
     : options.position === "end" ? kept.length : 0;
   return { ...section, blocks: [...kept.slice(0, insertAt), ...blocks, ...kept.slice(insertAt)] };
+}
+
+/** The market blocks of one comparable type, or its photo block (`kind: "fotos"`). */
+export function withGeneratedBlocks(
+  section: AppSection,
+  type: ComparableType,
+  blocks: Block[],
+  options: { placeholderIds?: string[]; position?: "start" | "end"; kind?: "calculo" | "fotos" } = {},
+): AppSection {
+  const photos = `${prefixFor(type)}-fotos`;
+  const owns = options.kind === "fotos"
+    ? (item: Block) => item.id.startsWith(photos)
+    : (item: Block) => item.id.startsWith(prefixFor(type)) && !item.id.startsWith(photos);
+  return replaceGeneratedBlocks(section, owns, blocks, options);
 }
 
 /** Title, column names and cell texts: the same for a new table and one reloaded as TableV2. */

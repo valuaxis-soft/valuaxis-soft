@@ -15,7 +15,8 @@ import { DEFAULT_ENGINE_CONFIG, ENGINE_VERSION } from "../engine/config";
 import { computeMarketApproach } from "../engine/market";
 import { Trace } from "../engine/trace";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
-import { ensureWorkingVersion } from "../services/valuation-workflow/working-version";
+import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
+import { recomputeCosts } from "./cost.service";
 import type { ComparableInputPayload, MarketSettingsPayload } from "./market-schemas";
 import {
   defaultMarketSettings,
@@ -28,7 +29,6 @@ import {
   type MarketSettingsDto,
 } from "./market-types";
 
-type Tx = Prisma.TransactionClient;
 
 const MAX_PHOTOS_PER_COMPARABLE = 6;
 const COMPARABLE_ENTITY = "ComparableAvaluo";
@@ -52,51 +52,11 @@ type PublicationSnapshot = {
   offerDate: string | null;
 };
 
-const decimal = (value: Prisma.Decimal | null | undefined) => (value === null || value === undefined ? null : Number(value));
-const asRecord = (value: Prisma.JsonValue | null) =>
-  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-
-/* ------------------------------------------------------------------ */
-/*  Access                                                             */
-/* ------------------------------------------------------------------ */
-
-async function findValuation(tx: Tx, publicId: string, organizationId: number) {
-  const avaluo = await tx.avaluo.findFirst({
-    where: { UIdentificadorPublico: publicId, IdOrganizacion: organizationId, BActivo: true, DFechaEliminacion: null },
-    select: {
-      IdAvaluo: true,
-      IdVersionTrabajo: true,
-      IdVersionFinal: true,
-      BBloqueado: true,
-      IdTipoInmueble: true,
-      organizacion: { select: { UIdentificadorPublico: true } },
-    },
-  });
-  if (!avaluo) throw new ValuationWorkflowError("Avalúo no encontrado", 404);
-  return avaluo;
-}
-
-async function writableVersion(tx: Tx, publicId: string, user: AuthUser) {
-  const avaluo = await findValuation(tx, publicId, user.organizationId);
-  if (avaluo.BBloqueado) throw new ValuationWorkflowError("El avalúo está concluido; reábrelo para editarlo.", 409);
-  const versionId = avaluo.IdVersionTrabajo ?? (await ensureWorkingVersion({ avaluoId: avaluo.IdAvaluo, userId: user.id, tx }));
-  return { avaluo, versionId };
-}
 
 async function comparableTypeId(tx: Tx, type: ComparableType) {
   const row = await tx.tipoComparable.findUnique({ where: { SClave: type }, select: { IdTipoComparable: true } });
   if (!row) throw new ValuationWorkflowError(`Falta el tipo de comparable ${type} en el catálogo.`, 500);
   return row.IdTipoComparable;
-}
-
-async function catalogId<T extends { SClave: string }>(
-  find: (key: string) => Promise<T | null>,
-  key: string,
-  pick: (row: T) => number,
-) {
-  const row = await find(key);
-  if (!row) throw new ValuationWorkflowError(`Falta la clave ${key} en el catálogo.`, 500);
-  return pick(row);
 }
 
 /* ------------------------------------------------------------------ */
@@ -217,7 +177,10 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
     },
     update: resultColumns,
   });
-  if (!engineInput.ok) return;
+  if (!engineInput.ok) {
+    if (type === "TERRENO_VENTA") await recomputeCosts(tx, versionId);
+    return;
+  }
 
   const calculation = await catalogId(
     (key) => tx.calculoPermitido.findUnique({ where: { SClave: key } }),
@@ -243,6 +206,8 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
       },
     },
   });
+  // The cost approach values the land with the unit value adopted here.
+  if (type === "TERRENO_VENTA") await recomputeCosts(tx, versionId);
 }
 
 /* ------------------------------------------------------------------ */

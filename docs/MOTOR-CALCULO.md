@@ -24,7 +24,7 @@ Los libros difieren en redondeos y en la dirección del factor de superficie. `E
 
 - **Factor de superficie** con la regla `(S_referencia / S_sujeto)^(1/n)` en los tres enfoques. Ningún libro la aplica completa.
 - **Redondeos** del último caso real (Arandas): valor de mercado a decenas, terreno a centenas, construcciones a decenas de miles, instalaciones a miles, valor físico y conclusión a decenas de miles.
-- **Factor de edad** `1 − (edad / vida útil)^1.4`, sin mínimo, como el Excel.
+- **Factor de edad** `1 − (edad / vida útil)^1.4`, con mínimo 0. El Excel lo deja negativo cuando la edad supera la vida útil, y la base de datos rechaza deméritos negativos.
 
 `PENDING_DECISIONS` lista lo que espera respuesta del perito, con el número de pregunta de [PREGUNTAS-PERITO.md](fase0/PREGUNTAS-PERITO.md). Cuando conteste, se cambia la configuración y no el código.
 

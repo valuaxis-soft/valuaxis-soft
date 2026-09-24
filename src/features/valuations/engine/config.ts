@@ -69,10 +69,13 @@ export const EXCEL_PROFILES = { ARANDAS, TCH, TU, TU_OFICIAL, TR: RURAL, TRC: RU
 
 /**
  * The system default: the surface factor always brings the reference to the
- * subject, and the roundings of the latest real case (Arandas).
+ * subject, the age factor never goes below zero, and the roundings of the
+ * latest real case (Arandas).
  */
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   ...ARANDAS,
+  // The database rejects negative demerits; the books let the factor go below zero (question 5).
+  ageFactor: { exponent: 1.4, floor: 0 },
   surfaceOrientation: { costs: "reference-over-subject", market: "reference-over-subject", income: "reference-over-subject" },
 };
 

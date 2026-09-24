@@ -218,11 +218,11 @@ function ReportDocumentTable({ table }: { table: TableContent }) {
 
   return (
     <div className="w-full overflow-hidden">
-      {/* Up to seven columns the widths follow the content, so amounts stay on one line;
-          wider tables (homologation) use equal columns and a smaller font to fit the page. */}
+      {/* Column widths follow the content so amounts stay on one line; wider
+          tables (homologation, costs) use a smaller font to fit the page. */}
       <table className={cn(
         "w-full border-collapse",
-        tableV2.columns.length > 7 ? "table-fixed text-[10px]" : tableV2.columns.length > 5 ? "text-xs" : "text-sm",
+        tableV2.columns.length > 7 ? "text-[10px]" : tableV2.columns.length > 5 ? "text-xs" : "text-sm",
       )}>
         <colgroup>
           {tableV2.columns.map((column) => (

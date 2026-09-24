@@ -280,6 +280,8 @@ export async function copyVersionContent(
     stats.comparables += 1;
   }
 
+  await copyCostApproach(tx, input.fromVersionId, input.toVersionId);
+
   // Market approach settings and results, one row per comparable type.
   const marketApproaches = await tx.enfoqueMercado.findMany({ where: { IdVersionAvaluo: input.fromVersionId } });
   for (const approach of marketApproaches) {
@@ -288,4 +290,63 @@ export async function copyVersionContent(
   }
 
   return stats;
+}
+
+/** Constructions, special installations and the cost approach with its rows. */
+async function copyCostApproach(tx: Prisma.TransactionClient, fromVersionId: number, toVersionId: number) {
+  const typeIds = new Map<number, number>();
+  const constructions = await tx.construccionAvaluo.findMany({
+    where: { IdVersionAvaluo: fromVersionId },
+    include: { tiposConstruccion: true },
+  });
+  for (const construction of constructions) {
+    const { IdConstruccionAvaluo: _id, DFechaCreacion: _created, DFechaModificacion: _modified, tiposConstruccion, ...data } = construction;
+    const copied = await tx.construccionAvaluo.create({
+      data: { ...data, IdVersionAvaluo: toVersionId, JDatosAdicionales: json(construction.JDatosAdicionales) },
+    });
+    for (const type of tiposConstruccion) {
+      const { IdTipoConstruccionAvaluo: typeId, DFechaCreacion: _c, DFechaModificacion: _m, ...typeData } = type;
+      const copiedType = await tx.tipoConstruccionAvaluo.create({ data: { ...typeData, IdConstruccionAvaluo: copied.IdConstruccionAvaluo } });
+      typeIds.set(typeId, copiedType.IdTipoConstruccionAvaluo);
+    }
+  }
+
+  const installationIds = new Map<number, number>();
+  const installations = await tx.instalacionEspecialAvaluo.findMany({ where: { IdVersionAvaluo: fromVersionId } });
+  for (const installation of installations) {
+    const { IdInstalacionEspecialAvaluo: installationId, DFechaCreacion: _created, DFechaModificacion: _modified, ...data } = installation;
+    const copied = await tx.instalacionEspecialAvaluo.create({ data: { ...data, IdVersionAvaluo: toVersionId } });
+    installationIds.set(installationId, copied.IdInstalacionEspecialAvaluo);
+  }
+
+  const indirects = await tx.costoIndirecto.findMany({ where: { IdVersionAvaluo: fromVersionId } });
+  if (indirects.length) {
+    await tx.costoIndirecto.createMany({
+      data: indirects.map(({ IdCostoIndirecto: _id, DFechaCreacion: _created, DFechaModificacion: _modified, ...data }) => ({ ...data, IdVersionAvaluo: toVersionId })),
+    });
+  }
+
+  const approach = await tx.enfoqueCosto.findUnique({
+    where: { IdVersionAvaluo: fromVersionId },
+    include: { costosTerrenos: true, costosConstrucciones: true, costosInstalaciones: true },
+  });
+  if (!approach) return;
+  const { IdEnfoqueCosto: _id, DFechaCreacion: _created, DFechaModificacion: _modified, costosTerrenos, costosConstrucciones, costosInstalaciones, ...data } = approach;
+  const copied = await tx.enfoqueCosto.create({ data: { ...data, IdVersionAvaluo: toVersionId, JConfiguracion: json(approach.JConfiguracion) } });
+  for (const row of costosTerrenos) {
+    const { IdCostoTerreno: _rowId, DFechaCreacion: _c, DFechaModificacion: _m, ...rowData } = row;
+    await tx.costoTerreno.create({ data: { ...rowData, IdEnfoqueCosto: copied.IdEnfoqueCosto } });
+  }
+  for (const row of costosConstrucciones) {
+    const typeId = typeIds.get(row.IdTipoConstruccionAvaluo);
+    if (!typeId) continue;
+    const { IdCostoConstruccion: _rowId, DFechaCreacion: _c, DFechaModificacion: _m, ...rowData } = row;
+    await tx.costoConstruccion.create({ data: { ...rowData, IdEnfoqueCosto: copied.IdEnfoqueCosto, IdTipoConstruccionAvaluo: typeId } });
+  }
+  for (const row of costosInstalaciones) {
+    const installationId = installationIds.get(row.IdInstalacionEspecialAvaluo);
+    if (!installationId) continue;
+    const { IdCostoInstalacion: _rowId, DFechaCreacion: _c, DFechaModificacion: _m, ...rowData } = row;
+    await tx.costoInstalacion.create({ data: { ...rowData, IdEnfoqueCosto: copied.IdEnfoqueCosto, IdInstalacionEspecialAvaluo: installationId } });
+  }
 }
