@@ -1,4 +1,4 @@
-# Valuo
+# Valuaxis
 
 Sistema SaaS de avalúos inmobiliarios construido como monolito modular con Next.js App Router, TypeScript, Prisma y PostgreSQL/PostGIS.
 
@@ -26,7 +26,7 @@ pnpm install
 docker compose -f compose.dev.yml up -d   # base local PostGIS 18
 cp .env.example .env
 # Configurar variables en .env (ver abajo)
-pnpm exec prisma migrate dev
+pnpm exec prisma migrate deploy
 pnpm dev
 ```
 
@@ -92,6 +92,7 @@ No se deben borrar migraciones históricas ni usar `prisma db push` para forzar 
 - [Motor de cálculo](docs/MOTOR-CALCULO.md)
 - [Archivos y storage](docs/FILES.md)
 - [Testing](docs/TESTING.md)
+- [Cómo trabajamos (equipos, ramas, PR)](docs/CONTRIBUIR.md)
 - [Deployment checklist](docs/DEPLOYMENT_CHECKLIST.md)
 
 ## Proveedores externos
