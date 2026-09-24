@@ -50,7 +50,7 @@ Toda la operación del servidor está en [OPERACION.md](OPERACION.md) e [INFRAES
 
 1. **Nadie sube directo a `main`.** Cada cambio va en su rama (`feature/…`, `fix/…`, `infra/…`) y entra por PR.
 2. **La integración continua debe pasar** (tipos, lint, pruebas, migraciones sobre una base vacía, código sin uso y compilación). Un PR en rojo no se fusiona.
-3. **Revisión cruzada en las zonas compartidas:** si un PR toca migraciones, `prisma/schema.prisma`, `src/infrastructure/**`, `src/security/**`, `src/proxy.ts`, `next.config.ts` o variables de entorno, lo aprueba el otro equipo.
+3. **Revisión cruzada en las zonas compartidas:** si un PR toca migraciones, `prisma/schema.prisma`, `src/infrastructure/**`, `src/security/**`, `src/proxy.ts`, `next.config.ts`, `deployment/**` o variables de entorno, lo aprueba el otro equipo.
 4. **Migraciones, una a la vez:** avisa antes de crear una, haz pull justo antes y usa el número siguiente. Deben ser idempotentes cuando tocan algo que producción ya pueda tener.
 5. **Despliegues solo desde `main`**, con respaldo previo, `pnpm env:check` y el diagnóstico de `scripts/diagnostico-produccion.sql`, como indica [OPERACION.md](OPERACION.md). Se avisa en el chat antes y después.
 6. **Secretos fuera del repositorio.** Las variables reales viven en el servidor; en el repositorio solo `.env.example`.
