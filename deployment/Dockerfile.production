@@ -1,0 +1,69 @@
+# Production image. compose.production.yml on the server builds it with the
+# repository as context; see docs/OPERACION.md.
+
+FROM node:24-bookworm-slim AS base
+
+WORKDIR /app
+
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV COREPACK_HOME=/opt/corepack
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && corepack enable
+
+
+FROM base AS dependencies
+
+# pnpm-workspace.yaml allows the build scripts of Prisma and sharp; without it
+# neither works. postinstall runs prisma generate, hence the schema.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml prisma.config.ts ./
+COPY prisma ./prisma
+
+RUN pnpm install --frozen-lockfile
+
+
+FROM base AS builder
+
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY . .
+
+RUN APP_URL=https://valuaxissoft.com NEXT_PUBLIC_APP_URL=https://valuaxissoft.com EMAIL_PROVIDER=development STORAGE_DRIVER=local pnpm build
+
+
+FROM node:24-bookworm-slim AS production
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 1001 nodejs \
+    && useradd --system --uid 1001 --gid nodejs nextjs
+
+COPY --from=builder --chown=nextjs:nodejs /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+COPY --from=builder --chown=nextjs:nodejs /app/src ./src
+COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./
+
+RUN mkdir -p /app/public/uploads \
+    && chown -R nextjs:nodejs /app/public/uploads
+
+USER nextjs
+
+EXPOSE 3000
+
+# Next directly: pnpm is not needed to run, and corepack would try to download it.
+# Inside the container: node_modules/.bin/prisma migrate deploy, node --import tsx scripts/check-env.ts
+CMD ["node_modules/.bin/next", "start"]

@@ -60,32 +60,22 @@ scp root@168.231.74.90:/srv/backups/valuos/*.dump ~/Respaldos/valuaxis/
 
 ### 2.1 Imagen con pnpm (una sola vez)
 
-Desde septiembre de 2026 el proyecto usa pnpm y ya no tiene `package-lock.json`. Si `dockerfiles/Dockerfile.production` todavía hace `npm ci` o `npm install`, la reconstrucción del paso 5 falla. La imagen necesita:
+Desde septiembre de 2026 el proyecto usa pnpm y ya no tiene `package-lock.json`. El Dockerfile que estaba en el servidor (`deployment/dockerfiles/Dockerfile.production`) hace `npm ci` y ya no compila. El nuevo vive en el repositorio, en [deployment/Dockerfile.production](../deployment/Dockerfile.production), junto con un `.dockerignore` en la raíz. Hace lo mismo que el anterior (mismo usuario `nextjs`, puerto 3000 y carpeta `public/uploads`), pero:
 
-- Node 24 con `corepack enable`: la versión de pnpm sale de `packageManager` en `package.json`.
-- Copiar `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` y `prisma/` antes de instalar. `pnpm-workspace.yaml` autoriza los scripts de compilación de `sharp` y Prisma; sin él, las imágenes y la base no funcionan.
-- `pnpm install --frozen-lockfile`, `pnpm build` y arrancar con `pnpm start` (la app no usa el modo standalone).
+- Usa Node 24 y pnpm a través de corepack.
+- Copia `pnpm-workspace.yaml` antes de instalar: ese archivo autoriza los scripts de compilación de `sharp` y Prisma.
+- Arranca con `node_modules/.bin/next start`, sin pnpm, para que corepack no intente descargarlo al arrancar.
 
-Ejemplo, para adaptar a lo que hoy hace el Dockerfile del servidor (usuario, puertos, volumen de `public/uploads`):
+En el primer despliegue con esta versión, apuntar `compose.production.yml` al Dockerfile del repositorio:
 
-```dockerfile
-FROM node:24-bookworm-slim AS build
-WORKDIR /app
-RUN corepack enable
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY prisma ./prisma
-RUN pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm build
-
-FROM node:24-bookworm-slim
-WORKDIR /app
-ENV NODE_ENV=production
-RUN corepack enable && apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
-COPY --from=build /app ./
-EXPOSE 3000
-CMD ["pnpm", "start"]
+```yaml
+  valuos-app:
+    build:
+      context: /opt/apps/valuos/repository
+      dockerfile: deployment/Dockerfile.production
 ```
+
+Con eso, el Dockerfile del servidor queda sin uso: los cambios a la imagen entran por PR como el resto del código. Dentro del contenedor, las migraciones se corren con `node_modules/.bin/prisma migrate deploy` y la revisión de variables con `node --import tsx scripts/check-env.ts`.
 
 Más adelante, el dictamen en PDF generado en el servidor (característica 11 de la cotización) va a necesitar Chromium en esta misma imagen.
 
