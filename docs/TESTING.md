@@ -4,6 +4,8 @@
 pnpm test
 ```
 
+Tipos: `pnpm typecheck` (genera primero los tipos de las rutas de Next; `tsc` solo falla en una copia recién clonada).
+
 Usa `node:test` a través de `tsx --test`, sobre `tests/**/*.test.ts` y `tests/**/*.test.tsx`. No hay framework adicional.
 
 ## Pruebas de integración

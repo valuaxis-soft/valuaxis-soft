@@ -12,6 +12,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "tsx --test \"tests/**/*.test.ts\" \"tests/**/*.test.tsx\"",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
