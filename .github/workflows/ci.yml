@@ -1,0 +1,73 @@
+# Checks every pull request and every push to main: types, lint, unit tests,
+# migrations and integration tests on a fresh PostGIS database, unused code,
+# and the production build. See docs/CONTRIBUIR.md.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        # Same image as production (docs/INFRAESTRUCTURA.md).
+        image: postgis/postgis:18-3.6
+        env:
+          POSTGRES_DB: valuaxis_ci
+          POSTGRES_USER: valuaxis
+          POSTGRES_PASSWORD: valuaxis
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U valuaxis -d valuaxis_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgresql://valuaxis:valuaxis@localhost:5432/valuaxis_ci?schema=public
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version from "packageManager" in package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Types
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Migrations on a fresh database
+        run: pnpm exec prisma migrate deploy
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+      - name: Unused code
+        run: pnpm dlx knip@6
+
+      - name: Build
+        run: pnpm build
