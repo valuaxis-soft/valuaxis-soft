@@ -78,6 +78,8 @@ export async function saveUpload(file: File, options: SaveUploadOptions = {}): P
     shouldNormalizeToJpeg
       ? await sharp(buffer)
           .resize(1920, 1920, { fit: "inside", withoutEnlargement: true })
+          // JPEG has no transparency: without a white background, transparent logos turn black.
+          .flatten({ background: "#ffffff" })
           .jpeg({ quality: 85 })
           .toBuffer()
       : buffer;

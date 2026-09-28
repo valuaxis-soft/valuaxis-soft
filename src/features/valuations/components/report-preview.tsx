@@ -18,6 +18,7 @@ import type {
   CaratulaFormData,
   Comparable,
   ImageContent,
+  Letterhead,
   PrincipalCoverImage,
   Apartado,
   ValuationMeta,
@@ -64,7 +65,7 @@ const PRE_MARKET_LAYOUT_SECTION_KEYS = new Set([
 
 type SectionDocumentProps = {
   caratula: CaratulaFormData;
-  companyName: string;
+  letterhead: Letterhead;
   meta: ValuationMeta;
   section: AppSection;
   comparables: Comparable[];
@@ -101,7 +102,7 @@ export function ReportPreview(props: SectionDocumentProps) {
  */
 export function SectionDocument({
   caratula,
-  companyName,
+  letterhead,
   meta,
   section,
   comparables,
@@ -112,7 +113,7 @@ export function SectionDocument({
     section.id === "datos" || getCanonicalSectionKey(section.id) === "DATOS_GENERALES";
   const isTerreno = isTerrenoSection(section);
   const isConstruccion = isConstruccionSection(section);
-  const header = <DocumentPreviewHeader caratula={caratula} companyName={companyName} headerImage={documentHeaderImage} />;
+  const header = <DocumentPreviewHeader caratula={caratula} letterhead={letterhead} headerImage={documentHeaderImage} />;
 
   if (section.id === "caratula") {
     return (

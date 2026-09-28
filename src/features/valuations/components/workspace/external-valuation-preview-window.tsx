@@ -67,7 +67,7 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
       ) : (
         <ReportPreview
           caratula={payload.caratula}
-          companyName={payload.companyName}
+          letterhead={payload.letterhead}
           comparables={payload.selectedComparables}
           documentHeaderImage={payload.documentHeaderImage}
           meta={payload.meta}

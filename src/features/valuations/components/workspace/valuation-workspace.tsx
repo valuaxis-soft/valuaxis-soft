@@ -35,6 +35,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import type { AuthUser } from "@/features/auth/model";
+import type { Letterhead } from "@/features/valuations/model";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
 import { canEditProject, canExportProject, hasPermission } from "@/features/auth/permissions";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
@@ -68,10 +69,12 @@ export { resequenceSections } from "./model/section-numbering";
  */
 export function ValuationWorkspace({
   currentUser,
+  letterhead,
   valuationId: propValuationId,
   initialValuation,
 }: {
   currentUser: AuthUser;
+  letterhead: Letterhead;
   valuationId?: string | null;
   action?: string | null;
   initialValuation?: ValuationDetail | null;
@@ -153,7 +156,7 @@ export function ValuationWorkspace({
   const externalPreviewPayload = useMemo<ExternalPreviewPayload>(() => ({
     activeSection,
     caratula,
-    companyName: currentUser.organizationName,
+    letterhead,
     documentHeaderImage,
     meta,
     principalCoverImage,
@@ -161,7 +164,7 @@ export function ValuationWorkspace({
   }), [
     activeSection,
     caratula,
-    currentUser.organizationName,
+    letterhead,
     documentHeaderImage,
     meta,
     principalCoverImage,
@@ -288,7 +291,7 @@ export function ValuationWorkspace({
     <ValuationPreviewPanel
       activeSection={activeSection}
       caratula={caratula}
-      companyName={currentUser.organizationName}
+      letterhead={letterhead}
       meta={meta}
       selectedComparables={selectedComparables}
       principalCoverImage={principalCoverImage}

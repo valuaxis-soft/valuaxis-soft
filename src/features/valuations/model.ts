@@ -32,6 +32,20 @@ export type CaratulaFormData = {
   fechaVigencia: string;
 };
 
+/**
+ * The firm's letterhead (Datos del despacho). The document header shows it
+ * wherever the valuation's own carátula leaves a field empty.
+ */
+export type Letterhead = {
+  name: string;
+  legalName: string | null;
+  rfc: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  logoUrl: string | null;
+};
+
 export type ConceptType = "text" | "date" | "phone" | "email" | "number" | "currency" | "measurement" | "longText" | "url";
 export type ConceptValueFormat =
   | "plain"

@@ -164,7 +164,7 @@ test("el formato romano limpia únicamente prefijos romanos canónicos en displa
 test("ReportPreview reconoce el identificador actual datosGenerales", () => {
   const html = renderToStaticMarkup(createElement(ReportPreview, {
     caratula,
-    companyName: "Empresa",
+    letterhead: { name: "Empresa", legalName: null, rfc: null, address: null, phone: null, email: null, logoUrl: null },
     meta: {
       folio: "",
       client: "",

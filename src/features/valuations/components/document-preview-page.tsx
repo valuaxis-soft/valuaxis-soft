@@ -9,11 +9,16 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type HTMLAttributes,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+
+const subscribeNever = () => () => {};
+/** False while rendering on the server and hydrating, true after: portals need document.body. */
+const useIsClient = () => useSyncExternalStore(subscribeNever, () => true, () => false);
 import type { AppSection } from "../model";
 import { ensureTableV2 } from "../services/table";
 
@@ -477,10 +482,11 @@ export function AutoPaginatedDocumentFlow({
   }, [visiblePages.length, reportPageCount]);
 
   const pagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const isClient = useIsClient();
 
   return (
     <LayoutInvalidationContext.Provider value={contextValue}>
-      {createPortal(
+      {isClient && createPortal(
         <div
           aria-hidden="true"
           className="pointer-events-none absolute left-[-10000px] top-0 opacity-0 print:hidden"

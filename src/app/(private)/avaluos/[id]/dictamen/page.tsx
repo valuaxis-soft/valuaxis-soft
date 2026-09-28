@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
+import { getLetterhead } from "@/features/firm/firm.service";
 import { ValuationDictamen } from "@/features/valuations/components/dictamen/valuation-dictamen";
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
@@ -28,5 +29,6 @@ export default async function DictamenPage({ params }: { params: Promise<{ id: s
     metadata: { format: "dictamen" },
   });
 
-  return <ValuationDictamen companyName={user.organizationName} initialValuation={valuation} valuationId={id} />;
+  const letterhead = await getLetterhead(user.organizationId);
+  return <ValuationDictamen letterhead={letterhead} initialValuation={valuation} valuationId={id} />;
 }
