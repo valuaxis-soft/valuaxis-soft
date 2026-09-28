@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DownloadDictamenPdfButton } from "./download-dictamen-pdf-button";
+import { SendDictamenEmailDialog } from "./send-dictamen-email-dialog";
 import { SectionDocument } from "@/features/valuations/components/report-preview";
 import {
   caratulaFromValuation,
@@ -75,6 +76,7 @@ export function ValuationDictamen({
             <Printer data-icon="inline-start" />
             Imprimir
           </Button>
+          <SendDictamenEmailDialog valuationId={valuationId} folio={initial.meta.folio} firmName={letterhead.name} />
           <DownloadDictamenPdfButton valuationId={valuationId} />
         </div>
       </header>

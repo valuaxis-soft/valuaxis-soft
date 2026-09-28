@@ -48,6 +48,7 @@
 | POST | `/api/avaluos/[id]/conclude` | Concluye (botón "Concluir" en el editor) |
 | POST | `/api/avaluos/[id]/reopen` | Reabre con motivo y aceptación (botón "Reabrir" en el editor) |
 | POST | `/api/avaluos/[id]/dictamen/pdf` | Genera el dictamen en PDF con Chromium, lo guarda como archivo del avalúo (`PDF_BORRADOR`, o `PDF_FINAL` si está concluido), registra la exportación y lo devuelve como descarga. `AVALUO_EXPORTAR`; 10 por usuario cada 10 minutos |
+| POST | `/api/avaluos/[id]/dictamen/correo` | Genera el PDF y lo envía adjunto al cliente (`to` hasta 5 correos, `subject`, `message`), a nombre del despacho y con `Reply-To` al correo de Datos del despacho. Se registra como exportación `DICTAMEN_CORREO`. `AVALUO_EXPORTAR`; 20 por organización cada hora |
 | GET | `/api/avaluos/[id]/export` | PDF simple generado con pdf-lib (sin membrete, tablas ni imágenes). El editor ya no lo usa: el dictamen se obtiene de `/avaluos/<uuid>/dictamen` |
 | GET, POST | `/api/avaluos/[id]/caratula/imagen-principal` | Imagen principal |
 | GET, POST, DELETE | `/api/avaluos/[id]/caratula/imagen-encabezado` | Imagen de encabezado |
