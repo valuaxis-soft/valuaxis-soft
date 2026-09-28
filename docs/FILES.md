@@ -33,3 +33,9 @@ Servicios con aislamiento por organización y relación formal con el avalúo (`
 
 Se sube en `/organizacion/despacho`. Es un `Archivo` de tipo `LOGOTIPO` relacionado con la organización (`SEntidad` `ORGANIZACION_LOGO`), guardado en `organizaciones/<uuid>/perfil/logotipo/`. Como toda imagen, se convierte a JPEG; las zonas transparentes quedan en blanco. El encabezado del dictamen lo usa cuando el avalúo no tiene imagen de encabezado propia.
 
+## Dictamen en PDF
+
+`POST /api/avaluos/[id]/dictamen/pdf` imprime `/avaluos/<id>/dictamen` con un Chromium sin interfaz (`src/infrastructure/pdf/chromium-pdf.ts`), abierto con la sesión de quien lo pide, y espera a que carguen las imágenes y se estabilice la paginación. Cada PDF se guarda en `organizaciones/<uuid>/avaluos/<uuid>/exportaciones/pdf/`, se relaciona con el avalúo (`SEntidad` `AVALUO_DICTAMEN_PDF`) y queda en `ExportacionAvaluo` con el hash de su contenido. Se generan como máximo dos a la vez.
+
+Chromium viene de `CHROMIUM_PATH`: la imagen de producción instala `/usr/bin/chromium`; en desarrollo se apunta a Chrome (ver `.env.example`). Abre la app en `INTERNAL_APP_URL`, que por omisión es `http://127.0.0.1:$PORT`.
+

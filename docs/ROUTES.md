@@ -20,7 +20,7 @@
 |---|---|
 | `/dashboard` | Resumen y avalúos recientes |
 | `/avaluos` | Lista paginada de avalúos de la organización (20 por página). Parámetros: `?q=` busca en folio, título y cliente; `?estado=` filtra por clave del catálogo de estados (`nuevo`, `en_edicion`, …); `?page=`. Requiere `AVALUO_VER`; "Nuevo avalúo" solo con `AVALUO_CREAR` |
-| `/avaluos/<uuid>/dictamen` | Dictamen completo para imprimir o guardar como PDF: todas las secciones habilitadas con las mismas páginas de la vista previa, en tamaño carta sin márgenes. Muestra lo guardado; el botón "Generar avalúo" del editor guarda antes de abrirlo. Requiere `AVALUO_EXPORTAR` y registra un evento de exportación |
+| `/avaluos/<uuid>/dictamen` | Dictamen completo: todas las secciones habilitadas con las mismas páginas de la vista previa, en tamaño carta sin márgenes. Muestra lo guardado; el botón "Generar avalúo" del editor guarda antes de abrirlo. "Descargar PDF" lo genera en el servidor; "Imprimir" usa el navegador. Requiere `AVALUO_EXPORTAR` y registra un evento de exportación |
 | `/organizacion/equipo` | Nombre del equipo, invitaciones, miembros y roles. Requiere `USUARIO_ADMINISTRAR` (ver [AUTHORIZATION.md](AUTHORIZATION.md#equipos)) |
 | `/organizacion/despacho` | Datos del despacho: logotipo, razón social, RFC, dirección, teléfono y correo del membrete; perito que firma, meses de vigencia y prefijo del folio de los avalúos nuevos. Requiere `USUARIO_ADMINISTRAR` |
 | `/organizacion/invitaciones/<token>` | Enlace del correo de invitación: muestra el equipo y el rol, y la acepta |
@@ -47,6 +47,7 @@
 | PUT | `/api/avaluos/[id]/full` | Guarda el avalúo completo |
 | POST | `/api/avaluos/[id]/conclude` | Concluye (botón "Concluir" en el editor) |
 | POST | `/api/avaluos/[id]/reopen` | Reabre con motivo y aceptación (botón "Reabrir" en el editor) |
+| POST | `/api/avaluos/[id]/dictamen/pdf` | Genera el dictamen en PDF con Chromium, lo guarda como archivo del avalúo (`PDF_BORRADOR`, o `PDF_FINAL` si está concluido), registra la exportación y lo devuelve como descarga. `AVALUO_EXPORTAR`; 10 por usuario cada 10 minutos |
 | GET | `/api/avaluos/[id]/export` | PDF simple generado con pdf-lib (sin membrete, tablas ni imágenes). El editor ya no lo usa: el dictamen se obtiene de `/avaluos/<uuid>/dictamen` |
 | GET, POST | `/api/avaluos/[id]/caratula/imagen-principal` | Imagen principal |
 | GET, POST, DELETE | `/api/avaluos/[id]/caratula/imagen-encabezado` | Imagen de encabezado |

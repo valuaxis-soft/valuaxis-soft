@@ -77,7 +77,7 @@ En el primer despliegue con esta versión, apuntar `compose.production.yml` al D
 
 Con eso, el Dockerfile del servidor queda sin uso: los cambios a la imagen entran por PR como el resto del código. Dentro del contenedor, las migraciones se corren con `node_modules/.bin/prisma migrate deploy` y la revisión de variables con `node --import tsx scripts/check-env.ts`.
 
-Más adelante, el dictamen en PDF generado en el servidor (característica 11 de la cotización) va a necesitar Chromium en esta misma imagen.
+La imagen incluye Chromium (`CHROMIUM_PATH=/usr/bin/chromium`) para generar el dictamen en PDF en el servidor; pesa alrededor de 2.6 GB. No hace falta ninguna variable nueva en `production.env`.
 
 ## 3. Actualizaciones del sistema y reinicio
 

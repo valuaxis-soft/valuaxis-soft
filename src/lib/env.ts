@@ -23,6 +23,10 @@ const envSchema = z.object({
   UPLOAD_DIR: z.string().default("public/uploads"),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().positive().default(10),
   TEST_EMAIL_TO: z.string().optional(),
+  /** Chromium that prints the dictamen to PDF; the image sets /usr/bin/chromium. */
+  CHROMIUM_PATH: z.string().optional(),
+  /** Where that Chromium reaches this app; defaults to http://127.0.0.1:$PORT. */
+  INTERNAL_APP_URL: z.string().url().optional().or(z.literal("")),
 });
 
 export type Env = z.infer<typeof envSchema>;
