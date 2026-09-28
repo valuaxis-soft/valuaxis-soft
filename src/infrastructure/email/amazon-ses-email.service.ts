@@ -7,8 +7,18 @@ import {
   buildVerificationEmailHtml,
   buildVerificationEmailText,
 } from "@/features/notifications/templates/verify-email";
+import {
+  buildTeamInvitationEmailHtml,
+  buildTeamInvitationEmailSubject,
+  buildTeamInvitationEmailText,
+} from "@/features/notifications/templates/team-invitation";
 import { EmailDeliveryError } from "./email.errors";
-import type { EmailService, PasswordResetEmailInput, VerificationEmailInput } from "./email.service";
+import type {
+  EmailService,
+  PasswordResetEmailInput,
+  TeamInvitationEmailInput,
+  VerificationEmailInput,
+} from "./email.service";
 
 export type AmazonSesEmailConfig = {
   region: string;
@@ -61,6 +71,15 @@ export class AmazonSesEmailService implements EmailService {
         name: input.name,
         resetUrl: input.resetUrl,
       }),
+    });
+  }
+
+  async sendTeamInvitationEmail(input: TeamInvitationEmailInput) {
+    await this.sendEmail({
+      to: input.to,
+      subject: buildTeamInvitationEmailSubject(input),
+      text: buildTeamInvitationEmailText(input),
+      html: buildTeamInvitationEmailHtml(input),
     });
   }
 

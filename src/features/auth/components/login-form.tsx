@@ -29,7 +29,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
             </Link>
           ) : null}
           {state.code === "ACCOUNT_USES_GOOGLE" ? (
-            <Link className="font-medium text-foreground underline underline-offset-4" href="/api/auth/google">
+            <Link className="font-medium text-foreground underline underline-offset-4" href={redirectTo ? `/api/auth/google?returnTo=${encodeURIComponent(redirectTo)}` : "/api/auth/google"}>
               Continuar con Google
             </Link>
           ) : null}

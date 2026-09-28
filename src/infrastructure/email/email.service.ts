@@ -1,3 +1,4 @@
+import type { TeamInvitationEmailContent } from "@/features/notifications/templates/team-invitation";
 import { createEmailService } from "./email-service.factory";
 
 export type VerificationEmailInput = {
@@ -12,9 +13,12 @@ export type PasswordResetEmailInput = {
   resetUrl: string;
 };
 
+export type TeamInvitationEmailInput = TeamInvitationEmailContent & { to: string };
+
 export interface EmailService {
   sendVerificationEmail(input: VerificationEmailInput): Promise<void>;
   sendPasswordResetEmail(input: PasswordResetEmailInput): Promise<void>;
+  sendTeamInvitationEmail(input: TeamInvitationEmailInput): Promise<void>;
 }
 
 let instance: EmailService | null = null;

@@ -21,6 +21,8 @@
 | `/dashboard` | Resumen y avalúos recientes |
 | `/avaluos` | Lista paginada de avalúos de la organización (20 por página). Parámetros: `?q=` busca en folio, título y cliente; `?estado=` filtra por clave del catálogo de estados (`nuevo`, `en_edicion`, …); `?page=`. Requiere `AVALUO_VER`; "Nuevo avalúo" solo con `AVALUO_CREAR` |
 | `/avaluos/<uuid>/dictamen` | Dictamen completo para imprimir o guardar como PDF: todas las secciones habilitadas con las mismas páginas de la vista previa, en tamaño carta sin márgenes. Muestra lo guardado; el botón "Generar avalúo" del editor guarda antes de abrirlo. Requiere `AVALUO_EXPORTAR` y registra un evento de exportación |
+| `/organizacion/equipo` | Nombre del equipo, invitaciones, miembros y roles. Requiere `USUARIO_ADMINISTRAR` (ver [AUTHORIZATION.md](AUTHORIZATION.md#equipos)) |
+| `/organizacion/invitaciones/<token>` | Enlace del correo de invitación: muestra el equipo y el rol, y la acepta |
 | `/workspace?action=new` | Crear avalúo |
 | `/workspace?id=<uuid>` | Editor del avalúo |
 | `/workspace/preview-window?id=<uuid>` | Vista previa en segunda ventana |
@@ -32,6 +34,11 @@
 | GET | `/api/auth/google` | Inicia Google OAuth |
 | GET | `/api/auth/google/callback` | Completa Google OAuth |
 | GET, PATCH | `/api/auth/organizations` | Lista y cambia la organización activa |
+| GET, PATCH | `/api/organizacion/equipo` | Miembros, invitaciones pendientes y roles; `PATCH` pone el nombre y convierte el espacio personal en equipo |
+| POST | `/api/organizacion/equipo/invitaciones` | Invita un correo con un rol y envía el enlace; devuelve el enlace |
+| POST, DELETE | `/api/organizacion/equipo/invitaciones/[id]` | Reenvía (enlace nuevo) o cancela una invitación pendiente |
+| PATCH, DELETE | `/api/organizacion/equipo/miembros/[id]` | Cambia el rol o da de baja a un miembro |
+| GET, POST | `/api/organizacion/invitaciones` | Invitaciones pendientes para el correo del usuario; `POST` acepta por `token` o `id` y abre el equipo |
 | GET, POST | `/api/avaluos` | Lista (máximo 200, los más recientes) y crea avalúos |
 | GET, PUT, DELETE | `/api/avaluos/[id]` | Detalle, metadatos y borrado lógico |
 | PUT | `/api/avaluos/[id]/full` | Guarda el avalúo completo |
