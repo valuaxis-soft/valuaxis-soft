@@ -53,7 +53,7 @@ export class AmazonSesEmailService implements EmailService {
   async sendVerificationEmail(input: VerificationEmailInput) {
     await this.sendEmail({
       to: input.to,
-      subject: "Verifica tu correo en Valuo",
+      subject: "Verifica tu correo en Valuaxis",
       text: buildVerificationEmailText(input.verificationUrl),
       html: buildVerificationEmailHtml({
         name: input.name,
@@ -65,7 +65,7 @@ export class AmazonSesEmailService implements EmailService {
   async sendPasswordResetEmail(input: PasswordResetEmailInput) {
     await this.sendEmail({
       to: input.to,
-      subject: "Restablece tu contrasena de Valuo",
+      subject: "Restablece tu contraseña de Valuaxis",
       text: buildPasswordResetEmailText(input.resetUrl),
       html: buildPasswordResetEmailHtml({
         name: input.name,
