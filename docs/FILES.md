@@ -39,3 +39,8 @@ Se sube en `/organizacion/despacho`. Es un `Archivo` de tipo `LOGOTIPO` relacion
 
 Chromium viene de `CHROMIUM_PATH`: la imagen de producción instala `/usr/bin/chromium`; en desarrollo se apunta a Chrome (ver `.env.example`). Abre la app en `INTERNAL_APP_URL`, que por omisión es `http://127.0.0.1:$PORT`.
 
+## Correos automáticos
+
+- **Dictamen al cliente:** "Enviar por correo" en el dictamen genera un PDF nuevo (se guarda igual que una descarga) y lo manda adjunto. SES solo acepta adjuntos como mensaje MIME completo, que arma `src/infrastructure/email/mime-message.ts`. El remitente muestra el nombre del despacho con la dirección verificada en SES (`SES_FROM_EMAIL`); las respuestas van al correo del despacho. Límite: 25 MB de PDF.
+- **Avisos al responsable del avalúo** (`src/features/notifications/valuation-notices.ts`): cuando otra persona se lo asigna al crearlo y cuando otra persona lo concluye. Salen después de responder (`after()`); si el correo falla se registra y la acción no se ve afectada.
+

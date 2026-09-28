@@ -17,6 +17,8 @@ import {
   resolveResponsibleValuatorName,
 } from "@/features/valuations/services/general-valuation-template";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { notifyResponsible } from "@/features/notifications/valuation-notices";
 
 export type SaveValuationInput = {
   id?: string;
@@ -218,6 +220,8 @@ export async function saveValuation(input: SaveValuationInput) {
     });
 
     revalidatePath("/");
+    // Tell the responsible appraiser when someone else assigned them the valuation.
+    after(() => notifyResponsible("asignado", valuation.UIdentificadorPublico, user));
     return {
       ok: true,
       data: await getValuationByPublicId(valuation.UIdentificadorPublico, user.organizationId),

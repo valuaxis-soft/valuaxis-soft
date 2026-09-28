@@ -12,11 +12,23 @@ import {
   buildTeamInvitationEmailSubject,
   buildTeamInvitationEmailText,
 } from "@/features/notifications/templates/team-invitation";
+import {
+  buildDictamenEmailHtml,
+  buildDictamenEmailText,
+} from "@/features/notifications/templates/dictamen-email";
+import {
+  buildValuationNoticeHtml,
+  buildValuationNoticeSubject,
+  buildValuationNoticeText,
+} from "@/features/notifications/templates/valuation-notice";
 import { EmailDeliveryError } from "./email.errors";
+import { buildMimeMessage } from "./mime-message";
 import type {
+  DictamenEmailInput,
   EmailService,
   PasswordResetEmailInput,
   TeamInvitationEmailInput,
+  ValuationNoticeInput,
   VerificationEmailInput,
 } from "./email.service";
 
@@ -83,6 +95,33 @@ export class AmazonSesEmailService implements EmailService {
     });
   }
 
+  /** Raw MIME: SES only attaches files that way. The firm's name shows as the sender. */
+  async sendDictamenEmail(input: DictamenEmailInput) {
+    const message = buildMimeMessage({
+      from: { name: input.firm.name, email: this.config.fromEmail },
+      to: input.to,
+      replyTo: input.replyTo,
+      subject: input.subject,
+      text: buildDictamenEmailText(input),
+      html: buildDictamenEmailHtml(input),
+      attachments: [{ filename: input.pdf.filename, contentType: "application/pdf", content: input.pdf.content }],
+    });
+    await this.deliver(new SendEmailCommand({
+      Destination: { ToAddresses: input.to },
+      ...(input.replyTo ? { ReplyToAddresses: [input.replyTo] } : {}),
+      Content: { Raw: { Data: message } },
+    }));
+  }
+
+  async sendValuationNotice(input: ValuationNoticeInput) {
+    await this.sendEmail({
+      to: input.to,
+      subject: buildValuationNoticeSubject(input),
+      text: buildValuationNoticeText(input),
+      html: buildValuationNoticeHtml(input),
+    });
+  }
+
   private async sendEmail(input: { to: string; subject: string; text: string; html: string }) {
     const command = new SendEmailCommand({
       FromEmailAddress: formatFromAddress(this.config.fromName, this.config.fromEmail),
@@ -109,6 +148,10 @@ export class AmazonSesEmailService implements EmailService {
       },
     });
 
+    await this.deliver(command);
+  }
+
+  private async deliver(command: SendEmailCommand) {
     try {
       await this.client.send(command);
     } catch (error) {

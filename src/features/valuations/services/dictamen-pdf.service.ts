@@ -6,6 +6,8 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 
+import type { Prisma } from "@prisma/client";
+
 import type { AuthUser } from "@/features/auth/model";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { renderPageToPdf } from "@/infrastructure/pdf/chromium-pdf";
@@ -20,7 +22,18 @@ const PDF_ENTITY = "AVALUO_DICTAMEN_PDF";
 export const dictamenPdfFilename = (folio: string) =>
   `Dictamen-${folio.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w.-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "avaluo"}.pdf`;
 
-export async function generateDictamenPdf(user: AuthUser, valuationPublicId: string, sessionToken: string) {
+export type DictamenPdfOptions = {
+  /** How the export is recorded: DICTAMEN for a download, DICTAMEN_CORREO when emailed. */
+  exportType?: string;
+  parameters?: Prisma.InputJsonValue;
+};
+
+export async function generateDictamenPdf(
+  user: AuthUser,
+  valuationPublicId: string,
+  sessionToken: string,
+  options: DictamenPdfOptions = {},
+) {
   const valuation = await prisma.avaluo.findFirst({
     where: { UIdentificadorPublico: valuationPublicId, IdOrganizacion: user.organizationId, BActivo: true, DFechaEliminacion: null },
     select: {
@@ -93,7 +106,8 @@ export async function generateDictamenPdf(user: AuthUser, valuationPublicId: str
           IdVersionAvaluo: versionId,
           IdUsuario: user.id,
           IdArchivo: archivo.IdArchivo,
-          STipoExportacion: "DICTAMEN",
+          STipoExportacion: options.exportType ?? "DICTAMEN",
+          JParametros: options.parameters,
           SFormato: "PDF",
           SEstado: "COMPLETADA",
           SHashContenido: createHash("sha256").update(buffer).digest("hex"),
@@ -108,5 +122,5 @@ export async function generateDictamenPdf(user: AuthUser, valuationPublicId: str
     throw error;
   }
 
-  return { buffer, filename, final: valuation.BBloqueado };
+  return { buffer, filename, folio: valuation.SFolio, final: valuation.BBloqueado };
 }
