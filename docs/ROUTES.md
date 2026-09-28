@@ -56,6 +56,8 @@
 | GET, POST | `/api/avaluos/[id]/info-terreno/croquis` | Croquis; el editor todavía no la usa |
 | GET, PUT | `/api/avaluos/[id]/mercado?tipo=` | Enfoque de mercado de un tipo de comparable (`TERRENO_VENTA`, `INMUEBLE_VENTA`, `INMUEBLE_RENTA`): parámetros y comparables. Cada cambio recalcula y devuelve el cálculo completo |
 | POST | `/api/avaluos/[id]/mercado/comparables?tipo=` | Agrega un comparable con sus factores y contacto |
+| POST | `/api/avaluos/[id]/mercado/comparables/importar?tipo=` | Lee un `.xlsx` o `.csv` (`multipart`, campo `file`) y devuelve la vista previa por renglón; con `&confirmar=1` guarda los válidos y devuelve el cálculo |
+| GET | `/api/comparables/plantilla?tipo=` | Plantilla de Excel para importar comparables de ese tipo |
 | PUT, DELETE | `/api/avaluos/[id]/mercado/comparables/[comparableId]?tipo=` | Edita o elimina un comparable; las referencias se renumeran |
 | POST, DELETE | `/api/avaluos/[id]/mercado/comparables/[comparableId]/fotos?tipo=` | Sube (hasta 6) o quita (`&fotoId=`) fotografías del comparable |
 | GET, PUT | `/api/avaluos/[id]/costos` | Enfoque de costos: terreno, construcciones, instalaciones especiales e indirectos, guardados completos |

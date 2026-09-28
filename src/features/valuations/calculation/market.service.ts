@@ -375,39 +375,63 @@ async function findComparable(tx: Tx, versionId: number, comparableId: string) {
   return row;
 }
 
+/** Adds one comparable after the last of its type; the caller recomputes. */
+async function insertComparable(
+  tx: Tx,
+  context: { avaluo: { IdAvaluo: number; IdTipoInmueble: number }; versionId: number; typeId: number },
+  user: AuthUser,
+  type: ComparableType,
+  payload: ComparableInputPayload,
+) {
+  const { avaluo, versionId, typeId } = context;
+  const last = await tx.comparableAvaluo.aggregate({
+    where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId },
+    _max: { IReferencia: true, IOrden: true },
+  });
+  const property = await tx.propiedad.create({
+    data: { IdOrganizacion: user.organizationId, IdTipoInmueble: avaluo.IdTipoInmueble, ...propertyColumns(type, payload) },
+  });
+  const publicationId = await syncPublication(tx, { propertyId: property.IdPropiedad, current: null, type, payload });
+  const comparable = await tx.comparableAvaluo.create({
+    data: {
+      IdAvaluo: avaluo.IdAvaluo,
+      IdVersionAvaluo: versionId,
+      IdPropiedad: property.IdPropiedad,
+      IdPublicacionPropiedad: publicationId,
+      IdUsuarioSeleccion: user.id,
+      IdTipoComparable: typeId,
+      IReferencia: (last._max.IReferencia ?? 0) + 1,
+      IOrden: (last._max.IOrden ?? -1) + 1,
+      NPrecioCapturado: payload.price,
+      ...areaColumns(type, payload.area),
+      NValorUnitarioCapturado: payload.price && payload.area ? payload.price / payload.area : null,
+      ...snapshots(payload),
+      JImagenesSnapshot: [],
+    },
+  });
+  await replaceFactors(tx, comparable.IdComparableAvaluo, payload);
+  return comparable.UIdentificadorPublico;
+}
+
 export async function createComparable(publicId: string, user: AuthUser, type: ComparableType, payload: ComparableInputPayload) {
   return prisma.$transaction(async (tx) => {
     const { avaluo, versionId } = await writableVersion(tx, publicId, user);
     const typeId = await comparableTypeId(tx, type);
-    const last = await tx.comparableAvaluo.aggregate({
-      where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId },
-      _max: { IReferencia: true, IOrden: true },
-    });
-    const property = await tx.propiedad.create({
-      data: { IdOrganizacion: user.organizationId, IdTipoInmueble: avaluo.IdTipoInmueble, ...propertyColumns(type, payload) },
-    });
-    const publicationId = await syncPublication(tx, { propertyId: property.IdPropiedad, current: null, type, payload });
-    const comparable = await tx.comparableAvaluo.create({
-      data: {
-        IdAvaluo: avaluo.IdAvaluo,
-        IdVersionAvaluo: versionId,
-        IdPropiedad: property.IdPropiedad,
-        IdPublicacionPropiedad: publicationId,
-        IdUsuarioSeleccion: user.id,
-        IdTipoComparable: typeId,
-        IReferencia: (last._max.IReferencia ?? 0) + 1,
-        IOrden: (last._max.IOrden ?? -1) + 1,
-        NPrecioCapturado: payload.price,
-        ...areaColumns(type, payload.area),
-        NValorUnitarioCapturado: payload.price && payload.area ? payload.price / payload.area : null,
-        ...snapshots(payload),
-        JImagenesSnapshot: [],
-      },
-    });
-    await replaceFactors(tx, comparable.IdComparableAvaluo, payload);
+    const id = await insertComparable(tx, { avaluo, versionId, typeId }, user, type, payload);
     await recompute(tx, versionId, type);
-    return comparable.UIdentificadorPublico;
+    return id;
   });
+}
+
+/** Adds many comparables at once (Excel import) and recomputes once; all or none. */
+export async function importComparables(publicId: string, user: AuthUser, type: ComparableType, payloads: ComparableInputPayload[]) {
+  return prisma.$transaction(async (tx) => {
+    const { avaluo, versionId } = await writableVersion(tx, publicId, user);
+    const typeId = await comparableTypeId(tx, type);
+    for (const payload of payloads) await insertComparable(tx, { avaluo, versionId, typeId }, user, type, payload);
+    await recompute(tx, versionId, type);
+    return payloads.length;
+  }, { timeout: 60_000 });
 }
 
 export async function updateComparable(publicId: string, user: AuthUser, comparableId: string, payload: ComparableInputPayload) {

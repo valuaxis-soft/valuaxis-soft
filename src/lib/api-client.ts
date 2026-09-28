@@ -4,6 +4,7 @@ import type {
   MarketCalculationDto,
   MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
+import type { ComparableImportPreview } from "@/features/valuations/calculation/comparable-import";
 import type { CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
 import type { ConclusionCalculationDto, ConclusionSettingsDto } from "@/features/valuations/calculation/conclusion-types";
 import type { IncomeCalculationDto, IncomeInputDto } from "@/features/valuations/calculation/income-types";
@@ -171,6 +172,11 @@ export const api = {
       request<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}?tipo=${type}`, { method: "DELETE" }),
     uploadPhoto: (id: ApiId, type: ComparableType, comparableId: string, file: File) =>
       uploadForm<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}`, { file }),
+    previewImport: (id: ApiId, type: ComparableType, file: File) =>
+      uploadForm<{ preview: ComparableImportPreview }>(`/avaluos/${id}/mercado/comparables/importar?tipo=${type}`, { file }),
+    importComparables: (id: ApiId, type: ComparableType, file: File) =>
+      uploadForm<{ preview: ComparableImportPreview; imported: number; calculation: MarketCalculationDto }>(
+        `/avaluos/${id}/mercado/comparables/importar?tipo=${type}&confirmar=1`, { file }),
     deletePhoto: (id: ApiId, type: ComparableType, comparableId: string, photoId: string) =>
       request<MarketCalculationDto>(
         `/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}&fotoId=${encodeURIComponent(photoId)}`,
