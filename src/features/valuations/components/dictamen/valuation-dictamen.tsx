@@ -5,6 +5,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { DownloadDictamenPdfButton } from "./download-dictamen-pdf-button";
 import { SectionDocument } from "@/features/valuations/components/report-preview";
 import {
   caratulaFromValuation,
@@ -67,13 +68,14 @@ export function ValuationDictamen({
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-sm font-semibold">Dictamen {initial.meta.folio}</h1>
             <p className="text-xs text-muted-foreground">
-              Para obtener el PDF, elige &quot;Guardar como PDF&quot; como destino al imprimir.
+              El PDF se genera en el servidor y queda guardado con el avalúo.
             </p>
           </div>
-          <Button onClick={() => window.print()}>
+          <Button variant="outline" onClick={() => window.print()}>
             <Printer data-icon="inline-start" />
-            Imprimir o guardar PDF
+            Imprimir
           </Button>
+          <DownloadDictamenPdfButton valuationId={valuationId} />
         </div>
       </header>
 
