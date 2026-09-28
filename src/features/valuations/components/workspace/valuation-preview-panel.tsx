@@ -1,13 +1,13 @@
 "use client";
 
 import { ReportPreview } from "@/features/valuations/components/report-preview";
-import type { AppSection, CaratulaFormData, Comparable, ImageContent, PrincipalCoverImage } from "@/features/valuations/model";
+import type { AppSection, CaratulaFormData, Comparable, ImageContent, Letterhead, PrincipalCoverImage } from "@/features/valuations/model";
 import type { ValuationMeta } from "@/features/valuations/services/valuation-constants";
 
 export function ValuationPreviewPanel({
   activeSection,
   caratula,
-  companyName,
+  letterhead,
   meta,
   selectedComparables,
   principalCoverImage,
@@ -15,7 +15,7 @@ export function ValuationPreviewPanel({
 }: {
   activeSection: AppSection;
   caratula: CaratulaFormData;
-  companyName: string;
+  letterhead: Letterhead;
   meta: ValuationMeta;
   selectedComparables: Comparable[];
   principalCoverImage: PrincipalCoverImage | null;
@@ -33,7 +33,7 @@ export function ValuationPreviewPanel({
             meta={meta}
             section={activeSection}
             caratula={caratula}
-            companyName={companyName}
+            letterhead={letterhead}
             comparables={selectedComparables}
             principalCoverImage={principalCoverImage}
             documentHeaderImage={documentHeaderImage}

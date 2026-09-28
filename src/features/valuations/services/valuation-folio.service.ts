@@ -1,7 +1,5 @@
 import { Prisma } from "@prisma/client";
-
-const DEFAULT_VALUATION_PREFIX = "VLO";
-const FOLIO_PADDING = 4;
+import { DEFAULT_FOLIO_PREFIX, formatValuationFolio } from "@/features/firm/firm-rules";
 
 type FolioTransaction = Pick<Prisma.TransactionClient, "$queryRaw">;
 
@@ -12,7 +10,7 @@ type ConsecutiveRow = {
 export async function reserveNextValuationFolio(
   tx: FolioTransaction,
   organizationId: number,
-  prefix = DEFAULT_VALUATION_PREFIX,
+  prefix = DEFAULT_FOLIO_PREFIX,
 ) {
   const rows = await tx.$queryRaw<ConsecutiveRow[]>(Prisma.sql`
     INSERT INTO "devpware_series_folios_organizaciones" (
@@ -38,8 +36,4 @@ export async function reserveNextValuationFolio(
   }
 
   return formatValuationFolio(prefix, consecutive);
-}
-
-export function formatValuationFolio(prefix: string, consecutive: number) {
-  return `${prefix}-${String(consecutive).padStart(FOLIO_PADDING, "0")}`;
 }

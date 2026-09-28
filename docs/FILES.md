@@ -28,3 +28,8 @@ Servicios con aislamiento por organización y relación formal con el avalúo (`
 - **La ruta de croquis (`/api/avaluos/[id]/info-terreno/croquis`) no la usa el editor:** era para dos croquis fijos, y la sección de terreno ahora admite imágenes libres.
 - **No hay ruta autenticada para servir archivos locales.**
 - **Sin escaneo antivirus.**
+
+## Logotipo del despacho
+
+Se sube en `/organizacion/despacho`. Es un `Archivo` de tipo `LOGOTIPO` relacionado con la organización (`SEntidad` `ORGANIZACION_LOGO`), guardado en `organizaciones/<uuid>/perfil/logotipo/`. Como toda imagen, se convierte a JPEG; las zonas transparentes quedan en blanco. El encabezado del dictamen lo usa cuando el avalúo no tiene imagen de encabezado propia.
+

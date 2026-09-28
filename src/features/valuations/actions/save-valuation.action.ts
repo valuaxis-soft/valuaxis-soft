@@ -10,6 +10,7 @@ import {
 } from "@/features/valuations/services/valuation-workflow.service";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
+import { getValuationDefaults } from "@/features/firm/firm.service";
 import { reserveNextValuationFolio } from "@/features/valuations/services/valuation-folio.service";
 import {
   isSystemGeneralValuationTemplate,
@@ -156,7 +157,9 @@ export async function saveValuation(input: SaveValuationInput) {
     }
 
     const valuation = await prisma.$transaction(async (tx) => {
-      const folio = await reserveNextValuationFolio(tx, user.organizationId);
+      // Datos del despacho: folio prefix, signing appraiser, date and validity.
+      const defaults = await getValuationDefaults(tx, user.organizationId);
+      const folio = await reserveNextValuationFolio(tx, user.organizationId, defaults.folioPrefix);
       const created = await tx.avaluo.create({
         data: {
           IdOrganizacion: user.organizationId,
@@ -182,7 +185,7 @@ export async function saveValuation(input: SaveValuationInput) {
         location: input.location,
         postalCode: input.postalCode,
       });
-      const responsibleName = resolveResponsibleValuatorName(responsable?.usuario, user.name);
+      const responsibleName = defaults.appraiserName ?? resolveResponsibleValuatorName(responsable?.usuario, user.name);
       const versionId = await initializeWorkingVersionStructure({
         avaluoId: created.IdAvaluo,
         userId: user.id,
@@ -206,6 +209,9 @@ export async function saveValuation(input: SaveValuationInput) {
           objeto: null,
           proposito: tipoOperacion.SNombre,
           valuador: responsibleName,
+          registroValuador: defaults.appraiserRegistration,
+          fechaAvaluo: defaults.valuationDate,
+          fechaVigencia: defaults.validUntil,
         },
       });
       return created;

@@ -4,7 +4,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ReportPreview } from "../src/features/valuations/components/report-preview";
-import type { AppSection, CaratulaFormData } from "../src/features/valuations/model";
+import { DocumentPreviewHeader } from "../src/features/valuations/components/document-preview-header";
+import type { AppSection, CaratulaFormData, Letterhead } from "../src/features/valuations/model";
 import { ensureTerrenoSection, terrenoSection } from "../src/features/valuations/sections/terreno";
 // Must load after the components so client-only libraries still see no DOM at import time.
 import "./support/ssr-portal-shim";
@@ -26,6 +27,16 @@ const caratula: CaratulaFormData = {
   valorConLetra: "",
   fechaAvaluo: "01/01/2026",
   fechaVigencia: "01/07/2026",
+};
+
+const letterhead: Letterhead = {
+  name: "Empresa",
+  legalName: null,
+  rfc: null,
+  address: null,
+  phone: null,
+  email: null,
+  logoUrl: null,
 };
 
 const emptySection: AppSection = {
@@ -70,7 +81,7 @@ test("Datos, Terreno y secciones genéricas comparten el encabezado universal", 
 function renderPreview(section: AppSection) {
   return renderToStaticMarkup(createElement(ReportPreview, {
     caratula,
-    companyName: "Empresa",
+    letterhead,
     meta: {
       folio: "VLO-001",
       client: "",
@@ -84,3 +95,33 @@ function renderPreview(section: AppSection) {
     principalCoverImage: null,
   }));
 }
+
+test("el membrete del despacho llena lo que la carátula del avalúo deja vacío", () => {
+  const firm: Letterhead = {
+    name: "Valuadores de los Altos",
+    legalName: "Valuadores de los Altos S.A. de C.V.",
+    rfc: "VAL010101AB1",
+    address: "Av. Despacho 100, Guadalajara",
+    phone: "33 1111 1111",
+    email: "contacto@despacho.mx",
+    logoUrl: "https://example.test/logo.jpg",
+  };
+  const blank = { ...caratula, direccionEmpresa: "", telefonoEmpresa: "", correoEmpresa: "" };
+  const fromFirm = renderToStaticMarkup(createElement(DocumentPreviewHeader, { caratula: blank, letterhead: firm }));
+  assert.match(fromFirm, />Valuadores de los Altos</);
+  assert.match(fromFirm, /Valuadores de los Altos S\.A\. de C\.V\. · RFC VAL010101AB1/);
+  assert.match(fromFirm, /Av\. Despacho 100, Guadalajara/);
+  assert.match(fromFirm, /33 1111 1111/);
+  assert.match(fromFirm, /contacto@despacho\.mx/);
+  assert.match(fromFirm, /src="https:\/\/example\.test\/logo\.jpg"/);
+
+  const own = renderToStaticMarkup(createElement(DocumentPreviewHeader, {
+    caratula,
+    letterhead: firm,
+    headerImage: { id: "img", src: "https://example.test/propia.jpg", title: "Propia", enabled: true },
+  }));
+  assert.match(own, />Dirección</);
+  assert.match(own, /33 0000 0000/);
+  assert.match(own, /src="https:\/\/example\.test\/propia\.jpg"/);
+  assert.doesNotMatch(own, /logo\.jpg/);
+});

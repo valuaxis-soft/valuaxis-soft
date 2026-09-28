@@ -1,26 +1,39 @@
-//Codigo para la edicion de el previw revisar mas a fondo.
-import type { CaratulaFormData, ImageContent } from "../model";
+import type { CaratulaFormData, ImageContent, Letterhead } from "../model";
 import { formatDateValue } from "../services/concept-value-format";
 
+/**
+ * The header of every document page. The valuation's own carátula data and
+ * header image come first; the firm's letterhead fills whatever they leave empty.
+ */
 export function DocumentPreviewHeader({
   caratula,
-  companyName,
+  letterhead,
   headerImage,
 }: {
   caratula: CaratulaFormData;
-  companyName: string;
+  letterhead: Letterhead;
   headerImage?: ImageContent | null;
 }) {
+  const image = headerImage?.src
+    ? headerImage
+    : letterhead.logoUrl
+      ? { src: letterhead.logoUrl, title: `Logotipo de ${letterhead.name}` }
+      : null;
+  const address = caratula.direccionEmpresa || letterhead.address;
+  const phone = caratula.telefonoEmpresa || letterhead.phone;
+  const email = caratula.correoEmpresa || letterhead.email;
+  const legalLine = [letterhead.legalName, letterhead.rfc ? `RFC ${letterhead.rfc}` : null].filter(Boolean).join(" · ");
+
   return (
     <header className="px-5 pt-5 sm:px-8 sm:pt-7" data-document-preview-header>
       <div className="grid gap-3 sm:grid-cols-[190px_minmax(0,1fr)]">
-        <div className={`flex h-24 items-center justify-center  text-3xl font-black tracking-tight shadow-sm ${headerImage?.src ? "bg-white text-[var(--caratula-blue)]" : "bg-gradient-to-br from-[var(--caratula-blue)] to-[var(--caratula-dark-blue)] text-white"}`}>
-          {headerImage?.src ? (
+        <div className={`flex h-24 items-center justify-center  text-3xl font-black tracking-tight shadow-sm ${image?.src ? "bg-white text-[var(--caratula-blue)]" : "bg-gradient-to-br from-[var(--caratula-blue)] to-[var(--caratula-dark-blue)] text-white"}`}>
+          {image?.src ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               className="max-h-full max-w-full object-contain"
-              src={headerImage.src}
-              alt={headerImage.title || "Imagen del encabezado"}
+              src={image.src}
+              alt={image.title || "Imagen del encabezado"}
             />
           ) : (
             "VA"
@@ -28,14 +41,15 @@ export function DocumentPreviewHeader({
         </div>
         <div className="min-w-0 text-center sm:text-left">
           <p className="text-sm font-black tracking-wide text-[var(--caratula-blue)]">
-            {companyName || "Empresa valuadora pendiente"}
+            {letterhead.name || "Empresa valuadora pendiente"}
           </p>
+          {legalLine ? <p className="text-[10px] leading-tight text-slate-600">{legalLine}</p> : null}
           <p className="mt-0.5 text-[11px] leading-tight text-slate-700">
-            {caratula.direccionEmpresa || "Dirección pendiente"}
+            {address || "Dirección pendiente"}
           </p>
           <div className="mt-0.5 flex flex-wrap justify-center gap-x-4 text-[11px] leading-tight text-slate-700 sm:justify-start">
-            <span>{caratula.telefonoEmpresa || "Teléfono pendiente"}</span>
-            <span>{caratula.correoEmpresa || "Correo pendiente"}</span>
+            <span>{phone || "Teléfono pendiente"}</span>
+            <span>{email || "Correo pendiente"}</span>
           </div>
           <div className="mt-4 grid items-end gap-2 text-[11px] leading-tight sm:grid-cols-[minmax(0,1fr)_230px]">
             <div>

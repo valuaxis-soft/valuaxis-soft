@@ -19,6 +19,7 @@ import {
 import { useStoredValuationImages } from "@/features/valuations/components/workspace/hooks/use-stored-images";
 import { transformComparables } from "@/features/valuations/mappers/transform-valuation";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
+import type { Letterhead } from "@/features/valuations/model";
 
 /**
  * The whole dictamen as saved: every enabled section, in order, with the same
@@ -26,11 +27,11 @@ import type { ValuationDetail } from "@/features/valuations/repositories/valuati
  * print dialog) gives one Letter page per document page.
  */
 export function ValuationDictamen({
-  companyName,
+  letterhead,
   initialValuation,
   valuationId,
 }: {
-  companyName: string;
+  letterhead: Letterhead;
   initialValuation: ValuationDetail;
   valuationId: string;
 }) {
@@ -82,7 +83,7 @@ export function ValuationDictamen({
             <SectionDocument
               caratula={initial.caratula}
               comparables={initial.comparables}
-              companyName={companyName}
+              letterhead={letterhead}
               documentHeaderImage={documentHeaderImage}
               key={section.id}
               meta={initial.meta}

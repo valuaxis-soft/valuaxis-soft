@@ -3,6 +3,7 @@ import type {
   CaratulaFormData,
   Comparable,
   ImageContent,
+  Letterhead,
   PrincipalCoverImage,
   ValuationMeta,
 } from "@/features/valuations/model";
@@ -10,7 +11,7 @@ import type {
 export type ExternalPreviewPayload = {
   activeSection: AppSection;
   caratula: CaratulaFormData;
-  companyName: string;
+  letterhead: Letterhead;
   documentHeaderImage?: ImageContent | null;
   meta: ValuationMeta;
   principalCoverImage: PrincipalCoverImage | null;
