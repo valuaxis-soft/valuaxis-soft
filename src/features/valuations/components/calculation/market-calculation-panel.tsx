@@ -29,6 +29,7 @@ import {
   type MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
 import { ComparableDialog, parseDecimal } from "./comparable-dialog";
+import { ImportComparablesDialog } from "./import-comparables-dialog";
 import { useSerializedSave } from "./use-serialized-save";
 
 const SALE_TYPES: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA"];
@@ -344,9 +345,12 @@ export function MarketCalculationPanel(props: {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         {!readOnly ? (
-          <Button type="button" size="sm" onClick={() => setEditing("nuevo")}>
-            <Plus data-icon="inline-start" /> Agregar comparable
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" onClick={() => setEditing("nuevo")}>
+              <Plus data-icon="inline-start" /> Agregar comparable
+            </Button>
+            <ImportComparablesDialog valuationId={valuationId} type={type} onImported={applyServerState} />
+          </div>
         ) : <span />}
         {complete < MIN_COMPARABLES ? (
           <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
