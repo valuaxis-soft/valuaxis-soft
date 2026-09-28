@@ -263,6 +263,7 @@ model Organizacion {
   importaciones              Importacion[]
   suscripciones              Suscripcion[]
   concesionesFuncionalidades ConcesionFuncionalidad[]
+  invitaciones               InvitacionOrganizacion[]
 
   @@index([IdEstadoOrganizacion])
   @@index([IdUsuarioPropietario])
@@ -350,6 +351,8 @@ model Usuario {
   eventosTrabajos              EventoTrabajo[]
   importaciones                Importacion[]
   eventosImportaciones         EventoImportacion[]
+  invitacionesEnviadas         InvitacionOrganizacion[]      @relation("InvitacionInvitador")
+  invitacionesAceptadas        InvitacionOrganizacion[]      @relation("InvitacionAceptante")
 
   @@index([IdEstadoUsuario])
   @@index([BActivo])
@@ -370,6 +373,7 @@ model Rol {
   permisos        PermisoRol[]
   miembros        MiembroOrganizacion[]
   usuariosAvaluos UsuarioAvaluo[]
+  invitaciones    InvitacionOrganizacion[]
 
   @@map("devpware_roles")
 }
@@ -424,6 +428,31 @@ model MiembroOrganizacion {
   @@index([IdRol])
   @@index([BActivo])
   @@map("devpware_miembros_organizaciones")
+}
+
+/// Invitacion a una organizacion por correo (migracion 034). Solo se guarda el hash del token.
+model InvitacionOrganizacion {
+  IdInvitacionOrganizacion BigInt    @id @default(autoincrement()) @map("IdInvitacionOrganizacion")
+  UIdentificadorPublico    String    @unique @default(dbgenerated("gen_random_uuid()")) @map("UIdentificadorPublico") @db.Uuid
+  IdOrganizacion           Int       @map("IdOrganizacion")
+  IdRol                    Int       @map("IdRol")
+  IdUsuarioInvitador       Int       @map("IdUsuarioInvitador")
+  IdUsuarioAceptante       Int?      @map("IdUsuarioAceptante")
+  SCorreo                  String    @map("SCorreo") @db.VarChar(180)
+  STokenHash               String    @unique @map("STokenHash") @db.VarChar(255)
+  DFechaCreacion           DateTime  @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+  DFechaExpiracion         DateTime  @map("DFechaExpiracion") @db.Timestamptz(3)
+  DFechaAceptacion         DateTime? @map("DFechaAceptacion") @db.Timestamptz(3)
+  DFechaRevocacion         DateTime? @map("DFechaRevocacion") @db.Timestamptz(3)
+
+  organizacion     Organizacion @relation(fields: [IdOrganizacion], references: [IdOrganizacion], onDelete: Cascade, onUpdate: Cascade)
+  rol              Rol          @relation(fields: [IdRol], references: [IdRol], onDelete: Restrict, onUpdate: Cascade)
+  usuarioInvitador Usuario      @relation("InvitacionInvitador", fields: [IdUsuarioInvitador], references: [IdUsuario], onDelete: Restrict, onUpdate: Cascade)
+  usuarioAceptante Usuario?     @relation("InvitacionAceptante", fields: [IdUsuarioAceptante], references: [IdUsuario], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([IdOrganizacion])
+  @@index([SCorreo])
+  @@map("devpware_invitaciones_organizaciones")
 }
 
 model Sesion {

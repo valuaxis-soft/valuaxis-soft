@@ -24,13 +24,16 @@ const roleLabel: Record<string, string> = {
   USUARIO: "Usuario",
 };
 
-type NavKey = "dashboard" | "avaluos";
+type NavKey = "dashboard" | "avaluos" | "equipo";
 
 export function DashboardHeader({ user, active }: { user: AuthUser; active?: NavKey }) {
   const navItems: Array<{ key: NavKey; label: string; href: string }> = [
     { key: "dashboard", label: "Inicio", href: "/dashboard" },
     ...(hasPermission(user, AUTH_PERMISSIONS.viewValuations)
       ? [{ key: "avaluos" as const, label: "Avalúos", href: "/avaluos" }]
+      : []),
+    ...(hasPermission(user, AUTH_PERMISSIONS.manageUsers)
+      ? [{ key: "equipo" as const, label: "Equipo", href: "/organizacion/equipo" }]
       : []),
   ];
 
@@ -69,7 +72,7 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
 
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <OrganizationScopeSelector activeOrganizationName={user.organizationName} />
+          <OrganizationScopeSelector key={user.organizationName} activeOrganizationName={user.organizationName} />
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(buttonVariants({ variant: "ghost" }), "h-9 gap-2 rounded-xl px-3 text-sm font-medium")}

@@ -112,7 +112,7 @@ export function OrganizationScopeSelector({ activeOrganizationName }: { activeOr
             <Skeleton className="hidden h-5 w-14 rounded-full sm:block" />
           ) : (
             <Badge variant={scopeType === "TEAM" ? "default" : "secondary"} className="text-[10px]">
-              {scopeType === "TEAM" ? "Team" : scopeType === "PERSONAL" ? "Personal" : "Ámbito"}
+              {scopeType === "TEAM" ? "Equipo" : scopeType === "PERSONAL" ? "Personal" : "Ámbito"}
             </Badge>
           )}
         </span>
@@ -135,7 +135,7 @@ export function OrganizationScopeSelector({ activeOrganizationName }: { activeOr
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{organization.SNombre}</span>
                 <span className="block text-xs text-muted-foreground">
-                  {isPersonal ? "Personal" : "Team"} · {organization.rol}
+                  {isPersonal ? "Personal" : "Equipo"} · {organization.rol}
                 </span>
               </span>
               {organization.BEsAmbitoActivo ? <Check className="mt-0.5 text-primary" /> : null}

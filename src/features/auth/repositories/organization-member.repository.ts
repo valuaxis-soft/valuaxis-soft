@@ -24,9 +24,10 @@ export function listActiveMemberships(userId: number) {
   });
 }
 
+/** The organization a login opens: the first team the user belongs to, else their personal space. */
 export async function resolveSingleActiveMembership(userId: number) {
   const memberships = await listActiveMemberships(userId);
-  return memberships[0] ?? null;
+  return memberships.find((membership) => membership.organizacion.STipoAmbito === "TEAM") ?? memberships[0] ?? null;
 }
 
 export function findActiveMembership(

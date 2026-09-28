@@ -6,10 +6,12 @@ import { QuickActions } from "@/features/dashboard/components/quick-actions";
 import { RecentValuations } from "@/features/dashboard/components/recent-valuations";
 import { StatsCards } from "@/features/dashboard/components/stats-cards";
 import { getDashboardSummary } from "@/features/dashboard/services/dashboard-summary.service";
+import { PendingInvitations } from "@/features/team/components/pending-invitations";
+import { listMyInvitations } from "@/features/team/team.service";
 
 export default async function DashboardPage() {
   const user = await requireSession("/dashboard");
-  const summary = await getDashboardSummary(user);
+  const [summary, invitations] = await Promise.all([getDashboardSummary(user), listMyInvitations(user)]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -24,6 +26,8 @@ export default async function DashboardPage() {
             {user.organizationName}
           </p>
         </div>
+
+        <PendingInvitations invitations={invitations} />
 
         <div className="mb-6">
           <StatsCards

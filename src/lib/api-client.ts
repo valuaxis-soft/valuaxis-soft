@@ -7,6 +7,8 @@ import type {
 import type { CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
 import type { ConclusionCalculationDto, ConclusionSettingsDto } from "@/features/valuations/calculation/conclusion-types";
 import type { IncomeCalculationDto, IncomeInputDto } from "@/features/valuations/calculation/income-types";
+import type { TeamRole } from "@/features/team/team-rules";
+import type { MyInvitationDto, SentInvitationDto, TeamDto } from "@/features/team/team.service";
 
 /** What the comparable form sends: the comparable without its id, reference and photos. */
 export type ComparableFormValues = Omit<ComparableDto, "id" | "reference" | "photos">;
@@ -82,6 +84,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     const error = await res.json().catch(() => ({ error: "Request failed" }));
     throw new Error(error.error || `HTTP ${res.status}`);
   }
+  if (res.status === 204) return undefined as T;
 
   const json = await res.json();
   return json.data as T;
@@ -193,5 +196,21 @@ export const api = {
   },
   uploads: {
     create: (file: File) => uploadForm<UploadResponse>(`/uploads`, { file }),
+  },
+  team: {
+    get: () => request<TeamDto>(`/organizacion/equipo`),
+    save: (name: string) => request<TeamDto>(`/organizacion/equipo`, { method: "PATCH", body: JSON.stringify({ name }) }),
+    invite: (input: { email: string; role: TeamRole }) =>
+      request<SentInvitationDto>(`/organizacion/equipo/invitaciones`, { method: "POST", body: JSON.stringify(input) }),
+    resend: (id: string) => request<SentInvitationDto>(`/organizacion/equipo/invitaciones/${id}`, { method: "POST" }),
+    revoke: (id: string) => request<void>(`/organizacion/equipo/invitaciones/${id}`, { method: "DELETE" }),
+    changeRole: (memberId: number, role: TeamRole) =>
+      request<void>(`/organizacion/equipo/miembros/${memberId}`, { method: "PATCH", body: JSON.stringify({ role }) }),
+    remove: (memberId: number) => request<void>(`/organizacion/equipo/miembros/${memberId}`, { method: "DELETE" }),
+  },
+  invitations: {
+    mine: () => request<MyInvitationDto[]>(`/organizacion/invitaciones`),
+    accept: (selector: { token: string } | { id: string }) =>
+      request<{ organizationName: string }>(`/organizacion/invitaciones`, { method: "POST", body: JSON.stringify(selector) }),
   },
 };
