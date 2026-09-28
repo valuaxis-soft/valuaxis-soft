@@ -40,7 +40,7 @@ test("amazon ses provider sends verification email with expected sender, subject
   const input = commands[0].input;
   assert.equal(input.FromEmailAddress, '"Valuo" <no-reply@example.test>');
   assert.deepEqual(input.Destination?.ToAddresses, ["person@example.test"]);
-  assert.equal(input.Content?.Simple?.Subject?.Data, "Verifica tu correo en Valuo");
+  assert.equal(input.Content?.Simple?.Subject?.Data, "Verifica tu correo en Valuaxis");
   assert.match(input.Content?.Simple?.Body?.Text?.Data ?? "", /https:\/\/app\.example\.test/);
   assert.match(input.Content?.Simple?.Body?.Html?.Data ?? "", /<a href=/);
 });
@@ -64,9 +64,9 @@ test("amazon ses provider sends password reset email with expected subject and b
   });
 
   const sentCommand = commands[0];
-  assert.equal(sentCommand?.input.Content?.Simple?.Subject?.Data, "Restablece tu contrasena de Valuo");
-  assert.match(sentCommand?.input.Content?.Simple?.Body?.Text?.Data ?? "", /restablece tu contrasena/i);
-  assert.match(sentCommand?.input.Content?.Simple?.Body?.Html?.Data ?? "", /Restablecer contrasena/);
+  assert.equal(sentCommand?.input.Content?.Simple?.Subject?.Data, "Restablece tu contraseña de Valuaxis");
+  assert.match(sentCommand?.input.Content?.Simple?.Body?.Text?.Data ?? "", /restablece tu contraseña de Valuaxis/i);
+  assert.match(sentCommand?.input.Content?.Simple?.Body?.Html?.Data ?? "", /Restablecer contraseña/);
 });
 
 test("amazon ses provider wraps delivery errors in domain error", async (t) => {
