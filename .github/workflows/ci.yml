@@ -36,8 +36,9 @@ jobs:
           --health-retries 30
     env:
       DATABASE_URL: postgresql://valuaxis:valuaxis@localhost:5432/valuaxis_ci?schema=public
-      # Links in emails (invitations) are built from it, as in .env.example.
+      # As in .env.example: email links are built from APP_URL, and emails are only logged.
       APP_URL: http://localhost:3000
+      EMAIL_PROVIDER: development
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
