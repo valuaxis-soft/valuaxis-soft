@@ -83,6 +83,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
 export const PENDING_DECISIONS = [
   { question: 1, setting: "surfaceOrientation", note: "Dirección del factor de superficie en los tres enfoques." },
   { question: 2, setting: "income.annuity.option", note: "TU: se concluye con la opción 1 (la que se imprime) o la 2 (anualidad, la de los libros). Hoy, 2." },
+  { question: 3, setting: "machinery.conservationTwice", note: "MEH: la conservación se aplica en el factor de edad y otra vez en FCo (933,000) o una sola vez (952,000). Hoy, dos veces como el libro." },
   { question: 4, setting: "market.adoptedUnitValue", note: "Valor adoptado sugerido (promedio homologado) y su redondeo." },
   { question: 5, setting: "ageFactor", note: "Método del factor de edad y valor mínimo cuando la edad supera la vida útil." },
   { question: 6, setting: "rounding", note: "Conclusión por un enfoque o ponderada, y redondeos por tipo de avalúo." },
