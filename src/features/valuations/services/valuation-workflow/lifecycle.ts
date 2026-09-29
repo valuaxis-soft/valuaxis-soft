@@ -22,8 +22,9 @@ export async function concludeValuation(input: {
       },
     });
     if (!avaluo) throw new ValuationWorkflowError("Avaluo no encontrado", 404);
-    if (!avaluo.IdVersionTrabajo || !avaluo.versionTrabajo) throw new ValuationWorkflowError("No existe version de trabajo", 409);
+    // Concluding clears the working version, so a repeated conclude must be recognized first.
     if (avaluo.BBloqueado) return { id: input.publicId, alreadyConcluded: true };
+    if (!avaluo.IdVersionTrabajo || !avaluo.versionTrabajo) throw new ValuationWorkflowError("No existe version de trabajo", 409);
 
     const finalVersionState = await tx.estadoVersionAvaluo.findFirst({
       where: { BActivo: true, BEsFinal: true },
@@ -118,14 +119,19 @@ export async function reopenValuation(input: {
     if (!avaluo.IdVersionFinal) throw new ValuationWorkflowError("No existe version final para reabrir", 409);
     if (avaluo.IdVersionTrabajo) return { id: input.publicId, alreadyOpen: true };
 
-    const editableVersionState = await tx.estadoVersionAvaluo.findFirst({
-      where: { BActivo: true, BPermiteEdicion: true, BEsFinal: false },
-      orderBy: { IOrden: "asc" },
-    });
-    const editableValuationState = await tx.estadoAvaluo.findFirst({
-      where: { BActivo: true, BPermiteEdicion: true, BEsFinal: false },
-      orderBy: { IOrden: "asc" },
-    });
+    // The catalog's reopened states; the first editable one only if they are missing.
+    const editableVersionState =
+      (await tx.estadoVersionAvaluo.findFirst({ where: { SClave: "REABIERTA", BActivo: true, BPermiteEdicion: true } }))
+      ?? (await tx.estadoVersionAvaluo.findFirst({
+        where: { BActivo: true, BPermiteEdicion: true, BEsFinal: false },
+        orderBy: { IOrden: "asc" },
+      }));
+    const editableValuationState =
+      (await tx.estadoAvaluo.findFirst({ where: { SClave: "REABIERTO", BActivo: true, BPermiteEdicion: true } }))
+      ?? (await tx.estadoAvaluo.findFirst({
+        where: { BActivo: true, BPermiteEdicion: true, BEsFinal: false },
+        orderBy: { IOrden: "asc" },
+      }));
     if (!editableVersionState || !editableValuationState) {
       throw new ValuationWorkflowError("Faltan estados editables configurados", 500);
     }

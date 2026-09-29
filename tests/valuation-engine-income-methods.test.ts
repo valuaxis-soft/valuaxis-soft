@@ -180,3 +180,23 @@ test("the dictamen shows the annuity and market-rate detail", () => {
   assert.equal(rows[0][0], "1. Parcela 1");
   assert.equal(trBlocks[1].concepts[1].value, "$5,090,678.68");
 });
+
+test("sin mercado de rentas, cada tipo con su renta: la adoptada es el promedio ponderado", () => {
+  const trace = new Trace();
+  const result = computeIncomeApproach({
+    rentableUnits: [
+      { description: "Local", area: 100, unitRent: 200 },
+      { description: "Bodega", area: 300, unitRent: 100 },
+    ],
+    deductions: [{ concept: "predial", rate: 0.1 }],
+    capitalization: { appliedRate: 0.08 },
+  }, DEFAULT_ENGINE_CONFIG, trace);
+  close(result.unitRent, 125, "renta unitaria ponderada");
+  close(result.grossMonthlyRent, 50000, "renta bruta");
+  close(result.value, 50000 * 0.9 * 12 / 0.08, "valor");
+  assert.equal(trace.find("ingresos.rentaUnitaria")?.formula, "promedio ponderado de las rentas por tipo");
+  assert.throws(
+    () => computeIncomeApproach({ rentableUnits: [{ description: "Local", area: 100 }], deductions: [], capitalization: { appliedRate: 0.08 } }, DEFAULT_ENGINE_CONFIG),
+    /Falta la renta unitaria/,
+  );
+});

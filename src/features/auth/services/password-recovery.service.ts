@@ -48,13 +48,21 @@ export async function consumePasswordRecoveryToken(token: string, password: stri
     return false;
   }
 
+  // Claim the token atomically: two requests with the same link must not both reset.
+  const claimed = await prisma.tokenRecuperacionContrasena.updateMany({
+    where: {
+      IdTokenRecuperacionContrasena: record.IdTokenRecuperacionContrasena,
+      BUtilizado: false,
+      DFechaRevocacion: null,
+      DFechaExpiracion: { gt: new Date() },
+    },
+    data: { BUtilizado: true, DFechaUtilizacion: new Date() },
+  });
+  if (claimed.count !== 1) return false;
+
   const passwordHash = await hashPassword(password);
   await prisma.$transaction([
     updatePassword(record.IdUsuario, passwordHash),
-    prisma.tokenRecuperacionContrasena.update({
-      where: { IdTokenRecuperacionContrasena: record.IdTokenRecuperacionContrasena },
-      data: { BUtilizado: true, DFechaUtilizacion: new Date() },
-    }),
     revokeUserSessions(record.IdUsuario),
   ]);
   await recordAuditEvent({

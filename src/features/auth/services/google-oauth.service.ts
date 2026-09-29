@@ -295,9 +295,11 @@ async function linkOrCreateGoogleUser(input: {
       });
 
       if (!existingUser.BCorreoVerificado) {
+        // Google proves the owner; a password set by whoever registered the
+        // unverified email is not theirs, so it must stop working.
         await tx.usuario.update({
           where: { IdUsuario: existingUser.IdUsuario },
-          data: { BCorreoVerificado: true, DFechaVerificacionCorreo: new Date() },
+          data: { BCorreoVerificado: true, DFechaVerificacionCorreo: new Date(), SContrasenaHash: null },
         });
       }
 

@@ -490,21 +490,48 @@ export async function importComparables(publicId: string, user: AuthUser, type: 
   }, { timeout: 60_000 });
 }
 
+/**
+ * Reopening copies comparables pointing at the same property and publication
+ * as the concluded version. Before editing, a comparable that shares them gets
+ * its own copies, so the concluded version keeps what it showed.
+ */
+async function ownPropertyRows(tx: Tx, comparable: { IdComparableAvaluo: bigint; IdPropiedad: number; IdPublicacionPropiedad: bigint | null }) {
+  const others = { NOT: { IdComparableAvaluo: comparable.IdComparableAvaluo } };
+  const propertyShared = await tx.comparableAvaluo.count({ where: { IdPropiedad: comparable.IdPropiedad, ...others } }) > 0;
+  const publicationShared = comparable.IdPublicacionPropiedad !== null
+    && await tx.comparableAvaluo.count({ where: { IdPublicacionPropiedad: comparable.IdPublicacionPropiedad, ...others } }) > 0;
+
+  let propertyId = comparable.IdPropiedad;
+  if (propertyShared) {
+    const {
+      IdPropiedad: _id, UIdentificadorPublico: _publicId, DFechaCreacion: _created, DFechaModificacion: _modified,
+      JCaracteristicas, ...columns
+    } = await tx.propiedad.findUniqueOrThrow({ where: { IdPropiedad: comparable.IdPropiedad } });
+    const copy = await tx.propiedad.create({ data: { ...columns, JCaracteristicas: JCaracteristicas ?? undefined } });
+    propertyId = copy.IdPropiedad;
+  }
+  // A new property needs its own publication too; syncPublication creates it when `current` is null.
+  const publicationId = propertyShared || publicationShared ? null : comparable.IdPublicacionPropiedad;
+  return { propertyId, publicationId };
+}
+
 export async function updateComparable(publicId: string, user: AuthUser, comparableId: string, payload: ComparableInputPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
     const current = await findComparable(tx, versionId, comparableId);
     const type = current.tipoComparable.SClave as ComparableType;
-    await tx.propiedad.update({ where: { IdPropiedad: current.IdPropiedad }, data: propertyColumns(type, payload) });
+    const { propertyId, publicationId: ownPublication } = await ownPropertyRows(tx, current);
+    await tx.propiedad.update({ where: { IdPropiedad: propertyId }, data: propertyColumns(type, payload) });
     const publicationId = await syncPublication(tx, {
-      propertyId: current.IdPropiedad,
-      current: current.IdPublicacionPropiedad,
+      propertyId,
+      current: ownPublication,
       type,
       payload,
     });
     await tx.comparableAvaluo.update({
       where: { IdComparableAvaluo: current.IdComparableAvaluo },
       data: {
+        IdPropiedad: propertyId,
         IdPublicacionPropiedad: publicationId,
         NPrecioCapturado: payload.price,
         ...areaColumns(type, payload.area),

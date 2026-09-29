@@ -41,13 +41,13 @@ export type SaveValuationInput = {
 export async function saveValuation(input: SaveValuationInput) {
   const user = await getCurrentUser();
   if (!user) {
-    return { ok: false, error: "No autorizado" };
+    return { ok: false, error: "No autorizado", status: 401 };
   }
 
   try {
     if (input.id) {
       if (!hasPermission(user, AUTH_PERMISSIONS.editValuations)) {
-        return { ok: false, error: "Permiso insuficiente" };
+        return { ok: false, error: "Permiso insuficiente", status: 403 };
       }
 
       const existing = await prisma.avaluo.findFirst({
@@ -61,10 +61,10 @@ export async function saveValuation(input: SaveValuationInput) {
       });
 
       if (!existing) {
-        return { ok: false, error: "Avaluo no encontrado" };
+        return { ok: false, error: "Avaluo no encontrado", status: 404 };
       }
       if (existing.BBloqueado) {
-        return { ok: false, error: "El avaluo concluido no permite edicion" };
+        return { ok: false, error: "El avaluo concluido no permite edicion", status: 409 };
       }
 
       await prisma.$transaction(async (tx) => {
@@ -96,7 +96,7 @@ export async function saveValuation(input: SaveValuationInput) {
     }
 
     if (!hasPermission(user, AUTH_PERMISSIONS.createValuations)) {
-      return { ok: false, error: "Permiso insuficiente" };
+      return { ok: false, error: "Permiso insuficiente", status: 403 };
     }
 
     const catalogError = await validateCreationCatalogs(input, user.organizationId);

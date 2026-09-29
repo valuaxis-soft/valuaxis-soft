@@ -6,7 +6,8 @@ import type { RegisterInput } from "../validations/register.schema";
 
 export async function registerLocalUser(input: RegisterInput) {
   const existing = await prisma.usuario.findFirst({
-    where: { SCorreo: input.email, DFechaEliminacion: null },
+    // Deleted accounts included: the email stays unique, so it cannot be registered again.
+    where: { SCorreo: input.email },
     include: {
       identidades: {
         where: { BActiva: true },

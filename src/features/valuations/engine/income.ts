@@ -107,12 +107,21 @@ export function computeIncomeApproach(input: IncomeApproachInput, config: Engine
   const method = input.method ?? "tabla";
   const rentMarket = input.rentMarket ? homologate(input.rentMarket, config.surfaceOrientation.income, trace, "ingresos.rentas") : null;
   if (method === "mercado") return marketRateMethod(input, rentMarket, trace);
+  // When every unit carries its own rent there is no market to average; the
+  // adopted rent is then their area-weighted mean.
+  const ownRents = input.rentableUnits.every((unit) => unit.unitRent !== undefined) && input.rentableUnits.length > 0;
+  const totalArea = input.rentableUnits.reduce((sum, unit) => sum + unit.area, 0);
+  const weightedRent = ownRents && totalArea > 0
+    ? input.rentableUnits.reduce((sum, unit) => sum + unit.area * unit.unitRent!, 0) / totalArea
+    : undefined;
   const unitRent = trace.record({
     key: "ingresos.rentaUnitaria",
     label: "Renta unitaria adoptada ($/m²/mes)",
-    formula: input.adoptedUnitRent === undefined ? "promedio homologado de rentas" : "captura del perito",
+    formula: input.adoptedUnitRent !== undefined
+      ? "captura del perito"
+      : rentMarket ? "promedio homologado de rentas" : "promedio ponderado de las rentas por tipo",
     inputs: { sugerida: rentMarket?.stats.mean ?? null, capturada: input.adoptedUnitRent ?? null },
-    value: input.adoptedUnitRent ?? requireValue(rentMarket?.stats.mean, "Falta la renta unitaria o el mercado de rentas."),
+    value: input.adoptedUnitRent ?? requireValue(rentMarket?.stats.mean ?? weightedRent, "Falta la renta unitaria o el mercado de rentas."),
   });
 
   let grossMonthlyRent = 0;

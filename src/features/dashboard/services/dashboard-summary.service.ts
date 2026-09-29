@@ -65,7 +65,8 @@ export async function getDashboardSummary(user: AuthUser): Promise<DashboardSumm
   }
 
   const total = recentPage.total;
-  const active = total - (counts.terminado ?? 0);
+  // Final statuses: finished or cancelled.
+  const active = total - (counts.terminado ?? 0) - (counts.cancelado ?? 0);
 
   return {
     user: {
