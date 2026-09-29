@@ -13,7 +13,7 @@ import { getCostCalculation, saveCostCalculation } from "../../src/features/valu
 import { DEFAULT_LAND, emptyInstallation, type CostInputDto } from "../../src/features/valuations/calculation/cost-types";
 import { getConclusionCalculation, saveConclusionSettings } from "../../src/features/valuations/calculation/conclusion.service";
 import { getIncomeCalculation, saveIncomeCalculation } from "../../src/features/valuations/calculation/income.service";
-import { DEFAULT_DEDUCTIONS } from "../../src/features/valuations/calculation/income-types";
+import { DEFAULT_ANNUITY, DEFAULT_DEDUCTIONS, DEFAULT_MARKET_RATE } from "../../src/features/valuations/calculation/income-types";
 import { concludeValuation, reopenValuation, saveValuationSections } from "../../src/features/valuations/services/valuation-workflow.service";
 import { createValuationFixture, prisma } from "./support";
 
@@ -236,6 +236,9 @@ test("the income approach capitalizes the rent adopted in the rent market, as th
     await createComparable(fixture.publicId, user, "INMUEBLE_RENTA", item);
   }
   await saveIncomeCalculation(fixture.publicId, user, {
+    method: "tabla",
+    annuity: DEFAULT_ANNUITY,
+    marketRate: DEFAULT_MARKET_RATE,
     rentableUnits: [{ description: "Casa habitación", area: 250, unitRent: null }],
     deductions: DEFAULT_DEDUCTIONS,
     ratingColumns: [1, 3, 1, 2, 2, 0, 4],

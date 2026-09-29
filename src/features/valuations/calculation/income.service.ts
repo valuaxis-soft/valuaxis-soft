@@ -12,17 +12,30 @@ import { computeIncomeApproach } from "../engine/income";
 import { Trace } from "../engine/trace";
 import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
 import { recomputeConclusion } from "./conclusion.service";
+import { loadRentMarket } from "./market.service";
+import { toMarketEngineInput } from "./market-types";
 import type { IncomeInputPayload } from "./income-schemas";
 import { DEFAULT_INCOME, toIncomeEngineInput, type IncomeCalculationDto, type IncomeInputDto } from "./income-types";
 
 const CALCULATION_KEY = "MOTOR.INGRESOS";
 
+const EMPTY_RENT_MARKET: IncomeCalculationDto["rentMarket"] = { adoptedUnitRent: null, subjectArea: null, comparables: [], homologation: null };
+
 async function rentMarket(tx: Tx, versionId: number): Promise<IncomeCalculationDto["rentMarket"]> {
-  const market = await tx.enfoqueMercado.findFirst({
-    where: { IdVersionAvaluo: versionId, tipoComparable: { SClave: "INMUEBLE_RENTA" } },
-    select: { NValorHomologadoUtilizado: true, NSuperficieSujeto: true },
-  });
-  return { adoptedUnitRent: decimal(market?.NValorHomologadoUtilizado), subjectArea: decimal(market?.NSuperficieSujeto) };
+  const [market, rents] = await Promise.all([
+    tx.enfoqueMercado.findFirst({
+      where: { IdVersionAvaluo: versionId, tipoComparable: { SClave: "INMUEBLE_RENTA" } },
+      select: { NValorHomologadoUtilizado: true, NSuperficieSujeto: true },
+    }),
+    loadRentMarket(tx, versionId),
+  ]);
+  const homologation = toMarketEngineInput(rents);
+  return {
+    adoptedUnitRent: decimal(market?.NValorHomologadoUtilizado),
+    subjectArea: decimal(market?.NSuperficieSujeto),
+    comparables: rents.comparables.map((row) => ({ reference: row.reference, location: row.location, area: row.area, price: row.price })),
+    homologation: homologation.ok ? homologation.input : null,
+  };
 }
 
 async function loadInput(tx: Tx, versionId: number) {
@@ -35,6 +48,9 @@ async function loadInput(tx: Tx, versionId: number) {
   return {
     configured: true,
     input: {
+      method: configuration.method ?? DEFAULT_INCOME.method,
+      annuity: { ...DEFAULT_INCOME.annuity, ...configuration.annuity },
+      marketRate: { ...DEFAULT_INCOME.marketRate, ...configuration.marketRate },
       rentableUnits: configuration.rentableUnits?.length ? configuration.rentableUnits : DEFAULT_INCOME.rentableUnits,
       deductions: approach.deduccionesIngreso.map((row) => ({ concept: row.SConcepto, rate: decimal(row.NPorcentaje) })),
       ratingColumns: configuration.ratingColumns ?? DEFAULT_INCOME.ratingColumns,
@@ -48,7 +64,7 @@ export async function getIncomeCalculation(publicId: string, organizationId: num
     const avaluo = await findValuation(tx, publicId, organizationId);
     const versionId = avaluo.IdVersionTrabajo ?? avaluo.IdVersionFinal;
     if (!versionId) {
-      return { ...DEFAULT_INCOME, rentMarket: { adoptedUnitRent: null, subjectArea: null }, configured: false, locked: avaluo.BBloqueado };
+      return { ...DEFAULT_INCOME, rentMarket: EMPTY_RENT_MARKET, configured: false, locked: avaluo.BBloqueado };
     }
     const [{ input, configured }, market] = await Promise.all([loadInput(tx, versionId), rentMarket(tx, versionId)]);
     return { ...input, rentMarket: market, configured, locked: avaluo.BBloqueado };
@@ -58,7 +74,13 @@ export async function getIncomeCalculation(publicId: string, organizationId: num
 export async function saveIncomeCalculation(publicId: string, user: AuthUser, payload: IncomeInputPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
-    const configuration = { rentableUnits: payload.rentableUnits, ratingColumns: payload.ratingColumns };
+    const configuration = {
+      method: payload.method,
+      annuity: payload.annuity,
+      marketRate: payload.marketRate,
+      rentableUnits: payload.rentableUnits,
+      ratingColumns: payload.ratingColumns,
+    };
     // NTasaMercado keeps the rate the appraiser captured; NTasaAplicada, the one used.
     const approach = await tx.enfoqueIngreso.upsert({
       where: { IdVersionAvaluo: versionId },

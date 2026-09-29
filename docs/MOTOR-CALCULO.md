@@ -10,7 +10,7 @@ La metodología viene de los Excel del despacho, levantada en [fase0/](fase0/REA
 |---|---|
 | `costs.ts` | Enfoque de costos: terreno urbano (lote tipo y factores) o rural (fracciones por hectárea), construcciones, instalaciones especiales, bienes distintos a la tierra, indirectos y valor físico |
 | `market.ts` | Homologación de comparables (terrenos, inmuebles o rentas), estadísticos, potencia sugerida, valor adoptado y valor comparativo |
-| `income.ts` | Capitalización de rentas: renta homologada, renta bruta, deducciones, tasa por la tabla de calificaciones o capturada, valor |
+| `income.ts` | Capitalización de rentas en tres métodos, como los libros: **tabla** (TCH: deducciones y tasa por la tabla de 7 criterios o capturada), **anualidad** (TU: vacíos por días, deducciones, opción 1 con la tasa base mercado u opción 2 con el valor presente de la renta a TIIE − inflación + 1/VUR) y **mercado** (TR: tasa de cada comparable de renta contra su precio de venta; valor = ingreso neto del sujeto / tasa promedio) |
 | `conclusion.ts` | Resumen de valores, conclusión por un enfoque o ponderada, cifra en letras |
 | `amount-in-words.ts` | Cifra en letras corregida, con el formato de los dictámenes: `( OCHO MILLONES … PESOS 00/100 M. N.)` |
 | `factors.ts` | Factor de edad, factor de superficie y producto de factores en orden de captura |
@@ -39,6 +39,8 @@ Las pruebas `tests/valuation-engine-*.test.ts` alimentan al motor con las entrad
 | Arandas, mercado | 5 valores homologados, promedio, dispersión, subtotal y valor 1,528,000; potencia sugerida 2 |
 | TU contra TU_OFICIAL | El factor invertido cambia todos los homologados; con él, el valor adoptado queda fuera del rango |
 | TCH y Arandas, ingresos | Rentas homologadas, deducciones, tasa de la tabla 8.857 %, renta neta y valor 700,902.93 |
+| TU, ingresos | Vacíos 8.33 %, renta neta 1,437.33, opción 1 = 230,800.37 y opción 2 = 110,689.59 |
+| TR, ingresos | Tasa de mercado 0.1821 %, valor 5,090,678.68 |
 | Cifra en letras | Los 15 importes distintos que imprimen los libros; solo cambia "TRÉS" por "TRES" |
 | Conclusión | Arandas concluye con costos en 8,580,000 y su cifra en letras |
 
@@ -55,7 +57,7 @@ Cada sección de cálculo tiene su panel, arriba de sus bloques:
 | Enfoque de mercado en venta | Comparables de terrenos o de inmuebles, superficie del sujeto, lote tipo, potencia n, valor adoptado | `ComparableAvaluo`, `FactorHomologacion`, `EnfoqueMercado` |
 | Mercado de rentas | Comparables en renta y renta unitaria adoptada | Las mismas, tipo `INMUEBLE_RENTA` |
 | Enfoque de costos | Terreno (con el valor adoptado en mercado), construcciones, instalaciones especiales, indirectos | `EnfoqueCosto`, `CostoTerreno`, `ConstruccionAvaluo`, `TipoConstruccionAvaluo`, `CostoConstruccion`, `InstalacionEspecialAvaluo`, `CostoInstalacion`, `CostoIndirecto` |
-| Enfoque de ingresos | Superficie rentable, deducciones, tabla de tasa o tasa capturada | `EnfoqueIngreso`, `DeduccionIngreso` |
+| Enfoque de ingresos | Método; superficie rentable, deducciones y tabla de tasa o tasa capturada (TCH); vacíos, TIIE, inflación, vida útil remanente y opción (TU); precio de venta de cada comparable de renta, negociación y vacíos (TR) | `EnfoqueIngreso` (el método y sus datos en `JConfiguracion`), `DeduccionIngreso` (en TR, gastos de operación) |
 | Conclusión | Enfoque con el que se concluye o ponderación, justificación | `ResumenValor` |
 
 - **El navegador calcula en vivo** con el mismo motor, a cada tecla. **El servidor recalcula** al guardar y guarda los resultados en las columnas de cada tabla y el rastro en `EjecucionCalculo` y `ResultadoCalculo`, una ejecución vigente por enfoque (`MOTOR.MERCADO.<tipo>`, `MOTOR.COSTOS`, `MOTOR.INGRESOS`, `MOTOR.CONCLUSION`).
@@ -76,5 +78,6 @@ Esquema: la migración 032 agrega las calificaciones de los factores, la potenci
 
 ## Pendiente
 
-- Métodos de ingresos de TU y TR (pregunta 2) y maquinaria MEH (pregunta 3). Sus fórmulas están en `fase0/metodologia/`.
+- Maquinaria MEH (pregunta 3). Sus fórmulas están en `fase0/metodologia/`.
+- Ingresos de TU: cuál opción concluye (pregunta 2); hoy la 2, como los libros. En TR, como los libros, el ingreso de cada comparable sale de su renta homologada (03 §9.5); se revisa con el perito.
 - Indirectos: hoy la base se captura. Falta decidir si se liga al VNR de construcciones (pregunta 11).

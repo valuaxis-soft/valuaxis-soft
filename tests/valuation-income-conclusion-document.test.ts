@@ -2,18 +2,21 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { caratulaConclusionValues, conclusionValues, withConceptValues } from "../src/features/valuations/calculation/conclusion-document";
 import { incomeDocumentBlocks } from "../src/features/valuations/calculation/income-document";
-import { DEFAULT_DEDUCTIONS, toIncomeEngineInput, type IncomeCalculationDto } from "../src/features/valuations/calculation/income-types";
+import { DEFAULT_ANNUITY, DEFAULT_DEDUCTIONS, DEFAULT_MARKET_RATE, toIncomeEngineInput, type IncomeCalculationDto } from "../src/features/valuations/calculation/income-types";
 import { concludeValue } from "../src/features/valuations/engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeIncomeApproach } from "../src/features/valuations/engine/income";
 import type { AppSection } from "../src/features/valuations/model";
 
 const tch: IncomeCalculationDto = {
+  method: "tabla",
+  annuity: DEFAULT_ANNUITY,
+  marketRate: DEFAULT_MARKET_RATE,
   rentableUnits: [{ description: "Casa habitación", area: 250, unitRent: null }],
   deductions: DEFAULT_DEDUCTIONS,
   ratingColumns: [1, 3, 1, 2, 2, 0, 4],
   appliedRate: 0.0886,
-  rentMarket: { adoptedUnitRent: 30, subjectArea: 250 },
+  rentMarket: { adoptedUnitRent: 30, subjectArea: 250, comparables: [], homologation: null },
   configured: true,
   locked: false,
 };
