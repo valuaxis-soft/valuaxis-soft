@@ -55,7 +55,9 @@ Todas las cuentas son de Álvaro Gutiérrez (Valuadores de los Altos), confirmad
 
 ## Respaldos
 
-No hay respaldos de base de datos: ni volcados ni tareas programadas que los generen. Solo existen los snapshots manuales de Hostinger.
+- **Hostinger, automático:** respaldo semanal del VPS completo, guardado fuera del servidor (en hPanel: VPS → Snapshots y respaldos). Se conservan los dos más recientes, de unos 15 GB cada uno; restaurar tarda alrededor de 1 h 10 min.
+- **Hostinger, snapshot manual:** uno a la vez, vence al día siguiente. Sirve como red de seguridad antes de un mantenimiento, no como respaldo de largo plazo.
+- **Base de datos:** volcados manuales antes de cada despliegue en `/srv/backups/valuos/` (ver [OPERACION.md](OPERACION.md)). Todavía no hay una tarea programada ni una copia diaria fuera del servidor.
 
 ## Pendientes
 

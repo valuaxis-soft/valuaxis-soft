@@ -81,17 +81,54 @@ La imagen incluye Chromium (`CHROMIUM_PATH=/usr/bin/chromium`) para generar el d
 
 ## 3. Actualizaciones del sistema y reinicio
 
-Los contenedores tienen `restart: unless-stopped` y se levantan solos.
+Se hizo así el 28 de septiembre de 2026 (37 paquetes, kernel 6.8.0-136 → 142). La plataforma estuvo fuera unos 2 minutos, durante el reinicio. Hacerlo en un horario de poco uso y avisar al cliente antes.
+
+1. **Revisar**, sin cambiar nada: qué se va a actualizar (kernel, Docker), que Docker arranque con el servidor y que los contenedores tengan `unless-stopped`.
+
+   ```bash
+   apt list --upgradable 2>/dev/null | tail -n +2
+   systemctl is-enabled docker
+   docker inspect -f '{{.Name}} {{.HostConfig.RestartPolicy.Name}}' $(docker ps -q)
+   ```
+
+2. **Respaldar:** un snapshot en hPanel (VPS → Snapshots y respaldos → Nueva snapshot), que es lo único que revierte una actualización del sistema, y el volcado de la base:
+
+   ```bash
+   docker exec valuos-database-migrated pg_dump -U devpware_avaluos_user -Fc devpware_avaluos_local > /srv/backups/valuos/premantenimiento-$(date +%Y%m%d-%H%M).dump
+   ```
+
+3. **Actualizar** sin preguntas, conservando los archivos de configuración propios:
+
+   ```bash
+   export DEBIAN_FRONTEND=noninteractive
+   apt-get update
+   apt -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" upgrade
+   ```
+
+   El aviso `apparmor.postinst: Illegal number: yes` es un error conocido del script de AppArmor en Ubuntu 24.04 y no afecta nada.
+
+4. **Reiniciar** con `reboot`. Por la consola web de hPanel, volver a entrar a los 2 minutos.
+
+5. **Comprobar:**
+
+   ```bash
+   uname -r
+   ls /var/run/reboot-required 2>/dev/null || echo "sin reinicio pendiente"
+   docker ps --format '{{.Names}}\t{{.Status}}'
+   curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/
+   ```
+
+   Los 4 contenedores se levantan solos y las bases quedan `healthy`. Si alguno no arranca: `docker compose -f compose.production.yml -f compose.migrated-db.yml up -d`. Si el servidor queda mal, restaurar el snapshot.
+
+### 3.1 Limpiar imágenes viejas
+
+Cada despliegue deja una imagen de unos 2.6 GB (`devpware/valuos:previo-…`) y caché de compilación. Conservar la actual (`local`) y la del último despliegue, y borrar las demás:
 
 ```bash
-/opt/apps/valuos/scripts/backup-db.sh
-apt update && apt upgrade -y
-reboot
-# Después del reinicio
-docker ps --format '{{.Names}} {{.Status}}'
+docker images devpware/valuos --format '{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}'
+docker rmi devpware/valuos:<etiqueta-vieja>
+docker image prune -f && docker builder prune -f
 ```
-
-Hacerlo en un horario de poco uso.
 
 ## 4. Secciones duplicadas
 
