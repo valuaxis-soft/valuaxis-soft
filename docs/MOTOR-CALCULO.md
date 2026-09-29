@@ -11,6 +11,7 @@ La metodología viene de los Excel del despacho, levantada en [fase0/](fase0/REA
 | `costs.ts` | Enfoque de costos: terreno urbano (lote tipo y factores) o rural (fracciones por hectárea), construcciones, instalaciones especiales, bienes distintos a la tierra, indirectos y valor físico |
 | `market.ts` | Homologación de comparables (terrenos, inmuebles o rentas), estadísticos, potencia sugerida, valor adoptado y valor comparativo |
 | `income.ts` | Capitalización de rentas en tres métodos, como los libros: **tabla** (TCH: deducciones y tasa por la tabla de 7 criterios o capturada), **anualidad** (TU: vacíos por días, deducciones, opción 1 con la tasa base mercado u opción 2 con el valor presente de la renta a TIIE − inflación + 1/VUR) y **mercado** (TR: tasa de cada comparable de renta contra su precio de venta; valor = ingreso neto del sujeto / tasa promedio) |
+| `machinery.ts` | Maquinaria y equipo (MEH): costos del bien (cotización × tipo de cambio × (1 + gastos), edad `1 − (E/VUT)^1.4` × tabla de conservación 1–10, FCo, FMt y obsolescencias) más aditamentos con edad lineal, valor físico a miles; mercado con la mediana de las ofertas depreciadas, a decenas de miles |
 | `conclusion.ts` | Resumen de valores, conclusión por un enfoque o ponderada, cifra en letras |
 | `amount-in-words.ts` | Cifra en letras corregida, con el formato de los dictámenes: `( OCHO MILLONES … PESOS 00/100 M. N.)` |
 | `factors.ts` | Factor de edad, factor de superficie y producto de factores en orden de captura |
@@ -41,6 +42,8 @@ Las pruebas `tests/valuation-engine-*.test.ts` alimentan al motor con las entrad
 | TCH y Arandas, ingresos | Rentas homologadas, deducciones, tasa de la tabla 8.857 %, renta neta y valor 700,902.93 |
 | TU, ingresos | Vacíos 8.33 %, renta neta 1,437.33, opción 1 = 230,800.37 y opción 2 = 110,689.59 |
 | TR, ingresos | Tasa de mercado 0.1821 %, valor 5,090,678.68 |
+| MEH, costos | Bien 740,788.90, aditamentos 192,389.25, valor físico 933,000; con la conservación una sola vez, 952,000 |
+| MEH, mercado | 5 ofertas depreciadas, promedio, mediana 978,738.73 y valor 980,000 |
 | Cifra en letras | Los 15 importes distintos que imprimen los libros; solo cambia "TRÉS" por "TRES" |
 | Conclusión | Arandas concluye con costos en 8,580,000 y su cifra en letras |
 
@@ -78,6 +81,6 @@ Esquema: la migración 032 agrega las calificaciones de los factores, la potenci
 
 ## Pendiente
 
-- Maquinaria MEH (pregunta 3). Sus fórmulas están en `fase0/metodologia/`.
+- Maquinaria MEH: el motor está; falta la captura en el editor y su bloque del dictamen. La conservación se aplica dos veces como el libro hasta que el perito conteste la pregunta 3 (`conservationTwice`).
 - Ingresos de TU: cuál opción concluye (pregunta 2); hoy la 2, como los libros. En TR, como los libros, el ingreso de cada comparable sale de su renta homologada (03 §9.5); se revisa con el perito.
 - Indirectos: hoy la base se captura. Falta decidir si se liga al VNR de construcciones (pregunta 11).
