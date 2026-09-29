@@ -21,6 +21,7 @@
     "email:test": "tsx scripts/send-test-email.ts",
     "postinstall": "prisma generate",
     "test:integration": "tsx --env-file-if-exists=.env --test \"tests/integration/**/*.integration.ts\"",
+    "test:e2e": "tsx --env-file-if-exists=.env --test \"tests/e2e/**/*.e2e.ts\"",
     "env:check": "tsx --env-file-if-exists=.env scripts/check-env.ts"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 # Checks every pull request and every push to main: types, lint, unit tests,
 # migrations and integration tests on a fresh PostGIS database, unused code,
-# and the production build. See docs/CONTRIBUIR.md.
+# the production build and HTTP end-to-end tests against it. See docs/CONTRIBUIR.md.
 name: CI
 
 on:
@@ -74,3 +74,24 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # HTTP tests against the built app: the authorization matrix per role,
+      # tenant isolation and the main valuation flow (tests/e2e).
+      - name: End-to-end tests
+        env:
+          # A production server refuses a localhost APP_URL, so the app gets a
+          # public-looking one. The tests send it as the Origin of their requests.
+          APP_URL: https://valuaxis.e2e.test
+          PORT: "3000"
+          E2E_BASE_URL: http://127.0.0.1:3000
+        run: |
+          pnpm start > next-e2e.log 2>&1 &
+          server=$!
+          trap 'kill $server 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl -s -o /dev/null "$E2E_BASE_URL/api/auth/session"; then break; fi
+            if ! kill -0 $server 2>/dev/null; then cat next-e2e.log; exit 1; fi
+            sleep 1
+          done
+          curl -s -o /dev/null "$E2E_BASE_URL/api/auth/session" || { echo "The app did not start"; cat next-e2e.log; exit 1; }
+          pnpm test:e2e || { echo "--- server log ---"; cat next-e2e.log; exit 1; }

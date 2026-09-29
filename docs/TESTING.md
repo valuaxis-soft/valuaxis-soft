@@ -20,6 +20,18 @@ pnpm test:integration
 
 Leen `DATABASE_URL` de `.env` y se niegan a correr si no apunta a `localhost`. Cada prueba crea su propia organización, usuario y avalúo.
 
+## De punta a punta (HTTP)
+
+`tests/e2e/` prueba la app compilada por HTTP: sin sesión, sesiones vencidas o revocadas, CSRF, la matriz de permisos de cada ruta con los cuatro roles, que un despacho no pueda leer, escribir, exportar ni enviar avalúos de otro, y el flujo completo de un avalúo (captura, enfoques, importación, conclusión, reapertura).
+
+```bash
+pnpm build
+APP_URL=https://valuaxis.e2e.test pnpm start &   # la app rechaza un APP_URL localhost en producción
+pnpm test:e2e
+```
+
+Crean sus propios despachos y sesiones en la base local. CI corre este paso después de compilar.
+
 ## Avalúo de demostración
 
 `scripts/demo/load-demo-valuation.ts` carga un avalúo completo en la base local, a través de la API igual que el editor: crea organización, administrador con sesión y avalúo, sube las imágenes y guarda el documento. Sirve para revisar el dictamen con datos reales:

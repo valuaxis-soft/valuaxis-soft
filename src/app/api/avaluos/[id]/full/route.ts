@@ -38,7 +38,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/avalu
     }
 
     const result = await saveValuation({ id, ...meta });
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: "status" in result && result.status ? result.status : 400 });
 
     const sectionResult = sections.length
       ? await saveValuationSections({

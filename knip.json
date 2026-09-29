@@ -4,7 +4,8 @@
     "scripts/**/*.ts",
     "prisma/seed.ts",
     "tests/integration/**/*.integration.ts",
-    "tests/integration/**/*.helper.ts"
+    "tests/integration/**/*.helper.ts",
+    "tests/e2e/**/*.e2e.ts"
   ],
   "project": [
     "src/**/*.{ts,tsx}",
