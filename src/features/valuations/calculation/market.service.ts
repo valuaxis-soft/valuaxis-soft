@@ -140,6 +140,12 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
   return { typeId, settings, comparables };
 }
 
+/** The rent market of a version as the income approach needs it (no photo URLs). */
+export async function loadRentMarket(tx: Tx, versionId: number) {
+  const { settings, comparables } = await loadCalculation(tx, versionId, "INMUEBLE_RENTA", false);
+  return { settings, comparables };
+}
+
 export async function getMarketCalculation(publicId: string, organizationId: number, type: ComparableType): Promise<MarketCalculationDto> {
   return prisma.$transaction(async (tx) => {
     const avaluo = await findValuation(tx, publicId, organizationId);

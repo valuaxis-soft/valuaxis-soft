@@ -9,17 +9,35 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { api, SessionExpiredError } from "@/lib/api-client";
-import { RATE_TABLE_OPTIONS, toIncomeEngineInput, type IncomeCalculationDto, type IncomeInputDto } from "@/features/valuations/calculation/income-types";
+import {
+  DEDUCTIONS_BY_METHOD,
+  DEFAULT_DEDUCTIONS,
+  INCOME_METHOD_LABELS,
+  RATE_TABLE_OPTIONS,
+  toIncomeEngineInput,
+  type IncomeCalculationDto,
+  type IncomeDeductionDto,
+  type IncomeInputDto,
+} from "@/features/valuations/calculation/income-types";
 import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
-import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, computeIncomeApproach } from "@/features/valuations/engine/income";
+import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, computeIncomeApproach, type IncomeMethod } from "@/features/valuations/engine/income";
 import { parseDecimal } from "./comparable-dialog";
 import { useSerializedSave } from "./use-serialized-save";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 const percent = (value: number, digits = 2) => `${(value * 100).toFixed(digits)} %`;
 const text = (value: number | null) => (value === null ? "" : String(value));
+/** Fractions are edited as percentages ("7.92" for 0.0792). */
+const asPercent = (value: number | null) => (value === null ? "" : String(Number((value * 100).toFixed(6))));
+const fromPercent = (value: string) => { const parsed = parseDecimal(value); return parsed === null ? null : parsed / 100; };
+
+/** The typical deductions of each book's method. */
+const typicalDeductions = (method: IncomeMethod): IncomeDeductionDto[] => (method === "tabla" ? DEFAULT_DEDUCTIONS : DEDUCTIONS_BY_METHOD[method]);
 
 type Draft = {
+  method: IncomeMethod;
+  annuity: { vacancyDays: string; contractYears: string; otherMonthlyIncome: string; tiie: string; inflation: string; remainingLifeYears: string; option: 1 | 2 };
+  marketRate: { negotiation: string; vacancy: string; salePrices: Record<string, string> };
   units: { description: string; area: string; unitRent: string }[];
   /** Deduction rates are edited as percentages ("10" for 10 %). */
   deductions: { concept: string; rate: string }[];
@@ -28,6 +46,21 @@ type Draft = {
 };
 
 const draftOf = (input: IncomeInputDto): Draft => ({
+  method: input.method,
+  annuity: {
+    vacancyDays: text(input.annuity.vacancyDays),
+    contractYears: text(input.annuity.contractYears),
+    otherMonthlyIncome: text(input.annuity.otherMonthlyIncome),
+    tiie: asPercent(input.annuity.tiie),
+    inflation: asPercent(input.annuity.inflation),
+    remainingLifeYears: text(input.annuity.remainingLifeYears),
+    option: input.annuity.option,
+  },
+  marketRate: {
+    negotiation: asPercent(input.marketRate.negotiation),
+    vacancy: asPercent(input.marketRate.vacancy),
+    salePrices: Object.fromEntries(Object.entries(input.marketRate.salePrices).map(([key, value]) => [key, text(value)])),
+  },
   units: input.rentableUnits.map((unit) => ({ description: unit.description, area: text(unit.area), unitRent: text(unit.unitRent) })),
   deductions: input.deductions.map((deduction) => ({
     concept: deduction.concept,
@@ -38,6 +71,21 @@ const draftOf = (input: IncomeInputDto): Draft => ({
 });
 
 const inputOf = (draft: Draft): IncomeInputDto => ({
+  method: draft.method,
+  annuity: {
+    vacancyDays: parseDecimal(draft.annuity.vacancyDays),
+    contractYears: parseDecimal(draft.annuity.contractYears),
+    otherMonthlyIncome: parseDecimal(draft.annuity.otherMonthlyIncome),
+    tiie: fromPercent(draft.annuity.tiie),
+    inflation: fromPercent(draft.annuity.inflation),
+    remainingLifeYears: parseDecimal(draft.annuity.remainingLifeYears),
+    option: draft.annuity.option,
+  },
+  marketRate: {
+    negotiation: fromPercent(draft.marketRate.negotiation),
+    vacancy: fromPercent(draft.marketRate.vacancy),
+    salePrices: Object.fromEntries(Object.entries(draft.marketRate.salePrices).map(([key, value]) => [key, parseDecimal(value)])),
+  },
   rentableUnits: draft.units.map((unit) => ({ description: unit.description, area: parseDecimal(unit.area), unitRent: parseDecimal(unit.unitRent) })),
   deductions: draft.deductions
     .filter((deduction) => deduction.concept.trim())
@@ -50,6 +98,9 @@ const inputOf = (draft: Draft): IncomeInputDto => ({
 });
 
 const savedInputOf = (calculation: IncomeCalculationDto): IncomeInputDto => ({
+  method: calculation.method,
+  annuity: calculation.annuity,
+  marketRate: calculation.marketRate,
   rentableUnits: calculation.rentableUnits,
   deductions: calculation.deductions,
   ratingColumns: calculation.ratingColumns,
@@ -124,6 +175,19 @@ export function IncomeCalculationPanel(props: {
   const save = () => { if (!readOnly) void enqueueSave(input); };
   const update = (patch: Partial<Draft>) => setDraft((current) => current && { ...current, ...patch });
   const adopted = calculation.rentMarket.adoptedUnitRent;
+  const method = draft.method;
+  const setAnnuity = (key: keyof Draft["annuity"]) => (event: { target: { value: string } }) =>
+    update({ annuity: { ...draft.annuity, [key]: event.target.value } });
+  const changeMethod = (next: IncomeMethod) => {
+    // Untouched typical deductions follow the method; edited ones stay as they are.
+    const untouched = JSON.stringify(input.deductions) === JSON.stringify(typicalDeductions(method));
+    const deductions = untouched
+      ? typicalDeductions(next).map((row) => ({ concept: row.concept, rate: asPercent(row.rate) }))
+      : draft.deductions;
+    const nextDraft = { ...draft, method: next, deductions };
+    setDraft(nextDraft);
+    if (!readOnly) void enqueueSave(inputOf(nextDraft));
+  };
 
   return (
     <section className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby="income-calculation-title" onBlur={save}>
@@ -134,11 +198,20 @@ export function IncomeCalculationPanel(props: {
         {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
       </header>
       {calculation.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
-      {!adopted ? (
+      <Field className="max-w-md">
+        <FieldLabel htmlFor="income-method">Método</FieldLabel>
+        <NativeSelect id="income-method" className="w-full" disabled={readOnly} value={method} onChange={(event) => changeMethod(event.target.value as IncomeMethod)}>
+          {(Object.keys(INCOME_METHOD_LABELS) as IncomeMethod[]).map((key) => (
+            <NativeSelectOption key={key} value={key}>{INCOME_METHOD_LABELS[key]}</NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </Field>
+      {!adopted && method !== "mercado" ? (
         <p className="text-xs text-muted-foreground">La renta unitaria sale del mercado de rentas. Captúralo en su sección, o escribe la renta de cada superficie.</p>
       ) : null}
 
       <fieldset disabled={readOnly} className="grid gap-4">
+        {method !== "mercado" ? (
         <div className="grid gap-2">
           <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Superficie rentable</h4>
           {draft.units.map((unit, index) => (
@@ -178,9 +251,47 @@ export function IncomeCalculationPanel(props: {
             </Button>
           ) : null}
         </div>
+        ) : (
+        <div className="grid gap-2">
+          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Precio de venta de cada comparable de renta</h4>
+          <p className="text-xs text-muted-foreground">
+            La tasa sale de comparar la renta de cada comparable con su precio de venta. Se usa la superficie del sujeto del mercado de rentas.
+          </p>
+          {calculation.rentMarket.comparables.length ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {calculation.rentMarket.comparables.map((comparable) => (
+                <Field key={comparable.reference}>
+                  <FieldLabel htmlFor={`income-sale-${comparable.reference}`} className="text-xs">
+                    {comparable.reference}. {comparable.location}
+                  </FieldLabel>
+                  <Input
+                    id={`income-sale-${comparable.reference}`}
+                    inputMode="decimal"
+                    placeholder="Precio de venta ($)"
+                    value={draft.marketRate.salePrices[String(comparable.reference)] ?? ""}
+                    onChange={(event) => update({ marketRate: { ...draft.marketRate, salePrices: { ...draft.marketRate.salePrices, [String(comparable.reference)]: event.target.value } } })}
+                  />
+                </Field>
+              ))}
+            </div>
+          ) : <p className="text-sm text-muted-foreground">Captura primero los comparables del mercado de rentas.</p>}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="income-negotiation" className="text-xs">Negociación (%)</FieldLabel>
+              <Input id="income-negotiation" inputMode="decimal" value={draft.marketRate.negotiation} onChange={(event) => update({ marketRate: { ...draft.marketRate, negotiation: event.target.value } })} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="income-vacancy" className="text-xs">Vacíos (%)</FieldLabel>
+              <Input id="income-vacancy" inputMode="decimal" value={draft.marketRate.vacancy} onChange={(event) => update({ marketRate: { ...draft.marketRate, vacancy: event.target.value } })} />
+            </Field>
+          </div>
+        </div>
+        )}
 
         <div className="grid gap-2">
-          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Deducciones (% de la renta bruta)</h4>
+          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            {method === "mercado" ? "Gastos de operación (%)" : method === "anualidad" ? "Deducciones (%, sin vacíos)" : "Deducciones (% de la renta bruta)"}
+          </h4>
           <div className="grid gap-2 sm:grid-cols-3">
             {draft.deductions.map((deduction, index) => (
               <div key={index} className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-2">
@@ -196,6 +307,28 @@ export function IncomeCalculationPanel(props: {
           ) : null}
         </div>
 
+        {method === "anualidad" ? (
+        <div className="grid gap-2">
+          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Vacíos y capitalización</h4>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Field><FieldLabel htmlFor="income-vacancy-days" className="text-xs">Días de vacío</FieldLabel><Input id="income-vacancy-days" inputMode="decimal" value={draft.annuity.vacancyDays} onChange={setAnnuity("vacancyDays")} /></Field>
+            <Field><FieldLabel htmlFor="income-contract-years" className="text-xs">Años de contrato</FieldLabel><Input id="income-contract-years" inputMode="decimal" value={draft.annuity.contractYears} onChange={setAnnuity("contractYears")} /></Field>
+            <Field><FieldLabel htmlFor="income-other" className="text-xs">Otros ingresos ($/mes)</FieldLabel><Input id="income-other" inputMode="decimal" value={draft.annuity.otherMonthlyIncome} onChange={setAnnuity("otherMonthlyIncome")} /></Field>
+            <Field><FieldLabel htmlFor="income-tiie" className="text-xs">TIIE 28 días (%)</FieldLabel><Input id="income-tiie" inputMode="decimal" value={draft.annuity.tiie} onChange={setAnnuity("tiie")} /></Field>
+            <Field><FieldLabel htmlFor="income-inflation" className="text-xs">Inflación anual estimada (%)</FieldLabel><Input id="income-inflation" inputMode="decimal" value={draft.annuity.inflation} onChange={setAnnuity("inflation")} /></Field>
+            <Field><FieldLabel htmlFor="income-remaining-life" className="text-xs">Vida útil remanente (años)</FieldLabel><Input id="income-remaining-life" inputMode="decimal" value={draft.annuity.remainingLifeYears} onChange={setAnnuity("remainingLifeYears")} /></Field>
+          </div>
+          <Field className="max-w-md">
+            <FieldLabel htmlFor="income-option" className="text-xs">Valor que se concluye</FieldLabel>
+            <NativeSelect id="income-option" className="w-full" value={String(draft.annuity.option)} onChange={(event) => update({ annuity: { ...draft.annuity, option: Number(event.target.value) as 1 | 2 } })}>
+              <NativeSelectOption value="2">Opción 2: anualidad (la que concluyen los libros)</NativeSelectOption>
+              <NativeSelectOption value="1">Opción 1: tasa base mercado (la que se imprime)</NativeSelectOption>
+            </NativeSelect>
+          </Field>
+        </div>
+        ) : null}
+
+        {method === "tabla" ? (
         <div className="grid gap-2">
           <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Tasa de capitalización</h4>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -228,6 +361,7 @@ export function IncomeCalculationPanel(props: {
             />
           </Field>
         </div>
+        ) : null}
       </fieldset>
 
       {result ? (
@@ -239,6 +373,18 @@ export function IncomeCalculationPanel(props: {
             <dt className="text-xs text-muted-foreground">Tasa aplicada</dt>
             <dd className="tabular-nums">{percent(result.appliedRate, 4)}{result.tableRate !== null && result.appliedRate !== result.tableRate ? ` (tabla ${percent(result.tableRate, 4)})` : ""}</dd>
           </div>
+          {result.annuity ? (
+            <div className="sm:col-span-4 grid gap-1 sm:grid-cols-2">
+              <div><dt className="text-xs text-muted-foreground">Opción 1 · tasa {percent(result.annuity.option1.rate, 4)}</dt><dd className="tabular-nums">{money(result.annuity.option1.value)}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Opción 2 · tasa {percent(result.annuity.option2.rate, 4)}, {result.annuity.option2.months} meses</dt><dd className="tabular-nums">{money(result.annuity.option2.value)}</dd></div>
+            </div>
+          ) : null}
+          {result.marketRate ? (
+            <div className="sm:col-span-4">
+              <dt className="text-xs text-muted-foreground">Tasa de cada comparable</dt>
+              <dd className="tabular-nums">{result.marketRate.comparables.map((row) => `${row.id}: ${percent(row.rate, 4)}`).join(" · ")}</dd>
+            </div>
+          ) : null}
           <div className="sm:col-span-4">
             <dt className="text-xs text-muted-foreground">Valor por capitalización de rentas</dt>
             <dd className="text-base font-semibold tabular-nums">{money(result.value)}</dd>
