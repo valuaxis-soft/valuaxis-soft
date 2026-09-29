@@ -26,6 +26,8 @@ type OrganizationScope = {
 };
 
 const scopeChangedKey = "valuo:organization-scope-changed";
+/** Fired on window when the active organization's name or type changes (e.g. a space becomes a team). */
+export const ORGANIZATIONS_CHANGED_EVENT = "valuaxis:organizations-changed";
 
 export function OrganizationScopeSelector({ activeOrganizationName }: { activeOrganizationName: string }) {
   const [organizations, setOrganizations] = useState<OrganizationScope[]>([]);
@@ -59,7 +61,12 @@ export function OrganizationScopeSelector({ activeOrganizationName }: { activeOr
     }
 
     void loadOrganizations();
-    return () => controller.abort();
+    const reload = () => void loadOrganizations();
+    window.addEventListener(ORGANIZATIONS_CHANGED_EVENT, reload);
+    return () => {
+      controller.abort();
+      window.removeEventListener(ORGANIZATIONS_CHANGED_EVENT, reload);
+    };
   }, []);
 
   const activeOrganization = organizations.find((organization) => organization.BEsAmbitoActivo);

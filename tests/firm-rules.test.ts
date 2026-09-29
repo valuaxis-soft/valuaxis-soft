@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { addMonthsToIsoDate, formatValuationFolio, normalizeFolioPrefix, todayInMexico } from "../src/features/firm/firm-rules";
 import { firmSettingsSchema } from "../src/features/firm/firm-schemas";
+import { caratulaSection } from "../src/features/valuations/sections/caratula";
+import { hydrateGeneralCaratulaTemplate } from "../src/features/valuations/services/general-valuation-template";
 
 test("the validity adds calendar months and clamps to the month's last day", () => {
   assert.equal(addMonthsToIsoDate("2026-09-28", 6), "2027-03-28");
@@ -47,4 +49,12 @@ test("invalid RFC, email, validity or prefix are rejected", () => {
   assert.equal(firmSettingsSchema.safeParse({ ...valid, validityMonths: 0 }).success, false);
   assert.equal(firmSettingsSchema.safeParse({ ...valid, validityMonths: 25 }).success, false);
   assert.equal(firmSettingsSchema.safeParse({ ...valid, folioPrefix: "--" }).success, false);
+});
+
+test("a new valuation shows its date and validity in the carátula's DATOS DEL AVALÚO too", () => {
+  const hydrated = hydrateGeneralCaratulaTemplate(structuredClone(caratulaSection), { valuationDate: "2026-09-28", validUntil: "2027-03-28" });
+  const block = hydrated.blocks.find((item) => item.id === "caratula-block-4-datos-del-avaluo");
+  const values = Object.fromEntries(block!.concepts.map((concept) => [concept.label, concept.value]));
+  assert.match(String(values["Fecha de avaluo"]), /28 de septiembre de 2026/i);
+  assert.match(String(values["Vigencia de avaluo"]), /28 de marzo de 2027/i);
 });

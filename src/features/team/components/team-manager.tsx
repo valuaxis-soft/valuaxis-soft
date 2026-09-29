@@ -21,6 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { ORGANIZATIONS_CHANGED_EVENT } from "@/features/dashboard/components/organization-scope-selector";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import type { TeamRole } from "../team-rules";
 import type { SentInvitationDto, TeamDto, TeamMemberDto } from "../team.service";
@@ -102,6 +103,7 @@ export function TeamManager() {
       await api.team.save(name.trim());
       // The header and the page title show the organization's name and type.
       router.refresh();
+      window.dispatchEvent(new Event(ORGANIZATIONS_CHANGED_EVENT));
       toast.success(team.organization.isTeam ? "Nombre guardado." : "Tu espacio ahora es un equipo. Ya puedes invitar.");
     }, "No se pudo guardar el equipo.");
   };

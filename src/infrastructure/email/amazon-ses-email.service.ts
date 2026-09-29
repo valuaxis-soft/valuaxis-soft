@@ -95,10 +95,14 @@ export class AmazonSesEmailService implements EmailService {
     });
   }
 
-  /** Raw MIME: SES only attaches files that way. The firm's name shows as the sender. */
+  /**
+   * Raw MIME: SES only attaches files that way. The sender reads "<firm> vía
+   * Valuaxis": the firm is visible, and nobody can pose as someone else just
+   * by naming their space that way.
+   */
   async sendDictamenEmail(input: DictamenEmailInput) {
     const message = buildMimeMessage({
-      from: { name: input.firm.name, email: this.config.fromEmail },
+      from: { name: `${input.firm.name} vía Valuaxis`, email: this.config.fromEmail },
       to: input.to,
       replyTo: input.replyTo,
       subject: input.subject,

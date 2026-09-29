@@ -214,7 +214,7 @@ export function FirmSettingsForm() {
             <FieldLabel htmlFor="firm-prefix">Prefijo del folio</FieldLabel>
             <Input id="firm-prefix" value={form.folioPrefix} maxLength={10} className="uppercase" onChange={set("folioPrefix")} />
             <FieldDescription>
-              El siguiente avalúo tendrá un folio como {formatValuationFolio(prefixPreview, 1)}. Un prefijo nuevo empieza su propio consecutivo.
+              Los folios se verán como {formatValuationFolio(prefixPreview, 1)}. Un prefijo nuevo empieza en 0001; uno que ya usaste sigue su consecutivo.
             </FieldDescription>
           </Field>
         </CardContent>

@@ -19,7 +19,8 @@ const emailLimiter = createRateLimiter({ limit: 20, windowMs: 60 * 60 * 1000 });
 /** Generates the dictamen PDF and emails it to the client. */
 export async function POST(request: Request, { params }: RouteContext<"/api/avaluos/[id]/dictamen/correo">) {
   try {
-    const auth = await requireApiUser(AUTH_PERMISSIONS.exportValuations);
+    // Sending to third parties is sharing, not just exporting: CONSULTA and REVISOR cannot.
+    const auth = await requireApiUser(AUTH_PERMISSIONS.shareValuations);
     if (!auth.ok) return auth.response;
     const body = await readJsonBody(request, dictamenEmailSchema);
     if (!body.ok) return body.response;

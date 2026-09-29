@@ -48,6 +48,16 @@ test("the MIME message carries both bodies and the PDF, with encoded headers", (
   assert.ok(raw.split("\r\n").every((line) => line.length <= 998), "no line over the RFC limit");
 });
 
+test("long subjects with accents are split into encoded words of at most 75 characters", () => {
+  const subject = "Dictamen de avalúo TCH-004-05-2026 · Valuadores de los Altos S.A. de C.V. · Guadalajara, Jalisco, México";
+  const encoded = encodeHeaderText(subject);
+  const words = encoded.split("\r\n ");
+  assert.ok(words.length > 1);
+  assert.ok(words.every((word) => word.length <= 75 && /^=\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=$/.test(word)));
+  const decoded = words.map((word) => Buffer.from(word.slice(10, -2), "base64").toString("utf8")).join("");
+  assert.equal(decoded, subject);
+});
+
 test("header injection is not possible through names or subjects", () => {
   assert.equal(formatMailbox('Despacho"\r\nBcc: x@y', "a@b.mx"), '"DespachoBcc: x@y" <a@b.mx>');
   assert.equal(encodeHeaderText("Hola\r\nBcc: x@y"), "Hola Bcc: x@y");
@@ -73,7 +83,8 @@ test("Amazon SES sends the dictamen as a raw message in the firm's name", async 
   assert.deepEqual(input.Destination?.ToAddresses, ["cliente@example.test"]);
   assert.deepEqual(input.ReplyToAddresses, ["contacto@despacho.mx"]);
   const raw = Buffer.from(input.Content?.Raw?.Data ?? new Uint8Array()).toString("utf8");
-  assert.match(raw, /^From: "Valuadores de los Altos" <no-reply@example\.test>/m);
+  assert.match(raw, /^From: =\?UTF-8\?B\?/m, "the sender name has an accent (vía), so it is encoded");
+  assert.match(Buffer.from(/^From: =\?UTF-8\?B\?([^?]+)\?=/m.exec(raw)![1], "base64").toString("utf8"), /^Valuadores de los Altos vía Valuaxis$/);
   assert.match(raw, /filename="Dictamen-VDA-0001\.pdf"/);
 });
 

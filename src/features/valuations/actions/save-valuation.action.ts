@@ -198,6 +198,8 @@ export async function saveValuation(input: SaveValuationInput) {
           clientName: input.clientName ?? input.client,
           operationName: tipoOperacion.SNombre,
           responsibleName,
+          valuationDate: defaults.valuationDate,
+          validUntil: defaults.validUntil,
         },
       });
       await saveCaratula({
@@ -211,7 +213,8 @@ export async function saveValuation(input: SaveValuationInput) {
           objeto: null,
           proposito: tipoOperacion.SNombre,
           valuador: responsibleName,
-          registroValuador: defaults.appraiserRegistration,
+          // The firm's registration belongs to the firm's appraiser, not to whoever signs instead.
+          registroValuador: defaults.appraiserName ? defaults.appraiserRegistration : null,
           fechaAvaluo: defaults.valuationDate,
           fechaVigencia: defaults.validUntil,
         },

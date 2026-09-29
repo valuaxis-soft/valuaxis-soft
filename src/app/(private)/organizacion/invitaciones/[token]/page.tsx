@@ -50,8 +50,8 @@ export default async function InvitationPage({ params }: PageProps<"/organizacio
             <CardHeader>
               <CardTitle>Te invitaron a {invitation.organizationName}</CardTitle>
               <CardDescription>
-                {invitation.invitedBy} te invitó con el rol de {invitation.roleLabel}. Al aceptar verás los avalúos del equipo;
-                tu espacio personal se conserva y puedes cambiar entre los dos desde el encabezado.
+                {invitation.invitedBy} te invitó con el rol de {invitation.roleLabel}. Al aceptar verás los avalúos del equipo.
+                Tus otros espacios se conservan y puedes cambiar entre ellos desde el encabezado.
               </CardDescription>
             </CardHeader>
             <CardContent>

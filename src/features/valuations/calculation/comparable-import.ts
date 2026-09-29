@@ -90,12 +90,13 @@ export type ComparableImportPreview = {
 
 export type ImportResult = { rows: ImportRowResult[]; missingColumns: string[]; tooManyRows: boolean };
 
-function cellText(value: CellValue): string {
+/** The cell's visible text; with `preferLink`, a hyperlink's address instead (only for the ad link column). */
+function cellText(value: CellValue, preferLink = false): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   if (typeof value === "object") {
     if (value.richText) return value.richText.map((part) => part.text).join("");
-    if (value.hyperlink && (!value.text || /^https?:/i.test(value.hyperlink))) return value.hyperlink;
+    if (value.hyperlink && (preferLink || !value.text)) return value.hyperlink;
     if (value.text !== undefined) return value.text;
     if (value.result !== undefined) return cellText(value.result as CellValue);
     return "";
@@ -108,9 +109,33 @@ function cellNumber(value: CellValue): { value: number | null; error?: string } 
   if (typeof value === "number") return Number.isFinite(value) ? { value } : { value: null, error: "no es un número" };
   const text = cellText(value).trim();
   if (!text) return { value: null };
-  const clean = text.replace(/[$\s]|m2|m²|mxn/gi, "").replace(/,/g, "");
-  const parsed = Number(clean);
-  return Number.isFinite(parsed) && clean !== "" ? { value: parsed } : { value: null, error: `"${text}" no es un número` };
+  const clean = normalizeNumberText(text.replace(/[$\s]|m2|m²|mxn/gi, ""));
+  const parsed = clean === null ? Number.NaN : Number(clean);
+  return Number.isFinite(parsed) ? { value: parsed } : { value: null, error: `"${text}" no es un número` };
+}
+
+/**
+ * "1,528,000.50", "1.528.000,50", "120,5" and "1528000" to a plain number:
+ * with both separators the last one is the decimal point; with only one, it
+ * is a thousands separator when every group after it has three digits and
+ * there is more than one group or the first group is short ("1,528" but not "0,528").
+ */
+export function normalizeNumberText(text: string): string | null {
+  if (!/^-?[\d.,]+$/.test(text)) return null;
+  const lastComma = text.lastIndexOf(",");
+  const lastDot = text.lastIndexOf(".");
+  if (lastComma >= 0 && lastDot >= 0) {
+    const decimal = lastComma > lastDot ? "," : ".";
+    const thousands = decimal === "," ? "." : ",";
+    return text.split(thousands).join("").replace(decimal, ".");
+  }
+  const separator = lastComma >= 0 ? "," : lastDot >= 0 ? "." : null;
+  if (!separator) return text;
+  const [head, ...groups] = text.split(separator);
+  const thousands = groups.every((group) => group.length === 3) && head.replace("-", "").length >= 1 && head.replace("-", "") !== "0"
+    && (groups.length > 1 || head.replace("-", "").length <= 3);
+  if (thousands) return head + groups.join("");
+  return groups.length === 1 ? `${head}.${groups[0]}` : null;
 }
 
 const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
@@ -183,7 +208,7 @@ export function parseComparableRows(sheet: CellValue[][], type: ComparableType):
         if (parsed.error) errors.push(`${column.header}: ${parsed.error}.`);
         values[column.key] = parsed.value;
       } else {
-        values[column.key] = cellText(cell).trim() || (column.key === "location" ? "" : null);
+        values[column.key] = cellText(cell, column.kind === "url").trim() || (column.key === "location" ? "" : null);
       }
     }
     const summary = {

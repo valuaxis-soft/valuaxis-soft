@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import ExcelJS from "exceljs";
-import { MAX_IMPORT_ROWS, parseComparableRows, type CellValue } from "../src/features/valuations/calculation/comparable-import";
-import { buildComparableTemplate, parseCsv, readSpreadsheet } from "../src/features/valuations/calculation/comparable-workbook";
+import { MAX_IMPORT_ROWS, normalizeNumberText, parseComparableRows, type CellValue } from "../src/features/valuations/calculation/comparable-import";
+import { assertSafeZip, buildComparableTemplate, parseCsv, readSpreadsheet } from "../src/features/valuations/calculation/comparable-workbook";
 
 test("headers match without accents or case, in any order, and numbers accept currency formats", () => {
   const sheet: CellValue[][] = [
@@ -79,4 +79,42 @@ test("the downloaded template reads back, and a filled one imports", async () =>
 test("other files are refused with a clear message", async () => {
   await assert.rejects(readSpreadsheet(Buffer.from("hola"), "datos.pdf"), /\.xlsx o \.csv/);
   await assert.rejects(readSpreadsheet(Buffer.from("no es zip"), "datos.xlsx"), /no es un Excel válido/);
+});
+
+test("numbers are read with either decimal separator, as Mexican and Spanish spreadsheets write them", () => {
+  const cases: Array<[string, string | null]> = [
+    ["1,528,000.50", "1528000.50"], ["1.528.000,50", "1528000.50"], ["120,5", "120.5"], ["1528000,00", "1528000.00"],
+    ["1,528", "1528"], ["1.528.000", "1528000"], ["0,528", "0.528"], ["12.5", "12.5"], ["2,500", "2500"], ["abc", null], ["1,2,3", null],
+  ];
+  for (const [input, expected] of cases) assert.equal(normalizeNumberText(input), expected, input);
+  const rows = parseComparableRows([["Ubicación", "Superficie del terreno (m²)", "Precio de oferta ($)"], ["Calle 1", "120,5", "1528000,00"]], "TERRENO_VENTA");
+  assert.equal(rows.rows[0].payload?.area, 120.5);
+  assert.equal(rows.rows[0].payload?.price, 1528000);
+});
+
+test("a CSV saved by Excel in Spanish (Windows-1252) keeps its accents", async () => {
+  const latin1 = Buffer.from("Ubicaci\xf3n;Precio de oferta ($)\r\nCalle Ju\xe1rez 3;900000\r\n", "latin1");
+  const result = parseComparableRows(await readSpreadsheet(latin1, "comparables.csv"), "TERRENO_VENTA");
+  assert.deepEqual(result.missingColumns, []);
+  assert.equal(result.rows[0].payload?.location, "Calle Juárez 3");
+});
+
+test("a location linked to a map keeps its text; only the ad column takes the link", () => {
+  const result = parseComparableRows([
+    ["Ubicación", "Liga del anuncio"],
+    [{ text: "Av. Juárez 12", hyperlink: "https://maps.google.com/x" }, { text: "Ver anuncio", hyperlink: "https://portal.mx/1" }],
+  ], "TERRENO_VENTA");
+  assert.equal(result.rows[0].payload?.location, "Av. Juárez 12");
+  assert.equal(result.rows[0].payload?.url, "https://portal.mx/1");
+});
+
+test("a small file that would inflate to hundreds of megabytes is refused before parsing", async () => {
+  const template = await buildComparableTemplate("TERRENO_VENTA");
+  assert.doesNotThrow(() => assertSafeZip(template));
+  // Claim a huge uncompressed size in the first central directory entry.
+  const bomb = Buffer.from(template);
+  const entry = bomb.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+  bomb.writeUInt32LE(300 * 1024 * 1024, entry + 24);
+  assert.throws(() => assertSafeZip(bomb), /demasiado grande/);
+  await assert.rejects(readSpreadsheet(bomb, "bomba.xlsx"), /demasiado grande/);
 });

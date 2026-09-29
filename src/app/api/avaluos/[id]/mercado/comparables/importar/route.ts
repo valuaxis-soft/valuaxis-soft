@@ -6,6 +6,7 @@ import { readSpreadsheet, SpreadsheetError } from "@/features/valuations/calcula
 import { comparableTypeSchema } from "@/features/valuations/calculation/market-schemas";
 import { getMarketCalculation, importComparables } from "@/features/valuations/calculation/market.service";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
+import { prisma } from "@/infrastructure/database/prisma-client";
 import { requireApiUser } from "@/security/guards/api-guard";
 import { uploadRateLimitResponse } from "@/security/rate-limit/upload-limit";
 
@@ -24,6 +25,14 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     const search = new URL(request.url).searchParams;
     const type = comparableTypeSchema.safeParse(search.get("tipo"));
     if (!type.success) return badRequest("Tipo de comparable inválido");
+    const { id } = await params;
+    // The valuation must be this organization's and still editable before any file is read.
+    const valuation = await prisma.avaluo.findFirst({
+      where: { UIdentificadorPublico: id, IdOrganizacion: auth.user.organizationId, BActivo: true, DFechaEliminacion: null },
+      select: { BBloqueado: true },
+    });
+    if (!valuation) return NextResponse.json({ error: "Avalúo no encontrado" }, { status: 404 });
+    if (valuation.BBloqueado) return NextResponse.json({ error: "El avalúo está concluido; reábrelo para editarlo." }, { status: 409 });
     const file = (await request.formData()).get("file");
     if (!(file instanceof File)) return badRequest("No se envió ningún archivo.");
 
@@ -42,7 +51,6 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
 
     const payloads = parsed.rows.flatMap((row) => (row.payload ? [row.payload] : []));
     if (!payloads.length) return badRequest("No hay comparables válidos para importar.");
-    const { id } = await params;
     await importComparables(id, auth.user, type.data, payloads);
     await recordAuditEvent({
       typeKey: "CREACION",

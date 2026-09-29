@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 import type { AuthUser } from "@/features/auth/model";
 import { recordAuditEvent } from "@/features/auth/repositories/audit.repository";
 import { updateSessionOrganization } from "@/features/auth/repositories/session.repository";
+import { resolveDefaultOrganization } from "@/features/auth/services/organization-access.service";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { getEmailService } from "@/infrastructure/email/email.service";
 import { buildPublicAppUrl } from "@/lib/public-url";
@@ -176,6 +177,7 @@ async function createInvitation(
 
   const row = await prisma.$transaction(async (tx) => {
     // One pending invitation per email: a new one replaces the previous.
+    // Two at the very same time still collide on the unique index (handled below).
     await tx.invitacionOrganizacion.updateMany({
       where: { IdOrganizacion: organization.IdOrganizacion, SCorreo: email, DFechaAceptacion: null, DFechaRevocacion: null },
       data: { DFechaRevocacion: now },
@@ -192,6 +194,11 @@ async function createInvitation(
       },
       include: invitationInclude,
     });
+  }).catch((error: unknown) => {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new TeamError("Ya hay una invitación pendiente para ese correo. Intenta de nuevo en un momento.", 409);
+    }
+    throw error;
   });
 
   const url = inviteUrl(token);
@@ -301,6 +308,9 @@ export async function changeMemberRole(user: AuthUser, memberId: number, role: T
     where: { IdMiembroOrganizacion: member.IdMiembroOrganizacion },
     data: { IdRol: await roleId(role) },
   });
+  if (member.rol.SClave === "ADMINISTRADOR" && role !== "ADMINISTRADOR") {
+    await revokeInvitationsFrom(member.IdOrganizacion, member.IdUsuario);
+  }
   await recordAuditEvent({
     typeKey: "MODIFICACION",
     organizationId: user.organizationId,
@@ -320,6 +330,15 @@ export async function removeMember(user: AuthUser, memberId: number) {
     where: { IdMiembroOrganizacion: member.IdMiembroOrganizacion },
     data: { BActivo: false },
   });
+  await revokeInvitationsFrom(member.IdOrganizacion, member.IdUsuario);
+  // Their open sessions move to another space of theirs instead of logging them out.
+  const fallback = await resolveDefaultOrganization(member.IdUsuario);
+  const openSessions = { IdUsuario: member.IdUsuario, IdOrganizacion: member.IdOrganizacion, BRevocada: false };
+  if (fallback) {
+    await prisma.sesion.updateMany({ where: openSessions, data: { IdOrganizacion: fallback.organizationId } });
+  } else {
+    await prisma.sesion.updateMany({ where: openSessions, data: { BRevocada: true, DFechaRevocacion: new Date() } });
+  }
   await recordAuditEvent({
     typeKey: "ELIMINACION_LOGICA",
     organizationId: user.organizationId,
@@ -328,6 +347,14 @@ export async function removeMember(user: AuthUser, memberId: number) {
     entityId: String(member.IdMiembroOrganizacion),
     action: "TEAM_MEMBER_REMOVE",
     result: "EXITOSO",
+  });
+}
+
+/** An administrator's pending invitations lapse when they are removed or stop being one. */
+async function revokeInvitationsFrom(organizationId: number, userId: number) {
+  await prisma.invitacionOrganizacion.updateMany({
+    where: { IdOrganizacion: organizationId, IdUsuarioInvitador: userId, DFechaAceptacion: null, DFechaRevocacion: null },
+    data: { DFechaRevocacion: new Date() },
   });
 }
 
@@ -395,6 +422,19 @@ export async function acceptInvitation(
   if (state === "cancelada") throw new TeamError("La invitación fue cancelada.", 410);
 
   if (state === "pendiente") {
+    // An invitation carries the inviter's authority: it lapses if they no longer administer the team.
+    const inviterStillAdmin = await prisma.miembroOrganizacion.findFirst({
+      where: {
+        IdOrganizacion: row.IdOrganizacion,
+        IdUsuario: row.IdUsuarioInvitador,
+        BActivo: true,
+        usuario: { BActivo: true },
+        rol: { permisos: { some: { permiso: { SClave: "USUARIO_ADMINISTRAR", BActivo: true } } } },
+      },
+    });
+    if (!inviterStillAdmin) {
+      throw new TeamError("Quien te invitó ya no administra el equipo. Pide una invitación nueva.", 410);
+    }
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.invitacionOrganizacion.updateMany({
         where: { IdInvitacionOrganizacion: row.IdInvitacionOrganizacion, DFechaAceptacion: null, DFechaRevocacion: null },

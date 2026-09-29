@@ -39,21 +39,26 @@ async function findLogo(organization: { IdOrganizacion: number; UIdentificadorPu
       BPrincipal: true,
       archivo: { IdOrganizacion: organization.IdOrganizacion, BActivo: true, DFechaEliminacion: null },
     },
-    include: { archivo: { select: { IdArchivo: true, SClaveObjeto: true } } },
+    include: { archivo: { select: { IdArchivo: true, UIdentificadorPublico: true, SClaveObjeto: true } } },
     orderBy: { DFechaCreacion: "desc" },
   });
   return relation?.archivo ?? null;
 }
 
+/**
+ * A stable address for the logo: the page, the preview window and the PDF can
+ * use it for as long as they are open. It redirects to a freshly signed URL;
+ * a signed URL in the page itself would expire after 15 minutes.
+ */
 async function logoUrl(organization: { IdOrganizacion: number; UIdentificadorPublico: string }) {
   const logo = await findLogo(organization);
-  if (!logo) return null;
-  try {
-    return await storageProvider.getPrivateDownloadUrl(logo.SClaveObjeto);
-  } catch (error) {
-    console.error("[FIRM_LOGO_URL]", error);
-    return null;
-  }
+  return logo ? `/api/organizacion/despacho/logo?v=${logo.UIdentificadorPublico}` : null;
+}
+
+/** A freshly signed URL of the organization's logo, or null when it has none. */
+export async function signedLogoUrl(organizationId: number) {
+  const logo = await findLogo(await findOrganization(organizationId));
+  return logo ? storageProvider.getPrivateDownloadUrl(logo.SClaveObjeto) : null;
 }
 
 export async function getFirmSettings(organizationId: number): Promise<FirmSettingsDto> {
