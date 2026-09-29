@@ -1,12 +1,25 @@
 import { NextResponse } from "next/server";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { UploadError } from "@/features/files/services/upload";
-import { deleteFirmLogo, replaceFirmLogo } from "@/features/firm/firm.service";
+import { deleteFirmLogo, replaceFirmLogo, signedLogoUrl } from "@/features/firm/firm.service";
 import { internalError } from "@/lib/api-response";
 import { requireApiUser } from "@/security/guards/api-guard";
 import { uploadRateLimitResponse } from "@/security/rate-limit/upload-limit";
 
-/** Replaces the firm's logo; returns its temporary URL. */
+/** The firm's logo for any member: a redirect to a freshly signed URL. */
+export async function GET(request: Request) {
+  try {
+    const auth = await requireApiUser();
+    if (!auth.ok) return auth.response;
+    const url = await signedLogoUrl(auth.user.organizationId);
+    if (!url) return NextResponse.json({ error: "Sin logotipo." }, { status: 404 });
+    return NextResponse.redirect(new URL(url, request.url), { status: 302, headers: { "Cache-Control": "private, max-age=60" } });
+  } catch (error) {
+    return internalError("FIRM_LOGO_GET", error, "No se pudo cargar el logotipo.");
+  }
+}
+
+/** Replaces the firm's logo; returns its address. */
 export async function POST(request: Request) {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.manageUsers);

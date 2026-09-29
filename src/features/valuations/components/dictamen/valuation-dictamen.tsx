@@ -29,10 +29,12 @@ import type { Letterhead } from "@/features/valuations/model";
  * print dialog) gives one Letter page per document page.
  */
 export function ValuationDictamen({
+  canShare,
   letterhead,
   initialValuation,
   valuationId,
 }: {
+  canShare: boolean;
   letterhead: Letterhead;
   initialValuation: ValuationDetail;
   valuationId: string;
@@ -76,7 +78,7 @@ export function ValuationDictamen({
             <Printer data-icon="inline-start" />
             Imprimir
           </Button>
-          <SendDictamenEmailDialog valuationId={valuationId} folio={initial.meta.folio} firmName={letterhead.name} />
+          {canShare ? <SendDictamenEmailDialog valuationId={valuationId} folio={initial.meta.folio} firmName={letterhead.name} /> : null}
           <DownloadDictamenPdfButton valuationId={valuationId} />
         </div>
       </header>

@@ -19,10 +19,28 @@ export type MimeMessageInput = {
 
 const CRLF = "\r\n";
 
-/** Header text: plain ASCII as is, anything else as an RFC 2047 encoded word. */
+/** UTF-8 bytes per encoded word: 45 bytes are 60 base64 characters, 72 with "=?UTF-8?B?…?=" (RFC 2047 allows 75). */
+const ENCODED_WORD_BYTES = 45;
+
+/**
+ * Header text: plain ASCII as is; anything else as RFC 2047 encoded words of
+ * at most 75 characters each, split between characters and folded onto
+ * continuation lines.
+ */
 export function encodeHeaderText(value: string) {
   const clean = value.replace(/[\r\n]+/g, " ").trim();
-  return /^[\x20-\x7e]*$/.test(clean) ? clean : `=?UTF-8?B?${Buffer.from(clean, "utf8").toString("base64")}?=`;
+  if (/^[\x20-\x7e]*$/.test(clean)) return clean;
+  const words: string[] = [];
+  let chunk = "";
+  for (const char of clean) {
+    if (Buffer.byteLength(chunk + char, "utf8") > ENCODED_WORD_BYTES) {
+      words.push(chunk);
+      chunk = "";
+    }
+    chunk += char;
+  }
+  if (chunk) words.push(chunk);
+  return words.map((word) => `=?UTF-8?B?${Buffer.from(word, "utf8").toString("base64")}?=`).join(`${CRLF} `);
 }
 
 export function formatMailbox(name: string, email: string) {

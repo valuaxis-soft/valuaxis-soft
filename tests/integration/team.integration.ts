@@ -197,3 +197,34 @@ test("expired invitations cannot be accepted", async () => {
   assert.equal((await listMyInvitations(late.user)).length, 0);
   assert.equal((await getTeam(admin)).invitations.find((row) => row.id === sent.id)?.expired, true);
 });
+
+test("an invitation lapses when its inviter stops administering the team", async () => {
+  const helper = await createPerson("Coadmin");
+  const invited = await createPerson("Invitado");
+  const sent = await inviteMember(admin, { email: helper.user.email, role: "ADMINISTRADOR" });
+  await acceptInvitation(helper.user, helper.sessionId, { token: tokenOf(sent.inviteUrl) });
+  const helperAdmin: AuthUser = { ...helper.user, organizationId: teamId };
+
+  const pending = await inviteMember(helperAdmin, { email: invited.user.email, role: "ADMINISTRADOR" });
+  const member = (await getTeam(admin)).members.find((row) => row.email === helper.user.email)!;
+  await removeMember(admin, member.id);
+
+  // Their pending invitation was cancelled, and their session moved to their own space.
+  await rejects(acceptInvitation(invited.user, invited.sessionId, { token: tokenOf(pending.inviteUrl) }), 410);
+  assert.notEqual(await sessionOrganization(helper.sessionId), teamId);
+  assert.equal((await prisma.sesion.findUniqueOrThrow({ where: { IdSesion: helper.sessionId } })).BRevocada, false);
+});
+
+test("two invitations to the same email at once never fail with a server error", async () => {
+  const twin = await createPerson("Gemelo");
+  const results = await Promise.allSettled([
+    inviteMember(admin, { email: twin.user.email, role: "VALUADOR" }),
+    inviteMember(admin, { email: twin.user.email, role: "VALUADOR" }),
+  ]);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      assert.ok(result.reason instanceof TeamError && result.reason.status === 409, String(result.reason));
+    }
+  }
+  assert.equal((await getTeam(admin)).invitations.filter((row) => row.email === twin.user.email).length, 1);
+});

@@ -12,6 +12,38 @@ const SHEET_NAME = "Comparables";
 
 export class SpreadsheetError extends Error {}
 
+/** A 100-row sheet uncompresses to well under 1 MB; these limits only stop zip bombs. */
+const ZIP_LIMITS = { maxEntries: 500, maxEntryBytes: 8 * 1024 * 1024, maxTotalBytes: 16 * 1024 * 1024 };
+
+/**
+ * Reads the zip's central directory, without inflating anything, and rejects
+ * a package that would expand beyond the limits (an .xlsx is a zip). A small
+ * file that inflates to gigabytes would otherwise block the server while
+ * ExcelJS parses it.
+ */
+export function assertSafeZip(buffer: Buffer, limits = ZIP_LIMITS) {
+  const tooBig = () => new SpreadsheetError("El archivo es demasiado grande por dentro. Usa la plantilla de Valuaxis.");
+  const invalid = () => new SpreadsheetError("El archivo no es un Excel válido. Guárdalo como .xlsx e intenta de nuevo.");
+  // End of central directory: signature, then up to a 64 KB comment.
+  let end = -1;
+  for (let index = buffer.length - 22; index >= Math.max(0, buffer.length - 22 - 0xffff); index -= 1) {
+    if (buffer.readUInt32LE(index) === 0x06054b50) { end = index; break; }
+  }
+  if (end < 0) throw invalid();
+  const entries = buffer.readUInt16LE(end + 10);
+  let offset = buffer.readUInt32LE(end + 16);
+  if (entries > limits.maxEntries || entries === 0xffff || offset === 0xffffffff) throw tooBig();
+  let total = 0;
+  for (let entry = 0; entry < entries; entry += 1) {
+    if (offset + 46 > buffer.length || buffer.readUInt32LE(offset) !== 0x02014b50) throw invalid();
+    const uncompressed = buffer.readUInt32LE(offset + 24);
+    if (uncompressed === 0xffffffff || uncompressed > limits.maxEntryBytes) throw tooBig();
+    total += uncompressed;
+    if (total > limits.maxTotalBytes) throw tooBig();
+    offset += 46 + buffer.readUInt16LE(offset + 28) + buffer.readUInt16LE(offset + 30) + buffer.readUInt16LE(offset + 32);
+  }
+}
+
 /** RFC 4180 CSV with comma or semicolon (Excel in Spanish saves with ";"). */
 export function parseCsv(text: string): string[][] {
   const clean = text.replace(/^﻿/, "");
@@ -38,12 +70,23 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
+/** UTF-8 when it is valid; otherwise Windows-1252, which Excel in Spanish uses for "CSV (delimitado por comas)". */
+function decodeText(buffer: Buffer) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    return new TextDecoder("windows-1252").decode(buffer);
+  }
+}
+
 /** The uploaded sheet as rows of cells; row index = spreadsheet row number - 1. */
 export async function readSpreadsheet(buffer: Buffer, filename: string): Promise<CellValue[][]> {
   if (buffer.length > MAX_IMPORT_FILE_BYTES) throw new SpreadsheetError("El archivo pesa más de 2 MB.");
-  if (/\.csv$/i.test(filename)) return parseCsv(buffer.toString("utf8"));
+  if (/\.csv$/i.test(filename)) return parseCsv(decodeText(buffer));
   if (!/\.xlsx$/i.test(filename)) throw new SpreadsheetError("Sube un archivo .xlsx o .csv.");
 
+  if (buffer.length < 22) throw new SpreadsheetError("El archivo no es un Excel válido. Guárdalo como .xlsx e intenta de nuevo.");
+  assertSafeZip(buffer);
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(buffer as unknown as ArrayBuffer);

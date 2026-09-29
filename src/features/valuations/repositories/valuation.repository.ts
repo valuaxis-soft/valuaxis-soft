@@ -407,6 +407,8 @@ export async function getValuationByPublicId(
   id: string,
   organizationId: number,
 ): Promise<ValuationDetail | null> {
+  // A malformed id is simply not found; Postgres would reject it as a UUID.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
   const valuation = await prisma.avaluo.findFirst({
     where: {
       UIdentificadorPublico: id,

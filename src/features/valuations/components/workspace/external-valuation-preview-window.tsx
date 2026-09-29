@@ -26,7 +26,8 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
       }
     };
     channel.onmessage = (event: MessageEvent<ExternalPreviewMessage>) => {
-      if (event.data?.type === "preview-state") {
+      // A main tab still on an older version (during a deploy) sends no letterhead: wait for a current one.
+      if (event.data?.type === "preview-state" && event.data.payload?.letterhead) {
         setPayload(event.data.payload);
         stopRetrying();
       }

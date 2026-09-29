@@ -26,6 +26,11 @@ export async function notifyResponsible(
     });
     const responsible = valuation?.usuarioResponsable;
     if (!valuation || !responsible || !responsible.BActivo || responsible.IdUsuario === actor.id) return false;
+    // Someone removed from the team no longer hears about its valuations.
+    const member = await prisma.miembroOrganizacion.findFirst({
+      where: { IdOrganizacion: actor.organizationId, IdUsuario: responsible.IdUsuario, BActivo: true },
+    });
+    if (!member) return false;
 
     await getEmailService().sendValuationNotice({
       kind,

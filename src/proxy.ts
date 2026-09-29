@@ -5,6 +5,8 @@ import { NONCE_HEADER, contentSecurityPolicy, createNonce } from "@/security/hea
 import { isSameOriginRequest } from "@/security/validation/origin";
 import { safeRedirectPath } from "@/security/validation/redirect-safety";
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const publicPaths = [...AUTH_PUBLIC_PATHS, "/favicon.ico", "/api"];
 
 function isPublicPath(pathname: string) {
@@ -34,6 +36,11 @@ export async function proxy(request: NextRequest) {
     });
     if (!sameOrigin) {
       return NextResponse.json({ error: "Origen no permitido" }, { status: 403 });
+    }
+    // Valuation ids are UUIDs: anything else is not found, instead of a database error.
+    const valuationId = /^\/api\/avaluos\/([^/]+)/.exec(pathname)?.[1];
+    if (valuationId !== undefined && !UUID.test(valuationId)) {
+      return NextResponse.json({ error: "Avalúo no encontrado" }, { status: 404 });
     }
     return NextResponse.next();
   }
