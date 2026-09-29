@@ -28,6 +28,14 @@ import {
   type MarketCalculationDto,
   type MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
+import {
+  COMPUTED_FACTORS,
+  DEFAULT_FACTOR_CATALOG,
+  DIRECT_FACTORS,
+  factorWarnings,
+  optionsFor,
+  type FactorCatalog,
+} from "@/features/valuations/calculation/factor-catalog";
 import { ComparableDialog, parseDecimal } from "./comparable-dialog";
 import { ImportComparablesDialog } from "./import-comparables-dialog";
 import { useSerializedSave } from "./use-serialized-save";
@@ -89,6 +97,16 @@ export function MarketCalculationPanel(props: {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [editing, setEditing] = useState<ComparableDto | "nuevo" | null>(null);
+  const [catalog, setCatalog] = useState<FactorCatalog>(DEFAULT_FACTOR_CATALOG);
+
+  // The firm's factor catalog; the proposed one while it loads or if it fails.
+  useEffect(() => {
+    let active = true;
+    api.firm.factors()
+      .then((next) => { if (active) setCatalog(next.catalog); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   const readOnly = props.readOnly || Boolean(calculation?.locked);
 
@@ -179,6 +197,20 @@ export function MarketCalculationPanel(props: {
     setDraft((current) => (current ? { ...current, [key]: event.target.value } : current));
   const availableFactors = FACTOR_TYPES.filter((factor) => !calculation.settings.factorSlots.some((slot) => slot.type === factor));
   const editingComparable = editing === "nuevo" ? null : editing;
+  // Factors rated from the catalog, whose subject rating is chosen once for all comparables.
+  const ratedSlots = calculation.settings.factorSlots.filter((slot) =>
+    !COMPUTED_FACTORS.has(slot.type) && !DIRECT_FACTORS.has(slot.type) && optionsFor(catalog, slot.type).length > 0);
+  /** Factors of a comparable outside the firm's limits, for the warning in its row. */
+  const rowWarnings = (comparable: ComparableDto, surfaceFactor: number | null, resultant: number | null) => {
+    const factors = comparable.factors
+      .filter((factor) => factor.value !== null && factor.type !== "SUPERFICIE")
+      .map((factor) => ({
+        label: calculation.settings.factorSlots.find((slot) => slot.type === factor.type)?.label ?? FACTOR_TYPE_LABELS[factor.type],
+        value: factor.value as number,
+      }));
+    if (surfaceFactor !== null) factors.push({ label: "Superficie", value: surfaceFactor });
+    return factorWarnings(factors, resultant, catalog.limits);
+  };
 
   return (
     <section className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby="market-calculation-title" data-comparable-type={type}>
@@ -284,6 +316,37 @@ export function MarketCalculationPanel(props: {
         {savingSettings ? <Loader2 className="size-3 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
       </div>
 
+      {ratedSlots.length ? (
+        <div className="grid gap-2 rounded-md border bg-background p-3">
+          <p className="text-xs text-muted-foreground">
+            Calificación del sujeto: se elige una vez y cada comparable solo elige la suya; el factor se calcula solo.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {ratedSlots.map((slot) => (
+              <Field key={slot.type}>
+                <FieldLabel htmlFor={`subject-rating-${slot.type}`} className="text-xs">{slot.label}</FieldLabel>
+                <NativeSelect
+                  id={`subject-rating-${slot.type}`}
+                  className="w-full"
+                  disabled={readOnly}
+                  value={slot.subjectOption ?? ""}
+                  onChange={(event) => void saveSettings({
+                    ...liveSettings,
+                    factorSlots: liveSettings.factorSlots.map((item) =>
+                      item.type === slot.type ? { ...item, subjectOption: event.target.value || null } : item),
+                  })}
+                >
+                  <NativeSelectOption value="">Sin elegir</NativeSelectOption>
+                  {optionsFor(catalog, slot.type).map((option) => (
+                    <NativeSelectOption key={option.label} value={option.label}>{option.label} ({option.value})</NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="overflow-x-auto rounded-md border bg-background">
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-muted/60 text-xs text-muted-foreground">
@@ -311,7 +374,25 @@ export function MarketCalculationPanel(props: {
                   <td className="px-2 py-1.5 text-right tabular-nums">{comparable.area ?? "—"}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{comparable.price ? money(comparable.price) : "—"}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{row ? money(row.unitValue) : "—"}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{row ? row.resultantFactor.toFixed(4) : "—"}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">
+                    {row ? (() => {
+                      const warnings = rowWarnings(comparable, row.surfaceFactor, row.resultantFactor);
+                      const detail = warnings.map((warning) => `${warning.label}: ${warning.value.toFixed(4)}`).join(" · ");
+                      return (
+                        <span className="inline-flex items-center justify-end gap-1">
+                          {warnings.length ? (
+                            <AlertTriangle
+                              className="size-3.5 text-amber-600"
+                              aria-label={`Fuera del rango del despacho: ${detail}`}
+                            >
+                              <title>{`Fuera del rango del despacho (factor ${catalog.limits.factorMin}–${catalog.limits.factorMax}, resultante ${catalog.limits.resultantMin}–${catalog.limits.resultantMax}): ${detail}`}</title>
+                            </AlertTriangle>
+                          ) : null}
+                          {row.resultantFactor.toFixed(4)}
+                        </span>
+                      );
+                    })() : "—"}
+                  </td>
                   <td className="px-2 py-1.5 text-right font-medium tabular-nums">{row ? money(row.homologatedUnitValue) : "—"}</td>
                   <td className="px-2 py-1.5 text-right whitespace-nowrap">
                     <Button type="button" size="icon-sm" variant="ghost" aria-label={`Editar comparable ${comparable.reference}`} onClick={() => setEditing(comparable)}>
@@ -391,6 +472,7 @@ export function MarketCalculationPanel(props: {
           onOpenChange={(open) => { if (!open) setEditing(null); }}
           comparable={editingComparable ? comparables.find((item) => item.id === editingComparable.id) ?? editingComparable : null}
           factorSlots={calculation.settings.factorSlots}
+          catalog={catalog}
           unitLabel={type === "INMUEBLE_RENTA" ? "Renta mensual ($)" : "Precio de oferta ($)"}
           readOnly={readOnly}
           onSubmit={submitComparable(editingComparable)}

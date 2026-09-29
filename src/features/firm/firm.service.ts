@@ -12,7 +12,8 @@ import type { Letterhead } from "@/features/valuations/model";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { buildOrganizationAssetKey } from "@/infrastructure/storage/storage-keys";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { resolveFactorCatalog, type FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 import { addMonthsToIsoDate, todayInMexico } from "./firm-rules";
 import type { FirmSettingsInput } from "./firm-schemas";
 
@@ -229,4 +230,29 @@ export async function deleteFirmLogo(user: AuthUser) {
     prisma.archivo.update({ where: { IdArchivo: previous.IdArchivo }, data: { BActivo: false, DFechaEliminacion: new Date() } }),
   ]);
   await storageProvider.deleteObject(previous.SClaveObjeto).catch((cleanup) => console.error("[FIRM_LOGO_CLEANUP]", cleanup));
+}
+
+/** The firm's homologation factor catalog; `customized` is false while it uses the proposed defaults. */
+export async function getFactorCatalog(organizationId: number): Promise<{ catalog: FactorCatalog; customized: boolean }> {
+  const organization = await findOrganization(organizationId);
+  return { catalog: resolveFactorCatalog(organization.JCatalogoFactores), customized: organization.JCatalogoFactores !== null };
+}
+
+/** Saves the firm's catalog; null goes back to the proposed defaults. */
+export async function saveFactorCatalog(user: AuthUser, catalog: FactorCatalog | null) {
+  const organization = await findOrganization(user.organizationId);
+  await prisma.organizacion.update({
+    where: { IdOrganizacion: organization.IdOrganizacion },
+    data: { JCatalogoFactores: catalog === null ? Prisma.DbNull : (catalog as unknown as Prisma.InputJsonValue) },
+  });
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    organizationId: organization.IdOrganizacion,
+    userId: user.id,
+    entity: "Organizacion",
+    entityId: String(organization.IdOrganizacion),
+    action: catalog === null ? "FACTOR_CATALOG_RESET" : "FACTOR_CATALOG_SAVE",
+    result: "EXITOSO",
+  });
+  return getFactorCatalog(organization.IdOrganizacion);
 }

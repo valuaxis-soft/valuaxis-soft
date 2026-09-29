@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { DashboardHeader } from "@/features/dashboard/components/header";
+import { FactorCatalogEditor } from "@/features/firm/components/factor-catalog-editor";
 import { FirmSettingsForm } from "@/features/firm/components/firm-settings-form";
 import { requireSession } from "@/security/guards/require-session";
 
@@ -22,7 +23,10 @@ export default async function FirmPage() {
             El membrete de los dictámenes de {user.organizationName} y los datos con que nace cada avalúo.
           </p>
         </div>
-        <FirmSettingsForm />
+        <div className="grid gap-6">
+          <FirmSettingsForm />
+          <FactorCatalogEditor />
+        </div>
       </main>
     </div>
   );

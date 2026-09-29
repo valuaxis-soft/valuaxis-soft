@@ -12,6 +12,7 @@ import type { TeamRole } from "@/features/team/team-rules";
 import type { MyInvitationDto, SentInvitationDto, TeamDto } from "@/features/team/team.service";
 import type { FirmSettingsInput } from "@/features/firm/firm-schemas";
 import type { FirmSettingsDto } from "@/features/firm/firm.service";
+import type { FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 
 /** What the comparable form sends: the comparable without its id, reference and photos. */
 export type ComparableFormValues = Omit<ComparableDto, "id" | "reference" | "photos">;
@@ -222,6 +223,10 @@ export const api = {
       request<FirmSettingsDto>(`/organizacion/despacho`, { method: "PUT", body: JSON.stringify(input) }),
     uploadLogo: (file: File) => uploadForm<{ logoUrl: string | null }>(`/organizacion/despacho/logo`, { file }),
     deleteLogo: () => request<void>(`/organizacion/despacho/logo`, { method: "DELETE" }),
+    factors: () => request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`),
+    saveFactors: (catalog: FactorCatalog) =>
+      request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`, { method: "PUT", body: JSON.stringify(catalog) }),
+    resetFactors: () => request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`, { method: "DELETE" }),
   },
   invitations: {
     mine: () => request<MyInvitationDto[]>(`/organizacion/invitaciones`),

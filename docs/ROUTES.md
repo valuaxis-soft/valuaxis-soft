@@ -37,6 +37,7 @@
 | GET, PATCH | `/api/auth/organizations` | Lista y cambia la organización activa |
 | GET, PATCH | `/api/organizacion/equipo` | Miembros, invitaciones pendientes y roles; `PATCH` pone el nombre y convierte el espacio personal en equipo |
 | GET, PUT | `/api/organizacion/despacho` | Datos del despacho (`USUARIO_ADMINISTRAR`) |
+| GET, PUT, DELETE | `/api/organizacion/despacho/factores` | Catálogo de factores del despacho: `GET` para quien ve avalúos, `PUT` guarda y `DELETE` vuelve al propuesto (`USUARIO_ADMINISTRAR`) |
 | POST, DELETE | `/api/organizacion/despacho/logo` | Sube (`multipart`, campo `file`) o quita el logotipo |
 | POST | `/api/organizacion/equipo/invitaciones` | Invita un correo con un rol y envía el enlace; devuelve el enlace |
 | POST, DELETE | `/api/organizacion/equipo/invitaciones/[id]` | Reenvía (enlace nuevo) o cancela una invitación pendiente |

@@ -9,7 +9,17 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ComparableFormValues } from "@/lib/api-client";
-import type { ComparableDto, ComparableFactorDto, FactorSlotConfig } from "@/features/valuations/calculation/market-types";
+import {
+  DIRECT_FACTORS,
+  factorFromOptions,
+  matchOption,
+  optionJustification,
+  optionsFor,
+  type FactorCatalog,
+  type FactorOption,
+} from "@/features/valuations/calculation/factor-catalog";
+import type { ComparableDto, ComparableFactorDto, FactorSlotConfig, FactorType } from "@/features/valuations/calculation/market-types";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 /** "1,260,000.50" or "$ 9000" → number; empty → null. */
 export function parseDecimal(value: string): number | null {
@@ -21,7 +31,11 @@ export function parseDecimal(value: string): number | null {
 
 const text = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value));
 
-type FactorDraft = { subject: string; comparable: string };
+/**
+ * A factor as the appraiser captures it: picked from the firm's catalog
+ * (subject and comparable ratings, or a direct option), or typed by hand.
+ */
+type FactorDraft = { mode: "catalog" | "manual"; subjectOption: string; comparableOption: string; subject: string; comparable: string };
 type Draft = Record<"location" | "area" | "price" | "sourceName" | "contactName" | "contactPhone" | "url" | "offerDate"
   | "landUse" | "shape" | "zone" | "frontage" | "depth" | "topography" | "services" | "notes", string>;
 
@@ -46,22 +60,61 @@ function initialDraft(comparable: ComparableDto | null): Draft {
   };
 }
 
-/** A factor is captured as subject rating / comparable rating; a direct value is its own subject rating. */
-function initialFactors(comparable: ComparableDto | null, slots: FactorSlotConfig[]): Record<string, FactorDraft> {
+/** Negotiation starts at the offer discount every one of the firm's books uses. */
+const DEFAULT_DIRECT_OPTION = "Oferta típica";
+
+/**
+ * A factor is captured as subject rating / comparable rating; a direct value is
+ * its own subject rating. A stored factor that matches the catalog opens as
+ * picks; anything else opens as typed numbers.
+ */
+function initialFactors(comparable: ComparableDto | null, slots: FactorSlotConfig[], catalog: FactorCatalog): Record<string, FactorDraft> {
   return Object.fromEntries(slots.filter((slot) => slot.type !== "SUPERFICIE").map((slot) => {
+    const options = optionsFor(catalog, slot.type);
     const factor = comparable?.factors.find((item) => item.type === slot.type);
+    const manual = (subject: string, comparableValue: string): FactorDraft =>
+      ({ mode: "manual", subjectOption: slot.subjectOption ?? "", comparableOption: "", subject, comparable: comparableValue });
+    const direct = DIRECT_FACTORS.has(slot.type);
+
     if (factor?.subjectRating && factor.comparableRating) {
-      return [slot.type, { subject: String(factor.subjectRating), comparable: String(factor.comparableRating) }];
+      const subject = matchOption(options, factor.subjectRating);
+      const picked = matchOption(options, factor.comparableRating);
+      if (options.length && !direct && subject && picked) {
+        return [slot.type, { ...manual("", ""), mode: "catalog", subjectOption: subject.label, comparableOption: picked.label }];
+      }
+      return [slot.type, manual(String(factor.subjectRating), String(factor.comparableRating))];
     }
-    return [slot.type, { subject: text(factor?.value), comparable: factor?.value ? "1" : "" }];
+    if (factor?.value !== null && factor?.value !== undefined) {
+      const picked = direct ? matchOption(options, factor.value) : null;
+      if (picked) return [slot.type, { ...manual("", ""), mode: "catalog", comparableOption: picked.label }];
+      return [slot.type, manual(text(factor.value), "1")];
+    }
+    if (!options.length) return [slot.type, manual("", "")];
+    // A new comparable: the subject's rating comes from the panel; negotiation starts at the usual discount.
+    const comparableOption = direct && options.some((option) => option.label === DEFAULT_DIRECT_OPTION) && !comparable ? DEFAULT_DIRECT_OPTION : "";
+    return [slot.type, { ...manual("", ""), mode: "catalog", comparableOption }];
   }));
 }
 
-function factorValue(draft: FactorDraft) {
+const pick = (options: FactorOption[], label: string) => options.find((option) => option.label === label) ?? null;
+
+/** The factor, its ratings and why, as stored. An empty factor is 1: it does not change the value. */
+function capturedFactor(type: FactorType, label: string, draft: FactorDraft, options: FactorOption[]) {
+  if (draft.mode === "catalog") {
+    const subject = pick(options, draft.subjectOption);
+    const comparable = pick(options, draft.comparableOption);
+    const factor = factorFromOptions(type, subject, comparable);
+    return {
+      value: factor?.value ?? 1,
+      subjectRating: factor?.subjectRating ?? null,
+      comparableRating: factor?.comparableRating ?? null,
+      justification: optionJustification(type, label, subject, comparable),
+    };
+  }
   const subject = parseDecimal(draft.subject);
   const comparable = parseDecimal(draft.comparable);
-  if (subject === null && comparable === null) return 1;
-  return (subject ?? 1) / (comparable ?? 1);
+  const value = subject === null && comparable === null ? 1 : (subject ?? 1) / (comparable ?? 1);
+  return { value, subjectRating: subject && comparable ? subject : null, comparableRating: subject && comparable ? comparable : null, justification: null };
 }
 
 export function ComparableDialog(props: {
@@ -69,15 +122,16 @@ export function ComparableDialog(props: {
   onOpenChange: (open: boolean) => void;
   comparable: ComparableDto | null;
   factorSlots: FactorSlotConfig[];
+  catalog: FactorCatalog;
   unitLabel: string;
   readOnly: boolean;
   onSubmit: (values: ComparableFormValues) => Promise<boolean>;
   onUploadPhoto: (file: File) => Promise<void>;
   onRemovePhoto: (photoId: string) => Promise<void>;
 }) {
-  const { comparable, factorSlots, readOnly } = props;
+  const { comparable, factorSlots, catalog, readOnly } = props;
   const [draft, setDraft] = useState<Draft>(() => initialDraft(comparable));
-  const [factors, setFactors] = useState(() => initialFactors(comparable, factorSlots));
+  const [factors, setFactors] = useState(() => initialFactors(comparable, factorSlots, catalog));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,14 +148,10 @@ export function ComparableDialog(props: {
     setError(null);
     setSaving(true);
     const capturedFactors: ComparableFactorDto[] = Object.entries(factors).map(([type, value]) => {
-      const subject = parseDecimal(value.subject);
-      const comparableRating = parseDecimal(value.comparable);
+      const slot = factorSlots.find((item) => item.type === type);
       return {
-        type: type as ComparableFactorDto["type"],
-        value: factorValue(value),
-        subjectRating: subject && comparableRating ? subject : null,
-        comparableRating: subject && comparableRating ? comparableRating : null,
-        justification: null,
+        type: type as FactorType,
+        ...capturedFactor(type as FactorType, slot?.label ?? type, value, optionsFor(catalog, type as FactorType)),
       };
     });
     const ok = await props.onSubmit({
@@ -215,15 +265,62 @@ export function ComparableDialog(props: {
               <h3 className="text-sm font-medium">Factores de homologación</h3>
               <div className="grid gap-2">
                 {factorSlots.filter((slot) => slot.type !== "SUPERFICIE").map((slot) => {
-                  const value = factors[slot.type] ?? { subject: "", comparable: "" };
-                  const update = (key: keyof FactorDraft) => (event: ChangeEvent<HTMLInputElement>) =>
-                    setFactors((current) => ({ ...current, [slot.type]: { ...value, [key]: event.target.value } }));
+                  const value = factors[slot.type] ?? { mode: "manual", subjectOption: "", comparableOption: "", subject: "", comparable: "" };
+                  const options = optionsFor(catalog, slot.type);
+                  const direct = DIRECT_FACTORS.has(slot.type);
+                  const change = (patch: Partial<FactorDraft>) =>
+                    setFactors((current) => ({ ...current, [slot.type]: { ...value, ...patch } }));
+                  const update = (key: "subject" | "comparable") => (event: ChangeEvent<HTMLInputElement>) => change({ [key]: event.target.value });
+                  const computed = capturedFactor(slot.type, slot.label, value, options).value;
                   return (
-                    <div key={slot.type} className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_4.5rem] items-center gap-2 text-sm">
-                      <span className="truncate">{slot.label}</span>
-                      <Input aria-label={`${slot.label}: calificación del sujeto`} inputMode="decimal" placeholder="Sujeto" value={value.subject} onChange={update("subject")} />
-                      <Input aria-label={`${slot.label}: calificación del comparable`} inputMode="decimal" placeholder="Comp." value={value.comparable} onChange={update("comparable")} />
-                      <span className="text-right tabular-nums text-muted-foreground">{factorValue(value).toFixed(4)}</span>
+                    <div key={slot.type} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_4.5rem] items-center gap-2 text-sm">
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">{slot.label}</span>
+                        {options.length ? (
+                          <button
+                            type="button"
+                            className="w-fit text-left text-xs text-muted-foreground underline-offset-2 hover:underline"
+                            onClick={() => change({ mode: value.mode === "catalog" ? "manual" : "catalog" })}
+                          >
+                            {value.mode === "catalog" ? "Capturar a mano" : "Elegir del catálogo"}
+                          </button>
+                        ) : null}
+                      </span>
+                      {value.mode === "catalog" ? (
+                        <>
+                          {direct ? (
+                            <span className="text-xs text-muted-foreground">Factor directo</span>
+                          ) : (
+                            <NativeSelect
+                              aria-label={`${slot.label}: calificación del sujeto`}
+                              className="w-full"
+                              value={value.subjectOption}
+                              onChange={(event) => change({ subjectOption: event.target.value })}
+                            >
+                              <NativeSelectOption value="">Sujeto…</NativeSelectOption>
+                              {options.map((option) => <NativeSelectOption key={option.label} value={option.label}>{option.label} ({option.value})</NativeSelectOption>)}
+                            </NativeSelect>
+                          )}
+                          <NativeSelect
+                            aria-label={`${slot.label}: calificación del comparable`}
+                            className="w-full"
+                            value={value.comparableOption}
+                            // Without the subject's rating the factor cannot be computed, and the pick would be lost.
+                            disabled={!direct && !value.subjectOption}
+                            title={!direct && !value.subjectOption ? "Elige primero la calificación del sujeto" : undefined}
+                            onChange={(event) => change({ comparableOption: event.target.value })}
+                          >
+                            <NativeSelectOption value="">{direct ? "Elegir…" : value.subjectOption ? "Comparable…" : "Elige primero el sujeto"}</NativeSelectOption>
+                            {options.map((option) => <NativeSelectOption key={option.label} value={option.label}>{option.label} ({option.value})</NativeSelectOption>)}
+                          </NativeSelect>
+                        </>
+                      ) : (
+                        <>
+                          <Input aria-label={`${slot.label}: calificación del sujeto`} inputMode="decimal" placeholder="Sujeto" value={value.subject} onChange={update("subject")} />
+                          <Input aria-label={`${slot.label}: calificación del comparable`} inputMode="decimal" placeholder="Comp." value={value.comparable} onChange={update("comparable")} />
+                        </>
+                      )}
+                      <span className="text-right tabular-nums text-muted-foreground">{computed.toFixed(4)}</span>
                     </div>
                   );
                 })}

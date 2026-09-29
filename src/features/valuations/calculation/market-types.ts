@@ -64,7 +64,12 @@ export const FACTOR_TYPE_LABELS: Record<FactorType, string> = {
 };
 
 /** Factor columns of the homologation, in multiplication order. SUPERFICIE is computed. */
-export type FactorSlotConfig = { type: FactorType; label: string };
+export type FactorSlotConfig = {
+  type: FactorType;
+  label: string;
+  /** The subject's rating in the firm's factor catalog: the same for every comparable. */
+  subjectOption?: string | null;
+};
 
 /** The columns of the Arandas land homologation: Neg., Ubic., Sup., Zona, Frente, Uso. */
 export const DEFAULT_FACTOR_SLOTS: FactorSlotConfig[] = ["NEGOCIACION", "UBICACION", "SUPERFICIE", "ZONA", "FRENTE", "USO_SUELO"]

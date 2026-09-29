@@ -45,7 +45,7 @@ export const marketSettingsSchema = z.object({
   adoptedUnitValue: positive,
   justification: text(2000),
   additionalAmount: z.number().finite().min(0).max(1e12),
-  factorSlots: z.array(z.object({ type: z.enum(FACTOR_TYPES), label: z.string().trim().min(1).max(60) }))
+  factorSlots: z.array(z.object({ type: z.enum(FACTOR_TYPES), label: z.string().trim().min(1).max(60), subjectOption: z.string().trim().max(60).nullable().optional() }))
     .min(1)
     .max(FACTOR_TYPES.length)
     .refine((slots) => new Set(slots.map((slot) => slot.type)).size === slots.length, "Cada factor va una sola vez.")
