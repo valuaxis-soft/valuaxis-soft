@@ -16,6 +16,7 @@ import { computeMarketApproach } from "../engine/market";
 import { Trace } from "../engine/trace";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
+import { matchOption, optionJustification, optionsFor, resolveFactorCatalog } from "./factor-catalog";
 import { recomputeCosts } from "./cost.service";
 import { recomputeConclusion } from "./conclusion.service";
 import { recomputeIncome } from "./income.service";
@@ -226,10 +227,59 @@ async function recomputeDependents(tx: Tx, versionId: number, type: ComparableTy
 /*  Settings                                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The subject's rating of a factor is chosen once for all comparables: when it
+ * changes, comparables rated with the previous catalog option follow it.
+ * Factors typed by hand, with other ratings, are left as they are.
+ */
+async function followSubjectRatings(
+  tx: Tx,
+  input: { versionId: number; typeId: number; organizationId: number; previous: FactorSlotConfig[]; next: FactorSlotConfig[] },
+) {
+  const changed = input.next.filter((slot) => {
+    const before = input.previous.find((item) => item.type === slot.type)?.subjectOption ?? null;
+    return before && slot.subjectOption && before !== slot.subjectOption;
+  });
+  if (!changed.length) return;
+  const organization = await tx.organizacion.findUniqueOrThrow({ where: { IdOrganizacion: input.organizationId }, select: { JCatalogoFactores: true } });
+  const catalog = resolveFactorCatalog(organization.JCatalogoFactores);
+  for (const slot of changed) {
+    const options = optionsFor(catalog, slot.type);
+    const from = options.find((option) => option.label === input.previous.find((item) => item.type === slot.type)?.subjectOption);
+    const to = options.find((option) => option.label === slot.subjectOption);
+    if (!from || !to) continue;
+    const rows = await tx.factorHomologacion.findMany({
+      where: {
+        tipoFactorHomologacion: { SClave: slot.type },
+        NCalificacionSujeto: from.value,
+        NCalificacionComparable: { not: null },
+        comparableAvaluo: { IdVersionAvaluo: input.versionId, IdTipoComparable: input.typeId },
+      },
+    });
+    for (const row of rows) {
+      const comparableRating = Number(row.NCalificacionComparable);
+      await tx.factorHomologacion.update({
+        where: { IdFactorHomologacion: row.IdFactorHomologacion },
+        data: {
+          NCalificacionSujeto: to.value,
+          NValor: to.value / comparableRating,
+          SJustificacion: optionJustification(slot.type, slot.label, to, matchOption(options, comparableRating)) ?? row.SJustificacion,
+        },
+      });
+    }
+  }
+}
+
 export async function saveMarketSettings(publicId: string, user: AuthUser, payload: MarketSettingsPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
     const typeId = await comparableTypeId(tx, payload.comparableType);
+    const current = await tx.enfoqueMercado.findUnique({
+      where: { IdVersionAvaluo_IdTipoComparable: { IdVersionAvaluo: versionId, IdTipoComparable: typeId } },
+      select: { JConfiguracion: true },
+    });
+    const previousSlots = (asRecord(current?.JConfiguracion ?? null) as { factorSlots?: FactorSlotConfig[] }).factorSlots ?? [];
+    await followSubjectRatings(tx, { versionId, typeId, organizationId: user.organizationId, previous: previousSlots, next: payload.factorSlots });
     const data = {
       NSuperficieSujeto: payload.subjectArea,
       NSuperficieBase: payload.baseArea,

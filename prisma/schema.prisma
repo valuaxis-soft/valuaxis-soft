@@ -244,6 +244,7 @@ model Organizacion {
   SRegistroPerito       String?   @map("SRegistroPerito") @db.VarChar(120)
   IMesesVigencia        Int       @default(6) @map("IMesesVigencia")
   SPrefijoFolio         String    @default("VLO") @map("SPrefijoFolio") @db.VarChar(10)
+  JCatalogoFactores     Json?     @map("JCatalogoFactores") @db.JsonB
   BActivo               Boolean   @default(true) @map("BActivo")
   DFechaCreacion        DateTime  @default(now()) @map("DFechaCreacion")
   DFechaModificacion    DateTime  @updatedAt @map("DFechaModificacion")

@@ -15,6 +15,15 @@ Se guardan en `Propiedad`, `ComparableAvaluo` (con snapshots de propiedad, direc
 
 El panel avisa con menos de 4 comparables completos, con dispersión mayor a 1.25 y con un valor adoptado fuera del rango homologado. Las tablas de comparables, de homologación y el resumen, y las fotografías en el anexo, se escriben en el dictamen.
 
+## Catálogo y sugerencia de factores (hecha)
+
+Característica 14. Cada factor se elige de un catálogo de calificaciones del despacho (`calculation/factor-catalog.ts`); el factor es calificación del sujeto entre calificación del comparable, como en los libros (`=1/1.15`). La negociación es un factor directo y nace en 0.95, el valor de todos los libros.
+
+- **Catálogo propuesto:** sale de los valores que usan los libros del despacho (Fase 0, `metodologia/02-mercado-homologacion.md` §4) y de la tabla de conservación de maquinaria, completado con las gradaciones usuales. Cada despacho lo edita en **Despacho → Catálogo de factores** (`JCatalogoFactores` en la organización, migración 036; vacío = el propuesto). Se confirma con el perito en la pregunta 7.
+- **Sujeto una vez:** en el panel de mercado se elige la calificación del sujeto de cada factor (se guarda en `factorSlots[].subjectOption`). Cada comparable solo elige la suya y el factor se calcula con su justificación ("Zona: sujeto Similar (1) / comparable Superior (1.05)"). Si el sujeto cambia, los comparables calificados con la opción anterior se actualizan; los capturados a mano no.
+- **Captura a mano:** sigue disponible por factor ("Capturar a mano"), para lo que no esté en el catálogo.
+- **Rangos:** el panel marca el comparable con un factor fuera de 0.80–1.20 o un factor resultante fuera de 0.65–1.35 (rangos editables por despacho).
+
 ## Carga desde Excel (hecha)
 
 "Importar Excel" en el panel de mercado descarga la plantilla del tipo de comparable (`GET /api/comparables/plantilla?tipo=`) y recibe el archivo lleno, `.xlsx` o `.csv` (con coma o punto y coma), de hasta 2 MB y 100 comparables.
