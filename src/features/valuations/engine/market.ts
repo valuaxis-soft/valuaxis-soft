@@ -2,9 +2,9 @@
  * Comparative market approach and the homologation it shares with the rent
  * market. Formulas follow docs/fase0/metodologia/02-mercado-homologacion.md.
  */
-import type { EngineConfig, SurfaceOrientation } from "./config";
+import { ADOPTED_VALUE_TOLERANCE, type EngineConfig, type SurfaceOrientation } from "./config";
 import { productInOrder, resolveFactorSlots, surfaceFactor, type FactorSlot } from "./factors";
-import { excelRound, roundIfSet } from "./rounding";
+import { roundIfSet } from "./rounding";
 import { Trace } from "./trace";
 
 export type ComparableInput = {
@@ -14,6 +14,8 @@ export type ComparableInput = {
   area: number;
   /** Factors in capture order, with SURFACE_SLOT where the surface factor goes. */
   factors: FactorSlot[];
+  /** Surface factor the appraiser typed instead of the formula. */
+  surfaceFactor?: number;
 };
 
 export type HomologationInput = {
@@ -50,8 +52,6 @@ export type HomologationStats = {
 export type HomologationResult = {
   comparables: HomologatedComparable[];
   stats: HomologationStats;
-  /** Power n suggested by consecutive comparables (mode); informative, as in the books. */
-  suggestedPower: number | null;
 };
 
 export function homologate(
@@ -71,15 +71,23 @@ export function homologate(
       inputs: { precio: comparable.price, superficie: comparable.area },
       value: scale === 1 ? comparable.price / comparable.area : (comparable.price / comparable.area) * scale,
     });
-    const surface = trace.record({
-      key: `${key}.factorSuperficie`,
-      label: `Factor de superficie, comparable ${comparable.id}`,
-      formula: orientation === "reference-over-subject"
-        ? "(superficie del comparable / superficie base)^(1/n)"
-        : "(superficie base / superficie del comparable)^(1/n)",
-      inputs: { superficieComparable: comparable.area, superficieBase: baseArea, n: input.surfacePower },
-      value: surfaceFactor(comparable.area, baseArea, input.surfacePower, orientation),
-    });
+    const surface = comparable.surfaceFactor !== undefined
+      ? trace.record({
+          key: `${key}.factorSuperficie`,
+          label: `Factor de superficie, comparable ${comparable.id}`,
+          formula: "captura del perito",
+          inputs: { capturado: comparable.surfaceFactor },
+          value: comparable.surfaceFactor,
+        })
+      : trace.record({
+          key: `${key}.factorSuperficie`,
+          label: `Factor de superficie, comparable ${comparable.id}`,
+          formula: orientation === "reference-over-subject"
+            ? "(superficie del comparable / superficie base)^(1/n)"
+            : "(superficie base / superficie del comparable)^(1/n)",
+          inputs: { superficieComparable: comparable.area, superficieBase: baseArea, n: input.surfacePower },
+          value: surfaceFactor(comparable.area, baseArea, input.surfacePower, orientation),
+        });
     const factors = resolveFactorSlots(comparable.factors, surface);
     const resultant = trace.record({
       key: `${key}.factorResultante`,
@@ -114,7 +122,7 @@ export function homologate(
     inputs: { maximo: stats.max, minimo: stats.min },
     value: stats.dispersion,
   });
-  return { comparables, stats, suggestedPower: suggestPower(input.comparables, comparables) };
+  return { comparables, stats };
 }
 
 function describe(values: number[]): HomologationStats {
@@ -137,32 +145,6 @@ function describe(values: number[]): HomologationStats {
   };
 }
 
-/**
- * Implied power between consecutive comparables: Vu ∝ S^(−1/n), so
- * 1/n = log(Vu_j / Vu_j+1) / log(S_j / S_j+1). Returns the most frequent n,
- * the first one in capture order on a tie (Excel's MODE.SNGL).
- */
-function suggestPower(inputs: ComparableInput[], results: HomologatedComparable[]): number | null {
-  const powers: number[] = [];
-  for (let index = 0; index + 1 < inputs.length; index += 1) {
-    const areaRatio = Math.log10(inputs[index].area / inputs[index + 1].area);
-    if (areaRatio === 0) continue;
-    const inverse = Math.log10(results[index].unitValue / results[index + 1].unitValue) / areaRatio;
-    if (inverse === 0) continue;
-    powers.push(Math.abs(excelRound(1 / inverse, 0)));
-  }
-  let best: number | null = null;
-  let bestCount = 1;
-  for (const power of powers) {
-    const count = powers.filter((candidate) => candidate === power).length;
-    if (count > bestCount) {
-      best = power;
-      bestCount = count;
-    }
-  }
-  return best;
-}
-
 export type MarketApproachInput = HomologationInput & {
   /** Unit value the appraiser adopts; the homologated mean when missing. */
   adoptedUnitValue?: number;
@@ -173,14 +155,18 @@ export type MarketApproachResult = {
   homologation: HomologationResult;
   suggestedUnitValue: number;
   adoptedUnitValue: number;
-  /** The adopted value is outside the homologated range. */
-  adoptedOutsideRange: boolean;
+  /** What the appraiser may adopt: within 30 % of the homologated mean and median. */
+  adoptedLimits: { min: number; max: number };
+  adoptedOutsideLimits: boolean;
+  /** Lote tipo to subject, (lote tipo / subject)^(1/n); 1 when homologating against the subject. */
+  subjectSurfaceFactor: number;
   value: number;
 };
 
 export function computeMarketApproach(input: MarketApproachInput, config: EngineConfig, trace = new Trace()): MarketApproachResult {
   const homologation = homologate(input, config.surfaceOrientation.market, trace, "mercado");
   const suggestedUnitValue = homologation.stats.mean;
+  const adoptedLimits = adoptedValueLimits(homologation.stats);
   const adoptedUnitValue = trace.record({
     key: "mercado.valorAdoptado",
     label: "Valor unitario adoptado",
@@ -189,12 +175,23 @@ export function computeMarketApproach(input: MarketApproachInput, config: Engine
     value: input.adoptedUnitValue ?? suggestedUnitValue,
   });
   const scale = input.unitScale ?? 1;
+  const indirect = config.indirectSubjectFactor && input.baseArea !== undefined && input.baseArea !== input.subjectArea;
+  const subjectSurfaceFactor = indirect
+    ? trace.record({
+        key: "mercado.factorSuperficieSujeto",
+        label: "Factor de superficie del sujeto contra el lote tipo",
+        formula: "(lote tipo / superficie del sujeto)^(1/n)",
+        inputs: { loteTipo: input.baseArea as number, superficieSujeto: input.subjectArea, n: input.surfacePower },
+        value: surfaceFactor(input.baseArea as number, input.subjectArea, input.surfacePower, "reference-over-subject"),
+      })
+    : 1;
+  const area = scale === 1 ? input.subjectArea : input.subjectArea / scale;
   const subtotal = trace.record({
     key: "mercado.subtotal",
     label: "Subtotal",
-    formula: scale === 1 ? "superficie del sujeto × valor adoptado" : `superficie del sujeto / ${scale} × valor adoptado`,
-    inputs: { superficieSujeto: input.subjectArea, valorAdoptado: adoptedUnitValue },
-    value: scale === 1 ? input.subjectArea * adoptedUnitValue : (input.subjectArea / scale) * adoptedUnitValue,
+    formula: `superficie del sujeto${scale === 1 ? "" : ` / ${scale}`} × valor adoptado${indirect ? " × factor de superficie del sujeto" : ""}`,
+    inputs: { superficieSujeto: input.subjectArea, valorAdoptado: adoptedUnitValue, ...(indirect ? { factorSuperficieSujeto: subjectSurfaceFactor } : {}) },
+    value: indirect ? area * adoptedUnitValue * subjectSurfaceFactor : area * adoptedUnitValue,
   });
   const digits = config.rounding.market.comparativeValue;
   const value = trace.record({
@@ -209,7 +206,20 @@ export function computeMarketApproach(input: MarketApproachInput, config: Engine
     homologation,
     suggestedUnitValue,
     adoptedUnitValue,
-    adoptedOutsideRange: adoptedUnitValue < homologation.stats.min || adoptedUnitValue > homologation.stats.max,
+    adoptedLimits,
+    adoptedOutsideLimits: adoptedUnitValue < adoptedLimits.min - 1e-9 || adoptedUnitValue > adoptedLimits.max + 1e-9,
+    subjectSurfaceFactor,
     value,
+  };
+}
+
+/**
+ * A guard against typing 130,000 for 13,000: the adopted value stays within
+ * 30 % of the homologated mean and median (below the lower, above the higher).
+ */
+export function adoptedValueLimits(stats: Pick<HomologationStats, "mean" | "median">) {
+  return {
+    min: Math.min(stats.mean, stats.median) * (1 - ADOPTED_VALUE_TOLERANCE),
+    max: Math.max(stats.mean, stats.median) * (1 + ADOPTED_VALUE_TOLERANCE),
   };
 }

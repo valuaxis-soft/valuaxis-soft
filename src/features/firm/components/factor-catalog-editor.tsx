@@ -17,7 +17,7 @@ import {
   type FactorLimits,
 } from "@/features/valuations/calculation/factor-catalog";
 import { FACTOR_TYPE_LABELS, FACTOR_TYPES, type FactorType } from "@/features/valuations/calculation/market-types";
-import { parseDecimal } from "@/features/valuations/components/calculation/comparable-dialog";
+import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 
 type OptionDraft = { label: string; value: string };
 type Draft = { factors: Record<FactorType, OptionDraft[]>; limits: Record<keyof FactorLimits, string> };
@@ -35,7 +35,8 @@ const toDraft = (catalog: FactorCatalog): Draft => ({
     type,
     (catalog.factors[type] ?? []).map((option) => ({ label: option.label, value: String(option.value) })),
   ])) as Draft["factors"],
-  limits: Object.fromEntries(Object.entries(catalog.limits).map(([key, value]) => [key, String(value)])) as Draft["limits"],
+  limits: Object.fromEntries((Object.keys(LIMIT_LABELS) as Array<keyof FactorLimits>)
+    .map((key) => [key, catalog.limits ? String(catalog.limits[key]) : ""])) as Draft["limits"],
 });
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -85,7 +86,14 @@ export function FactorCatalogEditor() {
       }
       if (options.length) factors[type] = options;
     }
-    const limits = Object.fromEntries(Object.entries(draft.limits).map(([key, value]) => [key, parseDecimal(value) ?? Number.NaN])) as FactorLimits;
+    // All four empty: the firm flags nothing.
+    const limits = Object.values(draft.limits).every((value) => !value.trim())
+      ? null
+      : Object.fromEntries(Object.entries(draft.limits).map(([key, value]) => [key, parseDecimal(value) ?? Number.NaN])) as FactorLimits;
+    if (limits && Object.values(limits).some((value) => !Number.isFinite(value))) {
+      toast.error("Captura los cuatro rangos, o deja los cuatro vacíos para no marcar nada.");
+      return;
+    }
     setBusy("save");
     try {
       apply(await api.firm.saveFactors({ factors, limits }));
@@ -98,13 +106,13 @@ export function FactorCatalogEditor() {
   };
 
   const reset = async () => {
-    if (!window.confirm("¿Volver al catálogo que propone Valuaxis? Se pierden los cambios del despacho.")) return;
+    if (!window.confirm("¿Vaciar el catálogo del despacho? Los factores volverán a capturarse a mano.")) return;
     setBusy("reset");
     try {
       apply(await api.firm.resetFactors());
-      toast.success("Se restableció el catálogo propuesto.");
+      toast.success("Catálogo vaciado.");
     } catch (error) {
-      toast.error(errorMessage(error, "No se pudo restablecer el catálogo."));
+      toast.error(errorMessage(error, "No se pudo vaciar el catálogo."));
     } finally {
       setBusy(null);
     }
@@ -114,12 +122,13 @@ export function FactorCatalogEditor() {
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          Catálogo de factores de homologación
-          <Badge variant={customized ? "default" : "secondary"}>{customized ? "Del despacho" : "Propuesto por Valuaxis"}</Badge>
+          Catálogo de factores del despacho (opcional)
+          <Badge variant={customized ? "default" : "secondary"}>{customized ? "En uso" : "Sin catálogo"}</Badge>
         </CardTitle>
         <CardDescription>
-          Las calificaciones que el perito elige para el sujeto y cada comparable; el factor es sujeto entre comparable. La negociación
-          es un factor directo. El propuesto sale de los valores que usan sus libros de Excel; ajústelo a los criterios del despacho.
+          Valuaxis no propone valores ni rangos: cada factor es criterio del valuador, que lo captura y lo justifica en el comparable.
+          Si su despacho usa calificaciones propias, captúrelas aquí para elegirlas de una lista; el factor es sujeto entre comparable y
+          la negociación es un factor directo. Siempre se puede capturar a mano.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-6">
@@ -136,7 +145,7 @@ export function FactorCatalogEditor() {
             </Field>
           ))}
           <p className="text-xs text-muted-foreground sm:col-span-4">
-            Un comparable con un factor o un factor resultante fuera de estos rangos se marca en el panel de mercado.
+            Opcional. Si los llena, un factor o un factor resultante fuera de estos rangos se marca en el panel de mercado; no impide guardar.
           </p>
         </div>
 
@@ -187,7 +196,7 @@ export function FactorCatalogEditor() {
           {customized ? (
             <Button type="button" variant="outline" disabled={busy !== null} onClick={() => void reset()}>
               {busy === "reset" ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <RotateCcw data-icon="inline-start" />}
-              Volver al propuesto
+              Vaciar catálogo
             </Button>
           ) : null}
           <Button type="button" disabled={busy !== null} onClick={() => void save()}>

@@ -243,6 +243,7 @@ model Organizacion {
   SNombrePerito         String?   @map("SNombrePerito") @db.VarChar(180)
   SRegistroPerito       String?   @map("SRegistroPerito") @db.VarChar(120)
   IMesesVigencia        Int       @default(6) @map("IMesesVigencia")
+  JFirmas               Json?     @map("JFirmas") @db.JsonB
   SPrefijoFolio         String    @default("VLO") @map("SPrefijoFolio") @db.VarChar(10)
   JCatalogoFactores     Json?     @map("JCatalogoFactores") @db.JsonB
   BActivo               Boolean   @default(true) @map("BActivo")
@@ -1375,6 +1376,8 @@ model CaratulaAvaluo {
   SValorConLetra     String?   @map("SValorConLetra") @db.VarChar(500)
   DFechaAvaluo       DateTime? @map("DFechaAvaluo") @db.Timestamptz(3)
   DFechaVigencia     DateTime? @map("DFechaVigencia") @db.Timestamptz(3)
+  IMesesVigencia     Int?      @map("IMesesVigencia")
+  JFirmas            Json?     @map("JFirmas") @db.JsonB
   DFechaCreacion     DateTime  @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
   DFechaModificacion DateTime  @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
 

@@ -153,8 +153,15 @@ test("a floor on the age factor keeps an item older than its useful life from go
   const item = { ref: "T-1", area: 100, age: 80, usefulLife: 70, conservation: 1, unitReplacementCost: 1000 };
   const asExcel = computeCostApproach({ constructions: [item] }, EXCEL_PROFILES.TCH);
   assert.ok(asExcel.constructions < 0, "el Excel da un valor negativo");
-  const floored = computeCostApproach({ constructions: [item] }, { ...EXCEL_PROFILES.TCH, ageFactor: { exponent: 1.4, floor: 0 } });
+  const floored = computeCostApproach({ constructions: [item] }, { ...EXCEL_PROFILES.TCH, ageFactor: { exponent: 1.4, floor: 0, extendUsefulLife: false } });
   assert.equal(floored.constructions, 0);
+  // The appraiser's rule: the useful life becomes age + 1, so the item keeps a small value.
+  const extended = computeCostApproach({ constructions: [item] }, { ...EXCEL_PROFILES.TR, ageFactor: { exponent: 1.4, floor: 0, extendUsefulLife: true } });
+  assert.ok(Math.abs(extended.constructions - (1 - (80 / 81) ** 1.4) * 100 * 1000) < 1e-6, String(extended.constructions));
+  assert.ok(extended.constructions > 0);
+  // Exactly at the useful life it applies too: 70 of 70 years is valued as 70 of 71.
+  const atLimit = computeCostApproach({ constructions: [{ ...item, age: 70 }] }, { ...EXCEL_PROFILES.TR, ageFactor: { exponent: 1.4, floor: 0, extendUsefulLife: true } });
+  assert.ok(Math.abs(atLimit.constructions - (1 - (70 / 71) ** 1.4) * 100 * 1000) < 1e-6);
 });
 
 test("every figure is traced back to its inputs", () => {

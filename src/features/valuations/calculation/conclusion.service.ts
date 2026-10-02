@@ -7,11 +7,11 @@ import { Prisma } from "@prisma/client";
 import type { AuthUser } from "@/features/auth/model";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { concludeValue } from "../engine/conclusion";
-import { DEFAULT_ENGINE_CONFIG, ENGINE_VERSION } from "../engine/config";
+import { ENGINE_VERSION } from "../engine/config";
 import { Trace } from "../engine/trace";
 import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
 import type { ConclusionSettingsPayload } from "./conclusion-schemas";
-import { canConclude, defaultMethod, type ConclusionCalculationDto, type ConclusionMethod } from "./conclusion-types";
+import { canConclude, conclusionEngineConfig, defaultMethod, type ConclusionCalculationDto, type ConclusionMethod } from "./conclusion-types";
 
 const CALCULATION_KEY = "MOTOR.CONCLUSION";
 
@@ -42,12 +42,13 @@ async function load(tx: Tx, versionId: number) {
     tx.resumenValor.findUnique({ where: { IdVersionAvaluo: versionId } }),
     approachValues(tx, versionId),
   ]);
-  const configuration = asRecord(summary?.JConfiguracion ?? null) as { method?: ConclusionMethod };
+  const configuration = asRecord(summary?.JConfiguracion ?? null) as { method?: ConclusionMethod; rounding?: number | null };
   return {
     values,
     marketSource,
     method: configuration.method ?? defaultMethod(values),
     justification: summary?.SJustificacion ?? null,
+    ...(configuration.rounding === undefined ? {} : { rounding: configuration.rounding }),
     configured: Boolean(configuration.method),
   };
 }
@@ -67,7 +68,8 @@ export async function getConclusionCalculation(publicId: string, organizationId:
 export async function saveConclusionSettings(publicId: string, user: AuthUser, payload: ConclusionSettingsPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
-    const data = { JConfiguracion: { method: payload.method } as Prisma.InputJsonValue, SJustificacion: payload.justification };
+    const configuration = { method: payload.method, ...(payload.rounding === undefined ? {} : { rounding: payload.rounding }) };
+    const data = { JConfiguracion: configuration as Prisma.InputJsonValue, SJustificacion: payload.justification };
     await tx.resumenValor.upsert({ where: { IdVersionAvaluo: versionId }, create: { IdVersionAvaluo: versionId, ...data }, update: data });
     await recomputeConclusion(tx, versionId);
   });
@@ -78,7 +80,8 @@ export async function recomputeConclusion(tx: Tx, versionId: number) {
   const current = await load(tx, versionId);
   await tx.ejecucionCalculo.deleteMany({ where: { IdVersionAvaluo: versionId, SClaveCalculo: CALCULATION_KEY } });
   const trace = new Trace();
-  const result = canConclude(current) ? concludeValue({ values: current.values, method: current.method }, DEFAULT_ENGINE_CONFIG, trace) : null;
+  const config = conclusionEngineConfig(current);
+  const result = canConclude(current) ? concludeValue({ values: current.values, method: current.method }, config, trace) : null;
   const data = {
     NValorEnfoqueCostos: result?.summary.costos ?? current.values.costos,
     NValorEnfoqueMercado: result?.summary.mercado ?? current.values.mercado,
@@ -101,7 +104,7 @@ export async function recomputeConclusion(tx: Tx, versionId: number) {
       SVersionCalculo: ENGINE_VERSION,
       JValoresEntrada: { values: current.values, method: current.method } as unknown as Prisma.InputJsonValue,
       JValoresSalida: result as unknown as Prisma.InputJsonValue,
-      SPoliticaRedondeo: JSON.stringify({ conclusion: DEFAULT_ENGINE_CONFIG.rounding.conclusion }),
+      SPoliticaRedondeo: JSON.stringify({ conclusion: config.rounding.conclusion }),
       BExitoso: true,
       resultados: {
         create: trace.steps.map((step, index) => ({ SClaveResultado: step.key.slice(0, 120), NValorNumerico: step.value, IOrden: index })),

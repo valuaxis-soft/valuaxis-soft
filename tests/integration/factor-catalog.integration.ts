@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { getFactorCatalog, saveFactorCatalog } from "../../src/features/firm/firm.service";
-import { DEFAULT_FACTOR_CATALOG } from "../../src/features/valuations/calculation/factor-catalog";
+import { EMPTY_FACTOR_CATALOG } from "../../src/features/valuations/calculation/factor-catalog";
 import { createComparable, getMarketCalculation, saveMarketSettings } from "../../src/features/valuations/calculation/market.service";
+import { SAMPLE_FACTOR_CATALOG } from "../support/sample-factor-catalog";
 import { createValuationFixture, prisma } from "./support";
 
 after(() => prisma.$disconnect());
 
-test("a firm edits its catalog, and can go back to the proposal", async () => {
+test("a firm keeps its own catalog, and can empty it again", async () => {
   const fixture = await createValuationFixture();
   const initial = await getFactorCatalog(fixture.organizationId);
   assert.equal(initial.customized, false);
-  assert.deepEqual(initial.catalog, DEFAULT_FACTOR_CATALOG);
+  assert.deepEqual(initial.catalog, EMPTY_FACTOR_CATALOG);
 
   const custom = { factors: { ZONA: [{ label: "Igual", value: 1 }, { label: "Mejor", value: 1.08 }] }, limits: { factorMin: 0.85, factorMax: 1.15, resultantMin: 0.7, resultantMax: 1.3 } };
   const saved = await saveFactorCatalog(fixture.user, custom);
@@ -20,7 +21,7 @@ test("a firm edits its catalog, and can go back to the proposal", async () => {
 
   const reset = await saveFactorCatalog(fixture.user, null);
   assert.equal(reset.customized, false);
-  assert.deepEqual(reset.catalog, DEFAULT_FACTOR_CATALOG);
+  assert.deepEqual(reset.catalog, EMPTY_FACTOR_CATALOG);
 });
 
 test("the subject's rating of a factor is saved with the market settings", async () => {
@@ -36,6 +37,7 @@ test("the subject's rating of a factor is saved with the market settings", async
 
 test("changing the subject's rating updates the comparables rated from the catalog, not the ones typed by hand", async () => {
   const fixture = await createValuationFixture();
+  await saveFactorCatalog(fixture.user, SAMPLE_FACTOR_CATALOG);
   const current = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
   const withSubject = (option: string) => ({
     ...current.settings,

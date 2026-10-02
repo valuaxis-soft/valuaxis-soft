@@ -19,8 +19,8 @@ import {
   MARKET_LABELS,
   FACTOR_TYPES,
   MIN_COMPARABLES,
-  RECOMMENDED_MAX_DISPERSION,
   isComparableComplete,
+  marketEngineConfig,
   toMarketEngineInput,
   type ComparableDto,
   type ComparableType,
@@ -30,13 +30,15 @@ import {
 } from "@/features/valuations/calculation/market-types";
 import {
   COMPUTED_FACTORS,
-  DEFAULT_FACTOR_CATALOG,
   DIRECT_FACTORS,
+  EMPTY_FACTOR_CATALOG,
   factorWarnings,
   optionsFor,
   type FactorCatalog,
 } from "@/features/valuations/calculation/factor-catalog";
-import { ComparableDialog, parseDecimal } from "./comparable-dialog";
+import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { ComparableDialog } from "./comparable-dialog";
+import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { ImportComparablesDialog } from "./import-comparables-dialog";
 import { useSerializedSave } from "./use-serialized-save";
 
@@ -48,15 +50,14 @@ function compute(calculation: Pick<MarketCalculationDto, "settings" | "comparabl
   { result: MarketApproachResult | null; reason: string | null } {
   const input = toMarketEngineInput(calculation);
   if (!input.ok) return { result: null, reason: input.reason };
-  return { result: computeMarketApproach(input.input, DEFAULT_ENGINE_CONFIG), reason: null };
+  return { result: computeMarketApproach(input.input, marketEngineConfig(calculation.settings)), reason: null };
 }
 
-type SettingsDraft = Record<"subjectArea" | "baseArea" | "surfacePower" | "adoptedUnitValue" | "additionalAmount" | "justification", string>;
+type SettingsDraft = Record<"subjectArea" | "baseArea" | "adoptedUnitValue" | "additionalAmount" | "justification", string>;
 
 const draftFrom = (settings: MarketSettingsDto): SettingsDraft => ({
   subjectArea: text(settings.subjectArea),
   baseArea: text(settings.baseArea),
-  surfacePower: String(settings.surfacePower),
   adoptedUnitValue: text(settings.adoptedUnitValue),
   additionalAmount: settings.additionalAmount ? String(settings.additionalAmount) : "",
   justification: settings.justification ?? "",
@@ -67,7 +68,6 @@ function settingsFrom(base: MarketSettingsDto, draft: SettingsDraft): MarketSett
     ...base,
     subjectArea: parseDecimal(draft.subjectArea),
     baseArea: parseDecimal(draft.baseArea),
-    surfacePower: parseDecimal(draft.surfacePower) ?? base.surfacePower,
     adoptedUnitValue: parseDecimal(draft.adoptedUnitValue),
     additionalAmount: parseDecimal(draft.additionalAmount) ?? 0,
     justification: draft.justification.trim() || null,
@@ -97,9 +97,9 @@ export function MarketCalculationPanel(props: {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [editing, setEditing] = useState<ComparableDto | "nuevo" | null>(null);
-  const [catalog, setCatalog] = useState<FactorCatalog>(DEFAULT_FACTOR_CATALOG);
+  const [catalog, setCatalog] = useState<FactorCatalog>(EMPTY_FACTOR_CATALOG);
 
-  // The firm's factor catalog; the proposed one while it loads or if it fails.
+  // The firm's own factor catalog, if it keeps one; without it every factor is typed.
   useEffect(() => {
     let active = true;
     api.firm.factors()
@@ -257,10 +257,11 @@ export function MarketCalculationPanel(props: {
         </Field>
         <Field>
           <FieldLabel htmlFor="market-power">Potencia n</FieldLabel>
-          <Input id="market-power" inputMode="decimal" value={draft.surfacePower} onChange={setDraftField("surfacePower")} />
-          {result?.homologation.suggestedPower ? (
-            <span className="text-xs text-muted-foreground">Sugerida por los comparables: {result.homologation.suggestedPower}</span>
-          ) : null}
+          <SurfacePowerSelect
+            id="market-power"
+            value={liveSettings.surfacePower}
+            onChange={(surfacePower) => void saveSettings({ ...liveSettings, surfacePower })}
+          />
         </Field>
         <Field>
           <FieldLabel htmlFor="market-adopted">{labels.adopted}</FieldLabel>
@@ -269,9 +270,16 @@ export function MarketCalculationPanel(props: {
             inputMode="decimal"
             value={draft.adoptedUnitValue}
             placeholder={stats ? `Promedio: ${stats.mean.toFixed(2)}` : undefined}
+            aria-invalid={result?.adoptedOutsideLimits || undefined}
             onChange={setDraftField("adoptedUnitValue")}
           />
         </Field>
+        <p className="text-xs text-muted-foreground sm:col-span-4">
+          Factor de superficie: {liveSettings.baseArea
+            ? "con lote tipo (homologación indirecta), cada comparable usa (lote tipo ÷ comparable)^(1/n) y el sujeto (lote tipo ÷ sujeto)^(1/n)."
+            : "sin lote tipo (homologación directa), cada comparable usa (sujeto ÷ comparable)^(1/n)."}
+          {" "}En cada comparable puedes escribir otro factor de superficie. Los campos numéricos aceptan cálculos: =5*10000, =(1345*235)^(1/6).
+        </p>
         <Field className="sm:col-span-3">
           <FieldLabel htmlFor="market-justification">Justificación de lo adoptado</FieldLabel>
           <Textarea id="market-justification" rows={2} value={draft.justification} onChange={setDraftField("justification")} />
@@ -279,6 +287,15 @@ export function MarketCalculationPanel(props: {
         <Field>
           <FieldLabel htmlFor="market-additional">Monto adicional ($)</FieldLabel>
           <Input id="market-additional" inputMode="decimal" value={draft.additionalAmount} placeholder="0" onChange={setDraftField("additionalAmount")} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="market-rounding">Redondeo del valor</FieldLabel>
+          <RoundingSelect
+            id="market-rounding"
+            label="Redondeo del valor"
+            value={liveSettings.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.market.comparativeValue : liveSettings.rounding}
+            onChange={(rounding) => void saveSettings({ ...liveSettings, rounding })}
+          />
         </Field>
       </fieldset>
 
@@ -385,7 +402,7 @@ export function MarketCalculationPanel(props: {
                               className="size-3.5 text-amber-600"
                               aria-label={`Fuera del rango del despacho: ${detail}`}
                             >
-                              <title>{`Fuera del rango del despacho (factor ${catalog.limits.factorMin}–${catalog.limits.factorMax}, resultante ${catalog.limits.resultantMin}–${catalog.limits.resultantMax}): ${detail}`}</title>
+                              <title>{`Fuera del rango que fijó el despacho: ${detail}`}</title>
                             </AlertTriangle>
                           ) : null}
                           {row.resultantFactor.toFixed(4)}
@@ -435,29 +452,32 @@ export function MarketCalculationPanel(props: {
         ) : <span />}
         {complete < MIN_COMPARABLES ? (
           <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="size-3.5" /> Se recomiendan al menos {MIN_COMPARABLES} comparables completos ({complete} de {MIN_COMPARABLES}).
+            <AlertTriangle className="size-3.5" /> El dictamen lleva al menos {MIN_COMPARABLES} comparables completos ({complete} de {MIN_COMPARABLES}).
           </span>
         ) : null}
       </div>
 
       {result && stats ? (
         <dl className="grid gap-x-4 gap-y-1 rounded-md border bg-background p-3 text-sm sm:grid-cols-3">
-          <div><dt className="text-xs text-muted-foreground">Promedio homologado</dt><dd className="tabular-nums">{money(stats.mean)} {perUnit}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Promedio homologado (referencia)</dt><dd className="tabular-nums">{money(stats.mean)} {perUnit}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Mediana homologada (referencia)</dt><dd className="tabular-nums">{money(stats.median)} {perUnit}</dd></div>
           <div><dt className="text-xs text-muted-foreground">Rango</dt><dd className="tabular-nums">{money(stats.min)} – {money(stats.max)}</dd></div>
           <div>
+            <dt className="text-xs text-muted-foreground">Se puede adoptar (±30 %)</dt>
+            <dd className="tabular-nums">{money(result.adoptedLimits.min)} – {money(result.adoptedLimits.max)}</dd>
+          </div>
+          <div>
             <dt className="text-xs text-muted-foreground">Dispersión</dt>
-            <dd className={stats.dispersion > RECOMMENDED_MAX_DISPERSION ? "text-amber-700 tabular-nums dark:text-amber-400" : "tabular-nums"}>
-              {stats.dispersion.toFixed(2)}{stats.dispersion > RECOMMENDED_MAX_DISPERSION ? " (recomendado menos de 1.25)" : ""}
-            </dd>
+            <dd className="tabular-nums">{stats.dispersion.toFixed(2)}</dd>
           </div>
           <div><dt className="text-xs text-muted-foreground">Adoptado</dt><dd className="tabular-nums">{money(result.adoptedUnitValue)} {perUnit}</dd></div>
-          <div className="sm:col-span-2">
+          <div>
             <dt className="text-xs text-muted-foreground">{labels.value}</dt>
             <dd className="text-base font-semibold tabular-nums">{money(result.value)}</dd>
           </div>
-          {result.adoptedOutsideRange ? (
-            <p className="flex items-center gap-1 text-xs text-amber-700 sm:col-span-3 dark:text-amber-400">
-              <AlertTriangle className="size-3.5" /> Lo adoptado queda fuera del rango homologado; justifícalo.
+          {result.adoptedOutsideLimits ? (
+            <p className="flex items-center gap-1 text-xs text-destructive sm:col-span-3">
+              <AlertTriangle className="size-3.5" /> El valor adoptado sale del ±30 % del promedio y la mediana: revisa que no sea un error de captura. No se guarda fuera de ese rango.
             </p>
           ) : null}
         </dl>

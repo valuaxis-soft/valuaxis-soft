@@ -10,7 +10,6 @@ import { ensureTableV2 } from "../services/table";
 import {
   COMPARABLE_TYPE_LABELS,
   MARKET_LABELS,
-  RECOMMENDED_MAX_DISPERSION,
   type ComparableType,
   type MarketCalculationDto,
 } from "./market-types";
@@ -130,9 +129,13 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
       [`${words.unitValue} mínimo homologado`, `${money.format(stats.min)} ${perMonth}`],
       [`${words.unitValue} máximo homologado`, `${money.format(stats.max)} ${perMonth}`],
       [`${words.unitValue} promedio homologado`, `${money.format(stats.mean)} ${perMonth}`],
-      ["Dispersión (máximo / mínimo)", `${decimals(2).format(stats.dispersion)}${stats.dispersion > RECOMMENDED_MAX_DISPERSION ? " (mayor a la recomendada de 1.25)" : ""}`],
+      [`${words.unitValue} mediana homologada`, `${money.format(stats.median)} ${perMonth}`],
+      ["Dispersión (máximo / mínimo)", decimals(2).format(stats.dispersion)],
       [`${words.unitValue} adoptado`, `${money.format(result.adoptedUnitValue)} ${perMonth}`],
       [words.subjectArea.replace(" (m²)", ""), area(settings.subjectArea ?? 0)],
+      ...(result.subjectSurfaceFactor !== 1
+        ? [["Factor de superficie del sujeto contra el lote tipo", factor(result.subjectSurfaceFactor)] as [string, string]]
+        : []),
       ...(settings.additionalAmount ? [["Monto adicional", money.format(settings.additionalAmount)] as [string, string]] : []),
       [words.value, money.format(result.value)],
       ...(settings.justification ? [["Justificación del valor adoptado", settings.justification] as [string, string]] : []),

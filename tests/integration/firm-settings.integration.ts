@@ -15,7 +15,8 @@ import {
   saveFirmSettings,
   signedLogoUrl,
 } from "../../src/features/firm/firm.service";
-import { DEFAULT_FACTOR_CATALOG, type FactorCatalog } from "../../src/features/valuations/calculation/factor-catalog";
+import { EMPTY_FACTOR_CATALOG, type FactorCatalog } from "../../src/features/valuations/calculation/factor-catalog";
+import { SAMPLE_FACTOR_CATALOG } from "../support/sample-factor-catalog";
 import { createComparable, getMarketCalculation, saveMarketSettings } from "../../src/features/valuations/calculation/market.service";
 import type { ComparableInputPayload } from "../../src/features/valuations/calculation/market-schemas";
 import { createValuationFixture, prisma } from "./support";
@@ -46,8 +47,10 @@ const settings = firmSettingsSchema.parse({
   address: "Av. Hidalgo 100, Arandas, Jalisco",
   phone: "348 000 0000",
   email: "Contacto@Despacho.MX",
-  appraiserName: "Ing. Álvaro Gutiérrez",
-  appraiserRegistration: "CED-12345",
+  signers: [
+    { name: "Ing. Álvaro Gutiérrez", cedula: "CED-12345", role: "Perito valuador" },
+    { name: "Arq. Ana Ruiz", cedula: "7654321" },
+  ],
   validityMonths: 12,
   folioPrefix: "vda",
 });
@@ -68,8 +71,7 @@ test("a new firm starts with its name, the default prefix and validity, and noth
     address: null,
     phone: null,
     email: null,
-    appraiserName: null,
-    appraiserRegistration: null,
+    signers: [],
     validityMonths: 6,
     folioPrefix: "VLO",
     logoUrl: null,
@@ -89,8 +91,10 @@ test("saving the firm's data updates only that firm, feeds the letterhead and is
     address: "Av. Hidalgo 100, Arandas, Jalisco",
     phone: "348 000 0000",
     email: "contacto@despacho.mx",
-    appraiserName: "Ing. Álvaro Gutiérrez",
-    appraiserRegistration: "CED-12345",
+    signers: [
+      { name: "Ing. Álvaro Gutiérrez", cedula: "CED-12345", role: "Perito valuador" },
+      { name: "Arq. Ana Ruiz", cedula: "7654321", role: "" },
+    ],
     validityMonths: 12,
     folioPrefix: "VDA",
     logoUrl: null,
@@ -122,7 +126,7 @@ test("clearing optional fields stores them empty", async () => {
   assert.equal(saved.legalName, null);
   assert.equal(saved.rfc, null);
   assert.equal(saved.email, null);
-  assert.equal(saved.appraiserName, null);
+  assert.deepEqual(saved.signers, []);
 });
 
 test("a deleted or inactive firm cannot be read or saved", async () => {
@@ -204,10 +208,10 @@ test("each firm has its own factor catalog; saving and resetting are audited", a
   await saveFactorCatalog(fixture.user, customCatalog);
 
   assert.deepEqual(await getFactorCatalog(fixture.organizationId), { catalog: customCatalog, customized: true });
-  assert.deepEqual(await getFactorCatalog(other.organizationId), { catalog: DEFAULT_FACTOR_CATALOG, customized: false });
+  assert.deepEqual(await getFactorCatalog(other.organizationId), { catalog: EMPTY_FACTOR_CATALOG, customized: false });
 
   await saveFactorCatalog(fixture.user, null);
-  assert.deepEqual(await getFactorCatalog(fixture.organizationId), { catalog: DEFAULT_FACTOR_CATALOG, customized: false });
+  assert.deepEqual(await getFactorCatalog(fixture.organizationId), { catalog: EMPTY_FACTOR_CATALOG, customized: false });
   assert.equal((await auditRows(fixture.organizationId, "FACTOR_CATALOG_SAVE")).length, 1);
   assert.equal((await auditRows(fixture.organizationId, "FACTOR_CATALOG_RESET")).length, 1);
 });
@@ -216,7 +220,7 @@ test("a stored catalog that no longer validates falls back to the proposal", asy
   const fixture = await createValuationFixture();
   await prisma.organizacion.update({ where: { IdOrganizacion: fixture.organizationId }, data: { JCatalogoFactores: { factors: "roto" } } });
   const { catalog, customized } = await getFactorCatalog(fixture.organizationId);
-  assert.deepEqual(catalog, DEFAULT_FACTOR_CATALOG);
+  assert.deepEqual(catalog, EMPTY_FACTOR_CATALOG);
   assert.equal(customized, true, "the firm did store something");
 });
 
@@ -286,6 +290,7 @@ test("following the subject's rating only touches comparables of the same type i
   const other = await createValuationFixture();
   const factor = { type: "ZONA" as const, value: 1 / 1.05, subjectRating: 1, comparableRating: 1.05, justification: null };
   for (const target of [fixture, other]) {
+    await saveFactorCatalog(target.user, SAMPLE_FACTOR_CATALOG);
     const land = await getMarketCalculation(target.publicId, target.organizationId, "TERRENO_VENTA");
     await saveMarketSettings(target.publicId, target.user, {
       ...land.settings,

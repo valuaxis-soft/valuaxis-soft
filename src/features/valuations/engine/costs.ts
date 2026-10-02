@@ -66,7 +66,8 @@ export type OtherAssetInput = {
   unitReplacementCost: number;
 };
 
-export type IndirectInput = { concept: string; percentage: number; base: number };
+/** `base` defaults to constructions plus special installations (B + C). */
+export type IndirectInput = { concept: string; percentage: number; base?: number };
 
 export type CostApproachInput = {
   land?: UrbanLandInput | RuralLandInput;
@@ -91,7 +92,7 @@ export function computeCostApproach(input: CostApproachInput, config: EngineConf
   const constructions = input.constructions?.length ? costConstructions(input.constructions, config, trace) : 0;
   const specialInstallations = input.specialInstallations?.length ? costInstallations(input.specialInstallations, config, trace) : 0;
   const otherAssets = input.otherAssets?.length ? costOtherAssets(input.otherAssets, config, trace) : 0;
-  const indirects = input.indirects?.length ? costIndirects(input.indirects, trace) : 0;
+  const indirects = input.indirects?.length ? costIndirects(input.indirects, constructions + specialInstallations, trace) : 0;
 
   const sum = land + constructions + specialInstallations + otherAssets + indirects;
   const physicalValue = trace.record({
@@ -202,7 +203,7 @@ function costConstructions(rows: ConstructionInput[], config: EngineConfig, trac
       label: `Factor de edad ${row.ref}`,
       formula: `1 − (edad / vida útil)^${config.ageFactor.exponent}`,
       inputs: { edad: row.age, vidaUtil: row.usefulLife },
-      value: ageFactor(row.age, row.usefulLife, config.ageFactor.exponent, config.ageFactor.floor),
+      value: ageFactor(row.age, row.usefulLife, config.ageFactor),
     });
     const resultant = trace.record({
       key: `${key}.factorResultante`,
@@ -262,7 +263,7 @@ function costInstallations(rows: SpecialInstallationInput[], config: EngineConfi
     const other = row.otherFactor ?? 1;
     const completion = row.completion ?? 1;
     const undivided = row.undivided ?? 1;
-    const age = ageFactor(row.age, row.usefulLife, config.ageFactor.exponent, config.ageFactor.floor);
+    const age = ageFactor(row.age, row.usefulLife, config.ageFactor);
     const resultant = trace.record({
       key: `${key}.factorResultante`,
       label: `Factor resultante ${row.ref}`,
@@ -312,7 +313,7 @@ function costOtherAssets(rows: OtherAssetInput[], config: EngineConfig, trace: T
   let subtotal = 0;
   for (const row of rows) {
     const key = `costos.otrosBienes.${row.ref}`;
-    const age = ageFactor(row.age, row.usefulLife, config.ageFactor.exponent, config.ageFactor.floor);
+    const age = ageFactor(row.age, row.usefulLife, config.ageFactor);
     const resultant = trace.record({
       key: `${key}.factorResultante`,
       label: `Factor resultante ${row.ref}`,
@@ -339,15 +340,16 @@ function costOtherAssets(rows: OtherAssetInput[], config: EngineConfig, trace: T
   });
 }
 
-function costIndirects(rows: IndirectInput[], trace: Trace): number {
+function costIndirects(rows: IndirectInput[], constructionsValue: number, trace: Trace): number {
   let total = 0;
   rows.forEach((row, index) => {
+    const base = row.base ?? constructionsValue;
     total += trace.record({
       key: `costos.indirectos.${index + 1}`,
       label: row.concept,
-      formula: "porcentaje × base",
-      inputs: { porcentaje: row.percentage, base: row.base },
-      value: row.percentage * row.base,
+      formula: row.base === undefined ? "porcentaje × (construcciones + instalaciones)" : "porcentaje × base",
+      inputs: { porcentaje: row.percentage, base },
+      value: row.percentage * base,
     });
   });
   return trace.record({ key: "costos.indirectos.valor", label: "E) Indirectos", formula: "Σ indirectos", inputs: {}, value: total });

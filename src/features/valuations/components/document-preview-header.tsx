@@ -1,5 +1,14 @@
 import type { CaratulaFormData, ImageContent, Letterhead } from "../model";
 import { formatDateValue } from "../services/concept-value-format";
+import { formatValidityMonths, validUntilDate } from "../services/valuation-signatures";
+
+/** "6 meses (hasta 28 de Marzo de 2027)"; the stored date for a valuation saved before the validity was in months. */
+function validityText(caratula: CaratulaFormData) {
+  if (caratula.mesesVigencia === null) return formatDateValue(caratula.fechaVigencia, "normal");
+  const until = validUntilDate(caratula.fechaAvaluo, caratula.mesesVigencia);
+  const months = formatValidityMonths(caratula.mesesVigencia);
+  return until ? `${months} (hasta ${formatDateValue(until, "normal")})` : months;
+}
 
 /**
  * The header of every document page. The valuation's own carátula data and
@@ -54,7 +63,7 @@ export function DocumentPreviewHeader({
           <div className="mt-4 grid items-end gap-2 text-[11px] leading-tight sm:grid-cols-[minmax(0,1fr)_230px]">
             <div>
               <p><strong>Fecha del Avalúo:</strong> {formatDateValue(caratula.fechaAvaluo, "normal")}</p>
-              <p className="mt-0.5"><strong>Vigencia del Avalúo:</strong> {formatDateValue(caratula.fechaVigencia, "normal")}</p>
+              <p className="mt-0.5"><strong>Vigencia del Avalúo:</strong> {validityText(caratula)}</p>
             </div>
             <div className="flex items-center gap-2">
               <strong className="shrink-0 text-slate-700">

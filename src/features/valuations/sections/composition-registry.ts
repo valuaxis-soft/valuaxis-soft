@@ -63,12 +63,14 @@ const compositionRegistry: AppSectionComposition[] = [
       { id: "cover-main", kind: "caratula-cover" },
       { id: "assumptions", kind: "caratula-assumptions" },
       { id: "conclusion", kind: "caratula-conclusion" },
+      { id: "signatures", kind: "caratula-signatures" },
     ],
     sequence: [
       { type: "fixed", kind: "caratula-cover" },
       { type: "editable" },
       { type: "fixed", kind: "caratula-assumptions" },
       { type: "fixed", kind: "caratula-conclusion" },
+      { type: "fixed", kind: "caratula-signatures" },
     ],
   },
   {

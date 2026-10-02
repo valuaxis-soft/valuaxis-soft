@@ -45,6 +45,7 @@ import {
   CaratulaCoverModule,
   CaratulaAssumptionsModule,
   CaratulaConclusionModule,
+  CaratulaSignaturesModule,
 } from "./caratula-preview-modules";
 
 const CARATULA_BLUE = "#003B73";
@@ -228,6 +229,8 @@ function CaratulaPreview({
     { id: "caratula-assumptions", node: <CaratulaAssumptionsModule blocks={assumptions} /> },
     // Fixed: Conclusion
     { id: "caratula-conclusion", node: <CaratulaConclusionModule blocks={conclusions} caratula={caratula} /> },
+    // Fixed: Signatures, their own item so many of them can move to the next page
+    { id: "caratula-signatures", node: <CaratulaSignaturesModule caratula={caratula} /> },
   ];
 
   const contentLayoutKey = useMemo(() => computeDocumentLayoutKey(section), [section]);

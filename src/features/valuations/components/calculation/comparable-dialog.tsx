@@ -18,16 +18,9 @@ import {
   type FactorCatalog,
   type FactorOption,
 } from "@/features/valuations/calculation/factor-catalog";
+import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import type { ComparableDto, ComparableFactorDto, FactorSlotConfig, FactorType } from "@/features/valuations/calculation/market-types";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-
-/** "1,260,000.50" or "$ 9000" → number; empty → null. */
-export function parseDecimal(value: string): number | null {
-  const cleaned = value.replace(/[$,\s]/g, "");
-  if (!cleaned) return null;
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
 const text = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value));
 
@@ -35,7 +28,15 @@ const text = (value: number | null | undefined) => (value === null || value === 
  * A factor as the appraiser captures it: picked from the firm's catalog
  * (subject and comparable ratings, or a direct option), or typed by hand.
  */
-type FactorDraft = { mode: "catalog" | "manual"; subjectOption: string; comparableOption: string; subject: string; comparable: string };
+type FactorDraft = {
+  mode: "catalog" | "manual";
+  subjectOption: string;
+  comparableOption: string;
+  subject: string;
+  comparable: string;
+  /** Why the appraiser used these values; it is their judgement and they answer for it. */
+  justification: string;
+};
 type Draft = Record<"location" | "area" | "price" | "sourceName" | "contactName" | "contactPhone" | "url" | "offerDate"
   | "landUse" | "shape" | "zone" | "frontage" | "depth" | "topography" | "services" | "notes", string>;
 
@@ -60,9 +61,6 @@ function initialDraft(comparable: ComparableDto | null): Draft {
   };
 }
 
-/** Negotiation starts at the offer discount every one of the firm's books uses. */
-const DEFAULT_DIRECT_OPTION = "Oferta típica";
-
 /**
  * A factor is captured as subject rating / comparable rating; a direct value is
  * its own subject rating. A stored factor that matches the catalog opens as
@@ -73,7 +71,7 @@ function initialFactors(comparable: ComparableDto | null, slots: FactorSlotConfi
     const options = optionsFor(catalog, slot.type);
     const factor = comparable?.factors.find((item) => item.type === slot.type);
     const manual = (subject: string, comparableValue: string): FactorDraft =>
-      ({ mode: "manual", subjectOption: slot.subjectOption ?? "", comparableOption: "", subject, comparable: comparableValue });
+      ({ mode: "manual", subjectOption: slot.subjectOption ?? "", comparableOption: "", subject, comparable: comparableValue, justification: factor?.justification ?? "" });
     const direct = DIRECT_FACTORS.has(slot.type);
 
     if (factor?.subjectRating && factor.comparableRating) {
@@ -90,9 +88,8 @@ function initialFactors(comparable: ComparableDto | null, slots: FactorSlotConfi
       return [slot.type, manual(text(factor.value), "1")];
     }
     if (!options.length) return [slot.type, manual("", "")];
-    // A new comparable: the subject's rating comes from the panel; negotiation starts at the usual discount.
-    const comparableOption = direct && options.some((option) => option.label === DEFAULT_DIRECT_OPTION) && !comparable ? DEFAULT_DIRECT_OPTION : "";
-    return [slot.type, { ...manual("", ""), mode: "catalog", comparableOption }];
+    // A new comparable: the subject's rating comes from the panel; nothing is picked for the appraiser.
+    return [slot.type, { ...manual("", ""), mode: "catalog" }];
   }));
 }
 
@@ -108,13 +105,18 @@ function capturedFactor(type: FactorType, label: string, draft: FactorDraft, opt
       value: factor?.value ?? 1,
       subjectRating: factor?.subjectRating ?? null,
       comparableRating: factor?.comparableRating ?? null,
-      justification: optionJustification(type, label, subject, comparable),
+      justification: draft.justification.trim() || optionJustification(type, label, subject, comparable),
     };
   }
   const subject = parseDecimal(draft.subject);
   const comparable = parseDecimal(draft.comparable);
   const value = subject === null && comparable === null ? 1 : (subject ?? 1) / (comparable ?? 1);
-  return { value, subjectRating: subject && comparable ? subject : null, comparableRating: subject && comparable ? comparable : null, justification: null };
+  return {
+    value,
+    subjectRating: subject && comparable ? subject : null,
+    comparableRating: subject && comparable ? comparable : null,
+    justification: draft.justification.trim() || null,
+  };
 }
 
 export function ComparableDialog(props: {
@@ -132,6 +134,8 @@ export function ComparableDialog(props: {
   const { comparable, factorSlots, catalog, readOnly } = props;
   const [draft, setDraft] = useState<Draft>(() => initialDraft(comparable));
   const [factors, setFactors] = useState(() => initialFactors(comparable, factorSlots, catalog));
+  // Empty: the surface factor comes from the formula with the power n.
+  const [surfaceFactor, setSurfaceFactor] = useState(() => text(comparable?.factors.find((factor) => factor.type === "SUPERFICIE")?.value));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,6 +147,11 @@ export function ComparableDialog(props: {
     event.preventDefault();
     if (!draft.location.trim()) {
       setError("Captura la ubicación del comparable.");
+      return;
+    }
+    const typedSurface = parseDecimal(surfaceFactor);
+    if (surfaceFactor.trim() && (typedSurface === null || typedSurface <= 0)) {
+      setError("El factor de superficie debe ser un número mayor que cero, o quedar vacío para usar la fórmula.");
       return;
     }
     setError(null);
@@ -171,7 +180,9 @@ export function ComparableDialog(props: {
       topography: draft.topography.trim() || null,
       services: draft.services.trim() || null,
       notes: draft.notes.trim() || null,
-      factors: capturedFactors,
+      factors: typedSurface === null
+        ? capturedFactors
+        : [...capturedFactors, { type: "SUPERFICIE", value: typedSurface, subjectRating: null, comparableRating: null, justification: null }],
     });
     setSaving(false);
     if (ok) props.onOpenChange(false);
@@ -195,7 +206,8 @@ export function ComparableDialog(props: {
         <DialogHeader>
           <DialogTitle>{comparable ? `Comparable ${comparable.reference}` : "Nuevo comparable"}</DialogTitle>
           <DialogDescription>
-            Los factores se capturan como calificación del sujeto entre calificación del comparable, igual que en el Excel (=1/1.15).
+            Los factores se capturan como calificación del sujeto entre calificación del comparable, o como un solo valor. En
+            cualquier campo numérico puedes escribir un cálculo empezando con el signo igual, por ejemplo =1/1.15.
           </DialogDescription>
         </DialogHeader>
 
@@ -265,7 +277,7 @@ export function ComparableDialog(props: {
               <h3 className="text-sm font-medium">Factores de homologación</h3>
               <div className="grid gap-2">
                 {factorSlots.filter((slot) => slot.type !== "SUPERFICIE").map((slot) => {
-                  const value = factors[slot.type] ?? { mode: "manual", subjectOption: "", comparableOption: "", subject: "", comparable: "" };
+                  const value = factors[slot.type] ?? { mode: "manual", subjectOption: "", comparableOption: "", subject: "", comparable: "", justification: "" };
                   const options = optionsFor(catalog, slot.type);
                   const direct = DIRECT_FACTORS.has(slot.type);
                   const change = (patch: Partial<FactorDraft>) =>
@@ -321,10 +333,30 @@ export function ComparableDialog(props: {
                         </>
                       )}
                       <span className="text-right tabular-nums text-muted-foreground">{computed.toFixed(4)}</span>
+                      <Input
+                        aria-label={`${slot.label}: justificación`}
+                        className="col-span-4"
+                        placeholder="Justificación del factor (opcional)"
+                        maxLength={1000}
+                        value={value.justification}
+                        onChange={(event) => change({ justification: event.target.value })}
+                      />
                     </div>
                   );
                 })}
-                <p className="text-xs text-muted-foreground">El factor de superficie lo calcula el sistema con la potencia n.</p>
+                {factorSlots.some((slot) => slot.type === "SUPERFICIE") ? (
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_4.5rem] items-center gap-2 text-sm">
+                    <span>Superficie</span>
+                    <Input
+                      aria-label="Factor de superficie capturado"
+                      inputMode="decimal"
+                      placeholder="Vacío: se calcula con la fórmula y la potencia n"
+                      value={surfaceFactor}
+                      onChange={(event) => setSurfaceFactor(event.target.value)}
+                    />
+                    <span className="text-right tabular-nums text-muted-foreground">{parseDecimal(surfaceFactor)?.toFixed(4) ?? "fórmula"}</span>
+                  </div>
+                ) : null}
               </div>
             </section>
           </fieldset>

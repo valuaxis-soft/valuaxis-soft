@@ -87,10 +87,16 @@ export type CaratulaPayload = {
   propietario?: string | null;
   objeto?: string | null;
   proposito?: string | null;
+  /** Single signer of clients that do not send `firmas`. */
   valuador?: string | null;
   registroValuador?: string | null;
+  /** Every signature, in order; when sent it replaces the stored list. */
+  firmas?: unknown;
   valorTotal?: string | number | null;
   valorConLetra?: string | null;
   fechaAvaluo?: string | null;
+  /** Whole months, 1 to 12; the validity date follows from the valuation date. */
+  mesesVigencia?: number | null;
+  /** Used only while `mesesVigencia` is empty. */
   fechaVigencia?: string | null;
 };

@@ -9,7 +9,9 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import {
+  DEFAULT_COST_ROUNDING,
   LAND_FACTORS,
+  costEngineConfig,
   emptyConstruction,
   emptyInstallation,
   landUnitValue,
@@ -17,14 +19,15 @@ import {
   type ConstructionDto,
   type CostCalculationDto,
   type CostInputDto,
+  type CostRoundingDto,
   type IndirectDto,
   type InstallationDto,
   type LandFactorKey,
 } from "@/features/valuations/calculation/cost-types";
-import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
 import { computeCostApproach } from "@/features/valuations/engine/costs";
 import { Trace } from "@/features/valuations/engine/trace";
-import { parseDecimal } from "./comparable-dialog";
+import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { useSerializedSave } from "./use-serialized-save";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -36,7 +39,15 @@ type Draft = {
   constructions: Texts<ConstructionDto>[];
   installations: Texts<InstallationDto>[];
   indirects: Texts<IndirectDto>[];
+  rounding: CostRoundingDto;
 };
+
+const ROUNDING_FIELDS: { key: keyof CostRoundingDto; label: string }[] = [
+  { key: "land", label: "Terreno" },
+  { key: "constructions", label: "Construcciones" },
+  { key: "installations", label: "Instalaciones" },
+  { key: "physicalValue", label: "Valor físico" },
+];
 
 const toText = (value: number | null) => (value === null ? "" : String(value));
 
@@ -68,6 +79,7 @@ function draftOf(input: CostInputDto): Draft {
     constructions: input.constructions.map(textsOf),
     installations: input.installations.map(textsOf),
     indirects: input.indirects.map(textsOf),
+    rounding: input.rounding ?? DEFAULT_COST_ROUNDING,
   };
 }
 
@@ -83,6 +95,7 @@ function inputOf(draft: Draft): CostInputDto {
     constructions: draft.constructions.map((row, index) => numbersOf(row, emptyConstruction(index))),
     installations: draft.installations.map((row, index) => numbersOf(row, emptyInstallation(index))),
     indirects: draft.indirects.map((row) => numbersOf(row, { concept: "", percentage: null, base: null })),
+    rounding: draft.rounding,
   };
 }
 
@@ -93,6 +106,7 @@ function payloadOf(input: CostInputDto): CostInputDto {
     constructions: input.constructions.filter((row) => row.ref.trim()),
     installations: input.installations.filter((row) => row.ref.trim() && row.description.trim()),
     indirects: input.indirects.filter((row) => row.concept.trim()),
+    rounding: input.rounding,
   };
 }
 
@@ -101,13 +115,14 @@ const savedInputOf = (calculation: CostCalculationDto): CostInputDto => ({
   constructions: calculation.constructions,
   installations: calculation.installations,
   indirects: calculation.indirects,
+  rounding: calculation.rounding ?? DEFAULT_COST_ROUNDING,
 });
 
 function compute(calculation: CostCalculationDto) {
   const input = toCostEngineInput(calculation);
   if (!input.ok) return { result: null, trace: null, reason: input.reason };
   const trace = new Trace();
-  return { result: computeCostApproach(input.input, DEFAULT_ENGINE_CONFIG, trace), trace, reason: null };
+  return { result: computeCostApproach(input.input, costEngineConfig(calculation), trace), trace, reason: null };
 }
 
 const cell = "h-7 min-w-0 px-1.5 text-xs";
@@ -182,8 +197,15 @@ export function CostCalculationPanel(props: {
   const value = (key: string) => live.trace?.find(key)?.value;
   const marketValue = calculation.market.adoptedUnitValue;
 
-  const save = () => {
-    if (!readOnly) void enqueueSave(payloadOf(input));
+  const save = (next = input) => {
+    if (!readOnly) void enqueueSave(payloadOf(next));
+  };
+  // A select has no blur to wait for: it saves as soon as it changes.
+  const change = (patch: Partial<Pick<Draft, "rounding">> & { surfacePower?: number }) => {
+    const land = patch.surfacePower === undefined ? draft.land : { ...draft.land, surfacePower: String(patch.surfacePower) };
+    const next = { ...draft, land, rounding: patch.rounding ?? draft.rounding };
+    setDraft(next);
+    save(inputOf(next));
   };
 
   const setLand = (key: keyof Omit<Draft["land"], "factors">) => (event: { target: { value: string } }) =>
@@ -217,7 +239,7 @@ export function CostCalculationPanel(props: {
   );
 
   return (
-    <section className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby="cost-calculation-title" onBlur={() => void save()}>
+    <section className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby="cost-calculation-title" onBlur={() => save()}>
       <header className="flex items-center justify-between gap-2">
         <h3 id="cost-calculation-title" className="flex items-center gap-2 text-sm font-semibold">
           <Calculator className="size-4" /> Cálculo del enfoque de costos
@@ -244,7 +266,7 @@ export function CostCalculationPanel(props: {
             </Field>
             <Field>
               <FieldLabel htmlFor="cost-land-power">Potencia n</FieldLabel>
-              <Input id="cost-land-power" inputMode="decimal" value={draft.land.surfacePower} onChange={setLand("surfacePower")} />
+              <SurfacePowerSelect id="cost-land-power" value={input.land.surfacePower} onChange={(surfacePower) => change({ surfacePower })} />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
@@ -353,17 +375,37 @@ export function CostCalculationPanel(props: {
         </div>
 
         <details className="grid gap-2" open={draft.indirects.length > 0}>
-          <summary className="cursor-pointer text-xs font-semibold tracking-wide text-muted-foreground uppercase">E) Indirectos (opcional)</summary>
+          <summary className="cursor-pointer text-xs font-semibold tracking-wide text-muted-foreground uppercase">E) Indirectos (solo si el avalúo los lleva)</summary>
+          <p className="text-xs text-muted-foreground">
+            Concepto, porcentaje (0.05 = 5 %) y base. Con la base vacía se calculan sobre el valor de construcciones e instalaciones.
+          </p>
           {draft.indirects.map((row, index) => (
             <div key={index} className="grid grid-cols-[minmax(0,1fr)_5rem_8rem_auto] items-center gap-2">
               {textInput("indirects", index, "concept", row.concept, "Concepto", false)}
               {textInput("indirects", index, "percentage", row.percentage, "Porcentaje (0.05 = 5 %)")}
-              {textInput("indirects", index, "base", row.base, "Base")}
+              {textInput("indirects", index, "base", row.base, "Base ($); vacía: construcciones e instalaciones")}
               {!readOnly ? <Button type="button" size="icon-sm" variant="ghost" aria-label="Quitar el indirecto" onClick={() => removeRow("indirects", index)}><Trash2 /></Button> : null}
             </div>
           ))}
           {!readOnly ? <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => addRow("indirects")}><Plus data-icon="inline-start" /> Indirecto</Button> : null}
         </details>
+
+        <div className="grid gap-2">
+          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Redondeos</h4>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {ROUNDING_FIELDS.map((field) => (
+              <Field key={field.key}>
+                <FieldLabel htmlFor={`cost-rounding-${field.key}`} className="text-xs">{field.label}</FieldLabel>
+                <RoundingSelect
+                  id={`cost-rounding-${field.key}`}
+                  label={`Redondeo de ${field.label.toLowerCase()}`}
+                  value={draft.rounding[field.key]}
+                  onChange={(digits) => change({ rounding: { ...draft.rounding, [field.key]: digits } })}
+                />
+              </Field>
+            ))}
+          </div>
+        </div>
       </fieldset>
 
       {live.result ? (
@@ -371,7 +413,9 @@ export function CostCalculationPanel(props: {
           <div><dt className="text-xs text-muted-foreground">A) Terreno</dt><dd className="tabular-nums">{money(live.result.land)}</dd></div>
           <div><dt className="text-xs text-muted-foreground">B) Construcciones</dt><dd className="tabular-nums">{money(live.result.constructions)}</dd></div>
           <div><dt className="text-xs text-muted-foreground">C) Instalaciones</dt><dd className="tabular-nums">{money(live.result.specialInstallations)}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">E) Indirectos</dt><dd className="tabular-nums">{money(live.result.indirects)}</dd></div>
+          {live.result.indirects ? (
+            <div><dt className="text-xs text-muted-foreground">E) Indirectos</dt><dd className="tabular-nums">{money(live.result.indirects)}</dd></div>
+          ) : null}
           <div><dt className="text-xs text-muted-foreground">Valor físico</dt><dd className="text-base font-semibold tabular-nums">{money(live.result.physicalValue)}</dd></div>
           {landUnitValue({ land: input.land, market: calculation.market }) === null ? (
             <p className="text-xs text-muted-foreground sm:col-span-5">Sin valor unitario del terreno: el valor físico no incluye el terreno.</p>

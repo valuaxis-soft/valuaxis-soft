@@ -95,7 +95,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
         ...calculation.indirects
           .map((row, index): [string, string] | null => {
             const amount = value(`costos.indirectos.${index + 1}`);
-            return amount === undefined ? null : [row.concept, `${text((row.percentage ?? 0) * 100)} % de ${money.format(row.base ?? 0)} = ${money.format(amount)}`];
+            return amount === undefined ? null : [row.concept, `${text((row.percentage ?? 0) * 100)} % de ${money.format(row.base ?? result.constructions + result.specialInstallations)} = ${money.format(amount)}`];
           })
           .filter((row): row is [string, string] => row !== null),
         ["E) Indirectos", money.format(result.indirects)],

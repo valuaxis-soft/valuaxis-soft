@@ -8,7 +8,8 @@ import {
   saveMarketSettings,
   updateComparable,
 } from "../../src/features/valuations/calculation/market.service";
-import { DEFAULT_FACTOR_SLOTS, type ComparableFactorDto, type FactorType } from "../../src/features/valuations/calculation/market-types";
+import { DEFAULT_FACTOR_SLOTS, marketEngineConfig, toMarketEngineInput, type ComparableFactorDto, type FactorType } from "../../src/features/valuations/calculation/market-types";
+import { computeMarketApproach } from "../../src/features/valuations/engine/market";
 import { getCostCalculation, saveCostCalculation } from "../../src/features/valuations/calculation/cost.service";
 import { DEFAULT_LAND, emptyInstallation, type CostInputDto } from "../../src/features/valuations/calculation/cost-types";
 import { getConclusionCalculation, saveConclusionSettings } from "../../src/features/valuations/calculation/conclusion.service";
@@ -75,6 +76,8 @@ async function storedApproach(fixture: Fixture) {
   return { approach, executions };
 }
 
+const close = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-4, `${actual} ≠ ${expected}`);
+
 test("capturing the Arandas comparables stores the dictamen's market value and its trace", async () => {
   const fixture = await createValuationFixture();
   await loadArandas(fixture);
@@ -85,20 +88,28 @@ test("capturing the Arandas comparables stores the dictamen's market value and i
   assert.equal(calculation.comparables[1].factors.find((item) => item.type === "ZONA")?.comparableRating, 1.05);
   assert.equal(calculation.comparables[0].contactPhone, "348 249 3129");
 
+  // What is stored is what the engine gives with the appraiser's rule, (subject / comparable)^(1/n);
+  // the book's own figures are checked against its profile in tests/valuation-engine-market-income.test.ts.
+  const input = toMarketEngineInput(calculation);
+  assert.ok(input.ok);
+  const expected = computeMarketApproach(input.input, marketEngineConfig(calculation.settings));
+  close(expected.homologation.comparables[2].surfaceFactor, (169.78 / calculation.comparables[2].area!) ** (1 / 6));
+
   const { approach, executions } = await storedApproach(fixture);
   assert.equal(Number(approach.NValorMercado), 1528000);
-  assert.ok(Math.abs(Number(approach.NValorPromedioHomologado) - 8353.341571216495) < 1e-6);
+  close(Number(approach.NValorPromedioHomologado), expected.homologation.stats.mean);
   assert.equal(Number(approach.NValorHomologadoUtilizado), 9000);
   assert.equal(executions.length, 1, "one stored execution per approach");
   assert.equal(executions[0].SClaveCalculo, "MOTOR.MERCADO.TERRENO_VENTA");
   const homologated = executions[0].resultados.find((row) => row.SClaveResultado === "mercado.comparables.3.valorHomologado");
-  assert.ok(Math.abs(Number(homologated?.NValorNumerico) - 10140.714396501335) < 1e-6);
+  close(Number(homologated?.NValorNumerico), expected.homologation.comparables[2].homologatedUnitValue);
 });
 
 test("editing and deleting comparables recompute the result and keep references in order", async () => {
   const fixture = await createValuationFixture();
   const user = await loadArandas(fixture);
   const before = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
+  const storedMeanBefore = Number((await storedApproach(fixture)).approach.NValorPromedioHomologado);
 
   await deleteComparable(fixture.publicId, user, before.comparables[0].id);
   const afterDelete = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
@@ -110,7 +121,7 @@ test("editing and deleting comparables recompute the result and keep references 
   const { approach, executions } = await storedApproach(fixture);
   assert.equal(executions.length, 1, "the previous execution is replaced");
   // Four comparables, the first one more expensive: the mean moves, the adopted value does not.
-  assert.notEqual(Number(approach.NValorPromedioHomologado).toFixed(6), "8353.341571");
+  assert.notEqual(Number(approach.NValorPromedioHomologado).toFixed(2), storedMeanBefore.toFixed(2));
   assert.equal(Number(approach.NValorMercado), 1528000);
 });
 

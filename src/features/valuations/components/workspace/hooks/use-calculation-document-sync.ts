@@ -2,9 +2,9 @@ import { useEffect, useEffectEvent } from "react";
 
 import { api } from "@/lib/api-client";
 import { caratulaConclusionValues, conclusionValues, withConceptValues } from "@/features/valuations/calculation/conclusion-document";
-import { canConclude, type ConclusionCalculationDto } from "@/features/valuations/calculation/conclusion-types";
+import { canConclude, conclusionEngineConfig, type ConclusionCalculationDto } from "@/features/valuations/calculation/conclusion-types";
 import { COST_TEMPLATE_BLOCK_IDS, costDocumentBlocks, withConstructionTables } from "@/features/valuations/calculation/cost-document";
-import { toCostEngineInput, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
+import { costEngineConfig, toCostEngineInput, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
 import { INCOME_BLOCK_PREFIX, INCOME_TEMPLATE_BLOCK_IDS, incomeDocumentBlocks } from "@/features/valuations/calculation/income-document";
 import { toIncomeEngineInput, type IncomeCalculationDto } from "@/features/valuations/calculation/income-types";
 import {
@@ -17,7 +17,7 @@ import {
   replaceGeneratedBlocks,
   withGeneratedBlocks,
 } from "@/features/valuations/calculation/market-document";
-import { toMarketEngineInput, type ComparableType, type MarketCalculationDto } from "@/features/valuations/calculation/market-types";
+import { marketEngineConfig, toMarketEngineInput, type ComparableType, type MarketCalculationDto } from "@/features/valuations/calculation/market-types";
 import { concludeValue } from "@/features/valuations/engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
 import { computeCostApproach } from "@/features/valuations/engine/costs";
@@ -78,7 +78,7 @@ export function useCalculationDocumentSync({
     if (!canEdit || calculation.locked || !calculation.configured) return;
     const input = toCostEngineInput(calculation);
     const trace = new Trace();
-    const result = input.ok ? computeCostApproach(input.input, DEFAULT_ENGINE_CONFIG, trace) : null;
+    const result = input.ok ? computeCostApproach(input.input, costEngineConfig(calculation), trace) : null;
     const blocks = costDocumentBlocks(calculation, result, input.ok ? trace : null);
     updateBySection("motor-costos", (key, section) =>
       key === "COSTOS"
@@ -100,7 +100,7 @@ export function useCalculationDocumentSync({
 
   const applyConclusion = (calculation: ConclusionCalculationDto) => {
     if (!canEdit || calculation.locked || !canConclude(calculation)) return;
-    const result = concludeValue({ values: calculation.values, method: calculation.method }, DEFAULT_ENGINE_CONFIG);
+    const result = concludeValue({ values: calculation.values, method: calculation.method }, conclusionEngineConfig(calculation));
     const sectionValues = conclusionValues(calculation, result);
     const caratulaValues = caratulaConclusionValues(result);
     updateBySection("motor-conclusion", (key, section) =>
@@ -146,7 +146,7 @@ export function useCalculationDocumentSync({
     for (const calculation of markets) {
       if (!calculation) continue;
       const input = toMarketEngineInput(calculation);
-      applyMarket(calculation, input.ok ? computeMarketApproach(input.input, DEFAULT_ENGINE_CONFIG) : null);
+      applyMarket(calculation, input.ok ? computeMarketApproach(input.input, marketEngineConfig(calculation.settings)) : null);
     }
     await refresh({ costs: true, income: true, conclusion: true });
   });

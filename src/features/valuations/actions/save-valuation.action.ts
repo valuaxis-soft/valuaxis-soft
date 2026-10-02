@@ -16,6 +16,7 @@ import {
   isSystemGeneralValuationTemplate,
   resolveResponsibleValuatorName,
 } from "@/features/valuations/services/general-valuation-template";
+import { formatValidityMonths } from "@/features/valuations/services/valuation-signatures";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { notifyResponsible } from "@/features/notifications/valuation-notices";
@@ -159,7 +160,7 @@ export async function saveValuation(input: SaveValuationInput) {
     }
 
     const valuation = await prisma.$transaction(async (tx) => {
-      // Datos del despacho: folio prefix, signing appraiser, date and validity.
+      // Datos del despacho: folio prefix, signatures, date and validity.
       const defaults = await getValuationDefaults(tx, user.organizationId);
       const folio = await reserveNextValuationFolio(tx, user.organizationId, defaults.folioPrefix);
       const created = await tx.avaluo.create({
@@ -187,7 +188,7 @@ export async function saveValuation(input: SaveValuationInput) {
         location: input.location,
         postalCode: input.postalCode,
       });
-      const responsibleName = defaults.appraiserName ?? resolveResponsibleValuatorName(responsable?.usuario, user.name);
+      const responsibleName = defaults.signers[0]?.name ?? resolveResponsibleValuatorName(responsable?.usuario, user.name);
       const versionId = await initializeWorkingVersionStructure({
         avaluoId: created.IdAvaluo,
         userId: user.id,
@@ -199,7 +200,7 @@ export async function saveValuation(input: SaveValuationInput) {
           operationName: tipoOperacion.SNombre,
           responsibleName,
           valuationDate: defaults.valuationDate,
-          validUntil: defaults.validUntil,
+          validity: formatValidityMonths(defaults.validityMonths),
         },
       });
       await saveCaratula({
@@ -212,11 +213,10 @@ export async function saveValuation(input: SaveValuationInput) {
           propietario: input.clientName ?? input.client ?? null,
           objeto: null,
           proposito: tipoOperacion.SNombre,
-          valuador: responsibleName,
-          // The firm's registration belongs to the firm's appraiser, not to whoever signs instead.
-          registroValuador: defaults.appraiserName ? defaults.appraiserRegistration : null,
+          // The firm's signatures; without them the appraiser adds who signs in the carátula.
+          firmas: defaults.signers,
           fechaAvaluo: defaults.valuationDate,
-          fechaVigencia: defaults.validUntil,
+          mesesVigencia: defaults.validityMonths,
         },
       });
       return created;

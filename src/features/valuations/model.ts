@@ -1,3 +1,5 @@
+import type { ValuationSignature } from "./services/valuation-signatures";
+
 export type ValuationKind = "venta" | "renta" | "ambos";
 export type PropertyKind = "casa" | "departamento" | "oficina" | "terreno";
 
@@ -24,11 +26,14 @@ export type CaratulaFormData = {
   propietario: string;
   objeto: string;
   proposito: string;
-  valuador: string;
-  registroValuador: string;
+  /** Everyone who signs the dictamen, in printing order. */
+  firmas: ValuationSignature[];
   valorTotal: string;
   valorConLetra: string;
   fechaAvaluo: string;
+  /** Whole months the valuation is valid for, 1 to 12; null until the appraiser chooses. */
+  mesesVigencia: number | null;
+  /** Validity date of a valuation saved before the validity was captured in months. */
   fechaVigencia: string;
 };
 

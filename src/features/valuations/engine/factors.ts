@@ -49,10 +49,19 @@ export function surfaceFactor(
   return ratio ** (1 / power);
 }
 
-/** Age demerit: 1 − (age / useful life)^exponent, optionally floored. */
-export function ageFactor(age: number, usefulLife: number, exponent: number, floor: number | null): number {
-  const factor = 1 - (age / usefulLife) ** exponent;
-  return floor === null ? factor : Math.max(factor, floor);
+/**
+ * Age demerit: 1 − (age / useful life)^exponent, optionally floored. With
+ * `extendUsefulLife`, an age at or past the useful life takes a useful life of
+ * age + 1: the asset still stands, so it keeps a small value instead of zero.
+ */
+export function ageFactor(age: number, usefulLife: number, settings: { exponent: number; floor: number | null; extendUsefulLife: boolean }): number {
+  const life = effectiveUsefulLife(age, usefulLife, settings.extendUsefulLife);
+  const factor = 1 - (age / life) ** settings.exponent;
+  return settings.floor === null ? factor : Math.max(factor, settings.floor);
+}
+
+export function effectiveUsefulLife(age: number, usefulLife: number, extend: boolean): number {
+  return extend && age >= usefulLife ? age + 1 : usefulLife;
 }
 
 /** Product in capture order: Excel multiplies left to right, and so must we to match it. */

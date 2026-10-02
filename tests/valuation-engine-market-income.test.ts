@@ -49,8 +49,7 @@ test("Arandas land comparables: homologated values, mean, dispersion and value 1
   close(result.homologation.stats.dispersion, 1.4086928282510671, "AC41");
   close(trace.find("mercado.subtotal")?.value, 1528020, "T53");
   assert.equal(result.value, 1528000, "T55");
-  assert.equal(result.homologation.suggestedPower, 2, "moda de n por pares");
-  assert.equal(result.adoptedOutsideRange, false);
+  assert.equal(result.adoptedOutsideLimits, false);
 });
 
 // TU and TU_OFICIAL share the comparables and differ only in the surface factor.
@@ -73,9 +72,9 @@ test("TU and TU_OFICIAL: the inverted surface factor changes every homologated v
   close(tu.homologation.stats.mean, 6840.112760228073, "TU T48");
   close(official.homologation.stats.mean, 5155.748449318799, "TU_OFICIAL T48");
   assert.equal(tu.value, 1120000);
-  // The book adopts 7,000 by hand: outside the range TU_OFICIAL homologates.
-  assert.equal(tu.adoptedOutsideRange, false);
-  assert.equal(official.adoptedOutsideRange, true);
+  // The book adopts 7,000 by hand: more than 30 % above what TU_OFICIAL homologates.
+  assert.equal(tu.adoptedOutsideLimits, false);
+  assert.equal(official.adoptedOutsideLimits, true);
 });
 
 test("without a captured value the market approach adopts the homologated mean", () => {

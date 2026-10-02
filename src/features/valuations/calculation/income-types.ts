@@ -72,7 +72,7 @@ export type MarketRateDto = {
 };
 
 export const DEFAULT_ANNUITY: AnnuityDto = {
-  vacancyDays: 60, contractYears: 2, otherMonthlyIncome: 0, tiie: null, inflation: null, remainingLifeYears: null, option: 2,
+  vacancyDays: 60, contractYears: 2, otherMonthlyIncome: 0, tiie: null, inflation: null, remainingLifeYears: null, option: 1,
 };
 export const DEFAULT_MARKET_RATE: MarketRateDto = { negotiation: 0, vacancy: 0.03, salePrices: {} };
 

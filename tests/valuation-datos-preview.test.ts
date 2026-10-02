@@ -65,11 +65,11 @@ const caratula: CaratulaFormData = {
   propietario: "",
   objeto: "",
   proposito: "",
-  valuador: "",
-  registroValuador: "",
+  firmas: [],
   valorTotal: "",
   valorConLetra: "",
   fechaAvaluo: "",
+  mesesVigencia: null,
   fechaVigencia: "",
 };
 

@@ -1,8 +1,9 @@
 import type { CaratulaFormData, ValuationMeta } from "@/features/valuations/model";
+import { signatureListError } from "@/features/valuations/services/valuation-signatures";
 
 export type CaratulaValidationErrors = Partial<
   Record<
-    "folio" | "tituloInmueble" | "location" | "postalCode" | "telefonoEmpresa" | "correoEmpresa",
+    "folio" | "tituloInmueble" | "location" | "postalCode" | "telefonoEmpresa" | "correoEmpresa" | "firmas",
     string
   >
 >;
@@ -28,6 +29,10 @@ export function validateCaratula(
   if (caratula.correoEmpresa && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(caratula.correoEmpresa)) {
     errors.correoEmpresa = "Ingresa un correo válido.";
   }
+
+  // Every signature needs a name; its cédula profesional is required to conclude.
+  const signaturesError = signatureListError(caratula.firmas, { draft: true });
+  if (signaturesError) errors.firmas = signaturesError;
 
   return errors;
 }

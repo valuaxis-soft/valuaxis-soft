@@ -20,6 +20,7 @@ import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import type { TableCellFormat, TableV2 } from "@/features/valuations/services/table";
 import { decodeStoredTable } from "@/features/valuations/services/table-persistence";
 import { extractStorageKey, isS3Source } from "@/features/valuations/services/image-source";
+import { resolveSignatures, validityMonthsBetween, type ValuationSignature } from "@/features/valuations/services/valuation-signatures";
 
 export type ValuationListItem = {
   id: string;
@@ -51,11 +52,11 @@ export type CaratulaDto = {
   propietario: string;
   objeto: string;
   proposito: string;
-  valuador: string;
-  registroValuador: string;
+  firmas: ValuationSignature[];
   valorTotal: string;
   valorConLetra: string;
   fechaAvaluo: string;
+  mesesVigencia: number | null;
   fechaVigencia: string;
 };
 
@@ -928,6 +929,8 @@ function tableSchemaFromConfig(config: Prisma.JsonValue | null): unknown {
 }
 
 function mapCaratula(caratula: NonNullable<VersionTrabajo["caratula"]>): CaratulaDto {
+  const fechaAvaluo = caratula.DFechaAvaluo ? toDateInput(caratula.DFechaAvaluo) : "";
+  const fechaVigencia = caratula.DFechaVigencia ? toDateInput(caratula.DFechaVigencia) : "";
   return {
     numeroAvaluo: caratula.SNumeroAvaluo ?? "",
     folio: caratula.SFolio ?? "",
@@ -935,12 +938,13 @@ function mapCaratula(caratula: NonNullable<VersionTrabajo["caratula"]>): Caratul
     propietario: caratula.SNombrePropietario ?? "",
     objeto: caratula.SObjetoAvaluo ?? "",
     proposito: caratula.SPropositoAvaluo ?? "",
-    valuador: caratula.SNombreValuador ?? "",
-    registroValuador: caratula.SRegistroValuador ?? "",
+    // A carátula saved before signatures were a list shows its single signer first.
+    firmas: resolveSignatures(caratula.JFirmas, { name: caratula.SNombreValuador, registration: caratula.SRegistroValuador }),
     valorTotal: caratula.NValorTotal?.toString() ?? "",
     valorConLetra: caratula.SValorConLetra ?? "",
-    fechaAvaluo: caratula.DFechaAvaluo ? toDateInput(caratula.DFechaAvaluo) : "",
-    fechaVigencia: caratula.DFechaVigencia ? toDateInput(caratula.DFechaVigencia) : "",
+    fechaAvaluo,
+    mesesVigencia: caratula.IMesesVigencia ?? validityMonthsBetween(fechaAvaluo, fechaVigencia),
+    fechaVigencia,
   };
 }
 

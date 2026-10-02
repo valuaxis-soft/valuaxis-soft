@@ -6,6 +6,7 @@ import type { Block, CaratulaFormData, PrincipalCoverImage } from "../model";
 import type { ValuationMeta } from "../model";
 import { DocumentConceptValue } from "./document-concept-value";
 import { isConclusionNarrativeConcept } from "@/features/valuations/services/caratula-blocks";
+import type { ValuationSignature } from "@/features/valuations/services/valuation-signatures";
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
 
 // Module 1: Cover (title, location, principal image)
@@ -105,13 +106,27 @@ export function CaratulaConclusionModule({
           {caratula.valorConLetra || "Valor con letra pendiente"}
         </p>
       </div>
-      <div className="mx-auto mb-2 mt-16 max-w-sm border-t border-slate-500 pt-1.5 text-center">
-        <p className="text-xs font-bold text-slate-700">{caratula.valuador || "Valuador pendiente"}</p>
-        <p className="mt-0.5 text-[10px] leading-tight text-slate-600">
-          {caratula.registroValuador ? `Registro ${caratula.registroValuador}` : "Registro de valuador pendiente"}
-        </p>
-        <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">Firma del valuador</p>
-      </div>
+    </section>
+  );
+}
+
+// Module 4: Signatures (one or many; the grid wraps three per row)
+export function CaratulaSignaturesModule({ caratula }: { caratula: CaratulaFormData }) {
+  const signatures: ValuationSignature[] = caratula.firmas.length ? caratula.firmas : [{ name: "", cedula: "", role: "" }];
+
+  return (
+    <section className="mb-2 flex flex-wrap justify-center gap-x-6" data-caratula-signatures>
+      {signatures.map((signature, index) => (
+        <div className="mt-14 w-[30%] min-w-[150px] break-inside-avoid border-t border-slate-500 pt-1.5 text-center" key={index}>
+          <p className="break-words text-xs font-bold text-slate-700">{signature.name || "Firma pendiente"}</p>
+          <p className="mt-0.5 break-words text-[10px] leading-tight text-slate-600">
+            {signature.cedula ? `Cédula profesional ${signature.cedula}` : "Cédula profesional pendiente"}
+          </p>
+          {signature.role ? (
+            <p className="mt-0.5 break-words text-[9px] font-semibold uppercase tracking-wide text-slate-500">{signature.role}</p>
+          ) : null}
+        </div>
+      ))}
     </section>
   );
 }

@@ -13,10 +13,9 @@ test("new valuations take the firm's folio prefix, appraiser and validity", asyn
   const initial = await prisma.$transaction((tx) => getValuationDefaults(tx, orgId, new Date("2026-09-28T18:00:00Z")));
   assert.deepEqual(initial, {
     folioPrefix: "VLO",
-    appraiserName: null,
-    appraiserRegistration: null,
+    signers: [],
     valuationDate: "2026-09-28",
-    validUntil: "2027-03-28",
+    validityMonths: 6,
   });
 
   await prisma.organizacion.update({
@@ -31,9 +30,9 @@ test("new valuations take the firm's folio prefix, appraiser and validity", asyn
     },
   });
   const defaults = await prisma.$transaction((tx) => getValuationDefaults(tx, orgId, new Date("2026-09-28T18:00:00Z")));
-  assert.equal(defaults.appraiserName, "Ing. Álvaro Gutiérrez");
-  assert.equal(defaults.appraiserRegistration, "CED-12345");
-  assert.equal(defaults.validUntil, "2027-09-28");
+  // A firm saved before signatures were a list: its single appraiser is the first signature.
+  assert.deepEqual(defaults.signers, [{ name: "Ing. Álvaro Gutiérrez", cedula: "CED-12345", role: "" }]);
+  assert.equal(defaults.validityMonths, 12);
 
   // A new prefix starts its own sequence.
   const first = await prisma.$transaction((tx) => reserveNextValuationFolio(tx, orgId, defaults.folioPrefix));
@@ -50,4 +49,5 @@ test("the database rejects an invalid folio prefix or validity", async () => {
   const fixture = await createValuationFixture();
   await assert.rejects(prisma.organizacion.update({ where: { IdOrganizacion: fixture.organizationId }, data: { SPrefijoFolio: "vda" } }));
   await assert.rejects(prisma.organizacion.update({ where: { IdOrganizacion: fixture.organizationId }, data: { IMesesVigencia: 0 } }));
+  await assert.rejects(prisma.organizacion.update({ where: { IdOrganizacion: fixture.organizationId }, data: { IMesesVigencia: 13 } }));
 });

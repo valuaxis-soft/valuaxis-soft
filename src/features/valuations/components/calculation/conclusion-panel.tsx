@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError } from "@/lib/api-client";
-import { canConclude, type ConclusionCalculationDto, type ConclusionMethod } from "@/features/valuations/calculation/conclusion-types";
+import { canConclude, conclusionEngineConfig, type ConclusionCalculationDto, type ConclusionMethod } from "@/features/valuations/calculation/conclusion-types";
 import { APPROACH_LABELS, concludeValue, type Approach } from "@/features/valuations/engine/conclusion";
-import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
-import { parseDecimal } from "./comparable-dialog";
+import { DEFAULT_ENGINE_CONFIG, type RoundingDigits } from "@/features/valuations/engine/config";
+import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { RoundingSelect } from "./calculation-controls";
 import { useSerializedSave } from "./use-serialized-save";
 
 const APPROACHES: Approach[] = ["costos", "mercado", "ingresos"];
@@ -40,7 +41,7 @@ export function ConclusionPanel(props: {
       setWeights({ costos: String((saved.costos ?? 0) * 100), mercado: String((saved.mercado ?? 0) * 100), ingresos: String((saved.ingresos ?? 0) * 100) });
     }
   };
-  const enqueueSave = useSerializedSave(async (settings: { method: ConclusionMethod; justification: string | null }) => {
+  const enqueueSave = useSerializedSave(async (settings: { method: ConclusionMethod; justification: string | null; rounding: RoundingDigits }) => {
     setSaving(true);
     try {
       applyServerState(await api.conclusion.save(valuationId, settings));
@@ -83,11 +84,16 @@ export function ConclusionPanel(props: {
   };
   const method = calculation.method.kind === "weighted" ? weightedMethod : calculation.method;
   const result = canConclude({ values: calculation.values, method })
-    ? concludeValue({ values: calculation.values, method }, DEFAULT_ENGINE_CONFIG)
+    ? concludeValue({ values: calculation.values, method }, conclusionEngineConfig(calculation))
     : null;
-  const save = (next: { method?: ConclusionMethod; justification?: string }) => {
+  const rounding = calculation.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.conclusion : calculation.rounding;
+  const save = (next: { method?: ConclusionMethod; justification?: string; rounding?: RoundingDigits }) => {
     if (readOnly) return;
-    void enqueueSave({ method: next.method ?? method, justification: (next.justification ?? justification).trim() || null });
+    void enqueueSave({
+      method: next.method ?? method,
+      justification: (next.justification ?? justification).trim() || null,
+      rounding: next.rounding === undefined ? rounding : next.rounding,
+    });
   };
   const methodValue = calculation.method.kind === "weighted" ? "ponderado" : calculation.method.approach;
 
@@ -150,6 +156,18 @@ export function ConclusionPanel(props: {
             ))}
           </div>
         ) : null}
+        <Field>
+          <FieldLabel htmlFor="conclusion-rounding">Redondeo de los valores y la conclusión</FieldLabel>
+          <RoundingSelect
+            id="conclusion-rounding"
+            label="Redondeo de la conclusión"
+            value={rounding}
+            onChange={(digits) => {
+              setCalculation({ ...calculation, rounding: digits });
+              save({ rounding: digits });
+            }}
+          />
+        </Field>
         <Field className="sm:col-span-2">
           <FieldLabel htmlFor="conclusion-justification">Justificación</FieldLabel>
           <Textarea

@@ -31,10 +31,20 @@ import {
   validateCaratula,
 } from "@/features/valuations/services/caratula-validation";
 
+import { formatDateValue } from "@/features/valuations/services/concept-value-format";
+import {
+  formatValidityMonths,
+  MAX_VALIDITY_MONTHS,
+  validUntilDate,
+} from "@/features/valuations/services/valuation-signatures";
+
 import { cn } from "@/lib/utils";
 
 import { ValuationDateField } from "./valuation-date-field";
 import { UploadButton } from "./image-upload-control";
+
+/** 1 to 12 whole months, at the appraiser's discretion. */
+const VALIDITY_MONTH_OPTIONS = Array.from({ length: MAX_VALIDITY_MONTHS }, (_, index) => index + 1);
 
 export function CaratulaEditor({
   caratula,
@@ -66,6 +76,7 @@ export function CaratulaEditor({
   onImageUpload?: (event: ChangeEvent<HTMLInputElement>) => void;
 }) {
   const errors = validateCaratula(caratula, meta);
+  const validUntil = validUntilDate(caratula.fechaAvaluo, caratula.mesesVigencia);
 
   return (
     <div className="mb-5 space-y-4">
@@ -111,12 +122,24 @@ export function CaratulaEditor({
             />
           </div>
           <div className="min-w-0 md:col-span-3 xl:col-span-4">
-            <ValuationDateField
-              label="Vigencia"
-            value={caratula.fechaVigencia}
-            readOnly={readOnly}
-              onChange={(fechaVigencia) => onUpdate({ fechaVigencia })}
-            />
+            <Field>
+              <FieldLabel htmlFor="caratula-vigencia">Vigencia</FieldLabel>
+              <NativeSelect
+                id="caratula-vigencia"
+                className="w-full"
+                disabled={readOnly}
+                value={caratula.mesesVigencia === null ? "" : String(caratula.mesesVigencia)}
+                onChange={(event) => onUpdate({ mesesVigencia: event.target.value ? Number(event.target.value) : null })}
+              >
+                {caratula.mesesVigencia === null ? <NativeSelectOption value="">Elige los meses</NativeSelectOption> : null}
+                {VALIDITY_MONTH_OPTIONS.map((months) => (
+                  <NativeSelectOption key={months} value={String(months)}>{formatValidityMonths(months)}</NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <FieldDescription>
+                {validUntil ? `Vigente hasta: ${formatDateValue(validUntil, "long")}.` : "Se cuenta desde la fecha del avalúo."}
+              </FieldDescription>
+            </Field>
           </div>
           <div className="min-w-0 md:col-span-3 xl:col-span-4">
             <CaratulaField
@@ -362,36 +385,6 @@ export function CalculatedValuesEditor({
         />
       </div>
     </div>
-  );
-}
-
-export function ValuerCompanyEditor({
-  caratula,
-  onUpdate,
-  readOnly,
-}: {
-  caratula: CaratulaFormData;
-  onUpdate: (patch: Partial<CaratulaFormData>) => void;
-  readOnly: boolean;
-}) {
-  return (
-    <section className="space-y-4 rounded-lg border bg-muted/20 p-4">
-      <FieldTitle>Datos de empresa valuadora</FieldTitle>
-      <div className="grid gap-3 md:grid-cols-2">
-        <CaratulaField
-          label="Valuador"
-          value={caratula.valuador}
-          readOnly={readOnly}
-          onChange={(valuador) => onUpdate({ valuador })}
-        />
-        <CaratulaField
-          label="Registro valuador"
-          value={caratula.registroValuador}
-          readOnly={readOnly}
-          onChange={(registroValuador) => onUpdate({ registroValuador })}
-        />
-      </div>
-    </section>
   );
 }
 

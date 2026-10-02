@@ -28,8 +28,7 @@ const valid = {
   address: "Av. Despacho 100",
   phone: "33 1111 1111",
   email: "Contacto@Despacho.MX",
-  appraiserName: "Ing. Álvaro Gutiérrez",
-  appraiserRegistration: "CED-12345",
+  signers: [{ name: "Ing. Álvaro Gutiérrez", cedula: "CED-12345", role: "" }],
   validityMonths: 6,
   folioPrefix: "vda",
 };
@@ -47,14 +46,29 @@ test("invalid RFC, email, validity or prefix are rejected", () => {
   assert.equal(firmSettingsSchema.safeParse({ ...valid, rfc: "ABC" }).success, false);
   assert.equal(firmSettingsSchema.safeParse({ ...valid, email: "no-es-correo" }).success, false);
   assert.equal(firmSettingsSchema.safeParse({ ...valid, validityMonths: 0 }).success, false);
-  assert.equal(firmSettingsSchema.safeParse({ ...valid, validityMonths: 25 }).success, false);
+  assert.equal(firmSettingsSchema.safeParse({ ...valid, validityMonths: 13 }).success, false);
+  assert.equal(firmSettingsSchema.safeParse({ ...valid, validityMonths: 6.5 }).success, false);
+  assert.equal(firmSettingsSchema.safeParse({ ...valid, validityMonths: 12 }).success, true);
   assert.equal(firmSettingsSchema.safeParse({ ...valid, folioPrefix: "--" }).success, false);
 });
 
 test("a new valuation shows its date and validity in the carátula's DATOS DEL AVALÚO too", () => {
-  const hydrated = hydrateGeneralCaratulaTemplate(structuredClone(caratulaSection), { valuationDate: "2026-09-28", validUntil: "2027-03-28" });
+  const hydrated = hydrateGeneralCaratulaTemplate(structuredClone(caratulaSection), { valuationDate: "2026-09-28", validity: "6 meses" });
   const block = hydrated.blocks.find((item) => item.id === "caratula-block-4-datos-del-avaluo");
   const values = Object.fromEntries(block!.concepts.map((concept) => [concept.label, concept.value]));
   assert.match(String(values["Fecha de avaluo"]), /28 de septiembre de 2026/i);
-  assert.match(String(values["Vigencia de avaluo"]), /28 de marzo de 2027/i);
+  assert.equal(values["Vigencia de avaluo"], "6 meses");
+});
+
+test("the firm's signers are trimmed, optional, and each needs a name and a cédula", () => {
+  assert.deepEqual(firmSettingsSchema.parse({ validityMonths: 6, folioPrefix: "VDA" }).signers, []);
+  const parsed = firmSettingsSchema.parse({ ...valid, signers: [{ name: " Arq. Ana Ruiz ", cedula: " 7654321 ", role: " Perito valuador " }, { name: "Ing. B", cedula: "1" }] });
+  assert.deepEqual(parsed.signers, [
+    { name: "Arq. Ana Ruiz", cedula: "7654321", role: "Perito valuador" },
+    { name: "Ing. B", cedula: "1", role: "" },
+  ]);
+  const withoutCedula = firmSettingsSchema.safeParse({ ...valid, signers: [{ name: "Arq. Ana Ruiz", cedula: "" }] });
+  assert.equal(withoutCedula.success, false);
+  assert.match(withoutCedula.error!.issues[0].message, /Firma 1: Escribe la cédula profesional/);
+  assert.equal(firmSettingsSchema.safeParse({ ...valid, signers: "Ana" }).success, false);
 });

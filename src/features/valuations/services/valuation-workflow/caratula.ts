@@ -1,5 +1,12 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma-client";
+import {
+  isValidityMonths,
+  parseSignatures,
+  validUntilDate,
+  VALIDITY_MONTHS_ERROR,
+} from "@/features/valuations/services/valuation-signatures";
+import { ValuationWorkflowError } from "./errors";
 import type { CaratulaPayload, Tx } from "./types";
 
 export async function saveCaratula(input: {
@@ -8,6 +15,12 @@ export async function saveCaratula(input: {
   tx?: Tx;
 }) {
   const client = input.tx ?? prisma;
+  // Signatures are replaced only when the client sends the list. A missing cédula does not stop a save; it stops the conclusion.
+  const signatures = input.payload.firmas === undefined ? null : parseSignatures(input.payload.firmas, { draft: true });
+  if (signatures && !signatures.ok) throw new ValuationWorkflowError(signatures.error, 400);
+  const months = input.payload.mesesVigencia ?? null;
+  if (months !== null && !isValidityMonths(months)) throw new ValuationWorkflowError(VALIDITY_MONTHS_ERROR, 400);
+
   const data = {
     SNumeroAvaluo: cleanText(input.payload.numeroAvaluo),
     SFolio: cleanText(input.payload.folio),
@@ -15,12 +28,16 @@ export async function saveCaratula(input: {
     SNombrePropietario: cleanText(input.payload.propietario),
     SObjetoAvaluo: cleanText(input.payload.objeto),
     SPropositoAvaluo: cleanText(input.payload.proposito),
-    SNombreValuador: cleanText(input.payload.valuador),
-    SRegistroValuador: cleanText(input.payload.registroValuador),
+    // The single-signer columns follow the first signature.
+    SNombreValuador: signatures ? signatures.value[0]?.name ?? null : cleanText(input.payload.valuador),
+    SRegistroValuador: signatures ? signatures.value[0]?.cedula ?? null : cleanText(input.payload.registroValuador),
+    ...(signatures ? { JFirmas: signatures.value as unknown as Prisma.InputJsonValue } : {}),
     NValorTotal: toDecimal(input.payload.valorTotal),
     SValorConLetra: cleanText(input.payload.valorConLetra),
     DFechaAvaluo: toDate(input.payload.fechaAvaluo),
-    DFechaVigencia: toDate(input.payload.fechaVigencia),
+    IMesesVigencia: months,
+    // With months, the validity date is the valuation date plus those months.
+    DFechaVigencia: toDate(months === null ? input.payload.fechaVigencia : validUntilDate(input.payload.fechaAvaluo, months)),
   };
 
   await client.caratulaAvaluo.upsert({
