@@ -210,7 +210,7 @@ export async function copyVersionContent(
   const caratula = await tx.caratulaAvaluo.findUnique({ where: { IdVersionAvaluo: input.fromVersionId } });
   if (caratula) {
     const { IdCaratulaAvaluo: _id, DFechaCreacion: _created, DFechaModificacion: _modified, ...data } = caratula;
-    await tx.caratulaAvaluo.create({ data: { ...data, IdVersionAvaluo: input.toVersionId } });
+    await tx.caratulaAvaluo.create({ data: { ...data, JFirmas: json(data.JFirmas), IdVersionAvaluo: input.toVersionId } });
     stats.caratula = true;
   }
 

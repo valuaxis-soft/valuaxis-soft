@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { roundingSchema, surfacePowerSchema } from "./market-schemas";
 
 const text = (max: number) => z.string().trim().max(max);
 const amount = z.number().finite().min(0).max(1e12).nullable();
@@ -12,7 +13,7 @@ export const costInputSchema = z.object({
     subjectArea: amount,
     referenceArea: amount,
     unitValue: amount,
-    surfacePower: z.number().finite().positive().max(20),
+    surfacePower: surfacePowerSchema,
     factors: z.object({
       negotiation: factor,
       location: factor,
@@ -55,6 +56,7 @@ export const costInputSchema = z.object({
     percentage: z.number().finite().min(0).max(1).nullable(),
     base: amount,
   })).max(20),
+  rounding: z.object({ land: roundingSchema, constructions: roundingSchema, installations: roundingSchema, physicalValue: roundingSchema }).optional(),
 });
 
 export type CostInputPayload = z.infer<typeof costInputSchema>;

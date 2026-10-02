@@ -21,7 +21,7 @@ import {
 } from "@/features/valuations/calculation/income-types";
 import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
 import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, computeIncomeApproach, type IncomeMethod } from "@/features/valuations/engine/income";
-import { parseDecimal } from "./comparable-dialog";
+import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { useSerializedSave } from "./use-serialized-save";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -321,8 +321,8 @@ export function IncomeCalculationPanel(props: {
           <Field className="max-w-md">
             <FieldLabel htmlFor="income-option" className="text-xs">Valor que se concluye</FieldLabel>
             <NativeSelect id="income-option" className="w-full" value={String(draft.annuity.option)} onChange={(event) => update({ annuity: { ...draft.annuity, option: Number(event.target.value) as 1 | 2 } })}>
-              <NativeSelectOption value="2">Opción 2: anualidad (la que concluyen los libros)</NativeSelectOption>
-              <NativeSelectOption value="1">Opción 1: tasa base mercado (la que se imprime)</NativeSelectOption>
+              <NativeSelectOption value="1">Opción 1: tasa base mercado</NativeSelectOption>
+              <NativeSelectOption value="2">Opción 2: anualidad</NativeSelectOption>
             </NativeSelect>
           </Field>
         </div>

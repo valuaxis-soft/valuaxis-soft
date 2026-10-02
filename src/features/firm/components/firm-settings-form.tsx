@@ -9,6 +9,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { SignaturesEditor } from "@/features/valuations/components/editor/signatures-editor";
+import {
+  MAX_VALIDITY_MONTHS,
+  MIN_VALIDITY_MONTHS,
+  signatureListError,
+  type ValuationSignature,
+} from "@/features/valuations/services/valuation-signatures";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { formatValuationFolio, normalizeFolioPrefix } from "../firm-rules";
 import type { FirmSettingsDto } from "../firm.service";
@@ -19,8 +26,7 @@ type FormState = {
   address: string;
   phone: string;
   email: string;
-  appraiserName: string;
-  appraiserRegistration: string;
+  signers: ValuationSignature[];
   validityMonths: string;
   folioPrefix: string;
 };
@@ -31,8 +37,7 @@ const toForm = (settings: FirmSettingsDto): FormState => ({
   address: settings.address ?? "",
   phone: settings.phone ?? "",
   email: settings.email ?? "",
-  appraiserName: settings.appraiserName ?? "",
-  appraiserRegistration: settings.appraiserRegistration ?? "",
+  signers: settings.signers,
   validityMonths: String(settings.validityMonths),
   folioPrefix: settings.folioPrefix,
 });
@@ -65,11 +70,16 @@ export function FirmSettingsForm() {
     );
   }
 
-  const set = (key: keyof FormState) => (event: { target: { value: string } }) =>
+  const set = (key: Exclude<keyof FormState, "signers">) => (event: { target: { value: string } }) =>
     setForm((current) => (current ? { ...current, [key]: event.target.value } : current));
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
+    const signersError = signatureListError(form.signers);
+    if (signersError) {
+      toast.error(signersError);
+      return;
+    }
     setBusy("save");
     try {
       const next = await api.firm.save({
@@ -78,8 +88,7 @@ export function FirmSettingsForm() {
         address: form.address,
         phone: form.phone,
         email: form.email,
-        appraiserName: form.appraiserName,
-        appraiserRegistration: form.appraiserRegistration,
+        signers: form.signers,
         validityMonths: Number(form.validityMonths),
         folioPrefix: form.folioPrefix,
       });
@@ -196,19 +205,20 @@ export function FirmSettingsForm() {
           <CardDescription>Con qué datos nace cada avalúo. En cada uno se pueden cambiar desde la carátula.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field>
-            <FieldLabel htmlFor="firm-appraiser">Perito que firma</FieldLabel>
-            <Input id="firm-appraiser" value={form.appraiserName} maxLength={180} placeholder="Ing. Nombre Apellido" onChange={set("appraiserName")} />
-            <FieldDescription>Si lo dejas vacío, firma el responsable del avalúo.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="firm-registration">Registro o cédula del perito</FieldLabel>
-            <Input id="firm-registration" value={form.appraiserRegistration} maxLength={120} onChange={set("appraiserRegistration")} />
-          </Field>
+          <div className="sm:col-span-2">
+            <SignaturesEditor
+              title="Firmas de los avalúos nuevos"
+              description="Quienes firman normalmente. Si no agregas ninguna, las firmas se capturan en la carátula de cada avalúo."
+              idPrefix="firm-signer"
+              signatures={form.signers}
+              readOnly={busy !== null}
+              onChange={(signers) => setForm((current) => (current ? { ...current, signers } : current))}
+            />
+          </div>
           <Field>
             <FieldLabel htmlFor="firm-validity">Vigencia (meses)</FieldLabel>
-            <Input id="firm-validity" type="number" min={1} max={24} value={form.validityMonths} onChange={set("validityMonths")} />
-            <FieldDescription>La vigencia se cuenta desde la fecha del avalúo.</FieldDescription>
+            <Input id="firm-validity" type="number" min={MIN_VALIDITY_MONTHS} max={MAX_VALIDITY_MONTHS} step={1} value={form.validityMonths} onChange={set("validityMonths")} />
+            <FieldDescription>De 1 a 12 meses completos, contados desde la fecha del avalúo. En cada avalúo se puede cambiar.</FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="firm-prefix">Prefijo del folio</FieldLabel>

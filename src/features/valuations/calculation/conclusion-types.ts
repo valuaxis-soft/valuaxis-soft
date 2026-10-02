@@ -3,10 +3,20 @@
  * each approach stored, how the appraiser concludes, and the concluded value.
  */
 import type { Approach, ConclusionInput } from "../engine/conclusion";
+import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig } from "../engine/config";
 
 export type ConclusionMethod = ConclusionInput["method"];
 
-export type ConclusionSettingsDto = { method: ConclusionMethod; justification: string | null };
+export type ConclusionSettingsDto = {
+  method: ConclusionMethod;
+  justification: string | null;
+  /** Excel ROUND digits of the concluded value, the appraiser's choice; undefined keeps the default, null is no rounding. */
+  rounding?: number | null;
+};
+
+export function conclusionEngineConfig(settings: Pick<ConclusionSettingsDto, "rounding">): EngineConfig {
+  return settings.rounding === undefined ? DEFAULT_ENGINE_CONFIG : withRounding(DEFAULT_ENGINE_CONFIG, { conclusion: settings.rounding });
+}
 
 export type ConclusionCalculationDto = ConclusionSettingsDto & {
   /** Value each approach stored; null when it does not apply. */

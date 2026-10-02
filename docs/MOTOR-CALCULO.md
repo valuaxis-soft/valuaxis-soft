@@ -21,13 +21,18 @@ La metodología viene de los Excel del despacho, levantada en [fase0/](fase0/REA
 
 ## Configuración y perfiles
 
-Los libros difieren en redondeos y en la dirección del factor de superficie. `EXCEL_PROFILES` tiene un perfil por libro (`ARANDAS`, `TCH`, `TU`, `TU_OFICIAL`, `TR`, `TRC`) que lo reproduce exacto. `DEFAULT_ENGINE_CONFIG` es lo que usará el sistema:
+Los libros difieren en redondeos y en la dirección del factor de superficie. `EXCEL_PROFILES` tiene un perfil por libro (`ARANDAS`, `TCH`, `TU`, `TU_OFICIAL`, `TR`, `TRC`) que lo reproduce exacto. `DEFAULT_ENGINE_CONFIG` es lo que usa el sistema, según las [respuestas del perito](fase0/RESPUESTAS-PERITO.md):
 
-- **Factor de superficie** con la regla `(S_referencia / S_sujeto)^(1/n)` en los tres enfoques. Ningún libro la aplica completa.
-- **Redondeos** del último caso real (Arandas): valor de mercado a decenas, terreno a centenas, construcciones a decenas de miles, instalaciones a miles, valor físico y conclusión a decenas de miles.
-- **Factor de edad** `1 − (edad / vida útil)^1.4`, con mínimo 0. El Excel lo deja negativo cuando la edad supera la vida útil, y la base de datos rechaza deméritos negativos.
+- **Factor de superficie.** En mercado y rentas el comparable se lleva a la base, `(base / comparable)^(1/n)`: la base es el lote tipo (homologación indirecta) o el sujeto (directa). Con lote tipo, el valor se lleva después al sujeto con `(lote tipo / sujeto)^(1/n)`, en el valor de mercado y en el terreno del enfoque de costos. El valuador puede escribir otro factor en cada comparable. `n` es 3, 6, 9 o 12.
+- **Valor adoptado.** Lo captura el valuador; promedio y mediana son referencia. Debe quedar dentro del ±30 % de ambos.
+- **Factor de edad** `1 − (edad / vida útil)^1.4`; si la edad alcanza o rebasa la vida útil, la vida útil pasa a edad + 1.
+- **Redondeos.** Los elige el valuador por avalúo (terreno, construcciones, instalaciones, valor físico, valor de mercado y conclusión), o ninguno. Mientras no elija se usan los del último caso real (Arandas).
+- **Indirectos.** Sobre el valor de construcciones e instalaciones, salvo que se capture otra base.
+- **Factores de homologación.** El sistema no propone valores ni rangos; cada despacho puede guardar su propio catálogo.
 
-`PENDING_DECISIONS` lista lo que espera respuesta del perito, con el número de pregunta de [PREGUNTAS-PERITO.md](fase0/PREGUNTAS-PERITO.md). Cuando conteste, se cambia la configuración y no el código.
+Los campos numéricos de cálculo aceptan fórmulas que empiezan con `=` (`calculation/free-formula.ts`): + − × ÷ ^ %, paréntesis, `RAIZ`, `POTENCIA` y `REDONDEAR`, con la precedencia de Excel.
+
+`PENDING_DECISIONS` lista lo que aún espera respuesta del perito.
 
 ## Validación
 
@@ -82,5 +87,5 @@ Esquema: la migración 032 agrega las calificaciones de los factores, la potenci
 ## Pendiente
 
 - Maquinaria MEH: el motor está; falta la captura en el editor y su bloque del dictamen. La conservación se aplica dos veces como el libro hasta que el perito conteste la pregunta 3 (`conservationTwice`).
-- Ingresos de TU: cuál opción concluye (pregunta 2); hoy la 2, como los libros. En TR, como los libros, el ingreso de cada comparable sale de su renta homologada (03 §9.5); se revisa con el perito.
-- Indirectos: hoy la base se captura. Falta decidir si se liga al VNR de construcciones (pregunta 11).
+- En TR, como los libros, el ingreso de cada comparable sale de su renta homologada (03 §9.5); se revisa con el perito.
+- Regresión lineal, en un apartado propio.

@@ -1,12 +1,12 @@
 /**
- * Homologation factor catalog: for each factor, the ratings an appraiser
- * picks from (label and value), and the limits a factor and the resultant
- * factor should stay within. A factor is subject rating / comparable rating,
- * as in the firm's books (=1/1.15). Negotiation is a direct factor.
+ * A firm's own homologation factor catalog, if it keeps one: for each factor,
+ * the ratings its appraisers pick from (label and value), and the limits it
+ * wants flagged. A factor is subject rating / comparable rating; negotiation
+ * is a direct factor.
  *
- * The defaults come from the values the firm's workbooks use (Fase 0,
- * docs/fase0/metodologia/02-mercado-homologacion.md §4), completed with the
- * usual INDAABIN/SHF gradations; each firm edits its own in Datos del despacho.
+ * Valuaxis proposes no values and no limits: which factor applies is the
+ * appraiser's judgement, and they justify it (docs/fase0/RESPUESTAS-PERITO.md,
+ * answer 7). Without a catalog every factor is typed by hand.
  */
 import { z } from "zod";
 import { FACTOR_TYPES, type FactorType } from "./market-types";
@@ -16,7 +16,8 @@ export type FactorLimits = { factorMin: number; factorMax: number; resultantMin:
 export type FactorCatalog = {
   /** Only factors with ratings; the others are captured by hand. */
   factors: Partial<Record<FactorType, FactorOption[]>>;
-  limits: FactorLimits;
+  /** Null: the firm flags nothing. */
+  limits: FactorLimits | null;
 };
 
 /** Factors whose options are the factor itself, not a rating. */
@@ -24,71 +25,7 @@ export const DIRECT_FACTORS: ReadonlySet<FactorType> = new Set(["NEGOCIACION"]);
 /** Computed by the engine; never rated. */
 export const COMPUTED_FACTORS: ReadonlySet<FactorType> = new Set(["SUPERFICIE"]);
 
-export const DEFAULT_FACTOR_CATALOG: FactorCatalog = {
-  factors: {
-    NEGOCIACION: [
-      { label: "Precio de cierre", value: 1 },
-      { label: "Oferta típica", value: 0.95 },
-      { label: "Oferta alta", value: 0.9 },
-    ],
-    UBICACION: [
-      { label: "Interior o medianero", value: 1 },
-      { label: "Esquina", value: 1.1 },
-      { label: "Dos frentes o cabecera", value: 1.15 },
-    ],
-    ZONA: [
-      { label: "Inferior", value: 0.9 },
-      { label: "Ligeramente inferior", value: 0.95 },
-      { label: "Similar", value: 1 },
-      { label: "Superior", value: 1.05 },
-      { label: "Muy superior", value: 1.1 },
-    ],
-    FRENTE: [
-      { label: "Menor al típico", value: 0.95 },
-      { label: "Típico", value: 1 },
-      { label: "Mayor al típico", value: 1.1 },
-      { label: "Mucho mayor al típico", value: 1.15 },
-    ],
-    USO_SUELO: [
-      { label: "Habitacional", value: 1 },
-      { label: "Mixto", value: 1.05 },
-      { label: "Comercial", value: 1.1 },
-    ],
-    SERVICIOS: [
-      { label: "Completos", value: 1 },
-      { label: "Incompletos", value: 0.95 },
-      { label: "Sin servicios", value: 0.85 },
-    ],
-    TOPOGRAFIA: [
-      { label: "Plana", value: 1 },
-      { label: "Pendiente ligera", value: 0.95 },
-      { label: "Lomerío suave", value: 0.85 },
-      { label: "Accidentada", value: 0.75 },
-    ],
-    FORMA: [
-      { label: "Regular", value: 1 },
-      { label: "Irregular", value: 0.95 },
-      { label: "Muy irregular", value: 0.9 },
-    ],
-    CALIDAD: [
-      { label: "Económica", value: 0.9 },
-      { label: "Media", value: 1 },
-      { label: "Buena", value: 1.05 },
-      { label: "Lujo", value: 1.15 },
-    ],
-    // The MEH workbook's 1–10 conservation table, the only numeric table in the books.
-    CONSERVACION: [
-      { label: "Nuevo", value: 1 },
-      { label: "Excelente", value: 0.99 },
-      { label: "Muy bueno", value: 0.975 },
-      { label: "Bueno", value: 0.92 },
-      { label: "Regular", value: 0.82 },
-      { label: "Deficiente", value: 0.66 },
-      { label: "Malo", value: 0.47 },
-    ],
-  },
-  limits: { factorMin: 0.8, factorMax: 1.2, resultantMin: 0.65, resultantMax: 1.35 },
-};
+export const EMPTY_FACTOR_CATALOG: FactorCatalog = { factors: {}, limits: null };
 
 const optionSchema = z.object({
   label: z.string().trim().min(1, "Cada calificación necesita un nombre.").max(60),
@@ -103,17 +40,17 @@ export const factorCatalogSchema = z.object({
     factorMax: z.number().finite().positive(),
     resultantMin: z.number().finite().positive(),
     resultantMax: z.number().finite().positive(),
-  }).refine((limits) => limits.factorMin < limits.factorMax && limits.resultantMin < limits.resultantMax, "El mínimo debe ser menor que el máximo."),
+  }).refine((limits) => limits.factorMin < limits.factorMax && limits.resultantMin < limits.resultantMax, "El mínimo debe ser menor que el máximo.").nullable(),
 }).transform((catalog) => ({
   ...catalog,
   factors: Object.fromEntries(Object.entries(catalog.factors)
     .filter(([type]) => !COMPUTED_FACTORS.has(type as FactorType))) as FactorCatalog["factors"],
 }));
 
-/** The firm's stored catalog, or the defaults when it has none or it is unreadable. */
+/** The firm's stored catalog, or an empty one when it has none or it is unreadable. */
 export function resolveFactorCatalog(stored: unknown): FactorCatalog {
   const parsed = factorCatalogSchema.safeParse(stored);
-  return parsed.success ? parsed.data : DEFAULT_FACTOR_CATALOG;
+  return parsed.success ? parsed.data : EMPTY_FACTOR_CATALOG;
 }
 
 export const optionsFor = (catalog: FactorCatalog, type: FactorType) =>
@@ -144,12 +81,13 @@ export function matchOption(options: FactorOption[], value: number | null | unde
 
 export type FactorWarning = { kind: "factor" | "resultante"; label: string; value: number };
 
-/** Factors and the resultant factor outside the firm's limits. */
+/** Factors and the resultant factor outside the limits the firm set for itself, if any. */
 export function factorWarnings(
   factors: Array<{ label: string; value: number }>,
   resultant: number | null,
-  limits: FactorLimits,
+  limits: FactorLimits | null,
 ): FactorWarning[] {
+  if (!limits) return [];
   const warnings: FactorWarning[] = factors
     .filter((factor) => factor.value < limits.factorMin - 1e-9 || factor.value > limits.factorMax + 1e-9)
     .map((factor) => ({ kind: "factor", label: factor.label, value: factor.value }));

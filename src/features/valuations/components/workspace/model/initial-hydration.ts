@@ -37,11 +37,11 @@ const emptyCaratula: CaratulaFormData = {
   propietario: "",
   objeto: "",
   proposito: "",
-  valuador: "",
-  registroValuador: "",
+  firmas: [],
   valorTotal: "",
   valorConLetra: "",
   fechaAvaluo: "",
+  mesesVigencia: null,
   fechaVigencia: "",
 };
 
@@ -241,11 +241,11 @@ export function caratulaFromValuation(
     propietario: initialValuation?.caratula?.propietario || meta.client,
     ...initializeCaratulaState(initialValuation?.caratula),
     proposito: initialValuation?.caratula?.proposito || meta.valuationKind,
-    valuador: initialValuation?.caratula?.valuador || initialValuation?.user.name || "",
-    registroValuador: initialValuation?.caratula?.registroValuador || "",
+    firmas: initialValuation?.caratula?.firmas ?? [],
     valorTotal: initialValuation?.caratula?.valorTotal || "",
     valorConLetra: initialValuation?.caratula?.valorConLetra || "",
     fechaAvaluo: initialValuation?.caratula?.fechaAvaluo || "",
+    mesesVigencia: initialValuation?.caratula?.mesesVigencia ?? null,
     fechaVigencia: initialValuation?.caratula?.fechaVigencia || "",
   };
 }

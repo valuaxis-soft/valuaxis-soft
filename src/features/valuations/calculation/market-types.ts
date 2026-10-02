@@ -4,6 +4,7 @@
  * server (stored results and trace), so both compute the same thing.
  */
 import { SURFACE_SLOT, type CapturedFactor, type FactorSlot } from "../engine/factors";
+import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig } from "../engine/config";
 import type { ComparableInput, MarketApproachInput } from "../engine/market";
 
 export const COMPARABLE_TYPES = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA"] as const;
@@ -75,8 +76,6 @@ export type FactorSlotConfig = {
 export const DEFAULT_FACTOR_SLOTS: FactorSlotConfig[] = ["NEGOCIACION", "UBICACION", "SUPERFICIE", "ZONA", "FRENTE", "USO_SUELO"]
   .map((type) => ({ type: type as FactorType, label: FACTOR_TYPE_LABELS[type as FactorType] }));
 
-/** The books recommend a dispersion (max / min) below this. */
-export const RECOMMENDED_MAX_DISPERSION = 1.25;
 /** COT-2026-001: at least four comparables per homologation. */
 export const MIN_COMPARABLES = 4;
 
@@ -125,6 +124,8 @@ export type MarketSettingsDto = {
   justification: string | null;
   additionalAmount: number;
   factorSlots: FactorSlotConfig[];
+  /** Excel ROUND digits of the value, the appraiser's choice; undefined keeps the default, null is no rounding. */
+  rounding?: number | null;
 };
 
 export type MarketCalculationDto = {
@@ -146,6 +147,11 @@ export function defaultMarketSettings(comparableType: ComparableType): MarketSet
   };
 }
 
+/** The engine settings of a market calculation: the defaults with the rounding the appraiser chose. */
+export function marketEngineConfig(settings: Pick<MarketSettingsDto, "rounding">): EngineConfig {
+  return settings.rounding === undefined ? DEFAULT_ENGINE_CONFIG : withRounding(DEFAULT_ENGINE_CONFIG, { market: settings.rounding });
+}
+
 /** A comparable enters the calculation once it has a positive area and price. */
 export function isComparableComplete(comparable: Pick<ComparableDto, "area" | "price">) {
   return (comparable.area ?? 0) > 0 && (comparable.price ?? 0) > 0;
@@ -158,6 +164,12 @@ function capturedFactor(slot: FactorSlotConfig, factor: ComparableFactorDto | un
   }
   // A factor the appraiser has not captured does not change the value.
   return { ...base, value: factor?.value ?? 1 };
+}
+
+/** The surface factor the appraiser typed for a comparable, instead of the formula. */
+function typedSurfaceFactor(comparable: ComparableDto) {
+  const value = comparable.factors.find((factor) => factor.type === "SUPERFICIE")?.value;
+  return value && value > 0 ? { surfaceFactor: value } : {};
 }
 
 /** Engine input, or the reason the calculation cannot run yet. */
@@ -180,6 +192,7 @@ export function toMarketEngineInput(dto: Pick<MarketCalculationDto, "settings" |
       slot.type === "SUPERFICIE"
         ? SURFACE_SLOT
         : capturedFactor(slot, comparable.factors.find((factor) => factor.type === slot.type))),
+    ...typedSurfaceFactor(comparable),
   }));
   return {
     ok: true,

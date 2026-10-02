@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { resolveSignatures, signatureListError } from "@/features/valuations/services/valuation-signatures";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import type { AuthUser } from "@/features/auth/model";
 import { copyVersionContent } from "@/features/valuations/services/valuation-version-copy.service";
@@ -44,6 +45,16 @@ export async function concludeValuation(input: {
     if (!requiredSections.length) {
       throw new ValuationWorkflowError("No hay secciones obligatorias configuradas para concluir", 409);
     }
+
+    // Whoever signs must have a cédula profesional.
+    const caratula = await tx.caratulaAvaluo.findUnique({
+      where: { IdVersionAvaluo: avaluo.IdVersionTrabajo },
+      select: { JFirmas: true, SNombreValuador: true, SRegistroValuador: true },
+    });
+    const signaturesError = caratula
+      ? signatureListError(resolveSignatures(caratula.JFirmas, { name: caratula.SNombreValuador, registration: caratula.SRegistroValuador }))
+      : null;
+    if (signaturesError) throw new ValuationWorkflowError(`Para concluir, completa las firmas en la carátula. ${signaturesError}`, 409);
 
     const contentHash = createHash("sha256")
       .update(JSON.stringify(avaluo.versionTrabajo.seccionesDocumentos))

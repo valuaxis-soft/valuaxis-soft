@@ -15,10 +15,11 @@ import {
 
 test("CARATULA returns fixed modules in expected order", () => {
   const modules = getFixedModules("CARATULA");
-  assert.equal(modules.length, 3);
+  assert.equal(modules.length, 4);
   assert.equal(modules[0].kind, "caratula-cover");
   assert.equal(modules[1].kind, "caratula-assumptions");
   assert.equal(modules[2].kind, "caratula-conclusion");
+  assert.equal(modules[3].kind, "caratula-signatures");
 });
 
 test("CARATULA has fixed zone", () => {
@@ -30,7 +31,7 @@ test("CARATULA composition has correct structure", () => {
   assert.ok(composition, "CARATULA composition should exist");
   assert.equal(composition.sectionKey, "CARATULA");
   assert.ok(Array.isArray(composition.fixedModules), "fixedModules should be array");
-  assert.equal(composition.fixedModules!.length, 3);
+  assert.equal(composition.fixedModules!.length, 4);
 });
 
 /* ------------------------------------------------------------------ */

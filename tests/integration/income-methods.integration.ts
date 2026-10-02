@@ -10,7 +10,10 @@ import {
   DEFAULT_INCOME,
   DEFAULT_MARKET_RATE,
   MARKET_RATE_EXPENSES,
+  toIncomeEngineInput,
 } from "../../src/features/valuations/calculation/income-types";
+import { DEFAULT_ENGINE_CONFIG } from "../../src/features/valuations/engine/config";
+import { computeIncomeApproach } from "../../src/features/valuations/engine/income";
 import { createValuationFixture, prisma } from "./support";
 
 after(() => prisma.$disconnect());
@@ -62,7 +65,7 @@ test("TU annuity method stores 110,689.59 (option 2) and 230,800.37 (option 1)",
   assert.equal(back.annuity.option, 1);
 });
 
-test("TR market-rate method stores 5,090,678.68 from sale prices of the rent comparables", async () => {
+test("TR market-rate method stores the value from sale prices of the rent comparables", async () => {
   const fixture = await rentMarket(7295.15, null, [
     rent("Parcela 1", 4780, 7500, false), rent("Parcela 2", 4700, 7500, false),
     rent("Parcela 3", 3200, 6000, true), rent("Parcela 4", 2800, 5000, true),
@@ -75,5 +78,12 @@ test("TR market-rate method stores 5,090,678.68 from sale prices of the rent com
     deductions: MARKET_RATE_EXPENSES,
     marketRate: { ...DEFAULT_MARKET_RATE, negotiation: 0, vacancy: 0.03, salePrices: { 1: 3120000, 2: 2900000, 3: 2500000, 4: 2100000 } },
   });
-  assert.ok(Math.abs((await stored(fixture.publicId)) - 5090678.68) < 0.01);
+  // Stored = the engine with the appraiser's surface rule; the book's 5,090,678.68 is checked
+  // against its own profile in tests/valuation-engine-income-methods.test.ts.
+  const saved = await getIncomeCalculation(fixture.publicId, fixture.organizationId);
+  const input = toIncomeEngineInput(saved);
+  assert.ok(input.ok);
+  const expected = computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG).value;
+  assert.ok(expected > 0);
+  assert.ok(Math.abs((await stored(fixture.publicId)) - expected) < 0.01);
 });

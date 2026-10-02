@@ -50,7 +50,7 @@ test("an empty cost capture (nulls and empty lists) passes", () => {
 test("cost boundaries: zero, 1e12 amounts and factor 10 pass; above them fail", () => {
   accepts(costInputSchema, {
     ...cost,
-    land: { ...cost.land, unitValue: 1e12, subjectArea: 0, surfacePower: 20, factors: { ...cost.land.factors, negotiation: 10, location: 0 } },
+    land: { ...cost.land, unitValue: 1e12, subjectArea: 0, surfacePower: 12, factors: { ...cost.land.factors, negotiation: 10, location: 0 } },
     constructions: [{ ...construction, completion: 0, undivided: 1, otherFactor: 10 }],
   });
   assert.ok(issues(costInputSchema, { ...cost, land: { ...cost.land, unitValue: 1e12 + 1 } }).some((issue) => issue.startsWith("land.unitValue")));
@@ -64,7 +64,7 @@ test("cost boundaries: zero, 1e12 amounts and factor 10 pass; above them fail", 
 });
 
 test("the surface power must be positive and at most 20", () => {
-  for (const surfacePower of [0, -3, 20.5]) {
+  for (const surfacePower of [0, -3, 2, 4, 20.5]) {
     assert.ok(issues(costInputSchema, { ...cost, land: { ...cost.land, surfacePower } }).some((issue) => issue.startsWith("land.surfacePower")));
   }
 });

@@ -1,7 +1,7 @@
 /**
  * Datos del despacho: the organization's letterhead (name, legal name, RFC,
  * address, phone, email, logo) and the defaults every new valuation starts
- * with (responsible appraiser, validity months, folio prefix).
+ * with (signatures, validity months, folio prefix).
  */
 import { randomUUID } from "node:crypto";
 
@@ -14,7 +14,8 @@ import { buildOrganizationAssetKey } from "@/infrastructure/storage/storage-keys
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { Prisma } from "@prisma/client";
 import { resolveFactorCatalog, type FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
-import { addMonthsToIsoDate, todayInMexico } from "./firm-rules";
+import { resolveSignatures, signatureErrors } from "@/features/valuations/services/valuation-signatures";
+import { todayInMexico } from "./firm-rules";
 import type { FirmSettingsInput } from "./firm-schemas";
 
 const LOGO_ENTITY = "ORGANIZACION_LOGO";
@@ -62,6 +63,10 @@ export async function signedLogoUrl(organizationId: number) {
   return logo ? storageProvider.getPrivateDownloadUrl(logo.SClaveObjeto) : null;
 }
 
+/** A firm saved before signatures were a list has its single appraiser as the first one. */
+const firmSigners = (organization: { JFirmas: Prisma.JsonValue | null; SNombrePerito: string | null; SRegistroPerito: string | null }) =>
+  resolveSignatures(organization.JFirmas, { name: organization.SNombrePerito, registration: organization.SRegistroPerito });
+
 export async function getFirmSettings(organizationId: number): Promise<FirmSettingsDto> {
   const organization = await findOrganization(organizationId);
   return {
@@ -71,8 +76,7 @@ export async function getFirmSettings(organizationId: number): Promise<FirmSetti
     address: organization.SDireccion,
     phone: organization.STelefono,
     email: organization.SCorreo,
-    appraiserName: organization.SNombrePerito,
-    appraiserRegistration: organization.SRegistroPerito,
+    signers: firmSigners(organization),
     validityMonths: organization.IMesesVigencia,
     folioPrefix: organization.SPrefijoFolio,
     logoUrl: await logoUrl(organization),
@@ -89,8 +93,10 @@ export async function saveFirmSettings(user: AuthUser, input: FirmSettingsInput)
       SDireccion: input.address,
       STelefono: input.phone,
       SCorreo: input.email,
-      SNombrePerito: input.appraiserName,
-      SRegistroPerito: input.appraiserRegistration,
+      JFirmas: input.signers,
+      // The single-appraiser columns follow the first signature.
+      SNombrePerito: input.signers[0]?.name ?? null,
+      SRegistroPerito: input.signers[0]?.cedula ?? null,
       IMesesVigencia: input.validityMonths,
       SPrefijoFolio: input.folioPrefix,
     },
@@ -121,19 +127,19 @@ export async function getLetterhead(organizationId: number): Promise<Letterhead>
   };
 }
 
-/** What a new valuation starts with: folio prefix, appraiser, date and validity. */
+/** What a new valuation starts with: folio prefix, signatures, date and validity months. */
 export async function getValuationDefaults(tx: Prisma.TransactionClient, organizationId: number, now = new Date()) {
   const organization = await tx.organizacion.findUniqueOrThrow({
     where: { IdOrganizacion: organizationId },
-    select: { SPrefijoFolio: true, SNombrePerito: true, SRegistroPerito: true, IMesesVigencia: true },
+    select: { SPrefijoFolio: true, JFirmas: true, SNombrePerito: true, SRegistroPerito: true, IMesesVigencia: true },
   });
   const valuationDate = todayInMexico(now);
   return {
     folioPrefix: organization.SPrefijoFolio,
-    appraiserName: organization.SNombrePerito,
-    appraiserRegistration: organization.SRegistroPerito,
+    // Only complete signatures: one without cédula would stop the valuation from saving.
+    signers: firmSigners(organization).filter((signer) => Object.keys(signatureErrors(signer)).length === 0),
     valuationDate,
-    validUntil: addMonthsToIsoDate(valuationDate, organization.IMesesVigencia),
+    validityMonths: organization.IMesesVigencia,
   };
 }
 
@@ -232,7 +238,7 @@ export async function deleteFirmLogo(user: AuthUser) {
   await storageProvider.deleteObject(previous.SClaveObjeto).catch((cleanup) => console.error("[FIRM_LOGO_CLEANUP]", cleanup));
 }
 
-/** The firm's homologation factor catalog; `customized` is false while it uses the proposed defaults. */
+/** The firm's homologation factor catalog; `customized` is false while it keeps none. */
 export async function getFactorCatalog(organizationId: number): Promise<{ catalog: FactorCatalog; customized: boolean }> {
   const organization = await findOrganization(organizationId);
   return { catalog: resolveFactorCatalog(organization.JCatalogoFactores), customized: organization.JCatalogoFactores !== null };

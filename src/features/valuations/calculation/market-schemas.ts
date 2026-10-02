@@ -1,8 +1,17 @@
 import { z } from "zod";
+import { SURFACE_POWERS } from "../engine/config";
 import { COMPARABLE_TYPES, FACTOR_TYPES } from "./market-types";
 
 const text = (max: number) => z.string().trim().max(max).nullable().transform((value) => value || null);
 const positive = z.number().finite().positive().max(1e12).nullable();
+
+/** The appraiser picks the power n among 3, 6, 9 and 12. */
+export const surfacePowerSchema = z.number().refine(
+  (value) => (SURFACE_POWERS as readonly number[]).includes(value),
+  "La potencia n debe ser 3, 6, 9 o 12.",
+);
+/** Excel ROUND digits: 2 keeps cents, -4 rounds to tens of thousands; null is no rounding. */
+export const roundingSchema = z.number().int().min(-6).max(2).nullable();
 
 const factorSchema = z.object({
   type: z.enum(FACTOR_TYPES),
@@ -41,10 +50,11 @@ export const marketSettingsSchema = z.object({
   comparableType: z.enum(COMPARABLE_TYPES),
   subjectArea: positive,
   baseArea: positive,
-  surfacePower: z.number().finite().positive().max(20),
+  surfacePower: surfacePowerSchema,
   adoptedUnitValue: positive,
   justification: text(2000),
   additionalAmount: z.number().finite().min(0).max(1e12),
+  rounding: roundingSchema.optional(),
   factorSlots: z.array(z.object({ type: z.enum(FACTOR_TYPES), label: z.string().trim().min(1).max(60), subjectOption: z.string().trim().max(60).nullable().optional() }))
     .min(1)
     .max(FACTOR_TYPES.length)

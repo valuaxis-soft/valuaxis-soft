@@ -4,6 +4,7 @@
  * Formulas follow docs/fase0/metodologia/01-costos.md §3.8 and
  * 02-mercado-homologacion.md §3.5, so the results match the MEH book.
  */
+import { effectiveUsefulLife } from "./factors";
 import { excelRound } from "./rounding";
 import { Trace } from "./trace";
 
@@ -122,10 +123,12 @@ export function computeMachineryCost(input: MachineryCostInput, trace = new Trac
     inputs: { vrnUnitario: newReplacementValue, gastos: expensesRate }, value: newReplacementValue * (1 + expensesRate),
   });
   const ratingFactor = conservationFactor(item.rating);
+  // An age at or past the useful life takes a useful life of age + 1, as in the other approaches.
+  const itemLife = effectiveUsefulLife(item.age, item.usefulLife, true);
   const ageFactor = trace.record({
     key: "meh.bien.fed", label: "Factor de edad y conservación", formula: "(1 − (edad / vidaUtil)^1.4) · Fcal",
-    inputs: { edad: item.age, vidaUtil: item.usefulLife, calificacion: item.rating, Fcal: ratingFactor },
-    value: (1 - (item.age / item.usefulLife) ** 1.4) * ratingFactor,
+    inputs: { edad: item.age, vidaUtil: itemLife, calificacion: item.rating, Fcal: ratingFactor },
+    value: (1 - (item.age / itemLife) ** 1.4) * ratingFactor,
   });
   const conservation = input.conservationTwice ? item.factors.conservation : 1;
   const resultantFactor = trace.record({
@@ -142,6 +145,7 @@ export function computeMachineryCost(input: MachineryCostInput, trace = new Trac
     assertPositive(attachment.usefulLife, `La vida útil del aditamento ${attachment.ref}`);
     const key = `meh.aditamentos.${attachment.ref}`;
     const rates = sum(attachment.expenseRates);
+    const life = effectiveUsefulLife(attachment.age, attachment.usefulLife, true);
     const installed = trace.record({
       key: `${key}.vrnInstalado`, label: `V.R.N. instalado ${attachment.ref}`, formula: "cotizacion + gastos · cotizacion",
       inputs: { cotizacion: attachment.quotedPrice, gastos: rates }, value: attachment.quotedPrice + rates * attachment.quotedPrice,
@@ -149,7 +153,7 @@ export function computeMachineryCost(input: MachineryCostInput, trace = new Trac
     // Linear, unlike the item's exponent 1.4 (hallazgo 16).
     const age = trace.record({
       key: `${key}.fed`, label: `Factor de edad ${attachment.ref}`, formula: "(vidaUtil − edad) / vidaUtil",
-      inputs: { edad: attachment.age, vidaUtil: attachment.usefulLife }, value: (attachment.usefulLife - attachment.age) / attachment.usefulLife,
+      inputs: { edad: attachment.age, vidaUtil: life }, value: (life - attachment.age) / life,
     });
     const { conservation: fco, maintenance, technological, economic } = attachment.factors;
     const resultant = trace.record({
@@ -217,10 +221,11 @@ export function computeMachineryMarket(input: MachineryMarketInput, trace = new 
       inputs: { precio: offer.price, G: offer.surcharge }, value: offer.price * (1 + offer.surcharge),
     });
     const ratingFactor = conservationFactor(offer.rating);
+    const life = effectiveUsefulLife(offer.age, input.usefulLife, true);
     const ageFactor = trace.record({
       key: `${key}.fed`, label: `Factor de edad ${offer.id}`, formula: "(1 − (edad / vidaUtil)^1.4) · Fcal",
-      inputs: { edad: offer.age, vidaUtil: input.usefulLife, calificacion: offer.rating, Fcal: ratingFactor },
-      value: (1 - (offer.age / input.usefulLife) ** 1.4) * ratingFactor,
+      inputs: { edad: offer.age, vidaUtil: life, calificacion: offer.rating, Fcal: ratingFactor },
+      value: (1 - (offer.age / life) ** 1.4) * ratingFactor,
     });
     const { conservation, maintenance, technological, economic } = offer.factors;
     const resultantFactor = trace.record({

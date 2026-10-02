@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { roundingSchema } from "./market-schemas";
 
 const approach = z.enum(["costos", "mercado", "ingresos"]);
 
@@ -8,6 +9,7 @@ export const conclusionSettingsSchema = z.object({
     z.object({ kind: z.literal("weighted"), weights: z.partialRecord(approach, z.number().finite().min(0).max(1)) }),
   ]),
   justification: z.string().trim().max(4000).nullable().transform((value) => value || null),
+  rounding: roundingSchema.optional(),
 });
 
 export type ConclusionSettingsPayload = z.infer<typeof conclusionSettingsSchema>;

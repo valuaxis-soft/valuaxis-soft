@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { amountInWords } from "../src/features/valuations/engine/amount-in-words";
 import { concludeValue } from "../src/features/valuations/engine/conclusion";
-import { DEFAULT_ENGINE_CONFIG, EXCEL_PROFILES, PENDING_DECISIONS } from "../src/features/valuations/engine/config";
+import { DEFAULT_ENGINE_CONFIG, EXCEL_PROFILES, PENDING_DECISIONS, SURFACE_POWERS, withRounding } from "../src/features/valuations/engine/config";
 import { excelRound } from "../src/features/valuations/engine/rounding";
 
 test("excelRound rounds halves away from zero on the decimal digits, like Excel", () => {
@@ -83,14 +83,32 @@ test("a weighted conclusion needs weights that add up to 100 %", () => {
   assert.throws(() => concludeValue({ values: { costos: null }, method: { kind: "single", approach: "costos" } }, EXCEL_PROFILES.ARANDAS));
 });
 
-test("the default config corrects the surface factor, floors the age factor at zero and keeps the Arandas roundings", () => {
+test("the default config follows the appraiser's answers", () => {
+  // Market and rents bring the comparable to the base; costs bring the lote tipo to the subject.
   assert.deepEqual(DEFAULT_ENGINE_CONFIG.surfaceOrientation, {
     costs: "reference-over-subject",
-    market: "reference-over-subject",
-    income: "reference-over-subject",
+    market: "subject-over-reference",
+    income: "subject-over-reference",
   });
-  assert.deepEqual(DEFAULT_ENGINE_CONFIG.rounding, EXCEL_PROFILES.ARANDAS.rounding);
-  assert.equal(DEFAULT_ENGINE_CONFIG.ageFactor.floor, 0);
+  assert.equal(DEFAULT_ENGINE_CONFIG.indirectSubjectFactor, true);
+  assert.deepEqual(DEFAULT_ENGINE_CONFIG.ageFactor, { exponent: 1.4, floor: 0, extendUsefulLife: true });
+  // The adopted unit value reaches the land as the appraiser typed it.
+  assert.equal(DEFAULT_ENGINE_CONFIG.rounding.costs.marketUnitValue, null);
+  assert.deepEqual(SURFACE_POWERS, [3, 6, 9, 12]);
+});
+
+test("the appraiser's roundings replace the starting ones, and null means none", () => {
+  const config = withRounding(DEFAULT_ENGINE_CONFIG, { costs: { land: null }, market: -3, conclusion: null });
+  assert.equal(config.rounding.costs.land, null);
+  assert.equal(config.rounding.costs.constructions, DEFAULT_ENGINE_CONFIG.rounding.costs.constructions);
+  assert.equal(config.rounding.market.comparativeValue, -3);
+  assert.equal(config.rounding.conclusion, null);
+  assert.equal(withRounding(DEFAULT_ENGINE_CONFIG, null), DEFAULT_ENGINE_CONFIG);
+  // A monthly rent of 6,045 concluded to tens of thousands would be 10,000; to hundreds it is 6,000.
+  const rent = { values: { ingresos: 6045 }, method: { kind: "single" as const, approach: "ingresos" as const } };
+  assert.equal(concludeValue(rent, withRounding(DEFAULT_ENGINE_CONFIG, { conclusion: -4 })).value, 10000);
+  assert.equal(concludeValue(rent, withRounding(DEFAULT_ENGINE_CONFIG, { conclusion: -2 })).value, 6000);
+  assert.equal(concludeValue(rent, withRounding(DEFAULT_ENGINE_CONFIG, { conclusion: null })).value, 6045);
 });
 
 test("every pending decision points to a question sent to the appraiser", () => {

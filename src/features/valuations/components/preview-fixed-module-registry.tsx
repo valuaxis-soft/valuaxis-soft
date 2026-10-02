@@ -17,6 +17,7 @@ import {
   CaratulaCoverModule,
   CaratulaAssumptionsModule,
   CaratulaConclusionModule,
+  CaratulaSignaturesModule,
 } from "./caratula-preview-modules";
 import { TerrainMainModule } from "./terreno-preview-modules";
 
@@ -32,6 +33,7 @@ const previewModuleRegistry: Record<string, PreviewFixedModule> = {
   "caratula-cover": CaratulaCoverModule,
   "caratula-assumptions": CaratulaAssumptionsModule,
   "caratula-conclusion": CaratulaConclusionModule,
+  "caratula-signatures": CaratulaSignaturesModule,
   "terreno-main": TerrainMainModule,
 };
 

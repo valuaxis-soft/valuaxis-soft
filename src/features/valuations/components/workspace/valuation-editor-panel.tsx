@@ -17,7 +17,8 @@ import {
   ContentCreationControl,
 } from "../editor/content-creation-control";
 
-import { CaratulaEditor, CalculatedValuesEditor, ValuerCompanyEditor } from "../editor/caratula-editor";
+import { CaratulaEditor, CalculatedValuesEditor } from "../editor/caratula-editor";
+import { SignaturesEditor } from "../editor/signatures-editor";
 
 import { GripVertical, Plus } from "lucide-react";
 
@@ -412,10 +413,12 @@ export function ValuationEditorPanel(props: {
                 </section>
 
                 {props.caratula && props.onUpdateCaratula ? (
-                  <ValuerCompanyEditor
-                    caratula={props.caratula}
+                  <SignaturesEditor
+                    description="Quienes firman el dictamen, cada quien con su cédula profesional. Se imprimen en este orden."
+                    idPrefix="caratula-firma"
+                    signatures={props.caratula.firmas}
                     readOnly={props.readOnly}
-                    onUpdate={props.onUpdateCaratula}
+                    onChange={(firmas) => props.onUpdateCaratula?.({ firmas })}
                   />
                 ) : null}
               </div>

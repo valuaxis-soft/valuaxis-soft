@@ -19,11 +19,11 @@ const caratula: CaratulaFormData = {
   propietario: "Propietario",
   objeto: "Venta",
   proposito: "Conocer el valor",
-  valuador: "Valuador",
-  registroValuador: "REG-1",
+  firmas: [],
   valorTotal: "",
   valorConLetra: "",
   fechaAvaluo: "2026-06-21",
+  mesesVigencia: null,
   fechaVigencia: "2026-12-21",
 };
 

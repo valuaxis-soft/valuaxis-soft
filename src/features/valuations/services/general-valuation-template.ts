@@ -8,7 +8,7 @@ const GENERAL_CARATULA_CONCEPT_DEFAULTS = {
   owner: "caratula-block-2-datos-del-solicitante-concept-1",
   applicant: "caratula-block-2-datos-del-solicitante-concept-2",
   valuationDate: "caratula-block-4-datos-del-avaluo-concept-1",
-  validUntil: "caratula-block-4-datos-del-avaluo-concept-2",
+  validity: "caratula-block-4-datos-del-avaluo-concept-2",
   purpose: "caratula-block-4-datos-del-avaluo-concept-4",
   valuator: "caratula-block-6-conclusion-concept-3",
 } as const;
@@ -26,7 +26,8 @@ export type GeneralCaratulaDefaults = {
   responsibleName?: string | null;
   /** YYYY-MM-DD; shown as in the page header. */
   valuationDate?: string | null;
-  validUntil?: string | null;
+  /** As printed: "6 meses". */
+  validity?: string | null;
 };
 
 type ResponsibleUserName = {
@@ -61,7 +62,7 @@ export function hydrateGeneralCaratulaTemplate(
   if (operationName) valuesByConceptId.set(GENERAL_CARATULA_CONCEPT_DEFAULTS.purpose, operationName);
   if (responsibleName) valuesByConceptId.set(GENERAL_CARATULA_CONCEPT_DEFAULTS.valuator, responsibleName);
   if (defaults.valuationDate) valuesByConceptId.set(GENERAL_CARATULA_CONCEPT_DEFAULTS.valuationDate, formatDateValue(defaults.valuationDate));
-  if (defaults.validUntil) valuesByConceptId.set(GENERAL_CARATULA_CONCEPT_DEFAULTS.validUntil, formatDateValue(defaults.validUntil));
+  if (defaults.validity) valuesByConceptId.set(GENERAL_CARATULA_CONCEPT_DEFAULTS.validity, defaults.validity);
 
   return {
     ...template,

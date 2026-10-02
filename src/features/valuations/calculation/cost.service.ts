@@ -7,18 +7,21 @@ import { Prisma } from "@prisma/client";
 
 import type { AuthUser } from "@/features/auth/model";
 import { prisma } from "@/infrastructure/database/prisma-client";
-import { DEFAULT_ENGINE_CONFIG, ENGINE_VERSION } from "../engine/config";
+import { ENGINE_VERSION } from "../engine/config";
 import { computeCostApproach } from "../engine/costs";
 import { Trace } from "../engine/trace";
 import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
 import { recomputeConclusion } from "./conclusion.service";
 import type { CostInputPayload } from "./cost-schemas";
 import {
+  DEFAULT_COST_ROUNDING,
   DEFAULT_LAND,
+  costEngineConfig,
   toCostEngineInput,
   type CostCalculationDto,
   type CostInputDto,
   type CostLandDto,
+  type CostRoundingDto,
 } from "./cost-types";
 
 const CALCULATION_KEY = "MOTOR.COSTOS";
@@ -54,6 +57,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<CostInputDto> {
     tx.costoIndirecto.findMany({ where: { IdVersionAvaluo: versionId }, orderBy: { IOrden: "asc" } }),
   ]);
   const land = asRecord(approach?.JConfiguracion ?? null).land as Partial<CostLandDto> | undefined;
+  const rounding = asRecord(approach?.JConfiguracion ?? null).rounding as CostRoundingDto | undefined;
   const costByType = new Map(approach?.costosConstrucciones.map((row) => [row.IdTipoConstruccionAvaluo, row]) ?? []);
   const costByInstallation = new Map(approach?.costosInstalaciones.map((row) => [row.IdInstalacionEspecialAvaluo, row]) ?? []);
   return {
@@ -94,6 +98,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<CostInputDto> {
       };
     }),
     indirects: indirects.map((row) => ({ concept: row.SConcepto, percentage: decimal(row.NPorcentaje), base: decimal(row.NValorBase) })),
+    ...(rounding ? { rounding: { ...DEFAULT_COST_ROUNDING, ...rounding } } : {}),
   };
 }
 
@@ -116,14 +121,17 @@ export async function getCostCalculation(publicId: string, organizationId: numbe
   });
 }
 
+const storedConfiguration = (payload: CostInputPayload) =>
+  ({ land: payload.land, ...(payload.rounding ? { rounding: payload.rounding } : {}) }) as Prisma.InputJsonValue;
+
 /** Replaces the whole capture of the version and recomputes the approach. */
 export async function saveCostCalculation(publicId: string, user: AuthUser, payload: CostInputPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
     const approach = await tx.enfoqueCosto.upsert({
       where: { IdVersionAvaluo: versionId },
-      create: { IdVersionAvaluo: versionId, JConfiguracion: { land: payload.land } },
-      update: { JConfiguracion: { land: payload.land } },
+      create: { IdVersionAvaluo: versionId, JConfiguracion: storedConfiguration(payload) },
+      update: { JConfiguracion: storedConfiguration(payload) },
     });
 
     await tx.costoConstruccion.deleteMany({ where: { IdEnfoqueCosto: approach.IdEnfoqueCosto } });
@@ -239,7 +247,8 @@ async function recomputeCostsValues(tx: Tx, versionId: number) {
   }
 
   const trace = new Trace();
-  const result = computeCostApproach(engineInput.input, DEFAULT_ENGINE_CONFIG, trace);
+  const config = costEngineConfig(input);
+  const result = computeCostApproach(engineInput.input, config, trace);
   const value = (key: string) => trace.find(key)?.value ?? null;
 
   await tx.enfoqueCosto.update({
@@ -337,7 +346,7 @@ async function recomputeCostsValues(tx: Tx, versionId: number) {
       SVersionCalculo: ENGINE_VERSION,
       JValoresEntrada: engineInput.input as unknown as Prisma.InputJsonValue,
       JValoresSalida: result as unknown as Prisma.InputJsonValue,
-      SPoliticaRedondeo: JSON.stringify(DEFAULT_ENGINE_CONFIG.rounding.costs).slice(0, 120),
+      SPoliticaRedondeo: JSON.stringify(config.rounding.costs).slice(0, 120),
       BExitoso: true,
       resultados: {
         create: trace.steps.map((step, index) => ({

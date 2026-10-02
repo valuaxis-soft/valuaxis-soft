@@ -84,7 +84,10 @@ const sectionSchema = z.looseObject({
 export const saveFullValuationSchema = z.object({
   ...valuationMetaShape,
   sections: z.array(sectionSchema).max(40).optional(),
-  caratula: z.record(z.string(), z.union([z.string().max(5_000), z.number(), z.null()])).optional(),
+  // The rules of signatures and validity months are checked when the carátula is saved.
+  caratula: z.object({ firmas: z.array(z.unknown()).max(100).optional() })
+    .catchall(z.union([z.string().max(5_000), z.number(), z.null()]))
+    .optional(),
 });
 
 export const reopenValuationSchema = z.object({

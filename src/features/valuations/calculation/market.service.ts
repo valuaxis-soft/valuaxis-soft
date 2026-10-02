@@ -11,7 +11,7 @@ import { saveUpload } from "@/features/files/services/upload";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { buildComparableAssetKey } from "@/infrastructure/storage/storage-keys";
-import { DEFAULT_ENGINE_CONFIG, ENGINE_VERSION } from "../engine/config";
+import { ENGINE_VERSION } from "../engine/config";
 import { computeMarketApproach } from "../engine/market";
 import { Trace } from "../engine/trace";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
@@ -23,6 +23,7 @@ import { recomputeIncome } from "./income.service";
 import type { ComparableInputPayload, MarketSettingsPayload } from "./market-schemas";
 import {
   defaultMarketSettings,
+  marketEngineConfig,
   toMarketEngineInput,
   type ComparableDto,
   type ComparableType,
@@ -123,7 +124,7 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
     }),
   ]);
   const defaults = defaultMarketSettings(type);
-  const configuration = asRecord(approach?.JConfiguracion ?? null) as { factorSlots?: FactorSlotConfig[]; adoptedUnitValue?: number | null };
+  const configuration = asRecord(approach?.JConfiguracion ?? null) as { factorSlots?: FactorSlotConfig[]; adoptedUnitValue?: number | null; rounding?: number | null };
   const settings: MarketSettingsDto = approach
     ? {
         comparableType: type,
@@ -134,6 +135,7 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
         justification: approach.SJustificacionValor,
         additionalAmount: decimal(approach.NMontoAdicional) ?? 0,
         factorSlots: configuration.factorSlots?.length ? configuration.factorSlots : defaults.factorSlots,
+        ...(configuration.rounding === undefined ? {} : { rounding: configuration.rounding }),
       }
     : defaults;
   const comparables = await Promise.all(rows.map((row) => toComparableDto(row, withPhotoUrls)));
@@ -168,7 +170,8 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
   await tx.ejecucionCalculo.deleteMany({ where: { IdVersionAvaluo: versionId, SClaveCalculo: calculationKey } });
 
   const trace = new Trace();
-  const result = engineInput.ok ? computeMarketApproach(engineInput.input, DEFAULT_ENGINE_CONFIG, trace) : null;
+  const config = marketEngineConfig(settings);
+  const result = engineInput.ok ? computeMarketApproach(engineInput.input, config, trace) : null;
   const resultColumns = {
     NSuperficieSujeto: settings.subjectArea,
     NValorPromedioHomologado: result?.homologation.stats.mean ?? null,
@@ -181,7 +184,7 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
       IdVersionAvaluo: versionId,
       IdTipoComparable: typeId,
       NPotenciaSuperficie: settings.surfacePower,
-      JConfiguracion: { factorSlots: settings.factorSlots, adoptedUnitValue: settings.adoptedUnitValue },
+      JConfiguracion: storedConfiguration(settings),
       ...resultColumns,
     },
     update: resultColumns,
@@ -204,7 +207,7 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
       SVersionCalculo: ENGINE_VERSION,
       JValoresEntrada: engineInput.input as unknown as Prisma.InputJsonValue,
       JValoresSalida: { value: result?.value ?? null, adoptedUnitValue: result?.adoptedUnitValue ?? null, stats: result?.homologation.stats ?? null } as Prisma.InputJsonValue,
-      SPoliticaRedondeo: JSON.stringify(DEFAULT_ENGINE_CONFIG.rounding.market),
+      SPoliticaRedondeo: JSON.stringify(config.rounding.market),
       BExitoso: true,
       resultados: {
         create: trace.steps.map((step, index) => ({
@@ -227,6 +230,32 @@ async function recomputeDependents(tx: Tx, versionId: number, type: ComparableTy
   if (type === "INMUEBLE_RENTA") await recomputeIncome(tx, versionId);
   // A sale market value is one of the approaches of the conclusion.
   if (type !== "INMUEBLE_RENTA") await recomputeConclusion(tx, versionId);
+}
+
+function storedConfiguration(settings: Pick<MarketSettingsDto, "factorSlots" | "adoptedUnitValue" | "rounding">) {
+  return {
+    factorSlots: settings.factorSlots,
+    adoptedUnitValue: settings.adoptedUnitValue,
+    ...(settings.rounding === undefined ? {} : { rounding: settings.rounding }),
+  } as Prisma.InputJsonValue;
+}
+
+/**
+ * The appraiser adopts their own unit value, within 30 % of the homologated
+ * mean and median: a guard against a slip like 130,000 for 13,000.
+ */
+async function assertAdoptedWithinLimits(tx: Tx, versionId: number, type: ComparableType) {
+  const { settings, comparables } = await loadCalculation(tx, versionId, type, false);
+  const engineInput = toMarketEngineInput({ settings, comparables });
+  if (!engineInput.ok || settings.adoptedUnitValue === null) return;
+  const result = computeMarketApproach(engineInput.input, marketEngineConfig(settings));
+  if (result.adoptedOutsideLimits) {
+    const format = (value: number) => value.toLocaleString("es-MX", { maximumFractionDigits: 2 });
+    throw new ValuationWorkflowError(
+      `El valor adoptado debe quedar entre ${format(result.adoptedLimits.min)} y ${format(result.adoptedLimits.max)} (±30 % del promedio y la mediana homologados).`,
+      400,
+    );
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -292,13 +321,14 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
       NPotenciaSuperficie: payload.surfacePower,
       NMontoAdicional: payload.additionalAmount,
       SJustificacionValor: payload.justification,
-      JConfiguracion: { factorSlots: payload.factorSlots, adoptedUnitValue: payload.adoptedUnitValue },
+      JConfiguracion: storedConfiguration(payload),
     };
     await tx.enfoqueMercado.upsert({
       where: { IdVersionAvaluo_IdTipoComparable: { IdVersionAvaluo: versionId, IdTipoComparable: typeId } },
       create: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, ...data },
       update: data,
     });
+    await assertAdoptedWithinLimits(tx, versionId, payload.comparableType);
     await recompute(tx, versionId, payload.comparableType);
   });
 }
@@ -393,7 +423,8 @@ async function syncPublication(tx: Tx, input: {
 
 async function replaceFactors(tx: Tx, comparableId: bigint, payload: ComparableInputPayload) {
   await tx.factorHomologacion.deleteMany({ where: { IdComparableAvaluo: comparableId } });
-  const captured = payload.factors.filter((factor) => factor.type !== "SUPERFICIE");
+  // A surface factor is stored only when the appraiser typed one; otherwise the formula computes it.
+  const captured = payload.factors.filter((factor) => factor.type !== "SUPERFICIE" || (factor.value ?? 0) > 0);
   if (!captured.length) return;
   const [types, origin] = await Promise.all([
     tx.tipoFactorHomologacion.findMany({ where: { SClave: { in: captured.map((factor) => factor.type) } } }),

@@ -4,6 +4,7 @@
  * once here and feed both the construction section and the cost approach.
  */
 import { SURFACE_SLOT, type FactorSlot } from "../engine/factors";
+import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig, type RoundingDigits } from "../engine/config";
 import type { CostApproachInput } from "../engine/costs";
 
 /** Land factor columns of the books (J..O): Neg., Ubic., Sup., Serv., Clas., Top. */
@@ -59,14 +60,30 @@ export type InstallationDto = {
   unitReplacementCost: number | null;
 };
 
+/** `base` empty: the value of constructions and special installations. */
 export type IndirectDto = { concept: string; percentage: number | null; base: number | null };
+
+/** Excel ROUND digits of each part and of the physical value, the appraiser's choice; null is no rounding. */
+export type CostRoundingDto = Record<"land" | "constructions" | "installations" | "physicalValue", RoundingDigits>;
+
+export const DEFAULT_COST_ROUNDING: CostRoundingDto = {
+  land: DEFAULT_ENGINE_CONFIG.rounding.costs.land,
+  constructions: DEFAULT_ENGINE_CONFIG.rounding.costs.constructions,
+  installations: DEFAULT_ENGINE_CONFIG.rounding.costs.installations,
+  physicalValue: DEFAULT_ENGINE_CONFIG.rounding.costs.physicalValue,
+};
 
 export type CostInputDto = {
   land: CostLandDto;
   constructions: ConstructionDto[];
   installations: InstallationDto[];
   indirects: IndirectDto[];
+  rounding?: CostRoundingDto;
 };
+
+export function costEngineConfig(calculation: Pick<CostInputDto, "rounding">): EngineConfig {
+  return calculation.rounding ? withRounding(DEFAULT_ENGINE_CONFIG, { costs: calculation.rounding }) : DEFAULT_ENGINE_CONFIG;
+}
 
 export type CostCalculationDto = CostInputDto & {
   /** Land market approach, the default source of the land unit value. */
@@ -133,8 +150,8 @@ export function toCostEngineInput(calculation: Pick<CostCalculationDto, "land" |
   const factorSlots: FactorSlot[] = LAND_FACTORS.map((factor) =>
     factor.key === "surface" ? SURFACE_SLOT : { key: factor.key, label: factor.label, value: land.factors[factor.key] ?? 1 });
   const indirects = calculation.indirects
-    .filter((row) => row.concept.trim() && positive(row.percentage) && positive(row.base))
-    .map((row) => ({ concept: row.concept, percentage: row.percentage as number, base: row.base as number }));
+    .filter((row) => row.concept.trim() && positive(row.percentage))
+    .map((row) => ({ concept: row.concept, percentage: row.percentage as number, ...(positive(row.base) ? { base: row.base } : {}) }));
 
   return {
     ok: true,
