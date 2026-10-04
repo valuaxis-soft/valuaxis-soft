@@ -4,17 +4,26 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
 
   APP_URL: z.string().optional(),
+
   EMAIL_PROVIDER: z.enum(["development", "ses"]).optional(),
   EMAIL_FROM: z.string().optional(),
-  AWS_REGION: z.string().optional(),
-  AWS_ACCESS_KEY_ID: z.string().optional(),
-  AWS_SECRET_ACCESS_KEY: z.string().optional(),
+  AWS_SES_REGION: z.string().optional(),
+  AWS_SES_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SES_SECRET_ACCESS_KEY: z.string().optional(),
+  SES_FROM_EMAIL: z.string().optional(),
+  SES_FROM_NAME: z.string().optional(),
+
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   AWS_S3_BUCKET: z.string().optional(),
   AWS_S3_REGION: z.string().optional(),
   AWS_S3_ENDPOINT: z.string().url().optional().or(z.literal("")),
-  SES_FROM_EMAIL: z.string().optional(),
-  SES_FROM_NAME: z.string().optional(),
+  AWS_S3_ACCESS_KEY_ID: z.string().optional(),
+  AWS_S3_SECRET_ACCESS_KEY: z.string().optional(),
+
+  /** Compatibilidad temporal durante la migración a credenciales por servicio. */
+  AWS_REGION: z.string().optional(),
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().optional(),

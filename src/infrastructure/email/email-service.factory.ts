@@ -10,15 +10,6 @@ import type { EmailService } from "./email.service";
 
 type EmailProviderName = "development" | "ses";
 
-const SES_REQUIRED_ENV = [
-  "AWS_REGION",
-  "AWS_ACCESS_KEY_ID",
-  "AWS_SECRET_ACCESS_KEY",
-  "SES_FROM_EMAIL",
-  "SES_FROM_NAME",
-  "APP_URL",
-] as const;
-
 export function createEmailService(
   environment: NodeJS.ProcessEnv = process.env,
   clientFactory: (config: AmazonSesEmailConfig) => SesEmailClient = createAmazonSesClient,
@@ -34,15 +25,56 @@ export function createEmailService(
 }
 
 export function buildAmazonSesConfig(environment: NodeJS.ProcessEnv): AmazonSesEmailConfig {
-  const missing = SES_REQUIRED_ENV.filter((key) => !environment[key]);
+  const region = environment.AWS_SES_REGION || environment.AWS_REGION;
+
+  const hasSesSpecificCredentials =
+    Boolean(environment.AWS_SES_ACCESS_KEY_ID) ||
+    Boolean(environment.AWS_SES_SECRET_ACCESS_KEY);
+
+  const accessKeyId = hasSesSpecificCredentials
+    ? environment.AWS_SES_ACCESS_KEY_ID
+    : environment.AWS_ACCESS_KEY_ID;
+
+  const secretAccessKey = hasSesSpecificCredentials
+    ? environment.AWS_SES_SECRET_ACCESS_KEY
+    : environment.AWS_SECRET_ACCESS_KEY;
+
+  const missing: string[] = [];
+
+  if (!region) {
+    missing.push("AWS_SES_REGION (fallback temporal: AWS_REGION)");
+  }
+
+  if (!accessKeyId) {
+    missing.push("AWS_SES_ACCESS_KEY_ID (fallback temporal: AWS_ACCESS_KEY_ID)");
+  }
+
+  if (!secretAccessKey) {
+    missing.push("AWS_SES_SECRET_ACCESS_KEY (fallback temporal: AWS_SECRET_ACCESS_KEY)");
+  }
+
+  if (!environment.SES_FROM_EMAIL) {
+    missing.push("SES_FROM_EMAIL");
+  }
+
+  if (!environment.SES_FROM_NAME) {
+    missing.push("SES_FROM_NAME");
+  }
+
+  if (!environment.APP_URL) {
+    missing.push("APP_URL");
+  }
+
   if (missing.length > 0) {
-    throw new EmailConfigurationError(`EMAIL_PROVIDER=ses requiere variables faltantes: ${missing.join(", ")}`);
+    throw new EmailConfigurationError(
+      `EMAIL_PROVIDER=ses requiere variables faltantes: ${missing.join(", ")}`,
+    );
   }
 
   return {
-    region: environment.AWS_REGION!,
-    accessKeyId: environment.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: environment.AWS_SECRET_ACCESS_KEY!,
+    region: region!,
+    accessKeyId: accessKeyId!,
+    secretAccessKey: secretAccessKey!,
     fromEmail: environment.SES_FROM_EMAIL!,
     fromName: environment.SES_FROM_NAME!,
   };
