@@ -291,7 +291,7 @@ test("invalid recipients are rejected with Spanish messages before anything is p
 
   const invalid = await post(jar, fixture.publicId, { ...INPUT, to: ["cliente@example.test", "no-es-correo"] });
   assert.equal(invalid.status, 400);
-  assert.equal(invalid.body.error, "Los datos enviados no son válidos.");
+  assert.match(invalid.body.error ?? "", /^Los datos enviados no son válidos \(.+\)\.$/);
   assert.deepEqual(invalid.body.fields, [{ path: "to.1", message: "Hay un correo que no es válido." }]);
 
   const none = await post(jar, fixture.publicId, { ...INPUT, to: [] });
