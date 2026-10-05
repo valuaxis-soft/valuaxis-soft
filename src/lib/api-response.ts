@@ -7,6 +7,17 @@ export function internalError(context: string, error: unknown, message = "Ocurri
   return NextResponse.json({ error: message }, { status: 500 });
 }
 
+/** A rejected request leaves a trace (where and why, never the content), so a failed save can be diagnosed. */
+function logRejected(request: Request, reason: string, detail: unknown) {
+  let path = request.url;
+  try {
+    path = new URL(request.url).pathname;
+  } catch {
+    // Keep the raw URL.
+  }
+  console.warn(`[API_REJECTED] ${request.method} ${path} ${reason}`, JSON.stringify(detail));
+}
+
 export type ParsedBody<T> = { ok: true; data: T } | { ok: false; response: NextResponse };
 
 /** Reads a JSON body with a size limit and validates it against a Zod schema. */
@@ -18,11 +29,13 @@ export async function readJsonBody<T>(
   const maxBytes = options.maxBytes ?? 1_000_000;
   const declared = Number(request.headers.get("content-length") ?? 0);
   if (declared > maxBytes) {
+    logRejected(request, "413", { bytes: declared, maxBytes });
     return { ok: false, response: NextResponse.json({ error: "El contenido es demasiado grande." }, { status: 413 }) };
   }
 
   const text = await request.text();
   if (Buffer.byteLength(text, "utf8") > maxBytes) {
+    logRejected(request, "413", { bytes: Buffer.byteLength(text, "utf8"), maxBytes });
     return { ok: false, response: NextResponse.json({ error: "El contenido es demasiado grande." }, { status: 413 }) };
   }
 
@@ -39,10 +52,11 @@ export async function readJsonBody<T>(
       path: issue.path.join("."),
       message: issue.message,
     }));
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "Los datos enviados no son válidos.", fields }, { status: 400 }),
-    };
+    logRejected(request, "400", fields);
+    // Name the first field: "no son válidos" alone leaves the user with nothing to correct.
+    const [first] = fields;
+    const error = first ? `Los datos enviados no son válidos (${first.path || "contenido"}: ${first.message}).` : "Los datos enviados no son válidos.";
+    return { ok: false, response: NextResponse.json({ error, fields }, { status: 400 }) };
   }
   return { ok: true, data: parsed.data };
 }
