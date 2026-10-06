@@ -91,7 +91,7 @@ export function CaratulaConclusionModule({
     .filter(isConclusionNarrativeConcept);
 
   return (
-    <section className="mt-8">
+    <section className="mt-4">
       <h2 className="border-b-2 border-[var(--caratula-blue)] pb-0.5 text-sm font-black uppercase leading-tight text-[var(--caratula-blue)]">CONCLUSIÓN</h2>
       {narrativeConcepts.length ? (
         <div className="space-y-1 pt-1 text-justify text-[11px] leading-snug text-slate-700">
@@ -120,7 +120,7 @@ export function CaratulaSignaturesModule({ caratula }: { caratula: CaratulaFormD
   return (
     <section className="mb-2 flex flex-wrap justify-center gap-x-6" data-caratula-signatures>
       {signatures.map((signature, index) => (
-        <div className="mt-14 w-[30%] min-w-[150px] break-inside-avoid border-t border-slate-500 pt-1.5 text-center" key={index}>
+        <div className="mt-11 w-[30%] min-w-[150px] break-inside-avoid border-t border-slate-500 pt-1.5 text-center" key={index}>
           <p className="break-words text-xs font-bold text-slate-700">{signature.name || "Firma pendiente"}</p>
           <p className="mt-0.5 break-words text-[10px] leading-tight text-slate-600">
             {signature.cedula ? `Cédula profesional ${signature.cedula}` : "Cédula profesional pendiente"}
