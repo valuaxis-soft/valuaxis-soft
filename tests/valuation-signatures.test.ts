@@ -12,6 +12,7 @@ import {
   isValidityMonths,
   MAX_SIGNATURES,
   parseSignatures,
+  signatureImageKey,
   resolveSignatures,
   signatureErrors,
   signatureListError,
@@ -159,4 +160,31 @@ test("the dictamen prints every signature, one or ten, with its cédula and titl
   const none = render([]);
   assert.match(none, /Firma pendiente/);
   assert.match(none, /Cédula profesional pendiente/);
+});
+
+test("a signature image is stored as its storage key and read back as an address that does not expire", () => {
+  const key = "uploads/2026-10/7a1c.jpg";
+  const address = "/api/archivos/imagen?key=uploads%2F2026-10%2F7a1c.jpg";
+  // Whatever the editor holds: the stable address, the key, a local path or an old signed URL.
+  for (const image of [address, key, `/${key}`, `https://bucket.s3.amazonaws.com/${key}?X-Amz-Signature=abc`]) {
+    assert.deepEqual(parseSignatures([{ ...ana, image }]), { ok: true, value: [{ ...ana, image: key }] }, image);
+  }
+  assert.deepEqual(resolveSignatures([{ ...ana, image: key }], {}), [{ ...ana, image: address }]);
+  // No image, or something that is not one of our files, leaves the signature without it.
+  for (const image of [undefined, "", "   ", "data:image/png;base64,AAAA", "https://evil.test/firma.png", "../secretos/x.jpg", "firma.jpg", 7]) {
+    assert.deepEqual(parseSignatures([{ ...ana, image }]), { ok: true, value: [ana] }, String(image));
+    assert.deepEqual(resolveSignatures([{ ...ana, image }], {}), [ana], String(image));
+  }
+  assert.equal(signatureImageKey(address), key);
+});
+
+test("the dictamen prints the scanned signature over its line, and keeps the blank space when there is none", () => {
+  const render = (firmas: CaratulaFormData["firmas"]) => renderToStaticMarkup(createElement(CaratulaSignaturesModule, { caratula: { ...caratula, firmas } }));
+  const signed = render([{ ...ana, image: "/api/archivos/imagen?key=uploads%2F2026-10%2F7a1c.jpg" }, beto]);
+  assert.equal(signed.match(/<img /g)?.length, 1);
+  assert.match(signed, /<img[^>]*src="\/api\/archivos\/imagen\?key=uploads%2F2026-10%2F7a1c\.jpg"[^>]*alt="Firma de Arq\. Ana Ruiz"/);
+  // Image, then the line, then the name.
+  assert.match(signed, /<img[\s\S]*border-t[\s\S]*Arq\. Ana Ruiz/);
+  assert.equal(signed.match(/border-t/g)?.length, 2);
+  assert.match(signed, /mt-11[\s\S]*Ing\. Beto Díaz/, "sin imagen queda el espacio para firmar a mano");
 });

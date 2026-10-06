@@ -5,7 +5,9 @@
  * profesional. Validity: whole months chosen by the appraiser, 12 at most,
  * counted from the valuation date.
  */
+import { storedImageUrl } from "@/features/files/services/stored-image-url";
 import { addMonthsToIsoDate } from "@/features/firm/firm-rules";
+import { extractStorageKey } from "@/features/valuations/services/image-source";
 
 /** No business limit; this only keeps the document and the payload bounded. */
 export const MAX_SIGNATURES = 20;
@@ -22,6 +24,11 @@ export type ValuationSignature = {
   cedula: string;
   /** Optional title shown under the name ("Perito valuador"); empty when none. */
   role: string;
+  /**
+   * The scanned signature, printed over the line. In the editor it is the
+   * address of the image; it is stored as its storage key.
+   */
+  image?: string;
 };
 
 export type SignatureErrors = Partial<Record<keyof ValuationSignature, string>>;
@@ -62,12 +69,23 @@ export function signatureListError(signatures: ValuationSignature[], rules: Sign
   return null;
 }
 
-/** Validates what a client sent and returns the trimmed signatures in the same order. */
+const STORAGE_KEY = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)+$/;
+
+/** The storage key of a signature image, from the address the editor holds or the key itself; "" when it is neither. */
+export function signatureImageKey(value: unknown): string {
+  const key = extractStorageKey(text(value));
+  return key.length <= 1024 && STORAGE_KEY.test(key) && !key.split("/").includes("..") ? key : "";
+}
+
+const withImage = (signature: ValuationSignature, key: string, asAddress: boolean): ValuationSignature =>
+  key ? { ...signature, image: asAddress ? storedImageUrl(key) : key } : signature;
+
+/** Validates what a client sent and returns the trimmed signatures in the same order, images as storage keys. */
 export function parseSignatures(input: unknown, rules: SignatureRules = {}): Parsed<ValuationSignature[]> {
   if (!Array.isArray(input)) return { ok: false, error: "Las firmas no son válidas." };
   const signatures = input.map((item): ValuationSignature => {
     const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-    return { name: text(row.name), cedula: text(row.cedula), role: text(row.role) };
+    return withImage({ name: text(row.name), cedula: text(row.cedula), role: text(row.role) }, signatureImageKey(row.image), false);
   });
   const error = signatureListError(signatures, rules);
   return error ? { ok: false, error } : { ok: true, value: signatures };
@@ -84,7 +102,8 @@ export function resolveSignatures(
   if (Array.isArray(stored)) {
     return stored.slice(0, MAX_SIGNATURES).map((item) => {
       const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-      return { name: text(row.name), cedula: text(row.cedula), role: text(row.role) };
+      // The browser gets an address that does not expire; the key stays in the database.
+      return withImage({ name: text(row.name), cedula: text(row.cedula), role: text(row.role) }, signatureImageKey(row.image), true);
     });
   }
   const name = text(legacy.name);

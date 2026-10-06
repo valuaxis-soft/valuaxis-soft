@@ -2,6 +2,8 @@
 
 import { ImageIcon } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+
 import type { Block, CaratulaFormData, PrincipalCoverImage } from "../model";
 import type { ValuationMeta } from "../model";
 import { DocumentConceptValue } from "./document-concept-value";
@@ -120,7 +122,13 @@ export function CaratulaSignaturesModule({ caratula }: { caratula: CaratulaFormD
   return (
     <section className="mb-2 flex flex-wrap justify-center gap-x-6" data-caratula-signatures>
       {signatures.map((signature, index) => (
-        <div className="mt-11 w-[30%] min-w-[150px] break-inside-avoid border-t border-slate-500 pt-1.5 text-center" key={index}>
+        <div className={cn("w-[30%] min-w-[150px] break-inside-avoid text-center", signature.image ? "mt-2" : "mt-11")} key={index}>
+          {signature.image ? (
+            // The scanned signature sits where a hand would sign: just over the line.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={signature.image} alt={`Firma de ${signature.name}`} className="mx-auto h-12 max-w-full object-contain mix-blend-multiply" />
+          ) : null}
+          <div className="border-t border-slate-500 pt-1.5">
           <p className="break-words text-xs font-bold text-slate-700">{signature.name || "Firma pendiente"}</p>
           <p className="mt-0.5 break-words text-[10px] leading-tight text-slate-600">
             {signature.cedula ? `Cédula profesional ${signature.cedula}` : "Cédula profesional pendiente"}
@@ -128,6 +136,7 @@ export function CaratulaSignaturesModule({ caratula }: { caratula: CaratulaFormD
           {signature.role ? (
             <p className="mt-0.5 break-words text-[9px] font-semibold uppercase tracking-wide text-slate-500">{signature.role}</p>
           ) : null}
+          </div>
         </div>
       ))}
     </section>
