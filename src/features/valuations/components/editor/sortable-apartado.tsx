@@ -22,10 +22,13 @@ import { Button } from "@/components/ui/button";
  */
 export function SortableApartado({
   apartadoId,
+  blockId,
   disabled,
   children,
 }: {
   apartadoId: string;
+  /** The Block the Apartado belongs to: it is reordered inside that Block only. */
+  blockId: string;
   disabled: boolean;
   children: React.ReactNode;
 }) {
@@ -36,7 +39,7 @@ export function SortableApartado({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: apartadoId, disabled });
+  } = useSortable({ id: apartadoId, disabled, data: { kind: "apartado", blockId } });
 
   const style = {
     transform: CSS.Transform.toString(transform),

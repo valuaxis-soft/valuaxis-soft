@@ -37,6 +37,7 @@ import {
   type ContentLayoutMoveDescriptor,
 } from "./content-layout-v2-operations";
 import {
+  moveContentItemAcrossBlocks,
   moveContentItemAcrossContainers,
   type ContentContainerRef,
   type ContentTransferDescriptor,
@@ -66,7 +67,9 @@ export type ContentDropTarget =
   /** A new Block-level row before/after a structural row (content row or apartados). */
   | { kind: "block-boundary"; container: ContentContainerRef; structuralRowId: string; placement: "before" | "after" }
   /** Into an Apartado, as its last row. */
-  | { kind: "apartado-inside"; container: ContentContainerRef };
+  | { kind: "apartado-inside"; container: ContentContainerRef }
+  /** Into a Block that has no content yet, as its first row. */
+  | { kind: "block-inside"; container: ContentContainerRef };
 
 export type ContentDropResult = {
   changed: boolean;
@@ -162,6 +165,8 @@ export function contentDropTargetFromData(data: unknown): ContentDropTarget | nu
       };
     case "apartado-inside":
       return container.kind === "apartado" ? { kind: "apartado-inside", container } : null;
+    case "block-inside":
+      return container.kind === "block" ? { kind: "block-inside", container } : null;
     default:
       return null;
   }
@@ -452,6 +457,51 @@ function withContainerLayout(block: Block, ref: ContentContainerRef, layout: Con
   };
 }
 
+/** Where a target puts an item that arrives from another container. */
+type TransferPlacement = Pick<ContentTransferDescriptor, "destinationPlacement" | "blockFlowPlacement">;
+
+/**
+ * The placement a target stands for when the item comes from another
+ * container. `flow` is the flow of the Block the target is in, as shown.
+ * Null when the target cannot take the item.
+ */
+function transferPlacementFor(target: ContentDropTarget, flow: BlockFlowV2 | undefined): TransferPlacement | null {
+  switch (target.kind) {
+    case "apartado-inside":
+    case "block-inside":
+      return { destinationPlacement: { type: "new-row" } };
+    case "column":
+      return {
+        destinationPlacement: target.placement === "right"
+          ? { type: "after-column", anchorColumnId: target.columnId }
+          : { type: "before-column", anchorColumnId: target.columnId },
+      };
+    case "row": {
+      const destinationPlacement: TransferPlacement["destinationPlacement"] = target.placement === "above"
+        ? { type: "new-row-before", anchorRowId: target.rowId }
+        : { type: "new-row-after", anchorRowId: target.rowId };
+      if (target.container.kind !== "block") return { destinationPlacement };
+      const structuralRow = flow?.rows.find((row) =>
+        row.items.some((item) => item.type === "content-row" && item.rowId === target.rowId),
+      );
+      if (!structuralRow) return null;
+      return {
+        destinationPlacement,
+        blockFlowPlacement: {
+          targetStructuralRowId: structuralRow.id,
+          placement: target.placement === "above" ? "before" : "after",
+        },
+      };
+    }
+    case "block-boundary":
+      if (target.container.kind !== "block" || !flow) return null;
+      return {
+        destinationPlacement: { type: "new-row" },
+        blockFlowPlacement: { targetStructuralRowId: target.structuralRowId, placement: target.placement },
+      };
+  }
+}
+
 function moveAcrossContainers(
   block: Block,
   source: ContentDropSource,
@@ -470,51 +520,15 @@ function moveAcrossContainers(
   const flow = resolveBlockFlowV2(working);
   working = { ...working, blockFlow: flow };
 
-  let destinationPlacement: ContentTransferDescriptor["destinationPlacement"];
-  let blockFlowPlacement: ContentTransferDescriptor["blockFlowPlacement"];
-
-  switch (target.kind) {
-    case "apartado-inside":
-      destinationPlacement = { type: "new-row" };
-      break;
-    case "column":
-      destinationPlacement = target.placement === "right"
-        ? { type: "after-column", anchorColumnId: target.columnId }
-        : { type: "before-column", anchorColumnId: target.columnId };
-      break;
-    case "row": {
-      destinationPlacement = target.placement === "above"
-        ? { type: "new-row-before", anchorRowId: target.rowId }
-        : { type: "new-row-after", anchorRowId: target.rowId };
-      if (target.container.kind === "block") {
-        const structuralRow = flow?.rows.find((row) =>
-          row.items.some((item) => item.type === "content-row" && item.rowId === target.rowId),
-        );
-        if (!structuralRow) return unchanged;
-        blockFlowPlacement = {
-          targetStructuralRowId: structuralRow.id,
-          placement: target.placement === "above" ? "before" : "after",
-        };
-      }
-      break;
-    }
-    case "block-boundary":
-      if (target.container.kind !== "block" || !flow) return unchanged;
-      destinationPlacement = { type: "new-row" };
-      blockFlowPlacement = {
-        targetStructuralRowId: target.structuralRowId,
-        placement: target.placement,
-      };
-      break;
-  }
+  const placement = transferPlacementFor(target, flow);
+  if (!placement) return unchanged;
 
   const result = moveContentItemAcrossContainers(working, {
     itemType: source.itemType,
     itemId: source.itemId,
     source: source.container,
     destination: target.container,
-    destinationPlacement,
-    blockFlowPlacement,
+    ...placement,
   });
   return result.changed ? { changed: true, block: result.block } : unchanged;
 }
@@ -554,4 +568,87 @@ export function applyContentDrop(
   return apartado
     ? moveWithinApartado(block, apartado, layout, sourceColumnId, target)
     : moveWithinBlock(block, layout, sourceColumnId, target);
+}
+
+/* ================================================================== */
+/*  ACROSS THE BLOCKS OF A SECTION                                     */
+/* ================================================================== */
+
+export type ContentDropBlocksResult = {
+  changed: boolean;
+  blocks: Block[];
+};
+
+/**
+ * Whether the dragged item may be dropped in `blockId`.
+ *
+ * Every item can move inside its own Block. Only Concepts leave it, and only
+ * where the section allows it (`crossBlock`): images and tables are tied to
+ * the Block they were created in (uploads, calculations).
+ */
+export function canDropContentInBlock(
+  source: ContentDropSource,
+  blockId: string,
+  crossBlock: boolean,
+): boolean {
+  if (source.container.blockId === blockId) return true;
+  return crossBlock && source.itemType === "concept";
+}
+
+/**
+ * Drop `source` on `target` among the Blocks of a section and return them.
+ *
+ * Inside one Block this is applyContentDrop. Between two Blocks (allowed
+ * for Concepts when `crossBlock` is set) the Concept itself moves: same ID
+ * and fields, so links to and from it keep working; it leaves the layout of
+ * one Block and takes the dropped position in the other.
+ *
+ * Blocks that are not involved come back as the same objects. Returns
+ * `changed: false` (and the same array) when nothing moves.
+ */
+export function applyContentDropToBlocks(
+  blocks: Block[],
+  source: ContentDropSource,
+  target: ContentDropTarget,
+  options: { crossBlock: boolean },
+): ContentDropBlocksResult {
+  const unchanged: ContentDropBlocksResult = { changed: false, blocks };
+  const sourceBlock = blocks.find((block) => block.id === source.container.blockId);
+  const destinationBlock = blocks.find((block) => block.id === target.container.blockId);
+  if (!sourceBlock || !destinationBlock) return unchanged;
+
+  if (sourceBlock === destinationBlock) {
+    const result = applyContentDrop(sourceBlock, source, target);
+    if (!result.changed) return unchanged;
+    return { changed: true, blocks: blocks.map((block) => (block === sourceBlock ? result.block : block)) };
+  }
+
+  if (!canDropContentInBlock(source, destinationBlock.id, options.crossBlock)) return unchanged;
+
+  const destinationContainer = target.container.kind === "block"
+    ? destinationBlock
+    : findApartado(destinationBlock, target.container);
+  if (!destinationContainer) return unchanged;
+
+  const flow = target.container.kind === "block"
+    ? resolveBlockFlowV2({ ...destinationBlock, contentLayout: resolveContentLayout(destinationBlock) })
+    : undefined;
+  const placement = transferPlacementFor(target, flow);
+  if (!placement) return unchanged;
+
+  const result = moveContentItemAcrossBlocks(sourceBlock, destinationBlock, {
+    itemType: source.itemType,
+    itemId: source.itemId,
+    source: source.container,
+    destination: target.container,
+    ...placement,
+  });
+  if (!result.changed) return unchanged;
+
+  return {
+    changed: true,
+    blocks: blocks.map((block) =>
+      block === sourceBlock ? result.sourceBlock : block === destinationBlock ? result.destinationBlock : block,
+    ),
+  };
 }

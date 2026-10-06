@@ -182,6 +182,8 @@ export function computeDocumentLayoutKey(section: AppSection): string {
         h = hashStr(h, col.id);
         h = hashStr(h, col.name);
       }
+      // Header groups and summary boxes change the height of the table too.
+      h = hashStr(h, JSON.stringify(t2.schema ?? null));
       h = hashNumber(h, t2.rows.length);
       for (const row of t2.rows) {
         h = hashStr(h, row.id);
@@ -239,6 +241,7 @@ export function computeDocumentLayoutKey(section: AppSection): string {
           h = hashStr(h, col.id);
           h = hashStr(h, col.name);
         }
+        h = hashStr(h, JSON.stringify(t2.schema ?? null));
         h = hashNumber(h, t2.rows.length);
         for (const row of t2.rows) {
           h = hashStr(h, row.id);

@@ -32,7 +32,7 @@ import {
   rectIntersection,
   type CollisionDetection,
   type DragEndEvent,
-  type DragMoveEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { editorCanScroll } from "./editor-dnd-autoscroll";
@@ -265,8 +265,10 @@ export function EditableContentLayout({
   );
 
   /* ---- Single source of truth: dnd-kit collision → active target ---- */
-  const handleDragMove = useCallback(
-    (event: DragMoveEvent) => {
+  // onDragOver, not onDragMove: a move reports the target of the previous
+  // move, so the highlight could differ from where the drop lands.
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
       const overId = event.over ? String(event.over.id) : null;
       setActiveTarget(overId);
     },
@@ -515,7 +517,7 @@ export function EditableContentLayout({
       collisionDetection={v2CollisionDetection}
       autoScroll={{ canScroll: editorCanScroll }}
       onDragStart={({ active }: DragStartEvent) => setActiveColumnId(String(active.id))}
-      onDragMove={handleDragMove}
+      onDragOver={handleDragOver}
       onDragEnd={(event: DragEndEvent) => {
         handleDragEnd(event);
         setActiveColumnId(null);

@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { ensureTableV2 } from "@/features/valuations/services/table";
+import { DEFAULT_TABLE_TITLE, ensureTableV2 } from "@/features/valuations/services/table";
 import { encodeTableCell } from "@/features/valuations/services/table-persistence";
 import {
   DOCUMENT_COLUMN_KEY_MAX_LENGTH,
@@ -56,7 +56,9 @@ export async function syncTablesForNode(input: {
   stats: PersistenceStats;
 }) {
   for (const [tableIndex, table] of input.tables.entries()) {
-    const tableTitle = table.title ?? `Tabla ${tableIndex + 1}`;
+    // A table needs a name in the database. One whose title was cleared keeps the
+    // default name, which the dictamen does not print as a caption.
+    const tableTitle = table.title?.trim() ? table.title : DEFAULT_TABLE_TITLE;
     const tableName = limitDbText(tableTitle, DOCUMENT_TABLE_NAME_MAX_LENGTH);
     const tableConfig: Record<string, unknown> = {
       clientId: table.id ?? null,

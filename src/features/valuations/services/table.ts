@@ -115,7 +115,36 @@ export type ColumnPresentation = {
   width?: number;
   minWidth?: number;
   maxWidth?: number;
+  /** How the printed document aligns the cells of the column; left when missing. */
+  align?: "left" | "center" | "right";
+  /** Figures stay on one line in the printed document. */
+  noWrap?: boolean;
 };
+
+export type TableSummaryRow = {
+  label: string;
+  value: string;
+  /** Printed with an "x" beside it: the option chosen among the rows of the box. */
+  mark?: boolean;
+  /** "strong" is a boxed partial value; "total" is the dark bar of the final value. */
+  emphasis?: "strong" | "total";
+};
+
+/**
+ * Labels and values printed with a table as written, without formulas: what
+ * the calculation starts from above it, and its subtotals and final value
+ * below. Consecutive boxes aligned start, center and end share one line.
+ */
+export type TableSummaryBox = {
+  id: string;
+  position: "top" | "bottom";
+  align?: "start" | "center" | "end";
+  /** Text printed to the left of the box. */
+  caption?: string;
+  rows: TableSummaryRow[];
+};
+
+export type TableNote = { position: "top" | "bottom"; label?: string; text: string };
 
 export type TableSchema = {
   presetId?: string;
@@ -124,6 +153,17 @@ export type TableSchema = {
   capabilities?: Record<string, ColumnCapability>;
   resultGroups?: TableResultGroup[];
   columnPresentation?: Record<string, ColumnPresentation>;
+  summaryBoxes?: TableSummaryBox[];
+  /** The title names the table in the editor and is not printed above it. */
+  hideCaption?: boolean;
+  /**
+   * How tightly the printed table sets its cells: "dense" for tables of
+   * figures, "compact" for long texts and many columns. Follows the number of
+   * columns when missing.
+   */
+  density?: "dense" | "compact";
+  /** Notes printed as written: above the table and its boxes, or under them. */
+  notes?: TableNote[];
 };
 
 /* ================================================================== */
@@ -474,6 +514,9 @@ export function ensureTableV2(table: unknown): TableV2 {
 /* ================================================================== */
 
 const DEFAULT_COLUMN_NAME = "Nueva columna";
+
+/** Name of a table the appraiser has just added; the printed document does not show it as a caption. */
+export const DEFAULT_TABLE_TITLE = "Tabla configurable";
 
 /** Normalize a column/table name: trim whitespace, fallback to default if empty. */
 function normalizeTableName(name: string | undefined | null, fallback?: string): string {
