@@ -21,6 +21,7 @@ import type {
 import {
   insertContentRowIntoBlockFlowV2,
   removeContentRowsFromBlockFlowV2,
+  resolveBlockFlowV2,
 } from "./block-flow";
 import { CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW } from "./content-layout";
 import { resolveContentLayout } from "./content-layout";
@@ -295,6 +296,48 @@ function insertColumnNextToRow(
   };
 }
 
+/** The outcome of inserting a column at a destination placement. */
+type ColumnInsertion =
+  | { changed: true; layout: ContentLayout; newRowId?: string }
+  | { changed: false; reason: string };
+
+/**
+ * Insert a column at `placement` in a ContentLayout: in a new row (at the
+ * end, or next to an anchor row) or beside an anchor column.
+ */
+function insertColumnAtPlacement(
+  layout: ContentLayout,
+  column: ContentLayoutColumnV2,
+  placement: ContentTransferDescriptor["destinationPlacement"],
+): ColumnInsertion {
+  switch (placement.type) {
+    case "new-row": {
+      const result = insertColumnIntoNewRow(layout, column);
+      return { changed: true, layout: result.layout, newRowId: result.newRowId };
+    }
+    case "new-row-before":
+    case "new-row-after": {
+      const result = insertColumnNextToRow(
+        layout,
+        column,
+        placement.anchorRowId,
+        placement.type === "new-row-before" ? "before" : "after",
+      );
+      if (!result) return { changed: false, reason: "anchor row not found in destination layout" };
+      return { changed: true, layout: result.layout, newRowId: result.newRowId };
+    }
+    case "before-column":
+    case "after-column": {
+      const result = placement.type === "before-column"
+        ? insertBeforeColumn(layout, column, placement.anchorColumnId)
+        : insertAfterColumn(layout, column, placement.anchorColumnId);
+      return result.changed
+        ? { changed: true, layout: result.layout }
+        : { changed: false, reason: "destination insertion rejected (capacity or invalid anchor)" };
+    }
+  }
+}
+
 /* ================================================================== */
 /*  INTERNAL HELPERS — container access                                */
 /* ================================================================== */
@@ -507,51 +550,10 @@ export function moveContentItemAcrossContainers(
   }
 
   /* ---- Insert into destination ---- */
-  let newDestLayout: ContentLayout;
-  let destChanged: boolean;
-  let newDestRowId: string | undefined;
-
-  switch (destinationPlacement.type) {
-    case "new-row": {
-      const result = insertColumnIntoNewRow(destLayout, columnToInsert);
-      newDestLayout = result.layout;
-      newDestRowId = result.newRowId;
-      destChanged = true;
-      break;
-    }
-    case "new-row-before":
-    case "new-row-after": {
-      const result = insertColumnNextToRow(
-        destLayout,
-        columnToInsert,
-        destinationPlacement.anchorRowId,
-        destinationPlacement.type === "new-row-before" ? "before" : "after",
-      );
-      if (!result) {
-        return { changed: false, block, reason: "anchor row not found in destination layout" };
-      }
-      newDestLayout = result.layout;
-      newDestRowId = result.newRowId;
-      destChanged = true;
-      break;
-    }
-    case "before-column": {
-      const result = insertBeforeColumn(destLayout, columnToInsert, destinationPlacement.anchorColumnId);
-      newDestLayout = result.layout;
-      destChanged = result.changed;
-      break;
-    }
-    case "after-column": {
-      const result = insertAfterColumn(destLayout, columnToInsert, destinationPlacement.anchorColumnId);
-      newDestLayout = result.layout;
-      destChanged = result.changed;
-      break;
-    }
-  }
-
-  if (!destChanged) {
-    return { changed: false, block, reason: "destination insertion rejected (capacity or invalid anchor)" };
-  }
+  const insertion = insertColumnAtPlacement(destLayout, columnToInsert, destinationPlacement);
+  if (!insertion.changed) return { changed: false, block, reason: insertion.reason };
+  const newDestLayout = insertion.layout;
+  const newDestRowId = insertion.newRowId;
 
   /* ---- Apply layout changes ---- */
   let newBlock = setContainerLayout(block, source, extraction.layout);
@@ -630,4 +632,105 @@ function moveBusinessObject(
   }
 
   return newBlock;
+}
+
+/* ================================================================== */
+/*  ACROSS BLOCKS                                                      */
+/* ================================================================== */
+
+export type ContentBlockTransferResult = {
+  changed: boolean;
+  sourceBlock: Block;
+  destinationBlock: Block;
+  reason?: string;
+};
+
+/**
+ * Move a single Concept/Image/Table from a container of one Block to a
+ * container of ANOTHER Block (Block or Apartado on either side).
+ *
+ * The same business object travels (ID and all fields preserved): it leaves
+ * the source arrays, layout and flow, and enters the destination ones at
+ * `destinationPlacement`. Both Blocks come back with the layout and flow the
+ * move was computed on, so they stay consistent with each other.
+ *
+ * Returns changed:false (and the Blocks it was given) when the item or a
+ * container is missing, or the destination row is full. Never mutates input.
+ */
+export function moveContentItemAcrossBlocks(
+  sourceBlock: Block,
+  destinationBlock: Block,
+  descriptor: ContentTransferDescriptor,
+): ContentBlockTransferResult {
+  const { itemType, itemId, source, destination, destinationPlacement, blockFlowPlacement } = descriptor;
+  const unchanged = (reason: string): ContentBlockTransferResult =>
+    ({ changed: false, sourceBlock, destinationBlock, reason });
+
+  if (source.blockId !== sourceBlock.id || destination.blockId !== destinationBlock.id) {
+    return unchanged("block ID mismatch");
+  }
+  if (sourceBlock.id === destinationBlock.id) return unchanged("same block: use moveContentItemAcrossContainers");
+
+  /* ---- Take the item out of its Block ---- */
+  const sourceContainer = getSourceContainer(sourceBlock, source);
+  if (!sourceContainer) return unchanged("source container not found");
+
+  const arrayKey = `${itemType}s` as "concepts" | "images" | "tables";
+  const sourceItems = getBusinessArray(sourceBlock, source, arrayKey);
+  const item = sourceItems.find((candidate) => (candidate as { id: string }).id === itemId);
+  if (!item) return unchanged("item not found in source business array");
+
+  const extraction = extractColumnFromLayout(resolveContentLayout(sourceContainer), itemType, itemId);
+  if (!extraction) return unchanged("item ref not found in source layout");
+
+  /* ---- Put it into the other Block ---- */
+  const destinationContainer = getSourceContainer(destinationBlock, destination);
+  if (!destinationContainer) return unchanged("destination container not found");
+
+  const destinationLayout = resolveContentLayout(destinationContainer);
+  // The flow as shown before the item arrives: a new Block row is placed against it.
+  const destinationFlow = destination.kind === "block"
+    ? resolveBlockFlowV2(setContainerLayout(destinationBlock, destination, destinationLayout))
+    : undefined;
+  const destinationHasRows = Boolean(destinationFlow?.rows.length);
+  if (destinationHasRows && destinationPlacement.type === "new-row" && !blockFlowPlacement) {
+    return unchanged("Block destination new-row requires blockFlowPlacement");
+  }
+
+  const insertion = insertColumnAtPlacement(
+    destinationLayout,
+    ensureUniqueColumnId(extraction.column, destinationLayout),
+    destinationPlacement,
+  );
+  if (!insertion.changed) return unchanged(insertion.reason);
+
+  let nextDestination = setContainerLayout(destinationBlock, destination, insertion.layout);
+  nextDestination = setBusinessArray(nextDestination, destination, arrayKey, [
+    ...getBusinessArray(destinationBlock, destination, arrayKey),
+    item,
+  ]);
+
+  // An empty Block has nothing to place the row against: its flow is derived from the layout.
+  if (destinationFlow && destinationHasRows && insertion.newRowId && blockFlowPlacement) {
+    const anchor = destinationFlow.rows.find((row) => row.id === blockFlowPlacement.targetStructuralRowId)?.items[0];
+    if (!anchor) return unchanged("structural target not found in BlockFlow");
+    const inserted = insertContentRowIntoBlockFlowV2(destinationFlow, {
+      newContentRowId: insertion.newRowId,
+      anchorContentRowId: anchor.type === "content-row" ? anchor.rowId : anchor.apartadoId,
+      placement: blockFlowPlacement.placement,
+    });
+    if (!inserted.changed) return unchanged("structural target not found in BlockFlow");
+    nextDestination = { ...nextDestination, blockFlow: inserted.flow };
+  }
+
+  let nextSource = setContainerLayout(sourceBlock, source, extraction.layout);
+  nextSource = setBusinessArray(
+    nextSource,
+    source,
+    arrayKey,
+    sourceItems.filter((candidate) => candidate !== item),
+  );
+  nextSource = handleBlockFlowCleanup(nextSource, source, extraction.layout);
+
+  return { changed: true, sourceBlock: nextSource, destinationBlock: nextDestination };
 }

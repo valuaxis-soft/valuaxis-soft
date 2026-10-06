@@ -7,8 +7,18 @@ import {
 } from "@/components/ui/table";
 import type { TableContent } from "@/features/valuations/model";
 import { cn } from "@/lib/utils";
-import { ensureTableV2, type TableV2, type TableResultGroup, type TableColumn, getTableHeaderLayout } from "../services/table";
+import {
+  DEFAULT_TABLE_TITLE,
+  ensureTableV2,
+  getTableHeaderLayout,
+  type TableColumn,
+  type TableNote,
+  type TableResultGroup,
+  type TableSummaryBox,
+  type TableV2,
+} from "../services/table";
 import { evaluateTableFormulas, getCellDisplayValue } from "../services/table-formula-engine";
+import { TABLE_HEADER_BAND } from "./document-theme";
 
 const EMPTY_VALUE = "No se proporcionó";
 
@@ -31,13 +41,14 @@ export function DocumentTable({
 function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[]) {
   const layout = getTableHeaderLayout(tableV2);
   const columnMap = new Map(columns.map((c) => [c.id, c]));
+  const cell = "border-r border-white px-1.5 py-1 text-center align-middle text-wrap font-bold break-words last:border-r-0";
 
   if (!layout.hasGroups) {
     return (
-      <thead className="bg-[var(--caratula-dark-blue)] text-white">
+      <thead className={TABLE_HEADER_BAND}>
         <tr>
           {columns.map((column) => (
-            <th className="border-r border-white/30 px-1.5 py-1 text-wrap font-bold break-words last:border-r-0" key={column.id}>
+            <th className={cell} key={column.id}>
               {column.name.trim() || EMPTY_VALUE}
             </th>
           ))}
@@ -47,20 +58,20 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[]) {
   }
 
   return (
-    <thead className="bg-[var(--caratula-dark-blue)] text-white">
+    <thead className={TABLE_HEADER_BAND}>
       <tr>
-        {layout.topRow.map((cell) => {
-          if (cell.kind === "column") {
-            const column = columnMap.get(cell.columnId);
+        {layout.topRow.map((item) => {
+          if (item.kind === "column") {
+            const column = columnMap.get(item.columnId);
             return (
-              <th rowSpan={cell.rowSpan} className="border-r border-white/30 px-1.5 py-1 text-wrap font-bold break-words last:border-r-0" key={cell.columnId}>
+              <th rowSpan={item.rowSpan} className={cell} key={item.columnId}>
                 {column?.name.trim() || EMPTY_VALUE}
               </th>
             );
           }
           return (
-            <th colSpan={cell.colSpan} className="border-r border-white/30 px-1.5 py-1 text-center text-wrap font-bold last:border-r-0" key={cell.group.id}>
-              {cell.group.title}
+            <th colSpan={item.colSpan} className={cn(cell, "border-b")} key={item.group.id}>
+              {item.group.title}
             </th>
           );
         })}
@@ -70,7 +81,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[]) {
           {layout.bottomRow.map((colId) => {
             const column = columnMap.get(colId);
             return (
-              <th className="border-r border-white/30 px-1.5 py-0.5 text-wrap text-[8px] font-semibold break-words last:border-r-0" key={colId}>
+              <th className="border-r border-white px-1.5 py-0.5 text-center text-wrap text-[0.9em] font-semibold break-words" key={colId}>
                 {column?.name.trim() || EMPTY_VALUE}
               </th>
             );
@@ -78,6 +89,107 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[]) {
         </tr>
       )}
     </thead>
+  );
+}
+
+/* ================================================================== */
+/*  Summary boxes                                                      */
+/* ================================================================== */
+
+const ALIGN_ORDER = { start: 0, center: 1, end: 2 } as const;
+const LONG_LABEL = 60;
+const BOX_ALIGN = { start: "mr-auto", center: "mx-auto", end: "ml-auto" } as const;
+
+/** Boxes of one position, grouped in lines: a box joins the line while it sits further right than the one before. */
+function summaryLines(boxes: TableSummaryBox[], position: TableSummaryBox["position"]) {
+  const lines: TableSummaryBox[][] = [];
+  for (const box of boxes) {
+    if (box.position !== position || !box.rows.length) continue;
+    const line = lines.at(-1);
+    const previous = line?.at(-1);
+    if (line && previous && ALIGN_ORDER[box.align ?? "start"] > ALIGN_ORDER[previous.align ?? "start"]) line.push(box);
+    else lines.push([box]);
+  }
+  return lines;
+}
+
+/**
+ * The boxes a table carries above or below it. They belong to the table's own
+ * item of the page flow, so the subtotals and the final value never part from it.
+ */
+function SummaryBoxes({ tableV2, position }: { tableV2: TableV2; position: TableSummaryBox["position"] }) {
+  const lines = summaryLines(tableV2.schema?.summaryBoxes ?? [], position);
+  if (!lines.length) return null;
+
+  return (
+    <div className={cn("flex flex-col gap-1.5 text-[10px] leading-snug text-slate-900", position === "top" ? "mb-1.5" : "mt-1.5")} data-table-summary={position}>
+      {lines.map((line) => (
+        <div className="flex items-start gap-3" key={line[0].id}>
+          {line.map((box) => {
+            const marked = box.rows.some((row) => row.mark !== undefined);
+            return (
+              <div className={cn("flex min-w-0 items-start gap-2", BOX_ALIGN[box.align ?? "start"])} key={box.id}>
+                {box.caption ? <span className="py-px font-bold">{box.caption}</span> : null}
+                <table className="border-collapse border border-[var(--caratula-dark-blue)]">
+                  <tbody>
+                    {box.rows.map((row, index) => (
+                      <tr
+                        className={cn(
+                          "[-webkit-print-color-adjust:exact] [print-color-adjust:exact]",
+                          row.emphasis === "total" && "bg-[var(--caratula-dark-blue)] font-bold text-white",
+                          row.emphasis === "strong" && "bg-slate-200 font-bold",
+                          marked && "border-b border-[var(--caratula-dark-blue)] last:border-b-0",
+                        )}
+                        key={index}
+                      >
+                        {marked ? (
+                          <td className="w-6 border-r border-[var(--caratula-dark-blue)] px-1 py-px text-center font-bold">{row.mark ? "x" : ""}</td>
+                        ) : null}
+                        {/* Short labels stay on one line when boxes share a line; a sentence-long one wraps. */}
+                        <th
+                          className={cn("px-2 py-px text-right", row.emphasis ? "font-bold" : "font-semibold", row.label.length > LONG_LABEL ? "text-wrap" : "whitespace-nowrap")}
+                          scope="row"
+                        >
+                          {row.label}
+                        </th>
+                        <td className="min-w-[96px] px-2 py-px text-right whitespace-nowrap tabular-nums">{row.value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The notes a table carries above or below it, in the same item of the page flow. */
+function TableNotes({ tableV2, position }: { tableV2: TableV2; position: TableNote["position"] }) {
+  const notes = (tableV2.schema?.notes ?? []).filter((note) => note.position === position && note.text.trim());
+  if (!notes.length) return null;
+  return (
+    <div className={cn("text-[10px] leading-snug text-slate-900", position === "top" ? "mb-1.5" : "mt-1.5")} data-table-notes={position}>
+      {notes.map((note, index) => (
+        <p className="text-justify" key={index}>
+          {note.label ? <strong>{note.label} </strong> : null}
+          {note.text}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+const CELL_ALIGN = { left: "text-left", center: "text-center", right: "text-right" } as const;
+
+/** Alignment and wrapping the schema gives the cells of a column. */
+function cellPresentation(tableV2: TableV2, columnId: string) {
+  const presentation = tableV2.schema?.columnPresentation?.[columnId];
+  return cn(
+    presentation?.align && CELL_ALIGN[presentation.align],
+    presentation?.noWrap ? "whitespace-nowrap tabular-nums" : "whitespace-normal text-wrap break-words",
   );
 }
 
@@ -177,6 +289,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
       <figcaption className="mb-1 text-[10px] font-bold uppercase text-[var(--caratula-blue)]">
         {tableV2.title.trim() || EMPTY_VALUE}
       </figcaption>
+      <SummaryBoxes tableV2={tableV2} position="top" />
       <div className="overflow-hidden border border-[var(--caratula-blue)]">
         <table className="w-full border-collapse table-fixed text-left text-[9px] leading-tight">
           <colgroup>
@@ -208,6 +321,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
       {tableV2.schema?.resultGroups && (
         <ResultGroups groups={tableV2.schema.resultGroups} tableV2={tableV2} formulaResults={formulaResults} />
       )}
+      <SummaryBoxes tableV2={tableV2} position="bottom" />
     </figure>
   );
 }
@@ -215,30 +329,37 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
 function ReportDocumentTable({ table }: { table: TableContent }) {
   const tableV2 = ensureTableV2(table);
   const formulaResults = useMemo(() => evaluateTableFormulas(tableV2), [tableV2]);
+  // A table still named as the editor created it, or one whose schema hides its title, prints no caption.
+  const title = tableV2.title.trim();
+  const caption = tableV2.schema?.hideCaption || title === DEFAULT_TABLE_TITLE ? "" : title;
+  const density = tableV2.schema?.density;
 
   return (
     <div className="w-full overflow-hidden">
+      <TableNotes tableV2={tableV2} position="top" />
+      <SummaryBoxes tableV2={tableV2} position="top" />
       {/* Column widths follow the content so amounts stay on one line; wider
           tables (homologation, costs) use a smaller font to fit the page, and
           the rest print at the size of the concepts around them. */}
       <table className={cn(
         "w-full border-collapse",
-        tableV2.columns.length > 7 ? "text-[10px]" : "text-[11px]",
+        density === "compact" ? "text-[9px] leading-[1.35]"
+          : density === "dense" ? "text-[10px] leading-[1.35]"
+            : tableV2.columns.length > 7 ? "text-[10px]" : "text-[11px]",
       )}>
         <colgroup>
           {tableV2.columns.map((column) => (
             <col key={column.id} />
           ))}
         </colgroup>
-        {/* An untitled table leaves no empty band above its header. */}
-        {tableV2.title.trim() ? <TableCaption className="mt-0 mb-1 text-[11px]">{tableV2.title}</TableCaption> : null}
+        {caption ? <TableCaption className="mt-0 mb-1 text-[11px]">{caption}</TableCaption> : null}
         {renderSchemaHeader(tableV2, tableV2.columns)}
         <TableBody>
           {tableV2.rows.map((row) => (
             // Gray and white rows alternate, first one gray, as in the appraiser's own format.
             <TableRow className="border-slate-200 odd:bg-slate-100" key={row.id}>
               {tableV2.columns.map((column) => (
-                <TableCell className="px-2 py-1 whitespace-normal text-wrap break-words" key={column.id}>{getCellDisplayValue(tableV2, row.id, column.id, formulaResults)}</TableCell>
+                <TableCell className={cn("px-2", density ? "py-[3px]" : "py-1", cellPresentation(tableV2, column.id))} key={column.id}>{getCellDisplayValue(tableV2, row.id, column.id, formulaResults)}</TableCell>
               ))}
             </TableRow>
           ))}
@@ -247,6 +368,8 @@ function ReportDocumentTable({ table }: { table: TableContent }) {
       {tableV2.schema?.resultGroups && (
         <ResultGroups groups={tableV2.schema.resultGroups} tableV2={tableV2} formulaResults={formulaResults} />
       )}
+      <SummaryBoxes tableV2={tableV2} position="bottom" />
+      <TableNotes tableV2={tableV2} position="bottom" />
     </div>
   );
 }

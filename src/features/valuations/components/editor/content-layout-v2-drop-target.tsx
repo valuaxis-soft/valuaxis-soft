@@ -111,24 +111,29 @@ const BF_SEP = "::";
 
 /**
  * Build a structural row before/after drop zone ID.
- * Convention: `bfrow-{structuralRowId}::{before|after}`
+ * Convention: `bfrow-{blockId}::{structuralRowId}::{before|after}`
+ *
+ * Structural row IDs repeat from one Block to the next, and the Blocks of a
+ * section share one drag context: the Block is part of the ID.
  */
-export function buildBfRowDropZoneId(data: { rowId: string; placement: "before" | "after" }): string {
-  return `${BF_ROW_PREFIX}${data.rowId}${BF_SEP}${data.placement}`;
+export function buildBfRowDropZoneId(data: { blockId: string; rowId: string; placement: "before" | "after" }): string {
+  return `${BF_ROW_PREFIX}${data.blockId}${BF_SEP}${data.rowId}${BF_SEP}${data.placement}`;
 }
 
 /**
  * Parse a structural row drop zone ID.
  */
-export function parseBfRowDropZoneId(id: string): { rowId: string; placement: "before" | "after" } | null {
+export function parseBfRowDropZoneId(id: string): { blockId: string; rowId: string; placement: "before" | "after" } | null {
   if (!id.startsWith(BF_ROW_PREFIX)) return null;
   const rest = id.slice(BF_ROW_PREFIX.length);
-  const sepIdx = rest.indexOf(BF_SEP);
-  if (sepIdx < 0) return null;
-  const rowId = rest.slice(0, sepIdx);
-  const placement = rest.slice(sepIdx + BF_SEP.length);
-  if (placement !== "before" && placement !== "after") return null;
-  return { rowId, placement };
+  const blockEnd = rest.indexOf(BF_SEP);
+  const placementStart = rest.lastIndexOf(BF_SEP);
+  if (blockEnd < 0 || placementStart <= blockEnd) return null;
+  const blockId = rest.slice(0, blockEnd);
+  const rowId = rest.slice(blockEnd + BF_SEP.length, placementStart);
+  const placement = rest.slice(placementStart + BF_SEP.length);
+  if (!blockId || !rowId || (placement !== "before" && placement !== "after")) return null;
+  return { blockId, rowId, placement };
 }
 
 /**
@@ -420,6 +425,7 @@ export function V2ColumnDropZones({
  *    the drag, like every other content slot.
  */
 export function BfRowDropZones({
+  blockId,
   rowId,
   activeApartadoId,
   activeColumnId,
@@ -429,6 +435,7 @@ export function BfRowDropZones({
   contentAfter,
   children,
 }: {
+  blockId: string;
   rowId: string;
   activeApartadoId: string | null;
   activeColumnId: string | null;
@@ -443,8 +450,8 @@ export function BfRowDropZones({
   const isApartadoDrag = activeApartadoId !== null;
   const isContentDrag = activeColumnId !== null;
 
-  const beforeId = buildBfRowDropZoneId({ rowId, placement: "before" });
-  const afterId = buildBfRowDropZoneId({ rowId, placement: "after" });
+  const beforeId = buildBfRowDropZoneId({ blockId, rowId, placement: "before" });
+  const afterId = buildBfRowDropZoneId({ blockId, rowId, placement: "after" });
 
   // An Apartado can go on either side of any row; a content item only where the plan says.
   const beforeState: ContentDropSlotState = isApartadoDrag ? "open" : contentBefore ?? "closed";
@@ -636,5 +643,45 @@ export function BfApartadoInsideDropZone({
         )}
       />
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Empty Block "inside" drop target                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The one slot of a Block that has no content yet: visible only while an
+ * item that may come to this Block is dragged.
+ */
+export function BfBlockInsideDropZone({
+  blockId,
+  activeColumnId,
+  activeTarget,
+}: {
+  blockId: string;
+  activeColumnId: string | null;
+  activeTarget: string | null;
+}) {
+  const isDragging = activeColumnId !== null;
+  const zoneId = `bfblock-inside-${blockId}`;
+  const { setNodeRef } = useDroppable({
+    id: zoneId,
+    disabled: !isDragging,
+    data: { kind: "block-inside", container: { kind: "block" as const, blockId } },
+  });
+  const isHovered = activeTarget === zoneId;
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-bf-block-inside={blockId}
+      data-slot-state={isDragging ? (isHovered ? "target" : "open") : undefined}
+      className={cn(
+        "pointer-events-none rounded-lg border border-dashed transition-colors duration-100",
+        isDragging ? "min-h-10" : "border-transparent",
+        isDragging && (isHovered ? "border-primary bg-primary/15" : "border-primary/40 bg-primary/5"),
+      )}
+    />
   );
 }

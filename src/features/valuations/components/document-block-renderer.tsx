@@ -253,9 +253,11 @@ function DocumentContentRow({
   );
   const sharedRule = columnCount > 1 && visibleItems.length > 0 && visibleItems.every((itemRef) => itemRef.type === "concept");
 
-  // First row: current spacing; subsequent rows: tighter 1px margin
+  // First row: current spacing; subsequent rows: tighter 1px margin, or room
+  // above a table so it does not touch the table or the concepts before it.
+  const holdsTable = visibleItems.some((itemRef) => itemRef.type === "table");
   const rowClassName = cn(
-    rowIndex === 0 ? theme.contentRow : "mt-[1px] grid",
+    rowIndex === 0 ? theme.contentRow : holdsTable ? "mt-2.5 grid" : "mt-[1px] grid",
     gridClass,
     columnCount > 1 && "gap-x-4",
     sharedRule && theme.conceptRule,
@@ -426,14 +428,17 @@ function DocumentApartado({
   className?: string;
 }) {
   const theme = useDocumentTheme();
-  const displayLabel = formatVisibleChildLabel(block.sectionLabel, orderedApartados, subBlock.id);
+  // A title that carries its own letter ("A) TERRENO EN ESTUDIO") is not numbered again.
+  const displayLabel = /^[A-Z]\)\s/.test(subBlock.title.trim())
+    ? ""
+    : formatVisibleChildLabel(block.sectionLabel, orderedApartados, subBlock.id);
   const isTechnicalList = subBlock.presentationMode === "technical-list";
 
   return (
     <section className={cn("pl-3", className)}>
       {renderTitle
         ? <>{renderTitle(block, subBlock, displayLabel)}</>
-        : <h3 className={theme.apartadoTitle}>{displayLabel} {subBlock.title}</h3>
+        : <h3 className={theme.apartadoTitle}>{[displayLabel, subBlock.title].filter(Boolean).join(" ")}</h3>
       }
       <div className={theme.apartadoRule} aria-hidden="true" />
       {isTechnicalList ? (

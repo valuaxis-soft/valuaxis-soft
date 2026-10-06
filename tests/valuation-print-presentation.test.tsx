@@ -8,6 +8,7 @@ import { AutoPaginatedDocumentFlow } from "../src/features/valuations/components
 import { DocumentTable } from "../src/features/valuations/components/document-table";
 import { DocumentThemeProvider, type DocumentThemeVariant } from "../src/features/valuations/components/document-theme";
 import { CaratulaAssumptionsModule } from "../src/features/valuations/components/caratula-preview-modules";
+import { figureColumn, generatedTable, moneyColumn, textColumn } from "../src/features/valuations/calculation/generated-content";
 import type { Apartado, Block, Concept, ContentLayout } from "../src/features/valuations/model";
 import { formatConceptValueForDocument } from "../src/features/valuations/services/concept-value-format";
 import { isLongTextList } from "../src/features/valuations/services/document-long-text";
@@ -237,6 +238,81 @@ test("report tables alternate gray and white rows, the first one gray", () => {
 
   const untitled = render(createElement(DocumentTable, { variant: "report", table: { id: "t", title: " ", columns: ["#"], rows: [["1"]], enabled: true } }));
   assert.doesNotMatch(untitled, /<caption/, "an untitled table leaves no empty band above its header");
+  const justAdded = render(createElement(DocumentTable, { variant: "report", table: { id: "t", title: "Tabla configurable", columns: ["#"], rows: [["1"]], enabled: true } }));
+  assert.doesNotMatch(justAdded, /<caption|Tabla configurable/, "the name the editor gives a new table is not a caption");
+});
+
+test("table headers are a light blue band with navy bold text that prints with its background", () => {
+  const html = render(createElement(DocumentTable, {
+    variant: "report",
+    table: { id: "t", title: "Instalaciones", columns: ["#", "Tipo"], rows: [["1", "E.A."]], enabled: true },
+  }));
+  assert.match(html, /<thead class="bg-\[#BDD7EE\] text-\[var\(--caratula-dark-blue\)\][^"]*\[print-color-adjust:exact\]"/);
+  assert.match(html, /<th class="[^"]*text-center[^"]*font-bold[^"]*">Tipo<\/th>/);
+  assert.doesNotMatch(html, /<thead[^>]*text-white/);
+});
+
+const homologationTable = () => generatedTable("homologacion", "Homologación",
+  [
+    figureColumn("REF"), moneyColumn("OFERTA $"), textColumn("UBICACIÓN"),
+    figureColumn("Neg.", { group: "FACTORES DE HOMOLOGACIÓN" }), figureColumn("FRe", { group: "FACTORES DE HOMOLOGACIÓN" }),
+    moneyColumn("Valor Unitario Homologado $/m²"),
+  ],
+  [["1", "$ 1,260,000.00", "Calle Villa Toledo", "0.95", "0.87", "$ 7,806.43"]],
+  {
+    summaryBoxes: [
+      { id: "base", position: "top", caption: "Homologación de acuerdo a:", rows: [{ label: "Lote Tipo:", value: "140.00 m²", mark: false }, { label: "Lote Sujeto:", value: "169.78 m²", mark: true }] },
+      { id: "sujeto", position: "bottom", align: "start", rows: [{ label: "Sup. de Sujeto (m²):", value: "169.78 m²" }] },
+      { id: "valores", position: "bottom", align: "end", rows: [{ label: "Valor homologado a utilizar ($/m²):", value: "$ 9,000.00", emphasis: "strong" }] },
+      { id: "valor", position: "bottom", align: "end", rows: [{ label: "Subtotal:", value: "$ 1,528,020.00" }, { label: "VALOR COMPARATIVO DE MERCADO (TERRENOS):", value: "$ 1,528,000.00", emphasis: "total" }] },
+    ],
+    notes: [
+      { position: "top", label: "Obtención del valor unitario.", text: "Comparables de terrenos en venta." },
+      { position: "bottom", label: "Justificación del valor adoptado:", text: "Dentro del rango." },
+    ],
+  });
+
+test("a generated table prints its header group, aligned figures and no caption", () => {
+  const html = render(createElement(DocumentTable, { variant: "report", table: homologationTable() }));
+  assert.doesNotMatch(html, /<caption/, "its name is for the editor");
+  assert.match(html, /<th colSpan="2"[^>]*>FACTORES DE HOMOLOGACIÓN<\/th>/);
+  assert.match(html, /<th rowSpan="2"[^>]*>REF<\/th>/);
+  assert.match(html, /<td[^>]*class="[^"]*text-right[^"]*whitespace-nowrap[^"]*"[^>]*>\$ 1,260,000\.00<\/td>/, "amounts are right-aligned on one line");
+  assert.match(html, /<td[^>]*class="[^"]*text-center[^"]*whitespace-nowrap[^"]*"[^>]*>0\.95<\/td>/);
+  assert.match(html, /<td[^>]*class="[^"]*whitespace-normal[^"]*"[^>]*>Calle Villa Toledo<\/td>/, "text wraps");
+  assert.match(html, /<table class="[^"]*text-\[10px\]/, "tables of figures print dense");
+});
+
+test("summary boxes print with their table: the basis above, subtotals and the final bar below", () => {
+  const html = render(createElement(DocumentTable, { variant: "report", table: homologationTable() }));
+  const [top, rest] = html.split("<thead");
+  const bottom = rest.split("</tbody>").slice(1).join("</tbody>");
+  assert.match(top, /Homologación de acuerdo a:/);
+  assert.match(top, /<td[^>]*><\/td><th[^>]*>Lote Tipo:<\/th><td[^>]*>140\.00 m²<\/td>/);
+  assert.match(top, /<td[^>]*>x<\/td><th[^>]*>Lote Sujeto:<\/th>/, "the chosen option carries the x");
+  assert.match(top, /<strong>Obtención del valor unitario\. <\/strong>Comparables de terrenos en venta\./);
+
+  // The subject's area and the adopted value share a line; the final box starts another.
+  const lines = bottom.match(/<div class="flex items-start gap-3">/g);
+  assert.equal(lines?.length, 2);
+  assert.ok(bottom.indexOf("Sup. de Sujeto") < bottom.indexOf("Valor homologado a utilizar"));
+  assert.match(bottom, /<tr class="[^"]*bg-slate-200 font-bold[^"]*"><th[^>]*>Valor homologado a utilizar/);
+  assert.match(bottom, /<tr class="[^"]*print-color-adjust:exact[^"]*bg-\[var\(--caratula-dark-blue\)\] font-bold text-white[^"]*"><th[^>]*>VALOR COMPARATIVO DE MERCADO \(TERRENOS\):<\/th><td[^>]*>\$ 1,528,000\.00<\/td>/);
+  assert.ok(bottom.indexOf("VALOR COMPARATIVO") < bottom.indexOf("Justificación del valor adoptado:"), "the note closes the table");
+});
+
+test("an apartado whose title carries its own letter is not numbered again, and its tables keep apart", () => {
+  const table = (id: string) => ({ id, title: "", columns: ["#"], rows: [["1"]], enabled: true });
+  const html = renderItems(block({
+    sectionLabel: "IX",
+    apartados: [
+      apartado("terreno", [], { title: "A) TERRENO EN ESTUDIO", tables: [table("uno"), table("dos")] }),
+      apartado("datos", [], { title: "DATOS DE COMPARABLES" }),
+    ],
+  }));
+  assert.match(html, /<h3[^>]*>A\) TERRENO EN ESTUDIO<\/h3>/);
+  assert.match(html, /<h3[^>]*>IX\.2 DATOS DE COMPARABLES<\/h3>/);
+  assert.equal(html.match(/class="mt-2\.5 grid/g)?.length, 1, "the second table leaves room above it");
 });
 
 test("a full page gives its items the whole height left by the header and the padding", () => {

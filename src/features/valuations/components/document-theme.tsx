@@ -96,6 +96,13 @@ const THEMES: Record<DocumentThemeVariant, DocumentThemeTokens> = {
   standard: STANDARD_THEME,
 };
 
+/**
+ * Header band of the tables of the report: light blue with navy bold text, as
+ * in the appraiser's own format. It prints with its background.
+ */
+export const TABLE_HEADER_BAND =
+  "bg-[#BDD7EE] text-[var(--caratula-dark-blue)] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]";
+
 /* ── React context ─────────────────────────────────────────────── */
 const DocumentThemeContext = createContext<DocumentThemeTokens>(STANDARD_THEME);
 

@@ -1,16 +1,35 @@
 /**
- * Turns the market calculation into dictamen blocks: comparables, homologation
- * and summary in the market section, and the comparables' photos in the annex.
- * Generated blocks carry the GENERATED_BLOCK_PREFIX and are rewritten on every
- * calculation; the appraiser edits the data in the calculation panel.
+ * Turns the market calculation into the dictamen: one block per comparable
+ * type, laid out as the appraiser's own format (comparables data, homologation
+ * with its factors, and the boxes that lead to the value), and the comparables'
+ * photos in the annex. Generated blocks carry the GENERATED_BLOCK_PREFIX and
+ * are rewritten on every calculation; the appraiser edits the data in the
+ * calculation panel.
  */
 import type { MarketApproachResult } from "../engine/market";
-import type { AppSection, Block, TableContent } from "../model";
-import { ensureTableV2 } from "../services/table";
+import type { AppSection, Block } from "../model";
+import type { TableSummaryBox } from "../services/table";
+import {
+  EMPTY,
+  figure,
+  figureColumn,
+  generatedApartado,
+  generatedBlock,
+  generatedTable,
+  money,
+  moneyColumn,
+  printedTable,
+  squareMetres,
+  textColumn,
+} from "./generated-content";
 import {
   COMPARABLE_TYPE_LABELS,
+  FACTOR_TYPE_LABELS,
   MARKET_LABELS,
+  type ComparableDto,
   type ComparableType,
+  type FactorSlotConfig,
+  type FactorType,
   type MarketCalculationDto,
 } from "./market-types";
 
@@ -48,103 +67,213 @@ export function isGeneratedBlock(block: Pick<Block, "id">) {
   return block.id.startsWith(GENERATED_BLOCK_PREFIX);
 }
 
-const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const decimals = (digits: number) => new Intl.NumberFormat("es-MX", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-const area = (value: number) => `${decimals(2).format(value)} m²`;
-const factor = (value: number) => decimals(4).format(value);
-
-function block(id: string, title: string, parts: Partial<Pick<Block, "concepts" | "tables" | "images">>): Block {
-  return {
-    id,
-    title,
-    sectionLabel: "",
-    enabled: true,
-    required: false,
-    concepts: parts.concepts ?? [],
-    apartados: [],
-    tables: parts.tables ?? [],
-    images: parts.images ?? [],
-  };
-}
-
-function table(id: string, title: string, columns: string[], rows: string[][]): TableContent {
-  return { id, title, columns, rows, enabled: true };
-}
-
 const prefixFor = (type: ComparableType) => `${GENERATED_BLOCK_PREFIX}mercado-${type.toLowerCase()}`;
 
-/** Blocks of the market section. Empty while there is nothing to show. */
+/** Wording of the page for each comparable type, as the appraiser's books title it. */
+const PAGE: Record<ComparableType, {
+  title: string;
+  /** "(TERRENOS)" after the titles of the apartados. */
+  scope: string;
+  intro: string;
+  area: string;
+  shortArea: string;
+  areaTag: string;
+  price: string;
+  priceTag: string;
+  unit: string;
+  homologated: string;
+  mean: string;
+  adopted: string;
+  baseArea: string;
+  subject: string;
+  value: string;
+}> = {
+  TERRENO_VENTA: {
+    title: "ENFOQUE COMPARATIVO DE MERCADO (TERRENOS)", scope: "(TERRENOS)",
+    intro: "Comparables de terrenos en venta semejantes en uso al sujeto que se valúa.",
+    area: "SUPERFICIE DE TERRENO (m²)", shortArea: "SUP. TERRENO (m²)", areaTag: "SUPERFICIE",
+    price: "OFERTA $ (TERRENO)", priceTag: "OFERTA", unit: "$/m²",
+    homologated: "Valor Unitario Homologado", mean: "Valor Prom. Homologado", adopted: "Valor homologado a utilizar",
+    baseArea: "Lote Tipo", subject: "Lote Sujeto", value: "VALOR COMPARATIVO DE MERCADO (TERRENOS)",
+  },
+  INMUEBLE_VENTA: {
+    title: "ENFOQUE COMPARATIVO DE MERCADO (INMUEBLES)", scope: "(INMUEBLES)",
+    intro: "Comparables de inmuebles en venta semejantes en uso al sujeto que se valúa.",
+    area: "SUP. CONSTRUIDA (m²)", shortArea: "SUP. CONSTR. (m²)", areaTag: "SUP. CONST.",
+    price: "OFERTA $ (INMUEBLE)", priceTag: "OFERTA", unit: "$/m²",
+    homologated: "Valor Unitario Homologado", mean: "Valor Prom. Homologado", adopted: "Valor homologado a utilizar",
+    baseArea: "Superficie Tipo", subject: "Superficie del Sujeto", value: "VALOR COMPARATIVO DE MERCADO (INMUEBLES)",
+  },
+  INMUEBLE_RENTA: {
+    title: "MERCADO DE RENTAS", scope: "(INMUEBLES EN RENTA)",
+    intro: "Comparables de inmuebles en renta semejantes en uso al sujeto que se valúa.",
+    area: "SUP. RENTABLE (m²)", shortArea: "SUP. RENTABLE (m²)", areaTag: "SUP. RENTABLE",
+    price: "RENTA MENSUAL $", priceTag: "RENTA MENSUAL", unit: "$/m²/mes",
+    homologated: "Renta Unitaria Homologada", mean: "Renta Prom. Homologada", adopted: "Renta homologada a utilizar",
+    baseArea: "Superficie Tipo", subject: "Superficie del Sujeto", value: "RENTA MENSUAL ESTIMADA DEL SUJETO",
+  },
+};
+
+/** Column titles of the factors as the books abbreviate them. */
+const FACTOR_SHORT_LABELS: Record<FactorType, string> = {
+  NEGOCIACION: "Neg.", UBICACION: "Ubic.", SUPERFICIE: "Sup.", ZONA: "Zona", FRENTE: "Frente", USO_SUELO: "Uso",
+  SERVICIOS: "Serv.", CLASIFICACION: "Clas.", TOPOGRAFIA: "Top.", CALIDAD: "Cal.", CONSERVACION: "Cons.", EDAD: "Edad",
+  FORMA: "Forma", PROYECTO: "Proy.", OTRO: "Otro",
+};
+
+/** A factor the appraiser renamed keeps the name given; the rest print abbreviated. */
+const factorTitle = (slot: FactorSlotConfig) => (slot.label === FACTOR_TYPE_LABELS[slot.type] ? FACTOR_SHORT_LABELS[slot.type] : slot.label);
+
+/** "2026-05-04" as 04/05/2026. */
+const shortDate = (value: string | null) => value?.replace(/^(\d{4})-(\d{2})-(\d{2}).*$/, "$3/$2/$1") ?? EMPTY;
+
+/** One line with what was captured of the comparable, in the order of the books. */
+function characteristics(comparable: ComparableDto, page: (typeof PAGE)[ComparableType]) {
+  const metres = (value: number | null) => (value ? `${figure(value)} m` : null);
+  const parts: [string, string | null][] = [
+    // The zoning key, without the description the land use column already gives.
+    ["USO DE SUELO", comparable.landUse?.split(" (")[0] ?? null],
+    ["FORMA", comparable.shape],
+    ["ZONA", comparable.zone],
+    ["FRENTE", metres(comparable.frontage)],
+    ["FONDO", metres(comparable.depth)],
+    [page.areaTag, comparable.area ? squareMetres(comparable.area) : null],
+    ["TOPOGRAFÍA", comparable.topography],
+    ["SERVICIOS", comparable.services],
+    // Without the space after the sign, so the amount is not cut at the end of a line.
+    [page.priceTag, comparable.price ? money(comparable.price).replace("$ ", "$") : null],
+    ["OBSERVACIONES", comparable.notes],
+  ];
+  return parts.filter(([, value]) => value).map(([tag, value]) => `${tag}: ${value}`).join(" ; ") || EMPTY;
+}
+
+/** The block of the market section. None while there is nothing to show. */
 export function marketDocumentBlocks(calculation: MarketCalculationDto, result: MarketApproachResult | null): Block[] {
   const { settings, comparables } = calculation;
   if (!comparables.length) return [];
-  const prefix = prefixFor(settings.comparableType);
-  const label = COMPARABLE_TYPE_LABELS[settings.comparableType].toUpperCase();
+  const prefix = `${prefixFor(settings.comparableType)}-enfoque`;
+  const page = PAGE[settings.comparableType];
   const words = MARKET_LABELS[settings.comparableType];
-  const perMonth = settings.comparableType === "INMUEBLE_RENTA" ? "/m²/mes" : "/m²";
   const byReference = new Map(result?.homologation.comparables.map((row) => [row.id, row]) ?? []);
+  const reference = (comparable: ComparableDto) => String(comparable.reference);
 
-  const offers = block(`${prefix}-comparables`, `COMPARABLES: ${label}`, {
-    tables: [table(`${prefix}-tabla-comparables`, `Comparables: ${COMPARABLE_TYPE_LABELS[settings.comparableType].toLowerCase()}`,
-      ["Ref.", "Ubicación", "Superficie", words.price, words.unitValue, "Fuente", "Observaciones"],
-      comparables.map((comparable) => [
-        String(comparable.reference),
-        comparable.location,
-        comparable.area ? area(comparable.area) : "—",
-        comparable.price ? money.format(comparable.price) : "—",
-        comparable.area && comparable.price ? `${money.format(comparable.price / comparable.area)} ${perMonth}` : "—",
-        [comparable.sourceName, comparable.contactPhone].filter(Boolean).join(" · ") || "—",
-        comparable.notes ?? "—",
-      ]))],
+  const data = generatedApartado(`${prefix}-datos`, `DATOS DE COMPARABLES ${page.scope}`, {
+    tables: [
+      generatedTable(`${prefix}-tabla-caracteristicas`, "Características de los comparables",
+        [figureColumn("REF."), textColumn("UBICACIÓN"), textColumn("USO DE SUELO", "center"), textColumn("CARACTERÍSTICAS")],
+        comparables.map((comparable) => [
+          reference(comparable),
+          comparable.location,
+          comparable.landUse ?? EMPTY,
+          characteristics(comparable, page),
+        ]),
+        { compact: true, notes: [{ position: "top", label: "Obtención del valor unitario.", text: page.intro }] }),
+      generatedTable(`${prefix}-tabla-ofertas`, "Ofertas de los comparables",
+        [
+          figureColumn("REF."), textColumn("CONTACTO"), figureColumn("TELÉFONO"), figureColumn("FECHA"),
+          figureColumn(page.area), moneyColumn(page.price), moneyColumn(page.unit),
+        ],
+        comparables.map((comparable) => [
+          reference(comparable),
+          [comparable.sourceName, comparable.contactName].filter(Boolean).join(" · ") || EMPTY,
+          comparable.contactPhone ?? EMPTY,
+          shortDate(comparable.offerDate),
+          figure(comparable.area),
+          comparable.price ? money(comparable.price) : EMPTY,
+          comparable.area && comparable.price ? money(comparable.price / comparable.area) : EMPTY,
+        ])),
+    ],
   });
 
   const slots = settings.factorSlots;
-  const homologation = block(`${prefix}-homologacion`, `HOMOLOGACIÓN: ${label}`, {
-    tables: [table(`${prefix}-tabla-homologacion`, "Homologación",
-      ["Ref.", words.unitValue, ...slots.map((slot) => slot.label), "Factor resultante", "Valor homologado"],
+  const factors = "FACTORES DE HOMOLOGACIÓN";
+  const homologation = generatedApartado(`${prefix}-homologacion`, `HOMOLOGACIÓN ${settings.comparableType === "INMUEBLE_RENTA" ? "(RENTAS)" : page.scope}`, {
+    tables: [generatedTable(`${prefix}-tabla-homologacion`, "Homologación",
+      [
+        figureColumn("REF"), moneyColumn(page.price), figureColumn(page.shortArea), moneyColumn(`${words.unitValue} ${page.unit}`),
+        ...slots.map((slot) => figureColumn(factorTitle(slot), { group: factors })),
+        figureColumn("FRe", { group: factors }),
+        moneyColumn(`${page.homologated} ${page.unit}`),
+      ],
       comparables.map((comparable) => {
-        const row = byReference.get(String(comparable.reference));
-        const values = slots.map((slot) => {
-          if (!row) return "—";
-          if (slot.type === "SUPERFICIE") return factor(row.surfaceFactor);
-          const captured = comparable.factors.find((item) => item.type === slot.type);
-          const value = captured?.subjectRating && captured.comparableRating
-            ? captured.subjectRating / captured.comparableRating
-            : captured?.value ?? 1;
-          return factor(value);
-        });
+        const row = byReference.get(reference(comparable));
         return [
-          String(comparable.reference),
-          row ? money.format(row.unitValue) : "—",
-          ...values,
-          row ? factor(row.resultantFactor) : "—",
-          row ? money.format(row.homologatedUnitValue) : "—",
+          reference(comparable),
+          comparable.price ? money(comparable.price) : EMPTY,
+          figure(comparable.area),
+          row ? money(row.unitValue) : EMPTY,
+          ...slots.map((slot) => {
+            if (!row) return EMPTY;
+            if (slot.type === "SUPERFICIE") return figure(row.surfaceFactor);
+            const captured = comparable.factors.find((item) => item.type === slot.type);
+            return figure(captured?.subjectRating && captured.comparableRating
+              ? captured.subjectRating / captured.comparableRating
+              : captured?.value ?? 1);
+          }),
+          row ? figure(row.resultantFactor) : EMPTY,
+          row ? money(row.homologatedUnitValue) : EMPTY,
         ];
-      }))],
+      }),
+      {
+        summaryBoxes: homologationBoxes(calculation, result),
+        ...(result && settings.justification
+          ? { notes: [{ position: "bottom" as const, label: "Justificación del valor adoptado:", text: settings.justification }] }
+          : {}),
+      })],
   });
 
-  const blocks = [offers, homologation];
-  if (result) {
-    const stats = result.homologation.stats;
-    const concepts: [string, string][] = [
-      [`${words.unitValue} mínimo homologado`, `${money.format(stats.min)} ${perMonth}`],
-      [`${words.unitValue} máximo homologado`, `${money.format(stats.max)} ${perMonth}`],
-      [`${words.unitValue} promedio homologado`, `${money.format(stats.mean)} ${perMonth}`],
-      [`${words.unitValue} mediana homologada`, `${money.format(stats.median)} ${perMonth}`],
-      ["Dispersión (máximo / mínimo)", decimals(2).format(stats.dispersion)],
-      [`${words.unitValue} adoptado`, `${money.format(result.adoptedUnitValue)} ${perMonth}`],
-      [words.subjectArea.replace(" (m²)", ""), area(settings.subjectArea ?? 0)],
-      ...(result.subjectSurfaceFactor !== 1
-        ? [["Factor de superficie del sujeto contra el lote tipo", factor(result.subjectSurfaceFactor)] as [string, string]]
-        : []),
-      ...(settings.additionalAmount ? [["Monto adicional", money.format(settings.additionalAmount)] as [string, string]] : []),
-      [words.value, money.format(result.value)],
-      ...(settings.justification ? [["Justificación del valor adoptado", settings.justification] as [string, string]] : []),
-    ];
-    blocks.push(block(`${prefix}-resumen`, settings.comparableType === "INMUEBLE_RENTA" ? "RENTA ESTIMADA" : `RESUMEN DEL ENFOQUE DE MERCADO: ${label}`, {
-      concepts: concepts.map(([conceptLabel, value], index) => ({ id: `${prefix}-resumen-${index + 1}`, label: conceptLabel, value, enabled: true })),
-    }));
-  }
-  return blocks;
+  return [generatedBlock(prefix, page.title, { apartados: [data, homologation] })];
+}
+
+/** Above the homologation, what it is made against; below, the steps from the homologated values to the value. */
+function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApproachResult | null): TableSummaryBox[] {
+  const subjectArea = settings.subjectArea;
+  if (!subjectArea) return [];
+  const page = PAGE[settings.comparableType];
+  const againstBase = Boolean(settings.baseArea);
+  const boxes: TableSummaryBox[] = [{
+    id: "base",
+    position: "top",
+    align: "start",
+    caption: "Homologación de acuerdo a:",
+    rows: [
+      ...(settings.baseArea ? [{ label: `${page.baseArea}:`, value: squareMetres(settings.baseArea), mark: true }] : []),
+      { label: `${page.subject}:`, value: squareMetres(subjectArea), mark: !againstBase },
+    ],
+  }];
+  if (!result) return boxes;
+
+  const subjectLabel = MARKET_LABELS[settings.comparableType].subjectArea.replace(" (m²)", "");
+  // The engine's own subtotal: area × adopted value, times the subject's factor when homologating against the lote tipo.
+  const subtotal = subjectArea * result.adoptedUnitValue * result.subjectSurfaceFactor;
+  boxes.push(
+    { id: "sujeto", position: "bottom", align: "start", rows: [{ label: `${subjectLabel} (m²):`, value: squareMetres(subjectArea) }] },
+    {
+      id: "valores",
+      position: "bottom",
+      align: "end",
+      rows: [
+        { label: `${page.mean} (${page.unit}):`, value: money(result.homologation.stats.mean) },
+        { label: `${page.adopted} (${page.unit}):`, value: money(result.adoptedUnitValue), emphasis: "strong" },
+      ],
+    },
+    {
+      id: "valor",
+      position: "bottom",
+      align: "end",
+      rows: [
+        { label: `${subjectLabel}:`, value: squareMetres(subjectArea) },
+        ...(result.subjectSurfaceFactor !== 1
+          // Four decimals: the subtotal is the product of the figures of this box.
+          ? [{ label: "Factor de superficie del sujeto contra el lote tipo:", value: figure(result.subjectSurfaceFactor, 4) }]
+          : []),
+        { label: "Subtotal:", value: money(subtotal) },
+        { label: "Monto adicional a considerar:", value: settings.additionalAmount ? money(settings.additionalAmount) : "$ -" },
+        { label: `${page.value}:`, value: money(result.value), emphasis: "total" },
+      ],
+    },
+  );
+  return boxes;
 }
 
 /** Photos of the comparables, for the annex. */
@@ -158,7 +287,7 @@ export function marketPhotoBlocks(calculation: MarketCalculationDto): Block[] {
     })));
   if (!images.length) return [];
   const prefix = prefixFor(calculation.settings.comparableType);
-  return [block(`${prefix}-fotos`, `FOTOGRAFÍAS DE COMPARABLES: ${COMPARABLE_TYPE_LABELS[calculation.settings.comparableType].toUpperCase()}`, { images })];
+  return [generatedBlock(`${prefix}-fotos`, `FOTOGRAFÍAS DE COMPARABLES: ${COMPARABLE_TYPE_LABELS[calculation.settings.comparableType].toUpperCase()}`, { images })];
 }
 
 /**
@@ -199,27 +328,18 @@ export function withGeneratedBlocks(
   return replaceGeneratedBlocks(section, owns, blocks, options);
 }
 
-/** Title, column names and cell texts: the same for a new table and one reloaded as TableV2. */
-function tableCells(tableItem: TableContent) {
-  const normalized = ensureTableV2(tableItem);
-  return [
-    normalized.title,
-    normalized.columns.map((column) => column.name),
-    normalized.rows.map((row) => normalized.columns.map((column) => {
-      const cell = row.cells[column.id];
-      return cell?.kind === "value" ? cell.value : "";
-    })),
-  ];
-}
-
 /** Compares what the dictamen shows, ignoring labels the editor renumbers and photo URLs that expire. */
 function sameContent(left: Block[], right: Block[]) {
+  const content = (item: Pick<Block, "concepts" | "tables" | "images">) => ({
+    concepts: item.concepts.map((concept) => [concept.label, concept.value]),
+    tables: item.tables.map(printedTable),
+    images: item.images.map((image) => [image.id, image.title]),
+  });
   const shape = (blocks: Block[]) => JSON.stringify(blocks.map((item) => ({
     id: item.id,
     title: item.title,
-    concepts: item.concepts.map((concept) => [concept.label, concept.value]),
-    tables: item.tables.map(tableCells),
-    images: item.images.map((image) => [image.id, image.title]),
+    ...content(item),
+    apartados: item.apartados.map((apartado) => ({ title: apartado.title, ...content(apartado) })),
   })));
   return shape(left) === shape(right);
 }

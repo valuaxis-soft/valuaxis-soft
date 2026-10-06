@@ -7,6 +7,7 @@ import { getTerrenoElementKind } from "../sections/terreno";
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
 import { ensureTableV2 } from "../services/table";
 import { DocumentBlockTitleBar } from "./document-block-title-bar";
+import { TABLE_HEADER_BAND } from "./document-theme";
 
 const EMPTY_VALUE = "No se proporcionó";
 
@@ -79,7 +80,7 @@ function BoundaryTable({ table }: { table: TableContent }) {
 
   return (
     <table className="mt-1.5 w-full table-fixed border-collapse text-[9px] leading-tight">
-      <thead className="bg-[var(--caratula-dark-blue)] text-white">
+      <thead className={TABLE_HEADER_BAND}>
         <tr>
           {displayColumns.map((column, index) => (
             <th className={`border border-slate-400 px-2 py-1 text-left font-bold ${index === 0 ? "w-[24%]" : index === 1 ? "w-[18%]" : ""}`} key={`${table.id}-column-${column.id}`}>

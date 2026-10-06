@@ -199,6 +199,36 @@ export function resolveEffectiveConcept(concept: Concept, concepts: Concept[]): 
   };
 }
 
+/**
+ * A full link reads its title, value and format from the first of the linked
+ * concepts in document order, so moving one of them to another place could
+ * change what the others show.
+ *
+ * Returns the concepts fully linked with `conceptId` (itself included) with
+ * what the link resolves to today written on each of them; after that the
+ * link reads the same whichever of them comes first. Only the concepts that
+ * needed writing are returned: none when the concept is not fully linked.
+ */
+export function pinFullLinkResolution(conceptId: string, concepts: Concept[]): Concept[] {
+  const target = concepts.find((concept) => concept.id === conceptId);
+  if (!target || !getFullLinkSource(target, concepts)) return [];
+
+  const pinned: Concept[] = [];
+  for (const peer of conceptsSharingLabelAndValue(concepts, target)) {
+    const { label, value, type, valueFormat, sourceUnit, customUnit } = resolveEffectiveConcept(peer, concepts);
+    if (
+      peer.label === label
+      && peer.value === value
+      && (peer.type ?? "text") === type
+      && peer.valueFormat === valueFormat
+      && peer.sourceUnit === sourceUnit
+      && peer.customUnit === customUnit
+    ) continue;
+    pinned.push({ ...peer, label, value, type, valueFormat, sourceUnit, customUnit });
+  }
+  return pinned;
+}
+
 export function unlinkConcept(concept: Concept, concepts: Concept[] = [concept]): Concept {
   const effective = resolveEffectiveConcept(concept, concepts);
   return {

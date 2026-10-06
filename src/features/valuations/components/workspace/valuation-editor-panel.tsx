@@ -25,8 +25,14 @@ import { GripVertical, Plus } from "lucide-react";
 import { ChangeEvent, useMemo, useState, type ReactNode } from "react";
 import { ensureTableV2 } from "@/features/valuations/services/table";
 import { sectionDisplayName } from "./model/section-numbering";
-import { closestCenter, DndContext, DragEndEvent, useSensors } from "@dnd-kit/core";
-import { editorCanScroll } from "../editor/editor-dnd-autoscroll";
+import type { DragEndEvent } from "@dnd-kit/core";
+import { ContentDndScope } from "../editor/content-dnd-scope";
+import {
+  applyContentDropToBlocks,
+  type ContentDropSource,
+  type ContentDropTarget,
+} from "@/features/valuations/services/content-drop";
+import { flattenSectionConcepts } from "./model/section-content";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { setColumnPresentation, clearColumnPresentation, clearConceptCellPresentations } from "@/features/valuations/services/concept-presentation";
 import {
@@ -72,7 +78,7 @@ import {
 } from "@/features/valuations/sections/terreno";
 import { cn } from "@/lib/utils";
 import { stripLeadingRomanNumeral } from "../datos-generales-display";
-import { type ExistingConceptRelationMode } from "@/features/valuations/concept-links";
+import { pinFullLinkResolution, type ExistingConceptRelationMode } from "@/features/valuations/concept-links";
 
 const PRE_MARKET_EDITOR_SECTION_KEYS = new Set([
   "DATOS_GENERALES",
@@ -195,7 +201,6 @@ export function ValuationEditorPanel(props: {
   calculationPanel?: ReactNode;
   allSections: AppSection[];
   readOnly: boolean;
-  sensors: ReturnType<typeof useSensors>;
   onAddBlock: (sectionId: string) => void;
   onAddConcept: (sectionId: string, blockId: string, type?: ConceptType) => void;
   onAddConceptFromExisting: (sectionId: string, blockId: string, source: Concept, mode: "copy" | "full" | "value", apartadoId?: string) => void;
@@ -271,6 +276,29 @@ export function ValuationEditorPanel(props: {
   const conclusionBlocks = editableBlocks.filter(
     (block) => getCaratulaBlockKind(block) === "conclusion",
   );
+  const sortableBlockIds = editableBlocks.map((block) => block.id);
+  // A Concept keeps its place in the document's reading order by ID only, so
+  // it may move between the sections of the Carátula; elsewhere a Block keeps its content.
+  const crossBlock = isCaratula;
+  const handleContentDrop = (source: ContentDropSource, target: ContentDropTarget) => {
+    // A full link reads from its first concept in document order: settle it before the order changes.
+    const pinned = source.itemType === "concept"
+      ? new Map(
+          pinFullLinkResolution(source.itemId, flattenSectionConcepts(props.allSections))
+            .map((concept) => [concept.id, concept]),
+        )
+      : new Map<string, Concept>();
+    const settle = (concept: Concept) => pinned.get(concept.id) ?? concept;
+    const blocks = pinned.size === 0 ? section.blocks : section.blocks.map((block) => ({
+      ...block,
+      concepts: block.concepts.map(settle),
+      apartados: block.apartados.map((apartado) => ({ ...apartado, concepts: apartado.concepts.map(settle) })),
+    }));
+
+    const result = applyContentDropToBlocks(blocks, source, target, { crossBlock });
+    // One update for the section keeps the move a single undo step.
+    if (result.changed) props.onUpdateSection(section.id, { blocks: result.blocks });
+  };
   const renderBlockEditor = (block: Block, blockIndex: number, blockCount: number) => isGeneratedBlock(block) ? (
     <GeneratedBlockNotice key={block.id} block={block} />
   ) : (
@@ -370,8 +398,8 @@ export function ValuationEditorPanel(props: {
           />
         ) : null}
         {isCaratula ? (
-          <DndContext id={`blocks-${section.id}`} sensors={props.sensors} collisionDetection={closestCenter} autoScroll={{ canScroll: editorCanScroll }}>
-            <SortableContext items={editableBlocks.map((block) => block.id)} strategy={verticalListSortingStrategy}>
+          <ContentDndScope id={`blocks-${section.id}`} blockIds={sortableBlockIds} crossBlock={crossBlock} onContentDrop={handleContentDrop}>
+            <SortableContext items={sortableBlockIds} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
                 <section className="space-y-4">
                   <div className="flex items-center justify-between gap-3">
@@ -423,21 +451,20 @@ export function ValuationEditorPanel(props: {
                 ) : null}
               </div>
             </SortableContext>
-          </DndContext>
+          </ContentDndScope>
         ) : (
-          <DndContext
+          <ContentDndScope
             id={`blocks-${section.id}`}
-            sensors={props.sensors}
-            collisionDetection={closestCenter}
-            autoScroll={{ canScroll: editorCanScroll }}
-            onDragEnd={(event) => props.onBlockDragEnd(section.id, event)}
+            blockIds={sortableBlockIds}
+            onBlockDragEnd={(event) => props.onBlockDragEnd(section.id, event)}
+            onContentDrop={handleContentDrop}
           >
-            <SortableContext items={editableBlocks.map((block) => block.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={sortableBlockIds} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
                 {editableBlocks.map((block, index) => renderBlockEditor(block, index, editableBlocks.length))}
               </div>
             </SortableContext>
-          </DndContext>
+          </ContentDndScope>
         )}
       </CardContent>
     </Card>
@@ -717,19 +744,6 @@ function SortableBlockEditor(props: {
             }
             onBlockFlowChange={(nextFlow) =>
               props.onUpdateBlock(section.id, block.id, { blockFlow: nextFlow })
-            }
-            onCrossContainerChange={(nextBlock) =>
-              props.onUpdateBlock(section.id, block.id, {
-                concepts: nextBlock.concepts,
-                images: nextBlock.images,
-                tables: nextBlock.tables,
-                contentLayout: nextBlock.contentLayout,
-                blockFlow: nextBlock.blockFlow,
-                apartados: nextBlock.apartados,
-              })
-            }
-            onApartadoContentLayoutChange={(apartadoId, nextLayout) =>
-              props.onUpdateApartado(section.id, block.id, apartadoId, { contentLayout: nextLayout })
             }
             renderApartado={(subBlock, flowIndex, dndState) => (
               <ApartadoEditor

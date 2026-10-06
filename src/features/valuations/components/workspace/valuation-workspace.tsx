@@ -1,13 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
 import {
   Comparable,
@@ -193,11 +186,6 @@ export function ValuationWorkspace({
     setReopenOpen,
   } = useValuationLifecycle({ handleSave, hasUnsavedChanges, onSessionExpired: openSessionExpired, valuationId });
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
   const blocks = useBlockMutations(editor);
   const tables = useTableMutations(editor);
   const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, valuationId });
@@ -239,7 +227,6 @@ export function ValuationWorkspace({
             ) : undefined}
             allSections={enabledSections}
             readOnly={!canEdit}
-            sensors={sensors}
             onAddBlock={blocks.addBlock}
             onAddConcept={blocks.addConcept}
             onAddConceptFromExisting={blocks.addConceptFromExisting}

@@ -1,7 +1,7 @@
 import type { Apartado, Block, Concept, ConceptType, TableContent } from "@/features/valuations/model";
 import { createIndependentConcept } from "@/features/valuations/concept-links";
 import { UNTITLED_CARATULA_CONCEPT } from "@/features/valuations/services/caratula-blocks";
-import { createHomologationTable } from "@/features/valuations/services/table";
+import { DEFAULT_TABLE_TITLE, createHomologationTable } from "@/features/valuations/services/table";
 
 export const newId = () => crypto.randomUUID();
 
@@ -60,7 +60,7 @@ export function createTable(preset?: "homologation"): TableContent {
   const colObservacion = `col-observacion-${id}`;
   return {
     id,
-    title: "Tabla configurable",
+    title: DEFAULT_TABLE_TITLE,
     version: 2,
     columns: [
       { id: colConcepto, name: "Concepto" },

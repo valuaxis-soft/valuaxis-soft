@@ -12,6 +12,7 @@ import {
   linkConceptFully,
   linkConceptToCollection,
   linkConceptValueOnly,
+  pinFullLinkResolution,
   resolveEffectiveConcept,
   unlinkConcept,
 } from "../src/features/valuations/concept-links";
@@ -296,4 +297,45 @@ test("linked updates can update everywhere or edit only here", () => {
   assert.equal(conceptLinkIndicator(local!, editedHere), "none");
   assert.equal(editedHere.find((concept) => concept.id === source.id)?.label, "Solicitante");
   assert.equal(editedHere.find((concept) => concept.id === source.id)?.value, "Grace");
+});
+
+test("pinning a full link makes it read the same whichever linked concept comes first", () => {
+  const source = createIndependentConcept({
+    id: "source",
+    label: "Superficie",
+    value: "1234",
+    type: "measurement",
+    valueFormat: "m2",
+  });
+  const linked: Concept = {
+    ...linkConceptFully(source, "linked"),
+    label: "Legacy local",
+    value: "0",
+    type: "text",
+    valueFormat: undefined,
+  };
+  const other = createIndependentConcept({ id: "other", label: "Otro", value: "x" });
+  const concepts = [other, source, linked];
+  const before = concepts.map((concept) => resolveEffectiveConcept(concept, concepts));
+
+  // The source moves after the concept linked to it: the link would now read the legacy copy.
+  const moved = [other, linked, source];
+  assert.notDeepEqual(moved.map((concept) => resolveEffectiveConcept(concept, moved)).find((c) => c.id === "source"), before[1]);
+
+  const pinned = new Map(pinFullLinkResolution("source", concepts).map((concept) => [concept.id, concept]));
+  assert.deepEqual([...pinned.keys()], ["linked"], "only the concept that differed is written");
+  const settled = moved.map((concept) => pinned.get(concept.id) ?? concept);
+  const byId = (list: Concept[], id: string) => list.find((concept) => concept.id === id);
+  for (const id of ["other", "source", "linked"]) {
+    assert.deepEqual(byId(settled.map((concept) => resolveEffectiveConcept(concept, settled)), id), byId(before, id));
+  }
+  // Still the same link.
+  assert.equal(conceptLinkIndicator(byId(settled, "linked") as Concept, settled), "full");
+});
+
+test("pinning leaves concepts without a full link alone", () => {
+  const source = createIndependentConcept({ id: "source", label: "Superficie", value: "1234" });
+  const valueOnly = linkConceptValueOnly({ ...source, valueKey: "k" }, "value-only");
+  assert.deepEqual(pinFullLinkResolution("source", [{ ...source, valueKey: "k" }, valueOnly]), []);
+  assert.deepEqual(pinFullLinkResolution("ghost", [source]), []);
 });
