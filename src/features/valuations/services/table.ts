@@ -62,6 +62,12 @@ export type TableV2 = {
   enabled?: boolean;
   /** Optional structural schema — absent = free table */
   schema?: TableSchema;
+  /**
+   * Results of the table's formulas ("rowId:columnId" → result) as computed
+   * across the whole valuation, where a formula may use other tables and
+   * concepts. Derived on every change of the document and never saved.
+   */
+  formulaResults?: Record<string, FormulaResult>;
 };
 
 /* ================================================================== */
@@ -172,6 +178,8 @@ export type TableSchema = {
 
 export type FormulaCellRef = {
   type: "cell";
+  /** The table of the cell; the formula's own table when missing. */
+  tableId?: string;
   rowId: string;
   columnId: string;
 };
@@ -191,6 +199,23 @@ export type FormulaRangeRef = {
   cells: Array<{ rowId: string; columnId: string }>;
 };
 
+/**
+ * The cells between two corners as the table shows them now (A1:A5): rows
+ * and columns inserted between the corners join the range.
+ */
+export type FormulaSpanRef = {
+  type: "span";
+  tableId?: string;
+  from: { rowId: string; columnId: string };
+  to: { rowId: string; columnId: string };
+};
+
+/** The value of a concept of the valuation. */
+export type FormulaConceptRef = {
+  type: "concept";
+  conceptId: string;
+};
+
 export type FormulaConstantRef = {
   type: "constant";
   value: number;
@@ -201,6 +226,8 @@ export type FormulaOperand =
   | FormulaRowRef
   | FormulaColumnRef
   | FormulaRangeRef
+  | FormulaSpanRef
+  | FormulaConceptRef
   | FormulaConstantRef;
 
 export type FormulaBinaryOp = "ADD" | "SUBTRACT" | "MULTIPLY" | "DIVIDE" | "MODULO" | "POWER";
@@ -225,12 +252,46 @@ export type TableFormula = {
   description?: string;
 };
 
+/** Deepest and largest formula read from storage; anything beyond was not written in the editor. */
+const STORED_FORMULA_MAX_DEPTH = 64;
+const STORED_FORMULA_MAX_NODES = 5_000;
+
+/**
+ * A formula read from stored JSON, or undefined when it does not have the
+ * shape of one. The evaluator tolerates a malformed formula; this keeps what
+ * is not a formula at all out of the model.
+ */
+export function readStoredFormula(value: unknown): TableFormula | undefined {
+  let nodes = 0;
+  const isExpression = (candidate: unknown, depth: number): boolean => {
+    if (typeof candidate !== "object" || candidate === null || depth > STORED_FORMULA_MAX_DEPTH || ++nodes > STORED_FORMULA_MAX_NODES) return false;
+    const node = candidate as Record<string, unknown>;
+    switch (node.type) {
+      case "constant":
+        return typeof node.value === "number";
+      case "operand":
+        return typeof node.operand === "object" && node.operand !== null && typeof (node.operand as { type?: unknown }).type === "string";
+      case "binary":
+      case "compare":
+        return typeof node.operator === "string" && isExpression(node.left, depth + 1) && isExpression(node.right, depth + 1);
+      case "function":
+        return typeof node.name === "string" && Array.isArray(node.args) && node.args.every((arg) => isExpression(arg, depth + 1));
+      default:
+        return false;
+    }
+  };
+  if (typeof value !== "object" || value === null) return undefined;
+  const expression = (value as { expression?: unknown }).expression;
+  return isExpression(expression, 0) ? { expression: expression as FormulaExpression } : undefined;
+}
+
 /* ================================================================== */
 /*  FORMULA EVALUATION RESULT                                          */
 /* ================================================================== */
 
 export type FormulaResult =
-  | { ok: true; value: number }
+  /** `money`: the value is an amount of money, as far as its sources tell. */
+  | { ok: true; value: number; money?: boolean }
   | {
       ok: false;
       error:
@@ -244,22 +305,6 @@ export type FormulaResult =
         | "UNKNOWN_FUNCTION";
       detail?: string;
     };
-
-/* ================================================================== */
-/*  TABLE EVALUATION CONTEXT                                           */
-/* ================================================================== */
-
-export type TableEvaluationContext = {
-  table: TableV2;
-  /** Map rowId → row for O(1) lookup */
-  rowMap: Map<string, TableRow>;
-  /** Map columnId → column for O(1) lookup */
-  columnMap: Map<string, TableColumn>;
-  /** Cache for formula results during one evaluation pass */
-  resultCache: Map<string, number>;
-  /** Set of currently-evaluating cell keys for cycle detection */
-  evaluating: Set<string>;
-};
 
 /* ================================================================== */
 /*  LEGACY TABLE (current persisted shape)                             */
@@ -658,7 +703,10 @@ export function clearTableColumn(table: TableV2, columnId: string): TableV2 {
   return { ...table, rows: newRows };
 }
 
-/** Duplicate a row immediately after the given index. */
+/**
+ * Duplicate a row immediately after the given index. A formula of the row is
+ * copied too: what it reads from its own row, the copy reads from the new one.
+ */
 export function duplicateTableRow(table: TableV2, rowIndex: number): TableV2 {
   const source = table.rows[rowIndex];
   if (!source) return table;
@@ -668,6 +716,8 @@ export function duplicateTableRow(table: TableV2, rowIndex: number): TableV2 {
     const cell = source.cells[col.id];
     if (cell?.kind === "value") {
       cells[col.id] = { kind: "value", value: cell.value };
+    } else if (cell?.kind === "formula") {
+      cells[col.id] = { ...cell, formula: formulaForRow(cell.formula, source.id, newRowId) };
     } else {
       cells[col.id] = { kind: "value", value: "" };
     }
@@ -677,13 +727,14 @@ export function duplicateTableRow(table: TableV2, rowIndex: number): TableV2 {
   return { ...table, rows: newRows };
 }
 
-/** Set a cell formula. Pass null to clear. */
+/** Set a cell formula. Pass null to clear. The format chosen for the cell's result stays. */
 export function setCellFormula(table: TableV2, rowId: string, columnId: string, formula: TableFormula | null): TableV2 {
   const newRows = table.rows.map((row) => {
     if (row.id !== rowId) return row;
     const cells = { ...row.cells };
     if (formula) {
-      cells[columnId] = { kind: "formula", formula };
+      const format = cells[columnId]?.format;
+      cells[columnId] = { kind: "formula", formula, ...(format ? { format } : {}) };
     } else {
       const existing = cells[columnId];
       cells[columnId] = { kind: "value", value: existing?.kind === "formula" ? "" : (existing as { value?: string })?.value ?? "" };
@@ -693,10 +744,77 @@ export function setCellFormula(table: TableV2, rowId: string, columnId: string, 
   return { ...table, rows: newRows };
 }
 
-/** Build a formula expression from selected source cells and an operation. */
+/** How the result of a formula cell is written; `null` lets it follow its sources. */
+export function setCellResultFormat(table: TableV2, rowId: string, columnId: string, format: TableCellFormat | null): TableV2 {
+  return {
+    ...table,
+    rows: table.rows.map((row) => {
+      const cell = row.cells[columnId];
+      if (row.id !== rowId || cell?.kind !== "formula") return row;
+      return { ...row, cells: { ...row.cells, [columnId]: { kind: "formula", formula: cell.formula, ...(format ? { format } : {}) } } };
+    }),
+  };
+}
+
+/** The same expression with every reference to a cell of row `fromRowId` of its own table moved to `toRowId`. */
+function expressionForRow(expression: FormulaExpression, fromRowId: string, toRowId: string): FormulaExpression {
+  const move = <T extends { rowId: string }>(ref: T): T => (ref.rowId === fromRowId ? { ...ref, rowId: toRowId } : ref);
+  switch (expression.type) {
+    case "operand": {
+      const operand = expression.operand;
+      if (operand.type === "cell" && !operand.tableId) return { type: "operand", operand: move(operand) };
+      if (operand.type === "row") return { type: "operand", operand: move(operand) };
+      if (operand.type === "range") return { type: "operand", operand: { ...operand, cells: operand.cells.map(move) } };
+      if (operand.type === "span" && !operand.tableId) return { type: "operand", operand: { ...operand, from: move(operand.from), to: move(operand.to) } };
+      return expression;
+    }
+    case "binary":
+    case "compare":
+      return { ...expression, left: expressionForRow(expression.left, fromRowId, toRowId), right: expressionForRow(expression.right, fromRowId, toRowId) };
+    case "function":
+      return { ...expression, args: expression.args.map((arg) => expressionForRow(arg, fromRowId, toRowId)) };
+    default:
+      return expression;
+  }
+}
+
+function formulaForRow(formula: TableFormula, fromRowId: string, toRowId: string): TableFormula {
+  return { ...formula, expression: expressionForRow(formula.expression, fromRowId, toRowId) };
+}
+
+/**
+ * Copies the formula of a cell to the same column of every other row, as
+ * dragging it down a spreadsheet does: what it reads from its own row, each
+ * copy reads from its row. Rows whose cell already holds a value are skipped
+ * unless `overwrite`.
+ */
+export function fillColumnWithFormula(table: TableV2, rowId: string, columnId: string, options: { overwrite?: boolean } = {}): TableV2 {
+  const source = table.rows.find((row) => row.id === rowId)?.cells[columnId];
+  if (source?.kind !== "formula") return table;
+  return {
+    ...table,
+    rows: table.rows.map((row) => {
+      if (row.id === rowId) return row;
+      const current = row.cells[columnId];
+      if (!options.overwrite && current?.kind === "value" && current.value.trim() !== "") return row;
+      return { ...row, cells: { ...row.cells, [columnId]: { ...source, formula: formulaForRow(source.formula, rowId, row.id) } } };
+    }),
+  };
+}
+
+export type FormulaSelectionOperation = "SUM" | "AVERAGE" | "ADD" | "SUBTRACT" | "MULTIPLY" | "DIVIDE" | "POWER" | "ROOT";
+
+/**
+ * Build a formula expression from selected source cells and an operation.
+ *
+ * POWER raises the first cell to the second one, or to `parameter` when a
+ * single cell is selected. ROOT takes the root of the first cell: its index is
+ * the second cell or `parameter`, and the square root when there is neither.
+ */
 export function buildFormulaFromSelection(
-  operation: "SUM" | "AVERAGE" | "ADD" | "SUBTRACT" | "MULTIPLY" | "DIVIDE",
+  operation: FormulaSelectionOperation,
   sources: Array<{ rowId: string; columnId: string }>,
+  options: { parameter?: number | null } = {},
 ): TableFormula | null {
   if (sources.length === 0) return null;
 
@@ -705,6 +823,16 @@ export function buildFormulaFromSelection(
     operand: { type: "cell", rowId: s.rowId, columnId: s.columnId },
   }));
 
+  if (operation === "POWER" || operation === "ROOT") {
+    if (args.length > 2) return null;
+    const parameter = typeof options.parameter === "number" && Number.isFinite(options.parameter) ? options.parameter : null;
+    const second: FormulaExpression | null = args[1] ?? (parameter === null ? null : { type: "constant", value: parameter });
+    if (operation === "POWER") {
+      return second ? { expression: { type: "binary", operator: "POWER", left: args[0], right: second } } : null;
+    }
+    return { expression: { type: "function", name: "SQRT", args: second ? [args[0], second] : [args[0]] } };
+  }
+
   // Binary operations: chain as nested binary expressions
   if (operation === "ADD" || operation === "SUBTRACT" || operation === "MULTIPLY" || operation === "DIVIDE") {
     if (args.length < 2) return null;
@@ -712,12 +840,11 @@ export function buildFormulaFromSelection(
     for (let i = 2; i < args.length; i++) {
       expr = { type: "binary", operator: operation, left: expr, right: args[i] };
     }
-    return { expression: expr, description: `${operation}(...)` };
+    return { expression: expr };
   }
 
   // Aggregate functions
-  const expr: FormulaExpression = { type: "function", name: operation, args };
-  return { expression: expr, description: `${operation}(...)` };
+  return { expression: { type: "function", name: operation, args } };
 }
 
 /* ================================================================== */

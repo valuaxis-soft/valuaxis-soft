@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { ValuationMeta } from "@/features/valuations/services/valuation-constants";
 import type { AppSection, Block, CaratulaFormData } from "@/features/valuations/model";
 import { updateCompanyHeaderFields } from "@/features/valuations/services/caratula-company-header";
+import { applyValuationFormulas } from "@/features/valuations/services/valuation-formulas";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
 import type { SaveStatus } from "@/features/valuations/components/feedback/save-status-indicator";
 import { applyMetaPatchToCaratula } from "@/features/valuations/components/workspace/valuation-caratula-state";
@@ -114,7 +115,9 @@ export function useEditorState({
     options?: EditorHistoryOptions,
   ) => {
     const current = snapshotRef.current ?? { caratula, meta, sections };
-    const next = updater(current);
+    const updated = updater(current);
+    // Formulas follow their sources: every change of the document recomputes them.
+    const next = updated.sections === current.sections ? updated : { ...updated, sections: applyValuationFormulas(updated.sections) };
     if (!editorSnapshotChanged(current, next)) return;
     pushEditorHistory(current, options);
     applyEditorSnapshot(next);

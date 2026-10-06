@@ -7,7 +7,8 @@ import {
   moveConceptIntoRows,
   type ConceptDropPosition,
 } from "@/features/valuations/services/concept-layout";
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
+import { toast } from "sonner";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { closestCenter, DndContext, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/core";
 import { editorCanScroll } from "./editor-dnd-autoscroll";
@@ -22,7 +23,7 @@ import { AlignHorizontalDistributeCenter,
          ChevronUp, 
          Copy, 
          EllipsisVertical, 
-         FilePlus2, Hash, Link, Link2, ListPlus, 
+         FilePlus2, FunctionSquare, Hash, Link, Link2, ListPlus, 
          LockKeyhole, Minus, Plus, Trash2, Unlink } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { normalizeConceptTitle } from "@/features/valuations/services/concept-title";
@@ -57,6 +58,9 @@ import {
 } from "@/features/valuations/services/caratula-blocks";
 
 import { ValuationDateField } from "../editor/valuation-date-field";
+import { compileFormula, conceptReferenceText, formulaToText, isFormulaText } from "@/features/valuations/services/formula-references";
+import { conceptTakesFormula } from "@/features/valuations/services/valuation-formulas";
+import { useFormulaEditing, useFormulaField, useFormulaReferenceTarget } from "./formula-editing";
 
 import { Textarea } from "@/components/ui/textarea";
 
@@ -741,6 +745,88 @@ function ConceptOptionsMenu({
   );
 }
 
+/**
+ * The value of a concept: what is typed, or a formula when what is typed
+ * starts with "=" (=[Superficie total]*[Valor unitario]). A computed concept
+ * shows its result, and its formula again when the field is entered.
+ */
+function ConceptValueInput({
+  concept,
+  value,
+  normalize,
+  onValueChange,
+  onFormulaChange,
+  className,
+  ...inputProps
+}: {
+  concept: Concept;
+  /** What the field shows when no formula is being written. */
+  value: string;
+  /** How a typed value is stored. */
+  normalize: (text: string) => string;
+  onValueChange: (text: string) => void;
+  /** Sets the formula, or removes it leaving `value` as the concept's value. */
+  onFormulaChange: (formula: Concept["formula"], value?: string) => void;
+} & Omit<ComponentProps<typeof Input>, "value" | "onChange" | "onKeyDown" | "ref">) {
+  const { index } = useFormulaEditing();
+  const takesFormula = conceptTakesFormula(concept);
+  const formulaText = concept.formula && takesFormula ? `=${formulaToText(concept.formula, { index })}` : null;
+  // What was typed as a formula and could not be read as one stays as written, to be corrected.
+  const unreadFormula = formulaText === null && takesFormula && isFormulaText(concept.value);
+  const { inputRef, draftText, writingFormula, change, onFocus, onBlur, onKeyDown, onMouseDown } = useFormulaField({
+    fieldKey: `concept:${concept.id}`,
+    storedFormulaText: () => formulaText ?? (unreadFormula ? concept.value : null),
+    onCommit: (text) => {
+      if (!isFormulaText(text)) {
+        onFormulaChange(undefined, normalize(text));
+        return;
+      }
+      const compiled = compileFormula(text, { index });
+      if (compiled.ok) {
+        onFormulaChange(compiled.formula);
+        return;
+      }
+      toast.error(`La fórmula no se aplicó. ${compiled.message}`);
+      onFormulaChange(undefined, text);
+    },
+  });
+  const failed = unreadFormula || (formulaText !== null && concept.value.startsWith("#"));
+
+  return (
+    <div className="relative min-w-0">
+      <Input
+        {...inputProps}
+        ref={inputRef}
+        className={cn(
+          className,
+          (formulaText !== null || writingFormula) && "pr-7 font-mono text-blue-600 dark:text-blue-400",
+          writingFormula && "ring-2 ring-blue-500",
+          failed && draftText === null && "text-destructive dark:text-red-400",
+        )}
+        title={unreadFormula ? "Esta fórmula no se pudo leer: corrígela o bórrala." : formulaText ?? undefined}
+        value={draftText ?? value}
+        onChange={(event) => {
+          if (takesFormula && change(event.target.value)) return;
+          onValueChange(event.target.value);
+        }}
+        onFocus={(event) => {
+          if (takesFormula) onFocus();
+          inputProps.onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          onBlur();
+          inputProps.onBlur?.(event);
+        }}
+        onKeyDown={onKeyDown}
+        onMouseDown={onMouseDown}
+      />
+      {formulaText !== null ? (
+        <FunctionSquare aria-label="Valor calculado con una fórmula" className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-blue-500" />
+      ) : null}
+    </div>
+  );
+}
+
 export function ConceptEditorRow({
   concept,
   concepts,
@@ -788,6 +874,14 @@ export function ConceptEditorRow({
   const conceptType = effectiveConcept.type ?? "text";
   const usesSingleLineEditor = isSingleLineConceptType(conceptType);
   const formatIsSourceOwned = isFullLinkedSourceOwned(concept, allConcepts);
+  const { index: formulaIndex } = useFormulaEditing();
+  // While a formula is being written elsewhere, a click on the concept writes its reference there.
+  const reference = useFormulaReferenceTarget(`concept:${concept.id}`, () => conceptReferenceText(formulaIndex, concept.id));
+  const referenceTarget = reference.active && conceptTakesFormula(effectiveConcept);
+  const referenceClassName = referenceTarget ? "cursor-cell rounded-md hover:ring-2 hover:ring-blue-300 [&_input]:cursor-cell" : undefined;
+  const onReferenceMouseDown = referenceTarget ? reference.onMouseDownCapture : undefined;
+  const setFormula = (formula: Concept["formula"], value?: string) =>
+    onUpdate(concept.id, { formula, ...(value === undefined ? {} : { value }) });
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: concept.id,
@@ -816,9 +910,12 @@ export function ConceptEditorRow({
       <div
         className={cn(
           "grid w-full min-w-0 grid-cols-[auto_minmax(0,220px)_minmax(0,1fr)_auto] items-start gap-2 overflow-hidden",
+          referenceClassName,
         )}
+        data-concept-name={conceptReferenceText(formulaIndex, concept.id) ?? undefined}
         ref={setNodeRef}
         style={{ opacity: isDragging ? 0.35 : undefined }}
+        onMouseDownCapture={onReferenceMouseDown}
       >
         <Button
           type="button"
@@ -864,15 +961,18 @@ export function ConceptEditorRow({
             onChange={(event) => handleLinkedAwareUpdate({ value: event.target.value })}
           />
         ) : (
-          <Input
+          <ConceptValueInput
+            concept={effectiveConcept}
             className="h-10 min-w-0"
             disabled={readOnly}
             inputMode={isNumericConcept(effectiveConcept) ? "decimal" : conceptType === "phone" ? "numeric" : undefined}
             placeholder="Dato"
             type={caratulaInputType(conceptType)}
             value={isNumericConcept(effectiveConcept) && isValueFocused ? effectiveConcept.value : formatCaratulaConceptValue(effectiveConcept)}
+            normalize={(text) => normalizeCaratulaConceptValue(conceptType, text)}
             onBlur={() => setIsValueFocused(false)}
-            onChange={(event) => handleLinkedAwareUpdate({ value: normalizeCaratulaConceptValue(conceptType, event.target.value) })}
+            onValueChange={(text) => handleLinkedAwareUpdate({ value: normalizeCaratulaConceptValue(conceptType, text) })}
+            onFormulaChange={setFormula}
             onFocus={() => setIsValueFocused(true)}
           />
         )}
@@ -910,9 +1010,12 @@ export function ConceptEditorRow({
         showTerrenoLengthHint && !usesSingleLineEditor
           ? "md:grid-cols-[auto_1fr_auto]"
           : "grid-cols-[auto_minmax(0,220px)_minmax(0,1fr)_auto] items-start",
+        referenceClassName,
       )}
+      data-concept-name={conceptReferenceText(formulaIndex, concept.id) ?? undefined}
       ref={setNodeRef}
       style={{ opacity: isDragging ? 0.35 : undefined }}
+      onMouseDownCapture={onReferenceMouseDown}
     >
       <Button
         type="button"
@@ -981,23 +1084,29 @@ export function ConceptEditorRow({
               onChange={(value) => onUpdate(concept.id, { value })}
             />
           ) : isNumericConcept(effectiveConcept) ? (
-            <Input
+            <ConceptValueInput
+              concept={effectiveConcept}
               className="h-10 min-w-0"
               disabled={readOnly}
               inputMode="decimal"
               value={isValueFocused ? effectiveConcept.value : formatNumericConceptValue(effectiveConcept)}
+              normalize={normalizeNumericConceptInput}
               onBlur={() => setIsValueFocused(false)}
-              onChange={(event) => onUpdate(concept.id, { value: normalizeNumericConceptInput(event.target.value) })}
+              onValueChange={(text) => onUpdate(concept.id, { value: normalizeNumericConceptInput(text) })}
+              onFormulaChange={setFormula}
               onFocus={() => setIsValueFocused(true)}
             />
           ) : usesSingleLineEditor ? (
-            <Input
+            <ConceptValueInput
+              concept={effectiveConcept}
               className="h-10 min-w-0"
               disabled={readOnly}
               inputMode={conceptType === "phone" ? "numeric" : undefined}
               type={caratulaInputType(conceptType)}
               value={formatCaratulaConceptValue(effectiveConcept)}
-              onChange={(event) => onUpdate(concept.id, { value: normalizeCaratulaConceptValue(conceptType, event.target.value) })}
+              normalize={(text) => normalizeCaratulaConceptValue(conceptType, text)}
+              onValueChange={(text) => onUpdate(concept.id, { value: normalizeCaratulaConceptValue(conceptType, text) })}
+              onFormulaChange={setFormula}
             />
           ) : (
             <Textarea disabled={readOnly} value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />

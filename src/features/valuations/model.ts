@@ -92,6 +92,11 @@ export type Concept = {
   sourceUnit?: ConceptValueFormat;
   customUnit?: string;
   dateFormat?: ConceptDateFormat;
+  /**
+   * The value is computed from other concepts and table cells; `value` holds
+   * the last result, written as the concept's format reads it.
+   */
+  formula?: import("./services/table").TableFormula;
 };
 
 export type TableContent = {

@@ -9,6 +9,7 @@ import {
 } from "@/features/valuations/services/caratula-blocks";
 import {
   applyConceptEditOnlyHere,
+  applyConceptFormulaEverywhere,
   applyConceptUpdateEverywhere,
   changeExistingConceptRelation,
   linkConceptToCollection,
@@ -154,12 +155,21 @@ export function useBlockMutations({
     applyLinkedConcepts((concepts) => changeExistingConceptRelation(concepts, conceptId, mode));
   };
 
+  /** A formula belongs to the value: it is set on every concept linked to this one's value. */
+  const setConceptFormula = (conceptId: string, patch: Partial<Concept>) => {
+    applyLinkedConcepts((concepts) => applyConceptFormulaEverywhere(concepts, conceptId, patch.formula, patch.value));
+  };
+
   const updateConcept = (
     sectionId: string,
     blockId: string,
     conceptId: string,
     patch: Partial<Concept>,
   ) => {
+    if ("formula" in patch) {
+      setConceptFormula(conceptId, patch);
+      return;
+    }
     updateSectionBlocks(
       sectionId,
       (blocks) =>
@@ -287,6 +297,10 @@ export function useBlockMutations({
     conceptId: string,
     patch: Partial<Concept>,
   ) => {
+    if ("formula" in patch) {
+      setConceptFormula(conceptId, patch);
+      return;
+    }
     updateSectionBlocks(
       sectionId,
       (blocks) =>

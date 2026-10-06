@@ -8,6 +8,7 @@ import {
 } from "@/features/valuations/services/valuation-constants";
 import { transformComparables } from "@/features/valuations/mappers/transform-valuation";
 import { ReadOnlyValuationAlert } from "@/features/valuations/components/feedback/valuation-error-alert";
+import { FormulaEditingProvider } from "@/features/valuations/components/editor/formula-editing";
 import { ValuationEditorPanel } from "@/features/valuations/components/workspace/valuation-editor-panel";
 import type { SplitLayout, WorkspaceMode } from "@/features/valuations/components/workspace/valuation-workspace-layout";
 import type { ExternalPreviewPayload } from "@/features/valuations/components/workspace/external-preview-sync";
@@ -287,6 +288,7 @@ export function ValuationWorkspace({
   );
 
   return (
+    <FormulaEditingProvider sections={sections}>
     <Tabs value={activeSection.id} onValueChange={setActiveSectionId} className="gap-0 h-full">
       <main className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-hidden">
       <section className="shrink-0 border-b bg-background">
@@ -411,5 +413,6 @@ export function ValuationWorkspace({
       />
       </main>
     </Tabs>
+    </FormulaEditingProvider>
   );
 }

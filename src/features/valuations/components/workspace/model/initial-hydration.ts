@@ -23,6 +23,7 @@ import {
 import { isBoundaryDistanceValueFormat } from "@/features/valuations/services/concept-value-format";
 import { COVER_IMAGE_FOCUS_CENTER } from "@/features/valuations/services/cover-image-focus";
 import { imageMetadataFromContent } from "@/features/valuations/metadata";
+import { applyValuationFormulas } from "@/features/valuations/services/valuation-formulas";
 import { initializeCaratulaState } from "@/features/valuations/components/workspace/valuation-caratula-state";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
 import { resequenceSections } from "./section-numbering";
@@ -273,13 +274,18 @@ export function initialMetaFor(initialValuation: ValuationDetail | null | undefi
   return initialValuation ? valuationMetaFromDb(initialValuation) : initialMeta;
 }
 
-/** Sections the editor starts from: the stored valuation, or the code templates for a draft. */
+/**
+ * Sections the editor and the dictamen start from: the stored valuation, or the
+ * code templates for a draft, with their formulas computed.
+ */
 export function initialSectionsFor(initialValuation: ValuationDetail | null | undefined): AppSection[] {
-  return ensureCompanyHeaderFields(
-    ensureTerrenoSections(
-      initialValuation
-        ? resequenceSections(normalizeInitialSections(initialValuation))
-        : resequenceSections(createInitialSections()),
+  return applyValuationFormulas(
+    ensureCompanyHeaderFields(
+      ensureTerrenoSections(
+        initialValuation
+          ? resequenceSections(normalizeInitialSections(initialValuation))
+          : resequenceSections(createInitialSections()),
+      ),
     ),
   );
 }
