@@ -8,6 +8,7 @@ import { DocumentConceptValue } from "./document-concept-value";
 import { isConclusionNarrativeConcept } from "@/features/valuations/services/caratula-blocks";
 import type { ValuationSignature } from "@/features/valuations/services/valuation-signatures";
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
+import { coverImageObjectPosition } from "@/features/valuations/services/cover-image-focus";
 
 // Module 1: Cover (title, location, principal image)
 export function CaratulaCoverModule({
@@ -33,6 +34,8 @@ export function CaratulaCoverModule({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             className="h-[294px] w-full object-cover"
+            // The cover box crops the image; the appraiser chooses the part that stays in view.
+            style={{ objectPosition: coverImageObjectPosition(caratula.enfoqueImagenPrincipal) }}
             src={principalImage.url}
             alt="Imagen principal del inmueble"
           />
@@ -62,7 +65,7 @@ export function CaratulaAssumptionsModule({
           <h2 className="border-b-2 border-[var(--caratula-blue)] pb-0.5 text-[12px] font-black uppercase leading-tight text-[var(--caratula-blue)]">
             {block.title}
           </h2>
-          <div className="min-h-8 space-y-1 pt-1 text-[10.5px] leading-snug text-slate-700">
+          <div className="min-h-8 space-y-1 pt-1 text-justify text-[10.5px] leading-snug text-slate-700">
             {block.concepts.map((concept) => (
               <p className="whitespace-pre-wrap" key={concept.id}>
                 <DocumentConceptValue concept={concept} fallback="—" />
@@ -91,7 +94,7 @@ export function CaratulaConclusionModule({
     <section className="mt-8">
       <h2 className="border-b-2 border-[var(--caratula-blue)] pb-0.5 text-sm font-black uppercase leading-tight text-[var(--caratula-blue)]">CONCLUSIÓN</h2>
       {narrativeConcepts.length ? (
-        <div className="space-y-1 pt-1 text-left text-[11px] leading-snug text-slate-700">
+        <div className="space-y-1 pt-1 text-justify text-[11px] leading-snug text-slate-700">
           {narrativeConcepts.map((concept) => (
             <p className="whitespace-pre-wrap" key={concept.id}>
               <DocumentConceptValue concept={concept} />

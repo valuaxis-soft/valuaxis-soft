@@ -1,12 +1,13 @@
 "use client";
 
-import type { Block, Concept, ContentLayout, ImageContent, Apartado, TableContent, ContentLayoutRowV2 } from "@/features/valuations/model";
+import type { Block, Concept, ImageContent, Apartado, TableContent, ContentLayoutRowV2 } from "@/features/valuations/model";
 import { resolveBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { formatVisibleChildLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
 import { useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
 import { resolveCellConceptGuide } from "@/features/valuations/services/concept-presentation";
+import { isLongTextList } from "@/features/valuations/services/document-long-text";
 import { cn } from "@/lib/utils";
 import { DocumentConceptValue } from "./document-concept-value";
 import { DocumentImage } from "./document-image";
@@ -64,6 +65,7 @@ export function documentBlockFlowItems(
   const resolvedLayout = resolveContentLayout(block);
   const layoutRowsById = new Map(resolvedLayout.rows.map((r) => [r.id, r]));
   const orderedApartados = getBlockFlowApartadoOrder(block);
+  const blockLongText = isLongTextList(block.concepts);
 
   const items: DocumentFlowItem[] = [];
 
@@ -117,6 +119,7 @@ export function documentBlockFlowItems(
               tablesById={tablesById}
               applyConceptLayout={applyConceptLayout}
               containerPresentation={block.conceptPresentation}
+              longText={blockLongText}
             />
           ),
         });
@@ -125,11 +128,14 @@ export function documentBlockFlowItems(
       continue;
     }
 
-    // SINGLE APARTADO
+    // SINGLE APARTADO — its title travels with its first row; every further
+    // row is its own item, so a long apartado continues on the next page
+    // instead of being cut at the end of this one.
     if (firstItem.type === "apartado" && structuralRow.items.length === 1) {
       const subBlock = subBlocksById.get(firstItem.apartadoId);
       if (!subBlock || subBlock.enabled === false) continue;
       const apId = `ap-${block.id}-${structuralRow.id}`;
+      const apartadoRows = subBlock.presentationMode === "technical-list" ? [] : resolveContentLayout(subBlock).rows;
       items.push({
         id: apId,
         startOnNewPage: subBlock.startOnNewPage,
@@ -140,9 +146,24 @@ export function documentBlockFlowItems(
             orderedApartados={orderedApartados}
             applyConceptLayout={applyConceptLayout}
             renderTitle={renderApartadoTitle}
+            rows={apartadoRows.length ? apartadoRows.slice(0, 1) : undefined}
             className="mt-1"
           />
         ),
+      });
+      apartadoRows.slice(1).forEach((layoutRow, index) => {
+        items.push({
+          id: `${apId}:${layoutRow.id}`,
+          continuesPrevious: true,
+          node: (
+            <DocumentApartadoRows
+              subBlock={subBlock}
+              rows={[layoutRow]}
+              firstRowIndex={index + 1}
+              applyConceptLayout={applyConceptLayout}
+            />
+          ),
+        });
       });
       continue;
     }
@@ -201,6 +222,7 @@ function DocumentContentRow({
   tablesById,
   applyConceptLayout,
   containerPresentation,
+  longText,
 }: {
   layoutRow: ContentLayoutRowV2;
   rowIndex: number;
@@ -209,6 +231,8 @@ function DocumentContentRow({
   tablesById: Map<string, TableContent>;
   applyConceptLayout: boolean;
   containerPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation;
+  /** The container reads as prose: its concepts print a little larger. */
+  longText: boolean;
 }) {
   const theme = useDocumentTheme();
   const columnCount = layoutRow.columns.length;
@@ -218,10 +242,24 @@ function DocumentContentRow({
       ? "grid-cols-2"
       : "grid-cols-3";
 
+  // Concepts side by side share one rule under the whole row, so it stays
+  // level whatever the height of each; a concept alone in its row carries its own.
+  const visibleItems = layoutRow.columns.flatMap((column) => column.items).filter((itemRef) =>
+    itemRef.type === "concept"
+      ? conceptsById.get(itemRef.id)?.enabled !== false && conceptsById.has(itemRef.id)
+      : itemRef.type === "image"
+        ? imagesById.get(itemRef.id)?.enabled !== false && imagesById.has(itemRef.id)
+        : tablesById.get(itemRef.id)?.enabled !== false && tablesById.has(itemRef.id),
+  );
+  const sharedRule = columnCount > 1 && visibleItems.length > 0 && visibleItems.every((itemRef) => itemRef.type === "concept");
+
   // First row: current spacing; subsequent rows: tighter 1px margin
-  const rowClassName = rowIndex === 0
-    ? `${theme.contentRow} ${gridClass}`
-    : `mt-[1px] grid ${gridClass}`;
+  const rowClassName = cn(
+    rowIndex === 0 ? theme.contentRow : "mt-[1px] grid",
+    gridClass,
+    columnCount > 1 && "gap-x-4",
+    sharedRule && theme.conceptRule,
+  );
 
   return (
     <div className={rowClassName}>
@@ -239,15 +277,18 @@ function DocumentContentRow({
                     concept={concept}
                     applyConceptLayout={applyConceptLayout}
                     labelGuidePx={cellGuidePx}
+                    longText={longText}
+                    ruled={!sharedRule}
                   />
                 );
               }
               if (itemRef.type === "image") {
                 const image = imagesById.get(itemRef.id);
                 if (!image || image.enabled === false) return null;
+                // Images sharing a row (location sketches) print as a compact framed pair.
                 return (
-                  <div className="my-4" key={itemRef.id}>
-                    <DocumentImage image={image} />
+                  <div className={columnCount > 1 ? "my-1" : "my-4"} key={itemRef.id}>
+                    <DocumentImage image={image} sideBySide={columnCount > 1} />
                   </div>
                 );
               }
@@ -273,10 +314,15 @@ function DocumentConceptCell({
   concept,
   applyConceptLayout,
   labelGuidePx,
+  longText,
+  ruled,
 }: {
   concept: Concept;
   applyConceptLayout: boolean;
   labelGuidePx?: number;
+  longText: boolean;
+  /** Carries its own hairline; false when the row draws one for all its concepts. */
+  ruled: boolean;
 }) {
   const theme = useDocumentTheme();
   const layoutClass = applyConceptLayout && concept.layoutSpan === "full" ? "col-span-2" : "";
@@ -291,52 +337,69 @@ function DocumentConceptCell({
 
   return (
     <div
-      className={`${theme.conceptRowGrid} ${layoutClass}`}
+      className={cn(theme.conceptRowGrid, theme.conceptRow, ruled && theme.conceptRule, longText && theme.longTextRow, layoutClass)}
       style={gridStyle ? { ...layoutStyle, ...gridStyle } : layoutStyle}
     >
-      <strong className={`${theme.conceptLabel} text-right`}>
+      <strong className={cn(theme.conceptLabel, "text-right", longText && theme.longText)}>
         {formatConceptTitleWithColon(concept.label)}
       </strong>
-      <span className={theme.conceptValue}>
-        <DocumentConceptValue applyFormatting={applyConceptLayout} concept={concept} fallback="—" />
+      <span className={cn(theme.conceptValue, longText && theme.longText)}>
+        <DocumentConceptValue concept={concept} fallback="—" />
       </span>
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  DocumentContentLayoutRenderer — shared layout renderer             */
+/*  DocumentApartadoRows — content rows of one apartado                */
 /* ------------------------------------------------------------------ */
 
-function DocumentContentLayoutRenderer({
-  container,
+function ApartadoContentRows({
+  subBlock,
+  rows,
+  firstRowIndex,
   applyConceptLayout,
-  containerPresentation,
 }: {
-  container: { concepts: Concept[]; images: ImageContent[]; tables: TableContent[]; contentLayout?: ContentLayout };
+  subBlock: Apartado;
+  rows: ContentLayoutRowV2[];
+  firstRowIndex: number;
   applyConceptLayout: boolean;
-  containerPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation;
 }) {
-  const resolvedLayout = resolveContentLayout(container);
-  const conceptsById = new Map(container.concepts.map((c) => [c.id, c]));
-  const imagesById = new Map(container.images.map((i) => [i.id, i]));
-  const tablesById = new Map(container.tables.map((t) => [t.id, t]));
+  const conceptsById = new Map(subBlock.concepts.map((c) => [c.id, c]));
+  const imagesById = new Map(subBlock.images.map((i) => [i.id, i]));
+  const tablesById = new Map(subBlock.tables.map((t) => [t.id, t]));
+  const longText = isLongTextList(subBlock.concepts);
 
   return (
     <>
-      {resolvedLayout.rows.map((layoutRow, rowIndex) => (
+      {rows.map((layoutRow, index) => (
         <DocumentContentRow
           key={layoutRow.id}
           layoutRow={layoutRow}
-          rowIndex={rowIndex}
+          rowIndex={firstRowIndex + index}
           conceptsById={conceptsById}
           imagesById={imagesById}
           tablesById={tablesById}
           applyConceptLayout={applyConceptLayout}
-          containerPresentation={containerPresentation}
+          containerPresentation={subBlock.conceptPresentation}
+          longText={longText}
         />
       ))}
     </>
+  );
+}
+
+/** Rows of an apartado that follow the item carrying its title, indented like it. */
+function DocumentApartadoRows(props: {
+  subBlock: Apartado;
+  rows: ContentLayoutRowV2[];
+  firstRowIndex: number;
+  applyConceptLayout: boolean;
+}) {
+  return (
+    <div className="pl-3">
+      <ApartadoContentRows {...props} />
+    </div>
   );
 }
 
@@ -350,6 +413,7 @@ function DocumentApartado({
   orderedApartados,
   applyConceptLayout,
   renderTitle,
+  rows,
   className,
 }: {
   block: Block;
@@ -357,6 +421,8 @@ function DocumentApartado({
   orderedApartados: Apartado[];
   applyConceptLayout: boolean;
   renderTitle?: (block: Block, subBlock: Apartado, displayLabel: string) => React.ReactNode;
+  /** The rows printed under the title; every row of the apartado when omitted. */
+  rows?: ContentLayoutRowV2[];
   className?: string;
 }) {
   const theme = useDocumentTheme();
@@ -373,14 +439,14 @@ function DocumentApartado({
       {isTechnicalList ? (
         <DocumentTechnicalList
           container={subBlock}
-          applyConceptLayout={applyConceptLayout}
           containerPresentation={subBlock.conceptPresentation}
         />
       ) : (
-        <DocumentContentLayoutRenderer
-          container={subBlock}
+        <ApartadoContentRows
+          subBlock={subBlock}
+          rows={rows ?? resolveContentLayout(subBlock).rows}
+          firstRowIndex={0}
           applyConceptLayout={applyConceptLayout}
-          containerPresentation={subBlock.conceptPresentation}
         />
       )}
     </section>

@@ -25,6 +25,11 @@ import { ensureTableV2 } from "../services/table";
 export type DocumentFlowItem = {
   id: string;
   startOnNewPage?: boolean;
+  /**
+   * Continues the item before it (a further row of the same apartado): when
+   * both land on one page they sit together, without the gap between items.
+   */
+  continuesPrevious?: boolean;
   node: ReactNode;
 };
 
@@ -40,13 +45,16 @@ export type DocumentFlowItem = {
  */
 function DocumentFlowItemFrame({
   itemId,
+  joinsNext = false,
   children,
 }: {
   itemId: string;
+  /** The next item on the page continues this one: drop the gap the content gives its children. */
+  joinsNext?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="flow-root" data-document-flow-item-id={itemId}>
+    <div className={joinsNext ? "flow-root mb-0!" : "flow-root"} data-document-flow-item-id={itemId}>
       {children}
     </div>
   );
@@ -438,9 +446,14 @@ export function AutoPaginatedDocumentFlow({
 
   const contextValue = useMemo(() => ({ requestPagination }), [requestPagination]);
 
+  // The available height is what is left for the items once the header and
+  // the content's own padding are taken out, so it sizes the content box:
+  // header + padding + items add up to the page and the last line of a full
+  // page is not cut.
   const paginatedContentStyle = {
     ...contentStyle,
     "--document-content-height": `${availableHeight}px`,
+    boxSizing: "content-box",
     height: "var(--document-content-height)",
     overflow: "hidden",
   } as CSSProperties;
@@ -494,8 +507,8 @@ export function AutoPaginatedDocumentFlow({
         >
           <DocumentPreviewPage header={header} className="shadow-none" pageNumber={0}>
             <div {...contentProps} className={contentClassName} ref={measureContentRef} style={contentStyle} data-document-pagination-content="measurement">
-              {items.map((item) => (
-                <DocumentFlowItemFrame itemId={item.id} key={item.id}>
+              {items.map((item, index) => (
+                <DocumentFlowItemFrame itemId={item.id} joinsNext={items[index + 1]?.continuesPrevious} key={item.id}>
                   {item.node}
                 </DocumentFlowItemFrame>
               ))}
@@ -509,8 +522,8 @@ export function AutoPaginatedDocumentFlow({
         {visiblePages.map((pageItems, pageIndex) => (
           <DocumentPreviewPage header={header} key={`${pageKeyPrefix}-page-${pageIndex + 1}`} pageNumber={pageIndex + 1} className={pageClassName}>
             <div {...contentProps} className={contentClassName} style={paginatedContentStyle} data-document-pagination-content="visible">
-              {pageItems.map((item) => (
-                <DocumentFlowItemFrame itemId={item.id} key={item.id}>
+              {pageItems.map((item, index) => (
+                <DocumentFlowItemFrame itemId={item.id} joinsNext={pageItems[index + 1]?.continuesPrevious} key={item.id}>
                   {item.node}
                 </DocumentFlowItemFrame>
               ))}

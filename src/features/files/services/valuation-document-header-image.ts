@@ -6,6 +6,7 @@ import {
 } from "@/features/files/services/valuation-cover-image";
 import { saveUpload, type UploadResult } from "@/features/files/services/upload";
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { buildValuationDocumentHeaderImageKey } from "@/infrastructure/storage/storage-keys";
 
@@ -314,7 +315,7 @@ const defaultDependencies: DocumentHeaderImageServiceDependencies = {
     });
   },
   getPrivateUrl(key) {
-    return storageProvider.getPrivateDownloadUrl(key);
+    return stableDownloadUrl(key);
   },
   deleteObject(key) {
     return storageProvider.deleteObject(key);

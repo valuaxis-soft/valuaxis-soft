@@ -7,6 +7,7 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { requireApiUser } from "@/security/guards/api-guard";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { saveUpload, UploadError } from "@/features/files/services/upload";
+import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 
 /** Images the editor adds to any section other than Datos generales. */
 const GENERIC_UPLOAD_FILE_TYPE = "OTRO";
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No se envio ningun archivo" }, { status: 400 });
     }
 
-    const result = await saveUpload(file);
+    const result = await saveUpload(file, { generateDownloadUrl: false });
 
     // A completed upload must point to its file (check constraint from
     // migration 011), so the file is registered first.
@@ -68,7 +69,9 @@ export async function POST(request: Request) {
       });
     });
 
-    return NextResponse.json({ data: { ...result, id: upload.IdCargaArchivo.toString() } }, { status: 201 });
+    // The editor keeps this address while it is open: it must not expire.
+    const url = await stableDownloadUrl(result.key);
+    return NextResponse.json({ data: { ...result, url, id: upload.IdCargaArchivo.toString() } }, { status: 201 });
   } catch (error) {
     if (error instanceof UploadError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });

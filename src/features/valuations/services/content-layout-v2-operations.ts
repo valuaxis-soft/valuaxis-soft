@@ -307,8 +307,9 @@ function moveColumnToNewRowAfter(
   //    so intermediateRows[targetRowIdx] IS the target row → insert at targetRowIdx + 1.
   let insertIdx: number;
   if (remainingCols.length === 0) {
-    // Source row was removed — target shifted down by 1
-    insertIdx = source.rowIndex < targetRowIdx ? targetRowIdx : targetRowIdx + 1;
+    // Source row was removed — rows after it shifted up by 1. When the source
+    // row IS the target, the new row takes its place.
+    insertIdx = source.rowIndex <= targetRowIdx ? targetRowIdx : targetRowIdx + 1;
   } else {
     // Source row NOT removed — target at original index
     insertIdx = targetRowIdx + 1;

@@ -7,6 +7,7 @@ import {
 } from "@/features/files/services/valuation-cover-image";
 import { saveUpload, type UploadResult } from "@/features/files/services/upload";
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { buildValuationDatosImageKey } from "@/infrastructure/storage/storage-keys";
 
@@ -289,7 +290,7 @@ async function toDto(file: {
       filename: file.SNombreOriginal,
       mimeType: file.STipoMime,
       size: Number(file.ITamanoBytes),
-      url: await storageProvider.getPrivateDownloadUrl(file.SClaveObjeto),
+      url: await stableDownloadUrl(file.SClaveObjeto),
       ...metadata,
     };
   } catch {

@@ -165,7 +165,7 @@ export function ImageEditorItem({
         <div className="flex items-center gap-1">
           {onUpload && (
             <UploadButton
-              label={hasResource ? "Reemplazar" : "Subir"}
+              label={hasResource ? "Reemplazar imagen" : "Subir imagen"}
               disabled={readOnly}
               onChange={onUpload}
             />

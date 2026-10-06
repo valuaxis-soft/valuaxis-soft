@@ -99,4 +99,6 @@ export type CaratulaPayload = {
   mesesVigencia?: number | null;
   /** Used only while `mesesVigencia` is empty. */
   fechaVigencia?: string | null;
+  /** Framing of the principal cover image, `{ x, y }` in 0–100; when sent it replaces the stored one. */
+  enfoqueImagenPrincipal?: unknown;
 };

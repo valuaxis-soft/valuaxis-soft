@@ -78,11 +78,13 @@ test("an old validity date becomes months only when it is 1 to 12 whole months a
   assert.equal(validityMonthsBetween("2026-09-28", ""), null);
 });
 
-test("the page header prints the months and the date they reach", () => {
+test("the page header prints only the date the validity reaches, never the months", () => {
   const header = (data: CaratulaFormData) => renderToStaticMarkup(createElement(DocumentPreviewHeader, { caratula: data, letterhead }));
-  assert.match(header(caratula), /Vigencia del Avalúo:<\/strong> 6 meses \(hasta 28 de Marzo de 2027\)/);
-  assert.match(header({ ...caratula, mesesVigencia: 1 }), /<\/strong> 1 mes \(hasta 28 de Octubre de 2026\)/);
-  assert.match(header({ ...caratula, mesesVigencia: 8, fechaAvaluo: "" }), /<\/strong> 8 meses<\/p>/);
+  assert.match(header(caratula), /Vigencia del Avalúo:<\/strong> 28 de Marzo de 2027<\/p>/);
+  assert.match(header({ ...caratula, mesesVigencia: 1 }), /<\/strong> 28 de Octubre de 2026<\/p>/);
+  assert.doesNotMatch(header(caratula), /meses|hasta/);
+  // Months without a valuation date reach no date yet.
+  assert.match(header({ ...caratula, mesesVigencia: 8, fechaAvaluo: "" }), /Vigencia del Avalúo:<\/strong> —<\/p>/);
   // Saved before the validity was in months, at a date that is not whole months away.
   assert.match(header({ ...caratula, mesesVigencia: null, fechaVigencia: "2027-03-15" }), /<\/strong> 15 de Marzo de 2027/);
 });

@@ -10,11 +10,14 @@
  *   - isS3Source(): detect whether an image src is an S3-managed source
  */
 
+import { keyFromStoredImageUrl } from "@/features/files/services/stored-image-url";
+
 /**
  * Extract the durable S3 storage key from any image source value.
  *
  * Returns:
  *   - the raw key if the source is already a plain key or a local path (no protocol)
+ *   - the key of a stable image address (/api/archivos/imagen?key=...)
  *   - the path portion of a signed S3 URL (strips query params)
  *   - the original value for non-S3 sources (relative paths, data URIs, etc.)
  *
@@ -23,6 +26,10 @@
  */
 export function extractStorageKey(src: string): string {
   if (!src) return "";
+
+  // The stable address the browser uses: its key travels in the query.
+  const storedKey = keyFromStoredImageUrl(src);
+  if (storedKey) return storedKey;
 
   // Already a plain key (no protocol prefix). Local storage hands out
   // "/uploads/..." paths: the key has no leading slash, or the loader would
@@ -51,6 +58,7 @@ export function extractStorageKey(src: string): string {
  */
 export function isS3Source(src: string): boolean {
   if (!src) return false;
+  if (keyFromStoredImageUrl(src)) return true;
   // Plain key: starts with a known S3 prefix pattern
   if (!src.includes("://") && !src.startsWith("data:") && src.includes("/")) {
     return true;

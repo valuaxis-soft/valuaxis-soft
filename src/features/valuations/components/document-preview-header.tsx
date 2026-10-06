@@ -1,18 +1,21 @@
 import type { CaratulaFormData, ImageContent, Letterhead } from "../model";
 import { formatDateValue } from "../services/concept-value-format";
-import { formatValidityMonths, validUntilDate } from "../services/valuation-signatures";
+import { validUntilDate } from "../services/valuation-signatures";
 
-/** "6 meses (hasta 28 de Marzo de 2027)"; the stored date for a valuation saved before the validity was in months. */
+/**
+ * The date the validity ends, alone: the months are a form input, not printed.
+ * A valuation saved before the validity was in months prints its stored date.
+ */
 function validityText(caratula: CaratulaFormData) {
   if (caratula.mesesVigencia === null) return formatDateValue(caratula.fechaVigencia, "normal");
-  const until = validUntilDate(caratula.fechaAvaluo, caratula.mesesVigencia);
-  const months = formatValidityMonths(caratula.mesesVigencia);
-  return until ? `${months} (hasta ${formatDateValue(until, "normal")})` : months;
+  return formatDateValue(validUntilDate(caratula.fechaAvaluo, caratula.mesesVigencia) ?? "", "normal");
 }
 
 /**
  * The header of every document page. The valuation's own carátula data and
  * header image come first; the firm's letterhead fills whatever they leave empty.
+ * The name printed is the firm's legal name; the organization name stands in
+ * only while the firm has none.
  */
 export function DocumentPreviewHeader({
   caratula,
@@ -26,12 +29,13 @@ export function DocumentPreviewHeader({
   const image = headerImage?.src
     ? headerImage
     : letterhead.logoUrl
-      ? { src: letterhead.logoUrl, title: `Logotipo de ${letterhead.name}` }
+      ? { src: letterhead.logoUrl, title: `Logotipo de ${letterhead.legalName?.trim() || letterhead.name}` }
       : null;
   const address = caratula.direccionEmpresa || letterhead.address;
   const phone = caratula.telefonoEmpresa || letterhead.phone;
   const email = caratula.correoEmpresa || letterhead.email;
-  const legalLine = [letterhead.legalName, letterhead.rfc ? `RFC ${letterhead.rfc}` : null].filter(Boolean).join(" · ");
+  const firmName = letterhead.legalName?.trim() || letterhead.name;
+  const rfcLine = letterhead.rfc ? `RFC ${letterhead.rfc}` : "";
 
   return (
     <header className="px-5 pt-5 sm:px-8 sm:pt-7" data-document-preview-header>
@@ -50,9 +54,9 @@ export function DocumentPreviewHeader({
         </div>
         <div className="min-w-0 text-center sm:text-left">
           <p className="text-sm font-black tracking-wide text-[var(--caratula-blue)]">
-            {letterhead.name || "Empresa valuadora pendiente"}
+            {firmName || "Empresa valuadora pendiente"}
           </p>
-          {legalLine ? <p className="text-[10px] leading-tight text-slate-600">{legalLine}</p> : null}
+          {rfcLine ? <p className="text-[10px] leading-tight text-slate-600">{rfcLine}</p> : null}
           <p className="mt-0.5 text-[11px] leading-tight text-slate-700">
             {address || "Dirección pendiente"}
           </p>

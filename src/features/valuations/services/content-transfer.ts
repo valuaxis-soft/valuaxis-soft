@@ -43,6 +43,7 @@ export type ContentTransferDescriptor = {
   destinationPlacement:
     | { type: "new-row" }
     | { type: "new-row-after"; anchorRowId: string }
+    | { type: "new-row-before"; anchorRowId: string }
     | { type: "before-column"; anchorColumnId: string }
     | { type: "after-column"; anchorColumnId: string };
   blockFlowPlacement?: {
@@ -268,13 +269,14 @@ function insertAfterColumn(
 }
 
 /**
- * Insert a column into a new row AFTER an anchor row in a ContentLayout.
+ * Insert a column into a new row next to an anchor row in a ContentLayout.
  * Returns the new layout and the new row ID.
  */
-function insertColumnAfterRow(
+function insertColumnNextToRow(
   layout: ContentLayout,
   column: ContentLayoutColumnV2,
   anchorRowId: string,
+  side: "before" | "after",
 ): { layout: ContentLayout; newRowId: string } | null {
   const anchorIdx = layout.rows.findIndex((r) => r.id === anchorRowId);
   if (anchorIdx < 0) return null;
@@ -285,7 +287,7 @@ function insertColumnAfterRow(
   };
 
   const newRows = [...layout.rows];
-  newRows.splice(anchorIdx + 1, 0, newRow);
+  newRows.splice(side === "before" ? anchorIdx : anchorIdx + 1, 0, newRow);
 
   return {
     layout: { version: 2, rows: newRows },
@@ -517,8 +519,14 @@ export function moveContentItemAcrossContainers(
       destChanged = true;
       break;
     }
+    case "new-row-before":
     case "new-row-after": {
-      const result = insertColumnAfterRow(destLayout, columnToInsert, destinationPlacement.anchorRowId);
+      const result = insertColumnNextToRow(
+        destLayout,
+        columnToInsert,
+        destinationPlacement.anchorRowId,
+        destinationPlacement.type === "new-row-before" ? "before" : "after",
+      );
       if (!result) {
         return { changed: false, block, reason: "anchor row not found in destination layout" };
       }

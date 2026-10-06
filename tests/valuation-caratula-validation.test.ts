@@ -44,7 +44,7 @@ test("reporta límites, teléfono y correo inválidos", () => {
   const errors = validateCaratula(
     {
       ...caratula,
-      folio: "1".repeat(16),
+      folio: "1".repeat(81),
       tituloInmueble: "T".repeat(121),
       telefonoEmpresa: "294137938",
       correoEmpresa: "correo-invalido",
@@ -52,7 +52,7 @@ test("reporta límites, teléfono y correo inválidos", () => {
     { ...meta, location: "U".repeat(181), postalCode: "12A45" },
   );
 
-  assert.equal(errors.folio, "Máximo 15 caracteres.");
+  assert.equal(errors.folio, "Máximo 80 caracteres.");
   assert.equal(errors.tituloInmueble, "Máximo 120 caracteres.");
   assert.equal(errors.location, "Máximo 180 caracteres.");
   assert.equal(errors.postalCode, "Usa solo 5 dígitos.");

@@ -33,6 +33,12 @@ import {
 
 import { formatDateValue } from "@/features/valuations/services/concept-value-format";
 import {
+  COVER_IMAGE_FOCUS_CENTER,
+  coverImageObjectPosition,
+  normalizeCoverImageFocus,
+  type CoverImageFocus,
+} from "@/features/valuations/services/cover-image-focus";
+import {
   formatValidityMonths,
   MAX_VALIDITY_MONTHS,
   validUntilDate,
@@ -226,7 +232,9 @@ export function CaratulaEditor({
           </div>
         </div>
         <PrincipalImageEditor
+          focus={normalizeCoverImageFocus(caratula.enfoqueImagenPrincipal)}
           image={principalImage}
+          onFocusChange={(enfoqueImagenPrincipal) => onUpdate({ enfoqueImagenPrincipal })}
           readOnly={readOnly}
           uploadAvailable={imageUploadAvailable}
           uploading={imageUploading}
@@ -239,13 +247,17 @@ export function CaratulaEditor({
 }
 
 function PrincipalImageEditor({
+  focus,
   image,
+  onFocusChange,
   onUpload,
   readOnly,
   uploadAvailable,
   uploading,
 }: {
+  focus: CoverImageFocus;
   image: PrincipalCoverImage | null;
+  onFocusChange: (focus: CoverImageFocus) => void;
   onUpload?: (event: ChangeEvent<HTMLInputElement>) => void;
   readOnly: boolean;
   uploadAvailable: boolean;
@@ -258,7 +270,12 @@ function PrincipalImageEditor({
         <div className="flex h-24 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground">
           {image?.url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img className="h-full w-full object-cover" src={image.url} alt="Imagen principal del bien" />
+            <img
+              className="h-full w-full object-cover"
+              style={{ objectPosition: coverImageObjectPosition(focus) }}
+              src={image.url}
+              alt="Imagen principal del bien"
+            />
           ) : (
             <ImagePlus className="size-7" />
           )}
@@ -293,7 +310,97 @@ function PrincipalImageEditor({
           </label>
         </div>
       </div>
+      {image?.url ? <CoverImageFocusControl focus={focus} readOnly={readOnly} onChange={onFocusChange} /> : null}
     </div>
+  );
+}
+
+/**
+ * Moves the image inside the cover box, which crops it: one slider per axis.
+ * The preview follows as they move.
+ */
+function CoverImageFocusControl({
+  focus,
+  onChange,
+  readOnly,
+}: {
+  focus: CoverImageFocus;
+  onChange: (focus: CoverImageFocus) => void;
+  readOnly: boolean;
+}) {
+  const centered = focus.x === COVER_IMAGE_FOCUS_CENTER.x && focus.y === COVER_IMAGE_FOCUS_CENTER.y;
+  return (
+    <div className="mt-3 border-t pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <FieldTitle>Encuadre en la carátula</FieldTitle>
+          <FieldDescription>Mueve la imagen dentro del recuadro de la portada.</FieldDescription>
+        </div>
+        <Button type="button" size="sm" variant="ghost" disabled={readOnly || centered} onClick={() => onChange(COVER_IMAGE_FOCUS_CENTER)}>
+          Centrar
+        </Button>
+      </div>
+      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+        <CoverImageFocusSlider
+          id="caratula-enfoque-horizontal"
+          label="Horizontal"
+          startLabel="Izquierda"
+          endLabel="Derecha"
+          value={focus.x}
+          readOnly={readOnly}
+          onChange={(x) => onChange({ ...focus, x })}
+        />
+        <CoverImageFocusSlider
+          id="caratula-enfoque-vertical"
+          label="Vertical"
+          startLabel="Arriba"
+          endLabel="Abajo"
+          value={focus.y}
+          readOnly={readOnly}
+          onChange={(y) => onChange({ ...focus, y })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CoverImageFocusSlider({
+  endLabel,
+  id,
+  label,
+  onChange,
+  readOnly,
+  startLabel,
+  value,
+}: {
+  endLabel: string;
+  id: string;
+  label: string;
+  onChange: (value: number) => void;
+  readOnly: boolean;
+  startLabel: string;
+  value: number;
+}) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <input
+        id={id}
+        className="w-full accent-primary"
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        disabled={readOnly}
+        value={value}
+        aria-valuetext={`${value}%`}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <div className="flex justify-between text-xs text-muted-foreground" aria-hidden="true">
+        <span>{startLabel}</span>
+        <span>{endLabel}</span>
+      </div>
+    </Field>
   );
 }
 

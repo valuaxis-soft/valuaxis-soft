@@ -707,3 +707,85 @@ test("append — no mutation", () => {
 
   assert.deepEqual(layout, frozenLayout);
 });
+
+/* ================================================================== */
+/*  Column IDs stay unique across the whole layout                     */
+/* ================================================================== */
+
+function allColumnIds(layout: ContentLayoutV2): string[] {
+  return layout.rows.flatMap((r) => r.columns.map((c) => c.id));
+}
+
+test("append — a new item never takes the ID of a column that was moved to another row", () => {
+  // "c-1-1" was created in the second row and later dragged to the top. The
+  // last row is the second one again, so a position-based ID would repeat it.
+  const stored = v2([
+    row("r-2", [col("c-1-1", [ref("concept", "moved")])]),
+    row("r-0", [col("c-0-0", [ref("concept", "a")])]),
+  ]);
+  const container = makeContainer({
+    concepts: [{ id: "moved" }, { id: "a" }, { id: "added" }],
+    contentLayout: stored,
+  });
+
+  const result = appendMissingContentToV2(container, stored);
+
+  assert.deepEqual(result.rows[1].columns.map((c) => c.items[0].id), ["a", "added"]);
+  const columnIds = allColumnIds(result);
+  assert.equal(new Set(columnIds).size, columnIds.length, columnIds.join(", "));
+  // The columns that already existed keep their IDs.
+  assert.equal(result.rows[0].columns[0].id, "c-1-1");
+  assert.equal(result.rows[1].columns[0].id, "c-0-0");
+});
+
+test("append — a new row never takes the ID of a column that lives elsewhere", () => {
+  // The first column carries the ID the next new row would generate.
+  const stored = v2([
+    row("r-0", [col("c-1-0", [ref("concept", "a")]), col("c-0-1", [ref("concept", "b")]), col("c-0-2", [ref("concept", "c")])]),
+  ]);
+  const container = makeContainer({
+    concepts: [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }],
+    contentLayout: stored,
+  });
+
+  const result = appendMissingContentToV2(container, stored);
+
+  assert.equal(result.rows.length, 2);
+  const columnIds = allColumnIds(result);
+  assert.equal(new Set(columnIds).size, columnIds.length, columnIds.join(", "));
+});
+
+test("resolve — a stored layout with one column ID in two rows is repaired, content intact", () => {
+  const stored = v2([
+    row("r-0", [col("c-2-1", [ref("concept", "a")])]),
+    row("r-1", [col("c-1-0", [ref("concept", "b")])]),
+    row("r-2", [col("c-2-0", [ref("concept", "c")]), col("c-2-1", [ref("concept", "d")])]),
+  ]);
+  const container = makeContainer({
+    concepts: [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }],
+    contentLayout: stored,
+  });
+
+  const result = resolveContentLayoutV2(container);
+
+  assert.deepEqual(result.rows.map((r) => r.columns.map((c) => c.items[0].id)), [["a"], ["b"], ["c", "d"]]);
+  const columnIds = allColumnIds(result);
+  assert.equal(new Set(columnIds).size, columnIds.length, columnIds.join(", "));
+  // The first holder of the ID keeps it; resolving again gives the same IDs.
+  assert.equal(result.rows[0].columns[0].id, "c-2-1");
+  assert.deepEqual(allColumnIds(resolveContentLayoutV2(container)), columnIds);
+});
+
+test("resolve — two rows sharing an ID are told apart", () => {
+  const stored = v2([
+    row("r-0", [col("c-0-0", [ref("concept", "a")])]),
+    row("r-0", [col("c-1-0", [ref("concept", "b")])]),
+  ]);
+  const container = makeContainer({ concepts: [{ id: "a" }, { id: "b" }], contentLayout: stored });
+
+  const result = resolveContentLayoutV2(container);
+
+  assert.equal(result.rows.length, 2);
+  assert.notEqual(result.rows[0].id, result.rows[1].id);
+  assert.equal(result.rows[0].id, "r-0");
+});

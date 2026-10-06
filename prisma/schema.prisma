@@ -1378,6 +1378,8 @@ model CaratulaAvaluo {
   DFechaVigencia     DateTime? @map("DFechaVigencia") @db.Timestamptz(3)
   IMesesVigencia     Int?      @map("IMesesVigencia")
   JFirmas            Json?     @map("JFirmas") @db.JsonB
+  IEnfoqueImagenX    Int?      @map("IEnfoqueImagenX") @db.SmallInt
+  IEnfoqueImagenY    Int?      @map("IEnfoqueImagenY") @db.SmallInt
   DFechaCreacion     DateTime  @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
   DFechaModificacion DateTime  @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
 

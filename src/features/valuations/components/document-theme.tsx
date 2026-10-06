@@ -28,6 +28,14 @@ export interface DocumentThemeTokens {
   conceptValue: string;
   /** Grid for label + value row */
   conceptRowGrid: string;
+  /** Breathing room above and below each concept */
+  conceptRow: string;
+  /** Hairline that sets one line of concepts apart from the next */
+  conceptRule: string;
+  /** Label and value size of a list of long texts (definitions, declarations) */
+  longText: string;
+  /** Room around each concept of a list of long texts */
+  longTextRow: string;
   /** Wrapper for a ContentLayoutV2 row */
   contentRow: string;
   /** Gap between blocks in a page */
@@ -50,6 +58,10 @@ const CARATULA_THEME: DocumentThemeTokens = {
     "min-w-0 text-[10px] text-[#333333] whitespace-pre-wrap break-words leading-snug",
   conceptRowGrid:
     "grid min-w-0 w-full max-w-full grid-cols-[minmax(130px,0.9fr)_minmax(0,1.1fr)] gap-x-3 gap-y-0 items-start",
+  conceptRow: "",
+  conceptRule: "",
+  longText: "",
+  longTextRow: "",
   contentRow: "mt-2 grid gap-1",
   sectionGap: "space-y-2",
   pagePadding: "px-5 pb-7 pt-3 sm:px-8",
@@ -66,9 +78,13 @@ const STANDARD_THEME: DocumentThemeTokens = {
   conceptLabel:
     "min-w-0 text-[11px] font-semibold text-[#1a1a1a] leading-snug",
   conceptValue:
-    "min-w-0 text-[11px] text-[#333333] whitespace-pre-wrap break-words leading-snug",
+    "min-w-0 text-[11px] text-[#333333] whitespace-pre-wrap break-words leading-snug text-justify",
   conceptRowGrid:
     "grid min-w-0 w-full max-w-full grid-cols-[minmax(160px,0.9fr)_minmax(0,1.1fr)] gap-x-4 gap-y-0 items-start",
+  conceptRow: "py-[3px]",
+  conceptRule: "border-b border-slate-200",
+  longText: "text-[12px] leading-[1.45]",
+  longTextRow: "py-[5px]",
   contentRow: "mt-1.5 grid gap-1",
   sectionGap: "space-y-4",
   pagePadding: "px-5 pb-10 pt-3 sm:px-8",

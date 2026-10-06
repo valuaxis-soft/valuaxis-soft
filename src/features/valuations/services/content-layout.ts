@@ -19,38 +19,42 @@ export const CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW = 3;
 /* ------------------------------------------------------------------ */
 
 /**
- * Ensure all column IDs within a row are unique.
+ * Return `id` when it is still free, otherwise a deterministic variant of it
+ * that is. The returned ID is recorded in `usedIds`.
+ */
+function claimUniqueId(id: string, usedIds: Set<string>, position: number): string {
+  let candidate = id;
+  if (usedIds.has(candidate)) {
+    candidate = `${id}-dup-${position}`;
+    let attempt = 1;
+    while (usedIds.has(candidate)) {
+      candidate = `${id}-dup-${position}-${attempt}`;
+      attempt++;
+    }
+  }
+  usedIds.add(candidate);
+  return candidate;
+}
+
+/**
+ * Ensure the column IDs of a row are unique across the WHOLE layout.
  *
- * If two columns share the same `id`, the first keeps its original ID
- * and later duplicates receive deterministic collision-free IDs derived
- * from their position. All business content (items) is preserved.
+ * `usedIds` holds the column IDs already taken by previous rows. The first
+ * column that carries an ID keeps it; later duplicates (in this row or in a
+ * previous one) receive deterministic collision-free IDs derived from their
+ * position. All business content (items) is preserved.
  *
- * Never mutates input. Deterministic: same input → same output.
+ * Column IDs are the identity the editor drags by: two columns sharing one
+ * make a drag move the wrong item. Never mutates input.
  */
 function ensureUniqueColumnIds(
   columns: ContentLayoutColumnV2[],
+  usedIds: Set<string>,
 ): ContentLayoutColumnV2[] {
-  const usedIds = new Set<string>();
-  const result: ContentLayoutColumnV2[] = [];
-
-  for (let i = 0; i < columns.length; i++) {
-    const col = columns[i];
-    if (!usedIds.has(col.id)) {
-      usedIds.add(col.id);
-      result.push(col);
-    } else {
-      let candidate = `${col.id}-dup-${i}`;
-      let attempt = 1;
-      while (usedIds.has(candidate)) {
-        candidate = `${col.id}-dup-${i}-${attempt}`;
-        attempt++;
-      }
-      usedIds.add(candidate);
-      result.push({ ...col, id: candidate });
-    }
-  }
-
-  return result;
+  return columns.map((col, index) => {
+    const id = claimUniqueId(col.id, usedIds, index);
+    return id === col.id ? col : { ...col, id };
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -236,6 +240,8 @@ export function bootstrapContentLayout(container: ContentContainer): ContentLayo
  */
 export function normalizeContentLayout(layout: ContentLayout): ContentLayout {
   const seen = new Set<string>();
+  const usedColumnIds = new Set<string>();
+  const usedRowIds = new Set<string>();
   const normalizedRows: ContentLayoutRowV2[] = [];
 
   for (const row of layout.rows) {
@@ -282,14 +288,14 @@ export function normalizeContentLayout(layout: ContentLayout): ContentLayout {
     if (normalizedColumns.length === 0) continue;
 
     // Repair any duplicate column IDs (preserves all business content)
-    const repairedColumns = ensureUniqueColumnIds(normalizedColumns);
+    const repairedColumns = ensureUniqueColumnIds(normalizedColumns, usedColumnIds);
 
     const totalChunks = Math.ceil(repairedColumns.length / CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW);
     for (let offset = 0; offset < repairedColumns.length; offset += CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW) {
       const chunk = repairedColumns.slice(offset, offset + CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW);
       const chunkIdx = Math.floor(offset / CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW);
       const id = totalChunks === 1 ? row.id : `${row.id}-split-${chunkIdx}`;
-      normalizedRows.push({ id, columns: chunk });
+      normalizedRows.push({ id: claimUniqueId(id, usedRowIds, normalizedRows.length), columns: chunk });
     }
   }
 
@@ -342,6 +348,8 @@ export function reconcileContentLayout(
 ): ContentLayout {
   const live = buildLiveIdSets(container);
   const seen = new Set<string>();
+  const usedColumnIds = new Set<string>();
+  const usedRowIds = new Set<string>();
   const reconciledRows: ContentLayoutRowV2[] = [];
 
   for (const row of layout.rows) {
@@ -391,7 +399,7 @@ export function reconcileContentLayout(
     if (reconciledColumns.length === 0) continue;
 
     // Repair any duplicate column IDs (preserves all business content)
-    const repairedReconciledColumns = ensureUniqueColumnIds(reconciledColumns);
+    const repairedReconciledColumns = ensureUniqueColumnIds(reconciledColumns, usedColumnIds);
 
     const totalChunks = Math.ceil(repairedReconciledColumns.length / CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW);
     for (let offset = 0; offset < repairedReconciledColumns.length; offset += CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW) {
@@ -399,7 +407,7 @@ export function reconcileContentLayout(
       const chunkIdx = Math.floor(offset / CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW);
       // Only add split suffix when a row is actually split into multiple chunks
       const id = totalChunks === 1 ? row.id : `${row.id}-split-${chunkIdx}`;
-      reconciledRows.push({ id, columns: chunk });
+      reconciledRows.push({ id: claimUniqueId(id, usedRowIds, reconciledRows.length), columns: chunk });
     }
   }
 
@@ -471,8 +479,10 @@ function findMaxRowIndex(rows: ContentLayoutRowV2[]): number {
  *    - If the last row has fewer than 3 columns, add a new column there.
  *    - Otherwise, create a new row with one column.
  *  - Preserves all existing row/column structure.
- *  - Generated IDs use an offset from the highest existing row index
- *    to avoid collisions with existing IDs.
+ *  - Generated row IDs use an offset from the highest existing row index
+ *    and generated column IDs skip every ID already in the layout: column
+ *    IDs travel with their column when it is moved, so a position-based ID
+ *    may already belong to a column that now lives somewhere else.
  *  - Never mutates the input.
  */
 export function appendMissingContentToV2(
@@ -508,6 +518,14 @@ export function appendMissingContentToV2(
   const maxExistingRowIdx = findMaxRowIndex(layout.rows);
   let nextRowIdx = maxExistingRowIdx + 1;
 
+  const usedColumnIds = new Set<string>();
+  for (const row of layout.rows) {
+    if (!row || !Array.isArray(row.columns)) continue;
+    for (const col of row.columns) {
+      if (col && typeof col.id === "string") usedColumnIds.add(col.id);
+    }
+  }
+
   // Build new rows — start with a shallow copy
   const resultRows: ContentLayoutRowV2[] = layout.rows.map((row) => ({
     ...row,
@@ -527,7 +545,11 @@ export function appendMissingContentToV2(
         // Fill last row — use the row's own index from resultRows, not length
         const lastRowIdx = resultRows.length - 1;
         lastRow.columns.push({
-          id: deterministicColumnId(lastRowIdx, lastRow.columns.length),
+          id: claimUniqueId(
+            deterministicColumnId(lastRowIdx, lastRow.columns.length),
+            usedColumnIds,
+            lastRow.columns.length,
+          ),
           items: [ref],
         });
         continue;
@@ -540,7 +562,7 @@ export function appendMissingContentToV2(
       id: deterministicRowId(nextRowIdx++),
       columns: [
         {
-          id: deterministicColumnId(newRowRowIdx, 0),
+          id: claimUniqueId(deterministicColumnId(newRowRowIdx, 0), usedColumnIds, 0),
           items: [ref],
         },
       ],

@@ -4,6 +4,8 @@ import type { Concept, ContentLayout, ImageContent, TableContent } from "@/featu
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
 import { resolveConceptLabelGuide } from "@/features/valuations/services/concept-presentation";
+import { useDocumentTheme } from "@/features/valuations/components/document-theme";
+import { cn } from "@/lib/utils";
 import { DocumentConceptValue } from "./document-concept-value";
 import { DocumentImage } from "./document-image";
 import { DocumentTable } from "./document-table";
@@ -13,23 +15,22 @@ import type { ConceptPresentation } from "@/features/valuations/services/concept
 
 function TechnicalConceptRow({
   concept,
-  applyConceptLayout,
   labelGuidePx,
 }: {
   concept: Concept;
-  applyConceptLayout: boolean;
   labelGuidePx: number;
 }) {
+  const theme = useDocumentTheme();
   return (
     <div
-      className="grid min-w-0 w-full max-w-full items-start"
+      className={cn("grid min-w-0 w-full max-w-full items-start", theme.conceptRow, theme.conceptRule)}
       style={{ gridTemplateColumns: `${labelGuidePx}px minmax(0, 1fr)` }}
     >
       <span className="min-w-0 text-[11px] font-semibold text-[#1a1a1a] leading-snug text-right pr-2 whitespace-nowrap">
         {formatConceptTitleWithColon(concept.label)}
       </span>
-      <span className="min-w-0 text-[11px] text-[#333333] whitespace-pre-wrap break-words leading-snug">
-        <DocumentConceptValue applyFormatting={applyConceptLayout} concept={concept} fallback="—" />
+      <span className="min-w-0 text-[11px] text-[#333333] whitespace-pre-wrap break-words leading-snug text-justify">
+        <DocumentConceptValue concept={concept} fallback="—" />
       </span>
     </div>
   );
@@ -39,11 +40,9 @@ function TechnicalConceptRow({
 
 export function DocumentTechnicalList({
   container,
-  applyConceptLayout,
   containerPresentation,
 }: {
   container: { concepts: Concept[]; images: ImageContent[]; tables: TableContent[]; contentLayout?: ContentLayout };
-  applyConceptLayout: boolean;
   containerPresentation?: ConceptPresentation;
 }) {
   const resolvedLayout = resolveContentLayout(container);
@@ -53,7 +52,7 @@ export function DocumentTechnicalList({
   const guidePx = resolveConceptLabelGuide(containerPresentation);
 
   return (
-    <div className="space-y-1">
+    <div>
       {resolvedLayout.rows.map((layoutRow) => (
         layoutRow.columns.map((column) => (
           column.items.map((itemRef) => {
@@ -64,7 +63,6 @@ export function DocumentTechnicalList({
                 <TechnicalConceptRow
                   key={itemRef.id}
                   concept={concept}
-                  applyConceptLayout={applyConceptLayout}
                   labelGuidePx={guidePx}
                 />
               );

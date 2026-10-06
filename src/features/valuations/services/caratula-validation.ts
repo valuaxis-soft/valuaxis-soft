@@ -8,13 +8,34 @@ export type CaratulaValidationErrors = Partial<
   >
 >;
 
+export const MAX_FOLIO_LENGTH = 80;
+
+/** Field names as the user reads them, to say which ones stop a save. */
+const FIELD_LABELS: Record<keyof CaratulaValidationErrors, string> = {
+  folio: "Folio",
+  tituloInmueble: "Título del bien",
+  location: "Ubicación del bien",
+  postalCode: "Código postal",
+  telefonoEmpresa: "Teléfono",
+  correoEmpresa: "Correo",
+  firmas: "Firmas",
+};
+
+/** "Folio: Máximo 80 caracteres. Teléfono: Ingresa 10 dígitos…" */
+export function describeCaratulaErrors(errors: CaratulaValidationErrors) {
+  return (Object.entries(errors) as [keyof CaratulaValidationErrors, string][])
+    .map(([field, message]) => `${FIELD_LABELS[field]}: ${message}`)
+    .join(" ");
+}
+
 export function validateCaratula(
   caratula: CaratulaFormData,
   meta: ValuationMeta,
 ): CaratulaValidationErrors {
   const errors: CaratulaValidationErrors = {};
 
-  if (caratula.folio.length > 15) errors.folio = "Máximo 15 caracteres.";
+  // Free text, as each firm numbers its valuations; only the column size limits it.
+  if (caratula.folio.length > MAX_FOLIO_LENGTH) errors.folio = `Máximo ${MAX_FOLIO_LENGTH} caracteres.`;
   if (caratula.tituloInmueble.length > 120) errors.tituloInmueble = "Máximo 120 caracteres.";
   if (meta.location.length > 180) errors.location = "Máximo 180 caracteres.";
   if (meta.postalCode && !/^\d{1,5}$/.test(meta.postalCode)) {

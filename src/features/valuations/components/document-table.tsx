@@ -219,23 +219,26 @@ function ReportDocumentTable({ table }: { table: TableContent }) {
   return (
     <div className="w-full overflow-hidden">
       {/* Column widths follow the content so amounts stay on one line; wider
-          tables (homologation, costs) use a smaller font to fit the page. */}
+          tables (homologation, costs) use a smaller font to fit the page, and
+          the rest print at the size of the concepts around them. */}
       <table className={cn(
         "w-full border-collapse",
-        tableV2.columns.length > 7 ? "text-[10px]" : tableV2.columns.length > 5 ? "text-xs" : "text-sm",
+        tableV2.columns.length > 7 ? "text-[10px]" : "text-[11px]",
       )}>
         <colgroup>
           {tableV2.columns.map((column) => (
             <col key={column.id} />
           ))}
         </colgroup>
-        <TableCaption>{tableV2.title}</TableCaption>
+        {/* An untitled table leaves no empty band above its header. */}
+        {tableV2.title.trim() ? <TableCaption className="mt-0 mb-1 text-[11px]">{tableV2.title}</TableCaption> : null}
         {renderSchemaHeader(tableV2, tableV2.columns)}
         <TableBody>
           {tableV2.rows.map((row) => (
-            <TableRow key={row.id}>
+            // Gray and white rows alternate, first one gray, as in the appraiser's own format.
+            <TableRow className="border-slate-200 odd:bg-slate-100" key={row.id}>
               {tableV2.columns.map((column) => (
-                <TableCell className="whitespace-normal text-wrap break-words" key={column.id}>{getCellDisplayValue(tableV2, row.id, column.id, formulaResults)}</TableCell>
+                <TableCell className="px-2 py-1 whitespace-normal text-wrap break-words" key={column.id}>{getCellDisplayValue(tableV2, row.id, column.id, formulaResults)}</TableCell>
               ))}
             </TableRow>
           ))}

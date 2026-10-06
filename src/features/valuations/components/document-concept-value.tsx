@@ -4,16 +4,18 @@ import {
   getConceptUrlHref,
 } from "@/features/valuations/services/concept-value-format";
 
+/**
+ * A concept's value as printed. Its unit, currency, date or phone format
+ * belongs to the value, so every section prints it, whatever its layout.
+ */
 export function DocumentConceptValue({
-  applyFormatting = true,
   concept,
   fallback = "",
 }: {
-  applyFormatting?: boolean;
   concept: Concept;
   fallback?: string;
 }) {
-  const value = applyFormatting ? formatConceptValueForDocument(concept) : concept.value.trim();
+  const value = formatConceptValueForDocument(concept);
   const href = getConceptUrlHref(concept);
 
   if (href && value) {

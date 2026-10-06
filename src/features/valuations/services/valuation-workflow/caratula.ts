@@ -6,6 +6,7 @@ import {
   validUntilDate,
   VALIDITY_MONTHS_ERROR,
 } from "@/features/valuations/services/valuation-signatures";
+import { normalizeCoverImageFocus } from "@/features/valuations/services/cover-image-focus";
 import { ValuationWorkflowError } from "./errors";
 import type { CaratulaPayload, Tx } from "./types";
 
@@ -20,6 +21,9 @@ export async function saveCaratula(input: {
   if (signatures && !signatures.ok) throw new ValuationWorkflowError(signatures.error, 400);
   const months = input.payload.mesesVigencia ?? null;
   if (months !== null && !isValidityMonths(months)) throw new ValuationWorkflowError(VALIDITY_MONTHS_ERROR, 400);
+
+  // The framing changes only when the client sends it, like the signatures.
+  const focus = input.payload.enfoqueImagenPrincipal === undefined ? null : normalizeCoverImageFocus(input.payload.enfoqueImagenPrincipal);
 
   const data = {
     SNumeroAvaluo: cleanText(input.payload.numeroAvaluo),
@@ -38,6 +42,7 @@ export async function saveCaratula(input: {
     IMesesVigencia: months,
     // With months, the validity date is the valuation date plus those months.
     DFechaVigencia: toDate(months === null ? input.payload.fechaVigencia : validUntilDate(input.payload.fechaAvaluo, months)),
+    ...(focus ? { IEnfoqueImagenX: focus.x, IEnfoqueImagenY: focus.y } : {}),
   };
 
   await client.caratulaAvaluo.upsert({

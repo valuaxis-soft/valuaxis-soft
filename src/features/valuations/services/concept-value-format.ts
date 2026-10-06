@@ -1,4 +1,5 @@
 import type { Concept, ConceptDateFormat, ConceptValueFormat } from "@/features/valuations/model";
+import { formatMexicanPhone } from "@/features/valuations/services/caratula-validation";
 
 export const NUMERIC_VALUE_FORMAT_OPTIONS: Array<{ value: ConceptValueFormat; label: string; symbol?: string }> = [
   { value: "plain", label: "Sin formato" },
@@ -102,8 +103,21 @@ export function resolveEffectiveSourceUnit(
   return concept.sourceUnit ?? concept.valueFormat ?? "plain";
 }
 
-export function isNumericConcept(concept: Pick<Concept, "type">) {
-  return concept.type === "number" || concept.type === "currency" || concept.type === "measurement";
+/**
+ * A concept whose value is a number with a format. A text concept becomes one
+ * when the appraiser gives it a unit (m², $, %…): there is a single "Texto"
+ * to create, and the unit says how its value reads.
+ */
+export function isNumericConcept(concept: Pick<Concept, "type"> & Partial<Pick<Concept, "valueFormat">>) {
+  if (concept.type === "number" || concept.type === "currency" || concept.type === "measurement") return true;
+  return isTextConcept(concept) && concept.valueFormat !== undefined && concept.valueFormat !== "plain";
+}
+
+const isTextConcept = (concept: Pick<Concept, "type">) => concept.type === undefined || concept.type === "text";
+
+/** Concepts that offer the "Formato del valor" control. */
+export function supportsValueFormat(concept: Pick<Concept, "type">) {
+  return isTextConcept(concept) || concept.type === "number" || concept.type === "currency" || concept.type === "measurement";
 }
 
 export function resolveConceptValueFormat(
@@ -189,11 +203,27 @@ export function formatDateValue(
   return format === "normal" ? capitalizeMonth(formatted) : formatted;
 }
 
+/**
+ * A phone as the editor shows it, "+52 (348) 559 5955". Anything that is not a
+ * ten-digit Mexican number (an extension, a foreign number) prints as written.
+ */
+function formatPhoneForDocument(value: string) {
+  const written = value.trim();
+  const digits = written.replace(/\D/g, "");
+  const national = digits.length === 12 && digits.startsWith("52") ? digits.slice(2) : digits;
+  // Letters mean the value says more than a number ("ext. 12").
+  if (national.length !== 10 || /[a-z]/i.test(written)) return written;
+  return formatMexicanPhone(national);
+}
+
 export function formatConceptValueForDocument(
   concept: Pick<Concept, "type" | "value" | "valueFormat" | "customUnit" | "sourceUnit" | "dateFormat">,
 ) {
   if (concept.type === "date") {
     return formatDateValue(concept.value, concept.dateFormat);
+  }
+  if (concept.type === "phone") {
+    return formatPhoneForDocument(concept.value);
   }
   return formatNumericConceptValue(concept);
 }
@@ -306,9 +336,10 @@ function formatConvertedNumber(value: number): string {
 function formatPlainNumber(value: string) {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return value;
-  const decimals = value.includes(".") ? value.split(".")[1]?.length ?? 0 : 0;
+  // The decimals written are the decimals printed: "7.50" stays "7.50", not "7.5".
+  const decimals = Math.min(value.includes(".") ? value.split(".")[1]?.length ?? 0 : 0, 20);
   return new Intl.NumberFormat("es-MX", {
-    minimumFractionDigits: 0,
+    minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(numericValue);
 }
