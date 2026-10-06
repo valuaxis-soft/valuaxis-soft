@@ -19,7 +19,14 @@ import {
   type FactorOption,
 } from "@/features/valuations/calculation/factor-catalog";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
-import type { ComparableDto, ComparableFactorDto, FactorSlotConfig, FactorType } from "@/features/valuations/calculation/market-types";
+import {
+  isBuiltComparableType,
+  type ComparableDto,
+  type ComparableFactorDto,
+  type ComparableType,
+  type FactorSlotConfig,
+  type FactorType,
+} from "@/features/valuations/calculation/market-types";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 const text = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value));
@@ -38,7 +45,8 @@ type FactorDraft = {
   justification: string;
 };
 type Draft = Record<"location" | "area" | "price" | "sourceName" | "contactName" | "contactPhone" | "url" | "offerDate"
-  | "landUse" | "shape" | "zone" | "frontage" | "depth" | "topography" | "services" | "notes", string>;
+  | "landUse" | "landUseKey" | "shape" | "zone" | "frontCount" | "frontage" | "depth" | "topography" | "services"
+  | "conservation" | "quality" | "notes", string>;
 
 function initialDraft(comparable: ComparableDto | null): Draft {
   return {
@@ -51,12 +59,16 @@ function initialDraft(comparable: ComparableDto | null): Draft {
     url: comparable?.url ?? "",
     offerDate: comparable?.offerDate ?? "",
     landUse: comparable?.landUse ?? "",
+    landUseKey: comparable?.landUseKey ?? "",
     shape: comparable?.shape ?? "",
     zone: comparable?.zone ?? "",
+    frontCount: text(comparable?.frontCount),
     frontage: text(comparable?.frontage),
     depth: text(comparable?.depth),
     topography: comparable?.topography ?? "",
     services: comparable?.services ?? "",
+    conservation: comparable?.conservation ?? "",
+    quality: comparable?.quality ?? "",
     notes: comparable?.notes ?? "",
   };
 }
@@ -125,6 +137,7 @@ export function ComparableDialog(props: {
   comparable: ComparableDto | null;
   factorSlots: FactorSlotConfig[];
   catalog: FactorCatalog;
+  comparableType: ComparableType;
   unitLabel: string;
   readOnly: boolean;
   onSubmit: (values: ComparableFormValues) => Promise<boolean>;
@@ -154,6 +167,11 @@ export function ComparableDialog(props: {
       setError("El factor de superficie debe ser un número mayor que cero, o quedar vacío para usar la fórmula.");
       return;
     }
+    const frontCount = parseDecimal(draft.frontCount);
+    if (draft.frontCount.trim() && (frontCount === null || !Number.isInteger(frontCount) || frontCount < 1)) {
+      setError("El número de frentes debe ser un entero de 1 en adelante, o quedar vacío.");
+      return;
+    }
     setError(null);
     setSaving(true);
     const capturedFactors: ComparableFactorDto[] = Object.entries(factors).map(([type, value]) => {
@@ -173,12 +191,16 @@ export function ComparableDialog(props: {
       url: draft.url.trim() || null,
       offerDate: draft.offerDate || null,
       landUse: draft.landUse.trim() || null,
+      landUseKey: draft.landUseKey.trim() || null,
       shape: draft.shape.trim() || null,
       zone: draft.zone.trim() || null,
+      frontCount,
       frontage: parseDecimal(draft.frontage),
       depth: parseDecimal(draft.depth),
       topography: draft.topography.trim() || null,
       services: draft.services.trim() || null,
+      conservation: draft.conservation.trim() || null,
+      quality: draft.quality.trim() || null,
       notes: draft.notes.trim() || null,
       factors: typedSurface === null
         ? capturedFactors
@@ -199,6 +221,14 @@ export function ComparableDialog(props: {
 
   const area = parseDecimal(draft.area);
   const price = parseDecimal(draft.price);
+  const built = isBuiltComparableType(props.comparableType);
+  // Label, columns it takes of the four, and whether it is a figure.
+  const details: Array<[key: keyof Draft, label: string, span?: string, numeric?: boolean]> = [
+    ["landUseKey", "Clave de uso de suelo"], ["landUse", "Uso de suelo (descripción)", "sm:col-span-2"], ["zone", "Zona"],
+    ["shape", "Forma"], ["topography", "Topografía"], ["frontCount", "Núm. de frentes", undefined, true], ["frontage", "Frente (m)", undefined, true],
+    ["depth", "Fondo (m)", undefined, true], ["services", "Servicios", built ? undefined : "sm:col-span-3"],
+    ...(built ? [["conservation", "Conservación"], ["quality", "Calidad"]] as Array<[keyof Draft, string]> : []),
+  ];
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -258,13 +288,10 @@ export function ComparableDialog(props: {
             </FieldGroup>
 
             <FieldGroup className="grid gap-3 sm:grid-cols-4">
-              {([
-                ["landUse", "Uso de suelo"], ["zone", "Zona"], ["shape", "Forma"], ["topography", "Topografía"],
-                ["frontage", "Frente (m)"], ["depth", "Fondo (m)"], ["services", "Servicios"],
-              ] as const).map(([key, label]) => (
-                <Field key={key}>
+              {details.map(([key, label, span, numeric]) => (
+                <Field key={key} className={span}>
                   <FieldLabel htmlFor={`comparable-${key}`}>{label}</FieldLabel>
-                  <Input id={`comparable-${key}`} value={draft[key]} onChange={set(key)} />
+                  <Input id={`comparable-${key}`} inputMode={numeric ? "decimal" : undefined} value={draft[key]} onChange={set(key)} />
                 </Field>
               ))}
               <Field className="sm:col-span-4">

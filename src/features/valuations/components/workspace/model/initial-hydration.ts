@@ -72,47 +72,63 @@ export function mergeDocumentHeaderImage(
   });
 }
 
+/**
+ * Give the Datos generales images their fresh URLs from the file service.
+ *
+ * An image is matched by ID wherever it is in the section: it may have been
+ * moved since it was uploaded, and the file service only remembers the Block
+ * (and Apartado) it was uploaded to. A stored image the section does not hold
+ * anywhere (uploaded, not yet saved) is added to that Block or Apartado.
+ */
 export function mergeDatosImages(
   sections: AppSection[],
   storedImages: DatosImageResponse[],
 ) {
   return sections.map((section) => {
     if (section.id !== "datos" && section.id !== "datosGenerales") return section;
+
+    const placedIds = new Set(
+      section.blocks.flatMap((block) => [
+        ...block.images.map((image) => image.id),
+        ...block.apartados.flatMap((subBlock) => subBlock.images.map((image) => image.id)),
+      ]),
+    );
+    const storedById = new Map(storedImages.map((image) => [image.id, image]));
+    const unplaced = storedImages.filter((image) => !placedIds.has(image.id));
+
     return {
       ...section,
-      blocks: section.blocks.map((block) => {
-        const blockImages = storedImages.filter(
-          (image) => image.blockId === block.id && !image.subBlockId,
-        );
-        return {
-          ...block,
-          images: mergeStoredImages(block.images, blockImages),
-          apartados: block.apartados.map((subBlock) => ({
-            ...subBlock,
-            images: mergeStoredImages(
-              subBlock.images,
-              storedImages.filter(
-                (image) => image.blockId === block.id && image.subBlockId === subBlock.id,
-              ),
-            ),
-          })),
-        };
-      }),
+      blocks: section.blocks.map((block) => ({
+        ...block,
+        images: mergeStoredImages(
+          block.images,
+          storedById,
+          unplaced.filter((image) => image.blockId === block.id && !image.subBlockId),
+        ),
+        apartados: block.apartados.map((subBlock) => ({
+          ...subBlock,
+          images: mergeStoredImages(
+            subBlock.images,
+            storedById,
+            unplaced.filter((image) => image.blockId === block.id && image.subBlockId === subBlock.id),
+          ),
+        })),
+      })),
     };
   });
 }
 
-function mergeStoredImages(current: ImageContent[], stored: DatosImageResponse[]) {
-  const storedById = new Map(stored.map((image) => [image.id, image]));
-  const merged = current.map((image) => {
-    const storedImage = storedById.get(image.id);
-    if (!storedImage) return image;
-    storedById.delete(image.id);
-    return { ...image, src: storedImage.url ?? "" };
-  });
+function mergeStoredImages(
+  current: ImageContent[],
+  storedById: Map<string, DatosImageResponse>,
+  added: DatosImageResponse[],
+): ImageContent[] {
   return [
-    ...merged,
-    ...[...storedById.values()].map((image) => ({
+    ...current.map((image) => {
+      const storedImage = storedById.get(image.id);
+      return storedImage ? { ...image, src: storedImage.url ?? "" } : image;
+    }),
+    ...added.map((image) => ({
       id: image.id,
       title: image.filename,
       src: image.url ?? "",

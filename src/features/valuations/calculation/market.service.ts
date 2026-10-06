@@ -41,14 +41,21 @@ const COMPARABLE_ENTITY = "ComparableAvaluo";
 type PhotoSnapshot = { id: string; key: string; title: string };
 type PropertySnapshot = {
   landUse: string | null;
+  landUseKey: string | null;
   shape: string | null;
   zone: string | null;
+  frontCount: number | null;
   frontage: number | null;
   depth: number | null;
   topography: string | null;
   services: string | null;
+  conservation: string | null;
+  quality: string | null;
   notes: string | null;
 };
+/** What JConfiguracion keeps of the settings; the rest has its own columns. */
+type StoredConfiguration = Partial<Pick<MarketSettingsDto,
+  "factorSlots" | "adoptedUnitValue" | "rounding" | "offerLevel" | "typicalFrontage" | "typicalDepth">>;
 type PublicationSnapshot = {
   sourceName: string | null;
   contactName: string | null;
@@ -87,12 +94,16 @@ async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean): Prom
     area: decimal(row.NSuperficieTerrenoCapturada ?? row.NSuperficieConstruccionCapturada ?? row.NSuperficieRentableCapturada),
     price: decimal(row.NPrecioCapturado),
     landUse: property.landUse ?? null,
+    landUseKey: property.landUseKey ?? null,
     shape: property.shape ?? null,
     zone: property.zone ?? null,
+    frontCount: property.frontCount ?? null,
     frontage: property.frontage ?? null,
     depth: property.depth ?? null,
     topography: property.topography ?? null,
     services: property.services ?? null,
+    conservation: property.conservation ?? null,
+    quality: property.quality ?? null,
     notes: property.notes ?? null,
     sourceName: publication.sourceName ?? null,
     contactName: publication.contactName ?? null,
@@ -125,7 +136,7 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
     }),
   ]);
   const defaults = defaultMarketSettings(type);
-  const configuration = asRecord(approach?.JConfiguracion ?? null) as { factorSlots?: FactorSlotConfig[]; adoptedUnitValue?: number | null; rounding?: number | null };
+  const configuration = asRecord(approach?.JConfiguracion ?? null) as StoredConfiguration;
   const settings: MarketSettingsDto = approach
     ? {
         comparableType: type,
@@ -137,6 +148,9 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
         additionalAmount: decimal(approach.NMontoAdicional) ?? 0,
         factorSlots: configuration.factorSlots?.length ? configuration.factorSlots : defaults.factorSlots,
         ...(configuration.rounding === undefined ? {} : { rounding: configuration.rounding }),
+        offerLevel: configuration.offerLevel ?? null,
+        typicalFrontage: configuration.typicalFrontage ?? null,
+        typicalDepth: configuration.typicalDepth ?? null,
       }
     : defaults;
   const comparables = await Promise.all(rows.map((row) => toComparableDto(row, withPhotoUrls)));
@@ -233,11 +247,17 @@ async function recomputeDependents(tx: Tx, versionId: number, type: ComparableTy
   if (type !== "INMUEBLE_RENTA") await recomputeConclusion(tx, versionId);
 }
 
-function storedConfiguration(settings: Pick<MarketSettingsDto, "factorSlots" | "adoptedUnitValue" | "rounding">) {
+/** The value sent, or the stored one when the client left the field out. */
+const unlessOmitted = <T>(sent: T | undefined, stored: T | null | undefined) => (sent === undefined ? stored ?? null : sent);
+
+function storedConfiguration(settings: StoredConfiguration) {
   return {
     factorSlots: settings.factorSlots,
     adoptedUnitValue: settings.adoptedUnitValue,
     ...(settings.rounding === undefined ? {} : { rounding: settings.rounding }),
+    offerLevel: settings.offerLevel ?? null,
+    typicalFrontage: settings.typicalFrontage ?? null,
+    typicalDepth: settings.typicalDepth ?? null,
   } as Prisma.InputJsonValue;
 }
 
@@ -314,7 +334,8 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
       where: { IdVersionAvaluo_IdTipoComparable: { IdVersionAvaluo: versionId, IdTipoComparable: typeId } },
       select: { JConfiguracion: true },
     });
-    const previousSlots = (asRecord(current?.JConfiguracion ?? null) as { factorSlots?: FactorSlotConfig[] }).factorSlots ?? [];
+    const stored = asRecord(current?.JConfiguracion ?? null) as StoredConfiguration;
+    const previousSlots = stored.factorSlots ?? [];
     await followSubjectRatings(tx, { versionId, typeId, organizationId: user.organizationId, previous: previousSlots, next: payload.factorSlots });
     const data = {
       NSuperficieSujeto: payload.subjectArea,
@@ -322,7 +343,13 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
       NPotenciaSuperficie: payload.surfacePower,
       NMontoAdicional: payload.additionalAmount,
       SJustificacionValor: payload.justification,
-      JConfiguracion: storedConfiguration(payload),
+      // A client that does not send the captures of the appraiser's format leaves them as they were.
+      JConfiguracion: storedConfiguration({
+        ...payload,
+        offerLevel: unlessOmitted(payload.offerLevel, stored.offerLevel),
+        typicalFrontage: unlessOmitted(payload.typicalFrontage, stored.typicalFrontage),
+        typicalDepth: unlessOmitted(payload.typicalDepth, stored.typicalDepth),
+      }),
     };
     await tx.enfoqueMercado.upsert({
       where: { IdVersionAvaluo_IdTipoComparable: { IdVersionAvaluo: versionId, IdTipoComparable: typeId } },
@@ -338,15 +365,20 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
 /*  Comparables                                                        */
 /* ------------------------------------------------------------------ */
 
-function snapshots(payload: ComparableInputPayload) {
+/** `stored` is the snapshot being replaced: fields the client left out stay as they were. */
+function snapshots(payload: ComparableInputPayload, stored: Partial<PropertySnapshot> = {}) {
   const property: PropertySnapshot = {
     landUse: payload.landUse,
+    landUseKey: unlessOmitted(payload.landUseKey, stored.landUseKey),
     shape: payload.shape,
     zone: payload.zone,
+    frontCount: unlessOmitted(payload.frontCount, stored.frontCount),
     frontage: payload.frontage,
     depth: payload.depth,
     topography: payload.topography,
     services: payload.services,
+    conservation: unlessOmitted(payload.conservation, stored.conservation),
+    quality: unlessOmitted(payload.quality, stored.quality),
     notes: payload.notes,
   };
   const publication: PublicationSnapshot = {
@@ -568,7 +600,7 @@ export async function updateComparable(publicId: string, user: AuthUser, compara
         NPrecioCapturado: payload.price,
         ...areaColumns(type, payload.area),
         NValorUnitarioCapturado: payload.price && payload.area ? payload.price / payload.area : null,
-        ...snapshots(payload),
+        ...snapshots(payload, asRecord(current.JPropiedadSnapshot) as Partial<PropertySnapshot>),
       },
     });
     await replaceFactors(tx, current.IdComparableAvaluo, payload);

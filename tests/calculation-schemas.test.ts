@@ -7,6 +7,8 @@ import { DEFAULT_LAND, emptyConstruction, emptyInstallation } from "../src/featu
 import { incomeInputSchema } from "../src/features/valuations/calculation/income-schemas";
 import { DEFAULT_ANNUITY, DEFAULT_DEDUCTIONS, DEFAULT_MARKET_RATE } from "../src/features/valuations/calculation/income-types";
 import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES } from "../src/features/valuations/engine/income";
+import { comparableInputSchema, marketSettingsSchema } from "../src/features/valuations/calculation/market-schemas";
+import { defaultMarketSettings, OFFER_LEVELS } from "../src/features/valuations/calculation/market-types";
 
 /** The issues of a rejected payload as "path: message". */
 function issues(schema: z.ZodType, payload: unknown) {
@@ -230,4 +232,45 @@ test("the conclusion rejects unknown approaches, weights outside 0..1 and long j
   assert.ok(issues(conclusionSettingsSchema, { method: { kind: "single", approach: "costos" }, justification: "x".repeat(4001) })
     .some((issue) => issue.startsWith("justification")));
   accepts(conclusionSettingsSchema, { method: { kind: "single", approach: "costos" }, justification: "x".repeat(4000) });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Market approach                                                    */
+/* ------------------------------------------------------------------ */
+
+const marketSettings = { ...defaultMarketSettings("TERRENO_VENTA"), subjectArea: 169.78 };
+const comparablePayload = {
+  location: "Calle Villa Toledo", area: 140, price: 1260000, landUse: null, shape: null, zone: null, frontage: null, depth: null,
+  topography: null, services: null, notes: null, sourceName: null, contactName: null, contactPhone: null, url: null, offerDate: null, factors: [],
+};
+
+test("market settings: the offer level is one of the six of the format, or empty; a client that omits the new captures still passes", () => {
+  for (const offerLevel of [...OFFER_LEVELS, null]) accepts(marketSettingsSchema, { ...marketSettings, offerLevel });
+  assert.match(issues(marketSettingsSchema, { ...marketSettings, offerLevel: "REGULAR" }).join(), /^offerLevel/);
+  const { offerLevel: _level, typicalFrontage: _frontage, typicalDepth: _depth, ...former } = marketSettings;
+  const parsed = accepts(marketSettingsSchema, former) as Record<string, unknown>;
+  assert.equal("offerLevel" in parsed || "typicalFrontage" in parsed || "typicalDepth" in parsed, false);
+});
+
+test("market settings: the typical frontage and depth are positive metres or empty", () => {
+  const parsed = accepts(marketSettingsSchema, { ...marketSettings, typicalFrontage: 8, typicalDepth: 17.5 }) as typeof marketSettings;
+  assert.deepEqual([parsed.typicalFrontage, parsed.typicalDepth], [8, 17.5]);
+  accepts(marketSettingsSchema, { ...marketSettings, typicalFrontage: null, typicalDepth: null });
+  assert.match(issues(marketSettingsSchema, { ...marketSettings, typicalFrontage: 0 }).join(), /^typicalFrontage/);
+  assert.match(issues(marketSettingsSchema, { ...marketSettings, typicalDepth: -3 }).join(), /^typicalDepth/);
+});
+
+test("a comparable: fronts are a whole number from 1; key, conservation and quality are free text; all optional", () => {
+  const former = accepts(comparableInputSchema, comparablePayload) as Record<string, unknown>;
+  assert.equal(["frontCount", "landUseKey", "conservation", "quality"].some((key) => key in former), false, "a client of before sends none");
+
+  const parsed = accepts(comparableInputSchema, {
+    ...comparablePayload, frontCount: 2, landUseKey: "  AU-I/CS-D ", conservation: "Buena", quality: "  ",
+  }) as Record<string, unknown>;
+  assert.deepEqual([parsed.frontCount, parsed.landUseKey, parsed.conservation, parsed.quality], [2, "AU-I/CS-D", "Buena", null]);
+  accepts(comparableInputSchema, { ...comparablePayload, frontCount: null, landUseKey: null, conservation: null, quality: null });
+
+  assert.deepEqual(issues(comparableInputSchema, { ...comparablePayload, frontCount: 1.5 }), ["frontCount: El número de frentes debe ser un entero."]);
+  assert.deepEqual(issues(comparableInputSchema, { ...comparablePayload, frontCount: 0 }), ["frontCount: El número de frentes debe ser 1 o más."]);
+  assert.match(issues(comparableInputSchema, { ...comparablePayload, landUseKey: "x".repeat(61) }).join(), /^landUseKey/);
 });

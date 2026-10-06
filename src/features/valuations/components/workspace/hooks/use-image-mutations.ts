@@ -11,7 +11,12 @@ import { resolveContentLayout } from "@/features/valuations/services/content-lay
 import { newId } from "../model/content-factories";
 import { imageContentFromDocumentHeaderImage } from "../model/initial-hydration";
 import { textEditGroupKey } from "../model/editor-history";
-import { ensureBlockContentIntegrity, getDocumentHeaderImage } from "../model/section-content";
+import {
+  ensureBlockContentIntegrity,
+  getDocumentHeaderImage,
+  withAddedApartadoContent,
+  withAddedBlockContent,
+} from "../model/section-content";
 import type { EditorState } from "./use-editor-state";
 import { useStoredValuationImages } from "./use-stored-images";
 
@@ -151,33 +156,34 @@ export function useImageMutations({
         src: uploaded.url ?? "",
         enabled: true,
       };
+      const added = { type: "image" as const, id: image.id };
       updateSectionBlocks(sectionId, (blocks) =>
         blocks.map((block) => {
           if (block.id !== blockId) return block;
           if (!apartadoId) {
-            const updated = {
+            if (!replaceImageId) {
+              return withAddedBlockContent({ ...block, images: [...block.images, image] }, added);
+            }
+            return ensureBlockContentIntegrity({
               ...block,
-              images: replaceImageId
-                ? block.images.map((current) => current.id === replaceImageId
-                  ? { ...image, id: current.id, title: current.title || image.title }
-                  : current)
-                : [...block.images, image],
-            };
-            return ensureBlockContentIntegrity(updated);
+              images: block.images.map((current) => current.id === replaceImageId
+                ? { ...image, id: current.id, title: current.title || image.title }
+                : current),
+            });
           }
           return {
             ...block,
             apartados: block.apartados.map((subBlock) => {
               if (subBlock.id !== apartadoId) return subBlock;
+              if (!replaceImageId) {
+                return withAddedApartadoContent({ ...subBlock, images: [...subBlock.images, image] }, added);
+              }
               const updated = {
                 ...subBlock,
-                images: replaceImageId
-                  ? subBlock.images.map((current) => current.id === replaceImageId
-                    ? { ...image, id: current.id, title: current.title || image.title }
-                    : current)
-                  : [...subBlock.images, image],
+                images: subBlock.images.map((current) => current.id === replaceImageId
+                  ? { ...image, id: current.id, title: current.title || image.title }
+                  : current),
               };
-              // Reconcile content layout so the new image appears in the form
               return { ...updated, contentLayout: resolveContentLayout(updated) };
             }),
           };

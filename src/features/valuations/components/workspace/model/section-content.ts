@@ -1,8 +1,13 @@
 import type { AppSection, Block, Concept } from "@/features/valuations/model";
 import { resolveEffectiveConcept } from "@/features/valuations/concept-links";
 import { COMPANY_HEADER_BLOCK_ID } from "@/features/valuations/services/caratula-company-header";
-import { normalizeBlockFlowV2, isBlockFlowV2 } from "@/features/valuations/services/block-flow";
-import { ensureContentLayout, isContentLayout } from "@/features/valuations/services/content-layout";
+import { normalizeBlockFlowV2, isBlockFlowV2, resolveBlockFlowV2 } from "@/features/valuations/services/block-flow";
+import type { Apartado, ContentLayoutItemRef } from "@/features/valuations/model";
+import {
+  contentLayoutWithOwnRowFor,
+  ensureContentLayout,
+  isContentLayout,
+} from "@/features/valuations/services/content-layout";
 
 /**
  * Ensure a block has BOTH persisted ContentLayoutV2 AND BlockFlowV2.
@@ -42,6 +47,23 @@ export function ensureBlockContentIntegrity(block: Block): Block {
   }
 
   return updated;
+}
+
+/**
+ * A Block right after the user added `added` to its own content: the new item
+ * takes a row of its own at the end of the Block, after its Apartados, instead
+ * of the free place beside the last item that the layout resolver would give it.
+ */
+export function withAddedBlockContent(block: Block, added: ContentLayoutItemRef): Block {
+  const contentLayout = contentLayoutWithOwnRowFor(block, added);
+  // The flow the Block showed before the new row: the row is appended to it.
+  const flowBefore = resolveBlockFlowV2({ ...block, contentLayout: { version: 2, rows: contentLayout.rows.slice(0, -1) } });
+  return ensureBlockContentIntegrity({ ...block, contentLayout, blockFlow: flowBefore ?? block.blockFlow });
+}
+
+/** The same for an Apartado. */
+export function withAddedApartadoContent(apartado: Apartado, added: ContentLayoutItemRef): Apartado {
+  return { ...apartado, contentLayout: contentLayoutWithOwnRowFor(apartado, added) };
 }
 
 export function getDocumentHeaderImage(sections: AppSection[]) {

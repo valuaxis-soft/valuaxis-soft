@@ -1,11 +1,12 @@
 /**
  * Comparables from a spreadsheet: one row per comparable, with the columns of
  * the Valuaxis template. Headers are matched without accents or case, in any
- * order; every row goes through the same validation as manual capture.
+ * order; every row goes through the same validation as manual capture. A
+ * sheet without the newer columns (an earlier template) imports the same.
  * Factors are not imported: the appraiser rates them in the panel.
  */
 import { comparableInputSchema, type ComparableInputPayload } from "./market-schemas";
-import type { ComparableType } from "./market-types";
+import { isBuiltComparableType, type ComparableType } from "./market-types";
 
 export const MAX_IMPORT_ROWS = 100;
 
@@ -30,13 +31,19 @@ export function importColumns(type: ComparableType): ImportColumn[] {
     { key: "location", header: "Ubicación", kind: "text", width: 42, hint: "Calle, número, colonia y municipio.", required: true },
     { key: "area", header: AREA_HEADERS[type], kind: "number", width: 18, hint: "Solo el número, en m²." },
     { key: "price", header: PRICE_HEADERS[type], kind: "number", width: 18, hint: "Solo el número, sin centavos si no los tiene." },
+    { key: "landUseKey", header: "Clave de uso de suelo", kind: "text", width: 16, hint: "La clave del plan, por ejemplo AU-I/H-3." },
     { key: "landUse", header: "Uso de suelo", kind: "text", width: 18, hint: "Habitacional, comercial, mixto…" },
     { key: "zone", header: "Zona", kind: "text", width: 14, hint: "Como la califica el despacho." },
     { key: "shape", header: "Forma", kind: "text", width: 14, hint: "Regular, irregular…" },
     { key: "topography", header: "Topografía", kind: "text", width: 14, hint: "Plana, pendiente…" },
+    { key: "frontCount", header: "Número de frentes", kind: "number", width: 11, hint: "Cuántos frentes a la calle tiene: 1, 2…" },
     { key: "frontage", header: "Frente (m)", kind: "number", width: 11, hint: "Metros." },
     { key: "depth", header: "Fondo (m)", kind: "number", width: 11, hint: "Metros." },
     { key: "services", header: "Servicios", kind: "text", width: 22, hint: "Agua, drenaje, electricidad…" },
+    ...(isBuiltComparableType(type) ? [
+      { key: "conservation", header: "Conservación", kind: "text", width: 16, hint: "Estado de conservación de la construcción." },
+      { key: "quality", header: "Calidad", kind: "text", width: 16, hint: "Calidad de la construcción." },
+    ] satisfies ImportColumn[] : []),
     { key: "notes", header: "Observaciones", kind: "text", width: 30, hint: "Cualquier nota del comparable." },
     { key: "sourceName", header: "Fuente", kind: "text", width: 18, hint: "Portal, inmobiliaria o persona." },
     { key: "contactName", header: "Contacto", kind: "text", width: 20, hint: "Quién ofrece." },
@@ -52,6 +59,9 @@ const ALIASES: Partial<Record<FieldKey, string[]>> = {
   area: ["superficie", "sup", "m2", "area"],
   price: ["precio", "oferta", "renta", "importe", "valor"],
   landUse: ["uso"],
+  landUseKey: ["clave"],
+  frontCount: ["nfrentes", "numfrentes", "numdefrentes", "nodefrentes"],
+  conservation: ["estadodeconservacion"],
   contactPhone: ["telefono", "tel", "celular"],
   url: ["liga", "link", "url", "enlace"],
   offerDate: ["fecha"],

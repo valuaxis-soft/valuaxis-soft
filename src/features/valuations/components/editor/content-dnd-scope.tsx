@@ -5,11 +5,11 @@
  *
  * Three kinds of drag share it:
  *  - a content item (Concept/Image/Table), which can land on any drop slot of
- *    any Block the item may go to;
+ *    any container the item may go to (see ContentMoveRules);
  *  - an Apartado, reordered inside its own Block;
  *  - a Block, reordered among the Blocks of the section.
  *
- * One context for all of them is what lets a Concept travel from one Block to
+ * One context for all of them is what lets an item travel from one Block to
  * another: the drag library only sees the drop targets of the context the
  * dragged item was registered in.
  *
@@ -43,12 +43,15 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type { ContentLayoutItemRef } from "../../model";
 import {
-  canDropContentInBlock,
+  SAME_BLOCK_MOVE_RULES,
+  canMoveContent,
   contentDropSourceFromData,
   contentDropTargetFromData,
   type ContentDropSource,
   type ContentDropTarget,
+  type ContentMoveRules,
 } from "../../services/content-drop";
+import type { ContentContainerRef } from "../../services/content-transfer";
 import {
   pickContentDropSlot,
   type DropSlotCandidate,
@@ -78,8 +81,8 @@ type ContentDndScopeValue = {
   activeApartado: { apartadoId: string; blockId: string } | null;
   /** ID of the drop target the drag would land on right now. */
   activeTarget: string | null;
-  /** Whether Concepts may be dropped in a Block other than their own. */
-  crossBlock: boolean;
+  /** Whether the item being dragged may be dropped in `container`. False when nothing is dragged. */
+  acceptsContent: (container: ContentContainerRef) => boolean;
   registerBlock: (blockId: string, handlers: BlockDragHandlers) => () => void;
 };
 
@@ -88,7 +91,7 @@ const INERT_SCOPE: ContentDndScopeValue = {
   activeContent: null,
   activeApartado: null,
   activeTarget: null,
-  crossBlock: false,
+  acceptsContent: () => false,
   registerBlock: () => () => undefined,
 };
 
@@ -149,7 +152,7 @@ function blockIdOfNode(node: HTMLElement | null): string | null {
  * (see pickContentDropSlot). A "noop" slot — the item's own place — and the
  * item's own column both resolve to no target, so the drop changes nothing.
  *
- * Slots of Blocks the item may not go to are disabled, so they never get here.
+ * Slots of containers the item may not go to are disabled, so they never get here.
  */
 const detectContentSlotCollision: CollisionDetection = ({
   active,
@@ -281,7 +284,7 @@ function buildCollisionDetection(drag: DragKind | null, blockIds: ReadonlySet<st
 export function ContentDndScope({
   id,
   blockIds,
-  crossBlock = false,
+  moveRules = SAME_BLOCK_MOVE_RULES,
   onBlockDragEnd,
   onContentDrop,
   children,
@@ -290,8 +293,8 @@ export function ContentDndScope({
   id: string;
   /** The Blocks that can be reordered by drag, in order. */
   blockIds: string[];
-  /** Let Concepts be dropped in a Block other than their own. */
-  crossBlock?: boolean;
+  /** Where content may be dropped outside its own container. By default it stays in its Block. */
+  moveRules?: ContentMoveRules;
   /** Called when a Block is dropped on another Block. */
   onBlockDragEnd?: (event: DragEndEvent) => void;
   /** Called when a content item is dropped on a slot. */
@@ -374,15 +377,21 @@ export function ContentDndScope({
       const source = contentDropSourceFromData(event.active.data.current);
       const target = contentDropTargetFromData(event.over?.data.current);
       if (!source || !target) return;
-      if (!canDropContentInBlock(source, target.container.blockId, crossBlock)) return;
+      if (!canMoveContent(moveRules, source, target.container)) return;
       onContentDrop(source, target);
     },
-    [drag, reset, onBlockDragEnd, onContentDrop, crossBlock],
+    [drag, reset, onBlockDragEnd, onContentDrop, moveRules],
+  );
+
+  const acceptsContent = useCallback(
+    (container: ContentContainerRef) =>
+      activeContent !== null && canMoveContent(moveRules, activeContent, container),
+    [activeContent, moveRules],
   );
 
   const value = useMemo<ContentDndScopeValue>(
-    () => ({ activeColumnId, activeContent, activeApartado, activeTarget, crossBlock, registerBlock }),
-    [activeColumnId, activeContent, activeApartado, activeTarget, crossBlock, registerBlock],
+    () => ({ activeColumnId, activeContent, activeApartado, activeTarget, acceptsContent, registerBlock }),
+    [activeColumnId, activeContent, activeApartado, activeTarget, acceptsContent, registerBlock],
   );
 
   const activeItem: ContentLayoutItemRef | null = activeContent

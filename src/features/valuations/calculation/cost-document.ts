@@ -256,20 +256,33 @@ function cellsOf(tableItem: TableContent) {
   };
 }
 
+const CONSTRUCTION_TYPES_TABLE = "construccion_tipos";
+const SPECIAL_INSTALLATIONS_TABLE = "instalaciones_especiales";
+
+/**
+ * Whether a table of the construction section is filled from the cost capture
+ * (see withConstructionTables). It is found by ID in the Apartado it was
+ * created in, so it stays there.
+ */
+export function isCostCaptureTable(tableId: string) {
+  const id = tableId.toLowerCase();
+  return id.endsWith(CONSTRUCTION_TYPES_TABLE) || id.endsWith(SPECIAL_INSTALLATIONS_TABLE);
+}
+
 /** Rows of the construction section tables, from the capture. */
 function constructionRows(calculation: CostCalculationDto, tableId: string): string[][] | null {
   const id = tableId.toLowerCase();
   // Rows added in the panel but still empty stay out of the dictamen.
   const constructions = calculation.constructions.filter((row) => row.description.trim() || row.area !== null);
   const installations = calculation.installations.filter((row) => row.description.trim());
-  if (id.endsWith("construccion_tipos") && constructions.length) {
+  if (id.endsWith(CONSTRUCTION_TYPES_TABLE) && constructions.length) {
     return constructions.map((row) => [
       row.ref, row.description, row.classification, row.quality, text(row.conservation, 2), text(row.age, 0),
       text(row.usefulLife, 0), row.usefulLife !== null && row.age !== null ? text(Math.max(row.usefulLife - row.age, 0), 0) : "—",
       text(row.area), "",
     ]);
   }
-  if (id.endsWith("instalaciones_especiales") && installations.length) {
+  if (id.endsWith(SPECIAL_INSTALLATIONS_TABLE) && installations.length) {
     return installations.map((row) => [
       row.ref, row.share === "C" ? "Común" : "Privativa", text(row.age, 0), text(row.usefulLife, 0),
       row.usefulLife !== null && row.age !== null ? text(Math.max(row.usefulLife - row.age, 0), 0) : "—",

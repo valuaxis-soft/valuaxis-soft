@@ -18,6 +18,7 @@ import {
   type TableV2,
 } from "../services/table";
 import { evaluateTableFormulas, getCellDisplayValue } from "../services/table-formula-engine";
+import type { DocumentTableFragment } from "../services/table-pagination";
 import { TABLE_HEADER_BAND } from "./document-theme";
 
 const EMPTY_VALUE = "No se proporcionó";
@@ -25,11 +26,14 @@ const EMPTY_VALUE = "No se proporcionó";
 export function DocumentTable({
   table,
   variant = "document",
+  fragment,
 }: {
   table: TableContent;
   variant?: "document" | "report" | "compact";
+  /** Report tables only: the rows this page prints of a table that continues on others. */
+  fragment?: DocumentTableFragment;
 }) {
-  if (variant === "report") return <ReportDocumentTable table={table} />;
+  if (variant === "report") return <ReportDocumentTable table={table} fragment={fragment} />;
   if (variant === "compact") return <CompactDocumentTable table={table} />;
   return <DefaultDocumentTable table={table} />;
 }
@@ -326,38 +330,49 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
   );
 }
 
-function ReportDocumentTable({ table }: { table: TableContent }) {
+function ReportDocumentTable({ table, fragment }: { table: TableContent; fragment?: DocumentTableFragment }) {
   const tableV2 = ensureTableV2(table);
   const formulaResults = useMemo(() => evaluateTableFormulas(tableV2), [tableV2]);
   // A table still named as the editor created it, or one whose schema hides its title, prints no caption.
   const title = tableV2.title.trim();
   const caption = tableV2.schema?.hideCaption || title === DEFAULT_TABLE_TITLE ? "" : title;
   const density = tableV2.schema?.density;
+  // A table that breaks across pages prints some of its rows on each: what
+  // opens it goes with the first ones, what closes it with the last, and the
+  // caption and the header repeat on every page.
+  const firstRow = fragment?.from ?? 0;
+  const rows = fragment ? tableV2.rows.slice(fragment.from, fragment.to) : tableV2.rows;
+  const opens = !fragment?.continuation;
+  const closes = fragment?.last ?? true;
+  // Fragments keep the column widths of the whole table, so the columns line up from page to page.
+  const columnWidths = fragment?.columnWidths.length === tableV2.columns.length ? fragment.columnWidths : null;
 
   return (
     <div className="w-full overflow-hidden">
-      <TableNotes tableV2={tableV2} position="top" />
-      <SummaryBoxes tableV2={tableV2} position="top" />
+      {opens ? <TableNotes tableV2={tableV2} position="top" /> : null}
+      {opens ? <SummaryBoxes tableV2={tableV2} position="top" /> : null}
       {/* Column widths follow the content so amounts stay on one line; wider
           tables (homologation, costs) use a smaller font to fit the page, and
           the rest print at the size of the concepts around them. */}
       <table className={cn(
         "w-full border-collapse",
+        columnWidths && "table-fixed",
         density === "compact" ? "text-[9px] leading-[1.35]"
           : density === "dense" ? "text-[10px] leading-[1.35]"
             : tableV2.columns.length > 7 ? "text-[10px]" : "text-[11px]",
-      )}>
+      )} data-split-table="">
         <colgroup>
-          {tableV2.columns.map((column) => (
-            <col key={column.id} />
+          {tableV2.columns.map((column, index) => (
+            <col key={column.id} style={columnWidths ? { width: `${columnWidths[index]}px` } : undefined} />
           ))}
         </colgroup>
-        {caption ? <TableCaption className="mt-0 mb-1 text-[11px]">{caption}</TableCaption> : null}
+        {caption ? <TableCaption className="mt-0 mb-1 text-[11px]">{caption}{opens ? null : " (continúa)"}</TableCaption> : null}
         {renderSchemaHeader(tableV2, tableV2.columns)}
         <TableBody>
-          {tableV2.rows.map((row) => (
-            // Gray and white rows alternate, first one gray, as in the appraiser's own format.
-            <TableRow className="border-slate-200 odd:bg-slate-100" key={row.id}>
+          {rows.map((row, index) => (
+            // Gray and white rows alternate, first one gray, as in the appraiser's own format;
+            // by the row's place in the whole table, so a continuation follows on.
+            <TableRow className={cn("border-slate-200", (firstRow + index) % 2 === 0 && "bg-slate-100")} data-split-table-row="" key={row.id}>
               {tableV2.columns.map((column) => (
                 <TableCell className={cn("px-2", density ? "py-[3px]" : "py-1", cellPresentation(tableV2, column.id))} key={column.id}>{getCellDisplayValue(tableV2, row.id, column.id, formulaResults)}</TableCell>
               ))}
@@ -365,11 +380,11 @@ function ReportDocumentTable({ table }: { table: TableContent }) {
           ))}
         </TableBody>
       </table>
-      {tableV2.schema?.resultGroups && (
+      {closes && tableV2.schema?.resultGroups && (
         <ResultGroups groups={tableV2.schema.resultGroups} tableV2={tableV2} formulaResults={formulaResults} />
       )}
-      <SummaryBoxes tableV2={tableV2} position="bottom" />
-      <TableNotes tableV2={tableV2} position="bottom" />
+      {closes ? <SummaryBoxes tableV2={tableV2} position="bottom" /> : null}
+      {closes ? <TableNotes tableV2={tableV2} position="bottom" /> : null}
     </div>
   );
 }

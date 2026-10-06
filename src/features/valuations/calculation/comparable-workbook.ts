@@ -122,7 +122,8 @@ export async function buildComparableTemplate(type: ComparableType): Promise<Buf
   columns.forEach((column, index) => {
     const cell = header.getCell(index + 1);
     cell.note = column.hint;
-    if (column.kind === "number") sheet.getColumn(index + 1).numFmt = "#,##0.00";
+    // The number of fronts is a count; the rest are areas, metres and amounts.
+    if (column.kind === "number") sheet.getColumn(index + 1).numFmt = column.key === "frontCount" ? "0" : "#,##0.00";
     if (column.kind === "date") sheet.getColumn(index + 1).numFmt = "dd/mm/yyyy";
   });
 

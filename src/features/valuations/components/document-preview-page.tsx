@@ -21,6 +21,7 @@ const subscribeNever = () => () => {};
 const useIsClient = () => useSyncExternalStore(subscribeNever, () => true, () => false);
 import type { AppSection } from "../model";
 import { ensureTableV2 } from "../services/table";
+import { splitTableRows, type DocumentTableFragment, type MeasuredTable } from "../services/table-pagination";
 
 export type DocumentFlowItem = {
   id: string;
@@ -31,7 +32,22 @@ export type DocumentFlowItem = {
    */
   continuesPrevious?: boolean;
   node: ReactNode;
+  /**
+   * The item is one table that may break across pages by rows: renders the
+   * rows of one page. The node marks the table with data-split-table and its
+   * rows with data-split-table-row so they can be measured.
+   */
+  renderTableFragment?: (fragment: DocumentTableFragment) => ReactNode;
 };
+
+/** An item on its page: whole, or the rows of its table that the page prints. */
+export type PlacedDocumentFlowItem = {
+  id: string;
+  item: DocumentFlowItem;
+  fragment?: DocumentTableFragment;
+};
+
+type PlacedItemRef = Pick<PlacedDocumentFlowItem, "id" | "fragment">;
 
 /**
  * Canonical layout-only frame for each DocumentFlowItem.
@@ -46,15 +62,23 @@ export type DocumentFlowItem = {
 function DocumentFlowItemFrame({
   itemId,
   joinsNext = false,
+  fragment,
   children,
 }: {
   itemId: string;
   /** The next item on the page continues this one: drop the gap the content gives its children. */
   joinsNext?: boolean;
+  /** The rows of the item's table this page prints. */
+  fragment?: DocumentTableFragment;
   children: ReactNode;
 }) {
   return (
-    <div className={joinsNext ? "flow-root mb-0!" : "flow-root"} data-document-flow-item-id={itemId}>
+    <div
+      className={joinsNext ? "flow-root mb-0!" : "flow-root"}
+      data-document-flow-item-id={itemId}
+      data-table-fragment={fragment ? `${fragment.from}-${fragment.to}` : undefined}
+      data-table-fragment-clipped={fragment?.clipped ? "true" : undefined}
+    >
       {children}
     </div>
   );
@@ -334,9 +358,10 @@ export function AutoPaginatedDocumentFlow({
   }, [items, itemLayoutSignature]);
 
   const [availableHeight, setAvailableHeight] = useState(DEFAULT_CONTENT_HEIGHT_PX);
-  // Pagination stores ONLY item IDs per page, not full DocumentFlowItem objects.
-  // This ensures content always renders from the latest items, never stale ReactNodes.
-  const [pagination, setPagination] = useState(() => ({
+  // Pagination stores ONLY item IDs per page (and the rows of a split table),
+  // not full DocumentFlowItem objects. This ensures content always renders
+  // from the latest items, never stale ReactNodes.
+  const [pagination, setPagination] = useState<{ itemLayoutSignature: string; pageItemIds: PlacedItemRef[][] }>(() => ({
     itemLayoutSignature,
     pageItemIds: splitDocumentFlowItemIds(items),
   }));
@@ -366,6 +391,8 @@ export function AutoPaginatedDocumentFlow({
 
     // ID-based measurement: key by item identity, not DOM index
     const heightById = new Map<string, number>();
+    const tableById = new Map<string, MeasuredTable>();
+    const splittableIds = new Set(currentItems.filter((item) => item.renderTableFragment).map((item) => item.id));
     const prevBottomByIndex: number[] = [];
     for (let i = 0; i < elements.length; i++) {
       const el = elements[i];
@@ -375,6 +402,10 @@ export function AutoPaginatedDocumentFlow({
       const precedingGap =
         i > 0 ? Math.max(0, rect.top - prevBottomByIndex[i - 1]) : 0;
       heightById.set(id, rect.height + precedingGap);
+      if (splittableIds.has(id)) {
+        const table = measureSplittableTable(el, rect);
+        if (table) tableById.set(id, table);
+      }
       prevBottomByIndex[i] = rect.bottom;
     }
 
@@ -394,6 +425,7 @@ export function AutoPaginatedDocumentFlow({
     const measuredItems = currentItems.map((item) => ({
       item,
       height: heightById.get(item.id)!,
+      table: tableById.get(item.id),
     }));
 
     const nextPages = splitMeasuredDocumentFlowItems(measuredItems, nextAvailableHeight);
@@ -402,10 +434,11 @@ export function AutoPaginatedDocumentFlow({
     );
     setPagination((current) => {
       // Convert pages to ID-only arrays for comparison and storage
-      const nextPageIds = nextPages.map((page) => page.map((item) => item.id));
+      const nextPageIds = nextPages.map((page) => page.map(({ id, fragment }): PlacedItemRef => ({ id, fragment })));
 
-      // Conservation invariant: paginated IDs must exactly equal current item IDs
-      const flatPaginated = nextPageIds.flat();
+      // Conservation invariant: paginated IDs must exactly equal current item
+      // IDs (a split table counts once, on the page where it starts)
+      const flatPaginated = nextPageIds.flat().filter((ref) => !ref.fragment?.continuation).map((ref) => ref.id);
       const canonicalIds = currentItems.map((item) => item.id);
       const conservationOk =
         flatPaginated.length === canonicalIds.length &&
@@ -465,16 +498,13 @@ export function AutoPaginatedDocumentFlow({
     // Build item lookup Map for O(1) resolution (no silent .filter(Boolean))
     const itemById = new Map(items.map((item) => [item.id, item]));
 
-    const resolvePageIds = (pageIds: string[][]): DocumentFlowItem[][] =>
-      pageIds.map((ids) => {
-        const resolved = ids
-          .map((id) => {
-            const item = itemById.get(id);
-            return item;
-          })
-          .filter(Boolean) as DocumentFlowItem[];
-        return resolved;
-      });
+    const resolvePageIds = (pageIds: PlacedItemRef[][]): PlacedDocumentFlowItem[][] =>
+      pageIds.map((refs) =>
+        refs.flatMap((ref) => {
+          const item = itemById.get(ref.id);
+          return item ? [{ ...ref, item }] : [];
+        }),
+      );
 
     const sigMatch = pagination.itemLayoutSignature === itemLayoutSignature;
     const hasPages = pagination.pageItemIds.length > 0;
@@ -525,9 +555,9 @@ export function AutoPaginatedDocumentFlow({
         {visiblePages.map((pageItems, pageIndex) => (
           <DocumentPreviewPage header={header} key={`${pageKeyPrefix}-page-${pageIndex + 1}`} pageNumber={pageIndex + 1} className={pageClassName}>
             <div {...contentProps} className={contentClassName} style={paginatedContentStyle} data-document-pagination-content="visible">
-              {pageItems.map((item, index) => (
-                <DocumentFlowItemFrame itemId={item.id} joinsNext={pageItems[index + 1]?.continuesPrevious} key={item.id}>
-                  {item.node}
+              {pageItems.map(({ item, fragment }, index) => (
+                <DocumentFlowItemFrame fragment={fragment} itemId={item.id} joinsNext={pageItems[index + 1]?.item.continuesPrevious} key={item.id}>
+                  {fragment && item.renderTableFragment ? item.renderTableFragment(fragment) : item.node}
                 </DocumentFlowItemFrame>
               ))}
             </div>
@@ -538,9 +568,9 @@ export function AutoPaginatedDocumentFlow({
   );
 }
 
-function splitDocumentFlowItemIds(items: DocumentFlowItem[]): string[][] {
-  const pages: string[][] = [];
-  let currentPage: string[] = [];
+function splitDocumentFlowItemIds(items: DocumentFlowItem[]): PlacedItemRef[][] {
+  const pages: PlacedItemRef[][] = [];
+  let currentPage: PlacedItemRef[] = [];
 
   for (const item of items) {
     if (item.startOnNewPage && currentPage.length) {
@@ -548,7 +578,7 @@ function splitDocumentFlowItemIds(items: DocumentFlowItem[]): string[][] {
       currentPage = [];
     }
 
-    currentPage.push(item.id);
+    currentPage.push({ id: item.id });
   }
 
   if (currentPage.length) pages.push(currentPage);
@@ -556,14 +586,69 @@ function splitDocumentFlowItemIds(items: DocumentFlowItem[]): string[][] {
   return pages;
 }
 
-function samePageIds(left: string[][], right: string[][]): boolean {
+function sameFragment(left?: DocumentTableFragment, right?: DocumentTableFragment): boolean {
+  if (!left || !right) return left === right;
+  return (
+    left.from === right.from &&
+    left.to === right.to &&
+    left.last === right.last &&
+    left.clipped === right.clipped &&
+    left.columnWidths.length === right.columnWidths.length &&
+    left.columnWidths.every((width, index) => width === right.columnWidths[index])
+  );
+}
+
+function samePageIds(left: PlacedItemRef[][], right: PlacedItemRef[][]): boolean {
   if (left.length !== right.length) return false;
   return left.every((leftPage, pageIndex) => {
     const rightPage = right[pageIndex];
     if (!rightPage || leftPage.length !== rightPage.length) return false;
-    return leftPage.every((id, itemIndex) => id === rightPage[itemIndex]);
+    return leftPage.every((ref, itemIndex) => ref.id === rightPage[itemIndex].id && sameFragment(ref.fragment, rightPage[itemIndex].fragment));
   });
 }
+
+/** Room a fragment keeps free for the rounding of its borders. */
+const TABLE_FRAGMENT_SLACK_PX = 1;
+
+/**
+ * Heights of the table an item holds, read from the measurement DOM: what
+ * precedes its first row, each row, and what follows the last one.
+ */
+function measureSplittableTable(itemElement: HTMLElement, itemRect: DOMRect): MeasuredTable | null {
+  const grid = itemElement.querySelector<HTMLElement>("[data-split-table]");
+  if (!grid) return null;
+  const rows = Array.from(grid.querySelectorAll<HTMLTableRowElement>("[data-split-table-row]"));
+  if (!rows.length) return null;
+
+  const rects = rows.map((row) => row.getBoundingClientRect());
+  const lastRect = rects[rects.length - 1];
+  // A row runs to the top of the next one, so the heights add up to the body exactly.
+  const rowHeights = rects.map((rect, index) => (rects[index + 1]?.top ?? rect.bottom) - rect.top);
+
+  const keepWithNext = rows.map(() => false);
+  rows.forEach((row, index) => {
+    for (const cell of Array.from(row.cells)) {
+      for (let offset = 0; offset < cell.rowSpan - 1 && index + offset < rows.length - 1; offset += 1) keepWithNext[index + offset] = true;
+    }
+  });
+
+  // Widths of the columns as the whole table laid them out; none when its first row merges cells.
+  const firstCells = Array.from(rows[0].cells);
+  const columnWidths = firstCells.some((cell) => cell.colSpan > 1)
+    ? []
+    : firstCells.map((cell) => Math.round(cell.getBoundingClientRect().width * 100) / 100);
+
+  return {
+    leadHeight: rects[0].top - itemRect.top,
+    headerHeight: rects[0].top - grid.getBoundingClientRect().top + TABLE_FRAGMENT_SLACK_PX,
+    rowHeights,
+    tailHeight: itemRect.bottom - lastRect.bottom,
+    keepWithNext,
+    columnWidths,
+  };
+}
+
+const simpleSplit = (items: DocumentFlowItem[]) => splitDocumentFlowItemIds(items).map((page) => page.map((ref) => ref.id));
 
 /**
  * Reconcile previous measured page assignment against current items.
@@ -585,7 +670,7 @@ export function reconcileProvisionalPages(
   currentItems: DocumentFlowItem[],
 ): string[][] {
   if (previousPageItemIds.length === 0) {
-    return splitDocumentFlowItemIds(currentItems);
+    return simpleSplit(currentItems);
   }
 
   const currentIds = new Set(currentItems.map((item) => item.id));
@@ -638,28 +723,70 @@ export function reconcileProvisionalPages(
   // 7. Verify completeness — every current item must appear exactly once
   const resultIds = new Set(result.flat());
   if (resultIds.size !== currentItems.length) {
-    return splitDocumentFlowItemIds(currentItems);
+    return simpleSplit(currentItems);
   }
 
   return result;
 }
 
 export function splitMeasuredDocumentFlowItems(
-  measuredItems: Array<{ item: DocumentFlowItem; height: number }>,
+  measuredItems: Array<{ item: DocumentFlowItem; height: number; table?: MeasuredTable }>,
   availableHeight: number,
 ) {
-  const pages: DocumentFlowItem[][] = [];
-  let currentPage: DocumentFlowItem[] = [];
+  const pages: PlacedDocumentFlowItem[][] = [];
+  let currentPage: PlacedDocumentFlowItem[] = [];
   let currentHeight = 0;
 
   for (const measuredItem of measuredItems) {
     const { item, itemHeight } = { item: measuredItem.item, itemHeight: measuredItem.height };
+    const table = measuredItem.table;
 
     // Manual page break: always honor startOnNewPage
     if (item.startOnNewPage && currentPage.length) {
       pages.push(currentPage);
       currentPage = [];
       currentHeight = 0;
+    }
+
+    // A table that does not fit breaks by rows: as many as fit stay on this
+    // page and the rest continue, with the header repeated, on the next ones.
+    if (table && item.renderTableFragment && currentHeight + itemHeight > availableHeight) {
+      // The measured height carries the gap to the item before, which a table opening a page does not have.
+      const tableHeight = table.leadHeight + table.rowHeights.reduce((sum, height) => sum + height, 0) + table.tailHeight;
+      const gap = currentPage.length ? Math.max(0, itemHeight - tableHeight) : 0;
+      const split = splitTableRows(table, {
+        remainingHeight: availableHeight - currentHeight - gap,
+        pageHeight: availableHeight,
+        atPageTop: !currentPage.length,
+      });
+      if (split.startsOnNewPage && currentPage.length) {
+        pages.push(currentPage);
+        currentPage = [];
+        currentHeight = 0;
+      }
+      const whole = split.fragments.length === 1;
+      split.fragments.forEach((fragment, index) => {
+        if (index > 0) {
+          pages.push(currentPage);
+          currentPage = [];
+          currentHeight = 0;
+        }
+        currentPage.push({
+          id: item.id,
+          item,
+          // A table that ends up whole on one page prints as it was measured.
+          fragment: whole ? undefined : {
+            from: fragment.from,
+            to: fragment.to,
+            continuation: index > 0,
+            last: index === split.fragments.length - 1,
+            columnWidths: table.columnWidths ?? [],
+            ...(fragment.clipped ? { clipped: true } : {}),
+          },
+        });
+        currentHeight += fragment.height + (index === 0 && !split.startsOnNewPage ? gap : 0);
+      });
+      continue;
     }
 
     // Auto overflow: move ENTIRE item to next page when it doesn't fit.
@@ -671,11 +798,11 @@ export function splitMeasuredDocumentFlowItems(
       currentHeight = 0;
     }
 
-    currentPage.push(item);
+    currentPage.push({ id: item.id, item });
     // Use raw measured height — no Math.min clamp.
     // An oversized item (itemHeight > availableHeight) occupies its own page
     // and its overflow is clipped by the physical Letter page boundary.
-    // Full fragmentation of oversized items is a future enhancement.
+    // Only tables fragment (above); any other oversized item is cut.
     currentHeight += itemHeight;
   }
 

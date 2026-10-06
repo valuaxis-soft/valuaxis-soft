@@ -24,6 +24,8 @@ import {
   ensureBlockContentIntegrity,
   flattenSectionConcepts,
   mapAllConcepts,
+  withAddedApartadoContent,
+  withAddedBlockContent,
 } from "../model/section-content";
 import type { EditorState } from "./use-editor-state";
 
@@ -58,12 +60,11 @@ export function useBlockMutations({
       blocks.map((block) => {
         if (block.id !== blockId) return block;
         const newConcept = createConcept(sectionId === "caratula" ? UNTITLED_CARATULA_CONCEPT : undefined, type);
-        const updated = {
-          ...block,
-          concepts: [...block.concepts, newConcept],
-        };
         // Persist both ContentLayoutV2 and BlockFlowV2 atomically
-        return ensureBlockContentIntegrity(updated);
+        return withAddedBlockContent(
+          { ...block, concepts: [...block.concepts, newConcept] },
+          { type: "concept", id: newConcept.id },
+        );
       }),
     );
   };
@@ -93,8 +94,9 @@ export function useBlockMutations({
             })),
           };
 
+          const added = { type: "concept" as const, id: linkedConcept.id };
           if (section.id === sectionId && block.id === blockId && !apartadoId) {
-            return { ...nextBlock, concepts: [...nextBlock.concepts, linkedConcept] };
+            return withAddedBlockContent({ ...nextBlock, concepts: [...nextBlock.concepts, linkedConcept] }, added);
           }
 
           if (section.id === sectionId && block.id === blockId && apartadoId) {
@@ -102,7 +104,7 @@ export function useBlockMutations({
               ...nextBlock,
               apartados: nextBlock.apartados.map((subBlock) =>
                 subBlock.id === apartadoId
-                  ? { ...subBlock, concepts: [...subBlock.concepts, linkedConcept] }
+                  ? withAddedApartadoContent({ ...subBlock, concepts: [...subBlock.concepts, linkedConcept] }, added)
                   : subBlock,
               ),
             };
@@ -266,12 +268,11 @@ export function useBlockMutations({
               ...block,
               apartados: block.apartados.map((subBlock) => {
                 if (subBlock.id !== apartadoId) return subBlock;
-                const updated = {
-                  ...subBlock,
-                  concepts: [...subBlock.concepts, createConcept(undefined, type)],
-                };
-                // Reconcile content layout so the new concept appears in the form
-                return { ...updated, contentLayout: resolveContentLayout(updated) };
+                const newConcept = createConcept(undefined, type);
+                return withAddedApartadoContent(
+                  { ...subBlock, concepts: [...subBlock.concepts, newConcept] },
+                  { type: "concept", id: newConcept.id },
+                );
               }),
             }
           : block,

@@ -33,7 +33,6 @@ import {
   moveBlockFlowV2Apartado,
 } from "../../services/block-flow";
 import {
-  canDropContentInBlock,
   findHomeContentRowId,
   planBlockBoundarySlots,
   planContentDropSlots,
@@ -199,11 +198,12 @@ export function BlockFlowRenderer({
   /* ---- DnD state, from the scope shared by the Blocks of the section ---- */
   const scope = useContentDndScope();
   const { registerBlock } = scope;
-  // An item that may not come to this Block gets no slots here.
-  const acceptsContent = scope.activeContent !== null
-    && canDropContentInBlock(scope.activeContent, block.id, scope.crossBlock);
+  // An item that may not come to this Block gets no slots here; each Apartado answers for itself.
+  const acceptsContent = scope.acceptsContent({ kind: "block", blockId: block.id });
   const activeContent = acceptsContent ? scope.activeContent : null;
   const activeColumnId = acceptsContent ? scope.activeColumnId : null;
+  const apartadoActiveColumnId = (apartadoId: string) =>
+    scope.acceptsContent({ kind: "apartado", blockId: block.id, apartadoId }) ? scope.activeColumnId : null;
   const activeApartadoId = scope.activeApartado?.blockId === block.id ? scope.activeApartado.apartadoId : null;
   const activeTarget = scope.activeTarget;
 
@@ -413,7 +413,7 @@ export function BlockFlowRenderer({
 
   /* ---- Render ---- */
   if (structuralRows.length === 0 && resolvedLayout.rows.length === 0) {
-    // Nothing to show, but a Concept dragged from another Block can still land here.
+    // Nothing to show, but an item dragged from another Block can still land here.
     return readOnly || !onContentLayoutChange ? null : (
       <div {...{ [CONTENT_DND_BLOCK_ATTRIBUTE]: block.id }}>
         <BfBlockInsideDropZone blockId={block.id} activeColumnId={activeColumnId} activeTarget={activeTarget} />
@@ -488,7 +488,7 @@ export function BlockFlowRenderer({
                   <BfApartadoInsideDropZone
                     apartadoId={firstItem.apartadoId}
                     blockId={block.id}
-                    activeColumnId={activeColumnId}
+                    activeColumnId={apartadoActiveColumnId(firstItem.apartadoId)}
                     activeTarget={activeTarget}
                     hasContent={subBlock.concepts.length > 0 || subBlock.images.length > 0 || subBlock.tables.length > 0}
                   >
@@ -497,7 +497,7 @@ export function BlockFlowRenderer({
                       blockId={block.id}
                       disabled={readOnly || !onBlockFlowChange}
                     >
-                      {renderApartado(subBlock, flowIdx, { activeColumnId, activeTarget })}
+                      {renderApartado(subBlock, flowIdx, { activeColumnId: apartadoActiveColumnId(firstItem.apartadoId), activeTarget })}
                     </SortableApartado>
                   </BfApartadoInsideDropZone>
                 </BfApartadoDropZones>
@@ -541,7 +541,7 @@ export function BlockFlowRenderer({
                       <BfApartadoInsideDropZone
                         apartadoId={item0.apartadoId}
                         blockId={block.id}
-                        activeColumnId={activeColumnId}
+                        activeColumnId={apartadoActiveColumnId(item0.apartadoId)}
                         activeTarget={activeTarget}
                         hasContent={sb1.concepts.length > 0 || sb1.images.length > 0 || sb1.tables.length > 0}
                       >
@@ -550,7 +550,7 @@ export function BlockFlowRenderer({
                           blockId={block.id}
                           disabled={readOnly || !onBlockFlowChange}
                         >
-                          {renderApartado(sb1, flowIdx1, { activeColumnId, activeTarget })}
+                          {renderApartado(sb1, flowIdx1, { activeColumnId: apartadoActiveColumnId(item0.apartadoId), activeTarget })}
                         </SortableApartado>
                       </BfApartadoInsideDropZone>
                     </BfApartadoDropZones>
@@ -565,7 +565,7 @@ export function BlockFlowRenderer({
                       <BfApartadoInsideDropZone
                         apartadoId={item1.apartadoId}
                         blockId={block.id}
-                        activeColumnId={activeColumnId}
+                        activeColumnId={apartadoActiveColumnId(item1.apartadoId)}
                         activeTarget={activeTarget}
                         hasContent={sb2.concepts.length > 0 || sb2.images.length > 0 || sb2.tables.length > 0}
                       >
@@ -574,7 +574,7 @@ export function BlockFlowRenderer({
                           blockId={block.id}
                           disabled={readOnly || !onBlockFlowChange}
                         >
-                          {renderApartado(sb2, flowIdx2, { activeColumnId, activeTarget })}
+                          {renderApartado(sb2, flowIdx2, { activeColumnId: apartadoActiveColumnId(item1.apartadoId), activeTarget })}
                         </SortableApartado>
                       </BfApartadoInsideDropZone>
                     </BfApartadoDropZones>
