@@ -62,8 +62,9 @@ const CARATULA_THEME: DocumentThemeTokens = {
   conceptRule: "",
   longText: "",
   longTextRow: "",
-  contentRow: "mt-2 grid gap-1",
-  sectionGap: "space-y-2",
+  // Tight rows: the cover carries its data, the value and the signatures on one page.
+  contentRow: "mt-0.5 grid gap-0.5",
+  sectionGap: "space-y-1",
   pagePadding: "px-5 pb-7 pt-3 sm:px-8",
 };
 
