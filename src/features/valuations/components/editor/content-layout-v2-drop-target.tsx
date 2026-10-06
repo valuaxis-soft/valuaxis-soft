@@ -2,6 +2,7 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
+import type { ContentDropSlotState } from "../../services/content-drop";
 import { buildContentColumnDndId, type ContentContainerRef } from "./content-dnd-ids";
 
 /* ------------------------------------------------------------------ */
@@ -25,16 +26,17 @@ function buildScopedDropColId(
 
 /**
  * Build a scoped row drop zone ID using container ref.
- * Format: drop-row::{kind}::{ids}::{rowId}::below
+ * Format: drop-row::{kind}::{ids}::{rowId}::{above|below}
  */
 function buildScopedDropRowId(
   containerRef: ContentContainerRef,
   rowId: string,
+  placement: "above" | "below",
 ): string {
   if (containerRef.kind === "block") {
-    return `drop-row::block::${containerRef.blockId}::${rowId}::below`;
+    return `drop-row::block::${containerRef.blockId}::${rowId}::${placement}`;
   }
-  return `drop-row::apartado::${containerRef.blockId}::${containerRef.apartadoId}::${rowId}::below`;
+  return `drop-row::apartado::${containerRef.blockId}::${containerRef.apartadoId}::${rowId}::${placement}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -152,90 +154,172 @@ export function parseBfApartadoDropZoneId(id: string): { apartadoId: string; pla
 }
 
 /* ------------------------------------------------------------------ */
-/*  Single directional drop zone                                       */
+/*  Drop slots                                                         */
 /* ------------------------------------------------------------------ */
 
-function DropZone({
+/**
+ * A drop slot is drawn as a dashed line: horizontal between rows, vertical
+ * between columns. While a content item is dragged every open slot is
+ * visible, so the user sees all the places it can go; the one the drop would
+ * land on is highlighted.
+ *
+ * The hit area is the outer element (larger than the line) and never takes
+ * pointer events: the drag library works from its rectangle.
+ */
+function slotLineClassName(isHovered: boolean) {
+  return cn(
+    "absolute rounded-full border border-dashed transition-colors duration-100",
+    isHovered ? "border-primary bg-primary/30" : "border-primary/40 bg-primary/5",
+  );
+}
+
+/** Horizontal slot on the top or bottom edge of a row, centered on the gap to the next row. */
+function RowDropSlot({
   id,
-  position,
-  active,
+  edge,
+  state,
+  isDragging,
   isHovered,
   data,
+  marker,
 }: {
   id: string;
-  position: "left" | "right";
-  active: boolean;
+  edge: "top" | "bottom";
+  state: ContentDropSlotState;
+  isDragging: boolean;
   isHovered: boolean;
   data?: Record<string, unknown>;
+  /** data-* attribute identifying the slot. */
+  marker: Record<string, string>;
 }) {
-  const { setNodeRef } = useDroppable({ id, disabled: !active, data });
+  const { setNodeRef } = useDroppable({
+    id,
+    disabled: !isDragging || state === "closed",
+    data: data ? { ...data, noop: state === "noop" } : undefined,
+  });
+  const isVisible = isDragging && state === "open";
 
   return (
     <div
       ref={setNodeRef}
-      data-drop-zone={position}
-      className={cn(
-        "absolute z-20 top-0 bottom-0 transition-colors duration-100",
-        position === "left" && "left-0 w-2 cursor-col-resize",
-        position === "right" && "right-0 w-2 cursor-col-resize",
-        isHovered
-          ? "border border-dashed border-primary/60 rounded-sm"
-          : active
-            ? "bg-transparent hover:bg-primary/10"
-            : "bg-transparent pointer-events-none",
-      )}
-      style={{ minWidth: "0.5rem" }}
-    />
+      {...marker}
+      data-slot-state={isVisible ? (isHovered ? "target" : "open") : undefined}
+      className="pointer-events-none absolute inset-x-0 z-20 h-3"
+      style={{ [edge]: "-0.5rem" }}
+    >
+      {isVisible ? (
+        <div
+          className={cn(
+            slotLineClassName(isHovered),
+            "inset-x-0 top-1/2 -translate-y-1/2",
+            isHovered ? "h-2.5" : "h-1.5",
+          )}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** Vertical slot on the left or right edge of a column, centered on the gap to its neighbour. */
+function ColumnDropSlot({
+  id,
+  side,
+  state,
+  isDragging,
+  isHovered,
+  data,
+}: {
+  id: string;
+  side: "left" | "right";
+  state: ContentDropSlotState;
+  isDragging: boolean;
+  isHovered: boolean;
+  data?: Record<string, unknown>;
+}) {
+  const { setNodeRef } = useDroppable({
+    id,
+    disabled: !isDragging || state === "closed",
+    data: data ? { ...data, noop: state === "noop" } : undefined,
+  });
+  const isVisible = isDragging && state === "open";
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-drop-zone={side}
+      data-slot-state={isVisible ? (isHovered ? "target" : "open") : undefined}
+      className="pointer-events-none absolute inset-y-0 z-20 w-3"
+      style={{ [side]: "-0.625rem" }}
+    >
+      {isVisible ? (
+        <div
+          className={cn(
+            slotLineClassName(isHovered),
+            "inset-y-0 left-1/2 -translate-x-1/2",
+            isHovered ? "w-2.5" : "w-1.5",
+          )}
+        />
+      ) : null}
+    </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  Row-level BELOW drop target                                        */
+/*  Row-level drop target                                              */
 /* ------------------------------------------------------------------ */
 
 /**
- * A droppable zone attached to the row container for "below" targeting.
- * This targets the entire row, not individual columns.
+ * Wraps a content row with its new-row slots: one below it and, for the
+ * first row of a container, one above it.
  *
- * Uses container-scoped drop zone ID for uniqueness.
+ * Uses container-scoped drop zone IDs for uniqueness.
  */
 export function V2RowDropTarget({
   rowId,
   activeId,
   activeTarget,
   containerRef,
+  above,
+  below = "open",
   children,
 }: {
   rowId: string;
   activeId: string | null;
   activeTarget: string | null;
-  containerRef?: { kind: "block"; blockId: string } | { kind: "apartado"; blockId: string; apartadoId: string };
+  containerRef?: ContentContainerRef;
+  /** State of the slot above the row. Omit it for rows that are not the first of their container. */
+  above?: ContentDropSlotState;
+  below?: ContentDropSlotState;
   children: React.ReactNode;
 }) {
+  const isDragging = activeId !== null;
   const belowZoneId = containerRef
-    ? buildScopedDropRowId(containerRef, rowId)
+    ? buildScopedDropRowId(containerRef, rowId, "below")
     : `v2row-${rowId}::below`;
-  const { setNodeRef } = useDroppable({
-    id: belowZoneId,
-    disabled: !activeId,
-    data: containerRef ? { kind: "content-row-target", container: containerRef, rowId, placement: "below" as const } : undefined,
-  });
-
-  const isHovered = activeTarget === belowZoneId;
+  const aboveZoneId = containerRef ? buildScopedDropRowId(containerRef, rowId, "above") : null;
 
   return (
     <div className="relative">
       {children}
-      <div
-        ref={setNodeRef}
-        data-row-below={rowId}
-        className={cn(
-          "absolute left-0 right-0 z-20 transition-colors duration-100",
-          isHovered
-            ? "border border-dashed border-primary/60 rounded-sm"
-            : "bg-transparent pointer-events-none",
-        )}
-        style={{ bottom: 0, height: "1.25rem" }}
+      {aboveZoneId && above ? (
+        <RowDropSlot
+          id={aboveZoneId}
+          edge="top"
+          state={above}
+          isDragging={isDragging}
+          isHovered={activeTarget === aboveZoneId}
+          data={{ kind: "content-row-target", container: containerRef, rowId, placement: "above" }}
+          marker={{ "data-row-above": rowId }}
+        />
+      ) : null}
+      <RowDropSlot
+        id={belowZoneId}
+        edge="bottom"
+        state={below}
+        isDragging={isDragging}
+        isHovered={activeTarget === belowZoneId}
+        data={containerRef ? { kind: "content-row-target", container: containerRef, rowId, placement: "below" } : undefined}
+        marker={{ "data-row-below": rowId }}
       />
     </div>
   );
@@ -246,25 +330,35 @@ export function V2RowDropTarget({
 /* ------------------------------------------------------------------ */
 
 /**
- * Wraps a sortable column with left/right drop zones.
- * The row-level below zone is handled by V2RowDropTarget.
+ * Wraps a sortable column with its side slots.
+ * The new-row slots are handled by V2RowDropTarget.
  *
  * Uses container-scoped drop zone IDs to ensure uniqueness across
  * all containers sharing a single DndContext.
  *
  * activeId must be the SCOPED sortable ID (not the domain column ID).
+ *
+ * `left` / `right` come from the container's slot plan. Without a plan both
+ * sides are open, except on the column being dragged.
  */
 export function V2ColumnDropZones({
   columnId,
   activeId,
   activeTarget,
   containerRef,
+  left,
+  right,
+  hasPlan = false,
   children,
 }: {
   columnId: string;
   activeId: string | null;
   activeTarget: string | null;
-  containerRef?: { kind: "block"; blockId: string } | { kind: "apartado"; blockId: string; apartadoId: string };
+  containerRef?: ContentContainerRef;
+  left?: ContentDropSlotState;
+  right?: ContentDropSlotState;
+  /** True when `left` / `right` come from a slot plan (an omitted side then has no slot). */
+  hasPlan?: boolean;
   children: React.ReactNode;
 }) {
   const isDragging = activeId !== null;
@@ -281,29 +375,33 @@ export function V2ColumnDropZones({
   const selfSortableId = containerRef
     ? buildContentColumnDndId(containerRef, columnId)
     : columnId;
-  const isSelfDragging = activeId === selfSortableId;
+  const fallbackState: ContentDropSlotState = activeId === selfSortableId ? "closed" : "open";
+  const leftState = hasPlan ? left : fallbackState;
+  const rightState = hasPlan ? right : fallbackState;
 
   return (
     <div className="relative">
       {children}
-      {isDragging && !isSelfDragging && (
-        <>
-          <DropZone
-            id={leftId}
-            position="left"
-            active={isDragging}
-            isHovered={activeTarget === leftId}
-            data={containerRef ? { kind: "content-column-target", container: containerRef, columnId, placement: "left" as const } : undefined}
-          />
-          <DropZone
-            id={rightId}
-            position="right"
-            active={isDragging}
-            isHovered={activeTarget === rightId}
-            data={containerRef ? { kind: "content-column-target", container: containerRef, columnId, placement: "right" as const } : undefined}
-          />
-        </>
-      )}
+      {leftState ? (
+        <ColumnDropSlot
+          id={leftId}
+          side="left"
+          state={leftState}
+          isDragging={isDragging}
+          isHovered={activeTarget === leftId}
+          data={containerRef ? { kind: "content-column-target", container: containerRef, columnId, placement: "left" } : undefined}
+        />
+      ) : null}
+      {rightState ? (
+        <ColumnDropSlot
+          id={rightId}
+          side="right"
+          state={rightState}
+          isDragging={isDragging}
+          isHovered={activeTarget === rightId}
+          data={containerRef ? { kind: "content-column-target", container: containerRef, columnId, placement: "right" } : undefined}
+        />
+      ) : null}
     </div>
   );
 }
@@ -314,7 +412,12 @@ export function V2ColumnDropZones({
 
 /**
  * Renders before/after drop zones on a structural row (content or apartado).
- * Shows blue indicator when an apartado OR content column is being dragged over.
+ *
+ * Two kinds of drag use them:
+ *  - An Apartado drag: both zones accept it and only the hovered one shows.
+ *  - A content drag: the zones are the Block-level new-row slots. `contentBefore`
+ *    and `contentAfter` say which ones exist; open ones are visible throughout
+ *    the drag, like every other content slot.
  */
 export function BfRowDropZones({
   rowId,
@@ -322,29 +425,50 @@ export function BfRowDropZones({
   activeColumnId,
   activeTarget,
   containerRef,
+  contentBefore,
+  contentAfter,
   children,
 }: {
   rowId: string;
   activeApartadoId: string | null;
   activeColumnId: string | null;
   activeTarget: string | null;
-  containerRef?: { kind: "block"; blockId: string } | { kind: "apartado"; blockId: string; apartadoId: string };
+  containerRef?: ContentContainerRef;
+  /** Content slot before the row (first structural row only). */
+  contentBefore?: ContentDropSlotState;
+  /** Content slot after the row. */
+  contentAfter?: ContentDropSlotState;
   children: React.ReactNode;
 }) {
-  const isDragging = activeApartadoId !== null || activeColumnId !== null;
+  const isApartadoDrag = activeApartadoId !== null;
+  const isContentDrag = activeColumnId !== null;
 
   const beforeId = buildBfRowDropZoneId({ rowId, placement: "before" });
   const afterId = buildBfRowDropZoneId({ rowId, placement: "after" });
 
-  const bfBoundaryData = containerRef
-    ? { kind: "block-flow-boundary" as const, container: containerRef, structuralRowId: rowId }
-    : undefined;
+  // An Apartado can go on either side of any row; a content item only where the plan says.
+  const beforeState: ContentDropSlotState = isApartadoDrag ? "open" : contentBefore ?? "closed";
+  const afterState: ContentDropSlotState = isApartadoDrag ? "open" : contentAfter ?? "closed";
 
-  const { setNodeRef: setBeforeRef } = useDroppable({ id: beforeId, disabled: !isDragging, data: bfBoundaryData });
-  const { setNodeRef: setAfterRef } = useDroppable({ id: afterId, disabled: !isDragging, data: bfBoundaryData });
+  const { setNodeRef: setBeforeRef } = useDroppable({
+    id: beforeId,
+    disabled: !(isApartadoDrag || isContentDrag) || beforeState === "closed",
+    data: containerRef
+      ? { kind: "block-flow-boundary", container: containerRef, structuralRowId: rowId, placement: "before", noop: beforeState === "noop" }
+      : undefined,
+  });
+  const { setNodeRef: setAfterRef } = useDroppable({
+    id: afterId,
+    disabled: !(isApartadoDrag || isContentDrag) || afterState === "closed",
+    data: containerRef
+      ? { kind: "block-flow-boundary", container: containerRef, structuralRowId: rowId, placement: "after", noop: afterState === "noop" }
+      : undefined,
+  });
 
   const isBeforeHovered = activeTarget === beforeId;
   const isAfterHovered = activeTarget === afterId;
+  const showBefore = isBeforeHovered || (isContentDrag && beforeState === "open");
+  const showAfter = isAfterHovered || (isContentDrag && afterState === "open");
 
   return (
     <div className="relative">
@@ -352,31 +476,39 @@ export function BfRowDropZones({
       <div
         ref={setBeforeRef}
         data-bf-row-before={rowId}
-        className={cn(
-          "absolute left-0 right-0 z-20 transition-colors duration-100",
-          isBeforeHovered
-            ? "border-t-2 border-dashed border-primary/60"
-            : isDragging
-              ? "bg-transparent"
-              : "bg-transparent pointer-events-none",
-        )}
-        style={{ top: "-0.25rem", height: "0.5rem" }}
-      />
+        data-slot-state={showBefore ? (isBeforeHovered ? "target" : "open") : undefined}
+        className="pointer-events-none absolute inset-x-0 z-20 h-3"
+        style={{ top: "-0.5rem" }}
+      >
+        {showBefore ? (
+          <div
+            className={cn(
+              slotLineClassName(isBeforeHovered),
+              "inset-x-0 top-1/2 -translate-y-1/2",
+              isBeforeHovered ? "h-2.5" : "h-1.5",
+            )}
+          />
+        ) : null}
+      </div>
       {children}
       {/* After zone — bottom edge */}
       <div
         ref={setAfterRef}
         data-bf-row-after={rowId}
-        className={cn(
-          "absolute left-0 right-0 z-20 transition-colors duration-100",
-          isAfterHovered
-            ? "border-b-2 border-dashed border-primary/60"
-            : isDragging
-              ? "bg-transparent"
-              : "bg-transparent pointer-events-none",
-        )}
-        style={{ bottom: "-0.25rem", height: "0.5rem" }}
-      />
+        data-slot-state={showAfter ? (isAfterHovered ? "target" : "open") : undefined}
+        className="pointer-events-none absolute inset-x-0 z-20 h-3"
+        style={{ bottom: "-0.5rem" }}
+      >
+        {showAfter ? (
+          <div
+            className={cn(
+              slotLineClassName(isAfterHovered),
+              "inset-x-0 top-1/2 -translate-y-1/2",
+              isAfterHovered ? "h-2.5" : "h-1.5",
+            )}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -488,17 +620,19 @@ export function BfApartadoInsideDropZone({
   return (
     <div className="relative min-h-[2rem]">
       {children}
-      {/* Overlay: active only for empty apartados as drop fallback */}
+      {/* Overlay: an empty apartado is one big slot, visible while content is dragged */}
       <div
         ref={setNodeRef}
         data-bf-apartado-inside={apartadoId}
+        data-slot-state={isDragging && !hasContent ? (isHovered ? "target" : "open") : undefined}
         className={cn(
-          "absolute inset-0 z-20 rounded-lg border-2 border-dashed transition-colors duration-100",
+          "absolute inset-0 z-20 rounded-lg border border-dashed transition-colors duration-100",
+          "pointer-events-none",
           isHovered
-            ? "border-primary/60 bg-primary/5"
+            ? "border-primary bg-primary/15"
             : isDragging && !hasContent
-              ? "border-transparent bg-transparent hover:border-primary/20 hover:bg-primary/5"
-              : "border-transparent bg-transparent pointer-events-none",
+              ? "border-primary/40 bg-primary/5"
+              : "border-transparent bg-transparent",
         )}
       />
     </div>

@@ -108,8 +108,11 @@ test("el membrete del despacho llena lo que la carátula del avalúo deja vacío
   };
   const blank = { ...caratula, direccionEmpresa: "", telefonoEmpresa: "", correoEmpresa: "" };
   const fromFirm = renderToStaticMarkup(createElement(DocumentPreviewHeader, { caratula: blank, letterhead: firm }));
-  assert.match(fromFirm, />Valuadores de los Altos</);
-  assert.match(fromFirm, /Valuadores de los Altos S\.A\. de C\.V\. · RFC VAL010101AB1/);
+  // The name printed is the firm's legal name, with its RFC underneath.
+  assert.match(fromFirm, />Valuadores de los Altos S\.A\. de C\.V\.</);
+  assert.doesNotMatch(fromFirm, />Valuadores de los Altos</);
+  assert.match(fromFirm, />RFC VAL010101AB1</);
+  assert.match(fromFirm, /alt="Logotipo de Valuadores de los Altos S\.A\. de C\.V\."/);
   assert.match(fromFirm, /Av\. Despacho 100, Guadalajara/);
   assert.match(fromFirm, /33 1111 1111/);
   assert.match(fromFirm, /contacto@despacho\.mx/);
@@ -124,4 +127,15 @@ test("el membrete del despacho llena lo que la carátula del avalúo deja vacío
   assert.match(own, /33 0000 0000/);
   assert.match(own, /src="https:\/\/example\.test\/propia\.jpg"/);
   assert.doesNotMatch(own, /logo\.jpg/);
+});
+
+test("sin razón social, el encabezado imprime el nombre de la organización", () => {
+  const header = (firm: Partial<Letterhead>) =>
+    renderToStaticMarkup(createElement(DocumentPreviewHeader, { caratula, letterhead: { ...letterhead, name: "Espacio personal de Alvaro", ...firm } }));
+
+  assert.match(header({ legalName: "ALVARO GUTIERREZ NAVARRO" }), />ALVARO GUTIERREZ NAVARRO</);
+  assert.doesNotMatch(header({ legalName: "ALVARO GUTIERREZ NAVARRO" }), /Espacio personal de Alvaro/);
+  assert.match(header({ legalName: null }), />Espacio personal de Alvaro</);
+  assert.match(header({ legalName: "   " }), />Espacio personal de Alvaro</, "a blank legal name is no name");
+  assert.match(header({ legalName: null, rfc: "GUNA9408205Q4" }), />RFC GUNA9408205Q4</);
 });

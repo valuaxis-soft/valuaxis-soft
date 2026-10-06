@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AuthUser } from "@/features/auth/model";
 import { canEditProject, canViewProjects } from "@/features/auth/permissions";
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { buildValuationCoverImageKey } from "@/infrastructure/storage/storage-keys";
 import { saveUpload, type UploadResult } from "@/features/files/services/upload";
@@ -287,7 +288,7 @@ const defaultDependencies: CoverImageServiceDependencies = {
     });
   },
   getPrivateUrl(key) {
-    return storageProvider.getPrivateDownloadUrl(key);
+    return stableDownloadUrl(key);
   },
   deleteObject(key) {
     return storageProvider.deleteObject(key);

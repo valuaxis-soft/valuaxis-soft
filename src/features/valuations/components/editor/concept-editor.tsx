@@ -30,6 +30,7 @@ import {
   conceptValueFormatLabel,
   formatNumericConceptValue,
   isNumericConcept,
+  supportsValueFormat,
   normalizeNumericConceptInput,
   NUMERIC_VALUE_FORMAT_OPTIONS,
   resolveConceptValueFormat,
@@ -794,7 +795,7 @@ export function ConceptEditorRow({
   });
 
   if (layout === "caratulaGrid") {
-    const showValueFormatControl = enableLayoutControls && isNumericConcept(effectiveConcept);
+    const showValueFormatControl = enableLayoutControls && supportsValueFormat(effectiveConcept);
     const linkState = conceptLinkIndicator(concept, allConcepts);
     const handleLinkedAwareUpdate = (patch: Partial<Pick<Concept, "label" | "value">>) => {
       if (linkState !== "none" && onUpdateEverywhere) {
@@ -900,7 +901,7 @@ export function ConceptEditorRow({
     );
   }
 
-  const showValueFormatControl = enableLayoutControls && isNumericConcept(effectiveConcept);
+  const showValueFormatControl = enableLayoutControls && supportsValueFormat(effectiveConcept);
 
   return (
     <div

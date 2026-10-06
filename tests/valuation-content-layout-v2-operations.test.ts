@@ -1145,3 +1145,22 @@ test("round-trip — activate middle, deactivate brings NEXT into target row", (
   // C moves INTO B's row
   assert.deepEqual(ids(deactivated.layout), [["A"], ["B", "C"]]);
 });
+
+/* ================================================================== */
+/*  New row next to the item's own row                                 */
+/* ================================================================== */
+
+test("move — a lone column dropped just below its own row stays where it is", () => {
+  const layout = v2([
+    row("r-0", [col("c-0-0", [ref("concept", "A")])]),
+    row("r-1", [col("c-1-0", [ref("concept", "B")])]),
+    row("r-2", [col("c-2-0", [ref("concept", "C")])]),
+  ]);
+
+  // It used to jump one row further down.
+  const after = moveContentLayoutV2(layout, { sourceColumnId: "c-1-0", targetRowId: "r-1", placement: "new-row-after" });
+  assert.deepEqual(ids(after.layout), [["A"], ["B"], ["C"]]);
+
+  const before = moveContentLayoutV2(layout, { sourceColumnId: "c-1-0", targetRowId: "r-1", placement: "new-row-before" });
+  assert.deepEqual(ids(before.layout), [["A"], ["B"], ["C"]]);
+});

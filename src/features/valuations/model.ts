@@ -1,3 +1,4 @@
+import type { CoverImageFocus } from "./services/cover-image-focus";
 import type { ValuationSignature } from "./services/valuation-signatures";
 
 export type ValuationKind = "venta" | "renta" | "ambos";
@@ -35,6 +36,8 @@ export type CaratulaFormData = {
   mesesVigencia: number | null;
   /** Validity date of a valuation saved before the validity was captured in months. */
   fechaVigencia: string;
+  /** The part of the principal cover image kept in view inside the cover box; centered when absent. */
+  enfoqueImagenPrincipal?: CoverImageFocus;
 };
 
 /**

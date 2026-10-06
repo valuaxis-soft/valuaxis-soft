@@ -21,6 +21,7 @@ import {
   readCompanyHeaderFields,
 } from "@/features/valuations/services/caratula-company-header";
 import { isBoundaryDistanceValueFormat } from "@/features/valuations/services/concept-value-format";
+import { COVER_IMAGE_FOCUS_CENTER } from "@/features/valuations/services/cover-image-focus";
 import { imageMetadataFromContent } from "@/features/valuations/metadata";
 import { initializeCaratulaState } from "@/features/valuations/components/workspace/valuation-caratula-state";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
@@ -247,6 +248,7 @@ export function caratulaFromValuation(
     fechaAvaluo: initialValuation?.caratula?.fechaAvaluo || "",
     mesesVigencia: initialValuation?.caratula?.mesesVigencia ?? null,
     fechaVigencia: initialValuation?.caratula?.fechaVigencia || "",
+    enfoqueImagenPrincipal: initialValuation?.caratula?.enfoqueImagenPrincipal ?? COVER_IMAGE_FOCUS_CENTER,
   };
 }
 

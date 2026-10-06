@@ -69,6 +69,7 @@ describe("without a session", () => {
     ["GET", "/api/organizacion/despacho"],
     ["PUT", "/api/organizacion/despacho"],
     ["GET", "/api/organizacion/despacho/logo"],
+    ["GET", "/api/archivos/imagen?key=uploads/2026-10/x.jpg"],
     ["GET", "/api/organizacion/despacho/factores"],
     ["PUT", "/api/organizacion/despacho/factores"],
     ["POST", "/api/uploads"],

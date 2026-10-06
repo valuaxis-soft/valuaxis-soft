@@ -7,6 +7,7 @@ import {
 } from "@/features/files/services/valuation-cover-image";
 import { saveUpload, type UploadResult } from "@/features/files/services/upload";
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { buildValuationTerrainSketchKey } from "@/infrastructure/storage/storage-keys";
 
@@ -241,7 +242,7 @@ async function persistTerrainSketch(input: {
 async function toDto(stored: StoredSketch): Promise<TerrainSketchDto> {
   const { key, ...metadata } = stored;
   try {
-    return { ...metadata, url: await storageProvider.getPrivateDownloadUrl(key) };
+    return { ...metadata, url: await stableDownloadUrl(key) };
   } catch {
     return {
       ...metadata,

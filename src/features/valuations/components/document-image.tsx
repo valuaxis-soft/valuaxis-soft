@@ -6,7 +6,12 @@ import { useLayoutInvalidation } from "./document-preview-page";
 
 const EMPTY_VALUE = "No se proporcionó";
 
-export function DocumentImage({ image }: { image: ImageContent }) {
+/**
+ * An image of the document. `sideBySide` is for images that share a row
+ * (location sketches): each sits in a thin frame of the same shape, whatever
+ * the proportions of its file, so the pair stays level and compact.
+ */
+export function DocumentImage({ image, sideBySide = false }: { image: ImageContent; sideBySide?: boolean }) {
   const widthPercent = resolveImageWidthPercent(image);
   const widthStyle = {
     width: `${widthPercent}%`,
@@ -54,7 +59,9 @@ export function DocumentImage({ image }: { image: ImageContent }) {
       {isRenderableImageSource(image.src) ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          className="mx-auto block h-auto w-full object-contain"
+          className={sideBySide
+            ? "mx-auto block aspect-[16/9] w-full border border-slate-400 bg-white object-contain"
+            : "mx-auto block h-auto w-full object-contain"}
           src={image.src}
           alt={image.title || "Imagen del avalúo"}
           onLoad={() => { handleImageLoad?.(); }}

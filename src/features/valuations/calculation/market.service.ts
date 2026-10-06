@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 import type { AuthUser } from "@/features/auth/model";
 import { saveUpload } from "@/features/files/services/upload";
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { buildComparableAssetKey } from "@/infrastructure/storage/storage-keys";
 import { ENGINE_VERSION } from "../engine/config";
@@ -101,7 +102,7 @@ async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean): Prom
     photos: await Promise.all(photos.map(async (photo) => ({
       id: photo.id,
       title: photo.title,
-      url: withPhotoUrls ? await storageProvider.getPrivateDownloadUrl(photo.key).catch(() => "") : "",
+      url: withPhotoUrls ? await stableDownloadUrl(photo.key).catch(() => "") : "",
     }))),
     factors: row.factoresHomologacion.map((factor) => ({
       type: factor.tipoFactorHomologacion.SClave as FactorType,

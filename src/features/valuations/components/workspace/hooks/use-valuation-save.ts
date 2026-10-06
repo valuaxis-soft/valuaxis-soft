@@ -6,6 +6,7 @@ import { api, SessionExpiredError } from "@/lib/api-client";
 import { updateCompanyHeaderFields } from "@/features/valuations/services/caratula-company-header";
 import { hasUntitledConcepts } from "@/features/valuations/services/caratula-blocks";
 import {
+  describeCaratulaErrors,
   formatMexicanPhone,
   hasCaratulaValidationErrors,
   validateCaratula,
@@ -80,10 +81,12 @@ export function useValuationSave({
     if (!canEdit) return false;
     const automatic = options.automatic === true;
     const caratulaSection = sections.find((section) => section.id === "caratula");
+    // Name the fields: "revisa los campos marcados" left the user looking for what stopped the save.
+    const caratulaErrors = validateCaratula(caratula, meta);
     const validationError = hasUntitledConcepts(caratulaSection?.blocks ?? [])
-      ? "Revisa los campos sin título antes de guardar."
-      : hasCaratulaValidationErrors(validateCaratula(caratula, meta))
-        ? "Revisa los campos marcados antes de guardar."
+      ? "No se guardó: en la carátula hay campos sin título."
+      : hasCaratulaValidationErrors(caratulaErrors)
+        ? `No se guardó. Corrige en la carátula: ${describeCaratulaErrors(caratulaErrors)}`
         : null;
     if (validationError) {
       if (automatic) {

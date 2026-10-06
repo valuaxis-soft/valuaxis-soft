@@ -10,6 +10,10 @@ import type {
 } from "../../model";
 import { resolveContentLayout } from "../../services/content-layout";
 import {
+  planContentDropSlots,
+  type ContentRowSlotPlan,
+} from "../../services/content-drop";
+import {
   moveContentLayout,
   type ContentLayoutMoveDescriptor,
 } from "../../services/content-layout-v2-operations";
@@ -329,7 +333,7 @@ export function EditableContentLayout({
         const descriptor: ContentLayoutMoveDescriptor = {
           sourceColumnId,
           targetRowId: overRowIdFromData,
-          placement: "new-row-after",
+          placement: overData?.placement === "above" ? "new-row-before" : "new-row-after",
         };
         const result = moveContentLayout(resolvedLayout, descriptor);
         if (result.changed) {
@@ -407,6 +411,30 @@ export function EditableContentLayout({
 
   const activeItem = activeColumnId ? columnItemRef.get(activeColumnId) ?? null : null;
 
+  // In external mode, use parent-provided DnD state for visual indicators.
+  // In standalone mode, use internal state.
+  const effectiveActiveColumnId = dndContextMode === "external" ? (externalActiveColumnId ?? null) : activeColumnId;
+  const effectiveActiveTarget = dndContextMode === "external" ? (externalActiveTarget ?? null) : activeTarget;
+
+  /* ---- Drop slots offered while something is dragged ---- */
+  const slotPlan = useMemo(() => {
+    if (!containerRef || effectiveActiveColumnId === null) return null;
+    // The dragged item is "home" here when the active ID is one of this container's columns.
+    let dragged: ContentLayoutItemRef | null = null;
+    for (const row of resolvedLayout.rows) {
+      for (const col of row.columns) {
+        if (buildContentColumnDndId(containerRef, col.id) === effectiveActiveColumnId) {
+          dragged = col.items[0] ?? null;
+        }
+      }
+    }
+    const plan = planContentDropSlots(
+      resolvedLayout,
+      dragged ? { itemType: dragged.type, itemId: dragged.id } : null,
+    );
+    return new Map(plan.map((rowPlan) => [rowPlan.rowId, rowPlan]));
+  }, [containerRef, effectiveActiveColumnId, resolvedLayout]);
+
   /* ---- Render callbacks ---- */
   const renderItem = useMemo(
     () =>
@@ -448,11 +476,6 @@ export function EditableContentLayout({
 
   if (resolvedLayout.rows.length === 0) return null;
 
-  // In external mode, use parent-provided DnD state for visual indicators.
-  // In standalone mode, use internal state.
-  const effectiveActiveColumnId = dndContextMode === "external" ? (externalActiveColumnId ?? null) : activeColumnId;
-  const effectiveActiveTarget = dndContextMode === "external" ? (externalActiveTarget ?? null) : activeTarget;
-
   const content = (
     <div className={`flex flex-col gap-y-1 ${className ?? ""}`}>
       {resolvedLayout.rows.map((row, rowIndex) => (
@@ -462,6 +485,8 @@ export function EditableContentLayout({
           activeId={effectiveActiveColumnId}
           activeTarget={effectiveActiveTarget}
           containerRef={containerRef}
+          above={rowIndex === 0 ? slotPlan?.get(row.id)?.above ?? "open" : undefined}
+          below={slotPlan?.get(row.id)?.below}
         >
           <V2RowContent
             row={row}
@@ -471,6 +496,7 @@ export function EditableContentLayout({
             renderItem={renderItem}
             disabled={readOnly || !onContentLayoutChange}
             containerRef={containerRef}
+            slots={slotPlan?.get(row.id)?.columns}
           />
         </V2RowDropTarget>
       ))}
@@ -520,6 +546,7 @@ export function V2RowContent({
   renderItem,
   disabled,
   containerRef,
+  slots,
 }: {
   row: { id: string; columns: { id: string; items: ContentLayoutItemRef[]; conceptPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation }[] };
   rowIndex: number;
@@ -528,6 +555,8 @@ export function V2RowContent({
   renderItem: (itemRef: ContentLayoutItemRef, columnId: string, currentPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation) => React.ReactNode;
   disabled: boolean;
   containerRef?: { kind: "block"; blockId: string } | { kind: "apartado"; blockId: string; apartadoId: string };
+  /** Side slots of each column, from the container's slot plan (same order as row.columns). */
+  slots?: ContentRowSlotPlan["columns"];
 }) {
   const span = columnSpan(row.columns.length);
 
@@ -549,8 +578,9 @@ export function V2RowContent({
           gap: "0.5rem",
         }}
       >
-        {row.columns.map((column) => {
+        {row.columns.map((column, columnIndex) => {
           const itemRef = column.items[0] ?? null;
+          const columnSlots = slots?.[columnIndex];
           return (
             <div
               key={column.id}
@@ -560,22 +590,27 @@ export function V2RowContent({
                 minWidth: 0,
               }}
             >
-              <V2SortableColumn
+              {/* The slots wrap the whole column (handle included) and stay put while it moves. */}
+              <V2ColumnDropZones
                 columnId={column.id}
+                activeId={activeColumnId}
+                activeTarget={activeTarget}
                 containerRef={containerRef}
-                itemType={itemRef?.type as "concept" | "image" | "table" | undefined}
-                itemId={itemRef?.id}
-                disabled={disabled}
+                hasPlan={Boolean(slots)}
+                left={columnSlots?.left}
+                right={columnSlots?.right}
               >
-                <V2ColumnDropZones
+                <V2SortableColumn
                   columnId={column.id}
-                  activeId={activeColumnId}
-                  activeTarget={activeTarget}
                   containerRef={containerRef}
+                  itemType={itemRef?.type as "concept" | "image" | "table" | undefined}
+                  itemId={itemRef?.id}
+                  disabled={disabled}
+                  data={{ rowId: row.id }}
                 >
                   {itemRef ? renderItem(itemRef, column.id, column.conceptPresentation) : null}
-                </V2ColumnDropZones>
-              </V2SortableColumn>
+                </V2SortableColumn>
+              </V2ColumnDropZones>
             </div>
           );
         })}

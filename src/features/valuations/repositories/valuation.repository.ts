@@ -16,11 +16,12 @@ import {
   hydrateSectionMetadata,
   hydrateApartadoMetadata,
 } from "@/features/valuations/metadata";
-import { storageProvider } from "@/infrastructure/storage/storage-provider";
+import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import type { TableCellFormat, TableV2 } from "@/features/valuations/services/table";
 import { decodeStoredTable } from "@/features/valuations/services/table-persistence";
 import { extractStorageKey, isS3Source } from "@/features/valuations/services/image-source";
 import { resolveSignatures, validityMonthsBetween, type ValuationSignature } from "@/features/valuations/services/valuation-signatures";
+import { COVER_IMAGE_FOCUS_CENTER, normalizeCoverImageFocus, type CoverImageFocus } from "@/features/valuations/services/cover-image-focus";
 
 export type ValuationListItem = {
   id: string;
@@ -58,6 +59,7 @@ export type CaratulaDto = {
   fechaAvaluo: string;
   mesesVigencia: number | null;
   fechaVigencia: string;
+  enfoqueImagenPrincipal: CoverImageFocus;
 };
 
 export type ValuationSectionDto = {
@@ -791,8 +793,8 @@ function mapImageNode(node: {
 /**
  * Resolve an image source to a fresh renderable URL.
  *
- * Uses extractStorageKey to normalize the source, then generates
- * a fresh signed URL if the source is an S3 key.
+ * Uses extractStorageKey to normalize the source, then gives the address
+ * the browser can keep using: it does not expire while the editor is open.
  */
 async function resolveImageUrl(rawSrc: string): Promise<string> {
   if (!rawSrc) return "";
@@ -800,7 +802,7 @@ async function resolveImageUrl(rawSrc: string): Promise<string> {
   if (isS3Source(rawSrc)) {
     const key = extractStorageKey(rawSrc);
     try {
-      return await storageProvider.getPrivateDownloadUrl(key);
+      return await stableDownloadUrl(key);
     } catch {
       return rawSrc;
     }
@@ -945,6 +947,11 @@ function mapCaratula(caratula: NonNullable<VersionTrabajo["caratula"]>): Caratul
     fechaAvaluo,
     mesesVigencia: caratula.IMesesVigencia ?? validityMonthsBetween(fechaAvaluo, fechaVigencia),
     fechaVigencia,
+    // Never framed: centered, as the cover printed before the framing existed.
+    enfoqueImagenPrincipal: normalizeCoverImageFocus({
+      x: caratula.IEnfoqueImagenX ?? COVER_IMAGE_FOCUS_CENTER.x,
+      y: caratula.IEnfoqueImagenY ?? COVER_IMAGE_FOCUS_CENTER.y,
+    }),
   };
 }
 

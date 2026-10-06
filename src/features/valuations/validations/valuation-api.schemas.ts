@@ -85,7 +85,11 @@ export const saveFullValuationSchema = z.object({
   ...valuationMetaShape,
   sections: z.array(sectionSchema).max(40).optional(),
   // The rules of signatures and validity months are checked when the carátula is saved.
-  caratula: z.object({ firmas: z.array(z.unknown()).max(100).optional() })
+  // The cover image framing is clamped to 0–100 there too.
+  caratula: z.object({
+    firmas: z.array(z.unknown()).max(100).optional(),
+    enfoqueImagenPrincipal: z.object({ x: z.number(), y: z.number() }).optional(),
+  })
     .catchall(z.union([z.string().max(5_000), z.number(), z.null()]))
     .optional(),
 });

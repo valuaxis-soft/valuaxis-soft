@@ -23,8 +23,9 @@ const CONCEPT_TYPE_OPTIONS: Array<{
     { type: "text", label: "Texto" },
     { type: "date", label: "Fecha" },
     { type: "phone", label: "Teléfono" },
-    { type: "email", label: "Correo" },
-    { type: "number", label: "Número"},
+    // "Número" and "Correo" are no longer offered: a text concept takes a unit
+    // from "Formato del valor", and a mail reads the same as text. Concepts
+    // already created with those types keep working.
     { type: "url", label: "Url", Icon: FilePlus2 },
     { type: "longText", label: "Texto largo", Icon: ListPlus },
 ];

@@ -156,6 +156,8 @@ const firmCases: Case[] = [
   { name: "reset the factor catalog", method: "DELETE", path: () => "/api/organizacion/despacho/factores", expected: adminOnly(200) },
   // Without a logo every member gets 404; the upload itself is covered below.
   { name: "read the logo", method: "GET", path: () => "/api/organizacion/despacho/logo", expected: all([302, 404]) },
+  { name: "load a stored image", method: "GET", path: () => "/api/archivos/imagen?key=uploads/2026-10/sin-registro.jpg", expected: all(302) },
+  { name: "ask for a malformed image key", method: "GET", path: () => "/api/archivos/imagen?key=../secretos", expected: all(404) },
   { name: "remove the logo", method: "DELETE", path: () => "/api/organizacion/despacho/logo", expected: adminOnly(204) },
 ];
 

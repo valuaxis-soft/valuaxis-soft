@@ -28,21 +28,18 @@ import type {
 } from "../../model";
 import { resolveContentLayout } from "../../services/content-layout";
 import {
-  moveContentLayout,
-  type ContentLayoutMoveDescriptor,
-} from "../../services/content-layout-v2-operations";
-import {
   resolveBlockFlowV2,
   moveBlockFlowV2Apartado,
-  insertContentRowIntoBlockFlowV2,
-  removeContentRowsFromBlockFlowV2,
-  moveContentColumnToBlockFlowBoundary,
-  type ContentRowInsertDescriptor,
 } from "../../services/block-flow";
 import {
-  moveContentItemAcrossContainers,
-  type ContentTransferDescriptor,
-} from "../../services/content-transfer";
+  applyContentDrop,
+  contentDropSourceFromData,
+  contentDropTargetFromData,
+  findHomeContentRowId,
+  planBlockBoundarySlots,
+  planContentDropSlots,
+  type ContentDropSource,
+} from "../../services/content-drop";
 import {
   DndContext,
   DragOverlay,
@@ -65,8 +62,6 @@ import {
 } from "@dnd-kit/sortable";
 import {
   V2RowDropTarget,
-  parseV2DropZoneId,
-  parseV2RowBelowZone,
   parseBfRowDropZoneId,
   parseBfApartadoDropZoneId,
   BfRowDropZones,
@@ -74,14 +69,12 @@ import {
   BfApartadoInsideDropZone,
 } from "./content-layout-v2-drop-target";
 import {
-  extractDomainColumnIdFromScoped,
-  isScopedContentDropId,
-  isScopedContentRowDropId,
-  type ContentContainerRef,
-} from "./content-dnd-ids";
+  pickContentDropSlot,
+  type DropSlotCandidate,
+  type DropSlotSibling,
+} from "./content-drop-collision";
 import { V2RowContent, renderLayoutItem } from "./editable-content-layout-v2";
 import { ContentDragPreview } from "./content-layout-drag-preview";
-import { CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW } from "../../services/content-layout";
 import type {
   EditableConceptCallbacks,
   EditableImageCallbacks,
@@ -124,6 +117,91 @@ function isRawSortable(id: string): boolean {
   return !isSpecificContentTarget(id) && !isBroadContainerTarget(id) && !isBfStructural(id);
 }
 
+/** The slot kinds a content drag can land on, and the direction each one is drawn in. */
+const CONTENT_SLOT_AXIS: Record<string, DropSlotCandidate["axis"]> = {
+  "content-row-target": "row",
+  "block-flow-boundary": "row",
+  "content-column-target": "column",
+  "apartado-inside": "area",
+};
+
+/** Identity of the container a droppable belongs to, among the containers of a Block. */
+function containerKey(data: Record<string, unknown> | undefined): string {
+  const container = data?.container as { kind?: string; apartadoId?: string } | undefined;
+  return `${container?.kind}:${container?.apartadoId ?? ""}`;
+}
+
+/** Identity of the row a content column sits in, across the containers of a Block. */
+function contentRowKey(data: Record<string, unknown> | undefined): string | null {
+  if (data?.kind !== "content-column" || typeof data.rowId !== "string") return null;
+  return `${containerKey(data)}:${data.rowId}`;
+}
+
+/**
+ * Collision detection for a content drag: the slot the pointer aims at
+ * (see pickContentDropSlot). A "noop" slot — the item's own place — and the
+ * item's own column both resolve to no target, so the drop changes nothing.
+ */
+const detectContentSlotCollision: CollisionDetection = ({
+  active,
+  droppableContainers,
+  droppableRects,
+  pointerCoordinates,
+}) => {
+  if (!pointerCoordinates) return [];
+  type Droppable = (typeof droppableContainers)[number];
+
+  const activeData = active.data.current as Record<string, unknown> | undefined;
+  const homeRowKey = contentRowKey(activeData);
+  const homeContainerKey = containerKey(activeData);
+  const candidates: DropSlotCandidate[] = [];
+  const containersById = new Map<string, Droppable>();
+  const columnSlotIds = new Map<string, string>();
+  const rowColumns: Array<{ columnId: string; isHome: boolean; rect: DropSlotCandidate["rect"] }> = [];
+
+  for (const container of droppableContainers) {
+    const data = container.data.current as Record<string, unknown> | undefined;
+    const rect = droppableRects.get(container.id);
+    if (!rect) continue;
+    const id = String(container.id);
+
+    // The columns of the row the item is dragged from, to let it swap places with them.
+    if (homeRowKey && contentRowKey(data) === homeRowKey) {
+      rowColumns.push({ columnId: String(data?.columnId), isHome: container.id === active.id, rect });
+      continue;
+    }
+
+    const axis = typeof data?.kind === "string" ? CONTENT_SLOT_AXIS[data.kind] : undefined;
+    if (!axis) continue;
+    candidates.push({ id, rect, axis });
+    containersById.set(id, container);
+    if (data?.kind === "content-column-target" && containerKey(data) === homeContainerKey) {
+      columnSlotIds.set(`${String(data.columnId)}:${String(data.placement)}`, id);
+    }
+  }
+
+  // Dropping onto a neighbour of the same row lands on its far side.
+  rowColumns.sort((a, b) => a.rect.left - b.rect.left);
+  const homeIndex = rowColumns.findIndex((column) => column.isHome);
+  const siblings: DropSlotSibling[] = [];
+  rowColumns.forEach((column, index) => {
+    if (homeIndex < 0 || index === homeIndex) return;
+    const next = rowColumns[index + 1];
+    const slotId = index < homeIndex
+      ? columnSlotIds.get(`${column.columnId}:left`)
+      : next
+        ? columnSlotIds.get(`${next.columnId}:left`)
+        : columnSlotIds.get(`${column.columnId}:right`);
+    if (slotId) siblings.push({ rect: column.rect, slotId });
+  });
+
+  const slotId = pickContentDropSlot(pointerCoordinates, candidates, droppableRects.get(active.id), siblings);
+  const container = slotId ? containersById.get(slotId) : undefined;
+  if (!container) return [];
+  if ((container.data.current as Record<string, unknown> | undefined)?.noop) return [];
+  return [{ id: container.id, data: { droppableContainer: container, value: 0 } }];
+};
+
 /**
  * Build a collision detection function that captures the current apartadoIdSet.
  * This closure approach keeps collision detection inside the component
@@ -133,6 +211,11 @@ function buildCollisionDetection(apartadoIdSet: Set<string>): CollisionDetection
   return (args) => {
     const activeId = args.active ? String(args.active.id) : null;
     const isApartadoDrag = activeId ? apartadoIdSet.has(activeId) : false;
+
+    // A content item dragged with the pointer aims at the drop slots only.
+    if (!isApartadoDrag && args.pointerCoordinates) {
+      return detectContentSlotCollision(args);
+    }
 
     const pointerCollisions = pointerWithin(args);
     if (pointerCollisions.length === 0) return rectIntersection(args);
@@ -213,11 +296,6 @@ function buildColumnToRowId(rows: { id: string; columns: { id: string }[] }[]): 
   return map;
 }
 
-function getColumnCount(rows: { id: string; columns: { id: string }[] }[], rowId: string): number {
-  const row = rows.find((r) => r.id === rowId);
-  return row ? row.columns.length : 0;
-}
-
 /* ------------------------------------------------------------------ */
 /*  Props                                                              */
 /* ------------------------------------------------------------------ */
@@ -289,9 +367,10 @@ export function BlockFlowRenderer({
     [block],
   );
 
+  // Resolved against the layout being shown, so every visible row has its place in the flow.
   const blockFlowV2 = useMemo(
-    () => resolveBlockFlowV2(block),
-    [block],
+    () => resolveBlockFlowV2({ ...block, contentLayout: resolvedLayout }),
+    [block, resolvedLayout],
   );
 
   /* ---- Lookups ---- */
@@ -345,23 +424,13 @@ export function BlockFlowRenderer({
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
   const [activeApartadoId, setActiveApartadoId] = useState<string | null>(null);
   const [activeTarget, setActiveTarget] = useState<string | null>(null);
+  /** The content item being dragged (from any container of this Block). */
+  const [activeContent, setActiveContent] = useState<ContentDropSource | null>(null);
 
   const columnToRowId = useMemo(
     () => buildColumnToRowId(resolvedLayout.rows),
     [resolvedLayout],
   );
-
-  const columnItemRef = useMemo(() => {
-    const map = new Map<string, ContentLayoutItemRef>();
-    for (const row of resolvedLayout.rows) {
-      for (const col of row.columns) {
-        if (col.items.length > 0) {
-          map.set(col.id, col.items[0]);
-        }
-      }
-    }
-    return map;
-  }, [resolvedLayout]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -386,399 +455,46 @@ export function BlockFlowRenderer({
     [],
   );
 
+  /* ---- Content drop: one pure step from (item, slot) to the next Block ---- */
   const handleContentDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
       setActiveTarget(null);
-      if (!over || !onContentLayoutChange) return;
+      setActiveContent(null);
+      if (!over) return;
 
-      const sourceData = active.data.current as Record<string, unknown> | undefined;
-      const overData = over.data.current as Record<string, unknown> | undefined;
+      const source = contentDropSourceFromData(active.data.current);
+      const target = contentDropTargetFromData(over.data.current);
+      if (!source || !target) return;
 
-      // Extract DOMAIN column IDs from metadata (not scoped DnD IDs)
-      const sourceColumnId = (sourceData?.columnId as string) ?? extractDomainColumnIdFromScoped(String(active.id)) ?? String(active.id);
-      const overDomainColumnId = (overData?.columnId as string) ?? extractDomainColumnIdFromScoped(String(over.id));
+      const result = applyContentDrop(block, source, target);
+      if (!result.changed) return;
+      const next = result.block;
 
-      /* ---- Cross-container detection ---- */
-      if (sourceData && overData && onCrossContainerChange) {
-        const sourceContainer = sourceData.container as ContentContainerRef | undefined;
-        const overContainer = overData.container as ContentContainerRef | undefined;
-
-        if (sourceContainer && overContainer) {
-          // Determine if source and destination are the same container
-          const isSameContainer =
-            sourceContainer.kind === overContainer.kind &&
-            sourceContainer.kind === "block"
-              ? sourceContainer.blockId === overContainer.blockId
-              : sourceContainer.kind === "apartado" && overContainer.kind === "apartado"
-                ? sourceContainer.apartadoId === overContainer.apartadoId
-                : false;
-
-          if (!isSameContainer) {
-            // CROSS-CONTAINER: build descriptor and delegate to transfer engine
-            const itemType = sourceData.itemType as "concept" | "image" | "table" | undefined;
-            const itemId = sourceData.itemId as string | undefined;
-
-            // SAFETY: require business metadata for cross-container transfer
-            if (!itemType || !itemId) return;
-
-            let destinationPlacement: ContentTransferDescriptor["destinationPlacement"];
-            let blockFlowPlacement: ContentTransferDescriptor["blockFlowPlacement"];
-
-            if (overData.kind === "apartado-inside") {
-              // Drop INTO an Apartado — create new row
-              destinationPlacement = { type: "new-row" };
-            } else if (overData.kind === "content-column-target") {
-              // Drop on existing column in destination
-              const placement = overData.placement as "left" | "right";
-              const columnId = overData.columnId as string;
-              destinationPlacement = placement === "left"
-                ? { type: "before-column", anchorColumnId: columnId }
-                : { type: "after-column", anchorColumnId: columnId };
-            } else if (overData.kind === "content-row-target") {
-              // Drop on row below in destination
-              destinationPlacement = { type: "new-row" };
-            } else if (overData.kind === "block-flow-boundary") {
-              // Drop on BlockFlow structural boundary (bfrow before/after)
-              destinationPlacement = { type: "new-row" };
-              blockFlowPlacement = {
-                targetStructuralRowId: overData.structuralRowId as string,
-                placement: overData.placement as "before" | "after",
-              };
-            } else {
-              return; // Unknown target type
-            }
-
-            const descriptor: ContentTransferDescriptor = {
-              itemType,
-              itemId,
-              source: sourceContainer,
-              destination: overContainer,
-              destinationPlacement,
-              blockFlowPlacement,
-            };
-
-            const result = moveContentItemAcrossContainers(block, descriptor);
-            if (result.changed) {
-              onCrossContainerChange(result.block);
-            }
-            return;
-          }
-          // Same container — fall through to same-container routing below
-        }
-      }
-
-      /* ---- Same-Apartado reorder ---- */
-      // When source and over are in the same apartado, resolve THAT apartado's
-      // layout (not the block's layout) and perform the move within it.
-      if (sourceData && onApartadoContentLayoutChange) {
-        const sourceContainer = sourceData.container as ContentContainerRef | undefined;
-        const overContainer = overData?.container as ContentContainerRef | undefined;
-
-        if (
-          sourceContainer?.kind === "apartado" &&
-          overContainer?.kind === "apartado" &&
-          sourceContainer.apartadoId === overContainer.apartadoId
-        ) {
-          const apartado = subBlocksById.get(sourceContainer.apartadoId);
-          if (apartado) {
-            const apartadoLayout = resolveContentLayout(apartado);
-            const apartadoColumnToRowId = buildColumnToRowId(apartadoLayout.rows);
-
-            // Determine the move target within the apartado's layout
-            const overColumnId = overDomainColumnId ?? (overData?.columnId as string | undefined);
-
-            // Case 1: Drop on column zone (left/right) within same apartado
-            if (overColumnId && isScopedContentDropId(String(over.id))) {
-              const targetRowId = apartadoColumnToRowId.get(overColumnId);
-              if (targetRowId) {
-                const placement = (overData?.placement as string) === "left" || String(over.id).endsWith("::left")
-                  ? "before-column"
-                  : "after-column";
-                const descriptor: ContentLayoutMoveDescriptor = {
-                  sourceColumnId,
-                  targetRowId,
-                  targetColumnId: overColumnId,
-                  placement,
-                };
-                const result = moveContentLayout(apartadoLayout, descriptor);
-                if (result.changed) {
-                  onApartadoContentLayoutChange(sourceContainer.apartadoId, result.layout);
-                }
-                return;
-              }
-            }
-
-            // Case 2: Drop on row below within same apartado
-            const overRowId = overData?.rowId as string | undefined;
-            if (overRowId && isScopedContentRowDropId(String(over.id))) {
-              const descriptor: ContentLayoutMoveDescriptor = {
-                sourceColumnId,
-                targetRowId: overRowId,
-                placement: "new-row-after",
-              };
-              const result = moveContentLayout(apartadoLayout, descriptor);
-              if (result.changed) {
-                onApartadoContentLayoutChange(sourceContainer.apartadoId, result.layout);
-              }
-              return;
-            }
-
-            // Case 3: Direct column targeting within same apartado
-            if (overColumnId) {
-              const targetRowId = apartadoColumnToRowId.get(overColumnId);
-              if (targetRowId) {
-                const currentRow = apartadoLayout.rows.find((r) => r.id === targetRowId);
-                if (currentRow) {
-                  const sourceIdx = currentRow.columns.findIndex((c) => c.id === sourceColumnId);
-                  const targetIdx = currentRow.columns.findIndex((c) => c.id === overColumnId);
-                  if (sourceIdx >= 0 && targetIdx >= 0) {
-                    const placement = sourceIdx < targetIdx ? "after-column" : "before-column";
-                    const descriptor: ContentLayoutMoveDescriptor = {
-                      sourceColumnId,
-                      targetRowId,
-                      targetColumnId: overColumnId,
-                      placement,
-                    };
-                    const result = moveContentLayout(apartadoLayout, descriptor);
-                    if (result.changed) {
-                      onApartadoContentLayoutChange(sourceContainer.apartadoId, result.layout);
-                    }
-                    return;
-                  }
-                }
-              }
-            }
-
-            // Case 4: Drop on apartado inside zone (new row)
-            if (overData?.kind === "apartado-inside") {
-              const descriptor: ContentLayoutMoveDescriptor = {
-                sourceColumnId,
-                targetRowId: apartadoLayout.rows[apartadoLayout.rows.length - 1]?.id ?? "",
-                placement: "new-row-after",
-              };
-              const result = moveContentLayout(apartadoLayout, descriptor);
-              if (result.changed) {
-                onApartadoContentLayoutChange(sourceContainer.apartadoId, result.layout);
-              }
-              return;
-            }
-          }
-        }
-      }
-
-      /* ---- Structural BEFORE/AFTER drop zones (same-container content → boundary) ---- */
-      const bfRowZone = parseBfRowDropZoneId(String(over.id));
-      if (bfRowZone) {
-        if (!blockFlowV2) return;
-        const result = moveContentColumnToBlockFlowBoundary(
-          resolvedLayout,
-          blockFlowV2,
-          {
-            sourceColumnId,
-            targetStructuralRowId: bfRowZone.rowId,
-            placement: bfRowZone.placement,
-          },
-        );
-        if (result.changed) {
-          onContentLayoutChange(result.contentLayout);
-          if (onBlockFlowChange) {
-            onBlockFlowChange(result.blockFlow);
-          }
-        }
+      // One update for the whole Block keeps the move a single undo step.
+      if (onCrossContainerChange) {
+        onCrossContainerChange(next);
         return;
       }
 
-      /* ---- Helper: perform dual writeback after a successful content move ---- */
-      const applyContentMove = (
-        result: { layout: ContentLayout; changed: boolean },
-        oldRowIds: Set<string>,
-        newFlow: BlockFlowV2 | undefined,
-        insertDescriptor?: ContentRowInsertDescriptor,
-      ) => {
-        if (!result.changed) return;
-
-        // Detect new and removed rows by diffing old vs new
-        const newRowIds = new Set(result.layout.rows.map((r) => r.id));
-        const removedRowIds: string[] = [];
-        for (const id of oldRowIds) {
-          if (!newRowIds.has(id)) removedRowIds.push(id);
-        }
-
-        // Start from current BlockFlowV2 (or empty)
-        let flow = newFlow ?? { version: 2 as const, rows: [] };
-
-        // Remove stale content-row references for disappeared rows
-        if (removedRowIds.length > 0) {
-          flow = removeContentRowsFromBlockFlowV2(flow, newRowIds);
-        }
-
-        // Insert new structural row if applicable
-        if (insertDescriptor) {
-          const insertResult = insertContentRowIntoBlockFlowV2(flow, insertDescriptor);
-          if (insertResult.changed) {
-            flow = insertResult.flow;
-          }
-        }
-
-        // Fire both updates atomically
-        onContentLayoutChange(result.layout);
-        if (onBlockFlowChange) {
-          onBlockFlowChange(flow);
-        }
-      };
-
-      /* ---- Column zone drop (left/right) — check overData for domain columnId ---- */
-      const overColumnId = overDomainColumnId ?? (overData?.columnId as string | undefined);
-      if (overColumnId && isScopedContentDropId(String(over.id))) {
-        const targetRowId = columnToRowId.get(overColumnId);
-        if (!targetRowId) return;
-        // Determine placement from overData or parse from scoped ID
-        const placement = (overData?.placement as string) === "left" || String(over.id).endsWith("::left")
-          ? "before-column"
-          : "after-column";
-        const descriptor: ContentLayoutMoveDescriptor = {
-          sourceColumnId,
-          targetRowId,
-          targetColumnId: overColumnId,
-          placement,
-        };
-
-        const oldRowIds = new Set(resolvedLayout.rows.map((r) => r.id));
-        const result = moveContentLayout(resolvedLayout, descriptor);
-        applyContentMove(result, oldRowIds, blockFlowV2);
-        return;
+      // Without it, only moves that leave every item in its container can be reported.
+      if (next.contentLayout && next.contentLayout !== block.contentLayout) {
+        onContentLayoutChange?.(next.contentLayout);
       }
-
-      /* ---- Also handle legacy unprefixed v2drop- zones ---- */
-      const parsedZone = parseV2DropZoneId(String(over.id));
-      if (parsedZone) {
-        const targetRowId = columnToRowId.get(parsedZone.columnId);
-        if (!targetRowId) return;
-        const placement = parsedZone.intent === "left" ? "before-column" : "after-column";
-        const descriptor: ContentLayoutMoveDescriptor = {
-          sourceColumnId,
-          targetRowId,
-          targetColumnId: parsedZone.columnId,
-          placement,
-        };
-        const oldRowIds = new Set(resolvedLayout.rows.map((r) => r.id));
-        const result = moveContentLayout(resolvedLayout, descriptor);
-        applyContentMove(result, oldRowIds, blockFlowV2);
-        return;
+      if (next.blockFlow && next.blockFlow !== block.blockFlow) {
+        onBlockFlowChange?.(next.blockFlow);
       }
-
-      /* ---- Row below drop (new-row-after) — check overData for domain rowId ---- */
-      const overRowId = (overData?.rowId as string | undefined);
-      if (overRowId && isScopedContentRowDropId(String(over.id))) {
-        const oldRowIds = new Set(resolvedLayout.rows.map((r) => r.id));
-        const descriptor: ContentLayoutMoveDescriptor = {
-          sourceColumnId,
-          targetRowId: overRowId,
-          placement: "new-row-after",
-        };
-        const result = moveContentLayout(resolvedLayout, descriptor);
-
-        let newContentRowId: string | undefined;
-        if (result.changed) {
-          const newRowIds = new Set(result.layout.rows.map((r) => r.id));
-          for (const id of newRowIds) {
-            if (!oldRowIds.has(id)) {
-              newContentRowId = id;
-              break;
-            }
-          }
+      for (const apartado of next.apartados) {
+        const previous = subBlocksById.get(apartado.id);
+        if (apartado.contentLayout && previous && apartado.contentLayout !== previous.contentLayout) {
+          onApartadoContentLayoutChange?.(apartado.id, apartado.contentLayout);
         }
-
-        applyContentMove(
-          result,
-          oldRowIds,
-          blockFlowV2,
-          newContentRowId
-            ? { newContentRowId, anchorContentRowId: overRowId, placement: "after" }
-            : undefined,
-        );
-        return;
-      }
-
-      /* ---- Also handle legacy unprefixed v2row- zones ---- */
-      const belowRowId = parseV2RowBelowZone(String(over.id));
-      if (belowRowId) {
-        const oldRowIds = new Set(resolvedLayout.rows.map((r) => r.id));
-        const descriptor: ContentLayoutMoveDescriptor = {
-          sourceColumnId,
-          targetRowId: belowRowId,
-          placement: "new-row-after",
-        };
-        const result = moveContentLayout(resolvedLayout, descriptor);
-
-        let newContentRowId: string | undefined;
-        if (result.changed) {
-          const newRowIds = new Set(result.layout.rows.map((r) => r.id));
-          for (const id of newRowIds) {
-            if (!oldRowIds.has(id)) {
-              newContentRowId = id;
-              break;
-            }
-          }
-        }
-
-        applyContentMove(
-          result,
-          oldRowIds,
-          blockFlowV2,
-          newContentRowId
-            ? { newContentRowId, anchorContentRowId: belowRowId, placement: "after" }
-            : undefined,
-        );
-        return;
-      }
-
-      /* ---- Direct column targeting (same-row reorder or cross-row move) ---- */
-      // For raw sortable drops, extract domain column ID from over data or scoped ID
-      const targetColumnId = overDomainColumnId ?? String(over.id);
-      const targetRowId = columnToRowId.get(targetColumnId);
-      if (!targetRowId) return;
-      const sourceRowId = columnToRowId.get(sourceColumnId);
-      const isSameRow = sourceRowId === targetRowId;
-
-      if (isSameRow) {
-        const currentRow = resolvedLayout.rows.find((r) => r.id === targetRowId);
-        if (!currentRow) return;
-        const sourceIdx = currentRow.columns.findIndex((c) => c.id === sourceColumnId);
-        const targetIdx = currentRow.columns.findIndex((c) => c.id === targetColumnId);
-        if (sourceIdx < 0 || targetIdx < 0) return;
-        const placement = sourceIdx < targetIdx ? "after-column" : "before-column";
-        const descriptor: ContentLayoutMoveDescriptor = {
-          sourceColumnId,
-          targetRowId,
-          targetColumnId,
-          placement,
-        };
-        const oldRowIds = new Set(resolvedLayout.rows.map((r) => r.id));
-        const result = moveContentLayout(resolvedLayout, descriptor);
-        applyContentMove(result, oldRowIds, blockFlowV2);
-      } else {
-        const destColCount = getColumnCount(resolvedLayout.rows, targetRowId);
-        if (destColCount >= CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW) return;
-        const descriptor: ContentLayoutMoveDescriptor = {
-          sourceColumnId,
-          targetRowId,
-          targetColumnId,
-          placement: "before-column",
-        };
-        const oldRowIds = new Set(resolvedLayout.rows.map((r) => r.id));
-        const result = moveContentLayout(resolvedLayout, descriptor);
-        applyContentMove(result, oldRowIds, blockFlowV2);
       }
     },
     [
-      resolvedLayout,
-      columnToRowId,
+      block,
       onContentLayoutChange,
       onBlockFlowChange,
-      blockFlowV2,
-      block,
       onApartadoContentLayoutChange,
       onCrossContainerChange,
       subBlocksById,
@@ -907,7 +623,22 @@ export function BlockFlowRenderer({
     [block.id],
   );
 
-  const activeItem = activeColumnId ? columnItemRef.get(activeColumnId) ?? null : null;
+  const activeItem: ContentLayoutItemRef | null = activeContent
+    ? { type: activeContent.itemType, id: activeContent.itemId }
+    : null;
+
+  /* ---- Drop slots offered while a content item is dragged ---- */
+  const draggedInBlock = activeContent?.container.kind === "block" ? activeContent : null;
+  const columnSlotsByRowId = useMemo(() => {
+    if (!activeContent) return null;
+    const plan = planContentDropSlots(resolvedLayout, draggedInBlock);
+    return new Map(plan.map((rowPlan) => [rowPlan.rowId, rowPlan.columns]));
+  }, [activeContent, draggedInBlock, resolvedLayout]);
+  const boundarySlotsByRowId = useMemo(() => {
+    if (!activeContent || !blockFlowV2) return null;
+    const plan = planBlockBoundarySlots(blockFlowV2, findHomeContentRowId(resolvedLayout, draggedInBlock));
+    return new Map(plan.map((rowPlan) => [rowPlan.structuralRowId, rowPlan]));
+  }, [activeContent, blockFlowV2, draggedInBlock, resolvedLayout]);
 
   /* ---- Render callback ---- */
   const renderItem = useMemo(
@@ -995,23 +726,20 @@ export function BlockFlowRenderer({
                 activeColumnId={activeColumnId}
                 activeTarget={activeTarget}
                 containerRef={{ kind: "block", blockId: block.id }}
+                contentBefore={boundarySlotsByRowId?.get(structuralRow.id)?.before}
+                contentAfter={boundarySlotsByRowId?.get(structuralRow.id)?.after}
               >
-                <V2RowDropTarget
-                  rowId={firstItem.rowId}
-                  activeId={activeColumnId}
+                {/* The new-row slots of a Block row are the structural boundaries around it. */}
+                <V2RowContent
+                  row={row}
+                  rowIndex={0}
+                  activeColumnId={activeColumnId}
                   activeTarget={activeTarget}
+                  renderItem={renderItem}
+                  disabled={readOnly || !onContentLayoutChange}
                   containerRef={{ kind: "block", blockId: block.id }}
-                >
-                  <V2RowContent
-                    row={row}
-                    rowIndex={0}
-                    activeColumnId={activeColumnId}
-                    activeTarget={activeTarget}
-                    renderItem={renderItem}
-                    disabled={readOnly || !onContentLayoutChange}
-                    containerRef={{ kind: "block", blockId: block.id }}
-                  />
-                </V2RowDropTarget>
+                  slots={columnSlotsByRowId?.get(row.id)}
+                />
               </BfRowDropZones>
             );
           }
@@ -1032,6 +760,8 @@ export function BlockFlowRenderer({
                 activeColumnId={activeColumnId}
                 activeTarget={activeTarget}
                 containerRef={{ kind: "block", blockId: block.id }}
+                contentBefore={boundarySlotsByRowId?.get(structuralRow.id)?.before}
+                contentAfter={boundarySlotsByRowId?.get(structuralRow.id)?.after}
               >
                 <BfApartadoDropZones
                   apartadoId={firstItem.apartadoId}
@@ -1079,6 +809,8 @@ export function BlockFlowRenderer({
                 activeColumnId={activeColumnId}
                 activeTarget={activeTarget}
                 containerRef={{ kind: "block", blockId: block.id }}
+                contentBefore={boundarySlotsByRowId?.get(structuralRow.id)?.before}
+                contentAfter={boundarySlotsByRowId?.get(structuralRow.id)?.after}
               >
                 <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
                   {sb1 ? (
@@ -1173,6 +905,7 @@ export function BlockFlowRenderer({
           setActiveApartadoId(activeId);
         } else {
           setActiveColumnId(activeId);
+          setActiveContent(contentDropSourceFromData(active.data.current));
         }
       }}
       onDragMove={handleDragMove}
@@ -1191,6 +924,7 @@ export function BlockFlowRenderer({
       }}
       onDragCancel={() => {
         setActiveColumnId(null);
+        setActiveContent(null);
         setActiveApartadoId(null);
         setActiveTarget(null);
       }}
