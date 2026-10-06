@@ -45,6 +45,8 @@ export type ConceptPayload = {
   spacingAfter?: number;
   valueFormat?: ConceptValueFormat;
   customUnit?: string;
+  /** Stored with the concept's configuration; `value` carries its last result. */
+  formula?: unknown;
 };
 
 export type ApartadoPayload = {

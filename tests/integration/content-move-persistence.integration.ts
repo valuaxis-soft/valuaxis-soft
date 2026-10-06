@@ -175,7 +175,9 @@ test("a concept, an image and a table moved to another block are saved and reloa
   // The table that stayed took the first place of its block: it is still itself.
   assert.deepEqual(first.tables.length, 1);
   assert.equal(ensureTableV2(first.tables[0]).rows[1].cells["col-area"]?.kind, "value");
-  assert.deepEqual(ensureTableV2(first.tables[0]), ensureTableV2(table(`${id}-t2`, "Segunda")));
+  // What a loaded table computes from its formulas is derived, not part of what was saved.
+  const { formulaResults: _computed, ...staying } = ensureTableV2(first.tables[0]);
+  assert.deepEqual(staying, ensureTableV2(table(`${id}-t2`, "Segunda")));
 
   // Saving again changes nothing, and moving back restores the first arrangement.
   await save(fixture, [reloaded]);

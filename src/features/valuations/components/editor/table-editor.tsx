@@ -1,14 +1,18 @@
 "use client";
 
 import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { toast } from "sonner";
 import type { TableContent } from "@/features/valuations/model";
+import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import {
   ensureTableV2,
   type TableV2,
   type TableCellV2,
   type TableColumn,
   type FormulaResult,
+  type FormulaSelectionOperation,
   type ColumnCapability,
+  type TableCellFormat,
   moveTableColumn,
   moveTableRow,
   insertTableColumn,
@@ -20,13 +24,28 @@ import {
   clearTableColumn,
   duplicateTableRow,
   setCellFormula,
+  setCellResultFormat,
+  fillColumnWithFormula,
   buildFormulaFromSelection,
   resolveColumnCapability,
   getTableHeaderLayout,
   getDisplayColumns,
   updateHeaderGroupTitle,
 } from "../../services/table";
-import { evaluateTableFormulas, getCellDisplayValue } from "../../services/table-formula-engine";
+import {
+  evaluateTableFormulas,
+  formulaCellKey,
+  formulaErrorMessage,
+  getCellDisplayValue,
+} from "../../services/table-formula-engine";
+import {
+  cellReferenceText,
+  columnLetter,
+  compileFormula,
+  formulaToText,
+  isFormulaText,
+} from "../../services/formula-references";
+import { useFormulaEditing, useFormulaField, useFormulaReferenceTarget } from "./formula-editing";
 
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
@@ -97,14 +116,40 @@ function v2Updater(fn: (table: TableV2) => TableV2): (current: TableContent) => 
 /*  Formula selection mode types                                        */
 /* ================================================================== */
 
-type FormulaSelectionOp = "SUM" | "AVERAGE" | "ADD" | "SUBTRACT" | "MULTIPLY" | "DIVIDE";
-
 type FormulaSelectionState = {
   targetRowId: string;
   targetColumnId: string;
-  operation: FormulaSelectionOp;
+  operation: FormulaSelectionOperation;
   sources: Array<{ rowId: string; columnId: string }>;
+  /** Exponent of a power or index of a root, as typed, when it is not taken from a cell. */
+  parameter: string;
 };
+
+/** The operations of "Resultado / Fórmula", in the order the menu offers them. */
+const SELECTION_OPERATIONS: Array<{ operation: FormulaSelectionOperation; label: string; hint: string }> = [
+  { operation: "ADD", label: "Sumar", hint: "Selecciona las celdas que se suman." },
+  { operation: "SUBTRACT", label: "Restar", hint: "Selecciona la celda de la que se resta y luego las que se restan." },
+  { operation: "MULTIPLY", label: "Multiplicar", hint: "Selecciona todas las celdas que se multiplican entre sí." },
+  { operation: "DIVIDE", label: "Dividir", hint: "Selecciona la celda que se divide y luego entre cuál." },
+  { operation: "AVERAGE", label: "Promedio", hint: "Selecciona las celdas que se promedian." },
+  { operation: "POWER", label: "Potencia", hint: "Selecciona la celda base. El exponente se escribe aquí o se toma de una segunda celda." },
+  { operation: "ROOT", label: "Raíz", hint: "Selecciona la celda. Sin índice es la raíz cuadrada; el índice se escribe aquí o se toma de una segunda celda." },
+];
+const SELECTION_LABELS: Record<FormulaSelectionOperation, string> = {
+  SUM: "Sumar",
+  ...Object.fromEntries(SELECTION_OPERATIONS.map((item) => [item.operation, item.label])),
+} as Record<FormulaSelectionOperation, string>;
+/** A power and a root read one cell, and a second one for the exponent or the index. */
+const takesParameter = (operation: FormulaSelectionOperation) => operation === "POWER" || operation === "ROOT";
+
+/** How the result of a formula cell can be written. */
+const RESULT_FORMATS: Array<{ label: string; format: TableCellFormat | null }> = [
+  { label: "Automático", format: null },
+  { label: "Número (2 decimales)", format: { type: "number", precision: 2 } },
+  { label: "Número (4 decimales)", format: { type: "number", precision: 4 } },
+  { label: "Moneda ($)", format: { type: "currency", precision: 2 } },
+  { label: "Porcentaje (%)", format: { type: "percent", precision: 2 } },
+];
 
 /* ================================================================== */
 /*  Sortable column header                                             */
@@ -112,6 +157,7 @@ type FormulaSelectionState = {
 
 function SortableColumnHeader({
   column,
+  letter,
   tableV2,
   tableId,
   readOnly,
@@ -130,6 +176,8 @@ function SortableColumnHeader({
   onContextMenuDelete,
 }: {
   column: TableColumn;
+  /** The column's letter in formulas (A, B, C…). */
+  letter: string;
   tableV2: TableV2;
   tableId: string;
   readOnly: boolean;
@@ -195,6 +243,7 @@ function SortableColumnHeader({
                 <GripVertical className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground/70" />
               </div>
             )}
+            <span className="shrink-0 select-none font-mono text-[10px] text-muted-foreground/70" title={`Columna ${letter} en las fórmulas`}>{letter}</span>
             <Input
               className="h-6 min-w-0 flex-1 border-0 bg-transparent px-0.5 text-xs font-semibold"
               disabled={readOnly || capability.headerEditable === false}
@@ -252,6 +301,181 @@ function SortableColumnHeader({
 }
 
 /* ================================================================== */
+/*  Cell — a value or a formula                                        */
+/* ================================================================== */
+
+/**
+ * A cell of the table. It holds what is typed, or a formula when what is
+ * typed starts with "=": the cell then shows the result, and shows the
+ * formula again when it is entered. While a formula is being written
+ * anywhere, a click on the cell writes its reference there.
+ */
+function EditableTableCell({
+  row,
+  column,
+  tableV2,
+  tableId,
+  readOnly,
+  formulaMode,
+  formulaResults,
+  onUpdate,
+  onFormulaCellClick,
+  onStartSelection,
+}: {
+  row: { id: string; cells: Record<string, TableCellV2> };
+  column: TableColumn;
+  tableV2: TableV2;
+  tableId: string;
+  readOnly: boolean;
+  formulaMode: FormulaSelectionState | null;
+  formulaResults: Map<string, FormulaResult>;
+  onUpdate: (id: string, updater: (table: TableContent) => TableContent) => void;
+  onFormulaCellClick: (rowId: string, columnId: string) => void;
+  onStartSelection: (rowId: string, columnId: string, operation: FormulaSelectionOperation) => void;
+}) {
+  const { index } = useFormulaEditing();
+  const cell = row.cells[column.id];
+  const isFormula = cell?.kind === "formula";
+  const fieldKey = `cell:${tableId}:${row.id}:${column.id}`;
+  const displayValue = getCellDisplayValue(tableV2, row.id, column.id, formulaResults);
+  const result = isFormula ? formulaResults.get(formulaCellKey(row.id, column.id)) : undefined;
+  const formulaText = cell?.kind === "formula" ? `=${formulaToText(cell.formula, { index, table: tableV2 })}` : null;
+  // What was typed as a formula and could not be read as one stays as written, to be corrected.
+  const unreadFormula = cell?.kind === "value" && isFormulaText(cell.value);
+  const isFormulaTarget = formulaMode?.targetRowId === row.id && formulaMode?.targetColumnId === column.id;
+  const isFormulaSource = formulaMode?.sources.some((s) => s.rowId === row.id && s.columnId === column.id);
+
+  const setValue = (value: string) => {
+    onUpdate(tableId, v2Updater((v2) => ({
+      ...v2,
+      rows: v2.rows.map((r) => (r.id === row.id ? { ...r, cells: { ...r.cells, [column.id]: { kind: "value", value } } } : r)),
+    })));
+  };
+  const { inputRef, draftText, writingFormula, change, onFocus, onBlur, onKeyDown, onMouseDown, start } = useFormulaField({
+    fieldKey,
+    homeTableId: tableId,
+    storedFormulaText: () => formulaText ?? (unreadFormula && cell?.kind === "value" ? cell.value : null),
+    onCommit: (text) => {
+      if (!isFormulaText(text)) {
+        setValue(text);
+        return;
+      }
+      const compiled = compileFormula(text, { index, table: tableV2 });
+      if (compiled.ok) {
+        onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, compiled.formula)));
+        return;
+      }
+      toast.error(`La fórmula no se aplicó. ${compiled.message}`);
+      setValue(text);
+    },
+  });
+  const reference = useFormulaReferenceTarget(fieldKey, (homeTableId) => cellReferenceText(index, tableId, tableV2, row.id, column.id, homeTableId));
+  const failed = (result && !result.ok) || unreadFormula;
+  const title = result && !result.ok
+    ? `${formulaErrorMessage(result.error)} ${formulaText ?? ""}`
+    : unreadFormula ? "Esta fórmula no se pudo leer: corrígela o bórrala." : formulaText ?? undefined;
+
+  return (
+    <TableCell
+      className={cn(
+        "p-0.5",
+        isFormula && "bg-blue-50/80 dark:bg-blue-500/15",
+        isFormulaTarget && "ring-2 ring-blue-400 ring-inset",
+        isFormulaSource && "bg-blue-100/80 dark:bg-blue-500/25 ring-1 ring-blue-300 ring-inset",
+        formulaMode && !isFormulaTarget && !isFormulaSource && "opacity-60",
+        writingFormula && "ring-2 ring-blue-500 ring-inset",
+        reference.active && "cursor-cell hover:ring-2 hover:ring-blue-300 hover:ring-inset [&_input]:cursor-cell",
+      )}
+      data-cell={`${cellReferenceText(index, tableId, tableV2, row.id, column.id, tableId) ?? ""}`}
+      onClick={() => formulaMode ? onFormulaCellClick(row.id, column.id) : undefined}
+      onMouseDownCapture={reference.onMouseDownCapture}
+    >
+      <ContextMenu>
+        <ContextMenuTrigger>
+          <div className="flex items-center">
+            <Input
+              ref={inputRef}
+              disabled={readOnly}
+              // In selection mode a click picks the cell; it does not edit it.
+              readOnly={Boolean(formulaMode)}
+              value={draftText ?? (isFormula ? displayValue : cell?.kind === "value" ? cell.value : "")}
+              onChange={(event) => {
+                if (!change(event.target.value)) setValue(event.target.value);
+              }}
+              onFocus={formulaMode ? undefined : onFocus}
+              onBlur={onBlur}
+              onKeyDown={onKeyDown}
+              onMouseDown={onMouseDown}
+              className={cn(
+                "h-7 w-full min-w-0 border-0 bg-transparent px-1 text-xs box-border",
+                (isFormula || writingFormula) && "font-mono text-blue-600 dark:text-blue-400",
+                failed && draftText === null && "text-destructive dark:text-red-400",
+              )}
+              title={title}
+            />
+            {isFormula && (
+              <FunctionSquare className="h-3 w-3 shrink-0 text-blue-500 mr-1" />
+            )}
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-56">
+          {isFormula ? (
+            <>
+              <ContextMenuItem onClick={() => {
+                // The menu gives the focus back when it closes; the cell is entered after that.
+                window.setTimeout(start, 80);
+              }}>
+                Editar fórmula
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onUpdate(tableId, v2Updater((v2) => fillColumnWithFormula(v2, row.id, column.id)))}>
+                Copiar fórmula a toda la columna
+              </ContextMenuItem>
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>Formato del resultado</ContextMenuSubTrigger>
+                <ContextMenuSubContent className="w-48">
+                  {RESULT_FORMATS.map((item) => (
+                    <ContextMenuItem key={item.label} onClick={() => onUpdate(tableId, v2Updater((v2) => setCellResultFormat(v2, row.id, column.id, item.format)))}>
+                      {item.label}
+                    </ContextMenuItem>
+                  ))}
+                </ContextMenuSubContent>
+              </ContextMenuSub>
+              <ContextMenuItem onClick={() => onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, null)))}>
+                Quitar fórmula
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          ) : (
+            <>
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>Resultado / Fórmula</ContextMenuSubTrigger>
+                <ContextMenuSubContent className="w-44">
+                  {SELECTION_OPERATIONS.map((item) => (
+                    <ContextMenuItem key={item.operation} onClick={() => onStartSelection(row.id, column.id, item.operation)}>
+                      {item.label}
+                    </ContextMenuItem>
+                  ))}
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onClick={() => window.setTimeout(start, 80)}>
+                    Escribir fórmula (=)
+                  </ContextMenuItem>
+                </ContextMenuSubContent>
+              </ContextMenuSub>
+              <ContextMenuSeparator />
+            </>
+          )}
+          <ContextMenuItem onClick={() => {
+            onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, null)));
+          }}>
+            Limpiar contenido
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+    </TableCell>
+  );
+}
+
+/* ================================================================== */
 /*  Sortable row                                                       */
 /* ================================================================== */
 
@@ -273,8 +497,7 @@ function SortableRow({
   onContextMenuDuplicate,
   onContextMenuClear,
   onContextMenuDelete,
-  onContextMenuEditFormula,
-  onContextMenuClearFormula,
+  onStartSelection,
 }: {
   row: { id: string; cells: Record<string, TableCellV2> };
   rowIndex: number;
@@ -293,8 +516,7 @@ function SortableRow({
   onContextMenuDuplicate: (rowId: string) => void;
   onContextMenuClear: (rowId: string) => void;
   onContextMenuDelete: (rowId: string) => void;
-  onContextMenuEditFormula: (rowId: string, columnId: string) => void;
-  onContextMenuClearFormula: (rowId: string, columnId: string) => void;
+  onStartSelection: (rowId: string, columnId: string, operation: FormulaSelectionOperation) => void;
 }) {
   const {
     attributes,
@@ -312,98 +534,29 @@ function SortableRow({
     opacity: isDragging ? 0.5 : undefined,
   };
 
-  const updateCell = useCallback((rowId: string, columnId: string, value: string) => {
-    onUpdate(tableId, v2Updater((v2) => {
-      const newRows = v2.rows.map((r) => {
-        if (r.id !== rowId) return r;
-        const cells = { ...r.cells };
-        if (cells[columnId]?.kind === "formula") return r;
-        cells[columnId] = { kind: "value", value };
-        return { ...r, cells };
-      });
-      return { ...v2, rows: newRows };
-    }));
-  }, [tableId, onUpdate]);
-
   return (
     <TableRow ref={setNodeRef} style={style} className={cn(
       rowIndex % 2 === 1 && "bg-primary/[0.03]",
       isOver && !isDragging && "bg-blue-50 dark:bg-blue-500/15",
     )}>
-      {displayColumns.map((column) => {
-        const cell = row.cells[column.id];
-        const isFormula = cell?.kind === "formula";
-        const displayValue = getCellDisplayValue(tableV2, row.id, column.id, formulaResults);
-        const isFormulaTarget = formulaMode?.targetRowId === row.id && formulaMode?.targetColumnId === column.id;
-        const isFormulaSource = formulaMode?.sources.some((s) => s.rowId === row.id && s.columnId === column.id);
-
-        return (
-          <TableCell
-            key={column.id}
-            className={cn(
-              "p-0.5",
-              isFormula && "bg-blue-50/80 dark:bg-blue-500/15",
-              isFormulaTarget && "ring-2 ring-blue-400 ring-inset",
-              isFormulaSource && "bg-blue-100/80 dark:bg-blue-500/25 ring-1 ring-blue-300 ring-inset",
-              formulaMode && !isFormulaTarget && !isFormulaSource && "opacity-60",
-            )}
-            onClick={() => formulaMode ? onFormulaCellClick(row.id, column.id) : undefined}
-          >
-            <ContextMenu>
-              <ContextMenuTrigger>
-                <div className="flex items-center">
-                  <Input
-                    disabled={readOnly}
-                    value={isFormula ? displayValue : cell?.kind === "value" ? cell.value : ""}
-                    onChange={(event) => updateCell(row.id, column.id, event.target.value)}
-                    className={cn(
-                      "h-7 w-full min-w-0 border-0 bg-transparent px-1 text-xs box-border",
-                      isFormula && "font-mono text-blue-600 dark:text-blue-400",
-                    )}
-                    readOnly={isFormula}
-                    title={isFormula ? `Fórmula: ${cell?.kind === "formula" ? cell.formula?.description : ""}` : undefined}
-                  />
-                  {isFormula && (
-                    <FunctionSquare className="h-3 w-3 shrink-0 text-blue-500 mr-1" />
-                  )}
-                </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent className="w-48">
-                {isFormula ? (
-                  <>
-                    <ContextMenuItem onClick={() => onContextMenuEditFormula(row.id, column.id)}>
-                      Editar fórmula
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => onContextMenuClearFormula(row.id, column.id)}>
-                      Quitar fórmula
-                    </ContextMenuItem>
-                    <ContextMenuSeparator />
-                  </>
-                ) : (
-                  <>
-                    <ContextMenuSub>
-                      <ContextMenuSubTrigger>Resultado / Fórmula</ContextMenuSubTrigger>
-                      <ContextMenuSubContent className="w-40">
-                        <ContextMenuItem onClick={() => onContextMenuEditFormula(row.id, column.id)}>Sumar</ContextMenuItem>
-                        <ContextMenuItem onClick={() => onContextMenuEditFormula(row.id, column.id)}>Restar</ContextMenuItem>
-                        <ContextMenuItem onClick={() => onContextMenuEditFormula(row.id, column.id)}>Multiplicar</ContextMenuItem>
-                        <ContextMenuItem onClick={() => onContextMenuEditFormula(row.id, column.id)}>Dividir</ContextMenuItem>
-                        <ContextMenuItem onClick={() => onContextMenuEditFormula(row.id, column.id)}>Promedio</ContextMenuItem>
-                      </ContextMenuSubContent>
-                    </ContextMenuSub>
-                    <ContextMenuSeparator />
-                  </>
-                )}
-                <ContextMenuItem onClick={() => {
-                  onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, null)));
-                }}>
-                  Limpiar contenido
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          </TableCell>
-        );
-      })}
+      <TableCell className="w-6 select-none p-0 text-center font-mono text-[10px] text-muted-foreground/70" title={`Fila ${rowIndex + 1} en las fórmulas`}>
+        {rowIndex + 1}
+      </TableCell>
+      {displayColumns.map((column) => (
+        <EditableTableCell
+          key={column.id}
+          row={row}
+          column={column}
+          tableV2={tableV2}
+          tableId={tableId}
+          readOnly={readOnly}
+          formulaMode={formulaMode}
+          formulaResults={formulaResults}
+          onUpdate={onUpdate}
+          onFormulaCellClick={onFormulaCellClick}
+          onStartSelection={onStartSelection}
+        />
+      ))}
       {/* Row context menu + drag handle */}
       <TableCell className="w-8 p-0.5">
         <ContextMenu>
@@ -579,33 +732,37 @@ export function TableEditorItem({
   }, []);
 
   /* ---- Formula selection mode ---- */
-  const startFormulaMode = useCallback((rowId: string, columnId: string, op: FormulaSelectionOp) => {
-    setFormulaMode({ targetRowId: rowId, targetColumnId: columnId, operation: op, sources: [] });
+  const startFormulaMode = useCallback((rowId: string, columnId: string, op: FormulaSelectionOperation) => {
+    setFormulaMode({ targetRowId: rowId, targetColumnId: columnId, operation: op, sources: [], parameter: "" });
   }, []);
 
   const handleFormulaCellClick = useCallback((rowId: string, columnId: string) => {
     if (!formulaMode) return;
     if (rowId === formulaMode.targetRowId && columnId === formulaMode.targetColumnId) return;
     if (formulaMode.sources.some((s) => s.rowId === rowId && s.columnId === columnId)) return;
+    if (takesParameter(formulaMode.operation) && formulaMode.sources.length >= 2) return;
     setFormulaMode((prev) => prev ? { ...prev, sources: [...prev.sources, { rowId, columnId }] } : null);
+  }, [formulaMode]);
+
+  const selectionFormula = useMemo(() => {
+    if (!formulaMode) return null;
+    return buildFormulaFromSelection(formulaMode.operation, formulaMode.sources, { parameter: parseDecimal(formulaMode.parameter) });
   }, [formulaMode]);
 
   const applyFormulaSelection = useCallback(() => {
     if (!formulaMode || formulaMode.sources.length === 0) { setFormulaMode(null); return; }
-    const formula = buildFormulaFromSelection(formulaMode.operation, formulaMode.sources);
-    if (formula) {
-      onUpdate(table.id, v2Updater((v2) => setCellFormula(v2, formulaMode.targetRowId, formulaMode.targetColumnId, formula)));
-    }
+    if (!selectionFormula) return;
+    onUpdate(table.id, v2Updater((v2) => setCellFormula(v2, formulaMode.targetRowId, formulaMode.targetColumnId, selectionFormula)));
     setFormulaMode(null);
-  }, [formulaMode, table.id, onUpdate]);
+  }, [formulaMode, selectionFormula, table.id, onUpdate]);
 
   const cancelFormulaSelection = useCallback(() => { setFormulaMode(null); }, []);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (!formulaMode) return;
     if (e.key === "Escape") cancelFormulaSelection();
-    if (e.key === "Enter" && formulaMode.sources.length > 0) applyFormulaSelection();
-  }, [formulaMode, cancelFormulaSelection, applyFormulaSelection]);
+    if (e.key === "Enter" && selectionFormula) applyFormulaSelection();
+  }, [formulaMode, selectionFormula, cancelFormulaSelection, applyFormulaSelection]);
 
   /* ---- Context menu column actions ---- */
   const ctxRenameColumn = useCallback((columnId: string, currentName: string) => {
@@ -659,15 +816,6 @@ export function TableEditorItem({
     onUpdate(table.id, v2Updater((v2) => removeTableRow(v2, idx)));
   }, [table.id, tableV2.rows, onUpdate]);
 
-  /* ---- Context menu formula actions ---- */
-  const ctxEditFormula = useCallback((rowId: string, columnId: string) => {
-    startFormulaMode(rowId, columnId, "SUM");
-  }, [startFormulaMode]);
-
-  const ctxClearFormula = useCallback((rowId: string, columnId: string) => {
-    onUpdate(table.id, v2Updater((v2) => setCellFormula(v2, rowId, columnId, null)));
-  }, [table.id, onUpdate]);
-
   /* ---- Group title editing ---- */
   const ctxRenameGroupTitle = useCallback((groupId: string, currentTitle: string) => {
     const newTitle = prompt("Título del grupo:", currentTitle);
@@ -683,6 +831,9 @@ export function TableEditorItem({
   const rowIds = useMemo(() => tableV2.rows.map((r) => r.id), [tableV2.rows]);
   const headerLayout = useMemo(() => getTableHeaderLayout(tableV2), [tableV2]);
   const displayColumns = useMemo(() => getDisplayColumns(tableV2), [tableV2]);
+  // Formulas name a cell by the letter of its column and the number of its row, as the table shows them.
+  const letterOf = useCallback((columnId: string) => columnLetter(displayColumns.findIndex((c) => c.id === columnId)), [displayColumns]);
+  const selectionHint = formulaMode ? SELECTION_OPERATIONS.find((item) => item.operation === formulaMode.operation)?.hint : undefined;
 
   const getColumnWidth = useCallback((columnId: string): React.CSSProperties => {
     const pres = tableV2.schema?.columnPresentation?.[columnId];
@@ -719,10 +870,25 @@ export function TableEditorItem({
 
       {/* Formula selection mode indicator */}
       {formulaMode && (
-        <div className="mb-2 flex items-center gap-2 rounded-md border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/15 px-3 py-1.5 text-xs text-blue-700 dark:text-blue-300">
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/15 px-3 py-1.5 text-xs text-blue-700 dark:text-blue-300">
           <Calculator className="h-3.5 w-3.5" />
-          <span>Selecciona celdas fuente para <strong>{formulaMode.operation}</strong> ({formulaMode.sources.length} seleccionadas)</span>
-          <Button type="button" size="sm" variant="ghost" className="ml-auto h-6 gap-1 text-xs text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100" onClick={applyFormulaSelection} disabled={formulaMode.sources.length === 0}>
+          <span>
+            <strong>{SELECTION_LABELS[formulaMode.operation]}</strong>: {selectionHint ?? "Selecciona las celdas."} ({formulaMode.sources.length} {formulaMode.sources.length === 1 ? "seleccionada" : "seleccionadas"})
+          </span>
+          {takesParameter(formulaMode.operation) && formulaMode.sources.length < 2 ? (
+            <label className="flex items-center gap-1">
+              {formulaMode.operation === "POWER" ? "Exponente" : "Índice"}
+              <Input
+                aria-label={formulaMode.operation === "POWER" ? "Exponente" : "Índice de la raíz"}
+                className="h-6 w-16 bg-background px-1 text-xs"
+                inputMode="decimal"
+                placeholder={formulaMode.operation === "POWER" ? "2" : "2"}
+                value={formulaMode.parameter}
+                onChange={(event) => setFormulaMode((prev) => (prev ? { ...prev, parameter: event.target.value } : null))}
+              />
+            </label>
+          ) : null}
+          <Button type="button" size="sm" variant="ghost" className="ml-auto h-6 gap-1 text-xs text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100" onClick={applyFormulaSelection} disabled={!selectionFormula}>
             <Check className="h-3 w-3" /> Aplicar
           </Button>
           <Button type="button" size="sm" variant="ghost" className="h-6 gap-1 text-xs text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100" onClick={cancelFormulaSelection}>
@@ -733,7 +899,9 @@ export function TableEditorItem({
 
       {/* Hint */}
       {!readOnly && !formulaMode && (
-        <p className="mb-2 text-[10px] text-muted-foreground">Click derecho para más opciones</p>
+        <p className="mb-2 text-[10px] text-muted-foreground">
+          Clic derecho para más opciones. Para calcular, escribe = en una celda, por ejemplo =B2*C2 o =SUMA(A1:A5).
+        </p>
       )}
 
       {/* Table grid */}
@@ -758,6 +926,7 @@ export function TableEditorItem({
           >
             <Table className={headerLayout.hasGroups ? "table-fixed" : undefined}>
               <colgroup>
+                <col className="w-6" />
                 {displayColumns.map((col) => (
                   <col key={col.id} style={getColumnWidth(col.id)} />
                 ))}
@@ -768,11 +937,13 @@ export function TableEditorItem({
                   <>
                     {/* Row 1: ungrouped columns (rowSpan=2) + group titles (colSpan) */}
                     <TableRow>
+                      <TableHead className="w-6 p-0" rowSpan={2} />
                       {headerLayout.topRow.map((cell) => (
                         cell.kind === "column" ? (
                           <SortableColumnHeader
                             key={cell.columnId}
                             column={tableV2.columns.find((c) => c.id === cell.columnId)!}
+                            letter={letterOf(cell.columnId)}
                             tableV2={tableV2}
                             tableId={table.id}
                             readOnly={readOnly}
@@ -830,6 +1001,7 @@ export function TableEditorItem({
                               <SortableColumnHeader
                                 key={colId}
                                 column={column}
+                                letter={letterOf(colId)}
                                 tableV2={tableV2}
                                 tableId={table.id}
                                 readOnly={readOnly}
@@ -854,11 +1026,13 @@ export function TableEditorItem({
                 ) : (
                   /* Free table: single-row header */
                   <TableRow>
+                    <TableHead className="w-6 p-0" />
                     <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
                       {displayColumns.map((column) => (
                         <SortableColumnHeader
                           key={column.id}
                           column={column}
+                          letter={letterOf(column.id)}
                           tableV2={tableV2}
                           tableId={table.id}
                           readOnly={readOnly}
@@ -902,8 +1076,7 @@ export function TableEditorItem({
                       onContextMenuDuplicate={ctxDuplicateRow}
                       onContextMenuClear={ctxClearRow}
                       onContextMenuDelete={ctxDeleteRow}
-                      onContextMenuEditFormula={ctxEditFormula}
-                      onContextMenuClearFormula={ctxClearFormula}
+                      onStartSelection={startFormulaMode}
                     />
                   ))}
                 </SortableContext>

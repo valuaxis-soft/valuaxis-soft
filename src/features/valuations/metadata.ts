@@ -2,6 +2,7 @@ import type { BlockFlowV2, ConceptDateFormat, ConceptType, ConceptValueFormat, C
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import { isBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { isContentLayout, normalizeContentLayout } from "@/features/valuations/services/content-layout";
+import { readStoredFormula, type TableFormula } from "@/features/valuations/services/table";
 
 export type ConceptMetadata = {
   enabled: boolean;
@@ -16,6 +17,8 @@ export type ConceptMetadata = {
   sourceUnit?: ConceptValueFormat;
   customUnit?: string;
   dateFormat?: ConceptDateFormat;
+  /** The concept's value is computed; its references are the ids of concepts, tables, rows and columns. */
+  formula?: TableFormula;
 };
 
 export type ImageMetadata = {
@@ -97,6 +100,7 @@ export function conceptMetadataFromContent(content: ConceptMetadataContent): Con
     type: content.type,
     labelKey: content.labelKey,
     valueKey: content.valueKey,
+    formula: content.formula,
   };
 }
 
@@ -114,6 +118,7 @@ export function hydrateConceptMetadata(config: unknown): ConceptMetadata {
     sourceUnit: conceptSourceUnit(config),
     customUnit: conceptStringMetadata(config, "customUnit"),
     dateFormat: conceptDateFormat(config),
+    formula: readConfigMetadata(config, (value) => (isRecord(value) ? readStoredFormula(value.formula) : undefined)),
   };
 }
 

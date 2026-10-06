@@ -358,6 +358,28 @@ export function applyConceptUpdateEverywhere(
   });
 }
 
+/**
+ * Sets or removes the formula of a concept. Concepts that share its value
+ * share the formula too: the value they show is the one it computes. `value`
+ * is what they keep when the formula is removed.
+ */
+export function applyConceptFormulaEverywhere(
+  concepts: Concept[],
+  conceptId: string,
+  formula: Concept["formula"],
+  value?: string,
+): Concept[] {
+  const target = concepts.find((concept) => concept.id === conceptId);
+  if (!target) return concepts;
+
+  return concepts.map((concept) => {
+    const sharesValue = target.valueKey ? concept.valueKey === target.valueKey : concept.id === target.id;
+    if (!sharesValue) return concept;
+    const { formula: _previous, ...rest } = concept;
+    return { ...rest, ...(formula ? { formula } : {}), ...(value !== undefined ? { value } : {}) };
+  });
+}
+
 export function applyConceptEditOnlyHere(
   concepts: Concept[],
   conceptId: string,

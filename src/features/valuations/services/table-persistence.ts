@@ -25,7 +25,8 @@ export type TableSavePayload = TableV2 & {
 
 /** Editor → API. Always sends a complete TableV2, whatever shape the editor holds. */
 export function serializeTableForSave(table: TableContent): TableSavePayload {
-  const v2 = ensureTableV2(table);
+  // The results of the formulas are computed again on every load.
+  const { formulaResults: _computed, ...v2 } = ensureTableV2(table);
   return {
     ...v2,
     title: table.title,
