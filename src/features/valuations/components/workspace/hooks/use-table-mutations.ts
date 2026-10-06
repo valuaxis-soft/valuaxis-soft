@@ -2,7 +2,11 @@ import type { TableContent } from "@/features/valuations/model";
 import { ensureTableV2 } from "@/features/valuations/services/table";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { createTable } from "../model/content-factories";
-import { ensureBlockContentIntegrity } from "../model/section-content";
+import {
+  ensureBlockContentIntegrity,
+  withAddedApartadoContent,
+  withAddedBlockContent,
+} from "../model/section-content";
 import type { EditorState } from "./use-editor-state";
 
 /** Table edits: add (blank or homologation), update, add column/row, remove. */
@@ -11,20 +15,18 @@ export function useTableMutations({
 }: Pick<EditorState, "updateSectionBlocks">) {
   const addTable = (sectionId: string, blockId: string, apartadoId?: string, preset?: "homologation") => {
     const table = createTable(preset);
+    const added = { type: "table" as const, id: table.id };
     updateSectionBlocks(sectionId, (blocks) =>
       blocks.map((block) => {
         if (block.id !== blockId) return block;
         if (!apartadoId) {
-          const updated = { ...block, tables: [...block.tables, table] };
-          return ensureBlockContentIntegrity(updated);
+          return withAddedBlockContent({ ...block, tables: [...block.tables, table] }, added);
         }
         return {
           ...block,
           apartados: block.apartados.map((subBlock) => {
             if (subBlock.id !== apartadoId) return subBlock;
-            const updated = { ...subBlock, tables: [...subBlock.tables, table] };
-            // Reconcile content layout so the new table appears in the form
-            return { ...updated, contentLayout: resolveContentLayout(updated) };
+            return withAddedApartadoContent({ ...subBlock, tables: [...subBlock.tables, table] }, added);
           }),
         };
       }),

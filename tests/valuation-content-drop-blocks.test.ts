@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Apartado, Block, Concept, ContentLayout } from "../src/features/valuations/model";
 import {
+  SAME_BLOCK_MOVE_RULES,
   applyContentDropToBlocks,
-  canDropContentInBlock,
+  canMoveContent,
+  contentContainerKey,
+  contentItemKey,
   contentDropTargetFromData,
   type ContentDropSource,
+  type ContentMoveRules,
 } from "../src/features/valuations/services/content-drop";
 import { resolveBlockFlowV2 } from "../src/features/valuations/services/block-flow";
 import { resolveContentLayout } from "../src/features/valuations/services/content-layout";
@@ -53,7 +57,8 @@ function singleRows(ids: string[]): ContentLayout {
 const inBlock = (blockId: string): ContentContainerRef => ({ kind: "block", blockId });
 const inApartado = (blockId: string, apartadoId: string): ContentContainerRef => ({ kind: "apartado", blockId, apartadoId });
 const source = (container: ContentContainerRef, itemId: string): ContentDropSource => ({ container, itemType: "concept", itemId });
-const CROSS = { crossBlock: true };
+const CROSS: ContentMoveRules = { ...SAME_BLOCK_MOVE_RULES, crossBlockTypes: ["concept", "image", "table"] };
+const CONCEPTS_CROSS: ContentMoveRules = { ...SAME_BLOCK_MOVE_RULES, crossBlockTypes: ["concept"] };
 
 /** The block as the editor shows it: structural rows in order. */
 function blockGrid(b: Block): Array<string | string[]> {
@@ -236,27 +241,61 @@ test("drop across blocks — a full row of the other block takes no more columns
   assert.equal(result.blocks, blocks);
 });
 
-test("drop across blocks — only concepts leave their block, and only where the section allows it", () => {
+test("drop across blocks — an item leaves its block only where the rules of the section allow its type", () => {
   const blocks = twoBlocks();
   const target = { kind: "row", container: inApartado("two", "S"), rowId: "r-0", placement: "below" } as const;
+  const conceptSource = source(inBlock("one"), "a1");
+  const imageSource: ContentDropSource = { container: inBlock("one"), itemType: "image", itemId: "i" };
 
-  assert.equal(applyContentDropToBlocks(blocks, source(inBlock("one"), "a1"), target, { crossBlock: false }).changed, false);
-  assert.equal(
-    applyContentDropToBlocks(blocks, { container: inBlock("one"), itemType: "table", itemId: "a1" }, target, CROSS).changed,
-    false,
-  );
+  assert.equal(applyContentDropToBlocks(blocks, conceptSource, target, SAME_BLOCK_MOVE_RULES).changed, false);
+  assert.equal(applyContentDropToBlocks(blocks, conceptSource, target, CONCEPTS_CROSS).changed, true);
 
-  assert.equal(canDropContentInBlock(source(inBlock("one"), "a1"), "one", false), true);
-  assert.equal(canDropContentInBlock(source(inBlock("one"), "a1"), "two", false), false);
-  assert.equal(canDropContentInBlock(source(inBlock("one"), "a1"), "two", true), true);
-  assert.equal(canDropContentInBlock({ container: inBlock("one"), itemType: "image", itemId: "i" }, "two", true), false);
+  assert.equal(canMoveContent(SAME_BLOCK_MOVE_RULES, conceptSource, inBlock("one")), true);
+  assert.equal(canMoveContent(SAME_BLOCK_MOVE_RULES, conceptSource, inApartado("one", "X")), true, "inside its block it moves freely");
+  assert.equal(canMoveContent(SAME_BLOCK_MOVE_RULES, conceptSource, inBlock("two")), false);
+  assert.equal(canMoveContent(CONCEPTS_CROSS, conceptSource, inBlock("two")), true);
+  assert.equal(canMoveContent(CONCEPTS_CROSS, imageSource, inBlock("two")), false);
+  assert.equal(canMoveContent(CROSS, imageSource, inApartado("two", "S")), true);
+});
+
+test("move rules — a locked block gives and takes nothing across blocks, but still reorders its own content", () => {
+  const rules: ContentMoveRules = { ...CROSS, lockedBlockIds: new Set(["two"]) };
+  assert.equal(canMoveContent(rules, source(inBlock("one"), "a1"), inBlock("two")), false);
+  assert.equal(canMoveContent(rules, source(inBlock("one"), "a1"), inApartado("two", "S")), false);
+  assert.equal(canMoveContent(rules, source(inApartado("two", "S"), "s1"), inBlock("one")), false);
+  assert.equal(canMoveContent(rules, source(inApartado("two", "S"), "s1"), inBlock("two")), true);
+  assert.equal(canMoveContent(rules, source(inBlock("one"), "a1"), inBlock("three")), true);
+
+  const blocks = twoBlocks();
+  const refused = applyContentDropToBlocks(blocks, source(inBlock("one"), "a1"), {
+    kind: "row", container: inApartado("two", "S"), rowId: "r-0", placement: "below",
+  }, rules);
+  assert.equal(refused.changed, false);
+  assert.equal(refused.blocks, blocks);
+});
+
+test("move rules — a pinned item stays in its container, and a closed container takes no item of that type", () => {
+  const rules: ContentMoveRules = {
+    ...CROSS,
+    pinnedItems: new Set([contentItemKey("table", "t1")]),
+    closedContainers: new Map([[contentContainerKey(inApartado("one", "X")), ["image", "table"]]]),
+  };
+  const pinned: ContentDropSource = { container: inApartado("one", "X"), itemType: "table", itemId: "t1" };
+  assert.equal(canMoveContent(rules, pinned, inApartado("one", "X")), true, "it still reorders where it is");
+  assert.equal(canMoveContent(rules, pinned, inBlock("one")), false);
+  assert.equal(canMoveContent(rules, pinned, inBlock("two")), false);
+
+  const image: ContentDropSource = { container: inBlock("one"), itemType: "image", itemId: "i" };
+  assert.equal(canMoveContent(rules, image, inApartado("one", "X")), false);
+  assert.equal(canMoveContent(rules, image, inBlock("two")), true);
+  assert.equal(canMoveContent(rules, source(inBlock("two"), "b1"), inApartado("one", "X")), true, "concepts still go in");
 });
 
 test("drop across blocks — inside one block it is the same move as before", () => {
   const blocks = twoBlocks();
   const result = applyContentDropToBlocks(blocks, source(inBlock("one"), "a3"), {
     kind: "block-boundary", container: inBlock("one"), structuralRowId: structuralRowOf(blocks[0], "a1"), placement: "before",
-  }, { crossBlock: false });
+  }, SAME_BLOCK_MOVE_RULES);
   assert.equal(result.changed, true);
   assert.deepEqual(blockGrid(result.blocks[0]), [["a3"], ["a1"], ["a2"]]);
   assert.equal(result.blocks[1], blocks[1], "the other block is untouched");

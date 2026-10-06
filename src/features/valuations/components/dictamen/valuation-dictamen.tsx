@@ -64,7 +64,7 @@ export function ValuationDictamen({
     <div className="min-h-dvh bg-muted/40 print:bg-white">
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur print:hidden">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3 px-4 py-3">
-          <Button variant="ghost" size="sm" render={<Link href={`/workspace?id=${valuationId}`} />}>
+          <Button variant="ghost" size="sm" nativeButton={false} render={<Link href={`/workspace?id=${valuationId}`} />}>
             <ArrowLeft data-icon="inline-start" />
             Volver al editor
           </Button>

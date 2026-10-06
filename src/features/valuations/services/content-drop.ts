@@ -580,28 +580,61 @@ export type ContentDropBlocksResult = {
 };
 
 /**
- * Whether the dragged item may be dropped in `blockId`.
+ * Where the content of a section may be moved to by drag.
  *
- * Every item can move inside its own Block. Only Concepts leave it, and only
- * where the section allows it (`crossBlock`): images and tables are tied to
- * the Block they were created in (uploads, calculations).
+ * Inside its own container an item always moves freely. Everything else is
+ * decided here, so the editor offers no slot the drop would be refused at.
  */
-export function canDropContentInBlock(
+export type ContentMoveRules = {
+  /** The item types that may go to another Block of the section. */
+  crossBlockTypes: readonly TransferableContentType[];
+  /** Blocks that keep their content and take none from other Blocks. */
+  lockedBlockIds: ReadonlySet<string>;
+  /** Items (see contentItemKey) that stay in the container they are in. */
+  pinnedItems: ReadonlySet<string>;
+  /** The item types a container (see contentContainerKey) takes from no other container. */
+  closedContainers: ReadonlyMap<string, readonly TransferableContentType[]>;
+};
+
+/** Content stays in its Block; inside it, it moves between the Block and its Apartados. */
+export const SAME_BLOCK_MOVE_RULES: ContentMoveRules = {
+  crossBlockTypes: [],
+  lockedBlockIds: new Set(),
+  pinnedItems: new Set(),
+  closedContainers: new Map(),
+};
+
+export function contentItemKey(itemType: TransferableContentType, itemId: string): string {
+  return `${itemType}:${itemId}`;
+}
+
+export function contentContainerKey(container: ContentContainerRef): string {
+  return container.kind === "block" ? `block:${container.blockId}` : `apartado:${container.blockId}:${container.apartadoId}`;
+}
+
+/** Whether the dragged item may be dropped in `destination`. */
+export function canMoveContent(
+  rules: ContentMoveRules,
   source: ContentDropSource,
-  blockId: string,
-  crossBlock: boolean,
+  destination: ContentContainerRef,
 ): boolean {
-  if (source.container.blockId === blockId) return true;
-  return crossBlock && source.itemType === "concept";
+  if (isSameContainer(source.container, destination)) return true;
+  if (rules.pinnedItems.has(contentItemKey(source.itemType, source.itemId))) return false;
+  if (rules.closedContainers.get(contentContainerKey(destination))?.includes(source.itemType)) return false;
+  if (source.container.blockId === destination.blockId) return true;
+  return rules.crossBlockTypes.includes(source.itemType)
+    && !rules.lockedBlockIds.has(source.container.blockId)
+    && !rules.lockedBlockIds.has(destination.blockId);
 }
 
 /**
  * Drop `source` on `target` among the Blocks of a section and return them.
  *
- * Inside one Block this is applyContentDrop. Between two Blocks (allowed
- * for Concepts when `crossBlock` is set) the Concept itself moves: same ID
- * and fields, so links to and from it keep working; it leaves the layout of
- * one Block and takes the dropped position in the other.
+ * Inside one Block this is applyContentDrop. Between two Blocks (where
+ * `rules` allow it) the item itself moves: same ID and fields, so links to
+ * and from a Concept keep working and an Image or Table keeps its file,
+ * values and formats; it leaves the layout of one Block and takes the dropped
+ * position in the other.
  *
  * Blocks that are not involved come back as the same objects. Returns
  * `changed: false` (and the same array) when nothing moves.
@@ -610,20 +643,19 @@ export function applyContentDropToBlocks(
   blocks: Block[],
   source: ContentDropSource,
   target: ContentDropTarget,
-  options: { crossBlock: boolean },
+  rules: ContentMoveRules,
 ): ContentDropBlocksResult {
   const unchanged: ContentDropBlocksResult = { changed: false, blocks };
   const sourceBlock = blocks.find((block) => block.id === source.container.blockId);
   const destinationBlock = blocks.find((block) => block.id === target.container.blockId);
   if (!sourceBlock || !destinationBlock) return unchanged;
+  if (!canMoveContent(rules, source, target.container)) return unchanged;
 
   if (sourceBlock === destinationBlock) {
     const result = applyContentDrop(sourceBlock, source, target);
     if (!result.changed) return unchanged;
     return { changed: true, blocks: blocks.map((block) => (block === sourceBlock ? result.block : block)) };
   }
-
-  if (!canDropContentInBlock(source, destinationBlock.id, options.crossBlock)) return unchanged;
 
   const destinationContainer = target.container.kind === "block"
     ? destinationBlock

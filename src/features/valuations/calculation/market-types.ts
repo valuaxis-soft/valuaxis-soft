@@ -76,6 +76,25 @@ export type FactorSlotConfig = {
 export const DEFAULT_FACTOR_SLOTS: FactorSlotConfig[] = ["NEGOCIACION", "UBICACION", "SUPERFICIE", "ZONA", "FRENTE", "USO_SUELO"]
   .map((type) => ({ type: type as FactorType, label: FACTOR_TYPE_LABELS[type as FactorType] }));
 
+/**
+ * "Nivel de oferta observada durante la investigación de mercado": the six
+ * options the appraiser's format prints, in its order.
+ */
+export const OFFER_LEVELS = ["MUY_ALTA", "ALTA", "MEDIA", "MEDIA_BAJA", "BAJA", "NULA"] as const;
+export type OfferLevel = (typeof OFFER_LEVELS)[number];
+
+export const OFFER_LEVEL_LABELS: Record<OfferLevel, string> = {
+  MUY_ALTA: "MUY ALTA",
+  ALTA: "ALTA",
+  MEDIA: "MEDIA",
+  MEDIA_BAJA: "MEDIA BAJA",
+  BAJA: "BAJA",
+  NULA: "NULA",
+};
+
+/** Built properties, for sale or rent: their comparables also carry conservación and calidad. */
+export const isBuiltComparableType = (type: ComparableType) => type !== "TERRENO_VENTA";
+
 /** COT-2026-001: at least four comparables per homologation. */
 export const MIN_COMPARABLES = 4;
 
@@ -97,13 +116,21 @@ export type ComparableDto = {
   area: number | null;
   /** Offer price, or monthly rent for rent comparables. */
   price: number | null;
+  /** Description of the land use; the short zoning key goes in `landUseKey`. */
   landUse: string | null;
+  /** Zoning key as the plan writes it ("AU-I/CS-D"). */
+  landUseKey?: string | null;
   shape: string | null;
   zone: string | null;
+  /** Number of street fronts. */
+  frontCount?: number | null;
   frontage: number | null;
   depth: number | null;
   topography: string | null;
   services: string | null;
+  /** Built properties: state of conservation and quality, as the appraiser words them. */
+  conservation?: string | null;
+  quality?: string | null;
   notes: string | null;
   sourceName: string | null;
   contactName: string | null;
@@ -126,6 +153,11 @@ export type MarketSettingsDto = {
   factorSlots: FactorSlotConfig[];
   /** Excel ROUND digits of the value, the appraiser's choice; undefined keeps the default, null is no rounding. */
   rounding?: number | null;
+  /** Offer level observed in the market research; printed only once chosen. */
+  offerLevel?: OfferLevel | null;
+  /** "Frente tipo" and "fondo tipo en la zona", metres; printed next to the lote tipo. */
+  typicalFrontage?: number | null;
+  typicalDepth?: number | null;
 };
 
 export type MarketCalculationDto = {
@@ -144,6 +176,9 @@ export function defaultMarketSettings(comparableType: ComparableType): MarketSet
     justification: null,
     additionalAmount: 0,
     factorSlots: DEFAULT_FACTOR_SLOTS,
+    offerLevel: null,
+    typicalFrontage: null,
+    typicalDepth: null,
   };
 }
 

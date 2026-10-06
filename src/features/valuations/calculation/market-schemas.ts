@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SURFACE_POWERS } from "../engine/config";
-import { COMPARABLE_TYPES, FACTOR_TYPES } from "./market-types";
+import { COMPARABLE_TYPES, FACTOR_TYPES, OFFER_LEVELS } from "./market-types";
 
 const text = (max: number) => z.string().trim().max(max).nullable().transform((value) => value || null);
 const positive = z.number().finite().positive().max(1e12).nullable();
@@ -26,12 +26,16 @@ export const comparableInputSchema = z.object({
   area: positive,
   price: positive,
   landUse: text(180),
+  landUseKey: text(60).optional(),
   shape: text(80),
   zone: text(80),
+  frontCount: z.number().int("El número de frentes debe ser un entero.").min(1, "El número de frentes debe ser 1 o más.").max(20).nullable().optional(),
   frontage: positive,
   depth: positive,
   topography: text(80),
   services: text(180),
+  conservation: text(80).optional(),
+  quality: text(80).optional(),
   notes: text(1000),
   sourceName: text(180),
   contactName: text(180),
@@ -55,6 +59,10 @@ export const marketSettingsSchema = z.object({
   justification: text(2000),
   additionalAmount: z.number().finite().min(0).max(1e12),
   rounding: roundingSchema.optional(),
+  // Captures of the appraiser's format; clients that do not send them leave them empty.
+  offerLevel: z.enum(OFFER_LEVELS).nullable().optional(),
+  typicalFrontage: positive.optional(),
+  typicalDepth: positive.optional(),
   factorSlots: z.array(z.object({ type: z.enum(FACTOR_TYPES), label: z.string().trim().min(1).max(60), subjectOption: z.string().trim().max(60).nullable().optional() }))
     .min(1)
     .max(FACTOR_TYPES.length)

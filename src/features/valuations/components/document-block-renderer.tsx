@@ -8,6 +8,7 @@ import { useDocumentTheme } from "@/features/valuations/components/document-them
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
 import { resolveCellConceptGuide } from "@/features/valuations/services/concept-presentation";
 import { isLongTextList } from "@/features/valuations/services/document-long-text";
+import { MIN_ROWS_BEFORE_BREAK, MIN_ROWS_WITH_TAIL, type DocumentTableFragment } from "@/features/valuations/services/table-pagination";
 import { cn } from "@/lib/utils";
 import { DocumentConceptValue } from "./document-concept-value";
 import { DocumentImage } from "./document-image";
@@ -43,6 +44,8 @@ export function documentBlockFlowItems(
       imagesById: Map<string, ImageContent>;
       tablesById: Map<string, TableContent>;
       applyConceptLayout: boolean;
+      /** The rows to print of the row's table, when it breaks across pages. */
+      tableFragment?: DocumentTableFragment;
     }) => React.ReactNode;
   renderApartadoTitle?: (block: Block, subBlock: Apartado, displayLabel: string) => React.ReactNode;
     pairedApartadosClassName?: string;
@@ -92,38 +95,34 @@ export function documentBlockFlowItems(
       const layoutRow = layoutRowsById.get(firstItem.rowId);
       if (!layoutRow) continue;
       const crId = `cr-${block.id}-${structuralRow.id}`;
-      if (renderContentRow) {
-        items.push({
-          id: crId,
-          node: (
-            <div>
-              {renderContentRow({
-                layoutRow,
-                conceptsById,
-                imagesById,
-                tablesById,
-                applyConceptLayout,
-              })}
-            </div>
-          ),
-        });
-      } else {
-        items.push({
-          id: crId,
-          node: (
-            <DocumentContentRow
-              layoutRow={layoutRow}
-              rowIndex={0}
-              conceptsById={conceptsById}
-              imagesById={imagesById}
-              tablesById={tablesById}
-              applyConceptLayout={applyConceptLayout}
-              containerPresentation={block.conceptPresentation}
-              longText={blockLongText}
-            />
-          ),
-        });
-      }
+      const splits = holdsOnlyATable(layoutRow, block);
+      const renderRow = renderContentRow
+        ? (tableFragment?: DocumentTableFragment) => (
+          <div>
+            {renderContentRow({
+              layoutRow,
+              conceptsById,
+              imagesById,
+              tablesById,
+              applyConceptLayout,
+              tableFragment,
+            })}
+          </div>
+        )
+        : (tableFragment?: DocumentTableFragment) => (
+          <DocumentContentRow
+            layoutRow={layoutRow}
+            rowIndex={0}
+            conceptsById={conceptsById}
+            imagesById={imagesById}
+            tablesById={tablesById}
+            applyConceptLayout={applyConceptLayout}
+            containerPresentation={block.conceptPresentation}
+            longText={blockLongText}
+            tableFragment={tableFragment}
+          />
+        );
+      items.push({ id: crId, node: renderRow(), renderTableFragment: splits ? renderRow : undefined });
 
       continue;
     }
@@ -136,10 +135,19 @@ export function documentBlockFlowItems(
       if (!subBlock || subBlock.enabled === false) continue;
       const apId = `ap-${block.id}-${structuralRow.id}`;
       const apartadoRows = subBlock.presentationMode === "technical-list" ? [] : resolveContentLayout(subBlock).rows;
-      items.push({
-        id: apId,
-        startOnNewPage: subBlock.startOnNewPage,
-        node: (
+      const renderFurtherRow = (layoutRow: ContentLayoutRowV2, rowIndex: number, tableFragment?: DocumentTableFragment) => (
+        <DocumentApartadoRows
+          subBlock={subBlock}
+          rows={[layoutRow]}
+          firstRowIndex={rowIndex}
+          applyConceptLayout={applyConceptLayout}
+          tableFragment={tableFragment}
+        />
+      );
+      // The title stays with the first rows of a table that breaks; its continuations print without it.
+      const renderTitledRow = (tableFragment?: DocumentTableFragment) => tableFragment?.continuation
+        ? renderFurtherRow(apartadoRows[0], 0, tableFragment)
+        : (
           <DocumentApartado
             block={block}
             subBlock={subBlock}
@@ -147,22 +155,24 @@ export function documentBlockFlowItems(
             applyConceptLayout={applyConceptLayout}
             renderTitle={renderApartadoTitle}
             rows={apartadoRows.length ? apartadoRows.slice(0, 1) : undefined}
+            tableFragment={tableFragment}
             className="mt-1"
           />
-        ),
+        );
+      items.push({
+        id: apId,
+        startOnNewPage: subBlock.startOnNewPage,
+        node: renderTitledRow(),
+        renderTableFragment: apartadoRows.length && holdsOnlyATable(apartadoRows[0], subBlock) ? renderTitledRow : undefined,
       });
       apartadoRows.slice(1).forEach((layoutRow, index) => {
         items.push({
           id: `${apId}:${layoutRow.id}`,
           continuesPrevious: true,
-          node: (
-            <DocumentApartadoRows
-              subBlock={subBlock}
-              rows={[layoutRow]}
-              firstRowIndex={index + 1}
-              applyConceptLayout={applyConceptLayout}
-            />
-          ),
+          node: renderFurtherRow(layoutRow, index + 1),
+          renderTableFragment: holdsOnlyATable(layoutRow, subBlock)
+            ? (tableFragment) => renderFurtherRow(layoutRow, index + 1, tableFragment)
+            : undefined,
         });
       });
       continue;
@@ -210,6 +220,21 @@ export function documentBlockFlowItems(
   return items;
 }
 
+/**
+ * The row is one table and nothing else, long enough to break across pages:
+ * its item may be split by rows. Tables side by side, or sharing a row with
+ * concepts or images, stay whole.
+ */
+function holdsOnlyATable(layoutRow: ContentLayoutRowV2, container: Pick<Block, "concepts" | "images" | "tables">): boolean {
+  if (layoutRow.columns.length !== 1) return false;
+  const shown = (list: Array<{ id: string; enabled?: boolean }>, id: string) => list.some((entry) => entry.id === id && entry.enabled !== false);
+  const visible = layoutRow.columns[0].items.filter((itemRef) =>
+    shown(itemRef.type === "concept" ? container.concepts : itemRef.type === "image" ? container.images : container.tables, itemRef.id));
+  if (visible.length !== 1 || visible[0].type !== "table") return false;
+  const table = container.tables.find((entry) => entry.id === visible[0].id);
+  return (table?.rows.length ?? 0) >= MIN_ROWS_BEFORE_BREAK + MIN_ROWS_WITH_TAIL;
+}
+
 /* ------------------------------------------------------------------ */
 /*  DocumentContentRow — renders one ContentLayoutV2 row               */
 /* ------------------------------------------------------------------ */
@@ -223,6 +248,7 @@ function DocumentContentRow({
   applyConceptLayout,
   containerPresentation,
   longText,
+  tableFragment,
 }: {
   layoutRow: ContentLayoutRowV2;
   rowIndex: number;
@@ -233,6 +259,8 @@ function DocumentContentRow({
   containerPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation;
   /** The container reads as prose: its concepts print a little larger. */
   longText: boolean;
+  /** The rows to print of the row's table, when it breaks across pages. */
+  tableFragment?: DocumentTableFragment;
 }) {
   const theme = useDocumentTheme();
   const columnCount = layoutRow.columns.length;
@@ -257,7 +285,8 @@ function DocumentContentRow({
   // above a table so it does not touch the table or the concepts before it.
   const holdsTable = visibleItems.some((itemRef) => itemRef.type === "table");
   const rowClassName = cn(
-    rowIndex === 0 ? theme.contentRow : holdsTable ? "mt-2.5 grid" : "mt-[1px] grid",
+    // The continuation of a table opens its page: no room above it.
+    tableFragment?.continuation ? "grid" : rowIndex === 0 ? theme.contentRow : holdsTable ? "mt-2.5 grid" : "mt-[1px] grid",
     gridClass,
     columnCount > 1 && "gap-x-4",
     sharedRule && theme.conceptRule,
@@ -297,7 +326,7 @@ function DocumentContentRow({
               if (itemRef.type === "table") {
                 const table = tablesById.get(itemRef.id);
                 if (!table || table.enabled === false) return null;
-                return <DocumentTable key={itemRef.id} table={table} variant="report" />;
+                return <DocumentTable key={itemRef.id} table={table} variant="report" fragment={tableFragment} />;
               }
               return null;
             })}
@@ -361,11 +390,13 @@ function ApartadoContentRows({
   rows,
   firstRowIndex,
   applyConceptLayout,
+  tableFragment,
 }: {
   subBlock: Apartado;
   rows: ContentLayoutRowV2[];
   firstRowIndex: number;
   applyConceptLayout: boolean;
+  tableFragment?: DocumentTableFragment;
 }) {
   const conceptsById = new Map(subBlock.concepts.map((c) => [c.id, c]));
   const imagesById = new Map(subBlock.images.map((i) => [i.id, i]));
@@ -385,6 +416,7 @@ function ApartadoContentRows({
           applyConceptLayout={applyConceptLayout}
           containerPresentation={subBlock.conceptPresentation}
           longText={longText}
+          tableFragment={tableFragment}
         />
       ))}
     </>
@@ -397,6 +429,7 @@ function DocumentApartadoRows(props: {
   rows: ContentLayoutRowV2[];
   firstRowIndex: number;
   applyConceptLayout: boolean;
+  tableFragment?: DocumentTableFragment;
 }) {
   return (
     <div className="pl-3">
@@ -416,6 +449,7 @@ function DocumentApartado({
   applyConceptLayout,
   renderTitle,
   rows,
+  tableFragment,
   className,
 }: {
   block: Block;
@@ -425,6 +459,8 @@ function DocumentApartado({
   renderTitle?: (block: Block, subBlock: Apartado, displayLabel: string) => React.ReactNode;
   /** The rows printed under the title; every row of the apartado when omitted. */
   rows?: ContentLayoutRowV2[];
+  /** The rows to print of the table of its only row, when it breaks across pages. */
+  tableFragment?: DocumentTableFragment;
   className?: string;
 }) {
   const theme = useDocumentTheme();
@@ -452,6 +488,7 @@ function DocumentApartado({
           rows={rows ?? resolveContentLayout(subBlock).rows}
           firstRowIndex={0}
           applyConceptLayout={applyConceptLayout}
+          tableFragment={tableFragment}
         />
       )}
     </section>

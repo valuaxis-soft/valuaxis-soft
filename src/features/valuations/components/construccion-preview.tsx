@@ -3,6 +3,7 @@ import type { AppSection, TableContent } from "../model";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { ensureTableV2 } from "../services/table";
+import type { DocumentTableFragment } from "../services/table-pagination";
 import {
   AutoPaginatedDocumentFlow,
   computeDocumentLayoutKey,
@@ -52,12 +53,14 @@ export function ConstruccionPreview({
 function ConstructionContentRow({
   layoutRow,
   tablesById,
+  tableFragment,
 }: {
   layoutRow: { columns: Array<{ id: string; items: Array<{ type: string; id: string }> }> };
   conceptsById: Map<string, { id: string; enabled?: boolean; label: string; layoutSpan?: string; spacingBefore?: number; spacingAfter?: number }>;
   imagesById: Map<string, { id: string; enabled?: boolean }>;
   tablesById: Map<string, TableContent>;
   applyConceptLayout: boolean;
+  tableFragment?: DocumentTableFragment;
 }) {
   const theme = useDocumentTheme();
   const columnCount = layoutRow.columns.length;
@@ -68,7 +71,8 @@ function ConstructionContentRow({
       : "grid-cols-3";
 
   return (
-    <div className={`${theme.contentRow} ${gridClass}`}>
+    // The continuation of a table opens its page: no room above it.
+    <div className={`${tableFragment?.continuation ? "grid" : theme.contentRow} ${gridClass}`}>
       {layoutRow.columns.map((column) => (
         <div key={column.id} className="min-w-0">
           {column.items.map((itemRef) => {
@@ -76,7 +80,7 @@ function ConstructionContentRow({
             if (itemRef.type === "table") {
               const table = tablesById.get(itemRef.id);
               if (!table || table.enabled === false) return null;
-              return <ConstructionTable key={itemRef.id} table={table} />;
+              return <ConstructionTable key={itemRef.id} table={table} fragment={tableFragment} />;
             }
             return null;
           })}
@@ -90,15 +94,17 @@ function ConstructionContentRow({
 /*  Construction table (retains custom styling)                        */
 /* ------------------------------------------------------------------ */
 
-function ConstructionTable({ table }: { table: TableContent }) {
+function ConstructionTable({ table, fragment }: { table: TableContent; fragment?: DocumentTableFragment }) {
   if (table.enabled === false) return null;
 
   const t2 = ensureTableV2(table);
   const columns = t2.columns.length ? t2.columns : [{ id: "__empty", name: "" }];
+  // The rows this page prints when the table breaks across pages; the header repeats on each.
+  const rows = fragment ? t2.rows.slice(fragment.from, fragment.to) : t2.rows;
 
   return (
-    <div className="mt-1 overflow-hidden">
-      <table className="w-full border-collapse table-fixed text-[9.5px] leading-tight text-[#222]">
+    <div className={fragment?.continuation ? "overflow-hidden" : "mt-1 overflow-hidden"}>
+      <table className="w-full border-collapse table-fixed text-[9.5px] leading-tight text-[#222]" data-split-table="">
         <colgroup>
           {columns.map((column) => (
             <col key={`${table.id}-col-${column.id}`} />
@@ -118,13 +124,14 @@ function ConstructionTable({ table }: { table: TableContent }) {
           </tr>
         </thead>
         <tbody>
-          {t2.rows.map((row) => {
+          {rows.map((row) => {
             const emptyVisualRow = columns.every((col) => {
               const cell = row.cells[col.id];
               return !cell || (cell.kind === "value" && !String(cell.value ?? "").trim());
             });
             return (
               <tr
+                data-split-table-row=""
                 key={`${table.id}-row-${row.id}`}
                 style={{ backgroundColor: emptyVisualRow ? CONSTRUCTION_EMPTY_ROW : "white" }}
               >

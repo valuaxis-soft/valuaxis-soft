@@ -244,3 +244,92 @@ test("the engine input skips incomplete comparables and explains what is missing
   assert.ok(input.ok);
   assert.equal(input.input.comparables.length, 4);
 });
+
+/* ------------------------------------------------------------------ */
+/*  Captures of the appraiser's format                                 */
+/* ------------------------------------------------------------------ */
+
+test("the offer level is the first apartado, with an X on the option observed; without it the page is as before", () => {
+  const withLevel: MarketCalculationDto = { ...calculation, settings: { ...calculation.settings, offerLevel: "MEDIA_BAJA" } };
+  const [block] = marketDocumentBlocks(withLevel, result());
+  assert.equal(block.id, "motor-mercado-terreno_venta-enfoque", "the block keeps its id");
+  assert.deepEqual(block.apartados.map((apartado) => [apartado.id, apartado.title]), [
+    ["motor-mercado-terreno_venta-enfoque-oferta", "TERRENOS SIMILARES EN VENTA"],
+    ["motor-mercado-terreno_venta-enfoque-datos", "DATOS DE COMPARABLES (TERRENOS)"],
+    ["motor-mercado-terreno_venta-enfoque-homologacion", "HOMOLOGACIÓN (TERRENOS)"],
+  ]);
+  const offer = printed(block.apartados[0].tables[0]);
+  assert.deepEqual(offer.columns, ["MUY ALTA", "ALTA", "MEDIA", "MEDIA BAJA", "BAJA", "NULA"]);
+  assert.deepEqual(offer.rows, [["(   )", "(   )", "(   )", "( X )", "(   )", "(   )"]]);
+  assert.deepEqual(offer.schema?.notes, [{ position: "top", text: "Nivel de oferta observada durante la investigación de mercado de terrenos." }]);
+
+  const titles = (target: MarketCalculationDto) => marketDocumentBlocks(target, result())[0].apartados.map((apartado) => apartado.title);
+  assert.deepEqual(titles({ ...calculation, settings: { ...calculation.settings, offerLevel: null } }), titles(calculation));
+  assert.equal(titles(calculation).length, 2, "not captured, not printed");
+
+  const rents: MarketCalculationDto = { ...calculation, settings: { ...calculation.settings, comparableType: "INMUEBLE_RENTA", offerLevel: "NULA" } };
+  const rentOffer = marketDocumentBlocks(rents, null)[0].apartados[0];
+  assert.equal(rentOffer.title, "INMUEBLES SIMILARES EN RENTA");
+  assert.equal(printed(rentOffer.tables[0]).rows[0][5], "( X )");
+});
+
+test("the typical frontage and depth of the zone print beside the lote tipo, each only when captured", () => {
+  const boxes = (settings: Partial<MarketCalculationDto["settings"]>, computed = true) => {
+    const target = { ...calculation, settings: { ...calculation.settings, ...settings } };
+    const table = marketDocumentBlocks(target, computed ? compute(target) : null)[0].apartados[1].tables[0];
+    return printed(table).schema?.summaryBoxes ?? [];
+  };
+  const both = boxes({ typicalFrontage: 8, typicalDepth: 17.5 });
+  assert.deepEqual(both.map((box) => [box.id, box.position, box.align]).slice(0, 3), [
+    ["base", "top", "start"], ["zona", "top", "end"], ["sujeto", "bottom", "start"],
+  ], "on the line of the lote tipo, to its right");
+  assert.deepEqual(both[1].rows, [
+    { label: "Frente tipo en la zona:", value: "8.00 m" },
+    { label: "Fondo tipo en la zona:", value: "17.50 m" },
+  ]);
+  assert.deepEqual(boxes({ typicalDepth: 20 })[1].rows, [{ label: "Fondo tipo en la zona:", value: "20.00 m" }]);
+  assert.deepEqual(boxes({ typicalFrontage: null, typicalDepth: null }), boxes({}), "empty, the boxes are the ones of before");
+  assert.equal(boxes({}).some((box) => box.id === "zona"), false);
+  assert.deepEqual(boxes({ typicalFrontage: 7, subjectArea: null }, false).map((box) => box.id), ["zona"], "they do not wait for the subject area");
+});
+
+test("fronts, the land use key, conservation and quality print where the format has them", () => {
+  const rows = (comparables: ComparableDto[], type: MarketCalculationDto["settings"]["comparableType"] = "TERRENO_VENTA") =>
+    printed(marketDocumentBlocks({ ...calculation, settings: { ...calculation.settings, comparableType: type }, comparables }, null)[0].apartados[0].tables[0]).rows;
+  const description = "Área Urbana-Incorporada / Comercial y Servicios Distrital";
+
+  const [separate, legacy, keyOnly, plain] = rows([
+    { ...villaToledo, frontCount: 2, landUseKey: "AU-I/CS-D", landUse: description },
+    { ...villaToledo, frontCount: 1, landUseKey: "AU-I/CS-D" },
+    { ...comparable(3, 100, 500000), landUseKey: "H-3", frontCount: null },
+    { ...comparable(4, 100, 500000), landUse: "Habitacional" },
+  ]);
+  assert.equal(separate[2], `AU-I/CS-D (${description})`, "key and description");
+  assert.match(separate[3], /^N\. FRENTES: 2 ; USO DE SUELO: AU-I\/CS-D ; FORMA: Regular ; /);
+  assert.equal(legacy[2], villaToledo.landUse, "a description that already carries the key is not doubled");
+  assert.match(legacy[3], /^N\. FRENTES: 1 ; USO DE SUELO: AU-I\/CS-D ; /);
+  assert.deepEqual(keyOnly.slice(2), ["H-3", "USO DE SUELO: H-3 ; SUPERFICIE: 100.00 m² ; OFERTA: $500,000.00"]);
+  assert.deepEqual(plain.slice(2), ["Habitacional", "USO DE SUELO: Habitacional ; SUPERFICIE: 100.00 m² ; OFERTA: $500,000.00"]);
+
+  const [rent] = rows([{ ...comparable(1, 410, 9500), frontCount: 1, conservation: "Buena", quality: "Media" }], "INMUEBLE_RENTA");
+  assert.equal(rent[3], "N. FRENTES: 1 ; SUP. RENTABLE: 410.00 m² ; CONSERVACIÓN: Buena ; CALIDAD: Media ; RENTA MENSUAL: $9,500.00");
+});
+
+test("the new captures do not reach the engine", () => {
+  const captured: MarketCalculationDto = {
+    ...calculation,
+    settings: { ...calculation.settings, offerLevel: "ALTA", typicalFrontage: 8, typicalDepth: 17.5 },
+    comparables: calculation.comparables.map((item) => ({ ...item, frontCount: 2, landUseKey: "H-3", conservation: "Buena", quality: "Media" })),
+  };
+  assert.deepEqual(toMarketEngineInput(captured), toMarketEngineInput(calculation));
+});
+
+test("a page regenerated after capturing the offer level replaces the one saved, in its place", () => {
+  const saved = marketDocumentBlocks(calculation, result());
+  const own = templateBlock("propio");
+  const next = marketDocumentBlocks({ ...calculation, settings: { ...calculation.settings, offerLevel: "ALTA", typicalFrontage: 8 } }, result());
+  const updated = withGeneratedBlocks(section([own, ...saved]), "TERRENO_VENTA", next);
+  assert.deepEqual(updated.blocks.map((block) => block.id), ["propio", "motor-mercado-terreno_venta-enfoque"]);
+  assert.equal(updated.blocks[1].apartados.length, 3);
+  assert.equal(withGeneratedBlocks(updated, "TERRENO_VENTA", next), updated, "and then it is left as is");
+});

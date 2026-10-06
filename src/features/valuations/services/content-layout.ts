@@ -607,6 +607,46 @@ export function resolveContentLayout(container: ContentContainer): ContentLayout
 }
 
 /**
+ * The layout of a container right after the user adds `added` to it: what
+ * was there keeps its place and the new item gets a row of its own at the end.
+ *
+ * `container` already holds the new item in its content array. Unlike the
+ * resolver's fallback for content missing from a layout, which fills the last
+ * row, a new item never lands beside another one.
+ *
+ * Never mutates the input.
+ */
+export function contentLayoutWithOwnRowFor<T extends ContentContainer>(
+  container: T,
+  added: ContentLayoutItemRef,
+): ContentLayout {
+  const isAdded = (item: { id: string }) => item.id === added.id;
+  const previous = resolveContentLayout({
+    ...container,
+    concepts: added.type === "concept" ? container.concepts.filter((item) => !isAdded(item)) : container.concepts,
+    tables: added.type === "table" ? container.tables.filter((item) => !isAdded(item)) : container.tables,
+    images: added.type === "image" ? container.images.filter((item) => !isAdded(item)) : container.images,
+  });
+
+  const usedRowIds = new Set(previous.rows.map((row) => row.id));
+  const usedColumnIds = new Set(previous.rows.flatMap((row) => row.columns.map((col) => col.id)));
+  const rowIndex = findMaxRowIndex(previous.rows) + 1;
+
+  return {
+    version: 2,
+    rows: [
+      ...previous.rows,
+      {
+        id: claimUniqueId(deterministicRowId(rowIndex), usedRowIds, previous.rows.length),
+        columns: [
+          { id: claimUniqueId(deterministicColumnId(rowIndex, 0), usedColumnIds, 0), items: [added] },
+        ],
+      },
+    ],
+  };
+}
+
+/**
  * Ensure a block has a persisted ContentLayout.
  *
  * When content is added to a block's concepts/images/tables arrays,

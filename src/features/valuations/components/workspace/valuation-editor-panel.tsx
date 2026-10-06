@@ -32,6 +32,7 @@ import {
   type ContentDropSource,
   type ContentDropTarget,
 } from "@/features/valuations/services/content-drop";
+import { contentMoveRulesForSection } from "@/features/valuations/services/content-move-rules";
 import { flattenSectionConcepts } from "./model/section-content";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { setColumnPresentation, clearColumnPresentation, clearConceptCellPresentations } from "@/features/valuations/services/concept-presentation";
@@ -277,9 +278,8 @@ export function ValuationEditorPanel(props: {
     (block) => getCaratulaBlockKind(block) === "conclusion",
   );
   const sortableBlockIds = editableBlocks.map((block) => block.id);
-  // A Concept keeps its place in the document's reading order by ID only, so
-  // it may move between the sections of the Carátula; elsewhere a Block keeps its content.
-  const crossBlock = isCaratula;
+  // Content moves between the Blocks of the section, except where something else owns it.
+  const moveRules = useMemo(() => contentMoveRulesForSection(section), [section]);
   const handleContentDrop = (source: ContentDropSource, target: ContentDropTarget) => {
     // A full link reads from its first concept in document order: settle it before the order changes.
     const pinned = source.itemType === "concept"
@@ -295,7 +295,7 @@ export function ValuationEditorPanel(props: {
       apartados: block.apartados.map((apartado) => ({ ...apartado, concepts: apartado.concepts.map(settle) })),
     }));
 
-    const result = applyContentDropToBlocks(blocks, source, target, { crossBlock });
+    const result = applyContentDropToBlocks(blocks, source, target, moveRules);
     // One update for the section keeps the move a single undo step.
     if (result.changed) props.onUpdateSection(section.id, { blocks: result.blocks });
   };
@@ -398,7 +398,7 @@ export function ValuationEditorPanel(props: {
           />
         ) : null}
         {isCaratula ? (
-          <ContentDndScope id={`blocks-${section.id}`} blockIds={sortableBlockIds} crossBlock={crossBlock} onContentDrop={handleContentDrop}>
+          <ContentDndScope id={`blocks-${section.id}`} blockIds={sortableBlockIds} moveRules={moveRules} onContentDrop={handleContentDrop}>
             <SortableContext items={sortableBlockIds} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
                 <section className="space-y-4">
@@ -456,6 +456,7 @@ export function ValuationEditorPanel(props: {
           <ContentDndScope
             id={`blocks-${section.id}`}
             blockIds={sortableBlockIds}
+            moveRules={moveRules}
             onBlockDragEnd={(event) => props.onBlockDragEnd(section.id, event)}
             onContentDrop={handleContentDrop}
           >

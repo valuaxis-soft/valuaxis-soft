@@ -19,6 +19,8 @@ import {
   MARKET_LABELS,
   FACTOR_TYPES,
   MIN_COMPARABLES,
+  OFFER_LEVELS,
+  OFFER_LEVEL_LABELS,
   isComparableComplete,
   marketEngineConfig,
   toMarketEngineInput,
@@ -27,6 +29,7 @@ import {
   type FactorType,
   type MarketCalculationDto,
   type MarketSettingsDto,
+  type OfferLevel,
 } from "@/features/valuations/calculation/market-types";
 import {
   COMPUTED_FACTORS,
@@ -53,7 +56,8 @@ function compute(calculation: Pick<MarketCalculationDto, "settings" | "comparabl
   return { result: computeMarketApproach(input.input, marketEngineConfig(calculation.settings)), reason: null };
 }
 
-type SettingsDraft = Record<"subjectArea" | "baseArea" | "adoptedUnitValue" | "additionalAmount" | "justification", string>;
+type SettingsDraft = Record<
+  "subjectArea" | "baseArea" | "adoptedUnitValue" | "additionalAmount" | "justification" | "typicalFrontage" | "typicalDepth", string>;
 
 const draftFrom = (settings: MarketSettingsDto): SettingsDraft => ({
   subjectArea: text(settings.subjectArea),
@@ -61,6 +65,8 @@ const draftFrom = (settings: MarketSettingsDto): SettingsDraft => ({
   adoptedUnitValue: text(settings.adoptedUnitValue),
   additionalAmount: settings.additionalAmount ? String(settings.additionalAmount) : "",
   justification: settings.justification ?? "",
+  typicalFrontage: text(settings.typicalFrontage ?? null),
+  typicalDepth: text(settings.typicalDepth ?? null),
 });
 
 function settingsFrom(base: MarketSettingsDto, draft: SettingsDraft): MarketSettingsDto {
@@ -71,6 +77,9 @@ function settingsFrom(base: MarketSettingsDto, draft: SettingsDraft): MarketSett
     adoptedUnitValue: parseDecimal(draft.adoptedUnitValue),
     additionalAmount: parseDecimal(draft.additionalAmount) ?? 0,
     justification: draft.justification.trim() || null,
+    offerLevel: base.offerLevel ?? null,
+    typicalFrontage: parseDecimal(draft.typicalFrontage),
+    typicalDepth: parseDecimal(draft.typicalDepth),
   };
 }
 
@@ -297,6 +306,26 @@ export function MarketCalculationPanel(props: {
             onChange={(rounding) => void saveSettings({ ...liveSettings, rounding })}
           />
         </Field>
+        <Field>
+          <FieldLabel htmlFor="market-typical-frontage">Frente tipo en la zona (m)</FieldLabel>
+          <Input id="market-typical-frontage" inputMode="decimal" value={draft.typicalFrontage} onChange={setDraftField("typicalFrontage")} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="market-typical-depth">Fondo tipo en la zona (m)</FieldLabel>
+          <Input id="market-typical-depth" inputMode="decimal" value={draft.typicalDepth} onChange={setDraftField("typicalDepth")} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="market-offer-level">Nivel de oferta observada</FieldLabel>
+          <NativeSelect
+            id="market-offer-level"
+            className="w-full"
+            value={liveSettings.offerLevel ?? ""}
+            onChange={(event) => void saveSettings({ ...liveSettings, offerLevel: (event.target.value || null) as OfferLevel | null })}
+          >
+            <NativeSelectOption value="">Sin capturar</NativeSelectOption>
+            {OFFER_LEVELS.map((level) => <NativeSelectOption key={level} value={level}>{OFFER_LEVEL_LABELS[level]}</NativeSelectOption>)}
+          </NativeSelect>
+        </Field>
       </fieldset>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -493,6 +522,7 @@ export function MarketCalculationPanel(props: {
           comparable={editingComparable ? comparables.find((item) => item.id === editingComparable.id) ?? editingComparable : null}
           factorSlots={calculation.settings.factorSlots}
           catalog={catalog}
+          comparableType={type}
           unitLabel={type === "INMUEBLE_RENTA" ? "Renta mensual ($)" : "Precio de oferta ($)"}
           readOnly={readOnly}
           onSubmit={submitComparable(editingComparable)}

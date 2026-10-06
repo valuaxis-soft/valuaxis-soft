@@ -232,7 +232,8 @@ test("report tables alternate gray and white rows, the first one gray", () => {
     variant: "report",
     table: { id: "t", title: "Instalaciones", columns: ["#", "Tipo"], rows: [["1", "E.A."], ["2", "O.C."], ["3", "O.C."]], enabled: true },
   }));
-  assert.equal(html.match(/<tr[^>]*odd:bg-slate-100[^>]*>/g)?.length, 3);
+  // The colour follows the row's place in the table, so it carries on when the table breaks across pages.
+  assert.deepEqual(html.match(/<tr[^>]*data-split-table-row[^>]*>/g)?.map((row) => /bg-slate-100/.test(row)), [true, false, true]);
   assert.match(html, /<td[^>]*px-2 py-1[^>]*>E\.A\.<\/td>/);
   assert.match(html, /<caption[^>]*>Instalaciones<\/caption>/);
 
