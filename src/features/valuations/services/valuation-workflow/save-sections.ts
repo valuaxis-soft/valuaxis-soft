@@ -24,6 +24,12 @@ import {
 import type { CaratulaPayload, SectionPayload, Tx } from "./types";
 import { initializeWorkingVersionStructure } from "./working-version";
 
+/**
+ * A full valuation writes hundreds of rows (blocks, concepts, tables, cells);
+ * Prisma's 5 s default cut long documents short and the save failed whole.
+ */
+const SAVE_TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 60_000 };
+
 export async function saveValuationSections(input: {
   publicId: string;
   organizationId: number;
@@ -226,7 +232,7 @@ export async function saveValuationSections(input: {
 
     logPersistenceStats(stats);
     return { versionId, sections: input.sections.length, stats };
-  });
+  }, SAVE_TRANSACTION_OPTIONS);
 }
 
 async function findSectionByCanonicalKey(client: Tx, versionId: number, canonical: string, debug = false) {

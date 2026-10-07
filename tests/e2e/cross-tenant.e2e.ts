@@ -17,6 +17,7 @@ import {
   createWorld,
   describeCall,
   emailPayload,
+  foundComparablesPayload,
   incomePayload,
   marketPayload,
   prisma,
@@ -66,6 +67,7 @@ const reads: Attempt[] = [
   ["GET", (id) => `/api/avaluos/${id}/costos`],
   ["GET", (id) => `/api/avaluos/${id}/mercado?tipo=TERRENO_VENTA`],
   ["GET", (id) => `/api/avaluos/${id}/mercado?tipo=INMUEBLE_RENTA`],
+  ["GET", (id) => `/api/avaluos/${id}/mercado/comparables/buscar?tipo=INMUEBLE_RENTA&q=renta`],
   ["GET", (id) => `/api/avaluos/${id}/ingresos`],
   ["GET", (id) => `/api/avaluos/${id}/conclusion`],
   ["GET", (id) => `/api/avaluos/${id}/datos/imagenes`],
@@ -84,6 +86,7 @@ const writes: Attempt[] = [
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables?tipo=TERRENO_VENTA`, { json: comparablePayload }],
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/importar?tipo=TERRENO_VENTA`, { form: comparablesCsv }],
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/importar?tipo=TERRENO_VENTA&confirmar=1`, { form: comparablesCsv }],
+  ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/buscar?tipo=TERRENO_VENTA`, { json: foundComparablesPayload }],
   ["POST", (id) => `/api/avaluos/${id}/conclude`],
 ];
 
@@ -106,6 +109,19 @@ describe("organization B cannot reach organization A's valuation", () => {
       assert.equal(response.status, 404, describeCall(label, response));
     });
   }
+
+  test("the comparable search of B never offers A's comparables", async () => {
+    const path = (id: string) => `/api/avaluos/${id}/mercado/comparables/buscar?tipo=INMUEBLE_RENTA&q=renta`;
+    // A finds, from another of its valuations, the rent comparables of its private one…
+    const own = await call(world.a.admin, "GET", path(concludedTarget));
+    assert.equal(own.status, 200, describeCall("org A admin search", own));
+    assert.equal((own.data.results as unknown[]).length, 4);
+    // …and B, searching the same words from a valuation of its own, finds none of them.
+    const mine = await createValuation(world.b.admin, "Avalúo de B");
+    const foreign = await call(world.b.admin, "GET", path(mine));
+    assert.equal(foreign.status, 200, describeCall("org B admin search", foreign));
+    assert.deepEqual(foreign.data.results, [], "A's comparables leaked into B's search");
+  });
 
   for (const item of writes) {
     test(`write: ${item[0]} ${item[1](":id")} → 404 and nothing changes`, async () => {
