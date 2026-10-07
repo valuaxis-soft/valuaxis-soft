@@ -5,6 +5,7 @@ import type {
   MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
 import type { ComparableImportPreview } from "@/features/valuations/calculation/comparable-import";
+import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 import type { CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
 import type { ConclusionCalculationDto, ConclusionSettingsDto } from "@/features/valuations/calculation/conclusion-types";
 import type { IncomeCalculationDto, IncomeInputDto } from "@/features/valuations/calculation/income-types";
@@ -67,6 +68,15 @@ export type TerrainSketchResponse = {
   size: number;
   url: string | null;
   warning?: string;
+};
+
+/** What the comparable search form sends; null leaves that side of a range open. */
+export type ComparableSearchFilters = {
+  text: string;
+  areaMin: number | null;
+  areaMax: number | null;
+  priceMin: number | null;
+  priceMax: number | null;
 };
 
 /** The server answered 401: the session expired or was revoked. */
@@ -178,6 +188,17 @@ export const api = {
     importComparables: (id: ApiId, type: ComparableType, file: File) =>
       uploadForm<{ preview: ComparableImportPreview; imported: number; calculation: MarketCalculationDto }>(
         `/avaluos/${id}/mercado/comparables/importar?tipo=${type}&confirmar=1`, { file }),
+    searchComparables: (id: ApiId, type: ComparableType, filters: ComparableSearchFilters) => {
+      const params = new URLSearchParams({ tipo: type, q: filters.text });
+      const ranges = { supMin: filters.areaMin, supMax: filters.areaMax, precioMin: filters.priceMin, precioMax: filters.priceMax };
+      for (const [key, value] of Object.entries(ranges)) if (value !== null) params.set(key, String(value));
+      return request<ComparableSearchResponse>(`/avaluos/${id}/mercado/comparables/buscar?${params}`);
+    },
+    addFoundComparables: (id: ApiId, type: ComparableType, results: ComparableSearchHit[]) =>
+      request<{ added: number; skipped: number; calculation: MarketCalculationDto }>(`/avaluos/${id}/mercado/comparables/buscar?tipo=${type}`, {
+        method: "POST",
+        body: JSON.stringify({ results: results.map(({ sourceId, origin, comparable }) => ({ sourceId, origin, comparable })) }),
+      }),
     deletePhoto: (id: ApiId, type: ComparableType, comparableId: string, photoId: string) =>
       request<MarketCalculationDto>(
         `/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}&fotoId=${encodeURIComponent(photoId)}`,

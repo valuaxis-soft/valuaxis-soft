@@ -252,6 +252,15 @@ export const comparablePayload = {
   factors: [],
 };
 
+/** A search result sent back to become a comparable (POST …/comparables/buscar). */
+export const foundComparablesPayload = {
+  results: [{
+    sourceId: "despacho",
+    origin: "avalúo E2E-0001",
+    comparable: { ...Object.fromEntries(Object.entries(comparablePayload).filter(([key]) => key !== "factors")), location: "Calle Encontrada 7" },
+  }],
+};
+
 export const firmPayload = { validityMonths: 6, folioPrefix: "E2E" };
 
 export const emailPayload = { to: ["cliente@example.test"], subject: "Dictamen", message: "Adjunto el dictamen." };

@@ -43,6 +43,7 @@ import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { ComparableDialog } from "./comparable-dialog";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { ImportComparablesDialog } from "./import-comparables-dialog";
+import { SearchComparablesDialog } from "./search-comparables-dialog";
 import { useSerializedSave } from "./use-serialized-save";
 
 const SALE_TYPES: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA"];
@@ -471,14 +472,18 @@ export function MarketCalculationPanel(props: {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {!readOnly ? (
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={() => setEditing("nuevo")}>
-              <Plus data-icon="inline-start" /> Agregar comparable
-            </Button>
-            <ImportComparablesDialog valuationId={valuationId} type={type} onImported={applyServerState} />
-          </div>
-        ) : <span />}
+        <div className="flex flex-wrap gap-2">
+          {!readOnly ? (
+            <>
+              <Button type="button" size="sm" onClick={() => setEditing("nuevo")}>
+                <Plus data-icon="inline-start" /> Agregar comparable
+              </Button>
+              <ImportComparablesDialog valuationId={valuationId} type={type} onImported={applyServerState} />
+            </>
+          ) : null}
+          {/* Searching only reads: a concluded valuation can still look, but not add. */}
+          <SearchComparablesDialog key={type} valuationId={valuationId} type={type} readOnly={readOnly} onAdded={applyServerState} />
+        </div>
         {complete < MIN_COMPARABLES ? (
           <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
             <AlertTriangle className="size-3.5" /> El dictamen lleva al menos {MIN_COMPARABLES} comparables completos ({complete} de {MIN_COMPARABLES}).

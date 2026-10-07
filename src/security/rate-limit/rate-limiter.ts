@@ -60,6 +60,8 @@ export const rateLimits = {
   register: createRateLimiter({ limit: 5, windowMs: 60 * MINUTE }),
   oauthStart: createRateLimiter({ limit: 20, windowMs: 10 * MINUTE }),
   upload: createRateLimiter({ limit: 60, windowMs: 10 * MINUTE }),
+  /** Searches of comparables: each one asks every source, some of them external services. */
+  comparableSearch: createRateLimiter({ limit: 30, windowMs: MINUTE }),
 };
 
 /**

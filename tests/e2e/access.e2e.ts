@@ -61,6 +61,8 @@ describe("without a session", () => {
     ["POST", "/api/avaluos/{id}/dictamen/correo"],
     ["POST", "/api/avaluos/{id}/mercado/comparables?tipo=TERRENO_VENTA"],
     ["POST", "/api/avaluos/{id}/mercado/comparables/importar?tipo=TERRENO_VENTA"],
+    ["GET", "/api/avaluos/{id}/mercado/comparables/buscar?tipo=TERRENO_VENTA&q=arandas"],
+    ["POST", "/api/avaluos/{id}/mercado/comparables/buscar?tipo=TERRENO_VENTA"],
     ["GET", "/api/avaluos/{id}/datos/imagenes"],
     ["GET", "/api/comparables/plantilla?tipo=TERRENO_VENTA"],
     ["GET", "/api/organizacion/equipo"],
