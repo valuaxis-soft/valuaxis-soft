@@ -62,6 +62,9 @@ export const rateLimits = {
   upload: createRateLimiter({ limit: 60, windowMs: 10 * MINUTE }),
   /** Searches of comparables: each one asks every source, some of them external services. */
   comparableSearch: createRateLimiter({ limit: 30, windowMs: MINUTE }),
+  /** AI assistance: every call is billed by the provider. One person, and the whole firm in a day. */
+  aiByUser: createRateLimiter({ limit: 20, windowMs: 10 * MINUTE }),
+  aiByOrganization: createRateLimiter({ limit: 200, windowMs: 24 * 60 * MINUTE }),
 };
 
 /**

@@ -58,6 +58,8 @@ describe("without a session", () => {
     ["POST", "/api/avaluos/{id}/reopen"],
     ["GET", "/api/avaluos/{id}/export"],
     ["POST", "/api/avaluos/{id}/dictamen/pdf"],
+    ["POST", "/api/avaluos/{id}/ia/anuncio"],
+    ["POST", "/api/avaluos/{id}/ia/redaccion"],
     ["POST", "/api/avaluos/{id}/dictamen/correo"],
     ["POST", "/api/avaluos/{id}/mercado/comparables?tipo=TERRENO_VENTA"],
     ["POST", "/api/avaluos/{id}/mercado/comparables/importar?tipo=TERRENO_VENTA"],

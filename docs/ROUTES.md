@@ -66,10 +66,14 @@
 | GET | `/api/comparables/plantilla?tipo=` | Plantilla de Excel para importar comparables de ese tipo |
 | PUT, DELETE | `/api/avaluos/[id]/mercado/comparables/[comparableId]?tipo=` | Edita o elimina un comparable; las referencias se renumeran |
 | POST, DELETE | `/api/avaluos/[id]/mercado/comparables/[comparableId]/fotos?tipo=` | Sube (hasta 6) o quita (`&fotoId=`) fotografías del comparable |
+| POST | `/api/avaluos/[id]/ia/anuncio` | "Pegar anuncio": recibe `{ text, url? }` (hasta 12,000 caracteres) y devuelve los datos que el anuncio trae escritos, cada uno con el fragmento de donde se leyó. No guarda nada. `AVALUO_EDITAR`; 409 en avalúo concluido; 503 sin `ANTHROPIC_API_KEY`. Ver [IA.md](IA.md) |
+| POST | `/api/avaluos/[id]/ia/redaccion` | "Redactar borrador": recibe `{ field, context?, facts: [{ label, value }] }` y devuelve `{ text }`, un párrafo redactado solo con esos datos. No guarda nada. Mismos permisos y límites que la anterior; 422 si hay menos de 2 datos o el borrador no pasa la verificación |
 | GET, PUT | `/api/avaluos/[id]/costos` | Enfoque de costos: terreno, construcciones, instalaciones especiales e indirectos, guardados completos |
 | GET, PUT | `/api/avaluos/[id]/ingresos` | Enfoque de ingresos: superficie rentable, deducciones y tasa |
 | GET, PUT | `/api/avaluos/[id]/conclusion` | Resumen de los tres enfoques, método de conclusión y justificación |
 | POST | `/api/uploads` | Subida genérica de imágenes |
+
+Las dos rutas de IA comparten límites: 20 solicitudes por usuario cada 10 minutos y 200 por organización al día (429 con `Retry-After`).
 
 Las rutas de cálculo leen la versión que muestra el editor y rechazan cambios (409) en avalúos concluidos. Los cambios se encadenan en el servidor: el mercado de terrenos recalcula costos, el de rentas recalcula ingresos, y cada enfoque recalcula la conclusión. Ver [MOTOR-CALCULO.md](MOTOR-CALCULO.md).
 

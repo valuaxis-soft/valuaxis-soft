@@ -28,6 +28,8 @@ import {
   marketPayload,
   prisma,
   reopenPayload,
+  shortListingPayload,
+  thinDraftPayload,
   valuationCatalogIds,
   waitForServer,
   addRentMarket,
@@ -145,6 +147,15 @@ const calculationCases: Case[] = [
   { name: "save the conclusion", method: "PUT", path: (id) => `/api/avaluos/${id}/conclusion`, body: () => conclusionPayload, expected: editors(200) },
 ];
 
+/**
+ * The AI assistance belongs to who edits the valuation. Both payloads are
+ * refused before the AI service is asked (422), so no call here is ever billed.
+ */
+const aiCases: Case[] = [
+  { name: "read a pasted listing", method: "POST", path: (id) => `/api/avaluos/${id}/ia/anuncio`, body: () => shortListingPayload, expected: editors(422) },
+  { name: "draft a descriptive text", method: "POST", path: (id) => `/api/avaluos/${id}/ia/redaccion`, body: () => thinDraftPayload, expected: editors(422) },
+];
+
 const dictamenCases: Case[] = [
   // Downloading is exporting: every role may.
   { name: "generate the dictamen PDF", method: "POST", path: (id) => `/api/avaluos/${id}/dictamen/pdf`, expected: all(PDF_OK) },
@@ -217,6 +228,7 @@ function matrix(title: string, cases: Case[]) {
 
 matrix("valuations", valuationCases);
 matrix("calculations", calculationCases);
+matrix("AI assistance", aiCases);
 matrix("dictamen", dictamenCases);
 matrix("firm data", firmCases);
 matrix("team", teamCases);

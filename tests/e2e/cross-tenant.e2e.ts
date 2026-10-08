@@ -22,6 +22,8 @@ import {
   marketPayload,
   prisma,
   reopenPayload,
+  shortListingPayload,
+  thinDraftPayload,
   waitForServer,
   type World,
 } from "./support";
@@ -75,6 +77,9 @@ const reads: Attempt[] = [
   ["GET", (id) => `/api/avaluos/${id}/export`],
   ["POST", (id) => `/api/avaluos/${id}/dictamen/pdf`],
   ["POST", (id) => `/api/avaluos/${id}/dictamen/correo`, { json: emailPayload }],
+  // The AI assistance writes nothing, but it would send the valuation's data out.
+  ["POST", (id) => `/api/avaluos/${id}/ia/anuncio`, { json: shortListingPayload }],
+  ["POST", (id) => `/api/avaluos/${id}/ia/redaccion`, { json: thinDraftPayload }],
 ];
 
 const writes: Attempt[] = [
