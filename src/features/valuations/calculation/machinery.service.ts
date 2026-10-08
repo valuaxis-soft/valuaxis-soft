@@ -20,6 +20,7 @@ import {
   EMPTY_MACHINERY_ITEM,
   MACHINERY_CONSERVATION_TWICE,
   MACHINERY_PROPERTY_TYPE,
+  alignedCharacteristics,
   emptyAttachment,
   emptyOffer,
   toMachineryCostEngineInput,
@@ -45,7 +46,8 @@ function costOf(stored: Prisma.JsonValue | null): MachineryCostDto {
 
 function marketOf(stored: Prisma.JsonValue | null): MachineryMarketDto {
   const market = asRecord(stored) as Partial<MachineryMarketDto>;
-  return { ...DEFAULT_MACHINERY_MARKET, ...market, offers: (market.offers ?? []).map((row, index) => ({ ...emptyOffer(index), ...row })) };
+  const offers = (market.offers ?? []).map((row, index) => ({ ...emptyOffer(index), ...row }));
+  return { ...DEFAULT_MACHINERY_MARKET, ...market, offers, characteristics: alignedCharacteristics(market.characteristics, offers.length) };
 }
 
 async function isMachineryValuation(tx: Tx, propertyTypeId: number) {

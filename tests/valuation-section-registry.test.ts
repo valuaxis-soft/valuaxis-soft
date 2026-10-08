@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   getCanonicalSectionKey,
   findSectionDefinition,
+  initiallyHiddenSections,
   normalizeSectionKey,
   sectionKeyToWorkspaceId,
   valuationSectionRegistry,
@@ -43,4 +44,17 @@ test("all valuation sections are active by default for the workspace", () => {
     true,
   );
   assert.equal(valuationSectionRegistry.at(-1)?.label, "MAPA COMPARABLES");
+});
+
+test("a machinery valuation starts without the sections its book has no sheet for; any other starts with all", () => {
+  assert.deepEqual(
+    [...initiallyHiddenSections("MAQUINARIA_EQUIPO")],
+    ["TERRENO", "CONSTRUCCION", "MERCADO_RENTAS", "INGRESOS", "CROQUIS_COMPARABLES", "INDIRECTOS", "MAPA_COMPARABLES"],
+  );
+  assert.deepEqual([...initiallyHiddenSections("maquinaria_equipo")], [...initiallyHiddenSections("MAQUINARIA_EQUIPO")]);
+  // The sheets of the MEH book stay in view, and no required section is ever hidden.
+  const shown = valuationSectionRegistry.map((section) => section.key).filter((key) => !initiallyHiddenSections("MAQUINARIA_EQUIPO").has(key));
+  assert.deepEqual(shown, ["CARATULA", "DATOS_GENERALES", "CONSIDERACIONES", "COSTOS", "MERCADO_VENTA", "FOTOS_SUJETO", "HOMOLOGACION", "CONCLUSIONES"]);
+  assert.ok(valuationSectionRegistry.filter((section) => section.required).every((section) => shown.includes(section.key)));
+  for (const kind of ["CASA", "TERRENO", "DEPARTAMENTO", ""]) assert.equal(initiallyHiddenSections(kind).size, 0, kind);
 });

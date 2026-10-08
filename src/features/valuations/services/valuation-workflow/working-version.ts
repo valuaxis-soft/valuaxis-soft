@@ -58,6 +58,8 @@ export async function initializeWorkingVersionStructure(input: {
   tx?: Tx;
   initializeGeneralCaratula?: boolean;
   generalCaratulaDefaults?: GeneralCaratulaDefaults;
+  /** Sections a new valuation starts with hidden. Only the sections created here take it. */
+  initiallyHidden?: ReadonlySet<string>;
 }) {
   const client = input.tx ?? prisma;
   const versionId = await ensureWorkingVersion(input);
@@ -96,7 +98,7 @@ export async function initializeWorkingVersionStructure(input: {
             SClave: key,
             SNombre: definition.label,
             IOrden: index,
-            BVisible: true,
+            BVisible: !input.initiallyHidden?.has(definition.key),
             BObligatoria: definition.required,
             BEliminable: false,
             JConfiguracion: definition as Prisma.InputJsonObject,

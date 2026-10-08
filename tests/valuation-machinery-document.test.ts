@@ -10,6 +10,7 @@ import {
   DEFAULT_MACHINERY_COST,
   DEFAULT_MACHINERY_MARKET,
   MACHINERY_CONSERVATION_TWICE,
+  alignedCharacteristics,
   emptyOffer,
   isMachineryPropertyKind,
   toMachineryCostEngineInput,
@@ -237,4 +238,64 @@ test("the pages replace the template blocks of their section, stay locked, and r
   assert.ok(blocks.every(isGeneratedBlock));
   assert.equal(isMachineryMarketBlock(blocks[0]), false);
   assert.deepEqual([...contentMoveRulesForSection(updated).lockedBlockIds], ["motor-maquinaria-costos"]);
+});
+
+test("the free technical characteristics print in their order between the description and the lives, and never enter the calculation", () => {
+  const rows = (market: MachineryMarketDto) =>
+    tableOf(machineryMarketBlocks(market, workbookCost.item, marketResult(market))[0], "motor-maquinaria-mercado-tabla-caracteristicas").rows;
+  const fixed = ["Marca", "Modelo", "Año", "Horas", "Ubicación", "Edad", "V.U.T.", "V.U.R.", "Precio Oferta"];
+  // A capture without free rows prints the fixed ones, as before they existed.
+  const before = rows(workbookMarket);
+  assert.deepEqual(before.map((row) => row[0]), fixed);
+
+  // The book's rows G62:AK62, G64:AK64 and G71:AK71.
+  const market: MachineryMarketDto = {
+    ...workbookMarket,
+    characteristics: [
+      { label: "Cabina", subject: "Cerrada", values: ["Cerrada", "Cerrada", "Cerrada", "Cerrada", "Cerrada"] },
+      { label: "Kilómetros", subject: "2,145", values: ["1,325", "1,060", "1,730", "2,022", "980"] },
+      { label: " Nivel de Demanda ", subject: "Alta", values: ["Alta", "", "Alta", "Alta", "Alta"] },
+      { label: "  ", subject: "sin concepto", values: ["", "", "", "", ""] },
+    ],
+  };
+  const printed = rows(market);
+  assert.deepEqual(printed.map((row) => row[0]), ["Marca", "Modelo", "Año", "Horas", "Ubicación", "Cabina", "Kilómetros", "Nivel de Demanda", "Edad", "V.U.T.", "V.U.R.", "Precio Oferta"]);
+  assert.deepEqual(printed[6], ["Kilómetros", "2,145", "1,325", "1,060", "1,730", "2,022", "980"]);
+  assert.deepEqual(printed[7], ["Nivel de Demanda", "Alta", "Alta", "—", "Alta", "Alta", "Alta"], "an empty value prints as the other empty cells");
+  assert.deepEqual(printed.filter((row) => fixed.includes(row[0])), before, "the fixed rows do not change");
+
+  // Descriptive only: same engine input, same values.
+  assert.deepEqual(toMachineryMarketEngineInput(market), toMachineryMarketEngineInput(workbookMarket));
+  const { trace: _trace, ...withRows } = marketResult(market)!;
+  const { trace: _other, ...without } = marketResult(workbookMarket)!;
+  assert.deepEqual(withRows, without);
+});
+
+test("a free characteristic carries one value per offer, and a capture saved before they existed has none", () => {
+  const row = { label: "Cabina", subject: "Cerrada", values: ["Cerrada", "Abierta", "Cerrada", "Cerrada", "Cerrada"] };
+  const parse = (market: unknown) => machineryInputSchema.safeParse({ market });
+  const saved = parse({ ...workbookMarket, characteristics: [{ ...row, label: "  Cabina " }] });
+  assert.ok(saved.success);
+  assert.deepEqual(saved.data.market?.characteristics, [row], "texts are trimmed");
+
+  // What the editor sent before the free rows existed is still accepted.
+  const { characteristics: _none, ...former } = workbookMarket;
+  const old = parse(former);
+  assert.ok(old.success);
+  assert.deepEqual(old.data.market?.characteristics, []);
+
+  const message = (market: unknown) => parse(market).error?.issues[0]?.message;
+  assert.equal(message({ ...workbookMarket, characteristics: [{ ...row, values: ["Cerrada"] }] }), "Cada característica técnica lleva un valor por oferta.");
+  assert.equal(message({ ...workbookMarket, characteristics: [{ ...row, label: " " }] }), "Cada característica técnica necesita su concepto.");
+  assert.equal(parse({ ...workbookMarket, characteristics: [{ ...row, label: "x".repeat(81) }] }).success, false);
+  assert.equal(parse({ ...workbookMarket, characteristics: [{ ...row, subject: "x".repeat(201) }] }).success, false);
+  assert.equal(parse({ ...workbookMarket, characteristics: [{ ...row, subject: 2145 }] }).success, false);
+  assert.equal(message({ ...workbookMarket, characteristics: Array.from({ length: 31 }, () => row) }), "Se capturan hasta 30 características técnicas.");
+
+  // Stored rows are read with exactly one value per offer.
+  assert.deepEqual(alignedCharacteristics(undefined, 3), []);
+  assert.deepEqual(alignedCharacteristics([{ label: "Cabina" }, { label: "Km", subject: "1", values: ["a", "b", "c", "d"] }], 3), [
+    { label: "Cabina", subject: "", values: ["", "", ""] },
+    { label: "Km", subject: "1", values: ["a", "b", "c"] },
+  ]);
 });

@@ -4,6 +4,7 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/features/auth/session";
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
+import { initiallyHiddenSections } from "@/features/valuations/sections/section-registry";
 import {
   initializeWorkingVersionStructure,
   saveCaratula,
@@ -194,6 +195,8 @@ export async function saveValuation(input: SaveValuationInput) {
         userId: user.id,
         tx,
         initializeGeneralCaratula: isSystemGeneralValuationTemplate(plantilla),
+        // A machinery valuation starts without the real estate sections in view.
+        initiallyHidden: initiallyHiddenSections(tipoInmueble.SClave),
         generalCaratulaDefaults: {
           title: input.title,
           clientName: input.clientName ?? input.client,

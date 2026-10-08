@@ -9,6 +9,7 @@ import { BlockCard } from "../editor/block-card";
 import { StructuralActions } from "../editor/structural-actions";
 import { ApartadoEditor } from "../editor/apartado-editor";
 import { BlockFlowRenderer } from "../editor/block-flow-renderer";
+import { AssumptionsDraftAssist, DraftScopeProvider } from "../editor/draft-assist";
 import type { EditorCapabilities } from "../editor/editor-capabilities";
 import { EditableContentLayout } from "../editor/editable-content-layout-v2";
 
@@ -694,10 +695,19 @@ function SortableBlockEditor(props: {
             label="Supuestos y condiciones limitantes"
             readOnly={readOnly}
             onUpdate={(conceptId, patch) => props.onUpdateConcept(section.id, block.id, conceptId, patch)}
+            renderAssist={(concept) => (
+              <AssumptionsDraftAssist
+                concept={concept}
+                title={block.title}
+                sections={allSections}
+                onInsert={(value) => props.onUpdateConcept(section.id, block.id, concept.id, { value })}
+              />
+            )}
           />
         ) : caratulaBlockKind === "conclusion" ? (
           <div className="space-y-3">
             {conclusionNarrativeConcepts.length ? (
+              // No draft assistance here: the checks of a draft cannot tell a restated conclusion from an argued one.
               <LongTextConceptEditor
                 concepts={conclusionNarrativeConcepts}
                 readOnly={readOnly}
@@ -709,6 +719,8 @@ function SortableBlockEditor(props: {
             </FieldDescription>
           </div>
         ) : (
+          // A draft for a descriptive field goes with the title and the tables of its block or apartado.
+          <DraftScopeProvider title={block.title} tables={block.tables}>
           <BlockFlowRenderer
             block={block}
             allConcepts={allWorkspaceConcepts}
@@ -822,6 +834,7 @@ function SortableBlockEditor(props: {
                   }
                 />
 
+                <DraftScopeProvider title={subBlock.title} tables={subBlock.tables}>
                 <EditableContentLayout
                   container={subBlock}
                   allConcepts={allWorkspaceConcepts}
@@ -868,9 +881,11 @@ function SortableBlockEditor(props: {
                   dndContextMode="external"
                   containerRef={{ kind: "apartado", blockId: block.id, apartadoId: subBlock.id }}
                 />
+                </DraftScopeProvider>
               </ApartadoEditor>
             )}
           />
+          </DraftScopeProvider>
         )}
 
         {usesCompactConceptSystem && isCaratula ? (

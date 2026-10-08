@@ -5,21 +5,27 @@
  */
 import type { ConclusionResult } from "../engine/conclusion";
 import type { AppSection, Block, Concept } from "../model";
+import { appraisedGoodWording } from "../services/appraised-good-wording";
 import type { ConclusionCalculationDto } from "./conclusion-types";
+import { MACHINERY_PROPERTY_TYPE } from "./machinery-types";
 
 const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const NOT_APPLICABLE = "NO APLICA";
 
 const normalize = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z ]/g, "").trim();
 
+const CONCLUDED_VALUE_LABELS = [null, MACHINERY_PROPERTY_TYPE].map((kind) => appraisedGoodWording(kind).concludedValueLabel);
+
 /** Label → value of the conclusion section concepts. */
 export function conclusionValues(calculation: ConclusionCalculationDto, result: ConclusionResult): Record<string, string> {
   const approach = (value: number | null | undefined) => (value === null || value === undefined ? NOT_APPLICABLE : money.format(value));
+  const concluded = money.format(result.value);
   return {
     "valor por enfoque de costos": approach(result.summary.costos ?? calculation.values.costos),
     "valor por enfoque de mercado": approach(result.summary.mercado ?? calculation.values.mercado),
     "valor por enfoque de ingresos": approach(result.summary.ingresos ?? calculation.values.ingresos),
-    "valor concluido": money.format(result.value),
+    // The concluded value under either name: the real estate books' and the machinery one's.
+    ...Object.fromEntries(CONCLUDED_VALUE_LABELS.map((label) => [normalize(label), concluded])),
     "valor concluido con letra": result.valueInWords,
   };
 }

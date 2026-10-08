@@ -173,7 +173,9 @@ export function machineryCostBlocks(cost: MachineryCostDto, result: MachineryCos
  * to the offers. None while there are no offers.
  */
 export function machineryMarketBlocks(market: MachineryMarketDto, subject: MachineryCostDto["item"], result: MachineryMarketResult | null): Block[] {
-  const offers = market.offers.filter((row) => row.ref.trim());
+  // Each offer keeps its place in the capture: the free characteristics carry one value per place.
+  const places = market.offers.map((row, place) => ({ row, place })).filter(({ row }) => row.ref.trim());
+  const offers = places.map(({ row }) => row);
   if (!offers.length) return [];
   const apartados: Apartado[] = [];
 
@@ -201,21 +203,29 @@ export function machineryMarketBlocks(market: MachineryMarketDto, subject: Machi
 
   const life = (row: { usefulLife: number | null }) => row.usefulLife ?? market.usefulLife;
   const remaining = (age: number | null, usefulLife: number | null) => (age === null || usefulLife === null ? EMPTY : whole(Math.max(usefulLife - age, 0)));
-  const characteristics: [string, string, (row: (typeof offers)[number]) => string][] = [
+  type Characteristic = [string, string, (row: (typeof offers)[number]) => string];
+  // As the book: what describes the equipment first, the appraiser's own rows after it, and the lives and the price at the end.
+  const description: Characteristic[] = [
     ["Marca", cell(subject.brand), (row) => cell(row.brand)],
     ["Modelo", cell(subject.model), (row) => cell(row.model)],
     ["Año", cell(subject.year), (row) => cell(row.year)],
     ["Horas", cell(subject.hours), (row) => cell(row.hours)],
     ["Ubicación", EMPTY, (row) => cell(row.location)],
+  ];
+  const figures: Characteristic[] = [
     ["Edad", whole(subject.age), (row) => whole(row.age)],
     ["V.U.T.", whole(subject.usefulLife), (row) => whole(life(row))],
     ["V.U.R.", remaining(subject.age, subject.usefulLife), (row) => remaining(row.age, life(row))],
     ["Precio Oferta", EMPTY, (row) => (row.price === null ? EMPTY : money(row.price))],
   ];
+  const fixed = ([concept, subjectValue, value]: Characteristic) => [concept, subjectValue, ...offers.map(value)];
+  const free = market.characteristics
+    .filter((row) => row.label.trim())
+    .map((row) => [row.label.trim(), cell(row.subject), ...places.map(({ place }) => cell(row.values[place] ?? ""))]);
   apartados.push(generatedApartado(`${MARKET_PREFIX}-caracteristicas`, "CARACTERÍSTICAS TÉCNICAS", {
     tables: [generatedTable(`${MARKET_PREFIX}-tabla-caracteristicas`, "Características técnicas",
       [textColumn("Concepto"), figureColumn("Sujeto"), ...offers.map((row) => figureColumn(`Comparable ${row.ref}`))],
-      characteristics.map(([concept, subjectValue, value]) => [concept, subjectValue, ...offers.map(value)]))],
+      [...description.map(fixed), ...free, ...figures.map(fixed)])],
   }));
 
   const homologated = offers.filter((row) => isOfferComplete(row, market.usefulLife));

@@ -114,7 +114,7 @@ export function SectionDocument({
     section.id === "datos" || getCanonicalSectionKey(section.id) === "DATOS_GENERALES";
   const isTerreno = isTerrenoSection(section);
   const isConstruccion = isConstruccionSection(section);
-  const header = <DocumentPreviewHeader caratula={caratula} letterhead={letterhead} headerImage={documentHeaderImage} />;
+  const header = <DocumentPreviewHeader caratula={caratula} letterhead={letterhead} headerImage={documentHeaderImage} propertyKind={meta.propertyKind} />;
 
   if (section.id === "caratula") {
     return (
@@ -228,7 +228,7 @@ function CaratulaPreview({
     // Fixed: Assumptions
     { id: "caratula-assumptions", node: <CaratulaAssumptionsModule blocks={assumptions} /> },
     // Fixed: Conclusion
-    { id: "caratula-conclusion", node: <CaratulaConclusionModule blocks={conclusions} caratula={caratula} /> },
+    { id: "caratula-conclusion", node: <CaratulaConclusionModule blocks={conclusions} caratula={caratula} meta={meta} /> },
     // Fixed: Signatures, their own item so many of them can move to the next page
     { id: "caratula-signatures", node: <CaratulaSignaturesModule caratula={caratula} /> },
   ];

@@ -1,17 +1,25 @@
 "use client";
 
 import { Loader2, PenLine } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { createContext, useContext, useId, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AI_NOTICE, useAiAssist } from "@/features/ai/ai-assist-context";
-import { DRAFT_TOO_LITTLE_DATA, hasEnoughFacts } from "@/features/ai/draft-writing";
-import type { Concept } from "@/features/valuations/model";
-import { draftFactsFor } from "@/features/valuations/services/draft-facts";
+import { DRAFT_MIN_FACTS, DRAFT_TOO_LITTLE_DATA, hasEnoughFacts, type DraftInput } from "@/features/ai/draft-writing";
+import type { AppSection, Concept, TableContent } from "@/features/valuations/model";
+import { assumptionsDraftData, draftFactsFor, draftTablesFor } from "@/features/valuations/services/draft-facts";
 import { api, SessionExpiredError } from "@/lib/api-client";
 
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudo redactar el borrador.";
+
+/** The block or apartado a descriptive field belongs to: its title and its tables go with the draft request. */
+type DraftScope = { title: string | null; tables: TableContent[] };
+const DraftScopeContext = createContext<DraftScope>({ title: null, tables: [] });
+
+export function DraftScopeProvider({ title, tables, children }: { title: string; tables: TableContent[]; children: ReactNode }) {
+  return <DraftScopeContext value={{ title: title.trim() || null, tables }}>{children}</DraftScopeContext>;
+}
 
 /**
  * "Redactar borrador" under a descriptive field: asks for a paragraph written
@@ -32,6 +40,67 @@ export function DraftAssist({
   allConcepts: Concept[];
   onInsert: (value: string) => void;
 }) {
+  const scope = useContext(DraftScopeContext);
+  return (
+    <DraftPreview
+      value={concept.value}
+      request={() => ({
+        field: concept.label.trim() || "Descripción",
+        context: scope.title,
+        facts: draftFactsFor(concept, container, allConcepts),
+        tables: draftTablesFor(scope.tables),
+      })}
+      source="Redactado solo con los datos capturados en este apartado."
+      tooLittle={DRAFT_TOO_LITTLE_DATA}
+      onInsert={onInsert}
+    />
+  );
+}
+
+/**
+ * The same under the carátula's «Supuestos y condiciones limitantes»: written
+ * only from the assumptions and limiting conditions captured in the
+ * considerations section.
+ */
+export function AssumptionsDraftAssist({
+  concept,
+  title,
+  sections,
+  onInsert,
+}: {
+  concept: Concept;
+  /** Title of the carátula block the text belongs to. */
+  title: string;
+  sections: AppSection[];
+  onInsert: (value: string) => void;
+}) {
+  return (
+    <DraftPreview
+      value={concept.value}
+      request={() => ({ field: title.trim() || "Supuestos y condiciones limitantes", context: "CARÁTULA", ...assumptionsDraftData(sections) })}
+      source="Redactado solo con los comentarios, supuestos y condiciones limitantes capturados en Consideraciones."
+      tooLittle={`Hay muy pocos datos para redactar un borrador. Captura al menos ${DRAFT_MIN_FACTS} comentarios, supuestos o condiciones limitantes en la sección de Consideraciones y vuelve a intentarlo.`}
+      onInsert={onInsert}
+    />
+  );
+}
+
+function DraftPreview({
+  value,
+  request,
+  source,
+  tooLittle,
+  onInsert,
+}: {
+  /** The text the field has now. */
+  value: string;
+  /** What is sent, gathered when the draft is asked for. */
+  request: () => DraftInput;
+  /** Where the data of the draft came from, in words for the appraiser. */
+  source: string;
+  tooLittle: string;
+  onInsert: (value: string) => void;
+}) {
   const ai = useAiAssist();
   const modeName = useId();
   const [busy, setBusy] = useState(false);
@@ -43,33 +112,33 @@ export function DraftAssist({
 
   if (!ai.enabled || !ai.valuationId) return null;
   const valuationId = ai.valuationId;
-  const current = concept.value.trim();
+  const current = value.trim();
 
   const write = async () => {
-    const facts = draftFactsFor(concept, container, allConcepts);
-    if (!hasEnoughFacts(facts)) {
+    const input = request();
+    if (!hasEnoughFacts(input.facts, input.tables)) {
       setDraft(null);
-      setMessage(DRAFT_TOO_LITTLE_DATA);
+      setMessage(tooLittle);
       return;
     }
-    const request = ++lastRequest.current;
+    const sent = ++lastRequest.current;
     setMessage(null);
     setBusy(true);
     try {
-      const result = await api.ai.writeDraft(valuationId, { field: concept.label.trim() || "Descripción", context: null, facts });
-      if (request !== lastRequest.current) return;
+      const result = await api.ai.writeDraft(valuationId, input);
+      if (sent !== lastRequest.current) return;
       setDraft(result.text);
       setMode("append");
     } catch (failure) {
-      if (request === lastRequest.current) setMessage(errorMessage(failure));
+      if (sent === lastRequest.current) setMessage(errorMessage(failure));
     } finally {
-      if (request === lastRequest.current) setBusy(false);
+      if (sent === lastRequest.current) setBusy(false);
     }
   };
 
   const insert = () => {
     if (!draft) return;
-    onInsert(current && mode === "append" ? `${concept.value.trimEnd()}\n\n${draft}` : draft);
+    onInsert(current && mode === "append" ? `${value.trimEnd()}\n\n${draft}` : draft);
     setDraft(null);
   };
 
@@ -87,7 +156,7 @@ export function DraftAssist({
           <p className="text-xs font-medium text-muted-foreground">Borrador (todavía no está en el avalúo)</p>
           <p className="text-sm whitespace-pre-wrap" data-draft-text>{draft}</p>
           <p className="text-xs text-muted-foreground">
-            Redactado solo con los datos capturados en este apartado. {AI_NOTICE}
+            {source} {AI_NOTICE}
           </p>
           {current ? (
             <fieldset className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
