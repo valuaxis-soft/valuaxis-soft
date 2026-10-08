@@ -271,6 +271,7 @@ model Organizacion {
   suscripciones              Suscripcion[]
   concesionesFuncionalidades ConcesionFuncionalidad[]
   invitaciones               InvitacionOrganizacion[]
+  clientesPago               ClientePago[]
 
   @@index([IdEstadoOrganizacion])
   @@index([IdUsuarioPropietario])
@@ -3622,4 +3623,65 @@ model ConcesionFuncionalidad {
   @@index([IdFuncionalidad])
   @@index([BActiva])
   @@map("devpware_concesiones_funcionalidades")
+}
+
+// Payment tables from migration 026. Only the ones the Stripe integration
+// reads and writes are modelled; invoices and payments stay in Stripe.
+model ProveedorPago {
+  IdProveedorPago    Int      @id @default(autoincrement()) @map("IdProveedorPago")
+  SClave             String   @unique @map("SClave") @db.VarChar(80)
+  SNombre            String   @map("SNombre") @db.VarChar(160)
+  SSitioWeb          String?  @map("SSitioWeb") @db.VarChar(500)
+  BActivo            Boolean  @default(true) @map("BActivo")
+  IOrden             Int      @default(0) @map("IOrden")
+  DFechaCreacion     DateTime @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+  DFechaModificacion DateTime @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
+
+  clientes       ClientePago[]
+  eventosWebhook EventoWebhookPago[]
+
+  @@map("devpware_proveedores_pago")
+}
+
+model ClientePago {
+  IdClientePago         BigInt   @id @default(autoincrement()) @map("IdClientePago")
+  IdOrganizacion        Int      @map("IdOrganizacion")
+  IdProveedorPago       Int      @map("IdProveedorPago")
+  SIdentificadorExterno String   @map("SIdentificadorExterno") @db.VarChar(255)
+  SCorreoFacturacion    String?  @map("SCorreoFacturacion") @db.VarChar(180)
+  SNombreFacturacion    String?  @map("SNombreFacturacion") @db.VarChar(220)
+  SRazonSocial          String?  @map("SRazonSocial") @db.VarChar(220)
+  SRFC                  String?  @map("SRFC") @db.VarChar(20)
+  JDireccionFacturacion Json?    @map("JDireccionFacturacion") @db.JsonB
+  BActivo               Boolean  @default(true) @map("BActivo")
+  DFechaCreacion        DateTime @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+  DFechaModificacion    DateTime @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
+
+  organizacion  Organizacion  @relation(fields: [IdOrganizacion], references: [IdOrganizacion], onDelete: Restrict, onUpdate: Cascade)
+  proveedorPago ProveedorPago @relation(fields: [IdProveedorPago], references: [IdProveedorPago], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([IdOrganizacion, IdProveedorPago], map: "devpware_clientes_pago_org_proveedor_key")
+  @@unique([IdProveedorPago, SIdentificadorExterno], map: "devpware_clientes_pago_proveedor_externo_key")
+  @@map("devpware_clientes_pago")
+}
+
+/// Immutable once received (database trigger): only the processing columns change.
+model EventoWebhookPago {
+  IdEventoWebhookPago    BigInt    @id @default(autoincrement()) @map("IdEventoWebhookPago")
+  IdProveedorPago        Int       @map("IdProveedorPago")
+  SIdentificadorEvento   String    @map("SIdentificadorEvento") @db.VarChar(255)
+  STipoEvento            String    @map("STipoEvento") @db.VarChar(180)
+  SHashPayload           String    @map("SHashPayload") @db.VarChar(128)
+  JPayloadSanitizado     Json?     @map("JPayloadSanitizado") @db.JsonB
+  BVerificado            Boolean   @default(false) @map("BVerificado")
+  BProcesado             Boolean   @default(false) @map("BProcesado")
+  IIntentosProcesamiento Int       @default(0) @map("IIntentosProcesamiento")
+  SMensajeError          String?   @map("SMensajeError")
+  DFechaRecepcion        DateTime  @default(now()) @map("DFechaRecepcion") @db.Timestamptz(3)
+  DFechaProcesamiento    DateTime? @map("DFechaProcesamiento") @db.Timestamptz(3)
+
+  proveedorPago ProveedorPago @relation(fields: [IdProveedorPago], references: [IdProveedorPago], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([IdProveedorPago, SIdentificadorEvento], map: "devpware_eventos_webhooks_pagos_evento_key")
+  @@map("devpware_eventos_webhooks_pagos")
 }

@@ -27,6 +27,12 @@ const envSchema = z.object({
   CHROMIUM_PATH: z.string().optional(),
   /** Where that Chromium reaches this app; defaults to http://127.0.0.1:$PORT. */
   INTERNAL_APP_URL: z.string().url().optional().or(z.literal("")),
+  /** Stripe is optional: without the secret key the app runs with payments not enabled. */
+  STRIPE_SECRET_KEY: z.string().optional(),
+  /** Signing secret of the webhook endpoint; without it the webhook rejects everything. */
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  /** Valuaxis' own customer portal configuration (bpc_...), printed by pnpm stripe:sync. */
+  STRIPE_PORTAL_CONFIGURATION: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
