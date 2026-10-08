@@ -4,7 +4,9 @@ import { getConclusionCalculation, saveConclusionSettings } from "../../src/feat
 import { machineryInputSchema } from "../../src/features/valuations/calculation/machinery-schemas";
 import { getMachineryCalculation, saveMachineryCalculation } from "../../src/features/valuations/calculation/machinery.service";
 import { MACHINERY_PROPERTY_TYPE } from "../../src/features/valuations/calculation/machinery-types";
-import { concludeValuation, reopenValuation, saveValuationSections } from "../../src/features/valuations/services/valuation-workflow.service";
+import { getValuationByPublicId } from "../../src/features/valuations/repositories/valuation.repository";
+import { initiallyHiddenSections } from "../../src/features/valuations/sections/section-registry";
+import { concludeValuation, initializeWorkingVersionStructure, reopenValuation, saveValuationSections } from "../../src/features/valuations/services/valuation-workflow.service";
 import { workbookCost, workbookMarket } from "../machinery-workbook.fixture";
 import { createValuationFixture, prisma } from "./support";
 
@@ -161,4 +163,59 @@ test("a concluded valuation rejects edits, and reopening copies the captures and
   assert.deepEqual(reopened.market, workbookMarket);
   assert.deepEqual(await stored(fixture.publicId).then(({ physical, market }) => ({ physical, market })), { physical: 933000, market: 980000 });
   assert.deepEqual(await summary(), [930000, 980000, 960000]);
+});
+
+test("a new machinery valuation starts with the real estate sections hidden, and the appraiser's choice is what stays", async () => {
+  const fixture = await machineryFixture();
+  const { IdAvaluo } = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  const hidden = async () => (await getValuationByPublicId(fixture.publicId, fixture.organizationId))!.sections.filter((section) => !section.enabled).map((section) => section.label);
+  const save = async (shown: string[] = []) => {
+    const { sections } = (await getValuationByPublicId(fixture.publicId, fixture.organizationId))!;
+    // What the editor sends: every section with its visibility. Without blocks the content is not part of this test.
+    await saveValuationSections({
+      publicId: fixture.publicId, organizationId: fixture.organizationId, user: fixture.user,
+      sections: sections.map((section) => ({ id: section.id, title: section.title, required: section.required, sortOrder: section.sortOrder, enabled: section.enabled || shown.includes(section.label) })),
+    });
+  };
+
+  // As the creation of the valuation does it.
+  await initializeWorkingVersionStructure({ avaluoId: IdAvaluo, userId: fixture.user.id, initiallyHidden: initiallyHiddenSections(MACHINERY_PROPERTY_TYPE) });
+  const initial = ["TERRENO", "CONSTRUCCION", "MERCADO_RENTAS", "INGRESOS", "CROQUIS_COMPARABLES", "INDIRECTOS", "MAPA_COMPARABLES"];
+  assert.deepEqual(await hidden(), initial);
+
+  await save();
+  assert.deepEqual(await hidden(), initial, "saving keeps them hidden");
+  await save(["TERRENO"]);
+  assert.deepEqual(await hidden(), initial.slice(1), "a section shown again stays in view");
+
+  // A valuation that already has its sections is not touched, whatever its type.
+  const former = await machineryFixture();
+  const formerRow = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: former.publicId } });
+  await initializeWorkingVersionStructure({ avaluoId: formerRow.IdAvaluo, userId: former.user.id });
+  await initializeWorkingVersionStructure({ avaluoId: formerRow.IdAvaluo, userId: former.user.id, initiallyHidden: initiallyHiddenSections(MACHINERY_PROPERTY_TYPE) });
+  assert.equal((await getValuationByPublicId(former.publicId, former.organizationId))!.sections.every((section) => section.enabled), true);
+});
+
+test("the free technical characteristics are saved with the market capture, and a capture stored before they existed loads as it was", async () => {
+  const fixture = await machineryFixture();
+  const characteristics = [
+    { label: "Cabina", subject: "Cerrada", values: ["Cerrada", "Cerrada", "Abierta", "Cerrada", "Cerrada"] },
+    { label: "Kilómetros", subject: "2,145", values: ["1,325", "1,060", "1,730", "2,022", ""] },
+  ];
+  await saveMachineryCalculation(fixture.publicId, fixture.user, machineryInputSchema.parse({ cost: workbookCost, market: { ...workbookMarket, characteristics } }));
+  const back = await getMachineryCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual(back.market.characteristics, characteristics);
+  assert.deepEqual((await stored(fixture.publicId)).market, 980000, "descriptive: the market value is the book's");
+
+  // Removed and reordered rows are what the next save leaves.
+  await saveMachineryCalculation(fixture.publicId, fixture.user, machineryInputSchema.parse({ market: { ...workbookMarket, characteristics: [characteristics[1]] } }));
+  assert.deepEqual((await getMachineryCalculation(fixture.publicId, fixture.organizationId)).market.characteristics, [characteristics[1]]);
+
+  // The JSON of a valuation saved before the free rows existed has no such key.
+  const { characteristics: _none, ...former } = workbookMarket;
+  const valuation = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  await prisma.enfoqueMaquinaria.update({ where: { IdVersionAvaluo: valuation.IdVersionTrabajo! }, data: { JMercado: former } });
+  const old = await getMachineryCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual(old.market, workbookMarket);
+  assert.deepEqual(old.market.characteristics, []);
 });

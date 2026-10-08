@@ -31,6 +31,7 @@ import {
   validateCaratula,
 } from "@/features/valuations/services/caratula-validation";
 
+import { isMachineryPropertyKind } from "@/features/valuations/calculation/machinery-types";
 import { formatDateValue } from "@/features/valuations/services/concept-value-format";
 import {
   COVER_IMAGE_FOCUS_CENTER,
@@ -202,6 +203,12 @@ export function CaratulaEditor({
           <div className="min-w-0 md:col-span-3 xl:col-span-3">
             <Field>
               <FieldLabel>Tipo de bien</FieldLabel>
+            {isMachineryPropertyKind(meta.propertyKind) ? (
+              // Machinery is chosen when the valuation is created: its panels and wordings depend on it.
+              <NativeSelect className="w-full" disabled value={meta.propertyKind}>
+                <NativeSelectOption value={meta.propertyKind}>Maquinaria y equipo</NativeSelectOption>
+              </NativeSelect>
+            ) : (
             <NativeSelect
               className="w-full"
               disabled={readOnly}
@@ -213,6 +220,7 @@ export function CaratulaEditor({
               <NativeSelectOption value="oficina">Oficina</NativeSelectOption>
                 <NativeSelectOption value="terreno">Terreno</NativeSelectOption>
               </NativeSelect>
+            )}
             </Field>
           </div>
           <div className="min-w-0 md:col-span-3 xl:col-span-3">

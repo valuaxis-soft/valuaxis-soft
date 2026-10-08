@@ -11,6 +11,7 @@ import { isConclusionNarrativeConcept } from "@/features/valuations/services/car
 import type { ValuationSignature } from "@/features/valuations/services/valuation-signatures";
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
 import { coverImageObjectPosition } from "@/features/valuations/services/cover-image-focus";
+import { appraisedGoodWording } from "@/features/valuations/services/appraised-good-wording";
 
 // Module 1: Cover (title, location, principal image)
 export function CaratulaCoverModule({
@@ -22,11 +23,12 @@ export function CaratulaCoverModule({
   meta: ValuationMeta;
   principalImage: PrincipalCoverImage | null;
 }) {
+  const wording = appraisedGoodWording(meta.propertyKind);
   return (
     <>
       <section className="text-center">
         <h1 className="text-base font-black uppercase leading-tight text-slate-700">
-          {caratula.tituloInmueble || "Título del inmueble pendiente"}
+          {caratula.tituloInmueble || wording.pendingTitle}
         </h1>
         <p className="text-sm font-semibold leading-tight text-slate-600">{meta.location || "Ubicación pendiente"}</p>
       </section>
@@ -39,7 +41,7 @@ export function CaratulaCoverModule({
             // The cover box crops the image; the appraiser chooses the part that stays in view.
             style={{ objectPosition: coverImageObjectPosition(caratula.enfoqueImagenPrincipal) }}
             src={principalImage.url}
-            alt="Imagen principal del inmueble"
+            alt={wording.coverImageAlt}
           />
         ) : (
           <div className="flex h-[294px] flex-col items-center justify-center gap-2 text-slate-400">
@@ -84,9 +86,11 @@ export function CaratulaAssumptionsModule({
 export function CaratulaConclusionModule({
   blocks,
   caratula,
+  meta,
 }: {
   blocks: Block[];
   caratula: CaratulaFormData;
+  meta: ValuationMeta;
 }) {
   const narrativeConcepts = blocks
     .flatMap((block) => block.concepts)
@@ -105,7 +109,7 @@ export function CaratulaConclusionModule({
         </div>
       ) : null}
       <div className="mt-1 border-2 border-[var(--caratula-blue)] bg-slate-200/80 px-4 py-1.5 text-center">
-        <h3 className="text-sm font-black leading-tight text-[var(--caratula-blue)]">VALOR COMERCIAL DEL INMUEBLE</h3>
+        <h3 className="text-sm font-black leading-tight text-[var(--caratula-blue)]">{appraisedGoodWording(meta.propertyKind).commercialValueTitle}</h3>
         <p className="pt-1 text-3xl font-medium leading-tight text-[var(--caratula-blue)]">{caratula.valorTotal ? formatNumericValue(caratula.valorTotal, { valueFormat: "mxn" }) : "Sin calcular"}</p>
         <p className="pt-1 text-sm font-medium uppercase leading-tight text-slate-600">
           {caratula.valorConLetra || "Valor con letra pendiente"}

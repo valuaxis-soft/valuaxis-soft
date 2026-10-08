@@ -12,7 +12,7 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { consumeAiRateLimit } from "@/security/rate-limit/ai-limit";
 import { AiGatewayError, type AiGateway, type AiUsage } from "./ai-gateway";
 import { getAiGateway } from "./ai-gateway-provider";
-import { DRAFT_TOO_LITTLE_DATA, DraftRejectedError, hasEnoughFacts, usableFacts, writeDraft, type DraftInput } from "./draft-writing";
+import { DRAFT_TOO_LITTLE_DATA, DraftRejectedError, hasEnoughFacts, tableCells, usableFacts, usableTables, writeDraft, type DraftInput } from "./draft-writing";
 import { countProposed, extractListing, LISTING_TEXT_MIN, type ListingProposal } from "./listing-extraction";
 
 export const AI_NOT_ENABLED = "La asistencia con IA no está habilitada en esta instalación.";
@@ -118,9 +118,10 @@ export async function draftDescriptiveText(
   origin: RequestOrigin,
 ): Promise<{ text: string }> {
   await assertEditableValuation(publicId, user);
-  if (!hasEnoughFacts(input.facts)) throw new AiAssistError(DRAFT_TOO_LITTLE_DATA, 422);
+  if (!hasEnoughFacts(input.facts, input.tables)) throw new AiAssistError(DRAFT_TOO_LITTLE_DATA, 422);
   const gateway = await gatewayFor(user);
-  const detail = { facts: usableFacts(input.facts).length };
+  const tables = usableTables(input.tables);
+  const detail = { facts: usableFacts(input.facts).length, tables: tables.length, tableCells: tableCells(tables) };
   try {
     const { text, usage, attempts } = await writeDraft(gateway, input);
     await recordUsage({ feature: "DRAFT_WRITE", publicId, user, origin, usage, result: "EXITOSO", detail: { ...detail, attempts, characters: text.length } });

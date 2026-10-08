@@ -1,4 +1,5 @@
 import { cloneSections, defineSection } from "../section-builders";
+import { appraisedGoodWording } from "../services/appraised-good-wording";
 import { caratulaSection } from "./caratula";
 import { conclusionesSection } from "./conclusiones";
 import { consideracionesSection } from "./consideraciones";
@@ -56,10 +57,28 @@ const sectionTemplates = getOrderedValuationSections().map((definition) => {
 
 export const createInitialSections = () => cloneSections(sectionTemplates);
 
-export function getInitialSectionTemplate(sectionKey: string) {
+/**
+ * The template of a section. The conclusion's names the concluded value as the
+ * book of the valuation's property type does; the rest are the same for all.
+ */
+export function getInitialSectionTemplate(sectionKey: string, propertyKind?: string | null) {
   const canonical = getCanonicalSectionKey(sectionKey);
   const template = sectionTemplates.find(
     (section) => getCanonicalSectionKey(section.id) === canonical,
   );
-  return template ? structuredClone(template) : null;
+  if (!template) return null;
+  const clone = structuredClone(template);
+  const { concludedValueLabel } = appraisedGoodWording(propertyKind);
+  if (canonical !== "CONCLUSIONES" || concludedValueLabel === CONCLUDED_VALUE_LABEL) return clone;
+  return {
+    ...clone,
+    blocks: clone.blocks.map((block) => ({
+      ...block,
+      concepts: block.concepts.map((concept) =>
+        concept.label === CONCLUDED_VALUE_LABEL ? { ...concept, label: concludedValueLabel } : concept),
+    })),
+  };
 }
+
+/** The concluded value's concept in the conclusion template of the real estate books. */
+const CONCLUDED_VALUE_LABEL = appraisedGoodWording(null).concludedValueLabel;

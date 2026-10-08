@@ -160,11 +160,27 @@ export type MachineryOfferDto = {
   economic: number;
 };
 
+/**
+ * A free row of the block «CARACTERÍSTICAS TÉCNICAS» (Cabina, Kilómetros,
+ * Procedencia, Nivel de demanda…): what the appraiser describes of the subject
+ * and of each offer. Descriptive only: it never enters the calculation.
+ */
+export type MachineryCharacteristicDto = {
+  label: string;
+  subject: string;
+  /** One value per offer, in the order of the offers. */
+  values: string[];
+};
+
+export const MACHINERY_CHARACTERISTICS_MAX = 30;
+
 export type MachineryMarketDto = {
   offerLevel: OfferLevel | null;
   /** Useful life (V.U.T.) of the offers that do not carry their own. */
   usefulLife: number | null;
   offers: MachineryOfferDto[];
+  /** Free rows of the technical characteristics, in printing order. */
+  characteristics: MachineryCharacteristicDto[];
   /** Excel ROUND digits of the market value, the appraiser's choice; null is no rounding. */
   rounding: RoundingDigits;
 };
@@ -196,7 +212,16 @@ export const DEFAULT_MACHINERY_COST: MachineryCostDto = {
   conservationTwice: MACHINERY_CONSERVATION_TWICE,
 };
 
-export const DEFAULT_MACHINERY_MARKET: MachineryMarketDto = { offerLevel: null, usefulLife: null, offers: [], rounding: MACHINERY_ROUNDING.market };
+export const DEFAULT_MACHINERY_MARKET: MachineryMarketDto = { offerLevel: null, usefulLife: null, offers: [], characteristics: [], rounding: MACHINERY_ROUNDING.market };
+
+/** The free rows with exactly one value per offer: a capture saved before they existed has none. */
+export function alignedCharacteristics(characteristics: Partial<MachineryCharacteristicDto>[] | undefined, offerCount: number): MachineryCharacteristicDto[] {
+  return (characteristics ?? []).map((row) => ({
+    label: row.label ?? "",
+    subject: row.subject ?? "",
+    values: Array.from({ length: offerCount }, (_, index) => row.values?.[index] ?? ""),
+  }));
+}
 
 export function emptyAttachment(index: number): MachineryAttachmentDto {
   return {

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MACHINERY_CONSERVATION } from "../engine/machinery";
+import { MACHINERY_CHARACTERISTICS_MAX } from "./machinery-types";
 import { OFFER_LEVELS } from "./market-types";
 import { roundingSchema } from "./market-schemas";
 
@@ -61,8 +62,18 @@ const marketSchema = z.object({
     rating,
     ...depreciationFactors,
   })).max(30).refine(uniqueRefs, "Las referencias de las ofertas no se pueden repetir."),
+  // Free descriptive rows of the technical characteristics. Absent: the capture has none.
+  characteristics: z.array(z.object({
+    label: text(80).min(1, "Cada característica técnica necesita su concepto."),
+    subject: text(200),
+    values: z.array(text(200)).max(30),
+  })).max(MACHINERY_CHARACTERISTICS_MAX, `Se capturan hasta ${MACHINERY_CHARACTERISTICS_MAX} características técnicas.`).default([]),
   rounding: roundingSchema,
-});
+}).refine(
+  // A value that belongs to no offer, or an offer without its value, would print under the wrong comparable.
+  (market) => market.characteristics.every((row) => row.values.length === market.offers.length),
+  "Cada característica técnica lleva un valor por oferta.",
+);
 
 /** Either capture, or both: the one that is absent stays as it is stored. */
 export const machineryInputSchema = z.object({ cost: costSchema.optional(), market: marketSchema.optional() })

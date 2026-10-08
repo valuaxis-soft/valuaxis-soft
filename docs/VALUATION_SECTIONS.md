@@ -13,6 +13,10 @@ Cada seccion define:
 - permisos;
 - tablas Prisma reales utilizadas.
 
+## Secciones ocultas al crear
+
+Un avalúo nuevo de **maquinaria y equipo** nace con las secciones que su libro (MEH) no tiene ya ocultas: terreno, construcciones, mercado de rentas, ingresos, croquis y fotos de comparables, indirectos y mapa de comparables (`initiallyHiddenSections` en el registro). Solo quedan ocultas: el valuador las muestra otra vez con "Mostrar" y lo que elija se guarda como en cualquier sección. Los avalúos que ya existían no cambian, y los demás tipos de bien nacen con todas las secciones a la vista.
+
 ## Cómo se guarda
 
 - El editor guarda el avalúo completo con `PUT /api/avaluos/:id/full`. No se guardan secciones o bloques por separado.

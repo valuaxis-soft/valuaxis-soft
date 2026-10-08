@@ -226,9 +226,60 @@ test("a draft is written from the data sent, checked, retried once and never sav
   assert.deepEqual(usage.map((row) => row.SResultado), ["EXITOSO", "RECHAZADO"]);
   assert.deepEqual(usage[0].JMetadatos, {
     model: "fake-drafting", calls: 2, inputTokens: 1800, outputTokens: 300, cacheReadTokens: 0, cacheWriteTokens: 0,
-    facts: 3, attempts: 2, characters: GOOD_DRAFT.length,
+    facts: 3, tables: 0, tableCells: 0, attempts: 2, characters: GOOD_DRAFT.length,
   });
   assert.ok(!JSON.stringify(usage.map((row) => row.JMetadatos)).includes("Plana"), "the data is not stored");
+});
+
+test("a draft carries the apartado's title and its tables, and its numbers are checked against the cells too", async () => {
+  const fixture = await createValuationFixture();
+  const jar = await signIn(fixture, "VALUADOR");
+  const body = {
+    field: "Descripción de las colindancias",
+    context: "MEDIDAS Y COLINDANCIAS",
+    facts: [{ label: "Forma", value: "Regular" }],
+    tables: [{ title: "Colindancias", columns: ["Orientación", "Distancia", "Colindante"], rows: [["Norte", "12.50 m", "Calle Juárez"], ["Sur", "12.50 m", "Lote 7"], ["", "", ""]] }],
+  };
+  const good = "El predio es de forma regular; colinda al norte en 12.50 m con la calle Juárez y al sur en 12.50 m con el lote 7.";
+
+  // A sum of the column is a figure nobody captured: discarded, asked again.
+  const fake = createFakeAiGateway({ drafts: ["Predio regular con 25.00 m de colindancias en total.", good] });
+  overrideAiGateway(fake.gateway);
+  const response = await post(jar, fixture.publicId, "redaccion", body);
+  assert.equal(response.status, 200, response.body.error);
+  assert.deepEqual(response.body.data, { text: good });
+  assert.equal(fake.prompts[0].prompt.user, [
+    "Campo a redactar: Descripción de las colindancias",
+    "Apartado: MEDIDAS Y COLINDANCIAS",
+    "<datos>",
+    "- Forma: Regular",
+    "Tabla: Colindancias",
+    "Columnas: Orientación | Distancia | Colindante",
+    "- Norte | 12.50 m | Calle Juárez",
+    "- Sur | 12.50 m | Lote 7",
+    "</datos>",
+  ].join("\n"));
+  assert.match(fake.prompts[1].prompt.user, /incluía cifras que no están en los datos \(25\)/);
+
+  // The record counts the tables and their cells, and stores none of them.
+  const [usage] = await usageOf(fixture, "AI_DRAFT_WRITE");
+  assert.deepEqual(usage.JMetadatos, {
+    model: "fake-drafting", calls: 2, inputTokens: 1800, outputTokens: 300, cacheReadTokens: 0, cacheWriteTokens: 0,
+    facts: 1, tables: 1, tableCells: 9, attempts: 2, characters: good.length,
+  });
+  for (const secret of ["Juárez", "12.50", "COLINDANCIAS", "Colindancias"]) assert.ok(!JSON.stringify([usage.JMetadatos, usage.SAccion, usage.SEntidad, usage.SResultado]).includes(secret), secret);
+
+  // A table alone is data enough; more cells than the cap, or more tables, are not accepted, and the model is not called.
+  const alone = createFakeAiGateway({ drafts: [good] });
+  overrideAiGateway(alone.gateway);
+  assert.equal((await post(jar, fixture.publicId, "redaccion", { ...body, facts: [] })).status, 200);
+  const wide = { title: "Grande", columns: Array.from({ length: 10 }, (_, index) => `C${index}`), rows: Array.from({ length: 40 }, () => Array.from({ length: 10 }, () => "x")) };
+  const tooManyCells = await post(jar, fixture.publicId, "redaccion", { ...body, tables: [wide] });
+  assert.equal(tooManyCells.status, 400);
+  assert.match(JSON.stringify(tooManyCells.body), /Se redacta con hasta 400 celdas de tablas/);
+  assert.equal((await post(jar, fixture.publicId, "redaccion", { ...body, tables: Array.from({ length: 7 }, () => body.tables[0]) })).status, 400);
+  assert.equal((await post(jar, fixture.publicId, "redaccion", { ...body, tables: [{ ...body.tables[0], rows: [["x".repeat(201), "", ""]] }] })).status, 400);
+  assert.equal(alone.prompts.length, 1);
 });
 
 test("provider failures are told in words, and the limit per user answers 429 with Retry-After", async (t) => {

@@ -3,8 +3,8 @@ import test from "node:test";
 
 import { verifyListingExtraction } from "../src/features/ai/listing-extraction";
 import { listingRows } from "../src/features/ai/listing-prefill";
-import { draftFactsFor } from "../src/features/valuations/services/draft-facts";
-import type { Concept } from "../src/features/valuations/model";
+import { assumptionsDraftData, draftFactsFor, draftTablesFor } from "../src/features/valuations/services/draft-facts";
+import type { AppSection, Concept, TableContent } from "../src/features/valuations/model";
 import { EMPTY_EXTRACTION } from "./support/fake-ai-gateway";
 
 const RANCH = `Venta de predio rústico en Los Altos, municipio de Arandas, Jalisco.
@@ -75,4 +75,53 @@ test("a draft is written only from the other concepts of the same container that
     { label: "Uso actual", value: "Casa habitación" },
     { label: "Superficie construida", value: "185 m²" },
   ]);
+});
+
+test("the tables of the apartado travel whole and as printed, within the cap of cells", () => {
+  const table = (id: string, title: string, columns: string[], rows: string[][], extra: Partial<TableContent> = {}): TableContent => ({ id, title, columns, rows, enabled: true, ...extra });
+  const boundaries = table("t1", "Colindancias", ["Orientación", "Distancia"], [["Norte", "12.50 m"], ["", ""], ["Sur", " 12.50  m "]]);
+  assert.deepEqual(draftTablesFor([boundaries, table("t2", "Oculta", ["A"], [["1"]], { enabled: false }), table("t3", "Vacía", ["A", "B"], [["", ""]])]), [
+    { title: "Colindancias", columns: ["Orientación", "Distancia"], rows: [["Norte", "12.50 m"], ["Sur", "12.50 m"]] },
+  ]);
+
+  // 400 cells for all the tables together, headers included: a table that does not fit is left out whole, a later smaller one still goes.
+  const big = (id: string, rows: number) => table(id, id, ["A", "B", "C", "D"], Array.from({ length: rows }, (_, index) => [String(index), "x", "y", "z"]));
+  assert.deepEqual(draftTablesFor([big("uno", 60), big("dos", 60), boundaries]).map((item) => [item.title, item.rows.length]), [["uno", 60], ["Colindancias", 2]]);
+  // A cell too long to draft from leaves its table out; no more than six tables.
+  assert.deepEqual(draftTablesFor([table("largo", "Largo", ["A"], [["x".repeat(201)]]), boundaries]).map((item) => item.title), ["Colindancias"]);
+  assert.equal(draftTablesFor(Array.from({ length: 8 }, (_, index) => table(`t${index}`, `T${index}`, ["A"], [["1"]]))).length, 6);
+});
+
+test("the carátula's assumptions are drafted only from the assumptions and limiting conditions of the considerations", () => {
+  const concept = (id: string, label: string, value: string, enabled = true): Concept => ({ id, label, value, enabled });
+  const container = (id: string, title: string, concepts: Concept[], enabled = true) => ({ id, title, enabled, concepts, tables: [], images: [] });
+  const section = (id: string, apartados: ReturnType<typeof container>[], blockConcepts: Concept[] = []): AppSection => ({
+    id, label: "", title: id, sourceFile: "", enabled: true, required: false,
+    blocks: [{ ...container(`${id}-b`, "BLOQUE", blockConcepts), sectionLabel: "", required: false, apartados }],
+  });
+  const sections = [
+    section("consideraciones", [
+      container("general", "CONSIDERACIONES GENERALES", [concept("g1", "Criterio técnico", "Normas del INDAABIN")]),
+      container("definiciones", "DEFINICIONES", [concept("d1", "Valor comercial", "Precio más probable…")]),
+      container("supuestos", "COMENTARIOS GENERALES, SUPUESTOS Y CONDICIONES LIMITANTES DEL AVALÚO", [
+        concept("comentario_01", "1", "No se verificaron gravámenes."),
+        concept("comentario_02", "2", ""),
+        concept("comentario_03", "3", "La superficie se tomó de la escritura.", false),
+        concept("comentario_04", "4", "No existen condiciones hipotéticas."),
+        concept("propio", "Supuestos especiales", "No hay supuestos especiales."),
+      ]),
+    ]),
+    section("conclusiones", [], [concept("c1", "Valor concluido", "$980,000.00"), concept("c2", "Limitaciones", "Ninguna")]),
+    section("costos", [container("otro", "SUPUESTOS DE COSTO", [concept("x1", "Otro", "No va")])]),
+  ];
+  assert.deepEqual(assumptionsDraftData(sections), {
+    facts: [
+      { label: "Comentario", value: "No se verificaron gravámenes." },
+      { label: "Comentario", value: "No existen condiciones hipotéticas." },
+      { label: "Supuestos especiales", value: "No hay supuestos especiales." },
+    ],
+    tables: [],
+  });
+  // Nothing of the conclusion, of the values or of other sections; a hidden considerations section gives nothing.
+  assert.deepEqual(assumptionsDraftData(sections.map((item) => ({ ...item, enabled: item.id !== "consideraciones" }))), { facts: [], tables: [] });
 });

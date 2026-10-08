@@ -1,4 +1,5 @@
 import { AUTH_PERMISSIONS, type AuthPermission } from "@/features/auth/model";
+import { MACHINERY_PROPERTY_TYPE } from "@/features/valuations/calculation/machinery-types";
 
 export type ValuationSectionKey =
   | "CARATULA"
@@ -203,6 +204,33 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     permissions: [AUTH_PERMISSIONS.editValuations],
   },
 ];
+
+/**
+ * Sections without a sheet in the machinery and equipment book (MEH): land,
+ * constructions, rents, income, sketches and maps of comparables and the
+ * indirect costs of a construction. Its sheets are carátula, datos,
+ * consideraciones, costos, mercado, conclusión and the annexes of photographs
+ * and of homologation factors.
+ */
+const MACHINERY_HIDDEN_SECTIONS: readonly ValuationSectionKey[] = [
+  "TERRENO",
+  "CONSTRUCCION",
+  "MERCADO_RENTAS",
+  "INGRESOS",
+  "CROQUIS_COMPARABLES",
+  "INDIRECTOS",
+  "MAPA_COMPARABLES",
+];
+
+/**
+ * The sections a new valuation of this property type starts with hidden. They
+ * are only hidden: the appraiser shows any of them again from the editor.
+ */
+export function initiallyHiddenSections(propertyTypeKey: string): ReadonlySet<ValuationSectionKey> {
+  const hidden = propertyTypeKey.toUpperCase() === MACHINERY_PROPERTY_TYPE ? MACHINERY_HIDDEN_SECTIONS : [];
+  // A required section is never hidden.
+  return new Set(hidden.filter((key) => !valuationSectionRegistry.find((section) => section.key === key)?.required));
+}
 
 export function findSectionDefinition(key: string) {
   const normalized = getCanonicalSectionKey(key);

@@ -1,4 +1,5 @@
 import type { CaratulaFormData, ImageContent, Letterhead } from "../model";
+import { appraisedGoodWording } from "../services/appraised-good-wording";
 import { formatDateValue } from "../services/concept-value-format";
 import { validUntilDate } from "../services/valuation-signatures";
 
@@ -21,10 +22,13 @@ export function DocumentPreviewHeader({
   caratula,
   letterhead,
   headerImage,
+  propertyKind,
 }: {
   caratula: CaratulaFormData;
   letterhead: Letterhead;
   headerImage?: ImageContent | null;
+  /** The valuation's property type: the title band names what is appraised. */
+  propertyKind?: string | null;
 }) {
   const image = headerImage?.src
     ? headerImage
@@ -82,7 +86,7 @@ export function DocumentPreviewHeader({
         </div>
       </div>
       <div className="mt-1 bg-[var(--caratula-dark-blue)] px-5 py-0.5 text-center text-base font-black leading-tight text-white">
-        DICTAMEN VALUATORIO
+        {appraisedGoodWording(propertyKind).documentTitle}
       </div>
     </header>
   );

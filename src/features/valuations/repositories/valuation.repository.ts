@@ -456,7 +456,7 @@ async function mapValuationDetail(
   valuation: AvaluoWithRelations,
   content: VersionTrabajo | null,
 ): Promise<ValuationDetail> {
-  const sections = buildCanonicalValuationSections(content?.seccionesDocumentos ?? []);
+  const sections = buildCanonicalValuationSections(content?.seccionesDocumentos ?? [], valuation.tipoInmueble.SClave);
   const comparables = content?.comparables.map(mapComparable) ?? [];
 
   // Resolve all image URLs to fresh signed URLs (handles expired S3 URLs)
@@ -551,7 +551,7 @@ const DEFAULT_DOCUMENT_TEMPLATE_KEYS = new Set([
   "CONCLUSIONES",
 ]);
 
-export function buildCanonicalValuationSections(sections: DbSection[]): ValuationSectionDto[] {
+export function buildCanonicalValuationSections(sections: DbSection[], propertyKind?: string | null): ValuationSectionDto[] {
   const byCanonical = new Map<string, DbSection[]>();
   for (const section of sections) {
     const canonical = getCanonicalSectionKey(section.SClave);
@@ -562,7 +562,7 @@ export function buildCanonicalValuationSections(sections: DbSection[]): Valuatio
 
   return getOrderedValuationSections().map((definition) => {
     const persisted = selectCanonicalSection(byCanonical.get(definition.key) ?? []);
-    return persisted ? mapSection(persisted, definition) : createEmptySection(definition);
+    return persisted ? mapSection(persisted, definition, propertyKind) : createEmptySection(definition, propertyKind);
   });
 }
 
@@ -583,9 +583,9 @@ function countSectionValues(section: DbSection) {
   }, 0);
 }
 
-function createEmptySection(definition: ValuationSectionDefinition): ValuationSectionDto {
+function createEmptySection(definition: ValuationSectionDefinition, propertyKind?: string | null): ValuationSectionDto {
   const blocks = DEFAULT_DOCUMENT_TEMPLATE_KEYS.has(definition.key)
-    ? templateBlocks(definition.key)
+    ? templateBlocks(definition.key, propertyKind)
     : [];
   return {
     id: sectionKeyToWorkspaceId(definition.key),
@@ -600,7 +600,7 @@ function createEmptySection(definition: ValuationSectionDefinition): ValuationSe
   };
 }
 
-function mapSection(section: DbSection, definition: ValuationSectionDefinition): ValuationSectionDto {
+function mapSection(section: DbSection, definition: ValuationSectionDefinition, propertyKind?: string | null): ValuationSectionDto {
   const sectionMetadata = hydrateSectionMetadata(section.JConfiguracion);
   const rootNodes = section.nodos
     .filter((node) => node.IdNodoPadre === null && node.DFechaEliminacion === null)
@@ -608,7 +608,7 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition):
 
   const blocks = DEFAULT_DOCUMENT_TEMPLATE_KEYS.has(definition.key)
     && isEmptySectionPlaceholder(section, rootNodes, definition.label)
-    ? templateBlocks(definition.key)
+    ? templateBlocks(definition.key, propertyKind)
     : rootNodes.map((node) => mapNodeToBlock(node, definition.key));
 
   return {
@@ -652,8 +652,8 @@ function normalizeTemplateIdentity(value: string) {
     .toUpperCase();
 }
 
-function templateBlocks(sectionKey: string): ValuationBlockDto[] {
-  const template = getInitialSectionTemplate(sectionKey);
+function templateBlocks(sectionKey: string, propertyKind?: string | null): ValuationBlockDto[] {
+  const template = getInitialSectionTemplate(sectionKey, propertyKind);
   return (template?.blocks ?? []).map((block, index) =>
     mapTemplateBlock(block, index, sectionKey),
   );

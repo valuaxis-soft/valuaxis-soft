@@ -1159,11 +1159,14 @@ export function LongTextConceptEditor({
   label,
   onUpdate,
   readOnly,
+  renderAssist,
 }: {
   concepts: Concept[];
   label?: string;
   onUpdate: (conceptId: string, patch: Partial<Concept>) => void;
   readOnly: boolean;
+  /** The draft assistance of a fixed text that has one, under its field. */
+  renderAssist?: (concept: Concept) => ReactNode;
 }) {
   return (
     <div className="space-y-3">
@@ -1176,6 +1179,7 @@ export function LongTextConceptEditor({
             value={concept.value}
             onChange={(event) => onUpdate(concept.id, { value: event.target.value })}
           />
+          {readOnly ? null : renderAssist?.(concept)}
         </Field>
       ))}
     </div>

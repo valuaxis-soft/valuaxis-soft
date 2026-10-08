@@ -1,6 +1,6 @@
 "use client";
 
-import { Calculator, Loader2, Plus, Trash2 } from "lucide-react";
+import { Calculator, ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -11,15 +11,18 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { api, SessionExpiredError } from "@/lib/api-client";
 import {
   EMPTY_MACHINERY_ITEM,
+  MACHINERY_CHARACTERISTICS_MAX,
   MACHINERY_EXPENSES,
   MACHINERY_FACTORS,
   QUOTATION_KINDS,
+  alignedCharacteristics,
   emptyAttachment,
   emptyOffer,
   toMachineryCostEngineInput,
   toMachineryMarketEngineInput,
   type MachineryAttachmentDto,
   type MachineryCalculationDto,
+  type MachineryCharacteristicDto,
   type MachineryCostDto,
   type MachineryItemDto,
   type MachineryMarketDto,
@@ -487,17 +490,125 @@ const OFFER_CONTACT_COLUMNS: Column<OfferTexts>[] = [
   { key: "notes", label: "Observaciones", text: true, className: "min-w-40" },
 ];
 
-type MarketDraft = { offerLevel: OfferLevel | null; usefulLife: string; offers: OfferTexts[]; rounding: RoundingDigits };
+type MarketDraft = { offerLevel: OfferLevel | null; usefulLife: string; offers: OfferTexts[]; characteristics: MachineryCharacteristicDto[]; rounding: RoundingDigits };
 
-const marketDraftOf = (market: MachineryMarketDto): MarketDraft =>
-  ({ offerLevel: market.offerLevel, usefulLife: market.usefulLife === null ? "" : String(market.usefulLife), offers: market.offers.map(textsOf), rounding: market.rounding });
+const marketDraftOf = (market: MachineryMarketDto): MarketDraft => ({
+  offerLevel: market.offerLevel,
+  usefulLife: market.usefulLife === null ? "" : String(market.usefulLife),
+  offers: market.offers.map(textsOf),
+  characteristics: alignedCharacteristics(market.characteristics, market.offers.length),
+  rounding: market.rounding,
+});
 const marketOf = (draft: MarketDraft): MachineryMarketDto => ({
   offerLevel: draft.offerLevel,
   usefulLife: numbersOf({ usefulLife: draft.usefulLife }, { usefulLife: null as number | null }).usefulLife,
   offers: draft.offers.map((row, index) => numbersOf(row, emptyOffer(index))),
+  characteristics: draft.characteristics,
   rounding: draft.rounding,
 });
-const marketPayloadOf = (market: MachineryMarketDto): MachineryMarketDto => ({ ...market, offers: market.offers.filter((row) => row.ref.trim()) });
+/** What is saved: the offers with a reference, and the characteristics with a concept, with the values of those offers. */
+const marketPayloadOf = (market: MachineryMarketDto): MachineryMarketDto => {
+  const kept = market.offers.map((row, index) => (row.ref.trim() ? index : -1)).filter((index) => index >= 0);
+  return {
+    ...market,
+    offers: kept.map((index) => market.offers[index]),
+    characteristics: market.characteristics
+      .filter((row) => row.label.trim())
+      .map((row) => ({ ...row, values: kept.map((index) => row.values[index] ?? "") })),
+  };
+};
+
+/** Moves the row at `index` one place up (-1) or down (1). */
+function moved<T>(rows: T[], index: number, step: -1 | 1): T[] {
+  const target = index + step;
+  if (target < 0 || target >= rows.length) return rows;
+  const next = [...rows];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
+}
+
+/**
+ * The free rows of the technical characteristics: a concept, what the subject
+ * has and what each offer has. The appraiser adds, names, orders and removes
+ * them; they are printed as written and never enter the calculation.
+ */
+function CharacteristicsTable(props: {
+  rows: MachineryCharacteristicDto[];
+  offers: OfferTexts[];
+  readOnly: boolean;
+  /** While typing. */
+  onEdit: (rows: MachineryCharacteristicDto[]) => void;
+  /** A change with no blur to wait for: adding, ordering or removing a row. */
+  onCommit: (rows: MachineryCharacteristicDto[]) => void;
+}) {
+  const { rows, offers } = props;
+  const edit = (index: number, patch: Partial<MachineryCharacteristicDto>) =>
+    props.onEdit(rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
+  return (
+    <div className="grid gap-2">
+      {rows.length ? (
+        <div className="overflow-x-auto rounded-md border bg-background">
+          <table className="w-full text-xs" style={{ minWidth: `${360 + offers.length * 130}px` }} aria-label="Características técnicas">
+            <thead className="bg-muted/60 text-muted-foreground">
+              <tr>
+                <th className="px-1.5 py-1 text-left font-medium">Concepto</th>
+                <th className="px-1.5 py-1 text-left font-medium">Sujeto</th>
+                {offers.map((offer, index) => <th key={index} className="px-1.5 py-1 text-left font-medium">Comparable {offer.ref}</th>)}
+                <th><span className="sr-only">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => {
+                const name = row.label.trim() || `característica ${index + 1}`;
+                return (
+                  <tr key={index} className="border-t">
+                    <td className="min-w-36 p-1">
+                      <Input aria-label="Concepto" className={cell} maxLength={80} placeholder="Cabina, Kilómetros…" value={row.label} onChange={(event) => edit(index, { label: event.target.value })} />
+                    </td>
+                    <td className="min-w-28 p-1">
+                      <Input aria-label={`Sujeto: ${name}`} className={cell} maxLength={200} value={row.subject} onChange={(event) => edit(index, { subject: event.target.value })} />
+                    </td>
+                    {offers.map((offer, offerIndex) => (
+                      <td key={offerIndex} className="min-w-28 p-1">
+                        <Input
+                          aria-label={`Comparable ${offer.ref}: ${name}`}
+                          className={cell}
+                          maxLength={200}
+                          value={row.values[offerIndex] ?? ""}
+                          onChange={(event) => edit(index, { values: offers.map((_, valueIndex) => (valueIndex === offerIndex ? event.target.value : row.values[valueIndex] ?? "")) })}
+                        />
+                      </td>
+                    ))}
+                    <td className="p-1 whitespace-nowrap">
+                      {!props.readOnly ? (
+                        <>
+                          <Button type="button" size="icon-sm" variant="ghost" aria-label={`Subir ${name}`} disabled={index === 0} onClick={() => props.onCommit(moved(rows, index, -1))}><ChevronUp /></Button>
+                          <Button type="button" size="icon-sm" variant="ghost" aria-label={`Bajar ${name}`} disabled={index === rows.length - 1} onClick={() => props.onCommit(moved(rows, index, 1))}><ChevronDown /></Button>
+                          <Button type="button" size="icon-sm" variant="ghost" aria-label={`Quitar ${name}`} onClick={() => props.onCommit(rows.filter((_, rowIndex) => rowIndex !== index))}><Trash2 /></Button>
+                        </>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {!props.readOnly && rows.length < MACHINERY_CHARACTERISTICS_MAX ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="w-fit"
+          onClick={() => props.onEdit([...rows, { label: "", subject: "", values: offers.map(() => "") }])}
+        >
+          <Plus data-icon="inline-start" /> Característica
+        </Button>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Market approach of a machinery valuation, as the book's sheet: the offers of
@@ -580,7 +691,12 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved }: FormProps) 
             rows={draft.offers}
             readOnly={readOnly}
             onChange={setOffer}
-            onRemove={(index) => change({ ...draft, offers: draft.offers.filter((_, rowIndex) => rowIndex !== index) })}
+            onRemove={(index) => change({
+              ...draft,
+              offers: draft.offers.filter((_, rowIndex) => rowIndex !== index),
+              // Its values leave with the offer.
+              characteristics: draft.characteristics.map((row) => ({ ...row, values: row.values.filter((_, valueIndex) => valueIndex !== index) })),
+            })}
           />
           {!readOnly ? (
             <Button
@@ -588,7 +704,11 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved }: FormProps) 
               size="sm"
               variant="outline"
               className="w-fit"
-              onClick={() => setDraft((current) => ({ ...current, offers: [...current.offers, textsOf(emptyOffer(current.offers.length))] }))}
+              onClick={() => setDraft((current) => ({
+                ...current,
+                offers: [...current.offers, textsOf(emptyOffer(current.offers.length))],
+                characteristics: current.characteristics.map((row) => ({ ...row, values: [...row.values, ""] })),
+              }))}
             >
               <Plus data-icon="inline-start" /> Oferta
             </Button>
@@ -600,6 +720,20 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved }: FormProps) 
             <div className="grid gap-2">
               <h4 className={heading}>Información de contacto</h4>
               <CaptureTable caption="Información de contacto" minWidth="980px" columns={OFFER_CONTACT_COLUMNS} rows={draft.offers} readOnly={readOnly} onChange={setOffer} />
+            </div>
+            <div className="grid gap-2">
+              <h4 className={heading}>Características técnicas</h4>
+              <p className="text-xs text-muted-foreground">
+                Renglones libres del cuadro (Cabina, Kilómetros, Procedencia, Nivel de demanda…), con lo que tiene el sujeto y cada comparable. Son descriptivos:
+                no entran al cálculo. Marca, Modelo, Año, Horas, Ubicación, Edad, V.U.T., V.U.R. y Precio de oferta se imprimen solos.
+              </p>
+              <CharacteristicsTable
+                rows={draft.characteristics}
+                offers={draft.offers}
+                readOnly={readOnly}
+                onEdit={(characteristics) => setDraft((current) => ({ ...current, characteristics }))}
+                onCommit={(characteristics) => change({ ...draft, characteristics })}
+              />
             </div>
             <div className="grid gap-2">
               <h4 className={heading}>Cálculo del V.N.R. homologado</h4>
