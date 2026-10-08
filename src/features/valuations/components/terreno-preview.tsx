@@ -8,33 +8,17 @@ import {
   AutoPaginatedDocumentFlow,
   computeDocumentLayoutKey,
 } from "./document-preview-page";
-import { getPreviewFixedModule } from "./preview-fixed-module-registry";
-
-// Resolved once at module scope so the component identity is stable across renders.
-const TerrainRenderer = getPreviewFixedModule("terreno-main");
+import { terrenoApartadoHead } from "./terreno-preview-modules";
 
 export function TerrenoPreview({ header, section }: { header: ReactNode; section: AppSection }) {
   const theme = useDocumentTheme();
-  const mainBlock = section.blocks.find(
-    (block) => block.enabled && isTerrenoMainBlock(block),
-  );
-
-  const additionalBlocks = section.blocks.filter(
-    (block) => block.enabled && !isTerrenoMainBlock(block),
-  );
-
-  const items = [];
-
-  if (mainBlock && TerrainRenderer) {
-    items.push({
-      id: "terreno-main",
-      node: <TerrainRenderer block={mainBlock} />,
-    });
-  }
-
-  for (const block of additionalBlocks) {
-    items.push(...documentBlockFlowItems(block, { renderTitleBar: true }));
-  }
+  // The main block prints like any other; only "Medidas y colindancias" has a format of its own.
+  const items = section.blocks
+    .filter((block) => block.enabled)
+    .flatMap((block) => documentBlockFlowItems(block, {
+      renderTitleBar: true,
+      renderApartadoHead: isTerrenoMainBlock(block) ? terrenoApartadoHead : undefined,
+    }));
 
   const contentLayoutKey = useMemo(() => computeDocumentLayoutKey(section), [section]);
 

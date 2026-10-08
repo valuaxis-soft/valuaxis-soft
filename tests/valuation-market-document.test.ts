@@ -258,10 +258,16 @@ test("the offer level is the first apartado, with an X on the option observed; w
     ["motor-mercado-terreno_venta-enfoque-datos", "DATOS DE COMPARABLES (TERRENOS)"],
     ["motor-mercado-terreno_venta-enfoque-homologacion", "HOMOLOGACIÓN (TERRENOS)"],
   ]);
+  // The books print the six options in two rows of three, each followed by its mark (B15:O16 of the sheet).
   const offer = printed(block.apartados[0].tables[0]);
-  assert.deepEqual(offer.columns, ["MUY ALTA", "ALTA", "MEDIA", "MEDIA BAJA", "BAJA", "NULA"]);
-  assert.deepEqual(offer.rows, [["(   )", "(   )", "(   )", "( X )", "(   )", "(   )"]]);
+  assert.deepEqual(offer.rows, [
+    ["MUY ALTA", "(   )", "MEDIA", "(   )", "BAJA", "(   )"],
+    ["ALTA", "(   )", "MEDIA BAJA", "( X )", "NULA", "(   )"],
+  ]);
+  assert.equal(offer.schema?.plain, true, "a grid of labels and marks: its header row is not printed");
+  assert.deepEqual(offer.align, ["left", "center", "left", "center", "left", "center"]);
   assert.deepEqual(offer.schema?.notes, [{ position: "top", text: "Nivel de oferta observada durante la investigación de mercado de terrenos." }]);
+  assert.equal(printed(block.apartados[1].tables[0]).schema?.plain, undefined, "the other tables keep their header");
 
   const titles = (target: MarketCalculationDto) => marketDocumentBlocks(target, result())[0].apartados.map((apartado) => apartado.title);
   assert.deepEqual(titles({ ...calculation, settings: { ...calculation.settings, offerLevel: null } }), titles(calculation));
@@ -270,7 +276,10 @@ test("the offer level is the first apartado, with an X on the option observed; w
   const rents: MarketCalculationDto = { ...calculation, settings: { ...calculation.settings, comparableType: "INMUEBLE_RENTA", offerLevel: "NULA" } };
   const rentOffer = marketDocumentBlocks(rents, null)[0].apartados[0];
   assert.equal(rentOffer.title, "INMUEBLES SIMILARES EN RENTA");
-  assert.equal(printed(rentOffer.tables[0]).rows[0][5], "( X )");
+  assert.deepEqual(printed(rentOffer.tables[0]).rows.map((row) => row.filter((cell) => cell.startsWith("("))), [
+    ["(   )", "(   )", "(   )"],
+    ["(   )", "(   )", "( X )"],
+  ], "NULA is the last option of the second row");
 });
 
 test("the typical frontage and depth of the zone print beside the lote tipo, each only when captured", () => {

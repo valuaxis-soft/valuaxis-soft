@@ -48,6 +48,12 @@ export function documentBlockFlowItems(
       tableFragment?: DocumentTableFragment;
     }) => React.ReactNode;
   renderApartadoTitle?: (block: Block, subBlock: Apartado, displayLabel: string) => React.ReactNode;
+    /**
+     * Prints an apartado in a format of its own: `node` stands for its title
+     * and whatever it prints itself, and `rows` are the content rows left,
+     * printed after it like those of any apartado. Null prints it as usual.
+     */
+    renderApartadoHead?: (subBlock: Apartado, displayLabel: string) => ApartadoHead | null;
     pairedApartadosClassName?: string;
   },
 ): DocumentFlowItem[] {
@@ -57,6 +63,7 @@ export function documentBlockFlowItems(
   const renderContentRow = options?.renderContentRow;
   const renderApartadoTitle = options?.renderApartadoTitle;
   const pairedApartadosClassName = options?.pairedApartadosClassName;
+  const renderApartadoHead = options?.renderApartadoHead;
   const flowV2 = resolveBlockFlowV2(block);
   const structuralRows = flowV2?.rows ?? [];
 
@@ -69,6 +76,28 @@ export function documentBlockFlowItems(
   const layoutRowsById = new Map(resolvedLayout.rows.map((r) => [r.id, r]));
   const orderedApartados = getBlockFlowApartadoOrder(block);
   const blockLongText = isLongTextList(block.concepts);
+  const apartadoHead = (subBlock: Apartado) =>
+    renderApartadoHead?.(subBlock, formatVisibleChildLabel(block.sectionLabel, orderedApartados, subBlock.id)) ?? null;
+  const renderPairedApartado = (subBlock: Apartado) => {
+    const head = apartadoHead(subBlock);
+    if (head) {
+      return (
+        <section>
+          {head.node}
+          <ApartadoContentRows subBlock={subBlock} rows={head.rows} firstRowIndex={1} applyConceptLayout={applyConceptLayout} />
+        </section>
+      );
+    }
+    return (
+      <DocumentApartado
+        block={block}
+        subBlock={subBlock}
+        orderedApartados={orderedApartados}
+        applyConceptLayout={applyConceptLayout}
+        renderTitle={renderApartadoTitle}
+      />
+    );
+  };
 
   const items: DocumentFlowItem[] = [];
 
@@ -134,6 +163,30 @@ export function documentBlockFlowItems(
       const subBlock = subBlocksById.get(firstItem.apartadoId);
       if (!subBlock || subBlock.enabled === false) continue;
       const apId = `ap-${block.id}-${structuralRow.id}`;
+      const head = apartadoHead(subBlock);
+      if (head) {
+        const renderHeadRow = (layoutRow: ContentLayoutRowV2, rowIndex: number, tableFragment?: DocumentTableFragment) => (
+          <ApartadoContentRows
+            subBlock={subBlock}
+            rows={[layoutRow]}
+            firstRowIndex={rowIndex}
+            applyConceptLayout={applyConceptLayout}
+            tableFragment={tableFragment}
+          />
+        );
+        items.push({ id: apId, startOnNewPage: subBlock.startOnNewPage, node: head.node });
+        head.rows.forEach((layoutRow, index) => {
+          items.push({
+            id: `${apId}:${layoutRow.id}`,
+            continuesPrevious: true,
+            node: renderHeadRow(layoutRow, index + 1),
+            renderTableFragment: holdsOnlyATable(layoutRow, subBlock)
+              ? (tableFragment) => renderHeadRow(layoutRow, index + 1, tableFragment)
+              : undefined,
+          });
+        });
+        continue;
+      }
       const apartadoRows = subBlock.presentationMode === "technical-list" ? [] : resolveContentLayout(subBlock).rows;
       const renderFurtherRow = (layoutRow: ContentLayoutRowV2, rowIndex: number, tableFragment?: DocumentTableFragment) => (
         <DocumentApartadoRows
@@ -193,24 +246,8 @@ export function documentBlockFlowItems(
         startOnNewPage: pairedStartOnNewPage,
         node: (
           <div className={`mt-1 grid grid-cols-2 gap-4 ${pairedApartadosClassName ?? ""}`}>
-            {sb1 && sb1.enabled !== false ? (
-              <DocumentApartado
-                block={block}
-                subBlock={sb1}
-                orderedApartados={orderedApartados}
-                applyConceptLayout={applyConceptLayout}
-                renderTitle={renderApartadoTitle}
-              />
-            ) : null}
-            {sb2 && sb2.enabled !== false ? (
-              <DocumentApartado
-                block={block}
-                subBlock={sb2}
-                orderedApartados={orderedApartados}
-                applyConceptLayout={applyConceptLayout}
-                renderTitle={renderApartadoTitle}
-              />
-            ) : null}
+            {sb1 && sb1.enabled !== false ? renderPairedApartado(sb1) : null}
+            {sb2 && sb2.enabled !== false ? renderPairedApartado(sb2) : null}
           </div>
         ),
       });
@@ -219,6 +256,9 @@ export function documentBlockFlowItems(
 
   return items;
 }
+
+/** An apartado printed in a format of its own; see `renderApartadoHead`. */
+export type ApartadoHead = { node: React.ReactNode; rows: ContentLayoutRowV2[] };
 
 /**
  * The row is one table and nothing else, long enough to break across pages:

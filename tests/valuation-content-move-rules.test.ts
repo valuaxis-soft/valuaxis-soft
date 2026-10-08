@@ -175,7 +175,7 @@ test("move rules — the tables filled from the cost capture stay in their apart
   assert.equal(canMoveContent(rules, drag(inBlock(captured[0].block), "table", "tbl-own"), inBlock("another")), true);
 });
 
-test("move rules — terreno: the main block is open; Medidas y colindancias keeps its table and takes no image or table", () => {
+test("move rules — terreno: the main block is open; Medidas y colindancias keeps its table of measures and takes any content", () => {
   const terreno = ensureTerrenoSection(createInitialSections().find((item) => item.id === "terreno")!);
   const withExtra = { ...terreno, blocks: [...terreno.blocks, block("extra", { concepts: [concept("e")], images: [image("i")], tables: [table("t")] })] };
   const rules = contentMoveRulesForSection(withExtra);
@@ -191,31 +191,44 @@ test("move rules — terreno: the main block is open; Medidas y colindancias kee
   assert.equal(canMoveContent(rules, drag(inBlock("extra"), "table", "t"), inBlock(main.id)), true);
 
   assert.equal(canMoveContent(rules, drag(inBlock("extra"), "concept", "e"), boundaries), true);
-  assert.equal(canMoveContent(rules, drag(inBlock("extra"), "image", "i"), boundaries), false);
-  assert.equal(canMoveContent(rules, drag(inBlock("extra"), "table", "t"), boundaries), false);
-  assert.equal(canMoveContent(rules, drag(inBlock(main.id), "image", "i"), boundaries), false, "not from its own block either");
+  assert.equal(canMoveContent(rules, drag(inBlock("extra"), "image", "i"), boundaries), true);
+  assert.equal(canMoveContent(rules, drag(inBlock("extra"), "table", "t"), boundaries), true);
 
   assert.equal(canMoveContent(rules, drag(boundaries, "table", boundaryTable), boundaries), true);
   assert.equal(canMoveContent(rules, drag(boundaries, "table", boundaryTable), inBlock(main.id)), false);
   assert.equal(canMoveContent(rules, drag(boundaries, "table", boundaryTable), inBlock("extra")), false);
 
-  // A concept that goes into the apartado survives the rebuild of the section.
-  const moved = applyContentDropToBlocks(withExtra.blocks, drag(inBlock("extra"), "concept", "e"), { kind: "apartado-inside", container: boundaries }, rules);
-  assert.equal(moved.changed, true);
-  const rebuilt = ensureTerrenoSection({ ...withExtra, blocks: moved.blocks });
-  assert.deepEqual(placesOf(rebuilt.blocks, "concept", "e").inArray, [`${main.id}/${main.apartados[0].id}`]);
+  // What goes into the apartado survives the normalization of the section, and may leave again.
+  let blocks = withExtra.blocks;
+  for (const [type, id] of [["concept", "e"], ["image", "i"], ["table", "t"]] as const) {
+    const moved = applyContentDropToBlocks(blocks, drag(inBlock("extra"), type, id), { kind: "apartado-inside", container: boundaries }, rules);
+    assert.equal(moved.changed, true);
+    blocks = moved.blocks;
+  }
+  const rebuilt = ensureTerrenoSection({ ...withExtra, blocks });
+  for (const [type, id] of [["concept", "e"], ["image", "i"], ["table", "t"]] as const) {
+    assert.deepEqual(placesOf(rebuilt.blocks, type, id).inArray, [`${main.id}/${main.apartados[0].id}`]);
+  }
+  const rebuiltRules = contentMoveRulesForSection(rebuilt);
+  assert.equal(canMoveContent(rebuiltRules, drag(boundaries, "table", "t"), inBlock("extra")), true);
+  assert.equal(canMoveContent(rebuiltRules, drag(boundaries, "table", boundaryTable), inBlock("extra")), false);
 });
 
 
 test("move rules — terreno: the fixed apartado is recognized by its saved id too", () => {
   const terreno = section("terreno", [
-    block(TERRENO_MAIN_BLOCK_ID, { apartados: [apartado(TERRENO_ELEMENT_IDS.boundaries, { title: "Otro título", tables: [table("bt")] })] }),
+    block(TERRENO_MAIN_BLOCK_ID, {
+      apartados: [apartado(TERRENO_ELEMENT_IDS.boundaries, {
+        title: "Otro título",
+        tables: [{ ...table("bt"), boundaryDistanceFormats: [{ valueFormat: "m" }] }, table("own")],
+      })],
+    }),
     block("extra"),
   ]);
   const rules = contentMoveRulesForSection(terreno);
   const boundaries = inApartado(TERRENO_MAIN_BLOCK_ID, TERRENO_ELEMENT_IDS.boundaries);
-  assert.equal(canMoveContent(rules, drag(inBlock("extra"), "table", "t"), boundaries), false);
   assert.equal(canMoveContent(rules, drag(boundaries, "table", "bt"), inBlock("extra")), false);
+  assert.equal(canMoveContent(rules, drag(boundaries, "table", "own"), inBlock("extra")), true);
   // The same ids in another section mean nothing.
   const elsewhere = contentMoveRulesForSection({ ...terreno, id: "consideraciones" });
   assert.equal(canMoveContent(elsewhere, drag(inBlock("extra"), "table", "t"), boundaries), true);

@@ -8,18 +8,20 @@ import { ValuationNavigation } from "../src/features/valuations/components/works
 import {
   resequenceSections,
 } from "../src/features/valuations/components/workspace/valuation-workspace";
-import type { AppSection, Block, Apartado } from "../src/features/valuations/model";
+import type { AppSection, Block, Apartado, TableContent } from "../src/features/valuations/model";
 import { createInitialSections } from "../src/features/valuations/sections";
 import { getCanonicalSectionKey, valuationSectionRegistry } from "../src/features/valuations/sections/section-registry";
 import { Tabs } from "../src/components/ui/tabs";
 import {
   ensureTerrenoSection,
   ensureTerrenoSections,
+  findBoundaryTable,
   getTerrenoElementKind,
   isTerrenoMainBlock,
   isValidTerrenoDistance,
   terrenoSection,
 } from "../src/features/valuations/sections/terreno";
+import { ensureTableV2 } from "../src/features/valuations/services/table";
 // Must load after the components so client-only libraries still see no DOM at import time.
 import "./support/ssr-portal-shim";
 
@@ -173,6 +175,82 @@ test("Medidas conserva columnas fijas, cuatro rumbos y solo distancias numérica
     (element) => getTerrenoElementKind(element) === "boundaries",
   )?.tables[0].rows;
   assert.equal(rowsAfterDelete?.length, 2);
+});
+
+test("la normalización conserva lo que el valuador agrega a Medidas y colindancias", () => {
+  const section = ensureTerrenoSection({ ...structuredClone(terrenoSection), label: "III" });
+  const boundaries = section.blocks[0].apartados[0];
+  // A stored table of measures comes back as TableV2, not as the template's string grid.
+  const stored = { ...ensureTableV2(boundaries.tables[0]), boundaryDistanceFormats: boundaries.tables[0].boundaryDistanceFormats };
+  stored.rows[0].cells[stored.columns[1].id] = { kind: "value", value: "12.5" };
+  boundaries.tables = [stored as unknown as TableContent, { id: "tbl-own", title: "Tabla configurable", columns: ["Lado", "Nota"], rows: [["A", "Barda"]] }];
+  boundaries.images = [{ id: "img-own", title: "Croquis", src: "/croquis.jpg", enabled: true }];
+  boundaries.concepts.push({ id: "concept-own", label: "Superficie", value: "250 m²" });
+  boundaries.contentLayout = {
+    version: 2,
+    rows: [
+      { id: "r1", columns: [{ id: "c1", items: [{ type: "image", id: "img-own" }] }] },
+      { id: "r2", columns: [{ id: "c2", items: [{ type: "table", id: stored.id }] }] },
+      { id: "r3", columns: [{ id: "c3", items: [{ type: "concept", id: boundaries.concepts[0].id }] }] },
+      { id: "r4", columns: [{ id: "c4", items: [{ type: "table", id: "tbl-own" }] }] },
+      { id: "r5", columns: [{ id: "c5", items: [{ type: "concept", id: "concept-own" }] }] },
+    ],
+  };
+  boundaries.startOnNewPage = true;
+
+  const normalized = ensureTerrenoSection(ensureTerrenoSection(section));
+  const kept = normalized.blocks[0].apartados[0];
+
+  assert.equal(kept.title, "MEDIDAS Y COLINDANCIAS");
+  assert.deepEqual(kept.tables.map((table) => table.id), [stored.id, "tbl-own"]);
+  assert.deepEqual(kept.images, boundaries.images);
+  assert.deepEqual(kept.concepts.map((concept) => concept.id), [boundaries.concepts[0].id, "concept-own"]);
+  assert.deepEqual(kept.contentLayout, boundaries.contentLayout);
+  assert.equal(kept.startOnNewPage, true);
+  // The table of measures is the same TableV2, with what was typed in it.
+  assert.equal(findBoundaryTable(kept)?.id, stored.id);
+  assert.deepEqual(ensureTableV2(kept.tables[0]).rows, stored.rows);
+  assert.equal(kept.tables[0].boundaryDistanceFormats?.length, 4);
+  assert.equal(kept.tables[1].boundaryDistanceFormats, undefined);
+
+  // The dictamen prints the fixed format first and then what was added, in the appraiser's order.
+  const html = renderToStaticMarkup(createElement(TerrenoPreview, { header: null, section: normalized }));
+  assert.match(html, /12\.5 m/);
+  assert.equal(html.match(/Al Norte:/g)?.length, 1, "the table of measures prints once");
+  assert.equal(html.match(/Linderos y colindancias según/g)?.length, 1, "the source of the boundaries prints once");
+  // The image is also named in a preload hint ahead of the document: its <img> is the last mention.
+  const positions = ["Al Norte:", "Linderos y colindancias según", "/croquis.jpg", "Barda", "250 m²"].map((text) => html.lastIndexOf(text));
+  assert.ok(positions.every((position) => position >= 0), "everything added prints");
+  assert.deepEqual(positions, [...positions].sort((a, b) => a - b));
+});
+
+test("la normalización repone la tabla de medidas cuando falta, sin tocar las demás", () => {
+  const section = ensureTerrenoSection({ ...structuredClone(terrenoSection), label: "III" });
+  section.blocks[0].apartados[0].tables = [{ id: "tbl-own", title: "Tabla configurable", columns: ["Lado", "Nota"], rows: [["A", "Barda"]] }];
+
+  const tables = ensureTerrenoSection(section).blocks[0].apartados[0].tables;
+  assert.deepEqual(tables.map((table) => table.columns), [["Rumbo", "Distancia", "Colindancias"], ["Lado", "Nota"]]);
+  assert.deepEqual(tables[1].rows, [["A", "Barda"]]);
+});
+
+test("el dictamen imprime el contenido propio del bloque TERRENO y sus demás apartados", () => {
+  const section = ensureTerrenoSection({ ...structuredClone(terrenoSection), label: "III" });
+  section.blocks[0].sectionLabel = "III";
+  section.blocks[0].concepts.push({ id: "block-concept", label: "Uso de suelo", value: "Habitacional H2" });
+  section.blocks[0].apartados.push({
+    id: "own-apartado",
+    title: "TOPOGRAFÍA",
+    enabled: true,
+    concepts: [{ id: "own-concept", label: "Pendiente", value: "Terreno plano" }],
+    tables: [],
+    images: [],
+  });
+
+  const html = renderToStaticMarkup(createElement(TerrenoPreview, { header: null, section: ensureTerrenoSection(section) }));
+  assert.match(html, /Habitacional H2/);
+  assert.match(html, /III\.1 MEDIDAS Y COLINDANCIAS/);
+  assert.match(html, /III\.2 TOPOGRAFÍA/);
+  assert.match(html, /Terreno plano/);
 });
 
 test("el preview obtiene III. TERRENO del bloque real y no de una cinta de sección", () => {
