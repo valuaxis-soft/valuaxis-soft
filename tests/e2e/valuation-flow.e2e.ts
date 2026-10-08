@@ -18,6 +18,8 @@ import {
   incomePayload,
   prisma,
   reopenPayload,
+  shortListingPayload,
+  thinDraftPayload,
   waitForServer,
   type World,
 } from "./support";
@@ -101,6 +103,11 @@ test("create → capture → read back → conclude → locked → reopen → ed
   assert.equal(editLocked.status, 409, describeCall("PUT costos on a concluded valuation", editLocked));
   const importLocked = await call(actor, "POST", `/api/avaluos/${id}/mercado/comparables/importar?tipo=TERRENO_VENTA`, { form: comparablesCsv() });
   assert.equal(importLocked.status, 409, describeCall("import on a concluded valuation", importLocked));
+  // The AI assistance is for a valuation being edited: refused before anything is sent out.
+  for (const [route, json] of [["anuncio", shortListingPayload], ["redaccion", thinDraftPayload]] as const) {
+    const assisted = await call(actor, "POST", `/api/avaluos/${id}/ia/${route}`, { json });
+    assert.equal(assisted.status, 409, describeCall(`ia/${route} on a concluded valuation`, assisted));
+  }
 
   // Reopen needs a reason; then the valuation is editable again.
   const noReason = await call(actor, "POST", `/api/avaluos/${id}/reopen`, { json: { reason: "", acceptedText: "Acepto" } });

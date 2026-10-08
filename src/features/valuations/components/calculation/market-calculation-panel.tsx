@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError, type ComparableFormValues } from "@/lib/api-client";
+import { useAiAssist } from "@/features/ai/ai-assist-context";
+import type { ComparablePrefill } from "@/features/ai/listing-prefill";
 import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
 import { computeMarketApproach, type MarketApproachResult } from "@/features/valuations/engine/market";
 import {
@@ -43,6 +45,7 @@ import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { ComparableDialog } from "./comparable-dialog";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { ImportComparablesDialog } from "./import-comparables-dialog";
+import { PasteListingDialog } from "./paste-listing-dialog";
 import { SearchComparablesDialog } from "./search-comparables-dialog";
 import { useSerializedSave } from "./use-serialized-save";
 
@@ -102,11 +105,15 @@ export function MarketCalculationPanel(props: {
   const [type, setType] = useState<ComparableType>(types[0]);
   const labels = MARKET_LABELS[type];
   const perUnit = type === "INMUEBLE_RENTA" ? "/m²/mes" : "/m²";
+  const priceLabel = type === "INMUEBLE_RENTA" ? "Renta mensual ($)" : "Precio de oferta ($)";
   const [calculation, setCalculation] = useState<MarketCalculationDto | null>(null);
   const [draft, setDraft] = useState<SettingsDraft | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [editing, setEditing] = useState<ComparableDto | "nuevo" | null>(null);
+  // Data read from a pasted listing, waiting in the form of a new comparable.
+  const [prefill, setPrefill] = useState<ComparablePrefill | null>(null);
+  const ai = useAiAssist();
   const [catalog, setCatalog] = useState<FactorCatalog>(EMPTY_FACTOR_CATALOG);
 
   // The firm's own factor catalog, if it keeps one; without it every factor is typed.
@@ -479,6 +486,15 @@ export function MarketCalculationPanel(props: {
                 <Plus data-icon="inline-start" /> Agregar comparable
               </Button>
               <ImportComparablesDialog valuationId={valuationId} type={type} onImported={applyServerState} />
+              {ai.enabled ? (
+                <PasteListingDialog
+                  key={type}
+                  valuationId={valuationId}
+                  type={type}
+                  priceLabel={priceLabel}
+                  onUse={(values) => { setPrefill(values); setEditing("nuevo"); }}
+                />
+              ) : null}
             </>
           ) : null}
           {/* Searching only reads: a concluded valuation can still look, but not add. */}
@@ -523,12 +539,13 @@ export function MarketCalculationPanel(props: {
         <ComparableDialog
           key={editingComparable?.id ?? "nuevo"}
           open
-          onOpenChange={(open) => { if (!open) setEditing(null); }}
+          onOpenChange={(open) => { if (!open) { setEditing(null); setPrefill(null); } }}
+          prefill={prefill ?? undefined}
           comparable={editingComparable ? comparables.find((item) => item.id === editingComparable.id) ?? editingComparable : null}
           factorSlots={calculation.settings.factorSlots}
           catalog={catalog}
           comparableType={type}
-          unitLabel={type === "INMUEBLE_RENTA" ? "Renta mensual ($)" : "Precio de oferta ($)"}
+          unitLabel={priceLabel}
           readOnly={readOnly}
           onSubmit={submitComparable(editingComparable)}
           onUploadPhoto={async (file) => {

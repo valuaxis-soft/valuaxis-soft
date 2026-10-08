@@ -33,6 +33,11 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   /** Valuaxis' own customer portal configuration (bpc_...), printed by pnpm stripe:sync. */
   STRIPE_PORTAL_CONFIGURATION: z.string().optional(),
+  /** The AI assistance is optional: without the key its buttons do not render and its routes answer "no habilitado". */
+  ANTHROPIC_API_KEY: z.string().optional(),
+  /** Model overrides; empty uses the defaults of src/infrastructure/ai/anthropic-gateway.ts. */
+  AI_EXTRACTION_MODEL: z.string().optional(),
+  AI_DRAFTING_MODEL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

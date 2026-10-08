@@ -9,6 +9,7 @@ import {
 import { transformComparables } from "@/features/valuations/mappers/transform-valuation";
 import { ReadOnlyValuationAlert } from "@/features/valuations/components/feedback/valuation-error-alert";
 import { FormulaEditingProvider } from "@/features/valuations/components/editor/formula-editing";
+import { AiAssistProvider } from "@/features/ai/ai-assist-context";
 import { ValuationEditorPanel } from "@/features/valuations/components/workspace/valuation-editor-panel";
 import type { SplitLayout, WorkspaceMode } from "@/features/valuations/components/workspace/valuation-workspace-layout";
 import type { ExternalPreviewPayload } from "@/features/valuations/components/workspace/external-preview-sync";
@@ -66,12 +67,15 @@ export function ValuationWorkspace({
   letterhead,
   valuationId: propValuationId,
   initialValuation,
+  aiEnabled = false,
 }: {
   currentUser: AuthUser;
   letterhead: Letterhead;
   valuationId?: string | null;
   action?: string | null;
   initialValuation?: ValuationDetail | null;
+  /** The installation has the AI assistance configured. */
+  aiEnabled?: boolean;
 }) {
   const router = useRouter();
   const {
@@ -288,6 +292,7 @@ export function ValuationWorkspace({
   );
 
   return (
+    <AiAssistProvider enabled={aiEnabled && canEdit} valuationId={valuationId}>
     <FormulaEditingProvider sections={sections}>
     <Tabs value={activeSection.id} onValueChange={setActiveSectionId} className="gap-0 h-full">
       <main className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-hidden">
@@ -414,5 +419,6 @@ export function ValuationWorkspace({
       </main>
     </Tabs>
     </FormulaEditingProvider>
+    </AiAssistProvider>
   );
 }

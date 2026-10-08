@@ -9,6 +9,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ComparableFormValues } from "@/lib/api-client";
+import type { ComparablePrefill } from "@/features/ai/listing-prefill";
 import {
   DIRECT_FACTORS,
   factorFromOptions,
@@ -48,7 +49,15 @@ type Draft = Record<"location" | "area" | "price" | "sourceName" | "contactName"
   | "landUse" | "landUseKey" | "shape" | "zone" | "frontCount" | "frontage" | "depth" | "topography" | "services"
   | "conservation" | "quality" | "notes", string>;
 
-function initialDraft(comparable: ComparableDto | null): Draft {
+function initialDraft(comparable: ComparableDto | null, prefill: ComparablePrefill = {}): Draft {
+  return {
+    ...storedDraft(comparable),
+    // A new comparable may start from the data read from a pasted listing.
+    ...(comparable ? {} : prefill),
+  };
+}
+
+function storedDraft(comparable: ComparableDto | null): Draft {
   return {
     location: comparable?.location ?? "",
     area: text(comparable?.area),
@@ -135,6 +144,8 @@ export function ComparableDialog(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   comparable: ComparableDto | null;
+  /** Values a new comparable opens with; nothing is saved until the appraiser saves. */
+  prefill?: ComparablePrefill;
   factorSlots: FactorSlotConfig[];
   catalog: FactorCatalog;
   comparableType: ComparableType;
@@ -145,7 +156,7 @@ export function ComparableDialog(props: {
   onRemovePhoto: (photoId: string) => Promise<void>;
 }) {
   const { comparable, factorSlots, catalog, readOnly } = props;
-  const [draft, setDraft] = useState<Draft>(() => initialDraft(comparable));
+  const [draft, setDraft] = useState<Draft>(() => initialDraft(comparable, props.prefill));
   const [factors, setFactors] = useState(() => initialFactors(comparable, factorSlots, catalog));
   // Empty: the surface factor comes from the formula with the power n.
   const [surfaceFactor, setSurfaceFactor] = useState(() => text(comparable?.factors.find((factor) => factor.type === "SUPERFICIE")?.value));
@@ -238,6 +249,7 @@ export function ComparableDialog(props: {
           <DialogDescription>
             Los factores se capturan como calificación del sujeto entre calificación del comparable, o como un solo valor. En
             cualquier campo numérico puedes escribir un cálculo empezando con el signo igual, por ejemplo =1/1.15.
+            {!comparable && props.prefill ? " Los datos vienen del anuncio que pegaste: revísalos antes de guardar." : null}
           </DialogDescription>
         </DialogHeader>
 

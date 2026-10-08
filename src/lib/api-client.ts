@@ -15,6 +15,8 @@ import type { FirmSettingsInput } from "@/features/firm/firm-schemas";
 import type { FirmSettingsDto } from "@/features/firm/firm.service";
 import type { BillingOverviewDto } from "@/features/billing/billing.service";
 import type { FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
+import type { DraftInput } from "@/features/ai/draft-writing";
+import type { ListingProposal } from "@/features/ai/listing-extraction";
 
 /** What the comparable form sends: the comparable without its id, reference and photos. */
 export type ComparableFormValues = Omit<ComparableDto, "id" | "reference" | "photos">;
@@ -205,6 +207,13 @@ export const api = {
         `/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}&fotoId=${encodeURIComponent(photoId)}`,
         { method: "DELETE" },
       ),
+  },
+  /** AI assistance: both answer a draft to review; neither saves anything. */
+  ai: {
+    extractListing: (id: ApiId, input: { text: string; url: string | null }) =>
+      request<ListingProposal>(`/avaluos/${id}/ia/anuncio`, { method: "POST", body: JSON.stringify(input) }),
+    writeDraft: (id: ApiId, input: DraftInput) =>
+      request<{ text: string }>(`/avaluos/${id}/ia/redaccion`, { method: "POST", body: JSON.stringify(input) }),
   },
   costs: {
     get: (id: ApiId) => request<CostCalculationDto>(`/avaluos/${id}/costos`),

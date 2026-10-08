@@ -63,6 +63,7 @@ import { conceptTakesFormula } from "@/features/valuations/services/valuation-fo
 import { useFormulaEditing, useFormulaField, useFormulaReferenceTarget } from "./formula-editing";
 
 import { Textarea } from "@/components/ui/textarea";
+import { DraftAssist } from "./draft-assist";
 
 import {
   isLongTerrenoConcept,
@@ -953,13 +954,18 @@ export function ConceptEditorRow({
             onChange={(value) => handleLinkedAwareUpdate({ value })}
           />
         ) : conceptType === "longText" ? (
-          <Textarea
-            className="min-w-0"
-            disabled={readOnly}
-            placeholder="Dato"
-            value={effectiveConcept.value}
-            onChange={(event) => handleLinkedAwareUpdate({ value: event.target.value })}
-          />
+          <div className="grid min-w-0 gap-1">
+            <Textarea
+              className="min-w-0"
+              disabled={readOnly}
+              placeholder="Dato"
+              value={effectiveConcept.value}
+              onChange={(event) => handleLinkedAwareUpdate({ value: event.target.value })}
+            />
+            {readOnly ? null : (
+              <DraftAssist concept={effectiveConcept} container={concepts} allConcepts={allConcepts} onInsert={(value) => handleLinkedAwareUpdate({ value })} />
+            )}
+          </div>
         ) : (
           <ConceptValueInput
             concept={effectiveConcept}
@@ -1002,6 +1008,10 @@ export function ConceptEditorRow({
   }
 
   const showValueFormatControl = enableLayoutControls && supportsValueFormat(effectiveConcept);
+  // Descriptive fields only: a draft written from the data captured next to them.
+  const draftAssist = readOnly || usesSingleLineEditor ? null : (
+    <DraftAssist concept={effectiveConcept} container={concepts} allConcepts={allConcepts} onInsert={(value) => onUpdate(concept.id, { value })} />
+  );
 
   return (
     <div
@@ -1052,6 +1062,7 @@ export function ConceptEditorRow({
             {titleMissing ? <FieldError>Escribe un título para este campo.</FieldError> : null}
           </Field>
           <Textarea className="w-full" disabled={readOnly} value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />
+          {draftAssist}
         </div>
       ) : (
         <>
@@ -1109,7 +1120,10 @@ export function ConceptEditorRow({
               onFormulaChange={setFormula}
             />
           ) : (
-            <Textarea disabled={readOnly} value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />
+            <div className="grid min-w-0 gap-1">
+              <Textarea disabled={readOnly} value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />
+              {draftAssist}
+            </div>
           )}
         </>
       )}

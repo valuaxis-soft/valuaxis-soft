@@ -261,6 +261,14 @@ export const foundComparablesPayload = {
   }],
 };
 
+/**
+ * Requests to the AI routes that never reach the AI service, whatever the
+ * server's key: a text too short to be a listing and too little data to
+ * write from are refused (422) after the permission and the valuation checks.
+ */
+export const shortListingPayload = { text: "Terreno en venta", url: null };
+export const thinDraftPayload = { field: "Descripción del terreno", facts: [{ label: "Topografía", value: "Plana" }] };
+
 export const firmPayload = { validityMonths: 6, folioPrefix: "E2E" };
 
 export const emailPayload = { to: ["cliente@example.test"], subject: "Dictamen", message: "Adjunto el dictamen." };

@@ -6,6 +6,7 @@ import { hasPermission } from "@/features/auth/permissions";
 import { requireSession } from "@/security/guards/require-session";
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
 import { getLetterhead } from "@/features/firm/firm.service";
+import { isAiEnabled } from "@/features/ai/ai-gateway-provider";
 import { getValuationCreationCatalogs } from "@/features/valuations/services/valuation-catalogs.service";
 
 export default async function WorkspacePage({
@@ -38,6 +39,7 @@ export default async function WorkspacePage({
       letterhead={letterhead}
       valuationId={valuationId}
       initialValuation={initialValuation}
+      aiEnabled={isAiEnabled()}
     />
   );
 }
