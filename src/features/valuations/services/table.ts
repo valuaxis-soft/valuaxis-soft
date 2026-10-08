@@ -170,6 +170,11 @@ export type TableSchema = {
   density?: "dense" | "compact";
   /** Notes printed as written: above the table and its boxes, or under them. */
   notes?: TableNote[];
+  /**
+   * A grid of labels and marks printed as written, like the offer level of the
+   * appraiser's format: no header row, no rules or shading, in bold.
+   */
+  plain?: boolean;
 };
 
 /* ================================================================== */

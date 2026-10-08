@@ -337,6 +337,8 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
   const title = tableV2.title.trim();
   const caption = tableV2.schema?.hideCaption || title === DEFAULT_TABLE_TITLE ? "" : title;
   const density = tableV2.schema?.density;
+  // A grid of labels and marks: printed as written, to the left, without header, rules or shading.
+  const plain = tableV2.schema?.plain === true;
   // A table that breaks across pages prints some of its rows on each: what
   // opens it goes with the first ones, what closes it with the last, and the
   // caption and the header repeat on every page.
@@ -355,7 +357,8 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
           tables (homologation, costs) use a smaller font to fit the page, and
           the rest print at the size of the concepts around them. */}
       <table className={cn(
-        "w-full border-collapse",
+        "border-collapse",
+        plain ? "w-2/3 font-bold" : "w-full",
         columnWidths && "table-fixed",
         density === "compact" ? "text-[9px] leading-[1.35]"
           : density === "dense" ? "text-[10px] leading-[1.35]"
@@ -367,12 +370,12 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
           ))}
         </colgroup>
         {caption ? <TableCaption className="mt-0 mb-1 text-[11px]">{caption}{opens ? null : " (continúa)"}</TableCaption> : null}
-        {renderSchemaHeader(tableV2, tableV2.columns)}
+        {plain ? null : renderSchemaHeader(tableV2, tableV2.columns)}
         <TableBody>
           {rows.map((row, index) => (
             // Gray and white rows alternate, first one gray, as in the appraiser's own format;
             // by the row's place in the whole table, so a continuation follows on.
-            <TableRow className={cn("border-slate-200", (firstRow + index) % 2 === 0 && "bg-slate-100")} data-split-table-row="" key={row.id}>
+            <TableRow className={cn(plain ? "border-0" : "border-slate-200", !plain && (firstRow + index) % 2 === 0 && "bg-slate-100")} data-split-table-row="" key={row.id}>
               {tableV2.columns.map((column) => (
                 <TableCell className={cn("px-2", density ? "py-[3px]" : "py-1", cellPresentation(tableV2, column.id))} key={column.id}>{getCellDisplayValue(tableV2, row.id, column.id, formulaResults)}</TableCell>
               ))}

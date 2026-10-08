@@ -2,45 +2,43 @@
 
 import type { ReactNode } from "react";
 
-import type { Block, Concept, Apartado, TableContent } from "../model";
-import { getTerrenoElementKind } from "../sections/terreno";
+import type { Concept, Apartado, TableContent } from "../model";
+import { findBoundaryTable, getTerrenoElementKind } from "../sections/terreno";
+import { resolveContentLayout } from "../services/content-layout";
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
 import { ensureTableV2 } from "../services/table";
-import { DocumentBlockTitleBar } from "./document-block-title-bar";
+import type { ApartadoHead } from "./document-block-renderer";
 import { TABLE_HEADER_BAND } from "./document-theme";
 
 const EMPTY_VALUE = "No se proporcionó";
 
 /* ------------------------------------------------------------------ */
-/*  TerrainMainModule — fixed semantic content of main terrain block   */
+/*  terrenoApartadoHead — the fixed format of "Medidas y colindancias" */
 /* ------------------------------------------------------------------ */
 
-export function TerrainMainModule({ block }: { block: Block }) {
-  const subBlocks = block.apartados.filter((sb) => sb.enabled);
+/**
+ * "Medidas y colindancias" prints its table of measures and the source of the
+ * boundaries in a format of its own; whatever else the appraiser added to the
+ * Apartado follows as its remaining content rows. Other Apartados print as usual.
+ */
+export function terrenoApartadoHead(element: Apartado, displayLabel: string): ApartadoHead | null {
+  if (getTerrenoElementKind(element) !== "boundaries") return null;
+  const table = findBoundaryTable(element);
+  const source = element.concepts[0];
+  const printed = new Set([table ? `table:${table.id}` : "", source ? `concept:${source.id}` : ""]);
+  const rows = resolveContentLayout(element).rows
+    .map((row) => ({
+      ...row,
+      columns: row.columns
+        .map((column) => ({ ...column, items: column.items.filter((item) => !printed.has(`${item.type}:${item.id}`)) }))
+        .filter((column) => column.items.length > 0),
+    }))
+    .filter((row) => row.columns.length > 0);
 
-  return (
-    <>
-      <section>
-        <DocumentBlockTitleBar label={block.sectionLabel} title={block.title} />
-      </section>
-      {subBlocks.map((element) => (
-        <TerrainElement key={element.id} element={element} parentLabel={block.sectionLabel} />
-      ))}
-    </>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  TerrainElement — routes sub-blocks to terrain-specific renderers   */
-/* ------------------------------------------------------------------ */
-
-function TerrainElement({ element, parentLabel }: { element: Apartado; parentLabel: string }) {
-  const kind = getTerrenoElementKind(element);
-  // Boundaries: temporarily specialized (canonical Table not ready)
-  if (kind === "boundaries") return <BoundariesPreview element={element} parentLabel={parentLabel} />;
-  // Access/Topography/Sketch: no longer rendered in fixed module
-  // Old valuations with these elements will render through generic ContentLayoutV2 path
-  return null;
+  return {
+    node: <BoundariesPreview label={displayLabel} title={element.title} table={table} source={source?.value} />,
+    rows,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -55,16 +53,18 @@ function ElementTitle({ children }: { children: ReactNode }) {
   );
 }
 
-function BoundariesPreview({ element, parentLabel }: { element: Apartado; parentLabel: string }) {
-  const table = element.tables[0];
-  const source = element.concepts[0]?.value || "Escrituras públicas...";
-
+function BoundariesPreview({ label, title, table, source }: {
+  label: string;
+  title: string;
+  table: TableContent | undefined;
+  source: string | undefined;
+}) {
   return (
     <section>
-      <ElementTitle>{subBlockLabel(parentLabel, 0)} MEDIDAS Y COLINDANCIAS</ElementTitle>
+      <ElementTitle>{[label, title].filter(Boolean).join(" ")}</ElementTitle>
       {table ? <BoundaryTable table={table} /> : null}
       <p className="mt-1.5 text-[9.5px] leading-tight text-slate-700">
-        <strong>Linderos y colindancias según:</strong> {source}
+        <strong>Linderos y colindancias según:</strong> {source || "Escrituras públicas..."}
       </p>
     </section>
   );
@@ -76,7 +76,7 @@ function BoundariesPreview({ element, parentLabel }: { element: Apartado; parent
 
 function BoundaryTable({ table }: { table: TableContent }) {
   const t2 = ensureTableV2(table);
-  const displayColumns = t2.columns.slice(0, 3);
+  const displayColumns = t2.columns;
 
   return (
     <table className="mt-1.5 w-full table-fixed border-collapse text-[9px] leading-tight">
@@ -120,8 +120,4 @@ function formatDistance(
 ) {
   const distance = value?.trim();
   return distance ? formatNumericValue(distance, format) : EMPTY_VALUE;
-}
-
-function subBlockLabel(parentLabel: string, index: number) {
-  return `${parentLabel.trim().replace(/\.+$/, "")}.${index + 1}`;
 }

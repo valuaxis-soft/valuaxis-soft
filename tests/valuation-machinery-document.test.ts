@@ -176,7 +176,11 @@ test("the market page follows the book's sheet: offer level, comparables, charac
   assert.deepEqual(block.apartados.map((apartado) => apartado.title), [
     "BIENES SIMILARES EN VENTA", "DATOS DE COMPARABLES", "CARACTERÍSTICAS TÉCNICAS", "CÁLCULO DE V.N.R. HOMOLOGADO",
   ]);
-  assert.deepEqual(tableOf(block, "motor-maquinaria-mercado-tabla-oferta").rows, [["( X )", "(   )", "(   )", "(   )", "(   )", "(   )"]]);
+  // The six options in two rows of three, as the sheet prints them (C15:V16).
+  assert.deepEqual(tableOf(block, "motor-maquinaria-mercado-tabla-oferta").rows, [
+    ["MUY ALTA", "( X )", "MEDIA", "(   )", "BAJA", "(   )"],
+    ["ALTA", "(   )", "MEDIA BAJA", "(   )", "NULA", "(   )"],
+  ]);
   assert.deepEqual(tableOf(block, "motor-maquinaria-mercado-tabla-resumen").rows[0], [
     "C1", "Retroexcavadora", "Caterpillar", "420F", "2018", "5480", "Cucharón frontal y retro estándar", "15/12/2026", "$ 1,680,000.00",
   ]);

@@ -1,5 +1,6 @@
 import type { AppSection, Block, Concept, Apartado, TableContent } from "../../model";
 import { defineSection } from "../../section-builders";
+import { ensureTableV2 } from "../../services/table";
 import { getCanonicalSectionKey } from "../section-registry";
 
 export const TERRENO_MAIN_BLOCK_ID = "terreno-block-principal";
@@ -156,6 +157,11 @@ export function ensureTerrenoSection(section: AppSection): AppSection {
   };
 }
 
+/**
+ * The fixed Apartado as the appraiser has it: its title is the template's and
+ * its table of measures stays, with a distance format per row. Everything else
+ * (concepts, images, further tables, layout, page break) is the appraiser's.
+ */
 function mergeFixedElement(
   template: Apartado,
   current: Apartado | undefined,
@@ -164,16 +170,34 @@ function mergeFixedElement(
   if (!current) return structuredClone(template);
 
   const base: Apartado = {
-    ...structuredClone(template),
-    id: current.id,
-    enabled: current.enabled,
+    ...current,
+    title: template.title,
     concepts: deduplicateConceptIds(current.concepts),
   };
 
   if (kind === "boundaries") {
-    return { ...base, tables: [mergeBoundaryTable(template.tables[0], current.tables[0])] };
+    const boundaryTable = findBoundaryTable(current);
+    return {
+      ...base,
+      tables: boundaryTable
+        ? current.tables.map((table) => (table === boundaryTable ? withDistanceFormats(table) : table))
+        : [structuredClone(template.tables[0]), ...current.tables],
+    };
   }
   return base;
+}
+
+/**
+ * The table of measures of "Medidas y colindancias" among the tables of the
+ * Apartado: the one with distance formats, or the template's by its id or by
+ * its columns (a table saved with no rows keeps no formats).
+ */
+export function findBoundaryTable(apartado: Pick<Apartado, "tables">): TableContent | undefined {
+  const template = MAIN_TEMPLATE.apartados[0].tables[0];
+  const templateColumns = template.columns.join("|");
+  return apartado.tables.find((table) => Boolean(table.boundaryDistanceFormats?.length))
+    ?? apartado.tables.find((table) => table.id === template.id)
+    ?? apartado.tables.find((table) => ensureTableV2(table).columns.map((column) => column.name).join("|") === templateColumns);
 }
 
 function deduplicateConceptIds(concepts: Concept[]): Concept[] {
@@ -187,15 +211,12 @@ function deduplicateConceptIds(concepts: Concept[]): Concept[] {
   });
 }
 
-function mergeBoundaryTable(template: TableContent, current: TableContent | undefined): TableContent {
-  if (!current) return structuredClone(template);
-  const rows = current.rows.map((row) => [row[0] ?? "", row[1] ?? "", row[2] ?? ""]);
+/** Rows are kept as they are (legacy grid or TableV2); only the formats follow them. */
+function withDistanceFormats(table: TableContent): TableContent {
   return {
-    ...template,
-    id: current.id,
+    ...table,
     enabled: true,
-    rows,
-    boundaryDistanceFormats: rows.map((_, index) => current.boundaryDistanceFormats?.[index] ?? { valueFormat: "m" }),
+    boundaryDistanceFormats: table.rows.map((_, index) => table.boundaryDistanceFormats?.[index] ?? { valueFormat: "m" }),
   };
 }
 

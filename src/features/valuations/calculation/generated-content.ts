@@ -16,6 +16,7 @@ import {
   type TableSummaryBox,
   type TableV2,
 } from "../services/table";
+import { OFFER_LEVELS, OFFER_LEVEL_LABELS, type OfferLevel } from "./market-types";
 
 const decimals = (digits: number) => new Intl.NumberFormat("es-MX", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const twoDecimals = decimals(2);
@@ -60,7 +61,7 @@ export function generatedTable(
   title: string,
   columns: GeneratedColumn[],
   rows: string[][],
-  options: { summaryBoxes?: TableSummaryBox[]; compact?: boolean; notes?: TableNote[] } = {},
+  options: { summaryBoxes?: TableSummaryBox[]; compact?: boolean; notes?: TableNote[]; plain?: boolean } = {},
 ): TableContent {
   const columnIds = columns.map((_, index) => `col-${index + 1}`);
   const zones: StructuralZone[] = [];
@@ -103,9 +104,28 @@ export function generatedTable(
       columnPresentation,
       ...(boxes.length ? { summaryBoxes: boxes } : {}),
       ...(options.notes?.length ? { notes: options.notes } : {}),
+      ...(options.plain ? { plain: true } : {}),
     },
   };
   return table as unknown as TableContent;
+}
+
+/**
+ * "Nivel de oferta observada durante la investigación de mercado" as the books
+ * print it: the six options in two rows of three, read down each column
+ * (MUY ALTA over ALTA, MEDIA over MEDIA BAJA, BAJA over NULA), each followed
+ * by its mark, with an X on the one observed.
+ */
+export function offerLevelTable(id: string, intro: string, observed: OfferLevel): TableContent {
+  const perColumn = 2;
+  const pairs = OFFER_LEVELS.length / perColumn;
+  return generatedTable(id, "Nivel de oferta",
+    Array.from({ length: pairs }, () => [textColumn("Nivel"), figureColumn("Observada")]).flat(),
+    Array.from({ length: perColumn }, (_, row) => Array.from({ length: pairs }, (_, pair) => {
+      const level = OFFER_LEVELS[pair * perColumn + row];
+      return [OFFER_LEVEL_LABELS[level], level === observed ? "( X )" : "(   )"];
+    }).flat()),
+    { plain: true, notes: [{ position: "top", text: intro }] });
 }
 
 export function generatedApartado(id: string, title: string, parts: Partial<Pick<Apartado, "concepts" | "tables">>): Apartado {
@@ -129,7 +149,7 @@ export function generatedBlock(id: string, title: string, parts: Partial<Pick<Bl
 
 /**
  * What a table prints: title, header groups, columns with their alignment,
- * cells, summary boxes and notes. The same for a new table and for one saved and
+ * cells, summary boxes and notes, and whether it prints as a plain grid. The same for a new table and for one saved and
  * reloaded, whatever the order the stored schema returns its keys in.
  */
 export function printedTable(table: TableContent) {
@@ -139,6 +159,7 @@ export function printedTable(table: TableContent) {
     normalized.title,
     normalized.schema?.hideCaption ?? false,
     normalized.schema?.density ?? null,
+    normalized.schema?.plain ?? false,
     (normalized.schema?.notes ?? []).map((note) => [note.position, note.label ?? null, note.text]),
     getTableHeaderLayout(normalized).topRow.map((cell) => (cell.kind === "group-title" ? [cell.group.title, cell.colSpan] : null)),
     normalized.columns.map((column) => [column.name, presentation[column.id]?.align ?? null, presentation[column.id]?.noWrap ?? false]),

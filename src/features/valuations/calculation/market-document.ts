@@ -18,6 +18,7 @@ import {
   generatedTable,
   money,
   moneyColumn,
+  offerLevelTable,
   printedTable,
   squareMetres,
   textColumn,
@@ -26,8 +27,6 @@ import {
   COMPARABLE_TYPE_LABELS,
   FACTOR_TYPE_LABELS,
   MARKET_LABELS,
-  OFFER_LEVELS,
-  OFFER_LEVEL_LABELS,
   type ComparableDto,
   type ComparableType,
   type FactorSlotConfig,
@@ -185,10 +184,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
   // The offer level of the market research: the six options of the books, with an X on the one observed.
   const offer = settings.offerLevel
     ? [generatedApartado(`${prefix}-oferta`, page.offerTitle, {
-        tables: [generatedTable(`${prefix}-tabla-oferta`, "Nivel de oferta",
-          OFFER_LEVELS.map((level) => figureColumn(OFFER_LEVEL_LABELS[level])),
-          [OFFER_LEVELS.map((level) => (level === settings.offerLevel ? "( X )" : "(   )"))],
-          { notes: [{ position: "top", text: page.offerIntro }] })],
+        tables: [offerLevelTable(`${prefix}-tabla-oferta`, page.offerIntro, settings.offerLevel)],
       })]
     : [];
 

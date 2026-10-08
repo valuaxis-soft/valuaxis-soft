@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { documentBlockFlowItems } from "../src/features/valuations/components/document-block-renderer";
 import { splitMeasuredDocumentFlowItems, type DocumentFlowItem } from "../src/features/valuations/components/document-preview-page";
 import { DocumentTable } from "../src/features/valuations/components/document-table";
-import { figureColumn, generatedTable, textColumn } from "../src/features/valuations/calculation/generated-content";
+import { figureColumn, generatedTable, offerLevelTable, textColumn } from "../src/features/valuations/calculation/generated-content";
 import type { Apartado, Block, ContentLayout, TableContent } from "../src/features/valuations/model";
 import { ensureTableV2 } from "../src/features/valuations/services/table";
 import { splitTableRows, type DocumentTableFragment, type MeasuredTable } from "../src/features/valuations/services/table-pagination";
@@ -223,6 +223,21 @@ test("gray and white rows keep alternating across the break", () => {
   assert.deepEqual(whole, [true, false, true, false, true, false, true, false, true]);
   const split = [fragment(0, 3), fragment(3, 7), fragment(7, 9, { last: true })].flatMap((part) => gray(renderFragment(table, part)));
   assert.deepEqual(split, whole, "a continuation that starts on an odd row starts white");
+});
+
+test("the offer level prints as the grid of the books: two rows of three options, no header row or shading", () => {
+  const html = renderToStaticMarkup(createElement(DocumentTable, {
+    variant: "report",
+    table: offerLevelTable("oferta", "Nivel de oferta observada durante la investigación de mercado de terrenos.", "MEDIA_BAJA"),
+  }));
+  assert.doesNotMatch(html, /<thead|Observada|bg-slate-100/);
+  assert.match(html, /^<div[^>]*><div[^>]*data-table-notes="top"[^>]*><p[^>]*>Nivel de oferta observada/, "the sentence stays above the grid");
+  const text = (cell: string) => cell.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  const rows = html.match(/<tr[^>]*data-split-table-row[\s\S]*?<\/tr>/g) ?? [];
+  assert.deepEqual(rows.map((row) => row.split("</td>").slice(0, -1).map(text)), [
+    ["MUY ALTA", "( )", "MEDIA", "( )", "BAJA", "( )"],
+    ["ALTA", "( )", "MEDIA BAJA", "( X )", "NULA", "( )"],
+  ]);
 });
 
 /* ------------------------------------------------------------------ */

@@ -18,6 +18,7 @@ import {
   generatedTable,
   money,
   moneyColumn,
+  offerLevelTable,
   percent,
   textColumn,
   whole,
@@ -32,7 +33,6 @@ import {
   type MachineryMarketDto,
 } from "./machinery-types";
 import { GENERATED_BLOCK_PREFIX } from "./market-document";
-import { OFFER_LEVELS, OFFER_LEVEL_LABELS } from "./market-types";
 
 /** Prefix of every block the machinery calculation writes. */
 export const MACHINERY_BLOCK_PREFIX = `${GENERATED_BLOCK_PREFIX}maquinaria`;
@@ -179,10 +179,7 @@ export function machineryMarketBlocks(market: MachineryMarketDto, subject: Machi
 
   if (market.offerLevel) {
     apartados.push(generatedApartado(`${MARKET_PREFIX}-oferta`, "BIENES SIMILARES EN VENTA", {
-      tables: [generatedTable(`${MARKET_PREFIX}-tabla-oferta`, "Nivel de oferta",
-        OFFER_LEVELS.map((level) => figureColumn(OFFER_LEVEL_LABELS[level])),
-        [OFFER_LEVELS.map((level) => mark(level === market.offerLevel))],
-        { notes: [{ position: "top", text: "Nivel de oferta observada durante la investigación de mercado." }] })],
+      tables: [offerLevelTable(`${MARKET_PREFIX}-tabla-oferta`, "Nivel de oferta observada durante la investigación de mercado.", market.offerLevel)],
     }));
   }
 

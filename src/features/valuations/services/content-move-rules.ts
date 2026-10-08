@@ -13,9 +13,9 @@
  *    edited through their own fields.
  *  - The construction tables filled from the cost capture are found by ID in
  *    their Apartado: they stay in it.
- *  - The "Medidas y colindancias" Apartado of the Terreno is rebuilt from its
- *    template on every change, keeping its Concepts and its one Table: that
- *    Table stays, and no other Image or Table goes in.
+ *  - The table of measures of the "Medidas y colindancias" Apartado of the
+ *    Terreno is printed in its own format there, and put back when missing:
+ *    it stays in its Apartado.
  *
  * Pure: no side effects, no rendering.
  */
@@ -28,10 +28,10 @@ import {
   isGeneratedBlock,
 } from "../calculation/market-document";
 import type { AppSection, Block } from "../model";
-import { getTerrenoElementKind, isTerrenoSection } from "../sections/terreno";
+import { findBoundaryTable, getTerrenoElementKind, isTerrenoSection } from "../sections/terreno";
 import { getCaratulaBlockKind } from "./caratula-blocks";
 import { COMPANY_HEADER_BLOCK_ID } from "./caratula-company-header";
-import { contentContainerKey, contentItemKey, type ContentMoveRules } from "./content-drop";
+import { contentItemKey, type ContentMoveRules } from "./content-drop";
 import type { TransferableContentType } from "./content-transfer";
 
 // Saved block ids come back in lower case.
@@ -51,7 +51,6 @@ function isCalculationOwnedBlock(block: Pick<Block, "id">): boolean {
 
 const ALL_CONTENT_TYPES: readonly TransferableContentType[] = ["concept", "image", "table"];
 const CONCEPTS_ONLY: readonly TransferableContentType[] = ["concept"];
-const IMAGES_AND_TABLES: readonly TransferableContentType[] = ["image", "table"];
 
 /** The move rules of one section of the valuation, as it is now. */
 export function contentMoveRulesForSection(section: AppSection): ContentMoveRules {
@@ -60,7 +59,6 @@ export function contentMoveRulesForSection(section: AppSection): ContentMoveRule
 
   const lockedBlockIds = new Set<string>();
   const pinnedItems = new Set<string>();
-  const closedContainers = new Map<string, readonly TransferableContentType[]>();
 
   for (const block of section.blocks) {
     const isFixedCaratulaBlock = isCaratula
@@ -71,15 +69,11 @@ export function contentMoveRulesForSection(section: AppSection): ContentMoveRule
       if (isCostCaptureTable(table.id)) pinnedItems.add(contentItemKey("table", table.id));
     }
     for (const apartado of block.apartados) {
-      const isBoundaries = isTerreno && getTerrenoElementKind(apartado) === "boundaries";
-      if (isBoundaries) {
-        closedContainers.set(
-          contentContainerKey({ kind: "apartado", blockId: block.id, apartadoId: apartado.id }),
-          IMAGES_AND_TABLES,
-        );
-      }
+      const boundaryTable = isTerreno && getTerrenoElementKind(apartado) === "boundaries"
+        ? findBoundaryTable(apartado)
+        : undefined;
       for (const table of apartado.tables) {
-        if (isBoundaries || isCostCaptureTable(table.id)) pinnedItems.add(contentItemKey("table", table.id));
+        if (table === boundaryTable || isCostCaptureTable(table.id)) pinnedItems.add(contentItemKey("table", table.id));
       }
     }
   }
@@ -88,6 +82,6 @@ export function contentMoveRulesForSection(section: AppSection): ContentMoveRule
     crossBlockTypes: isCaratula ? CONCEPTS_ONLY : ALL_CONTENT_TYPES,
     lockedBlockIds,
     pinnedItems,
-    closedContainers,
+    closedContainers: new Map(),
   };
 }
