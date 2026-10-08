@@ -147,6 +147,7 @@ test("rents and built properties use the same page with their own wording", () =
   assert.equal(block.title, "MERCADO DE RENTAS");
   assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["DATOS DE COMPARABLES (INMUEBLES EN RENTA)", "HOMOLOGACIÓN (RENTAS)"]);
   assert.deepEqual(printed(block.apartados[0].tables[1]).columns.slice(-3), ["SUP. RENTABLE (m²)", "RENTA MENSUAL $", "$/m²/mes"]);
+  assert.equal(printed(block.apartados[0].tables[1]).columns[3], "CONSERVACIÓN", "buildings give the conservation where land gives the date");
   const homologation = block.apartados[1].tables[0];
   assert.equal(printed(homologation).columns.at(-1), "Renta Unitaria Homologada $/m²/mes");
   assert.deepEqual(boxRows(homologation, "valores")?.[1], ["Renta homologada a utilizar ($/m²/mes):", "$ 30.00"]);
@@ -155,6 +156,9 @@ test("rents and built properties use the same page with their own wording", () =
   const built: MarketCalculationDto = { ...calculation, settings: { ...calculation.settings, comparableType: "INMUEBLE_VENTA" } };
   const [builtBlock] = marketDocumentBlocks(built, compute(built));
   assert.equal(builtBlock.title, "ENFOQUE COMPARATIVO DE MERCADO (INMUEBLES)");
+  const builtOffers = printed(builtBlock.apartados.find((apartado) => apartado.title.startsWith("DATOS"))!.tables[1]);
+  assert.equal(builtOffers.columns[3], "CONSERVACIÓN");
+  assert.equal(builtOffers.rows[0][3], built.comparables[0].conservation ?? "—");
   assert.equal(boxRows(builtBlock.apartados[1].tables[0], "valor")?.at(-1)?.[0], "VALOR COMPARATIVO DE MERCADO (INMUEBLES):");
 });
 
