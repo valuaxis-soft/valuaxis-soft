@@ -5,7 +5,8 @@
  * 02-mercado-homologacion.md §3.5, so the results match the MEH book.
  */
 import { effectiveUsefulLife } from "./factors";
-import { excelRound } from "./rounding";
+import type { RoundingDigits } from "./config";
+import { roundIfSet } from "./rounding";
 import { Trace } from "./trace";
 
 /** Rating 1–10 → factor and legend, as in the MEH book (`B41`, `'ll. DATOS'!H195`). */
@@ -38,6 +39,9 @@ export function modeRating(ratings: number[]): number {
   for (const rating of ratings) counts.set(rating, (counts.get(rating) ?? 0) + 1);
   return [...counts].sort(([ratingA, countA], [ratingB, countB]) => countB - countA || ratingA - ratingB)[0][0];
 }
+
+/** Roundings of the MEH book, the starting ones: the physical value to thousands, the market value to tens of thousands. */
+export const MACHINERY_ROUNDING = { physicalValue: -3, market: -4 } as const satisfies Record<string, RoundingDigits>;
 
 /** Multipliers after the age factor, in the book's order: FCo · FMt · FOt · FOe. */
 export type MachineryFactors = { conservation: number; maintenance: number; technological: number; economic: number };
@@ -77,6 +81,8 @@ export type MachineryCostInput = {
    * captured FCo again (pregunta 3). `false` applies only the rating.
    */
   conservationTwice: boolean;
+  /** Excel ROUND digits of the physical value, the appraiser's choice; the book rounds to thousands (−3). */
+  rounding?: RoundingDigits;
 };
 
 export type MachineryCostResult = {
@@ -92,7 +98,7 @@ export type MachineryCostResult = {
   };
   attachments: { ref: string; installedValue: number; ageFactor: number; resultantFactor: number; value: number }[];
   attachmentsTotal: number;
-  /** ROUND(item + attachments, −3), `V61`. */
+  /** Item + attachments, rounded: ROUND(…, −3) in the book, `V61`. */
   physicalValue: number;
   trace: Trace;
 };
@@ -171,9 +177,11 @@ export function computeMachineryCost(input: MachineryCostInput, trace = new Trac
     key: "meh.aditamentos.total", label: "Aditamentos", formula: "Σ V.N.R. aditamentos",
     inputs: Object.fromEntries(attachments.map((attachment) => [attachment.ref, attachment.value])), value: sum(attachments.map((attachment) => attachment.value)),
   });
+  const digits = input.rounding === undefined ? MACHINERY_ROUNDING.physicalValue : input.rounding;
   const physicalValue = trace.record({
-    key: "meh.valorFisico", label: "Valor físico", formula: "ROUND(bien + aditamentos, −3)",
-    inputs: { bien: itemValue, aditamentos: attachmentsTotal }, value: excelRound(itemValue + attachmentsTotal, -3), rounding: -3,
+    key: "meh.valorFisico", label: "Valor físico", formula: digits === null ? "bien + aditamentos" : `ROUND(bien + aditamentos, ${digits})`,
+    inputs: { bien: itemValue, aditamentos: attachmentsTotal }, value: roundIfSet(itemValue + attachmentsTotal, digits),
+    ...(digits === null ? {} : { rounding: digits }),
   });
 
   return {
@@ -192,17 +200,24 @@ export type MachineryOfferInput = {
   /** Surcharge on the price (`%G`), a fraction. */
   surcharge: number;
   age: number;
+  /** The offer's own useful life (`M73`); the shared one when it has none. */
+  usefulLife?: number;
   rating: number;
   factors: MachineryFactors;
 };
 
-export type MachineryMarketInput = { usefulLife: number; offers: MachineryOfferInput[] };
+export type MachineryMarketInput = {
+  usefulLife: number;
+  offers: MachineryOfferInput[];
+  /** Excel ROUND digits of the market value, the appraiser's choice; the book rounds to tens of thousands (−4). */
+  rounding?: RoundingDigits;
+};
 
 export type MachineryMarketResult = {
   offers: { id: string; adjustedPrice: number; ageFactor: number; resultantFactor: number; value: number }[];
   mean: number;
   median: number;
-  /** ROUND(median, −4). */
+  /** The median, rounded: ROUND(…, −4) in the book. */
   value: number;
   trace: Trace;
 };
@@ -221,7 +236,8 @@ export function computeMachineryMarket(input: MachineryMarketInput, trace = new 
       inputs: { precio: offer.price, G: offer.surcharge }, value: offer.price * (1 + offer.surcharge),
     });
     const ratingFactor = conservationFactor(offer.rating);
-    const life = effectiveUsefulLife(offer.age, input.usefulLife, true);
+    if (offer.usefulLife !== undefined) assertPositive(offer.usefulLife, `La vida útil de la oferta ${offer.id}`);
+    const life = effectiveUsefulLife(offer.age, offer.usefulLife ?? input.usefulLife, true);
     const ageFactor = trace.record({
       key: `${key}.fed`, label: `Factor de edad ${offer.id}`, formula: "(1 − (edad / vidaUtil)^1.4) · Fcal",
       inputs: { edad: offer.age, vidaUtil: life, calificacion: offer.rating, Fcal: ratingFactor },
@@ -251,9 +267,11 @@ export function computeMachineryMarket(input: MachineryMarketInput, trace = new 
     key: "meh.mercado.mediana", label: "Mediana", formula: "MEDIAN(valores)",
     inputs: { n: values.length }, value: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2,
   });
+  const digits = input.rounding === undefined ? MACHINERY_ROUNDING.market : input.rounding;
   const value = trace.record({
-    key: "meh.mercado.valor", label: "Valor de mercado", formula: "ROUND(mediana, −4)",
-    inputs: { mediana: median }, value: excelRound(median, -4), rounding: -4,
+    key: "meh.mercado.valor", label: "Valor de mercado", formula: digits === null ? "mediana" : `ROUND(mediana, ${digits})`,
+    inputs: { mediana: median }, value: roundIfSet(median, digits),
+    ...(digits === null ? {} : { rounding: digits }),
   });
   return { offers, mean, median, value, trace };
 }

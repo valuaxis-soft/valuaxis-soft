@@ -17,6 +17,11 @@ import { RoundingSelect } from "./calculation-controls";
 import { useSerializedSave } from "./use-serialized-save";
 
 const APPROACHES: Approach[] = ["costos", "mercado", "ingresos"];
+const MARKET_SOURCE_LABELS: Record<NonNullable<ConclusionCalculationDto["marketSource"]>, string> = {
+  INMUEBLE_VENTA: "inmuebles",
+  TERRENO_VENTA: "terrenos",
+  MAQUINARIA_VENTA: "maquinaria y equipo",
+};
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
 /** Concluded value: which approach (or weights) and why, from the values each approach stored. */
@@ -111,7 +116,7 @@ export function ConclusionPanel(props: {
           <div key={approach}>
             <dt className="text-xs text-muted-foreground">
               {APPROACH_LABELS[approach]}
-              {approach === "mercado" && calculation.marketSource ? ` (${calculation.marketSource === "INMUEBLE_VENTA" ? "inmuebles" : "terrenos"})` : ""}
+              {approach === "mercado" && calculation.marketSource ? ` (${MARKET_SOURCE_LABELS[calculation.marketSource]})` : ""}
             </dt>
             <dd className="tabular-nums">{calculation.values[approach] === null ? "No aplica" : money(calculation.values[approach] as number)}</dd>
           </div>

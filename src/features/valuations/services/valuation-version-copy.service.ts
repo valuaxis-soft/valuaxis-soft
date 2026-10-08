@@ -293,6 +293,12 @@ export async function copyVersionContent(
     }
   }
 
+  const machinery = await tx.enfoqueMaquinaria.findUnique({ where: { IdVersionAvaluo: input.fromVersionId } });
+  if (machinery) {
+    const { IdEnfoqueMaquinaria: _id, DFechaCreacion: _created, DFechaModificacion: _modified, ...data } = machinery;
+    await tx.enfoqueMaquinaria.create({ data: { ...data, IdVersionAvaluo: input.toVersionId, JCostos: json(machinery.JCostos), JMercado: json(machinery.JMercado) } });
+  }
+
   const summary = await tx.resumenValor.findUnique({ where: { IdVersionAvaluo: input.fromVersionId } });
   if (summary) {
     const { IdResumenValor: _id, DFechaCreacion: _created, DFechaModificacion: _modified, ...data } = summary;

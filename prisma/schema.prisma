@@ -657,6 +657,7 @@ model VersionAvaluo {
   enfoquesMercados            EnfoqueMercado[]
   enfoqueRenta                EnfoqueRenta?
   enfoqueIngreso              EnfoqueIngreso?
+  enfoqueMaquinaria           EnfoqueMaquinaria?
   resumenValor                ResumenValor?
   conclusionAvaluo            ConclusionAvaluo?
   comparables                 ComparableAvaluo[]
@@ -1997,6 +1998,22 @@ model EnfoqueIngreso {
   deduccionesIngreso DeduccionIngreso[]
 
   @@map("devpware_enfoques_ingresos")
+}
+
+/// Machinery and equipment (MEH): the cost and market captures and the value of each approach.
+model EnfoqueMaquinaria {
+  IdEnfoqueMaquinaria Int      @id @default(autoincrement()) @map("IdEnfoqueMaquinaria")
+  IdVersionAvaluo     Int      @unique @map("IdVersionAvaluo")
+  JCostos             Json?    @map("JCostos") @db.JsonB
+  JMercado            Json?    @map("JMercado") @db.JsonB
+  NValorFisico        Decimal? @map("NValorFisico") @db.Decimal(24, 2)
+  NValorMercado       Decimal? @map("NValorMercado") @db.Decimal(24, 2)
+  DFechaCreacion      DateTime @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+  DFechaModificacion  DateTime @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
+
+  versionAvaluo VersionAvaluo @relation(fields: [IdVersionAvaluo], references: [IdVersionAvaluo], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("devpware_enfoques_maquinaria")
 }
 
 model DeduccionIngreso {

@@ -36,9 +36,11 @@ import { canEditProject, canExportProject, hasPermission } from "@/features/auth
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { isMachineryPropertyKind } from "@/features/valuations/calculation/machinery-types";
 import { ConclusionPanel } from "@/features/valuations/components/calculation/conclusion-panel";
 import { CostCalculationPanel } from "@/features/valuations/components/calculation/cost-calculation-panel";
 import { IncomeCalculationPanel } from "@/features/valuations/components/calculation/income-calculation-panel";
+import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/components/calculation/machinery-calculation-panel";
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { flattenSectionConcepts, resolveSectionConceptsForDisplay } from "./model/section-content";
@@ -193,7 +195,9 @@ export function ValuationWorkspace({
 
   const blocks = useBlockMutations(editor);
   const tables = useTableMutations(editor);
-  const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, valuationId });
+  // A machinery valuation captures its cost and market approaches with the panels of the MEH format.
+  const machinery = isMachineryPropertyKind(initialValuation?.propertyKind);
+  const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, machinery, valuationId });
 
   // The dictamen renders what is saved, so pending changes are saved first.
   const handleExportPdf = async () => {
@@ -208,7 +212,11 @@ export function ValuationWorkspace({
         <TabsContent value={section.id} key={section.id}>
           <ValuationEditorPanel
             section={section}
-            calculationPanel={!valuationId ? undefined : getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
+            calculationPanel={!valuationId ? undefined : machinery && getCanonicalSectionKey(section.id) === "COSTOS" ? (
+              <MachineryCostPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} />
+            ) : machinery && getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
+              <MachineryMarketPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} />
+            ) : getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
               <MarketCalculationPanel
                 valuationId={valuationId}
                 readOnly={!canEdit}

@@ -11,11 +11,27 @@ import { ENGINE_VERSION } from "../engine/config";
 import { Trace } from "../engine/trace";
 import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
 import type { ConclusionSettingsPayload } from "./conclusion-schemas";
+import { MACHINERY_PROPERTY_TYPE } from "./machinery-types";
 import { canConclude, conclusionEngineConfig, defaultMethod, type ConclusionCalculationDto, type ConclusionMethod } from "./conclusion-types";
 
 const CALCULATION_KEY = "MOTOR.CONCLUSION";
 
-async function approachValues(tx: Tx, versionId: number) {
+async function approachValues(tx: Tx, versionId: number): Promise<Pick<ConclusionCalculationDto, "values" | "marketSource">> {
+  // A machinery valuation concludes with its own cost and market approaches; it has no income approach.
+  const version = await tx.versionAvaluo.findUnique({
+    where: { IdVersionAvaluo: versionId },
+    select: {
+      avaluo: { select: { tipoInmueble: { select: { SClave: true } } } },
+      enfoqueMaquinaria: { select: { NValorFisico: true, NValorMercado: true } },
+    },
+  });
+  if (version?.avaluo.tipoInmueble.SClave === MACHINERY_PROPERTY_TYPE) {
+    const mercado = decimal(version.enfoqueMaquinaria?.NValorMercado);
+    return {
+      values: { costos: decimal(version.enfoqueMaquinaria?.NValorFisico), mercado, ingresos: null },
+      marketSource: mercado === null ? null : "MAQUINARIA_VENTA",
+    };
+  }
   const [costs, markets, income] = await Promise.all([
     tx.enfoqueCosto.findUnique({ where: { IdVersionAvaluo: versionId }, select: { NValorFisicoTotal: true } }),
     tx.enfoqueMercado.findMany({

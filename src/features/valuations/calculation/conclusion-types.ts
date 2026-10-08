@@ -21,8 +21,8 @@ export function conclusionEngineConfig(settings: Pick<ConclusionSettingsDto, "ro
 export type ConclusionCalculationDto = ConclusionSettingsDto & {
   /** Value each approach stored; null when it does not apply. */
   values: Record<Approach, number | null>;
-  /** The market value comes from the building comparables when there are any, else from land. */
-  marketSource: "INMUEBLE_VENTA" | "TERRENO_VENTA" | null;
+  /** The market value comes from the building comparables when there are any, else from land; from the equipment offers in a machinery valuation. */
+  marketSource: "INMUEBLE_VENTA" | "TERRENO_VENTA" | "MAQUINARIA_VENTA" | null;
   configured: boolean;
   locked: boolean;
 };

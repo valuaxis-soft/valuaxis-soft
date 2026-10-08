@@ -239,7 +239,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
 }
 
 /** The table with one more summary box after the ones it has. */
-function withSummaryBox(tableItem: TableContent, box: TableSummaryBox): TableContent {
+export function withSummaryBox(tableItem: TableContent, box: TableSummaryBox): TableContent {
   const normalized = ensureTableV2(tableItem);
   const schema = normalized.schema ?? { zones: [] };
   return { ...normalized, schema: { ...schema, summaryBoxes: [...(schema.summaryBoxes ?? []), box] } } as unknown as TableContent;

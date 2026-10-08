@@ -53,6 +53,8 @@ describe("without a session", () => {
     ["PUT", "/api/avaluos/{id}/costos"],
     ["GET", "/api/avaluos/{id}/mercado?tipo=TERRENO_VENTA"],
     ["GET", "/api/avaluos/{id}/ingresos"],
+    ["GET", "/api/avaluos/{id}/maquinaria"],
+    ["PUT", "/api/avaluos/{id}/maquinaria"],
     ["GET", "/api/avaluos/{id}/conclusion"],
     ["POST", "/api/avaluos/{id}/conclude"],
     ["POST", "/api/avaluos/{id}/reopen"],

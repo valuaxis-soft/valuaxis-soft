@@ -9,6 +9,7 @@ import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/v
 import type { CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
 import type { ConclusionCalculationDto, ConclusionSettingsDto } from "@/features/valuations/calculation/conclusion-types";
 import type { IncomeCalculationDto, IncomeInputDto } from "@/features/valuations/calculation/income-types";
+import type { MachineryCalculationDto, MachineryInputDto } from "@/features/valuations/calculation/machinery-types";
 import type { TeamRole } from "@/features/team/team-rules";
 import type { MyInvitationDto, SentInvitationDto, TeamDto } from "@/features/team/team.service";
 import type { FirmSettingsInput } from "@/features/firm/firm-schemas";
@@ -224,6 +225,12 @@ export const api = {
     get: (id: ApiId) => request<IncomeCalculationDto>(`/avaluos/${id}/ingresos`),
     save: (id: ApiId, input: IncomeInputDto) =>
       request<IncomeCalculationDto>(`/avaluos/${id}/ingresos`, { method: "PUT", body: JSON.stringify(input) }),
+  },
+  machinery: {
+    get: (id: ApiId) => request<MachineryCalculationDto>(`/avaluos/${id}/maquinaria`),
+    /** Saves the capture sent (costs or market); the other one stays as stored. */
+    save: (id: ApiId, input: MachineryInputDto) =>
+      request<MachineryCalculationDto>(`/avaluos/${id}/maquinaria`, { method: "PUT", body: JSON.stringify(input) }),
   },
   conclusion: {
     get: (id: ApiId) => request<ConclusionCalculationDto>(`/avaluos/${id}/conclusion`),
