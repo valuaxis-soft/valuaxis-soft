@@ -7,6 +7,8 @@ import { COST_TEMPLATE_BLOCK_IDS, costDocumentBlocks, withConstructionTables } f
 import { costEngineConfig, toCostEngineInput, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
 import { INCOME_BLOCK_PREFIX, INCOME_TEMPLATE_BLOCK_IDS, incomeDocumentBlocks } from "@/features/valuations/calculation/income-document";
 import { toIncomeEngineInput, type IncomeCalculationDto } from "@/features/valuations/calculation/income-types";
+import { isMachineryCostBlock, isMachineryMarketBlock, machineryCostBlocks, machineryMarketBlocks } from "@/features/valuations/calculation/machinery-document";
+import { toMachineryCostEngineInput, toMachineryMarketEngineInput, type MachineryCalculationDto } from "@/features/valuations/calculation/machinery-types";
 import {
   GENERATED_BLOCK_PREFIX,
   MARKET_TEMPLATE_BLOCK_IDS,
@@ -22,6 +24,7 @@ import { concludeValue } from "@/features/valuations/engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
 import { computeCostApproach } from "@/features/valuations/engine/costs";
 import { computeIncomeApproach } from "@/features/valuations/engine/income";
+import { computeMachineryCost, computeMachineryMarket } from "@/features/valuations/engine/machinery";
 import { computeMarketApproach, type MarketApproachResult } from "@/features/valuations/engine/market";
 import { Trace } from "@/features/valuations/engine/trace";
 import type { AppSection } from "@/features/valuations/model";
@@ -33,19 +36,26 @@ const MARKET_TYPES: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMU
 
 /**
  * Keeps the dictamen in step with the calculations: market and rent blocks,
- * comparable photos, cost blocks and construction tables, income blocks, and
- * the concluded value in the conclusion section and the carátula. It follows
+ * comparable photos, cost blocks and construction tables, income blocks, the
+ * cost and market blocks of a machinery valuation, and the concluded value in
+ * the conclusion section and the carátula. It follows
  * what the server stored, syncs on opening (a tab that is not open cannot
  * report) and after every change; unchanged results leave the document alone.
  */
 export function useCalculationDocumentSync({
   canEdit,
   caratula,
+  machinery,
   sections,
   updateCaratula,
   updateSections,
   valuationId,
-}: Pick<EditorState, "caratula" | "sections" | "updateCaratula" | "updateSections"> & { canEdit: boolean; valuationId: string | null }) {
+}: Pick<EditorState, "caratula" | "sections" | "updateCaratula" | "updateSections"> & {
+  canEdit: boolean;
+  /** The valuation is of machinery and equipment. */
+  machinery: boolean;
+  valuationId: string | null;
+}) {
   const updateBySection = (groupKey: string, update: (key: string, section: AppSection) => AppSection) => {
     updateSections((current) => {
       let changed = false;
@@ -98,6 +108,22 @@ export function useCalculationDocumentSync({
         : section);
   };
 
+  const applyMachinery = (calculation: MachineryCalculationDto) => {
+    if (!canEdit || calculation.locked || !calculation.applies) return;
+    const costInput = calculation.configured.cost ? toMachineryCostEngineInput(calculation.cost) : null;
+    const costBlocks = machineryCostBlocks(calculation.cost, costInput?.ok ? computeMachineryCost(costInput.input) : null);
+    const marketInput = calculation.configured.market ? toMachineryMarketEngineInput(calculation.market) : null;
+    const marketBlocks = calculation.configured.market
+      ? machineryMarketBlocks(calculation.market, calculation.cost.item, marketInput?.ok ? computeMachineryMarket(marketInput.input) : null)
+      : [];
+    updateBySection("motor-maquinaria", (key, section) =>
+      key === "COSTOS"
+        ? replaceGeneratedBlocks(section, isMachineryCostBlock, costBlocks, { placeholderIds: COST_TEMPLATE_BLOCK_IDS })
+        : key === "MERCADO_VENTA"
+          ? replaceGeneratedBlocks(section, isMachineryMarketBlock, marketBlocks, { placeholderIds: MARKET_TEMPLATE_BLOCK_IDS })
+          : section);
+  };
+
   const applyConclusion = (calculation: ConclusionCalculationDto) => {
     if (!canEdit || calculation.locked || !canConclude(calculation)) return;
     const result = concludeValue({ values: calculation.values, method: calculation.method }, conclusionEngineConfig(calculation));
@@ -140,6 +166,10 @@ export function useCalculationDocumentSync({
     applyIncome(calculation);
     void refresh({ conclusion: true });
   };
+  const onMachineryCalculation = (calculation: MachineryCalculationDto) => {
+    applyMachinery(calculation);
+    void refresh({ conclusion: true });
+  };
 
   const syncOnOpen = useEffectEvent(async (id: string) => {
     const markets = await Promise.all(MARKET_TYPES.map((type) => api.market.get(id, type).catch(() => null)));
@@ -147,6 +177,10 @@ export function useCalculationDocumentSync({
       if (!calculation) continue;
       const input = toMarketEngineInput(calculation);
       applyMarket(calculation, input.ok ? computeMarketApproach(input.input, marketEngineConfig(calculation.settings)) : null);
+    }
+    if (machinery) {
+      const calculation = await api.machinery.get(id).catch(() => null);
+      if (calculation) applyMachinery(calculation);
     }
     await refresh({ costs: true, income: true, conclusion: true });
   });
@@ -159,6 +193,7 @@ export function useCalculationDocumentSync({
     onMarketCalculation,
     onCostCalculation,
     onIncomeCalculation,
+    onMachineryCalculation,
     onConclusionCalculation: applyConclusion,
     suggestedSubjectArea: findSubjectLandArea(sections),
   };

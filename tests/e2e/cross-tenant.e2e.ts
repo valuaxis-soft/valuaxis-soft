@@ -12,6 +12,7 @@ import {
   comparablePayload,
   comparablesCsv,
   conclusionPayload,
+  machineryPayload,
   costPayload,
   createValuation,
   createWorld,
@@ -47,19 +48,20 @@ after(() => prisma.$disconnect());
 
 /** What A sees of its valuation; compared before and after B's attempts. */
 async function snapshot(id: string) {
-  const [valuation, cost, market, income, conclusion] = await Promise.all([
+  const [valuation, cost, market, income, conclusion, machinery] = await Promise.all([
     call(world.a.admin, "GET", `/api/avaluos/${id}`),
     call(world.a.admin, "GET", `/api/avaluos/${id}/costos`),
     call(world.a.admin, "GET", `/api/avaluos/${id}/mercado?tipo=TERRENO_VENTA`),
     call(world.a.admin, "GET", `/api/avaluos/${id}/ingresos`),
     call(world.a.admin, "GET", `/api/avaluos/${id}/conclusion`),
+    call(world.a.admin, "GET", `/api/avaluos/${id}/maquinaria`),
   ]);
-  for (const response of [valuation, cost, market, income, conclusion]) assert.equal(response.status, 200);
+  for (const response of [valuation, cost, market, income, conclusion, machinery]) assert.equal(response.status, 200);
   const row = await prisma.avaluo.findUniqueOrThrow({
     where: { UIdentificadorPublico: id },
     select: { STitulo: true, SNombreCliente: true, BActivo: true, DFechaEliminacion: true, BBloqueado: true, IdEstadoAvaluo: true },
   });
-  return JSON.stringify({ valuation: valuation.data, cost: cost.data, market: market.data, income: income.data, conclusion: conclusion.data, row });
+  return JSON.stringify({ valuation: valuation.data, cost: cost.data, market: market.data, income: income.data, conclusion: conclusion.data, machinery: machinery.data, row });
 }
 
 type Attempt = [method: string, path: (id: string) => string, options?: { json?: unknown; form?: () => FormData }];
@@ -72,6 +74,7 @@ const reads: Attempt[] = [
   ["GET", (id) => `/api/avaluos/${id}/mercado/comparables/buscar?tipo=INMUEBLE_RENTA&q=renta`],
   ["GET", (id) => `/api/avaluos/${id}/ingresos`],
   ["GET", (id) => `/api/avaluos/${id}/conclusion`],
+  ["GET", (id) => `/api/avaluos/${id}/maquinaria`],
   ["GET", (id) => `/api/avaluos/${id}/datos/imagenes`],
   // Copies of the valuation's content leaving the system.
   ["GET", (id) => `/api/avaluos/${id}/export`],
@@ -88,6 +91,7 @@ const writes: Attempt[] = [
   ["PUT", (id) => `/api/avaluos/${id}/mercado`, { json: { ...marketPayload, adoptedUnitValue: 1 } }],
   ["PUT", (id) => `/api/avaluos/${id}/ingresos`, { json: incomePayload }],
   ["PUT", (id) => `/api/avaluos/${id}/conclusion`, { json: { ...conclusionPayload, justification: "Escrito por B" } }],
+  ["PUT", (id) => `/api/avaluos/${id}/maquinaria`, { json: machineryPayload }],
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables?tipo=TERRENO_VENTA`, { json: comparablePayload }],
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/importar?tipo=TERRENO_VENTA`, { form: comparablesCsv }],
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/importar?tipo=TERRENO_VENTA&confirmar=1`, { form: comparablesCsv }],

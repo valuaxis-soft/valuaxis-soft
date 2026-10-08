@@ -9,6 +9,7 @@ import { DEFAULT_FACTOR_SLOTS } from "../../src/features/valuations/calculation/
 import { AUTH_SESSION_COOKIE } from "../../src/features/auth/constants/auth.constants";
 import { createSecureToken, hashToken } from "../../src/security/tokens/token-hashing";
 import { prisma } from "../../src/infrastructure/database/prisma-client";
+import { workbookCost } from "../machinery-workbook.fixture";
 
 export { prisma };
 
@@ -231,6 +232,9 @@ export const incomePayload = {
 };
 
 export const conclusionPayload = { method: { kind: "single", approach: "costos" }, justification: null };
+
+/** The cost capture of the firm's machinery book. */
+export const machineryPayload = { cost: workbookCost };
 
 export const comparablePayload = {
   location: "Calle E2E 1",

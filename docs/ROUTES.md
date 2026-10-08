@@ -70,6 +70,7 @@
 | POST | `/api/avaluos/[id]/ia/redaccion` | "Redactar borrador": recibe `{ field, context?, facts: [{ label, value }] }` y devuelve `{ text }`, un párrafo redactado solo con esos datos. No guarda nada. Mismos permisos y límites que la anterior; 422 si hay menos de 2 datos o el borrador no pasa la verificación |
 | GET, PUT | `/api/avaluos/[id]/costos` | Enfoque de costos: terreno, construcciones, instalaciones especiales e indirectos, guardados completos |
 | GET, PUT | `/api/avaluos/[id]/ingresos` | Enfoque de ingresos: superficie rentable, deducciones y tasa |
+| GET, PUT | `/api/avaluos/[id]/maquinaria` | Maquinaria y equipo (MEH): captura de costos (bien, cotización, gastos, depreciación y aditamentos) y de mercado (ofertas). El `PUT` recibe `{ cost?, market? }` y guarda solo la parte enviada; recalcula ambos enfoques y la conclusión |
 | GET, PUT | `/api/avaluos/[id]/conclusion` | Resumen de los tres enfoques, método de conclusión y justificación |
 | POST | `/api/uploads` | Subida genérica de imágenes |
 

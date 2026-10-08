@@ -16,6 +16,7 @@ import {
   comparablePayload,
   comparablesCsv,
   conclusionPayload,
+  machineryPayload,
   costPayload,
   createActor,
   createValuation,
@@ -143,6 +144,8 @@ const calculationCases: Case[] = [
   { name: "download the comparables template", method: "GET", path: () => "/api/comparables/plantilla?tipo=TERRENO_VENTA", expected: all(200) },
   { name: "read the income approach", method: "GET", path: (id) => `/api/avaluos/${id}/ingresos`, expected: all(200) },
   { name: "save the income approach", method: "PUT", path: (id) => `/api/avaluos/${id}/ingresos`, body: () => incomePayload, expected: editors(200) },
+  { name: "read the machinery calculation", method: "GET", path: (id) => `/api/avaluos/${id}/maquinaria`, expected: all(200) },
+  { name: "save the machinery calculation", method: "PUT", path: (id) => `/api/avaluos/${id}/maquinaria`, body: () => machineryPayload, expected: editors(200) },
   { name: "read the conclusion", method: "GET", path: (id) => `/api/avaluos/${id}/conclusion`, expected: all(200) },
   { name: "save the conclusion", method: "PUT", path: (id) => `/api/avaluos/${id}/conclusion`, body: () => conclusionPayload, expected: editors(200) },
 ];
