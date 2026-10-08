@@ -5,7 +5,7 @@
  *   ADMINISTRADOR  everything, including team, firm data and factors
  *   VALUADOR       view, create, edit, conclude, reopen, export, share
  *   REVISOR        view, review, conclude, export (no edit, no sharing)
- *   CONSULTA       view and export only
+ *   CONSULTA       view and export only, and read the plan and billing
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -173,6 +173,22 @@ const teamCases: Case[] = [
   { name: "my pending invitations", method: "GET", path: () => "/api/organizacion/invitaciones", expected: all(200) },
 ];
 
+/**
+ * Stripe is optional: with it the administrator's calls reach the business
+ * rule (no such plan: 404; nothing to manage yet: 409), without it they say
+ * payments are not enabled (503). Neither creates anything in Stripe.
+ */
+const billingCases: Case[] = [
+  { name: "read the plan and billing", method: "GET", path: () => "/api/organizacion/facturacion",
+    expected: { ADMINISTRADOR: 200, VALUADOR: 403, REVISOR: 403, CONSULTA: 200 } },
+  { name: "start the checkout of a plan that does not exist", method: "POST", path: () => "/api/organizacion/facturacion/checkout",
+    body: () => ({ priceId: randomUUID() }), expected: adminOnly([404, 503]) },
+  { name: "start a checkout without a valid plan id", method: "POST", path: () => "/api/organizacion/facturacion/checkout",
+    body: () => ({ priceId: "no-es-un-id" }), expected: adminOnly(400) },
+  { name: "open the payment portal without a paid subscription", method: "POST", path: () => "/api/organizacion/facturacion/portal",
+    expected: adminOnly([409, 503]) },
+];
+
 async function runCase(item: Case, role: Role) {
   const actor = actors()[role];
   let valuation = shared;
@@ -204,6 +220,18 @@ matrix("calculations", calculationCases);
 matrix("dictamen", dictamenCases);
 matrix("firm data", firmCases);
 matrix("team", teamCases);
+matrix("plan and billing", billingCases);
+
+describe("plan and billing page", () => {
+  test("administrators and CONSULTA open it; the other roles are sent to the dashboard", async () => {
+    const expected: Record<Role, number> = { ADMINISTRADOR: 200, VALUADOR: 307, REVISOR: 307, CONSULTA: 200 };
+    for (const role of ROLES) {
+      const response = await call(actors()[role], "GET", "/organizacion/facturacion");
+      assert.equal(response.status, expected[role], `${role}: ${describeCall("GET /organizacion/facturacion", response)}`);
+      if (expected[role] === 307) assert.equal(new URL(response.headers.get("location") ?? "", "http://x").pathname, "/dashboard");
+    }
+  });
+});
 
 describe("team members and invitations by id", () => {
   test("only the administrator changes a role, removes a member, resends or cancels an invitation", async () => {

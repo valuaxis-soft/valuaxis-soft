@@ -18,7 +18,7 @@ before(async () => {
 after(() => prisma.$disconnect());
 
 describe("without a session", () => {
-  for (const page of ["/dashboard", "/avaluos", "/workspace", "/organizacion/equipo", "/organizacion/despacho"]) {
+  for (const page of ["/dashboard", "/avaluos", "/workspace", "/organizacion/equipo", "/organizacion/despacho", "/organizacion/facturacion"]) {
     test(`private page ${page} redirects to the login`, async () => {
       const response = await call(null, "GET", page);
       assert.equal(response.status, 307, describeCall(`GET ${page}`, response));
@@ -75,6 +75,9 @@ describe("without a session", () => {
     ["GET", "/api/organizacion/despacho/factores"],
     ["PUT", "/api/organizacion/despacho/factores"],
     ["POST", "/api/uploads"],
+    ["GET", "/api/organizacion/facturacion"],
+    ["POST", "/api/organizacion/facturacion/checkout"],
+    ["POST", "/api/organizacion/facturacion/portal"],
   ];
   for (const [method, template] of privateApis) {
     test(`${method} ${template} answers 401`, async () => {
@@ -100,6 +103,36 @@ describe("without a session", () => {
       data: { DFechaCreacion: new Date(Date.now() - 2 * 60 * 60 * 1000), DFechaExpiracion: new Date(Date.now() - 1000) },
     });
     assert.equal((await call(expired, "GET", "/api/avaluos")).status, 401);
+  });
+});
+
+describe("Stripe webhook", () => {
+  // Stripe's servers call it: no session and no Origin of ours. Only the signature opens it;
+  // a server without STRIPE_WEBHOOK_SECRET answers 503 to everything.
+  const path = "/api/stripe/webhook";
+  const event = { id: "evt_e2e", type: "customer.subscription.deleted", data: { object: { id: "sub_e2e", metadata: { app: "valuaxis" } } } };
+
+  test("without a signature it is rejected", async () => {
+    const response = await call(null, "POST", path, { json: event, origin: null });
+    assert.ok([400, 503].includes(response.status), describeCall(`POST ${path}`, response));
+  });
+
+  test("with a signature that does not verify it is rejected, with or without a session", async () => {
+    const stale = Math.floor(Date.now() / 1000);
+    for (const signature of ["not-a-signature", `t=${stale},v1=${"0".repeat(64)}`]) {
+      for (const actor of [null, world.a.admin]) {
+        const response = await call(actor, "POST", path, { json: event, origin: "https://evil.example", headers: { "stripe-signature": signature } });
+        assert.ok([400, 503].includes(response.status), describeCall(`POST ${path} (${signature.slice(0, 12)})`, response));
+      }
+    }
+  });
+
+  test("the exemption from the same-origin check is that one path and method only", async () => {
+    for (const [method, target] of [["PUT", path], ["DELETE", path], ["POST", `${path}/otro`], ["POST", "/api/organizacion/facturacion/checkout"]]) {
+      const response = await call(world.a.admin, method, target, { json: {}, origin: "https://evil.example" });
+      assert.equal(response.status, 403, describeCall(`${method} ${target} from another origin`, response));
+    }
+    assert.equal((await call(null, "GET", path)).status, 405);
   });
 });
 

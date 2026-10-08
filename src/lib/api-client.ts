@@ -13,6 +13,7 @@ import type { TeamRole } from "@/features/team/team-rules";
 import type { MyInvitationDto, SentInvitationDto, TeamDto } from "@/features/team/team.service";
 import type { FirmSettingsInput } from "@/features/firm/firm-schemas";
 import type { FirmSettingsDto } from "@/features/firm/firm.service";
+import type { BillingOverviewDto } from "@/features/billing/billing.service";
 import type { FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 
 /** What the comparable form sends: the comparable without its id, reference and photos. */
@@ -248,6 +249,13 @@ export const api = {
     saveFactors: (catalog: FactorCatalog) =>
       request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`, { method: "PUT", body: JSON.stringify(catalog) }),
     resetFactors: () => request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`, { method: "DELETE" }),
+  },
+  billing: {
+    get: () => request<BillingOverviewDto>(`/organizacion/facturacion`),
+    /** Both answer a Stripe page to send the browser to. */
+    checkout: (priceId: string) =>
+      request<{ url: string; destination: "checkout" | "portal" }>(`/organizacion/facturacion/checkout`, { method: "POST", body: JSON.stringify({ priceId }) }),
+    portal: () => request<{ url: string }>(`/organizacion/facturacion/portal`, { method: "POST" }),
   },
   invitations: {
     mine: () => request<MyInvitationDto[]>(`/organizacion/invitaciones`),

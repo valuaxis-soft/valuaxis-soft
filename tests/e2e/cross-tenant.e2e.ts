@@ -213,6 +213,38 @@ describe("organization B cannot reach organization A's team", () => {
     assert.equal((await call(world.b.admin, "GET", `/api/avaluos/${target}`)).status, 404);
   });
 
+  test("B's plan and billing are B's own: A's payment customer and subscription are out of reach", async () => {
+    // A has a paid subscription and a payment customer, written as the reconciliation would.
+    const [provider, state, plan] = await Promise.all([
+      prisma.proveedorPago.findUniqueOrThrow({ where: { SClave: "STRIPE" } }),
+      prisma.estadoSuscripcion.findUniqueOrThrow({ where: { SClave: "ACTIVA" } }),
+      prisma.plan.findUniqueOrThrow({ where: { SClave: "PROFESIONAL" } }),
+    ]);
+    const customerA = `cus_e2e_${world.suffix}`;
+    await prisma.clientePago.create({ data: { IdOrganizacion: world.a.organizationId, IdProveedorPago: provider.IdProveedorPago, SIdentificadorExterno: customerA } });
+    await prisma.suscripcion.updateMany({ where: { IdOrganizacion: world.a.organizationId, DFechaFinalizacion: null }, data: { DFechaFinalizacion: new Date() } });
+    await prisma.suscripcion.create({
+      data: { IdOrganizacion: world.a.organizationId, IdPlan: plan.IdPlan, IdEstadoSuscripcion: state.IdEstadoSuscripcion, SProveedorPago: "STRIPE", SIdentificadorExterno: `sub_e2e_${world.suffix}` },
+    });
+    const currentOfB = () =>
+      prisma.suscripcion.findFirstOrThrow({ where: { IdOrganizacion: world.b.organizationId, DFechaFinalizacion: null }, include: { plan: true } });
+    const before = await currentOfB();
+
+    const billing = await call(world.b.admin, "GET", "/api/organizacion/facturacion");
+    assert.equal(billing.status, 200, describeCall("org B admin GET billing", billing));
+    assert.equal(billing.data.current.paid, false);
+    assert.ok(!JSON.stringify(billing.body).includes(world.suffix), "A's customer or subscription leaked into B's billing");
+
+    // B has no customer of its own: the portal never opens on A's.
+    const portal = await call(world.b.admin, "POST", "/api/organizacion/facturacion/portal");
+    assert.ok([409, 503].includes(portal.status), describeCall("org B admin POST portal", portal));
+    // The success page with a session id that is not B's changes nothing.
+    const page = await call(world.b.admin, "GET", `/organizacion/facturacion?checkout=exito&session_id=cs_test_e2e${world.suffix}`);
+    assert.equal(page.status, 200);
+    const after = await currentOfB();
+    assert.deepEqual([after.IdSuscripcion, after.plan.SClave, after.SProveedorPago], [before.IdSuscripcion, "BORRADOR", null]);
+  });
+
   test("B's firm data and factor catalog are B's own", async () => {
     await call(world.a.admin, "PUT", "/api/organizacion/despacho", { json: { validityMonths: 3, folioPrefix: "AAA", legalName: `Despacho A ${world.suffix}` } });
     const firm = await call(world.b.admin, "GET", "/api/organizacion/despacho");

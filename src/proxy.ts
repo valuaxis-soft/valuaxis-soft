@@ -7,6 +7,12 @@ import { safeRedirectPath } from "@/security/validation/redirect-safety";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Stripe's webhook is a cross-origin POST without cookies. Only this exact
+ * path skips the origin check; its handler authenticates by signature.
+ */
+const STRIPE_WEBHOOK_PATH = "/api/stripe/webhook";
+
 const publicPaths = [...AUTH_PUBLIC_PATHS, "/favicon.ico", "/api"];
 
 function isPublicPath(pathname: string) {
@@ -28,6 +34,7 @@ export async function proxy(request: NextRequest) {
 
   // CSRF: API calls that change data must come from our own pages.
   if (pathname === "/api" || pathname.startsWith("/api/")) {
+    if (pathname === STRIPE_WEBHOOK_PATH && request.method === "POST") return NextResponse.next();
     const sameOrigin = isSameOriginRequest({
       method: request.method,
       origin: request.headers.get("origin"),
