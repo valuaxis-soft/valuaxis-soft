@@ -180,6 +180,8 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
   const words = MARKET_LABELS[settings.comparableType];
   const byReference = new Map(result?.homologation.comparables.map((row) => [row.id, row]) ?? []);
   const reference = (comparable: ComparableDto) => String(comparable.reference);
+  // The fourth column of the offers table: the books give the offer date for land and the conservation for buildings.
+  const offersOfLand = settings.comparableType === "TERRENO_VENTA";
 
   // The offer level of the market research: the six options of the books, with an X on the one observed.
   const offer = settings.offerLevel
@@ -201,14 +203,15 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
         { compact: true, notes: [{ position: "top", label: "Obtención del valor unitario.", text: page.intro }] }),
       generatedTable(`${prefix}-tabla-ofertas`, "Ofertas de los comparables",
         [
-          figureColumn("REF."), textColumn("CONTACTO"), figureColumn("TELÉFONO"), figureColumn("FECHA"),
+          figureColumn("REF."), textColumn("CONTACTO"), figureColumn("TELÉFONO"),
+          offersOfLand ? figureColumn("FECHA") : textColumn("CONSERVACIÓN", "center"),
           figureColumn(page.area), moneyColumn(page.price), moneyColumn(page.unit),
         ],
         comparables.map((comparable) => [
           reference(comparable),
           [comparable.sourceName, comparable.contactName].filter(Boolean).join(" · ") || EMPTY,
           comparable.contactPhone ?? EMPTY,
-          shortDate(comparable.offerDate),
+          offersOfLand ? shortDate(comparable.offerDate) : comparable.conservation ?? EMPTY,
           figure(comparable.area),
           comparable.price ? money(comparable.price) : EMPTY,
           comparable.area && comparable.price ? money(comparable.price / comparable.area) : EMPTY,
