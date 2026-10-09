@@ -1,4 +1,4 @@
-import { env } from "@/lib/env";
+import { env, type Env } from "@/lib/env";
 
 /**
  * Configuracion de almacenamiento y operaciones de disco local.
@@ -29,18 +29,42 @@ export type StorageConfig = {
   };
 };
 
-export function getStorageConfig(): StorageConfig {
-  const driver: StorageDriver = env.STORAGE_DRIVER;
+export function getStorageConfig(environment: Partial<Env> = env): StorageConfig {
+  const driver: StorageDriver = environment.STORAGE_DRIVER ?? "local";
 
   if (driver === "s3") {
+    const hasS3SpecificCredentials =
+      Boolean(environment.AWS_S3_ACCESS_KEY_ID) ||
+      Boolean(environment.AWS_S3_SECRET_ACCESS_KEY);
+
+    if (
+      hasS3SpecificCredentials &&
+      (!environment.AWS_S3_ACCESS_KEY_ID || !environment.AWS_S3_SECRET_ACCESS_KEY)
+    ) {
+      throw new Error(
+        "AWS_S3_ACCESS_KEY_ID y AWS_S3_SECRET_ACCESS_KEY deben configurarse juntas.",
+      );
+    }
+
+    const accessKeyId = hasS3SpecificCredentials
+      ? environment.AWS_S3_ACCESS_KEY_ID
+      : environment.AWS_ACCESS_KEY_ID;
+
+    const secretAccessKey = hasS3SpecificCredentials
+      ? environment.AWS_S3_SECRET_ACCESS_KEY
+      : environment.AWS_SECRET_ACCESS_KEY;
+
     return {
       driver: "s3",
       s3: {
-        bucket: env.AWS_S3_BUCKET || "",
-        region: env.AWS_S3_REGION || env.AWS_REGION || "us-east-1",
-        endpoint: env.AWS_S3_ENDPOINT || undefined,
-        accessKeyId: env.AWS_ACCESS_KEY_ID || "",
-        secretAccessKey: env.AWS_SECRET_ACCESS_KEY || "",
+        bucket: environment.AWS_S3_BUCKET || "",
+        region:
+          environment.AWS_S3_REGION ||
+          environment.AWS_REGION ||
+          "us-east-1",
+        endpoint: environment.AWS_S3_ENDPOINT || undefined,
+        accessKeyId: accessKeyId || "",
+        secretAccessKey: secretAccessKey || "",
       },
     };
   }

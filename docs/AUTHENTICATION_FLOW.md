@@ -94,15 +94,17 @@ El contrato activo es `EmailService` y se resuelve desde una unica factoria:
 - `EMAIL_PROVIDER=development`: usa `DevelopmentEmailService` y no envia correos reales.
 - `EMAIL_PROVIDER=ses`: usa `AmazonSesEmailService` con `@aws-sdk/client-sesv2`.
 
-Variables requeridas para SES:
+Variables de configuración para SES:
 
 - `EMAIL_PROVIDER=ses`
-- `AWS_REGION`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
+- `AWS_SES_REGION`
+- `AWS_SES_ACCESS_KEY_ID`
+- `AWS_SES_SECRET_ACCESS_KEY`
 - `SES_FROM_EMAIL`
 - `SES_FROM_NAME`
 - `APP_URL`
+
+Durante la migracion se mantienen `AWS_REGION`, `AWS_ACCESS_KEY_ID` y `AWS_SECRET_ACCESS_KEY` como compatibilidad temporal.
 
 Los enlaces se construyen con `APP_URL`:
 
