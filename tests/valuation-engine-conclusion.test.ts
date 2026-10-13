@@ -90,7 +90,8 @@ test("the default config follows the appraiser's answers", () => {
     market: "subject-over-reference",
     income: "subject-over-reference",
   });
-  assert.equal(DEFAULT_ENGINE_CONFIG.indirectSubjectFactor, true);
+  // The market value never carries a subject factor; the cost approach homologates the subject in its land block (9 Oct 2026).
+  assert.equal("indirectSubjectFactor" in DEFAULT_ENGINE_CONFIG, false);
   assert.deepEqual(DEFAULT_ENGINE_CONFIG.ageFactor, { exponent: 1.4, floor: 0, extendUsefulLife: true });
   // The adopted unit value reaches the land as the appraiser typed it.
   assert.equal(DEFAULT_ENGINE_CONFIG.rounding.costs.marketUnitValue, null);

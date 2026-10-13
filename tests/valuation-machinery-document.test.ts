@@ -11,6 +11,8 @@ import {
   DEFAULT_MACHINERY_MARKET,
   MACHINERY_CONSERVATION_TWICE,
   alignedCharacteristics,
+  conservationFollowsRating,
+  conservationFromRating,
   emptyOffer,
   isMachineryPropertyKind,
   toMachineryCostEngineInput,
@@ -58,6 +60,22 @@ const tableOf = (block: Block, id: string) => {
   return printed(table);
 };
 
+test("the item's FCo starts from the rating's table row and the book's typed 0.975 is the one of rating 8", () => {
+  assert.equal(conservationFromRating(10), 1);
+  assert.equal(conservationFromRating(8), 0.975);
+  assert.equal(conservationFromRating(2), 0.1);
+  assert.equal(conservationFromRating(1), 0);
+  assert.equal(conservationFromRating(null), null);
+  assert.equal(conservationFromRating(11), null);
+  // The book types L42 = 0.975 with rating 8: the same the table gives, so the example stays at 933,000.
+  assert.ok(conservationFollowsRating(workbookCost.item.conservation, workbookCost.item.rating));
+  assert.equal(costResult({ ...workbookCost, item: { ...workbookCost.item, conservation: conservationFromRating(8) as number } }).physicalValue, 933000);
+  // A value the appraiser typed is his judgement, not the table's.
+  assert.ok(!conservationFollowsRating(0.9, 8));
+  assert.ok(!conservationFollowsRating(null, 8));
+  assert.ok(!conservationFollowsRating(1, null));
+});
+
 test("the capture of the book gives the book's values through the engine", () => {
   const cost = costResult(workbookCost);
   assert.ok(Math.abs(cost.item.value - 740788.9020491218) < 1e-6, "W42");
@@ -69,9 +87,10 @@ test("the capture of the book gives the book's values through the engine", () =>
   assert.equal(market.value, 980000);
 });
 
-test("the starting capture follows the pending setting and the book's roundings, which the appraiser can change", () => {
+test("the starting capture applies the conservation twice, as decided on 9 Oct 2026, with the book's roundings, which the appraiser can change", () => {
   assert.equal(DEFAULT_MACHINERY_COST.conservationTwice, MACHINERY_CONSERVATION_TWICE);
-  assert.ok(PENDING_DECISIONS.some((decision) => decision.setting === "machinery.conservationTwice"), "question 3 is still open");
+  assert.equal(MACHINERY_CONSERVATION_TWICE, true);
+  assert.ok(!PENDING_DECISIONS.some((decision) => decision.setting === "machinery.conservationTwice"), "question 3 was answered");
   assert.deepEqual([DEFAULT_MACHINERY_COST.rounding, DEFAULT_MACHINERY_MARKET.rounding], [-3, -4]);
   assert.ok(Math.abs(costResult({ ...workbookCost, rounding: null }).physicalValue - 933178.1520491218) < 1e-6);
   assert.equal(costResult({ ...workbookCost, rounding: -4 }).physicalValue, 930000);

@@ -23,12 +23,23 @@ export const isMachineryPropertyKind = (propertyKind: string | null | undefined)
   propertyKind?.toUpperCase() === MACHINERY_PROPERTY_TYPE;
 
 /**
- * Whether the captured FCo of the item multiplies the resulting factor on top
- * of the rating that already enters the age factor, as the book does. Pending
- * with the appraiser (PENDING_DECISIONS, question 3); a valuation keeps the
- * setting it was saved with.
+ * Whether the FCo of the item multiplies the resulting factor on top of the
+ * rating that already enters the age factor, as the book does. Decided with
+ * the appraiser on 9 Oct 2026 (question 3): both apply, exactly as the book
+ * (933,000 in its example). A valuation keeps the setting it was saved with.
  */
 export const MACHINERY_CONSERVATION_TWICE = true;
+
+/** The table's factor for a rating, or null when the rating is not one of the table (question 3: the item's FCo starts from it). */
+export function conservationFromRating(rating: number | null): number | null {
+  return MACHINERY_CONSERVATION.find((row) => row.rating === rating)?.factor ?? null;
+}
+
+/** Whether a captured FCo is the one the rating's table row gives, so a new rating may replace it. */
+export function conservationFollowsRating(conservation: number | null, rating: number | null): boolean {
+  const fromRating = conservationFromRating(rating);
+  return fromRating !== null && conservation === fromRating;
+}
 
 /** Kind of quotation, as the book marks it (V.2). */
 export const QUOTATION_KINDS = ["Nuevo Igual", "Usado Igual", "Similar Nuevo", "Similar Usado"] as const;

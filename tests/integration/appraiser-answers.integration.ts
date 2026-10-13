@@ -77,11 +77,27 @@ test("a surface factor typed for a comparable is stored and used; emptied, the f
   assert.ok(Math.abs(Number((await storedMarket(fixture)).NValorPromedioHomologado) - 10000 * (100 / 200) ** (1 / 3) * 0.95) < 1e-6);
 });
 
-test("with a lote tipo the market value carries the subject's factor against it", async () => {
+test("with a lote tipo the market value is area × adopted value, and the cost land homologates the subject against that lote tipo", async () => {
   const fixture = await createValuationFixture();
   await saveMarketSettings(fixture.publicId, fixture.user, { ...settings, subjectArea: 160, baseArea: 250, surfacePower: 6, adoptedUnitValue: 10000, rounding: null });
   await createComparable(fixture.publicId, fixture.user, "TERRENO_VENTA", comparable("Uno", 250, 2_500_000));
-  assert.ok(Math.abs(Number((await storedMarket(fixture)).NValorMercado) - 160 * 10000 * (250 / 160) ** (1 / 6)) < 0.01);
+  // No subject factor in the market approach (9 Oct 2026): T53 = T52 × T50.
+  assert.equal(Number((await storedMarket(fixture)).NValorMercado), 160 * 10000);
+
+  // The land of the cost approach takes the lote tipo from the market: Sup. = (250 / 160)^(1/3) with its own n.
+  await saveCostCalculation(fixture.publicId, fixture.user, { land: { ...DEFAULT_LAND, subjectArea: 160 }, constructions: [], installations: [], indirects: [] });
+  const costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.equal(costs.market.baseArea, 250);
+  assert.equal(costs.land.referenceArea, null, "not typed: it follows the market");
+  const avaluo = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  const land = await prisma.costoTerreno.findFirstOrThrow({ where: { enfoqueCosto: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1 } } });
+  assert.ok(Math.abs(Number(land.NFactorSuperficie) - (250 / 160) ** (1 / 3)) < 1e-8);
+  assert.ok(Math.abs(Number(land.NValorParcial) - 160 * 10000 * (250 / 160) ** (1 / 3)) < 0.01);
+
+  // A lote tipo typed in the cost panel wins; emptied, the market's returns.
+  await saveCostCalculation(fixture.publicId, fixture.user, { land: { ...DEFAULT_LAND, subjectArea: 160, referenceArea: 160 }, constructions: [], installations: [], indirects: [] });
+  const direct = await prisma.costoTerreno.findFirstOrThrow({ where: { enfoqueCosto: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1 } } });
+  assert.equal(Number(direct.NFactorSuperficie), 1);
 });
 
 test("the roundings of the market, the costs and the conclusion are the appraiser's and survive a reload", async () => {

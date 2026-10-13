@@ -5,7 +5,7 @@
  * docs/fase0/README.md until the appraiser confirms them.
  */
 /** Stored with every calculation (EjecucionCalculo.SVersionCalculo); change it when formulas change. */
-export const ENGINE_VERSION = "motor-2026.09.1";
+export const ENGINE_VERSION = "motor-2026.10.1";
 
 export type SurfaceOrientation = "reference-over-subject" | "subject-over-reference";
 
@@ -19,11 +19,6 @@ export type EngineConfig = {
     /** An age at or past the useful life takes a useful life of age + 1, so the factor never reaches zero. */
     extendUsefulLife: boolean;
   };
-  /**
-   * With a lote tipo the comparables are homologated against it; this brings
-   * the adopted value from the lote tipo to the subject (indirect homologation).
-   */
-  indirectSubjectFactor: boolean;
   surfaceOrientation: { costs: SurfaceOrientation; market: SurfaceOrientation; income: SurfaceOrientation };
   rounding: {
     costs: {
@@ -43,7 +38,6 @@ export type EngineConfig = {
 
 const ARANDAS: EngineConfig = {
   ageFactor: { exponent: 1.4, floor: null, extendUsefulLife: false },
-  indirectSubjectFactor: false,
   surfaceOrientation: { costs: "subject-over-reference", market: "reference-over-subject", income: "reference-over-subject" },
   rounding: {
     costs: { marketUnitValue: -1, land: -2, constructions: -4, installations: -3, otherAssets: null, physicalValue: -4 },
@@ -87,8 +81,11 @@ export const ADOPTED_VALUE_TOLERANCE = 0.3;
 /**
  * The system default, as the appraiser defined it (docs/fase0/RESPUESTAS-PERITO.md):
  * - Market: the comparable is brought to the base, (base / comparable)^(1/n),
- *   where the base is the lote tipo (indirect) or the subject (direct).
- * - Costs: the lote tipo is brought to the subject, (lote tipo / subject)^(1/n).
+ *   where the base is the lote tipo (indirect) or the subject (direct). The
+ *   market value is subject area × adopted unit value, as the books: the
+ *   subject is not homologated there (clarified 9 Oct 2026).
+ * - Costs: the subject is homologated against the lote tipo in the land
+ *   block, with Sup. = (lote tipo / subject)^(1/n), 1 without a lote tipo.
  * - An age at or past the useful life takes a useful life of age + 1.
  * Roundings are the appraiser's choice per valuation; these are the starting ones.
  */
@@ -97,7 +94,6 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   // The appraiser adopts the unit value; the land takes it as it is.
   rounding: { ...ARANDAS.rounding, costs: { ...ARANDAS.rounding.costs, marketUnitValue: null } },
   ageFactor: { exponent: 1.4, floor: 0, extendUsefulLife: true },
-  indirectSubjectFactor: true,
   surfaceOrientation: { costs: "reference-over-subject", market: "subject-over-reference", income: "subject-over-reference" },
 };
 
@@ -132,7 +128,9 @@ export const ROUNDING_OPTIONS: { digits: RoundingDigits; label: string }[] = [
   { digits: -5, label: "A centenas de miles" },
 ];
 
-/** Settings that still wait for the appraiser. */
-export const PENDING_DECISIONS = [
-  { question: 3, setting: "machinery.conservationTwice", note: "MEH: la conservación se aplica en el factor de edad y otra vez en FCo (933,000) o una sola vez (952,000). Hoy, dos veces como el libro; se le aclaró la pregunta." },
-] as const;
+/**
+ * Settings that still wait for the appraiser. Empty since 9 Oct 2026: the
+ * machinery conservation (question 3) was decided as the book does it,
+ * `MACHINERY_CONSERVATION_TWICE` in calculation/machinery-types.ts.
+ */
+export const PENDING_DECISIONS: readonly { question: number; setting: string; note: string }[] = [];

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { costDocumentBlocks, withConstructionTables } from "../src/features/valuations/calculation/cost-document";
-import { DEFAULT_LAND, emptyInstallation, toCostEngineInput, type CostCalculationDto } from "../src/features/valuations/calculation/cost-types";
+import { DEFAULT_LAND, costEngineConfig, emptyInstallation, toCostEngineInput, type CostCalculationDto } from "../src/features/valuations/calculation/cost-types";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeCostApproach } from "../src/features/valuations/engine/costs";
 import { Trace } from "../src/features/valuations/engine/trace";
@@ -9,12 +9,12 @@ import { replaceGeneratedBlocks } from "../src/features/valuations/calculation/m
 import type { AppSection, Block, TableContent } from "../src/features/valuations/model";
 import { ensureTableV2, getTableHeaderLayout } from "../src/features/valuations/services/table";
 
+const arandasType = { ref: "T-1", description: "Edificio de uso mixto", classification: "Moderno", quality: "Media", area: 467.27, age: 2, usefulLife: 70 };
+
 const arandas: CostCalculationDto = {
   land: { ...DEFAULT_LAND, subjectArea: 169.78 },
-  constructions: [{
-    ref: "T-1", description: "Edificio de uso mixto", classification: "Moderno", quality: "Media",
-    area: 467.27, age: 2, usefulLife: 70, conservation: 0.98, otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: 14361.99,
-  }],
+  types: [arandasType],
+  constructions: [{ ...arandasType, conservation: 0.98, otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: 14361.99 }],
   installations: ([
     [6, 30, 9000], [1, 30, 35000], [11.55, 70, 14361.99], [3.54, 70, 14361.99],
     [4, 10, 30648], [1, 70, 90000], [4, 20, 4000], [4, 20, 3500],
@@ -108,6 +108,46 @@ test("the cost page is one block with land, constructions and installations, eac
   assert.equal(itemValues.schema?.summaryBoxes?.at(-1)?.rows.at(-1)?.emphasis, "total");
 });
 
+test("the land block prints the book's A) TERRENO: lote tipo, market value, the factor table with Sup. = (lote tipo / sujeto)^(1/n), and the value", () => {
+  // TCH, VI. ENF. COSTOS rows 12–20, with the lote tipo taken from the land market.
+  const tch: CostCalculationDto = {
+    ...arandas, types: [], constructions: [], installations: [],
+    land: { ...DEFAULT_LAND, subjectArea: 160, factors: { negotiation: 0.95, location: 0.9, services: 1.05, classification: 1, topography: 1 } },
+    market: { adoptedUnitValue: 5000, subjectArea: 160, baseArea: 140 },
+    rounding: { land: -4, constructions: -4, installations: -3, physicalValue: -4 },
+  };
+  const input = toCostEngineInput(tch);
+  assert.ok(input.ok);
+  const trace = new Trace();
+  const result = computeCostApproach(input.input, costEngineConfig(tch), trace);
+  const land = printed(costDocumentBlocks(tch, result, trace)[0].apartados[0].tables[0]);
+  assert.deepEqual(land.columns, [
+    "Fracción", "Superficie de Sujeto (m²)", "Valor Unitario ($/m²)", "Neg.", "Ubic.", "Sup.", "Serv.", "Clas.", "Top.", "FRe",
+    "Valor Unitario Neto $/m²", "Valor Parcial $",
+  ]);
+  assert.deepEqual(land.groups, [["Factores de Homologación", 7]]);
+  assert.deepEqual(land.rows, [["I", "160.00", "$ 5,000.00", "0.95", "0.90", "0.96", "1.05", "1.00", "1.00", "0.86", "$ 4,293.33", "$ 686,933.59"]]);
+  assert.deepEqual(land.boxes, {
+    "top:lote-tipo": [["Lote Tipo:", "140.00 m²"]],
+    "top:valor-mercado": [["Valor comparativo de Mercado ($/m²):", "$ 5,000.00"]],
+    "bottom:superficie": [["Superficie valuada:", "160.00 m²"]],
+    "bottom:medio": [["Valor Unitario Medio ($/m²):", "$ 4,293.33"]],
+    "bottom:valor": [["A) Valor del Terreno:", "$ 690,000.00"]],
+    "bottom:valor-fisico": [["A) Valor del Terreno:", "$ 690,000.00"], ["VALOR FÍSICO O DIRECTO (A):", "$ 690,000.00"]],
+  });
+
+  // Direct homologation: no lote tipo anywhere, the table shows the subject and Sup. = 1.
+  const direct: CostCalculationDto = { ...tch, market: { ...tch.market, baseArea: null } };
+  const directInput = toCostEngineInput(direct);
+  assert.ok(directInput.ok);
+  const directTrace = new Trace();
+  const directResult = computeCostApproach(directInput.input, costEngineConfig(direct), directTrace);
+  const directLand = printed(costDocumentBlocks(direct, directResult, directTrace)[0].apartados[0].tables[0]);
+  assert.deepEqual(directLand.boxes["top:lote-tipo"], [["Lote Tipo:", "160.00 m²"]]);
+  assert.equal(directLand.rows[0][5], "1.00");
+  assert.deepEqual(directLand.boxes["bottom:valor"], [["A) Valor del Terreno:", "$ 720,000.00"]]);
+});
+
 test("indirects print only when there are any, and the physical value adds only the parts captured", () => {
   const withIndirects: CostCalculationDto = {
     ...arandas,
@@ -183,5 +223,19 @@ test("the capture fills the construction section tables once, and a reload leave
 
 test("without a capture the construction tables the appraiser wrote stay untouched", () => {
   const section = constructionSection([templateTable("construccion_tipos", ["Tipo", "Descripción"])]);
-  assert.equal(withConstructionTables(section, { ...arandas, constructions: [], installations: [] }), section);
+  assert.equal(withConstructionTables(section, { ...arandas, types: [], constructions: [], installations: [] }), section);
+});
+
+test("the construction types table follows the types of the construction section, picked by the cost approach or not", () => {
+  const section = constructionSection([
+    templateTable("construccion_tipos", ["Tipo", "Tipo", "Clasificación", "Calidad", "Conservación", "Edad", "VUT", "VUR", "Sup. (m²)", "Descripción"]),
+  ]);
+  const bodega = { ref: "T-2", description: "Bodega", classification: "Industrial", quality: "Económica", area: 80, age: 10, usefulLife: 50 };
+  const filled = withConstructionTables(section, { ...arandas, types: [arandasType, bodega] });
+  const [types] = filled.blocks[0].apartados[0].tables as (TableContent & { rows: string[][] })[];
+  assert.deepEqual(types.rows, [
+    ["T-1", "Edificio de uso mixto", "Moderno", "Media", "0.98", "2", "70", "68", "467.27", ""],
+    // Not valued yet: no conservation factor, but its own data.
+    ["T-2", "Bodega", "Industrial", "Económica", "—", "10", "50", "40", "80.00", ""],
+  ]);
 });

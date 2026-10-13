@@ -4,7 +4,7 @@ import { api } from "@/lib/api-client";
 import { caratulaConclusionValues, conclusionValues, withConceptValues } from "@/features/valuations/calculation/conclusion-document";
 import { canConclude, conclusionEngineConfig, type ConclusionCalculationDto } from "@/features/valuations/calculation/conclusion-types";
 import { COST_TEMPLATE_BLOCK_IDS, costDocumentBlocks, withConstructionTables } from "@/features/valuations/calculation/cost-document";
-import { costEngineConfig, toCostEngineInput, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
+import { costEngineConfig, toCostEngineInput, type ConstructionTypesDto, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
 import { INCOME_BLOCK_PREFIX, INCOME_TEMPLATE_BLOCK_IDS, incomeDocumentBlocks } from "@/features/valuations/calculation/income-document";
 import { toIncomeEngineInput, type IncomeCalculationDto } from "@/features/valuations/calculation/income-types";
 import { isMachineryCostBlock, isMachineryMarketBlock, machineryCostBlocks, machineryMarketBlocks } from "@/features/valuations/calculation/machinery-document";
@@ -36,7 +36,8 @@ const MARKET_TYPES: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMU
 
 /**
  * Keeps the dictamen in step with the calculations: market and rent blocks,
- * comparable photos, cost blocks and construction tables, income blocks, the
+ * comparable photos, cost blocks and construction tables (the types captured
+ * in the construction section and the installations of the cost panel), income blocks, the
  * cost and market blocks of a machinery valuation, and the concluded value in
  * the conclusion section and the carátula. It follows
  * what the server stored, syncs on opening (a tab that is not open cannot
@@ -84,14 +85,15 @@ export function useCalculationDocumentSync({
           : section);
   };
 
+  // The construction tables follow the types even before the cost approach is configured.
   const applyCosts = (calculation: CostCalculationDto) => {
-    if (!canEdit || calculation.locked || !calculation.configured) return;
-    const input = toCostEngineInput(calculation);
+    if (!canEdit || calculation.locked) return;
+    const input = calculation.configured ? toCostEngineInput(calculation) : null;
     const trace = new Trace();
-    const result = input.ok ? computeCostApproach(input.input, costEngineConfig(calculation), trace) : null;
-    const blocks = costDocumentBlocks(calculation, result, input.ok ? trace : null);
+    const result = input?.ok ? computeCostApproach(input.input, costEngineConfig(calculation), trace) : null;
+    const blocks = costDocumentBlocks(calculation, result, input?.ok ? trace : null);
     updateBySection("motor-costos", (key, section) =>
-      key === "COSTOS"
+      key === "COSTOS" && calculation.configured
         ? replaceGeneratedBlocks(section, (block) => block.id.startsWith(COST_PREFIX), blocks, { placeholderIds: COST_TEMPLATE_BLOCK_IDS })
         : key === "CONSTRUCCION"
           ? withConstructionTables(section, calculation)
@@ -162,6 +164,11 @@ export function useCalculationDocumentSync({
     applyCosts(calculation);
     void refresh({ conclusion: true });
   };
+  // The server recomputed the cost approach with the new types; its calculation carries them.
+  const onConstructionTypes = (types: ConstructionTypesDto) => {
+    if (types.locked) return;
+    void refresh({ costs: true, conclusion: true });
+  };
   const onIncomeCalculation = (calculation: IncomeCalculationDto) => {
     applyIncome(calculation);
     void refresh({ conclusion: true });
@@ -192,6 +199,7 @@ export function useCalculationDocumentSync({
   return {
     onMarketCalculation,
     onCostCalculation,
+    onConstructionTypes,
     onIncomeCalculation,
     onMachineryCalculation,
     onConclusionCalculation: applyConclusion,

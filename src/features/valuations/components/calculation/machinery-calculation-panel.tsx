@@ -16,6 +16,8 @@ import {
   MACHINERY_FACTORS,
   QUOTATION_KINDS,
   alignedCharacteristics,
+  conservationFollowsRating,
+  conservationFromRating,
   emptyAttachment,
   emptyOffer,
   toMachineryCostEngineInput,
@@ -30,6 +32,7 @@ import {
 } from "@/features/valuations/calculation/machinery-types";
 import { OFFER_LEVELS, OFFER_LEVEL_LABELS, type OfferLevel } from "@/features/valuations/calculation/market-types";
 import type { RoundingDigits } from "@/features/valuations/engine/config";
+import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { effectiveUsefulLife } from "@/features/valuations/engine/factors";
 import { MACHINERY_CONSERVATION, computeMachineryCost, computeMachineryMarket } from "@/features/valuations/engine/machinery";
 import { RoundingSelect } from "./calculation-controls";
@@ -324,6 +327,17 @@ function CostForm({ valuationId, readOnly, calculation, onSaved }: FormProps) {
   const itemField = (key: keyof MachineryItemDto & string, label: string, options: { numeric?: boolean; className?: string; placeholder?: string } = {}) => (
     <TextField key={key} id={`machinery-${key}`} label={label} value={draft.item[key]} onChange={setItem(key)} {...options} />
   );
+  /**
+   * The rating fills the item's FCo with the table's factor (question 3,
+   * 9 Oct 2026) unless the appraiser typed a different one, which stays.
+   */
+  const setRating = (rating: string) => {
+    const typed = parseDecimal(draft.item.conservation);
+    const fromRating = conservationFromRating(parseDecimal(rating));
+    const keepsTable = draft.item.conservation.trim() === "" || conservationFollowsRating(typed, parseDecimal(draft.item.rating));
+    const conservation = keepsTable && fromRating !== null ? String(fromRating) : draft.item.conservation;
+    change({ ...draft, item: { ...draft.item, rating, conservation } });
+  };
   const setAttachment = (index: number, key: string, value: string) => {
     const next = { ...draft, attachments: draft.attachments.map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: value } : row)) };
     // The kind of quotation is a select.
@@ -399,12 +413,15 @@ function CostForm({ valuationId, readOnly, calculation, onSaved }: FormProps) {
                 id="machinery-rating"
                 label="Calificación de conservación"
                 value={draft.item.rating}
-                onChange={(rating) => change({ ...draft, item: { ...draft.item, rating } })}
+                onChange={setRating}
               />
             </Field>
             {MACHINERY_FACTORS.filter((item) => conservationTwice || item.key !== "conservation")
               .map((item) => itemField(item.key, item.label, { numeric: true }))}
           </div>
+          {conservationTwice && conservationFollowsRating(cost.item.conservation, cost.item.rating) ? (
+            <p className="text-xs text-muted-foreground">FCo de la calificación {cost.item.rating}; puedes cambiarlo.</p>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             {conservationTwice
               ? "La calificación de conservación entra en el factor de edad (FEd) y el FCo capturado multiplica además el factor resultante (FRe)."

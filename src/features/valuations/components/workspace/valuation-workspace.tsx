@@ -38,6 +38,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { isMachineryPropertyKind } from "@/features/valuations/calculation/machinery-types";
 import { ConclusionPanel } from "@/features/valuations/components/calculation/conclusion-panel";
+import { ConstructionTypesPanel } from "@/features/valuations/components/calculation/construction-types-panel";
 import { CostCalculationPanel } from "@/features/valuations/components/calculation/cost-calculation-panel";
 import { IncomeCalculationPanel } from "@/features/valuations/components/calculation/income-calculation-panel";
 import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/components/calculation/machinery-calculation-panel";
@@ -225,6 +226,8 @@ export function ValuationWorkspace({
               />
             ) : getCanonicalSectionKey(section.id) === "COSTOS" ? (
               <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} />
+            ) : !machinery && getCanonicalSectionKey(section.id) === "CONSTRUCCION" ? (
+              <ConstructionTypesPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConstructionTypes} />
             ) : getCanonicalSectionKey(section.id) === "MERCADO_RENTAS" ? (
               <MarketCalculationPanel
                 valuationId={valuationId}

@@ -2,8 +2,17 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { z } from "zod";
 import { conclusionSettingsSchema } from "../src/features/valuations/calculation/conclusion-schemas";
-import { costInputSchema } from "../src/features/valuations/calculation/cost-schemas";
-import { DEFAULT_LAND, emptyConstruction, emptyInstallation } from "../src/features/valuations/calculation/cost-types";
+import { constructionTypesSchema, costInputSchema } from "../src/features/valuations/calculation/cost-schemas";
+import {
+  DEFAULT_LAND,
+  constructionCostOf,
+  emptyConstruction,
+  emptyConstructionCost,
+  emptyInstallation,
+  findConstructionType,
+  remainingUsefulLife,
+  withConstructionType,
+} from "../src/features/valuations/calculation/cost-types";
 import { incomeInputSchema } from "../src/features/valuations/calculation/income-schemas";
 import { DEFAULT_ANNUITY, DEFAULT_DEDUCTIONS, DEFAULT_MARKET_RATE } from "../src/features/valuations/calculation/income-types";
 import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES } from "../src/features/valuations/engine/income";
@@ -43,6 +52,40 @@ test("a complete cost payload passes and text is trimmed", () => {
   }) as typeof cost;
   assert.equal(parsed.constructions[0].ref, "T-1");
   assert.equal(parsed.constructions[0].description, "Casa");
+});
+
+test("a cost construction row only needs its reference and cost columns: the type's data lives in the construction section", () => {
+  const picked = { ...emptyConstructionCost("T-1"), conservation: 0.98, unitReplacementCost: 14361.99 };
+  const parsed = accepts(costInputSchema, { ...cost, constructions: [picked] }) as typeof cost;
+  assert.deepEqual(parsed.constructions[0], picked);
+  // A capture saved before the types had their panel still passes with the type's data.
+  accepts(costInputSchema, { ...cost, constructions: [{ ...picked, description: "Casa", area: 120, age: 10, usefulLife: 60 }] });
+  assert.ok(issues(costInputSchema, { ...cost, constructions: [{ ...picked, ref: "" }] }).some((issue) => issue.startsWith("constructions.0.ref")));
+});
+
+test("the construction types: reference, texts, surface, age and useful life; unique references, at most 30", () => {
+  const type = { ref: "T-1", description: " Casa ", classification: "Moderna", quality: "Media", area: 120, age: 10, usefulLife: 60 };
+  const parsed = accepts(constructionTypesSchema, { types: [type] }) as { types: (typeof type)[] };
+  assert.equal(parsed.types[0].description, "Casa");
+  accepts(constructionTypesSchema, { types: [] });
+  accepts(constructionTypesSchema, { types: [{ ...type, area: null, age: null, usefulLife: null }] });
+  assert.ok(issues(constructionTypesSchema, { types: [type, { ...type, ref: "t-1" }] }).some((issue) => issue.startsWith("types")));
+  assert.ok(issues(constructionTypesSchema, { types: [{ ...type, ref: "" }] }).some((issue) => issue.startsWith("types.0.ref")));
+  assert.ok(issues(constructionTypesSchema, { types: [{ ...type, age: -1 }] }).some((issue) => issue.startsWith("types.0.age")));
+  assert.ok(issues(constructionTypesSchema, { types: Array.from({ length: 31 }, (_, index) => ({ ...type, ref: `T-${index}` })) }).some((issue) => issue.startsWith("types")));
+
+  // The cost row takes the data of the type it names, ignoring case; a type that is gone leaves the row with its reference only.
+  const types = [type, { ...type, ref: "T-2", area: 80 }];
+  const merged = withConstructionType({ ...emptyConstructionCost("t-2"), conservation: 0.9, unitReplacementCost: 1000 }, types);
+  assert.equal(merged.area, 80);
+  assert.equal(merged.ref, "t-2");
+  assert.equal(merged.conservation, 0.9);
+  assert.deepEqual(constructionCostOf(merged), { ref: "t-2", conservation: 0.9, otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: 1000 });
+  assert.equal(withConstructionType(emptyConstructionCost("T-9"), types).area, null);
+  assert.equal(findConstructionType(types, " t-1 ")?.ref, "T-1");
+  assert.equal(remainingUsefulLife(type), 50);
+  assert.equal(remainingUsefulLife({ age: 80, usefulLife: 60 }), 0);
+  assert.equal(remainingUsefulLife({ age: null, usefulLife: 60 }), null);
 });
 
 test("an empty cost capture (nulls and empty lists) passes", () => {
