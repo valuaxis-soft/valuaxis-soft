@@ -3,14 +3,14 @@
  * cost section, laid out as the appraiser's own format (A land, B
  * constructions, C special installations, E indirects, each with its boxed
  * value, and the physical value at the end), and the construction types and
- * special installations tables of the construction section, which are
- * captured once in the cost panel.
+ * special installations tables of the construction section: the types as the
+ * section captures them, the installations as the cost panel does.
  */
 import type { CostApproachResult } from "../engine/costs";
 import type { Trace } from "../engine/trace";
 import type { Apartado, AppSection, Block, TableContent } from "../model";
 import { ensureTableV2, type TableSummaryBox } from "../services/table";
-import { LAND_FACTORS, type CostCalculationDto } from "./cost-types";
+import { LAND_FACTORS, remainingUsefulLife, type CostCalculationDto } from "./cost-types";
 import {
   EMPTY,
   figure,
@@ -273,12 +273,14 @@ export function isCostCaptureTable(tableId: string) {
 function constructionRows(calculation: CostCalculationDto, tableId: string): string[][] | null {
   const id = tableId.toLowerCase();
   // Rows added in the panel but still empty stay out of the dictamen.
-  const constructions = calculation.constructions.filter((row) => row.description.trim() || row.area !== null);
+  const types = calculation.types.filter((row) => row.description.trim() || row.area !== null);
   const installations = calculation.installations.filter((row) => row.description.trim());
-  if (id.endsWith(CONSTRUCTION_TYPES_TABLE) && constructions.length) {
-    return constructions.map((row) => [
-      row.ref, row.description, row.classification, row.quality, text(row.conservation, 2), text(row.age, 0),
-      text(row.usefulLife, 0), row.usefulLife !== null && row.age !== null ? text(Math.max(row.usefulLife - row.age, 0), 0) : "—",
+  if (id.endsWith(CONSTRUCTION_TYPES_TABLE) && types.length) {
+    // The conservation column is the cost approach's factor for the type, when it picked it.
+    const conservationOf = (ref: string) => calculation.constructions.find((row) => row.ref.trim().toLowerCase() === ref.trim().toLowerCase())?.conservation ?? null;
+    return types.map((row) => [
+      row.ref, row.description, row.classification, row.quality, text(conservationOf(row.ref), 2), text(row.age, 0),
+      text(row.usefulLife, 0), text(remainingUsefulLife(row), 0),
       text(row.area), "",
     ]);
   }

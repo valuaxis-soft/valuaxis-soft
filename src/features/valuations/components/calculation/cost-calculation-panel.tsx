@@ -11,12 +11,17 @@ import { api, SessionExpiredError } from "@/lib/api-client";
 import {
   DEFAULT_COST_ROUNDING,
   LAND_FACTORS,
+  constructionCostOf,
   costEngineConfig,
-  emptyConstruction,
+  emptyConstructionCost,
   emptyInstallation,
+  findConstructionType,
+  landReferenceArea,
   landUnitValue,
+  remainingUsefulLife,
   toCostEngineInput,
-  type ConstructionDto,
+  withConstructionType,
+  type ConstructionCostDto,
   type CostCalculationDto,
   type CostInputDto,
   type CostRoundingDto,
@@ -35,7 +40,7 @@ const money = (value: number) => value.toLocaleString("es-MX", { style: "currenc
 
 type Draft = {
   land: Omit<Texts<CostInputDto["land"]>, "factors"> & { factors: Record<LandFactorKey, string> };
-  constructions: Texts<ConstructionDto>[];
+  constructions: Texts<ConstructionCostDto>[];
   installations: Texts<InstallationDto>[];
   indirects: Texts<IndirectDto>[];
   rounding: CostRoundingDto;
@@ -50,7 +55,7 @@ const ROUNDING_FIELDS: { key: keyof CostRoundingDto; label: string }[] = [
 
 const toText = (value: number | null) => (value === null ? "" : String(value));
 
-function draftOf(input: CostInputDto): Draft {
+function draftOf(input: CostCalculationDto): Draft {
   return {
     land: {
       subjectArea: toText(input.land.subjectArea),
@@ -59,7 +64,7 @@ function draftOf(input: CostInputDto): Draft {
       surfacePower: String(input.land.surfacePower),
       factors: Object.fromEntries(Object.entries(input.land.factors).map(([key, value]) => [key, String(value)])) as Record<LandFactorKey, string>,
     },
-    constructions: input.constructions.map(textsOf),
+    constructions: input.constructions.map((row) => textsOf(constructionCostOf(row))),
     installations: input.installations.map(textsOf),
     indirects: input.indirects.map(textsOf),
     rounding: input.rounding ?? DEFAULT_COST_ROUNDING,
@@ -75,7 +80,7 @@ function inputOf(draft: Draft): CostInputDto {
       surfacePower: parseDecimal(draft.land.surfacePower) ?? 3,
       factors: Object.fromEntries(Object.entries(draft.land.factors).map(([key, value]) => [key, parseDecimal(value) ?? 1])) as Record<LandFactorKey, number>,
     },
-    constructions: draft.constructions.map((row, index) => numbersOf(row, emptyConstruction(index))),
+    constructions: draft.constructions.map((row) => numbersOf(row, emptyConstructionCost())),
     installations: draft.installations.map((row, index) => numbersOf(row, emptyInstallation(index))),
     indirects: draft.indirects.map((row) => numbersOf(row, { concept: "", percentage: null, base: null })),
     rounding: draft.rounding,
@@ -95,13 +100,19 @@ function payloadOf(input: CostInputDto): CostInputDto {
 
 const savedInputOf = (calculation: CostCalculationDto): CostInputDto => ({
   land: calculation.land,
-  constructions: calculation.constructions,
+  constructions: calculation.constructions.map(constructionCostOf),
   installations: calculation.installations,
   indirects: calculation.indirects,
   rounding: calculation.rounding ?? DEFAULT_COST_ROUNDING,
 });
 
-function compute(calculation: CostCalculationDto) {
+/** The live result of what is typed: each construction row takes the data of the type it picked. */
+function compute(calculation: CostCalculationDto, input: CostInputDto) {
+  const constructions = input.constructions.map((row) => withConstructionType(row, calculation.types));
+  return computeCalculation({ ...calculation, ...input, constructions });
+}
+
+function computeCalculation(calculation: CostCalculationDto) {
   const input = toCostEngineInput(calculation);
   if (!input.ok) return { result: null, trace: null, reason: input.reason };
   const trace = new Trace();
@@ -109,11 +120,19 @@ function compute(calculation: CostCalculationDto) {
 }
 
 const cell = "h-7 min-w-0 px-1.5 text-xs";
+const figure = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
+
+const LAND_REFERENCE_SOURCE = {
+  captured: "Lote tipo capturado aquí; bórralo para tomar el del enfoque de mercado.",
+  market: "Lote tipo del enfoque de mercado de terrenos (homologación indirecta): el sujeto se homologa contra él con la tabla de factores. Puedes escribir otro.",
+  subject: "Sin lote tipo: homologación directa, el factor de superficie vale 1. Escribe un lote tipo para homologar el sujeto contra él.",
+} as const;
 
 /**
- * Cost approach: land (valued with the unit value adopted in the land market),
- * constructions and special installations captured once for the dictamen, and
- * indirects. Saves when a field loses focus.
+ * Cost approach: land (valued with the unit value adopted in the land market
+ * and homologated against its lote tipo), the construction types picked from
+ * the construction section with their cost columns, special installations
+ * captured once for the dictamen, and indirects. Saves when a field loses focus.
  */
 export function CostCalculationPanel(props: {
   valuationId: string;
@@ -176,9 +195,12 @@ export function CostCalculationPanel(props: {
   }
 
   const input = inputOf(draft);
-  const live = compute({ ...calculation, ...input });
+  const live = compute(calculation, input);
   const value = (key: string) => live.trace?.find(key)?.value;
   const marketValue = calculation.market.adoptedUnitValue;
+  const reference = landReferenceArea({ land: input.land, market: calculation.market });
+  const pickedRefs = new Set(draft.constructions.map((row) => row.ref.trim().toLowerCase()));
+  const unpickedTypes = calculation.types.filter((type) => !pickedRefs.has(type.ref.trim().toLowerCase()));
 
   const save = (next = input) => {
     if (!readOnly) void enqueueSave(payloadOf(next));
@@ -204,9 +226,16 @@ export function CostCalculationPanel(props: {
   function removeRow(list: "constructions" | "installations" | "indirects", index: number) {
     setDraft((current) => current && { ...current, [list]: current[list].filter((_, rowIndex) => rowIndex !== index) });
   }
+  // The type is a select: picking one saves at once.
+  const pickConstruction = (index: number, ref: string) => {
+    const next = { ...draft, constructions: draft.constructions.map((row, rowIndex) => (rowIndex === index ? { ...row, ref } : row)) };
+    setDraft(next);
+    save(inputOf(next));
+  };
   const addRow = (list: "constructions" | "installations" | "indirects") => setDraft((current) => {
     if (!current) return current;
-    if (list === "constructions") return { ...current, constructions: [...current.constructions, textsOf(emptyConstruction(current.constructions.length))] };
+    // A new construction row picks the first type not valued yet; the appraiser can change it.
+    if (list === "constructions") return { ...current, constructions: [...current.constructions, textsOf(emptyConstructionCost(unpickedTypes[0]?.ref ?? ""))] };
     if (list === "installations") return { ...current, installations: [...current.installations, textsOf(emptyInstallation(current.installations.length))] };
     return { ...current, indirects: [...current.indirects, { concept: "", percentage: "", base: "" }] };
   });
@@ -241,7 +270,13 @@ export function CostCalculationPanel(props: {
             </Field>
             <Field>
               <FieldLabel htmlFor="cost-land-reference">Lote tipo (m²)</FieldLabel>
-              <Input id="cost-land-reference" inputMode="decimal" value={draft.land.referenceArea} placeholder="Igual al sujeto" onChange={setLand("referenceArea")} />
+              <Input
+                id="cost-land-reference"
+                inputMode="decimal"
+                value={draft.land.referenceArea}
+                placeholder={calculation.market.baseArea !== null ? `De mercado: ${calculation.market.baseArea}` : "Igual al sujeto"}
+                onChange={setLand("referenceArea")}
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="cost-land-value">Valor unitario ($/m²)</FieldLabel>
@@ -268,28 +303,49 @@ export function CostCalculationPanel(props: {
           {!draft.land.unitValue && !marketValue ? (
             <p className="text-xs text-muted-foreground">El valor unitario sale del enfoque de mercado de terrenos; captúralo ahí o escríbelo aquí.</p>
           ) : null}
+          <p className="text-xs text-muted-foreground" data-testid="cost-land-reference-source">
+            {reference.source === "subject" ? LAND_REFERENCE_SOURCE.subject : `${LAND_REFERENCE_SOURCE[reference.source]} Lote tipo: ${figure(reference.area)} m².`}
+          </p>
         </div>
 
         <div className="grid gap-2">
           <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">B) Construcciones</h4>
+          <p className="text-xs text-muted-foreground">
+            Cada renglón elige un tipo de la sección de construcciones; su descripción, superficie, edad y vida útil se capturan allá una sola vez.
+            {calculation.types.length ? "" : " Aún no hay tipos: captúralos en la sección INF. CONSTRUCCIÓN."}
+          </p>
           <div className="overflow-x-auto rounded-md border bg-background">
             <table className="w-full min-w-[860px] text-xs">
               <thead className="bg-muted/60 text-muted-foreground">
                 <tr>
-                  {["Ref.", "Descripción", "Sup. (m²)", "Edad", "Vida útil", "F. conserv.", "Grado term.", "Indiviso", "VRN ($/m²)", "VNR"].map((label) => (
+                  {["Tipo", "Descripción", "Sup. (m²)", "Edad", "Vida útil", "VUR", "F. conserv.", "Grado term.", "Indiviso", "VRN ($/m²)", "VNR"].map((label) => (
                     <th key={label} className="px-1.5 py-1 text-left font-medium">{label}</th>
                   ))}
                   <th><span className="sr-only">Acciones</span></th>
                 </tr>
               </thead>
               <tbody>
-                {draft.constructions.map((row, index) => (
+                {draft.constructions.map((row, index) => {
+                  const type = findConstructionType(calculation.types, row.ref);
+                  const readOnlyCell = "px-1.5 whitespace-nowrap tabular-nums text-muted-foreground";
+                  return (
                   <tr key={index} className="border-t">
-                    <td className="w-16 p-1">{textInput("constructions", index, "ref", row.ref, "Referencia", false)}</td>
-                    <td className="min-w-48 p-1">{textInput("constructions", index, "description", row.description, "Descripción", false)}</td>
-                    <td className="w-20 p-1">{textInput("constructions", index, "area", row.area, "Superficie")}</td>
-                    <td className="w-14 p-1">{textInput("constructions", index, "age", row.age, "Edad")}</td>
-                    <td className="w-14 p-1">{textInput("constructions", index, "usefulLife", row.usefulLife, "Vida útil")}</td>
+                    <td className="w-20 p-1">
+                      <select
+                        aria-label="Tipo de construcción"
+                        className="h-7 w-full rounded-md border bg-transparent px-1 text-xs"
+                        value={type ? type.ref : row.ref}
+                        onChange={(event) => pickConstruction(index, event.target.value)}
+                      >
+                        {type ? null : <option value={row.ref}>{row.ref || "—"}</option>}
+                        {calculation.types.map((option) => <option key={option.ref} value={option.ref}>{option.ref}</option>)}
+                      </select>
+                    </td>
+                    <td className={`min-w-48 ${readOnlyCell}`}>{type?.description || "—"}</td>
+                    <td className={`w-20 ${readOnlyCell}`}>{figure(type?.area ?? null)}</td>
+                    <td className={`w-14 ${readOnlyCell}`}>{figure(type?.age ?? null)}</td>
+                    <td className={`w-14 ${readOnlyCell}`}>{figure(type?.usefulLife ?? null)}</td>
+                    <td className={`w-14 ${readOnlyCell}`}>{figure(type ? remainingUsefulLife(type) : null)}</td>
                     <td className="w-16 p-1">{textInput("constructions", index, "conservation", row.conservation, "Factor de conservación")}</td>
                     <td className="w-14 p-1">{textInput("constructions", index, "completion", row.completion, "Grado de terminación")}</td>
                     <td className="w-14 p-1">{textInput("constructions", index, "undivided", row.undivided, "Indiviso")}</td>
@@ -301,11 +357,16 @@ export function CostCalculationPanel(props: {
                       {!readOnly ? <Button type="button" size="icon-sm" variant="ghost" aria-label={`Quitar ${row.ref}`} onClick={() => removeRow("constructions", index)}><Trash2 /></Button> : null}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
-          {!readOnly ? <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => addRow("constructions")}><Plus data-icon="inline-start" /> Construcción</Button> : null}
+          {!readOnly ? (
+            <Button type="button" size="sm" variant="outline" className="w-fit" disabled={!calculation.types.length} onClick={() => addRow("constructions")}>
+              <Plus data-icon="inline-start" /> Construcción
+            </Button>
+          ) : null}
         </div>
 
         <div className="grid gap-2">

@@ -293,8 +293,8 @@ export function MarketCalculationPanel(props: {
         </Field>
         <p className="text-xs text-muted-foreground sm:col-span-4">
           Factor de superficie: {liveSettings.baseArea
-            ? "con lote tipo (homologación indirecta), cada comparable usa (lote tipo ÷ comparable)^(1/n) y el sujeto (lote tipo ÷ sujeto)^(1/n)."
-            : "sin lote tipo (homologación directa), cada comparable usa (sujeto ÷ comparable)^(1/n)."}
+            ? "con lote tipo (homologación indirecta), cada comparable usa (lote tipo ÷ comparable)^(1/n); el valor de mercado es superficie del sujeto × valor adoptado, y el sujeto se homologa contra el lote tipo en el terreno del enfoque de costos."
+            : "sin lote tipo (homologación directa), cada comparable usa (sujeto ÷ comparable)^(1/n) y el valor de mercado es superficie del sujeto × valor adoptado."}
           {" "}En cada comparable puedes escribir otro factor de superficie. Los campos numéricos aceptan cálculos: =5*10000, =(1345*235)^(1/6).
         </p>
         <Field className="sm:col-span-3">

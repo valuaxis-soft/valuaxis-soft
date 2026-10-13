@@ -1,7 +1,9 @@
 /**
- * Cost approach of a valuation version: land settings, constructions, special
- * installations and indirects, saved as a whole, and the stored result with its
- * trace. The land unit value defaults to the one adopted in the land market.
+ * Cost approach of a valuation version: land settings, the construction types
+ * it picks (with its own columns), special installations and indirects, saved
+ * as a whole, and the stored result with its trace. The land unit value and
+ * the lote tipo default to the ones of the land market. The types themselves
+ * are captured in the construction section (construction-types.service.ts).
  */
 import { Prisma } from "@prisma/client";
 
@@ -10,8 +12,10 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { ENGINE_VERSION } from "../engine/config";
 import { computeCostApproach } from "../engine/costs";
 import { Trace } from "../engine/trace";
+import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
 import { recomputeConclusion } from "./conclusion.service";
+import { constructionOf, createConstructionType, loadConstructionTypes, publicType, updateBuiltArea } from "./construction-types.service";
 import type { CostInputPayload } from "./cost-schemas";
 import {
   DEFAULT_COST_ROUNDING,
@@ -19,7 +23,6 @@ import {
   costEngineConfig,
   toCostEngineInput,
   type CostCalculationDto,
-  type CostInputDto,
   type CostLandDto,
   type CostRoundingDto,
 } from "./cost-types";
@@ -38,17 +41,15 @@ async function landMarket(tx: Tx, versionId: number): Promise<CostCalculationDto
   };
 }
 
-async function loadInput(tx: Tx, versionId: number): Promise<CostInputDto> {
-  const [approach, construction, installations, indirects] = await Promise.all([
+type StoredCost = Omit<CostCalculationDto, "market" | "configured" | "locked">;
+
+async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
+  const [approach, types, installations, indirects] = await Promise.all([
     tx.enfoqueCosto.findUnique({
       where: { IdVersionAvaluo: versionId },
-      include: { costosConstrucciones: true, costosInstalaciones: true },
+      include: { costosConstrucciones: { orderBy: { IOrden: "asc" } }, costosInstalaciones: true },
     }),
-    tx.construccionAvaluo.findFirst({
-      where: { IdVersionAvaluo: versionId },
-      include: { tiposConstruccion: { orderBy: { IOrden: "asc" } } },
-      orderBy: { IdConstruccionAvaluo: "asc" },
-    }),
+    loadConstructionTypes(tx, versionId),
     tx.instalacionEspecialAvaluo.findMany({
       where: { IdVersionAvaluo: versionId },
       include: { tipoParticipacion: { select: { SClave: true } } },
@@ -58,26 +59,29 @@ async function loadInput(tx: Tx, versionId: number): Promise<CostInputDto> {
   ]);
   const land = asRecord(approach?.JConfiguracion ?? null).land as Partial<CostLandDto> | undefined;
   const rounding = asRecord(approach?.JConfiguracion ?? null).rounding as CostRoundingDto | undefined;
-  const costByType = new Map(approach?.costosConstrucciones.map((row) => [row.IdTipoConstruccionAvaluo, row]) ?? []);
+  const typeById = new Map(types.map((type) => [type.id, type]));
   const costByInstallation = new Map(approach?.costosInstalaciones.map((row) => [row.IdInstalacionEspecialAvaluo, row]) ?? []);
+  // The grade of completion and the undivided share live with the type row but belong to the cost capture.
+  const typeShares = new Map((await tx.tipoConstruccionAvaluo.findMany({
+    where: { IdTipoConstruccionAvaluo: { in: types.map((type) => type.id) } },
+    select: { IdTipoConstruccionAvaluo: true, NGradoTerminacion: true, NIndiviso: true },
+  })).map((row) => [row.IdTipoConstruccionAvaluo, row]));
   return {
     land: { ...DEFAULT_LAND, ...land, factors: { ...DEFAULT_LAND.factors, ...land?.factors } },
-    constructions: (construction?.tiposConstruccion ?? []).map((type) => {
-      const cost = costByType.get(type.IdTipoConstruccionAvaluo);
-      return {
-        ref: type.SReferencia ?? "",
-        description: type.SDescripcion ?? "",
-        classification: type.SClasificacion ?? "",
-        quality: type.SCalidad ?? "",
-        area: decimal(type.NSuperficie),
-        age: decimal(type.NEdad),
-        usefulLife: decimal(type.NVidaUtilTotal),
-        conservation: decimal(cost?.NFactorConservacion),
-        otherFactor: decimal(cost?.NFactorOtro) ?? 1,
-        completion: decimal(type.NGradoTerminacion) ?? 1,
-        undivided: decimal(type.NIndiviso) ?? 1,
-        unitReplacementCost: decimal(cost?.NValorUnitarioReposicionNuevo),
-      };
+    types: types.map(publicType),
+    // A construction of the cost approach is a type it picked, in the order it picked them.
+    constructions: (approach?.costosConstrucciones ?? []).flatMap((cost) => {
+      const type = typeById.get(cost.IdTipoConstruccionAvaluo);
+      if (!type) return [];
+      const shares = typeShares.get(type.id);
+      return [{
+        ...publicType(type),
+        conservation: decimal(cost.NFactorConservacion),
+        otherFactor: decimal(cost.NFactorOtro) ?? 1,
+        completion: decimal(shares?.NGradoTerminacion) ?? 1,
+        undivided: decimal(shares?.NIndiviso) ?? 1,
+        unitReplacementCost: decimal(cost.NValorUnitarioReposicionNuevo),
+      }];
     }),
     installations: installations.map((row) => {
       const cost = costByInstallation.get(row.IdInstalacionEspecialAvaluo);
@@ -108,7 +112,7 @@ export async function getCostCalculation(publicId: string, organizationId: numbe
     const versionId = avaluo.IdVersionTrabajo ?? avaluo.IdVersionFinal;
     if (!versionId) {
       return {
-        land: DEFAULT_LAND, constructions: [], installations: [], indirects: [],
+        land: DEFAULT_LAND, constructions: [], types: [], installations: [], indirects: [],
         market: { adoptedUnitValue: null, subjectArea: null, baseArea: null }, configured: false, locked: avaluo.BBloqueado,
       };
     }
@@ -140,35 +144,32 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
     await tx.costoIndirecto.deleteMany({ where: { IdVersionAvaluo: versionId } });
     await tx.instalacionEspecialAvaluo.deleteMany({ where: { IdVersionAvaluo: versionId } });
 
-    const construction = (await tx.construccionAvaluo.findFirst({ where: { IdVersionAvaluo: versionId }, orderBy: { IdConstruccionAvaluo: "asc" } }))
-      ?? (await tx.construccionAvaluo.create({ data: { IdVersionAvaluo: versionId } }));
-    await tx.tipoConstruccionAvaluo.deleteMany({ where: { IdConstruccionAvaluo: construction.IdConstruccionAvaluo } });
-    await tx.construccionAvaluo.update({
-      where: { IdConstruccionAvaluo: construction.IdConstruccionAvaluo },
-      data: { NSuperficieConstruida: payload.constructions.reduce((sum, row) => sum + (row.area ?? 0), 0) || null },
-    });
-
+    // The types stay as the construction section captured them; the cost approach only picks them.
+    const construction = await constructionOf(tx, versionId);
+    const types = await loadConstructionTypes(tx, versionId);
+    const typeByRef = new Map(types.map((type) => [type.ref.trim().toLowerCase(), type]));
+    let createdTypes = 0;
     for (const [index, row] of payload.constructions.entries()) {
-      const type = await tx.tipoConstruccionAvaluo.create({
-        data: {
-          IdConstruccionAvaluo: construction.IdConstruccionAvaluo,
-          SReferencia: row.ref,
-          SDescripcion: row.description || null,
-          SClasificacion: row.classification || null,
-          SCalidad: row.quality || null,
-          NEdad: row.age,
-          NVidaUtilTotal: row.usefulLife,
-          NVidaUtilRemanente: row.usefulLife !== null && row.age !== null ? Math.max(row.usefulLife - row.age, 0) : null,
-          NSuperficie: row.area,
-          NGradoTerminacion: row.completion,
-          NIndiviso: row.undivided,
-          IOrden: index,
-        },
+      let type = typeByRef.get(row.ref.trim().toLowerCase());
+      if (!type) {
+        // A capture that still carries the type's data (saved before the types had their own panel) creates it.
+        const carriesType = row.area !== undefined || row.age !== undefined || row.usefulLife !== undefined || row.description !== undefined;
+        if (!carriesType) throw new ValuationWorkflowError(`La construcción ${row.ref} no está en los tipos de la sección de construcciones.`, 400);
+        const created = await createConstructionType(tx, construction.IdConstruccionAvaluo, {
+          ref: row.ref, description: row.description ?? "", classification: row.classification ?? "", quality: row.quality ?? "",
+          area: row.area ?? null, age: row.age ?? null, usefulLife: row.usefulLife ?? null,
+        }, types.length + createdTypes++);
+        type = { id: created.IdTipoConstruccionAvaluo, ref: row.ref, description: "", classification: "", quality: "", area: null, age: null, usefulLife: null };
+        typeByRef.set(row.ref.trim().toLowerCase(), type);
+      }
+      await tx.tipoConstruccionAvaluo.update({
+        where: { IdTipoConstruccionAvaluo: type.id },
+        data: { NGradoTerminacion: row.completion, NIndiviso: row.undivided },
       });
       await tx.costoConstruccion.create({
         data: {
           IdEnfoqueCosto: approach.IdEnfoqueCosto,
-          IdTipoConstruccionAvaluo: type.IdTipoConstruccionAvaluo,
+          IdTipoConstruccionAvaluo: type.id,
           NValorUnitarioReposicionNuevo: row.unitReplacementCost,
           NFactorConservacion: row.conservation,
           NFactorOtro: row.otherFactor,
@@ -176,6 +177,7 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
         },
       });
     }
+    if (createdTypes) await updateBuiltArea(tx, construction.IdConstruccionAvaluo);
 
     const shares = await tx.tipoParticipacion.findMany({ where: { SClave: { in: ["PRIVATIVA", "COMUN"] } } });
     const shareId = (share: "P" | "C") => {

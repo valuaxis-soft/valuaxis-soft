@@ -6,7 +6,7 @@ import type {
 } from "@/features/valuations/calculation/market-types";
 import type { ComparableImportPreview } from "@/features/valuations/calculation/comparable-import";
 import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
-import type { CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
+import type { ConstructionTypeDto, ConstructionTypesDto, CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
 import type { ConclusionCalculationDto, ConclusionSettingsDto } from "@/features/valuations/calculation/conclusion-types";
 import type { IncomeCalculationDto, IncomeInputDto } from "@/features/valuations/calculation/income-types";
 import type { MachineryCalculationDto, MachineryInputDto } from "@/features/valuations/calculation/machinery-types";
@@ -215,6 +215,12 @@ export const api = {
       request<ListingProposal>(`/avaluos/${id}/ia/anuncio`, { method: "POST", body: JSON.stringify(input) }),
     writeDraft: (id: ApiId, input: DraftInput) =>
       request<{ text: string }>(`/avaluos/${id}/ia/redaccion`, { method: "POST", body: JSON.stringify(input) }),
+  },
+  /** Construction types of the construction section; the cost approach picks from them. */
+  constructionTypes: {
+    get: (id: ApiId) => request<ConstructionTypesDto>(`/avaluos/${id}/construcciones`),
+    save: (id: ApiId, input: { types: ConstructionTypeDto[] }) =>
+      request<ConstructionTypesDto>(`/avaluos/${id}/construcciones`, { method: "PUT", body: JSON.stringify(input) }),
   },
   costs: {
     get: (id: ApiId) => request<CostCalculationDto>(`/avaluos/${id}/costos`),

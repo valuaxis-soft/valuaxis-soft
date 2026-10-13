@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { money } from "../src/features/valuations/calculation/generated-content";
 import { marketDocumentBlocks, marketPhotoBlocks, withGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
 import { defaultMarketSettings, toMarketEngineInput, type ComparableDto, type MarketCalculationDto } from "../src/features/valuations/calculation/market-types";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
@@ -127,12 +128,12 @@ test("a lote tipo, an additional amount and the justification show only when cap
     { label: "Lote Sujeto:", value: "169.78 m²", mark: false },
   ]);
   const rows = boxRows(table, "valor") ?? [];
+  // With a lote tipo the subject is not homologated here (9 Oct 2026): the subtotal is area × adopted value, as the book's T53.
   assert.deepEqual(rows.map(([label]) => label), [
-    "Superficie del sujeto:", "Factor de superficie del sujeto contra el lote tipo:", "Subtotal:", "Monto adicional a considerar:",
-    "VALOR COMPARATIVO DE MERCADO (TERRENOS):",
+    "Superficie del sujeto:", "Subtotal:", "Monto adicional a considerar:", "VALOR COMPARATIVO DE MERCADO (TERRENOS):",
   ]);
-  assert.equal(rows[1][1], computed.subjectSurfaceFactor.toFixed(4));
-  assert.equal(rows[3][1], "$ 25,000.00");
+  assert.equal(rows[1][1], money(169.78 * computed.adoptedUnitValue));
+  assert.equal(rows[2][1], "$ 25,000.00");
   assert.deepEqual(printed(table).schema?.notes, [{ position: "bottom", label: "Justificación del valor adoptado:", text: "Dentro del rango." }]);
 });
 

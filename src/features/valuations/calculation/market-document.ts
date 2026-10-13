@@ -290,8 +290,8 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
   if (!result || !subjectArea) return boxes;
 
   const subjectLabel = MARKET_LABELS[settings.comparableType].subjectArea.replace(" (m²)", "");
-  // The engine's own subtotal: area × adopted value, times the subject's factor when homologating against the lote tipo.
-  const subtotal = subjectArea * result.adoptedUnitValue * result.subjectSurfaceFactor;
+  // The engine's own subtotal: area × adopted value, as the books, with or without a lote tipo.
+  const subtotal = subjectArea * result.adoptedUnitValue;
   boxes.push(
     { id: "sujeto", position: "bottom", align: "start", rows: [{ label: `${subjectLabel} (m²):`, value: squareMetres(subjectArea) }] },
     {
@@ -309,10 +309,6 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
       align: "end",
       rows: [
         { label: `${subjectLabel}:`, value: squareMetres(subjectArea) },
-        ...(result.subjectSurfaceFactor !== 1
-          // Four decimals: the subtotal is the product of the figures of this box.
-          ? [{ label: "Factor de superficie del sujeto contra el lote tipo:", value: figure(result.subjectSurfaceFactor, 4) }]
-          : []),
         { label: "Subtotal:", value: money(subtotal) },
         { label: "Monto adicional a considerar:", value: settings.additionalAmount ? money(settings.additionalAmount) : "$ -" },
         { label: `${page.value}:`, value: money(result.value), emphasis: "total" },

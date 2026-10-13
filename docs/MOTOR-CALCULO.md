@@ -23,7 +23,7 @@ La metodología viene de los Excel del despacho, levantada en [fase0/](fase0/REA
 
 Los libros difieren en redondeos y en la dirección del factor de superficie. `EXCEL_PROFILES` tiene un perfil por libro (`ARANDAS`, `TCH`, `TU`, `TU_OFICIAL`, `TR`, `TRC`) que lo reproduce exacto. `DEFAULT_ENGINE_CONFIG` es lo que usa el sistema, según las [respuestas del perito](fase0/RESPUESTAS-PERITO.md):
 
-- **Factor de superficie.** En mercado y rentas el comparable se lleva a la base, `(base / comparable)^(1/n)`: la base es el lote tipo (homologación indirecta) o el sujeto (directa). Con lote tipo, el valor se lleva después al sujeto con `(lote tipo / sujeto)^(1/n)`, en el valor de mercado y en el terreno del enfoque de costos. El valuador puede escribir otro factor en cada comparable. `n` es 3, 6, 9 o 12.
+- **Factor de superficie.** En mercado y rentas el comparable se lleva a la base, `(base / comparable)^(1/n)`: la base es el lote tipo (homologación indirecta) o el sujeto (directa). El valor de mercado es superficie del sujeto × valor unitario adoptado (+ monto adicional), como el libro (T53 = T52 × T50): **el sujeto no se homologa en mercado** (aclaración del 9 oct 2026, «el detallito»). Con lote tipo, el sujeto se homologa contra él solo en el bloque A) Terreno del enfoque de costos, con la tabla completa (Neg., Ubic., Sup. = `(lote tipo / sujeto)^(1/n)`, Serv., Clas., Top. → FRe → valor unitario neto → valor del terreno); sin lote tipo esa tabla queda en 1 en superficie. El lote tipo del terreno sale del enfoque de mercado (`market.baseArea`) salvo que el valuador escriba otro en el panel de costos. Hasta el motor 2026.09 el valor de mercado también llevaba `(lote tipo / sujeto)^(1/n)` (`indirectSubjectFactor`), lo que contaba dos veces el ajuste; ya no existe. El valuador puede escribir otro factor en cada comparable. `n` es 3, 6, 9 o 12.
 - **Valor adoptado.** Lo captura el valuador; promedio y mediana son referencia. Debe quedar dentro del ±30 % de ambos.
 - **Factor de edad** `1 − (edad / vida útil)^1.4`; si la edad alcanza o rebasa la vida útil, la vida útil pasa a edad + 1.
 - **Redondeos.** Los elige el valuador por avalúo (terreno, construcciones, instalaciones, valor físico, valor de mercado y conclusión), o ninguno. Mientras no elija se usan los del último caso real (Arandas).
@@ -32,7 +32,7 @@ Los libros difieren en redondeos y en la dirección del factor de superficie. `E
 
 Los campos numéricos de cálculo aceptan fórmulas que empiezan con `=` (`calculation/free-formula.ts`): + − × ÷ ^ %, paréntesis, `RAIZ`, `POTENCIA` y `REDONDEAR`, con la precedencia de Excel.
 
-`PENDING_DECISIONS` lista lo que aún espera respuesta del perito.
+`PENDING_DECISIONS` lista lo que aún espera respuesta del perito; está vacía desde el 9 de octubre de 2026.
 
 ## Validación
 
@@ -73,12 +73,18 @@ Cada sección de cálculo tiene su panel, arriba de sus bloques:
 - **El navegador calcula en vivo** con el mismo motor, a cada tecla. **El servidor recalcula** al guardar y guarda los resultados en las columnas de cada tabla y el rastro en `EjecucionCalculo` y `ResultadoCalculo`, una ejecución vigente por enfoque (`MOTOR.MERCADO.<tipo>`, `MOTOR.COSTOS`, `MOTOR.INGRESOS`, `MOTOR.CONCLUSION`).
 - **Maquinaria y equipo.** Un avalúo cuyo tipo de bien es "Maquinaria y equipo" (`MAQUINARIA_EQUIPO`, se elige al crearlo) muestra en costos y en mercado los paneles del formato PT-MEH en lugar de los de inmuebles, sus páginas del dictamen siguen las hojas «IV. ENF. COSTOS» y «V. ENF. MERCADO» del libro (bloques `motor-maquinaria-costos` y `motor-maquinaria-mercado`), y la conclusión toma sus dos valores (`MOTOR.MAQUINARIA.COSTOS`, `MOTOR.MAQUINARIA.MERCADO`); no tiene enfoque de ingresos. En el resumen cada enfoque se redondea como la conclusión, igual que el libro (933,000 en la hoja de costos, 930,000 en el resumen).
 - **Los cambios se encadenan en el servidor:** el mercado de terrenos recalcula costos, el de rentas recalcula ingresos, y cada enfoque recalcula la conclusión.
-- **Una sola captura:** las construcciones y las instalaciones del panel de costos llenan también las tablas de la sección de construcciones.
+- **Una sola captura (pregunta 10, 9 oct 2026):** los tipos de construcción (referencia, descripción, clasificación, calidad, superficie, edad y vida útil total; la remanente se calcula) se capturan una vez en la sección de construcciones (`ConstructionTypesPanel`, `GET/PUT /api/avaluos/[id]/construcciones`, `TipoConstruccionAvaluo`). En el panel de costos cada construcción elige un tipo de esa lista y solo captura sus columnas (factor de conservación, grado de terminación, indiviso, VRN unitario; `CostoConstruccion`). Un tipo que se quita se lleva su renglón de costos; cambiar la edad en la sección recalcula costos y conclusión. Los avalúos guardados antes ya tenían sus tipos en `TipoConstruccionAvaluo` (el panel de costos los escribía ahí), así que no hay migración de datos; un cliente que todavía mande los datos del tipo con los costos crea el tipo si falta, y si existe se ignoran (la sección es la fuente). Las instalaciones especiales siguen capturándose en costos y llenan su tabla de la sección de construcciones.
 - **El dictamen sigue a los cálculos:** lo que guarda el servidor se escribe en el documento como bloques generados (ids con prefijo `motor-`), que el editor muestra de solo lectura y que reemplazan a los bloques de plantilla. La conclusión llena los conceptos de su sección y el valor y la cifra en letras de la carátula, sin tocar el texto del perito. El workspace sincroniza al abrir y después de cada cambio; si nada cambió, el documento queda igual.
 - **Los guardados van en fila:** cada panel envía un guardado a la vez con lo último capturado, para que un guardado anterior no pise al más reciente.
 - **Concluido y reabrir:** los avalúos concluidos muestran los cálculos de solo lectura y la API rechaza cambios. Reabrir copia comparables, factores y los cuatro enfoques a la nueva versión.
 
 Esquema: la migración 032 agrega las calificaciones de los factores, la potencia n, la superficie base y la justificación del mercado, y permite ejecuciones del motor sin nodo del documento. La 033 guarda el método de conclusión. La 039 agrega el tipo de bien "Maquinaria y equipo" y la tabla `devpware_enfoques_maquinaria`. Falta la configuración de metodología por organización: hoy todos usan `DEFAULT_ENGINE_CONFIG`.
+
+`ENGINE_VERSION` es `motor-2026.10.1` desde el 9 oct 2026: los avalúos con lote tipo en mercado cambian de valor de mercado al recalcularse (ya sin el factor del sujeto) y, si no habían capturado lote tipo en costos, su terreno pasa a homologarse contra el lote tipo del mercado. Se recalculan al abrir o guardar.
+
+## Maquinaria: conservación (pregunta 3, decidida el 9 oct 2026)
+
+La conservación entra dos veces, exactamente como el libro: dentro del factor de edad `(1 − (E/VUT)^1.4) · Fcal` y otra vez como FCo en el factor resultante (`MACHINERY_CONSERVATION_TWICE = true`; el ejemplo del libro da 933,000). El FCo del bien sale de la tabla de calificaciones (`MACHINERY_CONSERVATION`: 10 → 1.00 … 8 → 0.975 … 2 → 0.1, 1 → 0): el panel lo llena al elegir la calificación y lo deja editable, con fórmula si hace falta, porque el criterio es del valuador. Cada avalúo guarda `conservationTwice` con el que se capturó; con `false` el panel y el dictamen no muestran el FCo del bien.
 
 ## Diferencias a propósito con el Excel
 
@@ -89,7 +95,6 @@ Esquema: la migración 032 agrega las calificaciones de los factores, la potenci
 
 ## Pendiente
 
-- Maquinaria MEH, pregunta 3: la conservación se aplica dos veces como el libro (`MACHINERY_CONSERVATION_TWICE`) hasta que el perito conteste. Cada avalúo guarda el ajuste con el que se capturó (`conservationTwice`); con una sola aplicación, el panel y el dictamen no muestran el FCo del bien.
 - Maquinaria MEH: faltan los métodos alternativos (costo-capacidad, tercer renglón de la conclusión del libro), la tabla libre de características técnicas, las fotografías de sujeto y comparables en la hoja de mercado, la inspección física que da la calificación (se captura la calificación resultante) y los textos de carátula propios de maquinaria.
 - En TR, como los libros, el ingreso de cada comparable sale de su renta homologada (03 §9.5); se revisa con el perito.
 - Regresión lineal, en un apartado propio.

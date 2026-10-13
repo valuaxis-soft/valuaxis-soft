@@ -158,8 +158,6 @@ export type MarketApproachResult = {
   /** What the appraiser may adopt: within 30 % of the homologated mean and median. */
   adoptedLimits: { min: number; max: number };
   adoptedOutsideLimits: boolean;
-  /** Lote tipo to subject, (lote tipo / subject)^(1/n); 1 when homologating against the subject. */
-  subjectSurfaceFactor: number;
   value: number;
 };
 
@@ -175,23 +173,15 @@ export function computeMarketApproach(input: MarketApproachInput, config: Engine
     value: input.adoptedUnitValue ?? suggestedUnitValue,
   });
   const scale = input.unitScale ?? 1;
-  const indirect = config.indirectSubjectFactor && input.baseArea !== undefined && input.baseArea !== input.subjectArea;
-  const subjectSurfaceFactor = indirect
-    ? trace.record({
-        key: "mercado.factorSuperficieSujeto",
-        label: "Factor de superficie del sujeto contra el lote tipo",
-        formula: "(lote tipo / superficie del sujeto)^(1/n)",
-        inputs: { loteTipo: input.baseArea as number, superficieSujeto: input.subjectArea, n: input.surfacePower },
-        value: surfaceFactor(input.baseArea as number, input.subjectArea, input.surfacePower, "reference-over-subject"),
-      })
-    : 1;
+  // As the books (T53 = T52 × T50): the subject is not homologated here, even
+  // with a lote tipo; the cost approach homologates it in its land block.
   const area = scale === 1 ? input.subjectArea : input.subjectArea / scale;
   const subtotal = trace.record({
     key: "mercado.subtotal",
     label: "Subtotal",
-    formula: `superficie del sujeto${scale === 1 ? "" : ` / ${scale}`} × valor adoptado${indirect ? " × factor de superficie del sujeto" : ""}`,
-    inputs: { superficieSujeto: input.subjectArea, valorAdoptado: adoptedUnitValue, ...(indirect ? { factorSuperficieSujeto: subjectSurfaceFactor } : {}) },
-    value: indirect ? area * adoptedUnitValue * subjectSurfaceFactor : area * adoptedUnitValue,
+    formula: `superficie del sujeto${scale === 1 ? "" : ` / ${scale}`} × valor adoptado`,
+    inputs: { superficieSujeto: input.subjectArea, valorAdoptado: adoptedUnitValue },
+    value: area * adoptedUnitValue,
   });
   const digits = config.rounding.market.comparativeValue;
   const value = trace.record({
@@ -208,7 +198,6 @@ export function computeMarketApproach(input: MarketApproachInput, config: Engine
     adoptedUnitValue,
     adoptedLimits,
     adoptedOutsideLimits: adoptedUnitValue < adoptedLimits.min - 1e-9 || adoptedUnitValue > adoptedLimits.max + 1e-9,
-    subjectSurfaceFactor,
     value,
   };
 }

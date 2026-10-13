@@ -8,6 +8,23 @@ const fraction = z.number().finite().min(0).max(1);
 
 const uniqueRefs = (rows: { ref: string }[]) => new Set(rows.map((row) => row.ref.toLowerCase())).size === rows.length;
 
+const constructionRef = text(20).min(1, "Cada construcción necesita su referencia.");
+
+/** The construction types of the construction section: the single capture of their surface, age and useful life. */
+export const constructionTypesSchema = z.object({
+  types: z.array(z.object({
+    ref: constructionRef,
+    description: text(500),
+    classification: text(120),
+    quality: text(120),
+    area: amount,
+    age: amount,
+    usefulLife: amount,
+  })).max(30).refine(uniqueRefs, "Las referencias de los tipos de construcción no se pueden repetir."),
+});
+
+export type ConstructionTypesPayload = z.infer<typeof constructionTypesSchema>;
+
 export const costInputSchema = z.object({
   land: z.object({
     subjectArea: amount,
@@ -22,14 +39,15 @@ export const costInputSchema = z.object({
       topography: factor,
     }),
   }),
+  // The type's data is optional: it belongs to the construction section, and only creates a missing type.
   constructions: z.array(z.object({
-    ref: text(20).min(1, "Cada construcción necesita su referencia."),
-    description: text(500),
-    classification: text(120),
-    quality: text(120),
-    area: amount,
-    age: amount,
-    usefulLife: amount,
+    ref: constructionRef,
+    description: text(500).optional(),
+    classification: text(120).optional(),
+    quality: text(120).optional(),
+    area: amount.optional(),
+    age: amount.optional(),
+    usefulLife: amount.optional(),
     conservation: factor.nullable(),
     otherFactor: factor,
     completion: fraction,

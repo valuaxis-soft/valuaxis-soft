@@ -6,16 +6,16 @@ Ing. Álvaro Gutiérrez, 30 de septiembre de 2026 (PDF y audios por WhatsApp). C
 
 | # | Respuesta | En el sistema |
 |---|---|---|
-| 1 | Factor de superficie. Con lote tipo, homologación indirecta: comparables con `(lote tipo / comparable)^(1/n)` y sujeto con `(lote tipo / sujeto)^(1/n)`. Sin lote tipo, directa: `(sujeto / comparable)^(1/n)`. O un valor o fórmula libre | `surfaceOrientation` e `indirectSubjectFactor` en `engine/config.ts`; factor capturado por comparable |
+| 1 | Factor de superficie. Con lote tipo, homologación indirecta: comparables con `(lote tipo / comparable)^(1/n)`. Sin lote tipo, directa: `(sujeto / comparable)^(1/n)`. O un valor o fórmula libre. Aclarado el 9 oct 2026 («el detallito»): el sujeto NO se homologa en el enfoque de mercado; su valor de mercado es superficie × valor unitario adoptado, como el libro. El sujeto se homologa contra el lote tipo solo en el bloque A) Terreno del enfoque de costos, con la tabla completa de factores (Sup = `(lote tipo / sujeto)^(1/n)`); con homologación directa esa tabla vale 1. Elegir directa o indirecta aunque exista lote tipo es decisión del valuador | `surfaceOrientation` en `engine/config.ts`; `indirectSubjectFactor` queda en `false`; factor capturado por comparable. El lote tipo del terreno en costos se toma del enfoque de mercado y se puede cambiar |
 | 2 | La celda oculta de TU era un error; el valuador elige con qué enfoque concluir | Anualidad parte de la opción 1; la conclusión ya dejaba elegir |
-| 3 | Edad y conservación son factores distintos y se usan los dos. No entendió "dos veces" | **Pendiente**: se le aclaró. `PENDING_DECISIONS` |
+| 3 | Edad y conservación son factores distintos y se usan los dos. Aclarado en llamada el 9 oct 2026: la conservación entra dos veces, exactamente como el libro (dentro del factor de edad `(1 − (E/VUT)^1.4) · Fcal` y otra vez como FCo); el FCo del bien sale de la tabla de calificaciones (10 → 1.00 … 8 → 0.975 … 2 → 0.1, 1 → 0), no se teclea | `MACHINERY_CONSERVATION_TWICE = true` (`conservationTwice` queda guardado por avalúo). El panel llena el FCo con la calificación y deja cambiarlo |
 | 4 | Promedio y mediana solo como referencia; el valuador captura su valor, con candado de ±30 % | `adoptedValueLimits`; el servicio rechaza fuera del rango |
 | 5 | Si la edad rebasa la vida útil, la vida útil pasa a edad + 1 | `ageFactor.extendUsefulLife` |
 | 6 | Concluir con un enfoque o ponderar con porcentajes libres | Sin cambio |
 | 7 | No recomendar ni limitar factores: es el criterio del valuador | Catálogo vacío por omisión, sin rangos; justificación por factor |
 | 8 | Potencia n: 3, 6, 9 o 12, a elección | `SURFACE_POWERS` |
 | 9 | Vidas útiles libres; las tablas son de paga | Sin cambio |
-| 10 | No entendió la pregunta | **Pendiente**: se le aclaró. Hoy se captura una vez |
+| 10 | No entendió la pregunta. Aclarado el 9 oct 2026: superficie, edad y vida útil de cada tipo de construcción se capturan UNA vez, en la sección de construcciones; el enfoque de costos elige el tipo de una lista y nunca los vuelve a teclear | Tipos de construcción capturados en la sección de construcciones (`ConstructionTypesPanel`); el panel de costos los elige con un select y muestra sus datos de solo lectura |
 | 11 | Indirectos casi nunca; sobre el valor total de construcciones | Base por omisión: construcciones + instalaciones; no aparecen si no se usan |
 | 12 | m² o hectáreas, decide el valuador | Sin cambio |
 | 13 | Cifra en letras tal cual, con centavos | Sin cambio |

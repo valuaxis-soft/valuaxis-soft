@@ -1,7 +1,9 @@
 /**
  * Cost approach data as the editor and the API exchange it, and its conversion
- * to the engine input. Constructions and special installations are captured
- * once here and feed both the construction section and the cost approach.
+ * to the engine input. The construction types (surface, age, useful life) are
+ * captured once in the construction section (construction-types.service.ts);
+ * the cost approach picks each one by its reference and adds its own columns.
+ * Special installations are captured once here and feed both sections.
  */
 import { SURFACE_SLOT, type FactorSlot } from "../engine/factors";
 import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig, type RoundingDigits } from "../engine/config";
@@ -29,7 +31,8 @@ export type CostLandDto = {
   factors: Record<LandFactorKey, number>;
 };
 
-export type ConstructionDto = {
+/** A construction type as the construction section captures it: the single source of its surface, age and useful life. */
+export type ConstructionTypeDto = {
   ref: string;
   description: string;
   classification: string;
@@ -37,12 +40,53 @@ export type ConstructionDto = {
   area: number | null;
   age: number | null;
   usefulLife: number | null;
+};
+
+/** The construction section's list as the editor and the API exchange it. */
+export type ConstructionTypesDto = { types: ConstructionTypeDto[]; locked: boolean };
+
+/** What the cost approach adds to a construction type it picked. */
+export type ConstructionCostDto = {
+  /** Reference of the type in the construction section. */
+  ref: string;
   conservation: number | null;
   otherFactor: number;
   completion: number;
   undivided: number;
   unitReplacementCost: number | null;
 };
+
+/** A construction as the engine and the dictamen see it: the type with its cost columns. */
+export type ConstructionDto = ConstructionTypeDto & ConstructionCostDto;
+
+/** Remaining useful life, as the books: total minus age, never below zero. */
+export function remainingUsefulLife(type: Pick<ConstructionTypeDto, "age" | "usefulLife">): number | null {
+  return type.usefulLife !== null && type.age !== null ? Math.max(type.usefulLife - type.age, 0) : null;
+}
+
+export function emptyConstructionType(index: number): ConstructionTypeDto {
+  return { ref: `T-${index + 1}`, description: "", classification: "", quality: "", area: null, age: null, usefulLife: null };
+}
+
+export function emptyConstructionCost(ref = ""): ConstructionCostDto {
+  return { ref, conservation: null, otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: null };
+}
+
+/** The cost row with the data of its type; a row whose type is gone keeps only its reference. */
+export function withConstructionType(cost: ConstructionCostDto, types: ConstructionTypeDto[]): ConstructionDto {
+  const type = findConstructionType(types, cost.ref);
+  return { ...(type ?? { ...emptyConstructionType(0), ref: cost.ref }), ...cost };
+}
+
+export function findConstructionType(types: ConstructionTypeDto[], ref: string): ConstructionTypeDto | undefined {
+  const key = ref.trim().toLowerCase();
+  return types.find((type) => type.ref.trim().toLowerCase() === key);
+}
+
+/** The cost columns of a construction, what the cost approach saves. */
+export function constructionCostOf(row: ConstructionDto): ConstructionCostDto {
+  return { ref: row.ref, conservation: row.conservation, otherFactor: row.otherFactor, completion: row.completion, undivided: row.undivided, unitReplacementCost: row.unitReplacementCost };
+}
 
 export type InstallationDto = {
   ref: string;
@@ -73,9 +117,14 @@ export const DEFAULT_COST_ROUNDING: CostRoundingDto = {
   physicalValue: DEFAULT_ENGINE_CONFIG.rounding.costs.physicalValue,
 };
 
+/**
+ * What the cost approach saves. A construction row names a type of the
+ * construction section; a row that still carries the type's data (captures
+ * saved before the types had their own panel) creates the type if it is missing.
+ */
 export type CostInputDto = {
   land: CostLandDto;
-  constructions: ConstructionDto[];
+  constructions: (ConstructionCostDto & Partial<Omit<ConstructionTypeDto, "ref">>)[];
   installations: InstallationDto[];
   indirects: IndirectDto[];
   rounding?: CostRoundingDto;
@@ -85,8 +134,12 @@ export function costEngineConfig(calculation: Pick<CostInputDto, "rounding">): E
   return calculation.rounding ? withRounding(DEFAULT_ENGINE_CONFIG, { costs: calculation.rounding }) : DEFAULT_ENGINE_CONFIG;
 }
 
-export type CostCalculationDto = CostInputDto & {
-  /** Land market approach, the default source of the land unit value. */
+export type CostCalculationDto = Omit<CostInputDto, "constructions"> & {
+  /** The construction types picked by the cost approach, with their data from the construction section. */
+  constructions: ConstructionDto[];
+  /** Every construction type of the construction section, picked or not. */
+  types: ConstructionTypeDto[];
+  /** Land market approach, the default source of the land unit value and of the lote tipo. */
   market: { adoptedUnitValue: number | null; subjectArea: number | null; baseArea: number | null };
   /** The appraiser has saved the cost approach at least once. */
   configured: boolean;
@@ -102,10 +155,7 @@ export const DEFAULT_LAND: CostLandDto = {
 };
 
 export function emptyConstruction(index: number): ConstructionDto {
-  return {
-    ref: `T-${index + 1}`, description: "", classification: "", quality: "",
-    area: null, age: null, usefulLife: null, conservation: null, otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: null,
-  };
+  return { ...emptyConstructionType(index), ...emptyConstructionCost(`T-${index + 1}`) };
 }
 
 export function emptyInstallation(index: number): InstallationDto {
@@ -131,6 +181,16 @@ export function isInstallationComplete(row: InstallationDto) {
 /** Land unit value used: the captured one, or the one adopted in the market approach. */
 export function landUnitValue(calculation: Pick<CostCalculationDto, "land" | "market">) {
   return calculation.land.unitValue ?? calculation.market.adoptedUnitValue;
+}
+
+/**
+ * Lote tipo of the land: the captured one, else the base area of the land
+ * market (indirect homologation), else the subject (direct: Sup. = 1).
+ */
+export function landReferenceArea(calculation: Pick<CostCalculationDto, "land" | "market">): { area: number | null; source: "captured" | "market" | "subject" } {
+  if (calculation.land.referenceArea !== null) return { area: calculation.land.referenceArea, source: "captured" };
+  if (calculation.market.baseArea !== null) return { area: calculation.market.baseArea, source: "market" };
+  return { area: calculation.land.subjectArea ?? calculation.market.subjectArea, source: "subject" };
 }
 
 export function toCostEngineInput(calculation: Pick<CostCalculationDto, "land" | "market" | "constructions" | "installations" | "indirects">):
@@ -161,7 +221,7 @@ export function toCostEngineInput(calculation: Pick<CostCalculationDto, "land" |
             land: {
               kind: "urban" as const,
               subjectArea: subjectArea as number,
-              referenceArea: land.referenceArea ?? calculation.market.baseArea ?? (subjectArea as number),
+              referenceArea: landReferenceArea(calculation).area ?? (subjectArea as number),
               marketUnitValue: unitValue as number,
               surfacePower: land.surfacePower,
               factors: factorSlots,
