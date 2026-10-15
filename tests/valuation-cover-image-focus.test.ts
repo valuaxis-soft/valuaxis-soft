@@ -10,6 +10,8 @@ import {
   COVER_IMAGE_FOCUS_CENTER,
   coverImageObjectPosition,
   normalizeCoverImageFocus,
+  coverImagePannableAxes,
+  COVER_BOX_RATIO,
 } from "../src/features/valuations/services/cover-image-focus";
 import { saveFullValuationSchema } from "../src/features/valuations/validations/valuation-api.schemas";
 
@@ -51,4 +53,11 @@ test("the full save accepts the focus next to the carátula's texts", () => {
   assert.equal(saveFullValuationSchema.safeParse({ caratula: { folio: "VLO-1", enfoqueImagenPrincipal: { x: 10, y: 90 } } }).success, true);
   assert.equal(saveFullValuationSchema.safeParse({ caratula: { enfoqueImagenPrincipal: { x: "10", y: 90 } } }).success, false);
   assert.equal(saveFullValuationSchema.safeParse({ caratula: { enfoqueImagenPrincipal: "arriba" } }).success, false);
+});
+
+test("only an image wider than the cover box moves sideways; only a taller one moves up and down", () => {
+  assert.deepEqual(coverImagePannableAxes(4 / 3), { x: false, y: true }, "a normal photo fills the width");
+  assert.deepEqual(coverImagePannableAxes(COVER_BOX_RATIO * 1.5), { x: true, y: false }, "a panorama fills the height");
+  assert.deepEqual(coverImagePannableAxes(COVER_BOX_RATIO), { x: false, y: false });
+  assert.deepEqual(coverImagePannableAxes(null), { x: true, y: true }, "unknown size: both sliders stay");
 });

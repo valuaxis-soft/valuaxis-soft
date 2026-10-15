@@ -10,11 +10,17 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
 import { UploadButton } from "./image-upload-control";
 import {
+  DEFAULT_SIGNATURE_IMAGE_SIZE,
   emptySignature,
   MAX_SIGNATURES,
+  SIGNATURE_IMAGE_SIZE_LABELS,
+  SIGNATURE_IMAGE_SIZES,
   signatureErrors,
   type ValuationSignature,
 } from "@/features/valuations/services/valuation-signatures";
+
+const SIGNATURE_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const SIGNATURE_IMAGE_FORMATS = "PNG, JPG o WEBP";
 
 /**
  * Who signs: one row per signature with name, cédula profesional, an optional
@@ -49,13 +55,18 @@ export function SignaturesEditor({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    // The reasons the appraiser can act on, said before anything is sent.
+    if (!SIGNATURE_IMAGE_TYPES.includes(file.type)) {
+      toast.error(`No se pudo subir la firma: el archivo es ${file.type || "de un tipo desconocido"}. Usa una imagen ${SIGNATURE_IMAGE_FORMATS}.`);
+      return;
+    }
     setUploading(index);
     try {
       const uploaded = await api.uploads.create(file);
       if (!uploaded.url) throw new Error("No se recibió la imagen.");
       update(index, { image: uploaded.url });
     } catch (error) {
-      toast.error(`No se pudo subir la firma: ${error instanceof Error ? error.message : "Error desconocido"}`);
+      toast.error(`No se pudo subir la firma: ${error instanceof Error ? error.message : "Error desconocido"}. Usa una imagen ${SIGNATURE_IMAGE_FORMATS} sobre fondo blanco; si es muy pesada, redúcela.`);
     } finally {
       setUploading(null);
     }
@@ -119,6 +130,23 @@ export function SignaturesEditor({
                 label={signature.image ? "Cambiar imagen de la firma" : "Subir imagen de la firma"}
                 onChange={(event) => void uploadImage(index, event)}
               />
+              {signature.image ? (
+                <div className="flex items-center gap-1" role="group" aria-label={`Tamaño de la firma ${index + 1}`}>
+                  <span className="text-xs text-muted-foreground">Tamaño:</span>
+                  {SIGNATURE_IMAGE_SIZES.map((size) => (
+                    <Button
+                      key={size}
+                      type="button"
+                      size="xs"
+                      variant={(signature.imageSize ?? DEFAULT_SIGNATURE_IMAGE_SIZE) === size ? "default" : "outline"}
+                      disabled={readOnly}
+                      onClick={() => update(index, { imageSize: size })}
+                    >
+                      {SIGNATURE_IMAGE_SIZE_LABELS[size]}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
               {signature.image && !readOnly ? (
                 <Button type="button" size="sm" variant="ghost" onClick={() => update(index, { image: undefined })}>
                   <X /> Quitar imagen

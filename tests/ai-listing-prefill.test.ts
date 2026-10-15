@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { verifyListingExtraction } from "../src/features/ai/listing-extraction";
 import { listingRows } from "../src/features/ai/listing-prefill";
-import { assumptionsDraftData, draftFactsFor, draftTablesFor } from "../src/features/valuations/services/draft-facts";
+import { assumptionsDraftData, draftFactsFor, draftFactsOf, draftTablesFor, ownFieldFacts } from "../src/features/valuations/services/draft-facts";
 import type { AppSection, Concept, TableContent } from "../src/features/valuations/model";
 import { EMPTY_EXTRACTION } from "./support/fake-ai-gateway";
 
@@ -124,4 +124,16 @@ test("the carátula's assumptions are drafted only from the assumptions and limi
   });
   // Nothing of the conclusion, of the values or of other sections; a hidden considerations section gives nothing.
   assert.deepEqual(assumptionsDraftData(sections.map((item) => ({ ...item, enabled: item.id !== "consideraciones" }))), { facts: [], tables: [] });
+});
+
+test("a field's own draft reads only its text; the apartado summary reads every concept", () => {
+  const field = { id: "d", label: "Descripción", value: "Casa de <b>dos</b> niveles", enabled: true };
+  const other = { id: "u", label: "Uso", value: "Habitacional", enabled: true };
+  assert.deepEqual(ownFieldFacts(field, [field, other]), [{ label: "Descripción", value: "Casa de dos niveles" }]);
+  assert.deepEqual(ownFieldFacts({ ...field, label: "", type: "paragraph" }, [field, other]), [{ label: "Texto", value: "Casa de dos niveles" }], "a paragraph has no label");
+  assert.deepEqual(ownFieldFacts({ ...field, value: "  " }, [field, other]), [], "nothing written, nothing to draft from");
+  assert.deepEqual(draftFactsOf([field, other], [field, other]), [
+    { label: "Descripción", value: "Casa de dos niveles" },
+    { label: "Uso", value: "Habitacional" },
+  ]);
 });

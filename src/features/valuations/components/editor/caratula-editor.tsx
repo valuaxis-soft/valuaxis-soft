@@ -35,6 +35,7 @@ import { isMachineryPropertyKind } from "@/features/valuations/calculation/machi
 import { formatDateValue } from "@/features/valuations/services/concept-value-format";
 import {
   COVER_IMAGE_FOCUS_CENTER,
+  coverImagePannableAxes,
   coverImageObjectPosition,
   normalizeCoverImageFocus,
   type CoverImageFocus,
@@ -331,7 +332,7 @@ function PrincipalImageEditor({
           </label>
         </div>
       </div>
-      {image?.url ? <CoverImageFocusControl focus={focus} readOnly={readOnly} onChange={onFocusChange} /> : null}
+      {image?.url ? <CoverImageFocusControl focus={focus} imageUrl={image.url} readOnly={readOnly} onChange={onFocusChange} /> : null}
     </div>
   );
 }
@@ -342,14 +343,27 @@ function PrincipalImageEditor({
  */
 function CoverImageFocusControl({
   focus,
+  imageUrl,
   onChange,
   readOnly,
 }: {
   focus: CoverImageFocus;
+  imageUrl: string;
   onChange: (focus: CoverImageFocus) => void;
   readOnly: boolean;
 }) {
   const centered = focus.x === COVER_IMAGE_FOCUS_CENTER.x && focus.y === COVER_IMAGE_FOCUS_CENTER.y;
+  // The image's own proportion decides which way it can move inside the box.
+  const [imageRatio, setImageRatio] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    let active = true;
+    const probe = new Image();
+    probe.onload = () => { if (active) setImageRatio(probe.naturalHeight ? probe.naturalWidth / probe.naturalHeight : null); };
+    probe.onerror = () => { if (active) setImageRatio(null); };
+    probe.src = imageUrl;
+    return () => { active = false; };
+  }, [imageUrl]);
+  const pannable = coverImagePannableAxes(imageRatio);
   return (
     <div className="mt-3 border-t pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -368,7 +382,8 @@ function CoverImageFocusControl({
           startLabel="Izquierda"
           endLabel="Derecha"
           value={focus.x}
-          readOnly={readOnly}
+          readOnly={readOnly || !pannable.x}
+          note={pannable.x ? undefined : "La imagen ya ocupa todo el ancho del recuadro; solo se puede mover en vertical."}
           onChange={(x) => onChange({ ...focus, x })}
         />
         <CoverImageFocusSlider
@@ -377,7 +392,8 @@ function CoverImageFocusControl({
           startLabel="Arriba"
           endLabel="Abajo"
           value={focus.y}
-          readOnly={readOnly}
+          readOnly={readOnly || !pannable.y}
+          note={pannable.y ? undefined : "La imagen ya ocupa todo el alto del recuadro; solo se puede mover en horizontal."}
           onChange={(y) => onChange({ ...focus, y })}
         />
       </div>
@@ -389,6 +405,7 @@ function CoverImageFocusSlider({
   endLabel,
   id,
   label,
+  note,
   onChange,
   readOnly,
   startLabel,
@@ -397,6 +414,8 @@ function CoverImageFocusSlider({
   endLabel: string;
   id: string;
   label: string;
+  /** Why the slider is off: there is nothing to move along this axis. */
+  note?: string;
   onChange: (value: number) => void;
   readOnly: boolean;
   startLabel: string;
@@ -421,6 +440,7 @@ function CoverImageFocusSlider({
         <span>{startLabel}</span>
         <span>{endLabel}</span>
       </div>
+      {note ? <FieldDescription>{note}</FieldDescription> : null}
     </Field>
   );
 }

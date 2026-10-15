@@ -271,7 +271,8 @@ export const foundComparablesPayload = {
  * write from are refused (422) after the permission and the valuation checks.
  */
 export const shortListingPayload = { text: "Terreno en venta", url: null };
-export const thinDraftPayload = { field: "Descripción del terreno", facts: [{ label: "Topografía", value: "Plana" }] };
+// Nothing captured: the server answers 422 before reaching the provider (one datum is enough to draft).
+export const thinDraftPayload = { field: "Descripción del terreno", facts: [{ label: "Topografía", value: " " }] };
 
 export const firmPayload = { validityMonths: 6, folioPrefix: "E2E" };
 

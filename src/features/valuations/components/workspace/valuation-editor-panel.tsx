@@ -10,7 +10,7 @@ import { BlockCard } from "../editor/block-card";
 import { StructuralActions } from "../editor/structural-actions";
 import { ApartadoEditor } from "../editor/apartado-editor";
 import { BlockFlowRenderer } from "../editor/block-flow-renderer";
-import { AssumptionsDraftAssist, DraftScopeProvider } from "../editor/draft-assist";
+import { AssumptionsDraftAssist, DraftScopeProvider, ApartadoSummaryDraft } from "../editor/draft-assist";
 import type { EditorCapabilities } from "../editor/editor-capabilities";
 import { EditableContentLayout } from "../editor/editable-content-layout-v2";
 
@@ -902,6 +902,14 @@ function SortableBlockEditor(props: {
                   }
                   dndContextMode="external"
                   containerRef={{ kind: "apartado", blockId: block.id, apartadoId: subBlock.id }}
+                />
+                <ApartadoSummaryDraft
+                  title={subBlock.title}
+                  concepts={subBlock.concepts}
+                  allConcepts={allWorkspaceConcepts}
+                  tables={subBlock.tables}
+                  target={[...subBlock.concepts].reverse().find((concept) => concept.type === "longText" || concept.type === "paragraph") ?? null}
+                  onInsert={(conceptId, value) => props.onUpdateSubConcept(section.id, block.id, subBlock.id, conceptId, { value })}
                 />
                 </DraftScopeProvider>
                 </ConceptSelectionScope>
