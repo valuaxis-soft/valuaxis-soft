@@ -82,10 +82,11 @@ const STANDARD_THEME: DocumentThemeTokens = {
     "min-w-0 text-[11px] text-[#333333] whitespace-pre-wrap break-words leading-snug text-justify",
   conceptRowGrid:
     "grid min-w-0 w-full max-w-full grid-cols-[minmax(160px,0.9fr)_minmax(0,1.1fr)] gap-x-4 gap-y-0 items-start",
-  conceptRow: "py-[3px]",
-  conceptRule: "border-b border-slate-200",
+  // Tight rows with nothing under them: the appraiser asked for the hairlines to go.
+  conceptRow: "py-px",
+  conceptRule: "",
   longText: "text-[12px] leading-[1.45]",
-  longTextRow: "py-[5px]",
+  longTextRow: "py-[3px]",
   contentRow: "mt-1.5 grid gap-1",
   sectionGap: "space-y-4",
   pagePadding: "px-5 pb-10 pt-3 sm:px-8",

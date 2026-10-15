@@ -59,7 +59,8 @@ export type Letterhead = {
   logoUrl: string | null;
 };
 
-export type ConceptType = "text" | "date" | "phone" | "email" | "number" | "currency" | "measurement" | "longText" | "url";
+/** "paragraph": a free text with no label, printed edge to edge. */
+export type ConceptType = "text" | "date" | "phone" | "email" | "number" | "currency" | "measurement" | "longText" | "url" | "paragraph";
 export type ConceptValueFormat =
   | "plain"
   | "mxn"

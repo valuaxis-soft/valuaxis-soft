@@ -5,6 +5,7 @@ import { isGeneratedBlock } from "@/features/valuations/calculation/market-docum
 import {
   LongTextConceptEditor,
 } from "../editor/concept-editor";
+import { ConceptSelectionScope } from "../editor/concept-selection";
 import { BlockCard } from "../editor/block-card";
 import { StructuralActions } from "../editor/structural-actions";
 import { ApartadoEditor } from "../editor/apartado-editor";
@@ -815,6 +816,16 @@ function SortableBlockEditor(props: {
                 canMoveDown={blockFlowV2 ? canMoveBlockFlowV2ApartadoOneStep(blockFlowV2, subBlock.id, "down") : false}
                 capabilities={apartadoCapabilities}
               >
+                {/* Several concepts of the apartado chosen at once take one "Espacio". */}
+                <ConceptSelectionScope
+                  concepts={subBlock.concepts}
+                  readOnly={readOnly}
+                  onApplySpacing={(conceptIds, spacingAfter) =>
+                    conceptIds.forEach((conceptId) =>
+                      props.onUpdateSubConcept(section.id, block.id, subBlock.id, conceptId, { spacingAfter }),
+                    )
+                  }
+                >
                 <ContentCreationControl
                   capabilities={apartadoCapabilities}
                   conceptControl={
@@ -893,6 +904,7 @@ function SortableBlockEditor(props: {
                   containerRef={{ kind: "apartado", blockId: block.id, apartadoId: subBlock.id }}
                 />
                 </DraftScopeProvider>
+                </ConceptSelectionScope>
               </ApartadoEditor>
             )}
           />

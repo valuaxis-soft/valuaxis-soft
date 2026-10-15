@@ -59,6 +59,8 @@ import {
 } from "@/features/valuations/services/caratula-blocks";
 
 import { ValuationDateField } from "../editor/valuation-date-field";
+import { TextMarksField } from "./text-marks-toolbar";
+import { ConceptSelectionCheckbox } from "./concept-selection";
 import { compileFormula, conceptReferenceText, formulaToText, isFormulaText } from "@/features/valuations/services/formula-references";
 import { conceptTakesFormula } from "@/features/valuations/services/valuation-formulas";
 import { useFormulaEditing, useFormulaField, useFormulaReferenceTarget } from "./formula-editing";
@@ -96,7 +98,13 @@ function normalizeCaratulaConceptValue(type: ConceptType, value: string) {
 }
 
 function isSingleLineConceptType(type: ConceptType | undefined) {
-  return type !== "longText";
+  return type !== "longText" && type !== "paragraph";
+}
+
+/** Bold, italic and underline apply to plain texts and paragraphs, never to dates, numbers or units. */
+function takesTextMarks(concept: Pick<Concept, "type" | "valueFormat">) {
+  const type = concept.type ?? "text";
+  return (type === "text" || type === "longText" || type === "paragraph") && !isNumericConcept(concept);
 }
 
 function canNormalizeConceptLineBreaks(concept: Pick<Concept, "type" | "value">) {
@@ -605,18 +613,18 @@ function ConceptCellAlignmentControl({
             size="sm"
             variant="ghost"
             className="justify-start"
-            aria-label="Alineación en documento"
+            aria-label="Sangría en documento"
             disabled={disabled}
-            title="Alineación en documento"
+            title="Sangría en documento"
           >
             <AlignHorizontalDistributeCenter data-icon="inline-start" />
-            Alineación en documento
+            Sangría en documento
           </Button>
         }
       />
       <PopoverContent align="end" className="w-56 p-3">
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Alineación en documento</p>
+          <p className="text-xs font-medium text-muted-foreground">Sangría en documento</p>
           <Button
             type="button"
             size="sm"
@@ -947,6 +955,13 @@ export function ConceptEditorRow({
       }
       onUpdate(concept.id, patch);
     };
+    // The format buttons under a text the marks apply to, writing through the links of the concept.
+    const withLinkedTextMarks = (field: ReactNode) =>
+      takesTextMarks(effectiveConcept) ? (
+        <TextMarksField value={effectiveConcept.value} disabled={readOnly} onChange={(value) => handleLinkedAwareUpdate({ value })}>
+          {field}
+        </TextMarksField>
+      ) : field;
     const handleTitleBlur = () => {
       setIsTitleFocused(false);
       if (titleMissing) {
@@ -966,19 +981,23 @@ export function ConceptEditorRow({
         style={{ opacity: isDragging ? 0.35 : undefined }}
         onMouseDownCapture={onReferenceMouseDown}
       >
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          aria-label="Mover concepto"
-          className={cn(!dragEnabled && "invisible")}
-          disabled={readOnly || !dragEnabled}
-          title="Mover concepto"
-          {...attributes}
-          {...listeners}
-        >
-          <ArrowUpDown />
-        </Button>
+        <div className="flex items-start">
+          <ConceptSelectionCheckbox conceptId={concept.id} label={cleanConceptLabel} />
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Mover concepto"
+            className={cn(!dragEnabled && "invisible")}
+            disabled={readOnly || !dragEnabled}
+            title="Mover concepto"
+            {...attributes}
+            {...listeners}
+          >
+            <ArrowUpDown />
+          </Button>
+        </div>
+        {conceptType === "paragraph" ? null : (
         <Field className="min-w-0" data-invalid={titleMissing}>
           <Input
             aria-invalid={titleMissing}
@@ -992,6 +1011,7 @@ export function ConceptEditorRow({
           />
           {titleMissing ? <FieldError>Escribe un título para este campo.</FieldError> : null}
         </Field>
+        )}
         {conceptType === "date" ? (
           <ValuationDateField
             allowClear
@@ -1001,34 +1021,42 @@ export function ConceptEditorRow({
             value={effectiveConcept.value}
             onChange={(value) => handleLinkedAwareUpdate({ value })}
           />
+        ) : conceptType === "paragraph" ? (
+          <TextMarksField className="col-span-2" value={effectiveConcept.value} disabled={readOnly} onChange={(value) => handleLinkedAwareUpdate({ value })}>
+            <Textarea aria-label="Párrafo" className="min-w-0" disabled={readOnly} placeholder="Texto del párrafo" value={effectiveConcept.value} onChange={(event) => handleLinkedAwareUpdate({ value: event.target.value })} />
+          </TextMarksField>
         ) : conceptType === "longText" ? (
           <div className="grid min-w-0 gap-1">
-            <Textarea
-              className="min-w-0"
-              disabled={readOnly}
-              placeholder="Dato"
-              value={effectiveConcept.value}
-              onChange={(event) => handleLinkedAwareUpdate({ value: event.target.value })}
-            />
+            <TextMarksField value={effectiveConcept.value} disabled={readOnly} onChange={(value) => handleLinkedAwareUpdate({ value })}>
+              <Textarea
+                className="min-w-0"
+                disabled={readOnly}
+                placeholder="Dato"
+                value={effectiveConcept.value}
+                onChange={(event) => handleLinkedAwareUpdate({ value: event.target.value })}
+              />
+            </TextMarksField>
             {readOnly ? null : (
               <DraftAssist concept={effectiveConcept} container={concepts} allConcepts={allConcepts} onInsert={(value) => handleLinkedAwareUpdate({ value })} />
             )}
           </div>
         ) : (
-          <ConceptValueInput
-            concept={effectiveConcept}
-            className="h-10 min-w-0"
-            disabled={readOnly}
-            inputMode={isNumericConcept(effectiveConcept) ? "decimal" : conceptType === "phone" ? "numeric" : undefined}
-            placeholder="Dato"
-            type={caratulaInputType(conceptType)}
-            value={isNumericConcept(effectiveConcept) && isValueFocused ? effectiveConcept.value : formatCaratulaConceptValue(effectiveConcept, presentation)}
-            normalize={(text) => normalizeCaratulaConceptValue(conceptType, text)}
-            onBlur={() => setIsValueFocused(false)}
-            onValueChange={(text) => handleLinkedAwareUpdate({ value: normalizeCaratulaConceptValue(conceptType, text) })}
-            onFormulaChange={setFormula}
-            onFocus={() => setIsValueFocused(true)}
-          />
+          withLinkedTextMarks(
+            <ConceptValueInput
+              concept={effectiveConcept}
+              className="h-10 min-w-0"
+              disabled={readOnly}
+              inputMode={isNumericConcept(effectiveConcept) ? "decimal" : conceptType === "phone" ? "numeric" : undefined}
+              placeholder="Dato"
+              type={caratulaInputType(conceptType)}
+              value={isNumericConcept(effectiveConcept) && isValueFocused ? effectiveConcept.value : formatCaratulaConceptValue(effectiveConcept, presentation)}
+              normalize={(text) => normalizeCaratulaConceptValue(conceptType, text)}
+              onBlur={() => setIsValueFocused(false)}
+              onValueChange={(text) => handleLinkedAwareUpdate({ value: normalizeCaratulaConceptValue(conceptType, text) })}
+              onFormulaChange={setFormula}
+              onFocus={() => setIsValueFocused(true)}
+            />,
+          )
         )}
         <div className="flex shrink-0 items-center justify-end gap-1">
           <ConceptLinkStatus
@@ -1056,6 +1084,19 @@ export function ConceptEditorRow({
   }
 
   const showValueFormatControl = enableLayoutControls && supportsValueFormat(effectiveConcept);
+  // A paragraph is one text with no title, from edge to edge of the row.
+  const paragraphField = conceptType === "paragraph" ? (
+    <TextMarksField className="col-span-2" value={effectiveConcept.value} disabled={readOnly} onChange={(value) => onUpdate(concept.id, { value })}>
+      <Textarea aria-label="Párrafo" className="min-w-0" disabled={readOnly} placeholder="Texto del párrafo" value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />
+    </TextMarksField>
+  ) : null;
+  // The format buttons under a text the marks apply to; other values print as they are.
+  const withTextMarks = (field: ReactNode) =>
+    takesTextMarks(effectiveConcept) ? (
+      <TextMarksField value={effectiveConcept.value} disabled={readOnly} onChange={(value) => onUpdate(concept.id, { value })}>
+        {field}
+      </TextMarksField>
+    ) : field;
   // Descriptive fields only: a draft written from the data captured next to them.
   const draftAssist = readOnly || usesSingleLineEditor ? null : (
     <DraftAssist concept={effectiveConcept} container={concepts} allConcepts={allConcepts} onInsert={(value) => onUpdate(concept.id, { value })} />
@@ -1071,24 +1112,28 @@ export function ConceptEditorRow({
         referenceClassName,
       )}
       data-concept-name={conceptReferenceText(formulaIndex, concept.id) ?? undefined}
+      data-concept-paragraph={conceptType === "paragraph" ? "" : undefined}
       ref={setNodeRef}
       style={{ opacity: isDragging ? 0.35 : undefined }}
       onMouseDownCapture={onReferenceMouseDown}
     >
-      <Button
-        type="button"
-        size="icon-sm"
-        variant="ghost"
-        aria-label="Mover concepto"
-        className={cn(!dragEnabled && "invisible")}
-        disabled={readOnly || !dragEnabled}
-        title="Mover concepto"
-        {...attributes}
-        {...listeners}
-      >
-        <ArrowUpDown />
-      </Button>
-      {showTerrenoLengthHint && !usesSingleLineEditor ? (
+      <div className="flex items-start">
+        <ConceptSelectionCheckbox conceptId={concept.id} label={cleanConceptLabel} />
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Mover concepto"
+          className={cn(!dragEnabled && "invisible")}
+          disabled={readOnly || !dragEnabled}
+          title="Mover concepto"
+          {...attributes}
+          {...listeners}
+        >
+          <ArrowUpDown />
+        </Button>
+      </div>
+      {paragraphField ? paragraphField : showTerrenoLengthHint && !usesSingleLineEditor ? (
         <div className="min-w-0 space-y-1">
           <Field data-invalid={titleMissing}>
             <Input
@@ -1109,7 +1154,9 @@ export function ConceptEditorRow({
             />
             {titleMissing ? <FieldError>Escribe un título para este campo.</FieldError> : null}
           </Field>
-          <Textarea className="w-full" disabled={readOnly} value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />
+          {withTextMarks(
+            <Textarea className="w-full" disabled={readOnly} value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />,
+          )}
           {draftAssist}
         </div>
       ) : (
@@ -1156,20 +1203,24 @@ export function ConceptEditorRow({
               onFocus={() => setIsValueFocused(true)}
             />
           ) : usesSingleLineEditor ? (
-            <ConceptValueInput
-              concept={effectiveConcept}
-              className="h-10 min-w-0"
-              disabled={readOnly}
-              inputMode={conceptType === "phone" ? "numeric" : undefined}
-              type={caratulaInputType(conceptType)}
-              value={formatCaratulaConceptValue(effectiveConcept, presentation)}
-              normalize={(text) => normalizeCaratulaConceptValue(conceptType, text)}
-              onValueChange={(text) => onUpdate(concept.id, { value: normalizeCaratulaConceptValue(conceptType, text) })}
-              onFormulaChange={setFormula}
-            />
+            withTextMarks(
+              <ConceptValueInput
+                concept={effectiveConcept}
+                className="h-10 min-w-0"
+                disabled={readOnly}
+                inputMode={conceptType === "phone" ? "numeric" : undefined}
+                type={caratulaInputType(conceptType)}
+                value={formatCaratulaConceptValue(effectiveConcept, presentation)}
+                normalize={(text) => normalizeCaratulaConceptValue(conceptType, text)}
+                onValueChange={(text) => onUpdate(concept.id, { value: normalizeCaratulaConceptValue(conceptType, text) })}
+                onFormulaChange={setFormula}
+              />,
+            )
           ) : (
             <div className="grid min-w-0 gap-1">
-              <Textarea disabled={readOnly} value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />
+              {withTextMarks(
+                <Textarea disabled={readOnly} value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />,
+              )}
               {draftAssist}
             </div>
           )}
