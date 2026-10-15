@@ -14,6 +14,10 @@ export type SectionPayload = {
   required?: boolean;
   sortOrder?: number;
   startOnNewPage?: boolean;
+  /** A section the appraiser added: stored under its own id, outside the registry. */
+  custom?: boolean;
+  /** The appraiser renamed the tab; the title is kept as sent. */
+  titleEdited?: boolean;
   blocks?: BlockPayload[];
 };
 

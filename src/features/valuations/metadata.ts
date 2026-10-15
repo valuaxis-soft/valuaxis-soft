@@ -1,6 +1,7 @@
-import type { BlockFlowV2, ConceptDateFormat, ConceptType, ConceptValueFormat, ContentLayout, ImageLayoutWidth, ApartadoPresentationMode } from "@/features/valuations/model";
+import type { BlockFlowV2, ConceptDateFormat, ConceptType, ConceptValueFormat, ContentLayout, HeaderExtraField, ImageLayoutWidth, ApartadoPresentationMode } from "@/features/valuations/model";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import { isBlockFlowV2 } from "@/features/valuations/services/block-flow";
+import { normalizeHeaderExtraFields } from "@/features/valuations/services/caratula-company-header";
 import { isContentLayout, normalizeContentLayout } from "@/features/valuations/services/content-layout";
 import { readStoredFormula, type TableFormula } from "@/features/valuations/services/table";
 
@@ -38,6 +39,10 @@ export type SectionMetadata = {
   flowSpacingBeforePx?: number;
   /** The document's choice, carried by its carátula section. */
   thousandsSeparator?: boolean;
+  /** A section the appraiser added. */
+  custom?: boolean;
+  /** The appraiser renamed the section's tab. */
+  titleEdited?: boolean;
 };
 
 export type BlockMetadata = {
@@ -47,6 +52,8 @@ export type BlockMetadata = {
   blockFlow?: BlockFlowV2;
   conceptPresentation?: ConceptPresentation;
   flowSpacingBeforePx?: number;
+  /** The carátula's company header block only: the extra header data. */
+  headerFields?: HeaderExtraField[];
 };
 
 export type ApartadoMetadata = {
@@ -156,7 +163,14 @@ export function sectionMetadataFromContent(content: SectionMetadataContent): Sec
     startOnNewPage: content.startOnNewPage,
     flowSpacingBeforePx: content.flowSpacingBeforePx,
     thousandsSeparator: content.thousandsSeparator,
+    custom: content.custom,
+    titleEdited: content.titleEdited,
   };
+}
+
+/** A section the appraiser added and later deleted: kept in the database, never read back. */
+export function isRemovedSectionConfig(config: unknown) {
+  return isRecord(config) && config.removed === true;
 }
 
 export function hydrateSectionMetadata(config: unknown): SectionMetadata {
@@ -165,6 +179,8 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
     startOnNewPage: sectionBooleanMetadata(config, "startOnNewPage"),
     flowSpacingBeforePx: readFlowSpacingBeforePx(config),
     thousandsSeparator: sectionBooleanMetadata(config, "thousandsSeparator"),
+    custom: sectionBooleanMetadata(config, "custom"),
+    titleEdited: sectionBooleanMetadata(config, "titleEdited"),
   };
 }
 
@@ -176,10 +192,12 @@ export function blockMetadataFromContent(content: BlockMetadataContent): BlockMe
     blockFlow: content.blockFlow,
     conceptPresentation: content.conceptPresentation,
     flowSpacingBeforePx: content.flowSpacingBeforePx,
+    headerFields: content.headerFields,
   };
 }
 
 export function hydrateBlockMetadata(config: unknown): BlockMetadata {
+  const headerFields = readConfigMetadata(config, (value) => (isRecord(value) && Array.isArray(value.headerFields) ? normalizeHeaderExtraFields(value.headerFields) : undefined));
   return {
     enabled: true,
     startOnNewPage: sectionBooleanMetadata(config, "startOnNewPage"),
@@ -187,6 +205,7 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
     blockFlow: parseBlockFlow(config),
     conceptPresentation: parseConceptPresentation(config),
     flowSpacingBeforePx: readFlowSpacingBeforePx(config),
+    ...(headerFields?.length ? { headerFields } : {}),
   };
 }
 
@@ -285,7 +304,7 @@ function imageCaptionAlign(config: unknown): "left" | "center" | "right" | undef
   });
 }
 
-function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator") {
+function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited") {
   return readConfigMetadata(config, (value) => readBooleanMetadata(value, key));
 }
 
@@ -407,7 +426,7 @@ function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "cust
   return typeof metadata === "string" ? metadata : undefined;
 }
 
-function readBooleanMetadata(value: unknown, key: "startOnNewPage" | "thousandsSeparator") {
+function readBooleanMetadata(value: unknown, key: "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "boolean" ? metadata : undefined;

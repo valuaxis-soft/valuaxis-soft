@@ -1,8 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import type { AuthUser } from "@/features/auth/model";
+import { isRemovedSectionConfig } from "@/features/valuations/metadata";
 import {
   getCanonicalSectionKey,
+  isCustomSectionId,
   sectionKeyToWorkspaceId,
 } from "@/features/valuations/sections/section-registry";
 import { saveCaratula } from "./caratula";
@@ -71,9 +73,16 @@ export async function saveValuationSections(input: {
     const catalogs = await getDocumentPersistenceCatalogs(tx);
 
     for (const [index, section] of input.sections.entries()) {
-      const canonical = getCanonicalSectionKey(section.id ?? section.label ?? `section-${index + 1}`);
-      const key = sectionKeyToWorkspaceId(canonical);
-      const existingSection = await findSectionByCanonicalKey(tx, versionId, canonical, debug);
+      // A section the appraiser added keeps its own id as key; the registry's aliases do not apply to it.
+      const custom = Boolean(section.id && isCustomSectionId(section.id));
+      const canonical = custom ? section.id! : getCanonicalSectionKey(section.id ?? section.label ?? `section-${index + 1}`);
+      const key = custom ? canonical : sectionKeyToWorkspaceId(canonical);
+      const existingSection = custom
+        ? await tx.seccionDocumento.findUnique({
+            where: { IdVersionAvaluo_SClave: { IdVersionAvaluo: versionId, SClave: key } },
+            select: { IdSeccionDocumento: true, SClave: true, IOrden: true },
+          })
+        : await findSectionByCanonicalKey(tx, versionId, canonical, debug);
       if (debug) console.log("[VALUATION_SECTIONS] resolved section for payload", {
         canonical,
         sectionId: section.id,
@@ -89,7 +98,7 @@ export async function saveValuationSections(input: {
               IOrden: section.sortOrder ?? index,
               BVisible: section.enabled ?? true,
               BObligatoria: section.required ?? false,
-              BEliminable: false,
+              BEliminable: custom,
               JConfiguracion: section as Prisma.InputJsonObject,
             },
           })
@@ -101,7 +110,7 @@ export async function saveValuationSections(input: {
               IOrden: section.sortOrder ?? index,
               BVisible: section.enabled ?? true,
               BObligatoria: section.required ?? false,
-              BEliminable: false,
+              BEliminable: custom,
               JConfiguracion: section as Prisma.InputJsonObject,
             },
           });
@@ -226,6 +235,8 @@ export async function saveValuationSections(input: {
       });
     }
 
+    await removeMissingCustomSections(tx, versionId, input.sections);
+
     if (input.caratula) {
       await saveCaratula({ versionId, payload: input.caratula, tx });
     }
@@ -233,6 +244,29 @@ export async function saveValuationSections(input: {
     logPersistenceStats(stats);
     return { versionId, sections: input.sections.length, stats };
   }, SAVE_TRANSACTION_OPTIONS);
+}
+
+/**
+ * A section the appraiser added and then deleted is not in the payload any
+ * more: it is kept, hidden and marked removed, so the read skips it. Registry
+ * sections are never removed.
+ */
+async function removeMissingCustomSections(tx: Tx, versionId: number, sections: SectionPayload[]) {
+  const sent = new Set(sections.map((section) => section.id).filter((id): id is string => Boolean(id)));
+  const persisted = await tx.seccionDocumento.findMany({
+    where: { IdVersionAvaluo: versionId },
+    select: { IdSeccionDocumento: true, SClave: true, JConfiguracion: true },
+  });
+  for (const section of persisted) {
+    if (!isCustomSectionId(section.SClave) || sent.has(section.SClave) || isRemovedSectionConfig(section.JConfiguracion)) continue;
+    const config = section.JConfiguracion && typeof section.JConfiguracion === "object" && !Array.isArray(section.JConfiguracion)
+      ? section.JConfiguracion
+      : {};
+    await tx.seccionDocumento.update({
+      where: { IdSeccionDocumento: section.IdSeccionDocumento },
+      data: { BVisible: false, JConfiguracion: { ...config, removed: true } as Prisma.InputJsonObject },
+    });
+  }
 }
 
 async function findSectionByCanonicalKey(client: Tx, versionId: number, canonical: string, debug = false) {

@@ -117,8 +117,10 @@ function hasPreMarketConceptControls(section: AppSection) {
 }
 
 function getSectionEditorCapabilities(section: AppSection): EditorCapabilities {
+  // A section the appraiser added is hidden or deleted at will; registry sections are only hidden.
   return {
-    visibility: hasPreMarketConceptControls(section) && !section.required,
+    visibility: (hasPreMarketConceptControls(section) || section.custom === true) && !section.required,
+    delete: section.custom === true,
   };
 }
 
@@ -220,6 +222,8 @@ export function ValuationEditorPanel(props: {
   onRemoveConcept: (sectionId: string, blockId: string, conceptId: string) => void;
   onRemoveImage: (sectionId: string, blockId: string, imageId: string, apartadoId?: string) => void;
   onRemoveApartado: (sectionId: string, blockId: string, apartadoId: string) => void;
+  /** Deletes a section the appraiser added. */
+  onRemoveSection?: (sectionId: string) => void;
   onRemoveSubConcept: (sectionId: string, blockId: string, apartadoId: string, conceptId: string) => void;
   onRemoveTable: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
   onUpdateBlock: (sectionId: string, blockId: string, patch: Partial<Block>) => void;
@@ -369,6 +373,9 @@ export function ValuationEditorPanel(props: {
               visibility={sectionCapabilities.visibility ? {
                 visible: section.enabled,
                 onChange: (enabled) => props.onUpdateSection(section.id, { enabled }),
+              } : undefined}
+              deleteAction={sectionCapabilities.delete && props.onRemoveSection && !props.readOnly ? {
+                onDelete: () => props.onRemoveSection?.(section.id),
               } : undefined}
             />
           ) : null}

@@ -1,7 +1,8 @@
-import { FileImage } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileImage } from "lucide-react";
 import { useMemo, type CSSProperties, type ReactNode } from "react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PreviewViewer } from "./preview-viewer";
 import {
   Table,
@@ -74,7 +75,18 @@ type SectionDocumentProps = {
   documentHeaderImage?: ImageContent | null;
 };
 
-export function ReportPreview(props: SectionDocumentProps) {
+/** Browsing the preview to the previous or next section, without changing the editor's active one. */
+export type PreviewSectionNavigation = {
+  /** Name of the section shown, as the tab reads it. */
+  label: string;
+  position: { index: number; total: number };
+  canPrevious: boolean;
+  canNext: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+};
+
+export function ReportPreview({ navigation, ...props }: SectionDocumentProps & { navigation?: PreviewSectionNavigation }) {
   const isCaratula = props.section.id === "caratula";
 
   return (
@@ -84,6 +96,36 @@ export function ReportPreview(props: SectionDocumentProps) {
           <FileImage />
           Vista previa de la sección
         </CardTitle>
+        {navigation ? (
+          <CardAction className="flex items-center gap-1" data-preview-section-navigation>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Sección anterior"
+              title="Ver la sección anterior"
+              disabled={!navigation.canPrevious}
+              onClick={navigation.onPrevious}
+            >
+              <ChevronLeft />
+            </Button>
+            <span className="max-w-56 truncate text-xs text-muted-foreground" title={navigation.label}>
+              {navigation.label}
+              <span className="ml-1 tabular-nums">({navigation.position.index}/{navigation.position.total})</span>
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Sección siguiente"
+              title="Ver la sección siguiente"
+              disabled={!navigation.canNext}
+              onClick={navigation.onNext}
+            >
+              <ChevronRight />
+            </Button>
+          </CardAction>
+        ) : null}
       </CardHeader>
       <CardContent className="min-h-0 flex-1 p-0">
         <PreviewViewer key={props.section.id} className="h-full">

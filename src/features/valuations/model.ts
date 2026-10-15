@@ -38,7 +38,12 @@ export type CaratulaFormData = {
   fechaVigencia: string;
   /** The part of the principal cover image kept in view inside the cover box; centered when absent. */
   enfoqueImagenPrincipal?: CoverImageFocus;
+  /** Up to three short label/value pairs of the appraiser's choice (RFC, cédula, sitio web…) printed in the page header. */
+  camposEncabezado?: HeaderExtraField[];
 };
+
+/** A short datum the appraiser adds to the document header. */
+export type HeaderExtraField = { label: string; value: string };
 
 /**
  * The firm's letterhead (Datos del despacho). The document header shows it
@@ -248,6 +253,8 @@ export type Block = {
   blockFlow?: BlockFlowV2;
   conceptPresentation?: import("./services/concept-presentation").ConceptPresentation;
   flowSpacingBeforePx?: number;
+  /** Only the carátula's company header block: the extra header data, kept in its configuration. */
+  headerFields?: HeaderExtraField[];
 };
 
 export type AppSection = {
@@ -265,6 +272,10 @@ export type AppSection = {
    * means with it, as documents saved before the choice existed print.
    */
   thousandsSeparator?: boolean;
+  /** Added by the appraiser; not in the section registry. */
+  custom?: boolean;
+  /** The appraiser renamed the tab: the stored title wins over the registry label. */
+  titleEdited?: boolean;
   blocks: Block[];
 };
 

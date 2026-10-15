@@ -115,7 +115,7 @@ export function ensureTerrenoSection(section: AppSection): AppSection {
   if (!existingMain) {
     return {
       ...section,
-      title: "INFO TERRENO",
+      title: section.titleEdited ? section.title : "INFO TERRENO",
       sourceFile: "3. INF TERRENO.pdf",
       blocks: section.blocks,
     };
@@ -144,7 +144,7 @@ export function ensureTerrenoSection(section: AppSection): AppSection {
 
   return {
     ...section,
-    title: "INFO TERRENO",
+    title: section.titleEdited ? section.title : "INFO TERRENO",
     sourceFile: "3. INF TERRENO.pdf",
     blocks: [
       {

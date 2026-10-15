@@ -1,6 +1,11 @@
-import type { AppSection, Block, CaratulaFormData, Concept } from "@/features/valuations/model";
+import type { AppSection, Block, CaratulaFormData, Concept, HeaderExtraField } from "@/features/valuations/model";
 
 export const COMPANY_HEADER_BLOCK_ID = "caratula-company-header";
+
+/** The extra header data: at most three short pairs, so the carátula stays on one page. */
+export const MAX_HEADER_EXTRA_FIELDS = 3;
+export const HEADER_EXTRA_LABEL_MAX = 40;
+export const HEADER_EXTRA_VALUE_MAX = 120;
 
 const companyHeaderFields = [
   { key: "tituloInmueble", id: "caratula-titulo-inmueble", label: "Título del inmueble" },
@@ -12,14 +17,32 @@ const companyHeaderFields = [
 export type CompanyHeaderData = Pick<
   CaratulaFormData,
   "tituloInmueble" | "direccionEmpresa" | "telefonoEmpresa" | "correoEmpresa"
->;
+> & { camposEncabezado: HeaderExtraField[] };
 
 const emptyCompanyHeader: CompanyHeaderData = {
   tituloInmueble: "",
   direccionEmpresa: "",
   telefonoEmpresa: "",
   correoEmpresa: "",
+  camposEncabezado: [],
 };
+
+/**
+ * The extra header fields as stored and printed: trimmed, within their
+ * lengths, at most three, and only the pairs with a label or a value.
+ * Anything that is not a list of pairs is no field at all.
+ */
+export function normalizeHeaderExtraFields(value: unknown): HeaderExtraField[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      const text = (field: unknown, max: number) => (typeof field === "string" ? field.trim().slice(0, max) : "");
+      return { label: text(row.label, HEADER_EXTRA_LABEL_MAX), value: text(row.value, HEADER_EXTRA_VALUE_MAX) };
+    })
+    .filter((field) => field.label || field.value)
+    .slice(0, MAX_HEADER_EXTRA_FIELDS);
+}
 
 export function ensureCompanyHeaderFields(sections: AppSection[]) {
   return sections.map((section) => {
@@ -54,7 +77,7 @@ export function readCompanyHeaderFields(sections: AppSection[]): CompanyHeaderDa
       ...data,
       [field.key]: findFieldConcept(block.concepts, field.id, field.label)?.value ?? "",
     }),
-    { ...emptyCompanyHeader },
+    { ...emptyCompanyHeader, camposEncabezado: normalizeHeaderExtraFields(block.headerFields) },
   );
 }
 
@@ -71,6 +94,8 @@ export function updateCompanyHeaderFields(
         if (block.id !== COMPANY_HEADER_BLOCK_ID) return block;
         return {
           ...block,
+          // The extra data lives in the block's configuration, not as concepts.
+          ...(patch.camposEncabezado !== undefined ? { headerFields: normalizeHeaderExtraFields(patch.camposEncabezado) } : {}),
           concepts: block.concepts.map((concept) => {
             const field = companyHeaderFields.find((item) => item.id === concept.id);
             if (!field) return concept;
@@ -112,5 +137,5 @@ function findFieldConcept(concepts: Concept[], id: string, label: string) {
 }
 
 function normalize(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  return value.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
 }

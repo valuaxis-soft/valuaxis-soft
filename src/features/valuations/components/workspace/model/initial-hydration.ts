@@ -45,6 +45,7 @@ const emptyCaratula: CaratulaFormData = {
   fechaAvaluo: "",
   mesesVigencia: null,
   fechaVigencia: "",
+  camposEncabezado: [],
 };
 
 export function imageContentFromDocumentHeaderImage(image: DocumentHeaderImageResponse): ImageContent {
@@ -206,6 +207,8 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
     startOnNewPage: section.startOnNewPage ?? false,
     flowSpacingBeforePx: section.flowSpacingBeforePx,
     thousandsSeparator: section.thousandsSeparator,
+    ...(section.custom ? { custom: true } : {}),
+    ...(section.titleEdited ? { titleEdited: true } : {}),
       blocks: section.blocks.map((block) => ({
       id: block.id,
       title: block.title,
@@ -218,6 +221,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
       conceptPresentation: block.conceptPresentation,
       concepts: block.concepts,
       flowSpacingBeforePx: block.flowSpacingBeforePx,
+      ...(block.headerFields ? { headerFields: block.headerFields } : {}),
       apartados: block.subBlocks.map((subBlock) => ({
         id: subBlock.id,
         title: subBlock.title,

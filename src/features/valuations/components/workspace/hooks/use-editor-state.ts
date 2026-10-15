@@ -226,7 +226,8 @@ export function useEditorState({
         patch.tituloInmueble !== undefined ||
         patch.direccionEmpresa !== undefined ||
         patch.telefonoEmpresa !== undefined ||
-        patch.correoEmpresa !== undefined;
+        patch.correoEmpresa !== undefined ||
+        patch.camposEncabezado !== undefined;
 
       return {
         ...current,

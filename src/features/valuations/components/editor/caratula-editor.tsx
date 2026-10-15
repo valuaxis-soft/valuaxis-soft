@@ -16,7 +16,7 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 
-import { ImagePlus, Trash2 } from "lucide-react";
+import { ImagePlus, Plus, Trash2 } from "lucide-react";
 
 import type {
   CaratulaFormData,
@@ -48,6 +48,12 @@ import {
 import { cn } from "@/lib/utils";
 
 import { ValuationDateField } from "./valuation-date-field";
+import {
+  HEADER_EXTRA_LABEL_MAX,
+  HEADER_EXTRA_VALUE_MAX,
+  MAX_HEADER_EXTRA_FIELDS,
+} from "@/features/valuations/services/caratula-company-header";
+import type { HeaderExtraField } from "@/features/valuations/model";
 import { UploadButton } from "./image-upload-control";
 
 /** 1 to 12 whole months, at the appraiser's discretion. */
@@ -118,6 +124,13 @@ export function CaratulaEditor({
             value={caratula.correoEmpresa}
             readOnly={readOnly}
               onChange={(correoEmpresa) => onUpdate({ correoEmpresa })}
+            />
+          </div>
+          <div className="min-w-0 md:col-span-6 xl:col-span-12">
+            <HeaderExtraFieldsEditor
+              fields={caratula.camposEncabezado ?? []}
+              readOnly={readOnly}
+              onChange={(camposEncabezado) => onUpdate({ camposEncabezado })}
             />
           </div>
           <div className="min-w-0 md:col-span-3 xl:col-span-4">
@@ -499,6 +512,66 @@ export function CalculatedValuesEditor({
           onChange={(valorConLetra) => onUpdate({ valorConLetra })}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Up to three short data of the appraiser's choice (RFC, cédula, sitio web…)
+ * printed in the page header after the address, phone and email.
+ */
+function HeaderExtraFieldsEditor({
+  fields,
+  readOnly,
+  onChange,
+}: {
+  fields: HeaderExtraField[];
+  readOnly: boolean;
+  onChange: (fields: HeaderExtraField[]) => void;
+}) {
+  const update = (index: number, patch: Partial<HeaderExtraField>) =>
+    onChange(fields.map((field, position) => (position === index ? { ...field, ...patch } : field)));
+  return (
+    <div className="space-y-2" data-testid="header-extra-fields">
+      <p className="text-xs text-muted-foreground">
+        Datos adicionales del encabezado (hasta {MAX_HEADER_EXTRA_FIELDS}): un nombre corto y su valor, por ejemplo RFC, cédula o sitio web.
+      </p>
+      {fields.map((field, index) => (
+        <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-2">
+          <Input
+            aria-label={`Nombre del dato ${index + 1}`}
+            maxLength={HEADER_EXTRA_LABEL_MAX}
+            placeholder="Nombre (RFC, cédula…)"
+            readOnly={readOnly}
+            value={field.label}
+            onChange={(event) => update(index, { label: event.target.value })}
+          />
+          <Input
+            aria-label={`Valor del dato ${index + 1}`}
+            maxLength={HEADER_EXTRA_VALUE_MAX}
+            placeholder="Valor"
+            readOnly={readOnly}
+            value={field.value}
+            onChange={(event) => update(index, { value: event.target.value })}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Quitar el dato ${index + 1}`}
+            disabled={readOnly}
+            onClick={() => onChange(fields.filter((_, position) => position !== index))}
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      ))}
+      {!readOnly && fields.length < MAX_HEADER_EXTRA_FIELDS ? (
+        <Button type="button" variant="outline" size="sm" onClick={() => onChange([...fields, { label: "", value: "" }])}>
+          <Plus data-icon="inline-start" />
+          Dato del encabezado
+        </Button>
+      ) : null}
     </div>
   );
 }
