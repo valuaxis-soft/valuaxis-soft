@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { consumeCreditForValuation } from "@/features/billing/credits.service";
 import { resolveSignatures, signatureListError } from "@/features/valuations/services/valuation-signatures";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import type { AuthUser } from "@/features/auth/model";
@@ -55,6 +56,15 @@ export async function concludeValuation(input: {
       ? signatureListError(resolveSignatures(caratula.JFirmas, { name: caratula.SNombreValuador, registration: caratula.SRegistroValuador }))
       : null;
     if (signaturesError) throw new ValuationWorkflowError(`Para concluir, completa las firmas en la carátula. ${signaturesError}`, 409);
+
+    // Pay per appraisal: the first conclusion of this valuation consumes one credit (see docs/COBRO.md).
+    const credit = await consumeCreditForValuation(tx, {
+      organizationId: input.organizationId,
+      valuationId: avaluo.IdAvaluo,
+      folio: avaluo.SFolio,
+      userId: input.user.id,
+    });
+    if (credit.action === "blocked") throw new ValuationWorkflowError(credit.message, 409, { link: credit.link });
 
     const contentHash = createHash("sha256")
       .update(JSON.stringify(avaluo.versionTrabajo.seccionesDocumentos))

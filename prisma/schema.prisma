@@ -246,6 +246,8 @@ model Organizacion {
   JFirmas               Json?     @map("JFirmas") @db.JsonB
   SPrefijoFolio         String    @default("VLO") @map("SPrefijoFolio") @db.VarChar(10)
   JCatalogoFactores     Json?     @map("JCatalogoFactores") @db.JsonB
+  /// Pay per appraisal enforced: concluding with no credit balance is blocked (migration 040). Off by default.
+  BCobroPorAvaluo       Boolean   @default(false) @map("BCobroPorAvaluo")
   BActivo               Boolean   @default(true) @map("BActivo")
   DFechaCreacion        DateTime  @default(now()) @map("DFechaCreacion")
   DFechaModificacion    DateTime  @updatedAt @map("DFechaModificacion")
@@ -272,6 +274,7 @@ model Organizacion {
   concesionesFuncionalidades ConcesionFuncionalidad[]
   invitaciones               InvitacionOrganizacion[]
   clientesPago               ClientePago[]
+  movimientosCreditos        MovimientoCreditos[]
 
   @@index([IdEstadoOrganizacion])
   @@index([IdUsuarioPropietario])
@@ -361,6 +364,7 @@ model Usuario {
   eventosImportaciones         EventoImportacion[]
   invitacionesEnviadas         InvitacionOrganizacion[]      @relation("InvitacionInvitador")
   invitacionesAceptadas        InvitacionOrganizacion[]      @relation("InvitacionAceptante")
+  movimientosCreditos          MovimientoCreditos[]
 
   @@index([IdEstadoUsuario])
   @@index([BActivo])
@@ -567,6 +571,7 @@ model Avaluo {
   exportacionesAvaluos        ExportacionAvaluo[]
   trabajos                    Trabajo[]
   importaciones               Importacion[]
+  movimientosCreditos         MovimientoCreditos[]
 
   @@index([IdOrganizacion])
   @@index([IdUsuarioCreador])
@@ -3701,4 +3706,58 @@ model EventoWebhookPago {
 
   @@unique([IdProveedorPago, SIdentificadorEvento], map: "devpware_eventos_webhooks_pagos_evento_key")
   @@map("devpware_eventos_webhooks_pagos")
+}
+
+// Pay per appraisal (migration 040): prepaid credit packages and each
+// organization's credit ledger. One credit is one concluded valuation.
+model PaqueteCreditos {
+  IdPaqueteCreditos     Int      @id @default(autoincrement()) @map("IdPaqueteCreditos")
+  UIdentificadorPublico String   @unique(map: "devpware_paquetes_creditos_publico_key") @default(dbgenerated("gen_random_uuid()")) @map("UIdentificadorPublico") @db.Uuid
+  SClave                String   @unique(map: "devpware_paquetes_creditos_clave_key") @map("SClave") @db.VarChar(120)
+  SNombre               String   @map("SNombre") @db.VarChar(180)
+  SDescripcion          String?  @map("SDescripcion") @db.VarChar(1000)
+  ICreditos             Int      @map("ICreditos")
+  SMoneda               String   @default("MXN") @map("SMoneda") @db.VarChar(3)
+  /// Price of the whole package before tax.
+  NImporte              Decimal  @map("NImporte") @db.Decimal(24, 2)
+  NImpuestoPorcentaje   Decimal  @default(16) @map("NImpuestoPorcentaje") @db.Decimal(8, 4)
+  /// The Stripe one-time price, set by the catalog sync.
+  SIdentificadorExterno String?  @map("SIdentificadorExterno") @db.VarChar(255)
+  BActivo               Boolean  @default(true) @map("BActivo")
+  BEsPublico            Boolean  @default(true) @map("BEsPublico")
+  IOrden                Int      @default(0) @map("IOrden")
+  DFechaCreacion        DateTime @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+  DFechaModificacion    DateTime @default(now()) @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
+
+  movimientos MovimientoCreditos[]
+
+  @@index([BActivo, BEsPublico], map: "devpware_paquetes_creditos_activo_idx")
+  @@map("devpware_paquetes_creditos")
+}
+
+/// Append-only: the balance is the sum of ICreditos. COMPRA > 0, CONSUMO < 0, AJUSTE either sign.
+model MovimientoCreditos {
+  IdMovimientoCreditos  BigInt   @id @default(autoincrement()) @map("IdMovimientoCreditos")
+  UIdentificadorPublico String   @unique(map: "devpware_movimientos_creditos_publico_key") @default(dbgenerated("gen_random_uuid()")) @map("UIdentificadorPublico") @db.Uuid
+  IdOrganizacion        Int      @map("IdOrganizacion")
+  STipo                 String   @map("STipo") @db.VarChar(40)
+  ICreditos             Int      @map("ICreditos")
+  IdPaqueteCreditos     Int?     @map("IdPaqueteCreditos")
+  IdAvaluo              Int?     @map("IdAvaluo")
+  IdUsuario             Int?     @map("IdUsuario")
+  SProveedorPago        String?  @map("SProveedorPago") @db.VarChar(80)
+  /// The payment this purchase came from (a Checkout Session id); unique per provider, so it is credited once.
+  SReferenciaExterna    String?  @map("SReferenciaExterna") @db.VarChar(255)
+  SDescripcion          String?  @map("SDescripcion") @db.VarChar(500)
+  JMetadatos            Json?    @map("JMetadatos") @db.JsonB
+  DFechaCreacion        DateTime @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+
+  organizacion Organizacion     @relation(fields: [IdOrganizacion], references: [IdOrganizacion], onDelete: Restrict, onUpdate: Cascade)
+  paquete      PaqueteCreditos? @relation(fields: [IdPaqueteCreditos], references: [IdPaqueteCreditos], onDelete: Restrict, onUpdate: Cascade)
+  avaluo       Avaluo?          @relation(fields: [IdAvaluo], references: [IdAvaluo], onDelete: Restrict, onUpdate: Cascade)
+  usuario      Usuario?         @relation(fields: [IdUsuario], references: [IdUsuario], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([IdOrganizacion, DFechaCreacion(sort: Desc)], map: "devpware_movimientos_creditos_org_fecha_idx")
+  @@index([IdAvaluo], map: "devpware_movimientos_creditos_avaluo_idx")
+  @@map("devpware_movimientos_creditos")
 }

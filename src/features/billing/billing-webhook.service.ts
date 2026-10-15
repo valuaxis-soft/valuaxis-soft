@@ -14,6 +14,7 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { env } from "@/lib/env";
 import { WebhookSignatureError, type BillingGateway } from "./billing-gateway";
 import { decideEvent } from "./billing-rules";
+import { reconcilePackageCheckout } from "./credit-packages.service";
 import { findBillingProvider, reconcileSubscription } from "./subscription-sync.service";
 
 const MAX_BODY_BYTES = 1_000_000;
@@ -52,7 +53,12 @@ export async function handleStripeWebhook(
           STipoEvento: event.type,
           SHashPayload: createHash("sha256").update(input.rawBody).digest("hex"),
           // Ids only: no customer data is copied out of Stripe.
-          JPayloadSanitizado: { object: event.objectId, subscription: decision.subscriptionId, livemode: event.livemode },
+          JPayloadSanitizado: {
+            object: event.objectId,
+            subscription: decision.action === "reconcile" ? decision.subscriptionId : null,
+            checkoutSession: decision.action === "reconcile-purchase" ? decision.checkoutSessionId : null,
+            livemode: event.livemode,
+          },
           BVerificado: true,
         },
       });
@@ -66,12 +72,17 @@ export async function handleStripeWebhook(
 
   const processed = { IIntentosProcesamiento: { increment: 1 } };
   try {
-    const result = await reconcileSubscription(gateway, decision.subscriptionId);
+    // A subscription event reconciles the subscription; a one-time checkout credits the package bought.
+    const result =
+      decision.action === "reconcile"
+        ? await reconcileSubscription(gateway, decision.subscriptionId)
+        : await reconcilePackageCheckout(gateway, decision.checkoutSessionId);
     await prisma.eventoWebhookPago.update({
       where: { IdEventoWebhookPago: record.IdEventoWebhookPago },
       data: { ...processed, BProcesado: true, DFechaProcesamiento: new Date(), SMensajeError: result.applied ? null : result.reason },
     });
-    return { status: 200, body: { received: true, ...(result.applied ? { state: result.state } : { ignored: result.reason }) } };
+    const outcome = !result.applied ? { ignored: result.reason } : "state" in result ? { state: result.state } : { credits: result.credits, credited: result.credited };
+    return { status: 200, body: { received: true, ...outcome } };
   } catch (error) {
     console.error(`[STRIPE_WEBHOOK] ${event.type} ${event.id} failed`, error);
     await prisma.eventoWebhookPago.update({

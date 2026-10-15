@@ -7,7 +7,8 @@
  */
 import { ensurePortalConfiguration, syncBillingCatalog } from "../src/features/billing/billing-catalog.service";
 import { getBillingGateway } from "../src/features/billing/billing-gateway-provider";
-import { BILLING_PAGE_PATH } from "../src/features/billing/billing.service";
+import { BILLING_PAGE_PATH } from "../src/features/billing/billing-rules";
+import { syncCreditPackages } from "../src/features/billing/credit-packages.service";
 import { prisma } from "../src/infrastructure/database/prisma-client";
 import { buildPublicAppUrl } from "../src/lib/public-url";
 
@@ -15,8 +16,12 @@ async function main() {
   const gateway = await getBillingGateway();
   if (!gateway) throw new Error("Falta STRIPE_SECRET_KEY: no hay nada que sincronizar.");
 
+  const packages = await syncCreditPackages(gateway);
+  if (packages.length === 0) console.log("No hay paquetes de avalúos publicados en MXN.");
+  for (const item of packages) console.log(`Paquete ${item.package}: producto ${item.productId}, precio ${item.priceId} (${item.action})`);
+
   const report = await syncBillingCatalog(gateway);
-  if (report.products.length === 0) console.log("No hay planes de pago publicados con precio vigente en MXN.");
+  if (report.products.length === 0) console.log("No hay planes de suscripción publicados con precio vigente en MXN.");
   for (const product of report.products) console.log(`Plan ${product.plan}: producto ${product.productId} (${product.action})`);
   for (const price of report.prices) console.log(`Precio ${price.price}: ${price.priceId} (${price.action})`);
 

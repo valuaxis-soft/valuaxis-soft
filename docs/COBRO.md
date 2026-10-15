@@ -1,6 +1,6 @@
-# Cobro de suscripciones (Stripe)
+# Cobro (Stripe)
 
-Cada organización paga su plan con Stripe. El pago ocurre en páginas de Stripe (Checkout y portal de clientes): Valuaxis nunca ve ni guarda tarjetas.
+El cobro es **por avalúo**: cada organización compra paquetes de avalúos prepagados y cada avalúo descuenta uno al concluirse (decisión del cliente, 9 oct 2026). Además existe la venta de **suscripciones** mensuales, hoy sin uso, pensada para la base de datos de comparables más adelante. Todo el pago ocurre en páginas de Stripe (Checkout y portal de clientes): Valuaxis nunca ve ni guarda tarjetas.
 
 El cobro es **opcional**. Sin `STRIPE_SECRET_KEY` la app funciona igual que antes y la página "Plan y facturación" avisa que los pagos no están habilitados.
 
@@ -13,7 +13,24 @@ La cuenta en vivo del cliente también la usa su tienda en línea (WooCommerce).
 - **Nunca lista la cuenta.** Solo lee objetos por id (los ids de producto y las `lookup_key` de precio se derivan de nuestros propios ids) y se niega a modificar un objeto sin la etiqueta.
 - Una suscripción solo se aplica a una organización si la etiqueta, la organización y el cliente de Stripe guardado para esa organización coinciden.
 
-## Cómo funciona
+## Cobro por avalúo (paquetes de créditos)
+
+1. **Paquetes.** Se venden los paquetes de `devpware_paquetes_creditos` activos y públicos: nombre, número de avalúos (`ICreditos`), precio en MXN antes de IVA (`NImporte`) e IVA (`NImpuestoPorcentaje`). Ninguna migración inserta paquetes; los reales los captura el cliente (ver "Publicar o cambiar un paquete").
+2. **Comprar.** Un administrador pulsa "Comprar" en `/organizacion/facturacion`. El servidor crea (o reutiliza) el cliente de Stripe de la organización y una sesión de Checkout en modo **pago único** (`POST /api/organizacion/facturacion/creditos/checkout`), con factura de Stripe para que el recibo aparezca en el portal, metadatos `app = valuaxis`, `organizacion` y `paquete`, y el sufijo `VALUAXIS` en el estado de cuenta (en pagos únicos Stripe sí acepta sufijo; se agrega al nombre de la cuenta).
+3. **Abono, por dos caminos.** Al volver, la página consulta la sesión en Stripe y abona los créditos; el webhook (`checkout.session.completed`, `checkout.session.async_payment_succeeded`) hace lo mismo. El abono es **una sola vez por sesión de pago**: la fila de `devpware_movimientos_creditos` lleva la referencia de la sesión y un índice único la protege, así que el orden y las repeticiones no importan.
+4. **Consumo.** Al **concluir un avalúo por primera vez** se registra un movimiento `CONSUMO` de −1 ligado al avalúo (índice único por avalúo: reabrir y volver a concluir no cuesta). El saldo es la suma de los movimientos (`COMPRA`, `CONSUMO`, `AJUSTE`).
+5. **Bloqueo, apagado por omisión.** `devpware_organizaciones.BCobroPorAvaluo` decide qué pasa al concluir sin saldo: `false` (valor inicial de todas las organizaciones) registra el consumo y el saldo queda negativo, mostrado como pendiente de pago; `true` impide concluir con el mensaje "Tu organización no tiene avalúos disponibles…" y un enlace a comprar. Se enciende por organización con `pnpm billing:credits enforce <slug|uuid> on`.
+6. **Ajustes manuales.** Hasta que existan reglas de créditos y referidos, `pnpm billing:credits adjust <slug|uuid> <créditos> "<motivo>"` abona o retira créditos; `pnpm billing:credits balance <slug|uuid>` muestra saldo y movimientos.
+
+Para probar en local: `pnpm billing:example-packages` inserta los cuatro paquetes tentativos (1 × $150, 10 × $140, 30 × $125, 100 × $110, antes de IVA) marcados como de prueba; solo corre contra una base local.
+
+### Publicar o cambiar un paquete
+
+1. Insertar o editar la fila en `devpware_paquetes_creditos` (`SClave` única, `SNombre`, `ICreditos`, `NImporte` antes de IVA, `NImpuestoPorcentaje`, `BActivo`, `BEsPublico`, `IOrden`).
+2. `pnpm stripe:sync` crea el producto y el precio en Stripe (etiquetados `app = valuaxis`) y guarda el id del precio en `SIdentificadorExterno`. Un precio de Stripe nunca se edita: si cambia el importe, se crea uno nuevo y el anterior se archiva. Antes de cada compra se sincroniza el paquete elegido.
+3. Para retirar un paquete: `BEsPublico = false` o `BActivo = false`.
+
+## Suscripciones (para la base de datos, más adelante)
 
 1. **Planes.** Se venden los planes de la base (`devpware_planes`) activos, públicos y no gratuitos que tengan un precio (`devpware_precios_planes`) activo, recurrente, en MXN y vigente hoy. Nada está escrito en el código.
 2. **Sincronización.** `pnpm stripe:sync` crea en Stripe un producto por plan y un precio por `PrecioPlan`, y guarda el id del precio en `SIdentificadorExterno`. Es idempotente. Un precio de Stripe nunca se edita: si cambia el importe, el impuesto o el periodo, se crea uno nuevo y el anterior se archiva (quien ya lo paga lo conserva). Antes de cada Checkout se sincroniza el plan elegido.
@@ -62,7 +79,8 @@ En Stripe → Desarrolladores → Claves de API → "Crear clave restringida". T
 | Productos (Products) | Escritura | Crear y actualizar el producto de cada plan |
 | Precios (Prices) | Escritura | Crear precios y archivar los reemplazados |
 | Clientes (Customers) | Escritura | Crear el cliente de cada organización |
-| Sesiones de Checkout | Escritura | Crear la sesión y leerla al volver |
+| Sesiones de Checkout | Escritura | Crear la sesión (suscripción o pago único) y leerla al volver |
+| Facturas (Invoices) | Escritura | Checkout crea una factura por cada compra de paquete (`invoice_creation`); si la clave restringida la rechaza, Stripe lo dice al crear la sesión |
 | Suscripciones (Subscriptions) | Lectura | Conciliar el estado |
 | Portal de clientes (Customer portal) | Escritura | Abrir el portal y mantener su configuración |
 
@@ -71,7 +89,7 @@ No necesita permisos de cargos, reembolsos, facturas, saldo, pagos a banco, even
 ## Webhook
 
 - **URL:** `https://<dominio>/api/stripe/webhook` (un endpoint nuevo, aparte del de la tienda).
-- **Eventos:** `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`, `invoice.paid`, `invoice.payment_failed`.
+- **Eventos:** `checkout.session.completed` y `checkout.session.async_payment_succeeded` (compras de paquetes y altas de suscripción), `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`, `invoice.paid`, `invoice.payment_failed`.
 - Copia su secreto de firma a `STRIPE_WEBHOOK_SECRET`.
 
 La ruta no pide sesión y es la única exenta de la verificación de origen del proxy (solo `POST` a esa ruta exacta). La autentica la firma sobre el cuerpo crudo, con 5 minutos de tolerancia. Cada evento de Valuaxis se registra por id en `devpware_eventos_webhooks_pagos` y se procesa una sola vez; si falla responde 500 y Stripe lo reintenta. Los tipos desconocidos y los objetos sin etiqueta responden 200.
@@ -97,13 +115,14 @@ Para probar en local hay dos planes de ejemplo: `pnpm billing:example-plans` (so
 
 ## Lista para salir a producción
 
-1. Definir planes y precios reales e insertarlos en la base de producción.
+1. Definir los paquetes y precios reales e insertarlos en la base de producción (los planes de suscripción solo cuando exista la base de datos de comparables).
 2. Crear la clave restringida en vivo con los permisos de arriba → `STRIPE_SECRET_KEY`.
 3. Crear el endpoint del webhook con sus eventos → `STRIPE_WEBHOOK_SECRET`.
 4. `pnpm stripe:sync` en producción → copiar `STRIPE_PORTAL_CONFIGURATION` y reiniciar la app.
 5. Revisar en el panel: portal activo, zona horaria, reintentos, correos y marca.
-6. Con una tarjeta real, contratar el plan más barato desde una organización de prueba: confirmar el plan activo en la app, el evento entregado (200) en el panel del webhook y la descripción `VALUAXIS` en el cargo. Cancelar desde el portal y reembolsar el cargo en el panel.
-7. Confirmar que una compra de la tienda sigue llegando a su propio webhook y que el de Valuaxis la contesta con 200 sin registrarla.
+6. Con una tarjeta real, comprar el paquete más barato desde una organización de prueba: confirmar el abono en "Avalúos disponibles", el evento entregado (200) en el panel del webhook y `VALUAXIS` en el cargo; concluir un avalúo y ver el consumo. Reembolsar el cargo en el panel (el reembolso no retira créditos: usar `pnpm billing:credits adjust`).
+7. Encender el cobro organización por organización con `pnpm billing:credits enforce <slug> on` cuando el cliente lo decida; hasta entonces nadie queda bloqueado.
+8. Confirmar que una compra de la tienda sigue llegando a su propio webhook y que el de Valuaxis la contesta con 200 sin registrarla.
 
 ## Código
 
@@ -113,6 +132,10 @@ Para probar en local hay dos planes de ejemplo: `pnpm billing:example-plans` (so
 | Interfaz del proveedor y su implementación (único lugar que importa el SDK) | `src/features/billing/billing-gateway.ts`, `src/infrastructure/payments/stripe-gateway.ts` |
 | Catálogo y sincronización | `src/features/billing/billing-catalog.service.ts`, `scripts/stripe-sync.ts` |
 | Checkout, portal y resumen | `src/features/billing/billing.service.ts` |
+| Reglas puras de créditos (signos, consumo, bloqueo) | `src/features/billing/credit-rules.ts` |
+| Libro de créditos (saldo, movimientos, consumo al concluir, ajustes, bandera) | `src/features/billing/credits.service.ts`, `scripts/billing-credits.ts` |
+| Paquetes: sincronización, compra y abono | `src/features/billing/credit-packages.service.ts`, `scripts/billing-example-packages.ts` |
+| Consumo al concluir | `src/features/valuations/services/valuation-workflow/lifecycle.ts` |
 | Conciliación | `src/features/billing/subscription-sync.service.ts` |
 | Webhook | `src/features/billing/billing-webhook.service.ts`, `src/app/api/stripe/webhook/route.ts` |
-| Pruebas | `tests/billing-*.test.ts`, `tests/integration/billing.integration.ts`, `tests/support/fake-billing-gateway.ts` |
+| Pruebas | `tests/billing-*.test.ts`, `tests/integration/billing.integration.ts`, `tests/integration/billing-credits.integration.ts`, `tests/support/fake-billing-gateway.ts` |

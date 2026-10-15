@@ -12,8 +12,11 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { env } from "@/lib/env";
 import { buildPublicAppUrl } from "@/lib/public-url";
 import { findSellablePlans, syncBillingCatalog } from "./billing-catalog.service";
+import { ensureCustomer } from "./billing-customer.service";
+import { BillingError, requireGateway } from "./billing-errors";
 import type { BillingGateway } from "./billing-gateway";
 import {
+  BILLING_PAGE_PATH,
   BILLING_PROVIDER,
   allowsPaidUse,
   billingPeriodLabel,
@@ -22,20 +25,10 @@ import {
   subscriptionStateLabel,
   valuaxisMetadata,
 } from "./billing-rules";
-import { findBillingCustomer, findBillingProvider, refreshOrganizationSubscription } from "./subscription-sync.service";
-
-export const BILLING_PAGE_PATH = "/organizacion/facturacion";
-
-/** A failure the user can read and act on; anything else is an internal error. */
-export class BillingError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "BillingError";
-  }
-}
+import { findSellablePackages } from "./credit-packages.service";
+import { packagePricing } from "./credit-rules";
+import { getCreditBalance, listCreditMovements, type CreditMovementDto } from "./credits.service";
+import { findBillingCustomer, refreshOrganizationSubscription } from "./subscription-sync.service";
 
 export type BillingPriceDto = {
   id: string;
@@ -58,9 +51,34 @@ export type BillingPlanDto = {
   prices: BillingPriceDto[];
 };
 
+export type CreditPackageDto = {
+  id: string;
+  name: string;
+  description: string | null;
+  credits: number;
+  /** The package before tax, its tax and what is charged, in MXN; perCredit is the price of one credit before tax. */
+  subtotal: number;
+  tax: number;
+  total: number;
+  taxPercent: number;
+  perCredit: number;
+};
+
+export type CreditsOverviewDto = {
+  /** Credits left (one per concluded valuation); negative when concluding went on without balance. */
+  balance: number;
+  /** The organization's BCobroPorAvaluo: concluding without balance is blocked. */
+  enforced: boolean;
+  movements: CreditMovementDto[];
+  packages: CreditPackageDto[];
+};
+
 export type BillingOverviewDto = {
   /** False when Stripe is not configured: the page explains it and offers nothing to buy. */
   enabled: boolean;
+  /** The organization has paid something through Stripe at least once: the portal has receipts to show. */
+  hasCustomer: boolean;
+  credits: CreditsOverviewDto;
   current: {
     planName: string;
     stateKey: string;
@@ -100,13 +118,35 @@ async function trialDaysFor(organizationId: number, plan: { BPermitePrueba: bool
 }
 
 export async function getBillingOverview(organizationId: number, gateway: BillingGateway | null, now = new Date()): Promise<BillingOverviewDto> {
-  const [subscription, plans] = await Promise.all([findCurrentSubscription(organizationId), findSellablePlans({}, now)]);
+  const [subscription, plans, organization, balance, movements, packages, customer] = await Promise.all([
+    findCurrentSubscription(organizationId),
+    findSellablePlans({}, now),
+    prisma.organizacion.findUniqueOrThrow({ where: { IdOrganizacion: organizationId }, select: { BCobroPorAvaluo: true } }),
+    getCreditBalance(organizationId),
+    listCreditMovements(organizationId),
+    findSellablePackages(),
+    findBillingCustomer(organizationId),
+  ]);
   const paid = isLiveStripeSubscription(subscription);
   const cancelsAt = (subscription?.JMetadatos as { stripe?: { cancelAt?: string | null } } | null)?.stripe?.cancelAt ?? null;
   const currentPrice = subscription?.precioPlan;
 
   return {
     enabled: gateway !== null,
+    hasCustomer: customer !== null,
+    credits: {
+      balance,
+      enforced: organization.BCobroPorAvaluo,
+      movements,
+      packages: packages.map((pkg) => ({
+        id: pkg.UIdentificadorPublico,
+        name: pkg.SNombre,
+        description: pkg.SDescripcion,
+        credits: pkg.ICreditos,
+        ...packagePricing(pkg),
+        taxPercent: pkg.NImpuestoPorcentaje.toNumber(),
+      })),
+    },
     current: subscription && {
       planName: subscription.plan.SNombre,
       stateKey: subscription.estadoSuscripcion.SClave,
@@ -145,45 +185,6 @@ export async function getBillingOverview(organizationId: number, gateway: Billin
       })),
     ),
   };
-}
-
-function requireGateway(gateway: BillingGateway | null): BillingGateway {
-  if (!gateway) throw new BillingError(503, "Los pagos no están habilitados en este momento.");
-  return gateway;
-}
-
-/**
- * The organization's Stripe customer, created on its first checkout. A stored
- * id that Stripe no longer has is replaced; one that is not tagged as this
- * organization's is never used.
- */
-async function ensureCustomer(gateway: BillingGateway, user: AuthUser) {
-  const organization = await prisma.organizacion.findUniqueOrThrow({ where: { IdOrganizacion: user.organizationId } });
-  const stored = await findBillingCustomer(organization.IdOrganizacion);
-  if (stored) {
-    const customer = await gateway.retrieveCustomer(stored.SIdentificadorExterno);
-    if (customer) {
-      if (!isValuaxisObject(customer.metadata) || customer.metadata.organizacion !== organization.UIdentificadorPublico) {
-        throw new BillingError(409, "El cliente de pago de la organización no es válido. Contacta a soporte.");
-      }
-      return { organization, customerId: customer.id };
-    }
-  }
-
-  const name = organization.SRazonSocial?.trim() || organization.SNombre;
-  const email = organization.SCorreo?.trim() || user.email;
-  const customer = await gateway.createCustomer({
-    name,
-    email,
-    metadata: valuaxisMetadata({ organizacion: organization.UIdentificadorPublico }),
-    // Two simultaneous first checkouts get the same customer instead of two.
-    idempotencyKey: `valuaxis-customer-${organization.UIdentificadorPublico}-${stored?.SIdentificadorExterno ?? "new"}`,
-  });
-  const provider = await findBillingProvider();
-  const key = { IdOrganizacion: organization.IdOrganizacion, IdProveedorPago: provider.IdProveedorPago };
-  const data = { SIdentificadorExterno: customer.id, SNombreFacturacion: name, SCorreoFacturacion: email, BActivo: true };
-  await prisma.clientePago.upsert({ where: { IdOrganizacion_IdProveedorPago: key }, create: { ...key, ...data }, update: data });
-  return { organization, customerId: customer.id };
 }
 
 async function portalUrl(gateway: BillingGateway, customerId: string) {
@@ -249,7 +250,7 @@ export async function startCheckout(
 /** "Administrar pago": Stripe's customer portal for the organization's own customer. */
 export async function openPortal(user: AuthUser, gatewayOrNull: BillingGateway | null): Promise<{ url: string }> {
   const gateway = requireGateway(gatewayOrNull);
-  const noCustomer = () => new BillingError(409, "Tu organización todavía no tiene una suscripción de pago que administrar.");
+  const noCustomer = () => new BillingError(409, "Tu organización todavía no ha realizado ningún pago que administrar.");
   const [stored, organization] = await Promise.all([
     findBillingCustomer(user.organizationId),
     prisma.organizacion.findUniqueOrThrow({ where: { IdOrganizacion: user.organizationId }, select: { UIdentificadorPublico: true } }),

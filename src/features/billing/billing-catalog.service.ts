@@ -46,7 +46,7 @@ export type CatalogSyncReport = {
 };
 
 /** Stripe objects that hold our id or key but not our tag belong to someone else: stop instead of touching them. */
-class ForeignStripeObjectError extends Error {
+export class ForeignStripeObjectError extends Error {
   constructor(kind: string, id: string) {
     super(`Stripe ${kind} ${id} is not tagged app=valuaxis; refusing to modify it.`);
     this.name = "ForeignStripeObjectError";

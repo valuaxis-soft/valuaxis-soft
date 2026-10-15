@@ -22,6 +22,8 @@ const shortId = () => randomUUID().replace(/-/g, "").slice(0, 16);
 
 type PendingSubscription = { priceId: string; trialDays: number | null; metadata: BillingMetadata };
 
+const emptyPayment = { paymentStatus: null, paymentIntentId: null, amountTotal: null };
+
 export function createFakeBillingGateway() {
   const products = new Map<string, GatewayProduct>();
   const prices = new Map<string, GatewayPrice>();
@@ -96,11 +98,32 @@ export function createFakeBillingGateway() {
       const session = {
         id,
         url: `https://checkout.stripe.test/${id}`,
+        mode: "subscription" as const,
         customerId: input.customerId,
         subscriptionId: null,
+        ...emptyPayment,
         clientReferenceId: input.clientReferenceId,
         metadata: input.metadata,
         pending: { priceId: input.priceId, trialDays: input.trialDays, metadata: input.metadata },
+      };
+      sessions.set(id, session);
+      writes.push(`checkout.create ${id}`);
+      return session;
+    },
+    async createPaymentCheckoutSession(input) {
+      const id = `cs_test_${shortId()}`;
+      const session = {
+        id,
+        url: `https://checkout.stripe.test/${id}`,
+        mode: "payment" as const,
+        customerId: input.customerId,
+        subscriptionId: null,
+        paymentStatus: "unpaid",
+        paymentIntentId: null,
+        amountTotal: prices.get(input.priceId)?.unitAmount ?? null,
+        clientReferenceId: input.clientReferenceId,
+        metadata: input.metadata,
+        pending: { priceId: input.priceId, trialDays: null, metadata: input.metadata },
       };
       sessions.set(id, session);
       writes.push(`checkout.create ${id}`);
@@ -174,6 +197,13 @@ export function createFakeBillingGateway() {
       session.subscriptionId = subscription.id;
       return subscription;
     },
+    /** The customer pays a one-time checkout on Stripe's page: the session becomes paid. */
+    payPurchase(sessionId: string) {
+      const session = sessions.get(sessionId)!;
+      session.paymentStatus = "paid";
+      session.paymentIntentId = `pi_${shortId()}`;
+      return session;
+    },
     /** A subscription created outside the checkout (or by the shop, when untagged). */
     addSubscription,
     /** Stripe changes the subscription: a failed charge, a cancellation in the portal, the end. */
@@ -191,6 +221,19 @@ export function createFakeBillingGateway() {
         objectId: subscriptionId,
         metadata: options.metadata === undefined ? subscriptions.get(subscriptionId)?.metadata ?? null : options.metadata,
         subscriptionId,
+      };
+      return { event, rawBody: JSON.stringify(event), signature: fakeSignature(secret) };
+    },
+    /** A signed checkout.session.completed about a one-time purchase, as Stripe sends it for a payment-mode session. */
+    purchaseWebhookRequest(sessionId: string, secret: string, options: { metadata?: BillingMetadata | null; id?: string } = {}) {
+      const event: BillingEvent = {
+        id: options.id ?? `evt_${shortId()}`,
+        type: "checkout.session.completed",
+        livemode: false,
+        objectId: sessionId,
+        metadata: options.metadata === undefined ? sessions.get(sessionId)?.metadata ?? null : options.metadata,
+        subscriptionId: null,
+        checkoutSessionId: sessionId,
       };
       return { event, rawBody: JSON.stringify(event), signature: fakeSignature(secret) };
     },

@@ -6,7 +6,7 @@ import { ValuationWorkflowError } from "./valuation-workflow.service";
 export function valuationErrorResponse(context: string, error: unknown, fallbackMessage: string) {
   if (error instanceof ValuationWorkflowError) {
     if (error.status === 500) console.error(`[${context}]`, error);
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json({ error: error.message, ...(error.link ? { link: error.link } : {}) }, { status: error.status });
   }
   return internalError(context, error, fallbackMessage);
 }

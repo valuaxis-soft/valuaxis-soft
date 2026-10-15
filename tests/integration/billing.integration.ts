@@ -11,7 +11,8 @@ import type { AuthUser } from "../../src/features/auth/model";
 import { syncBillingCatalog } from "../../src/features/billing/billing-catalog.service";
 import { BILLING_GRACE_DAYS, stripeProductId, valuaxisMetadata } from "../../src/features/billing/billing-rules";
 import { handleStripeWebhook } from "../../src/features/billing/billing-webhook.service";
-import { BillingError, getBillingOverview, openPortal, startCheckout } from "../../src/features/billing/billing.service";
+import { BillingError } from "../../src/features/billing/billing-errors";
+import { getBillingOverview, openPortal, startCheckout } from "../../src/features/billing/billing.service";
 import {
   applySubscription,
   findBillingCustomer,

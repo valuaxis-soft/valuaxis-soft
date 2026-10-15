@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { api, SessionExpiredError } from "@/lib/api-client";
+import { api, ApiError, SessionExpiredError } from "@/lib/api-client";
 import { REOPEN_ACCEPTANCE_TEXT } from "@/features/valuations/components/workspace/valuation-lifecycle-dialogs";
 
 /** Conclude and reopen: dialog state and the requests that change the valuation's lifecycle. */
@@ -29,7 +29,11 @@ export function useValuationLifecycle({
       window.location.reload();
     } catch (err) {
       if (err instanceof SessionExpiredError) onSessionExpired();
-      else toast.error(err instanceof Error ? err.message : "No se pudo completar la acción.");
+      else if (err instanceof ApiError && err.link) {
+        // The server names where to fix it (e.g. buy credits): offer the way there.
+        const link = err.link;
+        toast.error(err.message, { action: { label: "Ir a Plan y facturación", onClick: () => window.location.assign(link) } });
+      } else toast.error(err instanceof Error ? err.message : "No se pudo completar la acción.");
       setLifecyclePending(false);
     }
   };

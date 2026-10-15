@@ -82,6 +82,7 @@ describe("without a session", () => {
     ["GET", "/api/organizacion/facturacion"],
     ["POST", "/api/organizacion/facturacion/checkout"],
     ["POST", "/api/organizacion/facturacion/portal"],
+    ["POST", "/api/organizacion/facturacion/creditos/checkout"],
   ];
   for (const [method, template] of privateApis) {
     test(`${method} ${template} answers 401`, async () => {

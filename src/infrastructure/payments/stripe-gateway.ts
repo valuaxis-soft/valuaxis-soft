@@ -92,8 +92,12 @@ function toCheckoutSession(session: Stripe.Checkout.Session): GatewayCheckoutSes
   return {
     id: session.id,
     url: session.url,
+    mode: session.mode === "payment" ? "payment" : "subscription",
     customerId: id(session.customer),
     subscriptionId: id(session.subscription),
+    paymentStatus: session.payment_status ?? null,
+    paymentIntentId: id(session.payment_intent),
+    amountTotal: session.amount_total ?? null,
     clientReferenceId: session.client_reference_id,
     metadata: session.metadata ?? {},
   };
@@ -139,7 +143,7 @@ export function toBillingEvent(event: Stripe.Event): BillingEvent {
     case "checkout.session.completed":
     case "checkout.session.async_payment_succeeded": {
       const session = event.data.object;
-      return { ...base, objectId: session.id, metadata: session.metadata, subscriptionId: id(session.subscription) };
+      return { ...base, objectId: session.id, metadata: session.metadata, subscriptionId: id(session.subscription), checkoutSessionId: session.id };
     }
     case "customer.subscription.created":
     case "customer.subscription.updated":
@@ -212,7 +216,7 @@ export function createStripeGateway(secretKey: string): BillingGateway {
           product: input.productId,
           currency: input.currency.toLowerCase(),
           unit_amount: input.unitAmount,
-          recurring: { interval: input.interval, interval_count: input.intervalCount },
+          ...(input.interval ? { recurring: { interval: input.interval, interval_count: input.intervalCount ?? 1 } } : {}),
           // The amount already includes the tax (see priceBreakdown).
           tax_behavior: "inclusive",
           lookup_key: input.lookupKey,
@@ -253,6 +257,28 @@ export function createStripeGateway(secretKey: string): BillingGateway {
           subscription_data: {
             metadata: input.metadata,
             ...(input.trialDays ? { trial_period_days: input.trialDays } : {}),
+          },
+        }),
+      );
+    },
+    async createPaymentCheckoutSession(input) {
+      return toCheckoutSession(
+        await stripe.checkout.sessions.create({
+          mode: "payment",
+          customer: input.customerId,
+          client_reference_id: input.clientReferenceId,
+          line_items: [{ price: input.priceId, quantity: 1 }],
+          locale: "es-419",
+          success_url: input.successUrl,
+          cancel_url: input.cancelUrl,
+          metadata: input.metadata,
+          // An invoice for the purchase, so the receipt shows in the customer portal's history.
+          invoice_creation: { enabled: true, invoice_data: { metadata: input.metadata } },
+          payment_intent_data: {
+            metadata: input.metadata,
+            description: input.description,
+            // One-time charges cannot replace the account's descriptor (the shop's): they append to it.
+            statement_descriptor_suffix: "VALUAXIS",
           },
         }),
       );

@@ -6,6 +6,8 @@
 import { Prisma } from "@prisma/client";
 
 export const BILLING_PROVIDER = "STRIPE";
+/** Plan y facturación: where Checkout and the portal send the browser back to. */
+export const BILLING_PAGE_PATH = "/organizacion/facturacion";
 export const BILLING_CURRENCY = "MXN";
 export const BILLING_APP_TAG = "valuaxis";
 /** Shown on the card statement of subscription charges (set on the Stripe Product). */
@@ -59,7 +61,8 @@ export function priceBreakdown(amount: Amount, taxPercent: Amount) {
   };
 }
 
-export type DesiredPrice = { productId: string; currency: string; unitAmount: number; interval: StripeInterval; intervalCount: number };
+/** `interval` null is a one-time price (credit packages). */
+export type DesiredPrice = { productId: string; currency: string; unitAmount: number; interval: StripeInterval | null; intervalCount: number | null };
 export type ExistingPrice = DesiredPrice & { id: string; active: boolean; metadata: BillingMetadata };
 
 /**
@@ -146,18 +149,22 @@ export type BillingEvent = {
   /** The object's own tags; for an invoice, the tags of its subscription. */
   metadata: BillingMetadata | null;
   subscriptionId: string | null;
+  /** Set on checkout.session.* events; a session without a subscription is a one-time purchase (credit package). */
+  checkoutSessionId?: string | null;
 };
 
 export type EventDecision =
   | { action: "ignore"; reason: "UNHANDLED_TYPE" | "NOT_VALUAXIS" | "NO_SUBSCRIPTION" }
-  | { action: "reconcile"; subscriptionId: string };
+  | { action: "reconcile"; subscriptionId: string }
+  | { action: "reconcile-purchase"; checkoutSessionId: string };
 
 /** Decides from the event alone, before anything is stored or asked of Stripe. */
 export function decideEvent(event: BillingEvent): EventDecision {
   if (!(HANDLED_EVENT_TYPES as readonly string[]).includes(event.type)) return { action: "ignore", reason: "UNHANDLED_TYPE" };
   if (!isValuaxisObject(event.metadata)) return { action: "ignore", reason: "NOT_VALUAXIS" };
-  if (!event.subscriptionId) return { action: "ignore", reason: "NO_SUBSCRIPTION" };
-  return { action: "reconcile", subscriptionId: event.subscriptionId };
+  if (event.subscriptionId) return { action: "reconcile", subscriptionId: event.subscriptionId };
+  if (event.checkoutSessionId) return { action: "reconcile-purchase", checkoutSessionId: event.checkoutSessionId };
+  return { action: "ignore", reason: "NO_SUBSCRIPTION" };
 }
 
 // ---- Presentation ----------------------------------------------------------
