@@ -21,7 +21,7 @@ Campos que llena: ubicación (calle, colonia, municipio, estado), superficie (te
 
 ### Redactar borrador (campos descriptivos)
 
-En los conceptos de tipo **Texto largo** aparece **Redactar borrador**. Envía el título del campo y lo capturado en el **mismo bloque o apartado**, tal como se imprime, y devuelve un párrafo sobrio en español de México. El borrador se ve en una vista previa con **Insertar** (agregar al final o reemplazar, si ya había texto) y **Descartar**; insertar solo cambia el campo en pantalla y el avalúo se guarda con "Guardar cambios".
+En los conceptos de tipo **Texto largo** aparece **Redactar borrador**. Envía el título del campo, el título del apartado y **solo el texto escrito en ese campo** (desde el 15 de octubre de 2026, a petición del perito: antes enviaba los demás conceptos del apartado y el borrador los repetía), y devuelve un párrafo sobrio en español de México. Al final de cada apartado, **Redactar resumen del apartado** sí envía todos sus conceptos y tablas, y lo inserta en el último Texto largo o Párrafo del apartado. El borrador se ve en una vista previa con **Insertar** (agregar al final o reemplazar, si ya había texto) y **Descartar**; insertar solo cambia el campo en pantalla y el avalúo se guarda con "Guardar cambios".
 
 Lo que se envía en cada solicitud:
 
@@ -32,7 +32,7 @@ Lo que se envía en cada solicitud:
 Topes de las tablas: hasta **6 tablas** y **400 celdas entre todas** (encabezados incluidos), cada celda de hasta 200 caracteres, y todo junto (datos y tablas) hasta 12,000 caracteres. Una tabla nunca se envía recortada: la que no cabe en lo que queda del tope, o trae una celda demasiado larga, se deja fuera completa y el borrador se redacta con lo demás. El servidor rechaza cualquier solicitud que pase esos topes sin llamar al modelo.
 
 - Antes de mostrarlo, el servidor verifica que **todos los números del borrador estén en lo enviado** (título, datos y celdas de las tablas; una suma, una diferencia o un promedio que nadie capturó se rechaza) y que no traiga calificativos de valor ("oportunidad", "plusvalía", "excelente"…) que el valuador no haya capturado. Si falla, se descarta y se pide una vez más; si vuelve a fallar se muestra un error, nunca un borrador dudoso.
-- Con menos de 2 datos capturados (cada concepto con dato y cada renglón de tabla cuenta como uno) se avisa y **no se llama al modelo**.
+- Sin ningún dato capturado (cada concepto con dato y cada renglón de tabla cuenta como uno) se avisa y **no se llama al modelo**.
 
 #### Textos fijos de la carátula
 

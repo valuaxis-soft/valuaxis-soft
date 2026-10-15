@@ -7,6 +7,17 @@ export type CoverImageFocus = { x: number; y: number };
 
 export const COVER_IMAGE_FOCUS_CENTER: CoverImageFocus = { x: 50, y: 50 };
 
+/** Width over height of the cover box (816px page, 32px sides, 294px tall): wider images pan sideways, taller ones up and down. */
+export const COVER_BOX_RATIO = (816 - 64) / 294;
+
+/** Which sliders move anything for an image of this ratio; both when it is unknown. */
+export function coverImagePannableAxes(imageRatio: number | null): { x: boolean; y: boolean } {
+  if (!imageRatio || !Number.isFinite(imageRatio)) return { x: true, y: true };
+  const wider = imageRatio > COVER_BOX_RATIO + 0.01;
+  const taller = imageRatio < COVER_BOX_RATIO - 0.01;
+  return { x: wider, y: taller };
+}
+
 function clampAxis(value: unknown) {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.min(100, Math.max(0, Math.round(value)))

@@ -258,12 +258,14 @@ test("the tables of the apartado are data too: they travel compact, and their ce
   // A table row counts as a captured datum; an empty table does not.
   assert.equal(hasEnoughFacts([], input.tables), true);
   assert.equal(hasEnoughFacts([{ label: "Uso", value: "Agrícola" }], [{ title: "T", columns: ["A"], rows: [["1"]] }]), true);
-  assert.equal(hasEnoughFacts([{ label: "Uso", value: "Agrícola" }], [{ title: "T", columns: ["A"], rows: [[""]] }]), false);
+  assert.equal(hasEnoughFacts([{ label: "Uso", value: "Agrícola" }], [{ title: "T", columns: ["A"], rows: [[""]] }]), true);
+  assert.equal(hasEnoughFacts([{ label: "Uso", value: " " }], [{ title: "T", columns: ["A"], rows: [[""]] }]), false);
 });
 
 test("too little captured data is not enough to write from", () => {
   assert.equal(hasEnoughFacts(DRAFT_INPUT.facts), true);
-  assert.equal(hasEnoughFacts([{ label: "Uso actual", value: "Casa habitación" }, { label: "Edad", value: "  " }]), false);
+  assert.equal(hasEnoughFacts([{ label: "Uso actual", value: "Casa habitación" }, { label: "Edad", value: "  " }]), true);
+  assert.equal(hasEnoughFacts([{ label: "Edad", value: "  " }]), false);
   assert.equal(hasEnoughFacts([]), false);
 });
 

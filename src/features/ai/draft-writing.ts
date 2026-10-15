@@ -20,7 +20,8 @@ export type DraftInput = {
 };
 
 /** Fewer captured data than this cannot make a paragraph: the model is not called. */
-export const DRAFT_MIN_FACTS = 2;
+/** One datum is enough: a field is drafted from its own text (15 Oct 2026). */
+export const DRAFT_MIN_FACTS = 1;
 export const DRAFT_MAX_FACTS = 60;
 export const DRAFT_FACT_LABEL_MAX = 200;
 export const DRAFT_FACT_VALUE_MAX = 2000;
@@ -32,7 +33,7 @@ export const DRAFT_TABLE_CELL_MAX = 200;
 export const DRAFT_FACTS_MAX_CHARS = 12_000;
 
 export const DRAFT_TOO_LITTLE_DATA =
-  `Hay muy pocos datos capturados en este apartado para redactar un borrador. Captura al menos ${DRAFT_MIN_FACTS} datos y vuelve a intentarlo.`;
+  "Hay muy pocos datos capturados en este apartado para redactar un borrador. Captura al menos un dato y vuelve a intentarlo.";
 
 const oneLine = (value: string) => value.replace(/\s+/g, " ").trim();
 

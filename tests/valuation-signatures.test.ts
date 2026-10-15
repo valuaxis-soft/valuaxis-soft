@@ -105,12 +105,11 @@ test("a signature needs a name and a cédula; the title is optional", () => {
   assert.equal(signatureErrors({ name: "Ana", cedula: "1", role: "R".repeat(121) }).role, "Máximo 120 caracteres.");
 });
 
-test("a list accepts from none to twenty signatures and names the first incomplete one", () => {
+test("a list accepts from none to three signatures and names the first incomplete one", () => {
   assert.equal(signatureListError([]), null);
   assert.equal(signatureListError([ana]), null);
-  assert.equal(signatureListError(Array.from({ length: 10 }, () => ana)), null);
   assert.equal(signatureListError(Array.from({ length: MAX_SIGNATURES }, () => ana)), null);
-  assert.equal(signatureListError(Array.from({ length: MAX_SIGNATURES + 1 }, () => ana)), "Un avalúo admite máximo 20 firmas.");
+  assert.equal(signatureListError(Array.from({ length: MAX_SIGNATURES + 1 }, () => ana)), "Un avalúo admite máximo 3 firmas.");
   assert.equal(signatureListError([ana, { ...beto, cedula: "" }]), "Firma 2: Escribe la cédula profesional de quien firma.");
   // A valuation in progress is saved with the cédula still missing; the name is always needed.
   assert.equal(signatureListError([ana, { ...beto, cedula: "" }], { draft: true }), null);
@@ -186,5 +185,23 @@ test("the dictamen prints the scanned signature over its line, and keeps the bla
   // Image, then the line, then the name.
   assert.match(signed, /<img[\s\S]*border-t[\s\S]*Arq\. Ana Ruiz/);
   assert.equal(signed.match(/border-t/g)?.length, 2);
-  assert.match(signed, /mt-11[\s\S]*Ing\. Beto Díaz/, "sin imagen queda el espacio para firmar a mano");
+  // Both leave the same room over the line (the image's height), so the names stay level.
+  assert.equal(signed.match(/style="height:48px"/g)?.length, 3, "la imagen y una caja igual para la firma con imagen y para la que se firma a mano");
+  assert.match(signed, /style="height:48px"><\/div><div class="border-t[\s\S]*Ing\. Beto Díaz/, "sin imagen queda el espacio para firmar a mano");
+  // The chosen size prints, and the tallest one sets the room of every signature.
+  const sized = render([{ ...ana, image: "/api/archivos/imagen?key=uploads%2F2026-10%2F7a1c.jpg", imageSize: "grande" }, beto]);
+  assert.match(sized, /<img[^>]*style="height:72px"/);
+  assert.equal(sized.match(/style="height:72px"/g)?.length, 3, "la imagen y las dos cajas");
+  assert.match(render([ana, beto]), /style="height:36px"/, "sin imágenes, el espacio de siempre para firmar a mano");
+});
+
+test("the size of a signature image travels with the signature and only its three values are read", () => {
+  const parsed = parseSignatures([{ ...ana, image: "uploads/2026-10/7a1c.jpg", imageSize: "grande" }, { ...beto, imageSize: "enorme" }]);
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) {
+    assert.equal(parsed.value[0].imageSize, "grande");
+    assert.equal(parsed.value[1].imageSize, undefined, "sin imagen no hay tamaño; un valor desconocido se ignora");
+  }
+  const shown = resolveSignatures([{ ...ana, image: "uploads/2026-10/7a1c.jpg", imageSize: "chica" }], {});
+  assert.equal(shown[0].imageSize, "chica");
 });

@@ -40,6 +40,19 @@ export function draftFactsFor(target: Pick<Concept, "id">, container: Concept[],
 }
 
 /**
+ * What a field's own draft is written from: only what is written in that
+ * field (the appraiser asked that it not repeat the neighbouring concepts).
+ */
+export function ownFieldFacts(field: Concept, allConcepts: Concept[]): DraftFact[] {
+  return factsOf([field], allConcepts, (label) => label || "Texto");
+}
+
+/** Everything captured in a container, for the summary of the whole apartado. */
+export function draftFactsOf(container: Concept[], allConcepts: Concept[]): DraftFact[] {
+  return factsOf(container, allConcepts);
+}
+
+/**
  * The tables of the same container in compact form (title, column headers and
  * rows), with the values the document prints. Only whole tables travel: one
  * that does not fit in what is left of the limits, or has a cell too long, is

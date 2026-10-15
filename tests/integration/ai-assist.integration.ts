@@ -159,7 +159,7 @@ test("the size caps answer before the provider is called", async () => {
   const longFact = await post(jar, fixture.publicId, "redaccion", { ...DRAFT, facts: [{ label: "Nota", value: "x".repeat(2001) }] });
   assert.equal(longFact.status, 400);
   // Too little captured data is said in words, without calling the model.
-  const few = await post(jar, fixture.publicId, "redaccion", { ...DRAFT, facts: [{ label: "Topografía", value: "Plana" }, { label: "Forma", value: " " }] });
+  const few = await post(jar, fixture.publicId, "redaccion", { ...DRAFT, facts: [{ label: "Forma", value: " " }] });
   assert.equal(few.status, 422);
   assert.match(few.body.error ?? "", /Hay muy pocos datos capturados en este apartado/);
 

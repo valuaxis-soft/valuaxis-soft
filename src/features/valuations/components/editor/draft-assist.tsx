@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { AI_NOTICE, useAiAssist } from "@/features/ai/ai-assist-context";
 import { DRAFT_MIN_FACTS, DRAFT_TOO_LITTLE_DATA, hasEnoughFacts, type DraftInput } from "@/features/ai/draft-writing";
 import type { AppSection, Concept, TableContent } from "@/features/valuations/model";
-import { assumptionsDraftData, draftFactsFor, draftTablesFor } from "@/features/valuations/services/draft-facts";
+import { assumptionsDraftData, draftFactsOf, draftTablesFor, ownFieldFacts } from "@/features/valuations/services/draft-facts";
 import { api, SessionExpiredError } from "@/lib/api-client";
 
 const errorMessage = (error: unknown) =>
@@ -23,9 +23,9 @@ export function DraftScopeProvider({ title, tables, children }: { title: string;
 
 /**
  * "Redactar borrador" under a descriptive field: asks for a paragraph written
- * only from the data captured next to it and shows it as a preview. The text
- * reaches the field only when the appraiser inserts it, and the valuation is
- * saved as usual.
+ * only from what is written in that field (its title, the apartado's title and
+ * its current text) and shows it as a preview. The text reaches the field only
+ * when the appraiser inserts it, and the valuation is saved as usual.
  */
 export function DraftAssist({
   concept,
@@ -41,18 +41,66 @@ export function DraftAssist({
   onInsert: (value: string) => void;
 }) {
   const scope = useContext(DraftScopeContext);
+  void container;
   return (
     <DraftPreview
       value={concept.value}
       request={() => ({
         field: concept.label.trim() || "Descripción",
         context: scope.title,
-        facts: draftFactsFor(concept, container, allConcepts),
-        tables: draftTablesFor(scope.tables),
+        facts: ownFieldFacts(concept, allConcepts),
+        tables: [],
       })}
-      source="Redactado solo con los datos capturados en este apartado."
-      tooLittle={DRAFT_TOO_LITTLE_DATA}
+      source="Redactado solo con lo escrito en este campo."
+      tooLittle="Escribe algo en este campo y vuelve a intentarlo: el borrador se redacta solo con su texto."
       onInsert={onInsert}
+    />
+  );
+}
+
+/**
+ * "Redactar resumen del apartado", at the end of an apartado: a paragraph
+ * from everything captured in it (concepts and tables), inserted in the
+ * last long text or paragraph of the apartado.
+ */
+export function ApartadoSummaryDraft({
+  title,
+  concepts,
+  allConcepts,
+  tables,
+  target,
+  onInsert,
+}: {
+  title: string;
+  concepts: Concept[];
+  allConcepts: Concept[];
+  tables: TableContent[];
+  /** The long text or paragraph that receives the summary; null when the apartado has none. */
+  target: Concept | null;
+  onInsert: (conceptId: string, value: string) => void;
+}) {
+  const ai = useAiAssist();
+  if (!ai.enabled) return null;
+  if (!target) {
+    return (
+      <p className="text-xs text-muted-foreground" data-apartado-summary-hint>
+        Para redactar un resumen del apartado, agrega al final un Texto largo o un Párrafo que lo reciba.
+      </p>
+    );
+  }
+  return (
+    <DraftPreview
+      label="Redactar resumen del apartado"
+      value={target.value}
+      request={() => ({
+        field: `Resumen de ${title.trim() || "el apartado"}`,
+        context: title.trim() || null,
+        facts: draftFactsOf(concepts.filter((concept) => concept.id !== target.id), allConcepts),
+        tables: draftTablesFor(tables),
+      })}
+      source="Redactado con todos los datos y tablas capturados en este apartado."
+      tooLittle={DRAFT_TOO_LITTLE_DATA}
+      onInsert={(value) => onInsert(target.id, value)}
     />
   );
 }
@@ -86,12 +134,15 @@ export function AssumptionsDraftAssist({
 }
 
 function DraftPreview({
+  label = "Redactar borrador",
   value,
   request,
   source,
   tooLittle,
   onInsert,
 }: {
+  /** What the button asks for. */
+  label?: string;
   /** The text the field has now. */
   value: string;
   /** What is sent, gathered when the draft is asked for. */
@@ -147,7 +198,7 @@ function DraftPreview({
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void write()}>
           {busy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <PenLine data-icon="inline-start" />}
-          {busy ? "Redactando…" : draft ? "Redactar otro borrador" : "Redactar borrador"}
+          {busy ? "Redactando…" : draft ? "Redactar otro borrador" : label}
         </Button>
         {message ? <p className="text-xs text-destructive" role="alert">{message}</p> : null}
       </div>

@@ -9,8 +9,19 @@ import { storedImageUrl } from "@/features/files/services/stored-image-url";
 import { addMonthsToIsoDate } from "@/features/firm/firm-rules";
 import { extractStorageKey } from "@/features/valuations/services/image-source";
 
-/** No business limit; this only keeps the document and the payload bounded. */
-export const MAX_SIGNATURES = 20;
+/** Who realizes, who reviews and who authorizes: the appraiser asked for three at most (15 Oct 2026). */
+export const MAX_SIGNATURES = 3;
+
+/** Printed height of the scanned signature. */
+export const SIGNATURE_IMAGE_SIZES = ["chica", "mediana", "grande"] as const;
+export type SignatureImageSize = (typeof SIGNATURE_IMAGE_SIZES)[number];
+export const DEFAULT_SIGNATURE_IMAGE_SIZE: SignatureImageSize = "mediana";
+export const SIGNATURE_IMAGE_SIZE_LABELS: Record<SignatureImageSize, string> = { chica: "Chica", mediana: "Mediana", grande: "Grande" };
+/** Height in document pixels of each size; the tallest one on the page sets the room every signature leaves. */
+export const SIGNATURE_IMAGE_HEIGHTS: Record<SignatureImageSize, number> = { chica: 32, mediana: 48, grande: 72 };
+
+const readImageSize = (value: unknown): SignatureImageSize | undefined =>
+  (SIGNATURE_IMAGE_SIZES as readonly string[]).includes(String(value)) ? (value as SignatureImageSize) : undefined;
 export const MIN_VALIDITY_MONTHS = 1;
 export const MAX_VALIDITY_MONTHS = 12;
 
@@ -29,6 +40,8 @@ export type ValuationSignature = {
    * address of the image; it is stored as its storage key.
    */
   image?: string;
+  /** Printed size of the image; "mediana" when absent. */
+  imageSize?: SignatureImageSize;
 };
 
 export type SignatureErrors = Partial<Record<keyof ValuationSignature, string>>;
@@ -77,15 +90,15 @@ export function signatureImageKey(value: unknown): string {
   return key.length <= 1024 && STORAGE_KEY.test(key) && !key.split("/").includes("..") ? key : "";
 }
 
-const withImage = (signature: ValuationSignature, key: string, asAddress: boolean): ValuationSignature =>
-  key ? { ...signature, image: asAddress ? storedImageUrl(key) : key } : signature;
+const withImage = (signature: ValuationSignature, key: string, asAddress: boolean, size?: SignatureImageSize): ValuationSignature =>
+  key ? { ...signature, image: asAddress ? storedImageUrl(key) : key, ...(size ? { imageSize: size } : {}) } : signature;
 
 /** Validates what a client sent and returns the trimmed signatures in the same order, images as storage keys. */
 export function parseSignatures(input: unknown, rules: SignatureRules = {}): Parsed<ValuationSignature[]> {
   if (!Array.isArray(input)) return { ok: false, error: "Las firmas no son válidas." };
   const signatures = input.map((item): ValuationSignature => {
     const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-    return withImage({ name: text(row.name), cedula: text(row.cedula), role: text(row.role) }, signatureImageKey(row.image), false);
+    return withImage({ name: text(row.name), cedula: text(row.cedula), role: text(row.role) }, signatureImageKey(row.image), false, readImageSize(row.imageSize));
   });
   const error = signatureListError(signatures, rules);
   return error ? { ok: false, error } : { ok: true, value: signatures };
@@ -103,7 +116,7 @@ export function resolveSignatures(
     return stored.slice(0, MAX_SIGNATURES).map((item) => {
       const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
       // The browser gets an address that does not expire; the key stays in the database.
-      return withImage({ name: text(row.name), cedula: text(row.cedula), role: text(row.role) }, signatureImageKey(row.image), true);
+      return withImage({ name: text(row.name), cedula: text(row.cedula), role: text(row.role) }, signatureImageKey(row.image), true, readImageSize(row.imageSize));
     });
   }
   const name = text(legacy.name);
