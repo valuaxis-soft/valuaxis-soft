@@ -84,7 +84,7 @@ test("a value prints with its unit in every section, with or without the concept
   ];
   const target = block({ apartados: [apartado("config", concepts)] });
 
-  // Terreno, Datos generales and Construcción render without the concept layout; the cost and pre-market sections with it.
+  // With and without the concept layout (the full-width span of old documents), the unit prints.
   for (const applyConceptLayout of [false, true]) {
     const html = render(documentBlockFlowItems(target, { applyConceptLayout }).map((item) => createElement("div", { key: item.id }, item.node)));
     for (const printed of ["7.50 m<", "169.78 m²<", "$9,000.00<", "100 %<", "300 lts<", "+52 (348) 559 5955<"]) {
@@ -100,7 +100,7 @@ test("a value prints with its unit in every section, with or without the concept
 /*  Text: justified, separated, larger when long                       */
 /* ------------------------------------------------------------------ */
 
-test("concept values are justified and each concept is set apart by a hairline in the report", () => {
+test("concept values are justified and the rows sit close, with no hairline under each concept", () => {
   const target = block({
     apartados: [apartado("obra", [concept("a", "Cimentación", "Mampostería"), concept("b", "Muros", "Ladrillo")], {
       contentLayout: rowsOf([{ type: "concept", id: "a" }], [{ type: "concept", id: "b" }]),
@@ -108,22 +108,84 @@ test("concept values are justified and each concept is set apart by a hairline i
   });
   const html = renderItems(target);
   assert.equal(html.match(/<span class="[^"]*text-justify[^"]*">/g)?.length, 2);
-  assert.equal(html.match(/border-b border-slate-200/g)?.length, 2);
-  assert.equal(html.match(/py-\[3px\]/g)?.length, 2);
+  assert.doesNotMatch(html, /border-b border-slate-200/, "the appraiser asked for the lines under every row to go");
+  assert.equal(html.match(/ py-px"/g)?.length, 2, "one tight row per concept");
 
-  // Side by side, the two concepts share one rule under the row, level whatever their heights.
+  // Side by side, the two concepts keep the same tight rows and nothing under them.
   const pair = renderItems(block({ apartados: [apartado("obra", target.apartados[0].concepts, { contentLayout: rowsOf([{ type: "concept", id: "a" }, { type: "concept", id: "b" }]) })] }));
-  assert.equal(pair.match(/border-b border-slate-200/g)?.length, 1);
-  assert.match(pair, /class="[^"]*grid-cols-2 gap-x-4 border-b border-slate-200"/);
-  assert.equal(pair.match(/py-\[3px\]/g)?.length, 2);
+  assert.doesNotMatch(pair, /border-b/);
+  assert.match(pair, /class="[^"]*grid-cols-2 gap-x-4"/);
+  assert.equal(pair.match(/ py-px"/g)?.length, 2);
 
   const technical = renderItems(block({ apartados: [apartado("obra", [concept("a", "Cimentación", "Mampostería")], { presentationMode: "technical-list" })] }));
-  assert.match(technical, /py-\[3px\] border-b border-slate-200/);
+  assert.match(technical, /items-start py-px"/);
+  assert.doesNotMatch(technical, /border-b/);
   assert.match(technical, /text-justify/);
 
   // The cover keeps its compact columns: no rules, no justified short data.
   const cover = renderItems(target, "caratula");
   assert.doesNotMatch(cover, /border-b border-slate-200|text-justify/);
+});
+
+/* ------------------------------------------------------------------ */
+/*  Spacing, paragraphs and marks                                      */
+/* ------------------------------------------------------------------ */
+
+test("the room given to a concept (Espacio) prints in every section and layout, not only on the cover", () => {
+  const spaced = concept("a", "Propietario", "Juan Pérez", { spacingAfter: 15, spacingBefore: 4 });
+  const plain = concept("b", "Solicitante", "Ana", {});
+  // Datos generales, Terreno and Construcción render their apartados without the concept layout flag.
+  const html = render(documentBlockFlowItems(block({ apartados: [apartado("datos", [spaced, plain])] })).map((item) => createElement("div", { key: item.id }, item.node)));
+  assert.match(html, /margin-top:4px;margin-bottom:15px/);
+  assert.match(html, /margin-top:0;margin-bottom:0/);
+
+  // Concepts placed directly in the block, with and without the flag.
+  for (const applyConceptLayout of [false, true]) {
+    const direct = render(documentBlockFlowItems(block({ concepts: [spaced] }), { applyConceptLayout }).map((item) => createElement("div", { key: item.id }, item.node)));
+    assert.match(direct, /margin-bottom:15px/, `applyConceptLayout=${applyConceptLayout}`);
+  }
+
+  // The one-column list ignored it altogether.
+  const technical = renderItems(block({ apartados: [apartado("lista", [spaced], { presentationMode: "technical-list" })] }));
+  assert.match(technical, /margin-top:4px;margin-bottom:15px;grid-template-columns:120px/);
+
+  const cover = renderItems(block({ concepts: [spaced] }), "caratula");
+  assert.match(cover, /margin-bottom:15px/);
+});
+
+test("a paragraph prints its text edge to edge, with no label and no label column", () => {
+  const paragraph = concept("p", "", "Texto corrido que explica el criterio adoptado.", { type: "paragraph", spacingAfter: 6 });
+  const data = concept("d", "Niveles", "2");
+  const html = renderItems(block({ apartados: [apartado("obs", [data, paragraph], { contentLayout: rowsOf([{ type: "concept", id: "d" }], [{ type: "concept", id: "p" }]) })] }));
+  assert.equal(html.match(/<strong/g)?.length, 1, "only the data concept has a label");
+  assert.match(html, /<div class="py-px" style="margin-top:0;margin-bottom:6px"><p class="[^"]*text-justify[^"]*">Texto corrido que explica el criterio adoptado\.<\/p><\/div>/);
+  assert.doesNotMatch(html, /grid-template-columns:120px[^>]*>[^<]*<p/, "no label column before the paragraph");
+
+  // In the one-column list too, and at the size of its long neighbours.
+  const technical = renderItems(block({ apartados: [apartado("obs", [data, paragraph], { presentationMode: "technical-list" })] }));
+  assert.match(technical, /<p class="[^"]*">Texto corrido/);
+  const prose = renderItems(block({ concepts: [concept("a", "Valor comercial", LONG), { ...paragraph, value: LONG }] }));
+  assert.equal(prose.match(/text-\[12px\] leading-\[1\.45\]/g)?.length, 3, "label and value of the concept, and the paragraph");
+
+  const empty = renderItems(block({ concepts: [{ ...paragraph, value: "" }] }));
+  assert.match(empty, /<p class="[^"]*">—<\/p>/);
+});
+
+test("bold, italic and underline marks render in the document and in the cover's assumptions", () => {
+  const marked = concept("a", "Uso", "Habitacional <b>unifamiliar</b> de <i>dos</i> <u>niveles</u>");
+  const html = renderItems(block({ concepts: [marked] }));
+  assert.match(html, /Habitacional <\/span><span><strong>unifamiliar<\/strong><\/span><span> de <\/span><span><em>dos<\/em><\/span><span> <\/span><span><u>niveles<\/u><\/span>/);
+  assert.doesNotMatch(html, /&lt;b&gt;|<b>/, "our tags never reach the page as text or as raw HTML");
+
+  const nested = renderItems(block({ concepts: [concept("a", "Uso", "<b><i>todo</i></b>")] }));
+  assert.match(nested, /<strong><em>todo<\/em><\/strong>/);
+
+  const cover = render(createElement(CaratulaAssumptionsModule, { blocks: [block({ title: "SUPUESTOS", concepts: [concept("a", "", "Se <b>asume</b> que…")] })] }), "caratula");
+  assert.match(cover, /Se <\/span><span><strong>asume<\/strong><\/span>/);
+
+  // A value without marks prints as before, as one text node.
+  const plain = renderItems(block({ concepts: [concept("a", "Uso", "Habitacional")] }));
+  assert.match(plain, />Habitacional<\/span>/);
 });
 
 test("the cover's assumptions are justified", () => {
@@ -144,10 +206,10 @@ test("definitions and declarations print a little larger; data lists keep their 
   // Label and value of both concepts.
   assert.equal(definitions.match(/text-\[12px\] leading-\[1\.45\]/g)?.length, 4);
   assert.doesNotMatch(definitions, /text-\[11px\] (?:font-semibold )?text-\[#(?:1a1a1a|333333)\]/, "the larger size replaces the standard one");
-  assert.match(definitions, /py-\[5px\]/);
+  assert.match(definitions, /py-\[3px\]/);
 
   const data = renderItems(block({ apartados: [apartado("datos", [concept("a", "Niveles", "4"), concept("b", "Clase", "C")])] }));
-  assert.doesNotMatch(data, /leading-\[1\.45\]|py-\[5px\]/);
+  assert.doesNotMatch(data, /leading-\[1\.45\]|py-\[3px\]/);
 
   // Concepts placed directly in the block follow the same rule.
   const declarations = renderItems(block({ concepts: [concept("a", "8", LONG), concept("b", "10", LONG)] }));
