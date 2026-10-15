@@ -15,6 +15,7 @@ import type { AppSection, Concept, TableContent } from "../model";
 import { getCanonicalSectionKey } from "../sections/section-registry";
 import { normalizeConceptTitle } from "./concept-title";
 import { formatConceptValueForDocument } from "./concept-value-format";
+import { stripTextMarks } from "./text-marks";
 import { ensureTableV2, getDisplayColumns } from "./table";
 import { evaluateTableFormulas, getCellDisplayValue } from "./table-formula-engine";
 
@@ -23,7 +24,8 @@ function factsOf(concepts: Concept[], allConcepts: Concept[], labelOf: (label: s
   return concepts
     .filter((concept) => concept.enabled !== false)
     .map((concept) => resolveEffectiveConcept(concept, allConcepts))
-    .map((concept) => ({ label: labelOf(normalizeConceptTitle(concept.label).trim()), value: formatConceptValueForDocument(concept).trim() }))
+    // The AI reads the text alone, never the bold/italic/underline tags.
+    .map((concept) => ({ label: labelOf(stripTextMarks(normalizeConceptTitle(concept.label)).trim()), value: stripTextMarks(formatConceptValueForDocument(concept)).trim() }))
     .filter((fact) => fact.label && fact.value && fact.label.length <= DRAFT_FACT_LABEL_MAX && fact.value.length <= DRAFT_FACT_VALUE_MAX)
     .slice(0, DRAFT_MAX_FACTS);
 }

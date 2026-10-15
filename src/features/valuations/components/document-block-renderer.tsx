@@ -11,6 +11,7 @@ import { isLongTextList } from "@/features/valuations/services/document-long-tex
 import { MIN_ROWS_BEFORE_BREAK, MIN_ROWS_WITH_TAIL, type DocumentTableFragment } from "@/features/valuations/services/table-pagination";
 import { cn } from "@/lib/utils";
 import { DocumentConceptValue } from "./document-concept-value";
+import { DocumentParagraph, conceptSpacingStyle } from "./document-paragraph";
 import { DocumentImage } from "./document-image";
 import { DocumentTable } from "./document-table";
 import { DocumentBlockTitleBar } from "./document-block-title-bar";
@@ -342,6 +343,9 @@ function DocumentContentRow({
               if (itemRef.type === "concept") {
                 const concept = conceptsById.get(itemRef.id);
                 if (!concept || concept.enabled === false) return null;
+                if (concept.type === "paragraph") {
+                  return <DocumentParagraph key={itemRef.id} concept={concept} longText={longText} style={conceptSpacingStyle(concept)} />;
+                }
                 return (
                   <DocumentConceptCell
                     key={itemRef.id}
@@ -397,9 +401,8 @@ function DocumentConceptCell({
 }) {
   const theme = useDocumentTheme();
   const layoutClass = applyConceptLayout && concept.layoutSpan === "full" ? "col-span-2" : "";
-  const layoutStyle = applyConceptLayout
-    ? { marginTop: concept.spacingBefore ?? 0, marginBottom: concept.spacingAfter ?? 0 }
-    : undefined;
+  // The room the appraiser gives a concept ("Espacio") prints in every section and layout.
+  const layoutStyle = conceptSpacingStyle(concept);
 
   // When a guide px is provided, override the theme grid with a fixed-pixel template
   const gridStyle = labelGuidePx != null

@@ -1,7 +1,7 @@
 "use client";
 
 import type { Concept, ConceptType } from "@/features/valuations/model";
-import { Copy, FilePlus2, Link, Link2, ListPlus } from "lucide-react";
+import { Copy, FilePlus2, Link, Link2, ListPlus, Pilcrow } from "lucide-react";
 
 
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,8 @@ const CONCEPT_TYPE_OPTIONS: Array<{
     // already created with those types keep working.
     { type: "url", label: "Url", Icon: FilePlus2 },
     { type: "longText", label: "Texto largo", Icon: ListPlus },
+    // A text with no concept label, printed from edge to edge.
+    { type: "paragraph", label: "Párrafo", Icon: Pilcrow },
 ];
 
 function conceptTypeLabel(type: ConceptType | undefined) {
@@ -41,6 +43,7 @@ function conceptTypeLabel(type: ConceptType | undefined) {
     measurement: "Medida",
     longText: "Texto largo",
     url: "Vínculo / URL",
+    paragraph: "Párrafo",
   };
 
   return labels[type ?? "text"];

@@ -59,7 +59,7 @@ export function ConceptSelectionScope({
   onApplySpacing: (conceptIds: string[], spacingAfter: number) => void;
   /** The creation controls of the container, printed on the same line as the selection. */
   actions?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());

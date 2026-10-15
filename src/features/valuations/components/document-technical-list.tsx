@@ -7,6 +7,7 @@ import { resolveConceptLabelGuide } from "@/features/valuations/services/concept
 import { useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { cn } from "@/lib/utils";
 import { DocumentConceptValue } from "./document-concept-value";
+import { DocumentParagraph, conceptSpacingStyle } from "./document-paragraph";
 import { DocumentImage } from "./document-image";
 import { DocumentTable } from "./document-table";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
@@ -24,7 +25,7 @@ function TechnicalConceptRow({
   return (
     <div
       className={cn("grid min-w-0 w-full max-w-full items-start", theme.conceptRow, theme.conceptRule)}
-      style={{ gridTemplateColumns: `${labelGuidePx}px minmax(0, 1fr)` }}
+      style={{ ...conceptSpacingStyle(concept), gridTemplateColumns: `${labelGuidePx}px minmax(0, 1fr)` }}
     >
       <span className="min-w-0 text-[11px] font-semibold text-[#1a1a1a] leading-snug text-right pr-2 whitespace-nowrap">
         {formatConceptTitleWithColon(concept.label)}
@@ -59,6 +60,9 @@ export function DocumentTechnicalList({
             if (itemRef.type === "concept") {
               const concept = conceptsById.get(itemRef.id);
               if (!concept || concept.enabled === false) return null;
+              if (concept.type === "paragraph") {
+                return <DocumentParagraph key={itemRef.id} concept={concept} longText={false} style={conceptSpacingStyle(concept)} />;
+              }
               return (
                 <TechnicalConceptRow
                   key={itemRef.id}

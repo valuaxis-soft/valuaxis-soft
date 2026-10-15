@@ -32,6 +32,8 @@ function defaultTitleForType(type?: ConceptType): string {
     case "date": return "Fecha";
     case "phone": return "Teléfono";
     case "email": return "Correo";
+    // A paragraph has no label: its text runs edge to edge.
+    case "paragraph": return "";
     default: return "Nuevo concepto";
   }
 }

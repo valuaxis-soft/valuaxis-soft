@@ -317,6 +317,7 @@ function readConceptType(value: unknown): ConceptType | undefined {
   if (!isRecord(value)) return undefined;
   const type = value.type;
   return type === "text" ||
+    type === "paragraph" ||
     type === "date" ||
     type === "phone" ||
     type === "email" ||

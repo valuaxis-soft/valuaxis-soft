@@ -261,7 +261,7 @@ function ApartadoPresentationModeControl({
             disabled={disabled}
             onClick={() => onChange(undefined)}
           >
-            Normal
+            Normal: concepto y dato lado a lado
           </Button>
           <Button
             type="button"
@@ -271,8 +271,11 @@ function ApartadoPresentationModeControl({
             disabled={disabled}
             onClick={() => onChange("technical-list")}
           >
-            Lista técnica
+            Lista de una columna
           </Button>
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            En la lista cada concepto va con su dato en un renglón angosto, uno debajo de otro, como una ficha técnica. No cambia el tamaño de la letra.
+          </p>
         </div>
       </PopoverContent>
     </Popover>
