@@ -8,7 +8,7 @@ import { splitMeasuredDocumentFlowItems, type DocumentFlowItem } from "../src/fe
 import { DocumentTable } from "../src/features/valuations/components/document-table";
 import { figureColumn, generatedTable, offerLevelTable, textColumn } from "../src/features/valuations/calculation/generated-content";
 import type { Apartado, Block, ContentLayout, TableContent } from "../src/features/valuations/model";
-import { ensureTableV2 } from "../src/features/valuations/services/table";
+import { createHomologationTable, ensureTableV2, moveTableColumnBy } from "../src/features/valuations/services/table";
 import { splitTableRows, type DocumentTableFragment, type MeasuredTable } from "../src/features/valuations/services/table-pagination";
 
 /** A table of `count` rows of 20px under a 40px header (30px where it starts, with 10px of title) and a 50px tail. */
@@ -278,4 +278,20 @@ test("a table alone in its row may break; tables side by side and short ones sta
   // A table placed directly in the block breaks too.
   const direct = documentBlockFlowItems(blockWith({ tables: [plainTable("larga", 30)], contentLayout: layout(["larga"]) }));
   assert.equal(Boolean(direct[1].renderTableFragment), true);
+});
+
+test("a column moved in the editor prints in its new place, header and cells alike, on every fragment", () => {
+  let table = createHomologationTable();
+  const cells = { ...table.rows[0].cells, "hom-factor-neg": { kind: "value" as const, value: "0.90" }, "hom-factor-ubic": { kind: "value" as const, value: "1.10" } };
+  table = { ...table, rows: [{ ...table.rows[0], cells }, { ...table.rows[0], id: "row-2", cells }] };
+  table = moveTableColumnBy(table, "hom-factor-ubic", -1);
+  const text = (cell: string) => cell.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+
+  for (const part of [undefined, fragment(0, 1, { columnWidths: Array.from({ length: 12 }, () => 50) }), fragment(1, 2, { last: true, columnWidths: Array.from({ length: 12 }, () => 50) })]) {
+    const html = renderToStaticMarkup(createElement(DocumentTable, { variant: "report", table: table as unknown as TableContent, fragment: part }));
+    const headerRows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g)!.slice(0, 2);
+    assert.deepEqual(headerRows[1].split("</th>").slice(0, -1).map(text).slice(0, 2), ["Ubic.", "Neg."]);
+    const [row] = html.match(/<tr[^>]*data-split-table-row[\s\S]*?<\/tr>/g)!;
+    assert.deepEqual(row.split("</td>").slice(0, -1).map(text).slice(3, 5), ["1.10", "0.90"]);
+  }
 });

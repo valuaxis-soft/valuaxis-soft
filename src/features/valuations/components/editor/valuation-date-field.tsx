@@ -22,6 +22,10 @@ import type { ConceptDateFormat } from "@/features/valuations/model";
 /*  Year range for dropdown navigation (visual only, no validation)     */
 /* ================================================================== */
 
+/** Month names for the caption dropdown: react-day-picker's label can fall back to the month index (0–11). */
+const MONTH_NAMES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const monthName = (index: number) => MONTH_NAMES_ES[index] ?? String(index + 1);
+
 const NAV_START_YEAR = 1900;
 const NAV_END_YEAR = 2100;
 
@@ -31,6 +35,11 @@ const NAV_END_YEAR = 2100;
 
 function ValuationDateDropdown(props: DropdownProps) {
   const { options, value, onChange, "aria-label": ariaLabel } = props;
+  // The month dropdown's options are the indexes 0–11; the year dropdown's are years.
+  const isMonthDropdown = (options ?? []).every((option) => Number(option.value) >= 0 && Number(option.value) <= 11);
+  const optionLabel = (option: { value: string | number; label: string }) =>
+    isMonthDropdown && /^\d+$/.test(String(option.label)) ? monthName(Number(option.value)) : option.label;
+  const current = (options ?? []).find((option) => String(option.value) === String(value ?? ""));
 
   const handleValueChange = (newValue: string | null) => {
     if (newValue !== null && onChange) {
@@ -43,7 +52,8 @@ function ValuationDateDropdown(props: DropdownProps) {
   return (
     <Select value={String(value ?? "")} onValueChange={handleValueChange}>
       <SelectTrigger aria-label={ariaLabel} className="h-8 w-auto min-w-0">
-        <SelectValue />
+        {/* The trigger shows the option's label, never the raw value (a month index). */}
+        <SelectValue>{current ? optionLabel(current) : String(value ?? "")}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         {options?.map((option) => (
@@ -52,7 +62,7 @@ function ValuationDateDropdown(props: DropdownProps) {
             value={option.value.toString()}
             disabled={option.disabled}
           >
-            {option.label}
+            {optionLabel(option)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -124,6 +134,8 @@ export function ValuationDateField({
             mode="single"
             captionLayout="dropdown"
             locale={es}
+            fixedWeeks
+            formatters={{ formatMonthDropdown: (date) => monthName(date.getMonth()) }}
             startMonth={new Date(NAV_START_YEAR, 0)}
             endMonth={new Date(NAV_END_YEAR, 11)}
             selected={selectedDate}

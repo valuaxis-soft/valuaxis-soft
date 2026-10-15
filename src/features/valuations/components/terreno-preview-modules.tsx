@@ -6,6 +6,8 @@ import type { Concept, Apartado, TableContent } from "../model";
 import { findBoundaryTable, getTerrenoElementKind } from "../sections/terreno";
 import { resolveContentLayout } from "../services/content-layout";
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
+import { type NumberPresentation } from "@/features/valuations/services/number-presentation";
+import { useNumberPresentation } from "./number-presentation-context";
 import { ensureTableV2 } from "../services/table";
 import type { ApartadoHead } from "./document-block-renderer";
 import { TABLE_HEADER_BAND } from "./document-theme";
@@ -75,6 +77,7 @@ function BoundariesPreview({ label, title, table, source }: {
 /* ------------------------------------------------------------------ */
 
 function BoundaryTable({ table }: { table: TableContent }) {
+  const presentation = useNumberPresentation();
   const t2 = ensureTableV2(table);
   const displayColumns = t2.columns;
 
@@ -98,7 +101,7 @@ function BoundaryTable({ table }: { table: TableContent }) {
               return (
                 <td className="border border-slate-300 px-2 py-1 align-top" key={`${table.id}-cell-${row.id}-${column.id}`}>
                   {cellIndex === 1
-                    ? formatDistance(value, table.boundaryDistanceFormats?.[rowIndex])
+                    ? formatDistance(value, table.boundaryDistanceFormats?.[rowIndex], presentation)
                     : value || EMPTY_VALUE}
                 </td>
               );
@@ -117,7 +120,8 @@ function BoundaryTable({ table }: { table: TableContent }) {
 function formatDistance(
   value: string | undefined,
   format: Pick<Concept, "valueFormat" | "customUnit"> = { valueFormat: "m" },
+  presentation?: NumberPresentation,
 ) {
   const distance = value?.trim();
-  return distance ? formatNumericValue(distance, format) : EMPTY_VALUE;
+  return distance ? formatNumericValue(distance, format, presentation) : EMPTY_VALUE;
 }

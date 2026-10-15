@@ -17,7 +17,7 @@ import {
   resolveConceptValueFormat,
   resolveEffectiveSourceUnit,
 } from "./concept-value-format";
-import { roundDecimal } from "../calculation/free-formula";
+import { roundDecimal, parseDecimal } from "../calculation/free-formula";
 import { canonicalTable } from "./formula-references";
 import type { FormulaResult, TableFormula, TableV2 } from "./table";
 import {
@@ -34,6 +34,13 @@ import {
 /** Concept types whose value is a text or a number, and so can be computed or read by a formula. */
 export function conceptTakesFormula(concept: Pick<Concept, "type">) {
   return concept.type === undefined || concept.type === "text" || concept.type === "number" || concept.type === "currency" || concept.type === "measurement";
+}
+
+/** Whether a concept holds a number a formula could use: a formula of its own or a value that parses as one. */
+export function conceptHasNumericValue(concept: Pick<Concept, "type" | "value" | "formula">) {
+  if (!conceptTakesFormula(concept)) return false;
+  if (concept.formula?.expression) return true;
+  return concept.value.trim() !== "" && parseDecimal(concept.value) !== null;
 }
 
 const hasFormula = (concept: Concept): concept is Concept & { formula: TableFormula } =>

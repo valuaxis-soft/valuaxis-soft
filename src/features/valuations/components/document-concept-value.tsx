@@ -3,6 +3,7 @@ import {
   formatConceptValueForDocument,
   getConceptUrlHref,
 } from "@/features/valuations/services/concept-value-format";
+import { useNumberPresentation } from "./number-presentation-context";
 
 /**
  * A concept's value as printed. Its unit, currency, date or phone format
@@ -15,7 +16,7 @@ export function DocumentConceptValue({
   concept: Concept;
   fallback?: string;
 }) {
-  const value = formatConceptValueForDocument(concept);
+  const value = formatConceptValueForDocument(concept, useNumberPresentation());
   const href = getConceptUrlHref(concept);
 
   if (href && value) {

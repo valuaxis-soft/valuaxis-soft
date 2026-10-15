@@ -33,7 +33,7 @@ import {
 } from "@/features/valuations/services/formula-references";
 import { getDisplayColumns } from "@/features/valuations/services/table";
 import { evaluateTableFormulas, getCellDisplayValue } from "@/features/valuations/services/table-formula-engine";
-import { conceptTakesFormula } from "@/features/valuations/services/valuation-formulas";
+import { conceptHasNumericValue } from "@/features/valuations/services/valuation-formulas";
 import { cn } from "@/lib/utils";
 
 /* ================================================================== */
@@ -367,7 +367,8 @@ function FormulaValuePicker({
       return found;
     };
     for (const entry of index.concepts) {
-      if (!conceptTakesFormula(entry.concept) || `concept:${entry.id}` === session?.fieldKey) continue;
+      // Only values a formula can use: a text like "Jalisco" would only produce #VALOR!.
+      if (!conceptHasNumericValue(entry.concept) || `concept:${entry.id}` === session?.fieldKey) continue;
       if (matches(query, entry.name, entry.sectionTitle, entry.blockTitle)) group(entry).concepts.push(entry);
     }
     for (const entry of index.tables) {

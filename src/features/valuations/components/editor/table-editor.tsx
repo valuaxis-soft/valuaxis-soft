@@ -14,6 +14,9 @@ import {
   type ColumnCapability,
   type TableCellFormat,
   moveTableColumn,
+  moveTableColumnBy,
+  canMoveTableColumn,
+  columnHasData,
   moveTableRow,
   insertTableColumn,
   removeTableColumn,
@@ -46,6 +49,7 @@ import {
   isFormulaText,
 } from "../../services/formula-references";
 import { useFormulaEditing, useFormulaField, useFormulaReferenceTarget } from "./formula-editing";
+import { useNumberPresentation } from "../number-presentation-context";
 
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
@@ -68,6 +72,13 @@ import {
   ContextMenuSubContent,
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 import {
   DndContext,
@@ -90,6 +101,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 import {
   Calculator,
+  ChevronDown,
   Columns3,
   GripVertical,
   Rows3,
@@ -172,6 +184,7 @@ function SortableColumnHeader({
   onContextMenuRename,
   onContextMenuInsertLeft,
   onContextMenuInsertRight,
+  onContextMenuMove,
   onContextMenuClear,
   onContextMenuDelete,
 }: {
@@ -192,10 +205,15 @@ function SortableColumnHeader({
   onContextMenuRename: (columnId: string, currentName: string) => void;
   onContextMenuInsertLeft: (columnId: string) => void;
   onContextMenuInsertRight: (columnId: string) => void;
+  onContextMenuMove: (columnId: string, direction: -1 | 1) => void;
   onContextMenuClear: (columnId: string) => void;
   onContextMenuDelete: (columnId: string) => void;
 }) {
   const isMovable = capability.movable !== false;
+  const canMoveLeft = canMoveTableColumn(tableV2, column.id, -1);
+  const canMoveRight = canMoveTableColumn(tableV2, column.id, 1);
+  const canDelete = capability.removable !== false && tableV2.columns.length > 1;
+  const columnName = column.name.trim() || `columna ${letter}`;
 
   // Local draft state — typing is free, normalization happens only on commit
   const [draftName, setDraftName] = useState(column.name);
@@ -258,9 +276,56 @@ function SortableColumnHeader({
                 }
               }}
             />
+            {/* The same actions as the right click, in view: inserting beside, moving and deleting the column. */}
+            {!readOnly && !formulaMode && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      className="h-5 w-5 shrink-0 text-muted-foreground"
+                      aria-label={`Opciones de la columna ${columnName}`}
+                      title="Opciones de la columna"
+                    />
+                  }
+                >
+                  <ChevronDown className="h-3 w-3" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {capability.removable !== false && (
+                    <>
+                      <DropdownMenuItem onClick={() => onContextMenuInsertLeft(column.id)}>Insertar columna a la izquierda</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onContextMenuInsertRight(column.id)}>Insertar columna a la derecha</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  {isMovable && (
+                    <>
+                      <DropdownMenuItem disabled={!canMoveLeft} onClick={() => onContextMenuMove(column.id, -1)}>Mover a la izquierda</DropdownMenuItem>
+                      <DropdownMenuItem disabled={!canMoveRight} onClick={() => onContextMenuMove(column.id, 1)}>Mover a la derecha</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  {capability.headerEditable !== false && (
+                    <DropdownMenuItem onClick={() => onContextMenuRename(column.id, column.name)}>Renombrar</DropdownMenuItem>
+                  )}
+                  {capability.clearable !== false && (
+                    <DropdownMenuItem onClick={() => onContextMenuClear(column.id)}>Limpiar columna</DropdownMenuItem>
+                  )}
+                  {capability.removable !== false && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" disabled={!canDelete} onClick={() => onContextMenuDelete(column.id)}>Eliminar columna</DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="w-48">
+        <ContextMenuContent className="w-56">
           {capability.removable !== false && (
             <>
               <ContextMenuItem onClick={() => onContextMenuInsertLeft(column.id)}>
@@ -268,6 +333,17 @@ function SortableColumnHeader({
               </ContextMenuItem>
               <ContextMenuItem onClick={() => onContextMenuInsertRight(column.id)}>
                 Insertar columna a la derecha
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
+          {isMovable && (
+            <>
+              <ContextMenuItem disabled={!canMoveLeft} onClick={() => onContextMenuMove(column.id, -1)}>
+                Mover a la izquierda
+              </ContextMenuItem>
+              <ContextMenuItem disabled={!canMoveRight} onClick={() => onContextMenuMove(column.id, 1)}>
+                Mover a la derecha
               </ContextMenuItem>
               <ContextMenuSeparator />
             </>
@@ -287,7 +363,7 @@ function SortableColumnHeader({
               <ContextMenuSeparator />
               <ContextMenuItem
                 variant="destructive"
-                disabled={tableV2.columns.length <= 1}
+                disabled={!canDelete}
                 onClick={() => onContextMenuDelete(column.id)}
               >
                 Eliminar columna
@@ -334,10 +410,11 @@ function EditableTableCell({
   onStartSelection: (rowId: string, columnId: string, operation: FormulaSelectionOperation) => void;
 }) {
   const { index } = useFormulaEditing();
+  const presentation = useNumberPresentation();
   const cell = row.cells[column.id];
   const isFormula = cell?.kind === "formula";
   const fieldKey = `cell:${tableId}:${row.id}:${column.id}`;
-  const displayValue = getCellDisplayValue(tableV2, row.id, column.id, formulaResults);
+  const displayValue = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
   const result = isFormula ? formulaResults.get(formulaCellKey(row.id, column.id)) : undefined;
   const formulaText = cell?.kind === "formula" ? `=${formulaToText(cell.formula, { index, table: tableV2 })}` : null;
   // What was typed as a formula and could not be read as one stays as written, to be corrected.
@@ -786,9 +863,18 @@ export function TableEditorItem({
     onUpdate(table.id, v2Updater((v2) => clearTableColumn(v2, columnId)));
   }, [table.id, onUpdate]);
 
-  const ctxDeleteColumn = useCallback((columnId: string) => {
-    onUpdate(table.id, v2Updater((v2) => removeTableColumn(v2, columnId)));
+  const ctxMoveColumn = useCallback((columnId: string, direction: -1 | 1) => {
+    onUpdate(table.id, v2Updater((v2) => moveTableColumnBy(v2, columnId, direction)));
   }, [table.id, onUpdate]);
+
+  const ctxDeleteColumn = useCallback((columnId: string) => {
+    // A column with something written is only deleted on purpose; formulas that read it will show #REF!.
+    if (columnHasData(tableV2, columnId)) {
+      const name = tableV2.columns.find((c) => c.id === columnId)?.name.trim() || "La columna";
+      if (!window.confirm(`${name} tiene datos. ¿Eliminar la columna y lo que contiene?`)) return;
+    }
+    onUpdate(table.id, v2Updater((v2) => removeTableColumn(v2, columnId)));
+  }, [table.id, tableV2, onUpdate]);
 
   /* ---- Context menu row actions ---- */
   const ctxInsertRowAbove = useCallback((rowId: string) => {
@@ -957,6 +1043,7 @@ export function TableEditorItem({
                             onContextMenuRename={ctxRenameColumn}
                             onContextMenuInsertLeft={ctxInsertColumnLeft}
                             onContextMenuInsertRight={ctxInsertColumnRight}
+                            onContextMenuMove={ctxMoveColumn}
                             onContextMenuClear={ctxClearColumn}
                             onContextMenuDelete={ctxDeleteColumn}
                           />
@@ -1014,6 +1101,7 @@ export function TableEditorItem({
                                 onContextMenuRename={ctxRenameColumn}
                                 onContextMenuInsertLeft={ctxInsertColumnLeft}
                                 onContextMenuInsertRight={ctxInsertColumnRight}
+                                onContextMenuMove={ctxMoveColumn}
                                 onContextMenuClear={ctxClearColumn}
                                 onContextMenuDelete={ctxDeleteColumn}
                               />
@@ -1045,6 +1133,7 @@ export function TableEditorItem({
                           onContextMenuRename={ctxRenameColumn}
                           onContextMenuInsertLeft={ctxInsertColumnLeft}
                           onContextMenuInsertRight={ctxInsertColumnRight}
+                          onContextMenuMove={ctxMoveColumn}
                           onContextMenuClear={ctxClearColumn}
                           onContextMenuDelete={ctxDeleteColumn}
                         />

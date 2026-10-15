@@ -9,6 +9,9 @@ import {
 import { transformComparables } from "@/features/valuations/mappers/transform-valuation";
 import { ReadOnlyValuationAlert } from "@/features/valuations/components/feedback/valuation-error-alert";
 import { FormulaEditingProvider } from "@/features/valuations/components/editor/formula-editing";
+import { CustomUnitsProvider } from "@/features/valuations/components/editor/custom-units-context";
+import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
+import { documentNumberPresentation } from "@/features/valuations/services/number-presentation";
 import { AiAssistProvider } from "@/features/ai/ai-assist-context";
 import { ValuationEditorPanel } from "@/features/valuations/components/workspace/valuation-editor-panel";
 import type { SplitLayout, WorkspaceMode } from "@/features/valuations/components/workspace/valuation-workspace-layout";
@@ -71,6 +74,7 @@ export function ValuationWorkspace({
   valuationId: propValuationId,
   initialValuation,
   aiEnabled = false,
+  customUnits = [],
 }: {
   currentUser: AuthUser;
   letterhead: Letterhead;
@@ -79,6 +83,8 @@ export function ValuationWorkspace({
   initialValuation?: ValuationDetail | null;
   /** The installation has the AI assistance configured. */
   aiEnabled?: boolean;
+  /** The firm's own units, offered in "Formato del valor". */
+  customUnits?: string[];
 }) {
   const router = useRouter();
   const {
@@ -154,6 +160,8 @@ export function ValuationWorkspace({
     () => comparables.filter((comparable) => comparable.selected),
     [comparables],
   );
+  // One choice for the whole document: the editor, the preview and the external window write numbers the same way.
+  const numberPresentation = useMemo(() => documentNumberPresentation(sections), [sections]);
   const externalPreviewPayload = useMemo<ExternalPreviewPayload>(() => ({
     activeSection,
     caratula,
@@ -162,12 +170,14 @@ export function ValuationWorkspace({
     meta,
     principalCoverImage,
     selectedComparables,
+    numberPresentation,
   }), [
     activeSection,
     caratula,
     letterhead,
     documentHeaderImage,
     meta,
+    numberPresentation,
     principalCoverImage,
     selectedComparables,
   ]);
@@ -305,6 +315,8 @@ export function ValuationWorkspace({
   return (
     <AiAssistProvider enabled={aiEnabled && canEdit} valuationId={valuationId}>
     <FormulaEditingProvider sections={sections}>
+    <NumberPresentationProvider presentation={numberPresentation}>
+    <CustomUnitsProvider initialUnits={customUnits}>
     <Tabs value={activeSection.id} onValueChange={setActiveSectionId} className="gap-0 h-full">
       <main className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-hidden">
       <section className="shrink-0 border-b bg-background">
@@ -429,6 +441,8 @@ export function ValuationWorkspace({
       />
       </main>
     </Tabs>
+    </CustomUnitsProvider>
+    </NumberPresentationProvider>
     </FormulaEditingProvider>
     </AiAssistProvider>
   );
