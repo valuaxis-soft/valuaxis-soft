@@ -76,7 +76,7 @@ test("the full save sends whether a section was added or renamed; the metadata r
   assert.equal(payload[1].title, "PLANOS");
   assert.equal(payload[1].sortOrder, 1);
 
-  assert.deepEqual(sectionMetadataFromContent({ enabled: true, custom: true, titleEdited: true }), { enabled: true, startOnNewPage: undefined, flowSpacingBeforePx: undefined, custom: true, titleEdited: true });
+  assert.deepEqual(sectionMetadataFromContent({ enabled: true, custom: true, titleEdited: true }), { enabled: true, startOnNewPage: undefined, flowSpacingBeforePx: undefined, thousandsSeparator: undefined, custom: true, titleEdited: true });
   const hydrated = hydrateSectionMetadata({ custom: true, titleEdited: true, startOnNewPage: false });
   assert.equal(hydrated.custom, true);
   assert.equal(hydrated.titleEdited, true);
