@@ -908,7 +908,7 @@ function SortableBlockEditor(props: {
                   concepts={subBlock.concepts}
                   allConcepts={allWorkspaceConcepts}
                   tables={subBlock.tables}
-                  target={[...subBlock.concepts].reverse().find((concept) => concept.type === "longText") ?? null}
+                  target={[...subBlock.concepts].reverse().find((concept) => concept.type === "longText" || concept.type === "paragraph") ?? null}
                   onInsert={(conceptId, value) => props.onUpdateSubConcept(section.id, block.id, subBlock.id, conceptId, { value })}
                 />
                 </DraftScopeProvider>

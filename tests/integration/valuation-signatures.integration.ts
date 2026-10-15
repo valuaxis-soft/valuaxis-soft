@@ -62,15 +62,15 @@ test("signatures and validity months are saved, trimmed, in order, and read back
   assert.equal((await caratulaRow(fixture)).SNombreValuador, null);
 });
 
-test("one signature or twenty are stored; a save without the list leaves it as it was", async () => {
+test("one signature or three are stored; a save without the list leaves it as it was", async () => {
   const fixture = await createValuationFixture();
-  const twenty = Array.from({ length: 20 }, (_, index) => ({ name: `Perito ${index + 1}`, cedula: `C-${index + 1}`, role: "" }));
-  await save(fixture, { mesesVigencia: 8, firmas: twenty });
-  assert.deepEqual((await read(fixture)).firmas, twenty);
+  const three = Array.from({ length: 3 }, (_, index) => ({ name: `Perito ${index + 1}`, cedula: `C-${index + 1}`, role: "" }));
+  await save(fixture, { mesesVigencia: 8, firmas: three });
+  assert.deepEqual((await read(fixture)).firmas, three);
 
   await save(fixture, { solicitante: "Cliente", mesesVigencia: 8 });
   const caratula = await read(fixture);
-  assert.equal(caratula.firmas.length, 20);
+  assert.equal(caratula.firmas.length, 3);
   assert.equal(caratula.fechaVigencia, "", "months without a valuation date reach no date yet");
 });
 
@@ -78,12 +78,12 @@ test("one signature or twenty are stored; a save without the list leaves it as i
 /*  Validation                                                         */
 /* ------------------------------------------------------------------ */
 
-test("incomplete signatures, more than twenty, or a validity outside 1 to 12 whole months are rejected and nothing is saved", async () => {
+test("incomplete signatures, more than three, or a validity outside 1 to 12 whole months are rejected and nothing is saved", async () => {
   const fixture = await createValuationFixture();
   await save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: 6, firmas: [ana] });
 
   await rejects400(save(fixture, { mesesVigencia: 6, firmas: [{ name: "", cedula: "1" }] }), /Firma 1: Escribe el nombre/);
-  await rejects400(save(fixture, { mesesVigencia: 6, firmas: Array.from({ length: 21 }, () => ana) }), /máximo 20 firmas/);
+  await rejects400(save(fixture, { mesesVigencia: 6, firmas: Array.from({ length: 4 }, () => ana) }), /máximo 3 firmas/);
   await rejects400(save(fixture, { mesesVigencia: 6, firmas: "Ana" }), /Las firmas no son válidas/);
   for (const months of [0, 13, 24, 6.5]) {
     await rejects400(save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: months, firmas: [beto] }), /de 1 a 12 meses completos/);
