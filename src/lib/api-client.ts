@@ -91,6 +91,17 @@ export class SessionExpiredError extends Error {
   }
 }
 
+/** A rejected request with its message and, when the server offers one, a page where the user can fix it. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly link: string | null = null,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -100,7 +111,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   if (res.status === 401) throw new SessionExpiredError();
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: "Request failed" }));
-    throw new Error(error.error || `HTTP ${res.status}`);
+    throw new ApiError(error.error || `HTTP ${res.status}`, typeof error.link === "string" ? error.link : null);
   }
   if (res.status === 204) return undefined as T;
 
@@ -278,6 +289,9 @@ export const api = {
     checkout: (priceId: string) =>
       request<{ url: string; destination: "checkout" | "portal" }>(`/organizacion/facturacion/checkout`, { method: "POST", body: JSON.stringify({ priceId }) }),
     portal: () => request<{ url: string }>(`/organizacion/facturacion/portal`, { method: "POST" }),
+    /** Buys a credit package: answers the Stripe page to send the browser to. */
+    buyPackage: (packageId: string) =>
+      request<{ url: string }>(`/organizacion/facturacion/creditos/checkout`, { method: "POST", body: JSON.stringify({ packageId }) }),
   },
   invitations: {
     mine: () => request<MyInvitationDto[]>(`/organizacion/invitaciones`),

@@ -50,11 +50,19 @@ export type GatewaySubscription = {
 export type GatewayCheckoutSession = {
   id: string;
   url: string | null;
+  mode: "subscription" | "payment";
   customerId: string | null;
   subscriptionId: string | null;
+  /** Payment mode: Stripe's payment_status ("paid", "unpaid", "no_payment_required") and the PaymentIntent. */
+  paymentStatus: string | null;
+  paymentIntentId: string | null;
+  /** Payment mode: what was charged, in centavos. */
+  amountTotal: number | null;
   clientReferenceId: string | null;
   metadata: BillingMetadata;
 };
+
+type CheckoutUrls = { clientReferenceId: string; successUrl: string; cancelUrl: string; metadata: BillingMetadata };
 
 export type GatewayPortalConfiguration = { id: string; metadata: BillingMetadata };
 
@@ -81,12 +89,13 @@ export interface BillingGateway {
 
   retrievePrice(id: string): Promise<GatewayPrice | null>;
   findPriceByLookupKey(lookupKey: string): Promise<GatewayPrice | null>;
+  /** A recurring price when `interval` is set; a one-time price (credit packages) when it is null. */
   createPrice(input: {
     productId: string;
     currency: string;
     unitAmount: number;
-    interval: StripeInterval;
-    intervalCount: number;
+    interval: StripeInterval | null;
+    intervalCount: number | null;
     lookupKey: string;
     nickname: string;
     metadata: BillingMetadata;
@@ -97,15 +106,10 @@ export interface BillingGateway {
   retrieveCustomer(id: string): Promise<GatewayCustomer | null>;
   createCustomer(input: { name: string; email: string | null; metadata: BillingMetadata; idempotencyKey: string }): Promise<GatewayCustomer>;
 
-  createCheckoutSession(input: {
-    customerId: string;
-    priceId: string;
-    clientReferenceId: string;
-    trialDays: number | null;
-    successUrl: string;
-    cancelUrl: string;
-    metadata: BillingMetadata;
-  }): Promise<GatewayCheckoutSession>;
+  /** Hosted Checkout in subscription mode. */
+  createCheckoutSession(input: CheckoutUrls & { customerId: string; priceId: string; trialDays: number | null }): Promise<GatewayCheckoutSession>;
+  /** Hosted Checkout in payment mode: one charge for a credit package, with a Stripe invoice/receipt. */
+  createPaymentCheckoutSession(input: CheckoutUrls & { customerId: string; priceId: string; description: string }): Promise<GatewayCheckoutSession>;
   retrieveCheckoutSession(id: string): Promise<GatewayCheckoutSession | null>;
 
   retrieveSubscription(id: string): Promise<GatewaySubscription | null>;

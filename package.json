@@ -24,7 +24,9 @@
     "test:e2e": "tsx --env-file-if-exists=.env --test \"tests/e2e/**/*.e2e.ts\"",
     "env:check": "tsx --env-file-if-exists=.env scripts/check-env.ts",
     "stripe:sync": "tsx --env-file-if-exists=.env scripts/stripe-sync.ts",
-    "billing:example-plans": "tsx --env-file-if-exists=.env scripts/billing-example-plans.ts"
+    "billing:example-plans": "tsx --env-file-if-exists=.env scripts/billing-example-plans.ts",
+    "billing:example-packages": "tsx --env-file-if-exists=.env scripts/billing-example-packages.ts",
+    "billing:credits": "tsx --env-file-if-exists=.env scripts/billing-credits.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.131.0",

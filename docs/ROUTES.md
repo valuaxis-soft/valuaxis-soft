@@ -23,7 +23,7 @@
 | `/avaluos/<uuid>/dictamen` | Dictamen completo: todas las secciones habilitadas con las mismas páginas de la vista previa, en tamaño carta sin márgenes. Muestra lo guardado; el botón "Generar avalúo" del editor guarda antes de abrirlo. "Descargar PDF" lo genera en el servidor; "Imprimir" usa el navegador. Requiere `AVALUO_EXPORTAR` y registra un evento de exportación |
 | `/organizacion/equipo` | Nombre del equipo, invitaciones, miembros y roles. Requiere `USUARIO_ADMINISTRAR` (ver [AUTHORIZATION.md](AUTHORIZATION.md#equipos)) |
 | `/organizacion/despacho` | Datos del despacho: logotipo, razón social, RFC, dirección, teléfono y correo del membrete; perito que firma, meses de vigencia y prefijo del folio de los avalúos nuevos. Requiere `USUARIO_ADMINISTRAR` |
-| `/organizacion/facturacion` | Plan y facturación: plan actual, próximo cobro, planes disponibles, "Contratar" y "Administrar pago". Acciones con `SUSCRIPCION_ADMINISTRAR`; solo lectura con `FACTURACION_VER` (ver [COBRO.md](COBRO.md)) |
+| `/organizacion/facturacion` | Plan y facturación: avalúos disponibles (saldo de créditos), paquetes con "Comprar", movimientos, "Administrar pago" y, si los hay, planes de suscripción. Acciones con `SUSCRIPCION_ADMINISTRAR`; solo lectura con `FACTURACION_VER` (ver [COBRO.md](COBRO.md)) |
 | `/organizacion/invitaciones/<token>` | Enlace del correo de invitación: muestra el equipo y el rol, y la acepta |
 | `/workspace?action=new` | Crear avalúo |
 | `/workspace?id=<uuid>` | Editor del avalúo |
@@ -40,8 +40,9 @@
 | GET, PUT | `/api/organizacion/despacho` | Datos del despacho (`USUARIO_ADMINISTRAR`) |
 | GET, PUT, DELETE | `/api/organizacion/despacho/factores` | Catálogo de factores del despacho: `GET` para quien ve avalúos, `PUT` guarda y `DELETE` vuelve al propuesto (`USUARIO_ADMINISTRAR`) |
 | POST, DELETE | `/api/organizacion/despacho/logo` | Sube (`multipart`, campo `file`) o quita el logotipo |
-| GET | `/api/organizacion/facturacion` | Plan actual y planes a la venta (`FACTURACION_VER`) |
-| POST | `/api/organizacion/facturacion/checkout` | Inicia el pago de un precio (`{ priceId }`); devuelve la URL de Stripe. Con suscripción viva devuelve la del portal (`SUSCRIPCION_ADMINISTRAR`) |
+| GET | `/api/organizacion/facturacion` | Saldo de créditos, movimientos, paquetes a la venta, plan actual y planes a la venta (`FACTURACION_VER`) |
+| POST | `/api/organizacion/facturacion/creditos/checkout` | Inicia la compra de un paquete de avalúos (`{ packageId }`, pago único); devuelve la URL de Stripe (`SUSCRIPCION_ADMINISTRAR`) |
+| POST | `/api/organizacion/facturacion/checkout` | Inicia el pago de un precio de suscripción (`{ priceId }`); devuelve la URL de Stripe. Con suscripción viva devuelve la del portal (`SUSCRIPCION_ADMINISTRAR`) |
 | POST | `/api/organizacion/facturacion/portal` | Abre el portal de clientes de Stripe (`SUSCRIPCION_ADMINISTRAR`) |
 | POST | `/api/stripe/webhook` | Webhook de Stripe: sin sesión, autenticado por firma; única ruta exenta de la verificación de origen |
 | POST | `/api/organizacion/equipo/invitaciones` | Invita un correo con un rol y envía el enlace; devuelve el enlace |

@@ -201,6 +201,10 @@ const billingCases: Case[] = [
     body: () => ({ priceId: "no-es-un-id" }), expected: adminOnly(400) },
   { name: "open the payment portal without a paid subscription", method: "POST", path: () => "/api/organizacion/facturacion/portal",
     expected: adminOnly([409, 503]) },
+  { name: "buy a credit package that does not exist", method: "POST", path: () => "/api/organizacion/facturacion/creditos/checkout",
+    body: () => ({ packageId: randomUUID() }), expected: adminOnly([404, 503]) },
+  { name: "buy a credit package without a valid id", method: "POST", path: () => "/api/organizacion/facturacion/creditos/checkout",
+    body: () => ({ packageId: "no-es-un-id" }), expected: adminOnly(400) },
 ];
 
 async function runCase(item: Case, role: Role) {
