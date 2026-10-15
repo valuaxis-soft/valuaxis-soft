@@ -7,6 +7,7 @@ import type {
   PrincipalCoverImage,
   ValuationMeta,
 } from "@/features/valuations/model";
+import type { NumberPresentation } from "@/features/valuations/services/number-presentation";
 
 export type ExternalPreviewPayload = {
   activeSection: AppSection;
@@ -16,6 +17,8 @@ export type ExternalPreviewPayload = {
   meta: ValuationMeta;
   principalCoverImage: PrincipalCoverImage | null;
   selectedComparables: Comparable[];
+  /** How the document writes its numbers; a main tab on an older version sends none. */
+  numberPresentation?: NumberPresentation;
 };
 
 export type ExternalPreviewMessage =

@@ -282,6 +282,9 @@ export const api = {
     saveFactors: (catalog: FactorCatalog) =>
       request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`, { method: "PUT", body: JSON.stringify(catalog) }),
     resetFactors: () => request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`, { method: "DELETE" }),
+    customUnits: () => request<{ units: string[] }>(`/organizacion/despacho/unidades`),
+    addCustomUnit: (unit: string) =>
+      request<{ units: string[] }>(`/organizacion/despacho/unidades`, { method: "POST", body: JSON.stringify({ unit }) }),
   },
   billing: {
     get: () => request<BillingOverviewDto>(`/organizacion/facturacion`),

@@ -5,7 +5,7 @@ import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { requireSession } from "@/security/guards/require-session";
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
-import { getLetterhead } from "@/features/firm/firm.service";
+import { getCustomUnits, getLetterhead } from "@/features/firm/firm.service";
 import { isAiEnabled } from "@/features/ai/ai-gateway-provider";
 import { getValuationCreationCatalogs } from "@/features/valuations/services/valuation-catalogs.service";
 
@@ -27,9 +27,10 @@ export default async function WorkspacePage({
 
   if (!valuationId || !hasPermission(user, AUTH_PERMISSIONS.viewValuations)) redirect("/dashboard");
 
-  const [initialValuation, letterhead] = await Promise.all([
+  const [initialValuation, letterhead, customUnits] = await Promise.all([
     getValuationByPublicId(valuationId, user.organizationId),
     getLetterhead(user.organizationId),
+    getCustomUnits(user.organizationId),
   ]);
   if (!initialValuation) redirect("/dashboard");
 
@@ -37,6 +38,7 @@ export default async function WorkspacePage({
     <ValuationWorkspace
       currentUser={user}
       letterhead={letterhead}
+      customUnits={customUnits}
       valuationId={valuationId}
       initialValuation={initialValuation}
       aiEnabled={isAiEnabled()}

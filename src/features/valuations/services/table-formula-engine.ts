@@ -10,6 +10,7 @@
  */
 
 import { FORMULA_FUNCTIONS, roundDecimal } from "../calculation/free-formula";
+import { DEFAULT_NUMBER_PRESENTATION, withoutThousandsSeparator, type NumberPresentation } from "./number-presentation";
 import {
   getDisplayColumns,
   type TableV2,
@@ -628,12 +629,15 @@ export function formulaErrorMessage(error: FormulaError): string {
 
 /**
  * Get the display value for a cell, considering formulas and formatting.
+ * `presentation`: a document without the thousands separator shows a number
+ * typed as "40,000" as "40000"; with it, what was typed is shown as typed.
  */
 export function getCellDisplayValue(
   table: TableV2,
   rowId: string,
   columnId: string,
   formulaResults: Map<string, FormulaResult>,
+  presentation: NumberPresentation = DEFAULT_NUMBER_PRESENTATION,
 ): string {
   const row = table.rows.find((r) => r.id === rowId);
   if (!row) return "";
@@ -641,14 +645,14 @@ export function getCellDisplayValue(
   if (!cell) return "";
 
   if (cell.kind === "value") {
-    return cell.value;
+    return presentation.thousandsSeparator ? cell.value : withoutThousandsSeparator(cell.value);
   }
 
   // Formula cell
   const result = formulaResults.get(formulaCellKey(rowId, columnId));
   if (!result) return "#PENDING";
   if (!result.ok) return formulaErrorLabel(result.error);
-  return formatFormulaNumber(result.value, cell.format, result.money === true);
+  return formatFormulaNumber(result.value, cell.format, result.money === true, presentation);
 }
 
 /** Longest tail of decimals a result shows when nothing says how many; REDONDEAR asks for fewer. */
@@ -664,14 +668,16 @@ const currencyFormat = (precision: number) => new Intl.NumberFormat("es-MX", {
 /**
  * A result as the cell shows it. Without a format of its own it follows its
  * sources: an amount of money reads "$9,000.00", anything else is a number
- * with thousands separators and up to four decimals.
+ * with thousands separators (unless the document hides them) and up to four
+ * decimals.
  */
-export function formatFormulaNumber(value: number, format: TableCellFormat | undefined, money = false): string {
+export function formatFormulaNumber(value: number, format: TableCellFormat | undefined, money = false, presentation: NumberPresentation = DEFAULT_NUMBER_PRESENTATION): string {
   // Rounded as written in decimal before it is formatted, so a half rounds up as it reads.
   const rounded = (decimals: number) => roundDecimal(value, decimals);
+  const useGrouping = presentation.thousandsSeparator;
   if (!format) {
     if (money) return currencyFormat(2).format(rounded(2));
-    return new Intl.NumberFormat("es-MX", { maximumFractionDigits: FORMULA_RESULT_MAX_DECIMALS }).format(rounded(FORMULA_RESULT_MAX_DECIMALS));
+    return new Intl.NumberFormat("es-MX", { maximumFractionDigits: FORMULA_RESULT_MAX_DECIMALS, useGrouping }).format(rounded(FORMULA_RESULT_MAX_DECIMALS));
   }
   switch (format.type) {
     case "currency":
@@ -682,12 +688,13 @@ export function formatFormulaNumber(value: number, format: TableCellFormat | und
       return new Intl.NumberFormat("es-MX", {
         minimumFractionDigits: format.precision ?? 0,
         maximumFractionDigits: format.precision ?? 6,
+        useGrouping,
       }).format(rounded(format.precision ?? 6));
     case "measurement": {
       const unitSymbol = format.unit || "m";
       const unitLabel = format.customUnit || unitSymbol;
       const precision = format.precision ?? 2;
-      return `${new Intl.NumberFormat("es-MX", { minimumFractionDigits: precision, maximumFractionDigits: precision }).format(rounded(precision))} ${unitLabel}`;
+      return `${new Intl.NumberFormat("es-MX", { minimumFractionDigits: precision, maximumFractionDigits: precision, useGrouping }).format(rounded(precision))} ${unitLabel}`;
     }
     case "date":
       return new Date(value).toLocaleDateString("es-MX");

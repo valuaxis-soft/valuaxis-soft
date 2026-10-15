@@ -205,6 +205,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
     required: section.required,
     startOnNewPage: section.startOnNewPage ?? false,
     flowSpacingBeforePx: section.flowSpacingBeforePx,
+    thousandsSeparator: section.thousandsSeparator,
       blocks: section.blocks.map((block) => ({
       id: block.id,
       title: block.title,

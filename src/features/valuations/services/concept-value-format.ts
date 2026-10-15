@@ -1,5 +1,6 @@
 import type { Concept, ConceptDateFormat, ConceptValueFormat } from "@/features/valuations/model";
 import { formatMexicanPhone } from "@/features/valuations/services/caratula-validation";
+import { DEFAULT_NUMBER_PRESENTATION, type NumberPresentation } from "@/features/valuations/services/number-presentation";
 
 export const NUMERIC_VALUE_FORMAT_OPTIONS: Array<{ value: ConceptValueFormat; label: string; symbol?: string }> = [
   { value: "plain", label: "Sin formato" },
@@ -216,8 +217,10 @@ function formatPhoneForDocument(value: string) {
   return formatMexicanPhone(national);
 }
 
+/** `presentation`: how the document writes its numbers; the thousands separator is shown unless it says otherwise. */
 export function formatConceptValueForDocument(
   concept: Pick<Concept, "type" | "value" | "valueFormat" | "customUnit" | "sourceUnit" | "dateFormat">,
+  presentation: NumberPresentation = DEFAULT_NUMBER_PRESENTATION,
 ) {
   if (concept.type === "date") {
     return formatDateValue(concept.value, concept.dateFormat);
@@ -225,18 +228,19 @@ export function formatConceptValueForDocument(
   if (concept.type === "phone") {
     return formatPhoneForDocument(concept.value);
   }
-  return formatNumericConceptValue(concept);
+  return formatNumericConceptValue(concept, presentation);
 }
 
 export function formatNumericConceptValue(
   concept: Pick<Concept, "type" | "value" | "valueFormat" | "customUnit" | "sourceUnit">,
+  presentation: NumberPresentation = DEFAULT_NUMBER_PRESENTATION,
 ) {
   if (!isNumericConcept(concept)) return concept.value.trim();
   return formatNumericValue(concept.value, {
     valueFormat: resolveConceptValueFormat(concept),
     customUnit: concept.customUnit,
     sourceUnit: resolveEffectiveSourceUnit(concept),
-  });
+  }, presentation);
 }
 
 /** Formats that represent non-physical or non-convertible dimensions. */
@@ -245,6 +249,7 @@ const NON_CONVERTIBLE_FORMATS = new Set<ConceptValueFormat>(["plain", "mxn", "pe
 export function formatNumericValue(
   value: string,
   formatMetadata: Pick<Concept, "valueFormat" | "customUnit" | "sourceUnit"> = {},
+  presentation: NumberPresentation = DEFAULT_NUMBER_PRESENTATION,
 ) {
   const rawValue = value.trim();
   if (!rawValue) return rawValue;
@@ -266,7 +271,7 @@ export function formatNumericValue(
     }
   }
 
-  const formattedNumber = formatPlainNumber(displayValue);
+  const formattedNumber = formatPlainNumber(displayValue, presentation.thousandsSeparator);
 
   if (format === "plain") return formattedNumber;
 
@@ -333,7 +338,7 @@ function formatConvertedNumber(value: number): string {
   return str.includes(".") ? str.replace(/\.?0+$/, "") : str;
 }
 
-function formatPlainNumber(value: string) {
+function formatPlainNumber(value: string, useGrouping: boolean) {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return value;
   // The decimals written are the decimals printed: "7.50" stays "7.50", not "7.5".
@@ -341,6 +346,7 @@ function formatPlainNumber(value: string) {
   return new Intl.NumberFormat("es-MX", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
+    useGrouping,
   }).format(numericValue);
 }
 

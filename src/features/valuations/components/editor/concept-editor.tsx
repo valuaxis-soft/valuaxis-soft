@@ -9,7 +9,7 @@ import {
 } from "@/features/valuations/services/concept-layout";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { closestCenter, DndContext, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/core";
 import { editorCanScroll } from "./editor-dnd-autoscroll";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,8 @@ import { AlignHorizontalDistributeCenter,
          ArrowUpDown, 
          Calendar,
          CalendarDays,
-         ChevronDown, 
+         Check,
+         ChevronDown,
          ChevronUp, 
          Copy, 
          EllipsisVertical, 
@@ -61,6 +62,13 @@ import { ValuationDateField } from "../editor/valuation-date-field";
 import { compileFormula, conceptReferenceText, formulaToText, isFormulaText } from "@/features/valuations/services/formula-references";
 import { conceptTakesFormula } from "@/features/valuations/services/valuation-formulas";
 import { useFormulaEditing, useFormulaField, useFormulaReferenceTarget } from "./formula-editing";
+import { useNumberPresentation } from "../number-presentation-context";
+import type { NumberPresentation } from "@/features/valuations/services/number-presentation";
+import { useCustomUnits } from "./custom-units-context";
+import { MAX_CUSTOM_UNIT_LENGTH, findCustomUnit, normalizeCustomUnit } from "@/features/firm/custom-units";
+
+/** Marks the firm's own units among the options of "Formato del valor". */
+const FIRM_UNIT_PREFIX = "unit:";
 
 import { Textarea } from "@/components/ui/textarea";
 import { DraftAssist } from "./draft-assist";
@@ -71,10 +79,10 @@ import {
 
 
 /*Sección de Funciones */
-function formatCaratulaConceptValue(concept: Concept) {
+function formatCaratulaConceptValue(concept: Concept, presentation: NumberPresentation) {
   const type = concept.type ?? "text";
   if (type === "phone") return formatMexicanPhone(concept.value);
-  if (isNumericConcept(concept)) return formatNumericConceptValue(concept);
+  if (isNumericConcept(concept)) return formatNumericConceptValue(concept, presentation);
   return concept.value;
 }
 function digitsOnly(value: string) {
@@ -431,6 +439,24 @@ function ConceptValueFormatControl({
   const valueFormat = resolveConceptValueFormat(concept);
   const customUnit = concept.customUnit ?? "";
   const effectiveSourceUnit = resolveEffectiveSourceUnit(concept);
+  const { units: firmUnits, add: addFirmUnit } = useCustomUnits();
+  // A unit the firm already keeps is chosen in the list by its own name; any other custom unit is "Otra unidad".
+  const knownUnit = valueFormat === "custom" ? findCustomUnit(firmUnits, customUnit) : undefined;
+  const selected = knownUnit ? `${FIRM_UNIT_PREFIX}${knownUnit}` : valueFormat;
+  const typedUnit = normalizeCustomUnit(customUnit);
+  const canConfirm = valueFormat === "custom" && typedUnit.length > 0 && !knownUnit;
+
+  const choose = (nextFormat: ConceptValueFormat, nextCustomUnit?: string) => {
+    const patch: Partial<Concept> = {
+      valueFormat: nextFormat,
+      customUnit: nextFormat === "custom" ? nextCustomUnit ?? customUnit : undefined,
+    };
+    // Initialize sourceUnit on first change to a physical unit
+    if (concept.sourceUnit === undefined && effectiveSourceUnit === valueFormat) {
+      patch.sourceUnit = valueFormat;
+    }
+    onUpdate(concept.id, patch);
+  };
 
   return (
     <Popover>
@@ -455,18 +481,11 @@ function ConceptValueFormatControl({
             className="w-full"
             disabled={readOnly}
             size="sm"
-            value={valueFormat}
+            value={selected}
             onChange={(event) => {
-              const nextFormat = event.target.value as ConceptValueFormat;
-              const patch: Partial<Concept> = {
-                valueFormat: nextFormat,
-                customUnit: nextFormat === "custom" ? customUnit : undefined,
-              };
-              // Initialize sourceUnit on first change to a physical unit
-              if (concept.sourceUnit === undefined && effectiveSourceUnit === valueFormat) {
-                patch.sourceUnit = valueFormat;
-              }
-              onUpdate(concept.id, patch);
+              const chosen = event.target.value;
+              if (chosen.startsWith(FIRM_UNIT_PREFIX)) choose("custom", chosen.slice(FIRM_UNIT_PREFIX.length));
+              else choose(chosen as ConceptValueFormat);
             }}
           >
             {NUMERIC_VALUE_FORMAT_OPTIONS.map((option) => (
@@ -474,18 +493,46 @@ function ConceptValueFormatControl({
                 {option.label}
               </NativeSelectOption>
             ))}
+            {firmUnits.map((unit) => (
+              <NativeSelectOption key={`${FIRM_UNIT_PREFIX}${unit}`} value={`${FIRM_UNIT_PREFIX}${unit}`}>
+                {unit}
+              </NativeSelectOption>
+            ))}
           </NativeSelect>
           {valueFormat === "custom" ? (
             <Field className="gap-1.5">
               <FieldLabel className="text-xs text-muted-foreground">Unidad</FieldLabel>
-              <Input
-                className="h-8"
-                disabled={readOnly}
-                maxLength={18}
-                placeholder="ft, piezas, unidades"
-                value={customUnit}
-                onChange={(event) => onUpdate(concept.id, { customUnit: event.target.value })}
-              />
+              <div className="flex items-center gap-1">
+                <Input
+                  className="h-8"
+                  disabled={readOnly}
+                  maxLength={MAX_CUSTOM_UNIT_LENGTH}
+                  placeholder="ft, piezas, unidades"
+                  value={customUnit}
+                  onChange={(event) => onUpdate(concept.id, { customUnit: event.target.value })}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && canConfirm) {
+                      event.preventDefault();
+                      void addFirmUnit(typedUnit).then((kept) => kept && onUpdate(concept.id, { customUnit: kept }));
+                    }
+                  }}
+                />
+                {/* Confirming keeps the unit for the firm: the list offers it from then on. */}
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant={canConfirm ? "default" : "ghost"}
+                  aria-label="Confirmar unidad"
+                  title={knownUnit ? "Unidad guardada en el despacho" : "Guardar la unidad para volver a usarla"}
+                  disabled={readOnly || !canConfirm}
+                  onClick={() => void addFirmUnit(typedUnit).then((kept) => kept && onUpdate(concept.id, { customUnit: kept }))}
+                >
+                  <Check />
+                </Button>
+              </div>
+              <FieldDescription className="text-[11px]">
+                {knownUnit ? "Guardada en el despacho." : "Escribe la unidad y confírmala para que aparezca en la lista."}
+              </FieldDescription>
             </Field>
           ) : null}
         </div>
@@ -876,6 +923,7 @@ export function ConceptEditorRow({
   const usesSingleLineEditor = isSingleLineConceptType(conceptType);
   const formatIsSourceOwned = isFullLinkedSourceOwned(concept, allConcepts);
   const { index: formulaIndex } = useFormulaEditing();
+  const presentation = useNumberPresentation();
   // While a formula is being written elsewhere, a click on the concept writes its reference there.
   const reference = useFormulaReferenceTarget(`concept:${concept.id}`, () => conceptReferenceText(formulaIndex, concept.id));
   const referenceTarget = reference.active && conceptTakesFormula(effectiveConcept);
@@ -974,7 +1022,7 @@ export function ConceptEditorRow({
             inputMode={isNumericConcept(effectiveConcept) ? "decimal" : conceptType === "phone" ? "numeric" : undefined}
             placeholder="Dato"
             type={caratulaInputType(conceptType)}
-            value={isNumericConcept(effectiveConcept) && isValueFocused ? effectiveConcept.value : formatCaratulaConceptValue(effectiveConcept)}
+            value={isNumericConcept(effectiveConcept) && isValueFocused ? effectiveConcept.value : formatCaratulaConceptValue(effectiveConcept, presentation)}
             normalize={(text) => normalizeCaratulaConceptValue(conceptType, text)}
             onBlur={() => setIsValueFocused(false)}
             onValueChange={(text) => handleLinkedAwareUpdate({ value: normalizeCaratulaConceptValue(conceptType, text) })}
@@ -1100,7 +1148,7 @@ export function ConceptEditorRow({
               className="h-10 min-w-0"
               disabled={readOnly}
               inputMode="decimal"
-              value={isValueFocused ? effectiveConcept.value : formatNumericConceptValue(effectiveConcept)}
+              value={isValueFocused ? effectiveConcept.value : formatNumericConceptValue(effectiveConcept, presentation)}
               normalize={normalizeNumericConceptInput}
               onBlur={() => setIsValueFocused(false)}
               onValueChange={(text) => onUpdate(concept.id, { value: normalizeNumericConceptInput(text) })}
@@ -1114,7 +1162,7 @@ export function ConceptEditorRow({
               disabled={readOnly}
               inputMode={conceptType === "phone" ? "numeric" : undefined}
               type={caratulaInputType(conceptType)}
-              value={formatCaratulaConceptValue(effectiveConcept)}
+              value={formatCaratulaConceptValue(effectiveConcept, presentation)}
               normalize={(text) => normalizeCaratulaConceptValue(conceptType, text)}
               onValueChange={(text) => onUpdate(concept.id, { value: normalizeCaratulaConceptValue(conceptType, text) })}
               onFormulaChange={setFormula}

@@ -15,6 +15,7 @@ import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { Prisma } from "@prisma/client";
 import { resolveFactorCatalog, type FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 import { resolveSignatures, signatureErrors } from "@/features/valuations/services/valuation-signatures";
+import { addCustomUnitTo, resolveCustomUnits } from "./custom-units";
 import { todayInMexico } from "./firm-rules";
 import type { FirmSettingsInput } from "./firm-schemas";
 
@@ -261,4 +262,32 @@ export async function saveFactorCatalog(user: AuthUser, catalog: FactorCatalog |
     result: "EXITOSO",
   });
   return getFactorCatalog(organization.IdOrganizacion);
+}
+
+/** The units the firm typed in "Formato del valor" and confirmed, in the order they were added. */
+export async function getCustomUnits(organizationId: number): Promise<string[]> {
+  const organization = await findOrganization(organizationId);
+  return resolveCustomUnits(organization.JUnidadesPersonalizadas);
+}
+
+/** Keeps a unit for the firm; one already kept (however it was written) changes nothing. */
+export async function addCustomUnit(user: AuthUser, unit: string): Promise<string[]> {
+  const organization = await findOrganization(user.organizationId);
+  const next = addCustomUnitTo(resolveCustomUnits(organization.JUnidadesPersonalizadas), unit);
+  if (!next.added) return next.units;
+  await prisma.organizacion.update({
+    where: { IdOrganizacion: organization.IdOrganizacion },
+    data: { JUnidadesPersonalizadas: next.units },
+  });
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    organizationId: organization.IdOrganizacion,
+    userId: user.id,
+    entity: "Organizacion",
+    entityId: String(organization.IdOrganizacion),
+    action: "CUSTOM_UNIT_ADD",
+    result: "EXITOSO",
+    metadata: { unit: next.units.at(-1) },
+  });
+  return next.units;
 }

@@ -7,7 +7,9 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DownloadDictamenPdfButton } from "./download-dictamen-pdf-button";
 import { SendDictamenEmailDialog } from "./send-dictamen-email-dialog";
+import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
 import { SectionDocument } from "@/features/valuations/components/report-preview";
+import { documentNumberPresentation } from "@/features/valuations/services/number-presentation";
 import {
   caratulaFromValuation,
   initialMetaFor,
@@ -84,20 +86,22 @@ export function ValuationDictamen({
       </header>
 
       <main data-print-document className="overflow-x-auto py-8 print:overflow-visible print:p-0">
-        <div className="flex w-fit min-w-full flex-col gap-6 px-4 print:gap-0 print:p-0">
-          {printableSections.map((section) => (
-            <SectionDocument
-              caratula={initial.caratula}
-              comparables={initial.comparables}
-              letterhead={letterhead}
-              documentHeaderImage={documentHeaderImage}
-              key={section.id}
-              meta={initial.meta}
-              principalCoverImage={principalCoverImage}
-              section={section}
-            />
-          ))}
-        </div>
+        <NumberPresentationProvider presentation={documentNumberPresentation(sections)}>
+          <div className="flex w-fit min-w-full flex-col gap-6 px-4 print:gap-0 print:p-0">
+            {printableSections.map((section) => (
+              <SectionDocument
+                caratula={initial.caratula}
+                comparables={initial.comparables}
+                letterhead={letterhead}
+                documentHeaderImage={documentHeaderImage}
+                key={section.id}
+                meta={initial.meta}
+                principalCoverImage={principalCoverImage}
+                section={section}
+              />
+            ))}
+          </div>
+        </NumberPresentationProvider>
       </main>
     </div>
   );

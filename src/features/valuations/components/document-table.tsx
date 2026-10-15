@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import {
   DEFAULT_TABLE_TITLE,
   ensureTableV2,
+  getDisplayColumns,
   getTableHeaderLayout,
   type TableColumn,
   type TableNote,
@@ -20,6 +21,7 @@ import {
 import { evaluateTableFormulas, getCellDisplayValue } from "../services/table-formula-engine";
 import type { DocumentTableFragment } from "../services/table-pagination";
 import { TABLE_HEADER_BAND } from "./document-theme";
+import { useNumberPresentation } from "./number-presentation-context";
 
 const EMPTY_VALUE = "No se proporcionó";
 
@@ -286,7 +288,9 @@ function renderResultValue(
 function DefaultDocumentTable({ table }: { table: TableContent }) {
   const tableV2 = ensureTableV2(table);
   const formulaResults = useMemo(() => evaluateTableFormulas(tableV2), [tableV2]);
-  const columns = tableV2.columns.length ? tableV2.columns : [{ id: "__empty", name: "" }];
+  const presentation = useNumberPresentation();
+  const displayColumns = getDisplayColumns(tableV2);
+  const columns = displayColumns.length ? displayColumns : [{ id: "__empty", name: "" }];
 
   return (
     <figure>
@@ -306,7 +310,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
             {tableV2.rows.length ? tableV2.rows.map((row) => (
               <tr className="border-t border-slate-300 odd:bg-slate-50" key={row.id}>
                 {columns.map((column) => {
-                  const displayValue = getCellDisplayValue(tableV2, row.id, column.id, formulaResults);
+                  const displayValue = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
                   return (
                     <td className="border-r border-slate-300 px-1.5 py-1 align-top text-wrap break-words last:border-r-0" key={column.id}>
                       {displayValue || EMPTY_VALUE}
@@ -333,6 +337,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
 function ReportDocumentTable({ table, fragment }: { table: TableContent; fragment?: DocumentTableFragment }) {
   const tableV2 = ensureTableV2(table);
   const formulaResults = useMemo(() => evaluateTableFormulas(tableV2), [tableV2]);
+  const presentation = useNumberPresentation();
   // A table still named as the editor created it, or one whose schema hides its title, prints no caption.
   const title = tableV2.title.trim();
   const caption = tableV2.schema?.hideCaption || title === DEFAULT_TABLE_TITLE ? "" : title;
@@ -346,8 +351,10 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
   const rows = fragment ? tableV2.rows.slice(fragment.from, fragment.to) : tableV2.rows;
   const opens = !fragment?.continuation;
   const closes = fragment?.last ?? true;
+  // The columns as the editor shows them: a structured table orders them by its zones.
+  const columns = getDisplayColumns(tableV2);
   // Fragments keep the column widths of the whole table, so the columns line up from page to page.
-  const columnWidths = fragment?.columnWidths.length === tableV2.columns.length ? fragment.columnWidths : null;
+  const columnWidths = fragment?.columnWidths.length === columns.length ? fragment.columnWidths : null;
 
   return (
     <div className="w-full overflow-hidden">
@@ -362,22 +369,22 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
         columnWidths && "table-fixed",
         density === "compact" ? "text-[9px] leading-[1.35]"
           : density === "dense" ? "text-[10px] leading-[1.35]"
-            : tableV2.columns.length > 7 ? "text-[10px]" : "text-[11px]",
+            : columns.length > 7 ? "text-[10px]" : "text-[11px]",
       )} data-split-table="">
         <colgroup>
-          {tableV2.columns.map((column, index) => (
+          {columns.map((column, index) => (
             <col key={column.id} style={columnWidths ? { width: `${columnWidths[index]}px` } : undefined} />
           ))}
         </colgroup>
         {caption ? <TableCaption className="mt-0 mb-1 text-[11px]">{caption}{opens ? null : " (continúa)"}</TableCaption> : null}
-        {plain ? null : renderSchemaHeader(tableV2, tableV2.columns)}
+        {plain ? null : renderSchemaHeader(tableV2, columns)}
         <TableBody>
           {rows.map((row, index) => (
             // Gray and white rows alternate, first one gray, as in the appraiser's own format;
             // by the row's place in the whole table, so a continuation follows on.
             <TableRow className={cn(plain ? "border-0" : "border-slate-200", !plain && (firstRow + index) % 2 === 0 && "bg-slate-100")} data-split-table-row="" key={row.id}>
-              {tableV2.columns.map((column) => (
-                <TableCell className={cn("px-2", density ? "py-[3px]" : "py-1", cellPresentation(tableV2, column.id))} key={column.id}>{getCellDisplayValue(tableV2, row.id, column.id, formulaResults)}</TableCell>
+              {columns.map((column) => (
+                <TableCell className={cn("px-2", density ? "py-[3px]" : "py-1", cellPresentation(tableV2, column.id))} key={column.id}>{getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation)}</TableCell>
               ))}
             </TableRow>
           ))}
@@ -395,17 +402,19 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
 function CompactDocumentTable({ table }: { table: TableContent }) {
   const tableV2 = ensureTableV2(table);
   const formulaResults = useMemo(() => evaluateTableFormulas(tableV2), [tableV2]);
+  const presentation = useNumberPresentation();
+  const columns = getDisplayColumns(tableV2);
 
   return (
     <table className="w-full border-collapse table-fixed text-[8.5px]">
       <colgroup>
-        {tableV2.columns.map((column) => (
+        {columns.map((column) => (
           <col key={column.id} />
         ))}
       </colgroup>
       <thead>
         <tr>
-          {tableV2.columns.map((column) => (
+          {columns.map((column) => (
             <th className="border border-slate-300 px-1 py-0.5 text-left text-wrap font-bold break-words" key={column.id}>{column.name}</th>
           ))}
         </tr>
@@ -413,9 +422,9 @@ function CompactDocumentTable({ table }: { table: TableContent }) {
       <tbody>
         {tableV2.rows.map((row) => (
           <tr key={row.id}>
-            {tableV2.columns.map((column) => (
+            {columns.map((column) => (
               <td className="overflow-hidden break-words border border-slate-300 px-1 py-0.5" key={column.id}>
-                {getCellDisplayValue(tableV2, row.id, column.id, formulaResults)}
+                {getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation)}
               </td>
             ))}
           </tr>

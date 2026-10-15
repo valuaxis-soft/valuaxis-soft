@@ -36,6 +36,8 @@ export type SectionMetadata = {
   enabled: boolean;
   startOnNewPage?: boolean;
   flowSpacingBeforePx?: number;
+  /** The document's choice, carried by its carátula section. */
+  thousandsSeparator?: boolean;
 };
 
 export type BlockMetadata = {
@@ -153,6 +155,7 @@ export function sectionMetadataFromContent(content: SectionMetadataContent): Sec
     enabled: content.enabled !== false,
     startOnNewPage: content.startOnNewPage,
     flowSpacingBeforePx: content.flowSpacingBeforePx,
+    thousandsSeparator: content.thousandsSeparator,
   };
 }
 
@@ -161,6 +164,7 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
     enabled: true,
     startOnNewPage: sectionBooleanMetadata(config, "startOnNewPage"),
     flowSpacingBeforePx: readFlowSpacingBeforePx(config),
+    thousandsSeparator: sectionBooleanMetadata(config, "thousandsSeparator"),
   };
 }
 
@@ -281,7 +285,7 @@ function imageCaptionAlign(config: unknown): "left" | "center" | "right" | undef
   });
 }
 
-function sectionBooleanMetadata(config: unknown, key: "startOnNewPage") {
+function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator") {
   return readConfigMetadata(config, (value) => readBooleanMetadata(value, key));
 }
 
@@ -403,7 +407,7 @@ function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "cust
   return typeof metadata === "string" ? metadata : undefined;
 }
 
-function readBooleanMetadata(value: unknown, key: "startOnNewPage") {
+function readBooleanMetadata(value: unknown, key: "startOnNewPage" | "thousandsSeparator") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "boolean" ? metadata : undefined;

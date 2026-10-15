@@ -17,12 +17,17 @@ import {
 } from "../src/features/valuations/services/formula-references";
 import {
   buildFormulaFromSelection,
+  canMoveTableColumn,
+  columnHasData,
+  createHomologationTable,
   fillColumnWithFormula,
   duplicateTableRow,
   ensureTableV2,
+  getDisplayColumns,
   insertTableColumn,
   insertTableRow,
   moveTableColumn,
+  moveTableColumnBy,
   moveTableRow,
   readStoredFormula,
   removeTableColumn,
@@ -43,6 +48,7 @@ import {
   applyValuationFormulas,
   conceptFormulaValue,
   conceptSourceValue,
+  conceptHasNumericValue,
   conceptTakesFormula,
 } from "../src/features/valuations/services/valuation-formulas";
 
@@ -813,4 +819,103 @@ test("a stored formula that is malformed is an error in its cell, never an excep
     // Without an expression there is no formula: the concept keeps what it had.
     assert.match(valueOf(applyValuationFormulas(sections), "c"), formula.expression ? /^#/ : /^$/);
   }
+});
+
+/* ------------------------------------------------------------------ */
+/*  Columns moved, inserted at a place and deleted                     */
+/* ------------------------------------------------------------------ */
+
+test("a column moved one step at a time keeps the formula on the same cells; only its address changes", () => {
+  let table = typed(areas(), "D2", "=B2*C2");
+  assert.equal(canMoveTableColumn(table, "c1", -1), false, "the first column has nothing to its left");
+  assert.equal(canMoveTableColumn(table, "c4", 1), false, "the last column has nothing to its right");
+  assert.equal(moveTableColumnBy(table, "c1", -1), table, "a move that cannot happen leaves the table as it was");
+
+  table = moveTableColumnBy(table, "c2", 1);
+  assert.deepEqual(getDisplayColumns(table).map((column) => column.id), ["c1", "c3", "c2", "c4"]);
+  assert.equal(textOf(table, "r2", "c4"), "C2*B2");
+  assert.equal(shown(table, "D2"), "$1,024,250.00");
+
+  table = moveTableColumnBy(table, "c4", -1);
+  table = moveTableColumnBy(table, "c4", -1);
+  assert.deepEqual(getDisplayColumns(table).map((column) => column.id), ["c1", "c4", "c3", "c2"]);
+  assert.equal(textOf(table, "r2", "c4"), "D2*C2");
+  assert.equal(shown(table, "B2"), "$1,024,250.00");
+});
+
+test("a column inserted at a chosen place starts empty and shifts the addresses after it", () => {
+  let table = typed(areas(), "D2", "=B2*C2");
+  table = insertTableColumn(table, 2, "Factor");
+  assert.deepEqual(getDisplayColumns(table).map((column) => column.name), ["Concepto", "Superficie", "Factor", "Valor unitario", "Importe"]);
+  const factor = table.columns[2];
+  assert.equal(columnHasData(table, factor.id), false);
+  assert.equal(columnHasData(table, "c2"), true);
+  assert.equal(columnHasData(table, "c4"), true, "a formula counts as data");
+  assert.equal(textOf(table, "r2", "c4"), "B2*D2");
+  assert.equal(shown(table, "E2"), "$1,024,250.00");
+});
+
+test("a formula of another table follows the columns moved there and reads #REF! when its column is deleted", () => {
+  let sections = valuation();
+  sections = write(sections, { table: "t-valores", address: "B1" }, "=[Superficies]!B1*2");
+  sections = write(sections, { concept: "c-superficie" }, "=SUMA([Superficies]!B1:B2)");
+  assert.equal(cellOf(applyValuationFormulas(sections), "t-valores", "B1"), "339.56");
+
+  const edit = (change: (table: TableV2) => TableV2) =>
+    sections.map((section) => ({
+      ...section,
+      blocks: section.blocks.map((block) => ({
+        ...block,
+        tables: block.tables.map((table) => (table.id === "t-lotes" ? (change(ensureTableV2(table)) as unknown as TableContent) : table)),
+      })),
+    }));
+
+  const moved = applyValuationFormulas(edit((table) => moveTableColumnBy(table, "c2", -1)));
+  const movedIndex = buildFormulaIndex(moved);
+  assert.equal(textOf(movedIndex.tableById.get("t-valores")!.table, "r1", "c2", movedIndex), "[Superficies]!A1*2");
+  assert.equal(formulaToText(conceptsIn(moved).find((item) => item.id === "c-superficie")!.formula!, { index: movedIndex }), "SUMA([Superficies]!A1:A2)");
+  assert.equal(cellOf(moved, "t-valores", "B1"), "339.56");
+  assert.equal(valueOf(moved, "c-superficie"), "290.28");
+
+  const deleted = applyValuationFormulas(edit((table) => removeTableColumn(table, "c2")));
+  const deletedIndex = buildFormulaIndex(deleted);
+  assert.equal(textOf(deletedIndex.tableById.get("t-valores")!.table, "r1", "c2", deletedIndex), "#REF!*2");
+  assert.equal(cellOf(deleted, "t-valores", "B1"), "#REF!");
+  assert.equal(valueOf(deleted, "c-superficie"), "#REF!");
+});
+
+test("a structured table moves a column only inside its zone and forgets a deleted one", () => {
+  let table = createHomologationTable();
+  table = { ...table, rows: [{ ...table.rows[0], cells: { ...table.rows[0].cells, "hom-factor-ubic": { kind: "value", value: "1.05" } } }] };
+  table = typed(table, "K1", "=E1*2");
+  assert.equal(shown(table, "K1"), "2.1");
+
+  assert.equal(canMoveTableColumn(table, "hom-fraction", 1), false, "a fixed column does not move");
+  assert.equal(canMoveTableColumn(table, "hom-factor-neg", -1), false, "the first factor cannot leave its zone");
+  assert.equal(canMoveTableColumn(table, "hom-factor-re", 1), false, "the last factor cannot leave its zone");
+  assert.equal(moveTableColumnBy(table, "hom-factor-neg", -1), table);
+
+  table = moveTableColumnBy(table, "hom-factor-ubic", -1);
+  const shownIds = getDisplayColumns(table).map((column) => column.id);
+  assert.deepEqual(shownIds.slice(3, 5), ["hom-factor-ubic", "hom-factor-neg"]);
+  assert.deepEqual(table.columns.map((column) => column.id), shownIds, "the printed order and the zones agree");
+  assert.deepEqual(table.schema?.zones[1].columnIds.slice(0, 2), ["hom-factor-ubic", "hom-factor-neg"]);
+  assert.equal(textOf(table, table.rows[0].id, "hom-net-unit-value"), "D1*2");
+  assert.equal(shown(table, "K1"), "2.1");
+
+  table = removeTableColumn(table, "hom-factor-ubic");
+  assert.equal(table.columns.some((column) => column.id === "hom-factor-ubic"), false);
+  assert.equal(table.schema?.zones[1].columnIds.includes("hom-factor-ubic"), false);
+  assert.equal(table.schema?.columnPresentation?.["hom-factor-ubic"], undefined);
+  assert.equal(textOf(table, table.rows[0].id, "hom-net-unit-value"), "#REF!*2");
+  assert.equal(shown(table, "J1"), "#REF!");
+});
+
+test("the value picker only offers concepts with a number", () => {
+  assert.equal(conceptHasNumericValue({ type: "number", value: "169780" }), true);
+  assert.equal(conceptHasNumericValue({ type: "currency", value: "$1,260,000.00" }), true);
+  assert.equal(conceptHasNumericValue({ value: "=B2*2", formula: { expression: "B2*2" } } as never), true);
+  assert.equal(conceptHasNumericValue({ value: "Jalisco" }), false);
+  assert.equal(conceptHasNumericValue({ type: "date", value: "2026-04-29" }), false);
+  assert.equal(conceptHasNumericValue({ type: "number", value: "" }), false);
 });

@@ -578,7 +578,12 @@ function normalizeTableName(name: string | undefined | null, fallback?: string):
 /*  CANONICAL TABLE OPERATIONS                                         */
 /* ================================================================== */
 
-/** Move a column from one index to another. */
+/**
+ * Move a column from one index to another (indices in `table.columns`).
+ * Formulas name columns by id, so what they read does not change. The zones
+ * of a structured table keep their columns and follow the new order inside
+ * each one: a column never changes zone by being moved.
+ */
 export function moveTableColumn(table: TableV2, fromIndex: number, toIndex: number): TableV2 {
   if (fromIndex < 0 || fromIndex >= table.columns.length) return table;
   if (toIndex < 0 || toIndex >= table.columns.length) return table;
@@ -586,7 +591,47 @@ export function moveTableColumn(table: TableV2, fromIndex: number, toIndex: numb
   const newColumns = [...table.columns];
   const [moved] = newColumns.splice(fromIndex, 1);
   newColumns.splice(toIndex, 0, moved);
-  return { ...table, columns: newColumns };
+  if (!table.schema) return { ...table, columns: newColumns };
+  const position = new Map(newColumns.map((column, index) => [column.id, index]));
+  const zones = table.schema.zones.map((zone) => ({
+    ...zone,
+    columnIds: [...zone.columnIds].sort((a, b) => (position.get(a) ?? 0) - (position.get(b) ?? 0)),
+  }));
+  return { ...table, columns: newColumns, schema: { ...table.schema, zones } };
+}
+
+/**
+ * Whether a column can take one step to the left (-1) or to the right (1)
+ * among the columns as shown. In a structured table a column moves only
+ * inside its own zone, and only when the zone allows it.
+ */
+export function canMoveTableColumn(table: TableV2, columnId: string, direction: -1 | 1): boolean {
+  const columns = getDisplayColumns(table);
+  const index = columns.findIndex((column) => column.id === columnId);
+  const neighbour = columns[index + direction];
+  if (index === -1 || !neighbour) return false;
+  if (!table.schema) return true;
+  if (resolveColumnCapability(columnId, table.schema).movable === false) return false;
+  const zone = findZoneForColumn(table.schema, columnId);
+  return zone !== undefined && zone === findZoneForColumn(table.schema, neighbour.id);
+}
+
+/** The column one step to the left or to the right of where it is shown; the table as it was when it cannot move. */
+export function moveTableColumnBy(table: TableV2, columnId: string, direction: -1 | 1): TableV2 {
+  if (!canMoveTableColumn(table, columnId, direction)) return table;
+  const columns = getDisplayColumns(table);
+  const neighbour = columns[columns.findIndex((column) => column.id === columnId) + direction];
+  const fromIndex = table.columns.findIndex((column) => column.id === columnId);
+  const toIndex = table.columns.findIndex((column) => column.id === neighbour.id);
+  return moveTableColumn(table, fromIndex, toIndex);
+}
+
+/** Whether any cell of the column holds a value or a formula. */
+export function columnHasData(table: TableV2, columnId: string): boolean {
+  return table.rows.some((row) => {
+    const cell = row.cells[columnId];
+    return cell?.kind === "formula" || (cell?.kind === "value" && cell.value.trim() !== "");
+  });
 }
 
 /** Move a row from one index to another. */
@@ -656,7 +701,11 @@ export function insertTableColumn(table: TableV2, index: number, name?: string):
   return { ...table, columns: newColumns, rows: newRows, schema: newSchema };
 }
 
-/** Remove a column by ID. Orphan cell entries are cleaned from all rows. */
+/**
+ * Remove a column by ID. Orphan cell entries are cleaned from all rows, and
+ * the schema forgets the column. Formulas that read it keep its id and read
+ * #REF! from then on, as a spreadsheet does.
+ */
 export function removeTableColumn(table: TableV2, columnId: string): TableV2 {
   const newColumns = table.columns.filter((c) => c.id !== columnId);
   const newRows = table.rows.map((row) => {
@@ -664,7 +713,19 @@ export function removeTableColumn(table: TableV2, columnId: string): TableV2 {
     delete cells[columnId];
     return { ...row, cells };
   });
-  return { ...table, columns: newColumns, rows: newRows };
+  if (!table.schema) return { ...table, columns: newColumns, rows: newRows };
+  const without = <T,>(record: Record<string, T> | undefined) => {
+    if (!record || !(columnId in record)) return record;
+    const { [columnId]: _removed, ...rest } = record;
+    return rest;
+  };
+  const schema: TableSchema = {
+    ...table.schema,
+    zones: table.schema.zones.map((zone) => ({ ...zone, columnIds: zone.columnIds.filter((id) => id !== columnId) })),
+    ...(table.schema.capabilities ? { capabilities: without(table.schema.capabilities) } : {}),
+    ...(table.schema.columnPresentation ? { columnPresentation: without(table.schema.columnPresentation) } : {}),
+  };
+  return { ...table, columns: newColumns, rows: newRows, schema };
 }
 
 /** Rename a column. Normalizes name to prevent empty persistence. */

@@ -259,6 +259,12 @@ export type AppSection = {
   required: boolean;
   startOnNewPage?: boolean;
   flowSpacingBeforePx?: number;
+  /**
+   * Whether the numbers of the whole document are written with the thousands
+   * separator ("40,000" or "40000"). Kept on the carátula section only; absent
+   * means with it, as documents saved before the choice existed print.
+   */
+  thousandsSeparator?: boolean;
   blocks: Block[];
 };
 

@@ -71,6 +71,8 @@ export type ValuationSectionDto = {
   sortOrder: number;
   startOnNewPage?: boolean;
   flowSpacingBeforePx?: number;
+  /** The document's choice of thousands separator, on the carátula section. */
+  thousandsSeparator?: boolean;
   blocks: ValuationBlockDto[];
   _count?: { blocks: number };
 };
@@ -620,6 +622,7 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition, 
     sortOrder: definition.order,
     startOnNewPage: sectionMetadata.startOnNewPage ?? false,
     flowSpacingBeforePx: sectionMetadata.flowSpacingBeforePx,
+    thousandsSeparator: sectionMetadata.thousandsSeparator,
     blocks,
     _count: { blocks: blocks.length },
   };
