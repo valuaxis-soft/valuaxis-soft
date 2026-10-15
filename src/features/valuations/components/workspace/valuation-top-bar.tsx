@@ -110,8 +110,10 @@ export function ValuationTopBar({
   iconMap,
   lifecycleAction = null,
   meta,
+  onAddSection,
   onExport,
   onExit,
+  onRenameSection,
   onReorderSections,
   onRedo,
   onSave,
@@ -134,8 +136,10 @@ export function ValuationTopBar({
   iconMap: Record<string, LucideIcon>;
   lifecycleAction?: ValuationLifecycleAction | null;
   meta: ValuationMeta;
+  onAddSection?: () => void;
   onExport: () => void;
   onExit: () => void;
+  onRenameSection?: (sectionId: string, title: string) => void;
   onReorderSections: (nextSections: AppSection[]) => void;
   onRedo: () => void;
   onSave: () => void;
@@ -344,6 +348,8 @@ export function ValuationTopBar({
         activeSectionId={activeSectionId}
         enabledSections={enabledSections}
         iconMap={iconMap}
+        onAddSection={onAddSection}
+        onRenameSection={onRenameSection}
         onReorder={onReorderSections}
         readOnly={readOnly}
       />

@@ -3,11 +3,12 @@ import { Prisma } from "@prisma/client";
 import {
   getCanonicalSectionKey,
   getOrderedValuationSections,
+  isCustomSectionId,
   sectionKeyToWorkspaceId,
   type ValuationSectionDefinition,
 } from "@/features/valuations/sections/section-registry";
 import { getInitialSectionTemplate } from "@/features/valuations/sections";
-import type { Block, BlockFlowV2, ConceptType, ConceptValueFormat, ContentLayout, Apartado, TableContent } from "@/features/valuations/model";
+import type { Block, BlockFlowV2, ConceptType, ConceptValueFormat, ContentLayout, HeaderExtraField, Apartado, TableContent } from "@/features/valuations/model";
 import { isBoundaryDistanceValueFormat } from "@/features/valuations/services/concept-value-format";
 import {
   hydrateBlockMetadata,
@@ -15,6 +16,7 @@ import {
   hydrateImageMetadata,
   hydrateSectionMetadata,
   hydrateApartadoMetadata,
+  isRemovedSectionConfig,
 } from "@/features/valuations/metadata";
 import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import type { TableCellFormat, TableV2 } from "@/features/valuations/services/table";
@@ -73,6 +75,10 @@ export type ValuationSectionDto = {
   flowSpacingBeforePx?: number;
   /** The document's choice of thousands separator, on the carátula section. */
   thousandsSeparator?: boolean;
+  /** A section the appraiser added. */
+  custom?: boolean;
+  /** The appraiser renamed the tab. */
+  titleEdited?: boolean;
   blocks: ValuationBlockDto[];
   _count?: { blocks: number };
 };
@@ -89,6 +95,8 @@ export type ValuationBlockDto = {
   contentLayout?: ContentLayout;
   blockFlow?: BlockFlowV2;
   conceptPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation;
+  /** The carátula's company header block: the extra header data. */
+  headerFields?: HeaderExtraField[];
   concepts: ValuationConceptDto[];
   subBlocks: ValuationApartadoDto[];
   tables: ValuationTableDto[];
@@ -556,16 +564,49 @@ const DEFAULT_DOCUMENT_TEMPLATE_KEYS = new Set([
 export function buildCanonicalValuationSections(sections: DbSection[], propertyKind?: string | null): ValuationSectionDto[] {
   const byCanonical = new Map<string, DbSection[]>();
   for (const section of sections) {
+    if (isCustomSectionId(section.SClave)) continue;
     const canonical = getCanonicalSectionKey(section.SClave);
     const group = byCanonical.get(canonical) ?? [];
     group.push(section);
     byCanonical.set(canonical, group);
   }
 
-  return getOrderedValuationSections().map((definition) => {
+  const result = getOrderedValuationSections().map((definition) => {
     const persisted = selectCanonicalSection(byCanonical.get(definition.key) ?? []);
     return persisted ? mapSection(persisted, definition, propertyKind) : createEmptySection(definition, propertyKind);
   });
+
+  // The sections the appraiser added take the place they were saved in, in
+  // order: the editor saves every section's position as its index.
+  const custom = sections
+    .filter((section) => isCustomSectionId(section.SClave) && !isRemovedSectionConfig(section.JConfiguracion))
+    .sort((a, b) => a.IOrden - b.IOrden || a.IdSeccionDocumento - b.IdSeccionDocumento);
+  for (const section of custom) {
+    result.splice(Math.min(Math.max(section.IOrden, 0), result.length), 0, mapCustomSection(section));
+  }
+  return result;
+}
+
+function mapCustomSection(section: DbSection): ValuationSectionDto {
+  const sectionMetadata = hydrateSectionMetadata(section.JConfiguracion);
+  const blocks = section.nodos
+    .filter((node) => node.IdNodoPadre === null && node.DFechaEliminacion === null)
+    .sort((a, b) => a.IOrden - b.IOrden)
+    .map((node) => mapNodeToBlock(node, section.SClave));
+  return {
+    id: section.SClave,
+    label: section.SClave,
+    title: section.SNombre,
+    enabled: section.BVisible !== false && sectionMetadata.enabled !== false,
+    required: false,
+    sortOrder: section.IOrden,
+    startOnNewPage: sectionMetadata.startOnNewPage ?? false,
+    flowSpacingBeforePx: sectionMetadata.flowSpacingBeforePx,
+    custom: true,
+    titleEdited: true,
+    blocks,
+    _count: { blocks: blocks.length },
+  };
 }
 
 function selectCanonicalSection(sections: DbSection[]) {
@@ -613,16 +654,19 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition, 
     ? templateBlocks(definition.key, propertyKind)
     : rootNodes.map((node) => mapNodeToBlock(node, definition.key));
 
+  // The registry's label, unless the appraiser renamed the tab; its name is then what was saved.
+  const renamed = sectionMetadata.titleEdited === true && section.SNombre.trim().length > 0;
   return {
     id: sectionKeyToWorkspaceId(definition.key),
     label: definition.key,
-    title: definition.label,
+    title: renamed ? section.SNombre : definition.label,
     enabled: section.BVisible !== false && sectionMetadata.enabled !== false,
     required: definition.required,
     sortOrder: definition.order,
     startOnNewPage: sectionMetadata.startOnNewPage ?? false,
     flowSpacingBeforePx: sectionMetadata.flowSpacingBeforePx,
     thousandsSeparator: sectionMetadata.thousandsSeparator,
+    ...(renamed ? { titleEdited: true } : {}),
     blocks,
     _count: { blocks: blocks.length },
   };
@@ -741,6 +785,7 @@ function mapNodeToBlock(node: DbNode, label: string): ValuationBlockDto {
     blockFlow: blockMetadata.blockFlow,
     conceptPresentation: blockMetadata.conceptPresentation,
     flowSpacingBeforePx: blockMetadata.flowSpacingBeforePx,
+    ...(blockMetadata.headerFields ? { headerFields: blockMetadata.headerFields } : {}),
     concepts: conceptNodes.map(mapConceptNode),
     subBlocks: subBlockNodes.map((child) => {
       const subChildren = child.nodosHijos

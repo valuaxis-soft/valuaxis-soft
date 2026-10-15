@@ -47,8 +47,12 @@ import { IncomeCalculationPanel } from "@/features/valuations/components/calcula
 import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/components/calculation/machinery-calculation-panel";
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
+import { removeCustomSection, renameSection } from "@/features/valuations/services/section-edit-operations";
+import { createCustomSection } from "./model/content-factories";
+import { adjacentPreviewSectionId, previewSectionPosition } from "./model/preview-navigation";
 import { flattenSectionConcepts, resolveSectionConceptsForDisplay } from "./model/section-content";
 import { sectionIconMap } from "./model/section-icons";
+import { sectionDisplayName } from "./model/section-numbering";
 import { useBlockMutations } from "./hooks/use-block-mutations";
 import { useCalculationDocumentSync } from "./hooks/use-calculation-document-sync";
 import { useEditorState } from "./hooks/use-editor-state";
@@ -126,6 +130,13 @@ export function ValuationWorkspace({
   const [activeSectionId, setActiveSectionId] = useState(
     initialValuation?.sections?.[0]?.id || "caratula",
   );
+  // The section the preview shows when the appraiser browses away from the
+  // active one; null while it follows the editor's active section.
+  const [previewSectionId, setPreviewSectionId] = useState<string | null>(null);
+  const handleActiveSectionChange = (sectionId: string) => {
+    setActiveSectionId(sectionId);
+    setPreviewSectionId(null);
+  };
   const [comparables] = useState<Comparable[]>(
     initialValuation ? transformComparables(initialValuation.comparables ?? []) : initialComparables,
   );
@@ -156,6 +167,25 @@ export function ValuationWorkspace({
     () => resolveSectionConceptsForDisplay(rawActiveSection, allConceptsForDisplay),
     [allConceptsForDisplay, rawActiveSection],
   );
+  // What the preview shows: the section browsed to, or the active one.
+  const rawPreviewSection =
+    (previewSectionId ? enabledSections.find((section) => section.id === previewSectionId) : undefined) ?? rawActiveSection;
+  const previewSection = useMemo(
+    () => (rawPreviewSection === rawActiveSection ? activeSection : resolveSectionConceptsForDisplay(rawPreviewSection, allConceptsForDisplay)),
+    [activeSection, allConceptsForDisplay, rawActiveSection, rawPreviewSection],
+  );
+  const browsePreview = (direction: -1 | 1) => {
+    const next = adjacentPreviewSectionId(enabledSections, previewSection.id, direction);
+    if (next) setPreviewSectionId(next);
+  };
+  const previewNavigation = {
+    label: sectionDisplayName(previewSection),
+    position: previewSectionPosition(enabledSections, previewSection.id),
+    canPrevious: adjacentPreviewSectionId(enabledSections, previewSection.id, -1) !== null,
+    canNext: adjacentPreviewSectionId(enabledSections, previewSection.id, 1) !== null,
+    onPrevious: () => browsePreview(-1),
+    onNext: () => browsePreview(1),
+  };
   const selectedComparables = useMemo(
     () => comparables.filter((comparable) => comparable.selected),
     [comparables],
@@ -163,7 +193,7 @@ export function ValuationWorkspace({
   // One choice for the whole document: the editor, the preview and the external window write numbers the same way.
   const numberPresentation = useMemo(() => documentNumberPresentation(sections), [sections]);
   const externalPreviewPayload = useMemo<ExternalPreviewPayload>(() => ({
-    activeSection,
+    activeSection: previewSection,
     caratula,
     letterhead,
     documentHeaderImage,
@@ -172,7 +202,7 @@ export function ValuationWorkspace({
     selectedComparables,
     numberPresentation,
   }), [
-    activeSection,
+    previewSection,
     caratula,
     letterhead,
     documentHeaderImage,
@@ -181,6 +211,20 @@ export function ValuationWorkspace({
     principalCoverImage,
     selectedComparables,
   ]);
+
+  // Sections of the appraiser's own: added at the end of the strip, renamed from the tab, removed from the editor.
+  const addSection = () => {
+    const section = createCustomSection();
+    updateSections((current) => [...current, section]);
+    handleActiveSectionChange(section.id);
+  };
+  const handleRenameSection = (sectionId: string, title: string) => {
+    updateSections((current) => renameSection(current, sectionId, title));
+  };
+  const handleRemoveSection = (sectionId: string) => {
+    updateSections((current) => removeCustomSection(current, sectionId));
+    if (activeSectionId === sectionId) handleActiveSectionChange(enabledSections[0]?.id ?? "caratula");
+  };
   const { openExternalPreviewWindow } = useExternalPreviewSync({
     payload: externalPreviewPayload,
     splitLayout,
@@ -269,6 +313,7 @@ export function ValuationWorkspace({
             onRemoveConcept={blocks.removeConcept}
             onRemoveImage={images.removeImage}
             onRemoveApartado={blocks.removeApartado}
+            onRemoveSection={handleRemoveSection}
             onRemoveSubConcept={blocks.removeSubConcept}
             onRemoveTable={tables.removeTable}
             onUpdateBlock={blocks.updateBlock}
@@ -302,10 +347,11 @@ export function ValuationWorkspace({
 
   const previewPanel = (
     <ValuationPreviewPanel
-      activeSection={activeSection}
+      activeSection={previewSection}
       caratula={caratula}
       letterhead={letterhead}
       meta={meta}
+      navigation={previewNavigation}
       selectedComparables={selectedComparables}
       principalCoverImage={principalCoverImage}
       documentHeaderImage={documentHeaderImage}
@@ -317,7 +363,7 @@ export function ValuationWorkspace({
     <FormulaEditingProvider sections={sections}>
     <NumberPresentationProvider presentation={numberPresentation}>
     <CustomUnitsProvider initialUnits={customUnits}>
-    <Tabs value={activeSection.id} onValueChange={setActiveSectionId} className="gap-0 h-full">
+    <Tabs value={activeSection.id} onValueChange={handleActiveSectionChange} className="gap-0 h-full">
       <main className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-hidden">
       <section className="shrink-0 border-b bg-background">
         <div className="mx-auto grid max-w-[1760px] grid-cols-1 gap-3 overflow-hidden px-3 py-3 sm:px-4 lg:gap-4 lg:px-6 lg:py-4">
@@ -335,8 +381,10 @@ export function ValuationWorkspace({
             enabledSections={enabledSections}
             iconMap={sectionIconMap}
             meta={meta}
+            onAddSection={addSection}
             onExport={handleExportPdf}
             onExit={handleExit}
+            onRenameSection={handleRenameSection}
             onReorderSections={(next) => updateSections(() => next)}
             onRedo={redoEditorChange}
             onSave={() => void handleSave()}

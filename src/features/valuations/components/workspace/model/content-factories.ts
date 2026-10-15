@@ -1,9 +1,31 @@
-import type { Apartado, Block, Concept, ConceptType, TableContent } from "@/features/valuations/model";
+import type { Apartado, AppSection, Block, Concept, ConceptType, TableContent } from "@/features/valuations/model";
 import { createIndependentConcept } from "@/features/valuations/concept-links";
 import { UNTITLED_CARATULA_CONCEPT } from "@/features/valuations/services/caratula-blocks";
+import { NEW_SECTION_TITLE } from "@/features/valuations/services/section-edit-operations";
+import { CUSTOM_SECTION_ID_PREFIX } from "@/features/valuations/sections/section-registry";
 import { DEFAULT_TABLE_TITLE, createHomologationTable } from "@/features/valuations/services/table";
 
 export const newId = () => crypto.randomUUID();
+
+/**
+ * A section the appraiser adds: one block titled like the section, so the
+ * printed banner reads the tab's name, with the same building blocks as any
+ * other section. Its number follows its position among the tabs.
+ */
+export function createCustomSection(): AppSection {
+  const title = NEW_SECTION_TITLE;
+  return {
+    id: `${CUSTOM_SECTION_ID_PREFIX}${newId()}`,
+    label: "",
+    title,
+    sourceFile: "",
+    enabled: true,
+    required: false,
+    custom: true,
+    titleEdited: true,
+    blocks: [{ ...createBlock(), title }],
+  };
+}
 
 function defaultTitleForType(type?: ConceptType): string {
   switch (type) {

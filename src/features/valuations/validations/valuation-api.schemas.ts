@@ -89,6 +89,8 @@ export const saveFullValuationSchema = z.object({
   caratula: z.object({
     firmas: z.array(z.unknown()).max(100).optional(),
     enfoqueImagenPrincipal: z.object({ x: z.number(), y: z.number() }).optional(),
+    // The extra header data travels with the carátula form; it is stored with the header block of the sections.
+    camposEncabezado: z.array(z.object({ label: z.string().max(250), value: z.string().max(1_000) })).max(10).optional(),
   })
     .catchall(z.union([z.string().max(5_000), z.number(), z.null()]))
     .optional(),

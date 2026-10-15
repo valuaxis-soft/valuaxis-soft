@@ -40,6 +40,8 @@ export type SectionDndContainerProps = {
   iconMap: Record<string, LucideIcon>;
   /** Called when reorder produces a new Section array. */
   onReorder: (nextSections: AppSection[]) => void;
+  /** Called with the new title when the appraiser renames the active tab. */
+  onRename?: (sectionId: string, title: string) => void;
   /** Whether the tabs are read-only (disables dragging). */
   readOnly: boolean;
 };
@@ -110,9 +112,12 @@ export function SectionDndContainer({
   activeSectionId,
   iconMap,
   onReorder,
+  onRename,
   readOnly,
 }: SectionDndContainerProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  // The tab being renamed, if any.
+  const [renamingId, setRenamingId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -186,9 +191,10 @@ export function SectionDndContainer({
         <TabsList
           className="h-9 min-w-max justify-start rounded-full bg-muted/70 p-1 max-lg:min-h-12"
           // While a tab is being moved with the keyboard the arrows belong to
-          // the drag, not to the tab list's roving focus.
+          // the drag, not to the tab list's roving focus; while one is being
+          // renamed they belong to its text box.
           onKeyDown={(event) => {
-            if (activeId) event.preventBaseUIHandler();
+            if (activeId || renamingId) event.preventBaseUIHandler();
           }}
         >
           {sections.map((section) => {
@@ -203,6 +209,16 @@ export function SectionDndContainer({
                 label={
                   sectionDisplayName(section)
                 }
+                rename={onRename ? {
+                  title: section.title,
+                  editing: renamingId === section.id,
+                  onStart: () => setRenamingId(section.id),
+                  onCommit: (title) => {
+                    setRenamingId(null);
+                    onRename(section.id, title);
+                  },
+                  onCancel: () => setRenamingId(null),
+                } : undefined}
               />
             );
           })}

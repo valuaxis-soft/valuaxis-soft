@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import type { LucideIcon } from "lucide-react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { AppSection } from "@/features/valuations/model";
@@ -12,12 +12,17 @@ export function ValuationNavigation({
   activeSectionId,
   enabledSections,
   iconMap,
+  onAddSection,
+  onRenameSection,
   onReorder,
   readOnly,
 }: {
   activeSectionId: string;
   enabledSections: AppSection[];
   iconMap: Record<string, LucideIcon>;
+  /** Adds a section of the appraiser's own at the end of the strip. */
+  onAddSection?: () => void;
+  onRenameSection?: (sectionId: string, title: string) => void;
   onReorder: (nextSections: AppSection[]) => void;
   readOnly: boolean;
 }) {
@@ -44,15 +49,30 @@ export function ValuationNavigation({
       </Button>
       <div
         ref={scrollContainerRef}
-        className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-color:var(--muted-foreground)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent"
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-color:var(--muted-foreground)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent"
       >
         <SectionDndContainer
           sections={enabledSections}
           activeSectionId={activeSectionId}
           iconMap={iconMap}
           onReorder={onReorder}
+          onRename={onRenameSection}
           readOnly={readOnly}
         />
+        {onAddSection ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 rounded-full max-lg:min-h-10"
+            title="Agregar una sección propia al final"
+            disabled={readOnly}
+            onClick={onAddSection}
+          >
+            <Plus data-icon="inline-start" />
+            Sección
+          </Button>
+        ) : null}
       </div>
       <Button
         type="button"

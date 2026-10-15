@@ -1,8 +1,6 @@
 import type { AppSection } from "@/features/valuations/model";
 import { ensureTerrenoSections } from "@/features/valuations/sections/terreno";
 
-const roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII"];
-
 export function normalizeEditorSections(sections: AppSection[]) {
   return ensureTerrenoSections(
     resequenceSections(sections),
@@ -23,7 +21,8 @@ export function resequenceSections(sections: AppSection[]) {
   let globalBlockIndex = 0;
   return sections.map((section) => {
     if (section.enabled === false) return section;
-    const label = roman[sectionIndex] ?? `${sectionIndex + 1}`;
+    // Sections the appraiser adds may push the count past the registry's: the numerals keep going.
+    const label = toRomanNumeral(sectionIndex + 1);
     sectionIndex += 1;
     return {
       ...section,

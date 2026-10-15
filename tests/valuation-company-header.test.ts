@@ -34,5 +34,6 @@ test("actualiza y recupera los datos de encabezado desde la estructura existente
     direccionEmpresa: "Av. Reforma 100",
     telefonoEmpresa: "5555 0101",
     correoEmpresa: "contacto@valuadora.mx",
+    camposEncabezado: [],
   });
 });

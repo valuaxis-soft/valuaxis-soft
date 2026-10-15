@@ -1,5 +1,6 @@
 import type { CaratulaFormData, ImageContent, Letterhead } from "../model";
 import { appraisedGoodWording } from "../services/appraised-good-wording";
+import { normalizeHeaderExtraFields } from "../services/caratula-company-header";
 import { formatDateValue } from "../services/concept-value-format";
 import { validUntilDate } from "../services/valuation-signatures";
 
@@ -38,6 +39,7 @@ export function DocumentPreviewHeader({
   const address = caratula.direccionEmpresa || letterhead.address;
   const phone = caratula.telefonoEmpresa || letterhead.phone;
   const email = caratula.correoEmpresa || letterhead.email;
+  const extraFields = normalizeHeaderExtraFields(caratula.camposEncabezado);
   const firmName = letterhead.legalName?.trim() || letterhead.name;
   const rfcLine = letterhead.rfc ? `RFC ${letterhead.rfc}` : "";
 
@@ -68,6 +70,15 @@ export function DocumentPreviewHeader({
             <span>{phone || "Teléfono pendiente"}</span>
             <span>{email || "Correo pendiente"}</span>
           </div>
+          {extraFields.length ? (
+            <div className="mt-0.5 flex flex-wrap justify-center gap-x-4 text-[11px] leading-tight text-slate-700 sm:justify-start" data-header-extra-fields>
+              {extraFields.map((field, index) => (
+                <span key={index}>
+                  {field.label ? <strong>{field.label}:</strong> : null} {field.value}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="mt-4 grid items-end gap-2 text-[11px] leading-tight sm:grid-cols-[minmax(0,1fr)_230px]">
             <div>
               <p><strong>Fecha del Avalúo:</strong> {formatDateValue(caratula.fechaAvaluo, "normal")}</p>

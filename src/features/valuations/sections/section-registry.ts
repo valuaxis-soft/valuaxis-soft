@@ -232,6 +232,16 @@ export function initiallyHiddenSections(propertyTypeKey: string): ReadonlySet<Va
   return new Set(hidden.filter((key) => !valuationSectionRegistry.find((section) => section.key === key)?.required));
 }
 
+/**
+ * A section the appraiser added himself. Its id is unique and never matches
+ * the registry: the registry's aliases and calculation bindings leave it alone.
+ */
+export const CUSTOM_SECTION_ID_PREFIX = "seccion-";
+
+export function isCustomSectionId(id: string) {
+  return id.startsWith(CUSTOM_SECTION_ID_PREFIX) && id.length > CUSTOM_SECTION_ID_PREFIX.length;
+}
+
 export function findSectionDefinition(key: string) {
   const normalized = getCanonicalSectionKey(key);
   return valuationSectionRegistry.find((section) => section.key === normalized);
