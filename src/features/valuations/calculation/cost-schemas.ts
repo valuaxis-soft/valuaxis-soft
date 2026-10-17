@@ -5,6 +5,8 @@ const text = (max: number) => z.string().trim().max(max);
 const amount = z.number().finite().min(0).max(1e12).nullable();
 const factor = z.number().finite().min(0).max(10);
 const fraction = z.number().finite().min(0).max(1);
+/** A factor with an Excel formula: empty (or missing, in older clients) takes the formula. */
+const formulaFactor = factor.nullable().default(null);
 
 const uniqueRefs = (rows: { ref: string }[]) => new Set(rows.map((row) => row.ref.toLowerCase())).size === rows.length;
 
@@ -38,6 +40,8 @@ export const costInputSchema = z.object({
       classification: factor,
       topography: factor,
     }),
+    surfaceFactor: formulaFactor,
+    resultantFactor: formulaFactor,
   }),
   // The type's data is optional: it belongs to the construction section, and only creates a missing type.
   constructions: z.array(z.object({
@@ -49,7 +53,9 @@ export const costInputSchema = z.object({
     age: amount.optional(),
     usefulLife: amount.optional(),
     conservation: factor.nullable(),
+    ageFactor: formulaFactor,
     otherFactor: factor,
+    resultantFactor: formulaFactor,
     completion: fraction,
     undivided: fraction,
     unitReplacementCost: amount,
@@ -64,7 +70,9 @@ export const costInputSchema = z.object({
     usefulLife: amount,
     conservation: factor.nullable(),
     maintenance: text(120),
+    ageFactor: formulaFactor,
     otherFactor: factor,
+    resultantFactor: formulaFactor,
     completion: fraction,
     undivided: fraction,
     unitReplacementCost: amount,
@@ -77,4 +85,5 @@ export const costInputSchema = z.object({
   rounding: z.object({ land: roundingSchema, constructions: roundingSchema, installations: roundingSchema, physicalValue: roundingSchema }).optional(),
 });
 
-export type CostInputPayload = z.infer<typeof costInputSchema>;
+/** What the service takes: the parsed body, or a capture of an older client without the formula factors. */
+export type CostInputPayload = z.input<typeof costInputSchema>;

@@ -14,7 +14,7 @@ const arandasType = { ref: "T-1", description: "Edificio de uso mixto", classifi
 const arandas: CostCalculationDto = {
   land: { ...DEFAULT_LAND, subjectArea: 169.78 },
   types: [arandasType],
-  constructions: [{ ...arandasType, conservation: 0.98, otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: 14361.99 }],
+  constructions: [{ ...arandasType, conservation: 0.98, ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: 14361.99 }],
   installations: ([
     [6, 30, 9000], [1, 30, 35000], [11.55, 70, 14361.99], [3.54, 70, 14361.99],
     [4, 10, 30648], [1, 70, 90000], [4, 20, 4000], [4, 20, 3500],
@@ -24,6 +24,7 @@ const arandas: CostCalculationDto = {
   indirects: [],
   market: { adoptedUnitValue: 9000, subjectArea: 169.78, baseArea: null },
   configured: true,
+  typesCaptured: true,
   locked: false,
 };
 
@@ -55,7 +56,7 @@ test("the cost page is one block with land, constructions and installations, eac
   assert.deepEqual(blocks.map((block) => [block.id, block.title]), [["motor-costos-enfoque", "ENFOQUE FÍSICO O DE COSTOS"]]);
   const [land, constructions, installations] = blocks[0].apartados;
   assert.deepEqual(blocks[0].apartados.map((apartado) => apartado.title), [
-    "A) TERRENO EN ESTUDIO", "B) CONSTRUCCIONES", "C) INSTALACIONES ESPECIALES, ELEMENTOS ACCESORIOS Y OBRAS COMPLEMENTARIAS",
+    "A) TERRENO EN ESTUDIO", "B) CONSTRUCCIONES", "C) INSTALACIONES ESPECIALES, ELEMENTOS ACCESORIOS Y OBRAS COMPLEMENTARIAS (IE, EA, OC)",
   ]);
 
   const landTable = printed(land.tables[0]);
@@ -223,7 +224,7 @@ test("the capture fills the construction section tables once, and a reload leave
 
 test("without a capture the construction tables the appraiser wrote stay untouched", () => {
   const section = constructionSection([templateTable("construccion_tipos", ["Tipo", "Descripción"])]);
-  assert.equal(withConstructionTables(section, { ...arandas, types: [], constructions: [], installations: [] }), section);
+  assert.equal(withConstructionTables(section, { ...arandas, types: [], constructions: [], installations: [], typesCaptured: false }), section);
 });
 
 test("the construction types table follows the types of the construction section, picked by the cost approach or not", () => {
@@ -238,4 +239,68 @@ test("the construction types table follows the types of the construction section
     // Not valued yet: no conservation factor, but its own data.
     ["T-2", "Bodega", "Industrial", "Económica", "—", "10", "50", "40", "80.00", ""],
   ]);
+});
+
+test("a type deleted in the construction section leaves its table, the cost page and, the last one too, the printed table", () => {
+  const section = constructionSection([
+    templateTable("construccion_tipos", ["Tipo", "Tipo", "Clasificación", "Calidad", "Conservación", "Edad", "VUT", "VUR", "Sup. (m²)", "Descripción"]),
+    templateTable("instalaciones_especiales", ["#", "Tipo", "Edad", "VUT", "VUR", "Conservación", "Mantenimiento", "Descripción"]),
+  ]);
+  const bodega = { ref: "T-2", description: "Bodega", classification: "Industrial", quality: "Económica", area: 80, age: 10, usefulLife: 50 };
+  const both: CostCalculationDto = {
+    ...arandas,
+    types: [arandasType, bodega],
+    constructions: [...arandas.constructions, { ...arandas.constructions[0], ...bodega, unitReplacementCost: 9000 }],
+  };
+  const withBoth = withConstructionTables(section, both);
+  const rowsOf = (current: AppSection, index: number) => (ensureTableV2(current.blocks[0].apartados[0].tables[index]).rows.length);
+  assert.equal(rowsOf(withBoth, 0), 2);
+
+  // The server drops the cost row of a deleted type: T-2 leaves the section table and the cost page.
+  const withoutBodega: CostCalculationDto = { ...both, types: [arandasType], constructions: arandas.constructions };
+  const afterDelete = withConstructionTables(withBoth, withoutBodega);
+  assert.deepEqual(printed(afterDelete.blocks[0].apartados[0].tables[0]).rows.map((row) => row[0]), ["T-1"]);
+  const computed = compute(withoutBodega);
+  const constructions = costDocumentBlocks(withoutBodega, computed.result, computed.trace)[0].apartados[1];
+  assert.deepEqual(constructions.tables.map((table) => printed(table).rows.map((row) => row[0])), [["T-1"], ["T-1"]]);
+
+  // The last type deleted and the installations removed: the tables are emptied, not left as they were.
+  const nothing: CostCalculationDto = { ...arandas, types: [], constructions: [], installations: [] };
+  const emptied = withConstructionTables(afterDelete, nothing);
+  assert.equal(rowsOf(emptied, 0), 0);
+  assert.equal(rowsOf(emptied, 1), 0);
+});
+
+test("removing a row from the cost calculation keeps the type described in its section but takes it off the cost page", () => {
+  const bodega = { ref: "T-2", description: "Bodega", classification: "Industrial", quality: "Económica", area: 80, age: 10, usefulLife: 50 };
+  // T-2 is a type of the section the cost approach does not pick.
+  const picked: CostCalculationDto = { ...arandas, types: [arandasType, bodega] };
+  const computed = compute(picked);
+  const constructions = costDocumentBlocks(picked, computed.result, computed.trace)[0].apartados[1];
+  assert.deepEqual(printed(constructions.tables[0]).rows.map((row) => row[0]), ["T-1"]);
+  assert.equal(computed.result.constructions, 6530000, "V33 as Arandas");
+  const section = withConstructionTables(constructionSection([
+    templateTable("construccion_tipos", ["Tipo", "Tipo", "Clasificación", "Calidad", "Conservación", "Edad", "VUT", "VUR", "Sup. (m²)", "Descripción"]),
+  ]), picked);
+  assert.deepEqual(printed(section.blocks[0].apartados[0].tables[0]).rows.map((row) => row[0]), ["T-1", "T-2"]);
+});
+
+test("the cost page prints the factor the appraiser typed in place of the formula, in the column where the panel captures it", () => {
+  const typed: CostCalculationDto = {
+    ...arandas,
+    land: { ...arandas.land, surfaceFactor: 1.1 },
+    constructions: [{ ...arandas.constructions[0], ageFactor: 0.9, completion: 0.75, undivided: 0.5 }],
+    installations: arandas.installations.map((row, index) => (index === 0 ? { ...row, otherFactor: 0.8, resultantFactor: 0.5 } : row)),
+  };
+  const { result, trace } = compute(typed);
+  const [land, constructions, installations] = costDocumentBlocks(typed, result, trace)[0].apartados;
+  assert.equal(printed(land.tables[0]).rows[0][5], "1.10", "Sup.");
+  assert.equal(printed(land.tables[0]).rows[0][9], "1.10", "FRe");
+  const [types, values] = constructions.tables.map(printed);
+  // Cons., Edad, Otro, FRe, then Grado de terminación and Indiviso as percentages.
+  assert.deepEqual(types.rows[0].slice(6), ["0.98", "0.90", "1.00", "0.88", "75%", "50%"]);
+  // 0.98 × 0.9 × 14,361.99 = 12,667.28 $/m²; × 467.27 m² × 75 % × 50 %.
+  assert.deepEqual(values.rows[0].slice(5), ["0.88", "$ 12,667.28", "$ 2,219,639.13"]);
+  const items = printed(installations.tables[0]);
+  assert.deepEqual(items.rows[0].slice(8, 12), ["0.98", "0.98", "0.80", "0.50"]);
 });

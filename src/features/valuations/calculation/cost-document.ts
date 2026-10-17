@@ -10,7 +10,7 @@ import type { CostApproachResult } from "../engine/costs";
 import type { Trace } from "../engine/trace";
 import type { Apartado, AppSection, Block, TableContent } from "../model";
 import { ensureTableV2, type TableSummaryBox } from "../services/table";
-import { LAND_FACTORS, remainingUsefulLife, type CostCalculationDto } from "./cost-types";
+import { LAND_FACTORS, LAND_FACTOR_SHORT_LABELS, remainingUsefulLife, type CostCalculationDto } from "./cost-types";
 import {
   EMPTY,
   figure,
@@ -43,11 +43,6 @@ const text = (value: number | null | undefined, digits = 2) => (value === null |
 function table(id: string, title: string, columns: string[], rows: string[][]): TableContent {
   return { id, title, columns, rows, enabled: true };
 }
-
-/** Column titles of the land factors as the books abbreviate them. */
-const LAND_FACTOR_SHORT_LABELS: Record<(typeof LAND_FACTORS)[number]["key"], string> = {
-  negotiation: "Neg.", location: "Ubic.", surface: "Sup.", services: "Serv.", classification: "Clas.", topography: "Top.",
-};
 
 const DEMERIT = "Factores de Demérito";
 const NEW_VALUE = "Valor de Reposición Nuevo (VRN)";
@@ -145,7 +140,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
   if (installations.length) {
     const item = [figureColumn("P/C"), figureColumn("Ref."), textColumn("Descripción"), figureColumn("Unidad"), figureColumn("Cant.")];
     const itemCells = (row: (typeof installations)[number]) => [row.share, row.ref, row.description, row.unit || EMPTY, figure(row.quantity)];
-    apartados.push(generatedApartado(`${PREFIX}-instalaciones`, "C) INSTALACIONES ESPECIALES, ELEMENTOS ACCESORIOS Y OBRAS COMPLEMENTARIAS", {
+    apartados.push(generatedApartado(`${PREFIX}-instalaciones`, "C) INSTALACIONES ESPECIALES, ELEMENTOS ACCESORIOS Y OBRAS COMPLEMENTARIAS (IE, EA, OC)", {
       tables: [
         generatedTable(`${PREFIX}-tabla-instalaciones-partidas`, "Partidas de instalaciones especiales",
           [
@@ -156,7 +151,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
             const key = `costos.instalaciones.${row.ref}`;
             return [
               ...itemCells(row), whole(row.age), whole(row.usefulLife), remainingLife(row.usefulLife, row.age),
-              figure(row.conservation), figure(input(`${key}.factorResultante`, "factorEdad")), figure(row.otherFactor), figure(value(`${key}.factorResultante`)),
+              figure(row.conservation), figure(value(`${key}.factorEdad`)), figure(row.otherFactor), figure(value(`${key}.factorResultante`)),
               percent(row.completion), percent(row.undivided),
             ];
           })),
@@ -269,13 +264,18 @@ export function isCostCaptureTable(tableId: string) {
   return id.endsWith(CONSTRUCTION_TYPES_TABLE) || id.endsWith(SPECIAL_INSTALLATIONS_TABLE);
 }
 
-/** Rows of the construction section tables, from the capture. */
+/**
+ * Rows of the construction section tables, from the capture. Once the types
+ * (or the cost approach, for the installations) are captured the table
+ * follows them, so a type deleted in the section leaves the printed table
+ * too, even the last one; before that the table stays as the appraiser wrote it.
+ */
 function constructionRows(calculation: CostCalculationDto, tableId: string): string[][] | null {
   const id = tableId.toLowerCase();
   // Rows added in the panel but still empty stay out of the dictamen.
   const types = calculation.types.filter((row) => row.description.trim() || row.area !== null);
   const installations = calculation.installations.filter((row) => row.description.trim());
-  if (id.endsWith(CONSTRUCTION_TYPES_TABLE) && types.length) {
+  if (id.endsWith(CONSTRUCTION_TYPES_TABLE) && (types.length || calculation.typesCaptured)) {
     // The conservation column is the cost approach's factor for the type, when it picked it.
     const conservationOf = (ref: string) => calculation.constructions.find((row) => row.ref.trim().toLowerCase() === ref.trim().toLowerCase())?.conservation ?? null;
     return types.map((row) => [
@@ -284,7 +284,7 @@ function constructionRows(calculation: CostCalculationDto, tableId: string): str
       text(row.area), "",
     ]);
   }
-  if (id.endsWith(SPECIAL_INSTALLATIONS_TABLE) && installations.length) {
+  if (id.endsWith(SPECIAL_INSTALLATIONS_TABLE) && (installations.length || calculation.configured)) {
     return installations.map((row) => [
       row.ref, row.share === "C" ? "Común" : "Privativa", text(row.age, 0), text(row.usefulLife, 0),
       row.usefulLife !== null && row.age !== null ? text(Math.max(row.usefulLife - row.age, 0), 0) : "—",
