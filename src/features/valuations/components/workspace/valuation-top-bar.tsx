@@ -10,6 +10,7 @@ import {
   Eye,
   FileDown,
   FileText,
+  LayoutTemplate,
   MonitorUp,
   PencilLine,
   Redo2,
@@ -117,6 +118,7 @@ export function ValuationTopBar({
   onReorderSections,
   onRedo,
   onSave,
+  onSaveAsTemplate,
   onSplitLayoutChange = () => undefined,
   onUndo,
   onWorkspaceModeChange,
@@ -143,6 +145,8 @@ export function ValuationTopBar({
   onReorderSections: (nextSections: AppSection[]) => void;
   onRedo: () => void;
   onSave: () => void;
+  /** "Guardar como plantilla"; absent for those who do not edit. */
+  onSaveAsTemplate?: () => void;
   onSplitLayoutChange?: (layout: SplitLayout) => void;
   onUndo: () => void;
   onWorkspaceModeChange: (mode: WorkspaceMode) => void;
@@ -320,6 +324,12 @@ export function ValuationTopBar({
                 <FileDown />
                 Generar avalúo
               </DropdownMenuItem>
+              {onSaveAsTemplate ? (
+                <DropdownMenuItem className="min-h-10" onClick={onSaveAsTemplate}>
+                  <LayoutTemplate />
+                  Guardar como plantilla
+                </DropdownMenuItem>
+              ) : null}
               {lifecycleAction ? (
                 <DropdownMenuItem
                   className="min-h-10"
@@ -405,6 +415,20 @@ export function ValuationTopBar({
             "Guardar cambios"
           )}
         </Button>
+
+        {onSaveAsTemplate ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Guardar como plantilla"
+            title="Guardar como plantilla"
+            onClick={onSaveAsTemplate}
+            className="flex-none"
+          >
+            <LayoutTemplate />
+          </Button>
+        ) : null}
 
         <Button
           type="button"

@@ -70,172 +70,7 @@ export async function saveValuationSections(input: {
     // Creates the working version when it is missing and syncs the registry sections.
     const versionId = await initializeWorkingVersionStructure({ avaluoId: avaluo.IdAvaluo, userId: input.user.id, tx });
     if (debug) console.log("[VALUATION_SECTIONS] versionId resolved", { versionId, idVersionTrabajo: avaluo.IdVersionTrabajo });
-    const catalogs = await getDocumentPersistenceCatalogs(tx);
-
-    for (const [index, section] of input.sections.entries()) {
-      // A section the appraiser added keeps its own id as key; the registry's aliases do not apply to it.
-      const custom = Boolean(section.id && isCustomSectionId(section.id));
-      const canonical = custom ? section.id! : getCanonicalSectionKey(section.id ?? section.label ?? `section-${index + 1}`);
-      const key = custom ? canonical : sectionKeyToWorkspaceId(canonical);
-      const existingSection = custom
-        ? await tx.seccionDocumento.findUnique({
-            where: { IdVersionAvaluo_SClave: { IdVersionAvaluo: versionId, SClave: key } },
-            select: { IdSeccionDocumento: true, SClave: true, IOrden: true },
-          })
-        : await findSectionByCanonicalKey(tx, versionId, canonical, debug);
-      if (debug) console.log("[VALUATION_SECTIONS] resolved section for payload", {
-        canonical,
-        sectionId: section.id,
-        sectionLabel: section.label,
-        foundSectionId: existingSection?.IdSeccionDocumento,
-        foundSectionKey: existingSection?.SClave,
-      });
-      const savedSection = existingSection
-        ? await tx.seccionDocumento.update({
-            where: { IdSeccionDocumento: existingSection.IdSeccionDocumento },
-            data: {
-              SNombre: limitDbText(section.title ?? key, 220),
-              IOrden: section.sortOrder ?? index,
-              BVisible: section.enabled ?? true,
-              BObligatoria: section.required ?? false,
-              BEliminable: custom,
-              JConfiguracion: section as Prisma.InputJsonObject,
-            },
-          })
-        : await tx.seccionDocumento.create({
-            data: {
-              IdVersionAvaluo: versionId,
-              SClave: key,
-              SNombre: limitDbText(section.title ?? key, 220),
-              IOrden: section.sortOrder ?? index,
-              BVisible: section.enabled ?? true,
-              BObligatoria: section.required ?? false,
-              BEliminable: custom,
-              JConfiguracion: section as Prisma.InputJsonObject,
-            },
-          });
-
-      for (const [blockIndex, block] of (section.blocks ?? []).entries()) {
-        const blockKey = block.id ?? `${key}-block-${blockIndex + 1}`;
-        const node = await upsertDocumentNode({
-          tx,
-          catalogs,
-          sectionId: savedSection.IdSeccionDocumento,
-          parentId: null,
-          key: blockKey,
-          title: block.title ?? blockKey,
-          order: block.sortOrder ?? blockIndex,
-          visible: block.enabled ?? true,
-          required: block.required ?? false,
-          kind: "block",
-          dataTypeKey: "TEXTO_LARGO",
-          config: block,
-          stats,
-        });
-        await syncConcepts({
-          tx,
-          catalogs,
-          sectionId: savedSection.IdSeccionDocumento,
-          parentId: node.IdNodoDocumento,
-          concepts: block.concepts ?? [],
-          stats,
-        });
-        await syncTablesForNode({
-          tx,
-          catalogs,
-          nodeId: node.IdNodoDocumento,
-          tables: block.tables ?? [],
-          stats,
-        });
-        await syncImages({
-          tx,
-          catalogs,
-          sectionId: savedSection.IdSeccionDocumento,
-          parentId: node.IdNodoDocumento,
-          images: block.images ?? [],
-          stats,
-        });
-
-        for (const [subBlockIndex, subBlock] of (block.subBlocks ?? []).entries()) {
-          const subBlockKey = subBlock.id ?? `${blockKey}-subblock-${subBlockIndex + 1}`;
-          const subBlockNode = await upsertDocumentNode({
-            tx,
-            catalogs,
-            sectionId: savedSection.IdSeccionDocumento,
-            parentId: node.IdNodoDocumento,
-            key: subBlockKey,
-            title: subBlock.title ?? subBlockKey,
-            order: subBlock.sortOrder ?? subBlockIndex,
-            visible: subBlock.enabled ?? true,
-            required: false,
-            kind: "subBlock",
-            dataTypeKey: "TEXTO_LARGO",
-            config: subBlock,
-            stats,
-          });
-          await syncConcepts({
-            tx,
-            catalogs,
-            sectionId: savedSection.IdSeccionDocumento,
-            parentId: subBlockNode.IdNodoDocumento,
-            concepts: subBlock.concepts ?? [],
-            stats,
-          });
-          await syncTablesForNode({
-            tx,
-            catalogs,
-            nodeId: subBlockNode.IdNodoDocumento,
-            tables: subBlock.tables ?? [],
-            stats,
-          });
-          await syncImages({
-            tx,
-            catalogs,
-            sectionId: savedSection.IdSeccionDocumento,
-            parentId: subBlockNode.IdNodoDocumento,
-            images: subBlock.images ?? [],
-            stats,
-          });
-          await softDeleteMissingChildren({
-            tx,
-            parentId: subBlockNode.IdNodoDocumento,
-            keepKeys: [
-              ...(subBlock.concepts ?? []).map((concept, conceptIndex) =>
-                concept.id ?? `${subBlockKey}-concept-${conceptIndex + 1}`,
-              ),
-              ...(subBlock.images ?? []).map((image, imageIndex) => image.id ?? `${subBlockKey}-image-${imageIndex + 1}`),
-            ],
-            stats,
-          });
-        }
-
-        await softDeleteMissingChildren({
-          tx,
-          parentId: node.IdNodoDocumento,
-          keepKeys: [
-            ...(block.concepts ?? []).map((concept, conceptIndex) =>
-              concept.id ?? `${blockKey}-concept-${conceptIndex + 1}`,
-            ),
-            ...(block.subBlocks ?? []).map((subBlock, subBlockIndex) =>
-              subBlock.id ?? `${blockKey}-subblock-${subBlockIndex + 1}`,
-            ),
-            ...(block.images ?? []).map((image, imageIndex) => image.id ?? `${blockKey}-image-${imageIndex + 1}`),
-          ],
-          stats,
-        });
-      }
-
-      await softDeleteMissingRootNodes({
-        tx,
-        sectionId: savedSection.IdSeccionDocumento,
-        keepKeys: (section.blocks ?? []).map((block, blockIndex) =>
-          block.id ?? `${key}-block-${blockIndex + 1}`,
-        ),
-        stats,
-      });
-    }
-
-    await removeMissingCustomSections(tx, versionId, input.sections);
+    await writeVersionSections(tx, versionId, input.sections, stats);
 
     if (input.caratula) {
       await saveCaratula({ versionId, payload: input.caratula, tx });
@@ -244,6 +79,185 @@ export async function saveValuationSections(input: {
     logPersistenceStats(stats);
     return { versionId, sections: input.sections.length, stats };
   }, SAVE_TRANSACTION_OPTIONS);
+}
+
+/**
+ * Writes the sections into the version's document tree: what is sent is
+ * stored, what a section no longer holds is marked deleted. Also starts a new
+ * valuation from a template's document.
+ */
+export async function writeVersionSections(
+  tx: Tx,
+  versionId: number,
+  sections: SectionPayload[],
+  stats = createPersistenceStats(sections),
+) {
+  const debug = process.env.VALUATION_SAVE_DEBUG === "1";
+  const catalogs = await getDocumentPersistenceCatalogs(tx);
+  for (const [index, section] of sections.entries()) {
+    // A section the appraiser added keeps its own id as key; the registry's aliases do not apply to it.
+    const custom = Boolean(section.id && isCustomSectionId(section.id));
+    const canonical = custom ? section.id! : getCanonicalSectionKey(section.id ?? section.label ?? `section-${index + 1}`);
+    const key = custom ? canonical : sectionKeyToWorkspaceId(canonical);
+    const existingSection = custom
+      ? await tx.seccionDocumento.findUnique({
+          where: { IdVersionAvaluo_SClave: { IdVersionAvaluo: versionId, SClave: key } },
+          select: { IdSeccionDocumento: true, SClave: true, IOrden: true },
+        })
+      : await findSectionByCanonicalKey(tx, versionId, canonical, debug);
+    if (debug) console.log("[VALUATION_SECTIONS] resolved section for payload", {
+      canonical,
+      sectionId: section.id,
+      sectionLabel: section.label,
+      foundSectionId: existingSection?.IdSeccionDocumento,
+      foundSectionKey: existingSection?.SClave,
+    });
+    const savedSection = existingSection
+      ? await tx.seccionDocumento.update({
+          where: { IdSeccionDocumento: existingSection.IdSeccionDocumento },
+          data: {
+            SNombre: limitDbText(section.title ?? key, 220),
+            IOrden: section.sortOrder ?? index,
+            BVisible: section.enabled ?? true,
+            BObligatoria: section.required ?? false,
+            BEliminable: custom,
+            JConfiguracion: section as Prisma.InputJsonObject,
+          },
+        })
+      : await tx.seccionDocumento.create({
+          data: {
+            IdVersionAvaluo: versionId,
+            SClave: key,
+            SNombre: limitDbText(section.title ?? key, 220),
+            IOrden: section.sortOrder ?? index,
+            BVisible: section.enabled ?? true,
+            BObligatoria: section.required ?? false,
+            BEliminable: custom,
+            JConfiguracion: section as Prisma.InputJsonObject,
+          },
+        });
+
+    for (const [blockIndex, block] of (section.blocks ?? []).entries()) {
+      const blockKey = block.id ?? `${key}-block-${blockIndex + 1}`;
+      const node = await upsertDocumentNode({
+        tx,
+        catalogs,
+        sectionId: savedSection.IdSeccionDocumento,
+        parentId: null,
+        key: blockKey,
+        title: block.title ?? blockKey,
+        order: block.sortOrder ?? blockIndex,
+        visible: block.enabled ?? true,
+        required: block.required ?? false,
+        kind: "block",
+        dataTypeKey: "TEXTO_LARGO",
+        config: block,
+        stats,
+      });
+      await syncConcepts({
+        tx,
+        catalogs,
+        sectionId: savedSection.IdSeccionDocumento,
+        parentId: node.IdNodoDocumento,
+        concepts: block.concepts ?? [],
+        stats,
+      });
+      await syncTablesForNode({
+        tx,
+        catalogs,
+        nodeId: node.IdNodoDocumento,
+        tables: block.tables ?? [],
+        stats,
+      });
+      await syncImages({
+        tx,
+        catalogs,
+        sectionId: savedSection.IdSeccionDocumento,
+        parentId: node.IdNodoDocumento,
+        images: block.images ?? [],
+        stats,
+      });
+
+      for (const [subBlockIndex, subBlock] of (block.subBlocks ?? []).entries()) {
+        const subBlockKey = subBlock.id ?? `${blockKey}-subblock-${subBlockIndex + 1}`;
+        const subBlockNode = await upsertDocumentNode({
+          tx,
+          catalogs,
+          sectionId: savedSection.IdSeccionDocumento,
+          parentId: node.IdNodoDocumento,
+          key: subBlockKey,
+          title: subBlock.title ?? subBlockKey,
+          order: subBlock.sortOrder ?? subBlockIndex,
+          visible: subBlock.enabled ?? true,
+          required: false,
+          kind: "subBlock",
+          dataTypeKey: "TEXTO_LARGO",
+          config: subBlock,
+          stats,
+        });
+        await syncConcepts({
+          tx,
+          catalogs,
+          sectionId: savedSection.IdSeccionDocumento,
+          parentId: subBlockNode.IdNodoDocumento,
+          concepts: subBlock.concepts ?? [],
+          stats,
+        });
+        await syncTablesForNode({
+          tx,
+          catalogs,
+          nodeId: subBlockNode.IdNodoDocumento,
+          tables: subBlock.tables ?? [],
+          stats,
+        });
+        await syncImages({
+          tx,
+          catalogs,
+          sectionId: savedSection.IdSeccionDocumento,
+          parentId: subBlockNode.IdNodoDocumento,
+          images: subBlock.images ?? [],
+          stats,
+        });
+        await softDeleteMissingChildren({
+          tx,
+          parentId: subBlockNode.IdNodoDocumento,
+          keepKeys: [
+            ...(subBlock.concepts ?? []).map((concept, conceptIndex) =>
+              concept.id ?? `${subBlockKey}-concept-${conceptIndex + 1}`,
+            ),
+            ...(subBlock.images ?? []).map((image, imageIndex) => image.id ?? `${subBlockKey}-image-${imageIndex + 1}`),
+          ],
+          stats,
+        });
+      }
+
+      await softDeleteMissingChildren({
+        tx,
+        parentId: node.IdNodoDocumento,
+        keepKeys: [
+          ...(block.concepts ?? []).map((concept, conceptIndex) =>
+            concept.id ?? `${blockKey}-concept-${conceptIndex + 1}`,
+          ),
+          ...(block.subBlocks ?? []).map((subBlock, subBlockIndex) =>
+            subBlock.id ?? `${blockKey}-subblock-${subBlockIndex + 1}`,
+          ),
+          ...(block.images ?? []).map((image, imageIndex) => image.id ?? `${blockKey}-image-${imageIndex + 1}`),
+        ],
+        stats,
+      });
+    }
+
+    await softDeleteMissingRootNodes({
+      tx,
+      sectionId: savedSection.IdSeccionDocumento,
+      keepKeys: (section.blocks ?? []).map((block, blockIndex) =>
+        block.id ?? `${key}-block-${blockIndex + 1}`,
+      ),
+      stats,
+    });
+  }
+
+  await removeMissingCustomSections(tx, versionId, sections);
 }
 
 /**

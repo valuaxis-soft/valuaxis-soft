@@ -18,6 +18,8 @@ import type { BillingOverviewDto } from "@/features/billing/billing.service";
 import type { FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 import type { DraftInput } from "@/features/ai/draft-writing";
 import type { ListingProposal } from "@/features/ai/listing-extraction";
+import type { ValuationDetail, ValuationListItem } from "@/features/valuations/repositories/valuation.repository";
+import type { ValuationTemplateDetail, ValuationTemplateSummary } from "@/features/valuations/services/valuation-template.service";
 
 /** What the comparable form sends: the comparable without its id, reference and photos. */
 export type ComparableFormValues = Omit<ComparableDto, "id" | "reference" | "photos">;
@@ -295,6 +297,15 @@ export const api = {
     /** Buys a credit package: answers the Stripe page to send the browser to. */
     buyPackage: (packageId: string) =>
       request<{ url: string }>(`/organizacion/facturacion/creditos/checkout`, { method: "POST", body: JSON.stringify({ packageId }) }),
+  },
+  /** The firm's templates, and its other valuations to import Blocks from. */
+  templates: {
+    list: () => request<ValuationTemplateSummary[]>(`/plantillas`),
+    get: (id: ApiId) => request<ValuationTemplateDetail>(`/plantillas/${id}`),
+    create: (input: { name: string; valuationId: ApiId; includeData: boolean; includeImages: boolean }) =>
+      request<ValuationTemplateSummary>(`/plantillas`, { method: "POST", body: JSON.stringify(input) }),
+    valuations: () => request<ValuationListItem[]>(`/avaluos`),
+    valuation: (id: ApiId) => request<ValuationDetail>(`/avaluos/${id}`),
   },
   invitations: {
     mine: () => request<MyInvitationDto[]>(`/organizacion/invitaciones`),

@@ -74,6 +74,8 @@
 | GET, PUT | `/api/avaluos/[id]/maquinaria` | Maquinaria y equipo (MEH): captura de costos (bien, cotización, gastos, depreciación y aditamentos) y de mercado (ofertas). El `PUT` recibe `{ cost?, market? }` y guarda solo la parte enviada; recalcula ambos enfoques y la conclusión |
 | GET, PUT | `/api/avaluos/[id]/conclusion` | Resumen de los tres enfoques, método de conclusión y justificación |
 | POST | `/api/uploads` | Subida genérica de imágenes |
+| GET, POST | `/api/plantillas` | Plantillas del despacho: `GET` las lista; `POST` guarda como plantilla el documento guardado de un avalúo del despacho (`{ name, description?, valuationId, includeData, includeImages }`, ambos `false` si no se envían). 409 si ya hay una con ese nombre; 404 si el avalúo es de otro despacho. `AVALUO_EDITAR` |
+| GET, PATCH, DELETE | `/api/plantillas/[id]` | Una plantilla con su documento (para "Importar bloque"), cambio de nombre (`{ name }`) y baja lógica. La de otro despacho no se encuentra (404). `AVALUO_EDITAR` |
 
 Las dos rutas de IA comparten límites: 20 solicitudes por usuario cada 10 minutos y 200 por organización al día (429 con `Retry-After`).
 

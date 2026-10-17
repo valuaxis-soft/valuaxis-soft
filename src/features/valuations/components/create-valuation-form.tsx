@@ -7,15 +7,27 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 import type { ValuationCreationCatalogs } from "@/features/valuations/services/valuation-catalogs.service";
 
 type CatalogMissing = {
   code: string;
   label: string;
 };
+
+type TemplateOption = ValuationCreationCatalogs["templates"][number];
+
+/** The templates offered for an appraisal type: the firm's documents serve any type. */
+function templatesFor(templates: TemplateOption[], appraisalTypeId: string) {
+  return templates.filter((template) => template.document || template.appraisalTypeId === Number(appraisalTypeId));
+}
+
+/** "Plantilla base" starts on the system's template of the type, when there is one. */
+function defaultTemplateId(templates: TemplateOption[], appraisalTypeId: string) {
+  return templatesFor(templates, appraisalTypeId).find((template) => template.system)?.id.toString() ?? "";
+}
 
 export function CreateValuationForm({ catalogs }: { catalogs: ValuationCreationCatalogs }) {
   const router = useRouter();
@@ -28,7 +40,7 @@ export function CreateValuationForm({ catalogs }: { catalogs: ValuationCreationC
     appraisalTypeId: catalogs.appraisalTypes[0]?.id?.toString() ?? "",
     propertyTypeId: catalogs.propertyTypes[0]?.id?.toString() ?? "",
     operationTypeId: catalogs.operationTypes[0]?.id?.toString() ?? "",
-    templateId: "",
+    templateId: defaultTemplateId(catalogs.templates, catalogs.appraisalTypes[0]?.id?.toString() ?? ""),
     responsibleUserId: catalogs.responsibleUsers[0]?.id?.toString() ?? "",
   });
 
@@ -40,15 +52,15 @@ export function CreateValuationForm({ catalogs }: { catalogs: ValuationCreationC
     return null;
   }, [catalogs]);
 
-  const templatesForType = catalogs.templates.filter(
-    (template) => template.appraisalTypeId === Number(form.appraisalTypeId),
-  );
+  const templatesForType = templatesFor(catalogs.templates, form.appraisalTypeId);
+  const systemTemplates = templatesForType.filter((template) => template.system);
+  const firmTemplates = templatesForType.filter((template) => !template.system);
 
   const update = (key: keyof typeof form, value: string) => {
     setForm((current) => ({
       ...current,
       [key]: value,
-      ...(key === "appraisalTypeId" ? { templateId: "" } : null),
+      ...(key === "appraisalTypeId" ? { templateId: defaultTemplateId(catalogs.templates, value) } : null),
     }));
   };
 
@@ -145,14 +157,34 @@ export function CreateValuationForm({ catalogs }: { catalogs: ValuationCreationC
                     onChange={(value) => update("operationTypeId", value)}
                     options={catalogs.operationTypes}
                   />
-                  <SelectField
-                    label="Plantilla"
-                    value={form.templateId}
-                    onChange={(value) => update("templateId", value)}
-                    options={templatesForType}
-                    placeholder="Sin plantilla"
-                    required={false}
-                  />
+                  <Field>
+                    <FieldLabel htmlFor="create-valuation-template">Plantilla base</FieldLabel>
+                    <NativeSelect
+                      id="create-valuation-template"
+                      className="w-full"
+                      value={form.templateId}
+                      onChange={(event) => update("templateId", event.target.value)}
+                    >
+                      <NativeSelectOption value="">Estructura del sistema</NativeSelectOption>
+                      {systemTemplates.map((template) => (
+                        <NativeSelectOption key={template.id} value={template.id}>
+                          {template.label}
+                        </NativeSelectOption>
+                      ))}
+                      {firmTemplates.length ? (
+                        <NativeSelectOptGroup label="Plantillas del despacho">
+                          {firmTemplates.map((template) => (
+                            <NativeSelectOption key={template.id} value={template.id}>
+                              {template.label}
+                            </NativeSelectOption>
+                          ))}
+                        </NativeSelectOptGroup>
+                      ) : null}
+                    </NativeSelect>
+                    <FieldDescription>
+                      Una plantilla del despacho trae las secciones, bloques y apartados con que se guardó; los valores, solo si se guardaron con ella.
+                    </FieldDescription>
+                  </Field>
                 </div>
               </FieldGroup>
 

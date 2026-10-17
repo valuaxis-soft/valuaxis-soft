@@ -71,6 +71,8 @@ const adminOnly = (ok: Expected): Record<Role, Expected> => ({ ADMINISTRADOR: ok
 
 let world: World;
 let shared: string;
+/** The database id of a template of A, as "Plantilla base" sends it when creating a valuation. */
+let templateDbId = 0;
 let catalogIds: Awaited<ReturnType<typeof valuationCatalogIds>>;
 const actors = () => ({
   ADMINISTRADOR: world.a.admin,
@@ -87,6 +89,8 @@ before(async () => {
   // A rent market, so the income approach has a unit rent to compute with
   // (see the skipped test in valuation-flow.e2e.ts for per-unit rents alone).
   await addRentMarket(world.a.admin, shared);
+  const template = await createTemplate(shared);
+  templateDbId = (await prisma.plantillaAvaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: template }, select: { IdPlantillaAvaluo: true } })).IdPlantillaAvaluo;
 });
 after(() => prisma.$disconnect());
 
@@ -207,6 +211,49 @@ const billingCases: Case[] = [
     body: () => ({ packageId: "no-es-un-id" }), expected: adminOnly(400) },
 ];
 
+/** A template of organization A saved from `valuation` by its administrator; returns its id. */
+async function createTemplate(valuation: string) {
+  const response = await call(world.a.admin, "POST", "/api/plantillas", { json: { name: `Plantilla ${randomUUID()}`, valuationId: valuation } });
+  assert.equal(response.status, 201, describeCall("template (setup)", response));
+  return String(response.data.id);
+}
+
+// The template each fresh valuation was saved as, for the calls that change or remove one.
+const templatesByValuation = new Map<string, string>();
+const withTemplate = async (valuation: string) => {
+  templatesByValuation.set(valuation, await createTemplate(valuation));
+};
+
+const templateCases: Case[] = [
+  { name: "list the firm's templates", method: "GET", path: () => "/api/plantillas", expected: editors(200) },
+  {
+    name: "save a valuation as a template",
+    method: "POST",
+    path: () => "/api/plantillas",
+    body: () => ({ name: `Matriz ${randomUUID()}`, valuationId: shared }),
+    expected: editors(201),
+  },
+  { name: "read a template", method: "GET", path: (id) => `/api/plantillas/${templatesByValuation.get(id)}`, fresh: true, prepare: withTemplate, expected: editors(200) },
+  {
+    name: "rename a template",
+    method: "PATCH",
+    path: (id) => `/api/plantillas/${templatesByValuation.get(id)}`,
+    body: () => ({ name: `Renombrada ${randomUUID()}` }),
+    fresh: true,
+    prepare: withTemplate,
+    expected: editors(200),
+  },
+  { name: "remove a template", method: "DELETE", path: (id) => `/api/plantillas/${templatesByValuation.get(id)}`, fresh: true, prepare: withTemplate, expected: editors(204) },
+  {
+    name: "create a valuation from a template",
+    method: "POST",
+    path: () => "/api/avaluos",
+    body: () => ({ title: "Desde plantilla", ...catalogIds, templateId: templateDbId }),
+    expected: editors(201),
+  },
+];
+
+
 async function runCase(item: Case, role: Role) {
   const actor = actors()[role];
   let valuation = shared;
@@ -240,6 +287,7 @@ matrix("dictamen", dictamenCases);
 matrix("firm data", firmCases);
 matrix("team", teamCases);
 matrix("plan and billing", billingCases);
+matrix("templates", templateCases);
 
 describe("plan and billing page", () => {
   test("administrators and CONSULTA open it; the other roles are sent to the dashboard", async () => {

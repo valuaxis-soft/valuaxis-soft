@@ -51,6 +51,8 @@ test("templates are the system's and the organization's own, never another firm'
     id: own.IdPlantillaAvaluo,
     label: `Propia ${suffix}`,
     appraisalTypeId: type.IdTipoAvaluo,
+    system: false,
+    document: false,
   });
 
   const otherCatalogs = await getValuationCreationCatalogs(other.organizationId);

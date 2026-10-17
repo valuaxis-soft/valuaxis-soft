@@ -21,6 +21,7 @@ export function ApartadoEditor({
   children,
   conceptPresentation,
   displayLabel,
+  extraActions,
   onConceptPresentationChange,
   onPresentationModeChange,
   onResetConceptPresentations,
@@ -41,6 +42,8 @@ export function ApartadoEditor({
   children: ReactNode;
   conceptPresentation?: ConceptPresentation;
   displayLabel: string;
+  /** Actions of the editor's own shown before the structural ones (copy, move). */
+  extraActions?: ReactNode;
   onConceptPresentationChange?: (next: ConceptPresentation | undefined) => void;
   onPresentationModeChange?: (next: ApartadoPresentationMode | undefined) => void;
   onResetConceptPresentations?: () => void;
@@ -85,6 +88,7 @@ export function ApartadoEditor({
         </div>
 
         <div className="flex items-center gap-2">
+          {extraActions}
           <StructuralActions
             conceptPresentation={conceptPresentation}
             disabled={readOnly}
