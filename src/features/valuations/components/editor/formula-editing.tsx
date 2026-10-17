@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -26,7 +27,9 @@ import {
   cellReferenceText,
   columnLetter,
   conceptReferenceText,
+  formulaReferenceHighlights,
   isFormulaText,
+  type FormulaReferenceHighlight,
   type FormulaConceptEntry,
   type FormulaIndex,
   type FormulaTableEntry,
@@ -66,7 +69,13 @@ type FormulaEditing = {
   /** The field lost the focus to the value picker: it is not done yet. */
   keepsEditing: () => boolean;
   resume: () => void;
+  /** Table id → "rowId:columnId" → color of the reference that covers the cell, in the formula being written. */
+  highlights: ReadonlyMap<string, ReadonlyMap<string, number>>;
+  /** The text of the formula being written, so the cells it names are painted while it is typed. */
+  showDraft: (fieldKey: string, text: string) => void;
 };
+
+const NO_HIGHLIGHTS: ReadonlyMap<string, ReadonlyMap<string, number>> = new Map();
 
 const FormulaEditingContext = createContext<FormulaEditing>({
   index: EMPTY_FORMULA_INDEX,
@@ -76,6 +85,8 @@ const FormulaEditingContext = createContext<FormulaEditing>({
   insertReference: () => {},
   keepsEditing: () => false,
   resume: () => {},
+  highlights: NO_HIGHLIGHTS,
+  showDraft: () => {},
 });
 
 export const useFormulaEditing = () => useContext(FormulaEditingContext);
@@ -90,6 +101,7 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
   const index = useMemo(() => buildFormulaIndex(sections), [sections]);
   const [session, setSession] = useState<FormulaSession | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [draft, setDraft] = useState<{ fieldKey: string; text: string } | null>(null);
   const handlersRef = useRef<FormulaSessionHandlers | null>(null);
   const keepEditingRef = useRef(false);
 
@@ -105,10 +117,25 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
   const resume = useCallback(() => {
     keepEditingRef.current = false;
   }, []);
+  const showDraft = useCallback<FormulaEditing["showDraft"]>((fieldKey, text) => {
+    setDraft((current) => (current?.fieldKey === fieldKey && current.text === text ? current : { fieldKey, text }));
+  }, []);
+  const highlights = useMemo(() => {
+    if (!session || draft?.fieldKey !== session.fieldKey) return NO_HIGHLIGHTS;
+    const byTable = new Map<string, Map<string, number>>();
+    for (const reference of formulaReferenceHighlights(draft.text, index, session.homeTableId)) {
+      if (!reference.tableId) continue;
+      let cells = byTable.get(reference.tableId);
+      if (!cells) byTable.set(reference.tableId, (cells = new Map()));
+      // Where references overlap, the first one written keeps the cell, as in a spreadsheet.
+      for (const cell of reference.cells) if (!cells.has(cell)) cells.set(cell, reference.color);
+    }
+    return byTable;
+  }, [draft, index, session]);
 
   const editing = useMemo<FormulaEditing>(
-    () => ({ index, session, begin, end, insertReference, keepsEditing, resume }),
-    [index, session, begin, end, insertReference, keepsEditing, resume],
+    () => ({ index, session, begin, end, insertReference, keepsEditing, resume, highlights, showDraft }),
+    [index, session, begin, end, insertReference, keepsEditing, resume, highlights, showDraft],
   );
 
   const openPicker = () => {
@@ -162,6 +189,8 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
 
 type Draft = { text: string; initial: string };
 
+const NO_REFERENCES: FormulaReferenceHighlight[] = [];
+
 /**
  * The editing of a field that may hold a formula, as a spreadsheet cell does:
  * focusing it shows the formula, typing "=" starts one, Enter or leaving the
@@ -182,7 +211,7 @@ export function useFormulaField({
   onCommit: (text: string) => void;
 }) {
   const editing = useFormulaEditing();
-  const { begin, end } = editing;
+  const { begin, end, showDraft } = editing;
   const [draft, setDraft] = useState<Draft | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const caretRef = useRef<number | null>(null);
@@ -234,6 +263,12 @@ export function useFormulaField({
     return () => end(fieldKey);
   }, [begin, commit, discard, end, fieldKey, homeTableId, writingFormula]);
 
+  // The cells the formula names are painted while it is typed.
+  const draftText = draft?.text;
+  useEffect(() => {
+    if (writingFormula && draftText !== undefined) showDraft(fieldKey, draftText);
+  }, [draftText, fieldKey, showDraft, writingFormula]);
+
   // After a reference is written, the caret goes right after it.
   useEffect(() => {
     const caret = caretRef.current;
@@ -249,6 +284,8 @@ export function useFormulaField({
     /** What the input shows while it is being written; null when the field shows its own value. */
     draftText: draft?.text ?? null,
     writingFormula,
+    /** The references of the formula being written, with their colors, to paint its text. */
+    references: writingFormula && draft ? formulaReferenceHighlights(draft.text, editing.index, homeTableId) : NO_REFERENCES,
     /** Takes what was typed when it is, or was, a formula. False: the field handles it as a plain value. */
     change: (text: string) => {
       if (draft) {
@@ -303,6 +340,36 @@ export function useFormulaField({
       caretRef.current = input.value.length + 1;
     },
   };
+}
+
+/** The colors references take turns with, in the text of the formula and on the cells they name. */
+export const FORMULA_REFERENCE_COLORS = ["#2563eb", "#dc2626", "#9333ea", "#16a34a", "#ea580c", "#db2777", "#0d9488", "#b45309"] as const;
+
+/** A cell painted as the reference that names it is painted in the formula being written. */
+export function formulaReferenceCellStyle(color: number | undefined): CSSProperties | undefined {
+  if (color === undefined) return undefined;
+  const hex = FORMULA_REFERENCE_COLORS[color % FORMULA_REFERENCE_COLORS.length];
+  return { boxShadow: `inset 0 0 0 2px ${hex}`, backgroundColor: `${hex}1f` };
+}
+
+/**
+ * The formula's text with each reference in its color, laid over the field
+ * that holds it (whose own text is transparent while a formula is written).
+ */
+export function FormulaReferenceText({ text, references }: { text: string; references: FormulaReferenceHighlight[] }) {
+  const parts: ReactNode[] = [];
+  let at = 0;
+  for (const reference of references) {
+    if (reference.start > at) parts.push(text.slice(at, reference.start));
+    parts.push(
+      <span key={reference.start} style={{ color: FORMULA_REFERENCE_COLORS[reference.color % FORMULA_REFERENCE_COLORS.length] }}>
+        {text.slice(reference.start, reference.end)}
+      </span>,
+    );
+    at = reference.end;
+  }
+  if (at < text.length) parts.push(text.slice(at));
+  return <>{parts}</>;
 }
 
 /**

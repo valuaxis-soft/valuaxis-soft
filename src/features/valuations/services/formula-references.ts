@@ -12,7 +12,7 @@
  *
  * Pure TypeScript — no React, no side effects.
  */
-import { FORMULA_FUNCTION_NAMES, parseFormula, type CellPosition, type FormulaFunctionName, type FormulaSyntax } from "../calculation/free-formula";
+import { FORMULA_FUNCTION_NAMES, formulaReferenceSpans, parseFormula, type CellPosition, type FormulaFunctionName, type FormulaSyntax } from "../calculation/free-formula";
 import { isGeneratedBlock } from "../calculation/market-document";
 import type { AppSection, Concept } from "../model";
 import { normalizeConceptTitle } from "./concept-title";
@@ -410,4 +410,49 @@ export function cellReferenceText(index: FormulaIndex, tableId: string, table: T
 export function conceptReferenceText(index: FormulaIndex, conceptId: string): string | null {
   const entry = index.conceptById.get(referenceKey(conceptId));
   return entry ? `[${entry.name}]` : null;
+}
+
+/* ================================================================== */
+/*  REFERENCES COLORED WHILE A FORMULA IS WRITTEN                      */
+/* ================================================================== */
+
+/** How many colors the references of a formula take turns with, as a spreadsheet does. */
+export const FORMULA_REFERENCE_COLOR_COUNT = 8;
+
+export type FormulaReferenceHighlight = {
+  start: number;
+  end: number;
+  /** 0 to FORMULA_REFERENCE_COLOR_COUNT − 1; a reference written twice takes the same color. */
+  color: number;
+  /** The table it reads; null when there is no such table. */
+  tableId: string | null;
+  /** "rowId:columnId" of every cell it covers that exists. */
+  cells: string[];
+};
+
+/**
+ * Each cell or range named in a formula being written, with its color and
+ * the cells it covers: the editor paints the text and the cells alike.
+ * `homeTableId` is the table of the cell being edited; a concept has none.
+ */
+export function formulaReferenceHighlights(text: string, index: FormulaIndex, homeTableId: string | undefined): FormulaReferenceHighlight[] {
+  const colors = new Map<string, number>();
+  return formulaReferenceSpans(text).map((span) => {
+    const cells = text.slice(span.start, span.end).replace(/[\s$]/g, "").toUpperCase().split("!").at(-1) ?? "";
+    const key = span.table === undefined ? cells : `${nameKey(span.table)}!${cells}`;
+    if (!colors.has(key)) colors.set(key, colors.size % FORMULA_REFERENCE_COLOR_COUNT);
+    const entry = span.table === undefined
+      ? (homeTableId ? index.tableById.get(homeTableId) : undefined)
+      : index.tableByName.get(nameKey(span.table));
+    const covered: string[] = [];
+    if (entry) {
+      const columns = getDisplayColumns(entry.table);
+      const [top, bottom] = [Math.min(span.from.row, span.to.row), Math.max(span.from.row, span.to.row)];
+      const [left, right] = [Math.min(span.from.column, span.to.column), Math.max(span.from.column, span.to.column)];
+      for (const row of entry.table.rows.slice(top, bottom + 1)) {
+        for (const column of columns.slice(left, right + 1)) covered.push(`${row.id}:${column.id}`);
+      }
+    }
+    return { start: span.start, end: span.end, color: colors.get(key)!, tableId: entry?.id ?? null, cells: covered };
+  });
 }

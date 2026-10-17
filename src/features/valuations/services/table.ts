@@ -582,7 +582,8 @@ function normalizeTableName(name: string | undefined | null, fallback?: string):
  * Move a column from one index to another (indices in `table.columns`).
  * Formulas name columns by id, so what they read does not change. The zones
  * of a structured table keep their columns and follow the new order inside
- * each one: a column never changes zone by being moved.
+ * each one: a column never changes zone by being moved. The editor moves
+ * columns with `moveTableColumnTo`, which lets them cross zones.
  */
 export function moveTableColumn(table: TableV2, fromIndex: number, toIndex: number): TableV2 {
   if (fromIndex < 0 || fromIndex >= table.columns.length) return table;
@@ -601,19 +602,55 @@ export function moveTableColumn(table: TableV2, fromIndex: number, toIndex: numb
 }
 
 /**
+ * Moves a column to the place of `targetColumnId` among the columns as shown,
+ * as dragging its header onto that one does: the columns between them shift
+ * one place. In a structured table the column joins the zone of the column
+ * it lands beside, so a factor dragged out of "Factores de Homologación"
+ * leaves the group and a column dragged into it joins it.
+ */
+export function moveTableColumnTo(table: TableV2, columnId: string, targetColumnId: string): TableV2 {
+  if (columnId === targetColumnId) return table;
+  const shown = getDisplayColumns(table);
+  const from = shown.findIndex((column) => column.id === columnId);
+  const to = shown.findIndex((column) => column.id === targetColumnId);
+  if (from === -1 || to === -1) return table;
+  if (!table.schema?.zones.length) {
+    return moveTableColumn(table, table.columns.findIndex((column) => column.id === columnId), table.columns.findIndex((column) => column.id === targetColumnId));
+  }
+  const order = shown.map((column) => column.id);
+  order.splice(from, 1);
+  order.splice(to, 0, columnId);
+  const targetZone = findZoneForColumn(table.schema, targetColumnId);
+  const zoneOf = new Map(table.schema.zones.flatMap((zone) => zone.columnIds.map((id): [string, string] => [id, zone.id])));
+  if (targetZone) zoneOf.set(columnId, targetZone.id);
+  return withColumnOrder(table, order, zoneOf);
+}
+
+/**
+ * The table with its columns in `order` (ids as shown) and each column in
+ * the zone `zoneOf` gives it. `table.columns` follows the order shown, so
+ * the stored order and the printed one never disagree.
+ */
+function withColumnOrder(table: TableV2, order: string[], zoneOf: Map<string, string>): TableV2 {
+  const byId = new Map(table.columns.map((column) => [column.id, column]));
+  const unshown = table.columns.filter((column) => !order.includes(column.id));
+  const columns = [...order.map((id) => byId.get(id)).filter((column): column is TableColumn => Boolean(column)), ...unshown];
+  if (!table.schema) return { ...table, columns };
+  const zones = table.schema.zones.map((zone) => ({ ...zone, columnIds: order.filter((id) => zoneOf.get(id) === zone.id) }));
+  return { ...table, columns, schema: { ...table.schema, zones } };
+}
+
+/**
  * Whether a column can take one step to the left (-1) or to the right (1)
- * among the columns as shown. In a structured table a column moves only
- * inside its own zone, and only when the zone allows it.
+ * among the columns as shown. A column moves anywhere unless its own
+ * capability or a zone that forbids reordering says otherwise.
  */
 export function canMoveTableColumn(table: TableV2, columnId: string, direction: -1 | 1): boolean {
   const columns = getDisplayColumns(table);
   const index = columns.findIndex((column) => column.id === columnId);
   const neighbour = columns[index + direction];
   if (index === -1 || !neighbour) return false;
-  if (!table.schema) return true;
-  if (resolveColumnCapability(columnId, table.schema).movable === false) return false;
-  const zone = findZoneForColumn(table.schema, columnId);
-  return zone !== undefined && zone === findZoneForColumn(table.schema, neighbour.id);
+  return resolveColumnCapability(columnId, table.schema).movable !== false;
 }
 
 /** The column one step to the left or to the right of where it is shown; the table as it was when it cannot move. */
@@ -621,9 +658,46 @@ export function moveTableColumnBy(table: TableV2, columnId: string, direction: -
   if (!canMoveTableColumn(table, columnId, direction)) return table;
   const columns = getDisplayColumns(table);
   const neighbour = columns[columns.findIndex((column) => column.id === columnId) + direction];
-  const fromIndex = table.columns.findIndex((column) => column.id === columnId);
-  const toIndex = table.columns.findIndex((column) => column.id === neighbour.id);
-  return moveTableColumn(table, fromIndex, toIndex);
+  return moveTableColumnTo(table, columnId, neighbour.id);
+}
+
+/** Whether the column can be deleted: its capability allows it, and the table and its zone keep their least columns. */
+export function canRemoveTableColumn(table: TableV2, columnId: string): boolean {
+  if (table.columns.length <= 1) return false;
+  if (resolveColumnCapability(columnId, table.schema).removable === false) return false;
+  const zone = table.schema ? findZoneForColumn(table.schema, columnId) : undefined;
+  return !(zone?.kind === "dynamic" && zone.minColumns !== undefined && zone.columnIds.length <= zone.minColumns);
+}
+
+/**
+ * Inserts an empty column to the left or to the right of `columnId` as
+ * shown. In a structured table it joins that column's zone, so a column
+ * inserted beside a factor sits under the factors' header.
+ */
+export function insertTableColumnBeside(table: TableV2, columnId: string, side: "left" | "right", name?: string): TableV2 {
+  const shown = getDisplayColumns(table);
+  const at = shown.findIndex((column) => column.id === columnId);
+  if (at === -1) return table;
+  const column: TableColumn = { id: generateColumnId(), name: normalizeTableName(name, `Columna ${table.columns.length + 1}`) };
+  const order = shown.map((item) => item.id);
+  order.splice(side === "left" ? at : at + 1, 0, column.id);
+  const withColumn: TableV2 = {
+    ...table,
+    columns: [...table.columns, column],
+    rows: table.rows.map((row) => ({ ...row, cells: { ...row.cells, [column.id]: { kind: "value", value: "" } } })),
+  };
+  if (!table.schema?.zones.length) return withColumnOrder(withColumn, order, new Map());
+  const zoneOf = new Map(table.schema.zones.flatMap((zone) => zone.columnIds.map((id): [string, string] => [id, zone.id])));
+  const zone = findZoneForColumn(table.schema, columnId);
+  if (zone) zoneOf.set(column.id, zone.id);
+  return withColumnOrder(withColumn, order, zoneOf);
+}
+
+/** An empty column after the last one shown, in the last column's zone: the toolbar's "Agregar columna". */
+export function appendTableColumn(table: TableV2, name?: string): TableV2 {
+  const last = getDisplayColumns(table).at(-1);
+  if (!last) return insertTableColumn(table, table.columns.length, name);
+  return insertTableColumnBeside(table, last.id, "right", name);
 }
 
 /** Whether any cell of the column holds a value or a formula. */
@@ -927,7 +1001,12 @@ export function findZoneForColumn(schema: TableSchema, columnId: string): Struct
   return schema.zones.find((z) => z.columnIds.includes(columnId));
 }
 
-/** Resolve the effective capability for a column. */
+/**
+ * Resolve the effective capability for a column. Every column of a table
+ * the appraiser edits can be moved, deleted and have columns inserted
+ * beside it, as in a spreadsheet; only an explicit capability or a dynamic
+ * zone that forbids it says otherwise.
+ */
 export function resolveColumnCapability(
   columnId: string,
   schema?: TableSchema,
@@ -935,11 +1014,55 @@ export function resolveColumnCapability(
   const override = schema?.capabilities?.[columnId];
   const zone = schema ? findZoneForColumn(schema, columnId) : undefined;
   return {
-    removable:    override?.removable    ?? (zone?.kind === "dynamic" ? (zone.allowRemove ?? true) : false),
-    movable:      override?.movable      ?? (zone?.kind === "dynamic" ? (zone.allowReorder ?? true) : false),
+    removable:    override?.removable    ?? (zone?.kind === "dynamic" ? (zone.allowRemove ?? true) : true),
+    movable:      override?.movable      ?? (zone?.kind === "dynamic" ? (zone.allowReorder ?? true) : true),
     headerEditable: override?.headerEditable ?? true,
     clearable:    override?.clearable    ?? true,
   };
+}
+
+/** Whether a column can have columns inserted beside it. */
+export function canInsertBesideColumn(table: TableV2, columnId: string): boolean {
+  const zone = table.schema ? findZoneForColumn(table.schema, columnId) : undefined;
+  if (zone?.kind !== "dynamic") return true;
+  return zone.allowInsert !== false && (zone.maxColumns === undefined || zone.columnIds.length < zone.maxColumns);
+}
+
+/**
+ * Whether the column is a factor of a homologation table: a column under
+ * the factors' header group, the resultant (Re) included, wherever it was
+ * moved to or inserted.
+ */
+export function isHomologationFactorColumn(table: Pick<TableV2, "schema">, columnId: string): boolean {
+  const schema = table.schema;
+  if (schema?.presetId !== "homologation" || !schema.headerGroups?.length) return false;
+  const zone = findZoneForColumn(schema, columnId);
+  return Boolean(zone && schema.headerGroups.some((group) => group.zoneId === zone.id));
+}
+
+/**
+ * What was already written in the same column of the other rows and starts
+ * with `typed`, as a spreadsheet offers while typing: without case or
+ * accents, each value once, in the order of the rows. Formulas offer nothing.
+ */
+export function columnValueSuggestions(table: TableV2, columnId: string, rowId: string, typed: string, limit = 5): string[] {
+  const key = (text: string) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const prefix = key(typed.trimStart());
+  if (!prefix || prefix.startsWith("=")) return [];
+  const seen = new Set<string>();
+  const found: string[] = [];
+  for (const row of table.rows) {
+    if (row.id === rowId) continue;
+    const cell = row.cells[columnId];
+    if (cell?.kind !== "value") continue;
+    const value = cell.value.trim();
+    const normalized = key(value);
+    if (!value || value.startsWith("=") || seen.has(normalized) || normalized === prefix || !normalized.startsWith(prefix)) continue;
+    seen.add(normalized);
+    found.push(value);
+    if (found.length === limit) break;
+  }
+  return found;
 }
 
 /** Update a header group title. */
@@ -965,6 +1088,44 @@ export function getDisplayColumns(tableV2: TableV2): TableColumn[] {
   const orderedIds = getColumnOrderFromSchema(tableV2.schema);
   const colMap = new Map(tableV2.columns.map((c) => [c.id, c]));
   return orderedIds.map((id) => colMap.get(id)).filter(Boolean) as TableColumn[];
+}
+
+/* ================================================================== */
+/*  COLUMN WIDTHS — the editor sized as the printed table              */
+/* ================================================================== */
+
+/** Longest stretch of a cell the printed table keeps on one line before it wraps. */
+const WRAPPED_CELL_CHARS = 32;
+const MIN_COLUMN_CHARS = 4;
+
+const longestWord = (text: string) => text.split(/\s+/).reduce((longest, word) => Math.max(longest, word.length), 0);
+
+/**
+ * How many characters wide a header asks its column to be: a long one in
+ * two lines, so it takes half its length and never less than its longest
+ * word; one broken by hand (Alt+Enter) its longest line.
+ */
+export function headerLineChars(header: string): number {
+  const lines = header.trim().split("\n");
+  if (lines.length > 1) return Math.max(...lines.map((line) => line.trim().length));
+  return Math.max(longestWord(lines[0]), Math.ceil(lines[0].length / 2));
+}
+
+/**
+ * How wide each column is, in characters, as the printed table sets it:
+ * after its content. A header takes two lines when it is long, so it asks
+ * for half its length (and never less than its longest word); a figure that
+ * stays on one line asks for all of it, and a text wraps past a short line.
+ */
+export function estimateColumnChars(columns: Array<{ header: string; cells: string[]; noWrap?: boolean }>): number[] {
+  return columns.map(({ header, cells, noWrap }) => {
+    const headerChars = headerLineChars(header);
+    const cellChars = cells.reduce((widest, text) => {
+      const length = text.trim().length;
+      return Math.max(widest, noWrap ? length : Math.max(Math.min(length, WRAPPED_CELL_CHARS), longestWord(text)));
+    }, 0);
+    return Math.max(MIN_COLUMN_CHARS, headerChars, cellChars);
+  });
 }
 
 /* ================================================================== */
@@ -1021,9 +1182,11 @@ export function getTableHeaderLayout(tableV2: TableV2): HeaderLayout {
   const topRow: HeaderLayoutCell[] = [];
   for (const zone of schema.zones) {
     const group = groupByZone.get(zone.id);
+    // A zone whose columns were all moved out or deleted prints nothing.
+    if (!zone.columnIds.some((id) => colMap.has(id))) continue;
     if (group) {
       // This zone has a header group → emit ONE group-title spanning all its columns
-      topRow.push({ kind: "group-title", group, colSpan: zone.columnIds.length });
+      topRow.push({ kind: "group-title", group, colSpan: zone.columnIds.filter((id) => colMap.has(id)).length });
     } else {
       // Ungrouped zone → emit each column with rowSpan=2
       for (const colId of zone.columnIds) {
@@ -1036,9 +1199,9 @@ export function getTableHeaderLayout(tableV2: TableV2): HeaderLayout {
   }
 
   // Bottom row: only grouped columns in zone order
-  const bottomRow = tableV2.columns
-    .filter((c) => groupedColumnIds.has(c.id))
-    .map((c) => c.id);
+  const bottomRow = schema.zones
+    .flatMap((zone) => zone.columnIds)
+    .filter((id) => groupedColumnIds.has(id) && colMap.has(id));
 
   return { topRow, bottomRow: bottomRow.length > 0 ? bottomRow : null, hasGroups: true };
 }

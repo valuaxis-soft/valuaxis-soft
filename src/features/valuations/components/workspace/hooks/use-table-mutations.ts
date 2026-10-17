@@ -1,5 +1,5 @@
 import type { TableContent } from "@/features/valuations/model";
-import { ensureTableV2 } from "@/features/valuations/services/table";
+import { appendTableColumn, ensureTableV2 } from "@/features/valuations/services/table";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { createTable } from "../model/content-factories";
 import {
@@ -78,16 +78,8 @@ export function useTableMutations({
       sectionId,
       blockId,
       tableId,
-      (table) => {
-        const v2 = ensureTableV2(table);
-        const newColId = `col-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-        const newCol = { id: newColId, name: `Columna ${v2.columns.length + 1}` };
-        const newRows = v2.rows.map((row) => ({
-          ...row,
-          cells: { ...row.cells, [newColId]: { kind: "value" as const, value: "" } },
-        }));
-        return { ...v2, columns: [...v2.columns, newCol], rows: newRows } as unknown as TableContent;
-      },
+      // After the last column shown, in its zone: a homologation table shows it under its last header.
+      (table) => appendTableColumn(ensureTableV2(table)) as unknown as TableContent,
       apartadoId,
     );
   };

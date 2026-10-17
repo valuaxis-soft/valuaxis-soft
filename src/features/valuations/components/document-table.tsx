@@ -12,6 +12,7 @@ import {
   ensureTableV2,
   getDisplayColumns,
   getTableHeaderLayout,
+  headerLineChars,
   type TableColumn,
   type TableNote,
   type TableResultGroup,
@@ -44,7 +45,27 @@ export function DocumentTable({
 /*  Schema-aware header rendering (uses shared helper)                  */
 /* ================================================================== */
 
-function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[]) {
+/**
+ * A column's header as printed: a long one takes two lines instead of
+ * widening its column, and a line broken by hand in the editor stays broken.
+ */
+const LONG_HEADER_CHARS = 12;
+
+function HeaderText({ name, fixed }: { name: string; fixed: boolean }) {
+  const text = name.trim() || EMPTY_VALUE;
+  const brokenByHand = text.includes("\n");
+  // A short header never needs a second line.
+  if (!brokenByHand && text.length <= LONG_HEADER_CHARS) return text;
+  // A table of fixed columns sets the widths itself: the header only wraps in them.
+  if (fixed) return brokenByHand ? <span className="whitespace-pre-line">{text}</span> : text;
+  return (
+    <span className="inline-block w-min whitespace-pre-line" style={{ minWidth: `max(100%, ${headerLineChars(text)}ch)` }}>
+      {text}
+    </span>
+  );
+}
+
+function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = false }: { fixed?: boolean } = {}) {
   const layout = getTableHeaderLayout(tableV2);
   const columnMap = new Map(columns.map((c) => [c.id, c]));
   const cell = "border-r border-white px-1.5 py-1 text-center align-middle text-wrap font-bold break-words last:border-r-0";
@@ -55,7 +76,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[]) {
         <tr>
           {columns.map((column) => (
             <th className={cell} key={column.id}>
-              {column.name.trim() || EMPTY_VALUE}
+              <HeaderText name={column.name} fixed={fixed} />
             </th>
           ))}
         </tr>
@@ -71,7 +92,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[]) {
             const column = columnMap.get(item.columnId);
             return (
               <th rowSpan={item.rowSpan} className={cell} key={item.columnId}>
-                {column?.name.trim() || EMPTY_VALUE}
+                <HeaderText name={column?.name ?? ""} fixed={fixed} />
               </th>
             );
           }
@@ -88,7 +109,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[]) {
             const column = columnMap.get(colId);
             return (
               <th className="border-r border-white px-1.5 py-0.5 text-center text-wrap text-[0.9em] font-semibold break-words" key={colId}>
-                {column?.name.trim() || EMPTY_VALUE}
+                <HeaderText name={column?.name ?? ""} fixed={fixed} />
               </th>
             );
           })}
@@ -305,7 +326,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
               <col key={column.id} />
             ))}
           </colgroup>
-          {renderSchemaHeader(tableV2, columns)}
+          {renderSchemaHeader(tableV2, columns, { fixed: true })}
           <tbody>
             {tableV2.rows.length ? tableV2.rows.map((row) => (
               <tr className="border-t border-slate-300 odd:bg-slate-50" key={row.id}>

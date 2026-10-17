@@ -3,14 +3,14 @@
 import type { ReactNode } from "react";
 
 import type { Concept, Apartado, TableContent } from "../model";
-import { findBoundaryTable, getTerrenoElementKind } from "../sections/terreno";
+import { findBoundaryDistanceColumnId, findBoundarySource, findBoundaryTable, getTerrenoElementKind } from "../sections/terreno";
 import { resolveContentLayout } from "../services/content-layout";
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
 import { type NumberPresentation } from "@/features/valuations/services/number-presentation";
 import { useNumberPresentation } from "./number-presentation-context";
-import { ensureTableV2 } from "../services/table";
+import { ensureTableV2, type TableCellV2, type TableV2 } from "../services/table";
 import type { ApartadoHead } from "./document-block-renderer";
-import { TABLE_HEADER_BAND } from "./document-theme";
+import { DocumentTable } from "./document-table";
 
 const EMPTY_VALUE = "No se proporcionó";
 
@@ -26,7 +26,7 @@ const EMPTY_VALUE = "No se proporcionó";
 export function terrenoApartadoHead(element: Apartado, displayLabel: string): ApartadoHead | null {
   if (getTerrenoElementKind(element) !== "boundaries") return null;
   const table = findBoundaryTable(element);
-  const source = element.concepts[0];
+  const source = findBoundarySource(element);
   const printed = new Set([table ? `table:${table.id}` : "", source ? `concept:${source.id}` : ""]);
   const rows = resolveContentLayout(element).rows
     .map((row) => ({
@@ -38,7 +38,7 @@ export function terrenoApartadoHead(element: Apartado, displayLabel: string): Ap
     .filter((row) => row.columns.length > 0);
 
   return {
-    node: <BoundariesPreview label={displayLabel} title={element.title} table={table} source={source?.value} />,
+    node: <BoundariesPreview label={displayLabel} title={element.title} table={table} source={source} />,
     rows,
   };
 }
@@ -59,15 +59,19 @@ function BoundariesPreview({ label, title, table, source }: {
   label: string;
   title: string;
   table: TableContent | undefined;
-  source: string | undefined;
+  source: Concept | undefined;
 }) {
+  const sourceTitle = source?.label.trim().replace(/:\s*$/, "");
   return (
     <section>
       <ElementTitle>{[label, title].filter(Boolean).join(" ")}</ElementTitle>
       {table ? <BoundaryTable table={table} /> : null}
-      <p className="mt-1.5 text-[9.5px] leading-tight text-slate-700">
-        <strong>Linderos y colindancias según:</strong> {source || "Escrituras públicas..."}
-      </p>
+      {/* Its title and its value are the concept's own, edited under the table in the editor. */}
+      {source?.value.trim() ? (
+        <p className="mt-1.5 text-[9.5px] leading-tight text-slate-700">
+          <strong>{sourceTitle}:</strong> {source.value}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -76,43 +80,37 @@ function BoundariesPreview({ label, title, table, source }: {
 /*  Shared sub-components                                              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The table of measures, printed as the other tables of the dictamen: its
+ * distances with their unit, in whichever column "Distancia" was moved to,
+ * and "No se proporcionó" where nothing was written.
+ */
 function BoundaryTable({ table }: { table: TableContent }) {
   const presentation = useNumberPresentation();
   const t2 = ensureTableV2(table);
-  const displayColumns = t2.columns;
+  const distanceColumnId = findBoundaryDistanceColumnId(table);
+  const printed: TableV2 = {
+    ...t2,
+    schema: { ...t2.schema, zones: t2.schema?.zones ?? [], hideCaption: true },
+    rows: t2.rows.map((row, rowIndex) => ({
+      ...row,
+      cells: Object.fromEntries(t2.columns.map((column): [string, TableCellV2] => {
+        const cell = row.cells[column.id];
+        const value = cell?.kind === "value" ? cell.value : "";
+        const shown = column.id === distanceColumnId
+          ? formatDistance(value, table.boundaryDistanceFormats?.[rowIndex], presentation)
+          : value.trim() || EMPTY_VALUE;
+        return [column.id, { kind: "value", value: shown }];
+      })),
+    })),
+  };
 
   return (
-    <table className="mt-1.5 w-full table-fixed border-collapse text-[9px] leading-tight">
-      <thead className={TABLE_HEADER_BAND}>
-        <tr>
-          {displayColumns.map((column, index) => (
-            <th className={`border border-slate-400 px-2 py-1 text-left font-bold ${index === 0 ? "w-[24%]" : index === 1 ? "w-[18%]" : ""}`} key={`${table.id}-column-${column.id}`}>
-              {column.name}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {t2.rows.map((row, rowIndex) => (
-          <tr className="odd:bg-slate-50" key={`${table.id}-row-${row.id}`}>
-            {displayColumns.map((column, cellIndex) => {
-              const cell = row.cells[column.id];
-              const value = cell?.kind === "value" ? cell.value : "";
-              return (
-                <td className="border border-slate-300 px-2 py-1 align-top" key={`${table.id}-cell-${row.id}-${column.id}`}>
-                  {cellIndex === 1
-                    ? formatDistance(value, table.boundaryDistanceFormats?.[rowIndex], presentation)
-                    : value || EMPTY_VALUE}
-                </td>
-              );
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="mt-1.5">
+      <DocumentTable table={printed as unknown as TableContent} variant="report" />
+    </div>
   );
 }
-
 /* ------------------------------------------------------------------ */
 /*  Utilities                                                          */
 /* ------------------------------------------------------------------ */

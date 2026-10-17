@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluateFormula, parseFormula, FORMULA_MAX_LENGTH } from "../src/features/valuations/calculation/free-formula";
+import { evaluateFormula, formulaReferenceSpans, parseFormula, FORMULA_MAX_LENGTH } from "../src/features/valuations/calculation/free-formula";
 import { applyConceptFormulaEverywhere } from "../src/features/valuations/concept-links";
 import { conceptMetadataFromContent, hydrateConceptMetadata } from "../src/features/valuations/metadata";
 import type { AppSection, Block, Concept, TableContent } from "../src/features/valuations/model";
@@ -11,27 +11,39 @@ import {
   columnLetter,
   compileFormula,
   conceptReferenceText,
+  formulaReferenceHighlights,
   formulaToText,
   isFormulaText,
   type FormulaIndex,
 } from "../src/features/valuations/services/formula-references";
 import {
+  appendTableColumn,
   buildFormulaFromSelection,
+  canInsertBesideColumn,
   canMoveTableColumn,
+  canRemoveTableColumn,
   columnHasData,
+  columnValueSuggestions,
   createHomologationTable,
+  estimateColumnChars,
   fillColumnWithFormula,
   duplicateTableRow,
   ensureTableV2,
   getDisplayColumns,
+  getTableHeaderLayout,
+  headerLineChars,
   insertTableColumn,
+  insertTableColumnBeside,
   insertTableRow,
+  isHomologationFactorColumn,
   moveTableColumn,
   moveTableColumnBy,
+  moveTableColumnTo,
   moveTableRow,
   readStoredFormula,
   removeTableColumn,
   removeTableRow,
+  resolveColumnCapability,
   setCellFormula,
   setCellResultFormat,
   type TableFormula,
@@ -884,31 +896,139 @@ test("a formula of another table follows the columns moved there and reads #REF!
   assert.equal(valueOf(deleted, "c-superficie"), "#REF!");
 });
 
-test("a structured table moves a column only inside its zone and forgets a deleted one", () => {
+test("a homologation table moves, inserts and deletes any column as a normal table, and its formulas follow", () => {
   let table = createHomologationTable();
   table = { ...table, rows: [{ ...table.rows[0], cells: { ...table.rows[0].cells, "hom-factor-ubic": { kind: "value", value: "1.05" } } }] };
   table = typed(table, "K1", "=E1*2");
   assert.equal(shown(table, "K1"), "2.1");
+  const shownIds = () => getDisplayColumns(table).map((column) => column.id);
 
-  assert.equal(canMoveTableColumn(table, "hom-fraction", 1), false, "a fixed column does not move");
-  assert.equal(canMoveTableColumn(table, "hom-factor-neg", -1), false, "the first factor cannot leave its zone");
-  assert.equal(canMoveTableColumn(table, "hom-factor-re", 1), false, "the last factor cannot leave its zone");
-  assert.equal(moveTableColumnBy(table, "hom-factor-neg", -1), table);
-
-  table = moveTableColumnBy(table, "hom-factor-ubic", -1);
-  const shownIds = getDisplayColumns(table).map((column) => column.id);
-  assert.deepEqual(shownIds.slice(3, 5), ["hom-factor-ubic", "hom-factor-neg"]);
-  assert.deepEqual(table.columns.map((column) => column.id), shownIds, "the printed order and the zones agree");
-  assert.deepEqual(table.schema?.zones[1].columnIds.slice(0, 2), ["hom-factor-ubic", "hom-factor-neg"]);
-  assert.equal(textOf(table, table.rows[0].id, "hom-net-unit-value"), "D1*2");
+  // The fixed columns move, and a factor leaves the factors when it is moved out of them.
+  assert.equal(canMoveTableColumn(table, "hom-fraction", 1), true, "a fixed column moves");
+  assert.equal(canMoveTableColumn(table, "hom-factor-neg", -1), true, "a factor moves out of its group");
+  table = moveTableColumnBy(table, "hom-factor-neg", -1);
+  assert.deepEqual(shownIds().slice(2, 4), ["hom-factor-neg", "hom-unit-value"]);
+  assert.deepEqual(table.columns.map((column) => column.id), shownIds(), "the stored order and the printed one agree");
+  assert.equal(isHomologationFactorColumn(table, "hom-factor-neg"), false, "out of the group it is no longer a factor");
+  assert.equal(getTableHeaderLayout(table).topRow.find((cell) => cell.kind === "group-title")?.colSpan, 6);
+  assert.equal(textOf(table, table.rows[0].id, "hom-net-unit-value"), "E1*2", "the formula reads the same cell");
   assert.equal(shown(table, "K1"), "2.1");
 
+  // Dragging a column onto a factor puts it among the factors, where the dragged one landed.
+  table = moveTableColumnTo(table, "hom-unit-value", "hom-factor-sup");
+  assert.deepEqual(shownIds().slice(2, 6), ["hom-factor-neg", "hom-factor-ubic", "hom-factor-sup", "hom-unit-value"]);
+  assert.equal(isHomologationFactorColumn(table, "hom-unit-value"), true);
+  assert.deepEqual(getTableHeaderLayout(table).bottomRow?.slice(0, 3), ["hom-factor-ubic", "hom-factor-sup", "hom-unit-value"]);
+
+  // Columns are inserted beside any column, in its zone, and the toolbar adds after the last one shown.
+  table = insertTableColumnBeside(table, "hom-fraction", "right", "Uso");
+  assert.equal(getDisplayColumns(table)[1].name, "Uso");
+  assert.equal(table.schema?.zones[0].columnIds[1], getDisplayColumns(table)[1].id);
+  table = insertTableColumnBeside(table, "hom-factor-re", "left", "Frente");
+  assert.equal(isHomologationFactorColumn(table, getDisplayColumns(table).find((column) => column.name === "Frente")!.id), true);
+  table = appendTableColumn(table, "Notas");
+  assert.equal(getDisplayColumns(table).at(-1)?.name, "Notas", "the column added by the toolbar is shown");
+  assert.equal(table.rows[0].cells[getDisplayColumns(table).at(-1)!.id].kind, "value");
+
+  // Any column can be deleted, a fixed one too; a formula that read it shows #REF!.
+  assert.equal(canRemoveTableColumn(table, "hom-fraction"), true);
+  table = removeTableColumn(table, "hom-fraction");
   table = removeTableColumn(table, "hom-factor-ubic");
   assert.equal(table.columns.some((column) => column.id === "hom-factor-ubic"), false);
-  assert.equal(table.schema?.zones[1].columnIds.includes("hom-factor-ubic"), false);
+  assert.equal(table.schema?.zones.some((zone) => zone.columnIds.includes("hom-factor-ubic")), false);
   assert.equal(table.schema?.columnPresentation?.["hom-factor-ubic"], undefined);
   assert.equal(textOf(table, table.rows[0].id, "hom-net-unit-value"), "#REF!*2");
-  assert.equal(shown(table, "J1"), "#REF!");
+});
+
+test("a table keeps one column at least and a group emptied by moves prints no title", () => {
+  let table = tableOf("t", "Libre", ["A", "B"], [["1", "2"]]);
+  assert.deepEqual(resolveColumnCapability("c1", table.schema), { removable: true, movable: true, headerEditable: true, clearable: true }, "a free table lets every column move and go");
+  assert.equal(canRemoveTableColumn(table, "c1"), true, "two columns can become one");
+  table = removeTableColumn(table, "c1");
+  assert.equal(canRemoveTableColumn(table, "c2"), false, "the last column stays");
+  assert.deepEqual(moveTableColumnTo(tableOf("t", "Libre", ["A", "B", "C"], [["1", "2", "3"]]), "c1", "c3").columns.map((column) => column.id), ["c2", "c3", "c1"]);
+
+  // A dynamic zone that asks for a least number of columns keeps them; one that forbids inserting offers no insert.
+  let homologation = createHomologationTable();
+  const factors = homologation.schema!.zones[1];
+  for (const id of factors.columnIds.slice(1)) homologation = moveTableColumnTo(homologation, id, "hom-net-unit-value");
+  assert.equal(canRemoveTableColumn(homologation, factors.columnIds[0]), false, "the last factor stays: the zone asks for one");
+  homologation = moveTableColumnTo(homologation, factors.columnIds[0], "hom-unit-value");
+  assert.equal(getTableHeaderLayout(homologation).topRow.some((cell) => cell.kind === "group-title"), false, "an empty group prints no title");
+  const closed = { ...createHomologationTable(), schema: { ...createHomologationTable().schema!, zones: createHomologationTable().schema!.zones.map((zone) => (zone.kind === "dynamic" ? { ...zone, allowInsert: false } : zone)) } };
+  assert.equal(canInsertBesideColumn(closed, "hom-factor-neg"), false);
+  assert.equal(canInsertBesideColumn(closed, "hom-fraction"), true);
+});
+
+test("the factors of a homologation show two decimals and are computed with all of them", () => {
+  let table = createHomologationTable();
+  const cells = { ...table.rows[0].cells, "hom-unit-value": { kind: "value" as const, value: "1000" }, "hom-factor-neg": { kind: "value" as const, value: "0.9" }, "hom-factor-ubic": { kind: "value" as const, value: "1.053" } };
+  table = { ...table, rows: [{ ...table.rows[0], cells }] };
+  table = typed(table, "J1", "=D1*E1");
+  table = typed(table, "K1", "=C1*J1");
+  assert.equal(shown(table, "D1"), "0.90", "a factor written with one decimal shows two");
+  assert.equal(shown(table, "E1"), "1.05");
+  assert.equal(shown(table, "J1"), "0.95", "the resultant shows two decimals");
+  assert.equal(shown(table, "K1"), "947.7", "what is computed from it uses every decimal");
+  assert.equal(shown(table, "C1"), "1000", "a column that is not a factor shows what was written");
+  // A cell given a format of its own keeps it.
+  table = setCellResultFormat(table, table.rows[0].id, "hom-factor-re", { type: "number", precision: 4 });
+  assert.equal(shown(table, "J1"), "0.9477");
+  // Out of a homologation table the same names are plain columns.
+  assert.equal(getCellDisplayValue({ ...table, schema: { ...table.schema!, presetId: undefined } }, table.rows[0].id, "hom-factor-neg", new Map()), "0.9");
+});
+
+test("typing in a cell offers what the column already has, once each, without case or accents", () => {
+  const table = tableOf("t", "Colindancias", ["Rumbo", "Colinda"], [
+    ["Al Norte:", "Calle Hidalgo"],
+    ["Al Sur:", "Lote 14"],
+    ["Al Este:", "calle hidalgo"],
+    ["Al Oeste:", "Lote 15"],
+    ["", "=B1"],
+  ]);
+  assert.deepEqual(columnValueSuggestions(table, "c2", "r5", "lo"), ["Lote 14", "Lote 15"]);
+  assert.deepEqual(columnValueSuggestions(table, "c2", "r5", "CALLE"), ["Calle Hidalgo"], "one suggestion for the same value written twice");
+  assert.deepEqual(columnValueSuggestions(table, "c2", "r2", "Lote"), ["Lote 15"], "the row's own value is not offered");
+  assert.deepEqual(columnValueSuggestions(table, "c2", "r5", "Lote 14"), [], "nothing to complete when it is all written");
+  assert.deepEqual(columnValueSuggestions(table, "c2", "r5", "="), [], "a formula is not completed");
+  assert.deepEqual(columnValueSuggestions(table, "c1", "r5", "al e"), ["Al Este:"]);
+  assert.deepEqual(columnValueSuggestions(table, "c1", "r5", ""), []);
+});
+
+test("the editor sizes the columns after what they hold, a long header in two lines", () => {
+  assert.equal(headerLineChars("Neg."), 4);
+  assert.equal(headerLineChars("Valor Unitario Neto $/m²"), 12, "half of a long header");
+  assert.equal(headerLineChars("Superficie\ndel Sujeto (m²)"), 15, "a header broken by hand takes its longest line");
+  assert.equal(headerLineChars("Colindancias"), 12, "a single word is not broken");
+  const [rumbo, colinda, importe] = estimateColumnChars([
+    { header: "Rumbo", cells: ["Al Norte:", "Al Sur:"] },
+    { header: "Colindancias", cells: ["Con propiedad del señor Juan Pérez García y calle Hidalgo sin número"] },
+    { header: "Importe", cells: ["$ 1,260,000,000.00"], noWrap: true },
+  ]);
+  assert.equal(rumbo, 9);
+  assert.equal(colinda, 32, "a long text wraps past a short line");
+  assert.equal(importe, 18, "a figure stays on one line");
+  assert.deepEqual(estimateColumnChars([{ header: "A", cells: [] }]), [4], "an empty column keeps room to type");
+});
+
+test("the references of a formula being written are found with their place and color", () => {
+  const spans = formulaReferenceSpans("=B2*C2+SUMA(A1:A5)+[Superficies]!B1+Homologación!$C$3+[Superficie total]");
+  assert.deepEqual(spans.map((span) => [span.start, span.end, span.table ?? null]), [[1, 3, null], [4, 6, null], [12, 17, null], [19, 35, "Superficies"], [36, 53, "Homologación"]]);
+  assert.deepEqual(spans[2].from, { column: 0, row: 0 });
+  assert.deepEqual(spans[2].to, { column: 0, row: 4 });
+  assert.deepEqual(formulaReferenceSpans("=SUMA(B2:").map((span) => [span.start, span.end]), [[6, 8]], "an unfinished formula shows what it already names");
+  assert.deepEqual(formulaReferenceSpans("=1,260*B2"), [{ start: 7, end: 9, from: { column: 1, row: 1 }, to: { column: 1, row: 1 } }], "numbers are not cells");
+
+  const lotes = tableOf("t-lotes", "Superficies", ["Concepto", "Superficie"], [["Lote 1", "169.78"], ["Lote 2", "120.50"]]);
+  const valores = tableOf("t-valores", "Valores", ["Valor", "Total"], [["9000", ""]]);
+  const index = buildFormulaIndex(sectionsOf({ tables: [lotes, valores] }));
+  const highlights = formulaReferenceHighlights("=A1*[Superficies]!B1:B2+A1+[Nadie]!A1", index, "t-valores");
+  assert.deepEqual(highlights.map((item) => item.color), [0, 1, 0, 2], "a reference written twice takes the same color");
+  assert.deepEqual(highlights[0], { start: 1, end: 3, color: 0, tableId: "t-valores", cells: ["r1:c1"] });
+  assert.deepEqual(highlights[1].cells, ["r1:c2", "r2:c2"], "a range paints every cell it covers");
+  assert.equal(highlights[1].tableId, "t-lotes");
+  assert.equal(highlights[3].tableId, null, "a table that does not exist paints nothing");
+  assert.deepEqual(formulaReferenceHighlights("=A1", index, undefined)[0].cells, [], "a concept's formula has no table of its own");
 });
 
 test("the value picker only offers concepts with a number", () => {
