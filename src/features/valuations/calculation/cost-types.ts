@@ -19,6 +19,11 @@ export const LAND_FACTORS = [
   { key: "topography", label: "Topografía" },
 ] as const;
 
+/** Column titles of the land factors as the books abbreviate them (J17..O17). */
+export const LAND_FACTOR_SHORT_LABELS: Record<(typeof LAND_FACTORS)[number]["key"], string> = {
+  negotiation: "Neg.", location: "Ubic.", surface: "Sup.", services: "Serv.", classification: "Clas.", topography: "Top.",
+};
+
 export type LandFactorKey = Exclude<(typeof LAND_FACTORS)[number]["key"], "surface">;
 
 export type CostLandDto = {
@@ -29,6 +34,10 @@ export type CostLandDto = {
   unitValue: number | null;
   surfacePower: number;
   factors: Record<LandFactorKey, number>;
+  /** Sup. (Y18); empty to take (sujeto / lote tipo)^(1/n). */
+  surfaceFactor: number | null;
+  /** FRe (P18); empty to take the product of the factors. */
+  resultantFactor: number | null;
 };
 
 /** A construction type as the construction section captures it: the single source of its surface, age and useful life. */
@@ -50,7 +59,12 @@ export type ConstructionCostDto = {
   /** Reference of the type in the construction section. */
   ref: string;
   conservation: number | null;
+  /** Edad of the demerit factors (R26); empty to take the formula. */
+  ageFactor: number | null;
   otherFactor: number;
+  /** FRe (T26); empty to take conservación × edad × otro. */
+  resultantFactor: number | null;
+  /** Fractions: 1 is 100 %; the panel shows them as percentages. */
   completion: number;
   undivided: number;
   unitReplacementCost: number | null;
@@ -69,7 +83,7 @@ export function emptyConstructionType(index: number): ConstructionTypeDto {
 }
 
 export function emptyConstructionCost(ref = ""): ConstructionCostDto {
-  return { ref, conservation: null, otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: null };
+  return { ref, conservation: null, ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: null };
 }
 
 /** The cost row with the data of its type; a row whose type is gone keeps only its reference. */
@@ -85,7 +99,10 @@ export function findConstructionType(types: ConstructionTypeDto[], ref: string):
 
 /** The cost columns of a construction, what the cost approach saves. */
 export function constructionCostOf(row: ConstructionDto): ConstructionCostDto {
-  return { ref: row.ref, conservation: row.conservation, otherFactor: row.otherFactor, completion: row.completion, undivided: row.undivided, unitReplacementCost: row.unitReplacementCost };
+  return {
+    ref: row.ref, conservation: row.conservation, ageFactor: row.ageFactor, otherFactor: row.otherFactor, resultantFactor: row.resultantFactor,
+    completion: row.completion, undivided: row.undivided, unitReplacementCost: row.unitReplacementCost,
+  };
 }
 
 export type InstallationDto = {
@@ -97,8 +114,13 @@ export type InstallationDto = {
   age: number | null;
   usefulLife: number | null;
   conservation: number | null;
+  /** Printed in the installations table of the construction section; not part of the calculation. */
   maintenance: string;
+  /** Edad of the demerit factors (R47); empty to take the formula. */
+  ageFactor: number | null;
   otherFactor: number;
+  /** FRe (T47); empty to take conservación × edad × otro. */
+  resultantFactor: number | null;
   completion: number;
   undivided: number;
   unitReplacementCost: number | null;
@@ -117,15 +139,19 @@ export const DEFAULT_COST_ROUNDING: CostRoundingDto = {
   physicalValue: DEFAULT_ENGINE_CONFIG.rounding.costs.physicalValue,
 };
 
+/** The factors with an Excel formula may be left out by older clients: they take the formula. */
+type WithFormulaFactors<T extends { resultantFactor: number | null }, K extends keyof T> =
+  Omit<T, K | "resultantFactor"> & Partial<Pick<T, K | "resultantFactor">>;
+
 /**
  * What the cost approach saves. A construction row names a type of the
  * construction section; a row that still carries the type's data (captures
  * saved before the types had their own panel) creates the type if it is missing.
  */
 export type CostInputDto = {
-  land: CostLandDto;
-  constructions: (ConstructionCostDto & Partial<Omit<ConstructionTypeDto, "ref">>)[];
-  installations: InstallationDto[];
+  land: WithFormulaFactors<CostLandDto, "surfaceFactor">;
+  constructions: (WithFormulaFactors<ConstructionCostDto, "ageFactor"> & Partial<Omit<ConstructionTypeDto, "ref">>)[];
+  installations: WithFormulaFactors<InstallationDto, "ageFactor">[];
   indirects: IndirectDto[];
   rounding?: CostRoundingDto;
 };
@@ -134,7 +160,9 @@ export function costEngineConfig(calculation: Pick<CostInputDto, "rounding">): E
   return calculation.rounding ? withRounding(DEFAULT_ENGINE_CONFIG, { costs: calculation.rounding }) : DEFAULT_ENGINE_CONFIG;
 }
 
-export type CostCalculationDto = Omit<CostInputDto, "constructions"> & {
+export type CostCalculationDto = Omit<CostInputDto, "land" | "constructions" | "installations"> & {
+  land: CostLandDto;
+  installations: InstallationDto[];
   /** The construction types picked by the cost approach, with their data from the construction section. */
   constructions: ConstructionDto[];
   /** Every construction type of the construction section, picked or not. */
@@ -143,6 +171,8 @@ export type CostCalculationDto = Omit<CostInputDto, "constructions"> & {
   market: { adoptedUnitValue: number | null; subjectArea: number | null; baseArea: number | null };
   /** The appraiser has saved the cost approach at least once. */
   configured: boolean;
+  /** The construction section has captured its types, so its table follows them even when none are left. */
+  typesCaptured: boolean;
   locked: boolean;
 };
 
@@ -152,6 +182,8 @@ export const DEFAULT_LAND: CostLandDto = {
   unitValue: null,
   surfacePower: 3,
   factors: { negotiation: 1, location: 1, services: 1, classification: 1, topography: 1 },
+  surfaceFactor: null,
+  resultantFactor: null,
 };
 
 export function emptyConstruction(index: number): ConstructionDto {
@@ -161,11 +193,16 @@ export function emptyConstruction(index: number): ConstructionDto {
 export function emptyInstallation(index: number): InstallationDto {
   return {
     ref: String(index + 1), description: "", share: "P", unit: "", quantity: null, age: null, usefulLife: null,
-    conservation: null, maintenance: "", otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: null,
+    conservation: null, maintenance: "", ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: null,
   };
 }
 
 const positive = (value: number | null): value is number => value !== null && value > 0;
+
+/** The factors the appraiser typed; an empty one (null, or missing in older captures) takes its Excel formula. */
+function captured<K extends string>(factors: Record<K, number | null | undefined>): Partial<Record<K, number>> {
+  return Object.fromEntries(Object.entries(factors).filter(([, value]) => typeof value === "number")) as Partial<Record<K, number>>;
+}
 
 /** A construction or installation enters the calculation once its numbers are captured. */
 export function isConstructionComplete(row: ConstructionDto) {
@@ -225,6 +262,7 @@ export function toCostEngineInput(calculation: Pick<CostCalculationDto, "land" |
               marketUnitValue: unitValue as number,
               surfacePower: land.surfacePower,
               factors: factorSlots,
+              ...captured({ surfaceFactor: land.surfaceFactor, resultantFactor: land.resultantFactor }),
             },
           }
         : {}),
@@ -236,6 +274,7 @@ export function toCostEngineInput(calculation: Pick<CostCalculationDto, "land" |
         usefulLife: row.usefulLife as number,
         conservation: row.conservation as number,
         otherFactor: row.otherFactor,
+        ...captured({ ageFactor: row.ageFactor, resultantFactor: row.resultantFactor }),
         completion: row.completion,
         undivided: row.undivided,
         unitReplacementCost: row.unitReplacementCost as number,
@@ -250,6 +289,7 @@ export function toCostEngineInput(calculation: Pick<CostCalculationDto, "land" |
         usefulLife: row.usefulLife as number,
         conservation: row.conservation as number,
         otherFactor: row.otherFactor,
+        ...captured({ ageFactor: row.ageFactor, resultantFactor: row.resultantFactor }),
         completion: row.completion,
         undivided: row.undivided,
         unitReplacementCost: row.unitReplacementCost as number,

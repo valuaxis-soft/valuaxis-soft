@@ -173,3 +173,47 @@ test("every figure is traced back to its inputs", () => {
   assert.equal(trace.find("costos.valorFisico")?.rounding, -4);
   assert.equal(new Set(trace.steps.map((step) => step.key)).size, trace.steps.length, "claves únicas");
 });
+
+test("factors with a formula in the book take it when empty; a typed value overrides it, and only it", () => {
+  // TCH, VI. ENF. COSTOS: R26 = 1 − (7/70)^1.4, T26 = Q26·R26·S26, Y18 = (160/140)^(1/3), P18 = J18·K18·L18·M18·N18·O18.
+  const formula = new Trace();
+  const asBook = computeCostApproach(tchInput, EXCEL_PROFILES.TCH, formula);
+  close(formula.find("costos.construcciones.T-1.factorEdad")?.value, 0.9601892829446502, "R26");
+  close(formula.find("costos.construcciones.T-1.factorResultante")?.value, 0.9409854972857572, "T26");
+  close(formula.find("costos.instalaciones.1.factorEdad")?.value, 0.6210708583724005, "R47");
+  close(formula.find("costos.instalaciones.2.factorResultante")?.value, 0.7507668190698836, "T48");
+  close(formula.find("costos.terreno.factorResultante")?.value, 0.9386119146208922, "P18");
+  assert.equal(formula.find("costos.construcciones.T-1.factorEdad")?.formula, "1 − (edad / vida útil)^1.4");
+  assert.equal(asBook.physicalValue, 3740000, "U69");
+
+  // The appraiser types an age factor of 0.9 for T-1: FRe = 0.98 × 0.9 × 1, the formula stays at hand.
+  const typed = new Trace();
+  const withAge = computeCostApproach({ ...tchInput, constructions: [{ ...tchInput.constructions[0], ageFactor: 0.9 }] }, EXCEL_PROFILES.TCH, typed);
+  const age = typed.find("costos.construcciones.T-1.factorEdad");
+  assert.equal(age?.value, 0.9);
+  assert.equal(age?.formula, "capturado por el valuador");
+  close(age?.inputs.formula as number, 0.9601892829446502, "fórmula a la vista");
+  close(typed.find("costos.construcciones.T-1.factorResultante")?.value, 0.98 * 0.9 * 1, "T26 con edad capturada");
+  close(typed.find("costos.construcciones.T-1.vnrParcial")?.value, 0.98 * 0.9 * 12550 * 250, "V34");
+  assert.equal(withAge.land, asBook.land, "the land does not move");
+  assert.equal(withAge.specialInstallations, asBook.specialInstallations);
+
+  // A typed FRe replaces the product; a typed Sup. of the land replaces its formula.
+  const resultant = new Trace();
+  computeCostApproach({
+    ...tchInput,
+    land: { ...tchInput.land, surfaceFactor: 1 },
+    specialInstallations: [{ ...templateInstallations[0], resultantFactor: 0.5 }, templateInstallations[1]],
+  }, EXCEL_PROFILES.TCH, resultant);
+  assert.equal(resultant.find("costos.terreno.factorSuperficie")?.value, 1);
+  close(resultant.find("costos.terreno.factorSuperficie")?.inputs.formula as number, 1.0455159171494204, "Y18 a la vista");
+  close(resultant.find("costos.terreno.factorResultante")?.value, 0.95 * 0.9 * 1 * 1.05, "P18 con Sup. capturado");
+  assert.equal(resultant.find("costos.instalaciones.1.factorResultante")?.value, 0.5);
+  close(resultant.find("costos.instalaciones.1.vnrParcial")?.value, 0.5 * 550 * 140 * 1 * 0.5, "V55");
+  close(resultant.find("costos.instalaciones.2.factorResultante")?.value, 0.7507668190698836, "T48 sigue la fórmula");
+
+  const landResultant = new Trace();
+  computeCostApproach({ ...tchInput, land: { ...tchInput.land, resultantFactor: 1 } }, EXCEL_PROFILES.TCH, landResultant);
+  assert.equal(landResultant.find("costos.terreno.factorResultante")?.value, 1);
+  assert.equal(landResultant.find("costos.terreno.valorParcial")?.value, 5000 * 160);
+});

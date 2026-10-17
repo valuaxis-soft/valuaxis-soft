@@ -72,6 +72,81 @@ test("the section captures the types, the cost approach picks them, and a new ag
   assert.equal((await storedConstructionValue(fixture)).rows.length, 0);
 });
 
+test("a row removed from the cost calculation leaves the type in its section; deleting the last type empties the section", async () => {
+  const fixture = await createValuationFixture();
+  const user = editor(fixture);
+  const bodega = { ...arandasType, ref: "T-2", description: "Bodega", area: 80, age: 10, usefulLife: 50 };
+  // Nothing captured yet: the construction section tables stay as the appraiser wrote them.
+  assert.equal((await getCostCalculation(fixture.publicId, fixture.organizationId)).typesCaptured, false);
+  await saveCostCalculation(fixture.publicId, user, costsOf([]));
+  assert.equal((await getCostCalculation(fixture.publicId, fixture.organizationId)).typesCaptured, false, "an empty cost capture creates no construction record");
+
+  await saveConstructionTypes(fixture.publicId, user, { types: [arandasType, bodega] });
+  await saveCostCalculation(fixture.publicId, user, costsOf([arandasCost, { ...emptyConstructionCost("T-2"), conservation: 0.9, unitReplacementCost: 9000 }]));
+  assert.equal((await storedConstructionValue(fixture)).rows.length, 2);
+
+  // Out of the calculation, still described in the section.
+  await saveCostCalculation(fixture.publicId, user, costsOf([arandasCost]));
+  let costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual(costs.constructions.map((row) => row.ref), ["T-1"]);
+  assert.deepEqual(costs.types.map((type) => type.ref), ["T-1", "T-2"]);
+  assert.equal((await storedConstructionValue(fixture)).value, 6530000);
+
+  // Deleted in the section: gone from the types, the cost rows and the result.
+  await saveConstructionTypes(fixture.publicId, user, { types: [] });
+  costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual([costs.types, costs.constructions, costs.typesCaptured], [[], [], true]);
+  assert.equal((await storedConstructionValue(fixture)).rows.length, 0);
+});
+
+test("the age factor and FRe take the Excel formula when empty, a typed value overrides it and survives a rename, and percentages stay fractions", async () => {
+  const fixture = await createValuationFixture();
+  const user = editor(fixture);
+  await saveConstructionTypes(fixture.publicId, user, { types: [arandasType] });
+  await saveCostCalculation(fixture.publicId, user, costsOf([arandasCost]));
+  let stored = await storedConstructionValue(fixture);
+  // R26 = 1 − (2/70)^1.4 and T26 = 0.98 · R26, as the Arandas book.
+  assert.equal(Number(stored.rows[0].NFactorEdad), 0.99310864);
+  assert.equal(Number(stored.rows[0].NFactorResultante), 0.97324647);
+
+  // Typed: an age factor of 0.9, completion 75 % and undivided 50 % (fractions on the wire).
+  const installation = {
+    ref: "1", description: "Cisterna de 18 mil lts", share: "C" as const, unit: "Lote", quantity: 1, age: 2, usefulLife: 70, conservation: 0.975,
+    maintenance: "Bueno", ageFactor: null, otherFactor: 1, resultantFactor: 0.5, completion: 1, undivided: 1, unitReplacementCost: 90000,
+  };
+  await saveCostCalculation(fixture.publicId, user, {
+    ...costsOf([{ ...arandasCost, ageFactor: 0.9, completion: 0.75, undivided: 0.5 }]),
+    land: { ...DEFAULT_LAND, surfaceFactor: 1.05 },
+    installations: [installation],
+  });
+  let costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual([costs.constructions[0].ageFactor, costs.constructions[0].resultantFactor, costs.constructions[0].completion, costs.constructions[0].undivided], [0.9, null, 0.75, 0.5]);
+  assert.deepEqual([costs.installations[0].ageFactor, costs.installations[0].resultantFactor], [null, 0.5]);
+  assert.equal(costs.land.surfaceFactor, 1.05);
+  stored = await storedConstructionValue(fixture);
+  assert.equal(Number(stored.rows[0].NFactorEdad), 0.9);
+  // 0.98 · 0.9 · 14,361.99 · 467.27 · 0.75 · 0.5 = 2,219,639.13.
+  assert.equal(Number(stored.rows[0].NValorParcialVNR), 2219639.13);
+  const avaluo = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  const installationCost = await prisma.costoInstalacion.findFirstOrThrow({ where: { enfoqueCosto: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1 } } });
+  // The age factor of the installation follows its formula; its FRe is the typed one: 0.5 · 90,000.
+  assert.equal(Number(installationCost.NFactorEdad), 0.99310864);
+  assert.equal(Number(installationCost.NValorParcialVNR), 45000);
+
+  // A change of the type in its section keeps the factor typed for it.
+  await saveConstructionTypes(fixture.publicId, user, { types: [{ ...arandasType, description: "Edificio mixto" }] });
+  costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual([costs.constructions[0].description, costs.constructions[0].ageFactor], ["Edificio mixto", 0.9]);
+
+  // Cleared, it goes back to the formula; an older client that omits the factors gets the formulas too.
+  await saveCostCalculation(fixture.publicId, user, costsOf([{ ...arandasCost, ageFactor: null }]));
+  assert.equal((await getCostCalculation(fixture.publicId, fixture.organizationId)).constructions[0].ageFactor, null);
+  assert.equal(Number((await storedConstructionValue(fixture)).rows[0].NFactorEdad), 0.99310864);
+  const { ageFactor: _age, resultantFactor: _resultant, ...older } = arandasCost;
+  await saveCostCalculation(fixture.publicId, user, costsOf([older]));
+  assert.equal((await storedConstructionValue(fixture)).value, 6530000);
+});
+
 test("a capture that still carries the type's data creates the type (valuations saved before the types had their panel)", async () => {
   const fixture = await createValuationFixture();
   const user = editor(fixture);

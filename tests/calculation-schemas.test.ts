@@ -80,12 +80,43 @@ test("the construction types: reference, texts, surface, age and useful life; un
   assert.equal(merged.area, 80);
   assert.equal(merged.ref, "t-2");
   assert.equal(merged.conservation, 0.9);
-  assert.deepEqual(constructionCostOf(merged), { ref: "t-2", conservation: 0.9, otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: 1000 });
+  assert.deepEqual(constructionCostOf(merged), {
+    ref: "t-2", conservation: 0.9, ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: 1000,
+  });
   assert.equal(withConstructionType(emptyConstructionCost("T-9"), types).area, null);
   assert.equal(findConstructionType(types, " t-1 ")?.ref, "T-1");
   assert.equal(remainingUsefulLife(type), 50);
   assert.equal(remainingUsefulLife({ age: 80, usefulLife: 60 }), 0);
   assert.equal(remainingUsefulLife({ age: null, usefulLife: 60 }), null);
+});
+
+test("the factors with an Excel formula: empty takes the formula, a number overrides it, and an older client that omits them passes", () => {
+  const construction = { ref: "T-1", conservation: 0.98, otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: 1000 };
+  const installation = { ...emptyInstallation(0), description: "Cisterna", quantity: 1, age: 2, usefulLife: 70, conservation: 0.975, unitReplacementCost: 90000 };
+  const { ageFactor: _age, resultantFactor: _resultant, ...olderInstallation } = installation;
+  const { surfaceFactor: _surface, resultantFactor: _landResultant, ...olderLand } = DEFAULT_LAND;
+  const older = accepts(costInputSchema, { land: olderLand, constructions: [construction], installations: [olderInstallation], indirects: [] }) as {
+    land: { surfaceFactor: number | null; resultantFactor: number | null };
+    constructions: { ageFactor: number | null; resultantFactor: number | null }[];
+    installations: { ageFactor: number | null }[];
+  };
+  assert.equal(older.land.surfaceFactor, null);
+  assert.equal(older.land.resultantFactor, null);
+  assert.deepEqual([older.constructions[0].ageFactor, older.constructions[0].resultantFactor], [null, null]);
+  assert.equal(older.installations[0].ageFactor, null);
+  accepts(costInputSchema, {
+    land: { ...DEFAULT_LAND, surfaceFactor: 1.05, resultantFactor: 0.9 },
+    constructions: [{ ...construction, ageFactor: 0.95, resultantFactor: 0.9 }],
+    installations: [{ ...installation, ageFactor: 0.8, resultantFactor: null }],
+    indirects: [],
+  });
+  assert.ok(issues(costInputSchema, {
+    land: DEFAULT_LAND, constructions: [{ ...construction, ageFactor: -0.1 }], installations: [], indirects: [],
+  }).some((issue) => issue.startsWith("constructions.0.ageFactor")));
+  // Completion and undivided share stay fractions: 1 is 100 %, and 100 (a percentage typed as a fraction) is refused.
+  assert.ok(issues(costInputSchema, {
+    land: DEFAULT_LAND, constructions: [{ ...construction, completion: 100 }], installations: [], indirects: [],
+  }).some((issue) => issue.startsWith("constructions.0.completion")));
 });
 
 test("an empty cost capture (nulls and empty lists) passes", () => {

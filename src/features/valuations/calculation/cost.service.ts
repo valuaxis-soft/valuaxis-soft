@@ -41,7 +41,22 @@ async function landMarket(tx: Tx, versionId: number): Promise<CostCalculationDto
   };
 }
 
-type StoredCost = Omit<CostCalculationDto, "market" | "configured" | "locked">;
+type StoredCost = Omit<CostCalculationDto, "market" | "configured" | "typesCaptured" | "locked">;
+
+/** Factors typed over their Excel formula; a row missing here (or an older capture) takes the formulas. */
+type CapturedFactors = { ageFactor: number | null; resultantFactor: number | null };
+type StoredFactors = {
+  /** By construction type id, as the cost rows themselves. */
+  constructions?: Record<string, CapturedFactors>;
+  /** By installation reference: the installations are rewritten on every save. */
+  installations?: Record<string, CapturedFactors>;
+};
+
+const capturedOf = (stored: Partial<CapturedFactors> | undefined): CapturedFactors => ({
+  ageFactor: typeof stored?.ageFactor === "number" ? stored.ageFactor : null,
+  resultantFactor: typeof stored?.resultantFactor === "number" ? stored.resultantFactor : null,
+});
+const refKey = (ref: string) => ref.trim().toLowerCase();
 
 async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
   const [approach, types, installations, indirects] = await Promise.all([
@@ -57,8 +72,10 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
     }),
     tx.costoIndirecto.findMany({ where: { IdVersionAvaluo: versionId }, orderBy: { IOrden: "asc" } }),
   ]);
-  const land = asRecord(approach?.JConfiguracion ?? null).land as Partial<CostLandDto> | undefined;
-  const rounding = asRecord(approach?.JConfiguracion ?? null).rounding as CostRoundingDto | undefined;
+  const configuration = asRecord(approach?.JConfiguracion ?? null);
+  const land = configuration.land as Partial<CostLandDto> | undefined;
+  const rounding = configuration.rounding as CostRoundingDto | undefined;
+  const factors = (configuration.factors ?? {}) as StoredFactors;
   const typeById = new Map(types.map((type) => [type.id, type]));
   const costByInstallation = new Map(approach?.costosInstalaciones.map((row) => [row.IdInstalacionEspecialAvaluo, row]) ?? []);
   // The grade of completion and the undivided share live with the type row but belong to the cost capture.
@@ -74,10 +91,13 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
       const type = typeById.get(cost.IdTipoConstruccionAvaluo);
       if (!type) return [];
       const shares = typeShares.get(type.id);
+      const captured = capturedOf(factors.constructions?.[String(type.id)]);
       return [{
         ...publicType(type),
         conservation: decimal(cost.NFactorConservacion),
+        ageFactor: captured.ageFactor,
         otherFactor: decimal(cost.NFactorOtro) ?? 1,
+        resultantFactor: captured.resultantFactor,
         completion: decimal(shares?.NGradoTerminacion) ?? 1,
         undivided: decimal(shares?.NIndiviso) ?? 1,
         unitReplacementCost: decimal(cost.NValorUnitarioReposicionNuevo),
@@ -85,6 +105,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
     }),
     installations: installations.map((row) => {
       const cost = costByInstallation.get(row.IdInstalacionEspecialAvaluo);
+      const captured = capturedOf(factors.installations?.[refKey(row.SReferencia ?? "")]);
       return {
         ref: row.SReferencia ?? "",
         description: row.SDescripcion,
@@ -95,7 +116,9 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
         usefulLife: decimal(row.NVidaUtil),
         conservation: decimal(cost?.NFactorConservacion),
         maintenance: row.SMantenimiento ?? "",
+        ageFactor: captured.ageFactor,
         otherFactor: decimal(cost?.NFactorOtro) ?? 1,
+        resultantFactor: captured.resultantFactor,
         completion: decimal(row.NGradoTerminacion) ?? 1,
         undivided: decimal(row.NIndiviso) ?? 1,
         unitReplacementCost: decimal(cost?.NValorUnitarioVRN),
@@ -113,29 +136,40 @@ export async function getCostCalculation(publicId: string, organizationId: numbe
     if (!versionId) {
       return {
         land: DEFAULT_LAND, constructions: [], types: [], installations: [], indirects: [],
-        market: { adoptedUnitValue: null, subjectArea: null, baseArea: null }, configured: false, locked: avaluo.BBloqueado,
+        market: { adoptedUnitValue: null, subjectArea: null, baseArea: null }, configured: false, typesCaptured: false, locked: avaluo.BBloqueado,
       };
     }
-    const [input, market, approach] = await Promise.all([
+    const [input, market, approach, construction] = await Promise.all([
       loadInput(tx, versionId),
       landMarket(tx, versionId),
       tx.enfoqueCosto.findUnique({ where: { IdVersionAvaluo: versionId }, select: { IdEnfoqueCosto: true } }),
+      tx.construccionAvaluo.findFirst({ where: { IdVersionAvaluo: versionId }, select: { IdConstruccionAvaluo: true } }),
     ]);
-    return { ...input, market, configured: Boolean(approach), locked: avaluo.BBloqueado };
+    return { ...input, market, configured: Boolean(approach), typesCaptured: Boolean(construction), locked: avaluo.BBloqueado };
   });
 }
 
-const storedConfiguration = (payload: CostInputPayload) =>
-  ({ land: payload.land, ...(payload.rounding ? { rounding: payload.rounding } : {}) }) as Prisma.InputJsonValue;
+const storedConfiguration = (payload: CostInputPayload, factors: StoredFactors) =>
+  ({ land: payload.land, ...(payload.rounding ? { rounding: payload.rounding } : {}), factors }) as Prisma.InputJsonValue;
+
+const capturedFactors = (row: Partial<CapturedFactors>): CapturedFactors => capturedOf(row);
+const hasCaptured = (row: Partial<CapturedFactors>) => {
+  const factors = capturedOf(row);
+  return factors.ageFactor !== null || factors.resultantFactor !== null;
+};
 
 /** Replaces the whole capture of the version and recomputes the approach. */
 export async function saveCostCalculation(publicId: string, user: AuthUser, payload: CostInputPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
+    const factors: Required<StoredFactors> = {
+      constructions: {},
+      installations: Object.fromEntries(payload.installations.filter(hasCaptured).map((row) => [refKey(row.ref), capturedFactors(row)])),
+    };
     const approach = await tx.enfoqueCosto.upsert({
       where: { IdVersionAvaluo: versionId },
-      create: { IdVersionAvaluo: versionId, JConfiguracion: storedConfiguration(payload) },
-      update: { JConfiguracion: storedConfiguration(payload) },
+      create: { IdVersionAvaluo: versionId, JConfiguracion: storedConfiguration(payload, factors) },
+      update: { JConfiguracion: storedConfiguration(payload, factors) },
     });
 
     await tx.costoConstruccion.deleteMany({ where: { IdEnfoqueCosto: approach.IdEnfoqueCosto } });
@@ -145,7 +179,8 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
     await tx.instalacionEspecialAvaluo.deleteMany({ where: { IdVersionAvaluo: versionId } });
 
     // The types stay as the construction section captured them; the cost approach only picks them.
-    const construction = await constructionOf(tx, versionId);
+    // The construction record is created only when a capture needs it (see constructionTablesFollowCapture).
+    let construction: { IdConstruccionAvaluo: number } | null = null;
     const types = await loadConstructionTypes(tx, versionId);
     const typeByRef = new Map(types.map((type) => [type.ref.trim().toLowerCase(), type]));
     let createdTypes = 0;
@@ -155,6 +190,7 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
         // A capture that still carries the type's data (saved before the types had their own panel) creates it.
         const carriesType = row.area !== undefined || row.age !== undefined || row.usefulLife !== undefined || row.description !== undefined;
         if (!carriesType) throw new ValuationWorkflowError(`La construcción ${row.ref} no está en los tipos de la sección de construcciones.`, 400);
+        construction ??= await constructionOf(tx, versionId);
         const created = await createConstructionType(tx, construction.IdConstruccionAvaluo, {
           ref: row.ref, description: row.description ?? "", classification: row.classification ?? "", quality: row.quality ?? "",
           area: row.area ?? null, age: row.age ?? null, usefulLife: row.usefulLife ?? null,
@@ -162,6 +198,7 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
         type = { id: created.IdTipoConstruccionAvaluo, ref: row.ref, description: "", classification: "", quality: "", area: null, age: null, usefulLife: null };
         typeByRef.set(row.ref.trim().toLowerCase(), type);
       }
+      if (hasCaptured(row)) factors.constructions[String(type.id)] = capturedFactors(row);
       await tx.tipoConstruccionAvaluo.update({
         where: { IdTipoConstruccionAvaluo: type.id },
         data: { NGradoTerminacion: row.completion, NIndiviso: row.undivided },
@@ -177,7 +214,10 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
         },
       });
     }
-    if (createdTypes) await updateBuiltArea(tx, construction.IdConstruccionAvaluo);
+    if (construction && createdTypes) await updateBuiltArea(tx, construction.IdConstruccionAvaluo);
+    if (Object.keys(factors.constructions).length) {
+      await tx.enfoqueCosto.update({ where: { IdEnfoqueCosto: approach.IdEnfoqueCosto }, data: { JConfiguracion: storedConfiguration(payload, factors) } });
+    }
 
     const shares = await tx.tipoParticipacion.findMany({ where: { SClave: { in: ["PRIVATIVA", "COMUN"] } } });
     const shareId = (share: "P" | "C") => {
@@ -317,7 +357,7 @@ async function recomputeCostsValues(tx: Tx, versionId: number) {
       where: { IdEnfoqueCosto: approach.IdEnfoqueCosto, IdInstalacionEspecialAvaluo: installation.IdInstalacionEspecialAvaluo },
       data: {
         NValorParcialVRN: value(`${key}.vrnParcial`),
-        NFactorEdad: typeof resultant.inputs.factorEdad === "number" ? resultant.inputs.factorEdad : null,
+        NFactorEdad: value(`${key}.factorEdad`),
         NFactorResultante: resultant.value,
         NValorUnitarioVNR: value(`${key}.vnrUnitario`),
         NValorParcialVNR: value(`${key}.vnrParcial`),
