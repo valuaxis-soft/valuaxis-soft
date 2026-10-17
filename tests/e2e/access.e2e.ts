@@ -78,6 +78,8 @@ describe("without a session", () => {
     ["GET", "/api/archivos/imagen?key=uploads/2026-10/x.jpg"],
     ["GET", "/api/organizacion/despacho/factores"],
     ["PUT", "/api/organizacion/despacho/factores"],
+    ["GET", "/api/organizacion/despacho/factores/personalizados"],
+    ["POST", "/api/organizacion/despacho/factores/personalizados"],
     ["POST", "/api/uploads"],
     ["GET", "/api/organizacion/facturacion"],
     ["POST", "/api/organizacion/facturacion/checkout"],

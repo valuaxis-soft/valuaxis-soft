@@ -16,6 +16,7 @@ import type { FirmSettingsInput } from "@/features/firm/firm-schemas";
 import type { FirmSettingsDto } from "@/features/firm/firm.service";
 import type { BillingOverviewDto } from "@/features/billing/billing.service";
 import type { FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
+import type { CustomFactor } from "@/features/firm/custom-factors";
 import type { DraftInput } from "@/features/ai/draft-writing";
 import type { ListingProposal } from "@/features/ai/listing-extraction";
 import type { ValuationDetail, ValuationListItem } from "@/features/valuations/repositories/valuation.repository";
@@ -214,7 +215,8 @@ export const api = {
     addFoundComparables: (id: ApiId, type: ComparableType, results: ComparableSearchHit[]) =>
       request<{ added: number; skipped: number; calculation: MarketCalculationDto }>(`/avaluos/${id}/mercado/comparables/buscar?tipo=${type}`, {
         method: "POST",
-        body: JSON.stringify({ results: results.map(({ sourceId, origin, comparable }) => ({ sourceId, origin, comparable })) }),
+        // The id lets the source hand over the photos of the comparable too.
+        body: JSON.stringify({ results: results.map(({ id, sourceId, origin, comparable }) => ({ id, sourceId, origin, comparable })) }),
       }),
     deletePhoto: (id: ApiId, type: ComparableType, comparableId: string, photoId: string) =>
       request<MarketCalculationDto>(
@@ -287,6 +289,12 @@ export const api = {
     customUnits: () => request<{ units: string[] }>(`/organizacion/despacho/unidades`),
     addCustomUnit: (unit: string) =>
       request<{ units: string[] }>(`/organizacion/despacho/unidades`, { method: "POST", body: JSON.stringify({ unit }) }),
+    customFactors: () => request<{ factors: CustomFactor[] }>(`/organizacion/despacho/factores/personalizados`),
+    addCustomFactor: (label: string) =>
+      request<{ factors: CustomFactor[]; factor: CustomFactor | null }>(`/organizacion/despacho/factores/personalizados`, {
+        method: "POST",
+        body: JSON.stringify({ label }),
+      }),
   },
   billing: {
     get: () => request<BillingOverviewDto>(`/organizacion/facturacion`),

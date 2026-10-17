@@ -19,11 +19,13 @@ const AREA_HEADERS: Record<ComparableType, string> = {
   TERRENO_VENTA: "Superficie del terreno (m²)",
   INMUEBLE_VENTA: "Superficie construida (m²)",
   INMUEBLE_RENTA: "Superficie rentable (m²)",
+  TERRENO_RENTA: "Superficie del terreno (m²)",
 };
 const PRICE_HEADERS: Record<ComparableType, string> = {
   TERRENO_VENTA: "Precio de oferta ($)",
   INMUEBLE_VENTA: "Precio de oferta ($)",
   INMUEBLE_RENTA: "Renta mensual ($)",
+  TERRENO_RENTA: "Renta mensual ($)",
 };
 
 export function importColumns(type: ComparableType): ImportColumn[] {

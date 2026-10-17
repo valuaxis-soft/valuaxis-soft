@@ -9,6 +9,7 @@ const FILE_NAMES = {
   TERRENO_VENTA: "Comparables-terrenos-Valuaxis.xlsx",
   INMUEBLE_VENTA: "Comparables-inmuebles-venta-Valuaxis.xlsx",
   INMUEBLE_RENTA: "Comparables-rentas-Valuaxis.xlsx",
+  TERRENO_RENTA: "Comparables-terrenos-renta-Valuaxis.xlsx",
 } as const;
 
 /** The Excel template to import comparables of one type. */

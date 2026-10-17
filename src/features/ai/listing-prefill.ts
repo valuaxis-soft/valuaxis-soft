@@ -3,7 +3,7 @@
  * field the form has, with the value as the form takes it and the fragment
  * of the listing it came from. Runs in the browser.
  */
-import { isBuiltComparableType, type ComparableType } from "@/features/valuations/calculation/market-types";
+import { isBuiltComparableType, isRentComparableType, type ComparableType } from "@/features/valuations/calculation/market-types";
 import type { ListingProposal } from "./listing-extraction";
 import { plainText } from "./text-figures";
 
@@ -73,7 +73,7 @@ export function listingRows(proposal: ListingProposal, type: ComparableType, pri
   };
 
   if (proposal.operation) {
-    const rent = type === "INMUEBLE_RENTA";
+    const rent = isRentComparableType(type);
     if ((proposal.operation.value === "renta") !== rent) {
       notices.push(`El anuncio es de ${proposal.operation.value} («${proposal.operation.evidence}») y estás capturando comparables en ${rent ? "renta" : "venta"}.`);
     }

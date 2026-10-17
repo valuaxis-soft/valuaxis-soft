@@ -63,6 +63,8 @@ export const foundComparableSchema = comparableInputSchema.omit({ factors: true 
 /** The results the appraiser chose, sent back to become comparables. */
 export const addFoundComparablesSchema = z.object({
   results: z.array(z.object({
+    /** The result's id in its source, to bring its photos; a client of before does not send it. */
+    id: z.string().trim().min(1).max(120).optional(),
     sourceId: z.string().trim().min(1).max(60),
     origin: z.string().trim().max(120).nullable(),
     comparable: foundComparableSchema,

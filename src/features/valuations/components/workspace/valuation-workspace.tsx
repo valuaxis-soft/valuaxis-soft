@@ -43,6 +43,7 @@ import { CostCalculationPanel } from "@/features/valuations/components/calculati
 import { IncomeCalculationPanel } from "@/features/valuations/components/calculation/income-calculation-panel";
 import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/components/calculation/machinery-calculation-panel";
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
+import { RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { removeCustomSection, renameSection } from "@/features/valuations/services/section-edit-operations";
 import { createCustomSection } from "./model/content-factories";
@@ -287,7 +288,7 @@ export function ValuationWorkspace({
             ) : getCanonicalSectionKey(section.id) === "MERCADO_RENTAS" ? (
               <MarketCalculationPanel
                 valuationId={valuationId}
-                types={["INMUEBLE_RENTA"]}
+                types={RENT_COMPARABLE_TYPES}
                 readOnly={!canEdit}
                 suggestedSubjectArea={null}
                 onCalculation={calculationSync.onMarketCalculation}

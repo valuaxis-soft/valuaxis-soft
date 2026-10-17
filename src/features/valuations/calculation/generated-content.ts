@@ -117,13 +117,23 @@ export function generatedTable(
  * by its mark, with an X on the one observed.
  */
 export function offerLevelTable(id: string, intro: string, observed: OfferLevel): TableContent {
+  return offerOptionsTable(id, intro, OFFER_LEVELS.map((level) => OFFER_LEVEL_LABELS[level]), OFFER_LEVELS.indexOf(observed));
+}
+
+/**
+ * The same 3 × 2 grid with the appraiser's own options (up to six, in the
+ * order they read down each column) and an X on `observed`; a grid with fewer
+ * options leaves the rest of its places blank.
+ */
+export function offerOptionsTable(id: string, intro: string, labels: string[], observed: number): TableContent {
   const perColumn = 2;
   const pairs = OFFER_LEVELS.length / perColumn;
   return generatedTable(id, "Nivel de oferta",
     Array.from({ length: pairs }, () => [textColumn("Nivel"), figureColumn("Observada")]).flat(),
     Array.from({ length: perColumn }, (_, row) => Array.from({ length: pairs }, (_, pair) => {
-      const level = OFFER_LEVELS[pair * perColumn + row];
-      return [OFFER_LEVEL_LABELS[level], level === observed ? "( X )" : "(   )"];
+      const index = pair * perColumn + row;
+      const label = labels[index];
+      return label ? [label, index === observed ? "( X )" : "(   )"] : ["", ""];
     }).flat()),
     { plain: true, notes: [{ position: "top", text: intro }] });
 }

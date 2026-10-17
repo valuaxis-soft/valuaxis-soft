@@ -1,6 +1,17 @@
 import { z } from "zod";
 import { SURFACE_POWERS } from "../engine/config";
-import { COMPARABLE_TYPES, FACTOR_TYPES, OFFER_LEVELS } from "./market-types";
+import {
+  BUILTIN_CHARACTERISTICS,
+  COMPARABLE_TYPES,
+  CUSTOM_CHARACTERISTIC_KEY,
+  CUSTOM_FACTOR_KEY,
+  FACTOR_TYPES,
+  HOMOLOGATION_BASES,
+  MAX_FACTOR_SLOTS,
+  MAX_OFFER_OPTIONS,
+  OFFER_LEVELS,
+  factorKey,
+} from "./market-types";
 
 const text = (max: number) => z.string().trim().max(max).nullable().transform((value) => value || null);
 const positive = z.number().finite().positive().max(1e12).nullable();
@@ -13,13 +24,25 @@ export const surfacePowerSchema = z.number().refine(
 /** Excel ROUND digits: 2 keeps cents, -4 rounds to tens of thousands; null is no rounding. */
 export const roundingSchema = z.number().int().min(-6).max(2).nullable();
 
+const customFactorKey = z.string().regex(CUSTOM_FACTOR_KEY, "Factor personalizado inválido.").nullable().optional();
+
 const factorSchema = z.object({
   type: z.enum(FACTOR_TYPES),
+  key: customFactorKey,
   value: z.number().finite().min(0).max(100).nullable(),
   subjectRating: z.number().finite().positive().max(1000).nullable(),
   comparableRating: z.number().finite().positive().max(1000).nullable(),
   justification: text(1000),
 });
+
+const characteristicKey = z.string().refine(
+  (key) => (BUILTIN_CHARACTERISTICS as readonly string[]).includes(key) || CUSTOM_CHARACTERISTIC_KEY.test(key),
+  "Característica inválida.",
+);
+/** Values of the characteristics by field key; empty ones are not kept. */
+const characteristicValues = z.record(characteristicKey, z.string().trim().max(300))
+  .transform((values) => Object.fromEntries(Object.entries(values).filter(([, value]) => value)))
+  .optional();
 
 export const comparableInputSchema = z.object({
   location: z.string().trim().min(1, "Captura la ubicación del comparable.").max(500),
@@ -37,6 +60,9 @@ export const comparableInputSchema = z.object({
   conservation: text(80).optional(),
   quality: text(80).optional(),
   notes: text(1000),
+  extra: characteristicValues,
+  characteristicsText: text(2000).optional(),
+  factorJustification: text(2000).optional(),
   sourceName: text(180),
   contactName: text(180),
   contactPhone: text(40),
@@ -44,8 +70,9 @@ export const comparableInputSchema = z.object({
     .refine((value) => !value || /^https?:\/\//i.test(value), "La liga debe empezar con http:// o https://.")
     .transform((value) => value || null),
   offerDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida.").nullable(),
-  factors: z.array(factorSchema).max(FACTOR_TYPES.length)
-    .refine((factors) => new Set(factors.map((factor) => factor.type)).size === factors.length, "Cada tipo de factor va una sola vez."),
+  // Built-in factors once each, plus the firm's own: at most the six of the homologation and as many own ones.
+  factors: z.array(factorSchema).max(FACTOR_TYPES.length + MAX_FACTOR_SLOTS)
+    .refine((factors) => new Set(factors.map(factorKey)).size === factors.length, "Cada tipo de factor va una sola vez."),
 });
 
 export type ComparableInputPayload = z.infer<typeof comparableInputSchema>;
@@ -59,16 +86,35 @@ export const marketSettingsSchema = z.object({
   justification: text(2000),
   additionalAmount: z.number().finite().min(0).max(1e12),
   rounding: roundingSchema.optional(),
-  // Captures of the appraiser's format; clients that do not send them leave them empty.
+  // Captures of the appraiser's format; clients that do not send them leave them as stored.
   offerLevel: z.enum(OFFER_LEVELS).nullable().optional(),
+  offerLabels: z.array(z.string().trim().min(1, "Cada opción del nivel de oferta necesita un nombre.").max(40))
+    .max(MAX_OFFER_OPTIONS, `El nivel de oferta lleva hasta ${MAX_OFFER_OPTIONS} opciones.`).nullable().optional(),
+  offerMark: z.number().int().min(0).max(MAX_OFFER_OPTIONS - 1).nullable().optional(),
+  offerIntro: text(300).optional(),
+  homologationBasis: z.enum(HOMOLOGATION_BASES).nullable().optional(),
   typicalFrontage: positive.optional(),
   typicalDepth: positive.optional(),
-  factorSlots: z.array(z.object({ type: z.enum(FACTOR_TYPES), label: z.string().trim().min(1).max(60), subjectOption: z.string().trim().max(60).nullable().optional() }))
+  characteristicFields: z.array(z.object({ key: characteristicKey, label: z.string().trim().min(1, "Cada característica necesita un nombre.").max(60) }))
+    .max(40)
+    .refine((fields) => new Set(fields.map((field) => field.key)).size === fields.length, "Cada característica va una sola vez.")
+    .nullable()
+    .optional(),
+  subjectCharacteristics: characteristicValues,
+  showFactorJustification: z.boolean().optional(),
+  factorSlots: z.array(z.object({
+    type: z.enum(FACTOR_TYPES),
+    label: z.string().trim().min(1).max(60),
+    subjectOption: z.string().trim().max(60).nullable().optional(),
+    key: customFactorKey,
+  }))
     .min(1)
-    .max(FACTOR_TYPES.length)
-    .refine((slots) => new Set(slots.map((slot) => slot.type)).size === slots.length, "Cada factor va una sola vez.")
+    .max(MAX_FACTOR_SLOTS, `La homologación lleva hasta ${MAX_FACTOR_SLOTS} factores (sin contar el FRe).`)
+    .refine((slots) => new Set(slots.map(factorKey)).size === slots.length, "Cada factor va una sola vez.")
+    .refine((slots) => slots.every((slot) => !slot.key || slot.type === "OTRO"), "Un factor del despacho es de tipo «Otro».")
     .refine((slots) => slots.some((slot) => slot.type === "SUPERFICIE"), "La homologación necesita el factor de superficie."),
-});
+}).refine((settings) => settings.offerMark === null || settings.offerMark === undefined || !settings.offerLabels?.length
+  || settings.offerMark < settings.offerLabels.length, { path: ["offerMark"], message: "La marca del nivel de oferta no es una de sus opciones." });
 
 export type MarketSettingsPayload = z.infer<typeof marketSettingsSchema>;
 

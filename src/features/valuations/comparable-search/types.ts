@@ -6,6 +6,7 @@
  */
 import type { ComparableInputPayload } from "../calculation/market-schemas";
 import type { ComparableType } from "../calculation/market-types";
+import type { StoredComparablePhoto } from "../calculation/market.service";
 
 export type ComparableSearchQuery = {
   /** Zone, colonia, municipio or street, as the appraiser types it. */
@@ -51,6 +52,12 @@ export interface ComparableSearchSource {
   isAvailable(context: ComparableSearchContext): boolean | Promise<boolean>;
   /** Results of the query's type, within its ranges, at most `query.limit`. */
   search(query: ComparableSearchQuery, context: ComparableSearchContext): Promise<ComparableSearchResult[]>;
+  /**
+   * The stored photos of a result, so a comparable brought from it keeps
+   * them; only within the context's organization. Sources without photos of
+   * their own leave it out.
+   */
+  photos?(resultId: string, context: Pick<ComparableSearchContext, "organizationId">): Promise<StoredComparablePhoto[]>;
 }
 
 /** A result with the source it came from. */
