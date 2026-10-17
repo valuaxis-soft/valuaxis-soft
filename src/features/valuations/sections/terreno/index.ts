@@ -200,6 +200,23 @@ export function findBoundaryTable(apartado: Pick<Apartado, "tables">): TableCont
     ?? apartado.tables.find((table) => ensureTableV2(table).columns.map((column) => column.name).join("|") === templateColumns);
 }
 
+/**
+ * The concept "Linderos y colindancias según" of "Medidas y colindancias":
+ * printed under the table of measures with its own title and value, and
+ * edited in the editor under that table. Found by its title, so a concept
+ * the appraiser added before it is never printed in its place.
+ */
+export function findBoundarySource(apartado: Pick<Apartado, "concepts">): Concept | undefined {
+  return apartado.concepts.find((concept) => normalizeText(concept.label).startsWith(BOUNDARY_SOURCE_TITLE));
+}
+
+const BOUNDARY_SOURCE_TITLE = "linderos y colindancias";
+
+/** The column of the measures, which prints with its unit: the one titled "Distancia", wherever it was moved. */
+export function findBoundaryDistanceColumnId(table: TableContent): string | undefined {
+  return ensureTableV2(table).columns.find((column) => normalizeText(column.name).startsWith("distancia"))?.id;
+}
+
 function deduplicateConceptIds(concepts: Concept[]): Concept[] {
   const seen = new Set<string>();
   return concepts.map((concept) => {

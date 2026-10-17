@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   Concept,
   ContentLayoutItemRef,
@@ -20,6 +20,9 @@ import {
 import { ConceptEditorRow } from "./concept-editor";
 import { ImageEditorItem } from "./image-editor";
 import { TableEditorItem } from "./table-editor";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { findBoundarySource, findBoundaryTable, getTerrenoElementKind } from "../../sections/terreno";
 import type { ExistingConceptRelationMode } from "../../concept-links";
 import {
   DndContext,
@@ -53,6 +56,9 @@ import { CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW } from "../../services/content-la
 /* ------------------------------------------------------------------ */
 
 type EditableContentContainer = {
+  /** An Apartado passes its own: "Medidas y colindancias" is told by them. */
+  id?: string;
+  title?: string;
   concepts: Concept[];
   images: ImageContent[];
   tables: TableContent[];
@@ -211,10 +217,21 @@ export function EditableContentLayout({
   externalActiveColumnId,
   externalActiveTarget,
 }: EditableContentLayoutProps) {
-  const resolvedLayout = useMemo(
-    () => resolveContentLayout(container),
-    [container],
-  );
+  // "Linderos y colindancias según" prints under the table of measures: it is edited there, not among the concepts.
+  const boundaries = useMemo(() => {
+    if (container.id === undefined || container.title === undefined) return null;
+    if (getTerrenoElementKind({ id: container.id, title: container.title }) !== "boundaries") return null;
+    const table = findBoundaryTable(container);
+    return table ? { tableId: table.id, source: findBoundarySource(container) } : null;
+  }, [container]);
+  const resolvedLayout = useMemo(() => {
+    const sourceId = boundaries?.source?.id;
+    return resolveContentLayout(sourceId ? { ...container, concepts: container.concepts.filter((concept) => concept.id !== sourceId) } : container);
+  }, [boundaries, container]);
+  const tableFooter = useMemo(() => (boundaries ? {
+    tableId: boundaries.tableId,
+    node: <BoundarySourceField source={boundaries.source} onUpdate={conceptCallbacks.onUpdate} readOnly={readOnly} />,
+  } : undefined), [boundaries, conceptCallbacks.onUpdate, readOnly]);
 
   const conceptsById = useMemo(
     () => new Map(container.concepts.map((c) => [c.id, c])),
@@ -458,6 +475,7 @@ export function EditableContentLayout({
           layout,
           requireTitle,
           showTerrenoLengthHint,
+          tableFooter,
         }),
     [
       conceptsById,
@@ -473,6 +491,7 @@ export function EditableContentLayout({
       layout,
       requireTitle,
       showTerrenoLengthHint,
+      tableFooter,
     ],
   );
 
@@ -648,6 +667,7 @@ export function renderLayoutItem({
   layout,
   requireTitle,
   showTerrenoLengthHint,
+  tableFooter,
 }: {
   itemRef: ContentLayoutItemRef;
   columnId?: string;
@@ -665,6 +685,8 @@ export function renderLayoutItem({
   layout: "default" | "caratulaGrid";
   requireTitle: boolean;
   showTerrenoLengthHint: boolean;
+  /** What a table prints with it and is edited under its grid. */
+  tableFooter?: { tableId: string; node: ReactNode };
 }) {
   if (itemRef.type === "concept") {
     const concept = conceptsById.get(itemRef.id);
@@ -716,9 +738,49 @@ export function renderLayoutItem({
         onRemove={tableCallbacks.onRemove}
         onUpdate={tableCallbacks.onUpdate}
         readOnly={readOnly}
+        footer={tableFooter?.tableId === table.id ? tableFooter.node : undefined}
       />
     );
   }
 
   return null;
+}
+
+/**
+ * "Linderos y colindancias según: …" under the table of measures, where it
+ * prints: its title and its text are those of the Apartado's concept.
+ */
+function BoundarySourceField({ source, onUpdate, readOnly }: {
+  source: Concept | undefined;
+  onUpdate: EditableConceptCallbacks["onUpdate"];
+  readOnly: boolean;
+}) {
+  if (!source) {
+    return (
+      <p className="mt-3 text-[11px] text-muted-foreground">
+        Para imprimir bajo la tabla el origen de los linderos, agrega a este apartado un concepto titulado «Linderos y colindancias según».
+      </p>
+    );
+  }
+  return (
+    <div className="mt-3 grid gap-2 rounded-md border border-dashed bg-background/60 p-2 sm:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]" data-boundary-source="">
+      <p className="text-[11px] font-medium text-muted-foreground sm:col-span-2">Se imprime bajo la tabla:</p>
+      <Input
+        aria-label="Título del texto bajo la tabla"
+        className="h-8 text-sm font-semibold"
+        disabled={readOnly}
+        value={source.label}
+        onChange={(event) => onUpdate(source.id, { label: event.target.value })}
+      />
+      <Textarea
+        aria-label="Origen de los linderos y colindancias"
+        className="min-h-8 py-1.5 text-sm"
+        disabled={readOnly}
+        rows={1}
+        placeholder="Escritura, título de propiedad, plano…"
+        value={source.value}
+        onChange={(event) => onUpdate(source.id, { value: event.target.value })}
+      />
+    </div>
+  );
 }

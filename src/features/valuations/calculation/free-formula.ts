@@ -158,6 +158,76 @@ function tokenize(source: string): Token[] | null {
   return tokens;
 }
 
+/** Where a formula names a cell or a range, as written: `start` and `end` are offsets into the text. */
+export type FormulaReferenceSpan = {
+  start: number;
+  end: number;
+  /** The table named before "!"; the formula's own table when missing. */
+  table?: string;
+  from: CellPosition;
+  to: CellPosition;
+};
+
+/**
+ * The cells and ranges a formula names, with where each is written, while
+ * it is still being typed: an unfinished formula still shows the references
+ * it already has. Concepts are values, not cells, and are left out.
+ */
+export function formulaReferenceSpans(text: string): FormulaReferenceSpan[] {
+  if (text.length > FORMULA_MAX_LENGTH) return [];
+  const spans: FormulaReferenceSpan[] = [];
+  const cellAt = (at: number) => {
+    const match = /^\$?([A-Za-z]{1,3})\$?(\d{1,5})(?![\w(])/.exec(text.slice(at));
+    return match && Number(match[2]) > 0
+      ? { length: match[0].length, position: { column: columnIndex(match[1]), row: Number(match[2]) - 1 } }
+      : null;
+  };
+  const cellsAt = (at: number, start: number, table?: string): FormulaReferenceSpan | null => {
+    const first = cellAt(at);
+    if (!first) return null;
+    let end = at + first.length;
+    let to = first.position;
+    const second = text[end] === ":" ? cellAt(end + 1) : null;
+    if (second) {
+      to = second.position;
+      end += 1 + second.length;
+    }
+    return { start, end, ...(table === undefined ? {} : { table }), from: first.position, to };
+  };
+
+  let index = 0;
+  while (index < text.length) {
+    const rest = text.slice(index);
+    const number = /^(\d+(?:,\d{3})+(?!\d)(?:\.\d+)?|\d+\.?\d*|\.\d+)/.exec(rest);
+    if (number) {
+      index += number[0].length;
+      continue;
+    }
+    let span: FormulaReferenceSpan | null = null;
+    let next = index + 1;
+    if (rest[0] === "[" || rest[0] === "'") {
+      const close = rest.indexOf(rest[0] === "[" ? "]" : "'", 1);
+      if (close === -1) break;
+      next = index + close + 1;
+      if (text[next] === "!") span = cellsAt(next + 1, index, rest.slice(1, close).trim());
+    } else {
+      span = cellsAt(index, index);
+      const name = span ? null : /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ_]+/.exec(rest);
+      if (name) {
+        next = index + name[0].length;
+        if (text[next] === "!") span = cellsAt(next + 1, index, name[0]);
+      }
+    }
+    if (span) {
+      spans.push(span);
+      index = span.end;
+    } else {
+      index = next;
+    }
+  }
+  return spans;
+}
+
 /** Reads a formula without its "=". Null when it is not a valid one. */
 export function parseFormula(source: string): FormulaSyntax | null {
   const tokens = tokenize(source);
