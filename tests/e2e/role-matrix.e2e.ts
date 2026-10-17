@@ -176,6 +176,10 @@ const firmCases: Case[] = [
   { name: "save the firm data", method: "PUT", path: () => "/api/organizacion/despacho", body: () => firmPayload, expected: adminOnly(200) },
   { name: "read the factor catalog", method: "GET", path: () => "/api/organizacion/despacho/factores", expected: all(200) },
   { name: "reset the factor catalog", method: "DELETE", path: () => "/api/organizacion/despacho/factores", expected: adminOnly(200) },
+  { name: "read the firm's own factors", method: "GET", path: () => "/api/organizacion/despacho/factores/personalizados", expected: all(200) },
+  // Creating one is part of capturing a homologation: whoever edits valuations may.
+  { name: "create a factor of the firm", method: "POST", path: () => "/api/organizacion/despacho/factores/personalizados",
+    body: () => ({ label: `Vista ${world.suffix}` }), expected: editors(200) },
   // Without a logo every member gets 404; the upload itself is covered below.
   { name: "read the logo", method: "GET", path: () => "/api/organizacion/despacho/logo", expected: all([302, 404]) },
   { name: "load a stored image", method: "GET", path: () => "/api/archivos/imagen?key=uploads/2026-10/sin-registro.jpg", expected: all(302) },

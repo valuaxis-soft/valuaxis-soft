@@ -10,7 +10,8 @@ import { getCostCalculation, saveCostCalculation } from "../../src/features/valu
 import { DEFAULT_COST_ROUNDING, DEFAULT_LAND, emptyConstruction } from "../../src/features/valuations/calculation/cost-types";
 import type { ComparableInputPayload } from "../../src/features/valuations/calculation/market-schemas";
 import { createComparable, getMarketCalculation, saveMarketSettings, updateComparable } from "../../src/features/valuations/calculation/market.service";
-import { defaultMarketSettings, type ComparableFactorDto } from "../../src/features/valuations/calculation/market-types";
+import { defaultMarketSettings, marketEngineConfig, toMarketEngineInput, type ComparableFactorDto } from "../../src/features/valuations/calculation/market-types";
+import { computeMarketApproach } from "../../src/features/valuations/engine/market";
 import { createValuationFixture, prisma } from "./support";
 
 after(() => prisma.$disconnect());
@@ -37,25 +38,27 @@ async function storedMarket(fixture: Fixture) {
   return prisma.enfoqueMercado.findFirstOrThrow({ where: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1, tipoComparable: { SClave: "TERRENO_VENTA" } } });
 }
 
-test("the adopted value is the appraiser's, within 30 % of the mean and the median", async () => {
+test("the adopted value is the appraiser's: outside 30 % of the mean and the median it is a warning, and it is stored", async () => {
   const fixture = await createValuationFixture();
   await market(fixture);
   assert.equal(Number((await storedMarket(fixture)).NValorHomologadoUtilizado), 10500, "sin captura, el promedio");
 
-  // Limits: 10,000 × 0.7 = 7,000 and 10,500 × 1.3 = 13,650.
-  for (const adoptedUnitValue of [7000, 12000, 13650]) {
+  // Limits: 10,000 × 0.7 = 7,000 and 10,500 × 1.3 = 13,650. The guard warns in the panel; it never blocks
+  // (observations of 13–14 Oct 2026: a red field he could not clear or retype).
+  const outside = async () => {
+    const calculation = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
+    const input = toMarketEngineInput(calculation);
+    assert.ok(input.ok);
+    return computeMarketApproach(input.input, marketEngineConfig(calculation.settings)).adoptedOutsideLimits;
+  };
+  for (const [adoptedUnitValue, flagged] of [[7000, false], [12000, false], [13650, false], [6999, true], [13651, true], [130000, true]] as const) {
     await saveMarketSettings(fixture.publicId, fixture.user, { ...settings, adoptedUnitValue });
-    assert.equal(Number((await storedMarket(fixture)).NValorHomologadoUtilizado), adoptedUnitValue);
+    assert.equal(Number((await storedMarket(fixture)).NValorHomologadoUtilizado), adoptedUnitValue, String(adoptedUnitValue));
+    assert.equal(await outside(), flagged, `${adoptedUnitValue} fuera del rango`);
   }
-  for (const adoptedUnitValue of [6999, 13651, 130000]) {
-    await assert.rejects(
-      saveMarketSettings(fixture.publicId, fixture.user, { ...settings, adoptedUnitValue }),
-      (error: Error & { status?: number }) => error.status === 400 && /debe quedar entre 7,000 y 13,650/.test(error.message),
-      String(adoptedUnitValue),
-    );
-  }
-  // A rejected value changes nothing.
-  assert.equal((await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA")).settings.adoptedUnitValue, 13650);
+  // Cleared, the value goes back to the mean.
+  await saveMarketSettings(fixture.publicId, fixture.user, { ...settings, adoptedUnitValue: null });
+  assert.equal(Number((await storedMarket(fixture)).NValorHomologadoUtilizado), 10500);
 });
 
 test("a surface factor typed for a comparable is stored and used; emptied, the formula returns", async () => {

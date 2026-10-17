@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { asRecord, decimal } from "../../calculation/access";
+import type { StoredComparablePhoto } from "../../calculation/market.service";
 import { searchTokens } from "../normalize";
 import type { ComparableSearchContext, ComparableSearchQuery, ComparableSearchResult, ComparableSearchSource } from "../types";
 
@@ -118,9 +119,28 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
   return rows.map(toResult);
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The photos of a comparable of the firm, read only within the organization of the search. */
+async function photos(resultId: string, context: Pick<ComparableSearchContext, "organizationId">): Promise<StoredComparablePhoto[]> {
+  if (!UUID.test(resultId)) return [];
+  const row = await prisma.comparableAvaluo.findFirst({
+    where: { UIdentificadorPublico: resultId, avaluo: { IdOrganizacion: context.organizationId, BActivo: true, DFechaEliminacion: null } },
+    select: { JImagenesSnapshot: true },
+  });
+  const stored = Array.isArray(row?.JImagenesSnapshot) ? row.JImagenesSnapshot : [];
+  return stored.flatMap((item) => {
+    const photo = asRecord(item as Prisma.JsonValue);
+    return typeof photo.key === "string" && photo.key
+      ? [{ key: photo.key, title: typeof photo.title === "string" && photo.title ? photo.title : "Fotografía" }]
+      : [];
+  });
+}
+
 export const ownBaseSource: ComparableSearchSource = {
   id: "despacho",
   label: "Comparables del despacho",
   isAvailable: () => true,
   search,
+  photos,
 };

@@ -33,7 +33,8 @@ export async function searchComparables(
 
 /**
  * Adds the chosen results as comparables of the valuation, each with the note
- * of where it was found. Offers the valuation already has are skipped.
+ * of where it was found and the photos its source keeps. Offers the valuation
+ * already has are skipped.
  */
 export async function addFoundComparables(
   publicId: string,
@@ -44,14 +45,19 @@ export async function addFoundComparables(
   const current = await getMarketCalculation(publicId, user.organizationId, type);
   if (current.locked) throw new ValuationWorkflowError("El avalúo está concluido; reábrelo para editarlo.", 409);
   const seen = new Set(current.comparables.flatMap(identityKeys));
-  const comparables = payload.results.flatMap((result) => {
+  const chosen = payload.results.flatMap((result) => {
     const source = comparableSearchSources.find((item) => item.id === result.sourceId);
     if (!source) throw new ValuationWorkflowError("La fuente del comparable no existe.", 400);
     const keys = identityKeys(result.comparable);
     if (keys.some((key) => seen.has(key))) return [];
     for (const key of keys) seen.add(key);
-    return [{ ...withProvenance(result.comparable, source.label, result.origin), factors: [] }];
+    return [{ result, source }];
   });
+  const comparables = await Promise.all(chosen.map(async ({ result, source }) => ({
+    ...withProvenance(result.comparable, source.label, result.origin),
+    factors: [],
+    photos: result.id && source.photos ? await source.photos(result.id, { organizationId: user.organizationId }) : [],
+  })));
   if (comparables.length) await importComparables(publicId, user, type, comparables);
   return { added: comparables.length, skipped: payload.results.length - comparables.length };
 }

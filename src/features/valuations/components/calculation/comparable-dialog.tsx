@@ -10,54 +10,25 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ComparableFormValues } from "@/lib/api-client";
 import type { ComparablePrefill } from "@/features/ai/listing-prefill";
-import {
-  DIRECT_FACTORS,
-  factorFromOptions,
-  matchOption,
-  optionJustification,
-  optionsFor,
-  type FactorCatalog,
-  type FactorOption,
-} from "@/features/valuations/calculation/factor-catalog";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import {
-  isBuiltComparableType,
+  NUMERIC_CHARACTERISTICS,
+  characteristicText,
+  isBuiltinCharacteristic,
+  withCharacteristic,
+  type CharacteristicField,
   type ComparableDto,
-  type ComparableFactorDto,
   type ComparableType,
-  type FactorSlotConfig,
-  type FactorType,
 } from "@/features/valuations/calculation/market-types";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 const text = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value));
 
-/**
- * A factor as the appraiser captures it: picked from the firm's catalog
- * (subject and comparable ratings, or a direct option), or typed by hand.
- */
-type FactorDraft = {
-  mode: "catalog" | "manual";
-  subjectOption: string;
-  comparableOption: string;
-  subject: string;
-  comparable: string;
-  /** Why the appraiser used these values; it is their judgement and they answer for it. */
-  justification: string;
-};
-type Draft = Record<"location" | "area" | "price" | "sourceName" | "contactName" | "contactPhone" | "url" | "offerDate"
-  | "landUse" | "landUseKey" | "shape" | "zone" | "frontCount" | "frontage" | "depth" | "topography" | "services"
-  | "conservation" | "quality" | "notes", string>;
+type Draft = Record<"location" | "area" | "price" | "sourceName" | "contactName" | "contactPhone" | "url" | "offerDate" | "landUse", string>;
+
+/** Area and price are captured at the top of the form; the list of characteristics shows the rest. */
+const TOP_FIELDS = new Set(["area", "price"]);
 
 function initialDraft(comparable: ComparableDto | null, prefill: ComparablePrefill = {}): Draft {
-  return {
-    ...storedDraft(comparable),
-    // A new comparable may start from the data read from a pasted listing.
-    ...(comparable ? {} : prefill),
-  };
-}
-
-function storedDraft(comparable: ComparableDto | null): Draft {
   return {
     location: comparable?.location ?? "",
     area: text(comparable?.area),
@@ -68,86 +39,43 @@ function storedDraft(comparable: ComparableDto | null): Draft {
     url: comparable?.url ?? "",
     offerDate: comparable?.offerDate ?? "",
     landUse: comparable?.landUse ?? "",
-    landUseKey: comparable?.landUseKey ?? "",
-    shape: comparable?.shape ?? "",
-    zone: comparable?.zone ?? "",
-    frontCount: text(comparable?.frontCount),
-    frontage: text(comparable?.frontage),
-    depth: text(comparable?.depth),
-    topography: comparable?.topography ?? "",
-    services: comparable?.services ?? "",
-    conservation: comparable?.conservation ?? "",
-    quality: comparable?.quality ?? "",
-    notes: comparable?.notes ?? "",
+    // A new comparable may start from the data read from a pasted listing.
+    ...(comparable ? {} : pick(prefill, ["location", "area", "price", "sourceName", "contactName", "contactPhone", "url", "offerDate", "landUse"])),
   };
 }
+
+function pick(prefill: ComparablePrefill, keys: Array<keyof Draft>): Partial<Draft> {
+  return Object.fromEntries(keys.flatMap((key) => (key in prefill ? [[key, prefill[key as keyof ComparablePrefill] ?? ""]] : [])));
+}
+
+/** The characteristics as the form shows them, by field key; a pasted listing may fill some. */
+function initialCharacteristics(comparable: ComparableDto | null, fields: CharacteristicField[], prefill: ComparablePrefill = {}) {
+  const values = Object.fromEntries(fields.map((field) => [field.key, comparable ? characteristicText(comparable, field.key) : ""]));
+  if (comparable) return values;
+  for (const key of ["frontage", "depth", "topography", "services"] as const) {
+    if (prefill[key] !== undefined && key in values) values[key] = prefill[key] ?? "";
+  }
+  return values;
+}
+
+const EMPTY_VALUES: ComparableFormValues = {
+  location: "", area: null, price: null, landUse: null, landUseKey: null, shape: null, zone: null, frontCount: null, frontage: null,
+  depth: null, topography: null, services: null, conservation: null, quality: null, notes: null, extra: {}, characteristicsText: null,
+  sourceName: null, contactName: null, contactPhone: null, url: null, offerDate: null, factors: [],
+};
 
 /**
- * A factor is captured as subject rating / comparable rating; a direct value is
- * its own subject rating. A stored factor that matches the catalog opens as
- * picks; anything else opens as typed numbers.
+ * The data of one comparable: where it is, its offer, its characteristics
+ * (the fields of the market's list) and its photos. Its homologation factors
+ * are captured in the homologation table of the panel, and kept here as they are.
  */
-function initialFactors(comparable: ComparableDto | null, slots: FactorSlotConfig[], catalog: FactorCatalog): Record<string, FactorDraft> {
-  return Object.fromEntries(slots.filter((slot) => slot.type !== "SUPERFICIE").map((slot) => {
-    const options = optionsFor(catalog, slot.type);
-    const factor = comparable?.factors.find((item) => item.type === slot.type);
-    const manual = (subject: string, comparableValue: string): FactorDraft =>
-      ({ mode: "manual", subjectOption: slot.subjectOption ?? "", comparableOption: "", subject, comparable: comparableValue, justification: factor?.justification ?? "" });
-    const direct = DIRECT_FACTORS.has(slot.type);
-
-    if (factor?.subjectRating && factor.comparableRating) {
-      const subject = matchOption(options, factor.subjectRating);
-      const picked = matchOption(options, factor.comparableRating);
-      if (options.length && !direct && subject && picked) {
-        return [slot.type, { ...manual("", ""), mode: "catalog", subjectOption: subject.label, comparableOption: picked.label }];
-      }
-      return [slot.type, manual(String(factor.subjectRating), String(factor.comparableRating))];
-    }
-    if (factor?.value !== null && factor?.value !== undefined) {
-      const picked = direct ? matchOption(options, factor.value) : null;
-      if (picked) return [slot.type, { ...manual("", ""), mode: "catalog", comparableOption: picked.label }];
-      return [slot.type, manual(text(factor.value), "1")];
-    }
-    if (!options.length) return [slot.type, manual("", "")];
-    // A new comparable: the subject's rating comes from the panel; nothing is picked for the appraiser.
-    return [slot.type, { ...manual("", ""), mode: "catalog" }];
-  }));
-}
-
-const pick = (options: FactorOption[], label: string) => options.find((option) => option.label === label) ?? null;
-
-/** The factor, its ratings and why, as stored. An empty factor is 1: it does not change the value. */
-function capturedFactor(type: FactorType, label: string, draft: FactorDraft, options: FactorOption[]) {
-  if (draft.mode === "catalog") {
-    const subject = pick(options, draft.subjectOption);
-    const comparable = pick(options, draft.comparableOption);
-    const factor = factorFromOptions(type, subject, comparable);
-    return {
-      value: factor?.value ?? 1,
-      subjectRating: factor?.subjectRating ?? null,
-      comparableRating: factor?.comparableRating ?? null,
-      justification: draft.justification.trim() || optionJustification(type, label, subject, comparable),
-    };
-  }
-  const subject = parseDecimal(draft.subject);
-  const comparable = parseDecimal(draft.comparable);
-  const value = subject === null && comparable === null ? 1 : (subject ?? 1) / (comparable ?? 1);
-  return {
-    value,
-    subjectRating: subject && comparable ? subject : null,
-    comparableRating: subject && comparable ? comparable : null,
-    justification: draft.justification.trim() || null,
-  };
-}
-
 export function ComparableDialog(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   comparable: ComparableDto | null;
   /** Values a new comparable opens with; nothing is saved until the appraiser saves. */
   prefill?: ComparablePrefill;
-  factorSlots: FactorSlotConfig[];
-  catalog: FactorCatalog;
+  characteristicFields: CharacteristicField[];
   comparableType: ComparableType;
   unitLabel: string;
   readOnly: boolean;
@@ -155,11 +83,12 @@ export function ComparableDialog(props: {
   onUploadPhoto: (file: File) => Promise<void>;
   onRemovePhoto: (photoId: string) => Promise<void>;
 }) {
-  const { comparable, factorSlots, catalog, readOnly } = props;
+  const { comparable, readOnly } = props;
+  const fields = props.characteristicFields.filter((field) => !TOP_FIELDS.has(field.key));
   const [draft, setDraft] = useState<Draft>(() => initialDraft(comparable, props.prefill));
-  const [factors, setFactors] = useState(() => initialFactors(comparable, factorSlots, catalog));
-  // Empty: the surface factor comes from the formula with the power n.
-  const [surfaceFactor, setSurfaceFactor] = useState(() => text(comparable?.factors.find((factor) => factor.type === "SUPERFICIE")?.value));
+  const [characteristics, setCharacteristics] = useState<Record<string, string>>(() =>
+    initialCharacteristics(comparable, fields, props.prefill));
+  const [freeText, setFreeText] = useState(comparable?.characteristicsText ?? "");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -173,26 +102,17 @@ export function ComparableDialog(props: {
       setError("Captura la ubicación del comparable.");
       return;
     }
-    const typedSurface = parseDecimal(surfaceFactor);
-    if (surfaceFactor.trim() && (typedSurface === null || typedSurface <= 0)) {
-      setError("El factor de superficie debe ser un número mayor que cero, o quedar vacío para usar la fórmula.");
-      return;
-    }
-    const frontCount = parseDecimal(draft.frontCount);
-    if (draft.frontCount.trim() && (frontCount === null || !Number.isInteger(frontCount) || frontCount < 1)) {
+    const frontCount = characteristics.frontCount?.trim() ? parseDecimal(characteristics.frontCount) : null;
+    if (frontCount !== null && (!Number.isInteger(frontCount) || frontCount < 1)) {
       setError("El número de frentes debe ser un entero de 1 en adelante, o quedar vacío.");
       return;
     }
     setError(null);
     setSaving(true);
-    const capturedFactors: ComparableFactorDto[] = Object.entries(factors).map(([type, value]) => {
-      const slot = factorSlots.find((item) => item.type === type);
-      return {
-        type: type as FactorType,
-        ...capturedFactor(type as FactorType, slot?.label ?? type, value, optionsFor(catalog, type as FactorType)),
-      };
-    });
-    const ok = await props.onSubmit({
+    // What is not in the form (the factors, characteristics out of the list) stays as stored.
+    const { id: _id, reference: _reference, photos: _photos, ...stored } = comparable ?? { ...EMPTY_VALUES, id: "", reference: 0, photos: [] };
+    let values: ComparableFormValues = {
+      ...stored,
       location: draft.location.trim(),
       area: parseDecimal(draft.area),
       price: parseDecimal(draft.price),
@@ -202,21 +122,13 @@ export function ComparableDialog(props: {
       url: draft.url.trim() || null,
       offerDate: draft.offerDate || null,
       landUse: draft.landUse.trim() || null,
-      landUseKey: draft.landUseKey.trim() || null,
-      shape: draft.shape.trim() || null,
-      zone: draft.zone.trim() || null,
-      frontCount,
-      frontage: parseDecimal(draft.frontage),
-      depth: parseDecimal(draft.depth),
-      topography: draft.topography.trim() || null,
-      services: draft.services.trim() || null,
-      conservation: draft.conservation.trim() || null,
-      quality: draft.quality.trim() || null,
-      notes: draft.notes.trim() || null,
-      factors: typedSurface === null
-        ? capturedFactors
-        : [...capturedFactors, { type: "SUPERFICIE", value: typedSurface, subjectRating: null, comparableRating: null, justification: null }],
-    });
+      characteristicsText: freeText.trim() || null,
+    };
+    for (const field of fields) {
+      const typed = characteristics[field.key] ?? "";
+      values = withCharacteristic(values, field.key, typed, NUMERIC_CHARACTERISTICS.has(field.key) ? parseDecimal(typed) : null);
+    }
+    const ok = await props.onSubmit(values);
     setSaving(false);
     if (ok) props.onOpenChange(false);
   };
@@ -232,14 +144,6 @@ export function ComparableDialog(props: {
 
   const area = parseDecimal(draft.area);
   const price = parseDecimal(draft.price);
-  const built = isBuiltComparableType(props.comparableType);
-  // Label, columns it takes of the four, and whether it is a figure.
-  const details: Array<[key: keyof Draft, label: string, span?: string, numeric?: boolean]> = [
-    ["landUseKey", "Clave de uso de suelo"], ["landUse", "Uso de suelo (descripción)", "sm:col-span-2"], ["zone", "Zona"],
-    ["shape", "Forma"], ["topography", "Topografía"], ["frontCount", "Núm. de frentes", undefined, true], ["frontage", "Frente (m)", undefined, true],
-    ["depth", "Fondo (m)", undefined, true], ["services", "Servicios", built ? undefined : "sm:col-span-3"],
-    ...(built ? [["conservation", "Conservación"], ["quality", "Calidad"]] as Array<[keyof Draft, string]> : []),
-  ];
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -247,8 +151,8 @@ export function ComparableDialog(props: {
         <DialogHeader>
           <DialogTitle>{comparable ? `Comparable ${comparable.reference}` : "Nuevo comparable"}</DialogTitle>
           <DialogDescription>
-            Los factores se capturan como calificación del sujeto entre calificación del comparable, o como un solo valor. En
-            cualquier campo numérico puedes escribir un cálculo empezando con el signo igual, por ejemplo =1/1.15.
+            En cualquier campo numérico puedes escribir un cálculo empezando con el signo igual, por ejemplo =5*10000. Los factores de
+            homologación se capturan en la tabla de homologación del panel.
             {!comparable && props.prefill ? " Los datos vienen del anuncio que pegaste: revísalos antes de guardar." : null}
           </DialogDescription>
         </DialogHeader>
@@ -299,104 +203,39 @@ export function ComparableDialog(props: {
               </Field>
             </FieldGroup>
 
-            <FieldGroup className="grid gap-3 sm:grid-cols-4">
-              {details.map(([key, label, span, numeric]) => (
-                <Field key={key} className={span}>
-                  <FieldLabel htmlFor={`comparable-${key}`}>{label}</FieldLabel>
-                  <Input id={`comparable-${key}`} inputMode={numeric ? "decimal" : undefined} value={draft[key]} onChange={set(key)} />
+            <section className="grid gap-3">
+              <h3 className="text-sm font-medium">Características</h3>
+              <FieldGroup className="grid gap-3 sm:grid-cols-4">
+                <Field className="sm:col-span-4">
+                  <FieldLabel htmlFor="comparable-landUse">Uso de suelo (descripción, columna del dictamen)</FieldLabel>
+                  <Input id="comparable-landUse" value={draft.landUse} onChange={set("landUse")} />
                 </Field>
-              ))}
-              <Field className="sm:col-span-4">
-                <FieldLabel htmlFor="comparable-notes">Observaciones</FieldLabel>
-                <Textarea id="comparable-notes" rows={2} value={draft.notes} onChange={set("notes")} />
-              </Field>
-            </FieldGroup>
-
-            <section className="grid gap-2">
-              <h3 className="text-sm font-medium">Factores de homologación</h3>
-              <div className="grid gap-2">
-                {factorSlots.filter((slot) => slot.type !== "SUPERFICIE").map((slot) => {
-                  const value = factors[slot.type] ?? { mode: "manual", subjectOption: "", comparableOption: "", subject: "", comparable: "", justification: "" };
-                  const options = optionsFor(catalog, slot.type);
-                  const direct = DIRECT_FACTORS.has(slot.type);
-                  const change = (patch: Partial<FactorDraft>) =>
-                    setFactors((current) => ({ ...current, [slot.type]: { ...value, ...patch } }));
-                  const update = (key: "subject" | "comparable") => (event: ChangeEvent<HTMLInputElement>) => change({ [key]: event.target.value });
-                  const computed = capturedFactor(slot.type, slot.label, value, options).value;
+                {fields.map((field) => {
+                  const id = `comparable-${field.key.replace(":", "-")}`;
+                  const long = field.key === "notes" || field.key === "services" || !isBuiltinCharacteristic(field.key);
                   return (
-                    <div key={slot.type} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_4.5rem] items-center gap-2 text-sm">
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate">{slot.label}</span>
-                        {options.length ? (
-                          <button
-                            type="button"
-                            className="w-fit text-left text-xs text-muted-foreground underline-offset-2 hover:underline"
-                            onClick={() => change({ mode: value.mode === "catalog" ? "manual" : "catalog" })}
-                          >
-                            {value.mode === "catalog" ? "Capturar a mano" : "Elegir del catálogo"}
-                          </button>
-                        ) : null}
-                      </span>
-                      {value.mode === "catalog" ? (
-                        <>
-                          {direct ? (
-                            <span className="text-xs text-muted-foreground">Factor directo</span>
-                          ) : (
-                            <NativeSelect
-                              aria-label={`${slot.label}: calificación del sujeto`}
-                              className="w-full"
-                              value={value.subjectOption}
-                              onChange={(event) => change({ subjectOption: event.target.value })}
-                            >
-                              <NativeSelectOption value="">Sujeto…</NativeSelectOption>
-                              {options.map((option) => <NativeSelectOption key={option.label} value={option.label}>{option.label} ({option.value})</NativeSelectOption>)}
-                            </NativeSelect>
-                          )}
-                          <NativeSelect
-                            aria-label={`${slot.label}: calificación del comparable`}
-                            className="w-full"
-                            value={value.comparableOption}
-                            // Without the subject's rating the factor cannot be computed, and the pick would be lost.
-                            disabled={!direct && !value.subjectOption}
-                            title={!direct && !value.subjectOption ? "Elige primero la calificación del sujeto" : undefined}
-                            onChange={(event) => change({ comparableOption: event.target.value })}
-                          >
-                            <NativeSelectOption value="">{direct ? "Elegir…" : value.subjectOption ? "Comparable…" : "Elige primero el sujeto"}</NativeSelectOption>
-                            {options.map((option) => <NativeSelectOption key={option.label} value={option.label}>{option.label} ({option.value})</NativeSelectOption>)}
-                          </NativeSelect>
-                        </>
-                      ) : (
-                        <>
-                          <Input aria-label={`${slot.label}: calificación del sujeto`} inputMode="decimal" placeholder="Sujeto" value={value.subject} onChange={update("subject")} />
-                          <Input aria-label={`${slot.label}: calificación del comparable`} inputMode="decimal" placeholder="Comp." value={value.comparable} onChange={update("comparable")} />
-                        </>
-                      )}
-                      <span className="text-right tabular-nums text-muted-foreground">{computed.toFixed(4)}</span>
+                    <Field key={field.key} className={long ? "sm:col-span-2" : undefined}>
+                      <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
                       <Input
-                        aria-label={`${slot.label}: justificación`}
-                        className="col-span-4"
-                        placeholder="Justificación del factor (opcional)"
-                        maxLength={1000}
-                        value={value.justification}
-                        onChange={(event) => change({ justification: event.target.value })}
+                        id={id}
+                        inputMode={NUMERIC_CHARACTERISTICS.has(field.key) ? "decimal" : undefined}
+                        value={characteristics[field.key] ?? ""}
+                        onChange={(event) => setCharacteristics((current) => ({ ...current, [field.key]: event.target.value }))}
                       />
-                    </div>
+                    </Field>
                   );
                 })}
-                {factorSlots.some((slot) => slot.type === "SUPERFICIE") ? (
-                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_4.5rem] items-center gap-2 text-sm">
-                    <span>Superficie</span>
-                    <Input
-                      aria-label="Factor de superficie capturado"
-                      inputMode="decimal"
-                      placeholder="Vacío: se calcula con la fórmula y la potencia n"
-                      value={surfaceFactor}
-                      onChange={(event) => setSurfaceFactor(event.target.value)}
-                    />
-                    <span className="text-right tabular-nums text-muted-foreground">{parseDecimal(surfaceFactor)?.toFixed(4) ?? "fórmula"}</span>
-                  </div>
-                ) : null}
-              </div>
+                <Field className="sm:col-span-4">
+                  <FieldLabel htmlFor="comparable-characteristics-text">Texto libre de características (opcional)</FieldLabel>
+                  <Textarea
+                    id="comparable-characteristics-text"
+                    rows={2}
+                    placeholder="Si lo escribes, el dictamen lo imprime en lugar de la línea de características."
+                    value={freeText}
+                    onChange={(event) => setFreeText(event.target.value)}
+                  />
+                </Field>
+              </FieldGroup>
             </section>
           </fieldset>
 

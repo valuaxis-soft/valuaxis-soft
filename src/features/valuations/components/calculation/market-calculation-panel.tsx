@@ -1,55 +1,62 @@
 "use client";
 
 import { AlertTriangle, Calculator, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError, type ComparableFormValues } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 import { useAiAssist } from "@/features/ai/ai-assist-context";
 import type { ComparablePrefill } from "@/features/ai/listing-prefill";
+import type { CustomFactor } from "@/features/firm/custom-factors";
 import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
 import { computeMarketApproach, type MarketApproachResult } from "@/features/valuations/engine/market";
 import {
   COMPARABLE_TYPE_LABELS,
-  FACTOR_TYPE_LABELS,
   MARKET_LABELS,
-  FACTOR_TYPES,
   MIN_COMPARABLES,
-  OFFER_LEVELS,
-  OFFER_LEVEL_LABELS,
+  SALE_COMPARABLE_TYPES,
+  characteristicFieldsOf,
+  comparableFormValues,
+  homologationBasisOf,
   isComparableComplete,
+  isRentComparableType,
   marketEngineConfig,
+  offerLabelsOf,
+  offerMarkOf,
   toMarketEngineInput,
   type ComparableDto,
   type ComparableType,
-  type FactorType,
+  type HomologationBasis,
   type MarketCalculationDto,
   type MarketSettingsDto,
-  type OfferLevel,
 } from "@/features/valuations/calculation/market-types";
+import { defaultOfferIntro, homologationLegend } from "@/features/valuations/calculation/market-document";
 import {
   COMPUTED_FACTORS,
   DIRECT_FACTORS,
   EMPTY_FACTOR_CATALOG,
-  factorWarnings,
   optionsFor,
   type FactorCatalog,
 } from "@/features/valuations/calculation/factor-catalog";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ComparableDialog } from "./comparable-dialog";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { ImportComparablesDialog } from "./import-comparables-dialog";
+import { MarketCharacteristicsTable } from "./market-characteristics-table";
+import { MarketFactorSlots } from "./market-factor-slots";
+import { MarketHomologationTable } from "./market-homologation-table";
+import { MarketOfferLevel } from "./market-offer-level";
 import { PasteListingDialog } from "./paste-listing-dialog";
 import { SearchComparablesDialog } from "./search-comparables-dialog";
 import { useSerializedSave } from "./use-serialized-save";
 
-const SALE_TYPES: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA"];
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 const text = (value: number | null) => (value === null ? "" : String(value));
 
@@ -81,15 +88,19 @@ function settingsFrom(base: MarketSettingsDto, draft: SettingsDraft): MarketSett
     adoptedUnitValue: parseDecimal(draft.adoptedUnitValue),
     additionalAmount: parseDecimal(draft.additionalAmount) ?? 0,
     justification: draft.justification.trim() || null,
-    offerLevel: base.offerLevel ?? null,
     typicalFrontage: parseDecimal(draft.typicalFrontage),
     typicalDepth: parseDecimal(draft.typicalDepth),
   };
 }
 
+/** "Agregar mercado de terrenos en renta". */
+const addMarketLabel = (type: ComparableType) => `Agregar mercado de ${COMPARABLE_TYPE_LABELS[type].toLowerCase()}`;
+
 /**
- * Comparables and market approach of the valuation: capture, live results and
- * the blocks it writes into the dictamen through `onCalculation`.
+ * The markets of a section, one tab each: land and buildings for sale in the
+ * market section, and for rent in the rent market. Each has its own
+ * comparables, homologation, value and pages in the dictamen; a market not
+ * captured yet is added with its button.
  */
 export function MarketCalculationPanel(props: {
   valuationId: string;
@@ -101,11 +112,104 @@ export function MarketCalculationPanel(props: {
   onCalculation: (calculation: MarketCalculationDto, result: MarketApproachResult | null) => void;
 }) {
   const { valuationId } = props;
-  const types = props.types ?? SALE_TYPES;
+  const types = props.types ?? SALE_COMPARABLE_TYPES;
   const [type, setType] = useState<ComparableType>(types[0]);
+  const [shown, setShown] = useState<ReadonlySet<ComparableType>>(() => new Set([types[0]]));
+  const typesKey = types.join(",");
+
+  // A market with comparables or stored settings has its tab from the start.
+  useEffect(() => {
+    let active = true;
+    const all = typesKey.split(",") as ComparableType[];
+    void Promise.all(all.map((item) => api.market.get(valuationId, item)
+      .then((calculation) => (calculation.configured || calculation.comparables.length ? item : null))
+      .catch(() => null)))
+      .then((found) => {
+        if (active) setShown((current) => new Set([...current, ...found.filter((item): item is ComparableType => item !== null)]));
+      });
+    return () => { active = false; };
+  }, [typesKey, valuationId]);
+
+  const visible = types.filter((item) => shown.has(item));
+  const missing = types.filter((item) => !shown.has(item));
+
+  return (
+    <div className="grid gap-2">
+      {types.length > 1 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="tablist" aria-label="Mercados del avalúo" className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1">
+            {visible.map((item) => (
+              <button
+                key={item}
+                type="button"
+                role="tab"
+                aria-selected={item === type}
+                className={cn(
+                  "rounded-md px-3 py-1 text-sm font-medium",
+                  item === type ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setType(item)}
+              >
+                {COMPARABLE_TYPE_LABELS[item]}
+              </button>
+            ))}
+          </div>
+          {!props.readOnly ? missing.map((item) => (
+            <Button
+              key={item}
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setShown((current) => new Set([...current, item]));
+                setType(item);
+              }}
+            >
+              <Plus data-icon="inline-start" /> {addMarketLabel(item)}
+            </Button>
+          )) : null}
+          <span className="text-xs text-muted-foreground">
+            Cada mercado lleva sus comparables, su homologación y su valor, y escribe sus propias páginas en el dictamen.
+          </span>
+        </div>
+      ) : null}
+      <MarketTypePanel key={type} {...props} type={type} />
+    </div>
+  );
+}
+
+/** A numbered part of the specifications, in the order of the appraiser's format. */
+function Part(props: { number: number; title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="grid gap-2" aria-label={props.title}>
+      <h4 className="flex flex-wrap items-baseline justify-between gap-2 text-sm font-semibold">
+        <span>{props.number}. {props.title}</span>
+        {props.aside}
+      </h4>
+      {props.children}
+    </section>
+  );
+}
+
+/**
+ * Comparables and calculation of one market: the specifications of the
+ * calculation, apart from the blocks of the dictamen below it that it writes
+ * through `onCalculation`. In the order of the appraiser's Excel:
+ * specifications, comparables, homologation, results, additional amount and
+ * the justification of the factors.
+ */
+function MarketTypePanel(props: {
+  valuationId: string;
+  type: ComparableType;
+  readOnly: boolean;
+  suggestedSubjectArea: number | null;
+  onCalculation: (calculation: MarketCalculationDto, result: MarketApproachResult | null) => void;
+}) {
+  const { valuationId, type } = props;
   const labels = MARKET_LABELS[type];
-  const perUnit = type === "INMUEBLE_RENTA" ? "/m²/mes" : "/m²";
-  const priceLabel = type === "INMUEBLE_RENTA" ? "Renta mensual ($)" : "Precio de oferta ($)";
+  const rent = isRentComparableType(type);
+  const perUnit = rent ? "/m²/mes" : "/m²";
+  const priceLabel = rent ? "Renta mensual ($)" : "Precio de oferta ($)";
   const [calculation, setCalculation] = useState<MarketCalculationDto | null>(null);
   const [draft, setDraft] = useState<SettingsDraft | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -115,12 +219,19 @@ export function MarketCalculationPanel(props: {
   const [prefill, setPrefill] = useState<ComparablePrefill | null>(null);
   const ai = useAiAssist();
   const [catalog, setCatalog] = useState<FactorCatalog>(EMPTY_FACTOR_CATALOG);
+  const [customFactors, setCustomFactors] = useState<CustomFactor[]>([]);
+  // What the server last answered, for the changes of a comparable made one after another.
+  const latest = useRef<MarketCalculationDto | null>(null);
+  const comparableQueue = useRef<Promise<unknown>>(Promise.resolve());
 
-  // The firm's own factor catalog, if it keeps one; without it every factor is typed.
+  // The firm's own factor catalog and factors, if it keeps them; without a catalog every factor is typed.
   useEffect(() => {
     let active = true;
     api.firm.factors()
       .then((next) => { if (active) setCatalog(next.catalog); })
+      .catch(() => undefined);
+    api.firm.customFactors()
+      .then((next) => { if (active) setCustomFactors(next.factors); })
       .catch(() => undefined);
     return () => { active = false; };
   }, []);
@@ -128,6 +239,7 @@ export function MarketCalculationPanel(props: {
   const readOnly = props.readOnly || Boolean(calculation?.locked);
 
   const applyServerState = (next: MarketCalculationDto) => {
+    latest.current = next;
     setCalculation(next);
     setDraft(draftFrom(next.settings));
   };
@@ -143,7 +255,9 @@ export function MarketCalculationPanel(props: {
       .then((next) => {
         if (!active) return;
         setLoadError(null);
-        applyServerState(next);
+        latest.current = next;
+        setCalculation(next);
+        setDraft(draftFrom(next.settings));
       })
       .catch((error: unknown) => {
         if (active) setLoadError(error instanceof Error ? error.message : "No se pudo cargar el enfoque de mercado.");
@@ -158,15 +272,17 @@ export function MarketCalculationPanel(props: {
     if (calculation) reportCalculation(calculation);
   }, [calculation]);
 
+  const failed = (error: unknown) => toast.error(error instanceof SessionExpiredError
+    ? "Tu sesión expiró. Vuelve a iniciar sesión."
+    : error instanceof Error ? error.message : "No se pudo guardar.");
+
   const run = async (action: () => Promise<MarketCalculationDto>, success?: string) => {
     try {
       applyServerState(await action());
       if (success) toast.success(success);
       return true;
     } catch (error) {
-      toast.error(error instanceof SessionExpiredError
-        ? "Tu sesión expiró. Vuelve a iniciar sesión."
-        : error instanceof Error ? error.message : "No se pudo guardar.");
+      failed(error);
       return false;
     }
   };
@@ -186,6 +302,24 @@ export function MarketCalculationPanel(props: {
     await enqueueSettings(settings);
   };
 
+  /**
+   * Changes one comparable from a cell of a table: shown at once, and sent
+   * after any change still on its way, built on what the server answered last.
+   */
+  const changeComparable = (comparable: ComparableDto, change: (current: ComparableDto) => ComparableDto) => {
+    if (readOnly) return;
+    setCalculation((current) => current
+      ? { ...current, comparables: current.comparables.map((item) => (item.id === comparable.id ? change(item) : item)) }
+      : current);
+    comparableQueue.current = comparableQueue.current.then(async () => {
+      const stored = latest.current?.comparables.find((item) => item.id === comparable.id);
+      if (!stored) return;
+      const ok = await run(() => api.market.updateComparable(valuationId, type, comparable.id, comparableFormValues(change(stored))));
+      // A rejected change goes back to what is stored.
+      if (!ok && latest.current) setCalculation(latest.current);
+    });
+  };
+
   const submitComparable = (current: ComparableDto | null) => async (values: ComparableFormValues) =>
     run(
       () => current
@@ -193,6 +327,17 @@ export function MarketCalculationPanel(props: {
         : api.market.createComparable(valuationId, type, values),
       current ? "Comparable guardado" : "Comparable agregado",
     );
+
+  const createFactor = async (label: string) => {
+    try {
+      const next = await api.firm.addCustomFactor(label);
+      setCustomFactors(next.factors);
+      return next.factor;
+    } catch (error) {
+      failed(error);
+      return null;
+    }
+  };
 
   if (loadError) {
     return <p className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">{loadError}</p>;
@@ -212,328 +357,365 @@ export function MarketCalculationPanel(props: {
   const byReference = new Map(result?.homologation.comparables.map((row) => [row.id, row]) ?? []);
   const setDraftField = (key: keyof SettingsDraft) => (event: { target: { value: string } }) =>
     setDraft((current) => (current ? { ...current, [key]: event.target.value } : current));
-  const availableFactors = FACTOR_TYPES.filter((factor) => !calculation.settings.factorSlots.some((slot) => slot.type === factor));
   const editingComparable = editing === "nuevo" ? null : editing;
+  const basis = homologationBasisOf(liveSettings);
+  const againstBase = basis === "LOTE_TIPO";
+  const fields = characteristicFieldsOf(liveSettings);
   // Factors rated from the catalog, whose subject rating is chosen once for all comparables.
   const ratedSlots = calculation.settings.factorSlots.filter((slot) =>
-    !COMPUTED_FACTORS.has(slot.type) && !DIRECT_FACTORS.has(slot.type) && optionsFor(catalog, slot.type).length > 0);
-  /** Factors of a comparable outside the firm's limits, for the warning in its row. */
-  const rowWarnings = (comparable: ComparableDto, surfaceFactor: number | null, resultant: number | null) => {
-    const factors = comparable.factors
-      .filter((factor) => factor.value !== null && factor.type !== "SUPERFICIE")
-      .map((factor) => ({
-        label: calculation.settings.factorSlots.find((slot) => slot.type === factor.type)?.label ?? FACTOR_TYPE_LABELS[factor.type],
-        value: factor.value as number,
-      }));
-    if (surfaceFactor !== null) factors.push({ label: "Superficie", value: surfaceFactor });
-    return factorWarnings(factors, resultant, catalog.limits);
-  };
+    !slot.key && !COMPUTED_FACTORS.has(slot.type) && !DIRECT_FACTORS.has(slot.type) && optionsFor(catalog, slot.type).length > 0);
 
   return (
-    <section className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby="market-calculation-title" data-comparable-type={type}>
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id="market-calculation-title" className="flex items-center gap-2 text-sm font-semibold">
-          <Calculator className="size-4" /> {labels.title}
+    <section
+      className="grid gap-5 rounded-lg border-2 border-dashed border-primary/30 bg-muted/20 p-3 sm:p-4"
+      aria-labelledby="market-calculation-title"
+      data-comparable-type={type}
+    >
+      <header className="grid gap-0.5">
+        <h3 id="market-calculation-title" className="flex items-center gap-2 text-base font-semibold">
+          <Calculator className="size-4" /> {labels.title} · {COMPARABLE_TYPE_LABELS[type]}
         </h3>
-        {types.length > 1 ? (
-          <NativeSelect aria-label="Tipo de comparables" value={type} onChange={(event) => setType(event.target.value as ComparableType)}>
-            {types.map((item) => <NativeSelectOption key={item} value={item}>{COMPARABLE_TYPE_LABELS[item]}</NativeSelectOption>)}
-          </NativeSelect>
-        ) : null}
+        <p className="text-xs text-muted-foreground">
+          Aquí capturas y se calcula; con estos datos se escriben las páginas del dictamen que ves abajo, fuera de este recuadro.
+          {type === "TERRENO_VENTA" ? " El enfoque de costos toma el valor de este mercado de terrenos para el terreno." : null}
+        </p>
       </header>
 
       {calculation.locked ? (
         <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p>
       ) : null}
 
-      <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
-        <Field>
-          <FieldLabel htmlFor="market-subject-area">{labels.subjectArea}</FieldLabel>
-          <Input
-            id="market-subject-area"
-            inputMode="decimal"
-            value={draft.subjectArea}
-            placeholder={props.suggestedSubjectArea ? String(props.suggestedSubjectArea) : undefined}
-            onChange={setDraftField("subjectArea")}
-          />
-          {!draft.subjectArea && props.suggestedSubjectArea && type === "TERRENO_VENTA" ? (
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="h-auto justify-start px-0"
-              onClick={() => void saveSettings({ ...liveSettings, subjectArea: props.suggestedSubjectArea })}
-            >
-              Usar {props.suggestedSubjectArea} m² del terreno
-            </Button>
-          ) : null}
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="market-base-area">Lote tipo (m², opcional)</FieldLabel>
-          <Input id="market-base-area" inputMode="decimal" value={draft.baseArea} placeholder="Igual al sujeto" onChange={setDraftField("baseArea")} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="market-power">Potencia n</FieldLabel>
-          <SurfacePowerSelect
-            id="market-power"
-            value={liveSettings.surfacePower}
-            onChange={(surfacePower) => void saveSettings({ ...liveSettings, surfacePower })}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="market-adopted">{labels.adopted}</FieldLabel>
-          <Input
-            id="market-adopted"
-            inputMode="decimal"
-            value={draft.adoptedUnitValue}
-            placeholder={stats ? `Promedio: ${stats.mean.toFixed(2)}` : undefined}
-            aria-invalid={result?.adoptedOutsideLimits || undefined}
-            onChange={setDraftField("adoptedUnitValue")}
-          />
-        </Field>
-        <p className="text-xs text-muted-foreground sm:col-span-4">
-          Factor de superficie: {liveSettings.baseArea
-            ? "con lote tipo (homologación indirecta), cada comparable usa (lote tipo ÷ comparable)^(1/n); el valor de mercado es superficie del sujeto × valor adoptado, y el sujeto se homologa contra el lote tipo en el terreno del enfoque de costos."
-            : "sin lote tipo (homologación directa), cada comparable usa (sujeto ÷ comparable)^(1/n) y el valor de mercado es superficie del sujeto × valor adoptado."}
-          {" "}En cada comparable puedes escribir otro factor de superficie. Los campos numéricos aceptan cálculos: =5*10000, =(1345*235)^(1/6).
-        </p>
-        <Field className="sm:col-span-3">
-          <FieldLabel htmlFor="market-justification">Justificación de lo adoptado</FieldLabel>
-          <Textarea id="market-justification" rows={2} value={draft.justification} onChange={setDraftField("justification")} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="market-additional">Monto adicional ($)</FieldLabel>
-          <Input id="market-additional" inputMode="decimal" value={draft.additionalAmount} placeholder="0" onChange={setDraftField("additionalAmount")} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="market-rounding">Redondeo del valor</FieldLabel>
-          <RoundingSelect
-            id="market-rounding"
-            label="Redondeo del valor"
-            value={liveSettings.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.market.comparativeValue : liveSettings.rounding}
-            onChange={(rounding) => void saveSettings({ ...liveSettings, rounding })}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="market-typical-frontage">Frente tipo en la zona (m)</FieldLabel>
-          <Input id="market-typical-frontage" inputMode="decimal" value={draft.typicalFrontage} onChange={setDraftField("typicalFrontage")} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="market-typical-depth">Fondo tipo en la zona (m)</FieldLabel>
-          <Input id="market-typical-depth" inputMode="decimal" value={draft.typicalDepth} onChange={setDraftField("typicalDepth")} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="market-offer-level">Nivel de oferta observada</FieldLabel>
-          <NativeSelect
-            id="market-offer-level"
-            className="w-full"
-            value={liveSettings.offerLevel ?? ""}
-            onChange={(event) => void saveSettings({ ...liveSettings, offerLevel: (event.target.value || null) as OfferLevel | null })}
-          >
-            <NativeSelectOption value="">Sin capturar</NativeSelectOption>
-            {OFFER_LEVELS.map((level) => <NativeSelectOption key={level} value={level}>{OFFER_LEVEL_LABELS[level]}</NativeSelectOption>)}
-          </NativeSelect>
-        </Field>
-      </fieldset>
-
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted-foreground">Factores, en orden:</span>
-        {calculation.settings.factorSlots.map((slot) => (
-          <Badge key={slot.type} variant={slot.type === "SUPERFICIE" ? "secondary" : "outline"}>
-            {slot.label}
-            {slot.type !== "SUPERFICIE" && !readOnly ? (
-              <button
+      <Part number={1} title="Especificaciones" aside={savingSettings ? <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}>
+        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
+          <Field>
+            <FieldLabel htmlFor="market-subject-area">{labels.subjectArea}</FieldLabel>
+            <Input
+              id="market-subject-area"
+              inputMode="decimal"
+              value={draft.subjectArea}
+              placeholder={props.suggestedSubjectArea ? String(props.suggestedSubjectArea) : undefined}
+              onChange={setDraftField("subjectArea")}
+            />
+            {!draft.subjectArea && props.suggestedSubjectArea && type === "TERRENO_VENTA" ? (
+              <Button
                 type="button"
-                className="ml-1 text-muted-foreground hover:text-foreground"
-                aria-label={`Quitar el factor ${slot.label}`}
-                onClick={() => void saveSettings({ ...liveSettings, factorSlots: liveSettings.factorSlots.filter((item) => item.type !== slot.type) })}
+                variant="link"
+                size="sm"
+                className="h-auto justify-start px-0"
+                onClick={() => void saveSettings({ ...liveSettings, subjectArea: props.suggestedSubjectArea })}
               >
-                ×
-              </button>
-            ) : null}
-          </Badge>
-        ))}
-        {!readOnly && availableFactors.length ? (
-          <NativeSelect
-            size="sm"
-            aria-label="Agregar factor"
-            value=""
-            onChange={(event) => {
-              const factor = event.target.value as FactorType;
-              if (factor) void saveSettings({ ...liveSettings, factorSlots: [...liveSettings.factorSlots, { type: factor, label: FACTOR_TYPE_LABELS[factor] }] });
-            }}
-          >
-            <NativeSelectOption value="">Agregar factor…</NativeSelectOption>
-            {availableFactors.map((factor) => <NativeSelectOption key={factor} value={factor}>{FACTOR_TYPE_LABELS[factor]}</NativeSelectOption>)}
-          </NativeSelect>
-        ) : null}
-        {savingSettings ? <Loader2 className="size-3 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
-      </div>
-
-      {ratedSlots.length ? (
-        <div className="grid gap-2 rounded-md border bg-background p-3">
-          <p className="text-xs text-muted-foreground">
-            Calificación del sujeto: se elige una vez y cada comparable solo elige la suya; el factor se calcula solo.
-          </p>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {ratedSlots.map((slot) => (
-              <Field key={slot.type}>
-                <FieldLabel htmlFor={`subject-rating-${slot.type}`} className="text-xs">{slot.label}</FieldLabel>
-                <NativeSelect
-                  id={`subject-rating-${slot.type}`}
-                  className="w-full"
-                  disabled={readOnly}
-                  value={slot.subjectOption ?? ""}
-                  onChange={(event) => void saveSettings({
-                    ...liveSettings,
-                    factorSlots: liveSettings.factorSlots.map((item) =>
-                      item.type === slot.type ? { ...item, subjectOption: event.target.value || null } : item),
-                  })}
-                >
-                  <NativeSelectOption value="">Sin elegir</NativeSelectOption>
-                  {optionsFor(catalog, slot.type).map((option) => (
-                    <NativeSelectOption key={option.label} value={option.label}>{option.label} ({option.value})</NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </Field>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="overflow-x-auto rounded-md border bg-background">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead className="bg-muted/60 text-xs text-muted-foreground">
-            <tr>
-              <th className="px-2 py-1.5 text-left font-medium">Ref.</th>
-              <th className="px-2 py-1.5 text-left font-medium">Ubicación</th>
-              <th className="px-2 py-1.5 text-right font-medium">Superficie</th>
-              <th className="px-2 py-1.5 text-right font-medium">{labels.price}</th>
-              <th className="px-2 py-1.5 text-right font-medium">${perUnit}</th>
-              <th className="px-2 py-1.5 text-right font-medium">F. resultante</th>
-              <th className="px-2 py-1.5 text-right font-medium">Homologado</th>
-              <th className="px-2 py-1.5"><span className="sr-only">Acciones</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {comparables.map((comparable) => {
-              const row = byReference.get(String(comparable.reference));
-              return (
-                <tr key={comparable.id} className="border-t">
-                  <td className="px-2 py-1.5">{comparable.reference}</td>
-                  <td className="max-w-56 truncate px-2 py-1.5" title={comparable.location}>
-                    {comparable.location}
-                    {comparable.photos.length ? <span className="ml-1 text-xs text-muted-foreground">({comparable.photos.length} fotos)</span> : null}
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{comparable.area ?? "—"}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{comparable.price ? money(comparable.price) : "—"}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{row ? money(row.unitValue) : "—"}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">
-                    {row ? (() => {
-                      const warnings = rowWarnings(comparable, row.surfaceFactor, row.resultantFactor);
-                      const detail = warnings.map((warning) => `${warning.label}: ${warning.value.toFixed(4)}`).join(" · ");
-                      return (
-                        <span className="inline-flex items-center justify-end gap-1">
-                          {warnings.length ? (
-                            <AlertTriangle
-                              className="size-3.5 text-amber-600"
-                              aria-label={`Fuera del rango del despacho: ${detail}`}
-                            >
-                              <title>{`Fuera del rango que fijó el despacho: ${detail}`}</title>
-                            </AlertTriangle>
-                          ) : null}
-                          {row.resultantFactor.toFixed(4)}
-                        </span>
-                      );
-                    })() : "—"}
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-medium tabular-nums">{row ? money(row.homologatedUnitValue) : "—"}</td>
-                  <td className="px-2 py-1.5 text-right whitespace-nowrap">
-                    <Button type="button" size="icon-sm" variant="ghost" aria-label={`Editar comparable ${comparable.reference}`} onClick={() => setEditing(comparable)}>
-                      <Pencil />
-                    </Button>
-                    {!readOnly ? (
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label={`Eliminar comparable ${comparable.reference}`}
-                        onClick={() => {
-                          if (window.confirm(`¿Eliminar el comparable ${comparable.reference}?`)) {
-                            void run(() => api.market.deleteComparable(valuationId, type, comparable.id), "Comparable eliminado");
-                          }
-                        }}
-                      >
-                        <Trash2 />
-                      </Button>
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
-            {!comparables.length ? (
-              <tr><td colSpan={8} className="px-2 py-6 text-center text-muted-foreground">Sin comparables todavía.</td></tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-2">
-          {!readOnly ? (
-            <>
-              <Button type="button" size="sm" onClick={() => setEditing("nuevo")}>
-                <Plus data-icon="inline-start" /> Agregar comparable
+                Usar {props.suggestedSubjectArea} m² del terreno
               </Button>
-              <ImportComparablesDialog valuationId={valuationId} type={type} onImported={applyServerState} />
-              {ai.enabled ? (
-                <PasteListingDialog
-                  key={type}
-                  valuationId={valuationId}
-                  type={type}
-                  priceLabel={priceLabel}
-                  onUse={(values) => { setPrefill(values); setEditing("nuevo"); }}
-                />
-              ) : null}
-            </>
-          ) : null}
-          {/* Searching only reads: a concluded valuation can still look, but not add. */}
-          <SearchComparablesDialog key={type} valuationId={valuationId} type={type} readOnly={readOnly} onAdded={applyServerState} />
-        </div>
-        {complete < MIN_COMPARABLES ? (
-          <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="size-3.5" /> El dictamen lleva al menos {MIN_COMPARABLES} comparables completos ({complete} de {MIN_COMPARABLES}).
-          </span>
-        ) : null}
-      </div>
-
-      {result && stats ? (
-        <dl className="grid gap-x-4 gap-y-1 rounded-md border bg-background p-3 text-sm sm:grid-cols-3">
-          <div><dt className="text-xs text-muted-foreground">Promedio homologado (referencia)</dt><dd className="tabular-nums">{money(stats.mean)} {perUnit}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">Mediana homologada (referencia)</dt><dd className="tabular-nums">{money(stats.median)} {perUnit}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">Rango</dt><dd className="tabular-nums">{money(stats.min)} – {money(stats.max)}</dd></div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Se puede adoptar (±30 %)</dt>
-            <dd className="tabular-nums">{money(result.adoptedLimits.min)} – {money(result.adoptedLimits.max)}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Dispersión</dt>
-            <dd className="tabular-nums">{stats.dispersion.toFixed(2)}</dd>
-          </div>
-          <div><dt className="text-xs text-muted-foreground">Adoptado</dt><dd className="tabular-nums">{money(result.adoptedUnitValue)} {perUnit}</dd></div>
-          <div>
-            <dt className="text-xs text-muted-foreground">{labels.value}</dt>
-            <dd className="text-base font-semibold tabular-nums">{money(result.value)}</dd>
-          </div>
-          {result.adoptedOutsideLimits ? (
-            <p className="flex items-center gap-1 text-xs text-destructive sm:col-span-3">
-              <AlertTriangle className="size-3.5" /> El valor adoptado sale del ±30 % del promedio y la mediana: revisa que no sea un error de captura. No se guarda fuera de ese rango.
+            ) : null}
+          </Field>
+          <Field className="sm:col-span-3">
+            <FieldLabel id="market-basis-label">Homologación de acuerdo a</FieldLabel>
+            <div role="radiogroup" aria-labelledby="market-basis-label" className="flex flex-wrap items-center gap-4 text-sm">
+              {([["LOTE_TIPO", "Lote tipo"], ["SUJETO", "Sujeto"]] as Array<[HomologationBasis, string]>).map(([value, label]) => (
+                <label key={value} className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name={`market-basis-${type}`}
+                    checked={basis === value}
+                    onChange={() => void saveSettings({ ...liveSettings, homologationBasis: value })}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Sujeto: homologación directa; lote tipo: homologación indirecta. Aplica a todos los factores, no solo al de superficie.
             </p>
+          </Field>
+          {againstBase ? (
+            <Field>
+              <FieldLabel htmlFor="market-base-area">Lote tipo (m²)</FieldLabel>
+              <Input id="market-base-area" inputMode="decimal" value={draft.baseArea} onChange={setDraftField("baseArea")} />
+              {!draft.baseArea ? <p className="text-xs text-amber-700 dark:text-amber-400">Sin lote tipo, el factor de superficie usa el sujeto.</p> : null}
+            </Field>
           ) : null}
-        </dl>
-      ) : live?.reason ? (
-        <p className="text-sm text-muted-foreground">{live.reason}</p>
-      ) : null}
+          <Field>
+            <FieldLabel htmlFor="market-typical-frontage">{againstBase ? "Frente tipo (m)" : "Frente del sujeto (m, opcional)"}</FieldLabel>
+            <Input id="market-typical-frontage" inputMode="decimal" value={draft.typicalFrontage} onChange={setDraftField("typicalFrontage")} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="market-typical-depth">{againstBase ? "Fondo tipo (m)" : "Fondo del sujeto (m, opcional)"}</FieldLabel>
+            <Input id="market-typical-depth" inputMode="decimal" value={draft.typicalDepth} onChange={setDraftField("typicalDepth")} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="market-power">Potencia n</FieldLabel>
+            <SurfacePowerSelect
+              id="market-power"
+              value={liveSettings.surfacePower}
+              onChange={(surfacePower) => void saveSettings({ ...liveSettings, surfacePower })}
+            />
+          </Field>
+          <p className="text-xs text-muted-foreground sm:col-span-4">
+            En cada comparable puedes escribir otro valor o usar otra fórmula para el factor de superficie. Los campos numéricos aceptan
+            cálculos: =5*10000, =(1345*235)^(1/6).
+          </p>
+        </fieldset>
+        <MarketOfferLevel
+          labels={offerLabelsOf(liveSettings)}
+          mark={offerMarkOf(liveSettings)}
+          intro={liveSettings.offerIntro ?? null}
+          defaultIntro={defaultOfferIntro(type)}
+          readOnly={readOnly}
+          onChange={(offer) => void saveSettings({ ...liveSettings, ...offer, offerLevel: null })}
+        />
+      </Part>
+
+      <Part number={2} title="Comparables">
+        <div className="overflow-x-auto rounded-md border bg-background">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="bg-muted/60 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-2 py-1.5 text-left font-medium">Ref.</th>
+                <th className="px-2 py-1.5 text-left font-medium">Ubicación</th>
+                <th className="px-2 py-1.5 text-right font-medium">Superficie</th>
+                <th className="px-2 py-1.5 text-right font-medium">{labels.price}</th>
+                <th className="px-2 py-1.5 text-right font-medium">${perUnit}</th>
+                <th className="px-2 py-1.5"><span className="sr-only">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparables.map((comparable) => {
+                const row = byReference.get(String(comparable.reference));
+                return (
+                  <tr key={comparable.id} className="border-t">
+                    <td className="px-2 py-1.5">{comparable.reference}</td>
+                    <td className="max-w-64 truncate px-2 py-1.5" title={comparable.location}>
+                      {comparable.location}
+                      {comparable.photos.length ? <span className="ml-1 text-xs text-muted-foreground">({comparable.photos.length} fotos)</span> : null}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{comparable.area ?? "—"}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{comparable.price ? money(comparable.price) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{row ? money(row.unitValue) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                      <Button type="button" size="icon-sm" variant="ghost" aria-label={`Editar comparable ${comparable.reference}`} onClick={() => setEditing(comparable)}>
+                        <Pencil />
+                      </Button>
+                      {!readOnly ? (
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Eliminar comparable ${comparable.reference}`}
+                          onClick={() => {
+                            if (window.confirm(`¿Eliminar el comparable ${comparable.reference}?`)) {
+                              void run(() => api.market.deleteComparable(valuationId, type, comparable.id), "Comparable eliminado");
+                            }
+                          }}
+                        >
+                          <Trash2 />
+                        </Button>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!comparables.length ? (
+                <tr><td colSpan={6} className="px-2 py-6 text-center text-muted-foreground">Sin comparables todavía.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            {!readOnly ? (
+              <>
+                <Button type="button" size="sm" onClick={() => setEditing("nuevo")}>
+                  <Plus data-icon="inline-start" /> Agregar comparable
+                </Button>
+                <ImportComparablesDialog valuationId={valuationId} type={type} onImported={applyServerState} />
+                {ai.enabled ? (
+                  <PasteListingDialog
+                    key={type}
+                    valuationId={valuationId}
+                    type={type}
+                    priceLabel={priceLabel}
+                    onUse={(values) => { setPrefill(values); setEditing("nuevo"); }}
+                  />
+                ) : null}
+              </>
+            ) : null}
+            {/* Searching only reads: a concluded valuation can still look, but not add. */}
+            <SearchComparablesDialog key={type} valuationId={valuationId} type={type} readOnly={readOnly} onAdded={applyServerState} />
+          </div>
+          {complete < MIN_COMPARABLES ? (
+            <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="size-3.5" /> El dictamen lleva al menos {MIN_COMPARABLES} comparables completos ({complete} de {MIN_COMPARABLES}).
+            </span>
+          ) : null}
+        </div>
+
+        {comparables.length ? (
+          <MarketCharacteristicsTable
+            fields={fields}
+            defaults={!liveSettings.characteristicFields}
+            comparables={comparables}
+            subject={liveSettings.subjectCharacteristics ?? {}}
+            readOnly={readOnly}
+            onFields={(characteristicFields) => void saveSettings({ ...liveSettings, characteristicFields })}
+            onSubject={(subjectCharacteristics) => void saveSettings({ ...liveSettings, subjectCharacteristics })}
+            onComparable={changeComparable}
+          />
+        ) : null}
+      </Part>
+
+      <Part number={3} title="Homologación">
+        <MarketFactorSlots
+          slots={calculation.settings.factorSlots}
+          customFactors={customFactors}
+          readOnly={readOnly}
+          saving={savingSettings}
+          onChange={(factorSlots) => void saveSettings({ ...liveSettings, factorSlots })}
+          onCreate={createFactor}
+        />
+        {ratedSlots.length ? (
+          <div className="grid gap-2 rounded-md border bg-background p-3">
+            <p className="text-xs text-muted-foreground">
+              Calificación del sujeto: se elige una vez y cada comparable solo elige la suya en la tabla; el factor se calcula solo.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {ratedSlots.map((slot) => (
+                <Field key={slot.type}>
+                  <FieldLabel htmlFor={`subject-rating-${slot.type}`} className="text-xs">{slot.label}</FieldLabel>
+                  <NativeSelect
+                    id={`subject-rating-${slot.type}`}
+                    className="w-full"
+                    disabled={readOnly}
+                    value={slot.subjectOption ?? ""}
+                    onChange={(event) => void saveSettings({
+                      ...liveSettings,
+                      factorSlots: liveSettings.factorSlots.map((item) =>
+                        !item.key && item.type === slot.type ? { ...item, subjectOption: event.target.value || null } : item),
+                    })}
+                  >
+                    <NativeSelectOption value="">Sin elegir</NativeSelectOption>
+                    {optionsFor(catalog, slot.type).map((option) => (
+                      <NativeSelectOption key={option.label} value={option.label}>{option.label} ({option.value})</NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </Field>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <MarketHomologationTable
+          comparables={comparables}
+          slots={calculation.settings.factorSlots}
+          result={result}
+          catalog={catalog}
+          readOnly={readOnly}
+          unitValueLabel={`${labels.unitValue} $${perUnit}`}
+          homologatedLabel={`Homologado $${perUnit}`}
+          legend={homologationLegend(type)}
+          onFactors={(comparable, factors) => changeComparable(comparable, (current) => ({ ...current, factors }))}
+          onInvalid={(message) => toast.error(message)}
+        />
+      </Part>
+
+      <Part number={4} title="Resultados">
+        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor="market-adopted">{labels.adopted}</FieldLabel>
+            <Input
+              id="market-adopted"
+              inputMode="decimal"
+              value={draft.adoptedUnitValue}
+              placeholder={stats ? `Promedio: ${stats.mean.toFixed(2)}` : undefined}
+              // A warning, never a lock: the field is always free to be retyped or cleared.
+              className={result?.adoptedOutsideLimits ? "border-amber-500 focus-visible:ring-amber-500/30" : undefined}
+              onChange={setDraftField("adoptedUnitValue")}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="market-rounding">Redondeo del valor</FieldLabel>
+            <RoundingSelect
+              id="market-rounding"
+              label="Redondeo del valor"
+              value={liveSettings.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.market.comparativeValue : liveSettings.rounding}
+              onChange={(rounding) => void saveSettings({ ...liveSettings, rounding })}
+            />
+          </Field>
+        </fieldset>
+        {result && stats ? (
+          <div className="grid gap-2 rounded-md border bg-background p-3 text-sm">
+            <p className="text-xs text-muted-foreground">
+              Estadísticas informativas: el promedio y la mediana son referencia para el valor que adoptas; el rango permitido solo avisa de
+              un posible error de captura (como 130,000 por 13,000) y no impide guardar.
+            </p>
+            <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-3">
+              <div><dt className="text-xs text-muted-foreground">Promedio homologado</dt><dd className="tabular-nums">{money(stats.mean)} {perUnit}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Mediana homologada</dt><dd className="tabular-nums">{money(stats.median)} {perUnit}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Dispersión (máx. ÷ mín.)</dt><dd className="tabular-nums">{stats.dispersion.toFixed(2)}</dd></div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Rango de valores homologados (mín.–máx.)</dt>
+                <dd className="tabular-nums">{money(stats.min)} – {money(stats.max)}</dd>
+              </div>
+              <div className="sm:col-span-2">
+                <dt className="text-xs text-muted-foreground">Rango permitido para el valor adoptado (±30 % del promedio y la mediana)</dt>
+                <dd className="tabular-nums">{money(result.adoptedLimits.min)} – {money(result.adoptedLimits.max)}</dd>
+              </div>
+              <div><dt className="text-xs text-muted-foreground">Adoptado</dt><dd className="tabular-nums">{money(result.adoptedUnitValue)} {perUnit}</dd></div>
+              <div className="sm:col-span-2">
+                <dt className="text-xs text-muted-foreground">{labels.value}</dt>
+                <dd className="text-base font-semibold tabular-nums">{money(result.value)}</dd>
+              </div>
+            </dl>
+            {result.adoptedOutsideLimits ? (
+              <p className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="size-3.5 shrink-0" /> El valor adoptado sale del rango permitido (±30 % del promedio y la mediana): revisa que no
+                sea un error de captura. Se guarda como lo capturaste.
+              </p>
+            ) : null}
+          </div>
+        ) : live?.reason ? (
+          <p className="text-sm text-muted-foreground">{live.reason}</p>
+        ) : null}
+      </Part>
+
+      <Part number={5} title="Monto adicional">
+        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
+          <Field>
+            <FieldLabel htmlFor="market-additional">Monto adicional a considerar ($)</FieldLabel>
+            <Input id="market-additional" inputMode="decimal" value={draft.additionalAmount} placeholder="0" onChange={setDraftField("additionalAmount")} />
+          </Field>
+        </fieldset>
+      </Part>
+
+      <Part
+        number={6}
+        title="Justificación de los factores utilizados"
+        aside={(
+          <label className="flex items-center gap-1.5 text-xs font-normal">
+            <Checkbox
+              checked={liveSettings.showFactorJustification !== false}
+              disabled={readOnly}
+              onCheckedChange={(checked) => void saveSettings({ ...liveSettings, showFactorJustification: checked === true })}
+            />
+            Mostrar en el dictamen
+          </label>
+        )}
+      >
+        <fieldset disabled={readOnly} className="grid gap-3" onBlur={() => void saveSettings()}>
+          <Field>
+            <FieldLabel htmlFor="market-justification">Texto general (opcional)</FieldLabel>
+            <Textarea id="market-justification" rows={2} value={draft.justification} onChange={setDraftField("justification")} />
+          </Field>
+        </fieldset>
+        {comparables.map((comparable) => (
+          <ComparableJustification
+            key={`${comparable.id}:${comparable.factorJustification ?? ""}`}
+            comparable={comparable}
+            readOnly={readOnly}
+            onCommit={(factorJustification) => changeComparable(comparable, (current) => ({ ...current, factorJustification }))}
+          />
+        ))}
+        <p className="text-xs text-muted-foreground">Se imprime después de las tablas de homologación.</p>
+      </Part>
 
       {editing ? (
         <ComparableDialog
@@ -542,8 +724,7 @@ export function MarketCalculationPanel(props: {
           onOpenChange={(open) => { if (!open) { setEditing(null); setPrefill(null); } }}
           prefill={prefill ?? undefined}
           comparable={editingComparable ? comparables.find((item) => item.id === editingComparable.id) ?? editingComparable : null}
-          factorSlots={calculation.settings.factorSlots}
-          catalog={catalog}
+          characteristicFields={fields}
           comparableType={type}
           unitLabel={priceLabel}
           readOnly={readOnly}
@@ -557,5 +738,27 @@ export function MarketCalculationPanel(props: {
         />
       ) : null}
     </section>
+  );
+}
+
+/** "Comparable 1" and its text; sent when the appraiser leaves the field. */
+function ComparableJustification(props: { comparable: ComparableDto; readOnly: boolean; onCommit: (text: string | null) => void }) {
+  const { comparable } = props;
+  const [value, setValue] = useState(comparable.factorJustification ?? "");
+  const id = `market-justification-${comparable.id}`;
+  return (
+    <Field>
+      <FieldLabel htmlFor={id} className="font-bold">Comparable {comparable.reference}</FieldLabel>
+      <Textarea
+        id={id}
+        rows={2}
+        disabled={props.readOnly}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onBlur={() => {
+          if (value.trim() !== (comparable.factorJustification ?? "")) props.onCommit(value.trim() || null);
+        }}
+      />
+    </Field>
   );
 }

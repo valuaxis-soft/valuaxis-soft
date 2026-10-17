@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { money } from "../src/features/valuations/calculation/generated-content";
-import { marketDocumentBlocks, marketPhotoBlocks, withGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
+import { homologationLegend, marketDocumentBlocks, marketPhotoBlocks, withGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
 import { defaultMarketSettings, toMarketEngineInput, type ComparableDto, type MarketCalculationDto } from "../src/features/valuations/calculation/market-types";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeMarketApproach } from "../src/features/valuations/engine/market";
@@ -102,7 +102,10 @@ test("the boxes of the homologation lead from the homologated values to the valu
   assert.deepEqual(boxes.map((box) => [box.id, box.position, box.align]), [
     ["base", "top", "start"], ["sujeto", "bottom", "start"], ["valores", "bottom", "end"], ["valor", "bottom", "end"],
   ]);
-  assert.deepEqual(boxes[0].rows, [{ label: "Lote Sujeto:", value: "169.78 m²", mark: true }], "without a lote tipo the homologation is against the subject");
+  assert.deepEqual(boxes[0].rows, [
+    { label: "Lote Tipo:", value: "—", mark: false },
+    { label: "Lote Sujeto:", value: "169.78 m²", mark: true },
+  ], "without a lote tipo the homologation is against the subject; the box gives both options, as the format");
   assert.deepEqual(boxRows(table, "sujeto"), [["Superficie del sujeto (m²):", "169.78 m²"]]);
   assert.deepEqual(boxRows(table, "valores")?.[1], ["Valor homologado a utilizar ($/m²):", "$ 9,000.00"]);
   assert.match(boxRows(table, "valores")?.[0].join(" ") ?? "", /^Valor Prom\. Homologado \(\$\/m²\): \$ \d,\d{3}\.\d{2}$/);
@@ -113,7 +116,7 @@ test("the boxes of the homologation lead from the homologated values to the valu
     ["VALOR COMPARATIVO DE MERCADO (TERRENOS):", "$ 1,528,000.00"],
   ]);
   assert.equal(boxes[3].rows.at(-1)?.emphasis, "total", "the value of the approach is the dark bar");
-  assert.equal(printed(table).schema?.notes, undefined, "no justification, no note");
+  assert.deepEqual(printed(table).schema?.notes, [{ position: "bottom", text: homologationLegend("TERRENO_VENTA") }], "no justification: only the legend");
 });
 
 test("a lote tipo, an additional amount and the justification show only when captured", () => {
@@ -134,7 +137,10 @@ test("a lote tipo, an additional amount and the justification show only when cap
   ]);
   assert.equal(rows[1][1], money(169.78 * computed.adoptedUnitValue));
   assert.equal(rows[2][1], "$ 25,000.00");
-  assert.deepEqual(printed(table).schema?.notes, [{ position: "bottom", label: "Justificación del valor adoptado:", text: "Dentro del rango." }]);
+  assert.deepEqual(printed(table).schema?.notes, [
+    { position: "bottom", text: homologationLegend("TERRENO_VENTA") },
+    { position: "bottom", label: "Justificación de los factores utilizados:", text: "Dentro del rango." },
+  ]);
 });
 
 test("rents and built properties use the same page with their own wording", () => {
@@ -293,7 +299,7 @@ test("the typical frontage and depth of the zone print beside the lote tipo, eac
     const table = marketDocumentBlocks(target, computed ? compute(target) : null)[0].apartados[1].tables[0];
     return printed(table).schema?.summaryBoxes ?? [];
   };
-  const both = boxes({ typicalFrontage: 8, typicalDepth: 17.5 });
+  const both = boxes({ baseArea: 140, typicalFrontage: 8, typicalDepth: 17.5 });
   assert.deepEqual(both.map((box) => [box.id, box.position, box.align]).slice(0, 3), [
     ["base", "top", "start"], ["zona", "top", "end"], ["sujeto", "bottom", "start"],
   ], "on the line of the lote tipo, to its right");
@@ -301,7 +307,12 @@ test("the typical frontage and depth of the zone print beside the lote tipo, eac
     { label: "Frente tipo en la zona:", value: "8.00 m" },
     { label: "Fondo tipo en la zona:", value: "17.50 m" },
   ]);
-  assert.deepEqual(boxes({ typicalDepth: 20 })[1].rows, [{ label: "Fondo tipo en la zona:", value: "20.00 m" }]);
+  assert.deepEqual(boxes({ baseArea: 140, typicalDepth: 20 })[1].rows, [{ label: "Fondo tipo en la zona:", value: "20.00 m" }]);
+  // Against the subject they are the subject's own.
+  assert.deepEqual(boxes({ typicalFrontage: 7.5, typicalDepth: 22.6 })[1].rows, [
+    { label: "Frente del sujeto:", value: "7.50 m" },
+    { label: "Fondo del sujeto:", value: "22.60 m" },
+  ]);
   assert.deepEqual(boxes({ typicalFrontage: null, typicalDepth: null }), boxes({}), "empty, the boxes are the ones of before");
   assert.equal(boxes({}).some((box) => box.id === "zona"), false);
   assert.deepEqual(boxes({ typicalFrontage: 7, subjectArea: null }, false).map((box) => box.id), ["zona"], "they do not wait for the subject area");

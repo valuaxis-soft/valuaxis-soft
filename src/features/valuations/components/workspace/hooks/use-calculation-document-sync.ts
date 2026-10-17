@@ -19,7 +19,13 @@ import {
   replaceGeneratedBlocks,
   withGeneratedBlocks,
 } from "@/features/valuations/calculation/market-document";
-import { marketEngineConfig, toMarketEngineInput, type ComparableType, type MarketCalculationDto } from "@/features/valuations/calculation/market-types";
+import {
+  COMPARABLE_TYPES,
+  isRentComparableType,
+  marketEngineConfig,
+  toMarketEngineInput,
+  type MarketCalculationDto,
+} from "@/features/valuations/calculation/market-types";
 import { concludeValue } from "@/features/valuations/engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
 import { computeCostApproach } from "@/features/valuations/engine/costs";
@@ -32,7 +38,6 @@ import { getCanonicalSectionKey } from "@/features/valuations/sections/section-r
 import type { EditorState } from "./use-editor-state";
 
 const COST_PREFIX = `${GENERATED_BLOCK_PREFIX}costos`;
-const MARKET_TYPES: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA"];
 
 /**
  * Keeps the dictamen in step with the calculations: market and rent blocks,
@@ -74,7 +79,8 @@ export function useCalculationDocumentSync({
     const type = calculation.settings.comparableType;
     const mainBlocks = marketDocumentBlocks(calculation, result);
     const photoBlocks = marketPhotoBlocks(calculation);
-    const [sectionKey, placeholders] = type === "INMUEBLE_RENTA"
+    // Every market writes its own pages: land and buildings, for sale in the market section and for rent in the rent market.
+    const [sectionKey, placeholders] = isRentComparableType(type)
       ? ["MERCADO_RENTAS", RENT_TEMPLATE_BLOCK_IDS]
       : ["MERCADO_VENTA", MARKET_TEMPLATE_BLOCK_IDS];
     updateBySection(`motor-mercado-${type}`, (key, section) =>
@@ -157,8 +163,9 @@ export function useCalculationDocumentSync({
   const onMarketCalculation = (calculation: MarketCalculationDto, result: MarketApproachResult | null) => {
     applyMarket(calculation, result);
     const type = calculation.settings.comparableType;
-    // The server recomputed what depends on this market: costs for land, income for rents.
-    void refresh({ costs: type === "TERRENO_VENTA", income: type === "INMUEBLE_RENTA", conclusion: true });
+    // The server recomputed what depends on this market: costs for land for sale, income (and so the
+    // conclusion) for buildings for rent. The land rent market feeds no other approach.
+    void refresh({ costs: type === "TERRENO_VENTA", income: type === "INMUEBLE_RENTA", conclusion: type !== "TERRENO_RENTA" });
   };
   const onCostCalculation = (calculation: CostCalculationDto) => {
     applyCosts(calculation);
@@ -179,7 +186,7 @@ export function useCalculationDocumentSync({
   };
 
   const syncOnOpen = useEffectEvent(async (id: string) => {
-    const markets = await Promise.all(MARKET_TYPES.map((type) => api.market.get(id, type).catch(() => null)));
+    const markets = await Promise.all(COMPARABLE_TYPES.map((type) => api.market.get(id, type).catch(() => null)));
     for (const calculation of markets) {
       if (!calculation) continue;
       const input = toMarketEngineInput(calculation);

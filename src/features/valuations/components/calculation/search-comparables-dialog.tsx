@@ -12,7 +12,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api, SessionExpiredError, type ComparableSearchFilters } from "@/lib/api-client";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
-import { MARKET_LABELS, type ComparableType, type MarketCalculationDto } from "@/features/valuations/calculation/market-types";
+import { MARKET_LABELS, isRentComparableType, type ComparableType, type MarketCalculationDto } from "@/features/valuations/calculation/market-types";
 import { SEARCH_TEXT_MIN, searchText } from "@/features/valuations/comparable-search/normalize";
 import type { ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 
@@ -67,7 +67,7 @@ export function SearchComparablesDialog({
   onAdded: (calculation: MarketCalculationDto) => void;
 }) {
   const labels = MARKET_LABELS[type];
-  const perUnit = type === "INMUEBLE_RENTA" ? "$/m²/mes" : "$/m²";
+  const perUnit = isRentComparableType(type) ? "$/m²/mes" : "$/m²";
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [error, setError] = useState<string | null>(null);

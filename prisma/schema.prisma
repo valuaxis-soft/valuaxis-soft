@@ -248,6 +248,8 @@ model Organizacion {
   JCatalogoFactores     Json?     @map("JCatalogoFactores") @db.JsonB
   /// Units the appraiser typed in "Formato del valor" and confirmed, offered again in the list (migration 041).
   JUnidadesPersonalizadas Json?   @map("JUnidadesPersonalizadas") @db.JsonB
+  /// Homologation factors the appraiser created ("Vista", "Acceso"), offered again in the list (migration 043).
+  JFactoresPersonalizados Json?   @map("JFactoresPersonalizados") @db.JsonB
   /// Pay per appraisal enforced: concluding with no credit balance is blocked (migration 040). Off by default.
   BCobroPorAvaluo       Boolean   @default(false) @map("BCobroPorAvaluo")
   BActivo               Boolean   @default(true) @map("BActivo")

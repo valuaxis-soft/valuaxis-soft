@@ -8,7 +8,7 @@
  */
 import type { MarketApproachResult } from "../engine/market";
 import type { AppSection, Block } from "../model";
-import type { TableSummaryBox } from "../services/table";
+import type { TableNote, TableSummaryBox } from "../services/table";
 import {
   EMPTY,
   figure,
@@ -18,7 +18,7 @@ import {
   generatedTable,
   money,
   moneyColumn,
-  offerLevelTable,
+  offerOptionsTable,
   printedTable,
   squareMetres,
   textColumn,
@@ -27,6 +27,15 @@ import {
   COMPARABLE_TYPE_LABELS,
   FACTOR_TYPE_LABELS,
   MARKET_LABELS,
+  characteristicFieldsOf,
+  factorValue,
+  findFactor,
+  homologationBasisOf,
+  isBuiltinCharacteristic,
+  isLandComparableType,
+  offerLabelsOf,
+  offerMarkOf,
+  type CharacteristicField,
   type ComparableDto,
   type ComparableType,
   type FactorSlotConfig,
@@ -81,10 +90,10 @@ const PAGE: Record<ComparableType, {
   intro: string;
   area: string;
   shortArea: string;
-  areaTag: string;
   price: string;
-  priceTag: string;
   unit: string;
+  /** Title of the homologation apartado. */
+  homologation: string;
   homologated: string;
   mean: string;
   adopted: string;
@@ -97,8 +106,8 @@ const PAGE: Record<ComparableType, {
     offerTitle: "TERRENOS SIMILARES EN VENTA",
     offerIntro: "Nivel de oferta observada durante la investigación de mercado de terrenos.",
     intro: "Comparables de terrenos en venta semejantes en uso al sujeto que se valúa.",
-    area: "SUPERFICIE DE TERRENO (m²)", shortArea: "SUP. TERRENO (m²)", areaTag: "SUPERFICIE",
-    price: "OFERTA $ (TERRENO)", priceTag: "OFERTA", unit: "$/m²",
+    area: "SUPERFICIE DE TERRENO (m²)", shortArea: "SUP. TERRENO (m²)",
+    price: "OFERTA $ (TERRENO)", unit: "$/m²", homologation: "HOMOLOGACIÓN (TERRENOS)",
     homologated: "Valor Unitario Homologado", mean: "Valor Prom. Homologado", adopted: "Valor homologado a utilizar",
     baseArea: "Lote Tipo", subject: "Lote Sujeto", value: "VALOR COMPARATIVO DE MERCADO (TERRENOS)",
   },
@@ -107,8 +116,8 @@ const PAGE: Record<ComparableType, {
     offerTitle: "INMUEBLES SIMILARES EN VENTA",
     offerIntro: "Nivel de oferta observada durante la investigación de mercado de inmuebles.",
     intro: "Comparables de inmuebles en venta semejantes en uso al sujeto que se valúa.",
-    area: "SUP. CONSTRUIDA (m²)", shortArea: "SUP. CONSTR. (m²)", areaTag: "SUP. CONST.",
-    price: "OFERTA $ (INMUEBLE)", priceTag: "OFERTA", unit: "$/m²",
+    area: "SUP. CONSTRUIDA (m²)", shortArea: "SUP. CONSTR. (m²)",
+    price: "OFERTA $ (INMUEBLE)", unit: "$/m²", homologation: "HOMOLOGACIÓN (INMUEBLES)",
     homologated: "Valor Unitario Homologado", mean: "Valor Prom. Homologado", adopted: "Valor homologado a utilizar",
     baseArea: "Superficie Tipo", subject: "Superficie del Sujeto", value: "VALOR COMPARATIVO DE MERCADO (INMUEBLES)",
   },
@@ -117,12 +126,30 @@ const PAGE: Record<ComparableType, {
     offerTitle: "INMUEBLES SIMILARES EN RENTA",
     offerIntro: "Nivel de oferta observada durante la investigación de mercado de rentas de inmuebles.",
     intro: "Comparables de inmuebles en renta semejantes en uso al sujeto que se valúa.",
-    area: "SUP. RENTABLE (m²)", shortArea: "SUP. RENTABLE (m²)", areaTag: "SUP. RENTABLE",
-    price: "RENTA MENSUAL $", priceTag: "RENTA MENSUAL", unit: "$/m²/mes",
+    area: "SUP. RENTABLE (m²)", shortArea: "SUP. RENTABLE (m²)",
+    price: "RENTA MENSUAL $", unit: "$/m²/mes", homologation: "HOMOLOGACIÓN (RENTAS)",
     homologated: "Renta Unitaria Homologada", mean: "Renta Prom. Homologada", adopted: "Renta homologada a utilizar",
     baseArea: "Superficie Tipo", subject: "Superficie del Sujeto", value: "RENTA MENSUAL ESTIMADA DEL SUJETO",
   },
+  TERRENO_RENTA: {
+    title: "MERCADO DE RENTAS (TERRENOS)", scope: "(TERRENOS EN RENTA)",
+    offerTitle: "TERRENOS SIMILARES EN RENTA",
+    offerIntro: "Nivel de oferta observada durante la investigación de mercado de rentas de terrenos.",
+    intro: "Comparables de terrenos en renta semejantes en uso al sujeto que se valúa.",
+    area: "SUPERFICIE DE TERRENO (m²)", shortArea: "SUP. TERRENO (m²)",
+    price: "RENTA MENSUAL $", unit: "$/m²/mes", homologation: "HOMOLOGACIÓN (RENTAS DE TERRENOS)",
+    homologated: "Renta Unitaria Homologada", mean: "Renta Prom. Homologada", adopted: "Renta homologada a utilizar",
+    baseArea: "Lote Tipo", subject: "Lote Sujeto", value: "RENTA MENSUAL ESTIMADA DEL TERRENO",
+  },
 };
+
+/** The sentence above the offer level grid, unless the appraiser writes another. */
+export const defaultOfferIntro = (type: ComparableType) => PAGE[type].offerIntro;
+
+/** Under the homologation table, as the appraiser's format reads the factors. */
+export function homologationLegend(type: ComparableType) {
+  return `Cuando el factor de homologación es menor a la unidad denota que la oferta es mejor que el ${isLandComparableType(type) ? "predio" : "inmueble"} valuado.`;
+}
 
 /** Column titles of the factors as the books abbreviate them. */
 const FACTOR_SHORT_LABELS: Record<FactorType, string> = {
@@ -149,26 +176,33 @@ function landUseCell({ landUseKey, landUse }: ComparableDto) {
   return !landUse || landUse.startsWith(landUseKey) ? landUse ?? landUseKey : `${landUseKey} (${landUse})`;
 }
 
-/** One line with what was captured of the comparable, in the order of the books. */
-function characteristics(comparable: ComparableDto, page: (typeof PAGE)[ComparableType]) {
-  const parts: [string, string | null | undefined][] = [
-    ["N. FRENTES", comparable.frontCount ? String(comparable.frontCount) : null],
+/** A characteristic as the line prints it: figures with their units, texts as written. */
+function printedCharacteristic(comparable: ComparableDto, key: string): string | null | undefined {
+  if (!isBuiltinCharacteristic(key)) return comparable.extra?.[key];
+  switch (key) {
+    case "frontCount": return comparable.frontCount ? String(comparable.frontCount) : null;
     // The zoning key, without the description the land use column already gives.
-    ["USO DE SUELO", comparable.landUseKey || comparable.landUse?.split(" (")[0]],
-    ["FORMA", comparable.shape],
-    ["ZONA", comparable.zone],
-    ["FRENTE", metres(comparable.frontage)],
-    ["FONDO", metres(comparable.depth)],
-    [page.areaTag, comparable.area ? squareMetres(comparable.area) : null],
-    ["CONSERVACIÓN", comparable.conservation],
-    ["CALIDAD", comparable.quality],
-    ["TOPOGRAFÍA", comparable.topography],
-    ["SERVICIOS", comparable.services],
+    case "landUseKey": return comparable.landUseKey || comparable.landUse?.split(" (")[0];
+    case "frontage": return metres(comparable.frontage);
+    case "depth": return metres(comparable.depth);
+    case "area": return comparable.area ? squareMetres(comparable.area) : null;
     // Without the space after the sign, so the amount is not cut at the end of a line.
-    [page.priceTag, comparable.price ? money(comparable.price).replace("$ ", "$") : null],
-    ["OBSERVACIONES", comparable.notes],
-  ];
-  return parts.filter(([, value]) => value).map(([tag, value]) => `${tag}: ${value}`).join(" ; ") || EMPTY;
+    case "price": return comparable.price ? money(comparable.price).replace("$ ", "$") : null;
+    default: return comparable[key];
+  }
+}
+
+/**
+ * One line with what was captured of the comparable, in the order and with
+ * the tags of the list of characteristics; or the appraiser's own text.
+ */
+function characteristics(comparable: ComparableDto, fields: CharacteristicField[]) {
+  if (comparable.characteristicsText?.trim()) return comparable.characteristicsText.trim();
+  return fields
+    .map((field): [string, string | null | undefined] => [field.label, printedCharacteristic(comparable, field.key)])
+    .filter(([, value]) => value)
+    .map(([tag, value]) => `${tag}: ${value}`)
+    .join(" ; ") || EMPTY;
 }
 
 /** The block of the market section. None while there is nothing to show. */
@@ -181,12 +215,14 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
   const byReference = new Map(result?.homologation.comparables.map((row) => [row.id, row]) ?? []);
   const reference = (comparable: ComparableDto) => String(comparable.reference);
   // The fourth column of the offers table: the books give the offer date for land and the conservation for buildings.
-  const offersOfLand = settings.comparableType === "TERRENO_VENTA";
+  const offersOfLand = isLandComparableType(settings.comparableType);
+  const fields = characteristicFieldsOf(settings);
 
-  // The offer level of the market research: the six options of the books, with an X on the one observed.
-  const offer = settings.offerLevel
+  // The offer level of the market research: the options of the books (or the appraiser's), with an X on the one observed.
+  const offerMark = offerMarkOf(settings);
+  const offer = offerMark !== null
     ? [generatedApartado(`${prefix}-oferta`, page.offerTitle, {
-        tables: [offerLevelTable(`${prefix}-tabla-oferta`, page.offerIntro, settings.offerLevel)],
+        tables: [offerOptionsTable(`${prefix}-tabla-oferta`, settings.offerIntro?.trim() || page.offerIntro, offerLabelsOf(settings), offerMark)],
       })]
     : [];
 
@@ -198,7 +234,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
           reference(comparable),
           comparable.location,
           landUseCell(comparable),
-          characteristics(comparable, page),
+          characteristics(comparable, fields),
         ]),
         { compact: true, notes: [{ position: "top", label: "Obtención del valor unitario.", text: page.intro }] }),
       generatedTable(`${prefix}-tabla-ofertas`, "Ofertas de los comparables",
@@ -221,7 +257,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
 
   const slots = settings.factorSlots;
   const factors = "FACTORES DE HOMOLOGACIÓN";
-  const homologation = generatedApartado(`${prefix}-homologacion`, `HOMOLOGACIÓN ${settings.comparableType === "INMUEBLE_RENTA" ? "(RENTAS)" : page.scope}`, {
+  const homologation = generatedApartado(`${prefix}-homologacion`, page.homologation, {
     tables: [generatedTable(`${prefix}-tabla-homologacion`, "Homologación",
       [
         figureColumn("REF"), moneyColumn(page.price), figureColumn(page.shortArea), moneyColumn(`${words.unitValue} ${page.unit}`),
@@ -239,10 +275,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
           ...slots.map((slot) => {
             if (!row) return EMPTY;
             if (slot.type === "SUPERFICIE") return figure(row.surfaceFactor);
-            const captured = comparable.factors.find((item) => item.type === slot.type);
-            return figure(captured?.subjectRating && captured.comparableRating
-              ? captured.subjectRating / captured.comparableRating
-              : captured?.value ?? 1);
+            return figure(factorValue(findFactor(comparable, slot)));
           }),
           row ? figure(row.resultantFactor) : EMPTY,
           row ? money(row.homologatedUnitValue) : EMPTY,
@@ -250,38 +283,60 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
       }),
       {
         summaryBoxes: homologationBoxes(calculation, result),
-        ...(result && settings.justification
-          ? { notes: [{ position: "bottom" as const, label: "Justificación del valor adoptado:", text: settings.justification }] }
-          : {}),
+        notes: [
+          { position: "bottom", text: homologationLegend(settings.comparableType) },
+          ...justificationNotes(calculation),
+        ],
       })],
   });
 
   return [generatedBlock(prefix, page.title, { apartados: [...offer, data, homologation] })];
 }
 
+/**
+ * "Justificación de los factores utilizados", after the tables: the general
+ * text, then each comparable's with its number in bold. The appraiser may
+ * leave it out of the dictamen.
+ */
+function justificationNotes({ settings, comparables }: MarketCalculationDto): TableNote[] {
+  if (settings.showFactorJustification === false) return [];
+  const general = settings.justification?.trim();
+  return [
+    ...(general ? [{ position: "bottom" as const, label: "Justificación de los factores utilizados:", text: general }] : []),
+    ...comparables.flatMap((comparable) => {
+      const text = comparable.factorJustification?.trim();
+      return text ? [{ position: "bottom" as const, label: `Comparable ${comparable.reference}:`, text }] : [];
+    }),
+  ];
+}
+
 /** Above the homologation, what it is made against; below, the steps from the homologated values to the value. */
 function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApproachResult | null): TableSummaryBox[] {
   const subjectArea = settings.subjectArea;
   const page = PAGE[settings.comparableType];
-  const againstBase = Boolean(settings.baseArea);
-  // The typical lot of the zone, beside what the homologation is made against; only what was captured.
+  const againstBase = homologationBasisOf(settings) === "LOTE_TIPO";
+  // Frente and fondo of what the homologation is made against: the typical lot of the zone, or the subject; only what was captured.
+  const [frontLabel, depthLabel] = againstBase
+    ? ["Frente tipo en la zona:", "Fondo tipo en la zona:"]
+    : ["Frente del sujeto:", "Fondo del sujeto:"];
   const zone: TableSummaryBox = {
     id: "zona",
     position: "top",
     align: "end",
     rows: [
-      ...(settings.typicalFrontage ? [{ label: "Frente tipo en la zona:", value: metres(settings.typicalFrontage) as string }] : []),
-      ...(settings.typicalDepth ? [{ label: "Fondo tipo en la zona:", value: metres(settings.typicalDepth) as string }] : []),
+      ...(settings.typicalFrontage ? [{ label: frontLabel, value: metres(settings.typicalFrontage) as string }] : []),
+      ...(settings.typicalDepth ? [{ label: depthLabel, value: metres(settings.typicalDepth) as string }] : []),
     ],
   };
   const boxes: TableSummaryBox[] = [
+    // As the format: both options, with an x on the one the homologation is made against.
     ...(subjectArea ? [{
       id: "base",
       position: "top" as const,
       align: "start" as const,
       caption: "Homologación de acuerdo a:",
       rows: [
-        ...(settings.baseArea ? [{ label: `${page.baseArea}:`, value: squareMetres(settings.baseArea), mark: true }] : []),
+        { label: `${page.baseArea}:`, value: settings.baseArea ? squareMetres(settings.baseArea) : EMPTY, mark: againstBase },
         { label: `${page.subject}:`, value: squareMetres(subjectArea), mark: !againstBase },
       ],
     }] : []),
@@ -341,7 +396,12 @@ export function replaceGeneratedBlocks(
   section: AppSection,
   owns: (block: Block) => boolean,
   blocks: Block[],
-  options: { placeholderIds?: string[]; position?: "start" | "end" } = {},
+  options: {
+    placeholderIds?: string[];
+    position?: "start" | "end";
+    /** Where new blocks go among the kept ones, before `position`; null leaves it to `position`. */
+    placeAmong?: (kept: Block[]) => number | null;
+  } = {},
 ): AppSection {
   // Saved block ids come back in lower case.
   const placeholders = new Set((blocks.length ? options.placeholderIds ?? [] : []).map((id) => id.toLowerCase()));
@@ -352,8 +412,29 @@ export function replaceGeneratedBlocks(
   const kept = section.blocks.filter((item) => !owns(item) && !isPlaceholder(item));
   const insertAt = firstIndex !== -1
     ? section.blocks.slice(0, firstIndex).filter((item) => kept.includes(item)).length
-    : options.position === "end" ? kept.length : 0;
+    : options.placeAmong?.(kept) ?? (options.position === "end" ? kept.length : 0);
   return { ...section, blocks: [...kept.slice(0, insertAt), ...blocks, ...kept.slice(insertAt)] };
+}
+
+/** The order the markets print in, as the appraiser's books: land before buildings for sale, buildings before land for rent. */
+const PRINT_ORDER: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"];
+
+/**
+ * A market's first pages go after the markets printed before it, or before
+ * the ones printed after it, so land and buildings keep the books' order
+ * whichever is captured first.
+ */
+function placeAmongMarkets(type: ComparableType, kind: "calculo" | "fotos") {
+  const suffix = kind === "fotos" ? "-fotos" : "-enfoque";
+  const rank = (block: Block) => PRINT_ORDER.findIndex((item) => block.id.startsWith(`${prefixFor(item)}${suffix}`));
+  const own = PRINT_ORDER.indexOf(type);
+  return (kept: Block[]) => {
+    const ranks = kept.map(rank);
+    const before = ranks.findLastIndex((value) => value !== -1 && value < own);
+    if (before !== -1) return before + 1;
+    const after = ranks.findIndex((value) => value > own);
+    return after === -1 ? null : after;
+  };
 }
 
 /** The market blocks of one comparable type, or its photo block (`kind: "fotos"`). */
@@ -367,7 +448,7 @@ export function withGeneratedBlocks(
   const owns = options.kind === "fotos"
     ? (item: Block) => item.id.startsWith(photos)
     : (item: Block) => item.id.startsWith(prefixFor(type)) && !item.id.startsWith(photos);
-  return replaceGeneratedBlocks(section, owns, blocks, options);
+  return replaceGeneratedBlocks(section, owns, blocks, { ...options, placeAmong: placeAmongMarkets(type, options.kind ?? "calculo") });
 }
 
 /** Compares what the dictamen shows, ignoring labels the editor renumbers and photo URLs that expire. */

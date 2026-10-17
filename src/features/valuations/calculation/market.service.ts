@@ -23,8 +23,15 @@ import { recomputeConclusion } from "./conclusion.service";
 import { recomputeIncome } from "./income.service";
 import type { ComparableInputPayload, MarketSettingsPayload } from "./market-schemas";
 import {
+  CUSTOM_FACTOR_KEY,
+  OFFER_LEVELS,
   defaultMarketSettings,
+  factorKey,
+  homologationBasisOf,
+  isLandComparableType,
+  isRentComparableType,
   marketEngineConfig,
+  offerMarkOf,
   toMarketEngineInput,
   type ComparableDto,
   type ComparableType,
@@ -39,6 +46,8 @@ const MAX_PHOTOS_PER_COMPARABLE = 6;
 const COMPARABLE_ENTITY = "ComparableAvaluo";
 
 type PhotoSnapshot = { id: string; key: string; title: string };
+/** A stored photo of a comparable, as another comparable may take it. */
+export type StoredComparablePhoto = Omit<PhotoSnapshot, "id">;
 type PropertySnapshot = {
   landUse: string | null;
   landUseKey: string | null;
@@ -52,10 +61,21 @@ type PropertySnapshot = {
   conservation: string | null;
   quality: string | null;
   notes: string | null;
+  extra?: Record<string, string>;
+  characteristicsText?: string | null;
+  factorJustification?: string | null;
 };
 /** What JConfiguracion keeps of the settings; the rest has its own columns. */
 type StoredConfiguration = Partial<Pick<MarketSettingsDto,
-  "factorSlots" | "adoptedUnitValue" | "rounding" | "offerLevel" | "typicalFrontage" | "typicalDepth">>;
+  | "factorSlots" | "adoptedUnitValue" | "rounding" | "offerLevel" | "offerLabels" | "offerMark" | "offerIntro" | "homologationBasis"
+  | "typicalFrontage" | "typicalDepth" | "characteristicFields" | "subjectCharacteristics" | "showFactorJustification">> & {
+  /**
+   * The lote tipo captured, kept while the homologation is against the
+   * subject: NSuperficieBase holds it only against the lote tipo, so the cost
+   * approach, which reads that column, homologates its land the same way.
+   */
+  loteTipo?: number | null;
+};
 type PublicationSnapshot = {
   sourceName: string | null;
   contactName: string | null;
@@ -105,6 +125,9 @@ async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean): Prom
     conservation: property.conservation ?? null,
     quality: property.quality ?? null,
     notes: property.notes ?? null,
+    extra: property.extra ?? {},
+    characteristicsText: property.characteristicsText ?? null,
+    factorJustification: property.factorJustification ?? null,
     sourceName: publication.sourceName ?? null,
     contactName: publication.contactName ?? null,
     contactPhone: publication.contactPhone ?? null,
@@ -117,6 +140,8 @@ async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean): Prom
     }))),
     factors: row.factoresHomologacion.map((factor) => ({
       type: factor.tipoFactorHomologacion.SClave as FactorType,
+      // A factor the firm created keeps its key in the name; the others are named by their type.
+      ...(CUSTOM_FACTOR_KEY.test(factor.SNombre) ? { key: factor.SNombre } : {}),
       value: decimal(factor.NValor),
       subjectRating: decimal(factor.NCalificacionSujeto),
       comparableRating: decimal(factor.NCalificacionComparable),
@@ -141,20 +166,40 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
     ? {
         comparableType: type,
         subjectArea: decimal(approach.NSuperficieSujeto),
-        baseArea: decimal(approach.NSuperficieBase),
+        baseArea: decimal(approach.NSuperficieBase) ?? configuration.loteTipo ?? null,
         surfacePower: decimal(approach.NPotenciaSuperficie) ?? defaults.surfacePower,
         adoptedUnitValue: configuration.adoptedUnitValue ?? null,
         justification: approach.SJustificacionValor,
         additionalAmount: decimal(approach.NMontoAdicional) ?? 0,
         factorSlots: configuration.factorSlots?.length ? configuration.factorSlots : defaults.factorSlots,
         ...(configuration.rounding === undefined ? {} : { rounding: configuration.rounding }),
-        offerLevel: configuration.offerLevel ?? null,
+        ...offerCaptures(configuration),
+        homologationBasis: homologationBasisOf({ homologationBasis: configuration.homologationBasis, baseArea: decimal(approach.NSuperficieBase) }),
         typicalFrontage: configuration.typicalFrontage ?? null,
         typicalDepth: configuration.typicalDepth ?? null,
+        characteristicFields: configuration.characteristicFields ?? null,
+        subjectCharacteristics: configuration.subjectCharacteristics ?? {},
+        showFactorJustification: configuration.showFactorJustification ?? true,
       }
     : defaults;
   const comparables = await Promise.all(rows.map((row) => toComparableDto(row, withPhotoUrls)));
-  return { typeId, settings, comparables };
+  return { typeId, settings, comparables, configured: approach !== null };
+}
+
+/**
+ * The offer level grid as stored: its options, the mark and the sentence. A
+ * capture of before keeps the six options of the format and its offer level;
+ * the level stays readable while the options are those six.
+ */
+function offerCaptures(stored: StoredConfiguration) {
+  const offerLabels = stored.offerLabels?.length ? stored.offerLabels : null;
+  const offerMark = offerMarkOf({ offerMark: stored.offerMark, offerLevel: stored.offerLevel, offerLabels });
+  return {
+    offerLevel: !offerLabels && offerMark !== null ? OFFER_LEVELS[offerMark] : null,
+    offerLabels,
+    offerMark,
+    offerIntro: stored.offerIntro ?? null,
+  };
 }
 
 /** The rent market of a version as the income approach needs it (no photo URLs). */
@@ -167,9 +212,9 @@ export async function getMarketCalculation(publicId: string, organizationId: num
   return prisma.$transaction(async (tx) => {
     const avaluo = await findValuation(tx, publicId, organizationId);
     const versionId = avaluo.IdVersionTrabajo ?? avaluo.IdVersionFinal;
-    if (!versionId) return { settings: defaultMarketSettings(type), comparables: [], locked: avaluo.BBloqueado };
-    const { settings, comparables } = await loadCalculation(tx, versionId, type, true);
-    return { settings, comparables, locked: avaluo.BBloqueado };
+    if (!versionId) return { settings: defaultMarketSettings(type), comparables: [], locked: avaluo.BBloqueado, configured: false };
+    const { settings, comparables, configured } = await loadCalculation(tx, versionId, type, true);
+    return { settings, comparables, locked: avaluo.BBloqueado, configured };
   });
 }
 
@@ -237,14 +282,15 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
 }
 
 /**
- * The cost approach values the land, and the income approach the rent, with
- * the value adopted here; the conclusion takes the sale market value.
+ * The cost approach values the land with the land sale market, and the income
+ * approach the rent with the buildings' rent market; the conclusion takes the
+ * sale market value. The land rent market feeds no other approach.
  */
 async function recomputeDependents(tx: Tx, versionId: number, type: ComparableType) {
   if (type === "TERRENO_VENTA") await recomputeCosts(tx, versionId);
   if (type === "INMUEBLE_RENTA") await recomputeIncome(tx, versionId);
   // A sale market value is one of the approaches of the conclusion.
-  if (type !== "INMUEBLE_RENTA") await recomputeConclusion(tx, versionId);
+  if (!isRentComparableType(type)) await recomputeConclusion(tx, versionId);
 }
 
 /** The value sent, or the stored one when the client left the field out. */
@@ -256,28 +302,41 @@ function storedConfiguration(settings: StoredConfiguration) {
     adoptedUnitValue: settings.adoptedUnitValue,
     ...(settings.rounding === undefined ? {} : { rounding: settings.rounding }),
     offerLevel: settings.offerLevel ?? null,
+    offerLabels: settings.offerLabels ?? null,
+    offerMark: settings.offerMark ?? null,
+    offerIntro: settings.offerIntro ?? null,
+    homologationBasis: settings.homologationBasis ?? null,
+    loteTipo: settings.loteTipo ?? null,
     typicalFrontage: settings.typicalFrontage ?? null,
     typicalDepth: settings.typicalDepth ?? null,
+    characteristicFields: settings.characteristicFields ?? null,
+    subjectCharacteristics: settings.subjectCharacteristics ?? {},
+    ...(settings.showFactorJustification === undefined ? {} : { showFactorJustification: settings.showFactorJustification }),
   } as Prisma.InputJsonValue;
 }
 
 /**
- * The appraiser adopts their own unit value, within 30 % of the homologated
- * mean and median: a guard against a slip like 130,000 for 13,000.
+ * The offer level grid to store. A client that sends only the offer level (of
+ * before) marks that option of the six of the format; one that sends nothing
+ * leaves the grid as it was.
  */
-async function assertAdoptedWithinLimits(tx: Tx, versionId: number, type: ComparableType) {
-  const { settings, comparables } = await loadCalculation(tx, versionId, type, false);
-  const engineInput = toMarketEngineInput({ settings, comparables });
-  if (!engineInput.ok || settings.adoptedUnitValue === null) return;
-  const result = computeMarketApproach(engineInput.input, marketEngineConfig(settings));
-  if (result.adoptedOutsideLimits) {
-    const format = (value: number) => value.toLocaleString("es-MX", { maximumFractionDigits: 2 });
-    throw new ValuationWorkflowError(
-      `El valor adoptado debe quedar entre ${format(result.adoptedLimits.min)} y ${format(result.adoptedLimits.max)} (±30 % del promedio y la mediana homologados).`,
-      400,
-    );
-  }
+function offerToStore(payload: MarketSettingsPayload, stored: StoredConfiguration) {
+  const offerLabels = unlessOmitted(payload.offerLabels, stored.offerLabels);
+  const fromLevel = payload.offerLevel === undefined ? undefined : payload.offerLevel ? OFFER_LEVELS.indexOf(payload.offerLevel) : null;
+  const offerMark = payload.offerMark !== undefined ? payload.offerMark
+    : fromLevel !== undefined ? fromLevel
+      : offerMarkOf({ offerMark: stored.offerMark, offerLevel: stored.offerLevel, offerLabels: stored.offerLabels });
+  return {
+    offerLabels: offerLabels?.length ? offerLabels : null,
+    offerMark,
+    offerLevel: !offerLabels?.length && offerMark !== null ? OFFER_LEVELS[offerMark] : null,
+    offerIntro: unlessOmitted(payload.offerIntro, stored.offerIntro),
+  };
 }
+
+// The ±30 % of the homologated mean and median is a warning, not a lock: the
+// appraiser answers for the value adopted (his observations of 13–14 Oct 2026). The panel and the
+// engine's `adoptedOutsideLimits` flag it; the value is stored as captured.
 
 /* ------------------------------------------------------------------ */
 /*  Settings                                                           */
@@ -337,18 +396,26 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
     const stored = asRecord(current?.JConfiguracion ?? null) as StoredConfiguration;
     const previousSlots = stored.factorSlots ?? [];
     await followSubjectRatings(tx, { versionId, typeId, organizationId: user.organizationId, previous: previousSlots, next: payload.factorSlots });
+    const homologationBasis = unlessOmitted(payload.homologationBasis, stored.homologationBasis);
+    const againstBase = homologationBasisOf({ homologationBasis, baseArea: payload.baseArea }) === "LOTE_TIPO";
     const data = {
       NSuperficieSujeto: payload.subjectArea,
-      NSuperficieBase: payload.baseArea,
+      // Against the subject the lote tipo is kept aside, and neither this market nor the cost approach uses it.
+      NSuperficieBase: againstBase ? payload.baseArea : null,
       NPotenciaSuperficie: payload.surfacePower,
       NMontoAdicional: payload.additionalAmount,
       SJustificacionValor: payload.justification,
       // A client that does not send the captures of the appraiser's format leaves them as they were.
       JConfiguracion: storedConfiguration({
         ...payload,
-        offerLevel: unlessOmitted(payload.offerLevel, stored.offerLevel),
+        ...offerToStore(payload, stored),
+        homologationBasis,
+        loteTipo: payload.baseArea,
         typicalFrontage: unlessOmitted(payload.typicalFrontage, stored.typicalFrontage),
         typicalDepth: unlessOmitted(payload.typicalDepth, stored.typicalDepth),
+        characteristicFields: unlessOmitted(payload.characteristicFields, stored.characteristicFields),
+        subjectCharacteristics: payload.subjectCharacteristics ?? stored.subjectCharacteristics,
+        showFactorJustification: payload.showFactorJustification ?? stored.showFactorJustification,
       }),
     };
     await tx.enfoqueMercado.upsert({
@@ -356,7 +423,6 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
       create: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, ...data },
       update: data,
     });
-    await assertAdoptedWithinLimits(tx, versionId, payload.comparableType);
     await recompute(tx, versionId, payload.comparableType);
   });
 }
@@ -380,6 +446,9 @@ function snapshots(payload: ComparableInputPayload, stored: Partial<PropertySnap
     conservation: unlessOmitted(payload.conservation, stored.conservation),
     quality: unlessOmitted(payload.quality, stored.quality),
     notes: payload.notes,
+    extra: payload.extra ?? stored.extra ?? {},
+    characteristicsText: unlessOmitted(payload.characteristicsText, stored.characteristicsText),
+    factorJustification: unlessOmitted(payload.factorJustification, stored.factorJustification),
   };
   const publication: PublicationSnapshot = {
     sourceName: payload.sourceName,
@@ -397,9 +466,10 @@ function snapshots(payload: ComparableInputPayload, stored: Partial<PropertySnap
   };
 }
 
+/** Land comparables, for sale or rent, carry the land area; buildings the built or the rentable one. */
 function areaColumns(type: ComparableType, area: number | null) {
   return {
-    NSuperficieTerrenoCapturada: type === "TERRENO_VENTA" ? area : null,
+    NSuperficieTerrenoCapturada: isLandComparableType(type) ? area : null,
     NSuperficieConstruccionCapturada: type === "INMUEBLE_VENTA" ? area : null,
     NSuperficieRentableCapturada: type === "INMUEBLE_RENTA" ? area : null,
   };
@@ -408,7 +478,7 @@ function areaColumns(type: ComparableType, area: number | null) {
 function propertyColumns(type: ComparableType, payload: ComparableInputPayload) {
   return {
     SNombre: payload.location.slice(0, 180),
-    NSuperficieTerreno: type === "TERRENO_VENTA" ? payload.area : null,
+    NSuperficieTerreno: isLandComparableType(type) ? payload.area : null,
     NSuperficieConstruccion: type === "INMUEBLE_VENTA" ? payload.area : null,
     NSuperficieRentable: type === "INMUEBLE_RENTA" ? payload.area : null,
     NFrente: payload.frontage,
@@ -445,7 +515,7 @@ async function syncPublication(tx: Tx, input: {
     return input.current;
   }
   const [operation, state] = await Promise.all([
-    catalogId((key) => tx.tipoOperacion.findUnique({ where: { SClave: key } }), input.type === "INMUEBLE_RENTA" ? "RENTA" : "VENTA", (row) => row.IdTipoOperacion),
+    catalogId((key) => tx.tipoOperacion.findUnique({ where: { SClave: key } }), isRentComparableType(input.type) ? "RENTA" : "VENTA", (row) => row.IdTipoOperacion),
     catalogId((key) => tx.estadoPublicacion.findUnique({ where: { SClave: key } }), "ACTIVA", (row) => row.IdEstadoPublicacion),
   ]);
   const created = await tx.publicacionPropiedad.create({
@@ -474,7 +544,8 @@ async function replaceFactors(tx: Tx, comparableId: bigint, payload: ComparableI
       return {
         IdComparableAvaluo: comparableId,
         IdTipoFactorHomologacion: typeId,
-        SNombre: factor.type,
+        // The firm's own factors are of type OTRO; the name keeps which one.
+        SNombre: factorKey(factor),
         NValor: value,
         NCalificacionSujeto: factor.subjectRating,
         NCalificacionComparable: factor.comparableRating,
@@ -495,13 +566,19 @@ async function findComparable(tx: Tx, versionId: number, comparableId: string) {
   return row;
 }
 
-/** Adds one comparable after the last of its type; the caller recomputes. */
+/**
+ * Adds one comparable after the last of its type; the caller recomputes.
+ * `photos` are those of a comparable brought from another valuation: the
+ * stored files are shared, as a reopened version shares them, since removing a
+ * photo never deletes its file.
+ */
 async function insertComparable(
   tx: Tx,
   context: { avaluo: { IdAvaluo: number; IdTipoInmueble: number }; versionId: number; typeId: number },
   user: AuthUser,
   type: ComparableType,
   payload: ComparableInputPayload,
+  photos: StoredComparablePhoto[] = [],
 ) {
   const { avaluo, versionId, typeId } = context;
   const last = await tx.comparableAvaluo.aggregate({
@@ -526,7 +603,8 @@ async function insertComparable(
       ...areaColumns(type, payload.area),
       NValorUnitarioCapturado: payload.price && payload.area ? payload.price / payload.area : null,
       ...snapshots(payload),
-      JImagenesSnapshot: [],
+      JImagenesSnapshot: photos.slice(0, MAX_PHOTOS_PER_COMPARABLE)
+        .map((photo) => ({ id: randomUUID(), key: photo.key, title: photo.title })) as Prisma.InputJsonValue,
     },
   });
   await replaceFactors(tx, comparable.IdComparableAvaluo, payload);
@@ -543,12 +621,20 @@ export async function createComparable(publicId: string, user: AuthUser, type: C
   });
 }
 
-/** Adds many comparables at once (Excel import) and recomputes once; all or none. */
-export async function importComparables(publicId: string, user: AuthUser, type: ComparableType, payloads: ComparableInputPayload[]) {
+/**
+ * Adds many comparables at once (Excel import, comparables found in a search)
+ * and recomputes once; all or none. A found comparable may bring its photos.
+ */
+export async function importComparables(
+  publicId: string,
+  user: AuthUser,
+  type: ComparableType,
+  payloads: Array<ComparableInputPayload & { photos?: StoredComparablePhoto[] }>,
+) {
   return prisma.$transaction(async (tx) => {
     const { avaluo, versionId } = await writableVersion(tx, publicId, user);
     const typeId = await comparableTypeId(tx, type);
-    for (const payload of payloads) await insertComparable(tx, { avaluo, versionId, typeId }, user, type, payload);
+    for (const { photos, ...payload } of payloads) await insertComparable(tx, { avaluo, versionId, typeId }, user, type, payload, photos);
     await recompute(tx, versionId, type);
     return payloads.length;
   }, { timeout: 60_000 });

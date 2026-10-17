@@ -15,6 +15,7 @@ import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { Prisma } from "@prisma/client";
 import { resolveFactorCatalog, type FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 import { resolveSignatures, signatureErrors } from "@/features/valuations/services/valuation-signatures";
+import { addCustomFactorTo, resolveCustomFactors, type CustomFactor } from "./custom-factors";
 import { addCustomUnitTo, resolveCustomUnits } from "./custom-units";
 import { todayInMexico } from "./firm-rules";
 import type { FirmSettingsInput } from "./firm-schemas";
@@ -290,4 +291,32 @@ export async function addCustomUnit(user: AuthUser, unit: string): Promise<strin
     metadata: { unit: next.units.at(-1) },
   });
   return next.units;
+}
+
+/** The homologation factors the firm created, in the order they were added. */
+export async function getCustomFactors(organizationId: number): Promise<CustomFactor[]> {
+  const organization = await findOrganization(organizationId);
+  return resolveCustomFactors(organization.JFactoresPersonalizados);
+}
+
+/** Keeps a factor for the firm and answers the list and that factor; one already kept (however it was written) changes nothing. */
+export async function addCustomFactor(user: AuthUser, label: string): Promise<{ factors: CustomFactor[]; factor: CustomFactor | null }> {
+  const organization = await findOrganization(user.organizationId);
+  const next = addCustomFactorTo(resolveCustomFactors(organization.JFactoresPersonalizados), label);
+  if (!next.added) return { factors: next.factors, factor: next.factor };
+  await prisma.organizacion.update({
+    where: { IdOrganizacion: organization.IdOrganizacion },
+    data: { JFactoresPersonalizados: next.factors },
+  });
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    organizationId: organization.IdOrganizacion,
+    userId: user.id,
+    entity: "Organizacion",
+    entityId: String(organization.IdOrganizacion),
+    action: "CUSTOM_FACTOR_ADD",
+    result: "EXITOSO",
+    metadata: { factor: next.factor?.label ?? null },
+  });
+  return { factors: next.factors, factor: next.factor };
 }
