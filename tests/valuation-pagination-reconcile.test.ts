@@ -257,3 +257,21 @@ test("splitMeasured — consecutive mutations: final state is correct", () => {
   assert.deepStrictEqual(flat2, ["A", "B", "C", "D", "E", "F"]);
   assert.strictEqual(p2.length, 2, "6 items × 200px = 1200px → 2 pages");
 });
+
+test("splitMeasured — a title never stays alone at the foot of a page: it moves with what follows", () => {
+  const title = (id: string, height: number) => ({ item: { id, node: null, keepWithNext: true }, height });
+  const pages = splitMeasuredDocumentFlowItems([measured("A", 500), title("bloque", 30), title("apartado", 20), measured("filas", 200)], 600);
+  assert.deepStrictEqual(pages.map((page) => page.map((entry) => entry.id)), [["A"], ["bloque", "apartado", "filas"]]);
+
+  // The heights carried over count on the new page.
+  const carried = splitMeasuredDocumentFlowItems([measured("A", 500), title("bloque", 50), measured("B", 200), measured("C", 360)], 600);
+  assert.deepStrictEqual(carried.map((page) => page.map((entry) => entry.id)), [["A"], ["bloque", "B"], ["C"]]);
+
+  // A title that is all its page holds stays: there is nothing to leave it with.
+  const alone = splitMeasuredDocumentFlowItems([title("bloque", 30), measured("enorme", 900)], 600);
+  assert.deepStrictEqual(alone.map((page) => page.map((entry) => entry.id)), [["bloque"], ["enorme"]]);
+
+  // A title that fits with the start of what follows stays where it is.
+  const fits = splitMeasuredDocumentFlowItems([measured("A", 300), title("bloque", 30), measured("B", 200)], 600);
+  assert.deepStrictEqual(fits.map((page) => page.map((entry) => entry.id)), [["A", "bloque", "B"]]);
+});

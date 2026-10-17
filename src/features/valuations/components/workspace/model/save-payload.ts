@@ -17,7 +17,7 @@ export function buildSectionsPayload(sectionsForSave: AppSection[]) {
     id: s.id,
     label: s.label,
     title: s.title,
-    ...sectionMetadataFromContent({ enabled: s.enabled, flowSpacingBeforePx: s.flowSpacingBeforePx, thousandsSeparator: s.thousandsSeparator, custom: s.custom, titleEdited: s.titleEdited }),
+    ...sectionMetadataFromContent({ enabled: s.enabled, flowSpacingBeforePx: s.flowSpacingBeforePx, thousandsSeparator: s.thousandsSeparator, bindingMargin: s.bindingMargin, titleBars: s.titleBars, custom: s.custom, titleEdited: s.titleEdited }),
     sortOrder: sectionsForSave.indexOf(s),
     blocks: s.blocks.map((b, bi) => ({
       id: b.id,

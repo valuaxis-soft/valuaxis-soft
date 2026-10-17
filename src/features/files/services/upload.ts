@@ -77,6 +77,9 @@ export async function saveUpload(file: File, options: SaveUploadOptions = {}): P
   const processedBuffer =
     shouldNormalizeToJpeg
       ? await sharp(buffer)
+          // Re-encoding drops the EXIF data, orientation included: turn the
+          // pixels first, so a portrait photo from a phone stays upright.
+          .rotate()
           .resize(1920, 1920, { fit: "inside", withoutEnlargement: true })
           // JPEG has no transparency: without a white background, transparent logos turn black.
           .flatten({ background: "#ffffff" })

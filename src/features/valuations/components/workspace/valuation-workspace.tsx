@@ -2,16 +2,13 @@
 
 import { useMemo, useState } from "react";
 
-import {
-  Comparable,
-  initialComparables,
-} from "@/features/valuations/services/valuation-constants";
-import { transformComparables } from "@/features/valuations/mappers/transform-valuation";
 import { ReadOnlyValuationAlert } from "@/features/valuations/components/feedback/valuation-error-alert";
 import { FormulaEditingProvider } from "@/features/valuations/components/editor/formula-editing";
 import { CustomUnitsProvider } from "@/features/valuations/components/editor/custom-units-context";
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
 import { documentNumberPresentation } from "@/features/valuations/services/number-presentation";
+import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
+import { documentPagePresentation } from "@/features/valuations/services/page-presentation";
 import { AiAssistProvider } from "@/features/ai/ai-assist-context";
 import { ValuationEditorPanel } from "@/features/valuations/components/workspace/valuation-editor-panel";
 import type { SplitLayout, WorkspaceMode } from "@/features/valuations/components/workspace/valuation-workspace-layout";
@@ -139,9 +136,6 @@ export function ValuationWorkspace({
     setActiveSectionId(sectionId);
     setPreviewSectionId(null);
   };
-  const [comparables] = useState<Comparable[]>(
-    initialValuation ? transformComparables(initialValuation.comparables ?? []) : initialComparables,
-  );
 
   const {
     exitDialogOpen,
@@ -188,12 +182,14 @@ export function ValuationWorkspace({
     onPrevious: () => browsePreview(-1),
     onNext: () => browsePreview(1),
   };
-  const selectedComparables = useMemo(
-    () => comparables.filter((comparable) => comparable.selected),
-    [comparables],
-  );
   // One choice for the whole document: the editor, the preview and the external window write numbers the same way.
   const numberPresentation = useMemo(() => documentNumberPresentation(sections), [sections]);
+  const pagePresentationChoice = documentPagePresentation(sections);
+  // Kept by value: a new object on every edit would repaint every page of the preview.
+  const pagePresentation = useMemo(
+    () => ({ bindingMargin: pagePresentationChoice.bindingMargin, titleBars: pagePresentationChoice.titleBars }),
+    [pagePresentationChoice.bindingMargin, pagePresentationChoice.titleBars],
+  );
   const externalPreviewPayload = useMemo<ExternalPreviewPayload>(() => ({
     activeSection: previewSection,
     caratula,
@@ -201,8 +197,8 @@ export function ValuationWorkspace({
     documentHeaderImage,
     meta,
     principalCoverImage,
-    selectedComparables,
     numberPresentation,
+    pagePresentation,
   }), [
     previewSection,
     caratula,
@@ -210,8 +206,8 @@ export function ValuationWorkspace({
     documentHeaderImage,
     meta,
     numberPresentation,
+    pagePresentation,
     principalCoverImage,
-    selectedComparables,
   ]);
 
   // Sections of the appraiser's own: added at the end of the strip, renamed from the tab, removed from the editor.
@@ -358,7 +354,6 @@ export function ValuationWorkspace({
       letterhead={letterhead}
       meta={meta}
       navigation={previewNavigation}
-      selectedComparables={selectedComparables}
       principalCoverImage={principalCoverImage}
       documentHeaderImage={documentHeaderImage}
     />
@@ -368,6 +363,7 @@ export function ValuationWorkspace({
     <AiAssistProvider enabled={aiEnabled && canEdit} valuationId={valuationId}>
     <FormulaEditingProvider sections={sections}>
     <NumberPresentationProvider presentation={numberPresentation}>
+    <PagePresentationProvider presentation={pagePresentation}>
     <CustomUnitsProvider initialUnits={customUnits}>
     <StructureTransferProvider sections={sections} readOnly={!canEdit} updateSections={updateSections} valuationId={valuationId}>
     <Tabs value={activeSection.id} onValueChange={handleActiveSectionChange} className="gap-0 h-full">
@@ -507,6 +503,7 @@ export function ValuationWorkspace({
     </Tabs>
     </StructureTransferProvider>
     </CustomUnitsProvider>
+    </PagePresentationProvider>
     </NumberPresentationProvider>
     </FormulaEditingProvider>
     </AiAssistProvider>

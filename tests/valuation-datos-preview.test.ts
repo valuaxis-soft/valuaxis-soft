@@ -174,7 +174,6 @@ test("ReportPreview reconoce el identificador actual datosGenerales", () => {
       propertyKind: "casa",
     },
     section: { ...section, id: "datosGenerales", blocks: [] },
-    comparables: [],
     principalCoverImage: null,
   }));
 

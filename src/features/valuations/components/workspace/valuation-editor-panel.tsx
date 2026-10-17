@@ -29,6 +29,7 @@ import {
 
 import { CaratulaEditor, CalculatedValuesEditor } from "../editor/caratula-editor";
 import { DocumentNumberFormatControl } from "../editor/number-format-control";
+import { DocumentPageFormatControl } from "../editor/page-format-control";
 import { SignaturesEditor } from "../editor/signatures-editor";
 
 import { GripVertical, Plus } from "lucide-react";
@@ -420,7 +421,10 @@ export function ValuationEditorPanel(props: {
           />
         ) : null}
         {isCaratula ? (
-          <DocumentNumberFormatControl section={section} readOnly={props.readOnly} onUpdateSection={props.onUpdateSection} />
+          <>
+            <DocumentNumberFormatControl section={section} readOnly={props.readOnly} onUpdateSection={props.onUpdateSection} />
+            <DocumentPageFormatControl section={section} readOnly={props.readOnly} onUpdateSection={props.onUpdateSection} />
+          </>
         ) : null}
         {isCaratula ? (
           <ContentDndScope id={`blocks-${section.id}`} blockIds={sortableBlockIds} moveRules={moveRules} onContentDrop={handleContentDrop}>

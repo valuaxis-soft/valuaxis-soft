@@ -21,7 +21,7 @@
 /** Presentation mode: absent = default, custom = offset from default. */
 export type ConceptPresentation = {
   mode?: "custom";
-  /** Offset in px from DEFAULT_GUIDE_PX. Positive = rightward. */
+  /** Offset in px from DEFAULT_GUIDE_PX. Positive = rightward, negative = leftward. */
   labelGuideOffsetPx?: number;
 };
 
@@ -36,8 +36,14 @@ export type ConceptPresentation = {
  */
 export const DEFAULT_GUIDE_PX = 120;
 
-/** Minimum offset from default (0 = default position). */
-export const MIN_OFFSET_PX = 0;
+/** Narrowest label column: the label never runs past the start of its cell. */
+const MIN_GUIDE_PX = 24;
+
+/**
+ * Minimum offset from default: negative moves the labels to the left (the
+ * numbers of a list of consideraciones), down to the narrowest column.
+ */
+export const MIN_OFFSET_PX = MIN_GUIDE_PX - DEFAULT_GUIDE_PX;
 
 /**
  * Maximum offset from default.
@@ -137,6 +143,16 @@ export function resolveCellConceptGuide(
   }
   // Fall back to container default
   return resolveConceptLabelGuide(containerPresentation);
+}
+
+/**
+ * The grid columns of a concept for a guide: the label column, then the value.
+ * A guide moved left of the default is for short labels (the numbers of a
+ * list); a longer word there widens its column instead of running over the value.
+ */
+export function labelGuideColumns(guidePx: number): string {
+  const labelColumn = guidePx < DEFAULT_GUIDE_PX ? `minmax(${guidePx}px, min-content)` : `${guidePx}px`;
+  return `${labelColumn} minmax(0, 1fr)`;
 }
 
 /**

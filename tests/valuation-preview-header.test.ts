@@ -91,7 +91,6 @@ function renderPreview(section: AppSection) {
       propertyKind: "casa",
     },
     section,
-    comparables: [],
     principalCoverImage: null,
   }));
 }
@@ -138,4 +137,10 @@ test("sin razón social, el encabezado imprime el nombre de la organización", (
   assert.match(header({ legalName: null }), />Espacio personal de Alvaro</);
   assert.match(header({ legalName: "   " }), />Espacio personal de Alvaro</, "a blank legal name is no name");
   assert.match(header({ legalName: null, rfc: "GUNA9408205Q4" }), />RFC GUNA9408205Q4</);
+});
+
+test("la sección de mercado ya no imprime la página heredada de comparables seleccionados", () => {
+  const html = renderPreview({ ...emptySection, id: "mercadoVenta", label: "V", title: "MERCADO", blocks: [contentBlock] });
+  assert.match(html, /BLOQUE CON CONTENIDO/);
+  assert.doesNotMatch(html, /COMPARABLES SELECCIONADOS|pasarían al reporte final/);
 });

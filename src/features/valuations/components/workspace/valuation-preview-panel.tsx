@@ -1,7 +1,7 @@
 "use client";
 
 import { ReportPreview, type PreviewSectionNavigation } from "@/features/valuations/components/report-preview";
-import type { AppSection, CaratulaFormData, Comparable, ImageContent, Letterhead, PrincipalCoverImage } from "@/features/valuations/model";
+import type { AppSection, CaratulaFormData, ImageContent, Letterhead, PrincipalCoverImage } from "@/features/valuations/model";
 import type { ValuationMeta } from "@/features/valuations/services/valuation-constants";
 
 export function ValuationPreviewPanel({
@@ -10,7 +10,6 @@ export function ValuationPreviewPanel({
   letterhead,
   meta,
   navigation,
-  selectedComparables,
   principalCoverImage,
   documentHeaderImage,
 }: {
@@ -20,7 +19,6 @@ export function ValuationPreviewPanel({
   meta: ValuationMeta;
   /** Browsing to the previous or next section without leaving the editor's active one. */
   navigation?: PreviewSectionNavigation;
-  selectedComparables: Comparable[];
   principalCoverImage: PrincipalCoverImage | null;
   documentHeaderImage?: ImageContent | null;
 }) {
@@ -38,7 +36,6 @@ export function ValuationPreviewPanel({
             section={activeSection}
             caratula={caratula}
             letterhead={letterhead}
-            comparables={selectedComparables}
             principalCoverImage={principalCoverImage}
             documentHeaderImage={documentHeaderImage}
           />

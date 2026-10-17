@@ -201,3 +201,23 @@ test("GET devuelve la imagen principal actual con URL temporal", async () => {
   assert.equal(image?.url, "https://signed.example/image");
   assert.equal("key" in (image ?? {}), false);
 });
+
+test("una foto vertical de teléfono se guarda derecha: la orientación EXIF se aplica antes de volver a codificarla", async (t) => {
+  const { default: sharp } = await import("sharp");
+  const { storageProvider } = await import("../src/infrastructure/storage/storage-provider");
+  // 40×20 pixels that the camera marks to be shown turned a quarter (EXIF orientation 6).
+  const sideways = await sharp({ create: { width: 40, height: 20, channels: 3, background: "#808080" } })
+    .jpeg()
+    .withMetadata({ orientation: 6 })
+    .toBuffer();
+  let stored: Buffer | undefined;
+  t.mock.method(storageProvider, "createUpload", async (input: { buffer: Buffer; filename: string }) => {
+    stored = input.buffer;
+    return { url: "", bucket: "local", filename: input.filename, key: "k", checksum: "c" };
+  });
+  await saveUpload(new File([new Uint8Array(sideways)], "foto.jpg", { type: "image/jpeg" }), { allowedMimeTypes: ["image/jpeg"] });
+  assert.ok(stored);
+  const metadata = await sharp(stored).metadata();
+  assert.deepEqual([metadata.width, metadata.height], [20, 40], "the pixels are turned upright");
+  assert.equal(metadata.orientation, undefined, "no orientation is left to apply twice");
+});

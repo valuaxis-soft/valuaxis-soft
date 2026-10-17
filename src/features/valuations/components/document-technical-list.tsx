@@ -3,7 +3,7 @@
 import type { Concept, ContentLayout, ImageContent, TableContent } from "@/features/valuations/model";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
-import { resolveConceptLabelGuide } from "@/features/valuations/services/concept-presentation";
+import { labelGuideColumns, resolveConceptLabelGuide } from "@/features/valuations/services/concept-presentation";
 import { useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { cn } from "@/lib/utils";
 import { DocumentConceptValue } from "./document-concept-value";
@@ -25,7 +25,7 @@ function TechnicalConceptRow({
   return (
     <div
       className={cn("grid min-w-0 w-full max-w-full items-start", theme.conceptRow, theme.conceptRule)}
-      style={{ ...conceptSpacingStyle(concept), gridTemplateColumns: `${labelGuidePx}px minmax(0, 1fr)` }}
+      style={{ ...conceptSpacingStyle(concept), gridTemplateColumns: labelGuideColumns(labelGuidePx) }}
     >
       <span className="min-w-0 text-[11px] font-semibold text-[#1a1a1a] leading-snug text-right pr-2 whitespace-nowrap">
         {formatConceptTitleWithColon(concept.label)}

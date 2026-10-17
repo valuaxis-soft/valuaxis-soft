@@ -65,7 +65,7 @@ function BoundariesPreview({ label, title, table, source }: {
   return (
     <section>
       <ElementTitle>{[label, title].filter(Boolean).join(" ")}</ElementTitle>
-      {table ? <BoundaryTable table={table} /> : null}
+      {table && table.enabled !== false ? <BoundaryTable table={table} /> : null}
       {/* Its title and its value are the concept's own, edited under the table in the editor. */}
       {source?.value.trim() ? (
         <p className="mt-1.5 text-[9.5px] leading-tight text-slate-700">

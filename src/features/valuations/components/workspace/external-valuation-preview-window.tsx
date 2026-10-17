@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
 import { ReportPreview } from "@/features/valuations/components/report-preview";
 import { DEFAULT_NUMBER_PRESENTATION } from "@/features/valuations/services/number-presentation";
+import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
+import { DEFAULT_PAGE_PRESENTATION } from "@/features/valuations/services/page-presentation";
 import {
   getExternalPreviewChannelName,
   type ExternalPreviewMessage,
@@ -69,15 +71,16 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
         </div>
       ) : (
         <NumberPresentationProvider presentation={payload.numberPresentation ?? DEFAULT_NUMBER_PRESENTATION}>
+        <PagePresentationProvider presentation={payload.pagePresentation ?? DEFAULT_PAGE_PRESENTATION}>
           <ReportPreview
             caratula={payload.caratula}
             letterhead={payload.letterhead}
-            comparables={payload.selectedComparables}
             documentHeaderImage={payload.documentHeaderImage}
             meta={payload.meta}
             principalCoverImage={payload.principalCoverImage}
             section={payload.activeSection}
           />
+        </PagePresentationProvider>
         </NumberPresentationProvider>
       )}
     </main>

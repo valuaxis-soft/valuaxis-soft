@@ -207,6 +207,8 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
     startOnNewPage: section.startOnNewPage ?? false,
     flowSpacingBeforePx: section.flowSpacingBeforePx,
     thousandsSeparator: section.thousandsSeparator,
+    ...(section.bindingMargin ? { bindingMargin: section.bindingMargin } : {}),
+    ...(section.titleBars ? { titleBars: section.titleBars } : {}),
     ...(section.custom ? { custom: true } : {}),
     ...(section.titleEdited ? { titleEdited: true } : {}),
       blocks: section.blocks.map((block) => ({
