@@ -4,8 +4,10 @@ import {
   resolveConceptLabelGuide,
   resolveCellConceptGuide,
   clampGuidePx,
+  labelGuideColumns,
   DEFAULT_GUIDE_PX,
   MAX_OFFSET_PX,
+  MIN_OFFSET_PX,
   type ConceptPresentation,
 } from "../src/features/valuations/services/concept-presentation";
 
@@ -30,8 +32,14 @@ describe("resolveConceptLabelGuide", () => {
     expect(resolveConceptLabelGuide({ mode: "custom" })).toBe(DEFAULT_GUIDE_PX);
   });
 
-  it("clamps offset below minimum to 0", () => {
-    expect(resolveConceptLabelGuide({ mode: "custom", labelGuideOffsetPx: -10 })).toBe(DEFAULT_GUIDE_PX);
+  it("a negative offset moves the labels left, down to the narrowest column", () => {
+    expect(resolveConceptLabelGuide({ mode: "custom", labelGuideOffsetPx: -10 })).toBe(DEFAULT_GUIDE_PX - 10);
+    // Labels move left down to the narrowest column, never out of their cell.
+    expect(resolveConceptLabelGuide({ mode: "custom", labelGuideOffsetPx: MIN_OFFSET_PX })).toBe(24);
+    expect(resolveConceptLabelGuide({ mode: "custom", labelGuideOffsetPx: -500 })).toBe(24);
+    // A column narrower than the default grows to its longest word rather than run over the value.
+    expect(labelGuideColumns(24)).toBe("minmax(24px, min-content) minmax(0, 1fr)");
+    expect(labelGuideColumns(DEFAULT_GUIDE_PX)).toBe("120px minmax(0, 1fr)");
   });
 
   it("clamps offset above maximum", () => {

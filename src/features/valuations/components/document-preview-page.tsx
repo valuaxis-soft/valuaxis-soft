@@ -22,6 +22,8 @@ const useIsClient = () => useSyncExternalStore(subscribeNever, () => true, () =>
 import type { AppSection } from "../model";
 import { ensureTableV2 } from "../services/table";
 import { splitTableRows, type DocumentTableFragment, type MeasuredTable } from "../services/table-pagination";
+import { BINDING_MARGIN_EXTRA_PX } from "../services/page-presentation";
+import { usePagePresentation } from "./page-presentation-context";
 
 export type DocumentFlowItem = {
   id: string;
@@ -31,6 +33,11 @@ export type DocumentFlowItem = {
    * both land on one page they sit together, without the gap between items.
    */
   continuesPrevious?: boolean;
+  /**
+   * A title: it goes to the next page with the item after it rather than
+   * stay alone at the foot of this one.
+   */
+  keepWithNext?: boolean;
   node: ReactNode;
   /**
    * The item is one table that may break across pages by rows: renders the
@@ -194,6 +201,8 @@ export function computeDocumentLayoutKey(section: AppSection): string {
       h = hashStr(h, img.captionAlign ?? "");
       h = hashStr(h, img.layoutWidth ?? "");
       h = hashNumber(h, img.layoutWidthPercent ?? 0);
+      h = hashStr(h, JSON.stringify(img.captions ?? null));
+      h = hashNumber(h, img.rotation ?? 0);
     }
     h = hashNumber(h, block.tables.length);
     for (const t of block.tables) {
@@ -253,6 +262,8 @@ export function computeDocumentLayoutKey(section: AppSection): string {
         h = hashStr(h, img.captionAlign ?? "");
         h = hashStr(h, img.layoutWidth ?? "");
         h = hashNumber(h, img.layoutWidthPercent ?? 0);
+        h = hashStr(h, JSON.stringify(img.captions ?? null));
+        h = hashNumber(h, img.rotation ?? 0);
       }
       h = hashNumber(h, sb.tables.length);
       for (const t of sb.tables) {
@@ -308,8 +319,12 @@ export function DocumentPreviewPage({
   header: ReactNode;
   pageNumber?: number;
 }) {
+  // The binding margin: every page, in the preview and the PDF, leaves it on its left.
+  const bindingExtraPx = BINDING_MARGIN_EXTRA_PX[usePagePresentation().bindingMargin];
   return (
     <article
+      style={bindingExtraPx ? { paddingLeft: bindingExtraPx } : undefined}
+      data-binding-margin={bindingExtraPx ? "wide" : undefined}
       className={`light mx-auto break-inside-avoid print:break-before-page print:border-0 print:shadow-none h-[1056px] max-h-[1056px] w-[816px] max-w-[816px] overflow-hidden border border-slate-300 bg-white text-slate-900 shadow-xl shadow-slate-900/10 ${className}`}
       data-document-page={pageNumber}
       data-preview-page={pageNumber}
@@ -468,10 +483,15 @@ export function AutoPaginatedDocumentFlow({
     });
   }, [measureAndPaginate]);
 
-  // Content change: schedule one measurement after paint
-  useEffect(() => {
+  // Content change: measure before the browser paints, so the provisional
+  // split (every item on one page) never shows and the pages update in place
+  // instead of flashing. Another measurement follows after paint, for what
+  // was not laid out yet (fonts, images).
+  const { bindingMargin, titleBars } = usePagePresentation();
+  useLayoutEffect(() => {
+    measureAndPaginate();
     requestPagination();
-  }, [itemLayoutSignature, contentLayoutKey, requestPagination]);
+  }, [itemLayoutSignature, contentLayoutKey, bindingMargin, titleBars, measureAndPaginate, requestPagination]);
 
   // Window/container resize: schedule measurement
   useEffect(() => {
@@ -736,6 +756,22 @@ export function splitMeasuredDocumentFlowItems(
   const pages: PlacedDocumentFlowItem[][] = [];
   let currentPage: PlacedDocumentFlowItem[] = [];
   let currentHeight = 0;
+  const heightOf = new Map(measuredItems.map((measured) => [measured.item.id, measured.height]));
+
+  /**
+   * Ends the current page. The titles at its foot (keep-with-next items)
+   * open the next page instead, with what follows them, unless they are all
+   * the page holds.
+   */
+  const breakPage = () => {
+    let carried = currentPage.length;
+    while (carried > 0 && currentPage[carried - 1].item.keepWithNext && !currentPage[carried - 1].fragment) carried -= 1;
+    if (carried === 0) carried = currentPage.length;
+    const moved = currentPage.slice(carried);
+    pages.push(currentPage.slice(0, carried));
+    currentPage = moved;
+    currentHeight = moved.reduce((sum, placed) => sum + (heightOf.get(placed.id) ?? 0), 0);
+  };
 
   for (const measuredItem of measuredItems) {
     const { item, itemHeight } = { item: measuredItem.item, itemHeight: measuredItem.height };
@@ -753,16 +789,26 @@ export function splitMeasuredDocumentFlowItems(
     if (table && item.renderTableFragment && currentHeight + itemHeight > availableHeight) {
       // The measured height carries the gap to the item before, which a table opening a page does not have.
       const tableHeight = table.leadHeight + table.rowHeights.reduce((sum, height) => sum + height, 0) + table.tailHeight;
-      const gap = currentPage.length ? Math.max(0, itemHeight - tableHeight) : 0;
-      const split = splitTableRows(table, {
-        remainingHeight: availableHeight - currentHeight - gap,
-        pageHeight: availableHeight,
-        atPageTop: !currentPage.length,
-      });
+      const measuredGap = Math.max(0, itemHeight - tableHeight);
+      const planSplit = () => {
+        const gap = currentPage.length ? measuredGap : 0;
+        return {
+          gap,
+          split: splitTableRows(table, {
+            remainingHeight: availableHeight - currentHeight - gap,
+            pageHeight: availableHeight,
+            atPageTop: !currentPage.length,
+          }),
+        };
+      };
+      let { gap, split } = planSplit();
       if (split.startsOnNewPage && currentPage.length) {
-        pages.push(currentPage);
-        currentPage = [];
-        currentHeight = 0;
+        breakPage();
+        // The titles carried over open the new page: the table starts under them.
+        if (currentPage.length) {
+          ({ gap, split } = planSplit());
+          if (split.startsOnNewPage) split = { ...split, startsOnNewPage: false };
+        }
       }
       const whole = split.fragments.length === 1;
       split.fragments.forEach((fragment, index) => {
@@ -792,11 +838,7 @@ export function splitMeasuredDocumentFlowItems(
     // Auto overflow: move ENTIRE item to next page when it doesn't fit.
     // A normal atomic item that fits on a fresh page must NEVER be split
     // across two physical Letter pages.
-    if (currentPage.length && currentHeight + itemHeight > availableHeight) {
-      pages.push(currentPage);
-      currentPage = [];
-      currentHeight = 0;
-    }
+    if (currentPage.length && currentHeight + itemHeight > availableHeight) breakPage();
 
     currentPage.push({ id: item.id, item });
     // Use raw measured height — no Math.min clamp.

@@ -126,6 +126,17 @@ export type TableContent = {
 export type ImageCaptionPosition = "top" | "bottom";
 export type ImageCaptionAlign = "left" | "center" | "right";
 
+/** One caption line of an image, printed above or below it. */
+export type ImageCaption = {
+  id: string;
+  text: string;
+  position: ImageCaptionPosition;
+  align: ImageCaptionAlign;
+};
+
+/** Clockwise quarter turns the appraiser gave the image ("Girar"). */
+export type ImageRotation = 0 | 90 | 180 | 270;
+
 export type ImageContent = {
   id: string;
   title: string;
@@ -142,6 +153,13 @@ export type ImageContent = {
   captionPosition?: ImageCaptionPosition;
   /** Caption horizontal alignment. Default when absent: "center". */
   captionAlign?: ImageCaptionAlign;
+  /**
+   * The caption lines, in order. When present they replace the single caption
+   * above, whose fields keep a copy of the first line.
+   */
+  captions?: ImageCaption[];
+  /** Turned clockwise in the document. Absent: as the file shows it. */
+  rotation?: ImageRotation;
 };
 
 export type ImageLayoutWidth = "normal" | "wide" | "full";
@@ -273,25 +291,13 @@ export type AppSection = {
    * means with it, as documents saved before the choice existed print.
    */
   thousandsSeparator?: boolean;
+  /** The left margin of every page, for binding. Carátula section only; absent means "normal". */
+  bindingMargin?: "normal" | "wide";
+  /** The title bars of the blocks, blue or outlined. Carátula section only; absent means "filled". */
+  titleBars?: "filled" | "outline";
   /** Added by the appraiser; not in the section registry. */
   custom?: boolean;
   /** The appraiser renamed the tab: the stored title wins over the registry label. */
   titleEdited?: boolean;
   blocks: Block[];
-};
-
-export type Comparable = {
-  id: string;
-  title: string;
-  source: string;
-  status: "activo" | "por revisar" | "historial";
-  operation: ValuationKind;
-  propertyKind: PropertyKind;
-  postalCode: string;
-  price: string;
-  area: string;
-  pricePerMeter: string;
-  distance: string;
-  link: string;
-  selected: boolean;
 };

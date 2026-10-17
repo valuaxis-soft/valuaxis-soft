@@ -10,6 +10,8 @@ import { SendDictamenEmailDialog } from "./send-dictamen-email-dialog";
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
 import { SectionDocument } from "@/features/valuations/components/report-preview";
 import { documentNumberPresentation } from "@/features/valuations/services/number-presentation";
+import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
+import { documentPagePresentation } from "@/features/valuations/services/page-presentation";
 import {
   caratulaFromValuation,
   initialMetaFor,
@@ -21,7 +23,6 @@ import {
   resolveSectionConceptsForDisplay,
 } from "@/features/valuations/components/workspace/model/section-content";
 import { useStoredValuationImages } from "@/features/valuations/components/workspace/hooks/use-stored-images";
-import { transformComparables } from "@/features/valuations/mappers/transform-valuation";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
 import type { Letterhead } from "@/features/valuations/model";
 
@@ -46,7 +47,6 @@ export function ValuationDictamen({
     const meta = initialMetaFor(initialValuation);
     return {
       caratula: caratulaFromValuation(initialValuation, meta, sections),
-      comparables: transformComparables(initialValuation.comparables ?? []).filter((item) => item.selected),
       meta,
       sections,
     };
@@ -87,11 +87,11 @@ export function ValuationDictamen({
 
       <main data-print-document className="overflow-x-auto py-8 print:overflow-visible print:p-0">
         <NumberPresentationProvider presentation={documentNumberPresentation(sections)}>
+        <PagePresentationProvider presentation={documentPagePresentation(sections)}>
           <div className="flex w-fit min-w-full flex-col gap-6 px-4 print:gap-0 print:p-0">
             {printableSections.map((section) => (
               <SectionDocument
                 caratula={initial.caratula}
-                comparables={initial.comparables}
                 letterhead={letterhead}
                 documentHeaderImage={documentHeaderImage}
                 key={section.id}
@@ -101,6 +101,7 @@ export function ValuationDictamen({
               />
             ))}
           </div>
+        </PagePresentationProvider>
         </NumberPresentationProvider>
       </main>
     </div>

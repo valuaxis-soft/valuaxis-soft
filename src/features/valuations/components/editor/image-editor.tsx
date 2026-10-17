@@ -1,7 +1,8 @@
 "use client";
 
 import { type ChangeEvent } from "react";
-import type { ImageCaptionAlign, ImageCaptionPosition, ImageContent } from "@/features/valuations/model";
+import type { ImageCaption, ImageCaptionAlign, ImageCaptionPosition, ImageContent } from "@/features/valuations/model";
+import { captionsPatch, imageCaptions, moveCaption, newCaption, nextRotation } from "@/features/valuations/services/image-captions";
 
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -26,13 +27,17 @@ import {
 } from "@/features/valuations/services/document-image-layout";
 
 import {
+  ChevronDown,
+  ChevronUp,
   EllipsisVertical,
   ImageIcon,
   Maximize2,
   Minimize2,
   Minus,
   Plus,
+  RotateCw,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -151,7 +156,12 @@ export function ImageEditorItem({
         {/* Empty resource: placeholder icon. Resource present: image thumbnail. */}
         {hasResource ? (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img className="size-16 rounded-md object-cover" src={image.src} alt={image.title} />
+          <img
+            className="size-16 rounded-md object-cover"
+            style={image.rotation ? { transform: `rotate(${image.rotation}deg)` } : undefined}
+            src={image.src}
+            alt={image.title}
+          />
         ) : (
           <div className="flex size-16 items-center justify-center rounded-md border border-dashed border-muted-foreground/40 bg-background">
             <ImageIcon className="size-6 text-muted-foreground/50" />
@@ -163,6 +173,17 @@ export function ImageEditorItem({
           onChange={(event) => onUpdate(image.id, { title: event.target.value })}
         />
         <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Girar imagen"
+            title="Girar 90°"
+            disabled={readOnly || !hasResource}
+            onClick={() => onUpdate(image.id, { rotation: nextRotation(image.rotation) })}
+          >
+            <RotateCw />
+          </Button>
           {onUpload && (
             <UploadButton
               label={hasResource ? "Reemplazar imagen" : "Subir imagen"}
@@ -238,52 +259,90 @@ function CaptionControls({
   readOnly: boolean;
   onUpdate: (imageId: string, patch: Partial<ImageContent>) => void;
 }) {
-  const captionEnabled = image.captionEnabled ?? false;
+  const captions = imageCaptions(image);
+  const save = (next: ImageCaption[]) => onUpdate(image.id, captionsPatch(next));
+  const change = (captionId: string, patch: Partial<ImageCaption>) =>
+    save(captions.map((caption) => (caption.id === captionId ? { ...caption, ...patch } : caption)));
 
   return (
-    <div className="mt-2 border-t pt-2">
-      <div className="flex items-center gap-2">
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            className="size-3"
-            checked={captionEnabled}
-            disabled={readOnly}
-            onChange={(e) => onUpdate(image.id, { captionEnabled: e.target.checked })}
-          />
-          Leyenda
-        </label>
-        {captionEnabled && (
-          <>
-            <Input
-              className="h-7 flex-1 text-xs"
-              placeholder="Texto de leyenda"
-              disabled={readOnly}
-              value={image.captionText ?? ""}
-              onChange={(e) => onUpdate(image.id, { captionText: e.target.value })}
-            />
-            <NativeSelect
-              className="h-7 w-20 text-xs"
-              value={image.captionPosition ?? "bottom"}
-              disabled={readOnly}
-              onChange={(e) => onUpdate(image.id, { captionPosition: e.target.value as ImageCaptionPosition })}
-            >
-              <NativeSelectOption value="bottom">Abajo</NativeSelectOption>
-              <NativeSelectOption value="top">Arriba</NativeSelectOption>
-            </NativeSelect>
-            <NativeSelect
-              className="h-7 w-20 text-xs"
-              value={image.captionAlign ?? "center"}
-              disabled={readOnly}
-              onChange={(e) => onUpdate(image.id, { captionAlign: e.target.value as ImageCaptionAlign })}
-            >
-              <NativeSelectOption value="center">Centro</NativeSelectOption>
-              <NativeSelectOption value="left">Izq</NativeSelectOption>
-              <NativeSelectOption value="right">Der</NativeSelectOption>
-            </NativeSelect>
-          </>
-        )}
+    <div className="mt-2 space-y-1.5 border-t pt-2" data-image-captions>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">Leyendas</span>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs"
+          disabled={readOnly}
+          onClick={() => save([...captions, newCaption(captions)])}
+        >
+          <Plus data-icon="inline-start" />
+          Agregar leyenda
+        </Button>
       </div>
+      {captions.map((caption, index) => (
+        <div className="flex flex-wrap items-center gap-1" key={caption.id} data-image-caption={caption.id}>
+          <Input
+            className="h-7 min-w-32 flex-1 text-xs"
+            placeholder="Texto de leyenda"
+            aria-label={`Leyenda ${index + 1}`}
+            disabled={readOnly}
+            value={caption.text}
+            onChange={(e) => change(caption.id, { text: e.target.value })}
+          />
+          <NativeSelect
+            className="h-7 w-24 text-xs"
+            aria-label={`Posición de la leyenda ${index + 1}`}
+            value={caption.position}
+            disabled={readOnly}
+            onChange={(e) => change(caption.id, { position: e.target.value as ImageCaptionPosition })}
+          >
+            <NativeSelectOption value="bottom">Abajo</NativeSelectOption>
+            <NativeSelectOption value="top">Arriba</NativeSelectOption>
+          </NativeSelect>
+          <NativeSelect
+            className="h-7 w-24 text-xs"
+            aria-label={`Alineación de la leyenda ${index + 1}`}
+            value={caption.align}
+            disabled={readOnly}
+            onChange={(e) => change(caption.id, { align: e.target.value as ImageCaptionAlign })}
+          >
+            <NativeSelectOption value="center">Centro</NativeSelectOption>
+            <NativeSelectOption value="left">Izq</NativeSelectOption>
+            <NativeSelectOption value="right">Der</NativeSelectOption>
+          </NativeSelect>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label={`Subir la leyenda ${index + 1}`}
+            disabled={readOnly || index === 0}
+            onClick={() => save(moveCaption(captions, caption.id, -1))}
+          >
+            <ChevronUp />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label={`Bajar la leyenda ${index + 1}`}
+            disabled={readOnly || index === captions.length - 1}
+            onClick={() => save(moveCaption(captions, caption.id, 1))}
+          >
+            <ChevronDown />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label={`Quitar la leyenda ${index + 1}`}
+            disabled={readOnly}
+            onClick={() => save(captions.filter((entry) => entry.id !== caption.id))}
+          >
+            <X />
+          </Button>
+        </div>
+      ))}
     </div>
   );
 }

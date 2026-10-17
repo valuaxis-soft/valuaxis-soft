@@ -4,20 +4,10 @@ import { useMemo, type CSSProperties, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PreviewViewer } from "./preview-viewer";
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import type {
   AppSection,
   Block,
   CaratulaFormData,
-  Comparable,
   ImageContent,
   Letterhead,
   PrincipalCoverImage,
@@ -39,7 +29,6 @@ import { DocumentPreviewHeader } from "./document-preview-header";
 import {
   AutoPaginatedDocumentFlow,
   computeDocumentLayoutKey,
-  DocumentPreviewPage,
   type DocumentFlowItem,
 } from "./document-preview-page";
 import {
@@ -70,7 +59,6 @@ type SectionDocumentProps = {
   letterhead: Letterhead;
   meta: ValuationMeta;
   section: AppSection;
-  comparables: Comparable[];
   principalCoverImage: PrincipalCoverImage | null;
   documentHeaderImage?: ImageContent | null;
 };
@@ -148,7 +136,6 @@ export function SectionDocument({
   letterhead,
   meta,
   section,
-  comparables,
   principalCoverImage,
   documentHeaderImage,
 }: SectionDocumentProps) {
@@ -190,37 +177,6 @@ export function SectionDocument({
             section={section}
           />
         )}
-
-        {section.id === "mercadoVenta" && comparables.length ? (
-          <DocumentPreviewPage header={header}>
-            <section className="px-5 pb-7 sm:px-7">
-              <h2 className="border-b border-blue-900 pb-1 text-sm font-bold text-blue-950">
-                COMPARABLES SELECCIONADOS
-              </h2>
-              <Table>
-                <TableCaption>Comparables que pasarían al reporte final.</TableCaption>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Precio</TableHead>
-                    <TableHead>Área</TableHead>
-                    <TableHead>$/m²</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {comparables.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.id}</TableCell>
-                      <TableCell>{item.price}</TableCell>
-                      <TableCell>{item.area}</TableCell>
-                      <TableCell>{item.pricePerMeter}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </section>
-          </DocumentPreviewPage>
-        ) : null}
       </div>
     </DocumentThemeProvider>
   );

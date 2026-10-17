@@ -11,6 +11,8 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 
+import { usePagePresentation } from "./page-presentation-context";
+
 /* ── Variant type ──────────────────────────────────────────────── */
 export type DocumentThemeVariant = "caratula" | "standard";
 
@@ -70,12 +72,13 @@ const CARATULA_THEME: DocumentThemeTokens = {
 
 /* ── Standard variant ──────────────────────────────────────────── */
 const STANDARD_THEME: DocumentThemeTokens = {
+  // A fine bar, thinner than the document's title band in the header.
   sectionTitle:
-    "mb-2 bg-[#00285A] px-3 py-1.5 text-center text-[12px] font-black uppercase leading-tight text-white",
+    "mb-1 bg-[#00285A] px-3 py-0.5 text-center text-[11px] font-bold uppercase leading-tight text-white",
   apartadoTitle:
-    "mb-1 text-[11px] font-bold uppercase text-[#2F5495]",
+    "mb-0.5 text-[11px] font-bold uppercase text-[#2F5495]",
   apartadoRule:
-    "mb-1 h-[2px] w-[300px] bg-[#2F5495]",
+    "mb-0.5 h-[2px] w-[300px] bg-[#2F5495]",
   conceptLabel:
     "min-w-0 text-[11px] font-semibold text-[#1a1a1a] leading-snug",
   conceptValue:
@@ -87,16 +90,25 @@ const STANDARD_THEME: DocumentThemeTokens = {
   conceptRule: "",
   longText: "text-[12px] leading-[1.45]",
   longTextRow: "py-[3px]",
-  contentRow: "mt-1.5 grid gap-1",
+  contentRow: "mt-1 grid gap-1",
   sectionGap: "space-y-4",
   pagePadding: "px-5 pb-10 pt-3 sm:px-8",
 };
+
+/**
+ * Block title bars without the blue fill, for the documents that ask for it:
+ * dark text over a thin rule, of the same size as the bar.
+ */
+const OUTLINE_SECTION_TITLE =
+  "mb-1 border-b border-[#00285A] pb-px text-center text-[11px] font-bold uppercase leading-tight text-[#00285A]";
 
 /* ── Theme map ─────────────────────────────────────────────────── */
 const THEMES: Record<DocumentThemeVariant, DocumentThemeTokens> = {
   caratula: CARATULA_THEME,
   standard: STANDARD_THEME,
 };
+
+const OUTLINE_STANDARD_THEME: DocumentThemeTokens = { ...STANDARD_THEME, sectionTitle: OUTLINE_SECTION_TITLE };
 
 /**
  * Header band of the tables of the report: light blue with navy bold text, as
@@ -115,8 +127,10 @@ export function DocumentThemeProvider({
   variant: DocumentThemeVariant;
   children: ReactNode;
 }) {
+  const { titleBars } = usePagePresentation();
+  const tokens = variant === "standard" && titleBars === "outline" ? OUTLINE_STANDARD_THEME : THEMES[variant];
   return (
-    <DocumentThemeContext.Provider value={THEMES[variant]}>
+    <DocumentThemeContext.Provider value={tokens}>
       {children}
     </DocumentThemeContext.Provider>
   );

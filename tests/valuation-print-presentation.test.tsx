@@ -227,9 +227,10 @@ test("an apartado is one flow item per row, so a long one continues on the next 
   });
   const items = documentBlockFlowItems(block({ apartados: [definitions] }));
   // Block title, then the apartado title with its first row, then one item per further row.
+  // The first apartado sits right under the title bar, without the gap between items.
   assert.equal(items.length, 4);
   const [, first, second, third] = items;
-  assert.deepEqual([first.continuesPrevious, second.continuesPrevious, third.continuesPrevious], [undefined, true, true]);
+  assert.deepEqual([first.continuesPrevious, second.continuesPrevious, third.continuesPrevious], [true, true, true]);
   assert.equal(new Set(items.map((item) => item.id)).size, 4, "ids are unique");
   assert.ok(second.id.startsWith(`${first.id}:`));
 
@@ -247,6 +248,42 @@ test("an apartado is one flow item per row, so a long one continues on the next 
   // A technical list stays whole.
   const technical = documentBlockFlowItems(block({ apartados: [{ ...definitions, presentationMode: "technical-list" }] }));
   assert.equal(technical.length, 2);
+});
+
+test("concepts placed directly in a block sit as close as the concepts of an apartado", () => {
+  const concepts = [concept("a", "Niveles", "4"), concept("b", "Clase", "C"), concept("c", "Uso", "Habitacional")];
+  const layout = rowsOf([{ type: "concept", id: "a" }], [{ type: "concept", id: "b" }], [{ type: "concept", id: "c" }]);
+  const direct = documentBlockFlowItems(block({ concepts, contentLayout: layout }));
+  const inApartado = documentBlockFlowItems(block({ apartados: [apartado("datos", concepts, { contentLayout: layout })] }));
+
+  // Every row continues the one before it, the first one the title bar: no gap between items.
+  assert.deepEqual(direct.map((item) => item.continuesPrevious), [undefined, true, true, true]);
+  assert.deepEqual(inApartado.map((item) => item.continuesPrevious), [undefined, true, true, true]);
+
+  // The first row opens with the room of the first row of an apartado, the rest with the tight one.
+  const rowClasses = (items: typeof direct) => items.slice(1).map((item) => /class="(mt-[^" ]+) grid/.exec(render(item.node))?.[1]);
+  assert.deepEqual(rowClasses(direct), ["mt-1", "mt-[1px]", "mt-[1px]"]);
+  assert.deepEqual(rowClasses(direct), rowClasses(inApartado));
+
+  // A row after an apartado starts a run of its own, apart from it.
+  const after = documentBlockFlowItems(block({
+    concepts,
+    apartados: [apartado("datos", [concept("x", "Otro", "1")])],
+    contentLayout: rowsOf([{ type: "concept", id: "a" }]),
+    blockFlow: { version: 2, rows: [{ id: "f1", items: [{ type: "apartado", apartadoId: "datos" }] }, { id: "f2", items: [{ type: "content-row", rowId: "row-0" }] }] },
+  }));
+  assert.deepEqual(after.map((item) => item.continuesPrevious), [undefined, true, undefined]);
+});
+
+test("block title bars are fine bars, thinner than the document's title band, and stay with what follows", () => {
+  const [title] = documentBlockFlowItems(block({ concepts: [concept("a", "Niveles", "4")] }));
+  const bar = render(title.node);
+  assert.match(bar, /class="mb-1 bg-\[#00285A\] px-3 py-0\.5 text-center text-\[11px\] font-bold uppercase/);
+  assert.doesNotMatch(bar, /py-1\.5|font-black/);
+  assert.equal(title.keepWithNext, true);
+  // The apartado title and its rule leave little room before the first row.
+  const html = renderItems(block({ apartados: [apartado("datos", [concept("a", "Niveles", "4")])] }));
+  assert.match(html, /<h3 class="mb-0\.5 [^"]*">[^<]*<\/h3><div class="mb-0\.5 h-\[2px\]/);
 });
 
 test("rows of one apartado sit together on a page: the item before a continuation drops its gap", () => {

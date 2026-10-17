@@ -1,7 +1,9 @@
-import type { BlockFlowV2, ConceptDateFormat, ConceptType, ConceptValueFormat, ContentLayout, HeaderExtraField, ImageLayoutWidth, ApartadoPresentationMode } from "@/features/valuations/model";
+import type { BlockFlowV2, ConceptDateFormat, ConceptType, ConceptValueFormat, ContentLayout, HeaderExtraField, ImageCaption, ImageLayoutWidth, ImageRotation, ApartadoPresentationMode } from "@/features/valuations/model";
+import { readStoredCaptions, readStoredRotation } from "@/features/valuations/services/image-captions";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import { isBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { normalizeHeaderExtraFields } from "@/features/valuations/services/caratula-company-header";
+import { isBindingMargin, isTitleBarStyle, type BindingMargin, type TitleBarStyle } from "@/features/valuations/services/page-presentation";
 import { isContentLayout, normalizeContentLayout } from "@/features/valuations/services/content-layout";
 import { readStoredFormula, type TableFormula } from "@/features/valuations/services/table";
 
@@ -31,6 +33,8 @@ export type ImageMetadata = {
   captionEnabled?: boolean;
   captionPosition?: "top" | "bottom";
   captionAlign?: "left" | "center" | "right";
+  captions?: ImageCaption[];
+  rotation?: ImageRotation;
 };
 
 export type SectionMetadata = {
@@ -39,6 +43,10 @@ export type SectionMetadata = {
   flowSpacingBeforePx?: number;
   /** The document's choice, carried by its carátula section. */
   thousandsSeparator?: boolean;
+  /** The document's binding margin, carried by its carátula section. */
+  bindingMargin?: BindingMargin;
+  /** The document's style of title bars, carried by its carátula section. */
+  titleBars?: TitleBarStyle;
   /** A section the appraiser added. */
   custom?: boolean;
   /** The appraiser renamed the section's tab. */
@@ -141,6 +149,8 @@ export function imageMetadataFromContent(content: ImageMetadataContent): ImageMe
     captionEnabled: content.captionEnabled,
     captionPosition: content.captionPosition,
     captionAlign: content.captionAlign,
+    captions: content.captions,
+    rotation: content.rotation,
   };
 }
 
@@ -154,6 +164,8 @@ export function hydrateImageMetadata(config: unknown): ImageMetadata {
     captionEnabled: imageCaptionEnabled(config),
     captionPosition: imageCaptionPosition(config),
     captionAlign: imageCaptionAlign(config),
+    captions: readConfigMetadata(config, (value) => (isRecord(value) ? readStoredCaptions(value.captions) : undefined)),
+    rotation: readConfigMetadata(config, (value) => (isRecord(value) ? readStoredRotation(value.rotation) : undefined)),
   };
 }
 
@@ -163,6 +175,8 @@ export function sectionMetadataFromContent(content: SectionMetadataContent): Sec
     startOnNewPage: content.startOnNewPage,
     flowSpacingBeforePx: content.flowSpacingBeforePx,
     thousandsSeparator: content.thousandsSeparator,
+    bindingMargin: content.bindingMargin,
+    titleBars: content.titleBars,
     custom: content.custom,
     titleEdited: content.titleEdited,
   };
@@ -179,6 +193,8 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
     startOnNewPage: sectionBooleanMetadata(config, "startOnNewPage"),
     flowSpacingBeforePx: readFlowSpacingBeforePx(config),
     thousandsSeparator: sectionBooleanMetadata(config, "thousandsSeparator"),
+    bindingMargin: readConfigMetadata(config, (value) => (isRecord(value) && isBindingMargin(value.bindingMargin) ? value.bindingMargin : undefined)),
+    titleBars: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBarStyle(value.titleBars) ? value.titleBars : undefined)),
     custom: sectionBooleanMetadata(config, "custom"),
     titleEdited: sectionBooleanMetadata(config, "titleEdited"),
   };

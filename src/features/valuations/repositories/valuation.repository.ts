@@ -75,6 +75,9 @@ export type ValuationSectionDto = {
   flowSpacingBeforePx?: number;
   /** The document's choice of thousands separator, on the carátula section. */
   thousandsSeparator?: boolean;
+  /** The document's binding margin and title bars, on the carátula section. */
+  bindingMargin?: "normal" | "wide";
+  titleBars?: "filled" | "outline";
   /** A section the appraiser added. */
   custom?: boolean;
   /** The appraiser renamed the tab. */
@@ -666,6 +669,8 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition, 
     startOnNewPage: sectionMetadata.startOnNewPage ?? false,
     flowSpacingBeforePx: sectionMetadata.flowSpacingBeforePx,
     thousandsSeparator: sectionMetadata.thousandsSeparator,
+    ...(sectionMetadata.bindingMargin ? { bindingMargin: sectionMetadata.bindingMargin } : {}),
+    ...(sectionMetadata.titleBars ? { titleBars: sectionMetadata.titleBars } : {}),
     ...(renamed ? { titleEdited: true } : {}),
     blocks,
     _count: { blocks: blocks.length },

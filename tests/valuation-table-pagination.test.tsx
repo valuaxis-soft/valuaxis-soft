@@ -295,3 +295,33 @@ test("a column moved in the editor prints in its new place, header and cells ali
     assert.deepEqual(row.split("</td>").slice(0, -1).map(text).slice(3, 5), ["1.10", "0.90"]);
   }
 });
+
+test("a title before a table that starts on the next page goes with it, and the table starts under it", () => {
+  const pages = splitMeasuredDocumentFlowItems([
+    { item: flowItem("antes"), height: 500 },
+    { item: { id: "titulo", node: null, keepWithNext: true }, height: 40 },
+    { item: flowItem("tabla", true), height: 40 + 40 * 20 + 50, table: measuredTable(40) },
+  ], 600);
+  assert.deepEqual(pages.map((entries) => entries.map((entry) => entry.id)), [["antes"], ["titulo", "tabla"], ["tabla"]]);
+  // 600 - 40 of title - 40 of lead: 26 rows fit under it on its page.
+  const first = pages[1][1].fragment;
+  assert.deepEqual(first && [first.from, first.to], [0, 26]);
+});
+
+test("a hidden table prints nothing: neither its row nor the apartado titled after it", () => {
+  const hidden = { ...generatedTable("t", "Homologación", [textColumn("A")], [["1"]]), enabled: false };
+  const onlyTable = { id: "ap", title: "Tabla de homologación", enabled: true, concepts: [], images: [], tables: [hidden] } as Apartado;
+  const layout: ContentLayout = { version: 2, rows: [{ id: "r", columns: [{ id: "c", items: [{ type: "table", id: "t" }] }] }] };
+  const marketBlock = (table: TableContent, apartado: Apartado) => ({
+    id: "b", title: "Mercado", sectionLabel: "V", enabled: true, required: false,
+    concepts: [], images: [], tables: [table], apartados: [apartado], contentLayout: layout,
+  } as Block);
+  const items = documentBlockFlowItems(marketBlock(hidden, onlyTable));
+  assert.deepEqual(items.map((entry) => entry.id), ["b:title"]);
+  const html = renderToStaticMarkup(createElement("div", null, items.map((entry) => createElement("div", { key: entry.id }, entry.node))));
+  assert.doesNotMatch(html, /Homologación/);
+
+  // Shown again, both print.
+  const shown = { ...hidden, enabled: true };
+  assert.equal(documentBlockFlowItems(marketBlock(shown, { ...onlyTable, tables: [shown] })).length, 3);
+});

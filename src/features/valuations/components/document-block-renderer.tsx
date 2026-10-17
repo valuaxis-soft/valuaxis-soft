@@ -6,7 +6,7 @@ import { resolveContentLayout } from "@/features/valuations/services/content-lay
 import { formatVisibleChildLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
 import { useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
-import { resolveCellConceptGuide } from "@/features/valuations/services/concept-presentation";
+import { labelGuideColumns, resolveCellConceptGuide } from "@/features/valuations/services/concept-presentation";
 import { isLongTextList } from "@/features/valuations/services/document-long-text";
 import { MIN_ROWS_BEFORE_BREAK, MIN_ROWS_WITH_TAIL, type DocumentTableFragment } from "@/features/valuations/services/table-pagination";
 import { cn } from "@/lib/utils";
@@ -101,13 +101,20 @@ export function documentBlockFlowItems(
   };
 
   const items: DocumentFlowItem[] = [];
+  // What the item before is: the rows right under the title, or one after
+  // another, sit as close as the rows of an apartado do.
+  let previous: "title" | "content" | "apartado" | null = null;
+  let directRowIndex = 0;
 
-  // Title bar as first item — carries the block's page-break flag
+  // Title bar as first item — carries the block's page-break flag and never
+  // stays alone at the foot of a page.
   if (renderTitleBar) {
     const titleId = `${block.id}:title`;
+    previous = "title";
     items.push({
       id: titleId,
       startOnNewPage: block.startOnNewPage,
+      keepWithNext: true,
       node: renderBlockTitle
         ? <>{renderBlockTitle(block)}</>
         : <DocumentBlockTitleBar label={block.sectionLabel} title={block.title} />,
@@ -123,7 +130,12 @@ export function documentBlockFlowItems(
     // CONTENT ROW
     if (firstItem.type === "content-row" && structuralRow.items.length === 1) {
       const layoutRow = layoutRowsById.get(firstItem.rowId);
-      if (!layoutRow) continue;
+      // A row whose every item is hidden prints nothing, not even its room.
+      if (!layoutRow || !hasVisibleItems(layoutRow, block)) continue;
+      const rowIndex = previous === "content" ? directRowIndex + 1 : 0;
+      const continuesPrevious = previous === "title" || previous === "content" ? true : undefined;
+      directRowIndex = rowIndex;
+      previous = "content";
       const crId = `cr-${block.id}-${structuralRow.id}`;
       const splits = holdsOnlyATable(layoutRow, block);
       const renderRow = renderContentRow
@@ -142,7 +154,7 @@ export function documentBlockFlowItems(
         : (tableFragment?: DocumentTableFragment) => (
           <DocumentContentRow
             layoutRow={layoutRow}
-            rowIndex={0}
+            rowIndex={rowIndex}
             conceptsById={conceptsById}
             imagesById={imagesById}
             tablesById={tablesById}
@@ -152,7 +164,7 @@ export function documentBlockFlowItems(
             tableFragment={tableFragment}
           />
         );
-      items.push({ id: crId, node: renderRow(), renderTableFragment: splits ? renderRow : undefined });
+      items.push({ id: crId, continuesPrevious, node: renderRow(), renderTableFragment: splits ? renderRow : undefined });
 
       continue;
     }
@@ -162,8 +174,11 @@ export function documentBlockFlowItems(
     // instead of being cut at the end of this one.
     if (firstItem.type === "apartado" && structuralRow.items.length === 1) {
       const subBlock = subBlocksById.get(firstItem.apartadoId);
-      if (!subBlock || subBlock.enabled === false) continue;
+      if (!subBlock || subBlock.enabled === false || holdsOnlyHiddenTables(subBlock)) continue;
       const apId = `ap-${block.id}-${structuralRow.id}`;
+      // The first apartado sits right under the block's title bar.
+      const underTitle = previous === "title" ? true : undefined;
+      previous = "apartado";
       const head = apartadoHead(subBlock);
       if (head) {
         const renderHeadRow = (layoutRow: ContentLayoutRowV2, rowIndex: number, tableFragment?: DocumentTableFragment) => (
@@ -175,7 +190,7 @@ export function documentBlockFlowItems(
             tableFragment={tableFragment}
           />
         );
-        items.push({ id: apId, startOnNewPage: subBlock.startOnNewPage, node: head.node });
+        items.push({ id: apId, startOnNewPage: subBlock.startOnNewPage, continuesPrevious: underTitle, keepWithNext: head.rows.length > 0, node: head.node });
         head.rows.forEach((layoutRow, index) => {
           items.push({
             id: `${apId}:${layoutRow.id}`,
@@ -188,7 +203,9 @@ export function documentBlockFlowItems(
         });
         continue;
       }
-      const apartadoRows = subBlock.presentationMode === "technical-list" ? [] : resolveContentLayout(subBlock).rows;
+      const apartadoRows = subBlock.presentationMode === "technical-list"
+        ? []
+        : resolveContentLayout(subBlock).rows.filter((layoutRow) => hasVisibleItems(layoutRow, subBlock));
       const renderFurtherRow = (layoutRow: ContentLayoutRowV2, rowIndex: number, tableFragment?: DocumentTableFragment) => (
         <DocumentApartadoRows
           subBlock={subBlock}
@@ -216,6 +233,7 @@ export function documentBlockFlowItems(
       items.push({
         id: apId,
         startOnNewPage: subBlock.startOnNewPage,
+        continuesPrevious: underTitle,
         node: renderTitledRow(),
         renderTableFragment: apartadoRows.length && holdsOnlyATable(apartadoRows[0], subBlock) ? renderTitledRow : undefined,
       });
@@ -237,18 +255,24 @@ export function documentBlockFlowItems(
       const item0 = structuralRow.items[0];
       const item1 = structuralRow.items[1];
       if (item0.type !== "apartado" || item1.type !== "apartado") continue;
-      const sb1 = subBlocksById.get(item0.apartadoId);
-      const sb2 = subBlocksById.get(item1.apartadoId);
+      const shown = (subBlock: Apartado | undefined) =>
+        subBlock && subBlock.enabled !== false && !holdsOnlyHiddenTables(subBlock) ? subBlock : undefined;
+      const sb1 = shown(subBlocksById.get(item0.apartadoId));
+      const sb2 = shown(subBlocksById.get(item1.apartadoId));
+      if (!sb1 && !sb2) continue;
+      const underTitle = previous === "title" ? true : undefined;
+      previous = "apartado";
       // For paired apartados, if EITHER requests a page break, the pair starts on a new page
       const pairedStartOnNewPage = Boolean(sb1?.startOnNewPage) || Boolean(sb2?.startOnNewPage);
       const pairId = `pair-${block.id}-${structuralRow.id}`;
       items.push({
         id: pairId,
         startOnNewPage: pairedStartOnNewPage,
+        continuesPrevious: underTitle,
         node: (
           <div className={`mt-1 grid grid-cols-2 gap-4 ${pairedApartadosClassName ?? ""}`}>
-            {sb1 && sb1.enabled !== false ? renderPairedApartado(sb1) : null}
-            {sb2 && sb2.enabled !== false ? renderPairedApartado(sb2) : null}
+            {sb1 ? renderPairedApartado(sb1) : null}
+            {sb2 ? renderPairedApartado(sb2) : null}
           </div>
         ),
       });
@@ -266,11 +290,31 @@ export type ApartadoHead = { node: React.ReactNode; rows: ContentLayoutRowV2[] }
  * its item may be split by rows. Tables side by side, or sharing a row with
  * concepts or images, stay whole.
  */
-function holdsOnlyATable(layoutRow: ContentLayoutRowV2, container: Pick<Block, "concepts" | "images" | "tables">): boolean {
-  if (layoutRow.columns.length !== 1) return false;
+type ContentContainer = Pick<Block, "concepts" | "images" | "tables">;
+
+/** The items of the row that print: the ones that exist and are not hidden. */
+function visibleRowItems(layoutRow: ContentLayoutRowV2, container: ContentContainer, columns = layoutRow.columns) {
   const shown = (list: Array<{ id: string; enabled?: boolean }>, id: string) => list.some((entry) => entry.id === id && entry.enabled !== false);
-  const visible = layoutRow.columns[0].items.filter((itemRef) =>
+  return columns.flatMap((column) => column.items).filter((itemRef) =>
     shown(itemRef.type === "concept" ? container.concepts : itemRef.type === "image" ? container.images : container.tables, itemRef.id));
+}
+
+function hasVisibleItems(layoutRow: ContentLayoutRowV2, container: ContentContainer): boolean {
+  return visibleRowItems(layoutRow, container).length > 0;
+}
+
+/**
+ * An apartado that holds tables and nothing else, every one of them hidden:
+ * its title belongs to the tables, so it does not print either.
+ */
+function holdsOnlyHiddenTables(subBlock: Apartado): boolean {
+  if (!subBlock.tables.length) return false;
+  return [...subBlock.concepts, ...subBlock.images, ...subBlock.tables].every((entry) => entry.enabled === false);
+}
+
+function holdsOnlyATable(layoutRow: ContentLayoutRowV2, container: ContentContainer): boolean {
+  if (layoutRow.columns.length !== 1) return false;
+  const visible = visibleRowItems(layoutRow, container);
   if (visible.length !== 1 || visible[0].type !== "table") return false;
   const table = container.tables.find((entry) => entry.id === visible[0].id);
   return (table?.rows.length ?? 0) >= MIN_ROWS_BEFORE_BREAK + MIN_ROWS_WITH_TAIL;
@@ -406,7 +450,7 @@ function DocumentConceptCell({
 
   // When a guide px is provided, override the theme grid with a fixed-pixel template
   const gridStyle = labelGuidePx != null
-    ? { gridTemplateColumns: `${labelGuidePx}px minmax(0, 1fr)` }
+    ? { gridTemplateColumns: labelGuideColumns(labelGuidePx) }
     : undefined;
 
   return (
