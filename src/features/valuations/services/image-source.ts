@@ -76,5 +76,10 @@ const RELATION_MANAGED_IMAGE_SECTIONS = new Set(["datos", "datosGenerales"]);
  * terreno, persists the storage source so the loader can sign it again.
  */
 export function imageSourceForSave(sectionId: string, image: { id: string; src: string }): string {
-  return RELATION_MANAGED_IMAGE_SECTIONS.has(sectionId) ? image.id : image.src;
+  return isRelationManagedImageSection(sectionId) ? image.id : image.src;
+}
+
+/** Whether the section's images are files of their own service, known by id (Datos generales). */
+export function isRelationManagedImageSection(sectionId: string): boolean {
+  return RELATION_MANAGED_IMAGE_SECTIONS.has(sectionId);
 }

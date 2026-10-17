@@ -14,9 +14,16 @@ import { hasPermission } from "@/features/auth/permissions";
 import { getValuationDefaults } from "@/features/firm/firm.service";
 import { reserveNextValuationFolio } from "@/features/valuations/services/valuation-folio.service";
 import {
+  hydrateGeneralCaratulaTemplate,
   isSystemGeneralValuationTemplate,
   resolveResponsibleValuatorName,
+  type GeneralCaratulaDefaults,
 } from "@/features/valuations/services/general-valuation-template";
+import { templateSectionsForCreation } from "@/features/valuations/services/valuation-template.service";
+import { writeVersionSections } from "@/features/valuations/services/valuation-workflow/save-sections";
+import type { SectionPayload } from "@/features/valuations/services/valuation-workflow/types";
+import { buildSectionsPayload } from "@/features/valuations/components/workspace/model/save-payload";
+import type { AppSection } from "@/features/valuations/model";
 import { formatValidityMonths } from "@/features/valuations/services/valuation-signatures";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
@@ -153,7 +160,11 @@ export async function saveValuation(input: SaveValuationInput) {
     if (!tipoInmueble) return missingCatalog("CATALOG_PROPERTY_TYPE_MISSING", "Tipo de inmueble");
     if (!tipoOperacion) return missingCatalog("CATALOG_OPERATION_TYPE_MISSING", "Tipo de operacion");
     if (input.templateId && !plantilla) return missingCatalog("TEMPLATE_MISSING", "Plantilla");
-    if (input.templateId && plantilla?.IdTipoAvaluo !== tipoAvaluo.IdTipoAvaluo) {
+    // A template of the firm's own carries a whole document: it starts valuations of any type.
+    const templateSections = plantilla && !plantilla.BEsSistema
+      ? await templateSectionsForCreation(prisma, plantilla.IdPlantillaAvaluo, user.organizationId)
+      : null;
+    if (input.templateId && !templateSections && plantilla?.IdTipoAvaluo !== tipoAvaluo.IdTipoAvaluo) {
       return missingCatalog("TEMPLATE_NOT_APPLICABLE", "Plantilla aplicable al tipo seleccionado");
     }
     if (input.responsibleUserId && !responsable) {
@@ -190,6 +201,14 @@ export async function saveValuation(input: SaveValuationInput) {
         postalCode: input.postalCode,
       });
       const responsibleName = defaults.signers[0]?.name ?? resolveResponsibleValuatorName(responsable?.usuario, user.name);
+      const generalCaratulaDefaults: GeneralCaratulaDefaults = {
+        title: input.title,
+        clientName: input.clientName ?? input.client,
+        operationName: tipoOperacion.SNombre,
+        responsibleName,
+        valuationDate: defaults.valuationDate,
+        validity: formatValidityMonths(defaults.validityMonths),
+      };
       const versionId = await initializeWorkingVersionStructure({
         avaluoId: created.IdAvaluo,
         userId: user.id,
@@ -197,15 +216,11 @@ export async function saveValuation(input: SaveValuationInput) {
         initializeGeneralCaratula: isSystemGeneralValuationTemplate(plantilla),
         // A machinery valuation starts without the real estate sections in view.
         initiallyHidden: initiallyHiddenSections(tipoInmueble.SClave),
-        generalCaratulaDefaults: {
-          title: input.title,
-          clientName: input.clientName ?? input.client,
-          operationName: tipoOperacion.SNombre,
-          responsibleName,
-          valuationDate: defaults.valuationDate,
-          validity: formatValidityMonths(defaults.validityMonths),
-        },
+        generalCaratulaDefaults,
       });
+      if (templateSections) {
+        await writeVersionSections(tx, versionId, templateDocumentPayload(templateSections, generalCaratulaDefaults));
+      }
       await saveCaratula({
         versionId,
         tx,
@@ -223,7 +238,8 @@ export async function saveValuation(input: SaveValuationInput) {
         },
       });
       return created;
-    });
+      // A template's document writes as many rows as a full save.
+    }, { maxWait: 10_000, timeout: 60_000 });
 
     revalidatePath("/");
     // Tell the responsible appraiser when someone else assigned them the valuation.
@@ -267,6 +283,16 @@ async function validateCreationCatalogs(input: SaveValuationInput, organizationI
   if (!initialStatus) return catalogError("CATALOG_NEW_STATUS_MISSING", "Estado inicial de avaluo");
   if (!workVersionStatus) return catalogError("CATALOG_WORK_VERSION_STATUS_MISSING", "Estado de version de trabajo");
   return null;
+}
+
+/**
+ * The template's document as the first save of the new valuation: its
+ * carátula takes this valuation's title, client, date and signer, as the
+ * system's template does.
+ */
+function templateDocumentPayload(sections: AppSection[], defaults: GeneralCaratulaDefaults): SectionPayload[] {
+  const hydrated = sections.map((section) => (section.id === "caratula" ? hydrateGeneralCaratulaTemplate(section, defaults) : section));
+  return buildSectionsPayload(hydrated) as SectionPayload[];
 }
 
 function missingCatalog(code: string, label: string) {

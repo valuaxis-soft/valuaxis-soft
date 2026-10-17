@@ -9,8 +9,8 @@ import type { Concept } from "@/features/valuations/model";
 
 /**
  * Several concepts of one block or apartado chosen at once, to give them
- * the same "Espacio" in a single step. The scope owns the choice; the rows
- * read it to show their checkbox.
+ * the same "Espacio" in a single step or to move them elsewhere together.
+ * The scope owns the choice; the rows read it to show their checkbox.
  */
 type ConceptSelection = {
   selected: ReadonlySet<string>;
@@ -50,6 +50,7 @@ export function ConceptSelectionScope({
   concepts,
   readOnly,
   onApplySpacing,
+  renderMove,
   actions,
   children,
 }: {
@@ -57,6 +58,8 @@ export function ConceptSelectionScope({
   readOnly: boolean;
   /** Gives every chosen concept the spacing, in one update. */
   onApplySpacing: (conceptIds: string[], spacingAfter: number) => void;
+  /** The control that moves the chosen concepts ("Mover a…"); `done` ends the selection. */
+  renderMove?: (conceptIds: string[], done: () => void) => ReactNode;
   /** The creation controls of the container, printed on the same line as the selection. */
   actions?: ReactNode;
   children?: ReactNode;
@@ -83,7 +86,8 @@ export function ConceptSelectionScope({
     onApplySpacing(chosen.map((concept) => concept.id), Math.max(0, spacingAfter));
   };
 
-  const toolbar = readOnly || concepts.length < 2 ? null : selecting ? (
+  // Moving makes sense for one concept too; a common spacing needs two.
+  const toolbar = readOnly || concepts.length < (renderMove ? 1 : 2) ? null : selecting ? (
     <div className="flex flex-wrap items-center gap-1 rounded-md border border-primary/40 bg-primary/5 px-2 py-1 text-xs" data-concept-selection>
       <span className="tabular-nums">{chosen.length} de {concepts.length} seleccionados</span>
       <Button type="button" size="xs" variant="ghost" onClick={() => setSelected(new Set(conceptIds))}>
@@ -117,6 +121,12 @@ export function ConceptSelectionScope({
       >
         <Plus />
       </Button>
+      {renderMove ? (
+        <>
+          <span className="mx-1 h-4 border-l" aria-hidden="true" />
+          {renderMove(chosen.map((concept) => concept.id), stop)}
+        </>
+      ) : null}
       <Button type="button" size="xs" variant="outline" className="ml-1" onClick={stop}>
         <X data-icon="inline-start" />
         Listo
@@ -127,7 +137,7 @@ export function ConceptSelectionScope({
       type="button"
       size="sm"
       variant="ghost"
-      title="Elegir varios conceptos y darles el mismo espacio"
+      title={renderMove ? "Elegir conceptos para darles el mismo espacio o moverlos juntos" : "Elegir varios conceptos y darles el mismo espacio"}
       onClick={() => setSelecting(true)}
     >
       <ListChecks data-icon="inline-start" />

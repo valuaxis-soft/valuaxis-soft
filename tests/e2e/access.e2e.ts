@@ -83,6 +83,12 @@ describe("without a session", () => {
     ["POST", "/api/organizacion/facturacion/checkout"],
     ["POST", "/api/organizacion/facturacion/portal"],
     ["POST", "/api/organizacion/facturacion/creditos/checkout"],
+    ["GET", "/api/plantillas"],
+    ["POST", "/api/plantillas"],
+    // Template ids are UUIDs too: any of them is refused before it is looked up.
+    ["GET", "/api/plantillas/{id}"],
+    ["PATCH", "/api/plantillas/{id}"],
+    ["DELETE", "/api/plantillas/{id}"],
   ];
   for (const [method, template] of privateApis) {
     test(`${method} ${template} answers 401`, async () => {

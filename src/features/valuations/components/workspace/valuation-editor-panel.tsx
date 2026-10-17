@@ -6,6 +6,14 @@ import {
   LongTextConceptEditor,
 } from "../editor/concept-editor";
 import { ConceptSelectionScope } from "../editor/concept-selection";
+import {
+  ApartadoTransferMenu,
+  BlockTransferMenu,
+  MoveConceptsButton,
+  PasteApartadoButton,
+  PasteBlockButton,
+} from "../editor/structure-transfer-actions";
+import { ImportBlockButton } from "./template-dialogs";
 import { BlockCard } from "../editor/block-card";
 import { StructuralActions } from "../editor/structural-actions";
 import { ApartadoEditor } from "../editor/apartado-editor";
@@ -381,10 +389,14 @@ export function ValuationEditorPanel(props: {
             />
           ) : null}
           {!isCaratula ? (
-            <Button type="button" size="sm" disabled={props.readOnly} onClick={() => props.onAddBlock(section.id)}>
-              <Plus />
-              {blockTerm}
-            </Button>
+            <>
+              <PasteBlockButton section={section} />
+              <ImportBlockButton section={section} />
+              <Button type="button" size="sm" disabled={props.readOnly} onClick={() => props.onAddBlock(section.id)}>
+                <Plus />
+                {blockTerm}
+              </Button>
+            </>
           ) : null}
         </CardAction>
       </CardHeader>
@@ -608,6 +620,7 @@ function SortableBlockEditor(props: {
           : "Oculto"
         : null}
       dragHandle={dragHandle}
+      extraActions={!isCaratula ? <BlockTransferMenu section={section} block={block} label={blockTerm === "sección" ? "la sección" : "el bloque"} /> : undefined}
       title={stripLeadingRomanNumeral(block.title)}
       titleEdit={
         caratulaBlockKind === "intermediate"
@@ -701,6 +714,7 @@ function SortableBlockEditor(props: {
               subBlockLabel={subBlockButtonLabel}
             />
           ) : null}
+          {!isCaratula ? <PasteApartadoButton section={section} block={block} /> : null}
         {caratulaBlockKind === "assumptions" ? (
           <LongTextConceptEditor
             concepts={block.concepts}
@@ -733,6 +747,17 @@ function SortableBlockEditor(props: {
         ) : (
           // A draft for a descriptive field goes with the title and the tables of its block or apartado.
           <DraftScopeProvider title={block.title} tables={block.tables}>
+          {/* The block's own concepts chosen at once: one "Espacio", or "Mover a…" together. */}
+          <ConceptSelectionScope
+            concepts={block.concepts}
+            readOnly={readOnly}
+            onApplySpacing={(conceptIds, spacingAfter) =>
+              conceptIds.forEach((conceptId) => props.onUpdateConcept(section.id, block.id, conceptId, { spacingAfter }))
+            }
+            renderMove={(conceptIds, done) => (
+              <MoveConceptsButton source={{ sectionId: section.id, blockId: block.id }} conceptIds={conceptIds} onMoved={done} />
+            )}
+          >
           <BlockFlowRenderer
             block={block}
             allConcepts={allWorkspaceConcepts}
@@ -772,6 +797,7 @@ function SortableBlockEditor(props: {
             }
             renderApartado={(subBlock, flowIndex, dndState) => (
               <ApartadoEditor
+                extraActions={!isCaratula ? <ApartadoTransferMenu section={section} block={block} apartado={subBlock} label={`el ${subBlockTerm}`} /> : undefined}
                 displayLabel={showStructuralNumbering ? formatVisibleChildLabel(displayBlockLabel, getBlockFlowApartadoOrder(block), subBlock.id) : ""}
                 readOnly={readOnly}
                 subBlock={subBlock}
@@ -816,7 +842,7 @@ function SortableBlockEditor(props: {
                 canMoveDown={blockFlowV2 ? canMoveBlockFlowV2ApartadoOneStep(blockFlowV2, subBlock.id, "down") : false}
                 capabilities={apartadoCapabilities}
               >
-                {/* Several concepts of the apartado chosen at once take one "Espacio". */}
+                {/* Several concepts of the apartado chosen at once: one "Espacio", or "Mover a…" together. */}
                 <ConceptSelectionScope
                   concepts={subBlock.concepts}
                   readOnly={readOnly}
@@ -825,6 +851,13 @@ function SortableBlockEditor(props: {
                       props.onUpdateSubConcept(section.id, block.id, subBlock.id, conceptId, { spacingAfter }),
                     )
                   }
+                  renderMove={(conceptIds, done) => (
+                    <MoveConceptsButton
+                      source={{ sectionId: section.id, blockId: block.id, apartadoId: subBlock.id }}
+                      conceptIds={conceptIds}
+                      onMoved={done}
+                    />
+                  )}
                 >
                 <ContentCreationControl
                   capabilities={apartadoCapabilities}
@@ -916,6 +949,7 @@ function SortableBlockEditor(props: {
               </ApartadoEditor>
             )}
           />
+          </ConceptSelectionScope>
           </DraftScopeProvider>
         )}
 

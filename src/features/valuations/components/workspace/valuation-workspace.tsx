@@ -63,6 +63,8 @@ import { useTableMutations } from "./hooks/use-table-mutations";
 import { useValuationLifecycle } from "./hooks/use-valuation-lifecycle";
 import { useValuationSave } from "./hooks/use-valuation-save";
 import { useWorkspaceLayout } from "./hooks/use-workspace-layout";
+import { StructureTransferProvider } from "./structure-transfer-context";
+import { SaveAsTemplateDialog } from "./template-dialogs";
 
 // Kept for existing imports of the section numbering helper.
 export { resequenceSections } from "./model/section-numbering";
@@ -254,6 +256,10 @@ export function ValuationWorkspace({
   const machinery = isMachineryPropertyKind(initialValuation?.propertyKind);
   const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, machinery, valuationId });
 
+  // A template is made from what is saved, so pending changes are saved first.
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const saveBeforeTemplate = async () => !hasUnsavedChanges || (await handleSave());
+
   // The dictamen renders what is saved, so pending changes are saved first.
   const handleExportPdf = async () => {
     if (!valuationId) return;
@@ -363,6 +369,7 @@ export function ValuationWorkspace({
     <FormulaEditingProvider sections={sections}>
     <NumberPresentationProvider presentation={numberPresentation}>
     <CustomUnitsProvider initialUnits={customUnits}>
+    <StructureTransferProvider sections={sections} readOnly={!canEdit} updateSections={updateSections} valuationId={valuationId}>
     <Tabs value={activeSection.id} onValueChange={handleActiveSectionChange} className="gap-0 h-full">
       <main className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-hidden">
       <section className="shrink-0 border-b bg-background">
@@ -388,6 +395,7 @@ export function ValuationWorkspace({
             onReorderSections={(next) => updateSections(() => next)}
             onRedo={redoEditorChange}
             onSave={() => void handleSave()}
+            onSaveAsTemplate={valuationId && canEdit ? () => setTemplateDialogOpen(true) : undefined}
             onSplitLayoutChange={handleSplitLayoutChange}
             onUndo={undoEditorChange}
             onWorkspaceModeChange={handleWorkspaceModeChange}
@@ -487,8 +495,17 @@ export function ValuationWorkspace({
         onSaveAndExit={handleSaveAndExit}
         saving={saving}
       />
+      {valuationId && canEdit ? (
+        <SaveAsTemplateDialog
+          open={templateDialogOpen}
+          onOpenChange={setTemplateDialogOpen}
+          valuationId={valuationId}
+          saveFirst={saveBeforeTemplate}
+        />
+      ) : null}
       </main>
     </Tabs>
+    </StructureTransferProvider>
     </CustomUnitsProvider>
     </NumberPresentationProvider>
     </FormulaEditingProvider>

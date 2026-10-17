@@ -25,6 +25,7 @@ import {
   reopenPayload,
   shortListingPayload,
   thinDraftPayload,
+  valuationCatalogIds,
   waitForServer,
   type World,
 } from "./support";
@@ -164,6 +165,45 @@ describe("organization B cannot reach organization A's valuation", () => {
       assert.equal(response.status, 404, describeCall(`org B admin PUT ${path(target)}`, response));
     });
   }
+});
+
+describe("organization B cannot reach organization A's templates", () => {
+  let template: string;
+  before(async () => {
+    const created = await call(world.a.admin, "POST", "/api/plantillas", { json: { name: `Privada ${world.suffix}`, valuationId: target, includeData: true } });
+    assert.equal(created.status, 201, describeCall("template (setup)", created));
+    template = String(created.data.id);
+  });
+
+  test("B's list does not include A's templates", async () => {
+    const list = await call(world.b.admin, "GET", "/api/plantillas");
+    assert.equal(list.status, 200);
+    assert.ok(!JSON.stringify(list.data).includes(template), "A's template leaked into B's list");
+  });
+
+  for (const [method, json] of [["GET"], ["PATCH", { name: "Escrita por B" }], ["DELETE"]] as const) {
+    test(`${method} /api/plantillas/:id of A → 404 and it stays as it was`, async () => {
+      const response = await call(world.b.admin, method, `/api/plantillas/${template}`, { json });
+      assert.equal(response.status, 404, describeCall(`org B admin ${method} template`, response));
+      const row = await prisma.plantillaAvaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: template }, select: { SNombre: true, BActivo: true } });
+      assert.deepEqual(row, { SNombre: `Privada ${world.suffix}`, BActivo: true });
+    });
+  }
+
+  test("B cannot save A's valuation as a template of its own", async () => {
+    const response = await call(world.b.admin, "POST", "/api/plantillas", { json: { name: "Copia de B", valuationId: target, includeData: true } });
+    assert.equal(response.status, 404, describeCall("org B admin POST template", response));
+    assert.equal(await prisma.plantillaAvaluo.count({ where: { IdOrganizacion: world.b.organizationId } }), 0);
+  });
+
+  test("B cannot start a valuation from A's template", async () => {
+    const row = await prisma.plantillaAvaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: template }, select: { IdPlantillaAvaluo: true } });
+    const response = await call(world.b.admin, "POST", "/api/avaluos", {
+      json: { title: "Con la plantilla de A", ...(await valuationCatalogIds()), templateId: row.IdPlantillaAvaluo },
+    });
+    assert.equal(response.status, 400, describeCall("org B admin POST valuation", response));
+    assert.equal((response.body as { code?: string }).code, "TEMPLATE_MISSING");
+  });
 });
 
 describe("organization B cannot reach organization A's team", () => {

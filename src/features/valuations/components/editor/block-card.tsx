@@ -52,6 +52,9 @@ type BlockCardProps = {
     };
   };
 
+  /** Actions of the editor's own shown before the structural ones (copy, move). */
+  extraActions?: ReactNode;
+
   // Content
   children?: ReactNode;
 };
@@ -65,6 +68,7 @@ export function BlockCard({
   title,
   titleEdit,
   structuralActions,
+  extraActions,
   children,
 }: BlockCardProps) {
   return (
@@ -79,6 +83,7 @@ export function BlockCard({
         title={title}
         titleEdit={titleEdit}
       >
+        {extraActions}
         {structuralActions ? (
           <StructuralActions
             conceptPresentation={structuralActions.conceptPresentation}

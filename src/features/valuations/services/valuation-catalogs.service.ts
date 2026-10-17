@@ -1,4 +1,5 @@
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { readDocumentTemplate } from "./document-template";
 
 export type CatalogOption = {
   id: number;
@@ -10,7 +11,11 @@ export type ValuationCreationCatalogs = {
   appraisalTypes: CatalogOption[];
   propertyTypes: CatalogOption[];
   operationTypes: CatalogOption[];
-  templates: (CatalogOption & { appraisalTypeId: number | null })[];
+  /**
+   * The system's templates and the firm's own. `document`: the template holds
+   * a whole document (one the firm saved), which starts valuations of any type.
+   */
+  templates: (CatalogOption & { appraisalTypeId: number | null; system: boolean; document: boolean })[];
   responsibleUsers: CatalogOption[];
 };
 
@@ -35,10 +40,17 @@ export async function getValuationCreationCatalogs(organizationId: number) {
       prisma.plantillaAvaluo.findMany({
         where: {
           BActivo: true,
+          DFechaEliminacion: null,
           OR: [{ IdOrganizacion: null }, { IdOrganizacion: organizationId }],
         },
         orderBy: [{ SNombre: "asc" }],
-        select: { IdPlantillaAvaluo: true, IdTipoAvaluo: true, SNombre: true },
+        select: {
+          IdPlantillaAvaluo: true,
+          IdTipoAvaluo: true,
+          SNombre: true,
+          BEsSistema: true,
+          versiones: { where: { BActiva: true }, orderBy: { INumeroVersion: "desc" }, take: 1, select: { JConfiguracionGeneral: true } },
+        },
       }),
       prisma.miembroOrganizacion.findMany({
         where: {
@@ -84,6 +96,8 @@ export async function getValuationCreationCatalogs(organizationId: number) {
       id: item.IdPlantillaAvaluo,
       label: item.SNombre,
       appraisalTypeId: item.IdTipoAvaluo,
+      system: item.BEsSistema,
+      document: !item.BEsSistema && readDocumentTemplate(item.versiones[0]?.JConfiguracionGeneral) !== null,
     })),
     responsibleUsers: responsibleUsers.map((item) => ({
       id: item.usuario.IdUsuario,
