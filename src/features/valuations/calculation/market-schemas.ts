@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { SURFACE_POWERS } from "../engine/config";
+import { MAX_REGRESSION_VARIABLES } from "../engine/regression";
+import { MAX_SCALE_LEVELS, REGRESSION_DEPENDENTS } from "./market-regression";
 import {
   BUILTIN_CHARACTERISTICS,
   COMPARABLE_TYPES,
@@ -63,6 +65,7 @@ export const comparableInputSchema = z.object({
   extra: characteristicValues,
   characteristicsText: text(2000).optional(),
   factorJustification: text(2000).optional(),
+  regressionExcluded: z.boolean().optional(),
   sourceName: text(180),
   contactName: text(180),
   contactPhone: text(40),
@@ -73,6 +76,26 @@ export const comparableInputSchema = z.object({
   // Built-in factors once each, plus the firm's own: at most the six of the homologation and as many own ones.
   factors: z.array(factorSchema).max(FACTOR_TYPES.length + MAX_FACTOR_SLOTS)
     .refine((factors) => new Set(factors.map(factorKey)).size === factors.length, "Cada tipo de factor va una sola vez."),
+});
+
+/** A qualitative variable: each written value and the number it takes, once each. */
+const regressionScaleSchema = z.array(z.object({
+  label: z.string().trim().min(1, "Cada nivel de la escala necesita su texto.").max(80),
+  value: z.number().finite().min(-1e6).max(1e6),
+}))
+  .max(MAX_SCALE_LEVELS, `Una escala lleva hasta ${MAX_SCALE_LEVELS} niveles.`)
+  .refine((levels) => new Set(levels.map((level) => level.label.toLowerCase())).size === levels.length, "Cada nivel de la escala va una sola vez.")
+  .nullable()
+  .optional();
+
+const regressionSchema = z.object({
+  method: z.literal("REGRESION_LINEAL"),
+  enabled: z.boolean(),
+  dependent: z.enum(REGRESSION_DEPENDENTS),
+  variables: z.array(z.object({ key: characteristicKey.refine((key) => key !== "price" && key !== "notes", "El precio y las observaciones no son variables de la regresión."), scale: regressionScaleSchema }))
+    .max(MAX_REGRESSION_VARIABLES, `La regresión lleva hasta ${MAX_REGRESSION_VARIABLES} variables.`)
+    .refine((variables) => new Set(variables.map((variable) => variable.key)).size === variables.length, "Cada variable va una sola vez."),
+  showInDictamen: z.boolean(),
 });
 
 export type ComparableInputPayload = z.infer<typeof comparableInputSchema>;
@@ -102,6 +125,7 @@ export const marketSettingsSchema = z.object({
     .optional(),
   subjectCharacteristics: characteristicValues,
   showFactorJustification: z.boolean().optional(),
+  regression: regressionSchema.nullable().optional(),
   factorSlots: z.array(z.object({
     type: z.enum(FACTOR_TYPES),
     label: z.string().trim().min(1).max(60),

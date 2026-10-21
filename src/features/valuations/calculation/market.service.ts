@@ -21,6 +21,7 @@ import { matchOption, optionJustification, optionsFor, resolveFactorCatalog } fr
 import { recomputeCosts } from "./cost.service";
 import { recomputeConclusion } from "./conclusion.service";
 import { recomputeIncome } from "./income.service";
+import { computeMarketRegression, type MarketRegressionResult } from "./market-regression";
 import type { ComparableInputPayload, MarketSettingsPayload } from "./market-schemas";
 import {
   CUSTOM_FACTOR_KEY,
@@ -64,11 +65,13 @@ type PropertySnapshot = {
   extra?: Record<string, string>;
   characteristicsText?: string | null;
   factorJustification?: string | null;
+  regressionExcluded?: boolean;
 };
 /** What JConfiguracion keeps of the settings; the rest has its own columns. */
 type StoredConfiguration = Partial<Pick<MarketSettingsDto,
   | "factorSlots" | "adoptedUnitValue" | "rounding" | "offerLevel" | "offerLabels" | "offerMark" | "offerIntro" | "homologationBasis"
-  | "typicalFrontage" | "typicalDepth" | "characteristicFields" | "subjectCharacteristics" | "showFactorJustification">> & {
+  | "typicalFrontage" | "typicalDepth" | "characteristicFields" | "subjectCharacteristics" | "showFactorJustification"
+  | "regression">> & {
   /**
    * The lote tipo captured, kept while the homologation is against the
    * subject: NSuperficieBase holds it only against the lote tipo, so the cost
@@ -128,6 +131,7 @@ async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean): Prom
     extra: property.extra ?? {},
     characteristicsText: property.characteristicsText ?? null,
     factorJustification: property.factorJustification ?? null,
+    ...(property.regressionExcluded ? { regressionExcluded: true } : {}),
     sourceName: publication.sourceName ?? null,
     contactName: publication.contactName ?? null,
     contactPhone: publication.contactPhone ?? null,
@@ -180,6 +184,7 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
         characteristicFields: configuration.characteristicFields ?? null,
         subjectCharacteristics: configuration.subjectCharacteristics ?? {},
         showFactorJustification: configuration.showFactorJustification ?? true,
+        regression: configuration.regression ?? null,
       }
     : defaults;
   const comparables = await Promise.all(rows.map((row) => toComparableDto(row, withPhotoUrls)));
@@ -232,6 +237,10 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
   const trace = new Trace();
   const config = marketEngineConfig(settings);
   const result = engineInput.ok ? computeMarketApproach(engineInput.input, config, trace) : null;
+  // The regression is a reference: its steps join the trace, its value changes nothing of the market's.
+  const regressionTrace = new Trace();
+  const regression = computeMarketRegression({ settings, comparables }, regressionTrace);
+  if (regression?.ok) trace.steps.push(...regressionTrace.steps);
   const resultColumns = {
     NSuperficieSujeto: settings.subjectArea,
     NValorPromedioHomologado: result?.homologation.stats.mean ?? null,
@@ -266,7 +275,12 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
       SClaveCalculo: calculationKey,
       SVersionCalculo: ENGINE_VERSION,
       JValoresEntrada: engineInput.input as unknown as Prisma.InputJsonValue,
-      JValoresSalida: { value: result?.value ?? null, adoptedUnitValue: result?.adoptedUnitValue ?? null, stats: result?.homologation.stats ?? null } as Prisma.InputJsonValue,
+      JValoresSalida: {
+        value: result?.value ?? null,
+        adoptedUnitValue: result?.adoptedUnitValue ?? null,
+        stats: result?.homologation.stats ?? null,
+        ...(regression?.ok ? { regression: regressionSummary(regression.result) } : {}),
+      } as Prisma.InputJsonValue,
       SPoliticaRedondeo: JSON.stringify(config.rounding.market),
       BExitoso: true,
       resultados: {
@@ -279,6 +293,20 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
     },
   });
   await recomputeDependents(tx, versionId, type);
+}
+
+/** What the execution keeps of the regression: the reference values, not the data the trace already has. */
+function regressionSummary({ fit, unitValue, value }: MarketRegressionResult) {
+  return {
+    method: fit.method,
+    n: fit.n,
+    coefficients: fit.coefficients,
+    estimate: fit.estimate,
+    unitValue,
+    value,
+    rSquared: fit.rSquared,
+    standardError: fit.standardError,
+  };
 }
 
 /**
@@ -312,6 +340,7 @@ function storedConfiguration(settings: StoredConfiguration) {
     characteristicFields: settings.characteristicFields ?? null,
     subjectCharacteristics: settings.subjectCharacteristics ?? {},
     ...(settings.showFactorJustification === undefined ? {} : { showFactorJustification: settings.showFactorJustification }),
+    regression: settings.regression ?? null,
   } as Prisma.InputJsonValue;
 }
 
@@ -416,6 +445,7 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
         characteristicFields: unlessOmitted(payload.characteristicFields, stored.characteristicFields),
         subjectCharacteristics: payload.subjectCharacteristics ?? stored.subjectCharacteristics,
         showFactorJustification: payload.showFactorJustification ?? stored.showFactorJustification,
+        regression: unlessOmitted(payload.regression, stored.regression),
       }),
     };
     await tx.enfoqueMercado.upsert({
@@ -449,6 +479,7 @@ function snapshots(payload: ComparableInputPayload, stored: Partial<PropertySnap
     extra: payload.extra ?? stored.extra ?? {},
     characteristicsText: unlessOmitted(payload.characteristicsText, stored.characteristicsText),
     factorJustification: unlessOmitted(payload.factorJustification, stored.factorJustification),
+    ...((payload.regressionExcluded ?? stored.regressionExcluded) ? { regressionExcluded: true } : {}),
   };
   const publication: PublicationSnapshot = {
     sourceName: payload.sourceName,
