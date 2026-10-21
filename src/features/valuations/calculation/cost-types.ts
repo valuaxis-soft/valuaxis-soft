@@ -8,6 +8,7 @@
 import { SURFACE_SLOT, type FactorSlot } from "../engine/factors";
 import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig, type RoundingDigits } from "../engine/config";
 import type { CostApproachInput } from "../engine/costs";
+import type { CapturedFormulas, PercentFields } from "./captured-formulas";
 
 /** Land factor columns of the books (J..O): Neg., Ubic., Sup., Serv., Clas., Top. */
 export const LAND_FACTORS = [
@@ -73,6 +74,12 @@ export function effectiveConservation(row: { conservation: number | null; conser
 
 /** A construction type as the construction section captures it: the single source of its surface, age and useful life. */
 export type ConstructionTypeDto = {
+  /**
+   * The type's own row: it keeps the type, and the cost captured for it, when
+   * its reference changes. A new type has none until it is saved; a client
+   * that sends none is matched by reference.
+   */
+  id?: number;
   ref: string;
   description: string;
   classification: string;
@@ -83,7 +90,7 @@ export type ConstructionTypeDto = {
 };
 
 /** The construction section's list as the editor and the API exchange it. */
-export type ConstructionTypesDto = { types: ConstructionTypeDto[]; locked: boolean };
+export type ConstructionTypesDto = { types: ConstructionTypeDto[]; locked: boolean; formulas: CapturedFormulas };
 
 /** What the cost approach adds to a construction type it picked. */
 export type ConstructionCostDto = {
@@ -192,7 +199,12 @@ export type CostInputDto = {
   installations: WithRating<WithFormulaFactors<InstallationDto, "ageFactor">>[];
   indirects: IndirectDto[];
   rounding?: CostRoundingDto;
+  /** Formulas typed in the numeric fields, by path ("constructions.0.unitReplacementCost"); absent keeps the stored ones whose value did not change. */
+  formulas?: CapturedFormulas;
 };
+
+/** Completion and undivided share are typed as percentages and stored as fractions. */
+export const COST_PERCENT_FIELDS: PercentFields = (path) => /^(constructions|installations)\.\d+\.(completion|undivided)$/.test(path);
 
 export function costEngineConfig(calculation: Pick<CostInputDto, "rounding">): EngineConfig {
   return calculation.rounding ? withRounding(DEFAULT_ENGINE_CONFIG, { costs: calculation.rounding }) : DEFAULT_ENGINE_CONFIG;
@@ -205,6 +217,8 @@ export type CostCalculationDto = Omit<CostInputDto, "land" | "constructions" | "
   constructions: ConstructionDto[];
   /** Every construction type of the construction section, picked or not. */
   types: ConstructionTypeDto[];
+  /** Formulas typed in the types' numeric fields in the construction section ("types.0.area"). */
+  typeFormulas?: CapturedFormulas;
   /** Land market approach, the default source of the land unit value and of the lote tipo. */
   market: { adoptedUnitValue: number | null; subjectArea: number | null; baseArea: number | null };
   /** The appraiser has saved the cost approach at least once. */

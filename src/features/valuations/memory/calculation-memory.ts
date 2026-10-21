@@ -15,17 +15,19 @@
  *
  * Pure TypeScript — no React, no database.
  */
+import { valueAtPath, type CapturedFormulas, type PercentFields } from "../calculation/captured-formulas";
 import type { CostCalculationDto } from "../calculation/cost-types";
-import { costEngineConfig, toCostEngineInput } from "../calculation/cost-types";
+import { COST_PERCENT_FIELDS, costEngineConfig, toCostEngineInput } from "../calculation/cost-types";
 import type { ConclusionCalculationDto } from "../calculation/conclusion-types";
-import { canConclude, conclusionEngineConfig } from "../calculation/conclusion-types";
+import { CONCLUSION_PERCENT_FIELDS, canConclude, conclusionEngineConfig } from "../calculation/conclusion-types";
 import { roundDecimal } from "../calculation/free-formula";
-import { toIncomeEngineInput, type IncomeCalculationDto } from "../calculation/income-types";
+import { INCOME_PERCENT_FIELDS, toIncomeEngineInput, type IncomeCalculationDto } from "../calculation/income-types";
 import { toMachineryCostEngineInput, toMachineryMarketEngineInput, type MachineryCalculationDto } from "../calculation/machinery-types";
 import { isGeneratedBlock } from "../calculation/market-document";
 import {
   COMPARABLE_TYPE_LABELS,
   FACTOR_TYPE_LABELS,
+  comparableFormulaValues,
   factorKey,
   findFactor,
   isComparableComplete,
@@ -34,7 +36,7 @@ import {
   toMarketEngineInput,
   type MarketCalculationDto,
 } from "../calculation/market-types";
-import { concludeValue } from "../engine/conclusion";
+import { APPROACH_LABELS, concludeValue, type Approach } from "../engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG, ENGINE_VERSION } from "../engine/config";
 import { computeCostApproach } from "../engine/costs";
 import { computeIncomeApproach } from "../engine/income";
@@ -104,7 +106,7 @@ export type MemoryStep = {
   storedValue?: string;
 };
 
-/** A value the appraiser typed as a formula in a calculation panel (a factor "=1/0.8"). */
+/** A value the appraiser typed as a formula in a calculation panel (a factor "=1/0.8", a price "=1345*235"). */
 export type MemoryCapturedFormula = { label: string; formula: string; value: string };
 
 export type MemoryApproach = {
@@ -429,6 +431,143 @@ function capturedRatings(calculation: MarketCalculationDto): MemoryCapturedFormu
   return captured;
 }
 
+/** How the memory names the numeric fields of the panels, by their key in what the panel saves. */
+const FIELD_LABELS: Record<string, string> = {
+  subjectArea: "Superficie del sujeto",
+  baseArea: "Lote tipo",
+  referenceArea: "Lote tipo",
+  unitValue: "Valor unitario",
+  adoptedUnitValue: "Valor unitario adoptado",
+  additionalAmount: "Monto adicional",
+  typicalFrontage: "Frente tipo",
+  typicalDepth: "Fondo tipo",
+  surfaceFactor: "Factor de superficie",
+  resultantFactor: "Factor resultante",
+  negotiation: "Negociación",
+  location: "Ubicación",
+  services: "Servicios",
+  classification: "Clasificación",
+  topography: "Topografía",
+  conservation: "Factor de conservación",
+  ageFactor: "Factor de edad",
+  otherFactor: "Otro factor",
+  completion: "Grado de terminación",
+  undivided: "Indiviso",
+  unitReplacementCost: "Valor unitario de reposición nuevo",
+  quantity: "Cantidad",
+  area: "Superficie",
+  age: "Edad",
+  usefulLife: "Vida útil",
+  percentage: "Porcentaje",
+  base: "Base",
+  price: "Precio",
+  frontage: "Frente",
+  depth: "Fondo",
+  frontCount: "Número de frentes",
+  vacancyDays: "Días de vacío",
+  contractYears: "Años de contrato",
+  otherMonthlyIncome: "Otros ingresos mensuales",
+  tiie: "TIIE 28 días",
+  inflation: "Inflación anual",
+  remainingLifeYears: "Vida útil remanente",
+  vacancy: "Vacancia",
+  unitRent: "Renta unitaria",
+  rate: "Tasa",
+  appliedRate: "Tasa aplicada",
+  quotedPrice: "Cotización",
+  exchangeRate: "Tipo de cambio",
+  customs: "Gastos aduanales",
+  freight: "Fletes y maniobras",
+  insurance: "Seguros y/o fianzas",
+  engineering: "Ingenierías",
+  installation: "Instalación",
+  otherExpenses: "Otros gastos",
+  fees: "F.E.E.S.",
+  maintenance: "Factor de mantenimiento",
+  technological: "Factor tecnológico",
+  economic: "Factor económico",
+};
+const GROUP_LABELS: Record<string, string> = { land: "Terreno", annuity: "Anualidad", marketRate: "Tasa de mercado", item: "Bien" };
+
+/**
+ * The field a formula was typed in, in words: "Construcción T-1 · Valor
+ * unitario de reposición nuevo". `rows` names the rows of each list by their
+ * position; `names` gives the words of a key of its own (a factor's column).
+ */
+function formulaFieldLabel(path: string, rows: Record<string, (index: number) => string> = {}, names: Record<string, string> = {}) {
+  const segments = path.split(".");
+  const parts: string[] = [];
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    const next = segments[index + 1];
+    if (next !== undefined && /^\d+$/.test(next) && rows[segment]) {
+      parts.push(rows[segment](Number(next)));
+      index += 1;
+    } else if (segment === "salePrices" && next !== undefined) {
+      parts.push(`Precio de venta del comparable ${next}`);
+      index += 1;
+    } else if (segment === "weights" && next !== undefined) {
+      parts.push(`Peso del ${(APPROACH_LABELS[next as Approach] ?? next).toLowerCase()}`);
+      index += 1;
+    } else if (next === undefined) {
+      parts.push(names[segment] ?? FIELD_LABELS[segment] ?? inputName(segment));
+    } else if (GROUP_LABELS[segment]) {
+      parts.push(GROUP_LABELS[segment]);
+    }
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * The values typed as formulas in a panel, as the memory prints them: the
+ * field, the formula and the value it gave (a percentage, as typed).
+ */
+export function typedFormulas(
+  formulas: CapturedFormulas | undefined,
+  source: unknown,
+  options: { rows?: Record<string, (index: number) => string>; names?: Record<string, string>; percent?: PercentFields; prefix?: string } = {},
+): MemoryCapturedFormula[] {
+  return Object.entries(formulas ?? {}).flatMap(([path, formula]) => {
+    const value = valueAtPath(source, path);
+    if (typeof value !== "number") return [];
+    const label = formulaFieldLabel(path, options.rows, options.names);
+    return [{
+      label: options.prefix ? `${options.prefix} · ${label}` : label,
+      formula,
+      value: options.percent?.(path) ? `${formatEngineValue(value * 100)} %` : formatEngineValue(value),
+    }];
+  });
+}
+
+const refRow = (kind: string, rows: Array<{ ref: string }>) => (index: number) => `${kind} ${rows[index]?.ref || index + 1}`;
+
+/** The formulas typed in the specifications of a market and in its comparables (their data and their factors). */
+function marketTypedFormulas(calculation: MarketCalculationDto): MemoryCapturedFormula[] {
+  const factorNames = Object.fromEntries(calculation.settings.factorSlots.map((slot) => [factorKey(slot), slot.label]));
+  return [
+    ...typedFormulas(calculation.settings.formulas, calculation.settings),
+    ...calculation.comparables.flatMap((comparable) => typedFormulas(comparable.formulas, comparableFormulaValues(comparable), {
+      prefix: `Comparable ${comparable.reference}`,
+      names: Object.fromEntries(comparable.factors.map((factor) => [factorKey(factor), factorNames[factorKey(factor)] ?? FACTOR_TYPE_LABELS[factor.type]])),
+    })),
+  ];
+}
+
+/** The formulas typed in the cost approach and in the construction types it values. */
+function costTypedFormulas(cost: CostCalculationDto): MemoryCapturedFormula[] {
+  return [
+    ...typedFormulas(cost.typeFormulas, cost, { rows: { types: refRow("Tipo", cost.types) } }),
+    ...typedFormulas(cost.formulas, cost, {
+      percent: COST_PERCENT_FIELDS,
+      rows: {
+        constructions: refRow("Construcción", cost.constructions),
+        installations: refRow("Instalación", cost.installations),
+        indirects: (index) => `Indirecto ${cost.indirects[index]?.concept || index + 1}`,
+      },
+    }),
+  ];
+}
+
 /** The engine runs of a valuation, in the order of the document: markets, costs, income, conclusion. */
 export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
   const runs: EngineRun[] = [];
@@ -442,7 +581,7 @@ export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
       key: `MOTOR.MERCADO.${type}`,
       title: `Enfoque de mercado · ${COMPARABLE_TYPE_LABELS[type]}`,
       sectionKey: isRentComparableType(type) ? "MERCADO_RENTAS" : "MERCADO_VENTA",
-      captured: capturedRatings(calculation),
+      captured: [...capturedRatings(calculation), ...marketTypedFormulas(calculation)],
       labels: marketFactorLabels(calculation),
       ...(input.ok
         ? run((trace) => computeMarketApproach(input.input, marketEngineConfig(calculation.settings), trace))
@@ -457,6 +596,7 @@ export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
         key: "MOTOR.MAQUINARIA.COSTOS",
         title: "Enfoque de costos · Maquinaria y equipo",
         sectionKey: "COSTOS",
+        captured: typedFormulas(machinery.cost.formulas, machinery.cost, { rows: { attachments: refRow("Aditamento", machinery.cost.attachments) } }),
         ...(input.ok ? run((trace) => computeMachineryCost(input.input, trace)) : { trace: null, pending: input.reason }),
       });
     }
@@ -466,6 +606,7 @@ export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
         key: "MOTOR.MAQUINARIA.MERCADO",
         title: "Enfoque de mercado · Maquinaria y equipo",
         sectionKey: "MERCADO_VENTA",
+        captured: typedFormulas(machinery.market.formulas, machinery.market, { rows: { offers: refRow("Oferta", machinery.market.offers) } }),
         ...(input.ok ? run((trace) => computeMachineryMarket(input.input, trace)) : { trace: null, pending: input.reason }),
       });
     }
@@ -476,6 +617,7 @@ export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
       key: "MOTOR.COSTOS",
       title: "Enfoque de costos",
       sectionKey: "COSTOS",
+      captured: costTypedFormulas(cost),
       ...(input.ok ? run((trace) => computeCostApproach(input.input, costEngineConfig(cost), trace)) : { trace: null, pending: input.reason }),
     });
   }
@@ -486,6 +628,13 @@ export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
       key: "MOTOR.INGRESOS",
       title: "Enfoque de ingresos",
       sectionKey: "INGRESOS",
+      captured: typedFormulas(calculations.income.formulas, calculations.income, {
+        percent: INCOME_PERCENT_FIELDS,
+        rows: {
+          rentableUnits: (index) => `Superficie rentable ${calculations.income?.rentableUnits[index]?.description || index + 1}`,
+          deductions: (index) => `Deducción ${calculations.income?.deductions[index]?.concept || index + 1}`,
+        },
+      }),
       ...(input.ok ? run((trace) => computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG, trace)) : { trace: null, pending: input.reason }),
     });
   }
@@ -496,6 +645,7 @@ export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
       key: "MOTOR.CONCLUSION",
       title: "Conclusión",
       sectionKey: "CONCLUSIONES",
+      captured: typedFormulas(conclusion.formulas, conclusion, { percent: CONCLUSION_PERCENT_FIELDS }),
       ...(canConclude(conclusion)
         ? run((trace) => concludeValue({ values: conclusion.values, method: conclusion.method }, conclusionEngineConfig(conclusion), trace))
         : { trace: null, pending: "Elige con qué enfoque se concluye, o una ponderación que sume 100 %." }),

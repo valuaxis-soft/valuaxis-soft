@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES } from "../engine/income";
+import { capturedFormulasSchema } from "./captured-formulas";
 
 const optionalNumber = (max: number) => z.number().finite().min(0).max(max).nullable();
 
@@ -31,6 +32,7 @@ export const incomeInputSchema = z.object({
   })).max(20),
   ratingColumns: z.array(z.number().int().min(0).max(RATE_TABLE_RATES.length - 1).nullable()).length(RATE_TABLE_CRITERIA.length),
   appliedRate: z.number().finite().positive().max(1).nullable(),
+  formulas: capturedFormulasSchema.optional(),
 });
 
 export type IncomeInputPayload = z.infer<typeof incomeInputSchema>;

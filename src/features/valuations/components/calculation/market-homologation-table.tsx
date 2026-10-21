@@ -14,13 +14,12 @@ import {
   optionsFor,
   type FactorCatalog,
 } from "@/features/valuations/calculation/factor-catalog";
-import { factorInputText, parseFactorInput, withTypedFactor } from "@/features/valuations/calculation/factor-input";
+import { factorFormulaOf, factorInputText, parseFactorInput, withFactorFormula, withTypedComparableFactor } from "@/features/valuations/calculation/factor-input";
 import {
   factorKey,
   factorValue,
   findFactor,
   type ComparableDto,
-  type ComparableFactorDto,
   type FactorSlotConfig,
 } from "@/features/valuations/calculation/market-types";
 import { cn } from "@/lib/utils";
@@ -50,7 +49,8 @@ export function MarketHomologationTable(props: {
   /** The note under the table: whether it prints, the appraiser's text (null: the format's) and the format's. */
   note: { show: boolean; text: string | null; defaultText: string };
   onNote: (note: { showHomologationNote: boolean; homologationNote: string | null }) => void;
-  onFactors: (comparable: ComparableDto, factors: ComparableFactorDto[]) => void;
+  /** A change of the comparable's factors (and their formulas), applied to what the server holds of it. */
+  onFactors: (comparable: ComparableDto, change: (current: ComparableDto) => ComparableDto) => void;
   onInvalid: (message: string) => void;
 }) {
   const { comparables, slots, catalog, readOnly } = props;
@@ -62,7 +62,7 @@ export function MarketHomologationTable(props: {
       props.onInvalid(`«${text}» no es un factor válido: escribe un número o una fórmula como =0.9/1.05.`);
       return;
     }
-    props.onFactors(comparable, withTypedFactor(comparable.factors, slot, input));
+    props.onFactors(comparable, (current) => withTypedComparableFactor(current, slot, input));
   };
 
   /** A rating of the catalog picked for the comparable: the factor and why come from the options. */
@@ -71,10 +71,15 @@ export function MarketHomologationTable(props: {
     const subject = options.find((option) => option.label === slot.subjectOption) ?? null;
     const option = options.find((item) => item.label === label) ?? null;
     const factor = factorFromOptions(slot.type, subject, option);
-    const others = comparable.factors.filter((item) => factorKey(item) !== factorKey(slot));
-    props.onFactors(comparable, factor
-      ? [...others, { type: slot.type, ...factor, justification: optionJustification(slot.type, slot.label, subject, option) }]
-      : others);
+    props.onFactors(comparable, (current) => {
+      const others = current.factors.filter((item) => factorKey(item) !== factorKey(slot));
+      return {
+        ...current,
+        factors: factor ? [...others, { type: slot.type, ...factor, justification: optionJustification(slot.type, slot.label, subject, option) }] : others,
+        // A rating picked from the catalog is no longer the formula typed before.
+        formulas: withFactorFormula(current.formulas, slot),
+      };
+    });
   };
 
   const warningsOf = (comparable: ComparableDto, surface: number, resultant: number) => {
@@ -122,7 +127,7 @@ export function MarketHomologationTable(props: {
                             ariaLabel={label}
                             numeric
                             disabled={readOnly}
-                            value={factorInputText(surface)}
+                            value={factorInputText(surface, factorFormulaOf(comparable, slot))}
                             display={surface?.value ? twoDecimals(surface.value) : row ? twoDecimals(row.surfaceFactor) : ""}
                             computed={!surface?.value}
                             placeholder="fórmula"
@@ -142,7 +147,7 @@ export function MarketHomologationTable(props: {
                           ariaLabel={label}
                           numeric
                           disabled={readOnly}
-                          value={factorInputText(factor)}
+                          value={factorInputText(factor, factorFormulaOf(comparable, slot))}
                           display={twoDecimals(factorValue(factor))}
                           computed={!factor}
                           onCommit={typed(comparable, slot)}

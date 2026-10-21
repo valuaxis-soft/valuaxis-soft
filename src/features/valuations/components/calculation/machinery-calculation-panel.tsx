@@ -1,7 +1,7 @@
 "use client";
 
 import { Calculator, ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -33,10 +33,12 @@ import {
 import { OFFER_LEVELS, OFFER_LEVEL_LABELS, type OfferLevel } from "@/features/valuations/calculation/market-types";
 import type { RoundingDigits } from "@/features/valuations/engine/config";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { collectFormulas, renumberFormulas, withFormulaTexts } from "@/features/valuations/calculation/captured-formulas";
 import { effectiveUsefulLife } from "@/features/valuations/engine/factors";
 import { MACHINERY_CONSERVATION, computeMachineryCost, computeMachineryMarket } from "@/features/valuations/engine/machinery";
 import { RoundingSelect } from "./calculation-controls";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
+import { FormulaInput } from "./formula-input";
 import { useSerializedSave } from "./use-serialized-save";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -122,12 +124,12 @@ function PanelStatus(props: { loadError: string | null }) {
 }
 
 function TextField(props: { id: string; label: string; value: string; numeric?: boolean; placeholder?: string; className?: string; onChange: (value: string) => void }) {
+  const Control = props.numeric ? FormulaInput : Input;
   return (
     <Field className={props.className}>
       <FieldLabel htmlFor={props.id} className="text-xs">{props.label}</FieldLabel>
-      <Input
+      <Control
         id={props.id}
-        inputMode={props.numeric ? "decimal" : undefined}
         value={props.value}
         placeholder={props.placeholder}
         onChange={(event) => props.onChange(event.target.value)}
@@ -174,6 +176,11 @@ type Column<Row> = {
   className?: string;
 };
 
+/** A cell of a capture table: a number (which takes a formula) or a free text. */
+function CaptureInput({ numeric, ...props }: ComponentProps<typeof Input> & { numeric: boolean; value: string }) {
+  return numeric ? <FormulaInput {...props} /> : <Input {...props} />;
+}
+
 /** A table of captured rows with the figures the engine computes for each one at the end. */
 function CaptureTable<Row extends Record<string, string>>(props: {
   caption: string;
@@ -213,10 +220,10 @@ function CaptureTable<Row extends Record<string, string>>(props: {
                       {column.options.map((option) => <option key={option} value={option}>{option}</option>)}
                     </select>
                   ) : (
-                    <Input
+                    <CaptureInput
+                      numeric={!column.text}
                       aria-label={column.label}
                       className={cell}
-                      inputMode={column.text ? undefined : "decimal"}
                       value={row[column.key]}
                       placeholder={column.placeholder}
                       onChange={(event) => props.onChange(index, column.key, event.target.value)}
@@ -276,15 +283,25 @@ const ATTACHMENT_COLUMNS: Column<Texts<MachineryAttachmentDto>>[] = [
 
 type CostDraft = { item: Texts<MachineryItemDto>; attachments: Texts<MachineryAttachmentDto>[]; rounding: RoundingDigits };
 
-const costDraftOf = (cost: MachineryCostDto): CostDraft => ({ item: textsOf(cost.item), attachments: cost.attachments.map(textsOf), rounding: cost.rounding });
-const costOf = (draft: CostDraft, conservationTwice: boolean): MachineryCostDto => ({
-  item: numbersOf(draft.item, EMPTY_MACHINERY_ITEM),
-  attachments: draft.attachments.map((row, index) => numbersOf(row, emptyAttachment(index))),
-  rounding: draft.rounding,
-  conservationTwice,
-});
-/** What can be saved: rows still being written (no reference) wait in the draft. */
-const costPayloadOf = (cost: MachineryCostDto): MachineryCostDto => ({ ...cost, attachments: cost.attachments.filter((row) => row.ref.trim()) });
+/** The draft of what the server holds; a field typed as a formula reads back as typed. */
+const costDraftOf = (cost: MachineryCostDto): CostDraft =>
+  withFormulaTexts({ item: textsOf(cost.item), attachments: cost.attachments.map(textsOf), rounding: cost.rounding }, cost.formulas);
+function costOf(draft: CostDraft, conservationTwice: boolean): MachineryCostDto {
+  const cost = {
+    item: numbersOf(draft.item, EMPTY_MACHINERY_ITEM),
+    attachments: draft.attachments.map((row, index) => numbersOf(row, emptyAttachment(index))),
+    rounding: draft.rounding,
+    conservationTwice,
+  };
+  return { ...cost, formulas: collectFormulas(draft, cost) };
+}
+/** Indices of the rows with a reference: the ones saved. */
+const withRef = (rows: { ref: string }[]) => rows.flatMap((row, index) => (row.ref.trim() ? [index] : []));
+/** What can be saved: rows still being written (no reference) wait in the draft, and their formulas with them. */
+const costPayloadOf = (cost: MachineryCostDto): MachineryCostDto => {
+  const kept = withRef(cost.attachments);
+  return { ...cost, attachments: kept.map((index) => cost.attachments[index]), formulas: renumberFormulas(cost.formulas ?? {}, "attachments", kept) };
+};
 
 type PanelProps = {
   valuationId: string;
@@ -509,25 +526,29 @@ const OFFER_CONTACT_COLUMNS: Column<OfferTexts>[] = [
 
 type MarketDraft = { offerLevel: OfferLevel | null; usefulLife: string; offers: OfferTexts[]; characteristics: MachineryCharacteristicDto[]; rounding: RoundingDigits };
 
-const marketDraftOf = (market: MachineryMarketDto): MarketDraft => ({
+const marketDraftOf = (market: MachineryMarketDto): MarketDraft => withFormulaTexts({
   offerLevel: market.offerLevel,
   usefulLife: market.usefulLife === null ? "" : String(market.usefulLife),
   offers: market.offers.map(textsOf),
   characteristics: alignedCharacteristics(market.characteristics, market.offers.length),
   rounding: market.rounding,
-});
-const marketOf = (draft: MarketDraft): MachineryMarketDto => ({
-  offerLevel: draft.offerLevel,
-  usefulLife: numbersOf({ usefulLife: draft.usefulLife }, { usefulLife: null as number | null }).usefulLife,
-  offers: draft.offers.map((row, index) => numbersOf(row, emptyOffer(index))),
-  characteristics: draft.characteristics,
-  rounding: draft.rounding,
-});
+}, market.formulas);
+function marketOf(draft: MarketDraft): MachineryMarketDto {
+  const market = {
+    offerLevel: draft.offerLevel,
+    usefulLife: numbersOf({ usefulLife: draft.usefulLife }, { usefulLife: null as number | null }).usefulLife,
+    offers: draft.offers.map((row, index) => numbersOf(row, emptyOffer(index))),
+    characteristics: draft.characteristics,
+    rounding: draft.rounding,
+  };
+  return { ...market, formulas: collectFormulas({ usefulLife: draft.usefulLife, offers: draft.offers }, market) };
+}
 /** What is saved: the offers with a reference, and the characteristics with a concept, with the values of those offers. */
 const marketPayloadOf = (market: MachineryMarketDto): MachineryMarketDto => {
-  const kept = market.offers.map((row, index) => (row.ref.trim() ? index : -1)).filter((index) => index >= 0);
+  const kept = withRef(market.offers);
   return {
     ...market,
+    formulas: renumberFormulas(market.formulas ?? {}, "offers", kept),
     offers: kept.map((index) => market.offers[index]),
     characteristics: market.characteristics
       .filter((row) => row.label.trim())

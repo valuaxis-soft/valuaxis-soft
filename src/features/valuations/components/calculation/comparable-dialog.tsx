@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ComparableFormValues } from "@/lib/api-client";
 import type { ComparablePrefill } from "@/features/ai/listing-prefill";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { FormulaInput } from "./formula-input";
 import {
   NUMERIC_CHARACTERISTICS,
   characteristicText,
@@ -31,8 +32,9 @@ const TOP_FIELDS = new Set(["area", "price"]);
 function initialDraft(comparable: ComparableDto | null, prefill: ComparablePrefill = {}): Draft {
   return {
     location: comparable?.location ?? "",
-    area: text(comparable?.area),
-    price: text(comparable?.price),
+    // A number typed as a formula reads back as typed.
+    area: comparable?.formulas?.area ?? text(comparable?.area),
+    price: comparable?.formulas?.price ?? text(comparable?.price),
     sourceName: comparable?.sourceName ?? "",
     contactName: comparable?.contactName ?? "",
     contactPhone: comparable?.contactPhone ?? "",
@@ -114,8 +116,6 @@ export function ComparableDialog(props: {
     let values: ComparableFormValues = {
       ...stored,
       location: draft.location.trim(),
-      area: parseDecimal(draft.area),
-      price: parseDecimal(draft.price),
       sourceName: draft.sourceName.trim() || null,
       contactName: draft.contactName.trim() || null,
       contactPhone: draft.contactPhone.trim() || null,
@@ -124,6 +124,7 @@ export function ComparableDialog(props: {
       landUse: draft.landUse.trim() || null,
       characteristicsText: freeText.trim() || null,
     };
+    for (const key of ["area", "price"] as const) values = withCharacteristic(values, key, draft[key], parseDecimal(draft[key]));
     for (const field of fields) {
       const typed = characteristics[field.key] ?? "";
       values = withCharacteristic(values, field.key, typed, NUMERIC_CHARACTERISTICS.has(field.key) ? parseDecimal(typed) : null);
@@ -166,11 +167,11 @@ export function ComparableDialog(props: {
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-area">Superficie (m²)</FieldLabel>
-                <Input id="comparable-area" inputMode="decimal" value={draft.area} onChange={set("area")} />
+                <FormulaInput id="comparable-area" value={draft.area} onChange={set("area")} />
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-price">{props.unitLabel}</FieldLabel>
-                <Input id="comparable-price" inputMode="decimal" value={draft.price} onChange={set("price")} />
+                <FormulaInput id="comparable-price" value={draft.price} onChange={set("price")} />
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel>Valor unitario</FieldLabel>
@@ -213,12 +214,12 @@ export function ComparableDialog(props: {
                 {fields.map((field) => {
                   const id = `comparable-${field.key.replace(":", "-")}`;
                   const long = field.key === "notes" || field.key === "services" || !isBuiltinCharacteristic(field.key);
+                  const Control = NUMERIC_CHARACTERISTICS.has(field.key) ? FormulaInput : Input;
                   return (
                     <Field key={field.key} className={long ? "sm:col-span-2" : undefined}>
                       <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
-                      <Input
+                      <Control
                         id={id}
-                        inputMode={NUMERIC_CHARACTERISTICS.has(field.key) ? "decimal" : undefined}
                         value={characteristics[field.key] ?? ""}
                         onChange={(event) => setCharacteristics((current) => ({ ...current, [field.key]: event.target.value }))}
                       />

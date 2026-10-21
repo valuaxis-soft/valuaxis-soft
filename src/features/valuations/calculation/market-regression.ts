@@ -16,7 +16,7 @@ import { parseDecimal } from "./free-formula";
 import {
   NUMERIC_CHARACTERISTICS,
   characteristicFieldsOf,
-  characteristicText,
+  characteristicValueText,
   defaultCharacteristicFields,
   isRentComparableType,
   type CharacteristicField,
@@ -73,7 +73,7 @@ const normalized = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g,
 export function distinctValues(calculation: Pick<MarketCalculationDto, "settings" | "comparables">, key: string): string[] {
   const seen = new Map<string, string>();
   const subject = subjectText(calculation.settings, key);
-  for (const text of [...calculation.comparables.map((comparable) => characteristicText(comparable, key)), subject]) {
+  for (const text of [...calculation.comparables.map((comparable) => characteristicValueText(comparable, key)), subject]) {
     const trimmed = text.trim();
     if (trimmed && !seen.has(normalized(trimmed))) seen.set(normalized(trimmed), trimmed);
   }
@@ -156,7 +156,7 @@ export function computeMarketRegression(
     const y = dependentOf(comparable, regression.dependent);
     if (y === null) missing.push(`la ${regression.dependent === "PRICE" ? "oferta" : "superficie o la oferta"} del comparable ${comparable.reference}`);
     const x = variables.map(({ variable }, j) => {
-      const text = variable.key === "area" ? (comparable.area ? String(comparable.area) : "") : characteristicText(comparable, variable.key);
+      const text = variable.key === "area" ? (comparable.area ? String(comparable.area) : "") : characteristicValueText(comparable, variable.key);
       const value = numberOf(text, variable);
       if (value === null) missing.push(text.trim() ? `la escala de «${text.trim()}» (${names[j]}, comparable ${comparable.reference})` : `«${names[j]}» del comparable ${comparable.reference}`);
       return value ?? Number.NaN;

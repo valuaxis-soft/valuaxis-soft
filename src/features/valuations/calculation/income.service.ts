@@ -10,12 +10,13 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { DEFAULT_ENGINE_CONFIG, ENGINE_VERSION } from "../engine/config";
 import { computeIncomeApproach } from "../engine/income";
 import { Trace } from "../engine/trace";
-import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
+import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, writableVersion, type Tx } from "./access";
+import { storedFormulas } from "./captured-formulas";
 import { recomputeConclusion } from "./conclusion.service";
 import { loadRentMarket } from "./market.service";
 import { toMarketEngineInput } from "./market-types";
 import type { IncomeInputPayload } from "./income-schemas";
-import { DEFAULT_INCOME, toIncomeEngineInput, type IncomeCalculationDto, type IncomeInputDto } from "./income-types";
+import { DEFAULT_INCOME, INCOME_PERCENT_FIELDS, toIncomeEngineInput, type IncomeCalculationDto, type IncomeInputDto } from "./income-types";
 
 const CALCULATION_KEY = "MOTOR.INGRESOS";
 
@@ -43,7 +44,7 @@ async function loadInput(tx: Tx, versionId: number) {
     where: { IdVersionAvaluo: versionId },
     include: { deduccionesIngreso: { orderBy: { IOrden: "asc" } } },
   });
-  if (!approach) return { input: DEFAULT_INCOME, configured: false };
+  if (!approach) return { input: { ...DEFAULT_INCOME, formulas: {} }, configured: false };
   const configuration = asRecord(approach.JConfiguracion) as Partial<IncomeInputDto>;
   return {
     configured: true,
@@ -55,6 +56,7 @@ async function loadInput(tx: Tx, versionId: number) {
       deductions: approach.deduccionesIngreso.map((row) => ({ concept: row.SConcepto, rate: decimal(row.NPorcentaje) })),
       ratingColumns: configuration.ratingColumns ?? DEFAULT_INCOME.ratingColumns,
       appliedRate: decimal(approach.NTasaMercado),
+      formulas: storedFormulas(configuration.formulas),
     } satisfies IncomeInputDto,
   };
 }
@@ -64,7 +66,7 @@ export async function getIncomeCalculation(publicId: string, organizationId: num
     const avaluo = await findValuation(tx, publicId, organizationId);
     const versionId = avaluo.IdVersionTrabajo ?? avaluo.IdVersionFinal;
     if (!versionId) {
-      return { ...DEFAULT_INCOME, rentMarket: EMPTY_RENT_MARKET, configured: false, locked: avaluo.BBloqueado };
+      return { ...DEFAULT_INCOME, formulas: {}, rentMarket: EMPTY_RENT_MARKET, configured: false, locked: avaluo.BBloqueado };
     }
     const [{ input, configured }, market] = await Promise.all([loadInput(tx, versionId), rentMarket(tx, versionId)]);
     return { ...input, rentMarket: market, configured, locked: avaluo.BBloqueado };
@@ -74,12 +76,20 @@ export async function getIncomeCalculation(publicId: string, organizationId: num
 export async function saveIncomeCalculation(publicId: string, user: AuthUser, payload: IncomeInputPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
+    const { input: previous } = await loadInput(tx, versionId);
     const configuration = {
       method: payload.method,
       annuity: payload.annuity,
       marketRate: payload.marketRate,
       rentableUnits: payload.rentableUnits,
       ratingColumns: payload.ratingColumns,
+      formulas: formulasOrThrow({
+        next: payload,
+        sent: payload.formulas,
+        previous,
+        previousFormulas: previous.formulas ?? {},
+        percent: INCOME_PERCENT_FIELDS,
+      }),
     };
     // NTasaMercado keeps the rate the appraiser captured; NTasaAplicada, the one used.
     const approach = await tx.enfoqueIngreso.upsert({

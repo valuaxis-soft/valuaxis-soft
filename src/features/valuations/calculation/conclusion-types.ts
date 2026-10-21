@@ -4,6 +4,7 @@
  */
 import type { Approach, ConclusionInput } from "../engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig } from "../engine/config";
+import type { CapturedFormulas, PercentFields } from "./captured-formulas";
 
 export type ConclusionMethod = ConclusionInput["method"];
 
@@ -12,7 +13,12 @@ export type ConclusionSettingsDto = {
   justification: string | null;
   /** Excel ROUND digits of the concluded value, the appraiser's choice; undefined keeps the default, null is no rounding. */
   rounding?: number | null;
+  /** Formulas typed in the weights ("method.weights.costos"); absent keeps the stored ones whose value did not change. */
+  formulas?: CapturedFormulas;
 };
+
+/** The weights are typed as percentages. */
+export const CONCLUSION_PERCENT_FIELDS: PercentFields = (path) => path.startsWith("method.weights.");
 
 export function conclusionEngineConfig(settings: Pick<ConclusionSettingsDto, "rounding">): EngineConfig {
   return settings.rounding === undefined ? DEFAULT_ENGINE_CONFIG : withRounding(DEFAULT_ENGINE_CONFIG, { conclusion: settings.rounding });

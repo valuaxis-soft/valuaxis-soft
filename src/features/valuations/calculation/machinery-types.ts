@@ -13,6 +13,7 @@ import {
   type MachineryFactors,
   type MachineryMarketInput,
 } from "../engine/machinery";
+import type { CapturedFormulas } from "./captured-formulas";
 import type { OfferLevel } from "./market-types";
 
 /** Key of the property type (TipoInmueble) whose valuations use the machinery panels. */
@@ -135,6 +136,8 @@ export type MachineryCostDto = {
   /** Excel ROUND digits of the physical value, the appraiser's choice; null is no rounding. */
   rounding: RoundingDigits;
   conservationTwice: boolean;
+  /** Formulas typed in the numeric fields, by path ("item.quotedPrice"); absent keeps the stored ones whose value did not change. */
+  formulas?: CapturedFormulas;
 };
 
 export type MachineryOfferDto = {
@@ -192,6 +195,8 @@ export type MachineryMarketDto = {
   offers: MachineryOfferDto[];
   /** Free rows of the technical characteristics, in printing order. */
   characteristics: MachineryCharacteristicDto[];
+  /** Formulas typed in the numeric fields, by path ("offers.0.price"); absent keeps the stored ones whose value did not change. */
+  formulas?: CapturedFormulas;
   /** Excel ROUND digits of the market value, the appraiser's choice; null is no rounding. */
   rounding: RoundingDigits;
 };

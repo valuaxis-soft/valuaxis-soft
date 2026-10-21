@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { capturedFormulasSchema } from "./captured-formulas";
 import { roundingSchema } from "./market-schemas";
 
 const approach = z.enum(["costos", "mercado", "ingresos"]);
@@ -10,6 +11,7 @@ export const conclusionSettingsSchema = z.object({
   ]),
   justification: z.string().trim().max(4000).nullable().transform((value) => value || null),
   rounding: roundingSchema.optional(),
+  formulas: capturedFormulasSchema.optional(),
 });
 
 export type ConclusionSettingsPayload = z.infer<typeof conclusionSettingsSchema>;

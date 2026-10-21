@@ -5,7 +5,6 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { toast } from "sonner";
 
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError } from "@/lib/api-client";
@@ -13,10 +12,13 @@ import { canConclude, conclusionEngineConfig, type ConclusionCalculationDto, typ
 import { APPROACH_LABELS, concludeValue, type Approach } from "@/features/valuations/engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG, type RoundingDigits } from "@/features/valuations/engine/config";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { formulaOr, formulasOfFields, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
+import { FormulaInput } from "./formula-input";
 import { RoundingSelect } from "./calculation-controls";
 import { useSerializedSave } from "./use-serialized-save";
 
 const APPROACHES: Approach[] = ["costos", "mercado", "ingresos"];
+const weightPath = (approach: Approach) => `method.weights.${approach}`;
 const MARKET_SOURCE_LABELS: Record<NonNullable<ConclusionCalculationDto["marketSource"]>, string> = {
   INMUEBLE_VENTA: "inmuebles",
   TERRENO_VENTA: "terrenos",
@@ -43,10 +45,12 @@ export function ConclusionPanel(props: {
     setJustification(next.justification ?? "");
     if (next.method.kind === "weighted") {
       const saved = next.method.weights;
-      setWeights({ costos: String((saved.costos ?? 0) * 100), mercado: String((saved.mercado ?? 0) * 100), ingresos: String((saved.ingresos ?? 0) * 100) });
+      // A weight typed as a formula reads back as typed.
+      const weight = (approach: Approach) => formulaOr(next.formulas, weightPath(approach), String((saved[approach] ?? 0) * 100));
+      setWeights({ costos: weight("costos"), mercado: weight("mercado"), ingresos: weight("ingresos") });
     }
   };
-  const enqueueSave = useSerializedSave(async (settings: { method: ConclusionMethod; justification: string | null; rounding: RoundingDigits }) => {
+  const enqueueSave = useSerializedSave(async (settings: { method: ConclusionMethod; justification: string | null; rounding: RoundingDigits; formulas: CapturedFormulas }) => {
     setSaving(true);
     try {
       applyServerState(await api.conclusion.save(valuationId, settings));
@@ -94,10 +98,13 @@ export function ConclusionPanel(props: {
   const rounding = calculation.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.conclusion : calculation.rounding;
   const save = (next: { method?: ConclusionMethod; justification?: string; rounding?: RoundingDigits }) => {
     if (readOnly) return;
+    const sent = next.method ?? method;
     void enqueueSave({
-      method: next.method ?? method,
+      method: sent,
       justification: (next.justification ?? justification).trim() || null,
       rounding: next.rounding === undefined ? rounding : next.rounding,
+      // The weights' formulas go with the weights; concluding with one approach has none.
+      formulas: sent.kind === "weighted" ? formulasOfFields(APPROACHES.map((approach) => [weightPath(approach), weights[approach]] as const)) : {},
     });
   };
   const methodValue = calculation.method.kind === "weighted" ? "ponderado" : calculation.method.approach;
@@ -150,9 +157,8 @@ export function ConclusionPanel(props: {
             {APPROACHES.map((approach) => (
               <Field key={approach}>
                 <FieldLabel htmlFor={`conclusion-weight-${approach}`} className="text-xs">Peso {approach} (%)</FieldLabel>
-                <Input
+                <FormulaInput
                   id={`conclusion-weight-${approach}`}
-                  inputMode="decimal"
                   value={weights[approach]}
                   disabled={calculation.values[approach] === null}
                   onChange={(event) => setWeights((current) => ({ ...current, [approach]: event.target.value }))}

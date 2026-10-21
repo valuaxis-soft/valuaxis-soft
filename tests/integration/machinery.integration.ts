@@ -47,8 +47,8 @@ test("the book's example saves, reloads and gives 933,000 by costs and 980,000 b
   assert.ok(Math.abs(step("meh.mercado.mediana") - 978738.7347164522) < 0.01, "AI89");
 
   const back = await getMachineryCalculation(fixture.publicId, fixture.organizationId);
-  assert.deepEqual(back.cost, workbookCost);
-  assert.deepEqual(back.market, workbookMarket);
+  assert.deepEqual(back.cost, { ...workbookCost, formulas: {} });
+  assert.deepEqual(back.market, { ...workbookMarket, formulas: {} });
   assert.deepEqual(back.configured, { cost: true, market: true });
   assert.equal(back.applies, true);
   assert.equal(back.locked, false);
@@ -148,7 +148,7 @@ test("a concluded valuation rejects edits, and reopening copies the captures and
   );
   const concluded = await getMachineryCalculation(fixture.publicId, fixture.organizationId);
   assert.equal(concluded.locked, true);
-  assert.deepEqual(concluded.cost, workbookCost, "the final version still shows its capture");
+  assert.deepEqual(concluded.cost, { ...workbookCost, formulas: {} }, "the final version still shows its capture");
 
   await reopenValuation({
     publicId: fixture.publicId,
@@ -159,8 +159,8 @@ test("a concluded valuation rejects edits, and reopening copies the captures and
   });
   const reopened = await getMachineryCalculation(fixture.publicId, fixture.organizationId);
   assert.equal(reopened.locked, false);
-  assert.deepEqual(reopened.cost, workbookCost);
-  assert.deepEqual(reopened.market, workbookMarket);
+  assert.deepEqual(reopened.cost, { ...workbookCost, formulas: {} });
+  assert.deepEqual(reopened.market, { ...workbookMarket, formulas: {} });
   assert.deepEqual(await stored(fixture.publicId).then(({ physical, market }) => ({ physical, market })), { physical: 933000, market: 980000 });
   assert.deepEqual(await summary(), [930000, 980000, 960000]);
 });
@@ -216,6 +216,6 @@ test("the free technical characteristics are saved with the market capture, and 
   const valuation = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
   await prisma.enfoqueMaquinaria.update({ where: { IdVersionAvaluo: valuation.IdVersionTrabajo! }, data: { JMercado: former } });
   const old = await getMachineryCalculation(fixture.publicId, fixture.organizationId);
-  assert.deepEqual(old.market, workbookMarket);
+  assert.deepEqual(old.market, { ...workbookMarket, formulas: {} });
   assert.deepEqual(old.market.characteristics, []);
 });

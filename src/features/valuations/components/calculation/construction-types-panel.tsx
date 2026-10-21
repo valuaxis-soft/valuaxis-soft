@@ -13,19 +13,38 @@ import {
   type ConstructionTypeDto,
   type ConstructionTypesDto,
 } from "@/features/valuations/calculation/cost-types";
+import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
+import { FormulaInput } from "./formula-input";
 import { useSerializedSave } from "./use-serialized-save";
 
 const cell = "h-7 min-w-0 px-1.5 text-xs";
 const figure = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
 
-type Row = Texts<ConstructionTypeDto>;
+/** A type as it is edited: its texts, and the id of its row once saved, so renaming it keeps the row. */
+type Row = Texts<Omit<ConstructionTypeDto, "id">> & { id?: number };
+type Payload = { types: ConstructionTypeDto[]; formulas: CapturedFormulas };
 
-const typesOf = (rows: Row[]) => rows.map((row, index) => numbersOf(row, emptyConstructionType(index)));
-/** What can be saved: rows still being written (no reference) wait in the draft. */
-const payloadOf = (types: ConstructionTypeDto[]) => ({ types: types.filter((type) => type.ref.trim()) });
+const rowOf = ({ id, ...type }: ConstructionTypeDto): Row => ({ ...textsOf(type), ...(id === undefined ? {} : { id }) });
+const typeOf = (row: Row, index: number): ConstructionTypeDto => {
+  const { id, ...texts } = row;
+  return { ...(id === undefined ? {} : { id }), ...numbersOf(texts, emptyConstructionType(index)) };
+};
+const typesOf = (rows: Row[]) => rows.map(typeOf);
+const draftOf = (calculation: ConstructionTypesDto): Row[] => withFormulaTexts(calculation.types.map(rowOf), formulasOfTypes(calculation.formulas));
+/** The stored formulas are by path of what is saved ("types.0.area"); the draft is the list itself. */
+const formulasOfTypes = (formulas: CapturedFormulas) =>
+  Object.fromEntries(Object.entries(formulas).map(([path, formula]) => [path.replace(/^types\./, ""), formula]));
 
-const COLUMNS: { key: keyof ConstructionTypeDto; label: string; numeric?: boolean; className: string }[] = [
+/** What can be saved: rows still being written (no reference) wait in the draft; the formulas of the rows saved go with them. */
+function payloadOf(rows: Row[]): Payload {
+  const kept = rows.flatMap((row, index) => (row.ref.trim() ? [index] : []));
+  const types = kept.map((index) => typeOf(rows[index], index));
+  return { types, formulas: collectFormulas({ types: kept.map((index) => rows[index]) }, { types }) };
+}
+const savedPayloadOf = (calculation: ConstructionTypesDto): Payload => ({ types: calculation.types, formulas: calculation.formulas });
+
+const COLUMNS: { key: keyof Omit<ConstructionTypeDto, "id">; label: string; numeric?: boolean; className: string }[] = [
   { key: "ref", label: "Tipo", className: "w-16" },
   { key: "description", label: "Descripción", className: "min-w-48" },
   { key: "classification", label: "Clasificación", className: "min-w-28" },
@@ -55,18 +74,19 @@ export function ConstructionTypesPanel(props: {
   // What the server holds, to skip saves that would not change anything.
   const lastSaved = useRef<string | null>(null);
   const applyServerState = (next: ConstructionTypesDto) => {
-    lastSaved.current = JSON.stringify(payloadOf(next.types));
+    lastSaved.current = JSON.stringify(savedPayloadOf(next));
     setCalculation(next);
-    setDraft(next.types.map(textsOf));
+    setDraft(draftOf(next));
   };
-  const enqueueSave = useSerializedSave(async (payload: { types: ConstructionTypeDto[] }) => {
+  const enqueueSave = useSerializedSave(async (payload: Payload) => {
     if (JSON.stringify(payload) === lastSaved.current) return;
     setSaving(true);
     try {
       const next = await api.constructionTypes.save(valuationId, payload);
-      lastSaved.current = JSON.stringify(payloadOf(next.types));
-      // The draft stays as typed; only the saved state moves.
+      lastSaved.current = JSON.stringify(savedPayloadOf(next));
+      // The draft stays as typed; only the saved state moves. A new type takes the id of its row.
       setCalculation(next);
+      setDraft((current) => current && withSavedIds(current, payload, next));
     } catch (error) {
       toast.error(error instanceof SessionExpiredError
         ? "Tu sesión expiró. Vuelve a iniciar sesión."
@@ -102,15 +122,15 @@ export function ConstructionTypesPanel(props: {
 
   const types = typesOf(draft);
   const save = () => {
-    if (!readOnly) void enqueueSave(payloadOf(types));
+    if (!readOnly) void enqueueSave(payloadOf(draft));
   };
-  const setCell = (index: number, key: keyof ConstructionTypeDto, value: string) =>
+  const setCell = (index: number, key: keyof Omit<ConstructionTypeDto, "id">, value: string) =>
     setDraft((current) => current && current.map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: value } : row)));
   // A removal has no blur to wait for: it saves at once.
   const remove = (index: number) => {
     const next = draft.filter((_, rowIndex) => rowIndex !== index);
     setDraft(next);
-    if (!readOnly) void enqueueSave(payloadOf(typesOf(next)));
+    if (!readOnly) void enqueueSave(payloadOf(next));
   };
 
   return (
@@ -138,17 +158,19 @@ export function ConstructionTypesPanel(props: {
             <tbody>
               {draft.map((row, index) => (
                 <tr key={index} className="border-t">
-                  {COLUMNS.map((column) => (
-                    <td key={column.key} className={`p-1 ${column.className}`}>
-                      <Input
-                        aria-label={column.label}
-                        className={cell}
-                        inputMode={column.numeric ? "decimal" : undefined}
-                        value={row[column.key]}
-                        onChange={(event) => setCell(index, column.key, event.target.value)}
-                      />
-                    </td>
-                  ))}
+                  {COLUMNS.map((column) => {
+                    const Control = column.numeric ? FormulaInput : Input;
+                    return (
+                      <td key={column.key} className={`p-1 ${column.className}`}>
+                        <Control
+                          aria-label={column.label}
+                          className={cell}
+                          value={row[column.key]}
+                          onChange={(event) => setCell(index, column.key, event.target.value)}
+                        />
+                      </td>
+                    );
+                  })}
                   <td className="w-14 px-1.5 whitespace-nowrap tabular-nums text-muted-foreground">{figure(remainingUsefulLife(types[index]))}</td>
                   <td className="p-1">
                     {!readOnly ? (
@@ -163,11 +185,27 @@ export function ConstructionTypesPanel(props: {
           </table>
         </div>
         {!readOnly ? (
-          <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => setDraft([...draft, textsOf(emptyConstructionType(draft.length))])}>
+          <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => setDraft([...draft, rowOf(emptyConstructionType(draft.length))])}>
             <Plus data-icon="inline-start" /> Tipo de construcción
           </Button>
         ) : null}
       </fieldset>
     </section>
   );
+}
+
+/**
+ * The draft with the ids the server gave the new types it saved: a type saved
+ * without id is the row at its position, with the reference it was saved
+ * with. Without its id, renaming it right after would replace it.
+ */
+function withSavedIds(rows: Row[], sent: Payload, saved: ConstructionTypesDto): Row[] {
+  const idByRef = new Map(saved.types.flatMap((type) => (type.id === undefined ? [] : [[type.ref.trim().toLowerCase(), type.id] as const])));
+  const sentRefs = new Set(sent.types.filter((type) => type.id === undefined).map((type) => type.ref.trim().toLowerCase()));
+  return rows.map((row) => {
+    const ref = row.ref.trim().toLowerCase();
+    if (row.id !== undefined || !sentRefs.has(ref)) return row;
+    const id = idByRef.get(ref);
+    return id === undefined ? row : { ...row, id };
+  });
 }
