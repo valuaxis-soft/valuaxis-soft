@@ -227,7 +227,8 @@ export function useEditorState({
         patch.direccionEmpresa !== undefined ||
         patch.telefonoEmpresa !== undefined ||
         patch.correoEmpresa !== undefined ||
-        patch.camposEncabezado !== undefined;
+        patch.camposEncabezado !== undefined ||
+        patch.tamanoImagenPrincipal !== undefined;
 
       return {
         ...current,

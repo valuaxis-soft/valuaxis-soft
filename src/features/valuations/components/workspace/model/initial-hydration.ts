@@ -209,6 +209,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
     thousandsSeparator: section.thousandsSeparator,
     ...(section.bindingMargin ? { bindingMargin: section.bindingMargin } : {}),
     ...(section.titleBars ? { titleBars: section.titleBars } : {}),
+    ...(section.titleBand ? { titleBand: section.titleBand } : {}),
     ...(section.custom ? { custom: true } : {}),
     ...(section.titleEdited ? { titleEdited: true } : {}),
       blocks: section.blocks.map((block) => ({
@@ -224,6 +225,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
       concepts: block.concepts,
       flowSpacingBeforePx: block.flowSpacingBeforePx,
       ...(block.headerFields ? { headerFields: block.headerFields } : {}),
+      ...(block.coverImageSize ? { coverImageSize: block.coverImageSize } : {}),
       apartados: block.subBlocks.map((subBlock) => ({
         id: subBlock.id,
         title: subBlock.title,

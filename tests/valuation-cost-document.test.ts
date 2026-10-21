@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { costDocumentBlocks, withConstructionTables } from "../src/features/valuations/calculation/cost-document";
-import { DEFAULT_LAND, costEngineConfig, emptyInstallation, toCostEngineInput, type CostCalculationDto } from "../src/features/valuations/calculation/cost-types";
+import {
+  CONSERVATION_RATINGS,
+  DEFAULT_LAND,
+  conservationOfRating,
+  costEngineConfig,
+  effectiveConservation,
+  emptyInstallation,
+  toCostEngineInput,
+  type CostCalculationDto,
+} from "../src/features/valuations/calculation/cost-types";
+import { costInputSchema } from "../src/features/valuations/calculation/cost-schemas";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeCostApproach } from "../src/features/valuations/engine/costs";
 import { Trace } from "../src/features/valuations/engine/trace";
@@ -14,7 +24,7 @@ const arandasType = { ref: "T-1", description: "Edificio de uso mixto", classifi
 const arandas: CostCalculationDto = {
   land: { ...DEFAULT_LAND, subjectArea: 169.78 },
   types: [arandasType],
-  constructions: [{ ...arandasType, conservation: 0.98, ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: 14361.99 }],
+  constructions: [{ ...arandasType, conservation: 0.98, conservationRating: null, ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: 14361.99 }],
   installations: ([
     [6, 30, 9000], [1, 30, 35000], [11.55, 70, 14361.99], [3.54, 70, 14361.99],
     [4, 10, 30648], [1, 70, 90000], [4, 20, 4000], [4, 20, 3500],
@@ -103,7 +113,7 @@ test("the cost page is one block with land, constructions and installations, eac
       ["A) Valor del Terreno:", "$ 1,528,000.00"],
       ["B) Valor de las Construcciones:", "$ 6,530,000.00"],
       ["C) Valor de Instalaciones Especiales:", "$ 517,000.00"],
-      ["VALOR FÍSICO O DIRECTO (A+B+C):", "$ 8,580,000.00"],
+      ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 8,580,000.00"],
     ],
   });
   assert.equal(itemValues.schema?.summaryBoxes?.at(-1)?.rows.at(-1)?.emphasis, "total");
@@ -134,7 +144,7 @@ test("the land block prints the book's A) TERRENO: lote tipo, market value, the 
     "bottom:superficie": [["Superficie valuada:", "160.00 m²"]],
     "bottom:medio": [["Valor Unitario Medio ($/m²):", "$ 4,293.33"]],
     "bottom:valor": [["A) Valor del Terreno:", "$ 690,000.00"]],
-    "bottom:valor-fisico": [["A) Valor del Terreno:", "$ 690,000.00"], ["VALOR FÍSICO O DIRECTO (A):", "$ 690,000.00"]],
+    "bottom:valor-fisico": [["A) Valor del Terreno:", "$ 690,000.00"], ["VALOR FÍSICO DE REPOSICIÓN (A):", "$ 690,000.00"]],
   });
 
   // Direct homologation: no lote tipo anywhere, the table shows the subject and Sup. = 1.
@@ -157,12 +167,12 @@ test("indirects print only when there are any, and the physical value adds only 
   };
   const computed = compute(withIndirects);
   const apartados = costDocumentBlocks(withIndirects, computed.result, computed.trace)[0].apartados;
-  assert.equal(apartados.at(-1)?.title, "E) INDIRECTOS");
+  assert.equal(apartados.at(-1)?.title, "D) COSTOS INDIRECTOS");
   const indirects = printed(apartados.at(-1)!.tables[0]);
   assert.deepEqual(indirects.columns, ["Concepto", "Porcentaje", "Base $", "Importe $"]);
   assert.deepEqual(indirects.rows, [["Proyecto y licencias", "5.00%", "$ 7,047,000.00", "$ 352,350.00"]]);
-  assert.deepEqual(indirects.boxes["bottom:valor"], [["E) Indirectos:", "$ 352,350.00"]]);
-  assert.equal(indirects.boxes["bottom:valor-fisico"].at(-1)?.[0], "VALOR FÍSICO O DIRECTO (A+B+C+E):");
+  assert.deepEqual(indirects.boxes["bottom:valor"], [["D) Costos Indirectos:", "$ 352,350.00"]]);
+  assert.equal(indirects.boxes["bottom:valor-fisico"].at(-1)?.[0], "VALOR FÍSICO DE REPOSICIÓN (A+B+C+D):");
   assert.equal(printed(apartados[2].tables[1]).boxes["bottom:valor-fisico"], undefined, "the closing box moves to the last table");
 
   const landOnly: CostCalculationDto = { ...arandas, constructions: [], installations: [] };
@@ -171,7 +181,7 @@ test("indirects print only when there are any, and the physical value adds only 
   assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["A) TERRENO EN ESTUDIO"]);
   assert.deepEqual(printed(block.apartados[0].tables[0]).boxes["bottom:valor-fisico"], [
     ["A) Valor del Terreno:", "$ 1,528,000.00"],
-    ["VALOR FÍSICO O DIRECTO (A):", "$ 1,530,000.00"],
+    ["VALOR FÍSICO DE REPOSICIÓN (A):", "$ 1,530,000.00"],
   ]);
   assert.deepEqual(costDocumentBlocks(arandas, null, null), [], "nothing computed, no page");
 });
@@ -303,4 +313,59 @@ test("the cost page prints the factor the appraiser typed in place of the formul
   assert.deepEqual(values.rows[0].slice(5), ["0.88", "$ 12,667.28", "$ 2,219,639.13"]);
   const items = printed(installations.tables[0]);
   assert.deepEqual(items.rows[0].slice(8, 12), ["0.98", "0.98", "0.80", "0.50"]);
+});
+
+test("the conservation ratings are those of the sheet «ROSS HEIDECKE»: estado, calificación and factor", () => {
+  assert.deepEqual(CONSERVATION_RATINGS.map((row) => [row.state, row.rating, row.factor]), [
+    ["Nuevo", 10, 1], ["Nuevo", 9, 0.99],
+    ["Regular", 8, 0.975], ["Regular", 7, 0.92],
+    ["Reparaciones sencillas", 6, 0.82], ["Reparaciones sencillas", 5, 0.66],
+    ["Reparaciones importantes", 4, 0.47], ["Reparaciones importantes", 3, 0.25],
+    ["Deshecho", 2, 0.135],
+  ]);
+  assert.equal(conservationOfRating(8), 0.975);
+  assert.equal(conservationOfRating(1), null, "not of the table");
+  assert.equal(conservationOfRating(null), null);
+  // A typed factor wins; empty, the calificación's; neither, none (as before the ratings).
+  assert.equal(effectiveConservation({ conservation: 0.9, conservationRating: 2 }), 0.9);
+  assert.equal(effectiveConservation({ conservation: null, conservationRating: 7 }), 0.92);
+  assert.equal(effectiveConservation({ conservation: null, conservationRating: null }), null);
+  assert.equal(effectiveConservation({ conservation: null }), null, "a capture of before has no calificación");
+});
+
+test("a row rated and without a typed Cons. enters the calculation with the sheet's factor, and prints it", () => {
+  const rated: CostCalculationDto = {
+    ...arandas,
+    constructions: [{ ...arandas.constructions[0], conservation: null, conservationRating: 8 }],
+    installations: arandas.installations.map((row, index) => (index === 0 ? { ...row, conservation: null, conservationRating: 6 } : row)),
+  };
+  const { result, trace } = compute(rated);
+  const typed = compute({
+    ...arandas,
+    constructions: [{ ...arandas.constructions[0], conservation: 0.975 }],
+    installations: arandas.installations.map((row, index) => (index === 0 ? { ...row, conservation: 0.82 } : row)),
+  });
+  assert.equal(result.constructions, typed.result.constructions, "rating 8 is the same as typing 0.975");
+  assert.equal(result.specialInstallations, typed.result.specialInstallations);
+  const [, constructions, installations] = costDocumentBlocks(rated, result, trace)[0].apartados;
+  assert.equal(printed(constructions.tables[0]).rows[0][6], "0.98", "Cons. 0.975 with two decimals, as the column prints");
+  assert.equal(printed(installations.tables[0]).rows[0][8], "0.82");
+
+  // Neither a factor nor a calificación: the row waits, as it always did.
+  const pending = toCostEngineInput({ ...arandas, constructions: [{ ...arandas.constructions[0], conservation: null, conservationRating: null }] });
+  assert.ok(pending.ok);
+  assert.equal(pending.input.constructions?.length, 0);
+});
+
+test("the save takes a calificación of the table only, and an older client may leave it out", () => {
+  const row = { ref: "T-1", conservation: null, otherFactor: 1, completion: 1, undivided: 1, unitReplacementCost: 1000 };
+  const payload = (constructions: object[]) => ({ land: { ...DEFAULT_LAND }, constructions, installations: [], indirects: [] });
+  const parsed = costInputSchema.safeParse(payload([{ ...row, conservationRating: 5 }]));
+  assert.ok(parsed.success);
+  assert.equal(parsed.data.constructions[0].conservationRating, 5);
+  const older = costInputSchema.safeParse(payload([row]));
+  assert.ok(older.success);
+  assert.equal(older.data.constructions[0].conservationRating, null);
+  assert.equal(costInputSchema.safeParse(payload([{ ...row, conservationRating: 1 }])).success, false);
+  assert.equal(costInputSchema.safeParse(payload([{ ...row, conservationRating: 7.5 }])).success, false);
 });

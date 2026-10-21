@@ -1,4 +1,4 @@
-import type { CoverImageFocus } from "./services/cover-image-focus";
+import type { CoverImageFocus, CoverImageSize } from "./services/cover-image-focus";
 import type { ValuationSignature } from "./services/valuation-signatures";
 
 export type ValuationKind = "venta" | "renta" | "ambos";
@@ -38,6 +38,8 @@ export type CaratulaFormData = {
   fechaVigencia: string;
   /** The part of the principal cover image kept in view inside the cover box; centered when absent. */
   enfoqueImagenPrincipal?: CoverImageFocus;
+  /** How big the principal image shows in the cover box; absent, it fills the box (kept with the company header block). */
+  tamanoImagenPrincipal?: CoverImageSize;
   /** Up to three short label/value pairs of the appraiser's choice (RFC, cédula, sitio web…) printed in the page header. */
   camposEncabezado?: HeaderExtraField[];
 };
@@ -274,6 +276,8 @@ export type Block = {
   flowSpacingBeforePx?: number;
   /** Only the carátula's company header block: the extra header data, kept in its configuration. */
   headerFields?: HeaderExtraField[];
+  /** Only the carátula's company header block: the size of the principal cover image. */
+  coverImageSize?: CoverImageSize;
 };
 
 export type AppSection = {
@@ -295,6 +299,8 @@ export type AppSection = {
   bindingMargin?: "normal" | "wide";
   /** The title bars of the blocks, blue or outlined. Carátula section only; absent means "filled". */
   titleBars?: "filled" | "outline";
+  /** The document's title band under the page header, blue or white with a line. Carátula section only; absent means "filled". */
+  titleBand?: "filled" | "outline";
   /** Added by the appraiser; not in the section registry. */
   custom?: boolean;
   /** The appraiser renamed the tab: the stored title wins over the registry label. */

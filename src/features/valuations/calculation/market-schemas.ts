@@ -126,6 +126,8 @@ export const marketSettingsSchema = z.object({
   subjectCharacteristics: characteristicValues,
   showFactorJustification: z.boolean().optional(),
   regression: regressionSchema.nullable().optional(),
+  showHomologationNote: z.boolean().optional(),
+  homologationNote: text(500).optional(),
   factorSlots: z.array(z.object({
     type: z.enum(FACTOR_TYPES),
     label: z.string().trim().min(1).max(60),

@@ -29,6 +29,7 @@ import { SECTION_TITLE_MAX } from "@/features/valuations/services/section-edit-o
 export function SortableSectionTab({
   sectionId,
   disabled,
+  pinned = false,
   isActive,
   icon,
   label,
@@ -37,6 +38,8 @@ export function SortableSectionTab({
 }: {
   sectionId: string;
   disabled: boolean;
+  /** Stays in its place: not dragged, and no tab is dropped on it. It is still renamed. */
+  pinned?: boolean;
   isActive: boolean;
   icon: LucideIcon;
   label: string;
@@ -58,7 +61,7 @@ export function SortableSectionTab({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: sectionId, disabled: disabled || editing });
+  } = useSortable({ id: sectionId, disabled: disabled || editing || pinned });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -69,7 +72,7 @@ export function SortableSectionTab({
   const Icon = icon;
   // Base UI owns the tab semantics (role="tab", roving tabIndex, disabled
   // state); only the sortable description is taken from dnd-kit.
-  const sortableAttributes = disabled
+  const sortableAttributes = disabled || pinned
     ? {}
     : {
         "aria-roledescription": attributes["aria-roledescription"],
@@ -93,11 +96,11 @@ export function SortableSectionTab({
           value={sectionId}
           className={cn(
             "touch-manipulation select-none [-webkit-touch-callout:none] max-lg:min-h-10 max-lg:px-3",
-            !disabled && "cursor-grab active:cursor-grabbing",
+            !disabled && !pinned && "cursor-grab active:cursor-grabbing",
             isActive && "data-active:bg-background data-active:shadow-sm",
           )}
           {...sortableAttributes}
-          {...listeners}
+          {...(pinned ? {} : listeners)}
           onDoubleClick={canRename ? rename?.onStart : undefined}
         >
           {Icon ? <Icon /> : null}

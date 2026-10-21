@@ -6,8 +6,9 @@ export default async function WorkspacePreviewWindowPage({
 }: {
   searchParams: Promise<{ id?: string }>;
 }) {
-  await requireSession("/workspace");
-
   const params = await searchParams;
+  // An expired session comes back to this same window, not to the editor.
+  await requireSession(`/workspace/preview-window?id=${encodeURIComponent(params.id ?? "draft")}`);
+
   return <ExternalValuationPreviewWindow valuationId={params.id ?? null} />;
 }

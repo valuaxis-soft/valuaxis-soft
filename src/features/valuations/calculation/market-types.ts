@@ -308,6 +308,10 @@ export type MarketSettingsDto = {
   showFactorJustification?: boolean;
   /** "Homologación por el método de regresión lineal": a reference beside the mean and median; missing, not used. */
   regression?: MarketRegressionDto | null;
+  /** Whether the note under the homologation table prints; it does unless turned off. */
+  showHomologationNote?: boolean;
+  /** The appraiser's own note under the homologation table; empty, the one of the format. */
+  homologationNote?: string | null;
 };
 
 export type MarketCalculationDto = {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isConservationRating } from "./cost-types";
 import { roundingSchema, surfacePowerSchema } from "./market-schemas";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -7,6 +8,8 @@ const factor = z.number().finite().min(0).max(10);
 const fraction = z.number().finite().min(0).max(1);
 /** A factor with an Excel formula: empty (or missing, in older clients) takes the formula. */
 const formulaFactor = factor.nullable().default(null);
+/** Calificación of the conservation, as the sheet «ROSS HEIDECKE» rates it; missing in older clients. */
+const conservationRating = z.number().refine(isConservationRating, "La calificación de conservación va de 2 a 10.").nullable().default(null);
 
 const uniqueRefs = (rows: { ref: string }[]) => new Set(rows.map((row) => row.ref.toLowerCase())).size === rows.length;
 
@@ -53,6 +56,7 @@ export const costInputSchema = z.object({
     age: amount.optional(),
     usefulLife: amount.optional(),
     conservation: factor.nullable(),
+    conservationRating,
     ageFactor: formulaFactor,
     otherFactor: factor,
     resultantFactor: formulaFactor,
@@ -69,6 +73,7 @@ export const costInputSchema = z.object({
     age: amount,
     usefulLife: amount,
     conservation: factor.nullable(),
+    conservationRating,
     maintenance: text(120),
     ageFactor: formulaFactor,
     otherFactor: factor,

@@ -188,8 +188,8 @@ export function ValuationWorkspace({
   const pagePresentationChoice = documentPagePresentation(sections);
   // Kept by value: a new object on every edit would repaint every page of the preview.
   const pagePresentation = useMemo(
-    () => ({ bindingMargin: pagePresentationChoice.bindingMargin, titleBars: pagePresentationChoice.titleBars }),
-    [pagePresentationChoice.bindingMargin, pagePresentationChoice.titleBars],
+    () => ({ bindingMargin: pagePresentationChoice.bindingMargin, titleBars: pagePresentationChoice.titleBars, titleBand: pagePresentationChoice.titleBand }),
+    [pagePresentationChoice.bindingMargin, pagePresentationChoice.titleBars, pagePresentationChoice.titleBand],
   );
   const externalPreviewPayload = useMemo<ExternalPreviewPayload>(() => ({
     activeSection: previewSection,

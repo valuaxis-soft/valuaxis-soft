@@ -13,7 +13,11 @@ import {
   ValuationNavigation,
 } from "../src/features/valuations/components/workspace/valuation-navigation";
 import { ValuationTopBar } from "../src/features/valuations/components/workspace/valuation-top-bar";
-import { SECTION_DRAG_ACTIVATION } from "../src/features/valuations/components/workspace/section-dnd-container";
+import {
+  SECTION_DRAG_ACTIVATION,
+  isPinnedSection,
+  sectionCollisionDetection,
+} from "../src/features/valuations/components/workspace/section-dnd-container";
 
 const sections = createInitialSections();
 const iconMap: Record<string, LucideIcon> = {};
@@ -195,4 +199,27 @@ test("el arrastre de secciones se activa con mouse, toque prolongado y teclado",
   // Enter keeps selecting the tab; Space picks it up.
   assert.deepEqual(SECTION_DRAG_ACTIVATION.keyboardCodes.start, ["Space"]);
   assert.ok(SECTION_DRAG_ACTIVATION.keyboardCodes.cancel.includes("Escape"));
+});
+
+test("la carátula se queda primera: su pestaña no se arrastra ni recibe otra antes", () => {
+  assert.equal(isPinnedSection("caratula", 0), true);
+  assert.equal(isPinnedSection("caratula", 4), false, "una carátula guardada en otro lugar se puede regresar");
+  assert.equal(isPinnedSection("datos", 0), false);
+  const html = renderTopBar();
+  const caratulaTab = /<button[^>]*data-slot="tabs-trigger"[^>]*>(?:(?!<\/button>).)*CARATULA/.exec(html)?.[0] ?? "";
+  assert.ok(caratulaTab, "la pestaña de la carátula se pinta");
+  assert.doesNotMatch(caratulaTab, /aria-roledescription="sortable"|cursor-grab/);
+  assert.match(html, /aria-roledescription="sortable"/, "las demás se siguen ordenando");
+});
+
+test("soltar la pestaña lejos de la barra no la mueve; sobre otra pestaña, sí", () => {
+  const rect = (left: number) => ({ left, right: left + 100, top: 0, bottom: 30, width: 100, height: 30 });
+  const droppableRects = new Map([["datos", rect(0)], ["terreno", rect(110)]]);
+  const droppableContainers = [...droppableRects.keys()].map((id) => ({ id, rect: { current: droppableRects.get(id) } }));
+  const args = (pointerCoordinates: { x: number; y: number } | null) => ({
+    active: { id: "costos" }, collisionRect: rect(400), droppableRects, droppableContainers, pointerCoordinates,
+  }) as unknown as Parameters<typeof sectionCollisionDetection>[0];
+  assert.deepEqual(sectionCollisionDetection(args({ x: 600, y: 500 })).map((item) => item.id), [], "sobre la vista previa");
+  assert.deepEqual(sectionCollisionDetection(args({ x: 150, y: 10 })).map((item) => item.id), ["terreno"]);
+  assert.equal(sectionCollisionDetection(args(null)).length > 0, true, "con el teclado, la más cercana");
 });

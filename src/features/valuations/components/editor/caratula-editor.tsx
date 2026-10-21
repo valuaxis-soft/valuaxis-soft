@@ -35,10 +35,15 @@ import { isMachineryPropertyKind } from "@/features/valuations/calculation/machi
 import { formatDateValue } from "@/features/valuations/services/concept-value-format";
 import {
   COVER_IMAGE_FOCUS_CENTER,
+  COVER_IMAGE_SCALE,
+  DEFAULT_COVER_IMAGE_SIZE,
   coverImagePannableAxes,
-  coverImageObjectPosition,
+  coverImageStyle,
+  isDefaultCoverImageSize,
   normalizeCoverImageFocus,
+  normalizeCoverImageSize,
   type CoverImageFocus,
+  type CoverImageSize,
 } from "@/features/valuations/services/cover-image-focus";
 import {
   formatValidityMonths,
@@ -255,8 +260,10 @@ export function CaratulaEditor({
         </div>
         <PrincipalImageEditor
           focus={normalizeCoverImageFocus(caratula.enfoqueImagenPrincipal)}
+          size={normalizeCoverImageSize(caratula.tamanoImagenPrincipal)}
           image={principalImage}
           onFocusChange={(enfoqueImagenPrincipal) => onUpdate({ enfoqueImagenPrincipal })}
+          onSizeChange={(tamanoImagenPrincipal) => onUpdate({ tamanoImagenPrincipal })}
           readOnly={readOnly}
           uploadAvailable={imageUploadAvailable}
           uploading={imageUploading}
@@ -272,14 +279,18 @@ function PrincipalImageEditor({
   focus,
   image,
   onFocusChange,
+  onSizeChange,
   onUpload,
   readOnly,
+  size,
   uploadAvailable,
   uploading,
 }: {
   focus: CoverImageFocus;
   image: PrincipalCoverImage | null;
   onFocusChange: (focus: CoverImageFocus) => void;
+  onSizeChange: (size: CoverImageSize) => void;
+  size: CoverImageSize;
   onUpload?: (event: ChangeEvent<HTMLInputElement>) => void;
   readOnly: boolean;
   uploadAvailable: boolean;
@@ -294,7 +305,7 @@ function PrincipalImageEditor({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               className="h-full w-full object-cover"
-              style={{ objectPosition: coverImageObjectPosition(focus) }}
+              style={coverImageStyle(focus, size)}
               src={image.url}
               alt="Imagen principal del bien"
             />
@@ -332,25 +343,32 @@ function PrincipalImageEditor({
           </label>
         </div>
       </div>
-      {image?.url ? <CoverImageFocusControl focus={focus} imageUrl={image.url} readOnly={readOnly} onChange={onFocusChange} /> : null}
+      {image?.url ? (
+        <CoverImageFocusControl focus={focus} size={size} imageUrl={image.url} readOnly={readOnly} onChange={onFocusChange} onSizeChange={onSizeChange} />
+      ) : null}
     </div>
   );
 }
 
 /**
- * Moves the image inside the cover box, which crops it: one slider per axis.
- * The preview follows as they move.
+ * Moves the image inside the cover box, which crops it: one slider per axis;
+ * and its size: filling the box or whole, smaller or larger. The preview
+ * follows as they move.
  */
 function CoverImageFocusControl({
   focus,
   imageUrl,
   onChange,
+  onSizeChange,
   readOnly,
+  size,
 }: {
   focus: CoverImageFocus;
   imageUrl: string;
   onChange: (focus: CoverImageFocus) => void;
+  onSizeChange: (size: CoverImageSize) => void;
   readOnly: boolean;
+  size: CoverImageSize;
 }) {
   const centered = focus.x === COVER_IMAGE_FOCUS_CENTER.x && focus.y === COVER_IMAGE_FOCUS_CENTER.y;
   // The image's own proportion decides which way it can move inside the box.
@@ -363,7 +381,7 @@ function CoverImageFocusControl({
     probe.src = imageUrl;
     return () => { active = false; };
   }, [imageUrl]);
-  const pannable = coverImagePannableAxes(imageRatio);
+  const pannable = coverImagePannableAxes(imageRatio, size);
   return (
     <div className="mt-3 border-t pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -396,6 +414,55 @@ function CoverImageFocusControl({
           note={pannable.y ? undefined : "La imagen ya ocupa todo el alto del recuadro; solo se puede mover en horizontal."}
           onChange={(y) => onChange({ ...focus, y })}
         />
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor="caratula-imagen-ajuste">Ajuste</FieldLabel>
+          <NativeSelect
+            id="caratula-imagen-ajuste"
+            className="w-full"
+            disabled={readOnly}
+            value={size.fit}
+            onChange={(event) => onSizeChange({ ...size, fit: event.target.value === "contain" ? "contain" : "cover" })}
+          >
+            <NativeSelectOption value="cover">Llenar el recuadro (recorta la imagen)</NativeSelectOption>
+            <NativeSelectOption value="contain">Imagen completa (con fondo neutro)</NativeSelectOption>
+          </NativeSelect>
+          <FieldDescription>Imagen completa muestra todo un vehículo o una máquina aunque la foto sea muy ancha o muy alta.</FieldDescription>
+        </Field>
+        <Field>
+          <div className="flex items-center justify-between gap-2">
+            <FieldLabel htmlFor="caratula-imagen-tamano">Tamaño</FieldLabel>
+            <span className="text-xs tabular-nums text-muted-foreground">{size.scale}%</span>
+          </div>
+          <input
+            id="caratula-imagen-tamano"
+            className="w-full accent-primary"
+            type="range"
+            min={COVER_IMAGE_SCALE.min}
+            max={COVER_IMAGE_SCALE.max}
+            step={COVER_IMAGE_SCALE.step}
+            disabled={readOnly}
+            value={size.scale}
+            aria-valuetext={`${size.scale}%`}
+            onChange={(event) => onSizeChange({ ...size, scale: Number(event.target.value) })}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground" aria-hidden="true">
+            <span>Más chica</span>
+            <span>Más grande</span>
+          </div>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={readOnly || isDefaultCoverImageSize(size)}
+              onClick={() => onSizeChange(DEFAULT_COVER_IMAGE_SIZE)}
+            >
+              Tamaño original
+            </Button>
+          </div>
+        </Field>
       </div>
     </div>
   );

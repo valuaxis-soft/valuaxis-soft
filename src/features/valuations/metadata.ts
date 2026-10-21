@@ -3,7 +3,15 @@ import { readStoredCaptions, readStoredRotation } from "@/features/valuations/se
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import { isBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { normalizeHeaderExtraFields } from "@/features/valuations/services/caratula-company-header";
-import { isBindingMargin, isTitleBarStyle, type BindingMargin, type TitleBarStyle } from "@/features/valuations/services/page-presentation";
+import { isDefaultCoverImageSize, normalizeCoverImageSize, type CoverImageSize } from "@/features/valuations/services/cover-image-focus";
+import {
+  isBindingMargin,
+  isTitleBandStyle,
+  isTitleBarStyle,
+  type BindingMargin,
+  type TitleBandStyle,
+  type TitleBarStyle,
+} from "@/features/valuations/services/page-presentation";
 import { isContentLayout, normalizeContentLayout } from "@/features/valuations/services/content-layout";
 import { readStoredFormula, type TableFormula } from "@/features/valuations/services/table";
 
@@ -47,6 +55,8 @@ export type SectionMetadata = {
   bindingMargin?: BindingMargin;
   /** The document's style of title bars, carried by its carátula section. */
   titleBars?: TitleBarStyle;
+  /** The document's style of title band, carried by its carátula section. */
+  titleBand?: TitleBandStyle;
   /** A section the appraiser added. */
   custom?: boolean;
   /** The appraiser renamed the section's tab. */
@@ -62,6 +72,8 @@ export type BlockMetadata = {
   flowSpacingBeforePx?: number;
   /** The carátula's company header block only: the extra header data. */
   headerFields?: HeaderExtraField[];
+  /** The carátula's company header block only: the size of the principal cover image. */
+  coverImageSize?: CoverImageSize;
 };
 
 export type ApartadoMetadata = {
@@ -177,6 +189,7 @@ export function sectionMetadataFromContent(content: SectionMetadataContent): Sec
     thousandsSeparator: content.thousandsSeparator,
     bindingMargin: content.bindingMargin,
     titleBars: content.titleBars,
+    titleBand: content.titleBand,
     custom: content.custom,
     titleEdited: content.titleEdited,
   };
@@ -195,6 +208,7 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
     thousandsSeparator: sectionBooleanMetadata(config, "thousandsSeparator"),
     bindingMargin: readConfigMetadata(config, (value) => (isRecord(value) && isBindingMargin(value.bindingMargin) ? value.bindingMargin : undefined)),
     titleBars: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBarStyle(value.titleBars) ? value.titleBars : undefined)),
+    titleBand: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBandStyle(value.titleBand) ? value.titleBand : undefined)),
     custom: sectionBooleanMetadata(config, "custom"),
     titleEdited: sectionBooleanMetadata(config, "titleEdited"),
   };
@@ -209,11 +223,13 @@ export function blockMetadataFromContent(content: BlockMetadataContent): BlockMe
     conceptPresentation: content.conceptPresentation,
     flowSpacingBeforePx: content.flowSpacingBeforePx,
     headerFields: content.headerFields,
+    coverImageSize: content.coverImageSize,
   };
 }
 
 export function hydrateBlockMetadata(config: unknown): BlockMetadata {
   const headerFields = readConfigMetadata(config, (value) => (isRecord(value) && Array.isArray(value.headerFields) ? normalizeHeaderExtraFields(value.headerFields) : undefined));
+  const coverImageSize = readConfigMetadata(config, (value) => (isRecord(value) && isRecord(value.coverImageSize) ? normalizeCoverImageSize(value.coverImageSize) : undefined));
   return {
     enabled: true,
     startOnNewPage: sectionBooleanMetadata(config, "startOnNewPage"),
@@ -222,6 +238,7 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
     conceptPresentation: parseConceptPresentation(config),
     flowSpacingBeforePx: readFlowSpacingBeforePx(config),
     ...(headerFields?.length ? { headerFields } : {}),
+    ...(coverImageSize && !isDefaultCoverImageSize(coverImageSize) ? { coverImageSize } : {}),
   };
 }
 

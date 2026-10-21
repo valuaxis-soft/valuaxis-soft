@@ -40,6 +40,37 @@ export type CostLandDto = {
   resultantFactor: number | null;
 };
 
+/**
+ * Conservation of a building or an installation as the appraiser's sheet
+ * «ROSS HEIDECKE» (4._FORMULAS-CRITERIOS) rates it: the estado and its
+ * calificación, 10 to 2, with the factor F of each. Picking one gives the
+ * Cons. of the row unless a factor is typed.
+ */
+export const CONSERVATION_RATINGS = [
+  { rating: 10, factor: 1, state: "Nuevo" },
+  { rating: 9, factor: 0.99, state: "Nuevo" },
+  { rating: 8, factor: 0.975, state: "Regular" },
+  { rating: 7, factor: 0.92, state: "Regular" },
+  { rating: 6, factor: 0.82, state: "Reparaciones sencillas" },
+  { rating: 5, factor: 0.66, state: "Reparaciones sencillas" },
+  { rating: 4, factor: 0.47, state: "Reparaciones importantes" },
+  { rating: 3, factor: 0.25, state: "Reparaciones importantes" },
+  { rating: 2, factor: 0.135, state: "Deshecho" },
+] as const;
+
+export const isConservationRating = (value: unknown): value is number =>
+  CONSERVATION_RATINGS.some((row) => row.rating === value);
+
+/** The sheet's factor for a calificación; null without one (or one that is not of the table). */
+export function conservationOfRating(rating: number | null | undefined): number | null {
+  return CONSERVATION_RATINGS.find((row) => row.rating === rating)?.factor ?? null;
+}
+
+/** The Cons. of a row: the factor typed, else the one of its calificación, else none (the row waits for it). */
+export function effectiveConservation(row: { conservation: number | null; conservationRating?: number | null }): number | null {
+  return row.conservation ?? conservationOfRating(row.conservationRating);
+}
+
 /** A construction type as the construction section captures it: the single source of its surface, age and useful life. */
 export type ConstructionTypeDto = {
   ref: string;
@@ -58,7 +89,10 @@ export type ConstructionTypesDto = { types: ConstructionTypeDto[]; locked: boole
 export type ConstructionCostDto = {
   /** Reference of the type in the construction section. */
   ref: string;
+  /** Cons. typed; empty to take the one of the calificación. */
   conservation: number | null;
+  /** Calificación of the conservation (10 to 2, CONSERVATION_RATINGS); null when not rated. */
+  conservationRating: number | null;
   /** Edad of the demerit factors (R26); empty to take the formula. */
   ageFactor: number | null;
   otherFactor: number;
@@ -83,7 +117,7 @@ export function emptyConstructionType(index: number): ConstructionTypeDto {
 }
 
 export function emptyConstructionCost(ref = ""): ConstructionCostDto {
-  return { ref, conservation: null, ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: null };
+  return { ref, conservation: null, conservationRating: null, ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: null };
 }
 
 /** The cost row with the data of its type; a row whose type is gone keeps only its reference. */
@@ -100,7 +134,7 @@ export function findConstructionType(types: ConstructionTypeDto[], ref: string):
 /** The cost columns of a construction, what the cost approach saves. */
 export function constructionCostOf(row: ConstructionDto): ConstructionCostDto {
   return {
-    ref: row.ref, conservation: row.conservation, ageFactor: row.ageFactor, otherFactor: row.otherFactor, resultantFactor: row.resultantFactor,
+    ref: row.ref, conservation: row.conservation, conservationRating: row.conservationRating, ageFactor: row.ageFactor, otherFactor: row.otherFactor, resultantFactor: row.resultantFactor,
     completion: row.completion, undivided: row.undivided, unitReplacementCost: row.unitReplacementCost,
   };
 }
@@ -113,7 +147,10 @@ export type InstallationDto = {
   quantity: number | null;
   age: number | null;
   usefulLife: number | null;
+  /** Cons. typed; empty to take the one of the calificación. */
   conservation: number | null;
+  /** Calificación of the conservation (10 to 2, CONSERVATION_RATINGS); null when not rated. */
+  conservationRating: number | null;
   /** Printed in the installations table of the construction section; not part of the calculation. */
   maintenance: string;
   /** Edad of the demerit factors (R47); empty to take the formula. */
@@ -139,9 +176,10 @@ export const DEFAULT_COST_ROUNDING: CostRoundingDto = {
   physicalValue: DEFAULT_ENGINE_CONFIG.rounding.costs.physicalValue,
 };
 
-/** The factors with an Excel formula may be left out by older clients: they take the formula. */
+/** The factors with an Excel formula (and the calificación) may be left out by older clients: they take the formula. */
 type WithFormulaFactors<T extends { resultantFactor: number | null }, K extends keyof T> =
   Omit<T, K | "resultantFactor"> & Partial<Pick<T, K | "resultantFactor">>;
+type WithRating<T extends { conservationRating: number | null }> = Omit<T, "conservationRating"> & Partial<Pick<T, "conservationRating">>;
 
 /**
  * What the cost approach saves. A construction row names a type of the
@@ -150,8 +188,8 @@ type WithFormulaFactors<T extends { resultantFactor: number | null }, K extends 
  */
 export type CostInputDto = {
   land: WithFormulaFactors<CostLandDto, "surfaceFactor">;
-  constructions: (WithFormulaFactors<ConstructionCostDto, "ageFactor"> & Partial<Omit<ConstructionTypeDto, "ref">>)[];
-  installations: WithFormulaFactors<InstallationDto, "ageFactor">[];
+  constructions: (WithRating<WithFormulaFactors<ConstructionCostDto, "ageFactor">> & Partial<Omit<ConstructionTypeDto, "ref">>)[];
+  installations: WithRating<WithFormulaFactors<InstallationDto, "ageFactor">>[];
   indirects: IndirectDto[];
   rounding?: CostRoundingDto;
 };
@@ -193,7 +231,7 @@ export function emptyConstruction(index: number): ConstructionDto {
 export function emptyInstallation(index: number): InstallationDto {
   return {
     ref: String(index + 1), description: "", share: "P", unit: "", quantity: null, age: null, usefulLife: null,
-    conservation: null, maintenance: "", ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: null,
+    conservation: null, conservationRating: null, maintenance: "", ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: null,
   };
 }
 
@@ -207,12 +245,12 @@ function captured<K extends string>(factors: Record<K, number | null | undefined
 /** A construction or installation enters the calculation once its numbers are captured. */
 export function isConstructionComplete(row: ConstructionDto) {
   return positive(row.area) && row.age !== null && row.age >= 0 && positive(row.usefulLife)
-    && positive(row.conservation) && positive(row.unitReplacementCost);
+    && positive(effectiveConservation(row)) && positive(row.unitReplacementCost);
 }
 
 export function isInstallationComplete(row: InstallationDto) {
   return positive(row.quantity) && row.age !== null && row.age >= 0 && positive(row.usefulLife)
-    && positive(row.conservation) && positive(row.unitReplacementCost);
+    && positive(effectiveConservation(row)) && positive(row.unitReplacementCost);
 }
 
 /** Land unit value used: the captured one, or the one adopted in the market approach. */
@@ -272,7 +310,7 @@ export function toCostEngineInput(calculation: Pick<CostCalculationDto, "land" |
         area: row.area as number,
         age: row.age as number,
         usefulLife: row.usefulLife as number,
-        conservation: row.conservation as number,
+        conservation: effectiveConservation(row) as number,
         otherFactor: row.otherFactor,
         ...captured({ ageFactor: row.ageFactor, resultantFactor: row.resultantFactor }),
         completion: row.completion,
@@ -287,7 +325,7 @@ export function toCostEngineInput(calculation: Pick<CostCalculationDto, "land" |
         quantity: row.quantity as number,
         age: row.age as number,
         usefulLife: row.usefulLife as number,
-        conservation: row.conservation as number,
+        conservation: effectiveConservation(row) as number,
         otherFactor: row.otherFactor,
         ...captured({ ageFactor: row.ageFactor, resultantFactor: row.resultantFactor }),
         completion: row.completion,

@@ -9,7 +9,7 @@ import { DocumentConceptValue } from "./document-concept-value";
 import { isConclusionNarrativeConcept } from "@/features/valuations/services/caratula-blocks";
 import { DEFAULT_SIGNATURE_IMAGE_SIZE, SIGNATURE_IMAGE_HEIGHTS, type ValuationSignature } from "@/features/valuations/services/valuation-signatures";
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
-import { coverImageObjectPosition } from "@/features/valuations/services/cover-image-focus";
+import { coverImageStyle } from "@/features/valuations/services/cover-image-focus";
 import { appraisedGoodWording } from "@/features/valuations/services/appraised-good-wording";
 
 // Module 1: Cover (title, location, principal image)
@@ -32,13 +32,14 @@ export function CaratulaCoverModule({
         <p className="text-sm font-semibold leading-tight text-slate-600">{meta.location || "Ubicación pendiente"}</p>
       </section>
 
-      <figure className="mt-0.5 overflow-hidden bg-slate-100">
+      {/* The neutral background shows around an image shown whole or smaller; it prints too. */}
+      <figure className="mt-0.5 overflow-hidden bg-slate-100 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
         {principalImage?.url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             className="h-[294px] w-full object-cover"
-            // The cover box crops the image; the appraiser chooses the part that stays in view.
-            style={{ objectPosition: coverImageObjectPosition(caratula.enfoqueImagenPrincipal) }}
+            // The cover box crops the image, or shows it whole; the appraiser chooses the part in view and its size.
+            style={coverImageStyle(caratula.enfoqueImagenPrincipal, caratula.tamanoImagenPrincipal)}
             src={principalImage.url}
             alt={wording.coverImageAlt}
           />

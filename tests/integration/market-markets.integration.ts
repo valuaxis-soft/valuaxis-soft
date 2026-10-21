@@ -157,6 +157,23 @@ test("characteristics, free text and the justification of each comparable are ke
     [{ "custom:acceso": "Terracería" }, "Zona inferior al sujeto.", 2_100_000]);
 });
 
+test("the note under the homologation shows by default, and keeps the appraiser's text and choice", async () => {
+  const fixture = await createValuationFixture();
+  await saveMarketSettings(fixture.publicId, fixture.user, settings("TERRENO_VENTA"));
+  let market = await read(fixture, "TERRENO_VENTA");
+  assert.deepEqual([market.settings.showHomologationNote, market.settings.homologationNote], [true, null], "never chosen: shown, the format's text");
+
+  await saveMarketSettings(fixture.publicId, fixture.user, settings("TERRENO_VENTA", { showHomologationNote: false, homologationNote: "Nota del perito." }));
+  market = await read(fixture, "TERRENO_VENTA");
+  assert.deepEqual([market.settings.showHomologationNote, market.settings.homologationNote], [false, "Nota del perito."]);
+
+  // A client of before sends neither: both stay.
+  const { showHomologationNote: _s, homologationNote: _n, ...former } = market.settings;
+  await saveMarketSettings(fixture.publicId, fixture.user, former as MarketSettingsPayload);
+  market = await read(fixture, "TERRENO_VENTA");
+  assert.deepEqual([market.settings.showHomologationNote, market.settings.homologationNote], [false, "Nota del perito."]);
+});
+
 test("an offer level of before reads as the mark of the six options of the format", async () => {
   const fixture = await createValuationFixture();
   await saveMarketSettings(fixture.publicId, fixture.user, settings("TERRENO_VENTA", { offerLevel: "MEDIA_BAJA" }));

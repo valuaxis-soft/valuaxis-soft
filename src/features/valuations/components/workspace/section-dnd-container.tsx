@@ -13,7 +13,9 @@ import {
   useSensor,
   useSensors,
   closestCenter,
+  pointerWithin,
   type Announcements,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
   type ScreenReaderInstructions,
@@ -67,6 +69,33 @@ export const SECTION_DRAG_ACTIVATION = {
     end: ["Space", "Enter", "Tab"],
   },
 };
+
+/**
+ * The carátula is the cover: it always opens the document, so its tab neither
+ * moves nor takes another tab before it. A short swipe on it used to pick it
+ * up and drop it wherever the pointer was let go, the cover going to the
+ * middle of the document (observations of 20 Oct 2026, "la carátula se movió raro").
+ * A carátula saved somewhere else still moves, so it can be put back first.
+ */
+const PINNED_SECTION_ID = "caratula";
+
+export const isPinnedSection = (sectionId: string, index: number) => sectionId === PINNED_SECTION_ID && index === 0;
+
+/**
+ * Where a dragged tab lands: the tab under the pointer, so letting go away
+ * from the strip (over the preview, the form) leaves the order as it was. The
+ * keyboard has no pointer and keeps the nearest tab.
+ */
+export const sectionCollisionDetection: CollisionDetection = (args) =>
+  args.pointerCoordinates ? pointerWithin(args) : closestCenter(args);
+
+/**
+ * The strip scrolls while a tab is dragged only with the pointer at its very
+ * ends, and slowly: with the defaults (a fifth of its width on each side, ten
+ * times faster) a tab dragged near the edge sent the strip racing to the last
+ * tab and the tab with it.
+ */
+const SECTION_AUTO_SCROLL = { threshold: { x: 0.06, y: 0 }, acceleration: 1 };
 
 const screenReaderInstructions: ScreenReaderInstructions = {
   draggable:
@@ -181,7 +210,8 @@ export function SectionDndContainer({
     <DndContext
       id="section-dnd"
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={sectionCollisionDetection}
+      autoScroll={SECTION_AUTO_SCROLL}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveId(null)}
@@ -197,13 +227,14 @@ export function SectionDndContainer({
             if (activeId || renamingId) event.preventBaseUIHandler();
           }}
         >
-          {sections.map((section) => {
+          {sections.map((section, index) => {
             const Icon = iconMap[section.id] ?? FileText;
             return (
               <SortableSectionTab
                 key={section.id}
                 sectionId={section.id}
                 disabled={readOnly}
+                pinned={isPinnedSection(section.id, index)}
                 isActive={section.id === activeSectionId}
                 icon={Icon}
                 label={

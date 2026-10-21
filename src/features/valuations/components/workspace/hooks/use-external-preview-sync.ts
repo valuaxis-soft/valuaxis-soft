@@ -37,6 +37,8 @@ export function useExternalPreviewSync({
   const externalPreviewChannelRef = useRef<BroadcastChannel | null>(null);
   const externalPreviewPayloadRef = useRef<ExternalPreviewPayload | null>(null);
   const externalPreviewWindowRef = useRef<Window | null>(null);
+  // Whether the layout was external, so leaving it (not a reload) clears the stored choice.
+  const wasExternalRef = useRef(false);
   const externalPreviewChannelName = getExternalPreviewChannelName(valuationId);
 
   const postExternalPreviewState = useCallback(() => {
@@ -55,6 +57,8 @@ export function useExternalPreviewSync({
     const existingWindow = externalPreviewWindowRef.current;
     if (existingWindow && !existingWindow.closed) {
       existingWindow.focus();
+      // Chosen again after another layout: a reload restores it as well.
+      try { localStorage.setItem("valuoExternalPreview", "1"); } catch {}
       postExternalPreviewState();
       return;
     }
@@ -83,10 +87,15 @@ export function useExternalPreviewSync({
     if (workspaceMode !== "split" || splitLayout !== "external") {
       externalPreviewChannelRef.current?.close();
       externalPreviewChannelRef.current = null;
-      // Clear external preview flag if user explicitly left external mode
-      try { localStorage.removeItem("valuoExternalPreview"); } catch {}
+      // Clear external preview flag if user explicitly left external mode; the
+      // first render after a reload is not external yet and must keep it.
+      if (wasExternalRef.current) {
+        try { localStorage.removeItem("valuoExternalPreview"); } catch {}
+      }
+      wasExternalRef.current = false;
       return;
     }
+    wasExternalRef.current = true;
 
     if (typeof BroadcastChannel === "undefined") {
       toast.error("Tu navegador no permite sincronizar la vista en 2 pantallas.");
@@ -118,6 +127,19 @@ export function useExternalPreviewSync({
       openExternalPreviewWindow();
     }
   }, [openExternalPreviewWindow, splitLayout, workspaceMode]);
+
+  // Closing the editor tab closes its preview window too, whatever the layout
+  // shown: the window waits a moment for an editor to answer, so a reload keeps it.
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const announceClosed = () => {
+      const channel = new BroadcastChannel(externalPreviewChannelName);
+      channel.postMessage({ type: "main-closed" } satisfies ExternalPreviewMessage);
+      channel.close();
+    };
+    window.addEventListener("pagehide", announceClosed);
+    return () => window.removeEventListener("pagehide", announceClosed);
+  }, [externalPreviewChannelName]);
 
   useEffect(() => {
     if (workspaceMode !== "split" || splitLayout !== "external") return;

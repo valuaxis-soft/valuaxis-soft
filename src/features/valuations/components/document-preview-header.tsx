@@ -1,4 +1,5 @@
 import type { CaratulaFormData, ImageContent, Letterhead } from "../model";
+import { usePagePresentation } from "./page-presentation-context";
 import { appraisedGoodWording } from "../services/appraised-good-wording";
 import { normalizeHeaderExtraFields } from "../services/caratula-company-header";
 import { formatDateValue } from "../services/concept-value-format";
@@ -42,6 +43,7 @@ export function DocumentPreviewHeader({
   const extraFields = normalizeHeaderExtraFields(caratula.camposEncabezado);
   const firmName = letterhead.legalName?.trim() || letterhead.name;
   const rfcLine = letterhead.rfc ? `RFC ${letterhead.rfc}` : "";
+  const { titleBand } = usePagePresentation();
 
   return (
     <header className="px-5 pt-5 sm:px-8 sm:pt-7" data-document-preview-header>
@@ -96,7 +98,13 @@ export function DocumentPreviewHeader({
           </div>
         </div>
       </div>
-      <div className="mt-1 bg-[var(--caratula-dark-blue)] px-5 py-0.5 text-center text-base font-black leading-tight text-white">
+      {/* Unfilled, a blue line sets the header apart from the body and the title is blue on white. */}
+      <div
+        className={titleBand === "outline"
+          ? "mt-1 border-t-[3px] border-[var(--caratula-dark-blue)] bg-white px-5 pb-0.5 pt-px text-center text-base font-black leading-tight text-[var(--caratula-dark-blue)]"
+          : "mt-1 bg-[var(--caratula-dark-blue)] px-5 py-0.5 text-center text-base font-black leading-tight text-white"}
+        data-title-band={titleBand}
+      >
         {appraisedGoodWording(propertyKind).documentTitle}
       </div>
     </header>

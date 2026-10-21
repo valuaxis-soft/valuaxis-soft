@@ -8,11 +8,18 @@ import { caratulaFromValuation, initialMetaFor } from "../src/features/valuation
 import type { CaratulaFormData, PrincipalCoverImage, ValuationMeta } from "../src/features/valuations/model";
 import {
   COVER_IMAGE_FOCUS_CENTER,
+  DEFAULT_COVER_IMAGE_SIZE,
   coverImageObjectPosition,
+  coverImageStyle,
   normalizeCoverImageFocus,
+  normalizeCoverImageSize,
   coverImagePannableAxes,
   COVER_BOX_RATIO,
 } from "../src/features/valuations/services/cover-image-focus";
+import { readCompanyHeaderFields, updateCompanyHeaderFields } from "../src/features/valuations/services/caratula-company-header";
+import { buildSectionsPayload } from "../src/features/valuations/components/workspace/model/save-payload";
+import { hydrateBlockMetadata } from "../src/features/valuations/metadata";
+import type { AppSection } from "../src/features/valuations/model";
 import { saveFullValuationSchema } from "../src/features/valuations/validations/valuation-api.schemas";
 
 test("a cover image focus is whole and inside 0–100 on both axes; anything unreadable is the center", () => {
@@ -38,8 +45,8 @@ test("the printed cover crops the principal image around its focus, centered by 
   const cover = (caratula: Partial<CaratulaFormData>) =>
     renderToStaticMarkup(createElement(CaratulaCoverModule, { caratula: { tituloInmueble: "Edificio", ...caratula } as CaratulaFormData, meta, principalImage }));
 
-  assert.match(cover({}), /object-cover[^>]*style="object-position:50% 50%"/);
-  assert.match(cover({ enfoqueImagenPrincipal: { x: 50, y: 15 } }), /style="object-position:50% 15%"/);
+  assert.match(cover({}), /object-cover[^>]*style="object-fit:cover;object-position:50% 50%"/);
+  assert.match(cover({ enfoqueImagenPrincipal: { x: 50, y: 15 } }), /style="object-fit:cover;object-position:50% 15%"/);
 });
 
 test("a valuation opens with its stored focus, or centered when it never had one", () => {
@@ -60,4 +67,50 @@ test("only an image wider than the cover box moves sideways; only a taller one m
   assert.deepEqual(coverImagePannableAxes(COVER_BOX_RATIO * 1.5), { x: true, y: false }, "a panorama fills the height");
   assert.deepEqual(coverImagePannableAxes(COVER_BOX_RATIO), { x: false, y: false });
   assert.deepEqual(coverImagePannableAxes(null), { x: true, y: true }, "unknown size: both sliders stay");
+});
+
+test("the size of the cover image: absent fills the box as always; whole or scaled, around the focus", () => {
+  assert.deepEqual(normalizeCoverImageSize(undefined), DEFAULT_COVER_IMAGE_SIZE);
+  assert.deepEqual(normalizeCoverImageSize({ fit: "contain", scale: 72.4 }), { fit: "contain", scale: 72 });
+  assert.deepEqual(normalizeCoverImageSize({ fit: "stretch", scale: 900 }), { fit: "cover", scale: 200 }, "unknown fit fills; scale clamped");
+  assert.deepEqual(normalizeCoverImageSize({ scale: 10 }), { fit: "cover", scale: 50 });
+
+  assert.deepEqual(coverImageStyle(undefined, undefined), { objectFit: "cover", objectPosition: "50% 50%" }, "no transform: the cover of before");
+  assert.deepEqual(coverImageStyle({ x: 20, y: 80 }, { fit: "contain", scale: 100 }), { objectFit: "contain", objectPosition: "20% 80%" });
+  assert.deepEqual(coverImageStyle({ x: 50, y: 30 }, { fit: "cover", scale: 150 }), {
+    objectFit: "cover", objectPosition: "50% 30%", transform: "scale(1.5)", transformOrigin: "50% 30%",
+  });
+});
+
+test("the printed cover shows the whole image over the neutral background, the same as the preview", () => {
+  const meta = { location: "Arandas, Jalisco" } as ValuationMeta;
+  const principalImage: PrincipalCoverImage = { id: "img", filename: "auto.jpg", mimeType: "image/jpeg", size: 1, url: "https://example.test/auto.jpg" };
+  const html = renderToStaticMarkup(createElement(CaratulaCoverModule, {
+    caratula: { tituloInmueble: "Vehículo", tamanoImagenPrincipal: { fit: "contain", scale: 80 } } as CaratulaFormData, meta, principalImage,
+  }));
+  assert.match(html, /<figure class="[^"]*bg-slate-100[^"]*print-color-adjust:exact/);
+  assert.match(html, /style="object-fit:contain;object-position:50% 50%;transform:scale\(0.8\);transform-origin:50% 50%"/);
+  assert.match(html, /h-\[294px\]/, "the box keeps its height: the page lays out as before");
+});
+
+test("whole, the side with room moves; scaled, both move", () => {
+  assert.deepEqual(coverImagePannableAxes(COVER_BOX_RATIO * 1.5, { fit: "contain", scale: 100 }), { x: false, y: true }, "a wide photo whole: room above and below");
+  assert.deepEqual(coverImagePannableAxes(4 / 3, { fit: "contain", scale: 100 }), { x: true, y: false });
+  assert.deepEqual(coverImagePannableAxes(4 / 3, { fit: "cover", scale: 140 }), { x: true, y: true });
+});
+
+test("the size travels with the carátula form and is kept with the company header block, read back the same", () => {
+  const sections = [{ id: "caratula", label: "", title: "CARÁTULA", sourceFile: "", enabled: true, required: true, blocks: [] }] as AppSection[];
+  const sized = updateCompanyHeaderFields(sections, { tamanoImagenPrincipal: { fit: "contain", scale: 90 } });
+  assert.deepEqual(readCompanyHeaderFields(sized).tamanoImagenPrincipal, { fit: "contain", scale: 90 });
+  const header = buildSectionsPayload(sized)[0].blocks.find((block) => block.id === "caratula-company-header");
+  assert.deepEqual(header?.coverImageSize, { fit: "contain", scale: 90 });
+  assert.deepEqual(hydrateBlockMetadata({ kind: "block", payload: header }).coverImageSize, { fit: "contain", scale: 90 });
+
+  // Back to the default it is no size at all, as a cover saved before the size existed.
+  const reset = updateCompanyHeaderFields(sized, { tamanoImagenPrincipal: DEFAULT_COVER_IMAGE_SIZE });
+  assert.equal(readCompanyHeaderFields(reset).tamanoImagenPrincipal, undefined);
+  assert.equal(hydrateBlockMetadata({ kind: "block", payload: {} }).coverImageSize, undefined);
+  assert.equal(saveFullValuationSchema.safeParse({ caratula: { tamanoImagenPrincipal: { fit: "contain", scale: 90 } } }).success, true);
+  assert.equal(saveFullValuationSchema.safeParse({ caratula: { tamanoImagenPrincipal: { fit: "zoom", scale: 90 } } }).success, false);
 });
