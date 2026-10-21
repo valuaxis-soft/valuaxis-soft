@@ -263,6 +263,12 @@ export function ValuationWorkspace({
     if (hasUnsavedChanges && !(await handleSave())) return;
     router.push(`/avaluos/${valuationId}/dictamen`);
   };
+  // So is the calculation memory, which reads the saved valuation too.
+  const handleCalculationMemory = async () => {
+    if (!valuationId) return;
+    if (hasUnsavedChanges && !(await handleSave())) return;
+    router.push(`/avaluos/${valuationId}/memoria-calculo`);
+  };
 
   const editorPanel = (
     <>
@@ -386,6 +392,7 @@ export function ValuationWorkspace({
             iconMap={sectionIconMap}
             meta={meta}
             onAddSection={addSection}
+            onCalculationMemory={() => void handleCalculationMemory()}
             onExport={handleExportPdf}
             onExit={handleExit}
             onRenameSection={handleRenameSection}

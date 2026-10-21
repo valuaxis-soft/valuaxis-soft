@@ -56,6 +56,8 @@ Las pruebas `tests/valuation-engine-*.test.ts` alimentan al motor con las entrad
 
 Cada cifra queda en un `TraceStep` con clave estable (`costos.construcciones.T-1.vnrParcial`), etiqueta, fórmula legible, entradas y redondeo. Así un valor del dictamen se sigue hasta el dato capturado.
 
+La **memoria de cálculo** (`/avaluos/<uuid>/memoria-calculo`, `memory/calculation-memory.ts`) lo imprime: el servidor guarda solo la clave y el valor de cada paso, así que la memoria vuelve a correr el motor con lo que el avalúo tiene guardado (lo mismo que hacen los paneles) y compara cada paso con lo guardado; si un paso no coincide, o lo guardado es de otra versión del motor, lo dice. Las fórmulas escritas en los campos de los paneles (`=1345*235`) se guardan ya calculadas, salvo los factores capturados como calificaciones (`=sujeto/comparable`), que la memoria escribe como fórmula.
+
 ## En el editor
 
 Cada sección de cálculo tiene su panel, arriba de sus bloques:

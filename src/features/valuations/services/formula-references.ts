@@ -185,6 +185,11 @@ export type FormulaScope = {
   index: FormulaIndex;
   /** The table of the cell that holds the formula; none for the formula of a concept. */
   table?: TableV2;
+  /**
+   * Writes a reference as the value it reads instead of its position or name
+   * (the calculation memory's "=1200*0.95"); null keeps the reference.
+   */
+  referenceValue?: (operand: FormulaOperand, table: TableV2 | undefined) => string | null;
 };
 
 export type CompiledFormula = { ok: true; formula: TableFormula } | { ok: false; message: string };
@@ -291,6 +296,8 @@ function numberText(value: number) {
 }
 
 function operandText(operand: FormulaOperand, scope: FormulaScope): string {
+  const value = operand.type === "constant" ? null : scope.referenceValue?.(operand, scope.table) ?? null;
+  if (value !== null) return value;
   /** The table a reference reads and what is written before its cells. */
   const place = (tableId: string | undefined): { table: TableV2; prefix: string } | null => {
     if (!tableId || tableId === scope.table?.id) return scope.table ? { table: scope.table, prefix: "" } : null;
