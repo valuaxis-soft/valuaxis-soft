@@ -32,7 +32,7 @@ Las claves están en `AUTH_PERMISSIONS` (`src/features/auth/model.ts`):
 | `GET /api/avaluos`, `GET /api/avaluos/[id]` | `AVALUO_VER` |
 | `POST /api/avaluos` | `AVALUO_CREAR` |
 | `PUT` y `DELETE /api/avaluos/[id]`, `PUT /api/avaluos/[id]/full`, `POST /api/uploads` | `AVALUO_EDITAR` |
-| `/api/plantillas`, `/api/plantillas/[id]` (todos los métodos) | `AVALUO_EDITAR` |
+| `/api/plantillas`, `/api/plantillas/[id]` (todos los métodos) y la página `/organizacion/plantillas` | `AVALUO_EDITAR` |
 | `POST /api/avaluos/[id]/conclude` | `AVALUO_CONCLUIR` |
 | `POST /api/avaluos/[id]/reopen` | `AVALUO_REABRIR` |
 | `GET /api/avaluos/[id]/export` | `AVALUO_EXPORTAR` |

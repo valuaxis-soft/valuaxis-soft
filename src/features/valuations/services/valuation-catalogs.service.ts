@@ -14,8 +14,15 @@ export type ValuationCreationCatalogs = {
   /**
    * The system's templates and the firm's own. `document`: the template holds
    * a whole document (one the firm saved), which starts valuations of any type.
+   * `publicId` is how the "Plantillas" page names the one to start from.
    */
-  templates: (CatalogOption & { appraisalTypeId: number | null; system: boolean; document: boolean })[];
+  templates: (CatalogOption & {
+    publicId: string;
+    description: string | null;
+    appraisalTypeId: number | null;
+    system: boolean;
+    document: boolean;
+  })[];
   responsibleUsers: CatalogOption[];
 };
 
@@ -46,8 +53,10 @@ export async function getValuationCreationCatalogs(organizationId: number) {
         orderBy: [{ SNombre: "asc" }],
         select: {
           IdPlantillaAvaluo: true,
+          UIdentificadorPublico: true,
           IdTipoAvaluo: true,
           SNombre: true,
+          SDescripcion: true,
           BEsSistema: true,
           versiones: { where: { BActiva: true }, orderBy: { INumeroVersion: "desc" }, take: 1, select: { JConfiguracionGeneral: true } },
         },
@@ -95,6 +104,8 @@ export async function getValuationCreationCatalogs(organizationId: number) {
     templates: templates.map((item) => ({
       id: item.IdPlantillaAvaluo,
       label: item.SNombre,
+      publicId: item.UIdentificadorPublico,
+      description: item.SDescripcion,
       appraisalTypeId: item.IdTipoAvaluo,
       system: item.BEsSistema,
       document: !item.BEsSistema && readDocumentTemplate(item.versiones[0]?.JConfiguracionGeneral) !== null,

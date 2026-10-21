@@ -4,9 +4,9 @@ import { valuationErrorResponse } from "@/features/valuations/services/valuation
 import {
   deleteValuationTemplate,
   getValuationTemplate,
-  renameValuationTemplate,
+  updateValuationTemplate,
 } from "@/features/valuations/services/valuation-template.service";
-import { renameValuationTemplateSchema } from "@/features/valuations/validations/valuation-template.schemas";
+import { updateValuationTemplateSchema } from "@/features/valuations/validations/valuation-template.schemas";
 import { internalError, readJsonBody } from "@/lib/api-response";
 import { requireApiUser } from "@/security/guards/api-guard";
 
@@ -31,11 +31,11 @@ export async function PATCH(request: Request, { params }: RouteContext<"/api/pla
     const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
     if (!auth.ok) return auth.response;
 
-    const body = await readJsonBody(request, renameValuationTemplateSchema);
+    const body = await readJsonBody(request, updateValuationTemplateSchema);
     if (!body.ok) return body.response;
 
     const { id } = await params;
-    const template = await renameValuationTemplate(auth.user.organizationId, id, body.data.name);
+    const template = await updateValuationTemplate(auth.user.organizationId, id, body.data);
     return template ? NextResponse.json({ data: template }) : notFound();
   } catch (error) {
     return valuationErrorResponse("TEMPLATE_RENAME", error, "No se pudo cambiar el nombre de la plantilla.");

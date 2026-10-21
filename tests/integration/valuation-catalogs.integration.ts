@@ -50,6 +50,8 @@ test("templates are the system's and the organization's own, never another firm'
   assert.deepEqual(catalogs.templates.find((template) => template.id === own.IdPlantillaAvaluo), {
     id: own.IdPlantillaAvaluo,
     label: `Propia ${suffix}`,
+    publicId: own.UIdentificadorPublico,
+    description: null,
     appraisalTypeId: type.IdTipoAvaluo,
     system: false,
     document: false,

@@ -94,11 +94,12 @@ export class SessionExpiredError extends Error {
   }
 }
 
-/** A rejected request with its message and, when the server offers one, a page where the user can fix it. */
+/** A rejected request with its message, its status and, when the server offers one, a page where the user can fix it. */
 export class ApiError extends Error {
   constructor(
     message: string,
     readonly link: string | null = null,
+    readonly status: number | null = null,
   ) {
     super(message);
     this.name = "ApiError";
@@ -114,7 +115,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   if (res.status === 401) throw new SessionExpiredError();
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: "Request failed" }));
-    throw new ApiError(error.error || `HTTP ${res.status}`, typeof error.link === "string" ? error.link : null);
+    throw new ApiError(error.error || `HTTP ${res.status}`, typeof error.link === "string" ? error.link : null, res.status);
   }
   if (res.status === 204) return undefined as T;
 
@@ -310,8 +311,12 @@ export const api = {
   templates: {
     list: () => request<ValuationTemplateSummary[]>(`/plantillas`),
     get: (id: ApiId) => request<ValuationTemplateDetail>(`/plantillas/${id}`),
-    create: (input: { name: string; valuationId: ApiId; includeData: boolean; includeImages: boolean }) =>
+    /** Answers 409 (ApiError.status) under a name already in use, unless `replace`. */
+    create: (input: { name: string; description?: string | null; valuationId: ApiId; includeData: boolean; includeImages: boolean; replace?: boolean }) =>
       request<ValuationTemplateSummary>(`/plantillas`, { method: "POST", body: JSON.stringify(input) }),
+    update: (id: ApiId, input: { name: string; description?: string | null }) =>
+      request<ValuationTemplateSummary>(`/plantillas/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    remove: (id: ApiId) => request<void>(`/plantillas/${id}`, { method: "DELETE" }),
     valuations: () => request<ValuationListItem[]>(`/avaluos`),
     valuation: (id: ApiId) => request<ValuationDetail>(`/avaluos/${id}`),
   },

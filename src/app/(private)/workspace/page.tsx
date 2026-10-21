@@ -12,7 +12,7 @@ import { getValuationCreationCatalogs } from "@/features/valuations/services/val
 export default async function WorkspacePage({
   searchParams,
 }: {
-  searchParams: Promise<{ id?: string; action?: string }>;
+  searchParams: Promise<{ id?: string; action?: string; plantilla?: string }>;
 }) {
   const params = await searchParams;
   const user = await requireSession("/workspace");
@@ -22,7 +22,7 @@ export default async function WorkspacePage({
   if (action === "new") {
     if (!hasPermission(user, AUTH_PERMISSIONS.createValuations)) redirect("/dashboard");
     const catalogs = await getValuationCreationCatalogs(user.organizationId);
-    return <CreateValuationForm catalogs={catalogs} />;
+    return <CreateValuationForm catalogs={catalogs} preselectedTemplate={params.plantilla ?? null} />;
   }
 
   if (!valuationId || !hasPermission(user, AUTH_PERMISSIONS.viewValuations)) redirect("/dashboard");
