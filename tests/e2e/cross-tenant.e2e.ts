@@ -197,6 +197,15 @@ describe("organization B cannot reach organization A's templates", () => {
     assert.equal(await prisma.plantillaAvaluo.count({ where: { IdOrganizacion: world.b.organizationId } }), 0);
   });
 
+  test("B cannot replace A's template: under its name, with A's valuation, nothing is found and A's keeps one version", async () => {
+    const response = await call(world.b.admin, "POST", "/api/plantillas", {
+      json: { name: `Privada ${world.suffix}`, valuationId: target, replace: true },
+    });
+    assert.equal(response.status, 404, describeCall("org B admin POST template (replace)", response));
+    assert.equal(await prisma.versionPlantilla.count({ where: { plantillaAvaluo: { UIdentificadorPublico: template } } }), 1);
+    assert.equal(await prisma.plantillaAvaluo.count({ where: { IdOrganizacion: world.b.organizationId } }), 0);
+  });
+
   test("B cannot start a valuation from A's template", async () => {
     const row = await prisma.plantillaAvaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: template }, select: { IdPlantillaAvaluo: true } });
     const response = await call(world.b.admin, "POST", "/api/avaluos", {

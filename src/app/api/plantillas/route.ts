@@ -18,7 +18,10 @@ export async function GET() {
   }
 }
 
-/** Saves the document of one of the firm's valuations as a template. */
+/**
+ * Saves the document of one of the firm's valuations as a template; with
+ * `replace`, as a new version of the one with that name (200).
+ */
 export async function POST(request: Request) {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
@@ -27,8 +30,8 @@ export async function POST(request: Request) {
     const body = await readJsonBody(request, createValuationTemplateSchema);
     if (!body.ok) return body.response;
 
-    const template = await createValuationTemplate({ user: auth.user, ...body.data });
-    return NextResponse.json({ data: template }, { status: 201 });
+    const { replaced, ...template } = await createValuationTemplate({ user: auth.user, ...body.data });
+    return NextResponse.json({ data: template }, { status: replaced ? 200 : 201 });
   } catch (error) {
     return valuationErrorResponse("TEMPLATES_CREATE", error, "No se pudo guardar la plantilla.");
   }

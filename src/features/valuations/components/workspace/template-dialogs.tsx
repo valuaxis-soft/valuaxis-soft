@@ -9,7 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { api } from "@/lib/api-client";
+import { Textarea } from "@/components/ui/textarea";
+import { api, ApiError } from "@/lib/api-client";
 import type { AppSection, Block } from "@/features/valuations/model";
 import { importableBlocks } from "@/features/valuations/services/document-template";
 import { initialSectionsFor } from "./model/initial-hydration";
@@ -37,7 +38,8 @@ function OptionCheckbox({ id, checked, onChange, label, description }: {
 
 /**
  * "Guardar como plantilla": the document of this valuation, as it is saved,
- * under a name of the firm's. Pending changes are saved first.
+ * under a name of the firm's. Pending changes are saved first. Under the name
+ * of an existing template it offers "Reemplazar": a new version of that one.
  */
 export function SaveAsTemplateDialog({
   open,
@@ -52,27 +54,43 @@ export function SaveAsTemplateDialog({
   saveFirst: () => Promise<boolean>;
 }) {
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [includeData, setIncludeData] = useState(false);
   const [includeImages, setIncludeImages] = useState(false);
   const [pending, setPending] = useState(false);
+  /** The name is already one of the firm's templates: replace it or write another. */
+  const [nameTaken, setNameTaken] = useState(false);
   const close = (next: boolean) => {
     onOpenChange(next);
     if (!next) {
       setName("");
+      setDescription("");
       setIncludeData(false);
       setIncludeImages(false);
+      setNameTaken(false);
     }
   };
-  const submit = async () => {
+  const submit = async (replace: boolean) => {
     if (!name.trim() || pending) return;
     setPending(true);
     try {
       if (!(await saveFirst())) return;
-      const template = await api.templates.create({ name: name.trim(), valuationId, includeData, includeImages });
-      toast.success(`Plantilla "${template.name}" guardada. Elígela en "Plantilla base" al crear un avalúo.`);
+      const template = await api.templates.create({
+        name: name.trim(),
+        // Left empty, a replacement keeps the template's description.
+        description: description.trim() || undefined,
+        valuationId,
+        includeData,
+        includeImages,
+        replace,
+      });
+      toast.success(replace
+        ? `Plantilla "${template.name}" reemplazada (versión ${template.version}). Los avalúos nuevos parten de esta versión.`
+        : `Plantilla "${template.name}" guardada. Elígela en "Plantilla base" al crear un avalúo.`);
       close(false);
     } catch (error) {
-      toast.error(`No se pudo guardar la plantilla: ${errorText(error)}`);
+      if (error instanceof ApiError && error.status === 409) setNameTaken(true);
+      else toast.error(`No se pudo guardar la plantilla: ${errorText(error)}`);
     } finally {
       setPending(false);
     }
@@ -91,12 +109,40 @@ export function SaveAsTemplateDialog({
           className="grid gap-4"
           onSubmit={(event) => {
             event.preventDefault();
-            void submit();
+            void submit(nameTaken);
           }}
         >
           <Field>
             <FieldLabel htmlFor="template-name">Nombre de la plantilla</FieldLabel>
-            <Input id="template-name" value={name} maxLength={120} autoFocus placeholder="Por ejemplo: Casa habitación" onChange={(event) => setName(event.target.value)} />
+            <Input
+              id="template-name"
+              value={name}
+              maxLength={120}
+              autoFocus
+              placeholder="Por ejemplo: Casa habitación"
+              aria-invalid={nameTaken || undefined}
+              onChange={(event) => {
+                setName(event.target.value);
+                setNameTaken(false);
+              }}
+            />
+            {nameTaken ? (
+              <FieldDescription className="text-destructive" role="alert" data-template-name-taken>
+                Ya hay una plantilla con ese nombre. Reemplázala para guardar este documento como su versión nueva (los
+                avalúos ya creados con ella no cambian), o escribe otro nombre.
+              </FieldDescription>
+            ) : null}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="template-description">Descripción (opcional)</FieldLabel>
+            <Textarea
+              id="template-description"
+              value={description}
+              maxLength={500}
+              rows={2}
+              placeholder="Para qué sirve o en qué se distingue"
+              onChange={(event) => setDescription(event.target.value)}
+            />
           </Field>
           <OptionCheckbox
             id="template-include-data"
@@ -108,7 +154,9 @@ export function SaveAsTemplateDialog({
           <OptionCheckbox id="template-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" />
           <DialogFooter>
             <Button type="button" variant="outline" disabled={pending} onClick={() => close(false)}>Cancelar</Button>
-            <Button type="submit" disabled={pending || !name.trim()}>{pending ? "Guardando..." : "Guardar plantilla"}</Button>
+            <Button type="submit" variant={nameTaken ? "destructive" : "default"} disabled={pending || !name.trim()}>
+              {pending ? "Guardando..." : nameTaken ? "Reemplazar" : "Guardar plantilla"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

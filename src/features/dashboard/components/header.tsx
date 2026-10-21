@@ -24,13 +24,16 @@ const roleLabel: Record<string, string> = {
   USUARIO: "Usuario",
 };
 
-type NavKey = "dashboard" | "avaluos" | "equipo" | "despacho" | "facturacion";
+type NavKey = "dashboard" | "avaluos" | "plantillas" | "equipo" | "despacho" | "facturacion";
 
 export function DashboardHeader({ user, active }: { user: AuthUser; active?: NavKey }) {
   const navItems: Array<{ key: NavKey; label: string; href: string }> = [
     { key: "dashboard", label: "Inicio", href: "/dashboard" },
     ...(hasPermission(user, AUTH_PERMISSIONS.viewValuations)
       ? [{ key: "avaluos" as const, label: "Avalúos", href: "/avaluos" }]
+      : []),
+    ...(hasPermission(user, AUTH_PERMISSIONS.editValuations)
+      ? [{ key: "plantillas" as const, label: "Plantillas", href: "/organizacion/plantillas" }]
       : []),
     ...(hasPermission(user, AUTH_PERMISSIONS.manageUsers)
       ? [

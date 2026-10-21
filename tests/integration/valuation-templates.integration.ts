@@ -145,6 +145,125 @@ test("a template is saved from the firm's valuation, listed, renamed and removed
   assert.deepEqual((await call(jar, listTemplates as Handler, "GET", "/api/plantillas")).body!.data, []);
 });
 
+test("saving under a taken name is refused unless replaced: a new version, read by new valuations and by the import", async () => {
+  const fixture = await createValuationFixture();
+  const jar = await signIn(fixture);
+  const customId = await captureDocument(fixture);
+  const first = await call(jar, postTemplate, "POST", "/api/plantillas", {
+    name: "Departamento",
+    description: "Para departamentos en condominio",
+    valuationId: fixture.publicId,
+  });
+  assert.equal(first.status, 201);
+  const original = first.body!.data as ValuationTemplateSummary;
+  assert.equal(original.version, 1);
+  assert.equal(original.description, "Para departamentos en condominio");
+  assert.equal(original.createdBy, "Perito");
+  assert.equal(original.versionBy, "Perito");
+
+  // The document changes: the concept now carries another label.
+  const sections = (await load(fixture.publicId, fixture.organizationId)).map((section): AppSection => section.id === customId
+    ? { ...section, blocks: section.blocks.map((block) => ({ ...block, concepts: [{ ...block.concepts[0], label: "Plano nuevo" }] })) }
+    : section);
+  await save(fixture, sections);
+
+  const refused = await call(jar, postTemplate, "POST", "/api/plantillas", { name: "DEPARTAMENTO", valuationId: fixture.publicId, includeData: true });
+  assert.equal(refused.status, 409, "without asking to replace, the name is still taken");
+  const replaced = await call(jar, postTemplate, "POST", "/api/plantillas", {
+    name: "departamento",
+    valuationId: fixture.publicId,
+    includeData: true,
+    replace: true,
+  });
+  assert.equal(replaced.status, 200, JSON.stringify(replaced.body));
+  const second = replaced.body!.data as ValuationTemplateSummary;
+  assert.equal(second.id, original.id, "the same template");
+  assert.equal(second.name, "Departamento", "the name stays as it was");
+  assert.equal(second.version, 2);
+  assert.equal(second.includeData, true);
+  assert.equal(second.description, "Para departamentos en condominio", "a replacement without a description keeps it");
+  assert.equal(second.createdBy, "Perito");
+
+  const listed = (await call(jar, listTemplates as Handler, "GET", "/api/plantillas")).body!.data as ValuationTemplateSummary[];
+  assert.deepEqual(listed.map((item) => [item.name, item.version]), [["Departamento", 2]], "one template, not two");
+  const versions = await prisma.versionPlantilla.findMany({
+    where: { plantillaAvaluo: { UIdentificadorPublico: original.id } },
+    orderBy: { INumeroVersion: "asc" },
+    select: { INumeroVersion: true, BActiva: true },
+  });
+  assert.deepEqual(versions.map((version) => [version.INumeroVersion, version.BActiva]), [[1, false], [2, true]]);
+
+  // "Importar bloque" and a new valuation read the latest version.
+  const read = await call(jar, getTemplate, "GET", `/api/plantillas/${original.id}`, undefined, original.id);
+  const content = (read.body!.data as { content: DocumentTemplateContent }).content;
+  assert.deepEqual(content.sections.find((section) => section.id === customId)!.blocks[0].concepts.map((concept) => [concept.label, concept.value]), [["Plano nuevo", "Planta baja"]]);
+  const catalogs = await getValuationCreationCatalogs(fixture.organizationId);
+  const option = catalogs.templates.find((template) => template.publicId === original.id)!;
+  assert.equal(option.description, "Para departamentos en condominio");
+  const created = await call(jar, postValuation as Handler, "POST", "/api/avaluos", {
+    title: "Desde la versión 2",
+    clientName: "Cliente",
+    appraisalTypeId: catalogs.appraisalTypes[0].id,
+    propertyTypeId: catalogs.propertyTypes[0].id,
+    operationTypeId: catalogs.operationTypes[0].id,
+    templateId: option.id,
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const fromTemplate = await load((created.body!.data as { publicId: string }).publicId, fixture.organizationId);
+  assert.equal(fromTemplate.find((section) => section.id === customId)!.blocks[0].concepts[0].label, "Plano nuevo");
+
+  // A replacement with a description changes it; an empty one in the rename clears it.
+  const third = await call(jar, postTemplate, "POST", "/api/plantillas", { name: "Departamento", description: "Otra", valuationId: fixture.publicId, replace: true });
+  assert.equal((third.body!.data as ValuationTemplateSummary).description, "Otra");
+  assert.equal((third.body!.data as ValuationTemplateSummary).version, 3);
+  const cleared = await call(jar, patchTemplate, "PATCH", `/api/plantillas/${original.id}`, { name: "Departamento", description: "" }, original.id);
+  assert.equal((cleared.body!.data as ValuationTemplateSummary).description, null);
+
+  // `replace` with a free name simply creates the template.
+  const fresh = await call(jar, postTemplate, "POST", "/api/plantillas", { name: "Bodega", valuationId: fixture.publicId, replace: true });
+  assert.equal(fresh.status, 201);
+  assert.equal((fresh.body!.data as ValuationTemplateSummary).version, 1);
+});
+
+test("a rename keeps the name unique ignoring case and accents, and a removed template leaves its valuations as they were", async () => {
+  const fixture = await createValuationFixture();
+  const jar = await signIn(fixture);
+  const customId = await captureDocument(fixture);
+  const a = (await call(jar, postTemplate, "POST", "/api/plantillas", { name: "Casa habitación", valuationId: fixture.publicId, includeData: true })).body!.data as ValuationTemplateSummary;
+  const b = (await call(jar, postTemplate, "POST", "/api/plantillas", { name: "Terreno", valuationId: fixture.publicId })).body!.data as ValuationTemplateSummary;
+
+  assert.equal((await call(jar, patchTemplate, "PATCH", `/api/plantillas/${b.id}`, { name: "CASA  HABITACION" }, b.id)).status, 409);
+  const same = await call(jar, patchTemplate, "PATCH", `/api/plantillas/${a.id}`, { name: "Casa Habitacion", description: "Con datos de ejemplo" }, a.id);
+  assert.equal(same.status, 200, "its own name, written another way, is not taken");
+  assert.equal((same.body!.data as ValuationTemplateSummary).description, "Con datos de ejemplo");
+  assert.equal((await call(jar, patchTemplate, "PATCH", `/api/plantillas/${b.id}`, { name: " " }, b.id)).status, 400);
+
+  const catalogs = await getValuationCreationCatalogs(fixture.organizationId);
+  const option = catalogs.templates.find((template) => template.publicId === a.id)!;
+  const created = await call(jar, postValuation as Handler, "POST", "/api/avaluos", {
+    title: "Antes de eliminar",
+    clientName: "Cliente",
+    appraisalTypeId: catalogs.appraisalTypes[0].id,
+    propertyTypeId: catalogs.propertyTypes[0].id,
+    operationTypeId: catalogs.operationTypes[0].id,
+    templateId: option.id,
+  });
+  const publicId = (created.body!.data as { publicId: string }).publicId;
+  const before = await load(publicId, fixture.organizationId);
+
+  assert.equal((await call(jar, deleteTemplate, "DELETE", `/api/plantillas/${a.id}`, undefined, a.id)).status, 204);
+  assert.equal((await call(jar, deleteTemplate, "DELETE", `/api/plantillas/${a.id}`, undefined, a.id)).status, 404, "already removed");
+  const row = await prisma.plantillaAvaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: a.id }, select: { BActivo: true, DFechaEliminacion: true } });
+  assert.equal(row.BActivo, false);
+  assert.ok(row.DFechaEliminacion, "a soft delete: the row stays");
+  assert.deepEqual(await load(publicId, fixture.organizationId), before, "the valuation created from it is unchanged");
+  assert.equal(before.find((section) => section.id === customId)!.blocks[0].concepts[0].value, "Planta baja");
+  assert.ok(!(await getValuationCreationCatalogs(fixture.organizationId)).templates.some((template) => template.publicId === a.id));
+
+  // The name is free again once removed.
+  assert.equal((await call(jar, patchTemplate, "PATCH", `/api/plantillas/${b.id}`, { name: "Casa habitación" }, b.id)).status, 200);
+});
+
 test("another firm's templates and valuations are not found, the roles that do not edit are refused, and without a session nothing", async () => {
   const fixture = await createValuationFixture();
   const other = await createValuationFixture();
@@ -162,10 +281,32 @@ test("another firm's templates and valuations are not found, the roles that do n
   assert.equal((await call(jar, getTemplate, "GET", "/api/plantillas/no-es-uuid", undefined, "no-es-uuid")).status, 404);
   assert.ok(!(await getValuationCreationCatalogs(other.organizationId)).templates.some((template) => template.label === "Privada"));
 
-  const reviewer = await createValuationFixture();
-  const reviewerJar = await signIn(reviewer, "REVISOR");
-  assert.equal((await call(reviewerJar, listTemplates as Handler, "GET", "/api/plantillas")).status, 403);
-  assert.equal((await call(reviewerJar, postTemplate, "POST", "/api/plantillas", { name: "X", valuationId: reviewer.publicId })).status, 403);
+  // "Reemplazar" from another firm under the same name saves a template of its own; A's stays as it was.
+  await captureDocument(other);
+  const foreign = await call(otherJar, postTemplate, "POST", "/api/plantillas", { name: "privada", valuationId: other.publicId, replace: true });
+  assert.equal(foreign.status, 201);
+  assert.notEqual((foreign.body!.data as ValuationTemplateSummary).id, id);
+  const mine = (await call(jar, getTemplate, "GET", `/api/plantillas/${id}`, undefined, id)).body!.data as ValuationTemplateSummary;
+  assert.deepEqual([mine.name, mine.version], ["Privada", 1]);
+
+  for (const roleKey of ["REVISOR", "CONSULTA"]) {
+    const member = await createValuationFixture();
+    const memberJar = await signIn(member, roleKey);
+    assert.equal((await call(memberJar, listTemplates as Handler, "GET", "/api/plantillas")).status, 403, roleKey);
+    assert.equal((await call(memberJar, postTemplate, "POST", "/api/plantillas", { name: "X", valuationId: member.publicId })).status, 403, roleKey);
+    // Their own firm's template, saved by someone who edits.
+    const row = await prisma.plantillaAvaluo.create({
+      data: { IdOrganizacion: member.organizationId, IdTipoAvaluo: (await prisma.tipoAvaluo.findFirstOrThrow()).IdTipoAvaluo, SNombre: "De su despacho" },
+      select: { UIdentificadorPublico: true },
+    });
+    const path = `/api/plantillas/${row.UIdentificadorPublico}`;
+    assert.equal((await call(memberJar, postTemplate, "POST", "/api/plantillas", { name: "De su despacho", valuationId: member.publicId, replace: true })).status, 403, roleKey);
+    assert.equal((await call(memberJar, getTemplate, "GET", path, undefined, row.UIdentificadorPublico)).status, 403, roleKey);
+    assert.equal((await call(memberJar, patchTemplate, "PATCH", path, { name: "Otra" }, row.UIdentificadorPublico)).status, 403, roleKey);
+    assert.equal((await call(memberJar, deleteTemplate, "DELETE", path, undefined, row.UIdentificadorPublico)).status, 403, roleKey);
+    const unchanged = await prisma.plantillaAvaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: row.UIdentificadorPublico }, select: { SNombre: true, BActivo: true } });
+    assert.deepEqual(unchanged, { SNombre: "De su despacho", BActivo: true }, roleKey);
+  }
 
   const anonymous = new TestCookieJar();
   assert.equal((await call(anonymous, listTemplates as Handler, "GET", "/api/plantillas")).status, 401);

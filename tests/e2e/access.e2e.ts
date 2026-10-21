@@ -18,7 +18,7 @@ before(async () => {
 after(() => prisma.$disconnect());
 
 describe("without a session", () => {
-  for (const page of ["/dashboard", "/avaluos", "/workspace", "/organizacion/equipo", "/organizacion/despacho", "/organizacion/facturacion"]) {
+  for (const page of ["/dashboard", "/avaluos", "/workspace", "/organizacion/equipo", "/organizacion/despacho", "/organizacion/plantillas", "/organizacion/facturacion"]) {
     test(`private page ${page} redirects to the login`, async () => {
       const response = await call(null, "GET", page);
       assert.equal(response.status, 307, describeCall(`GET ${page}`, response));

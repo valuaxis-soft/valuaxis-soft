@@ -73,6 +73,8 @@ let world: World;
 let shared: string;
 /** The database id of a template of A, as "Plantilla base" sends it when creating a valuation. */
 let templateDbId = 0;
+/** The name of that template, to save over it ("Reemplazar"). */
+const sharedTemplateName = `Plantilla compartida ${randomUUID()}`;
 let catalogIds: Awaited<ReturnType<typeof valuationCatalogIds>>;
 const actors = () => ({
   ADMINISTRADOR: world.a.admin,
@@ -89,7 +91,7 @@ before(async () => {
   // A rent market, so the income approach has a unit rent to compute with
   // (see the skipped test in valuation-flow.e2e.ts for per-unit rents alone).
   await addRentMarket(world.a.admin, shared);
-  const template = await createTemplate(shared);
+  const template = await createTemplate(shared, sharedTemplateName);
   templateDbId = (await prisma.plantillaAvaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: template }, select: { IdPlantillaAvaluo: true } })).IdPlantillaAvaluo;
 });
 after(() => prisma.$disconnect());
@@ -218,8 +220,8 @@ const billingCases: Case[] = [
 ];
 
 /** A template of organization A saved from `valuation` by its administrator; returns its id. */
-async function createTemplate(valuation: string) {
-  const response = await call(world.a.admin, "POST", "/api/plantillas", { json: { name: `Plantilla ${randomUUID()}`, valuationId: valuation } });
+async function createTemplate(valuation: string, name = `Plantilla ${randomUUID()}`) {
+  const response = await call(world.a.admin, "POST", "/api/plantillas", { json: { name, valuationId: valuation } });
   assert.equal(response.status, 201, describeCall("template (setup)", response));
   return String(response.data.id);
 }
@@ -238,6 +240,20 @@ const templateCases: Case[] = [
     path: () => "/api/plantillas",
     body: () => ({ name: `Matriz ${randomUUID()}`, valuationId: shared }),
     expected: editors(201),
+  },
+  {
+    name: "save under a taken name without replacing",
+    method: "POST",
+    path: () => "/api/plantillas",
+    body: () => ({ name: sharedTemplateName, valuationId: shared }),
+    expected: editors(409),
+  },
+  {
+    name: "replace a template (new version)",
+    method: "POST",
+    path: () => "/api/plantillas",
+    body: () => ({ name: sharedTemplateName, valuationId: shared, replace: true }),
+    expected: editors(200),
   },
   { name: "read a template", method: "GET", path: (id) => `/api/plantillas/${templatesByValuation.get(id)}`, fresh: true, prepare: withTemplate, expected: editors(200) },
   {
@@ -294,6 +310,17 @@ matrix("firm data", firmCases);
 matrix("team", teamCases);
 matrix("plan and billing", billingCases);
 matrix("templates", templateCases);
+
+describe("templates page", () => {
+  test("those who edit valuations open it; REVISOR and CONSULTA are sent to the dashboard", async () => {
+    const expected: Record<Role, number> = { ADMINISTRADOR: 200, VALUADOR: 200, REVISOR: 307, CONSULTA: 307 };
+    for (const role of ROLES) {
+      const response = await call(actors()[role], "GET", "/organizacion/plantillas");
+      assert.equal(response.status, expected[role], `${role}: ${describeCall("GET /organizacion/plantillas", response)}`);
+      if (expected[role] === 307) assert.equal(new URL(response.headers.get("location") ?? "", "http://x").pathname, "/dashboard");
+    }
+  });
+});
 
 describe("plan and billing page", () => {
   test("administrators and CONSULTA open it; the other roles are sent to the dashboard", async () => {

@@ -24,9 +24,10 @@
 | `/avaluos/<uuid>/memoria-calculo` | Memoria de cálculo: anexo técnico, aparte del dictamen, con el encabezado del despacho, folio, fecha, versión del motor y fecha de generación. Imprime cada tabla con fórmulas (letras de columna y números de renglón; valores calculados en azul y capturados en negro, con su fórmula y la fórmula con los valores sustituidos), cada concepto calculado con fórmula y los pasos del motor de cada enfoque (cada mercado, costos, ingresos, maquinaria y conclusión) recalculados de lo guardado y comparados con lo que guardó el servidor. Muestra lo guardado: "Memoria de cálculo" del editor guarda antes de abrirla. Un avalúo concluido muestra su versión final. Requiere `AVALUO_EXPORTAR` y registra un evento de exportación |
 | `/organizacion/equipo` | Nombre del equipo, invitaciones, miembros y roles. Requiere `USUARIO_ADMINISTRAR` (ver [AUTHORIZATION.md](AUTHORIZATION.md#equipos)) |
 | `/organizacion/despacho` | Datos del despacho: logotipo, razón social, RFC, dirección, teléfono y correo del membrete; perito que firma, meses de vigencia y prefijo del folio de los avalúos nuevos. Requiere `USUARIO_ADMINISTRAR` |
+| `/organizacion/plantillas` | Plantillas del despacho: nombre y descripción, secciones y bloques, si incluyen datos o imágenes, versión, cuándo y quién la creó y la actualizó. "Renombrar" (nombre y descripción; el nombre no se repite en el despacho sin importar mayúsculas ni acentos), "Eliminar" (baja lógica con confirmación; los avalúos creados con ella no cambian) y "Crear avalúo con esta plantilla" (abre `/workspace?action=new&plantilla=<uuid>`, solo con `AVALUO_CREAR`). Requiere `AVALUO_EDITAR`; sin él, redirige a `/dashboard` y no aparece en el menú |
 | `/organizacion/facturacion` | Plan y facturación: avalúos disponibles (saldo de créditos), paquetes con "Comprar", movimientos, "Administrar pago" y, si los hay, planes de suscripción. Acciones con `SUSCRIPCION_ADMINISTRAR`; solo lectura con `FACTURACION_VER` (ver [COBRO.md](COBRO.md)) |
 | `/organizacion/invitaciones/<token>` | Enlace del correo de invitación: muestra el equipo y el rol, y la acepta |
-| `/workspace?action=new` | Crear avalúo |
+| `/workspace?action=new` | Crear avalúo. `&plantilla=<uuid>` llega con esa plantilla del despacho elegida en "Plantilla base" |
 | `/workspace?id=<uuid>` | Editor del avalúo |
 | `/workspace/preview-window?id=<uuid>` | Vista previa en segunda ventana |
 
@@ -76,8 +77,8 @@
 | GET, PUT | `/api/avaluos/[id]/maquinaria` | Maquinaria y equipo (MEH): captura de costos (bien, cotización, gastos, depreciación y aditamentos) y de mercado (ofertas). El `PUT` recibe `{ cost?, market? }` y guarda solo la parte enviada; recalcula ambos enfoques y la conclusión |
 | GET, PUT | `/api/avaluos/[id]/conclusion` | Resumen de los tres enfoques, método de conclusión y justificación |
 | POST | `/api/uploads` | Subida genérica de imágenes |
-| GET, POST | `/api/plantillas` | Plantillas del despacho: `GET` las lista; `POST` guarda como plantilla el documento guardado de un avalúo del despacho (`{ name, description?, valuationId, includeData, includeImages }`, ambos `false` si no se envían). 409 si ya hay una con ese nombre; 404 si el avalúo es de otro despacho. `AVALUO_EDITAR` |
-| GET, PATCH, DELETE | `/api/plantillas/[id]` | Una plantilla con su documento (para "Importar bloque"), cambio de nombre (`{ name }`) y baja lógica. La de otro despacho no se encuentra (404). `AVALUO_EDITAR` |
+| GET, POST | `/api/plantillas` | Plantillas del despacho: `GET` las lista; `POST` guarda como plantilla el documento guardado de un avalúo del despacho (`{ name, description?, valuationId, includeData, includeImages, replace? }`, todos `false` si no se envían; 201). Con un nombre que ya existe (sin importar mayúsculas ni acentos): 409, o con `replace: true` una versión nueva de esa plantilla con su mismo nombre (200; la descripción cambia solo si se envía). Los avalúos nuevos e "Importar bloque" usan la última versión. 404 si el avalúo es de otro despacho. `AVALUO_EDITAR` |
+| GET, PATCH, DELETE | `/api/plantillas/[id]` | Una plantilla con su documento (para "Importar bloque"), cambio de nombre y descripción (`{ name, description? }`; `null` o vacía la quita; 409 si el nombre ya es de otra) y baja lógica (los avalúos creados con ella no cambian). La de otro despacho no se encuentra (404). `AVALUO_EDITAR` |
 
 Las dos rutas de IA comparten límites: 20 solicitudes por usuario cada 10 minutos y 200 por organización al día (429 con `Retry-After`).
 

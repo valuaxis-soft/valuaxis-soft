@@ -29,7 +29,19 @@ function defaultTemplateId(templates: TemplateOption[], appraisalTypeId: string)
   return templatesFor(templates, appraisalTypeId).find((template) => template.system)?.id.toString() ?? "";
 }
 
-export function CreateValuationForm({ catalogs }: { catalogs: ValuationCreationCatalogs }) {
+/** The firm's template the "Plantillas" page sent (by its public id), when it is one of the offered documents. */
+function preselectedTemplateId(templates: TemplateOption[], publicId: string | null) {
+  return templates.find((template) => template.document && template.publicId === publicId)?.id.toString() ?? null;
+}
+
+export function CreateValuationForm({
+  catalogs,
+  preselectedTemplate = null,
+}: {
+  catalogs: ValuationCreationCatalogs;
+  /** "Crear avalúo con esta plantilla": the public id of the firm's template to start on. */
+  preselectedTemplate?: string | null;
+}) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +52,8 @@ export function CreateValuationForm({ catalogs }: { catalogs: ValuationCreationC
     appraisalTypeId: catalogs.appraisalTypes[0]?.id?.toString() ?? "",
     propertyTypeId: catalogs.propertyTypes[0]?.id?.toString() ?? "",
     operationTypeId: catalogs.operationTypes[0]?.id?.toString() ?? "",
-    templateId: defaultTemplateId(catalogs.templates, catalogs.appraisalTypes[0]?.id?.toString() ?? ""),
+    templateId: preselectedTemplateId(catalogs.templates, preselectedTemplate)
+      ?? defaultTemplateId(catalogs.templates, catalogs.appraisalTypes[0]?.id?.toString() ?? ""),
     responsibleUserId: catalogs.responsibleUsers[0]?.id?.toString() ?? "",
   });
 
@@ -55,13 +68,18 @@ export function CreateValuationForm({ catalogs }: { catalogs: ValuationCreationC
   const templatesForType = templatesFor(catalogs.templates, form.appraisalTypeId);
   const systemTemplates = templatesForType.filter((template) => template.system);
   const firmTemplates = templatesForType.filter((template) => !template.system);
+  const chosenTemplate = catalogs.templates.find((template) => template.id.toString() === form.templateId);
 
   const update = (key: keyof typeof form, value: string) => {
-    setForm((current) => ({
-      ...current,
-      [key]: value,
-      ...(key === "appraisalTypeId" ? { templateId: defaultTemplateId(catalogs.templates, value) } : null),
-    }));
+    setForm((current) => {
+      // A firm's document serves any type, so changing the type keeps it chosen.
+      const keepsTemplate = catalogs.templates.some((template) => template.document && template.id.toString() === current.templateId);
+      return {
+        ...current,
+        [key]: value,
+        ...(key === "appraisalTypeId" && !keepsTemplate ? { templateId: defaultTemplateId(catalogs.templates, value) } : null),
+      };
+    });
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -181,6 +199,9 @@ export function CreateValuationForm({ catalogs }: { catalogs: ValuationCreationC
                         </NativeSelectOptGroup>
                       ) : null}
                     </NativeSelect>
+                    {chosenTemplate?.description ? (
+                      <FieldDescription data-template-description>{chosenTemplate.description}</FieldDescription>
+                    ) : null}
                     <FieldDescription>
                       Una plantilla del despacho trae las secciones, bloques y apartados con que se guardó; los valores, solo si se guardaron con ella.
                     </FieldDescription>
