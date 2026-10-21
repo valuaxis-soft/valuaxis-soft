@@ -6,6 +6,7 @@
  */
 import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, type IncomeApproachInput, type IncomeMethod } from "../engine/income";
 import type { HomologationInput } from "../engine/market";
+import type { CapturedFormulas, PercentFields } from "./captured-formulas";
 
 export const INCOME_METHOD_LABELS: Record<IncomeMethod, string> = {
   tabla: "Tabla de tasa (formato TCH)",
@@ -89,7 +90,13 @@ export type IncomeInputDto = {
   ratingColumns: (number | null)[];
   /** The rate the appraiser applies; the rate from the table when empty. */
   appliedRate: number | null;
+  /** Formulas typed in the numeric fields, by path ("rentableUnits.0.area"); absent keeps the stored ones whose value did not change. */
+  formulas?: CapturedFormulas;
 };
+
+/** Rates typed as percentages ("7.92" for 0.0792). */
+export const INCOME_PERCENT_FIELDS: PercentFields = (path) =>
+  /^(annuity\.(tiie|inflation)|marketRate\.(negotiation|vacancy)|deductions\.\d+\.rate|appliedRate)$/.test(path);
 
 export type IncomeCalculationDto = IncomeInputDto & {
   /**

@@ -13,11 +13,13 @@ import { ENGINE_VERSION } from "../engine/config";
 import { computeCostApproach } from "../engine/costs";
 import { Trace } from "../engine/trace";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
-import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
+import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, writableVersion, type Tx } from "./access";
+import { renumberFormulas, storedFormulas, type CapturedFormulas } from "./captured-formulas";
 import { recomputeConclusion } from "./conclusion.service";
-import { constructionOf, createConstructionType, loadConstructionTypes, publicType, updateBuiltArea } from "./construction-types.service";
+import { constructionOf, createConstructionType, loadConstructionTypes, typeFormulasOf, updateBuiltArea } from "./construction-types.service";
 import type { CostInputPayload } from "./cost-schemas";
 import {
+  COST_PERCENT_FIELDS,
   DEFAULT_COST_ROUNDING,
   DEFAULT_LAND,
   costEngineConfig,
@@ -91,7 +93,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
   })).map((row) => [row.IdTipoConstruccionAvaluo, row]));
   return {
     land: { ...DEFAULT_LAND, ...land, factors: { ...DEFAULT_LAND.factors, ...land?.factors } },
-    types: types.map(publicType),
+    types,
     // A construction of the cost approach is a type it picked, in the order it picked them.
     constructions: (approach?.costosConstrucciones ?? []).flatMap((cost) => {
       const type = typeById.get(cost.IdTipoConstruccionAvaluo);
@@ -99,7 +101,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
       const shares = typeShares.get(type.id);
       const captured = capturedOf(factors.constructions?.[String(type.id)]);
       return [{
-        ...publicType(type),
+        ...type,
         conservation: decimal(cost.NFactorConservacion),
         conservationRating: captured.conservationRating,
         ageFactor: captured.ageFactor,
@@ -134,6 +136,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
     }),
     indirects: indirects.map((row) => ({ concept: row.SConcepto, percentage: decimal(row.NPorcentaje), base: decimal(row.NValorBase) })),
     ...(rounding ? { rounding: { ...DEFAULT_COST_ROUNDING, ...rounding } } : {}),
+    formulas: storedFormulas(configuration.formulas),
   };
 }
 
@@ -151,14 +154,21 @@ export async function getCostCalculation(publicId: string, organizationId: numbe
       loadInput(tx, versionId),
       landMarket(tx, versionId),
       tx.enfoqueCosto.findUnique({ where: { IdVersionAvaluo: versionId }, select: { IdEnfoqueCosto: true } }),
-      tx.construccionAvaluo.findFirst({ where: { IdVersionAvaluo: versionId }, select: { IdConstruccionAvaluo: true } }),
+      tx.construccionAvaluo.findFirst({ where: { IdVersionAvaluo: versionId }, orderBy: { IdConstruccionAvaluo: "asc" }, select: { IdConstruccionAvaluo: true, JDatosAdicionales: true } }),
     ]);
-    return { ...input, market, configured: Boolean(approach), typesCaptured: Boolean(construction), locked: avaluo.BBloqueado };
+    return {
+      ...input,
+      typeFormulas: typeFormulasOf(construction),
+      market,
+      configured: Boolean(approach),
+      typesCaptured: Boolean(construction),
+      locked: avaluo.BBloqueado,
+    };
   });
 }
 
-const storedConfiguration = (payload: CostInputPayload, factors: StoredFactors) =>
-  ({ land: payload.land, ...(payload.rounding ? { rounding: payload.rounding } : {}), factors }) as Prisma.InputJsonValue;
+const storedConfiguration = (payload: CostInputPayload, factors: StoredFactors, formulas: CapturedFormulas) =>
+  ({ land: payload.land, ...(payload.rounding ? { rounding: payload.rounding } : {}), factors, formulas }) as Prisma.InputJsonValue;
 
 const capturedFactors = (row: Partial<CapturedFactors>): CapturedFactors => capturedOf(row);
 const hasCaptured = (row: Partial<CapturedFactors>) => {
@@ -170,14 +180,25 @@ const hasCaptured = (row: Partial<CapturedFactors>) => {
 export async function saveCostCalculation(publicId: string, user: AuthUser, payload: CostInputPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
+    // Indirects without a concept are not kept: the formulas of the ones that are follow their new position.
+    const keptIndirects = payload.indirects.flatMap((row, index) => (row.concept.trim() ? [index] : []));
+    const indirects = keptIndirects.map((index) => payload.indirects[index]);
+    const previous = await loadInput(tx, versionId);
+    const formulas = formulasOrThrow({
+      next: { ...payload, indirects },
+      sent: payload.formulas && renumberFormulas(payload.formulas, "indirects", keptIndirects),
+      previous,
+      previousFormulas: previous.formulas ?? {},
+      percent: COST_PERCENT_FIELDS,
+    });
     const factors: Required<StoredFactors> = {
       constructions: {},
       installations: Object.fromEntries(payload.installations.filter(hasCaptured).map((row) => [refKey(row.ref), capturedFactors(row)])),
     };
     const approach = await tx.enfoqueCosto.upsert({
       where: { IdVersionAvaluo: versionId },
-      create: { IdVersionAvaluo: versionId, JConfiguracion: storedConfiguration(payload, factors) },
-      update: { JConfiguracion: storedConfiguration(payload, factors) },
+      create: { IdVersionAvaluo: versionId, JConfiguracion: storedConfiguration(payload, factors, formulas) },
+      update: { JConfiguracion: storedConfiguration(payload, factors, formulas) },
     });
 
     await tx.costoConstruccion.deleteMany({ where: { IdEnfoqueCosto: approach.IdEnfoqueCosto } });
@@ -224,7 +245,7 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
     }
     if (construction && createdTypes) await updateBuiltArea(tx, construction.IdConstruccionAvaluo);
     if (Object.keys(factors.constructions).length) {
-      await tx.enfoqueCosto.update({ where: { IdEnfoqueCosto: approach.IdEnfoqueCosto }, data: { JConfiguracion: storedConfiguration(payload, factors) } });
+      await tx.enfoqueCosto.update({ where: { IdEnfoqueCosto: approach.IdEnfoqueCosto }, data: { JConfiguracion: storedConfiguration(payload, factors, formulas) } });
     }
 
     const shares = await tx.tipoParticipacion.findMany({ where: { SClave: { in: ["PRIVATIVA", "COMUN"] } } });
@@ -263,8 +284,7 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
       });
     }
 
-    for (const [index, row] of payload.indirects.entries()) {
-      if (!row.concept.trim()) continue;
+    for (const [index, row] of indirects.entries()) {
       await tx.costoIndirecto.create({
         data: { IdVersionAvaluo: versionId, SConcepto: row.concept, NPorcentaje: row.percentage, NValorBase: row.base, IOrden: index },
       });

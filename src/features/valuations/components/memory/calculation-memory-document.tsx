@@ -154,10 +154,10 @@ function Approach({ approach, engineVersion }: { approach: MemoryApproach; engin
       {approach.pending ? <p className="text-[9.5px] text-slate-600">Sin cálculo: {approach.pending}</p> : null}
       {approach.captured.length ? (
         <div className="mb-2 text-[9px]">
-          <p className="font-semibold text-slate-700">Factores capturados con fórmula</p>
+          <p className="font-semibold text-slate-700">Valores capturados con fórmula</p>
           <ul className="space-y-0.5">
-            {approach.captured.map((item) => (
-              <li key={item.label}>
+            {approach.captured.map((item, index) => (
+              <li key={`${item.label}-${index}`} data-captured-formula={item.formula}>
                 {item.label}: <Formula>{item.formula}</Formula> <span className="text-slate-400">=</span>{" "}
                 <span className={`font-semibold ${COMPUTED}`}>{item.value}</span>
               </li>

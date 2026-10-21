@@ -36,8 +36,10 @@ import { computeCostApproach } from "@/features/valuations/engine/costs";
 import { ageFactor } from "@/features/valuations/engine/factors";
 import { Trace } from "@/features/valuations/engine/trace";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
+import { FormulaInput } from "./formula-input";
 import { useSerializedSave } from "./use-serialized-save";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -60,6 +62,8 @@ type PanelInput = {
   installations: InstallationDto[];
   indirects: IndirectDto[];
   rounding: CostRoundingDto;
+  /** The formulas typed in its numeric fields, by path; see captured-formulas.ts. */
+  formulas?: CapturedFormulas;
 };
 
 const ROUNDING_FIELDS: { key: keyof CostRoundingDto; label: string }[] = [
@@ -85,7 +89,12 @@ function fractionRow<T extends { completion: number; undivided: number }>(row: P
   return { ...numbersOf(row as Texts<T>, template), completion: fractionOf(row.completion), undivided: fractionOf(row.undivided) };
 }
 
+/** The draft of what the server holds; a field typed as a formula reads back as typed. */
 function draftOf(input: CostCalculationDto): Draft {
+  return withFormulaTexts(plainDraftOf(input), input.formulas);
+}
+
+function plainDraftOf(input: CostCalculationDto): Draft {
   return {
     land: {
       subjectArea: toText(input.land.subjectArea),
@@ -121,15 +130,31 @@ function inputOf(draft: Draft): PanelInput {
   };
 }
 
-/** What can be saved: rows still being written (no reference or description) wait in the draft. */
-function payloadOf(input: PanelInput): PanelInput {
-  return {
+const keptRows = <T,>(rows: T[], keep: (row: T) => boolean) => rows.flatMap((row, index) => (keep(row) ? [index] : []));
+
+/**
+ * What can be saved: rows still being written (no reference or description)
+ * wait in the draft. The formulas typed in the rows saved go with them.
+ */
+function payloadOf(draft: Draft): PanelInput {
+  const input = inputOf(draft);
+  const constructions = keptRows(input.constructions, (row) => Boolean(row.ref.trim()));
+  const installations = keptRows(input.installations, (row) => Boolean(row.ref.trim() && row.description.trim()));
+  const indirects = keptRows(input.indirects, (row) => Boolean(row.concept.trim()));
+  const payload = {
     land: input.land,
-    constructions: input.constructions.filter((row) => row.ref.trim()),
-    installations: input.installations.filter((row) => row.ref.trim() && row.description.trim()),
-    indirects: input.indirects.filter((row) => row.concept.trim()),
+    constructions: constructions.map((index) => input.constructions[index]),
+    installations: installations.map((index) => input.installations[index]),
+    indirects: indirects.map((index) => input.indirects[index]),
     rounding: input.rounding,
   };
+  const typed = {
+    land: draft.land,
+    constructions: constructions.map((index) => draft.constructions[index]),
+    installations: installations.map((index) => draft.installations[index]),
+    indirects: indirects.map((index) => draft.indirects[index]),
+  };
+  return { ...payload, formulas: collectFormulas(typed, payload) };
 }
 
 const savedInputOf = (calculation: CostCalculationDto): PanelInput => ({
@@ -138,6 +163,7 @@ const savedInputOf = (calculation: CostCalculationDto): PanelInput => ({
   installations: calculation.installations,
   indirects: calculation.indirects,
   rounding: calculation.rounding ?? DEFAULT_COST_ROUNDING,
+  formulas: calculation.formulas ?? {},
 });
 
 /** The live result of what is typed: each construction row takes the data of the type it picked. */
@@ -324,7 +350,7 @@ export function CostCalculationPanel(props: {
   const pickedRefs = new Set(draft.constructions.map((row) => row.ref.trim().toLowerCase()));
   const unpickedTypes = calculation.types.filter((type) => !pickedRefs.has(type.ref.trim().toLowerCase()));
 
-  const save = (next = input) => {
+  const save = (next = draft) => {
     if (!readOnly) void enqueueSave(payloadOf(next));
   };
   // A select has no blur to wait for: it saves as soon as it changes.
@@ -332,7 +358,7 @@ export function CostCalculationPanel(props: {
     const land = patch.surfacePower === undefined ? draft.land : { ...draft.land, surfacePower: String(patch.surfacePower) };
     const next = { ...draft, land, rounding: patch.rounding ?? draft.rounding };
     setDraft(next);
-    save(inputOf(next));
+    save(next);
   };
 
   const setLand = (key: keyof Omit<Draft["land"], "factors">) => (event: { target: { value: string } }) =>
@@ -350,19 +376,19 @@ export function CostCalculationPanel(props: {
     if (!draft) return;
     const next = { ...draft, [list]: draft[list].filter((_, rowIndex) => rowIndex !== index) };
     setDraft(next);
-    save(inputOf(next));
+    save(next);
   }
   // The calificación is a select too: it saves at once, and gives the Cons. unless one is typed.
   const pickRating = (list: "constructions" | "installations", index: number, rating: string) => {
     const next = { ...draft, [list]: draft[list].map((row, rowIndex) => (rowIndex === index ? { ...row, conservationRating: rating } : row)) };
     setDraft(next);
-    save(inputOf(next));
+    save(next);
   };
   // The type is a select: picking one saves at once.
   const pickConstruction = (index: number, ref: string) => {
     const next = { ...draft, constructions: draft.constructions.map((row, rowIndex) => (rowIndex === index ? { ...row, ref } : row)) };
     setDraft(next);
-    save(inputOf(next));
+    save(next);
   };
   const addRow = (list: "constructions" | "installations" | "indirects") => setDraft((current) => {
     if (!current) return current;
@@ -372,24 +398,25 @@ export function CostCalculationPanel(props: {
     return { ...current, indirects: [...current.indirects, { concept: "", percentage: "", base: "" }] };
   });
 
-  const textInput = (list: "constructions" | "installations" | "indirects", index: number, key: string, current: string, label: string, numeric = true, placeholder?: string) => (
-    <Input
-      aria-label={label}
-      className={cell}
-      inputMode={numeric ? "decimal" : undefined}
-      value={current}
-      placeholder={placeholder}
-      title={placeholder === undefined ? undefined : `${label}. ${FORMULA_HINT}`}
-      onChange={(event) => setRow(list, index, key, event.target.value)}
-    />
-  );
+  const textInput = (list: "constructions" | "installations" | "indirects", index: number, key: string, current: string, label: string, numeric = true, placeholder?: string) => {
+    const Control = numeric ? FormulaInput : Input;
+    return (
+      <Control
+        aria-label={label}
+        className={cell}
+        value={current}
+        placeholder={placeholder}
+        title={placeholder === undefined ? undefined : `${label}. ${FORMULA_HINT}`}
+        onChange={(event) => setRow(list, index, key, event.target.value)}
+      />
+    );
+  };
   // A percentage from 0 to 100, stored as a fraction; the % sign sits next to it.
   const percentInput = (list: "constructions" | "installations", index: number, key: "completion" | "undivided", current: string, label: string) => (
     <div className="flex items-center gap-0.5">
-      <Input
+      <FormulaInput
         aria-label={`${label} (%)`}
         className={cell}
-        inputMode="decimal"
         value={current}
         placeholder="100"
         onChange={(event) => setRow(list, index, key, event.target.value)}
@@ -454,9 +481,8 @@ export function CostCalculationPanel(props: {
           <div className="grid gap-3 sm:grid-cols-3">
             <Field>
               <FieldLabel htmlFor="cost-land-reference">Lote Tipo (m²)</FieldLabel>
-              <Input
+              <FormulaInput
                 id="cost-land-reference"
-                inputMode="decimal"
                 value={draft.land.referenceArea}
                 placeholder={calculation.market.baseArea !== null ? `De mercado: ${calculation.market.baseArea}` : "Igual al sujeto"}
                 onChange={setLand("referenceArea")}
@@ -464,7 +490,7 @@ export function CostCalculationPanel(props: {
             </Field>
             <Field>
               <FieldLabel htmlFor="cost-land-value">Valor comparativo de Mercado ($/m²)</FieldLabel>
-              <Input id="cost-land-value" inputMode="decimal" value={draft.land.unitValue} placeholder={marketValue ? `De mercado: ${marketValue}` : "Captura el mercado de terrenos"} onChange={setLand("unitValue")} />
+              <FormulaInput id="cost-land-value" value={draft.land.unitValue} placeholder={marketValue ? `De mercado: ${marketValue}` : "Captura el mercado de terrenos"} onChange={setLand("unitValue")} />
             </Field>
             <Field>
               <FieldLabel htmlFor="cost-land-power">Potencia</FieldLabel>
@@ -488,11 +514,10 @@ export function CostCalculationPanel(props: {
                 <tr className="border-t">
                   <td className="px-1.5 text-center">I</td>
                   <td className="w-24 p-1">
-                    <Input
+                    <FormulaInput
                       id="cost-land-area"
                       aria-label="Superficie de Sujeto (m²)"
                       className={cell}
-                      inputMode="decimal"
                       value={draft.land.subjectArea}
                       placeholder={calculation.market.subjectArea ? `De mercado: ${calculation.market.subjectArea}` : undefined}
                       onChange={setLand("subjectArea")}
@@ -502,27 +527,25 @@ export function CostCalculationPanel(props: {
                   {LAND_FACTORS.map((factor) => (
                     <td key={factor.key} className="w-16 p-1">
                       {factor.key === "surface" ? (
-                        <Input
+                        <FormulaInput
                           id="cost-factor-surface"
                           aria-label="Factor de superficie (Sup.)"
                           className={cell}
-                          inputMode="decimal"
                           value={draft.land.surfaceFactor}
                           placeholder={hint(formulaValue("costos.terreno.factorSuperficie"))}
                           title={`Sup. = ${surfaceFormula ?? "(lote tipo / superficie del sujeto)^(1/n)"}. ${FORMULA_HINT}`}
                           onChange={setLand("surfaceFactor")}
                         />
                       ) : (
-                        <Input id={`cost-factor-${factor.key}`} aria-label={factor.label} className={cell} inputMode="decimal" value={draft.land.factors[factor.key]} onChange={setFactor(factor.key)} />
+                        <FormulaInput id={`cost-factor-${factor.key}`} aria-label={factor.label} className={cell} value={draft.land.factors[factor.key]} onChange={setFactor(factor.key)} />
                       )}
                     </td>
                   ))}
                   <td className="w-16 p-1">
-                    <Input
+                    <FormulaInput
                       id="cost-factor-resultant"
                       aria-label="Factor resultante del terreno (FRe)"
                       className={cell}
-                      inputMode="decimal"
                       value={draft.land.resultantFactor}
                       placeholder={hint(formulaValue("costos.terreno.factorResultante"))}
                       title={`FRe = Neg. × Ubic. × Sup. × Serv. × Clas. × Top. ${FORMULA_HINT}`}

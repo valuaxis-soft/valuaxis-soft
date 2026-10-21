@@ -19,7 +19,7 @@ import {
 } from "@/features/valuations/calculation/market-regression";
 import {
   characteristicFieldsOf,
-  characteristicText,
+  characteristicValueText,
   isRentComparableType,
   type CharacteristicField,
   type ComparableDto,
@@ -227,7 +227,7 @@ export function MarketRegression(props: {
                         <td className="px-2 py-1.5 text-right tabular-nums">{y === null ? "—" : number(y, 4)}</td>
                         {chosen.map(({ field }) => (
                           <td key={field.key} className="px-2 py-1.5 text-right tabular-nums">
-                            {(field.key === "area" ? (comparable.area === null ? "" : String(comparable.area)) : characteristicText(comparable, field.key)) || "—"}
+                            {(field.key === "area" ? (comparable.area === null ? "" : String(comparable.area)) : characteristicValueText(comparable, field.key)) || "—"}
                           </td>
                         ))}
                         <td className="px-2 py-1.5 text-right tabular-nums">{row ? number(row.fitted, 4) : "—"}</td>

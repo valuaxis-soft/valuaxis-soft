@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SURFACE_POWERS } from "../engine/config";
 import { MAX_REGRESSION_VARIABLES } from "../engine/regression";
+import { capturedFormulasSchema } from "./captured-formulas";
 import { MAX_SCALE_LEVELS, REGRESSION_DEPENDENTS } from "./market-regression";
 import {
   BUILTIN_CHARACTERISTICS,
@@ -76,6 +77,7 @@ export const comparableInputSchema = z.object({
   // Built-in factors once each, plus the firm's own: at most the six of the homologation and as many own ones.
   factors: z.array(factorSchema).max(FACTOR_TYPES.length + MAX_FACTOR_SLOTS)
     .refine((factors) => new Set(factors.map(factorKey)).size === factors.length, "Cada tipo de factor va una sola vez."),
+  formulas: capturedFormulasSchema.optional(),
 });
 
 /** A qualitative variable: each written value and the number it takes, once each. */
@@ -139,6 +141,7 @@ export const marketSettingsSchema = z.object({
     .refine((slots) => new Set(slots.map(factorKey)).size === slots.length, "Cada factor va una sola vez.")
     .refine((slots) => slots.every((slot) => !slot.key || slot.type === "OTRO"), "Un factor del despacho es de tipo «Otro».")
     .refine((slots) => slots.some((slot) => slot.type === "SUPERFICIE"), "La homologación necesita el factor de superficie."),
+  formulas: capturedFormulasSchema.optional(),
 }).refine((settings) => settings.offerMark === null || settings.offerMark === undefined || !settings.offerLabels?.length
   || settings.offerMark < settings.offerLabels.length, { path: ["offerMark"], message: "La marca del nivel de oferta no es una de sus opciones." });
 

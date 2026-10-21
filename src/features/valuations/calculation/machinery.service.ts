@@ -11,7 +11,8 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { ENGINE_VERSION } from "../engine/config";
 import { computeMachineryCost, computeMachineryMarket } from "../engine/machinery";
 import { Trace } from "../engine/trace";
-import { asRecord, catalogId, findValuation, writableVersion, type Tx } from "./access";
+import { asRecord, catalogId, findValuation, formulasOrThrow, writableVersion, type Tx } from "./access";
+import { storedFormulas } from "./captured-formulas";
 import { recomputeConclusion } from "./conclusion.service";
 import type { MachineryInputPayload } from "./machinery-schemas";
 import {
@@ -41,13 +42,20 @@ function costOf(stored: Prisma.JsonValue | null): MachineryCostDto {
     ...cost,
     item: { ...EMPTY_MACHINERY_ITEM, ...cost.item },
     attachments: (cost.attachments ?? []).map((row, index) => ({ ...emptyAttachment(index), ...row })),
+    formulas: storedFormulas(cost.formulas),
   };
 }
 
 function marketOf(stored: Prisma.JsonValue | null): MachineryMarketDto {
   const market = asRecord(stored) as Partial<MachineryMarketDto>;
   const offers = (market.offers ?? []).map((row, index) => ({ ...emptyOffer(index), ...row }));
-  return { ...DEFAULT_MACHINERY_MARKET, ...market, offers, characteristics: alignedCharacteristics(market.characteristics, offers.length) };
+  return {
+    ...DEFAULT_MACHINERY_MARKET,
+    ...market,
+    offers,
+    characteristics: alignedCharacteristics(market.characteristics, offers.length),
+    formulas: storedFormulas(market.formulas),
+  };
 }
 
 async function isMachineryValuation(tx: Tx, propertyTypeId: number) {
@@ -77,19 +85,25 @@ export async function getMachineryCalculation(publicId: string, organizationId: 
 export async function saveMachineryCalculation(publicId: string, user: AuthUser, payload: MachineryInputPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
-    const current = await tx.enfoqueMaquinaria.findUnique({ where: { IdVersionAvaluo: versionId }, select: { JCostos: true } });
+    const current = await tx.enfoqueMaquinaria.findUnique({ where: { IdVersionAvaluo: versionId }, select: { JCostos: true, JMercado: true } });
+    // Each capture keeps its formulas by path within it ("item.quotedPrice", "offers.0.price").
+    const formulasOf = <T extends { formulas?: Record<string, string> }>(next: T, previous: T) =>
+      formulasOrThrow({ next, sent: next.formulas, previous, previousFormulas: previous.formulas ?? {} });
     const data = {
       ...(payload.cost
         ? {
             JCostos: {
               ...payload.cost,
+              formulas: formulasOf(payload.cost, costOf(current?.JCostos ?? null)),
               // A valuation keeps the setting it was first saved with unless the request states another.
               conservationTwice: payload.cost.conservationTwice
                 ?? (current?.JCostos ? costOf(current.JCostos).conservationTwice : MACHINERY_CONSERVATION_TWICE),
             } as Prisma.InputJsonValue,
           }
         : {}),
-      ...(payload.market ? { JMercado: payload.market as Prisma.InputJsonValue } : {}),
+      ...(payload.market
+        ? { JMercado: { ...payload.market, formulas: formulasOf(payload.market, marketOf(current?.JMercado ?? null)) } as Prisma.InputJsonValue }
+        : {}),
     };
     await tx.enfoqueMaquinaria.upsert({ where: { IdVersionAvaluo: versionId }, create: { IdVersionAvaluo: versionId, ...data }, update: data });
     await recomputeMachinery(tx, versionId);

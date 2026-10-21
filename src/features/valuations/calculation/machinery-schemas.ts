@@ -2,6 +2,7 @@ import { z } from "zod";
 import { MACHINERY_CONSERVATION } from "../engine/machinery";
 import { MACHINERY_CHARACTERISTICS_MAX } from "./machinery-types";
 import { OFFER_LEVELS } from "./market-types";
+import { capturedFormulasSchema } from "./captured-formulas";
 import { roundingSchema } from "./market-schemas";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -46,6 +47,7 @@ const costSchema = z.object({
   rounding: roundingSchema,
   // Absent: the setting the system uses today (question 3, pending with the appraiser).
   conservationTwice: z.boolean().optional(),
+  formulas: capturedFormulasSchema.optional(),
 });
 
 const marketSchema = z.object({
@@ -69,6 +71,7 @@ const marketSchema = z.object({
     values: z.array(text(200)).max(30),
   })).max(MACHINERY_CHARACTERISTICS_MAX, `Se capturan hasta ${MACHINERY_CHARACTERISTICS_MAX} características técnicas.`).default([]),
   rounding: roundingSchema,
+  formulas: capturedFormulasSchema.optional(),
 }).refine(
   // A value that belongs to no offer, or an offer without its value, would print under the wrong comparable.
   (market) => market.characteristics.every((row) => row.values.length === market.offers.length),

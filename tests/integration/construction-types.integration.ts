@@ -182,7 +182,7 @@ test("a capture that still carries the type's data creates the type (valuations 
   const user = editor(fixture);
   await saveCostCalculation(fixture.publicId, user, costsOf([{ ...arandasType, ...arandasCost }]));
   const types = await getConstructionTypes(fixture.publicId, fixture.organizationId);
-  assert.deepEqual(types.types, [arandasType]);
+  assert.deepEqual(types.types.map(({ id: _id, ...type }) => type), [arandasType]);
   const costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
   assert.equal(costs.constructions[0].area, 467.27);
   assert.equal((await storedConstructionValue(fixture)).value, 6530000);
@@ -212,7 +212,7 @@ test("the types belong to the organization and a concluded valuation keeps them 
   await concludeValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user });
   const concluded = await getConstructionTypes(fixture.publicId, fixture.organizationId);
   assert.equal(concluded.locked, true);
-  assert.deepEqual(concluded.types, [arandasType], "the final version still shows its types");
+  assert.deepEqual(concluded.types.map(({ id: _id, ...type }) => type), [arandasType], "the final version still shows its types");
   await assert.rejects(
     saveConstructionTypes(fixture.publicId, user, { types: [] }),
     (error: Error & { status?: number }) => error.status === 409,

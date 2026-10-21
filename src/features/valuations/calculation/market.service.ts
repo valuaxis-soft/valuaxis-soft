@@ -16,7 +16,8 @@ import { ENGINE_VERSION } from "../engine/config";
 import { computeMarketApproach } from "../engine/market";
 import { Trace } from "../engine/trace";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
-import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
+import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, writableVersion, type Tx } from "./access";
+import { storedFormulas, type CapturedFormulas } from "./captured-formulas";
 import { matchOption, optionJustification, optionsFor, resolveFactorCatalog } from "./factor-catalog";
 import { recomputeCosts } from "./cost.service";
 import { recomputeConclusion } from "./conclusion.service";
@@ -26,6 +27,7 @@ import type { ComparableInputPayload, MarketSettingsPayload } from "./market-sch
 import {
   CUSTOM_FACTOR_KEY,
   OFFER_LEVELS,
+  comparableFormulaValues,
   defaultMarketSettings,
   factorKey,
   homologationBasisOf,
@@ -50,6 +52,8 @@ type PhotoSnapshot = { id: string; key: string; title: string };
 /** A stored photo of a comparable, as another comparable may take it. */
 export type StoredComparablePhoto = Omit<PhotoSnapshot, "id">;
 type PropertySnapshot = {
+  /** Formulas typed in the comparable's numeric fields and factors, by path. */
+  formulas?: CapturedFormulas;
   landUse: string | null;
   landUseKey: string | null;
   shape: string | null;
@@ -78,6 +82,8 @@ type StoredConfiguration = Partial<Pick<MarketSettingsDto,
    * approach, which reads that column, homologates its land the same way.
    */
   loteTipo?: number | null;
+  /** Formulas typed in the numeric fields of the settings, by path. */
+  formulas?: CapturedFormulas;
 };
 type PublicationSnapshot = {
   sourceName: string | null;
@@ -132,6 +138,7 @@ async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean): Prom
     characteristicsText: property.characteristicsText ?? null,
     factorJustification: property.factorJustification ?? null,
     ...(property.regressionExcluded ? { regressionExcluded: true } : {}),
+    formulas: storedFormulas(property.formulas),
     sourceName: publication.sourceName ?? null,
     contactName: publication.contactName ?? null,
     contactPhone: publication.contactPhone ?? null,
@@ -187,8 +194,9 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
         regression: configuration.regression ?? null,
         showHomologationNote: configuration.showHomologationNote ?? true,
         homologationNote: configuration.homologationNote ?? null,
+        formulas: storedFormulas(configuration.formulas),
       }
-    : defaults;
+    : { ...defaults, formulas: {} };
   const comparables = await Promise.all(rows.map((row) => toComparableDto(row, withPhotoUrls)));
   return { typeId, settings, comparables, configured: approach !== null };
 }
@@ -345,6 +353,7 @@ function storedConfiguration(settings: StoredConfiguration) {
     regression: settings.regression ?? null,
     ...(settings.showHomologationNote === undefined ? {} : { showHomologationNote: settings.showHomologationNote }),
     homologationNote: settings.homologationNote ?? null,
+    formulas: settings.formulas ?? {},
   } as Prisma.InputJsonValue;
 }
 
@@ -427,6 +436,8 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
       select: { JConfiguracion: true },
     });
     const stored = asRecord(current?.JConfiguracion ?? null) as StoredConfiguration;
+    const { settings: previous } = await loadCalculation(tx, versionId, payload.comparableType, false);
+    const formulas = formulasOrThrow({ next: payload, sent: payload.formulas, previous, previousFormulas: previous.formulas ?? {} });
     const previousSlots = stored.factorSlots ?? [];
     await followSubjectRatings(tx, { versionId, typeId, organizationId: user.organizationId, previous: previousSlots, next: payload.factorSlots });
     const homologationBasis = unlessOmitted(payload.homologationBasis, stored.homologationBasis);
@@ -452,6 +463,7 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
         regression: unlessOmitted(payload.regression, stored.regression),
         showHomologationNote: payload.showHomologationNote ?? stored.showHomologationNote,
         homologationNote: unlessOmitted(payload.homologationNote, stored.homologationNote),
+        formulas,
       }),
     };
     await tx.enfoqueMercado.upsert({
@@ -467,9 +479,23 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
 /*  Comparables                                                        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The formulas to keep with a comparable: each one sent must give its field's
+ * value; without them, the stored ones of the values that did not change.
+ */
+function comparableFormulas(payload: ComparableInputPayload, previous: ComparableDto | null) {
+  return formulasOrThrow({
+    next: comparableFormulaValues(payload),
+    sent: payload.formulas,
+    previous: previous ? comparableFormulaValues(previous) : {},
+    previousFormulas: previous?.formulas ?? {},
+  });
+}
+
 /** `stored` is the snapshot being replaced: fields the client left out stay as they were. */
-function snapshots(payload: ComparableInputPayload, stored: Partial<PropertySnapshot> = {}) {
+function snapshots(payload: ComparableInputPayload, formulas: CapturedFormulas, stored: Partial<PropertySnapshot> = {}) {
   const property: PropertySnapshot = {
+    formulas,
     landUse: payload.landUse,
     landUseKey: unlessOmitted(payload.landUseKey, stored.landUseKey),
     shape: payload.shape,
@@ -639,7 +665,7 @@ async function insertComparable(
       NPrecioCapturado: payload.price,
       ...areaColumns(type, payload.area),
       NValorUnitarioCapturado: payload.price && payload.area ? payload.price / payload.area : null,
-      ...snapshots(payload),
+      ...snapshots(payload, comparableFormulas(payload, null)),
       JImagenesSnapshot: photos.slice(0, MAX_PHOTOS_PER_COMPARABLE)
         .map((photo) => ({ id: randomUUID(), key: photo.key, title: photo.title })) as Prisma.InputJsonValue,
     },
@@ -707,6 +733,11 @@ export async function updateComparable(publicId: string, user: AuthUser, compara
     const { versionId } = await writableVersion(tx, publicId, user);
     const current = await findComparable(tx, versionId, comparableId);
     const type = current.tipoComparable.SClave as ComparableType;
+    const previous = await toComparableDto(
+      await tx.comparableAvaluo.findUniqueOrThrow({ where: { IdComparableAvaluo: current.IdComparableAvaluo }, include: comparableInclude }),
+      false,
+    );
+    const formulas = comparableFormulas(payload, previous);
     const { propertyId, publicationId: ownPublication } = await ownPropertyRows(tx, current);
     await tx.propiedad.update({ where: { IdPropiedad: propertyId }, data: propertyColumns(type, payload) });
     const publicationId = await syncPublication(tx, {
@@ -723,7 +754,7 @@ export async function updateComparable(publicId: string, user: AuthUser, compara
         NPrecioCapturado: payload.price,
         ...areaColumns(type, payload.area),
         NValorUnitarioCapturado: payload.price && payload.area ? payload.price / payload.area : null,
-        ...snapshots(payload, asRecord(current.JPropiedadSnapshot) as Partial<PropertySnapshot>),
+        ...snapshots(payload, formulas, asRecord(current.JPropiedadSnapshot) as Partial<PropertySnapshot>),
       },
     });
     await replaceFactors(tx, current.IdComparableAvaluo, payload);

@@ -3,11 +3,16 @@
  * classification, quality, surface, age and useful life, captured once in the
  * construction section (`TipoConstruccionAvaluo`). The cost approach picks
  * them by reference and keeps its own columns in `CostoConstruccion`, so a
- * change here recomputes the cost approach.
+ * change here recomputes the cost approach. Each type is its row: renaming
+ * its reference keeps the row, and with it what the cost approach captured.
  */
+import { Prisma } from "@prisma/client";
+
 import type { AuthUser } from "@/features/auth/model";
 import { prisma } from "@/infrastructure/database/prisma-client";
-import { decimal, findValuation, writableVersion, type Tx } from "./access";
+import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
+import { asRecord, decimal, findValuation, formulasOrThrow, writableVersion, type Tx } from "./access";
+import { storedFormulas, type CapturedFormulas } from "./captured-formulas";
 import type { ConstructionTypesPayload } from "./cost-schemas";
 import { recomputeCosts } from "./cost.service";
 import { remainingUsefulLife, type ConstructionTypeDto, type ConstructionTypesDto } from "./cost-types";
@@ -15,6 +20,10 @@ import { remainingUsefulLife, type ConstructionTypeDto, type ConstructionTypesDt
 type StoredType = ConstructionTypeDto & { id: number };
 
 const refKey = (ref: string) => ref.trim().toLowerCase();
+
+/** The formulas of the types' numeric fields live with the construction record, by path ("types.0.area"). */
+export const typeFormulasOf = (construction: { JDatosAdicionales: Prisma.JsonValue | null } | null): CapturedFormulas =>
+  storedFormulas(asRecord(construction?.JDatosAdicionales ?? null).typeFormulas);
 
 /** The construction record of the version, created on first use. */
 export async function constructionOf(tx: Tx, versionId: number) {
@@ -39,8 +48,6 @@ export async function loadConstructionTypes(tx: Tx, versionId: number): Promise<
     usefulLife: decimal(row.NVidaUtilTotal),
   }));
 }
-
-export const publicType = ({ id: _id, ...type }: StoredType): ConstructionTypeDto => type;
 
 /** Creates a type at the end of the list; the cost approach uses it for a capture that still carries the type's data. */
 export async function createConstructionType(tx: Tx, constructionId: number, type: ConstructionTypeDto, order: number) {
@@ -71,31 +78,55 @@ export async function getConstructionTypes(publicId: string, organizationId: num
   return prisma.$transaction(async (tx) => {
     const avaluo = await findValuation(tx, publicId, organizationId);
     const versionId = avaluo.IdVersionTrabajo ?? avaluo.IdVersionFinal;
-    const types = versionId ? await loadConstructionTypes(tx, versionId) : [];
-    return { types: types.map(publicType), locked: avaluo.BBloqueado };
+    if (!versionId) return { types: [], locked: avaluo.BBloqueado, formulas: {} };
+    const [types, construction] = await Promise.all([
+      loadConstructionTypes(tx, versionId),
+      tx.construccionAvaluo.findFirst({ where: { IdVersionAvaluo: versionId }, orderBy: { IdConstruccionAvaluo: "asc" }, select: { JDatosAdicionales: true } }),
+    ]);
+    return { types, locked: avaluo.BBloqueado, formulas: typeFormulasOf(construction) };
   });
 }
 
 /**
- * Replaces the list of types. A type that keeps its reference keeps its row,
- * so the cost approach keeps what it captured for it; a removed type takes
- * its cost row with it. The cost approach is recomputed afterwards.
+ * Replaces the list of types. A type keeps its row when the client sends its
+ * id, so renaming its reference (T-1 → T-3) keeps what the cost approach
+ * captured for it; a type sent without id (older clients) is matched by its
+ * reference, as before. A removed type takes its cost row with it. The cost
+ * approach is recomputed afterwards: its trace and its pages follow the new
+ * reference, since nothing else names a type by its reference.
  */
 export async function saveConstructionTypes(publicId: string, user: AuthUser, payload: ConstructionTypesPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
     const construction = await constructionOf(tx, versionId);
     const current = await loadConstructionTypes(tx, versionId);
-    const kept = new Map(payload.types.map((type) => [refKey(type.ref), type]));
+    const byId = new Map(current.map((type) => [type.id, type]));
     const byRef = new Map(current.map((type) => [refKey(type.ref), type]));
 
-    const removed = current.filter((type) => !kept.has(refKey(type.ref))).map((type) => type.id);
+    const matched = payload.types.map((type) => {
+      if (type.id === undefined) return byRef.get(refKey(type.ref)) ?? null;
+      const existing = byId.get(type.id);
+      if (!existing) throw new ValuationWorkflowError(`El tipo de construcción ${type.ref} ya no existe; vuelve a cargar la sección.`, 409);
+      return existing;
+    });
+    const matchedIds = matched.flatMap((type) => (type ? [type.id] : []));
+    if (new Set(matchedIds).size !== matchedIds.length) throw new ValuationWorkflowError("Un tipo de construcción se envió dos veces.", 400);
+
+    const formulas = formulasOrThrow({
+      next: payload,
+      sent: payload.formulas,
+      previous: { types: current },
+      previousFormulas: typeFormulasOf(construction),
+    });
+
+    const kept = new Set(matchedIds);
+    const removed = current.filter((type) => !kept.has(type.id)).map((type) => type.id);
     if (removed.length) {
       await tx.costoConstruccion.deleteMany({ where: { IdTipoConstruccionAvaluo: { in: removed } } });
       await tx.tipoConstruccionAvaluo.deleteMany({ where: { IdTipoConstruccionAvaluo: { in: removed } } });
     }
     for (const [index, type] of payload.types.entries()) {
-      const existing = byRef.get(refKey(type.ref));
+      const existing = matched[index];
       if (!existing) {
         await createConstructionType(tx, construction.IdConstruccionAvaluo, type, index);
         continue;
@@ -115,6 +146,10 @@ export async function saveConstructionTypes(publicId: string, user: AuthUser, pa
         },
       });
     }
+    await tx.construccionAvaluo.update({
+      where: { IdConstruccionAvaluo: construction.IdConstruccionAvaluo },
+      data: { JDatosAdicionales: { ...asRecord(construction.JDatosAdicionales), typeFormulas: formulas } as Prisma.InputJsonValue },
+    });
     await updateBuiltArea(tx, construction.IdConstruccionAvaluo);
     await recomputeCosts(tx, versionId);
   });

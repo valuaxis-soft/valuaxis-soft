@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { capturedFormulasSchema } from "./captured-formulas";
 import { isConservationRating } from "./cost-types";
 import { roundingSchema, surfacePowerSchema } from "./market-schemas";
 
@@ -18,6 +19,8 @@ const constructionRef = text(20).min(1, "Cada construcción necesita su referenc
 /** The construction types of the construction section: the single capture of their surface, age and useful life. */
 export const constructionTypesSchema = z.object({
   types: z.array(z.object({
+    // The type's row; absent for a new type, or from a client that matches types by reference.
+    id: z.number().int().positive().optional(),
     ref: constructionRef,
     description: text(500),
     classification: text(120),
@@ -26,6 +29,7 @@ export const constructionTypesSchema = z.object({
     age: amount,
     usefulLife: amount,
   })).max(30).refine(uniqueRefs, "Las referencias de los tipos de construcción no se pueden repetir."),
+  formulas: capturedFormulasSchema.optional(),
 });
 
 export type ConstructionTypesPayload = z.infer<typeof constructionTypesSchema>;
@@ -88,6 +92,7 @@ export const costInputSchema = z.object({
     base: amount,
   })).max(20),
   rounding: z.object({ land: roundingSchema, constructions: roundingSchema, installations: roundingSchema, physicalValue: roundingSchema }).optional(),
+  formulas: capturedFormulasSchema.optional(),
 });
 
 /** What the service takes: the parsed body, or a capture of an older client without the formula factors. */

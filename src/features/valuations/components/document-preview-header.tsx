@@ -1,3 +1,5 @@
+"use client";
+
 import type { CaratulaFormData, ImageContent, Letterhead } from "../model";
 import { usePagePresentation } from "./page-presentation-context";
 import { appraisedGoodWording } from "../services/appraised-good-wording";

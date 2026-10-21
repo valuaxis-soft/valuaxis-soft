@@ -235,7 +235,7 @@ export const api = {
   /** Construction types of the construction section; the cost approach picks from them. */
   constructionTypes: {
     get: (id: ApiId) => request<ConstructionTypesDto>(`/avaluos/${id}/construcciones`),
-    save: (id: ApiId, input: { types: ConstructionTypeDto[] }) =>
+    save: (id: ApiId, input: { types: ConstructionTypeDto[]; formulas?: Record<string, string> }) =>
       request<ConstructionTypesDto>(`/avaluos/${id}/construcciones`, { method: "PUT", body: JSON.stringify(input) }),
   },
   costs: {

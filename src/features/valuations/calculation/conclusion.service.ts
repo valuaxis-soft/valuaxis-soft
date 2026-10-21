@@ -9,10 +9,11 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { concludeValue } from "../engine/conclusion";
 import { ENGINE_VERSION } from "../engine/config";
 import { Trace } from "../engine/trace";
-import { asRecord, catalogId, decimal, findValuation, writableVersion, type Tx } from "./access";
+import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, writableVersion, type Tx } from "./access";
+import { storedFormulas } from "./captured-formulas";
 import type { ConclusionSettingsPayload } from "./conclusion-schemas";
 import { MACHINERY_PROPERTY_TYPE } from "./machinery-types";
-import { canConclude, conclusionEngineConfig, defaultMethod, type ConclusionCalculationDto, type ConclusionMethod } from "./conclusion-types";
+import { CONCLUSION_PERCENT_FIELDS, canConclude, conclusionEngineConfig, defaultMethod, type ConclusionCalculationDto, type ConclusionMethod } from "./conclusion-types";
 
 const CALCULATION_KEY = "MOTOR.CONCLUSION";
 
@@ -58,13 +59,14 @@ async function load(tx: Tx, versionId: number) {
     tx.resumenValor.findUnique({ where: { IdVersionAvaluo: versionId } }),
     approachValues(tx, versionId),
   ]);
-  const configuration = asRecord(summary?.JConfiguracion ?? null) as { method?: ConclusionMethod; rounding?: number | null };
+  const configuration = asRecord(summary?.JConfiguracion ?? null) as { method?: ConclusionMethod; rounding?: number | null; formulas?: unknown };
   return {
     values,
     marketSource,
     method: configuration.method ?? defaultMethod(values),
     justification: summary?.SJustificacion ?? null,
     ...(configuration.rounding === undefined ? {} : { rounding: configuration.rounding }),
+    formulas: storedFormulas(configuration.formulas),
     configured: Boolean(configuration.method),
   };
 }
@@ -84,7 +86,15 @@ export async function getConclusionCalculation(publicId: string, organizationId:
 export async function saveConclusionSettings(publicId: string, user: AuthUser, payload: ConclusionSettingsPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
-    const configuration = { method: payload.method, ...(payload.rounding === undefined ? {} : { rounding: payload.rounding }) };
+    const previous = await load(tx, versionId);
+    const formulas = formulasOrThrow({
+      next: payload,
+      sent: payload.formulas,
+      previous,
+      previousFormulas: previous.formulas,
+      percent: CONCLUSION_PERCENT_FIELDS,
+    });
+    const configuration = { method: payload.method, ...(payload.rounding === undefined ? {} : { rounding: payload.rounding }), formulas };
     const data = { JConfiguracion: configuration as Prisma.InputJsonValue, SJustificacion: payload.justification };
     await tx.resumenValor.upsert({ where: { IdVersionAvaluo: versionId }, create: { IdVersionAvaluo: versionId, ...data }, update: data });
     await recomputeConclusion(tx, versionId);

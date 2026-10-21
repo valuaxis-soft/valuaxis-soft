@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError, type ComparableFormValues } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -45,6 +44,8 @@ import {
   type FactorCatalog,
 } from "@/features/valuations/calculation/factor-catalog";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { collectFormulas, withFormulaTexts } from "@/features/valuations/calculation/captured-formulas";
+import { FormulaInput } from "./formula-input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ComparableDialog } from "./comparable-dialog";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
@@ -71,7 +72,10 @@ function compute(calculation: Pick<MarketCalculationDto, "settings" | "comparabl
 type SettingsDraft = Record<
   "subjectArea" | "baseArea" | "adoptedUnitValue" | "additionalAmount" | "justification" | "typicalFrontage" | "typicalDepth", string>;
 
-const draftFrom = (settings: MarketSettingsDto): SettingsDraft => ({
+/** The settings' fields edited as text; a field typed as a formula reads back as typed. */
+const draftFrom = (settings: MarketSettingsDto): SettingsDraft => withFormulaTexts(plainDraftFrom(settings), settings.formulas);
+
+const plainDraftFrom = (settings: MarketSettingsDto): SettingsDraft => ({
   subjectArea: text(settings.subjectArea),
   baseArea: text(settings.baseArea),
   adoptedUnitValue: text(settings.adoptedUnitValue),
@@ -82,7 +86,7 @@ const draftFrom = (settings: MarketSettingsDto): SettingsDraft => ({
 });
 
 function settingsFrom(base: MarketSettingsDto, draft: SettingsDraft): MarketSettingsDto {
-  return {
+  const settings = {
     ...base,
     subjectArea: parseDecimal(draft.subjectArea),
     baseArea: parseDecimal(draft.baseArea),
@@ -92,6 +96,9 @@ function settingsFrom(base: MarketSettingsDto, draft: SettingsDraft): MarketSett
     typicalFrontage: parseDecimal(draft.typicalFrontage),
     typicalDepth: parseDecimal(draft.typicalDepth),
   };
+  // The formulas of the fields of the draft follow what is typed; the others (the regression's scale) stay.
+  const others = Object.entries(base.formulas ?? {}).filter(([path]) => !Object.hasOwn(draft, path));
+  return { ...settings, formulas: { ...Object.fromEntries(others), ...collectFormulas(draft, settings) } };
 }
 
 /** "Agregar mercado de terrenos en renta". */
@@ -400,9 +407,8 @@ function MarketTypePanel(props: {
         <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
           <Field>
             <FieldLabel htmlFor="market-subject-area">{labels.subjectArea}</FieldLabel>
-            <Input
+            <FormulaInput
               id="market-subject-area"
-              inputMode="decimal"
               value={draft.subjectArea}
               placeholder={props.suggestedSubjectArea ? String(props.suggestedSubjectArea) : undefined}
               onChange={setDraftField("subjectArea")}
@@ -441,17 +447,17 @@ function MarketTypePanel(props: {
           {againstBase ? (
             <Field>
               <FieldLabel htmlFor="market-base-area">Lote tipo (m²)</FieldLabel>
-              <Input id="market-base-area" inputMode="decimal" value={draft.baseArea} onChange={setDraftField("baseArea")} />
+              <FormulaInput id="market-base-area" value={draft.baseArea} onChange={setDraftField("baseArea")} />
               {!draft.baseArea ? <p className="text-xs text-amber-700 dark:text-amber-400">Sin lote tipo, el factor de superficie usa el sujeto.</p> : null}
             </Field>
           ) : null}
           <Field>
             <FieldLabel htmlFor="market-typical-frontage">{againstBase ? "Frente tipo (m)" : "Frente del sujeto (m, opcional)"}</FieldLabel>
-            <Input id="market-typical-frontage" inputMode="decimal" value={draft.typicalFrontage} onChange={setDraftField("typicalFrontage")} />
+            <FormulaInput id="market-typical-frontage" value={draft.typicalFrontage} onChange={setDraftField("typicalFrontage")} />
           </Field>
           <Field>
             <FieldLabel htmlFor="market-typical-depth">{againstBase ? "Fondo tipo (m)" : "Fondo del sujeto (m, opcional)"}</FieldLabel>
-            <Input id="market-typical-depth" inputMode="decimal" value={draft.typicalDepth} onChange={setDraftField("typicalDepth")} />
+            <FormulaInput id="market-typical-depth" value={draft.typicalDepth} onChange={setDraftField("typicalDepth")} />
           </Field>
           <Field>
             <FieldLabel htmlFor="market-power">Potencia n</FieldLabel>
@@ -624,7 +630,7 @@ function MarketTypePanel(props: {
           homologatedLabel={`Homologado $${perUnit}`}
           note={{ show: liveSettings.showHomologationNote !== false, text: liveSettings.homologationNote ?? null, defaultText: DEFAULT_HOMOLOGATION_NOTE }}
           onNote={(note) => void saveSettings({ ...liveSettings, ...note })}
-          onFactors={(comparable, factors) => changeComparable(comparable, (current) => ({ ...current, factors }))}
+          onFactors={changeComparable}
           onInvalid={(message) => toast.error(message)}
         />
       </Part>
@@ -633,9 +639,8 @@ function MarketTypePanel(props: {
         <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="market-adopted">{labels.adopted}</FieldLabel>
-            <Input
+            <FormulaInput
               id="market-adopted"
-              inputMode="decimal"
               value={draft.adoptedUnitValue}
               placeholder={stats ? `Promedio: ${stats.mean.toFixed(2)}` : undefined}
               // A warning, never a lock: the field is always free to be retyped or cleared.
@@ -703,7 +708,7 @@ function MarketTypePanel(props: {
         <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
           <Field>
             <FieldLabel htmlFor="market-additional">Monto adicional a considerar ($)</FieldLabel>
-            <Input id="market-additional" inputMode="decimal" value={draft.additionalAmount} placeholder="0" onChange={setDraftField("additionalAmount")} />
+            <FormulaInput id="market-additional" value={draft.additionalAmount} placeholder="0" onChange={setDraftField("additionalAmount")} />
           </Field>
         </fieldset>
       </Part>

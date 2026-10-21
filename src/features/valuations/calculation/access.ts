@@ -8,6 +8,7 @@ import { Prisma } from "@prisma/client";
 import type { AuthUser } from "@/features/auth/model";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { ensureWorkingVersion } from "../services/valuation-workflow/working-version";
+import { reconcileFormulas, type CapturedFormulas } from "./captured-formulas";
 
 export type Tx = Prisma.TransactionClient;
 
@@ -36,6 +37,13 @@ export async function writableVersion(tx: Tx, publicId: string, user: AuthUser) 
   if (avaluo.BBloqueado) throw new ValuationWorkflowError("El avalúo está concluido; reábrelo para editarlo.", 409);
   const versionId = avaluo.IdVersionTrabajo ?? (await ensureWorkingVersion({ avaluoId: avaluo.IdAvaluo, userId: user.id, tx }));
   return { avaluo, versionId };
+}
+
+/** The formulas to store with a capture (see captured-formulas.ts); a formula that does not give its value is rejected. */
+export function formulasOrThrow(input: Parameters<typeof reconcileFormulas>[0]): CapturedFormulas {
+  const result = reconcileFormulas(input);
+  if (!result.ok) throw new ValuationWorkflowError(result.message, 400);
+  return result.formulas;
 }
 
 export async function catalogId<T extends { SClave: string }>(

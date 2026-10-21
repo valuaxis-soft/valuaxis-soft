@@ -7,6 +7,7 @@ import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import {
   NUMERIC_CHARACTERISTICS,
   characteristicText,
+  characteristicValueText,
   isBuiltinCharacteristic,
   withCharacteristic,
   type CharacteristicField,
@@ -83,6 +84,7 @@ export function MarketCharacteristicsTable(props: {
                         disabled={readOnly}
                         numeric={numeric}
                         value={characteristicText(comparable, field.key)}
+                        display={numeric ? characteristicValueText(comparable, field.key) : undefined}
                         onCommit={(text) => props.onComparable(comparable, (current) =>
                           withCharacteristic(current, field.key, text, numeric ? parseDecimal(text) : null))}
                       />

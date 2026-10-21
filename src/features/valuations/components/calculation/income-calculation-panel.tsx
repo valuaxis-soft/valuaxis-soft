@@ -22,6 +22,8 @@ import {
 import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
 import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, computeIncomeApproach, type IncomeMethod } from "@/features/valuations/engine/income";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { collectFormulas, withFormulaTexts } from "@/features/valuations/calculation/captured-formulas";
+import { FormulaInput } from "./formula-input";
 import { useSerializedSave } from "./use-serialized-save";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -45,7 +47,13 @@ type Draft = {
   appliedRate: string;
 };
 
-const draftOf = (input: IncomeInputDto): Draft => ({
+/** The draft of what the server holds; a field typed as a formula reads back as typed. */
+function draftOf(input: IncomeInputDto): Draft {
+  const formulas = Object.fromEntries(Object.entries(input.formulas ?? {}).map(([path, formula]) => [path.replace(/^rentableUnits\./, "units."), formula]));
+  return withFormulaTexts(plainDraftOf(input), formulas);
+}
+
+const plainDraftOf = (input: IncomeInputDto): Draft => ({
   method: input.method,
   annuity: {
     vacancyDays: text(input.annuity.vacancyDays),
@@ -70,7 +78,20 @@ const draftOf = (input: IncomeInputDto): Draft => ({
   appliedRate: input.appliedRate === null ? "" : String(Number((input.appliedRate * 100).toFixed(6))),
 });
 
-const inputOf = (draft: Draft): IncomeInputDto => ({
+/** What the panel saves, with the formulas typed in its numeric fields (deductions without a concept are not saved). */
+function inputOf(draft: Draft): IncomeInputDto {
+  const input = valuesOf(draft);
+  const typed = {
+    annuity: draft.annuity,
+    marketRate: draft.marketRate,
+    rentableUnits: draft.units,
+    deductions: draft.deductions.filter((deduction) => deduction.concept.trim()),
+    appliedRate: draft.appliedRate,
+  };
+  return { ...input, formulas: collectFormulas(typed, input) };
+}
+
+const valuesOf = (draft: Draft): IncomeInputDto => ({
   method: draft.method,
   annuity: {
     vacancyDays: parseDecimal(draft.annuity.vacancyDays),
@@ -105,6 +126,7 @@ const savedInputOf = (calculation: IncomeCalculationDto): IncomeInputDto => ({
   deductions: calculation.deductions,
   ratingColumns: calculation.ratingColumns,
   appliedRate: calculation.appliedRate,
+  formulas: calculation.formulas ?? {},
 });
 
 /**
@@ -222,9 +244,8 @@ export function IncomeCalculationPanel(props: {
               </Field>
               <Field>
                 <FieldLabel htmlFor={`income-area-${index}`} className="text-xs">Superficie (m²)</FieldLabel>
-                <Input
+                <FormulaInput
                   id={`income-area-${index}`}
-                  inputMode="decimal"
                   value={unit.area}
                   placeholder={draft.units.length === 1 && calculation.rentMarket.subjectArea ? String(calculation.rentMarket.subjectArea) : undefined}
                   onChange={(event) => update({ units: draft.units.map((item, i) => i === index ? { ...item, area: event.target.value } : item) })}
@@ -232,9 +253,8 @@ export function IncomeCalculationPanel(props: {
               </Field>
               <Field>
                 <FieldLabel htmlFor={`income-rent-${index}`} className="text-xs">Renta ($/m²/mes)</FieldLabel>
-                <Input
+                <FormulaInput
                   id={`income-rent-${index}`}
-                  inputMode="decimal"
                   value={unit.unitRent}
                   placeholder={adopted ? `Mercado: ${adopted}` : undefined}
                   onChange={(event) => update({ units: draft.units.map((item, i) => i === index ? { ...item, unitRent: event.target.value } : item) })}
@@ -264,9 +284,8 @@ export function IncomeCalculationPanel(props: {
                   <FieldLabel htmlFor={`income-sale-${comparable.reference}`} className="text-xs">
                     {comparable.reference}. {comparable.location}
                   </FieldLabel>
-                  <Input
+                  <FormulaInput
                     id={`income-sale-${comparable.reference}`}
-                    inputMode="decimal"
                     placeholder="Precio de venta ($)"
                     value={draft.marketRate.salePrices[String(comparable.reference)] ?? ""}
                     onChange={(event) => update({ marketRate: { ...draft.marketRate, salePrices: { ...draft.marketRate.salePrices, [String(comparable.reference)]: event.target.value } } })}
@@ -278,11 +297,11 @@ export function IncomeCalculationPanel(props: {
           <div className="grid gap-2 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="income-negotiation" className="text-xs">Negociación (%)</FieldLabel>
-              <Input id="income-negotiation" inputMode="decimal" value={draft.marketRate.negotiation} onChange={(event) => update({ marketRate: { ...draft.marketRate, negotiation: event.target.value } })} />
+              <FormulaInput id="income-negotiation" value={draft.marketRate.negotiation} onChange={(event) => update({ marketRate: { ...draft.marketRate, negotiation: event.target.value } })} />
             </Field>
             <Field>
               <FieldLabel htmlFor="income-vacancy" className="text-xs">Vacíos (%)</FieldLabel>
-              <Input id="income-vacancy" inputMode="decimal" value={draft.marketRate.vacancy} onChange={(event) => update({ marketRate: { ...draft.marketRate, vacancy: event.target.value } })} />
+              <FormulaInput id="income-vacancy" value={draft.marketRate.vacancy} onChange={(event) => update({ marketRate: { ...draft.marketRate, vacancy: event.target.value } })} />
             </Field>
           </div>
         </div>
@@ -296,7 +315,7 @@ export function IncomeCalculationPanel(props: {
             {draft.deductions.map((deduction, index) => (
               <div key={index} className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-2">
                 <Input aria-label="Concepto de la deducción" value={deduction.concept} onChange={(event) => update({ deductions: draft.deductions.map((item, i) => i === index ? { ...item, concept: event.target.value } : item) })} />
-                <Input aria-label={`${deduction.concept}: porcentaje`} inputMode="decimal" value={deduction.rate} onChange={(event) => update({ deductions: draft.deductions.map((item, i) => i === index ? { ...item, rate: event.target.value } : item) })} />
+                <FormulaInput aria-label={`${deduction.concept}: porcentaje`} value={deduction.rate} onChange={(event) => update({ deductions: draft.deductions.map((item, i) => i === index ? { ...item, rate: event.target.value } : item) })} />
               </div>
             ))}
           </div>
@@ -311,12 +330,12 @@ export function IncomeCalculationPanel(props: {
         <div className="grid gap-2">
           <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Vacíos y capitalización</h4>
           <div className="grid gap-2 sm:grid-cols-3">
-            <Field><FieldLabel htmlFor="income-vacancy-days" className="text-xs">Días de vacío</FieldLabel><Input id="income-vacancy-days" inputMode="decimal" value={draft.annuity.vacancyDays} onChange={setAnnuity("vacancyDays")} /></Field>
-            <Field><FieldLabel htmlFor="income-contract-years" className="text-xs">Años de contrato</FieldLabel><Input id="income-contract-years" inputMode="decimal" value={draft.annuity.contractYears} onChange={setAnnuity("contractYears")} /></Field>
-            <Field><FieldLabel htmlFor="income-other" className="text-xs">Otros ingresos ($/mes)</FieldLabel><Input id="income-other" inputMode="decimal" value={draft.annuity.otherMonthlyIncome} onChange={setAnnuity("otherMonthlyIncome")} /></Field>
-            <Field><FieldLabel htmlFor="income-tiie" className="text-xs">TIIE 28 días (%)</FieldLabel><Input id="income-tiie" inputMode="decimal" value={draft.annuity.tiie} onChange={setAnnuity("tiie")} /></Field>
-            <Field><FieldLabel htmlFor="income-inflation" className="text-xs">Inflación anual estimada (%)</FieldLabel><Input id="income-inflation" inputMode="decimal" value={draft.annuity.inflation} onChange={setAnnuity("inflation")} /></Field>
-            <Field><FieldLabel htmlFor="income-remaining-life" className="text-xs">Vida útil remanente (años)</FieldLabel><Input id="income-remaining-life" inputMode="decimal" value={draft.annuity.remainingLifeYears} onChange={setAnnuity("remainingLifeYears")} /></Field>
+            <Field><FieldLabel htmlFor="income-vacancy-days" className="text-xs">Días de vacío</FieldLabel><FormulaInput id="income-vacancy-days" value={draft.annuity.vacancyDays} onChange={setAnnuity("vacancyDays")} /></Field>
+            <Field><FieldLabel htmlFor="income-contract-years" className="text-xs">Años de contrato</FieldLabel><FormulaInput id="income-contract-years" value={draft.annuity.contractYears} onChange={setAnnuity("contractYears")} /></Field>
+            <Field><FieldLabel htmlFor="income-other" className="text-xs">Otros ingresos ($/mes)</FieldLabel><FormulaInput id="income-other" value={draft.annuity.otherMonthlyIncome} onChange={setAnnuity("otherMonthlyIncome")} /></Field>
+            <Field><FieldLabel htmlFor="income-tiie" className="text-xs">TIIE 28 días (%)</FieldLabel><FormulaInput id="income-tiie" value={draft.annuity.tiie} onChange={setAnnuity("tiie")} /></Field>
+            <Field><FieldLabel htmlFor="income-inflation" className="text-xs">Inflación anual estimada (%)</FieldLabel><FormulaInput id="income-inflation" value={draft.annuity.inflation} onChange={setAnnuity("inflation")} /></Field>
+            <Field><FieldLabel htmlFor="income-remaining-life" className="text-xs">Vida útil remanente (años)</FieldLabel><FormulaInput id="income-remaining-life" value={draft.annuity.remainingLifeYears} onChange={setAnnuity("remainingLifeYears")} /></Field>
           </div>
           <Field className="max-w-md">
             <FieldLabel htmlFor="income-option" className="text-xs">Valor que se concluye</FieldLabel>
@@ -352,9 +371,8 @@ export function IncomeCalculationPanel(props: {
           </div>
           <Field className="max-w-60">
             <FieldLabel htmlFor="income-applied-rate">Tasa aplicada (%, opcional)</FieldLabel>
-            <Input
+            <FormulaInput
               id="income-applied-rate"
-              inputMode="decimal"
               value={draft.appliedRate}
               placeholder={result?.tableRate ? `De la tabla: ${(result.tableRate * 100).toFixed(4)}` : undefined}
               onChange={(event) => update({ appliedRate: event.target.value })}

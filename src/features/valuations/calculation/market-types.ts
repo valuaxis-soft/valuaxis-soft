@@ -6,6 +6,7 @@
 import { SURFACE_SLOT, type CapturedFactor, type FactorSlot } from "../engine/factors";
 import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig } from "../engine/config";
 import type { ComparableInput, MarketApproachInput } from "../engine/market";
+import { formulaOfText, type CapturedFormulas } from "./captured-formulas";
 import type { MarketRegressionDto } from "./market-regression";
 
 export const COMPARABLE_TYPES = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"] as const;
@@ -187,13 +188,18 @@ export function defaultCharacteristicFields(type: ComparableType): Characteristi
 export const characteristicFieldsOf = (settings: Pick<MarketSettingsDto, "characteristicFields" | "comparableType">) =>
   settings.characteristicFields ?? defaultCharacteristicFields(settings.comparableType);
 
-type CharacteristicValues = Pick<ComparableDto, BuiltinCharacteristic | "extra">;
+type CharacteristicValues = Pick<ComparableDto, BuiltinCharacteristic | "extra" | "formulas">;
 
-/** A characteristic of a comparable as the capture shows it: the number or the text, empty when there is none. */
-export function characteristicText(comparable: CharacteristicValues, key: string): string {
+/** A characteristic of a comparable as the capture shows it: the number (without its formula) or the text, empty when there is none. */
+export function characteristicValueText(comparable: CharacteristicValues, key: string): string {
   if (!isBuiltinCharacteristic(key)) return comparable.extra?.[key] ?? "";
   const value = comparable[key];
   return value === null || value === undefined ? "" : String(value);
+}
+
+/** A characteristic as it is edited: a number typed as a formula reads back as typed. */
+export function characteristicText(comparable: CharacteristicValues, key: string): string {
+  return (NUMERIC_CHARACTERISTICS.has(key) ? comparable.formulas?.[key] : undefined) ?? characteristicValueText(comparable, key);
 }
 
 /**
@@ -207,7 +213,11 @@ export function withCharacteristic<T extends CharacteristicValues>(comparable: T
     const { [key]: _removed, ...extra } = comparable.extra ?? {};
     return { ...comparable, extra: typed ? { ...extra, [key]: typed } : extra };
   }
-  return { ...comparable, [key]: NUMERIC_CHARACTERISTICS.has(key) ? parsed : typed || null };
+  if (!NUMERIC_CHARACTERISTICS.has(key)) return { ...comparable, [key]: typed || null };
+  // A number typed as a formula keeps it, to read back as typed and print in the calculation memory.
+  const { [key]: _replaced, ...formulas } = comparable.formulas ?? {};
+  const formula = parsed === null ? null : formulaOfText(typed);
+  return { ...comparable, [key]: parsed, formulas: formula ? { ...formulas, [key]: formula } : formulas };
 }
 
 /** COT-2026-001: at least four comparables per homologation. */
@@ -264,7 +274,28 @@ export type ComparableDto = {
   offerDate: string | null;
   photos: ComparablePhotoDto[];
   factors: ComparableFactorDto[];
+  /**
+   * Formulas typed in its numeric fields ("area", "price", "frontage",
+   * "depth", "frontCount") and in its factors ("factors.NEGOCIACION");
+   * absent keeps the stored ones whose value did not change.
+   */
+  formulas?: CapturedFormulas;
 };
+
+/** Where a factor's formula is kept among the comparable's formulas. */
+export const factorFormulaPath = (factor: { type: FactorType; key?: string | null }) => `factors.${factorKey(factor)}`;
+
+/** The numbers of a comparable as its formulas name them: its fields, and its factors by key. */
+export function comparableFormulaValues(comparable: Pick<ComparableDto, "area" | "price" | "frontage" | "depth" | "factors"> & { frontCount?: number | null }) {
+  return {
+    area: comparable.area,
+    price: comparable.price,
+    frontage: comparable.frontage,
+    depth: comparable.depth,
+    frontCount: comparable.frontCount ?? null,
+    factors: Object.fromEntries(comparable.factors.map((factor) => [factorKey(factor), factor.value])),
+  };
+}
 
 export type MarketSettingsDto = {
   comparableType: ComparableType;
@@ -312,6 +343,8 @@ export type MarketSettingsDto = {
   showHomologationNote?: boolean;
   /** The appraiser's own note under the homologation table; empty, the one of the format. */
   homologationNote?: string | null;
+  /** Formulas typed in the numeric fields ("subjectArea", "adoptedUnitValue"); absent keeps the stored ones whose value did not change. */
+  formulas?: CapturedFormulas;
 };
 
 export type MarketCalculationDto = {
