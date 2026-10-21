@@ -7,6 +7,7 @@
  * calculation panel.
  */
 import type { MarketApproachResult } from "../engine/market";
+import { CONSTANT_LETTERS, VARIABLE_LETTERS } from "../engine/regression";
 import type { AppSection, Block } from "../model";
 import type { TableNote, TableSummaryBox } from "../services/table";
 import {
@@ -22,7 +23,9 @@ import {
   printedTable,
   squareMetres,
   textColumn,
+  whole,
 } from "./generated-content";
+import { computeMarketRegression, regressionFieldOptions, type MarketRegressionResult } from "./market-regression";
 import {
   COMPARABLE_TYPE_LABELS,
   FACTOR_TYPE_LABELS,
@@ -33,6 +36,7 @@ import {
   homologationBasisOf,
   isBuiltinCharacteristic,
   isLandComparableType,
+  isRentComparableType,
   offerLabelsOf,
   offerMarkOf,
   type CharacteristicField,
@@ -290,7 +294,111 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
       })],
   });
 
-  return [generatedBlock(prefix, page.title, { apartados: [...offer, data, homologation] })];
+  return [
+    generatedBlock(prefix, page.title, { apartados: [...offer, data, homologation] }),
+    ...regressionBlocks(calculation, `${prefixFor(settings.comparableType)}-regresion`),
+  ];
+}
+
+/** The constants with eight significant figures: B of the workbook is 0.0034702172, not 0.00. */
+const significant = new Intl.NumberFormat("es-MX", { maximumSignificantDigits: 8 });
+
+/** With more variables the squares and products of the workbook no longer fit the page. */
+const MAX_PRINTED_PRODUCTS_VARIABLES = 3;
+
+/**
+ * "Homologación por el método de regresión lineal", as the appraiser's sheet
+ * REG.LIN.3 ("APLICACIÓN ESTADÍSTICA"), in a block of its own after the
+ * market's: the data of the comparables (N, X, Y, Z…, their squares and
+ * products, and the sums), the constants, the subject's variables and the
+ * conclusions. Printed only when the appraiser turns it on and it can be
+ * computed; it is a reference and changes nothing of the market's value.
+ */
+function regressionBlocks(calculation: MarketCalculationDto, prefix: string): Block[] {
+  const regression = calculation.settings.regression;
+  if (!regression?.enabled || !regression.showInDictamen) return [];
+  const outcome = computeMarketRegression(calculation);
+  if (!outcome?.ok) return [];
+  const { result } = outcome;
+  const { fit } = result;
+  const page = PAGE[calculation.settings.comparableType];
+  const rent = isRentComparableType(calculation.settings.comparableType);
+  const letters = VARIABLE_LETTERS.slice(0, fit.k);
+  const constants = CONSTANT_LETTERS.slice(0, fit.k + 1);
+  const yName = regression.dependent === "PRICE" ? (rent ? "RENTA $" : "PRECIO $") : page.unit.toUpperCase();
+  const names = new Map<string, string>([["Y", yName], ...letters.map((letter, j): [string, string] => [letter, result.variables[j].toUpperCase()])]);
+  const withProducts = fit.k <= MAX_PRINTED_PRODUCTS_VARIABLES;
+  const columns = fit.columns.filter((column) => withProducts || names.has(column.name) || column.name === "N");
+  const cell = (value: number) => figure(value, Number.isInteger(value) ? 0 : 2);
+  const table = generatedTable(`${prefix}-tabla`, "Regresión lineal",
+    columns.map((column) => figureColumn(names.has(column.name) ? `${column.name} (${names.get(column.name)})` : column.name)),
+    [
+      ...result.rows.map((row, index) => columns.map((column) => (column.name === "N" ? String(row.reference) : cell(column.values[index])))),
+      columns.map((column) => (column.name === "N" ? `N = ${whole(fit.n)}` : cell(column.sum))),
+    ],
+    {
+      summaryBoxes: regressionBoxes(result, constants, letters, rent),
+      notes: [
+        { position: "top", text: "Datos de los comparables y, en el último renglón, las sumas de la tabla de valores." },
+        ...scaleNotes(calculation),
+        {
+          position: "bottom",
+          text: `${fit.equation}. Coeficiente de determinación R² = ${fit.rSquared === null ? EMPTY : figure(fit.rSquared, 4)}; `
+            + `error estándar = ${figure(fit.standardError)}. Valor de referencia estadística, junto al promedio y la mediana homologados.`,
+        },
+      ],
+    });
+  return [generatedBlock(prefix, "APLICACIÓN ESTADÍSTICA", {
+    apartados: [generatedApartado(`${prefix}-homologacion`, `HOMOLOGACIÓN POR EL MÉTODO DE REGRESIÓN LINEAL ${page.scope}`, { tables: [table] })],
+  })];
+}
+
+/** CONSTANTES and VARIABLES under the table, side by side as in the sheet, and CONCLUSIONES on their own line. */
+function regressionBoxes(result: MarketRegressionResult, constants: readonly string[], letters: readonly string[], rent: boolean): TableSummaryBox[] {
+  const { fit } = result;
+  const unitValue = result.unitValue === null
+    ? []
+    : [{ label: rent ? "RENTA ESTIMADA/M²/MES:" : "PRECIO ESTIMADO/M²:", value: money(result.unitValue), emphasis: "strong" as const }];
+  return [
+    {
+      id: "constantes",
+      position: "bottom",
+      align: "start",
+      caption: "CONSTANTES",
+      rows: fit.coefficients.map((value, index) => ({ label: `${constants[index]} =`, value: significant.format(value) })),
+    },
+    {
+      id: "variables",
+      position: "bottom",
+      align: "end",
+      caption: "VARIABLES",
+      rows: [
+        ...letters.map((letter, j) => ({ label: `SI: ${letter} (${result.variables[j]}) =`, value: figure(result.subject[j], Number.isInteger(result.subject[j]) ? 0 : 2) })),
+        { label: "Y =", value: fit.equation.replace("Y = ", "").replaceAll(" ", "") },
+      ],
+    },
+    {
+      id: "conclusiones",
+      position: "bottom",
+      align: "end",
+      caption: "CONCLUSIONES",
+      rows: [
+        ...unitValue,
+        { label: rent ? "RENTA MENSUAL ESTIMADA:" : "VALOR ESTIMADO DEL INMUEBLE:", value: money(result.value), emphasis: "total" },
+      ],
+    },
+  ];
+}
+
+/** "Escala de CALIDAD: Popular = 1, Medio = 2…": how each qualitative variable became a number. */
+function scaleNotes({ settings }: MarketCalculationDto): TableNote[] {
+  const fields = regressionFieldOptions(settings);
+  return (settings.regression?.variables ?? []).flatMap((variable) => {
+    if (!variable.scale?.length) return [];
+    const label = fields.find((field) => field.key === variable.key)?.label ?? variable.key;
+    const levels = variable.scale.map((level) => `${level.label} = ${figure(level.value, Number.isInteger(level.value) ? 0 : 2)}`);
+    return [{ position: "bottom" as const, label: `Escala de ${label}:`, text: levels.join(", ") }];
+  });
 }
 
 /**

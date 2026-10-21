@@ -6,6 +6,7 @@
 import { SURFACE_SLOT, type CapturedFactor, type FactorSlot } from "../engine/factors";
 import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig } from "../engine/config";
 import type { ComparableInput, MarketApproachInput } from "../engine/market";
+import type { MarketRegressionDto } from "./market-regression";
 
 export const COMPARABLE_TYPES = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"] as const;
 export type ComparableType = (typeof COMPARABLE_TYPES)[number];
@@ -254,6 +255,8 @@ export type ComparableDto = {
   characteristicsText?: string | null;
   /** "Justificación de los factores utilizados" for this comparable. */
   factorJustification?: string | null;
+  /** Left out of the linear regression by the appraiser; it stays in the homologation. */
+  regressionExcluded?: boolean;
   sourceName: string | null;
   contactName: string | null;
   contactPhone: string | null;
@@ -303,6 +306,8 @@ export type MarketSettingsDto = {
   subjectCharacteristics?: Record<string, string>;
   /** Whether the justification of the factors prints in the dictamen; it does unless turned off. */
   showFactorJustification?: boolean;
+  /** "Homologación por el método de regresión lineal": a reference beside the mean and median; missing, not used. */
+  regression?: MarketRegressionDto | null;
 };
 
 export type MarketCalculationDto = {

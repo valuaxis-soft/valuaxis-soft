@@ -53,6 +53,7 @@ import { MarketCharacteristicsTable } from "./market-characteristics-table";
 import { MarketFactorSlots } from "./market-factor-slots";
 import { MarketHomologationTable } from "./market-homologation-table";
 import { MarketOfferLevel } from "./market-offer-level";
+import { MarketRegression } from "./market-regression";
 import { PasteListingDialog } from "./paste-listing-dialog";
 import { SearchComparablesDialog } from "./search-comparables-dialog";
 import { useSerializedSave } from "./use-serialized-save";
@@ -291,15 +292,25 @@ function MarketTypePanel(props: {
   // Recomputed on every render: a handful of comparables, and it follows every keystroke.
   const live = calculation && liveSettings ? compute({ settings: liveSettings, comparables: calculation.comparables }) : null;
 
+  // The settings last asked to be saved, until the server has them: a change made right after another builds on it.
+  const requested = useRef<MarketSettingsDto | null>(null);
   const enqueueSettings = useSerializedSave(async (settings: MarketSettingsDto) => {
     setSavingSettings(true);
     await run(() => api.market.saveSettings(valuationId, settings));
+    if (requested.current === settings) requested.current = null;
     setSavingSettings(false);
   });
   const saveSettings = async (settings = liveSettings) => {
     if (!calculation || !settings || readOnly) return;
     if (JSON.stringify(settings) === JSON.stringify(calculation.settings)) return;
+    requested.current = settings;
     await enqueueSettings(settings);
+  };
+  /** One change on top of any still on its way (a cell left by clicking a checkbox sends both). */
+  const saveChange = (change: (current: MarketSettingsDto) => Partial<MarketSettingsDto>) => {
+    if (!calculation || !draft) return;
+    const current = settingsFrom(requested.current ?? calculation.settings, draft);
+    void saveSettings({ ...current, ...change(current) });
   };
 
   /**
@@ -677,7 +688,17 @@ function MarketTypePanel(props: {
         ) : null}
       </Part>
 
-      <Part number={5} title="Monto adicional">
+      <Part number={5} title="Homologación por el método de regresión lineal">
+        <MarketRegression
+          calculation={{ settings: liveSettings, comparables }}
+          stats={stats ?? null}
+          readOnly={readOnly}
+          onChange={saveChange}
+          onExclude={(comparable, regressionExcluded) => changeComparable(comparable, (current) => ({ ...current, regressionExcluded }))}
+        />
+      </Part>
+
+      <Part number={6} title="Monto adicional">
         <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
           <Field>
             <FieldLabel htmlFor="market-additional">Monto adicional a considerar ($)</FieldLabel>
@@ -687,7 +708,7 @@ function MarketTypePanel(props: {
       </Part>
 
       <Part
-        number={6}
+        number={7}
         title="Justificación de los factores utilizados"
         aside={(
           <label className="flex items-center gap-1.5 text-xs font-normal">
