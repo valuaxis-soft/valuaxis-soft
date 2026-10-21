@@ -35,6 +35,12 @@ describe("without a session", () => {
     assert.match(response.headers.get("location") ?? "", /\/iniciar-sesion\?/);
   });
 
+  test("a valuation's calculation memory page redirects to the login", async () => {
+    const response = await call(null, "GET", `/avaluos/${valuationId}/memoria-calculo`);
+    assert.equal(response.status, 307);
+    assert.match(response.headers.get("location") ?? "", /\/iniciar-sesion\?/);
+  });
+
   test("the login page is public", async () => {
     const response = await call(null, "GET", "/iniciar-sesion");
     assert.equal(response.status, 200);
@@ -60,6 +66,7 @@ describe("without a session", () => {
     ["POST", "/api/avaluos/{id}/reopen"],
     ["GET", "/api/avaluos/{id}/export"],
     ["POST", "/api/avaluos/{id}/dictamen/pdf"],
+    ["POST", "/api/avaluos/{id}/memoria-calculo/pdf"],
     ["POST", "/api/avaluos/{id}/ia/anuncio"],
     ["POST", "/api/avaluos/{id}/ia/redaccion"],
     ["POST", "/api/avaluos/{id}/dictamen/correo"],
@@ -152,7 +159,7 @@ describe("Stripe webhook", () => {
 describe("valuation ids", () => {
   for (const id of ["123", "not-a-uuid", "00000000-0000-0000-0000-00000000000Z", "'%20OR%201=1"]) {
     test(`non-UUID id "${id}" is 404 before reaching the handler`, async () => {
-      for (const path of [`/api/avaluos/${id}`, `/api/avaluos/${id}/costos`, `/api/avaluos/${id}/dictamen/pdf`]) {
+      for (const path of [`/api/avaluos/${id}`, `/api/avaluos/${id}/costos`, `/api/avaluos/${id}/dictamen/pdf`, `/api/avaluos/${id}/memoria-calculo/pdf`]) {
         const method = path.endsWith("/pdf") ? "POST" : "GET";
         // Also without a session: the proxy answers before the guard.
         for (const actor of [null, world.a.admin]) {

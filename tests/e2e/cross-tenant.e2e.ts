@@ -80,6 +80,7 @@ const reads: Attempt[] = [
   // Copies of the valuation's content leaving the system.
   ["GET", (id) => `/api/avaluos/${id}/export`],
   ["POST", (id) => `/api/avaluos/${id}/dictamen/pdf`],
+  ["POST", (id) => `/api/avaluos/${id}/memoria-calculo/pdf`],
   ["POST", (id) => `/api/avaluos/${id}/dictamen/correo`, { json: emailPayload }],
   // The AI assistance writes nothing, but it would send the valuation's data out.
   ["POST", (id) => `/api/avaluos/${id}/ia/anuncio`, { json: shortListingPayload }],

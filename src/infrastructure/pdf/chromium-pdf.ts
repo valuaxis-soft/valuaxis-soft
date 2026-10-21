@@ -18,6 +18,14 @@ const SETTLE_MS = 800;
 
 export class PdfRenderError extends Error {}
 
+const PAGE_NUMBER_FOOTER = {
+  displayHeaderFooter: true,
+  headerTemplate: "<span></span>",
+  footerTemplate:
+    '<div style="width:100%;padding:0 12mm;font-family:Arial,sans-serif;font-size:8px;color:#475569;text-align:right">' +
+    'Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>',
+};
+
 let running = 0;
 const waiting: Array<() => void> = [];
 
@@ -45,6 +53,8 @@ export async function renderPageToPdf(input: {
   cookies: Array<{ name: string; value: string }>;
   /** Printing waits until the number of these elements stops changing. */
   settleSelector: string;
+  /** "Página n de m" at the foot of every page, in the page's bottom margin. */
+  pageNumbers?: boolean;
 }): Promise<Buffer> {
   const executablePath = process.env.CHROMIUM_PATH;
   if (!executablePath) throw new PdfRenderError("CHROMIUM_PATH no está configurado.");
@@ -102,7 +112,7 @@ export async function renderPageToPdf(input: {
     if (last <= 0) throw new PdfRenderError("El documento no tiene páginas para imprimir.");
 
     page.setDefaultTimeout(remaining());
-    return await page.pdf({ preferCSSPageSize: true, printBackground: true });
+    return await page.pdf({ preferCSSPageSize: true, printBackground: true, ...(input.pageNumbers ? PAGE_NUMBER_FOOTER : {}) });
   } catch (error) {
     if (error instanceof PdfRenderError) throw error;
     throw new PdfRenderError("No se pudo generar el PDF.", { cause: error });

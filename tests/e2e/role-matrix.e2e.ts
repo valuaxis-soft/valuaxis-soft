@@ -166,6 +166,8 @@ const aiCases: Case[] = [
 const dictamenCases: Case[] = [
   // Downloading is exporting: every role may.
   { name: "generate the dictamen PDF", method: "POST", path: (id) => `/api/avaluos/${id}/dictamen/pdf`, expected: all(PDF_OK) },
+  // The calculation memory is downloaded as the dictamen is.
+  { name: "generate the calculation memory PDF", method: "POST", path: (id) => `/api/avaluos/${id}/memoria-calculo/pdf`, expected: all(PDF_OK) },
   // Sending to third parties is sharing: CONSULTA and REVISOR cannot.
   { name: "email the dictamen", method: "POST", path: (id) => `/api/avaluos/${id}/dictamen/correo`, body: () => emailPayload,
     expected: { ADMINISTRADOR: PDF_OK, VALUADOR: PDF_OK, REVISOR: 403, CONSULTA: 403 } },

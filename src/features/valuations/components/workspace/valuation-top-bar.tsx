@@ -4,6 +4,7 @@ import type React from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
+  Calculator,
   CircleCheck,
   Columns2,
   EllipsisVertical,
@@ -112,6 +113,7 @@ export function ValuationTopBar({
   lifecycleAction = null,
   meta,
   onAddSection,
+  onCalculationMemory,
   onExport,
   onExit,
   onRenameSection,
@@ -139,6 +141,8 @@ export function ValuationTopBar({
   lifecycleAction?: ValuationLifecycleAction | null;
   meta: ValuationMeta;
   onAddSection?: () => void;
+  /** Opens the calculation memory (memoria de cálculo), beside the dictamen. */
+  onCalculationMemory: () => void;
   onExport: () => void;
   onExit: () => void;
   onRenameSection?: (sectionId: string, title: string) => void;
@@ -324,6 +328,14 @@ export function ValuationTopBar({
                 <FileDown />
                 Generar avalúo
               </DropdownMenuItem>
+              <DropdownMenuItem
+                className="min-h-10"
+                disabled={!canExport || !valuationId}
+                onClick={onCalculationMemory}
+              >
+                <Calculator />
+                Memoria de cálculo
+              </DropdownMenuItem>
               {onSaveAsTemplate ? (
                 <DropdownMenuItem className="min-h-10" onClick={onSaveAsTemplate}>
                   <LayoutTemplate />
@@ -429,6 +441,17 @@ export function ValuationTopBar({
             <LayoutTemplate />
           </Button>
         ) : null}
+
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!canExport || !valuationId}
+          onClick={onCalculationMemory}
+          className="flex-none whitespace-nowrap"
+        >
+          <Calculator data-icon="inline-start" />
+          Memoria de cálculo
+        </Button>
 
         <Button
           type="button"

@@ -29,6 +29,7 @@ function topBarProps(
     enabledSections: sections,
     iconMap,
     meta: { ...initialMeta, folio: "VLO-0001" },
+    onCalculationMemory: noop,
     onExport: noop,
     onExit: noop,
     onReorderSections: noop,
@@ -52,16 +53,19 @@ function elements(node: ReactNode): Array<React.ReactElement<Record<string, unkn
   return [node, ...descendants];
 }
 
-test("el toolbar entrega los callbacks existentes a las tres acciones", () => {
+test("el toolbar entrega los callbacks existentes a las acciones", () => {
   const onExit = () => {};
   const onSave = () => {};
   const onExport = () => {};
-  const tree = ValuationTopBar({ ...topBarProps(), onExit, onSave, onExport });
+  const onCalculationMemory = () => {};
+  const tree = ValuationTopBar({ ...topBarProps(), onExit, onSave, onExport, onCalculationMemory });
   const buttons = elements(tree).filter((element) => element.type === Button);
 
   assert.equal(buttons.find((button) => button.props["aria-label"] === "Volver al dashboard")?.props.onClick, onExit);
   assert.equal(buttons.find((button) => button.props.onClick === onSave)?.props.onClick, onSave);
   assert.equal(buttons.find((button) => button.props.onClick === onExport)?.props.onClick, onExport);
+  // The calculation memory sits beside "Generar avalúo".
+  assert.equal(buttons.find((button) => button.props.onClick === onCalculationMemory)?.props.disabled, false);
 });
 
 test("dirty y error conservan el estado azul y el intercambio de copy por hover", () => {
