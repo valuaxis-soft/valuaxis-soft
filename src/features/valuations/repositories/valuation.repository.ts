@@ -23,7 +23,7 @@ import type { TableCellFormat, TableV2 } from "@/features/valuations/services/ta
 import { decodeStoredTable } from "@/features/valuations/services/table-persistence";
 import { extractStorageKey, isS3Source } from "@/features/valuations/services/image-source";
 import { resolveSignatures, validityMonthsBetween, type ValuationSignature } from "@/features/valuations/services/valuation-signatures";
-import { COVER_IMAGE_FOCUS_CENTER, normalizeCoverImageFocus, type CoverImageFocus } from "@/features/valuations/services/cover-image-focus";
+import { COVER_IMAGE_FOCUS_CENTER, normalizeCoverImageFocus, type CoverImageFocus, type CoverImageSize } from "@/features/valuations/services/cover-image-focus";
 
 export type ValuationListItem = {
   id: string;
@@ -78,6 +78,7 @@ export type ValuationSectionDto = {
   /** The document's binding margin and title bars, on the carátula section. */
   bindingMargin?: "normal" | "wide";
   titleBars?: "filled" | "outline";
+  titleBand?: "filled" | "outline";
   /** A section the appraiser added. */
   custom?: boolean;
   /** The appraiser renamed the tab. */
@@ -100,6 +101,8 @@ export type ValuationBlockDto = {
   conceptPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation;
   /** The carátula's company header block: the extra header data. */
   headerFields?: HeaderExtraField[];
+  /** The carátula's company header block: the size of the principal cover image. */
+  coverImageSize?: CoverImageSize;
   concepts: ValuationConceptDto[];
   subBlocks: ValuationApartadoDto[];
   tables: ValuationTableDto[];
@@ -671,6 +674,7 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition, 
     thousandsSeparator: sectionMetadata.thousandsSeparator,
     ...(sectionMetadata.bindingMargin ? { bindingMargin: sectionMetadata.bindingMargin } : {}),
     ...(sectionMetadata.titleBars ? { titleBars: sectionMetadata.titleBars } : {}),
+    ...(sectionMetadata.titleBand ? { titleBand: sectionMetadata.titleBand } : {}),
     ...(renamed ? { titleEdited: true } : {}),
     blocks,
     _count: { blocks: blocks.length },
@@ -791,6 +795,7 @@ function mapNodeToBlock(node: DbNode, label: string): ValuationBlockDto {
     conceptPresentation: blockMetadata.conceptPresentation,
     flowSpacingBeforePx: blockMetadata.flowSpacingBeforePx,
     ...(blockMetadata.headerFields ? { headerFields: blockMetadata.headerFields } : {}),
+    ...(blockMetadata.coverImageSize ? { coverImageSize: blockMetadata.coverImageSize } : {}),
     concepts: conceptNodes.map(mapConceptNode),
     subBlocks: subBlockNodes.map((child) => {
       const subChildren = child.nodosHijos

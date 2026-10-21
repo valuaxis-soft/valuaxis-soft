@@ -147,6 +147,36 @@ test("the age factor and FRe take the Excel formula when empty, a typed value ov
   assert.equal((await storedConstructionValue(fixture)).value, 6530000);
 });
 
+test("the calificación of the conservation is kept per construction and installation, gives the Cons. when none is typed, and a typed one wins", async () => {
+  const fixture = await createValuationFixture();
+  const user = editor(fixture);
+  await saveConstructionTypes(fixture.publicId, user, { types: [arandasType] });
+  const installation = {
+    ref: "1", description: "Cisterna", share: "P" as const, unit: "Lote", quantity: 1, age: 2, usefulLife: 70, conservation: null, conservationRating: 6,
+    maintenance: "", ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: 90000,
+  };
+  // Calificación 8 (Regular) = 0.975 in place of the typed 0.98.
+  await saveCostCalculation(fixture.publicId, user, { ...costsOf([{ ...arandasCost, conservation: null, conservationRating: 8 }]), installations: [installation] });
+  let costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual([costs.constructions[0].conservation, costs.constructions[0].conservationRating], [null, 8]);
+  assert.deepEqual([costs.installations[0].conservation, costs.installations[0].conservationRating], [null, 6]);
+  let stored = await storedConstructionValue(fixture);
+  // T26 = 0.975 · (1 − (2/70)^1.4).
+  assert.equal(Number(stored.rows[0].NFactorResultante), 0.96828093);
+
+  // A typed factor wins over the calificación, which stays chosen.
+  await saveCostCalculation(fixture.publicId, user, costsOf([{ ...arandasCost, conservation: 0.98, conservationRating: 8 }]));
+  costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual([costs.constructions[0].conservation, costs.constructions[0].conservationRating], [0.98, 8]);
+  stored = await storedConstructionValue(fixture);
+  assert.equal(Number(stored.rows[0].NFactorResultante), 0.97324647);
+
+  // Without either the row waits, as before the ratings.
+  await saveCostCalculation(fixture.publicId, user, costsOf([{ ...arandasCost, conservation: null }]));
+  assert.equal((await getCostCalculation(fixture.publicId, fixture.organizationId)).constructions[0].conservationRating, null);
+  assert.equal((await storedConstructionValue(fixture)).value, 0);
+});
+
 test("a capture that still carries the type's data creates the type (valuations saved before the types had their panel)", async () => {
   const fixture = await createValuationFixture();
   const user = editor(fixture);

@@ -2,6 +2,7 @@
 
 import { AlertTriangle } from "lucide-react";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import type { MarketApproachResult } from "@/features/valuations/engine/market";
 import {
@@ -22,6 +23,7 @@ import {
   type ComparableFactorDto,
   type FactorSlotConfig,
 } from "@/features/valuations/calculation/market-types";
+import { cn } from "@/lib/utils";
 import { CommitCell } from "./commit-cell";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -45,7 +47,9 @@ export function MarketHomologationTable(props: {
   readOnly: boolean;
   unitValueLabel: string;
   homologatedLabel: string;
-  legend: string;
+  /** The note under the table: whether it prints, the appraiser's text (null: the format's) and the format's. */
+  note: { show: boolean; text: string | null; defaultText: string };
+  onNote: (note: { showHomologationNote: boolean; homologationNote: string | null }) => void;
   onFactors: (comparable: ComparableDto, factors: ComparableFactorDto[]) => void;
   onInvalid: (message: string) => void;
 }) {
@@ -184,7 +188,38 @@ export function MarketHomologationTable(props: {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-muted-foreground">{props.legend}</p>
+      <HomologationNote note={props.note} readOnly={readOnly} onChange={props.onNote} />
+    </div>
+  );
+}
+
+/**
+ * The note the dictamen prints under the homologation: on by default with the
+ * format's sentence; the appraiser may write another or leave it out.
+ */
+function HomologationNote({ note, readOnly, onChange }: {
+  note: { show: boolean; text: string | null; defaultText: string };
+  readOnly: boolean;
+  onChange: (note: { showHomologationNote: boolean; homologationNote: string | null }) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <label className="flex shrink-0 items-center gap-1.5 text-xs">
+        <Checkbox
+          checked={note.show}
+          disabled={readOnly}
+          onCheckedChange={(checked) => onChange({ showHomologationNote: checked === true, homologationNote: note.text })}
+        />
+        Mostrar nota
+      </label>
+      <CommitCell
+        ariaLabel="Nota de la homologación"
+        value={note.text ?? ""}
+        placeholder={note.defaultText}
+        disabled={readOnly || !note.show}
+        onCommit={(text) => onChange({ showHomologationNote: note.show, homologationNote: text.trim() || null })}
+        className={cn("min-w-60 flex-1 border-input text-xs", !note.show && "text-muted-foreground line-through")}
+      />
     </div>
   );
 }

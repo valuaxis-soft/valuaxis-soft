@@ -1,4 +1,5 @@
 import type { AppSection, Block, CaratulaFormData, Concept, HeaderExtraField } from "@/features/valuations/model";
+import { isDefaultCoverImageSize, normalizeCoverImageSize, type CoverImageSize } from "./cover-image-focus";
 
 export const COMPANY_HEADER_BLOCK_ID = "caratula-company-header";
 
@@ -17,7 +18,11 @@ const companyHeaderFields = [
 export type CompanyHeaderData = Pick<
   CaratulaFormData,
   "tituloInmueble" | "direccionEmpresa" | "telefonoEmpresa" | "correoEmpresa"
-> & { camposEncabezado: HeaderExtraField[] };
+> & {
+  camposEncabezado: HeaderExtraField[];
+  /** The size of the principal cover image travels with the carátula form and is kept with this block, like the extra data. */
+  tamanoImagenPrincipal?: CoverImageSize;
+};
 
 const emptyCompanyHeader: CompanyHeaderData = {
   tituloInmueble: "",
@@ -77,7 +82,11 @@ export function readCompanyHeaderFields(sections: AppSection[]): CompanyHeaderDa
       ...data,
       [field.key]: findFieldConcept(block.concepts, field.id, field.label)?.value ?? "",
     }),
-    { ...emptyCompanyHeader, camposEncabezado: normalizeHeaderExtraFields(block.headerFields) },
+    {
+      ...emptyCompanyHeader,
+      camposEncabezado: normalizeHeaderExtraFields(block.headerFields),
+      ...(block.coverImageSize ? { tamanoImagenPrincipal: normalizeCoverImageSize(block.coverImageSize) } : {}),
+    },
   );
 }
 
@@ -96,6 +105,10 @@ export function updateCompanyHeaderFields(
           ...block,
           // The extra data lives in the block's configuration, not as concepts.
           ...(patch.camposEncabezado !== undefined ? { headerFields: normalizeHeaderExtraFields(patch.camposEncabezado) } : {}),
+          // The default size is no size at all: the block reads as one saved before the size existed.
+          ...(patch.tamanoImagenPrincipal !== undefined
+            ? { coverImageSize: isDefaultCoverImageSize(patch.tamanoImagenPrincipal) ? undefined : normalizeCoverImageSize(patch.tamanoImagenPrincipal) }
+            : {}),
           concepts: block.concepts.map((concept) => {
             const field = companyHeaderFields.find((item) => item.id === concept.id);
             if (!field) return concept;

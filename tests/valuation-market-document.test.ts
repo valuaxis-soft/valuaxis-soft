@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { money } from "../src/features/valuations/calculation/generated-content";
-import { homologationLegend, marketDocumentBlocks, marketPhotoBlocks, withGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
+import { DEFAULT_HOMOLOGATION_NOTE, marketDocumentBlocks, marketPhotoBlocks, withGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
 import { defaultMarketSettings, toMarketEngineInput, type ComparableDto, type MarketCalculationDto } from "../src/features/valuations/calculation/market-types";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeMarketApproach } from "../src/features/valuations/engine/market";
@@ -116,7 +116,7 @@ test("the boxes of the homologation lead from the homologated values to the valu
     ["VALOR COMPARATIVO DE MERCADO (TERRENOS):", "$ 1,528,000.00"],
   ]);
   assert.equal(boxes[3].rows.at(-1)?.emphasis, "total", "the value of the approach is the dark bar");
-  assert.deepEqual(printed(table).schema?.notes, [{ position: "bottom", text: homologationLegend("TERRENO_VENTA") }], "no justification: only the legend");
+  assert.deepEqual(printed(table).schema?.notes, [{ position: "bottom", text: DEFAULT_HOMOLOGATION_NOTE }], "no justification: only the legend");
 });
 
 test("a lote tipo, an additional amount and the justification show only when captured", () => {
@@ -138,7 +138,7 @@ test("a lote tipo, an additional amount and the justification show only when cap
   assert.equal(rows[1][1], money(169.78 * computed.adoptedUnitValue));
   assert.equal(rows[2][1], "$ 25,000.00");
   assert.deepEqual(printed(table).schema?.notes, [
-    { position: "bottom", text: homologationLegend("TERRENO_VENTA") },
+    { position: "bottom", text: DEFAULT_HOMOLOGATION_NOTE },
     { position: "bottom", label: "Justificación de los factores utilizados:", text: "Dentro del rango." },
   ]);
 });

@@ -4,7 +4,9 @@ import { AuthCard } from "@/features/auth/components/auth-card";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { LoginForm } from "@/features/auth/components/login-form";
 import { SessionExpiredAlert } from "@/features/auth/components/session-expired-alert";
+import { ContinueWhenSignedIn } from "@/features/auth/components/session-sign-in-channel";
 import { getCurrentSession } from "@/features/auth/services/session.service";
+import { safeRedirectPath } from "@/security/validation/redirect-safety";
 
 export const metadata: Metadata = {
   title: "Iniciar sesión",
@@ -17,13 +19,15 @@ export default async function IniciarSesionPage({
 }: {
   searchParams: Promise<{ reason?: string; redirectTo?: string; reset?: string }>;
 }) {
-  const session = await getCurrentSession();
-  if (session) redirect("/dashboard");
-
   const params = await searchParams;
+  // Signed in already (in another tab, say): straight to where the page was going.
+  const destination = safeRedirectPath(params.redirectTo);
+  const session = await getCurrentSession();
+  if (session) redirect(destination);
 
   return (
     <AuthShell>
+      <ContinueWhenSignedIn destination={destination} />
       <SessionExpiredAlert reason={params.reason} />
       <AuthCard
         title="Iniciar sesión"

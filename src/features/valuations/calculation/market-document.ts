@@ -150,9 +150,17 @@ const PAGE: Record<ComparableType, {
 /** The sentence above the offer level grid, unless the appraiser writes another. */
 export const defaultOfferIntro = (type: ComparableType) => PAGE[type].offerIntro;
 
-/** Under the homologation table, as the appraiser's format reads the factors. */
-export function homologationLegend(type: ComparableType) {
-  return `Cuando el factor de homologación es menor a la unidad denota que la oferta es mejor que el ${isLandComparableType(type) ? "predio" : "inmueble"} valuado.`;
+/**
+ * Under the homologation table, as the appraiser's format reads the factors:
+ * "bien" for any kind of good, a lot, a house or a machine (20 Oct 2026).
+ */
+export const DEFAULT_HOMOLOGATION_NOTE =
+  "Cuando el factor de homologación es menor a la unidad denota que la oferta es mejor que el bien valuado.";
+
+/** The note the market prints under its homologation: the appraiser's text or the format's; none when turned off. */
+export function homologationNoteOf(settings: Pick<MarketCalculationDto["settings"], "showHomologationNote" | "homologationNote">) {
+  if (settings.showHomologationNote === false) return null;
+  return settings.homologationNote?.trim() || DEFAULT_HOMOLOGATION_NOTE;
 }
 
 /** Column titles of the factors as the books abbreviate them. */
@@ -261,6 +269,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
 
   const slots = settings.factorSlots;
   const factors = "FACTORES DE HOMOLOGACIÓN";
+  const homologationNote = homologationNoteOf(settings);
   const homologation = generatedApartado(`${prefix}-homologacion`, page.homologation, {
     tables: [generatedTable(`${prefix}-tabla-homologacion`, "Homologación",
       [
@@ -288,7 +297,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
       {
         summaryBoxes: homologationBoxes(calculation, result),
         notes: [
-          { position: "bottom", text: homologationLegend(settings.comparableType) },
+          ...(homologationNote ? [{ position: "bottom" as const, text: homologationNote }] : []),
           ...justificationNotes(calculation),
         ],
       })],

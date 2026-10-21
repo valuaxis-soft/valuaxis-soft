@@ -21,6 +21,7 @@ import {
   DEFAULT_COST_ROUNDING,
   DEFAULT_LAND,
   costEngineConfig,
+  isConservationRating,
   toCostEngineInput,
   type CostCalculationDto,
   type CostLandDto,
@@ -43,8 +44,12 @@ async function landMarket(tx: Tx, versionId: number): Promise<CostCalculationDto
 
 type StoredCost = Omit<CostCalculationDto, "market" | "configured" | "typesCaptured" | "locked">;
 
-/** Factors typed over their Excel formula; a row missing here (or an older capture) takes the formulas. */
-type CapturedFactors = { ageFactor: number | null; resultantFactor: number | null };
+/**
+ * Factors typed over their Excel formula, and the calificación of the
+ * conservation; a row missing here (or an older capture) takes the formulas
+ * and has no calificación.
+ */
+type CapturedFactors = { ageFactor: number | null; resultantFactor: number | null; conservationRating: number | null };
 type StoredFactors = {
   /** By construction type id, as the cost rows themselves. */
   constructions?: Record<string, CapturedFactors>;
@@ -55,6 +60,7 @@ type StoredFactors = {
 const capturedOf = (stored: Partial<CapturedFactors> | undefined): CapturedFactors => ({
   ageFactor: typeof stored?.ageFactor === "number" ? stored.ageFactor : null,
   resultantFactor: typeof stored?.resultantFactor === "number" ? stored.resultantFactor : null,
+  conservationRating: isConservationRating(stored?.conservationRating) ? stored.conservationRating : null,
 });
 const refKey = (ref: string) => ref.trim().toLowerCase();
 
@@ -95,6 +101,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
       return [{
         ...publicType(type),
         conservation: decimal(cost.NFactorConservacion),
+        conservationRating: captured.conservationRating,
         ageFactor: captured.ageFactor,
         otherFactor: decimal(cost.NFactorOtro) ?? 1,
         resultantFactor: captured.resultantFactor,
@@ -115,6 +122,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
         age: decimal(row.NEdad),
         usefulLife: decimal(row.NVidaUtil),
         conservation: decimal(cost?.NFactorConservacion),
+        conservationRating: captured.conservationRating,
         maintenance: row.SMantenimiento ?? "",
         ageFactor: captured.ageFactor,
         otherFactor: decimal(cost?.NFactorOtro) ?? 1,
@@ -155,7 +163,7 @@ const storedConfiguration = (payload: CostInputPayload, factors: StoredFactors) 
 const capturedFactors = (row: Partial<CapturedFactors>): CapturedFactors => capturedOf(row);
 const hasCaptured = (row: Partial<CapturedFactors>) => {
   const factors = capturedOf(row);
-  return factors.ageFactor !== null || factors.resultantFactor !== null;
+  return factors.ageFactor !== null || factors.resultantFactor !== null || factors.conservationRating !== null;
 };
 
 /** Replaces the whole capture of the version and recomputes the approach. */

@@ -1,8 +1,8 @@
 /**
  * Turns the cost calculation into the dictamen: one generated block in the
  * cost section, laid out as the appraiser's own format (A land, B
- * constructions, C special installations, E indirects, each with its boxed
- * value, and the physical value at the end), and the construction types and
+ * constructions, C special installations, D indirect costs, each with its
+ * boxed value, and the physical value at the end), and the construction types and
  * special installations tables of the construction section: the types as the
  * section captures them, the installations as the cost panel does.
  */
@@ -10,7 +10,7 @@ import type { CostApproachResult } from "../engine/costs";
 import type { Trace } from "../engine/trace";
 import type { Apartado, AppSection, Block, TableContent } from "../model";
 import { ensureTableV2, type TableSummaryBox } from "../services/table";
-import { LAND_FACTORS, LAND_FACTOR_SHORT_LABELS, remainingUsefulLife, type CostCalculationDto } from "./cost-types";
+import { LAND_FACTORS, LAND_FACTOR_SHORT_LABELS, effectiveConservation, remainingUsefulLife, type CostCalculationDto } from "./cost-types";
 import {
   EMPTY,
   figure,
@@ -106,7 +106,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
             const key = `costos.construcciones.${row.ref}`;
             return [
               row.ref, row.description || EMPTY, figure(row.area), whole(row.age), whole(row.usefulLife), remainingLife(row.usefulLife, row.age),
-              figure(row.conservation), figure(value(`${key}.factorEdad`)), figure(row.otherFactor), figure(value(`${key}.factorResultante`)),
+              figure(effectiveConservation(row)), figure(value(`${key}.factorEdad`)), figure(row.otherFactor), figure(value(`${key}.factorResultante`)),
               percent(row.completion), percent(row.undivided),
             ];
           })),
@@ -151,7 +151,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
             const key = `costos.instalaciones.${row.ref}`;
             return [
               ...itemCells(row), whole(row.age), whole(row.usefulLife), remainingLife(row.usefulLife, row.age),
-              figure(row.conservation), figure(value(`${key}.factorEdad`)), figure(row.otherFactor), figure(value(`${key}.factorResultante`)),
+              figure(effectiveConservation(row)), figure(value(`${key}.factorEdad`)), figure(row.otherFactor), figure(value(`${key}.factorResultante`)),
               percent(row.completion), percent(row.undivided),
             ];
           })),
@@ -200,14 +200,15 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
   if (result.indirects) {
     // The engine numbers the indirects it receives: the rows with a concept and a percentage.
     const indirects = calculation.indirects.filter((row) => row.concept.trim() && (row.percentage ?? 0) > 0);
-    apartados.push(generatedApartado(`${PREFIX}-indirectos`, "E) INDIRECTOS", {
+    // Letter D and the wording of the appraiser's TCH book ("D) Costos Indirectos"); the table prints here, not in an annex.
+    apartados.push(generatedApartado(`${PREFIX}-indirectos`, "D) COSTOS INDIRECTOS", {
       tables: [generatedTable(`${PREFIX}-tabla-indirectos`, "Indirectos",
         [textColumn("Concepto"), figureColumn("Porcentaje"), moneyColumn("Base $"), moneyColumn("Importe $")],
         indirects.map((row, index) => {
           const key = `costos.indirectos.${index + 1}`;
           return [row.concept, percent(row.percentage ?? 0, 2), money(input(key, "base") ?? 0), amount(key)];
         }),
-        { summaryBoxes: [{ id: "valor", position: "bottom", align: "end", rows: [{ label: "E) Indirectos:", value: money(result.indirects), emphasis: "strong" }] }] })],
+        { summaryBoxes: [{ id: "valor", position: "bottom", align: "end", rows: [{ label: "D) Costos Indirectos:", value: money(result.indirects), emphasis: "strong" }] }] })],
     }));
   }
 
@@ -218,7 +219,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
     ...(value("costos.terreno.valor") !== undefined ? [{ letter: "A", label: "A) Valor del Terreno:", amount: result.land }] : []),
     ...(constructions.length ? [{ letter: "B", label: "B) Valor de las Construcciones:", amount: result.constructions }] : []),
     ...(installations.length ? [{ letter: "C", label: "C) Valor de Instalaciones Especiales:", amount: result.specialInstallations }] : []),
-    ...(result.indirects ? [{ letter: "E", label: "E) Indirectos:", amount: result.indirects }] : []),
+    ...(result.indirects ? [{ letter: "D", label: "D) Costos Indirectos:", amount: result.indirects }] : []),
   ];
   const closing: TableSummaryBox = {
     id: "valor-fisico",
@@ -226,7 +227,8 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
     align: "end",
     rows: [
       ...parts.map((part) => ({ label: part.label, value: money(part.amount) })),
-      { label: `VALOR FÍSICO O DIRECTO (${parts.map((part) => part.letter).join("+")}):`, value: money(result.physicalValue), emphasis: "total" },
+      // As the appraiser's current book closes the page (Bugambilias, video of 20 Oct 2026; REAL_ARANDAS).
+      { label: `VALOR FÍSICO DE REPOSICIÓN (${parts.map((part) => part.letter).join("+")}):`, value: money(result.physicalValue), emphasis: "total" },
     ],
   };
   const closed = { ...last, tables: last.tables.map((item, index) => (index === last.tables.length - 1 ? withSummaryBox(item, closing) : item)) };
@@ -277,7 +279,10 @@ function constructionRows(calculation: CostCalculationDto, tableId: string): str
   const installations = calculation.installations.filter((row) => row.description.trim());
   if (id.endsWith(CONSTRUCTION_TYPES_TABLE) && (types.length || calculation.typesCaptured)) {
     // The conservation column is the cost approach's factor for the type, when it picked it.
-    const conservationOf = (ref: string) => calculation.constructions.find((row) => row.ref.trim().toLowerCase() === ref.trim().toLowerCase())?.conservation ?? null;
+    const conservationOf = (ref: string) => {
+      const row = calculation.constructions.find((item) => item.ref.trim().toLowerCase() === ref.trim().toLowerCase());
+      return row ? effectiveConservation(row) : null;
+    };
     return types.map((row) => [
       row.ref, row.description, row.classification, row.quality, text(conservationOf(row.ref), 2), text(row.age, 0),
       text(row.usefulLife, 0), text(remainingUsefulLife(row), 0),
@@ -288,7 +293,7 @@ function constructionRows(calculation: CostCalculationDto, tableId: string): str
     return installations.map((row) => [
       row.ref, row.share === "C" ? "Común" : "Privativa", text(row.age, 0), text(row.usefulLife, 0),
       row.usefulLife !== null && row.age !== null ? text(Math.max(row.usefulLife - row.age, 0), 0) : "—",
-      text(row.conservation, 3), row.maintenance || "—", `${row.description}${row.quantity ? ` (${text(row.quantity)}${row.unit ? ` ${row.unit}` : ""})` : ""}`,
+      text(effectiveConservation(row), 3), row.maintenance || "—", `${row.description}${row.quantity ? ` (${text(row.quantity)}${row.unit ? ` ${row.unit}` : ""})` : ""}`,
     ]);
   }
   return null;

@@ -71,7 +71,7 @@ type PropertySnapshot = {
 type StoredConfiguration = Partial<Pick<MarketSettingsDto,
   | "factorSlots" | "adoptedUnitValue" | "rounding" | "offerLevel" | "offerLabels" | "offerMark" | "offerIntro" | "homologationBasis"
   | "typicalFrontage" | "typicalDepth" | "characteristicFields" | "subjectCharacteristics" | "showFactorJustification"
-  | "regression">> & {
+  | "regression" | "showHomologationNote" | "homologationNote">> & {
   /**
    * The lote tipo captured, kept while the homologation is against the
    * subject: NSuperficieBase holds it only against the lote tipo, so the cost
@@ -185,6 +185,8 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
         subjectCharacteristics: configuration.subjectCharacteristics ?? {},
         showFactorJustification: configuration.showFactorJustification ?? true,
         regression: configuration.regression ?? null,
+        showHomologationNote: configuration.showHomologationNote ?? true,
+        homologationNote: configuration.homologationNote ?? null,
       }
     : defaults;
   const comparables = await Promise.all(rows.map((row) => toComparableDto(row, withPhotoUrls)));
@@ -341,6 +343,8 @@ function storedConfiguration(settings: StoredConfiguration) {
     subjectCharacteristics: settings.subjectCharacteristics ?? {},
     ...(settings.showFactorJustification === undefined ? {} : { showFactorJustification: settings.showFactorJustification }),
     regression: settings.regression ?? null,
+    ...(settings.showHomologationNote === undefined ? {} : { showHomologationNote: settings.showHomologationNote }),
+    homologationNote: settings.homologationNote ?? null,
   } as Prisma.InputJsonValue;
 }
 
@@ -446,6 +450,8 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
         subjectCharacteristics: payload.subjectCharacteristics ?? stored.subjectCharacteristics,
         showFactorJustification: payload.showFactorJustification ?? stored.showFactorJustification,
         regression: unlessOmitted(payload.regression, stored.regression),
+        showHomologationNote: payload.showHomologationNote ?? stored.showHomologationNote,
+        homologationNote: unlessOmitted(payload.homologationNote, stored.homologationNote),
       }),
     };
     await tx.enfoqueMercado.upsert({

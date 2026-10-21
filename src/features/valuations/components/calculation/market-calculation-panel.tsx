@@ -36,7 +36,7 @@ import {
   type MarketCalculationDto,
   type MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
-import { defaultOfferIntro, homologationLegend } from "@/features/valuations/calculation/market-document";
+import { DEFAULT_HOMOLOGATION_NOTE, defaultOfferIntro } from "@/features/valuations/calculation/market-document";
 import {
   COMPUTED_FACTORS,
   DIRECT_FACTORS,
@@ -622,7 +622,8 @@ function MarketTypePanel(props: {
           readOnly={readOnly}
           unitValueLabel={`${labels.unitValue} $${perUnit}`}
           homologatedLabel={`Homologado $${perUnit}`}
-          legend={homologationLegend(type)}
+          note={{ show: liveSettings.showHomologationNote !== false, text: liveSettings.homologationNote ?? null, defaultText: DEFAULT_HOMOLOGATION_NOTE }}
+          onNote={(note) => void saveSettings({ ...liveSettings, ...note })}
           onFactors={(comparable, factors) => changeComparable(comparable, (current) => ({ ...current, factors }))}
           onInvalid={(message) => toast.error(message)}
         />

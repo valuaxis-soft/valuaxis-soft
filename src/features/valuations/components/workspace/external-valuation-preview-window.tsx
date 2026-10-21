@@ -8,6 +8,8 @@ import { DEFAULT_NUMBER_PRESENTATION } from "@/features/valuations/services/numb
 import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
 import { DEFAULT_PAGE_PRESENTATION } from "@/features/valuations/services/page-presentation";
 import {
+  MAIN_CLOSED_GRACE_MS,
+  externalPreviewWindowAction,
   getExternalPreviewChannelName,
   type ExternalPreviewMessage,
   type ExternalPreviewPayload,
@@ -29,17 +31,36 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
         retryInterval = null;
       }
     };
-    channel.onmessage = (event: MessageEvent<ExternalPreviewMessage>) => {
-      // A main tab still on an older version (during a deploy) sends no letterhead: wait for a current one.
-      if (event.data?.type === "preview-state" && event.data.payload?.letterhead) {
-        setPayload(event.data.payload);
-        stopRetrying();
-      }
-      // After main F5, main broadcasts main-ready; external re-requests state
-      if (event.data?.type === "main-ready") {
-        channel.postMessage({ type: "preview-ready" } satisfies ExternalPreviewMessage);
+    const windowId = crypto.randomUUID();
+    // Set while the editor that fed this window went away: it closes unless an editor answers first.
+    let closeTimer: ReturnType<typeof setTimeout> | null = null;
+    const keepOpen = () => {
+      if (closeTimer !== null) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
       }
     };
+    channel.onmessage = (event: MessageEvent<unknown>) => {
+      const action = externalPreviewWindowAction(event.data, windowId);
+      if (action.kind === "show") {
+        setPayload(action.payload);
+        stopRetrying();
+        keepOpen();
+      }
+      // After main F5, main broadcasts main-ready; external re-requests state
+      if (action.kind === "request-state") {
+        keepOpen();
+        channel.postMessage({ type: "preview-ready" } satisfies ExternalPreviewMessage);
+      }
+      // The editor tab closed: so does this window, unless another editor of the valuation is still open (it answers).
+      if (action.kind === "close-unless-answered" && closeTimer === null) {
+        closeTimer = setTimeout(() => window.close(), MAIN_CLOSED_GRACE_MS);
+        channel.postMessage({ type: "preview-ready" } satisfies ExternalPreviewMessage);
+      }
+      // A newer window of the same valuation was opened: one is enough.
+      if (action.kind === "close") window.close();
+    };
+    channel.postMessage({ type: "preview-opened", windowId } satisfies ExternalPreviewMessage);
     channel.postMessage({ type: "preview-ready" } satisfies ExternalPreviewMessage);
 
     // Retry: periodically re-request state until we receive it.
@@ -51,6 +72,7 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
 
     return () => {
       stopRetrying();
+      keepOpen();
       channel.close();
     };
   }, [valuationId]);

@@ -9,10 +9,12 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import {
+  CONSERVATION_RATINGS,
   DEFAULT_COST_ROUNDING,
   LAND_FACTORS,
   LAND_FACTOR_SHORT_LABELS,
   constructionCostOf,
+  conservationOfRating,
   costEngineConfig,
   emptyConstructionCost,
   emptyInstallation,
@@ -171,6 +173,7 @@ function DemeritHeader(props: { leading: string[]; remaining: string; trailing?:
       <tr>
         {props.leading.map((label) => <th key={label} rowSpan={2} className={head}>{label}</th>)}
         <th rowSpan={2} className={head}>{props.remaining}</th>
+        <th rowSpan={2} className={head} title="Estado de conservación y calificación (criterio de Ross-Heidecke): da el factor Cons.">Estado de conservación</th>
         <th colSpan={4} className={head}>Factores de Demérito</th>
         <th rowSpan={2} className={head}>Grado de terminación (%)</th>
         <th rowSpan={2} className={head}>Indiviso (%)</th>
@@ -194,6 +197,33 @@ function ValuationHeader(props: { leading: string[]; resultant: string; netValue
       </tr>
       <tr>{["Valor Unit. $", "Valor Parcial VRN $", "Valor Unit. $", "Valor Parcial VNR $"].map((label, index) => <th key={index} className={head}>{label}</th>)}</tr>
     </thead>
+  );
+}
+
+/** The states of the sheet «ROSS HEIDECKE», each with its calificaciones, in the table's order. */
+const CONSERVATION_STATES = [...new Set(CONSERVATION_RATINGS.map((row) => row.state))];
+
+/**
+ * Estado de conservación and calificación of a row, as the sheet rates them;
+ * "Sin calificar" leaves the Cons. to be typed, as before the ratings.
+ */
+function ConservationRatingSelect(props: { value: string; label: string; onChange: (value: string) => void }) {
+  return (
+    <select
+      aria-label={props.label}
+      className="h-7 w-full min-w-32 rounded-md border bg-transparent px-1 text-xs"
+      value={props.value}
+      onChange={(event) => props.onChange(event.target.value)}
+    >
+      <option value="">Sin calificar</option>
+      {CONSERVATION_STATES.map((state) => (
+        <optgroup key={state} label={state}>
+          {CONSERVATION_RATINGS.filter((row) => row.state === state).map((row) => (
+            <option key={row.rating} value={String(row.rating)}>{state} {row.rating} = {row.factor.toFixed(3)}</option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
   );
 }
 
@@ -322,6 +352,12 @@ export function CostCalculationPanel(props: {
     setDraft(next);
     save(inputOf(next));
   }
+  // The calificación is a select too: it saves at once, and gives the Cons. unless one is typed.
+  const pickRating = (list: "constructions" | "installations", index: number, rating: string) => {
+    const next = { ...draft, [list]: draft[list].map((row, rowIndex) => (rowIndex === index ? { ...row, conservationRating: rating } : row)) };
+    setDraft(next);
+    save(inputOf(next));
+  };
   // The type is a select: picking one saves at once.
   const pickConstruction = (index: number, ref: string) => {
     const next = { ...draft, constructions: draft.constructions.map((row, rowIndex) => (rowIndex === index ? { ...row, ref } : row)) };
@@ -363,19 +399,28 @@ export function CostCalculationPanel(props: {
   );
   // Placeholder of a factor with a formula: the formula's result, shown while the field is empty.
   const hint = (formula: number | undefined) => (formula === undefined ? "Fórmula" : figure(formula, 4));
-  /** The demerit factors of a row: Cons. typed, Edad and FRe by formula unless typed, Otro typed (1 when empty). */
+  /**
+   * The demerit factors of a row: Cons. typed or, empty, the one of the
+   * calificación; Edad and FRe by formula unless typed; Otro typed (1 when empty).
+   */
   const demeritCells = (
     list: "constructions" | "installations",
     index: number,
-    row: { conservation: string; ageFactor: string; otherFactor: string; resultantFactor: string },
+    row: { conservation: string; conservationRating: string; ageFactor: string; otherFactor: string; resultantFactor: string },
     key: string,
     age: number | null,
     usefulLife: number | null,
   ) => {
     const ageFormula = formulaValue(`${key}.factorEdad`) ?? (age !== null && usefulLife ? ageFactor(age, usefulLife, config.ageFactor) : undefined);
+    const fromRating = conservationOfRating(parseDecimal(row.conservationRating));
     return (
       <>
-        <td className="w-16 p-1">{textInput(list, index, "conservation", row.conservation, "Factor de conservación (Cons.)")}</td>
+        <td className="w-36 p-1">
+          <ConservationRatingSelect value={row.conservationRating} label="Estado de conservación y calificación" onChange={(rating) => pickRating(list, index, rating)} />
+        </td>
+        <td className="w-16 p-1">
+          {textInput(list, index, "conservation", row.conservation, "Factor de conservación (Cons.)", true, fromRating === null ? undefined : figure(fromRating, 3))}
+        </td>
         <td className="w-16 p-1">{textInput(list, index, "ageFactor", row.ageFactor, "Factor de edad = 1 − (edad / vida útil)^1.4", true, hint(ageFormula))}</td>
         <td className="w-14 p-1">{textInput(list, index, "otherFactor", row.otherFactor, "Otro factor", true, "1")}</td>
         <td className="w-16 p-1">{textInput(list, index, "resultantFactor", row.resultantFactor, "Factor resultante FRe = Cons. × Edad × Otro", true, hint(formulaValue(`${key}.factorResultante`)))}</td>
@@ -400,7 +445,7 @@ export function CostCalculationPanel(props: {
       </header>
       {calculation.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
       <p className="text-xs text-muted-foreground">
-        Los factores con fórmula en el Excel (Sup. y FRe del terreno; Edad y FRe de construcciones e instalaciones) se calculan solos mientras el campo está vacío; el número gris es el resultado de la fórmula. Escribe un valor para sustituirla y bórralo para volver a la fórmula.
+        Los factores con fórmula en el Excel (Sup. y FRe del terreno; Edad y FRe de construcciones e instalaciones) se calculan solos mientras el campo está vacío; el número gris es el resultado de la fórmula. Escribe un valor para sustituirla y bórralo para volver a la fórmula. El factor de conservación (Cons.) sale del estado de conservación y su calificación (criterio de Ross-Heidecke) mientras no escribas otro.
       </p>
 
       <fieldset disabled={readOnly} className="grid gap-4">
@@ -667,7 +712,7 @@ export function CostCalculationPanel(props: {
         </div>
 
         <details className="grid gap-2" open={draft.indirects.length > 0}>
-          <summary className="cursor-pointer text-xs font-semibold tracking-wide text-muted-foreground uppercase">E) Indirectos (solo si el avalúo los lleva)</summary>
+          <summary className="cursor-pointer text-xs font-semibold tracking-wide text-muted-foreground uppercase">D) Costos indirectos (solo si el avalúo los lleva)</summary>
           <p className="text-xs text-muted-foreground">
             Concepto, porcentaje (0.05 = 5 %) y base. Con la base vacía se calculan sobre el valor de construcciones e instalaciones.
           </p>
@@ -706,9 +751,9 @@ export function CostCalculationPanel(props: {
           <div><dt className="text-xs text-muted-foreground">B) Construcciones</dt><dd className="tabular-nums">{money(live.result.constructions)}</dd></div>
           <div><dt className="text-xs text-muted-foreground">C) Instalaciones</dt><dd className="tabular-nums">{money(live.result.specialInstallations)}</dd></div>
           {live.result.indirects ? (
-            <div><dt className="text-xs text-muted-foreground">E) Indirectos</dt><dd className="tabular-nums">{money(live.result.indirects)}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">D) Costos indirectos</dt><dd className="tabular-nums">{money(live.result.indirects)}</dd></div>
           ) : null}
-          <div><dt className="text-xs text-muted-foreground">Valor físico</dt><dd className="text-base font-semibold tabular-nums">{money(live.result.physicalValue)}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Valor físico de reposición</dt><dd className="text-base font-semibold tabular-nums">{money(live.result.physicalValue)}</dd></div>
           {landUnitValue({ land: input.land, market: calculation.market }) === null ? (
             <p className="text-xs text-muted-foreground sm:col-span-5">Sin valor unitario del terreno: el valor físico no incluye el terreno.</p>
           ) : null}

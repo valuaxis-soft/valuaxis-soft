@@ -91,6 +91,8 @@ export const saveFullValuationSchema = z.object({
     enfoqueImagenPrincipal: z.object({ x: z.number(), y: z.number() }).optional(),
     // The extra header data travels with the carátula form; it is stored with the header block of the sections.
     camposEncabezado: z.array(z.object({ label: z.string().max(250), value: z.string().max(1_000) })).max(10).optional(),
+    // The size of the cover image too; it is clamped when read back.
+    tamanoImagenPrincipal: z.object({ fit: z.enum(["cover", "contain"]), scale: z.number() }).optional(),
   })
     .catchall(z.union([z.string().max(5_000), z.number(), z.null()]))
     .optional(),

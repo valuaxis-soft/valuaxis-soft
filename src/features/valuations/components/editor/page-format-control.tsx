@@ -6,12 +6,14 @@ import type { AppSection } from "@/features/valuations/model";
 import {
   documentPagePresentation,
   isBindingMargin,
+  isTitleBandStyle,
   isTitleBarStyle,
 } from "@/features/valuations/services/page-presentation";
 
 /**
  * The document's page choices, kept on its carátula section: the left margin
- * for binding, on every page, and blue or outlined title bars for its blocks.
+ * for binding, on every page, blue or outlined title bars for its blocks, and
+ * the title band of the page header filled or white with a line.
  */
 export function DocumentPageFormatControl({
   section,
@@ -22,7 +24,7 @@ export function DocumentPageFormatControl({
   readOnly: boolean;
   onUpdateSection: (sectionId: string, patch: Partial<AppSection>) => void;
 }) {
-  const { bindingMargin, titleBars } = documentPagePresentation([section]);
+  const { bindingMargin, titleBars, titleBand } = documentPagePresentation([section]);
   return (
     <section className="grid gap-4 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2">
       <Field className="gap-1.5">
@@ -56,6 +58,26 @@ export function DocumentPageFormatControl({
           <NativeSelectOption value="outline">Sin relleno (texto con línea)</NativeSelectOption>
         </NativeSelect>
         <FieldDescription>Las barras de título de los bloques se imprimen {titleBars === "outline" ? "sin relleno, con texto oscuro y una línea fina" : "en azul"}.</FieldDescription>
+      </Field>
+      <Field className="gap-1.5">
+        <FieldLabel htmlFor="document-title-band">Banda «Dictamen valuatorio»</FieldLabel>
+        <NativeSelect
+          id="document-title-band"
+          className="w-full"
+          value={titleBand}
+          disabled={readOnly}
+          onChange={(event) => {
+            if (isTitleBandStyle(event.target.value)) onUpdateSection(section.id, { titleBand: event.target.value });
+          }}
+        >
+          <NativeSelectOption value="filled">Barra azul</NativeSelectOption>
+          <NativeSelectOption value="outline">Sin relleno (letras azules y línea)</NativeSelectOption>
+        </NativeSelect>
+        <FieldDescription>
+          {titleBand === "outline"
+            ? "El título del documento va en blanco con letras azules y una línea azul separa el encabezado del cuerpo, como en tu Excel."
+            : "El título del documento, bajo el encabezado de cada página, va en una barra azul."}
+        </FieldDescription>
       </Field>
     </section>
   );
