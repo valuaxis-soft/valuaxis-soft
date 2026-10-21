@@ -14,6 +14,7 @@ import { renderPageToPdf } from "@/infrastructure/pdf/chromium-pdf";
 import { buildValuationExportKey } from "@/infrastructure/storage/storage-keys";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { AUTH_SESSION_COOKIE } from "@/features/auth/constants/auth.constants";
+import { PAGINATION_PENDING_SELECTOR } from "./pagination-state";
 import { ValuationWorkflowError } from "./valuation-workflow/errors";
 
 const PDF_ENTITY = "AVALUO_DICTAMEN_PDF";
@@ -54,6 +55,7 @@ export async function generateDictamenPdf(
     path: `/avaluos/${valuationPublicId}/dictamen`,
     cookies: [{ name: AUTH_SESSION_COOKIE, value: sessionToken }],
     settleSelector: "main[data-print-document] article",
+    pendingSelector: `main[data-print-document] ${PAGINATION_PENDING_SELECTOR}`,
   });
 
   const filePublicId = randomUUID();

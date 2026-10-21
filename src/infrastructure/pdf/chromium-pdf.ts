@@ -6,7 +6,7 @@
  * Chromium comes from CHROMIUM_PATH (the image installs /usr/bin/chromium;
  * locally, point it at Chrome). At most two renders run at a time.
  */
-import { chromium, type Browser } from "playwright-core";
+import { chromium, type Browser, type Locator, type Page } from "playwright-core";
 import { INTERNAL_RENDER_HEADER, INTERNAL_RENDER_TOKEN } from "./internal-render";
 
 const MAX_CONCURRENT = 2;
@@ -15,6 +15,8 @@ const RENDER_TIMEOUT_MS = 90_000;
 const IMAGE_WAIT_MS = 15_000;
 /** How long the page's layout must stay unchanged before printing. */
 const SETTLE_MS = 800;
+/** Longest wait for the document's pagination; past it the PDF is refused rather than printed cut. */
+const PAGINATION_WAIT_MS = 30_000;
 
 export class PdfRenderError extends Error {}
 
@@ -47,12 +49,51 @@ export function internalAppUrl() {
   return (process.env.INTERNAL_APP_URL || `http://127.0.0.1:${process.env.PORT || 3000}`).replace(/\/$/, "");
 }
 
+type CountingPage = Pick<Page, "waitForTimeout"> & { locator: (selector: string) => Pick<Locator, "count"> };
+
+/**
+ * Resolves once no element matches the pending selector and the number of
+ * settle elements has held for a while. Pending past the deadline is an
+ * error: the pages would print as they were before their measurement.
+ */
+export async function waitForPagination(
+  page: CountingPage,
+  options: { settleSelector: string; pendingSelector?: string; deadline: number; settleMs?: number },
+) {
+  const settleMs = options.settleMs ?? SETTLE_MS;
+  let last = -1;
+  let stableSince = Date.now();
+  for (;;) {
+    const [count, pending] = await Promise.all([
+      page.locator(options.settleSelector).count(),
+      options.pendingSelector ? page.locator(options.pendingSelector).count() : 0,
+    ]);
+    if (count !== last || pending > 0) {
+      last = count;
+      stableSince = Date.now();
+    } else if (count > 0 && Date.now() - stableSince >= settleMs) {
+      return;
+    }
+    if (Date.now() >= options.deadline) {
+      if (pending > 0) throw new PdfRenderError("La paginación del documento no terminó.");
+      break;
+    }
+    await page.waitForTimeout(150);
+  }
+  if (last <= 0) throw new PdfRenderError("El documento no tiene páginas para imprimir.");
+}
+
 export async function renderPageToPdf(input: {
   /** Path on this app, such as /avaluos/<id>/dictamen. */
   path: string;
   cookies: Array<{ name: string; value: string }>;
   /** Printing waits until the number of these elements stops changing. */
   settleSelector: string;
+  /**
+   * Elements whose pagination is still due: printing waits until none
+   * matches, on screen media, where the page measures its content.
+   */
+  pendingSelector?: string;
   /** "Página n de m" at the foot of every page, in the page's bottom margin. */
   pageNumbers?: boolean;
 }): Promise<Buffer> {
@@ -86,7 +127,6 @@ export async function renderPageToPdf(input: {
     if (!response?.ok() || new URL(page.url()).pathname !== input.path) {
       throw new PdfRenderError(`La página no se pudo abrir (${response?.status() ?? "sin respuesta"}).`);
     }
-    await page.emulateMedia({ media: "print" });
     // Fonts and images, but an image that never finishes does not hold the render.
     await page.evaluate(async (maxWaitMs) => {
       const loaded = Promise.all([
@@ -96,20 +136,10 @@ export async function renderPageToPdf(input: {
       ]);
       await Promise.race([loaded, new Promise((resolve) => setTimeout(resolve, maxWaitMs))]);
     }, Math.min(IMAGE_WAIT_MS, remaining()));
-    // Pagination measures the content after images load: wait until the page count holds.
-    let last = -1;
-    let stableSince = Date.now();
-    while (Date.now() < deadline) {
-      const count = await page.locator(input.settleSelector).count();
-      if (count !== last) {
-        last = count;
-        stableSince = Date.now();
-      } else if (count > 0 && Date.now() - stableSince >= SETTLE_MS) {
-        break;
-      }
-      await page.waitForTimeout(150);
-    }
-    if (last <= 0) throw new PdfRenderError("El documento no tiene páginas para imprimir.");
+    // Pagination measures the content on screen (its measuring copy is hidden in
+    // print media), so it finishes before print is emulated.
+    await waitForPagination(page, { ...input, deadline: Math.min(deadline, Date.now() + PAGINATION_WAIT_MS) });
+    await page.emulateMedia({ media: "print" });
 
     page.setDefaultTimeout(remaining());
     return await page.pdf({ preferCSSPageSize: true, printBackground: true, ...(input.pageNumbers ? PAGE_NUMBER_FOOTER : {}) });

@@ -12,6 +12,7 @@ import { chromium } from "playwright-core";
 import { POST } from "../../src/app/api/avaluos/[id]/dictamen/correo/route";
 import { AUTH_SESSION_COOKIE } from "../../src/features/auth/constants/auth.constants";
 import { sendDictamenByEmail } from "../../src/features/valuations/services/dictamen-email.service";
+import { PAGINATION_PENDING_SELECTOR } from "../../src/features/valuations/services/pagination-state";
 import { concludeValuation, saveValuationSections, ValuationWorkflowError } from "../../src/features/valuations/services/valuation-workflow.service";
 import { AmazonSesEmailService } from "../../src/infrastructure/email/amazon-ses-email.service";
 import { getEmailService, type DictamenEmailInput } from "../../src/infrastructure/email/email.service";
@@ -56,7 +57,8 @@ function fakeChromium(t: TestContext, pdf: Buffer = FAKE_PDF) {
       url: () => url,
       async emulateMedia() {},
       async evaluate() {},
-      locator: () => ({ count: async () => 3 }),
+      // Three pages, none of them still paginating.
+      locator: (selector: string) => ({ count: async () => (selector.includes(PAGINATION_PENDING_SELECTOR) ? 0 : 3) }),
       waitForTimeout: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
       pdf: async () => pdf,
     };

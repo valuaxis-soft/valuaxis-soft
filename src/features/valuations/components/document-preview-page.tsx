@@ -23,6 +23,7 @@ import type { AppSection } from "../model";
 import { ensureTableV2 } from "../services/table";
 import { splitTableRows, type DocumentTableFragment, type MeasuredTable } from "../services/table-pagination";
 import { BINDING_MARGIN_EXTRA_PX } from "../services/page-presentation";
+import { canMeasure, PAGINATION_STATE_ATTRIBUTE } from "../services/pagination-state";
 import { usePagePresentation } from "./page-presentation-context";
 
 export type DocumentFlowItem = {
@@ -383,12 +384,18 @@ export function AutoPaginatedDocumentFlow({
 
   // Single-flight pagination scheduler — at most one measurement per animation frame
   const rafPendingRef = useRef(false);
+  const pagesContainerRef = useRef<HTMLDivElement | null>(null);
+  // Set on the DOM, not rendered: React leaves the attribute as marked.
+  const markPagination = useCallback((state: "pending" | "ready") => {
+    pagesContainerRef.current?.setAttribute(PAGINATION_STATE_ATTRIBUTE, state);
+  }, []);
   // Stable callbacks (empty deps): they only read refs and call state setters.
-  const measureAndPaginate = useCallback(() => {
+  /** True when the pages now follow a measurement of the current content. */
+  const measureAndPaginate = useCallback((): boolean => {
     const currentItems = itemsRef.current;
     const measurePage = measurePageRef.current;
     const measureContent = measureContentRef.current;
-    if (!measurePage || !measureContent) return;
+    if (!measurePage || !measureContent || !canMeasure(measurePage)) return false;
 
     const pageHeader = measurePage.querySelector<HTMLElement>("[data-document-preview-header]");
     const computedContentStyle = window.getComputedStyle(measureContent);
@@ -433,7 +440,7 @@ export function AutoPaginatedDocumentFlow({
         return h === undefined || !Number.isFinite(h) || h < 0;
       });
     if (incomplete) {
-      return;
+      return false;
     }
 
     // Reconstruct measuredItems in canonical item order (by ID, not DOM order)
@@ -444,24 +451,24 @@ export function AutoPaginatedDocumentFlow({
     }));
 
     const nextPages = splitMeasuredDocumentFlowItems(measuredItems, nextAvailableHeight);
+    // Convert pages to ID-only arrays for comparison and storage
+    const nextPageIds = nextPages.map((page) => page.map(({ id, fragment }): PlacedItemRef => ({ id, fragment })));
+
+    // Conservation invariant: paginated IDs must exactly equal current item
+    // IDs (a split table counts once, on the page where it starts)
+    const flatPaginated = nextPageIds.flat().filter((ref) => !ref.fragment?.continuation).map((ref) => ref.id);
+    const canonicalIds = currentItems.map((item) => item.id);
+    const conservationOk =
+      flatPaginated.length === canonicalIds.length &&
+      flatPaginated.every((id, i) => id === canonicalIds[i]);
+    if (!conservationOk) {
+      return false;
+    }
+
     setAvailableHeight((current) =>
       Math.abs(current - nextAvailableHeight) > 1 ? nextAvailableHeight : current,
     );
     setPagination((current) => {
-      // Convert pages to ID-only arrays for comparison and storage
-      const nextPageIds = nextPages.map((page) => page.map(({ id, fragment }): PlacedItemRef => ({ id, fragment })));
-
-      // Conservation invariant: paginated IDs must exactly equal current item
-      // IDs (a split table counts once, on the page where it starts)
-      const flatPaginated = nextPageIds.flat().filter((ref) => !ref.fragment?.continuation).map((ref) => ref.id);
-      const canonicalIds = currentItems.map((item) => item.id);
-      const conservationOk =
-        flatPaginated.length === canonicalIds.length &&
-        flatPaginated.every((id, i) => id === canonicalIds[i]);
-      if (!conservationOk) {
-        return current;
-      }
-
       if (
         current.itemLayoutSignature === itemLayoutSignatureRef.current &&
         samePageIds(current.pageItemIds, nextPageIds)
@@ -470,34 +477,45 @@ export function AutoPaginatedDocumentFlow({
       }
       return { itemLayoutSignature: itemLayoutSignatureRef.current, pageItemIds: nextPageIds };
     });
+    return true;
   }, []);
 
   const requestPagination = useCallback(() => {
+    // While printing nothing can be measured: the pages measured on screen stand.
+    if (measurePageRef.current && !canMeasure(measurePageRef.current)) return;
+    markPagination("pending");
     if (rafPendingRef.current) {
       return;
     }
     rafPendingRef.current = true;
     requestAnimationFrame(() => {
       rafPendingRef.current = false;
-      measureAndPaginate();
+      if (measureAndPaginate()) markPagination("ready");
     });
-  }, [measureAndPaginate]);
+  }, [markPagination, measureAndPaginate]);
 
   // Content change: measure before the browser paints, so the provisional
   // split (every item on one page) never shows and the pages update in place
   // instead of flashing. Another measurement follows after paint, for what
-  // was not laid out yet (fonts, images).
+  // was not laid out yet (fonts, images). The measuring copy mounts only
+  // after hydration (isClient), and its mount is a change to measure too:
+  // without it a hydrated page kept the provisional split.
   const { bindingMargin, titleBars } = usePagePresentation();
+  const isClient = useIsClient();
   useLayoutEffect(() => {
     measureAndPaginate();
     requestPagination();
-  }, [itemLayoutSignature, contentLayoutKey, bindingMargin, titleBars, measureAndPaginate, requestPagination]);
+  }, [itemLayoutSignature, contentLayoutKey, bindingMargin, titleBars, isClient, measureAndPaginate, requestPagination]);
 
-  // Window/container resize: schedule measurement
+  // Window/container resize and web fonts that finish loading: schedule measurement
   useEffect(() => {
-    const handleResize = () => requestPagination();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    const handleChange = () => requestPagination();
+    window.addEventListener("resize", handleChange);
+    document.fonts?.addEventListener("loadingdone", handleChange);
+    return () => {
+      window.removeEventListener("resize", handleChange);
+      document.fonts?.removeEventListener("loadingdone", handleChange);
+    };
   }, [requestPagination]);
 
   const contextValue = useMemo(() => ({ requestPagination }), [requestPagination]);
@@ -547,9 +565,6 @@ export function AutoPaginatedDocumentFlow({
     reportPageCount(visiblePages.length);
   }, [visiblePages.length, reportPageCount]);
 
-  const pagesContainerRef = useRef<HTMLDivElement | null>(null);
-  const isClient = useIsClient();
-
   return (
     <LayoutInvalidationContext.Provider value={contextValue}>
       {isClient && createPortal(
@@ -571,7 +586,7 @@ export function AutoPaginatedDocumentFlow({
         document.body,
       )}
 
-      <div className="space-y-6 print:space-y-0" ref={pagesContainerRef}>
+      <div className="space-y-6 print:space-y-0" ref={pagesContainerRef} data-document-pagination="pending">
         {visiblePages.map((pageItems, pageIndex) => (
           <DocumentPreviewPage header={header} key={`${pageKeyPrefix}-page-${pageIndex + 1}`} pageNumber={pageIndex + 1} className={pageClassName}>
             <div {...contentProps} className={contentClassName} style={paginatedContentStyle} data-document-pagination-content="visible">
