@@ -1,31 +1,28 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { recordAuditEvent } from "@/features/auth/repositories/audit.repository";
-import { findDuplicates } from "@/features/valuations/calculation/comparable-card.service";
-import { parseComparableRows, type ComparableImportPreview } from "@/features/valuations/calculation/comparable-import";
-import { readSpreadsheet, SpreadsheetError } from "@/features/valuations/calculation/comparable-workbook";
+import { readComparableFile, SpreadsheetError } from "@/features/valuations/calculation/comparable-workbook";
 import { comparableTypeSchema } from "@/features/valuations/calculation/market-schemas";
-import { getMarketCalculation, importComparables } from "@/features/valuations/calculation/market.service";
+import { getMarketCalculation } from "@/features/valuations/calculation/market.service";
+import {
+  ImportFileError,
+  previewComparableImport,
+  runComparableImport,
+} from "@/features/valuations/comparable-base/comparable-import.service";
+import { readImportForm } from "@/features/valuations/comparable-base/import-form";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { requireApiUser } from "@/security/guards/api-guard";
 import { uploadRateLimitResponse } from "@/security/rate-limit/upload-limit";
 
-const reuseSchema = z.record(z.string().regex(/^\d+$/), z.uuid());
-const parseJson = (value: FormDataEntryValue | null) => {
-  if (typeof value !== "string" || !value.trim()) return {};
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return null;
-  }
-};
-const badRequest =(error: string) => NextResponse.json({ error }, { status: 400 });
+const badRequest = (error: string) => NextResponse.json({ error }, { status: 400 });
 
 /**
- * Reads an Excel or CSV of comparables. Without `confirmar=1` it only returns
- * the preview (each row with its errors); with it, it saves the valid rows.
+ * Reads an Excel or CSV of comparables into this market: the template of the
+ * market or the master workbook. Without `confirmar=1` it only returns the
+ * preview (each row with its errors, warnings and destination); with it, it
+ * saves the valid rows. Destination "Solo base general", and rows of another
+ * market with "Ambos", go to the firm's base without the valuation.
  */
 export async function POST(request: Request, { params }: RouteContext<"/api/avaluos/[id]/mercado/comparables/importar">) {
   try {
@@ -40,59 +37,21 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     // The valuation must be this organization's and still editable before any file is read.
     const valuation = await prisma.avaluo.findFirst({
       where: { UIdentificadorPublico: id, IdOrganizacion: auth.user.organizationId, BActivo: true, DFechaEliminacion: null },
-      select: { BBloqueado: true },
+      select: { BBloqueado: true, SFolio: true },
     });
     if (!valuation) return NextResponse.json({ error: "Avalúo no encontrado" }, { status: 404 });
     if (valuation.BBloqueado) return NextResponse.json({ error: "El avalúo está concluido; reábrelo para editarlo." }, { status: 409 });
-    const form = await request.formData();
-    const file = form.get("file");
-    if (!(file instanceof File)) return badRequest("No se envió ningún archivo.");
-    // Rows the appraiser answered with "Usar el existente": {"<row>": "<comparable id>"}.
-    const reuse = reuseSchema.safeParse(parseJson(form.get("reusar")));
-    if (!reuse.success) return badRequest("Los comparables existentes elegidos no son válidos.");
-    // Rows answered with "Es el mismo": {"<row>": "<comparable id>"}; the most recent data of the two stays.
-    const merge = reuseSchema.safeParse(parseJson(form.get("unificar")));
-    if (!merge.success) return badRequest("Los comparables con que se unifican no son válidos.");
+    const form = readImportForm(await request.formData());
+    if (!form.ok) return badRequest(form.error);
 
-    const sheet = await readSpreadsheet(Buffer.from(await file.arrayBuffer()), file.name);
-    const parsed = parseComparableRows(sheet, type.data);
-    if (parsed.missingColumns.length) {
-      return badRequest(`Falta la columna ${parsed.missingColumns.join(", ")}. Usa la plantilla de Valuaxis.`);
+    const file = await readComparableFile(Buffer.from(await form.data.file.arrayBuffer()), form.data.file.name);
+    const origin = { kind: "valuation" as const, valuationId: id, valuationFolio: valuation.SFolio, type: type.data };
+    const options = { destination: form.data.destination, defaultType: type.data };
+    if (search.get("confirmar") !== "1") {
+      return NextResponse.json({ data: { preview: await previewComparableImport(auth.user, origin, file, options) } });
     }
-    // Each valid row is checked against the firm's base, as a comparable captured by hand is.
-    const duplicates = new Map(await Promise.all(parsed.rows.flatMap((row) => (row.payload ? [row.payload] : [])
-      .map(async (payload) => [row.row, await findDuplicates(id, auth.user.organizationId, payload)] as const))));
-    const preview: ComparableImportPreview = {
-      rows: parsed.rows.map(({ row, errors, summary }) => {
-        const matches = (duplicates.get(row) ?? []).slice(0, 3);
-        return {
-          row, errors, ...summary,
-          ...(matches.length ? {
-            duplicates: matches.map((match) => ({
-              comparableId: match.comparableId, folio: match.folio, valuationFolio: match.valuation.folio, reasons: match.reasons,
-              updatedOn: match.updatedOn,
-            })),
-          } : {}),
-        };
-      }),
-      valid: parsed.rows.filter((row) => row.payload).length,
-      invalid: parsed.rows.filter((row) => !row.payload).length,
-      tooManyRows: parsed.tooManyRows,
-    };
-    if (search.get("confirmar") !== "1") return NextResponse.json({ data: { preview } });
 
-    const payloads = parsed.rows.flatMap((row): Parameters<typeof importComparables>[3] => {
-      if (!row.payload) return [];
-      // Only a comparable the preview offered for that row may be used instead of it, or merged with it.
-      const offered = (chosen: string | undefined) => Boolean(chosen && duplicates.get(row.row)?.some((match) => match.comparableId === chosen));
-      const reused = reuse.data[String(row.row)];
-      const merged = merge.data[String(row.row)];
-      if (offered(reused)) return [{ reuseFrom: reused }];
-      if (offered(merged)) return [{ mergeInto: merged, payload: row.payload }];
-      return [row.payload];
-    });
-    if (!payloads.length) return badRequest("No hay comparables válidos para importar.");
-    await importComparables(id, auth.user, type.data, payloads);
+    const summary = await runComparableImport(auth.user, origin, file, { ...options, reuse: form.data.reuse, merge: form.data.merge });
     await recordAuditEvent({
       typeKey: "CREACION",
       organizationId: auth.user.organizationId,
@@ -102,15 +61,21 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
       action: "COMPARABLES_IMPORT",
       result: "EXITOSO",
       metadata: {
-        type: type.data, imported: payloads.length, skipped: preview.invalid, file: file.name,
-        reused: payloads.filter((entry) => "reuseFrom" in entry).length, merged: payloads.filter((entry) => "mergeInto" in entry).length,
+        type: type.data, destination: summary.preview.destination, format: summary.preview.format, file: form.data.file.name,
+        imported: summary.toValuations, base: summary.toBase, skipped: summary.preview.invalid + (summary.preview.skipped ?? 0),
+        reused: Object.keys(form.data.reuse).length, merged: Object.keys(form.data.merge).length,
       },
     });
     return NextResponse.json({
-      data: { preview, imported: payloads.length, calculation: await getMarketCalculation(id, auth.user.organizationId, type.data) },
+      data: {
+        preview: summary.preview,
+        imported: summary.toValuations,
+        base: summary.toBase,
+        calculation: await getMarketCalculation(id, auth.user.organizationId, type.data),
+      },
     }, { status: 201 });
   } catch (error) {
-    if (error instanceof SpreadsheetError) return badRequest(error.message);
+    if (error instanceof SpreadsheetError || error instanceof ImportFileError) return badRequest(error.message);
     return valuationErrorResponse("COMPARABLES_IMPORT", error, "No se pudieron importar los comparables.");
   }
 }

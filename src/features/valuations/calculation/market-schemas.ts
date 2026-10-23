@@ -2,7 +2,7 @@ import { z } from "zod";
 import { SURFACE_POWERS } from "../engine/config";
 import { MAX_REGRESSION_VARIABLES } from "../engine/regression";
 import { capturedFormulasSchema } from "./captured-formulas";
-import { OPERATION_TYPES, URBAN_PROXIMITIES } from "./comparable-card";
+import { CURRENCIES, DATA_VERIFIED, OPERATION_TYPES, UNIT_BASES, URBAN_PROXIMITIES } from "./comparable-card";
 import { REVIEW_CHECKS, REVIEW_STATUSES } from "./comparable-review";
 import { MAX_SCALE_LEVELS, REGRESSION_DEPENDENTS } from "./market-regression";
 import {
@@ -61,6 +61,31 @@ const addressSchema = z.object({
   number: text(40).optional(),
 });
 
+const count = (label: string) => z.number(`${label} es un número.`).int(`${label} es un número entero.`).min(0, `${label} no puede ser negativo.`).max(10_000).nullable().optional();
+
+/** What the master workbook captures of the property beyond the homologation fields; the calculation does not read it. */
+const propertyDetailsSchema = z.object({
+  age: z.number("La edad es un número.").finite().min(0, "La edad no puede ser negativa.").max(1000).nullable().optional(),
+  levels: count("Niveles"),
+  parking: count("Estacionamientos"),
+  paving: text(80).optional(),
+  blockPosition: text(80).optional(),
+  unitBasis: z.enum(UNIT_BASES, "Base del unitario inválida.").nullable().optional(),
+});
+
+/** What the master workbook captures of the listing: its id in the portal, its currency, its evidence and its verification. */
+const listingDetailsSchema = z.object({
+  publicationId: text(120).optional(),
+  currency: z.enum(CURRENCIES, "La moneda es MXN o USD.").nullable().optional(),
+  photoUrl: z.string().trim().max(1000).nullable()
+    .refine((value) => !value || /^https?:\/\//i.test(value), "La URL de la fotografía debe empezar con http:// o https://.")
+    .transform((value) => value || null).optional(),
+  priceChangedOn: day.optional(),
+  dataOrigin: text(80).optional(),
+  extractionConfidence: text(40).optional(),
+  dataVerified: z.enum(DATA_VERIFIED, "Datos verificados es Sí, No o Parcialmente.").nullable().optional(),
+});
+
 export const comparableInputSchema = z.object({
   location: z.string().trim().min(1, "Captura la ubicación del comparable.").max(500),
   area: positive,
@@ -103,6 +128,9 @@ export const comparableInputSchema = z.object({
   bathrooms: z.number("Los baños son un número.").finite().min(0, "Los baños no pueden ser negativos.").max(500)
     .refine((value) => Number.isInteger(value * 2), "Los baños van en enteros o medios: 2 o 2.5.").nullable().optional(),
   constructionType: text(120).optional(),
+  // The master workbook's other columns (comparable-master); a client of before leaves them out and they stay as stored.
+  propertyDetails: propertyDetailsSchema.nullable().optional(),
+  listingDetails: listingDetailsSchema.nullable().optional(),
   // Built-in factors once each, plus the firm's own: at most the six of the homologation and as many own ones.
   factors: z.array(factorSchema).max(FACTOR_TYPES.length + MAX_FACTOR_SLOTS)
     .refine((factors) => new Set(factors.map(factorKey)).size === factors.length, "Cada tipo de factor va una sola vez."),

@@ -15,7 +15,9 @@ import { OFFER_MAX_AGE_MONTHS } from "../calculation/comparable-review";
 import { comparableValidity, type ComparableValidity } from "../calculation/comparable-validity";
 import { isRentComparableType, type ComparableType } from "../calculation/market-types";
 import { searchTokens } from "../comparable-search/normalize";
-import { AREA, HAYSTACK, likePattern, placeCondition, postalCodeCondition, wordsIn } from "../comparable-search/own-base-sql";
+import {
+  AREA, FIRM_BASE_FROM, HAYSTACK, firmBaseCondition, likePattern, placeCondition, postalCodeCondition, wordsIn,
+} from "../comparable-search/own-base-sql";
 import { COMPARABLE_LIST_PAGE_SIZE, type ComparableListParams, type ComparableSort } from "./comparable-list-params";
 
 /** A valuation that used a comparable of the base. */
@@ -90,18 +92,15 @@ const ORDER: Record<ComparableSort, Prisma.Sql> = {
 
 /**
  * The comparables of the organization's valuations, in the version each one
- * shows today; `baseKey` groups the captures of one comparable of the base.
+ * shows today, and those kept in its base without a valuation;
+ * `baseKey` groups the captures of one comparable of the base.
  */
 const capturesOf = (organizationId: number) => Prisma.sql`
-  SELECT c.*, a."IdOrganizacion" AS "organizationId", a."SNombreCliente" AS "client",
+  SELECT c.*, COALESCE(a."IdOrganizacion", c."IdOrganizacion") AS "organizationId", a."SNombreCliente" AS "client",
+    a."SFolio" AS "valuationFolio",
     COALESCE('f' || p."IFolioComparable"::text, 'c' || c."IdComparableAvaluo"::text) AS "baseKey"
-  FROM "devpware_comparables_avaluos" c
-  JOIN "devpware_avaluos" a ON a."IdAvaluo" = c."IdAvaluo"
-  JOIN "devpware_propiedades" p ON p."IdPropiedad" = c."IdPropiedad"
-  WHERE a."IdOrganizacion" = ${organizationId}
-    AND a."BActivo" AND a."DFechaEliminacion" IS NULL
-    AND c."IdVersionAvaluo" = COALESCE(a."IdVersionTrabajo", a."IdVersionFinal")
-    AND c."BIncluido"`;
+  ${FIRM_BASE_FROM}
+  WHERE ${firmBaseCondition(organizationId)}`;
 
 function conditions(params: ComparableListParams, today: string): Prisma.Sql[] {
   const folio = parseComparableId(params.q);
@@ -158,7 +157,7 @@ function firstPhotoKey(photos: Prisma.JsonValue | null) {
 export async function listComparableBase(
   organizationId: number,
   params: ComparableListParams,
-  options: { today?: string; pageSize?: number } = {},
+  options: { today?: string; pageSize?: number; withThumbnails?: boolean } = {},
 ): Promise<ComparableBasePage> {
   const today = options.today ?? todayInMexico();
   const pageSize = options.pageSize ?? COMPARABLE_LIST_PAGE_SIZE;
@@ -223,7 +222,7 @@ export async function listComparableBase(
       bathrooms: finite(property.bathrooms),
       sourceName: text(publication.sourceName),
       validity: comparableValidity(row.dataUpdatedAt, today),
-      thumbnailUrl: photo ? await stableDownloadUrl(photo).catch(() => null) : null,
+      thumbnailUrl: photo && options.withThumbnails !== false ? await stableDownloadUrl(photo).catch(() => null) : null,
       uses: uses.get(row.baseKey) ?? [],
     };
   }));

@@ -7,6 +7,27 @@ import { Prisma } from "@prisma/client";
 
 import { searchTokens } from "./normalize";
 
+/**
+ * The comparables of the firm's base, as `c` with its valuation `a` (NULL for
+ * one kept in the base without a valuation, migration 048), its type `t` and
+ * its property `p`. Pair it with firmBaseCondition.
+ */
+export const FIRM_BASE_FROM = Prisma.sql`FROM "devpware_comparables_avaluos" c
+    LEFT JOIN "devpware_avaluos" a ON a."IdAvaluo" = c."IdAvaluo"
+    JOIN "devpware_tipos_comparables" t ON t."IdTipoComparable" = c."IdTipoComparable"
+    JOIN "devpware_propiedades" p ON p."IdPropiedad" = c."IdPropiedad"`;
+
+/**
+ * The tenant and what counts as the base: of an alive valuation of the
+ * organization, only the version it shows today (reopening copies its
+ * comparables); and those kept in the organization's base without a valuation.
+ */
+export const firmBaseCondition = (organizationId: number) => Prisma.sql`c."BIncluido" AND (
+      (c."IdAvaluo" IS NOT NULL AND a."IdOrganizacion" = ${organizationId} AND a."BActivo" AND a."DFechaEliminacion" IS NULL
+        AND c."IdVersionAvaluo" = COALESCE(a."IdVersionTrabajo", a."IdVersionFinal"))
+      OR (c."IdAvaluo" IS NULL AND c."IdOrganizacion" = ${organizationId})
+    )`;
+
 export const likePattern = (token: string) => `%${token.replace(/[\\%_]/g, "\\$&")}%`;
 
 /** Location and the texts of the property and its publication, without accents or case. */

@@ -336,7 +336,7 @@ export function ComparableDialog(props: {
                       <span className="font-mono">{formatComparableId(match.folio) ?? "Sin número"}</span> · {match.location}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {COMPARABLE_TYPE_LABELS[match.type]} · {money(match.price)} · avalúo {match.valuation.folio}
+                      {COMPARABLE_TYPE_LABELS[match.type]} · {money(match.price)} · {match.valuation ? `avalúo ${match.valuation.folio}` : "base general"}
                       {match.sameValuation ? " (este avalúo)" : ""} · {match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")}
                       {" "}· datos del {formatDay(match.updatedOn)}
                     </p>

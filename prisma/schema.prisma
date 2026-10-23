@@ -284,6 +284,7 @@ model Organizacion {
   invitaciones               InvitacionOrganizacion[]
   clientesPago               ClientePago[]
   movimientosCreditos        MovimientoCreditos[]
+  comparablesBase            ComparableAvaluo[]            @relation("ComparableBaseOrganizacion")
 
   @@index([IdEstadoOrganizacion])
   @@index([IdUsuarioPropietario])
@@ -2424,8 +2425,11 @@ model TipoFactorHomologacion {
 model ComparableAvaluo {
   IdComparableAvaluo               BigInt    @id @default(autoincrement()) @map("IdComparableAvaluo")
   UIdentificadorPublico            String    @unique @default(dbgenerated("gen_random_uuid()")) @map("UIdentificadorPublico") @db.Uuid
-  IdAvaluo                         Int       @map("IdAvaluo")
-  IdVersionAvaluo                  Int       @map("IdVersionAvaluo")
+  /// NULL with IdVersionAvaluo for a comparable kept in the firm's base without a valuation (migration 048).
+  IdAvaluo                         Int?      @map("IdAvaluo")
+  IdVersionAvaluo                  Int?      @map("IdVersionAvaluo")
+  /// The firm of a comparable of the base without a valuation; NULL for the comparables of a valuation (migration 048).
+  IdOrganizacion                   Int?      @map("IdOrganizacion")
   IdPropiedad                      Int       @map("IdPropiedad")
   IdPublicacionPropiedad           BigInt?   @map("IdPublicacionPropiedad")
   IdUsuarioSeleccion               Int       @map("IdUsuarioSeleccion")
@@ -2455,8 +2459,9 @@ model ComparableAvaluo {
   DFechaExclusion                  DateTime? @map("DFechaExclusion") @db.Timestamptz(3)
   DFechaModificacion               DateTime  @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
 
-  avaluo               Avaluo                        @relation(fields: [IdAvaluo], references: [IdAvaluo], onDelete: Cascade, onUpdate: Cascade)
-  versionAvaluo        VersionAvaluo                 @relation(fields: [IdVersionAvaluo], references: [IdVersionAvaluo], onDelete: Cascade, onUpdate: Cascade)
+  avaluo               Avaluo?                       @relation(fields: [IdAvaluo], references: [IdAvaluo], onDelete: Cascade, onUpdate: Cascade)
+  versionAvaluo        VersionAvaluo?                @relation(fields: [IdVersionAvaluo], references: [IdVersionAvaluo], onDelete: Cascade, onUpdate: Cascade)
+  organizacionBase     Organizacion?                 @relation("ComparableBaseOrganizacion", fields: [IdOrganizacion], references: [IdOrganizacion], onDelete: Cascade, onUpdate: Cascade)
   propiedad            Propiedad                     @relation(fields: [IdPropiedad], references: [IdPropiedad], onDelete: Restrict, onUpdate: Cascade)
   publicacionPropiedad PublicacionPropiedad?         @relation(fields: [IdPublicacionPropiedad], references: [IdPublicacionPropiedad], onDelete: SetNull, onUpdate: Cascade)
   usuarioSeleccion     Usuario                       @relation("ComparableUsuarioSeleccion", fields: [IdUsuarioSeleccion], references: [IdUsuario], onDelete: Restrict, onUpdate: Cascade)
@@ -2468,6 +2473,7 @@ model ComparableAvaluo {
   @@unique([IdVersionAvaluo, IdPropiedad, IdTipoComparable])
   @@index([IdAvaluo])
   @@index([IdVersionAvaluo])
+  @@index([IdOrganizacion])
   @@index([IdPropiedad])
   @@index([IdPublicacionPropiedad])
   @@index([IdUsuarioSeleccion])

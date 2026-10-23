@@ -1,9 +1,10 @@
 /**
- * Whether a comparable being captured is one the firm already has: the same
- * listing URL, the same address, or the same phone with the same price (±1 %).
+ * Whether a comparable being captured is one the firm already has: its
+ * number, the same portal and publication id, the same listing URL, the same
+ * address, or the same phone with the same price (±1 %).
  * Pure; the service reads the candidates of the firm's base and asks here.
  */
-import { searchText, urlKey } from "../comparable-search/normalize";
+import { searchText } from "../comparable-search/normalize";
 import { hasAddress, type ComparableAddress } from "./comparable-card";
 
 export type DuplicateProbe = {
@@ -14,16 +15,50 @@ export type DuplicateProbe = {
   price: number | null;
   /** Its area (land, built or rentable, as its type says); a client of before leaves it out. */
   area?: number | null;
+  /** The listing's id in its portal (`sourceName`), from the master workbook. */
+  publicationId?: string | null;
+  sourceName?: string | null;
+  /** Its number in the firm's base ("REF / ID" of the master workbook): the same number is the same comparable. */
+  folio?: number | null;
 };
 
-export const DUPLICATE_REASONS = ["URL", "ADDRESS", "PHONE_PRICE", "SIMILAR"] as const;
+export const DUPLICATE_REASONS = ["FOLIO", "PUBLICATION", "URL", "ADDRESS", "PHONE_PRICE", "SIMILAR"] as const;
 export type DuplicateReason = (typeof DUPLICATE_REASONS)[number];
+/** Reasons that identify the listing itself: the import proposes "es el mismo" for them. */
+export const EXACT_DUPLICATE_REASONS: ReadonlySet<DuplicateReason> = new Set(["FOLIO", "PUBLICATION", "URL"]);
 export const DUPLICATE_REASON_LABELS: Record<DuplicateReason, string> = {
+  FOLIO: "mismo número de comparable",
+  PUBLICATION: "mismo portal e ID de publicación",
   URL: "misma liga del anuncio",
   ADDRESS: "misma dirección",
   PHONE_PRICE: "mismo teléfono y precio",
   SIMILAR: "misma colonia, superficie y precio",
 };
+
+/**
+ * A listing URL as one comparable: without query or fragment, the host in
+ * lower case without "www.", no trailing slash. The path keeps its case.
+ * Null for a text that is not an http(s) URL.
+ */
+export function canonicalUrl(url: string | null | undefined) {
+  const text = url?.trim();
+  if (!text) return null;
+  try {
+    const parsed = new URL(text);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    const host = parsed.host.toLowerCase().replace(/^www\./, "");
+    return `${host}${parsed.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return null;
+  }
+}
+
+/** The canonical URL compared without case (portals do not tell listings apart by case). */
+export const canonicalUrlKey = (url: string | null | undefined) => canonicalUrl(url)?.toLowerCase() ?? null;
+
+/** "Inmuebles24.com", "www.inmuebles24.com" and "Inmuebles24" are one portal. */
+export const portalKey = (name: string | null | undefined) =>
+  searchText(name ?? "").replace(/^www /, "").replace(/ (com|mx|net)\b/g, "").replace(/ /g, "");
 
 /** Two prices within 1 % of each other are the same offer. */
 export const PRICE_TOLERANCE = 0.01;
@@ -87,8 +122,12 @@ export function samePrice(a: number | null, b: number | null, tolerance = PRICE_
 /** Why `candidate` is the same property as `probe`; empty when it is not. */
 export function duplicateReasons(probe: DuplicateProbe, candidate: DuplicateProbe): DuplicateReason[] {
   const reasons: DuplicateReason[] = [];
-  const url = urlKey(probe.url);
-  if (url && url === urlKey(candidate.url)) reasons.push("URL");
+  if (probe.folio && probe.folio === candidate.folio) reasons.push("FOLIO");
+  const publication = probe.publicationId?.trim().toLowerCase();
+  if (publication && publication === candidate.publicationId?.trim().toLowerCase()
+    && portalKey(probe.sourceName) === portalKey(candidate.sourceName)) reasons.push("PUBLICATION");
+  const url = canonicalUrlKey(probe.url);
+  if (url && url === canonicalUrlKey(candidate.url)) reasons.push("URL");
   const mine = addressKey(probe);
   const theirs = addressKey(candidate);
   // The same street and number, in the same colonia or municipio when both say which.

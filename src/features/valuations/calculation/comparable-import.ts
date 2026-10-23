@@ -8,6 +8,7 @@
 import { comparableInputSchema, type ComparableInputPayload } from "./market-schemas";
 import { isBuiltComparableType, type ComparableType } from "./market-types";
 import type { DuplicateReason } from "./comparable-duplicates";
+import type { ImportDestination } from "./comparable-master";
 
 export const MAX_IMPORT_ROWS = 100;
 
@@ -81,7 +82,7 @@ const ALIASES: Partial<Record<FieldKey, string[]>> = {
   notes: ["observaciones", "notas", "comentarios"],
 };
 
-const normalize = (value: string) =>
+export const normalizeHeader = (value: string) =>
   value.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 
 /** A spreadsheet cell as ExcelJS or the CSV reader gives it. */
@@ -101,22 +102,48 @@ export type ImportRowResult = {
   summary: { location: string; area: number | null; price: number | null };
 };
 
-/** What the appraiser sees before importing: each row and why it would be skipped. */
+/** Where a row of an import goes: a valuation's market, the firm's base without a valuation, or nowhere. */
+export type ImportTargetDto =
+  | { kind: "valuation"; valuationId: string; valuationFolio: string; type: ComparableType }
+  | { kind: "base"; type: ComparableType }
+  | { kind: "skip" };
+
+/** Rows an import kept in the base without a valuation: new, updated ("es el mismo") or left as the base had them. */
+export type ImportBaseCounts = { created: number; updated: number; kept: number };
+
+/** What the appraiser sees before importing: each row, why it would be skipped, what to look at and where it goes. */
 export type ComparableImportPreview = {
+  /** MAESTRA: the master workbook; MERCADO: the template of one market. */
+  format: "MAESTRA" | "MERCADO";
+  /** The destination used, and the one the file's INICIO sheet says (the dialog starts with it). */
+  destination: ImportDestination;
+  fileDestination: ImportDestination | null;
   rows: Array<{
     row: number; errors: string[]; location: string; area: number | null; price: number | null;
+    /** Never block: they say what Valuaxis assumed or what to complete. */
+    warnings?: string[];
+    type?: ComparableType | null;
+    unitPrice?: number | null;
+    currency?: "MXN" | "USD" | null;
+    target?: ImportTargetDto;
+    /** The review it is imported with. */
+    review?: "VERIFICADO" | "POR_REVISAR" | null;
     /** Comparables of the firm's base that look like the same property: the appraiser may use one instead. */
-    duplicates?: Array<{ comparableId: string; folio: number | null; valuationFolio: string; reasons: DuplicateReason[]; updatedOn: string }>;
+    duplicates?: Array<{ comparableId: string; folio: number | null; valuationFolio: string | null; reasons: DuplicateReason[]; updatedOn: string }>;
+    /** The answer proposed for an exact match (same number, publication or URL): "merge:<id>". */
+    suggested?: string | null;
   }>;
   valid: number;
   invalid: number;
+  /** Rows marked Descartado, or whose destination leaves them out. */
+  skipped?: number;
   tooManyRows: boolean;
 };
 
 export type ImportResult = { rows: ImportRowResult[]; missingColumns: string[]; tooManyRows: boolean };
 
 /** The cell's visible text; with `preferLink`, a hyperlink's address instead (only for the ad link column). */
-function cellText(value: CellValue, preferLink = false): string {
+export function cellText(value: CellValue, preferLink = false): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   if (typeof value === "object") {
@@ -129,12 +156,12 @@ function cellText(value: CellValue, preferLink = false): string {
   return String(value);
 }
 
-function cellNumber(value: CellValue): { value: number | null; error?: string } {
+export function cellNumber(value: CellValue): { value: number | null; error?: string } {
   if (typeof value === "object" && value && "result" in value && value.result !== undefined) return cellNumber(value.result as CellValue);
   if (typeof value === "number") return Number.isFinite(value) ? { value } : { value: null, error: "no es un número" };
   const text = cellText(value).trim();
   if (!text) return { value: null };
-  const clean = normalizeNumberText(text.replace(/[$\s]|m2|m²|mxn/gi, ""));
+  const clean = normalizeNumberText(text.replace(/[$\s]|m2|m²|mxn|usd/gi, ""));
   const parsed = clean === null ? Number.NaN : Number(clean);
   return Number.isFinite(parsed) ? { value: parsed } : { value: null, error: `"${text}" no es un número` };
 }
@@ -165,7 +192,7 @@ export function normalizeNumberText(text: string): string | null {
 
 const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
 
-function cellDate(value: CellValue): { value: string | null; error?: string } {
+export function cellDate(value: CellValue): { value: string | null; error?: string } {
   if (value instanceof Date) return { value: value.toISOString().slice(0, 10) };
   if (typeof value === "number") return { value: new Date(EXCEL_EPOCH + Math.round(value) * 86_400_000).toISOString().slice(0, 10) };
   const text = cellText(value).trim();
@@ -183,10 +210,10 @@ function cellDate(value: CellValue): { value: string | null; error?: string } {
 
 /** Which column holds each field, from the header row. */
 function mapHeaders(headerRow: CellValue[], columns: ImportColumn[]) {
-  const headers = headerRow.map((cell) => normalize(cellText(cell)));
+  const headers = headerRow.map((cell) => normalizeHeader(cellText(cell)));
   const positions = new Map<FieldKey, number>();
   for (const column of columns) {
-    const exact = headers.indexOf(normalize(column.header));
+    const exact = headers.indexOf(normalizeHeader(column.header));
     const alias = exact >= 0 ? exact : headers.findIndex((header, index) =>
       header !== "" && ![...positions.values()].includes(index) && (ALIASES[column.key] ?? []).some((word) => header.startsWith(word)));
     if (alias >= 0) positions.set(column.key, alias);
@@ -195,7 +222,7 @@ function mapHeaders(headerRow: CellValue[], columns: ImportColumn[]) {
 }
 
 /** Zod's default messages are in English; the ones written in the schema are already in Spanish. */
-function friendlyMessage(issue: { code: string; message: string }) {
+export function friendlyMessage(issue: { code: string; message: string }) {
   if (!/^(Too|Invalid|Expected)/.test(issue.message)) return issue.message;
   if (issue.code === "too_small") return "debe ser mayor que cero.";
   if (issue.code === "too_big") return "es demasiado largo o demasiado grande.";
