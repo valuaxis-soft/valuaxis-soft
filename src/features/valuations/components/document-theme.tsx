@@ -20,10 +20,12 @@ export type DocumentThemeVariant = "caratula" | "standard";
 export interface DocumentThemeTokens {
   /** Block / Sección title */
   sectionTitle: string;
-  /** Apartado / Sub-section title (typography only — no border) */
+  /**
+   * Apartado / Sub-section title with its rule beneath, edge to edge. Every
+   * apartado prints it, whatever it holds (concepts, a table, images, a
+   * paragraph or a format of its own), flush with the block's title bar.
+   */
   apartadoTitle: string;
-  /** Apartado blue rule beneath title — fixed-width decorative element */
-  apartadoRule: string;
   /** Concept label text */
   conceptLabel: string;
   /** Concept value text */
@@ -46,14 +48,19 @@ export interface DocumentThemeTokens {
   pagePadding: string;
 }
 
+/**
+ * One title for every apartado: the thicker rule (2px) the appraiser chose,
+ * from edge to edge and right under the text, so no title has its line half
+ * way, thinner or further down than another.
+ */
+const APARTADO_TITLE =
+  "mb-1 border-b-2 border-[#2F5495] pb-0.5 text-[11px] font-bold uppercase leading-tight text-[#2F5495]";
+
 /* ── Carátula variant ──────────────────────────────────────────── */
 const CARATULA_THEME: DocumentThemeTokens = {
   sectionTitle:
     "mb-1 border-b border-[#00285A]/30 pb-0.5 text-[11px] font-bold uppercase tracking-wide text-[#00285A]",
-  apartadoTitle:
-    "mb-1 text-[11px] font-semibold uppercase text-[#2F5495]",
-  apartadoRule:
-    "mb-1 h-[2px] w-[300px] bg-[#2F5495]",
+  apartadoTitle: APARTADO_TITLE,
   conceptLabel:
     "min-w-0 text-[10px] font-medium text-[#1a1a1a] leading-snug",
   conceptValue:
@@ -75,10 +82,7 @@ const STANDARD_THEME: DocumentThemeTokens = {
   // A fine bar, thinner than the document's title band in the header.
   sectionTitle:
     "mb-1 bg-[#00285A] px-3 py-0.5 text-center text-[11px] font-bold uppercase leading-tight text-white",
-  apartadoTitle:
-    "mb-0.5 text-[11px] font-bold uppercase text-[#2F5495]",
-  apartadoRule:
-    "mb-0.5 h-[2px] w-[300px] bg-[#2F5495]",
+  apartadoTitle: APARTADO_TITLE,
   conceptLabel:
     "min-w-0 text-[11px] font-semibold text-[#1a1a1a] leading-snug",
   conceptValue:

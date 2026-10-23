@@ -32,7 +32,7 @@ import { DocumentNumberFormatControl } from "../editor/number-format-control";
 import { DocumentPageFormatControl } from "../editor/page-format-control";
 import { SignaturesEditor } from "../editor/signatures-editor";
 
-import { GripVertical, Plus } from "lucide-react";
+import { GripVertical, Plus, Trash2 } from "lucide-react";
 
 import { ChangeEvent, useMemo, useState, type ReactNode } from "react";
 import { ensureTableV2 } from "@/features/valuations/services/table";
@@ -232,7 +232,7 @@ export function ValuationEditorPanel(props: {
   onRemoveConcept: (sectionId: string, blockId: string, conceptId: string) => void;
   onRemoveImage: (sectionId: string, blockId: string, imageId: string, apartadoId?: string) => void;
   onRemoveApartado: (sectionId: string, blockId: string, apartadoId: string) => void;
-  /** Deletes a section the appraiser added. */
+  /** Asks to delete a section the appraiser added; the workspace confirms first. */
   onRemoveSection?: (sectionId: string) => void;
   onRemoveSubConcept: (sectionId: string, blockId: string, apartadoId: string, conceptId: string) => void;
   onRemoveTable: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
@@ -384,10 +384,14 @@ export function ValuationEditorPanel(props: {
                 visible: section.enabled,
                 onChange: (enabled) => props.onUpdateSection(section.id, { enabled }),
               } : undefined}
-              deleteAction={sectionCapabilities.delete && props.onRemoveSection && !props.readOnly ? {
-                onDelete: () => props.onRemoveSection?.(section.id),
-              } : undefined}
             />
+          ) : null}
+          {/* Deleting a section takes it whole: a labeled button, not a bare trash can that reads like "clear". */}
+          {sectionCapabilities.delete && props.onRemoveSection && !props.readOnly ? (
+            <Button type="button" size="sm" variant="outline" title="Eliminar la sección con todo su contenido" onClick={() => props.onRemoveSection?.(section.id)}>
+              <Trash2 />
+              Eliminar sección
+            </Button>
           ) : null}
           {!isCaratula ? (
             <>

@@ -1,7 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
-
 import type { Concept, Apartado, TableContent } from "../model";
 import { findBoundaryDistanceColumnId, findBoundarySource, findBoundaryTable, getTerrenoElementKind } from "../sections/terreno";
 import { resolveContentLayout } from "../services/content-layout";
@@ -9,7 +7,7 @@ import { formatNumericValue } from "@/features/valuations/services/concept-value
 import { type NumberPresentation } from "@/features/valuations/services/number-presentation";
 import { useNumberPresentation } from "./number-presentation-context";
 import { ensureTableV2, type TableCellV2, type TableV2 } from "../services/table";
-import type { ApartadoHead } from "./document-block-renderer";
+import { DocumentApartadoTitle, type ApartadoHead } from "./document-block-renderer";
 import { DocumentTable } from "./document-table";
 
 const EMPTY_VALUE = "No se proporcionó";
@@ -47,14 +45,6 @@ export function terrenoApartadoHead(element: Apartado, displayLabel: string): Ap
 /*  Terrain-specific presentational components                         */
 /* ------------------------------------------------------------------ */
 
-function ElementTitle({ children }: { children: ReactNode }) {
-  return (
-    <h2 className="border-b-2 border-[var(--caratula-blue)] pb-0.5 text-[10.5px] font-black uppercase leading-tight text-[var(--caratula-blue)]">
-      {children}
-    </h2>
-  );
-}
-
 function BoundariesPreview({ label, title, table, source }: {
   label: string;
   title: string;
@@ -64,7 +54,8 @@ function BoundariesPreview({ label, title, table, source }: {
   const sourceTitle = source?.label.trim().replace(/:\s*$/, "");
   return (
     <section>
-      <ElementTitle>{[label, title].filter(Boolean).join(" ")}</ElementTitle>
+      {/* Titled like every other apartado: same size, color, rule and left edge. */}
+      <DocumentApartadoTitle>{[label, title].filter(Boolean).join(" ")}</DocumentApartadoTitle>
       {table && table.enabled !== false ? <BoundaryTable table={table} /> : null}
       {/* Its title and its value are the concept's own, edited under the table in the editor. */}
       {source?.value.trim() ? (

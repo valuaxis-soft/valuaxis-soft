@@ -229,7 +229,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
       apartados: block.subBlocks.map((subBlock) => ({
         id: subBlock.id,
         title: subBlock.title,
-        enabled: true,
+        enabled: subBlock.enabled !== false,
         startOnNewPage: subBlock.startOnNewPage ?? false,
         contentLayout: subBlock.contentLayout,
         conceptPresentation: subBlock.conceptPresentation,

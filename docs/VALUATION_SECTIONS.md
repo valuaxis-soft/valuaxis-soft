@@ -17,6 +17,11 @@ Cada seccion define:
 
 Un avalúo nuevo de **maquinaria y equipo** nace con las secciones que su libro (MEH) no tiene ya ocultas: terreno, construcciones, mercado de rentas, ingresos, croquis y fotos de comparables, indirectos y mapa de comparables (`initiallyHiddenSections` en el registro). Solo quedan ocultas: el valuador las muestra otra vez con "Mostrar" y lo que elija se guarda como en cualquier sección. Los avalúos que ya existían no cambian, y los demás tipos de bien nacen con todas las secciones a la vista.
 
+## Ocultar y eliminar
+
+- Secciones, bloques y apartados se ocultan con "Ocultar" y se guardan ocultos: la sección y el bloque en `BVisible`, el apartado en el `enabled` de su `JConfiguracion` (hasta el 23 de octubre de 2026 el apartado se guardaba siempre visible). Lo oculto no se imprime.
+- Una sección que agregó el valuador ("+ Sección") se elimina completa con "Eliminar sección" en su encabezado o con el bote de basura de su pestaña activa; ambos piden confirmación. Las secciones del registro solo se ocultan.
+
 ## Cómo se guarda
 
 - El editor guarda el avalúo completo con `PUT /api/avaluos/:id/full`. No se guardan secciones o bloques por separado.

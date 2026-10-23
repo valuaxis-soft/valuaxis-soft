@@ -20,6 +20,7 @@ import {
   ReopenValuationDialog,
 } from "@/features/valuations/components/workspace/valuation-lifecycle-dialogs";
 import {
+  RemoveSectionDialog,
   SessionExpiredDialog,
   UnsavedChangesExitDialog,
 } from "@/features/valuations/components/workspace/valuation-workspace-dialogs";
@@ -222,9 +223,13 @@ export function ValuationWorkspace({
   const handleRenameSection = (sectionId: string, title: string) => {
     updateSections((current) => renameSection(current, sectionId, title));
   };
+  // Deleting asks first: the tab's trash can and the section header's button open the same dialog.
+  const [removingSectionId, setRemovingSectionId] = useState<string | null>(null);
+  const removingSection = sections.find((section) => section.id === removingSectionId && section.custom) ?? null;
   const handleRemoveSection = (sectionId: string) => {
+    setRemovingSectionId(null);
     updateSections((current) => removeCustomSection(current, sectionId));
-    if (activeSectionId === sectionId) handleActiveSectionChange(enabledSections[0]?.id ?? "caratula");
+    if (activeSectionId === sectionId) handleActiveSectionChange(enabledSections.find((section) => section.id !== sectionId)?.id ?? "caratula");
   };
   const { openExternalPreviewWindow } = useExternalPreviewSync({
     payload: externalPreviewPayload,
@@ -326,7 +331,7 @@ export function ValuationWorkspace({
             onRemoveConcept={blocks.removeConcept}
             onRemoveImage={images.removeImage}
             onRemoveApartado={blocks.removeApartado}
-            onRemoveSection={handleRemoveSection}
+            onRemoveSection={setRemovingSectionId}
             onRemoveSubConcept={blocks.removeSubConcept}
             onRemoveTable={tables.removeTable}
             onUpdateBlock={blocks.updateBlock}
@@ -399,6 +404,7 @@ export function ValuationWorkspace({
             onCalculationMemory={() => void handleCalculationMemory()}
             onExport={handleExportPdf}
             onExit={handleExit}
+            onRemoveSection={canEdit ? setRemovingSectionId : undefined}
             onRenameSection={handleRenameSection}
             onReorderSections={(next) => updateSections(() => next)}
             onRedo={redoEditorChange}
@@ -496,6 +502,11 @@ export function ValuationWorkspace({
         onOpenChange={setSessionExpiredOpen}
         onSave={() => void handleSave()}
         saving={saving}
+      />
+      <RemoveSectionDialog
+        sectionName={removingSection ? sectionDisplayName(removingSection) : null}
+        onOpenChange={(open) => { if (!open) setRemovingSectionId(null); }}
+        onConfirm={() => { if (removingSection) handleRemoveSection(removingSection.id); }}
       />
       <UnsavedChangesExitDialog
         open={exitDialogOpen}

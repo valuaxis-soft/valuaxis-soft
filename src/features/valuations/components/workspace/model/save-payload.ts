@@ -35,7 +35,8 @@ export function buildSectionsPayload(sectionsForSave: AppSection[]) {
       subBlocks: b.apartados.map((sb, sbi) => ({
         id: sb.id,
         title: sb.title,
-        ...apartadoMetadataFromContent({ ...sb, enabled: true }),
+        // Its visibility is stored: a hidden apartado stays hidden when the valuation is opened again.
+        ...apartadoMetadataFromContent(sb),
         sortOrder: sbi,
         concepts: sb.concepts.map((c) => ({
           id: c.id,

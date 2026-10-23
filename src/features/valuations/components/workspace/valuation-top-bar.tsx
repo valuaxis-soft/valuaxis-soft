@@ -116,6 +116,7 @@ export function ValuationTopBar({
   onCalculationMemory,
   onExport,
   onExit,
+  onRemoveSection,
   onRenameSection,
   onReorderSections,
   onRedo,
@@ -145,6 +146,7 @@ export function ValuationTopBar({
   onCalculationMemory: () => void;
   onExport: () => void;
   onExit: () => void;
+  onRemoveSection?: (sectionId: string) => void;
   onRenameSection?: (sectionId: string, title: string) => void;
   onReorderSections: (nextSections: AppSection[]) => void;
   onRedo: () => void;
@@ -371,6 +373,7 @@ export function ValuationTopBar({
         enabledSections={enabledSections}
         iconMap={iconMap}
         onAddSection={onAddSection}
+        onRemoveSection={onRemoveSection}
         onRenameSection={onRenameSection}
         onReorder={onReorderSections}
         readOnly={readOnly}
