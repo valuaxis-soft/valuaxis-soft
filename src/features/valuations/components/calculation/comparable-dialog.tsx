@@ -1,21 +1,45 @@
 "use client";
 
-import { ImagePlus, Loader2, Trash2 } from "lucide-react";
+import { Copy, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { useState, type ChangeEvent, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ComparableFormValues } from "@/lib/api-client";
 import type { ComparablePrefill } from "@/features/ai/listing-prefill";
-import { parseDecimal } from "@/features/valuations/calculation/free-formula";
-import { FormulaInput } from "./formula-input";
 import {
+  ADDRESS_LABELS,
+  ADDRESS_PARTS,
+  OPERATION_TYPES,
+  OPERATION_TYPE_LABELS,
+  URBAN_PROXIMITIES,
+  URBAN_PROXIMITY_LABELS,
+  coordinatesError,
+  formatAddress,
+  formatComparableId,
+  hasAddress,
+  todayInMexico,
+  type AddressPart,
+  type ComparableAddress,
+  type OperationType,
+  type UrbanProximity,
+} from "@/features/valuations/calculation/comparable-card";
+import type { DuplicateMatchDto } from "@/features/valuations/calculation/comparable-card.service";
+import { DUPLICATE_REASON_LABELS, type DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
+import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { ComparableCardButton } from "./comparable-card-dialog";
+import { FormulaInput } from "./formula-input";
+import { ScreenshotSlot } from "./screenshot-slot";
+import {
+  COMPARABLE_TYPE_LABELS,
   NUMERIC_CHARACTERISTICS,
   characteristicText,
   isBuiltinCharacteristic,
+  isRentComparableType,
   withCharacteristic,
   type CharacteristicField,
   type ComparableDto,
@@ -23,13 +47,22 @@ import {
 } from "@/features/valuations/calculation/market-types";
 
 const text = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value));
+const money = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" }));
 
-type Draft = Record<"location" | "area" | "price" | "sourceName" | "contactName" | "contactPhone" | "url" | "offerDate" | "landUse", string>;
+type DraftKey =
+  | "location" | "area" | "price" | "sourceName" | "contactName" | "contactPhone" | "url" | "offerDate" | "landUse"
+  | "consultedOn" | "validUntil" | "urbanProximity" | "operationType" | "latitude" | "longitude" | "listingText";
+type Draft = Record<DraftKey, string> & { address: Record<AddressPart, string> };
 
 /** Area and price are captured at the top of the form; the list of characteristics shows the rest. */
 const TOP_FIELDS = new Set(["area", "price"]);
 
-function initialDraft(comparable: ComparableDto | null, prefill: ComparablePrefill = {}): Draft {
+const emptyAddress = (): Record<AddressPart, string> =>
+  Object.fromEntries(ADDRESS_PARTS.map((part) => [part, ""])) as Record<AddressPart, string>;
+
+function initialDraft(comparable: ComparableDto | null, type: ComparableType, prefill: ComparablePrefill = {}, listingText?: string): Draft {
+  const address = emptyAddress();
+  for (const part of ADDRESS_PARTS) address[part] = comparable?.address?.[part] ?? "";
   return {
     location: comparable?.location ?? "",
     // A number typed as a formula reads back as typed.
@@ -41,12 +74,21 @@ function initialDraft(comparable: ComparableDto | null, prefill: ComparablePrefi
     url: comparable?.url ?? "",
     offerDate: comparable?.offerDate ?? "",
     landUse: comparable?.landUse ?? "",
+    // A new comparable is consulted today; one of before keeps what it had.
+    consultedOn: comparable ? comparable.consultedOn ?? "" : todayInMexico(),
+    validUntil: comparable?.validUntil ?? "",
+    urbanProximity: comparable?.urbanProximity ?? "",
+    operationType: comparable?.operationType ?? (isRentComparableType(type) ? "RENTA" : "VENTA"),
+    latitude: text(comparable?.latitude),
+    longitude: text(comparable?.longitude),
+    listingText: comparable?.listingText ?? listingText ?? "",
+    address,
     // A new comparable may start from the data read from a pasted listing.
     ...(comparable ? {} : pick(prefill, ["location", "area", "price", "sourceName", "contactName", "contactPhone", "url", "offerDate", "landUse"])),
   };
 }
 
-function pick(prefill: ComparablePrefill, keys: Array<keyof Draft>): Partial<Draft> {
+function pick(prefill: ComparablePrefill, keys: DraftKey[]): Partial<Draft> {
   return Object.fromEntries(keys.flatMap((key) => (key in prefill ? [[key, prefill[key as keyof ComparablePrefill] ?? ""]] : [])));
 }
 
@@ -66,10 +108,18 @@ const EMPTY_VALUES: ComparableFormValues = {
   sourceName: null, contactName: null, contactPhone: null, url: null, offerDate: null, factors: [],
 };
 
+/** A coordinate typed in the form: empty, a number, or NaN when it is not one. */
+const coordinate = (value: string) => (value.trim() ? Number(value.trim().replace(",", ".")) : null);
+
+/** Images chosen before the comparable exists: uploaded right after it is saved. */
+export type PendingImages = { screenshot: File | null };
+
 /**
- * The data of one comparable: where it is, its offer, its characteristics
- * (the fields of the market's list) and its photos. Its homologation factors
- * are captured in the homologation table of the panel, and kept here as they are.
+ * The data of one comparable: where it is, its offer, its source and
+ * evidence, its characteristics (the fields of the market's list) and its
+ * photos. Its homologation factors are captured in the homologation table of
+ * the panel, and kept here as they are. A new comparable is checked against
+ * the firm's base before it is added.
  */
 export function ComparableDialog(props: {
   open: boolean;
@@ -77,50 +127,77 @@ export function ComparableDialog(props: {
   comparable: ComparableDto | null;
   /** Values a new comparable opens with; nothing is saved until the appraiser saves. */
   prefill?: ComparablePrefill;
+  /** The pasted listing a new comparable comes from, kept as evidence. */
+  listingText?: string;
   characteristicFields: CharacteristicField[];
   comparableType: ComparableType;
   unitLabel: string;
   readOnly: boolean;
-  onSubmit: (values: ComparableFormValues) => Promise<boolean>;
+  onSubmit: (values: ComparableFormValues, pending: PendingImages) => Promise<boolean>;
   onUploadPhoto: (file: File) => Promise<void>;
   onRemovePhoto: (photoId: string) => Promise<void>;
+  onUploadScreenshot: (file: File) => Promise<void>;
+  onRemoveScreenshot: () => Promise<void>;
+  /** Comparables of the firm's base that look like the same property. */
+  onCheckDuplicates: (probe: DuplicateProbe) => Promise<DuplicateMatchDto[]>;
+  /** "Usar el existente": brings that comparable instead of this capture. */
+  onReuse: (comparableId: string) => Promise<boolean>;
 }) {
   const { comparable, readOnly } = props;
   const fields = props.characteristicFields.filter((field) => !TOP_FIELDS.has(field.key));
-  const [draft, setDraft] = useState<Draft>(() => initialDraft(comparable, props.prefill));
+  const [draft, setDraft] = useState<Draft>(() => initialDraft(comparable, props.comparableType, props.prefill, props.listingText));
   const [characteristics, setCharacteristics] = useState<Record<string, string>>(() =>
     initialCharacteristics(comparable, fields, props.prefill));
   const [freeText, setFreeText] = useState(comparable?.characteristicsText ?? "");
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState<"photo" | "screenshot" | null>(null);
+  const [pendingScreenshot, setPendingScreenshot] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Matches of the firm's base for a new comparable, waiting for the appraiser's answer.
+  const [duplicates, setDuplicates] = useState<DuplicateMatchDto[] | null>(null);
 
-  const set = (key: keyof Draft) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const set = (key: DraftKey) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setDraft((current) => ({ ...current, [key]: event.target.value }));
+  const setAddress = (part: AddressPart) => (event: ChangeEvent<HTMLInputElement>) =>
+    setDraft((current) => ({ ...current, address: { ...current.address, [part]: event.target.value } }));
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!draft.location.trim()) {
-      setError("Captura la ubicación del comparable.");
-      return;
-    }
+  const address: ComparableAddress = Object.fromEntries(ADDRESS_PARTS.map((part) => [part, draft.address[part].trim() || null]));
+  // The single line the dictamen prints: as typed, or composed from the parts.
+  const location = draft.location.trim() || formatAddress(address);
+
+  /** The values to save, or what the appraiser has to correct. */
+  const valuesOf = (): { values: ComparableFormValues } | { error: string } => {
+    if (!location) return { error: "Captura la ubicación del comparable: el texto o, al menos, la calle y el municipio." };
+    if (draft.address.postalCode.trim() && !/^\d{5}$/.test(draft.address.postalCode.trim())) return { error: "El código postal lleva 5 dígitos." };
     const frontCount = characteristics.frontCount?.trim() ? parseDecimal(characteristics.frontCount) : null;
     if (frontCount !== null && (!Number.isInteger(frontCount) || frontCount < 1)) {
-      setError("El número de frentes debe ser un entero de 1 en adelante, o quedar vacío.");
-      return;
+      return { error: "El número de frentes debe ser un entero de 1 en adelante, o quedar vacío." };
     }
-    setError(null);
-    setSaving(true);
+    const latitude = coordinate(draft.latitude);
+    const longitude = coordinate(draft.longitude);
+    const coordinatesProblem = Number.isNaN(latitude) || Number.isNaN(longitude)
+      ? "La latitud y la longitud son números en grados, como 20.7092 y -102.3467."
+      : coordinatesError(latitude, longitude);
+    if (coordinatesProblem) return { error: coordinatesProblem };
     // What is not in the form (the factors, characteristics out of the list) stays as stored.
-    const { id: _id, reference: _reference, photos: _photos, ...stored } = comparable ?? { ...EMPTY_VALUES, id: "", reference: 0, photos: [] };
+    const { id: _id, reference: _reference, photos: _photos, folio: _folio, screenshot: _screenshot, review: _review, ...stored } =
+      comparable ?? { ...EMPTY_VALUES, id: "", reference: 0, photos: [] };
     let values: ComparableFormValues = {
       ...stored,
-      location: draft.location.trim(),
+      location,
+      address: hasAddress(address) ? address : null,
       sourceName: draft.sourceName.trim() || null,
       contactName: draft.contactName.trim() || null,
       contactPhone: draft.contactPhone.trim() || null,
       url: draft.url.trim() || null,
       offerDate: draft.offerDate || null,
+      consultedOn: draft.consultedOn || null,
+      validUntil: draft.validUntil || null,
+      urbanProximity: (draft.urbanProximity || null) as UrbanProximity | null,
+      operationType: (draft.operationType || null) as OperationType | null,
+      latitude,
+      longitude,
+      listingText: draft.listingText.trim() || null,
       landUse: draft.landUse.trim() || null,
       characteristicsText: freeText.trim() || null,
     };
@@ -129,7 +206,42 @@ export function ComparableDialog(props: {
       const typed = characteristics[field.key] ?? "";
       values = withCharacteristic(values, field.key, typed, NUMERIC_CHARACTERISTICS.has(field.key) ? parseDecimal(typed) : null);
     }
-    const ok = await props.onSubmit(values);
+    return { values };
+  };
+
+  const save = async (checkDuplicates: boolean) => {
+    const parsed = valuesOf();
+    if ("error" in parsed) {
+      setError(parsed.error);
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    const { values } = parsed;
+    // Only a new comparable is checked: an edited one already is in the base.
+    if (!comparable && checkDuplicates) {
+      const found = await props.onCheckDuplicates({
+        url: values.url, location: values.location, address: values.address, contactPhone: values.contactPhone, price: values.price,
+      }).catch(() => []);
+      if (found.length) {
+        setDuplicates(found);
+        setSaving(false);
+        return;
+      }
+    }
+    const ok = await props.onSubmit(values, { screenshot: pendingScreenshot });
+    setSaving(false);
+    if (ok) props.onOpenChange(false);
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    void save(true);
+  };
+
+  const reuse = async (comparableId: string) => {
+    setSaving(true);
+    const ok = await props.onReuse(comparableId);
     setSaving(false);
     if (ok) props.onOpenChange(false);
   };
@@ -138,19 +250,30 @@ export function ComparableDialog(props: {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    setUploading(true);
+    setUploading("photo");
     await props.onUploadPhoto(file);
-    setUploading(false);
+    setUploading(null);
+  };
+
+  const chooseScreenshot = async (file: File) => {
+    if (!comparable) {
+      setPendingScreenshot(file);
+      return;
+    }
+    setUploading("screenshot");
+    await props.onUploadScreenshot(file);
+    setUploading(null);
   };
 
   const area = parseDecimal(draft.area);
   const price = parseDecimal(draft.price);
+  const id = formatComparableId(comparable?.folio);
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{comparable ? `Comparable ${comparable.reference}` : "Nuevo comparable"}</DialogTitle>
+          <DialogTitle>{comparable ? `Comparable ${comparable.reference}${id ? ` · ${id}` : ""}` : "Nuevo comparable"}</DialogTitle>
           <DialogDescription>
             En cualquier campo numérico puedes escribir un cálculo empezando con el signo igual, por ejemplo =5*10000. Los factores de
             homologación se capturan en la tabla de homologación del panel.
@@ -158,12 +281,105 @@ export function ComparableDialog(props: {
           </DialogDescription>
         </DialogHeader>
 
-        <form className="grid gap-5" onSubmit={submit}>
+        {duplicates ? (
+          <section className="grid gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40" aria-label="Posibles duplicados" data-duplicates>
+            <p className="flex items-start gap-1.5 text-sm font-medium text-amber-900 dark:text-amber-200">
+              <Copy className="mt-0.5 size-4 shrink-0" />
+              Este inmueble parece estar ya en la base del despacho. Puedes usar el existente, con sus fotos y su número, o agregarlo de todos modos.
+            </p>
+            <ul className="grid gap-2">
+              {duplicates.map((match) => (
+                <li key={match.comparableId} className="grid gap-2 rounded-md border bg-background p-2 text-sm sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center" data-duplicate={formatComparableId(match.folio) ?? match.comparableId}>
+                  {match.thumbnailUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={match.thumbnailUrl} alt="" className="size-12 rounded object-cover" />
+                  ) : <span className="hidden sm:block sm:w-12" />}
+                  <div className="min-w-0">
+                    <p className="font-medium">
+                      <span className="font-mono">{formatComparableId(match.folio) ?? "Sin número"}</span> · {match.location}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {COMPARABLE_TYPE_LABELS[match.type]} · {money(match.price)} · avalúo {match.valuation.folio}
+                      {match.sameValuation ? " (este avalúo)" : ""} · {match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    <ComparableCardButton comparableId={match.comparableId} />
+                    <Button type="button" size="sm" disabled={saving} onClick={() => void reuse(match.comparableId)}>Usar el existente</Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => void save(false)}>Agregar de todos modos</Button>
+              <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={() => setDuplicates(null)}>Volver a la captura</Button>
+            </div>
+          </section>
+        ) : null}
+
+        <form className="grid gap-5" onSubmit={submit} hidden={duplicates !== null}>
           <fieldset disabled={readOnly || saving} className="grid gap-5">
+            <section className="grid gap-3" aria-label="Ubicación">
+              <h3 className="text-sm font-medium">Ubicación</h3>
+              <FieldGroup className="grid gap-3 sm:grid-cols-6">
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="comparable-state">{ADDRESS_LABELS.state}</FieldLabel>
+                  <Input id="comparable-state" value={draft.address.state} onChange={setAddress("state")} />
+                </Field>
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="comparable-municipality">{ADDRESS_LABELS.municipality}</FieldLabel>
+                  <Input id="comparable-municipality" value={draft.address.municipality} onChange={setAddress("municipality")} />
+                </Field>
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="comparable-postalCode">{ADDRESS_LABELS.postalCode}</FieldLabel>
+                  <Input id="comparable-postalCode" inputMode="numeric" maxLength={5} value={draft.address.postalCode} onChange={setAddress("postalCode")} />
+                </Field>
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="comparable-neighborhood">{ADDRESS_LABELS.neighborhood}</FieldLabel>
+                  <Input id="comparable-neighborhood" value={draft.address.neighborhood} onChange={setAddress("neighborhood")} />
+                </Field>
+                <Field className="sm:col-span-3">
+                  <FieldLabel htmlFor="comparable-street">{ADDRESS_LABELS.street}</FieldLabel>
+                  <Input id="comparable-street" value={draft.address.street} onChange={setAddress("street")} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="comparable-number">{ADDRESS_LABELS.number}</FieldLabel>
+                  <Input id="comparable-number" value={draft.address.number} onChange={setAddress("number")} />
+                </Field>
+                <Field className="sm:col-span-6">
+                  <FieldLabel htmlFor="comparable-location">Ubicación como la imprime el dictamen</FieldLabel>
+                  <Input
+                    id="comparable-location"
+                    value={draft.location}
+                    placeholder={formatAddress(address) || "Calle, número, colonia y municipio"}
+                    onChange={set("location")}
+                  />
+                  <p className="text-xs text-muted-foreground">Si la dejas vacía, se arma con la calle, el número, la colonia, el C.P., el municipio y el estado.</p>
+                </Field>
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="comparable-proximity">Proximidad urbana (SHF)</FieldLabel>
+                  <NativeSelect id="comparable-proximity" className="w-full" value={draft.urbanProximity} onChange={set("urbanProximity")}>
+                    <NativeSelectOption value="">Sin indicar</NativeSelectOption>
+                    {URBAN_PROXIMITIES.map((item) => <NativeSelectOption key={item} value={item}>{URBAN_PROXIMITY_LABELS[item]}</NativeSelectOption>)}
+                  </NativeSelect>
+                </Field>
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="comparable-latitude">Latitud (opcional)</FieldLabel>
+                  <Input id="comparable-latitude" inputMode="decimal" placeholder="20.7092" value={draft.latitude} onChange={set("latitude")} />
+                </Field>
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="comparable-longitude">Longitud (opcional)</FieldLabel>
+                  <Input id="comparable-longitude" inputMode="decimal" placeholder="-102.3467" value={draft.longitude} onChange={set("longitude")} />
+                </Field>
+              </FieldGroup>
+            </section>
+
             <FieldGroup className="grid gap-3 sm:grid-cols-6">
-              <Field className="sm:col-span-6">
-                <FieldLabel htmlFor="comparable-location">Ubicación</FieldLabel>
-                <Input id="comparable-location" value={draft.location} onChange={set("location")} required />
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="comparable-operation">Tipo de operación</FieldLabel>
+                <NativeSelect id="comparable-operation" className="w-full" value={draft.operationType} onChange={set("operationType")}>
+                  {OPERATION_TYPES.map((item) => <NativeSelectOption key={item} value={item}>{OPERATION_TYPE_LABELS[item]}</NativeSelectOption>)}
+                </NativeSelect>
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-area">Superficie (m²)</FieldLabel>
@@ -181,28 +397,45 @@ export function ComparableDialog(props: {
               </Field>
             </FieldGroup>
 
-            <FieldGroup className="grid gap-3 sm:grid-cols-4">
-              <Field className="sm:col-span-2">
-                <FieldLabel htmlFor="comparable-source">Fuente</FieldLabel>
-                <Input id="comparable-source" placeholder="Inmobiliaria, portal o anuncio" value={draft.sourceName} onChange={set("sourceName")} />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="comparable-contact">Contacto</FieldLabel>
-                <Input id="comparable-contact" value={draft.contactName} onChange={set("contactName")} />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="comparable-phone">Teléfono</FieldLabel>
-                <Input id="comparable-phone" inputMode="tel" value={draft.contactPhone} onChange={set("contactPhone")} />
-              </Field>
-              <Field className="sm:col-span-3">
-                <FieldLabel htmlFor="comparable-url">Liga del anuncio</FieldLabel>
-                <Input id="comparable-url" type="url" placeholder="https://" value={draft.url} onChange={set("url")} />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="comparable-date">Fecha de la oferta</FieldLabel>
-                <Input id="comparable-date" type="date" value={draft.offerDate} onChange={set("offerDate")} />
-              </Field>
-            </FieldGroup>
+            <section className="grid gap-3" aria-label="Origen o fuente de información">
+              <h3 className="text-sm font-medium">Origen o fuente de información</h3>
+              <FieldGroup className="grid gap-3 sm:grid-cols-4">
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="comparable-source">Fuente</FieldLabel>
+                  <Input id="comparable-source" placeholder="Inmobiliaria, portal o anuncio" value={draft.sourceName} onChange={set("sourceName")} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="comparable-contact">Contacto (anunciante)</FieldLabel>
+                  <Input id="comparable-contact" value={draft.contactName} onChange={set("contactName")} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="comparable-phone">Teléfono</FieldLabel>
+                  <Input id="comparable-phone" inputMode="tel" value={draft.contactPhone} onChange={set("contactPhone")} />
+                </Field>
+                <Field className="sm:col-span-4">
+                  <FieldLabel htmlFor="comparable-url">Liga del anuncio</FieldLabel>
+                  <Input id="comparable-url" type="url" placeholder="https://" value={draft.url} onChange={set("url")} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="comparable-consulted">Fecha de consulta</FieldLabel>
+                  <Input id="comparable-consulted" type="date" value={draft.consultedOn} onChange={set("consultedOn")} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="comparable-date">Fecha de la oferta</FieldLabel>
+                  <Input id="comparable-date" type="date" value={draft.offerDate} onChange={set("offerDate")} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="comparable-valid">Vigencia (opcional)</FieldLabel>
+                  <Input id="comparable-valid" type="date" value={draft.validUntil} onChange={set("validUntil")} />
+                </Field>
+                {draft.listingText ? (
+                  <Field className="sm:col-span-4">
+                    <FieldLabel htmlFor="comparable-listing-text">Texto del anuncio pegado (evidencia)</FieldLabel>
+                    <Textarea id="comparable-listing-text" rows={3} className="max-h-40 text-xs" value={draft.listingText} onChange={set("listingText")} />
+                  </Field>
+                ) : null}
+              </FieldGroup>
+            </section>
 
             <section className="grid gap-3">
               <h3 className="text-sm font-medium">Características</h3>
@@ -212,14 +445,14 @@ export function ComparableDialog(props: {
                   <Input id="comparable-landUse" value={draft.landUse} onChange={set("landUse")} />
                 </Field>
                 {fields.map((field) => {
-                  const id = `comparable-${field.key.replace(":", "-")}`;
+                  const fieldId = `comparable-${field.key.replace(":", "-")}`;
                   const long = field.key === "notes" || field.key === "services" || !isBuiltinCharacteristic(field.key);
                   const Control = NUMERIC_CHARACTERISTICS.has(field.key) ? FormulaInput : Input;
                   return (
                     <Field key={field.key} className={long ? "sm:col-span-2" : undefined}>
-                      <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
+                      <FieldLabel htmlFor={fieldId}>{field.label}</FieldLabel>
                       <Control
-                        id={id}
+                        id={fieldId}
                         value={characteristics[field.key] ?? ""}
                         onChange={(event) => setCharacteristics((current) => ({ ...current, [field.key]: event.target.value }))}
                       />
@@ -240,9 +473,21 @@ export function ComparableDialog(props: {
             </section>
           </fieldset>
 
+          <ScreenshotSlot
+            storedUrl={comparable?.screenshot?.url || null}
+            pending={pendingScreenshot}
+            readOnly={readOnly}
+            busy={uploading === "screenshot"}
+            onChoose={(file) => void chooseScreenshot(file)}
+            onRemove={() => {
+              if (pendingScreenshot) setPendingScreenshot(null);
+              else void props.onRemoveScreenshot();
+            }}
+          />
+
           {comparable ? (
             <section className="grid gap-2">
-              <h3 className="text-sm font-medium">Fotografías</h3>
+              <h3 className="text-sm font-medium">Fotografías del inmueble</h3>
               <div className="flex flex-wrap gap-2">
                 {comparable.photos.map((photo) => (
                   <figure key={photo.id} className="relative size-24 overflow-hidden rounded-md border bg-muted">
@@ -264,18 +509,18 @@ export function ComparableDialog(props: {
                 ))}
                 {!readOnly ? (
                   <label className="flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed text-xs text-muted-foreground hover:bg-muted">
-                    {uploading ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+                    {uploading === "photo" ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
                     Agregar
-                    <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={uploadPhoto} disabled={uploading} />
+                    <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={uploadPhoto} disabled={uploading !== null} />
                   </label>
                 ) : null}
               </div>
             </section>
           ) : (
-            <p className="text-xs text-muted-foreground">Guarda el comparable para agregar fotografías.</p>
+            <p className="text-xs text-muted-foreground">Guarda el comparable para agregar fotografías del inmueble.</p>
           )}
 
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => props.onOpenChange(false)}>
               {readOnly ? "Cerrar" : "Cancelar"}

@@ -8,6 +8,8 @@ import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig } from "../engin
 import type { ComparableInput, MarketApproachInput } from "../engine/market";
 import { formulaOfText, type CapturedFormulas } from "./captured-formulas";
 import type { MarketRegressionDto } from "./market-regression";
+import type { ComparableAddress, OperationType, UrbanProximity } from "./comparable-card";
+import type { ComparableReviewDto } from "./comparable-review";
 
 export const COMPARABLE_TYPES = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"] as const;
 export type ComparableType = (typeof COMPARABLE_TYPES)[number];
@@ -272,7 +274,27 @@ export type ComparableDto = {
   contactPhone: string | null;
   url: string | null;
   offerDate: string | null;
+  /** Day the listing was consulted, YYYY-MM-DD; the form starts with today. */
+  consultedOn?: string | null;
+  /** Day the offer stops being valid, when the listing says. */
+  validUntil?: string | null;
+  /** The listing as it was pasted ("Pegar anuncio"), kept as evidence. */
+  listingText?: string | null;
+  /** The location in parts; `location` stays the line the dictamen prints. */
+  address?: ComparableAddress | null;
+  /** "Proximidad urbana" of the SHF rules. */
+  urbanProximity?: UrbanProximity | null;
+  /** Sale or rent; missing, the one of the comparable type. */
+  operationType?: OperationType | null;
+  /** Decimal degrees; filled by hand until there is a map. */
+  latitude?: number | null;
+  longitude?: number | null;
   photos: ComparablePhotoDto[];
+  /** Read only: the comparable's number in the firm's base (formatComparableId), its screenshot and its review. */
+  folio?: number | null;
+  /** "Pantalla de referencia": the screenshot of the listing as it was when captured, apart from the photos. */
+  screenshot?: ComparablePhotoDto | null;
+  review?: ComparableReviewDto | null;
   factors: ComparableFactorDto[];
   /**
    * Formulas typed in its numeric fields ("area", "price", "frontage",
@@ -371,9 +393,12 @@ export function defaultMarketSettings(comparableType: ComparableType): MarketSet
   };
 }
 
+/** What a stored comparable carries that its form does not send: its identity, its images and its review. */
+export type ComparableReadOnlyKey = "id" | "reference" | "photos" | "folio" | "screenshot" | "review";
+
 /** The form values of a stored comparable, to send it back with a change. */
-export function comparableFormValues(comparable: ComparableDto): Omit<ComparableDto, "id" | "reference" | "photos"> {
-  const { id: _id, reference: _reference, photos: _photos, ...values } = comparable;
+export function comparableFormValues(comparable: ComparableDto): Omit<ComparableDto, ComparableReadOnlyKey> {
+  const { id: _id, reference: _reference, photos: _photos, folio: _folio, screenshot: _screenshot, review: _review, ...values } = comparable;
   return values;
 }
 

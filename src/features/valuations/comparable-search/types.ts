@@ -6,10 +6,23 @@
  */
 import type { ComparableInputPayload } from "../calculation/market-schemas";
 import type { ComparableType } from "../calculation/market-types";
-import type { StoredComparablePhoto } from "../calculation/market.service";
+import type { ReusedComparableEvidence } from "../calculation/market.service";
+
+/** Filters of the search form beside the text; each one left out does not filter. */
+export type ComparableSearchFilters = {
+  /** Comparable types searched ("tipo de inmueble" and "operación"); missing, the type of the market. */
+  types?: ComparableType[];
+  state?: string;
+  municipality?: string;
+  neighborhood?: string;
+  postalCode?: string;
+  /** "Fecha de consulta" from and to, YYYY-MM-DD, both inclusive. */
+  consultedFrom?: string;
+  consultedTo?: string;
+};
 
 export type ComparableSearchQuery = {
-  /** Zone, colonia, municipio or street, as the appraiser types it. */
+  /** Zone, colonia, municipio or street as the appraiser types it, or a comparable's number ("C-00123"); empty with filters. */
   text: string;
   type: ComparableType;
   /** Area in m² and price (monthly rent for rent comparables); null leaves that side open. */
@@ -18,6 +31,7 @@ export type ComparableSearchQuery = {
   priceMin: number | null;
   priceMax: number | null;
   limit: number;
+  filters?: ComparableSearchFilters;
 };
 
 /** What a source may know when it searches. It never receives more than its own tenant. */
@@ -40,6 +54,10 @@ export type ComparableSearchResult = {
   /** Day the offer was captured or published, YYYY-MM-DD. */
   capturedOn: string | null;
   photoCount: number;
+  /** The comparable's number in the firm's base, when it comes from it. */
+  folio?: number | null;
+  /** A small image to recognize it: its first photo. */
+  thumbnailUrl?: string | null;
   comparable: FoundComparable;
 };
 
@@ -53,11 +71,11 @@ export interface ComparableSearchSource {
   /** Results of the query's type, within its ranges, at most `query.limit`. */
   search(query: ComparableSearchQuery, context: ComparableSearchContext): Promise<ComparableSearchResult[]>;
   /**
-   * The stored photos of a result, so a comparable brought from it keeps
-   * them; only within the context's organization. Sources without photos of
-   * their own leave it out.
+   * The stored photos, screenshot and number of a result, so a comparable
+   * brought from it keeps them; only within the context's organization.
+   * Sources without stored evidence of their own leave it out.
    */
-  photos?(resultId: string, context: Pick<ComparableSearchContext, "organizationId">): Promise<StoredComparablePhoto[]>;
+  evidence?(resultId: string, context: Pick<ComparableSearchContext, "organizationId">): Promise<ReusedComparableEvidence>;
 }
 
 /** A result with the source it came from. */

@@ -1,10 +1,14 @@
 import type {
   ComparableDto,
+  ComparableReadOnlyKey,
   ComparableType,
   MarketCalculationDto,
   MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
 import type { ComparableImportPreview } from "@/features/valuations/calculation/comparable-import";
+import type { ComparableCardDto, DuplicateMatchDto, ReviewRowDto } from "@/features/valuations/calculation/comparable-card.service";
+import type { DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
+import type { ComparableReviewDto } from "@/features/valuations/calculation/comparable-review";
 import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 import type { ConstructionTypeDto, ConstructionTypesDto, CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
 import type { ConclusionCalculationDto, ConclusionSettingsDto } from "@/features/valuations/calculation/conclusion-types";
@@ -22,8 +26,8 @@ import type { ListingProposal } from "@/features/ai/listing-extraction";
 import type { ValuationDetail, ValuationListItem } from "@/features/valuations/repositories/valuation.repository";
 import type { ValuationTemplateDetail, ValuationTemplateSummary } from "@/features/valuations/services/valuation-template.service";
 
-/** What the comparable form sends: the comparable without its id, reference and photos. */
-export type ComparableFormValues = Omit<ComparableDto, "id" | "reference" | "photos">;
+/** What the comparable form sends: the comparable without its id, reference, images and review. */
+export type ComparableFormValues = Omit<ComparableDto, ComparableReadOnlyKey>;
 
 const BASE = "/api";
 
@@ -84,7 +88,23 @@ export type ComparableSearchFilters = {
   areaMax: number | null;
   priceMin: number | null;
   priceMax: number | null;
+  /** The filters of the form; empty ones are not sent. */
+  state?: string;
+  municipality?: string;
+  neighborhood?: string;
+  postalCode?: string;
+  /** "TERRENO", "CONSTRUIDO" or "TODOS"; empty, the market's. */
+  kind?: string;
+  /** "VENTA", "RENTA" or "TODAS"; empty, the market's. */
+  operation?: string;
+  consultedFrom?: string;
+  consultedTo?: string;
 };
+
+const SEARCH_FILTER_PARAMS = {
+  state: "estado", municipality: "municipio", neighborhood: "colonia", postalCode: "cp", kind: "inmueble", operation: "operacion",
+  consultedFrom: "consultaDesde", consultedTo: "consultaHasta",
+} as const;
 
 /** The server answered 401: the session expired or was revoked. */
 export class SessionExpiredError extends Error {
@@ -204,15 +224,35 @@ export const api = {
       uploadForm<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}`, { file }),
     previewImport: (id: ApiId, type: ComparableType, file: File) =>
       uploadForm<{ preview: ComparableImportPreview }>(`/avaluos/${id}/mercado/comparables/importar?tipo=${type}`, { file }),
-    importComparables: (id: ApiId, type: ComparableType, file: File) =>
+    /** `reuse` maps a row to the comparable of the firm's base used instead of it ("Usar el existente"). */
+    importComparables: (id: ApiId, type: ComparableType, file: File, reuse: Record<number, string> = {}) =>
       uploadForm<{ preview: ComparableImportPreview; imported: number; calculation: MarketCalculationDto }>(
-        `/avaluos/${id}/mercado/comparables/importar?tipo=${type}&confirmar=1`, { file }),
+        `/avaluos/${id}/mercado/comparables/importar?tipo=${type}&confirmar=1`, { file, reusar: JSON.stringify(reuse) }),
     searchComparables: (id: ApiId, type: ComparableType, filters: ComparableSearchFilters) => {
       const params = new URLSearchParams({ tipo: type, q: filters.text });
       const ranges = { supMin: filters.areaMin, supMax: filters.areaMax, precioMin: filters.priceMin, precioMax: filters.priceMax };
       for (const [key, value] of Object.entries(ranges)) if (value !== null) params.set(key, String(value));
+      for (const [field, param] of Object.entries(SEARCH_FILTER_PARAMS)) {
+        const value = filters[field as keyof typeof SEARCH_FILTER_PARAMS]?.trim();
+        if (value) params.set(param, value);
+      }
       return request<ComparableSearchResponse>(`/avaluos/${id}/mercado/comparables/buscar?${params}`);
     },
+    /** Comparables of the firm's base that look like the same property; only reads. */
+    duplicates: (id: ApiId, probe: DuplicateProbe) =>
+      request<DuplicateMatchDto[]>(`/avaluos/${id}/mercado/comparables/duplicados`, { method: "POST", body: JSON.stringify(probe) }),
+    /** "Usar el existente": brings a comparable of the firm's base with its photos and number. */
+    reuseComparable: (id: ApiId, type: ComparableType, comparableId: string) =>
+      request<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/reusar?tipo=${type}`, { method: "POST", body: JSON.stringify({ comparableId }) }),
+    uploadScreenshot: (id: ApiId, type: ComparableType, comparableId: string, file: File) =>
+      uploadForm<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}/pantalla?tipo=${type}`, { file }),
+    deleteScreenshot: (id: ApiId, type: ComparableType, comparableId: string) =>
+      request<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}/pantalla?tipo=${type}`, { method: "DELETE" }),
+    review: (id: ApiId) => request<ReviewRowDto[]>(`/avaluos/${id}/mercado/revision`),
+    saveReview: (id: ApiId, comparableId: string, review: Pick<ComparableReviewDto, "status" | "checks" | "notes">) =>
+      request<ComparableReviewDto>(`/avaluos/${id}/mercado/comparables/${comparableId}/revision`, { method: "PUT", body: JSON.stringify(review) }),
+    /** "Ficha del comparable": any comparable of the firm's base, by the id of one of its captures. */
+    card: (comparableId: string) => request<ComparableCardDto>(`/comparables/${comparableId}`),
     addFoundComparables: (id: ApiId, type: ComparableType, results: ComparableSearchHit[]) =>
       request<{ added: number; skipped: number; calculation: MarketCalculationDto }>(`/avaluos/${id}/mercado/comparables/buscar?tipo=${type}`, {
         method: "POST",

@@ -12,7 +12,16 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api, SessionExpiredError, type ComparableSearchFilters } from "@/lib/api-client";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
-import { MARKET_LABELS, isRentComparableType, type ComparableType, type MarketCalculationDto } from "@/features/valuations/calculation/market-types";
+import { formatComparableId } from "@/features/valuations/calculation/comparable-card";
+import {
+  MARKET_LABELS,
+  isLandComparableType,
+  isRentComparableType,
+  type ComparableType,
+  type MarketCalculationDto,
+} from "@/features/valuations/calculation/market-types";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { ComparableCardButton } from "./comparable-card-dialog";
 import { SEARCH_TEXT_MIN, searchText } from "@/features/valuations/comparable-search/normalize";
 import type { ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 
@@ -23,18 +32,34 @@ const day = (value: string | null) => (value ? value.split("-").reverse().join("
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudo buscar.";
 
-type Draft = Record<"text" | "areaMin" | "areaMax" | "priceMin" | "priceMax", string>;
-const EMPTY_DRAFT: Draft = { text: "", areaMin: "", areaMax: "", priceMin: "", priceMax: "" };
-const RANGE_LABELS: Record<Exclude<keyof Draft, "text">, string> = {
+const PLACE_KEYS = ["state", "municipality", "neighborhood", "postalCode", "kind", "operation", "consultedFrom", "consultedTo"] as const;
+type PlaceKey = (typeof PLACE_KEYS)[number];
+type RangeKey = "areaMin" | "areaMax" | "priceMin" | "priceMax";
+type Draft = Record<"text" | RangeKey | PlaceKey, string>;
+/** The kind and operation start as those of the market searched for; "TODOS"/"TODAS" widen them. */
+const emptyDraft = (type: ComparableType): Draft => ({
+  text: "", areaMin: "", areaMax: "", priceMin: "", priceMax: "",
+  state: "", municipality: "", neighborhood: "", postalCode: "", consultedFrom: "", consultedTo: "",
+  kind: isLandComparableType(type) ? "TERRENO" : "CONSTRUIDO",
+  operation: isRentComparableType(type) ? "RENTA" : "VENTA",
+});
+const RANGE_LABELS: Record<RangeKey, string> = {
   areaMin: "la superficie mínima", areaMax: "la superficie máxima", priceMin: "el precio mínimo", priceMax: "el precio máximo",
 };
 
 /** The filters the form holds, or what the appraiser has to correct. */
-function filtersFrom(draft: Draft): { filters: ComparableSearchFilters } | { error: string } {
-  if (searchText(draft.text).length < SEARCH_TEXT_MIN) {
-    return { error: `Escribe al menos ${SEARCH_TEXT_MIN} letras de la zona, colonia, municipio o calle.` };
+function filtersFrom(draft: Draft, type: ComparableType): { filters: ComparableSearchFilters } | { error: string } {
+  const defaults = emptyDraft(type);
+  const filtered = (["areaMin", "areaMax", "priceMin", "priceMax", "state", "municipality", "neighborhood", "postalCode", "consultedFrom", "consultedTo"] as const)
+    .some((key) => draft[key].trim()) || draft.kind !== defaults.kind || draft.operation !== defaults.operation;
+  if (draft.text.trim() ? searchText(draft.text).length < SEARCH_TEXT_MIN : !filtered) {
+    return { error: `Escribe al menos ${SEARCH_TEXT_MIN} letras de la zona, colonia, municipio o calle, o usa un filtro.` };
   }
-  const ranges = { areaMin: null, areaMax: null, priceMin: null, priceMax: null } as Omit<ComparableSearchFilters, "text">;
+  if (draft.postalCode.trim() && !/^\d{5}$/.test(draft.postalCode.trim())) return { error: "El código postal lleva 5 dígitos." };
+  if (draft.consultedFrom && draft.consultedTo && draft.consultedFrom > draft.consultedTo) {
+    return { error: "La fecha de consulta final debe ser igual o posterior a la inicial." };
+  }
+  const ranges = { areaMin: null, areaMax: null, priceMin: null, priceMax: null } as Pick<ComparableSearchFilters, RangeKey>;
   for (const key of Object.keys(RANGE_LABELS) as (keyof typeof RANGE_LABELS)[]) {
     if (!draft[key].trim()) continue;
     const value = parseDecimal(draft[key]);
@@ -47,7 +72,10 @@ function filtersFrom(draft: Draft): { filters: ComparableSearchFilters } | { err
   if (ranges.priceMin !== null && ranges.priceMax !== null && ranges.priceMin > ranges.priceMax) {
     return { error: "El precio máximo debe ser mayor o igual que el mínimo." };
   }
-  return { filters: { text: draft.text.trim(), ...ranges } };
+  // The kind and operation of the market itself are not sent: the server starts from them.
+  const places = Object.fromEntries(PLACE_KEYS.flatMap((key) =>
+    draft[key].trim() && !((key === "kind" || key === "operation") && draft[key] === defaults[key]) ? [[key, draft[key].trim()]] : []));
+  return { filters: { text: draft.text.trim(), ...ranges, ...places } };
 }
 
 /**
@@ -69,7 +97,7 @@ export function SearchComparablesDialog({
   const labels = MARKET_LABELS[type];
   const perUnit = isRentComparableType(type) ? "$/m²/mes" : "$/m²";
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
+  const [draft, setDraft] = useState<Draft>(() => emptyDraft(type));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"search" | "add" | null>(null);
   const [found, setFound] = useState<{ text: string; response: ComparableSearchResponse } | null>(null);
@@ -79,7 +107,7 @@ export function SearchComparablesDialog({
 
   const reset = () => {
     lastSearch.current += 1;
-    setDraft(EMPTY_DRAFT);
+    setDraft(emptyDraft(type));
     setError(null);
     setFound(null);
     setSelected(new Set());
@@ -88,7 +116,7 @@ export function SearchComparablesDialog({
 
   const search = async (event: FormEvent) => {
     event.preventDefault();
-    const parsed = filtersFrom(draft);
+    const parsed = filtersFrom(draft, type);
     if ("error" in parsed) {
       setError(parsed.error);
       return;
@@ -99,7 +127,7 @@ export function SearchComparablesDialog({
     try {
       const response = await api.market.searchComparables(valuationId, type, parsed.filters);
       if (current !== lastSearch.current) return;
-      setFound({ text: parsed.filters.text, response });
+      setFound({ text: parsed.filters.text || "los filtros elegidos", response });
       setSelected(new Set());
     } catch (failure) {
       if (current === lastSearch.current) setError(errorMessage(failure));
@@ -150,8 +178,8 @@ export function SearchComparablesDialog({
           <DialogHeader>
             <DialogTitle>Buscar comparables</DialogTitle>
             <DialogDescription>
-              Escribe la zona, colonia, municipio o calle y elige las ofertas que quieras agregar al avalúo.
-              Los factores se califican después y las fotos no se copian.
+              Escribe la zona, colonia, municipio, calle o el ID del comparable (C-00123), o usa los filtros, y elige las ofertas que quieras
+              agregar al avalúo. Se agregan con sus fotos, su pantalla de referencia y su ID; los factores se califican después.
             </DialogDescription>
           </DialogHeader>
 
@@ -169,6 +197,48 @@ export function SearchComparablesDialog({
                 {...field("text")}
               />
             </Field>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Field>
+                <FieldLabel htmlFor="comparable-search-state">Estado</FieldLabel>
+                <Input id="comparable-search-state" placeholder="Opcional" {...field("state")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-municipality">Municipio</FieldLabel>
+                <Input id="comparable-search-municipality" placeholder="Opcional" {...field("municipality")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-neighborhood">Colonia</FieldLabel>
+                <Input id="comparable-search-neighborhood" placeholder="Opcional" {...field("neighborhood")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-postal">Código postal</FieldLabel>
+                <Input id="comparable-search-postal" inputMode="numeric" maxLength={5} placeholder="Opcional" {...field("postalCode")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-kind">Tipo de inmueble</FieldLabel>
+                <NativeSelect id="comparable-search-kind" className="w-full" {...field("kind")}>
+                  <NativeSelectOption value="TERRENO">Terreno</NativeSelectOption>
+                  <NativeSelectOption value="CONSTRUIDO">Inmueble construido</NativeSelectOption>
+                  <NativeSelectOption value="TODOS">Cualquiera</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-operation">Operación</FieldLabel>
+                <NativeSelect id="comparable-search-operation" className="w-full" {...field("operation")}>
+                  <NativeSelectOption value="VENTA">Venta</NativeSelectOption>
+                  <NativeSelectOption value="RENTA">Renta</NativeSelectOption>
+                  <NativeSelectOption value="TODAS">Cualquiera</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-from">Consultado desde</FieldLabel>
+                <Input id="comparable-search-from" type="date" {...field("consultedFrom")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-to">Consultado hasta</FieldLabel>
+                <Input id="comparable-search-to" type="date" {...field("consultedTo")} />
+              </Field>
+            </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto] sm:items-end">
               <Field>
                 <FieldLabel htmlFor="comparable-search-area-min">Superficie mín. (m²)</FieldLabel>
@@ -192,7 +262,7 @@ export function SearchComparablesDialog({
               </Button>
             </div>
             <p id="comparable-search-hint" className={error ? "text-sm text-destructive" : "text-xs text-muted-foreground"} role={error ? "alert" : undefined}>
-              {error ?? `Escribe al menos ${SEARCH_TEXT_MIN} letras; no importan acentos ni mayúsculas.`}
+              {error ?? `Escribe al menos ${SEARCH_TEXT_MIN} letras, o deja el texto vacío y usa los filtros; no importan acentos ni mayúsculas.`}
             </p>
           </form>
 
@@ -232,11 +302,13 @@ export function SearchComparablesDialog({
                             />
                           </th>
                         ) : null}
+                        <th className="px-2 py-1.5">ID</th>
+                        <th className="px-2 py-1.5"><span className="sr-only">Foto</span></th>
                         <th className="px-2 py-1.5">Ubicación</th>
                         <th className="px-2 py-1.5 text-right">Superficie</th>
                         <th className="px-2 py-1.5 text-right">{labels.price}</th>
                         <th className="px-2 py-1.5 text-right">{perUnit}</th>
-                        <th className="px-2 py-1.5">Capturado</th>
+                        <th className="px-2 py-1.5">Consulta</th>
                         <th className="px-2 py-1.5"><span className="sr-only">Liga del anuncio</span></th>
                       </tr>
                     </thead>
@@ -255,19 +327,27 @@ export function SearchComparablesDialog({
                                 />
                               </td>
                             ) : null}
+                            <td className="px-2 py-1.5 font-mono whitespace-nowrap">{formatComparableId(result.folio) ?? "—"}</td>
+                            <td className="px-2 py-1.5">
+                              {result.thumbnailUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={result.thumbnailUrl} alt="" className="size-10 rounded object-cover" />
+                              ) : <span className="block size-10 rounded bg-muted" />}
+                            </td>
                             <td className="px-2 py-1.5">
                               <span className="block text-sm">{comparable.location}</span>
                               <span className="mt-0.5 flex flex-wrap items-center gap-1 text-muted-foreground">
                                 <Badge variant="secondary">{result.sourceLabel}</Badge>
                                 {result.origin ? <span>{result.origin}</span> : null}
-                                {result.photoCount ? <span>· {result.photoCount} foto{result.photoCount === 1 ? "" : "s"} (no se copia{result.photoCount === 1 ? "" : "n"})</span> : null}
+                                {result.photoCount ? <span>· {result.photoCount} foto{result.photoCount === 1 ? "" : "s"}</span> : null}
                               </span>
                             </td>
                             <td className="px-2 py-1.5 text-right tabular-nums">{number(comparable.area)}</td>
                             <td className="px-2 py-1.5 text-right tabular-nums">{money(comparable.price)}</td>
                             <td className="px-2 py-1.5 text-right tabular-nums">{money(unitValue)}</td>
-                            <td className="px-2 py-1.5 tabular-nums">{day(result.capturedOn)}</td>
-                            <td className="px-2 py-1.5">
+                            <td className="px-2 py-1.5 tabular-nums">{day(comparable.consultedOn ?? result.capturedOn)}</td>
+                            <td className="px-2 py-1.5 whitespace-nowrap">
+                              {result.sourceId === "despacho" ? <ComparableCardButton compact comparableId={result.id} label={`Ver ficha de ${comparable.location}`} /> : null}
                               {comparable.url ? (
                                 <a
                                   className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"

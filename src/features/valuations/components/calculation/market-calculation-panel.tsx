@@ -47,7 +47,11 @@ import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts } from "@/features/valuations/calculation/captured-formulas";
 import { FormulaInput } from "./formula-input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { ComparableDialog } from "./comparable-dialog";
+import { formatComparableId, todayInMexico } from "@/features/valuations/calculation/comparable-card";
+import { REVIEW_STATUS_LABELS, comparableWarnings } from "@/features/valuations/calculation/comparable-review";
+import { ComparableCardButton } from "./comparable-card-dialog";
+import { ComparableDialog, type PendingImages } from "./comparable-dialog";
+import { ComparableReviewDialog } from "./comparable-review-dialog";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { ImportComparablesDialog } from "./import-comparables-dialog";
 import { MarketCharacteristicsTable } from "./market-characteristics-table";
@@ -115,6 +119,8 @@ export function MarketCalculationPanel(props: {
   /** Comparable types this panel handles: sales in the market section, rents in the rent market. */
   types?: ComparableType[];
   readOnly: boolean;
+  /** May save the review of the comparables, even when the rest is read-only (a reviewer). */
+  canReview?: boolean;
   /** Suggested subject area (terreno section) while none is captured. */
   suggestedSubjectArea: number | null;
   onCalculation: (calculation: MarketCalculationDto, result: MarketApproachResult | null) => void;
@@ -210,6 +216,7 @@ function MarketTypePanel(props: {
   valuationId: string;
   type: ComparableType;
   readOnly: boolean;
+  canReview?: boolean;
   suggestedSubjectArea: number | null;
   onCalculation: (calculation: MarketCalculationDto, result: MarketApproachResult | null) => void;
 }) {
@@ -224,7 +231,7 @@ function MarketTypePanel(props: {
   const [savingSettings, setSavingSettings] = useState(false);
   const [editing, setEditing] = useState<ComparableDto | "nuevo" | null>(null);
   // Data read from a pasted listing, waiting in the form of a new comparable.
-  const [prefill, setPrefill] = useState<ComparablePrefill | null>(null);
+  const [prefill, setPrefill] = useState<{ values: ComparablePrefill; listingText: string } | null>(null);
   const ai = useAiAssist();
   const [catalog, setCatalog] = useState<FactorCatalog>(EMPTY_FACTOR_CATALOG);
   const [customFactors, setCustomFactors] = useState<CustomFactor[]>([]);
@@ -338,13 +345,22 @@ function MarketTypePanel(props: {
     });
   };
 
-  const submitComparable = (current: ComparableDto | null) => async (values: ComparableFormValues) =>
-    run(
-      () => current
-        ? api.market.updateComparable(valuationId, type, current.id, values)
-        : api.market.createComparable(valuationId, type, values),
-      current ? "Comparable guardado" : "Comparable agregado",
-    );
+  const submitComparable = (current: ComparableDto | null) => async (values: ComparableFormValues, pending: PendingImages) => {
+    if (current) return run(() => api.market.updateComparable(valuationId, type, current.id, values), "Comparable guardado");
+    const before = new Set(calculation?.comparables.map((item) => item.id) ?? []);
+    return run(async () => {
+      const created = await api.market.createComparable(valuationId, type, values);
+      // The screenshot pasted before saving goes up once the comparable exists.
+      const added = created.comparables.find((item) => !before.has(item.id));
+      if (!pending.screenshot || !added) return created;
+      try {
+        return await api.market.uploadScreenshot(valuationId, type, added.id, pending.screenshot);
+      } catch (error) {
+        failed(error);
+        return created;
+      }
+    }, "Comparable agregado");
+  };
 
   const createFactor = async (label: string) => {
     try {
@@ -376,6 +392,7 @@ function MarketTypePanel(props: {
   const setDraftField = (key: keyof SettingsDraft) => (event: { target: { value: string } }) =>
     setDraft((current) => (current ? { ...current, [key]: event.target.value } : current));
   const editingComparable = editing === "nuevo" ? null : editing;
+  const today = todayInMexico();
   const basis = homologationBasisOf(liveSettings);
   const againstBase = basis === "LOTE_TIPO";
   const fields = characteristicFieldsOf(liveSettings);
@@ -488,6 +505,7 @@ function MarketTypePanel(props: {
             <thead className="bg-muted/60 text-xs text-muted-foreground">
               <tr>
                 <th className="px-2 py-1.5 text-left font-medium">Ref.</th>
+                <th className="px-2 py-1.5 text-left font-medium">ID</th>
                 <th className="px-2 py-1.5 text-left font-medium">Ubicación</th>
                 <th className="px-2 py-1.5 text-right font-medium">Superficie</th>
                 <th className="px-2 py-1.5 text-right font-medium">{labels.price}</th>
@@ -498,17 +516,38 @@ function MarketTypePanel(props: {
             <tbody>
               {comparables.map((comparable) => {
                 const row = byReference.get(String(comparable.reference));
+                // Warnings only: the appraiser's judgement decides whether the comparable stays.
+                const warnings = comparableWarnings(
+                  { ...comparable, hasScreenshot: Boolean(comparable.screenshot) },
+                  { type, subjectArea: liveSettings.subjectArea, today },
+                );
+                const status = comparable.review?.status ?? "POR_REVISAR";
                 return (
-                  <tr key={comparable.id} className="border-t">
+                  <tr key={comparable.id} className="border-t" data-comparable-row={formatComparableId(comparable.folio) ?? comparable.id}>
                     <td className="px-2 py-1.5">{comparable.reference}</td>
-                    <td className="max-w-64 truncate px-2 py-1.5" title={comparable.location}>
-                      {comparable.location}
-                      {comparable.photos.length ? <span className="ml-1 text-xs text-muted-foreground">({comparable.photos.length} fotos)</span> : null}
+                    <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">
+                      {formatComparableId(comparable.folio) ?? "—"}
+                      <span className={cn("ml-1 font-sans", status === "VERIFICADO" ? "text-emerald-700 dark:text-emerald-400" : status === "POR_REVISAR" ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400")}>
+                        · {REVIEW_STATUS_LABELS[status]}
+                      </span>
+                    </td>
+                    <td className="max-w-64 px-2 py-1.5" title={comparable.location}>
+                      <span className="block truncate">
+                        {comparable.location}
+                        {comparable.photos.length ? <span className="ml-1 text-xs text-muted-foreground">({comparable.photos.length} fotos)</span> : null}
+                      </span>
+                      {warnings.length ? (
+                        <span className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400" data-comparable-warnings title={warnings.map((warning) => warning.message).join("\n")}>
+                          <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+                          <span className="truncate">{warnings.map((warning) => warning.message).join(" ")}</span>
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{comparable.area ?? "—"}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{comparable.price ? money(comparable.price) : "—"}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{row ? money(row.unitValue) : "—"}</td>
                     <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                      <ComparableCardButton compact comparableId={comparable.id} label={`Ver ficha del comparable ${comparable.reference}`} />
                       <Button type="button" size="icon-sm" variant="ghost" aria-label={`Editar comparable ${comparable.reference}`} onClick={() => setEditing(comparable)}>
                         <Pencil />
                       </Button>
@@ -532,7 +571,7 @@ function MarketTypePanel(props: {
                 );
               })}
               {!comparables.length ? (
-                <tr><td colSpan={6} className="px-2 py-6 text-center text-muted-foreground">Sin comparables todavía.</td></tr>
+                <tr><td colSpan={7} className="px-2 py-6 text-center text-muted-foreground">Sin comparables todavía.</td></tr>
               ) : null}
             </tbody>
           </table>
@@ -552,13 +591,29 @@ function MarketTypePanel(props: {
                     valuationId={valuationId}
                     type={type}
                     priceLabel={priceLabel}
-                    onUse={(values) => { setPrefill(values); setEditing("nuevo"); }}
+                    onUse={(values, listingText) => { setPrefill({ values, listingText }); setEditing("nuevo"); }}
                   />
                 ) : null}
               </>
             ) : null}
             {/* Searching only reads: a concluded valuation can still look, but not add. */}
             <SearchComparablesDialog key={type} valuationId={valuationId} type={type} readOnly={readOnly} onAdded={applyServerState} />
+            {comparables.length ? (
+              <ComparableReviewDialog
+                valuationId={valuationId}
+                // A reviewer saves the review though the rest is read-only; a concluded valuation keeps it as it was.
+                readOnly={!(props.canReview ?? !props.readOnly) || Boolean(calculation.locked)}
+                // The review changes no calculation; the panel only shows the new state.
+                onReviewed={(comparableId, review) => {
+                  const patch = (state: MarketCalculationDto) => ({
+                    ...state,
+                    comparables: state.comparables.map((item) => (item.id === comparableId ? { ...item, review } : item)),
+                  });
+                  if (latest.current) latest.current = patch(latest.current);
+                  setCalculation((current) => (current ? patch(current) : current));
+                }}
+              />
+            ) : null}
           </div>
           {complete < MIN_COMPARABLES ? (
             <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
@@ -749,7 +804,8 @@ function MarketTypePanel(props: {
           key={editingComparable?.id ?? "nuevo"}
           open
           onOpenChange={(open) => { if (!open) { setEditing(null); setPrefill(null); } }}
-          prefill={prefill ?? undefined}
+          prefill={prefill?.values}
+          listingText={prefill?.listingText}
           comparable={editingComparable ? comparables.find((item) => item.id === editingComparable.id) ?? editingComparable : null}
           characteristicFields={fields}
           comparableType={type}
@@ -762,6 +818,14 @@ function MarketTypePanel(props: {
           onRemovePhoto={async (photoId) => {
             if (editingComparable) await run(() => api.market.deletePhoto(valuationId, type, editingComparable.id, photoId));
           }}
+          onUploadScreenshot={async (file) => {
+            if (editingComparable) await run(() => api.market.uploadScreenshot(valuationId, type, editingComparable.id, file), "Pantalla de referencia guardada");
+          }}
+          onRemoveScreenshot={async () => {
+            if (editingComparable) await run(() => api.market.deleteScreenshot(valuationId, type, editingComparable.id));
+          }}
+          onCheckDuplicates={(probe) => api.market.duplicates(valuationId, probe)}
+          onReuse={(comparableId) => run(() => api.market.reuseComparable(valuationId, type, comparableId), "Comparable existente agregado. Califica sus factores.")}
         />
       ) : null}
     </section>

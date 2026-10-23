@@ -33,8 +33,8 @@ export function PasteListingDialog({
   valuationId: string;
   type: ComparableType;
   priceLabel: string;
-  /** Opens the comparable form with these values; the appraiser still saves it. */
-  onUse: (values: ComparablePrefill) => void;
+  /** Opens the comparable form with these values and the pasted text, kept as evidence; the appraiser still saves it. */
+  onUse: (values: ComparablePrefill, listingText: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -83,7 +83,7 @@ export function PasteListingDialog({
 
   const use = () => {
     if (!review) return;
-    onUse(Object.fromEntries(review.rows.filter((row) => row.value.trim()).map((row) => [row.field, row.value.trim()])));
+    onUse(Object.fromEntries(review.rows.filter((row) => row.value.trim()).map((row) => [row.field, row.value.trim()])), text.trim());
     setOpen(false);
     reset();
   };

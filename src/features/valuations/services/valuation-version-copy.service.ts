@@ -244,6 +244,7 @@ export async function copyVersionContent(
         JDireccionSnapshot: comparable.JDireccionSnapshot as Prisma.InputJsonValue,
         JUbicacionSnapshot: comparable.JUbicacionSnapshot as Prisma.InputJsonValue,
         JImagenesSnapshot: json(comparable.JImagenesSnapshot),
+        JRevision: json(comparable.JRevision),
         DFechaSeleccion: comparable.DFechaSeleccion,
         DFechaExclusion: comparable.DFechaExclusion,
       },

@@ -45,7 +45,7 @@ export function relevance(text: string, comparable: FoundComparable) {
 
 type Identity = Pick<FoundComparable, "location" | "area" | "price" | "url">;
 
-const urlKey = (url: string | null) =>
+export const urlKey = (url: string | null) =>
   url ? url.trim().toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/#.*$/, "").replace(/\/+$/, "") : null;
 const amount = (value: number | null) => (value === null ? "" : String(Math.round(value * 100) / 100));
 

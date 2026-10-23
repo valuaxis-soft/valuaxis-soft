@@ -35,13 +35,25 @@ Característica 14. Cada factor se elige de un catálogo de calificaciones del d
 
 El código está en `calculation/comparable-import.ts` (lectura y validación, sin dependencias) y `calculation/comparable-workbook.ts` (archivos, con ExcelJS).
 
+## Fichas, evidencia, duplicados y revisión (hecha, 22 oct 2026)
+
+Tomado como referencia (no como copia) de los videos de SAX que envió el valuador. Migración 044.
+
+- **ID del despacho:** cada comparable lleva un número de la organización, `C-00123` (`Propiedad.IFolioComparable`, contador `Organizacion.IUltimoFolioComparable`). Las copias de una versión reabierta, las que se separan al editar, las que se agregan desde "Buscar comparables" y las de "Usar el existente" conservan el número; "Agregar de todos modos" da uno nuevo. Las propiedades que ya eran comparables recibieron número en la migración.
+- **Ficha:** `/comparables/<uuid>` y el diálogo "Ver ficha" (panel de mercado, búsqueda, duplicados y revisión): fotos, pantalla de referencia, precio y $/m², ubicación, fuente, terreno y construcción, características, revisión, avisos y los avalúos en que se usó.
+- **Evidencia:** "Pantalla de referencia" (captura del anuncio, aparte de las fotos; se pega con Ctrl+V o se sube, y en un comparable nuevo se guarda al guardarlo), fecha de consulta (hoy por omisión), vigencia y el texto pegado en "Pegar anuncio". Nada es obligatorio: falta de pantalla es un aviso.
+- **Captura:** ubicación por partes (estado, municipio, C.P., colonia, calle, número) además del texto de una línea que imprime el dictamen (si se deja vacío, se arma con las partes; los comparables anteriores conservan su texto), proximidad urbana SHF (1 Céntrica … 5 Rural), tipo de operación y latitud/longitud opcionales (ambas o ninguna; las llenará el mapa). Todo vive en los snapshots del comparable; el motor no los lee.
+- **Duplicados:** al guardar un comparable nuevo y en la vista previa de Excel se buscan en la base del despacho (versión vigente de cada avalúo) la misma liga, la misma calle y número en la misma colonia o municipio, o el mismo teléfono con precio a ±1 % (`calculation/comparable-duplicates.ts`). Se ofrece "Usar el existente" o "Agregar de todos modos".
+- **Búsqueda:** filtros de estado, municipio, colonia, C.P., tipo de inmueble, operación, superficie, precio y fecha de consulta; el texto acepta el ID. Resultados con ID, miniatura, precio, $/m², superficie, fecha y "Ver ficha".
+- **Revisión:** "Revisión de comparables" lista los comparables de todos los mercados con su estado (Por revisar, Verificado, Con observaciones, Rechazado), la lista de comprobación, notas, quién y cuándo, "Abrir anuncio" y "Ver pantalla de referencia" (`ComparableAvaluo.JRevision`, se copia al reabrir). Avisos, nunca bloqueos: superficie construida a más de ±20 % de la del sujeto (`BUILT_AREA_TOLERANCE`, constante por ahora), dirección sin número, contacto que es solo el portal, sin pantalla de referencia y oferta de 6 meses o más. Concluir con comparables por revisar solo avisa.
+
 ## Extracción de portales
 
 Se probó leer anuncios desde el servidor el 29 de septiembre de 2026. Inmuebles24, Lamudi, Vivanuncios, Propiedades.com y Mitula bloquean a los robots (401/403, verificación anti-bots); solo Mercado Libre responde, con datos estructurados. No se evaden esas protecciones. Las opciones viables, pendientes de decidir con el cliente, son pegar el texto del anuncio y extraerlo con IA (cualquier portal) e importar por liga desde Mercado Libre.
 
 ## Pendiente
 
-- Búsqueda y reutilización de comparables entre avalúos: `Propiedad` ya es por organización, falta la pantalla.
-- Coordenadas: `DireccionPropiedad` exige latitud y longitud, así que la dirección capturada se guarda solo en el snapshot hasta tener geocodificación.
+- Coordenadas: `DireccionPropiedad` exige latitud y longitud, así que la dirección capturada (ahora por partes, con latitud y longitud a mano) se guarda solo en el snapshot hasta tener mapa y geocodificación.
+- El ±20 % de superficie construida es una constante; pasarlo a Datos del despacho si el valuador lo pide.
 
 La metodología está en [fase0/metodologia/02-mercado-homologacion.md](fase0/metodologia/02-mercado-homologacion.md).

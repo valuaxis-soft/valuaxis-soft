@@ -2,6 +2,8 @@ import { z } from "zod";
 import { SURFACE_POWERS } from "../engine/config";
 import { MAX_REGRESSION_VARIABLES } from "../engine/regression";
 import { capturedFormulasSchema } from "./captured-formulas";
+import { OPERATION_TYPES, URBAN_PROXIMITIES } from "./comparable-card";
+import { REVIEW_CHECKS, REVIEW_STATUSES } from "./comparable-review";
 import { MAX_SCALE_LEVELS, REGRESSION_DEPENDENTS } from "./market-regression";
 import {
   BUILTIN_CHARACTERISTICS,
@@ -47,6 +49,18 @@ const characteristicValues = z.record(characteristicKey, z.string().trim().max(3
   .transform((values) => Object.fromEntries(Object.entries(values).filter(([, value]) => value)))
   .optional();
 
+/** The longest listing "Pegar anuncio" reads (LISTING_TEXT_MAX); not imported, the AI module imports this one. */
+const LISTING_TEXT_MAX = 12_000;
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida.").nullable();
+const addressSchema = z.object({
+  state: text(80).optional(),
+  municipality: text(120).optional(),
+  postalCode: z.string().trim().regex(/^(\d{5})?$/, "El código postal lleva 5 dígitos.").nullable().transform((value) => value || null).optional(),
+  neighborhood: text(120).optional(),
+  street: text(180).optional(),
+  number: text(40).optional(),
+});
+
 export const comparableInputSchema = z.object({
   location: z.string().trim().min(1, "Captura la ubicación del comparable.").max(500),
   area: positive,
@@ -74,6 +88,15 @@ export const comparableInputSchema = z.object({
     .refine((value) => !value || /^https?:\/\//i.test(value), "La liga debe empezar con http:// o https://.")
     .transform((value) => value || null),
   offerDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida.").nullable(),
+  // Fields of the card and its evidence; a client of before leaves them out and they stay as stored.
+  consultedOn: day.optional(),
+  validUntil: day.optional(),
+  listingText: text(LISTING_TEXT_MAX).optional(),
+  address: addressSchema.nullable().optional(),
+  urbanProximity: z.enum(URBAN_PROXIMITIES, "Proximidad urbana inválida.").nullable().optional(),
+  operationType: z.enum(OPERATION_TYPES, "Tipo de operación inválido.").nullable().optional(),
+  latitude: z.number("La latitud debe ser un número.").finite().min(-90, "La latitud va de -90 a 90.").max(90, "La latitud va de -90 a 90.").nullable().optional(),
+  longitude: z.number("La longitud debe ser un número.").finite().min(-180, "La longitud va de -180 a 180.").max(180, "La longitud va de -180 a 180.").nullable().optional(),
   // Built-in factors once each, plus the firm's own: at most the six of the homologation and as many own ones.
   factors: z.array(factorSchema).max(FACTOR_TYPES.length + MAX_FACTOR_SLOTS)
     .refine((factors) => new Set(factors.map(factorKey)).size === factors.length, "Cada tipo de factor va una sola vez."),
@@ -148,3 +171,24 @@ export const marketSettingsSchema = z.object({
 export type MarketSettingsPayload = z.infer<typeof marketSettingsSchema>;
 
 export const comparableTypeSchema = z.enum(COMPARABLE_TYPES);
+
+/** The review of a comparable in a valuation: it changes no calculation. */
+export const comparableReviewSchema = z.object({
+  status: z.enum(REVIEW_STATUSES, "Estado de revisión inválido."),
+  checks: z.partialRecord(z.enum(REVIEW_CHECKS), z.boolean()).default({}),
+  notes: text(2000).default(null),
+});
+
+export type ComparableReviewPayload = z.infer<typeof comparableReviewSchema>;
+
+/** What the duplicate check reads of a comparable being captured. */
+export const duplicateProbeSchema = z.object({
+  url: z.string().trim().max(1000).nullable().default(null),
+  location: z.string().trim().max(500).default(""),
+  address: addressSchema.nullable().optional(),
+  contactPhone: z.string().trim().max(40).nullable().default(null),
+  price: z.number().finite().positive().max(1e12).nullable().default(null),
+});
+
+/** "Usar el existente": the comparable of the firm's base to bring. */
+export const reuseComparableSchema = z.object({ comparableId: z.uuid("Comparable inválido.") });

@@ -252,6 +252,8 @@ model Organizacion {
   JFactoresPersonalizados Json?   @map("JFactoresPersonalizados") @db.JsonB
   /// Pay per appraisal enforced: concluding with no credit balance is blocked (migration 040). Off by default.
   BCobroPorAvaluo       Boolean   @default(false) @map("BCobroPorAvaluo")
+  /// Last number given to a comparable of the firm's base ("C-00123"); it only grows (migration 044).
+  IUltimoFolioComparable Int      @default(0) @map("IUltimoFolioComparable")
   BActivo               Boolean   @default(true) @map("BActivo")
   DFechaCreacion        DateTime  @default(now()) @map("DFechaCreacion")
   DFechaModificacion    DateTime  @updatedAt @map("DFechaModificacion")
@@ -2111,12 +2113,14 @@ model Propiedad {
   BPrivada                Boolean   @default(true) @map("BPrivada")
   BActiva                 Boolean   @default(true) @map("BActiva")
   JCaracteristicas        Json?     @map("JCaracteristicas") @db.JsonB
+  /// The comparable's number in the firm's base ("C-00123"); copies of the same comparable keep it (migration 044).
+  IFolioComparable        Int?      @map("IFolioComparable")
   DFechaCreacion          DateTime  @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
   DFechaModificacion      DateTime  @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
   DFechaEliminacion       DateTime? @map("DFechaEliminacion") @db.Timestamptz(3)
 
   organizacion              Organizacion                  @relation(fields: [IdOrganizacion], references: [IdOrganizacion], onDelete: Restrict, onUpdate: Cascade)
-  tipoInmueble              TipoInmueble                  @relation(fields: [IdTipoInmueble], references: [IdTipoInmueble], onDelete: Restrict, onUpdate: Cascade)
+  tipoInmueble              TipoInmueble                 @relation(fields: [IdTipoInmueble], references: [IdTipoInmueble], onDelete: Restrict, onUpdate: Cascade)
   direccionesPropiedad      DireccionPropiedad[]
   historialesUbicacion      HistorialUbicacionPropiedad[]
   caracteristicas           CaracteristicaPropiedad[]
@@ -2131,6 +2135,7 @@ model Propiedad {
   @@index([IdTipoInmueble])
   @@index([BPrivada])
   @@index([BActiva])
+  @@index([IdOrganizacion, IFolioComparable])
   @@index([NSuperficieTerreno])
   @@index([NSuperficieConstruccion])
   @@index([NSuperficieRentable])
@@ -2437,7 +2442,9 @@ model ComparableAvaluo {
   JDireccionSnapshot               Json      @map("JDireccionSnapshot") @db.JsonB
   JUbicacionSnapshot               Json      @map("JUbicacionSnapshot") @db.JsonB
   JImagenesSnapshot                Json?     @map("JImagenesSnapshot") @db.JsonB
-  DFechaSeleccion                  DateTime  @default(now()) @map("DFechaSeleccion") @db.Timestamptz(3)
+  /// The appraiser's review of the comparable in this valuation; NULL is "por revisar" (migration 044).
+  JRevision                        Json?     @map("JRevision") @db.JsonB
+  DFechaSeleccion                 DateTime  @default(now()) @map("DFechaSeleccion") @db.Timestamptz(3)
   DFechaExclusion                  DateTime? @map("DFechaExclusion") @db.Timestamptz(3)
   DFechaModificacion               DateTime  @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
 

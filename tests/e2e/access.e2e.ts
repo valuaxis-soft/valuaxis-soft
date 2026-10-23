@@ -41,6 +41,12 @@ describe("without a session", () => {
     assert.match(response.headers.get("location") ?? "", /\/iniciar-sesion\?/);
   });
 
+  test("a comparable's card page redirects to the login", async () => {
+    const response = await call(null, "GET", `/comparables/${randomUUID()}`);
+    assert.equal(response.status, 307);
+    assert.match(response.headers.get("location") ?? "", /\/iniciar-sesion\?/);
+  });
+
   test("the login page is public", async () => {
     const response = await call(null, "GET", "/iniciar-sesion");
     assert.equal(response.status, 200);
@@ -74,6 +80,13 @@ describe("without a session", () => {
     ["POST", "/api/avaluos/{id}/mercado/comparables/importar?tipo=TERRENO_VENTA"],
     ["GET", "/api/avaluos/{id}/mercado/comparables/buscar?tipo=TERRENO_VENTA&q=arandas"],
     ["POST", "/api/avaluos/{id}/mercado/comparables/buscar?tipo=TERRENO_VENTA"],
+    ["POST", "/api/avaluos/{id}/mercado/comparables/duplicados"],
+    ["POST", "/api/avaluos/{id}/mercado/comparables/reusar?tipo=TERRENO_VENTA"],
+    ["GET", "/api/avaluos/{id}/mercado/revision"],
+    ["PUT", "/api/avaluos/{id}/mercado/comparables/00000000-0000-4000-8000-000000000000/revision"],
+    ["POST", "/api/avaluos/{id}/mercado/comparables/00000000-0000-4000-8000-000000000000/pantalla?tipo=TERRENO_VENTA"],
+    ["DELETE", "/api/avaluos/{id}/mercado/comparables/00000000-0000-4000-8000-000000000000/pantalla?tipo=TERRENO_VENTA"],
+    ["GET", "/api/comparables/00000000-0000-4000-8000-000000000000"],
     ["GET", "/api/avaluos/{id}/datos/imagenes"],
     ["GET", "/api/comparables/plantilla?tipo=TERRENO_VENTA"],
     ["GET", "/api/organizacion/equipo"],

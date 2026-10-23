@@ -3,6 +3,7 @@ import { DEFAULT_LOGIN_REDIRECT } from "@/features/auth/constants/auth.constants
 const allowedInternalPrefixes = [
   "/dashboard",
   "/avaluos",
+  "/comparables",
   "/configuracion",
   "/organizacion",
   "/suscripcion",

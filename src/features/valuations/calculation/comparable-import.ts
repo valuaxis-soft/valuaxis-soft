@@ -7,6 +7,7 @@
  */
 import { comparableInputSchema, type ComparableInputPayload } from "./market-schemas";
 import { isBuiltComparableType, type ComparableType } from "./market-types";
+import type { DuplicateReason } from "./comparable-duplicates";
 
 export const MAX_IMPORT_ROWS = 100;
 
@@ -94,7 +95,11 @@ export type ImportRowResult = {
 
 /** What the appraiser sees before importing: each row and why it would be skipped. */
 export type ComparableImportPreview = {
-  rows: Array<{ row: number; errors: string[]; location: string; area: number | null; price: number | null }>;
+  rows: Array<{
+    row: number; errors: string[]; location: string; area: number | null; price: number | null;
+    /** Comparables of the firm's base that look like the same property: the appraiser may use one instead. */
+    duplicates?: Array<{ comparableId: string; folio: number | null; valuationFolio: string; reasons: DuplicateReason[] }>;
+  }>;
   valid: number;
   invalid: number;
   tooManyRows: boolean;

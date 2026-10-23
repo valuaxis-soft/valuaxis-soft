@@ -1,10 +1,13 @@
 "use client";
 
-import { CheckCircle2, FileDown, FileSpreadsheet, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Copy, FileDown, FileSpreadsheet, Loader2, XCircle } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { formatComparableId } from "@/features/valuations/calculation/comparable-card";
+import { DUPLICATE_REASON_LABELS } from "@/features/valuations/calculation/comparable-duplicates";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import type { ComparableImportPreview } from "@/features/valuations/calculation/comparable-import";
@@ -29,11 +32,14 @@ export function ImportComparablesDialog({
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ComparableImportPreview | null>(null);
   const [busy, setBusy] = useState<"preview" | "import" | null>(null);
+  // Rows answered with "Usar el existente": row → comparable of the firm's base.
+  const [reuse, setReuse] = useState<Record<number, string>>({});
   const input = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setFile(null);
     setPreview(null);
+    setReuse({});
     if (input.current) input.current.value = "";
   };
 
@@ -56,7 +62,7 @@ export function ImportComparablesDialog({
     if (!file) return;
     setBusy("import");
     try {
-      const result = await api.market.importComparables(valuationId, type, file);
+      const result = await api.market.importComparables(valuationId, type, file, reuse);
       onImported(result.calculation);
       const skipped = result.preview.invalid;
       toast.success(`${result.imported} comparable${result.imported === 1 ? "" : "s"} importado${result.imported === 1 ? "" : "s"}${skipped ? `; ${skipped} con errores se omitieron` : ""}.`);
@@ -130,6 +136,30 @@ export function ImportComparablesDialog({
                         <td className="px-2 py-1.5">
                           {row.errors.length ? (
                             <span className="flex items-start gap-1 text-destructive"><XCircle className="mt-0.5 size-3.5 shrink-0" />{row.errors.join(" ")}</span>
+                          ) : row.duplicates?.length ? (
+                            <span className="grid gap-1" data-import-duplicate={row.row}>
+                              <span className="flex items-start gap-1 text-amber-700 dark:text-amber-400">
+                                <Copy className="mt-0.5 size-3.5 shrink-0" />
+                                Ya está en la base: {row.duplicates.map((match) =>
+                                  `${formatComparableId(match.folio) ?? "sin número"} (avalúo ${match.valuationFolio}; ${match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")})`).join("; ")}
+                              </span>
+                              <NativeSelect
+                                size="sm"
+                                aria-label={`Qué hacer con el renglón ${row.row}`}
+                                value={reuse[row.row] ?? ""}
+                                onChange={(event) => setReuse((current) => {
+                                  const { [row.row]: _previous, ...rest } = current;
+                                  return event.target.value ? { ...rest, [row.row]: event.target.value } : rest;
+                                })}
+                              >
+                                <NativeSelectOption value="">Agregar de todos modos</NativeSelectOption>
+                                {row.duplicates.map((match) => (
+                                  <NativeSelectOption key={match.comparableId} value={match.comparableId}>
+                                    Usar el existente {formatComparableId(match.folio) ?? `del avalúo ${match.valuationFolio}`}
+                                  </NativeSelectOption>
+                                ))}
+                              </NativeSelect>
+                            </span>
                           ) : (
                             <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="size-3.5" />Listo</span>
                           )}
