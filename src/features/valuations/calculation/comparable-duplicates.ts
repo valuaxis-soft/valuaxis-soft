@@ -12,14 +12,17 @@ export type DuplicateProbe = {
   address?: ComparableAddress | null;
   contactPhone: string | null;
   price: number | null;
+  /** Its area (land, built or rentable, as its type says); a client of before leaves it out. */
+  area?: number | null;
 };
 
-export const DUPLICATE_REASONS = ["URL", "ADDRESS", "PHONE_PRICE"] as const;
+export const DUPLICATE_REASONS = ["URL", "ADDRESS", "PHONE_PRICE", "SIMILAR"] as const;
 export type DuplicateReason = (typeof DUPLICATE_REASONS)[number];
 export const DUPLICATE_REASON_LABELS: Record<DuplicateReason, string> = {
   URL: "misma liga del anuncio",
   ADDRESS: "misma dirección",
   PHONE_PRICE: "mismo teléfono y precio",
+  SIMILAR: "misma colonia, superficie y precio",
 };
 
 /** Two prices within 1 % of each other are the same offer. */
@@ -47,6 +50,13 @@ export function normalizeAddressText(text: string) {
  * town, is not one property.
  */
 export function addressKey(probe: Pick<DuplicateProbe, "location" | "address">) {
+  const { street, locality } = addressParts(probe);
+  if (!/\d/.test(street) || street.split(" ").length < 2) return null;
+  return { street, locality };
+}
+
+/** The street with its number, and the words of where it is (colonia, municipio, C.P.). */
+function addressParts(probe: Pick<DuplicateProbe, "location" | "address">) {
   let street: string;
   let rest: string[];
   if (hasAddress(probe.address)) {
@@ -58,9 +68,10 @@ export function addressKey(probe: Pick<DuplicateProbe, "location" | "address">) 
     street = normalizeAddressText(first);
     rest = others.map(normalizeAddressText);
   }
-  if (!/\d/.test(street) || street.split(" ").length < 2) return null;
   return { street, locality: new Set(rest.flatMap((item) => item.split(" ")).filter((word) => word.length > 2 || /\d/.test(word))) };
 }
+
+const overlaps = (a: Set<string>, b: Set<string>) => [...a].some((word) => b.has(word));
 
 /** The last ten digits of a phone, the Mexican number without country code; null with fewer than seven. */
 export function phoneKey(phone: string | null | undefined) {
@@ -82,11 +93,17 @@ export function duplicateReasons(probe: DuplicateProbe, candidate: DuplicateProb
   const theirs = addressKey(candidate);
   // The same street and number, in the same colonia or municipio when both say which.
   if (mine && theirs && mine.street === theirs.street
-    && (!mine.locality.size || !theirs.locality.size || [...mine.locality].some((word) => theirs.locality.has(word)))) {
+    && (!mine.locality.size || !theirs.locality.size || overlaps(mine.locality, theirs.locality))) {
     reasons.push("ADDRESS");
   }
   const phone = phoneKey(probe.contactPhone);
   if (phone && phone === phoneKey(candidate.contactPhone) && samePrice(probe.price, candidate.price)) reasons.push("PHONE_PRICE");
+  // Almost everything the same but a detail (no number, another phone): the same colonia, area and price.
+  if (!reasons.length && samePrice(probe.area ?? null, candidate.area ?? null) && samePrice(probe.price, candidate.price)) {
+    const here = addressParts(probe).locality;
+    const there = addressParts(candidate).locality;
+    if (here.size && there.size && overlaps(here, there)) reasons.push("SIMILAR");
+  }
   return reasons;
 }
 

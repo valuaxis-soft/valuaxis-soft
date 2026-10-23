@@ -246,6 +246,7 @@ export async function copyVersionContent(
         JImagenesSnapshot: json(comparable.JImagenesSnapshot),
         JRevision: json(comparable.JRevision),
         DFechaSeleccion: comparable.DFechaSeleccion,
+        DFechaActualizacionDatos: comparable.DFechaActualizacionDatos,
         DFechaExclusion: comparable.DFechaExclusion,
       },
     });

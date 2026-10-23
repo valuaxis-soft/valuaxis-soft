@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { formatComparableId } from "@/features/valuations/calculation/comparable-card";
+import { formatComparableId, formatDay } from "@/features/valuations/calculation/comparable-card";
 import { DUPLICATE_REASON_LABELS } from "@/features/valuations/calculation/comparable-duplicates";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api, SessionExpiredError } from "@/lib/api-client";
@@ -17,6 +17,18 @@ import { cn } from "@/lib/utils";
 const number = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudo leer el archivo.";
+
+/** The answers to the possible duplicates, as the import takes them: rows to reuse and rows to merge. */
+function splitAnswers(answers: Record<number, string>) {
+  const reuse: Record<number, string> = {};
+  const merge: Record<number, string> = {};
+  for (const [row, answer] of Object.entries(answers)) {
+    const [kind, id] = answer.split(":");
+    if (kind === "reuse" && id) reuse[Number(row)] = id;
+    if (kind === "merge" && id) merge[Number(row)] = id;
+  }
+  return { reuse, merge };
+}
 
 /** Comparables from the Valuaxis Excel template: preview with row errors, then import the valid ones. */
 export function ImportComparablesDialog({
@@ -32,14 +44,14 @@ export function ImportComparablesDialog({
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ComparableImportPreview | null>(null);
   const [busy, setBusy] = useState<"preview" | "import" | null>(null);
-  // Rows answered with "Usar el existente": row → comparable of the firm's base.
-  const [reuse, setReuse] = useState<Record<number, string>>({});
+  // The answer to each possible duplicate: row → "merge:<id>" (es el mismo), "reuse:<id>" (usar el existente); none keeps both.
+  const [answers, setAnswers] = useState<Record<number, string>>({});
   const input = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setFile(null);
     setPreview(null);
-    setReuse({});
+    setAnswers({});
     if (input.current) input.current.value = "";
   };
 
@@ -62,7 +74,8 @@ export function ImportComparablesDialog({
     if (!file) return;
     setBusy("import");
     try {
-      const result = await api.market.importComparables(valuationId, type, file, reuse);
+      const { reuse, merge } = splitAnswers(answers);
+      const result = await api.market.importComparables(valuationId, type, file, reuse, merge);
       onImported(result.calculation);
       const skipped = result.preview.invalid;
       toast.success(`${result.imported} comparable${result.imported === 1 ? "" : "s"} importado${result.imported === 1 ? "" : "s"}${skipped ? `; ${skipped} con errores se omitieron` : ""}.`);
@@ -140,24 +153,30 @@ export function ImportComparablesDialog({
                             <span className="grid gap-1" data-import-duplicate={row.row}>
                               <span className="flex items-start gap-1 text-amber-700 dark:text-amber-400">
                                 <Copy className="mt-0.5 size-3.5 shrink-0" />
-                                Ya está en la base: {row.duplicates.map((match) =>
-                                  `${formatComparableId(match.folio) ?? "sin número"} (avalúo ${match.valuationFolio}; ${match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")})`).join("; ")}
+                                Posible duplicado: {row.duplicates.map((match) =>
+                                  `${formatComparableId(match.folio) ?? "sin número"} (avalúo ${match.valuationFolio}; ${match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")}; datos del ${formatDay(match.updatedOn)})`).join("; ")}
                               </span>
                               <NativeSelect
                                 size="sm"
                                 aria-label={`Qué hacer con el renglón ${row.row}`}
-                                value={reuse[row.row] ?? ""}
-                                onChange={(event) => setReuse((current) => {
+                                value={answers[row.row] ?? ""}
+                                onChange={(event) => setAnswers((current) => {
                                   const { [row.row]: _previous, ...rest } = current;
                                   return event.target.value ? { ...rest, [row.row]: event.target.value } : rest;
                                 })}
                               >
-                                <NativeSelectOption value="">Agregar de todos modos</NativeSelectOption>
-                                {row.duplicates.map((match) => (
-                                  <NativeSelectOption key={match.comparableId} value={match.comparableId}>
-                                    Usar el existente {formatComparableId(match.folio) ?? `del avalúo ${match.valuationFolio}`}
-                                  </NativeSelectOption>
-                                ))}
+                                <NativeSelectOption value="">Son diferentes: conservar ambos</NativeSelectOption>
+                                {row.duplicates.map((match) => {
+                                  const name = formatComparableId(match.folio) ?? `el del avalúo ${match.valuationFolio}`;
+                                  return [
+                                    <NativeSelectOption key={`merge:${match.comparableId}`} value={`merge:${match.comparableId}`}>
+                                      Es el mismo que {name}: conservar el más reciente
+                                    </NativeSelectOption>,
+                                    <NativeSelectOption key={`reuse:${match.comparableId}`} value={`reuse:${match.comparableId}`}>
+                                      Usar {name} sin cambios
+                                    </NativeSelectOption>,
+                                  ];
+                                })}
                               </NativeSelect>
                             </span>
                           ) : (

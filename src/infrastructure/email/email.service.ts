@@ -28,6 +28,8 @@ export type DictamenEmailInput = DictamenEmailContent & {
 export type ValuationNoticeInput = ValuationNoticeContent & { to: string };
 
 export interface EmailService {
+  /** False for the development service: it only logs, and nothing reaches an inbox. */
+  readonly delivers: boolean;
   sendVerificationEmail(input: VerificationEmailInput): Promise<void>;
   sendPasswordResetEmail(input: PasswordResetEmailInput): Promise<void>;
   sendTeamInvitationEmail(input: TeamInvitationEmailInput): Promise<void>;

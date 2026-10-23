@@ -289,12 +289,23 @@ export type ComparableDto = {
   /** Decimal degrees; filled by hand until there is a map. */
   latitude?: number | null;
   longitude?: number | null;
+  /**
+   * Data of a built comparable for the search of the firm's base: its land
+   * area (its `area` is the built or rentable one), bedrooms, bathrooms (½ for
+   * a half bath) and type of construction. The calculation does not read them.
+   */
+  landArea?: number | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  constructionType?: string | null;
   photos: ComparablePhotoDto[];
   /** Read only: the comparable's number in the firm's base (formatComparableId), its screenshot and its review. */
   folio?: number | null;
   /** "Pantalla de referencia": the screenshot of the listing as it was when captured, apart from the photos. */
   screenshot?: ComparablePhotoDto | null;
   review?: ComparableReviewDto | null;
+  /** Read only: "Fecha de alta / actualización" of its data, YYYY-MM-DD; it is valid six months from it (comparable-validity). */
+  updatedOn?: string | null;
   factors: ComparableFactorDto[];
   /**
    * Formulas typed in its numeric fields ("area", "price", "frontage",
@@ -394,11 +405,13 @@ export function defaultMarketSettings(comparableType: ComparableType): MarketSet
 }
 
 /** What a stored comparable carries that its form does not send: its identity, its images and its review. */
-export type ComparableReadOnlyKey = "id" | "reference" | "photos" | "folio" | "screenshot" | "review";
+export type ComparableReadOnlyKey = "id" | "reference" | "photos" | "folio" | "screenshot" | "review" | "updatedOn";
 
 /** The form values of a stored comparable, to send it back with a change. */
 export function comparableFormValues(comparable: ComparableDto): Omit<ComparableDto, ComparableReadOnlyKey> {
-  const { id: _id, reference: _reference, photos: _photos, folio: _folio, screenshot: _screenshot, review: _review, ...values } = comparable;
+  const {
+    id: _id, reference: _reference, photos: _photos, folio: _folio, screenshot: _screenshot, review: _review, updatedOn: _updatedOn, ...values
+  } = comparable;
   return values;
 }
 

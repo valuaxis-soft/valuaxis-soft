@@ -18,9 +18,11 @@ import {
   OPERATION_TYPE_LABELS,
   URBAN_PROXIMITIES,
   URBAN_PROXIMITY_LABELS,
+  CONSTRUCTION_TYPE_SUGGESTIONS,
   coordinatesError,
   formatAddress,
   formatComparableId,
+  formatDay,
   hasAddress,
   todayInMexico,
   type AddressPart,
@@ -32,12 +34,14 @@ import type { DuplicateMatchDto } from "@/features/valuations/calculation/compar
 import { DUPLICATE_REASON_LABELS, type DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { ComparableCardButton } from "./comparable-card-dialog";
+import { ComparableValidityLine } from "./comparable-validity-badge";
 import { FormulaInput } from "./formula-input";
 import { ScreenshotSlot } from "./screenshot-slot";
 import {
   COMPARABLE_TYPE_LABELS,
   NUMERIC_CHARACTERISTICS,
   characteristicText,
+  isBuiltComparableType,
   isBuiltinCharacteristic,
   isRentComparableType,
   withCharacteristic,
@@ -51,7 +55,8 @@ const money = (value: number | null) => (value === null ? "—" : value.toLocale
 
 type DraftKey =
   | "location" | "area" | "price" | "sourceName" | "contactName" | "contactPhone" | "url" | "offerDate" | "landUse"
-  | "consultedOn" | "validUntil" | "urbanProximity" | "operationType" | "latitude" | "longitude" | "listingText";
+  | "consultedOn" | "validUntil" | "urbanProximity" | "operationType" | "latitude" | "longitude" | "listingText"
+  | "landArea" | "bedrooms" | "bathrooms" | "constructionType";
 type Draft = Record<DraftKey, string> & { address: Record<AddressPart, string> };
 
 /** Area and price are captured at the top of the form; the list of characteristics shows the rest. */
@@ -82,6 +87,10 @@ function initialDraft(comparable: ComparableDto | null, type: ComparableType, pr
     latitude: text(comparable?.latitude),
     longitude: text(comparable?.longitude),
     listingText: comparable?.listingText ?? listingText ?? "",
+    landArea: text(comparable?.landArea),
+    bedrooms: text(comparable?.bedrooms),
+    bathrooms: text(comparable?.bathrooms),
+    constructionType: comparable?.constructionType ?? "",
     address,
     // A new comparable may start from the data read from a pasted listing.
     ...(comparable ? {} : pick(prefill, ["location", "area", "price", "sourceName", "contactName", "contactPhone", "url", "offerDate", "landUse"])),
@@ -133,7 +142,8 @@ export function ComparableDialog(props: {
   comparableType: ComparableType;
   unitLabel: string;
   readOnly: boolean;
-  onSubmit: (values: ComparableFormValues, pending: PendingImages) => Promise<boolean>;
+  /** `mergeInto`: a new comparable that is the same as that one of the base keeps its number. */
+  onSubmit: (values: ComparableFormValues, pending: PendingImages, mergeInto?: string) => Promise<boolean>;
   onUploadPhoto: (file: File) => Promise<void>;
   onRemovePhoto: (photoId: string) => Promise<void>;
   onUploadScreenshot: (file: File) => Promise<void>;
@@ -165,6 +175,21 @@ export function ComparableDialog(props: {
   // The single line the dictamen prints: as typed, or composed from the parts.
   const location = draft.location.trim() || formatAddress(address);
 
+  const built = isBuiltComparableType(props.comparableType);
+
+  /** Land area, bedrooms, bathrooms and type of construction of a built comparable, or what to correct. */
+  const buildingValues = (): Pick<ComparableFormValues, "landArea" | "bedrooms" | "bathrooms" | "constructionType"> | { error: string } => {
+    // NaN when something was typed that is not a number.
+    const numberOf = (typed: string) => (typed.trim() ? parseDecimal(typed) ?? Number.NaN : null);
+    const landArea = numberOf(draft.landArea);
+    if (landArea !== null && !(landArea > 0)) return { error: "La superficie de terreno debe ser un número mayor que cero, o quedar vacía." };
+    const bedrooms = numberOf(draft.bedrooms);
+    if (bedrooms !== null && !(Number.isInteger(bedrooms) && bedrooms >= 0)) return { error: "Las recámaras son un número entero, o quedan vacías." };
+    const bathrooms = numberOf(draft.bathrooms);
+    if (bathrooms !== null && !(Number.isInteger(bathrooms * 2) && bathrooms >= 0)) return { error: "Los baños van en enteros o medios (2 o 2.5), o quedan vacíos." };
+    return { landArea, bedrooms, bathrooms, constructionType: draft.constructionType.trim() || null };
+  };
+
   /** The values to save, or what the appraiser has to correct. */
   const valuesOf = (): { values: ComparableFormValues } | { error: string } => {
     if (!location) return { error: "Captura la ubicación del comparable: el texto o, al menos, la calle y el municipio." };
@@ -179,9 +204,12 @@ export function ComparableDialog(props: {
       ? "La latitud y la longitud son números en grados, como 20.7092 y -102.3467."
       : coordinatesError(latitude, longitude);
     if (coordinatesProblem) return { error: coordinatesProblem };
+    const building = built ? buildingValues() : null;
+    if (building && "error" in building) return { error: building.error };
     // What is not in the form (the factors, characteristics out of the list) stays as stored.
-    const { id: _id, reference: _reference, photos: _photos, folio: _folio, screenshot: _screenshot, review: _review, ...stored } =
-      comparable ?? { ...EMPTY_VALUES, id: "", reference: 0, photos: [] };
+    const {
+      id: _id, reference: _reference, photos: _photos, folio: _folio, screenshot: _screenshot, review: _review, updatedOn: _updatedOn, ...stored
+    } = comparable ?? { ...EMPTY_VALUES, id: "", reference: 0, photos: [] };
     let values: ComparableFormValues = {
       ...stored,
       location,
@@ -200,6 +228,7 @@ export function ComparableDialog(props: {
       listingText: draft.listingText.trim() || null,
       landUse: draft.landUse.trim() || null,
       characteristicsText: freeText.trim() || null,
+      ...(building ?? {}),
     };
     for (const key of ["area", "price"] as const) values = withCharacteristic(values, key, draft[key], parseDecimal(draft[key]));
     for (const field of fields) {
@@ -209,7 +238,8 @@ export function ComparableDialog(props: {
     return { values };
   };
 
-  const save = async (checkDuplicates: boolean) => {
+  /** `mergeInto`: the answer "es el mismo" to that comparable of the base. */
+  const save = async (checkDuplicates: boolean, mergeInto?: string) => {
     const parsed = valuesOf();
     if ("error" in parsed) {
       setError(parsed.error);
@@ -222,6 +252,7 @@ export function ComparableDialog(props: {
     if (!comparable && checkDuplicates) {
       const found = await props.onCheckDuplicates({
         url: values.url, location: values.location, address: values.address, contactPhone: values.contactPhone, price: values.price,
+        area: values.area,
       }).catch(() => []);
       if (found.length) {
         setDuplicates(found);
@@ -229,7 +260,7 @@ export function ComparableDialog(props: {
         return;
       }
     }
-    const ok = await props.onSubmit(values, { screenshot: pendingScreenshot });
+    const ok = await props.onSubmit(values, { screenshot: pendingScreenshot }, mergeInto);
     setSaving(false);
     if (ok) props.onOpenChange(false);
   };
@@ -281,11 +312,17 @@ export function ComparableDialog(props: {
           </DialogDescription>
         </DialogHeader>
 
+        {comparable?.updatedOn ? <ComparableValidityLine updatedOn={comparable.updatedOn} /> : null}
+
         {duplicates ? (
           <section className="grid gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40" aria-label="Posibles duplicados" data-duplicates>
             <p className="flex items-start gap-1.5 text-sm font-medium text-amber-900 dark:text-amber-200">
               <Copy className="mt-0.5 size-4 shrink-0" />
-              Este inmueble parece estar ya en la base del despacho. Puedes usar el existente, con sus fotos y su número, o agregarlo de todos modos.
+              Posible duplicado: este inmueble parece estar ya en la base del despacho.
+            </p>
+            <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
+              Si es el mismo, se conserva su número y se queda la información más reciente (la que capturas ahora), con sus fotos.
+              Si son diferentes, se guardan los dos, cada uno con su número.
             </p>
             <ul className="grid gap-2">
               {duplicates.map((match) => (
@@ -301,17 +338,23 @@ export function ComparableDialog(props: {
                     <p className="text-xs text-muted-foreground">
                       {COMPARABLE_TYPE_LABELS[match.type]} · {money(match.price)} · avalúo {match.valuation.folio}
                       {match.sameValuation ? " (este avalúo)" : ""} · {match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")}
+                      {" "}· datos del {formatDay(match.updatedOn)}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-1">
                     <ComparableCardButton comparableId={match.comparableId} />
-                    <Button type="button" size="sm" disabled={saving} onClick={() => void reuse(match.comparableId)}>Usar el existente</Button>
+                    <Button type="button" size="sm" disabled={saving} onClick={() => void save(false, match.comparableId)}>
+                      Es el mismo: conservar el más reciente
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void reuse(match.comparableId)}>
+                      Usar el existente sin cambios
+                    </Button>
                   </div>
                 </li>
               ))}
             </ul>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => void save(false)}>Agregar de todos modos</Button>
+              <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => void save(false)}>Son diferentes: conservar ambos</Button>
               <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={() => setDuplicates(null)}>Volver a la captura</Button>
             </div>
           </section>
@@ -395,6 +438,38 @@ export function ComparableDialog(props: {
                   {area && price ? `${(price / area).toLocaleString("es-MX", { style: "currency", currency: "MXN" })} /m²` : "—"}
                 </p>
               </Field>
+              {built ? (
+                <>
+                  <Field className="sm:col-span-2">
+                    <FieldLabel htmlFor="comparable-construction-type">Tipo de construcción</FieldLabel>
+                    <Input
+                      id="comparable-construction-type"
+                      list="comparable-construction-types"
+                      placeholder="Casa habitación, departamento…"
+                      value={draft.constructionType}
+                      onChange={set("constructionType")}
+                    />
+                    <datalist id="comparable-construction-types">
+                      {CONSTRUCTION_TYPE_SUGGESTIONS.map((item) => <option key={item} value={item} />)}
+                    </datalist>
+                  </Field>
+                  <Field className="sm:col-span-2">
+                    <FieldLabel htmlFor="comparable-land-area">Superficie de terreno (m²)</FieldLabel>
+                    <Input id="comparable-land-area" inputMode="decimal" value={draft.landArea} onChange={set("landArea")} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="comparable-bedrooms">Recámaras</FieldLabel>
+                    <Input id="comparable-bedrooms" inputMode="numeric" value={draft.bedrooms} onChange={set("bedrooms")} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="comparable-bathrooms">Baños</FieldLabel>
+                    <Input id="comparable-bathrooms" inputMode="decimal" placeholder="2.5" value={draft.bathrooms} onChange={set("bathrooms")} />
+                  </Field>
+                  <p className="text-xs text-muted-foreground sm:col-span-6">
+                    Sirven para buscarlo en la base del despacho; el cálculo y el dictamen no los usan.
+                  </p>
+                </>
+              ) : null}
             </FieldGroup>
 
             <section className="grid gap-3" aria-label="Origen o fuente de información">

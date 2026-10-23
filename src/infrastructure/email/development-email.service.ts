@@ -8,6 +8,8 @@ import type {
 } from "./email.service";
 
 export class DevelopmentEmailService implements EmailService {
+  readonly delivers = false;
+
   async sendVerificationEmail(input: VerificationEmailInput) {
     if (process.env.NODE_ENV !== "production") {
       console.info("Development verification email prepared", {

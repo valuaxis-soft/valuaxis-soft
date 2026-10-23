@@ -14,9 +14,11 @@ import { REVIEW_CHECKS, REVIEW_CHECK_LABELS, REVIEW_STATUS_LABELS } from "@/feat
 import {
   COMPARABLE_TYPE_LABELS,
   defaultCharacteristicFields,
+  isBuiltComparableType,
   isRentComparableType,
   type ComparableType,
 } from "@/features/valuations/calculation/market-types";
+import { ComparableValidityLine } from "./comparable-validity-badge";
 
 const money = (value: number | null | undefined) =>
   value === null || value === undefined ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -74,6 +76,7 @@ export function ComparableCardView({ card }: { card: ComparableCardDto }) {
         {review ? <Badge variant={review.status === "VERIFICADO" ? "default" : "outline"}>{REVIEW_STATUS_LABELS[review.status]}</Badge> : null}
         <span className="text-xs text-muted-foreground">Capturado en el avalúo {card.valuation.folio}, comparable {comparable.reference}</span>
       </header>
+      <ComparableValidityLine validity={card.validity} />
 
       {card.warnings.length ? (
         <ul className="grid gap-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300" aria-label="Avisos">
@@ -165,6 +168,14 @@ export function ComparableCardView({ card }: { card: ComparableCardDto }) {
             const label = field.key === "landUseKey" ? "Clave de uso de suelo" : field.label.charAt(0) + field.label.slice(1).toLowerCase();
             return <Item key={field.key} label={label}>{value === null || value === undefined || value === "" ? "—" : String(value)}</Item>;
           })}
+          {isBuiltComparableType(type) ? (
+            <>
+              <Item label="Tipo de construcción">{comparable.constructionType || "—"}</Item>
+              <Item label="Superficie de terreno (m²)"><span className="tabular-nums">{number(comparable.landArea)}</span></Item>
+              <Item label="Recámaras">{number(comparable.bedrooms)}</Item>
+              <Item label="Baños">{number(comparable.bathrooms)}</Item>
+            </>
+          ) : null}
           {extra.map(([key, value]) => <Item key={key} label={key.replace(/^custom:/, "")}>{value}</Item>)}
           <Item label="Observaciones" wide>{comparable.notes || "—"}</Item>
         </dl>
@@ -192,6 +203,7 @@ export function ComparableCardView({ card }: { card: ComparableCardDto }) {
             <li key={`${use.valuationId}:${use.type}:${use.reference}`} className="flex flex-wrap items-center gap-2">
               <span className="font-medium">{use.folio}</span>
               <span className="text-muted-foreground">{use.title ?? ""}</span>
+              {use.client ? <span className="text-xs text-muted-foreground">· cliente {use.client}</span> : null}
               <span className="text-xs text-muted-foreground">· {COMPARABLE_TYPE_LABELS[use.type]}, comparable {use.reference}, agregado el {dayText(use.addedOn)}</span>
               <a className="text-xs text-primary underline-offset-2 hover:underline" href={`/workspace?id=${use.valuationId}`} target="_blank" rel="noopener noreferrer">Abrir avalúo</a>
             </li>

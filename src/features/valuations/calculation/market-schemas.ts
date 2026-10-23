@@ -97,6 +97,12 @@ export const comparableInputSchema = z.object({
   operationType: z.enum(OPERATION_TYPES, "Tipo de operación inválido.").nullable().optional(),
   latitude: z.number("La latitud debe ser un número.").finite().min(-90, "La latitud va de -90 a 90.").max(90, "La latitud va de -90 a 90.").nullable().optional(),
   longitude: z.number("La longitud debe ser un número.").finite().min(-180, "La longitud va de -180 a 180.").max(180, "La longitud va de -180 a 180.").nullable().optional(),
+  // Data of a built comparable for the search of the firm's base; the calculation does not read them.
+  landArea: positive.optional(),
+  bedrooms: z.number("Las recámaras son un número.").int("Las recámaras son un número entero.").min(0, "Las recámaras no pueden ser negativas.").max(500).nullable().optional(),
+  bathrooms: z.number("Los baños son un número.").finite().min(0, "Los baños no pueden ser negativos.").max(500)
+    .refine((value) => Number.isInteger(value * 2), "Los baños van en enteros o medios: 2 o 2.5.").nullable().optional(),
+  constructionType: text(120).optional(),
   // Built-in factors once each, plus the firm's own: at most the six of the homologation and as many own ones.
   factors: z.array(factorSchema).max(FACTOR_TYPES.length + MAX_FACTOR_SLOTS)
     .refine((factors) => new Set(factors.map(factorKey)).size === factors.length, "Cada tipo de factor va una sola vez."),
@@ -188,6 +194,7 @@ export const duplicateProbeSchema = z.object({
   address: addressSchema.nullable().optional(),
   contactPhone: z.string().trim().max(40).nullable().default(null),
   price: z.number().finite().positive().max(1e12).nullable().default(null),
+  area: z.number().finite().positive().max(1e12).nullable().default(null),
 });
 
 /** "Usar el existente": the comparable of the firm's base to bring. */

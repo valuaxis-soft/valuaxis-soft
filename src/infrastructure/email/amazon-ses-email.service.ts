@@ -57,6 +57,8 @@ export function createAmazonSesClient(config: AmazonSesEmailConfig) {
 }
 
 export class AmazonSesEmailService implements EmailService {
+  readonly delivers = true;
+
   constructor(
     private readonly client: SesEmailClient,
     private readonly config: AmazonSesEmailConfig,

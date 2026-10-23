@@ -214,8 +214,12 @@ export const api = {
       request<MarketCalculationDto>(`/avaluos/${id}/mercado?tipo=${type}`),
     saveSettings: (id: ApiId, settings: MarketSettingsDto) =>
       request<MarketCalculationDto>(`/avaluos/${id}/mercado`, { method: "PUT", body: JSON.stringify(settings) }),
-    createComparable: (id: ApiId, type: ComparableType, comparable: ComparableFormValues) =>
-      request<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables?tipo=${type}`, { method: "POST", body: JSON.stringify(comparable) }),
+    /** `mergeInto`: "es el mismo" that comparable of the firm's base; the new one keeps its number. */
+    createComparable: (id: ApiId, type: ComparableType, comparable: ComparableFormValues, mergeInto?: string) =>
+      request<MarketCalculationDto>(
+        `/avaluos/${id}/mercado/comparables?tipo=${type}${mergeInto ? `&unificar=${encodeURIComponent(mergeInto)}` : ""}`,
+        { method: "POST", body: JSON.stringify(comparable) },
+      ),
     updateComparable: (id: ApiId, type: ComparableType, comparableId: string, comparable: ComparableFormValues) =>
       request<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}?tipo=${type}`, { method: "PUT", body: JSON.stringify(comparable) }),
     deleteComparable: (id: ApiId, type: ComparableType, comparableId: string) =>
@@ -224,10 +228,15 @@ export const api = {
       uploadForm<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}`, { file }),
     previewImport: (id: ApiId, type: ComparableType, file: File) =>
       uploadForm<{ preview: ComparableImportPreview }>(`/avaluos/${id}/mercado/comparables/importar?tipo=${type}`, { file }),
-    /** `reuse` maps a row to the comparable of the firm's base used instead of it ("Usar el existente"). */
-    importComparables: (id: ApiId, type: ComparableType, file: File, reuse: Record<number, string> = {}) =>
+    /**
+     * `reuse` maps a row to the comparable of the firm's base used instead of it ("Usar el existente");
+     * `merge`, to the one it is the same as ("Es el mismo": the most recent data stays, with that one's number).
+     */
+    importComparables: (id: ApiId, type: ComparableType, file: File, reuse: Record<number, string> = {}, merge: Record<number, string> = {}) =>
       uploadForm<{ preview: ComparableImportPreview; imported: number; calculation: MarketCalculationDto }>(
-        `/avaluos/${id}/mercado/comparables/importar?tipo=${type}&confirmar=1`, { file, reusar: JSON.stringify(reuse) }),
+        `/avaluos/${id}/mercado/comparables/importar?tipo=${type}&confirmar=1`,
+        { file, reusar: JSON.stringify(reuse), unificar: JSON.stringify(merge) },
+      ),
     searchComparables: (id: ApiId, type: ComparableType, filters: ComparableSearchFilters) => {
       const params = new URLSearchParams({ tipo: type, q: filters.text });
       const ranges = { supMin: filters.areaMin, supMax: filters.areaMax, precioMin: filters.priceMin, precioMax: filters.priceMax };
@@ -324,9 +333,6 @@ export const api = {
     uploadLogo: (file: File) => uploadForm<{ logoUrl: string | null }>(`/organizacion/despacho/logo`, { file }),
     deleteLogo: () => request<void>(`/organizacion/despacho/logo`, { method: "DELETE" }),
     factors: () => request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`),
-    saveFactors: (catalog: FactorCatalog) =>
-      request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`, { method: "PUT", body: JSON.stringify(catalog) }),
-    resetFactors: () => request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`, { method: "DELETE" }),
     customUnits: () => request<{ units: string[] }>(`/organizacion/despacho/unidades`),
     addCustomUnit: (unit: string) =>
       request<{ units: string[] }>(`/organizacion/despacho/unidades`, { method: "POST", body: JSON.stringify({ unit }) }),

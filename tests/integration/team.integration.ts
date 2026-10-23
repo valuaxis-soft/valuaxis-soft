@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
+import { EmailDeliveryError } from "../../src/infrastructure/email/email.errors";
+import { getEmailService } from "../../src/infrastructure/email/email.service";
 import type { AuthUser } from "../../src/features/auth/model";
 import { resolveActiveOrganization, resolveDefaultOrganization } from "../../src/features/auth/services/organization-access.service";
 import { findValuation } from "../../src/features/valuations/calculation/access";
@@ -125,7 +127,9 @@ test("an invited person joins with the role, sees the team's valuations and land
   const other = await createPerson("Otro");
   const sent = await inviteMember(admin, { email: perito.user.email.toUpperCase(), role: "VALUADOR" });
   assert.equal(sent.email, perito.user.email);
-  assert.equal(sent.emailSent, true);
+  // The tests run with the development email service: it only logs, so the link is to be shared by hand.
+  assert.equal(sent.emailSent, false);
+  assert.equal(sent.emailIssue, "NOT_CONFIGURED");
 
   assert.deepEqual((await listMyInvitations(perito.user)).map((row) => row.organizationName), ["Valuadores de Prueba"]);
   assert.equal((await getTeam(admin)).invitations.length, 1);
@@ -196,6 +200,34 @@ test("expired invitations cannot be accepted", async () => {
   await rejects(acceptInvitation(late.user, late.sessionId, { token: tokenOf(sent.inviteUrl) }), 410, /venció/);
   assert.equal((await listMyInvitations(late.user)).length, 0);
   assert.equal((await getTeam(admin)).invitations.find((row) => row.id === sent.id)?.expired, true);
+});
+
+test("a personal space becomes a team with the name it already has, as the form offers it", async () => {
+  const owner = await createPerson("Alvaro");
+  const personalName = (await getTeam(owner.user)).organization.name;
+  await saveTeamSettings(owner.user, { name: personalName });
+  const team = await getTeam(owner.user);
+  assert.equal(team.organization.isTeam, true);
+  assert.equal(team.organization.name, personalName);
+});
+
+test("an invitation says why its email did not go out", async (t) => {
+  const service = getEmailService();
+  const guest = await createPerson("Invitado");
+
+  t.mock.method(service, "sendTeamInvitationEmail", async () => {
+    throw new EmailDeliveryError("No pudimos enviar el correo por Amazon SES.");
+  });
+  const refused = await inviteMember(admin, { email: guest.user.email, role: "CONSULTA" });
+  assert.equal(refused.emailSent, false);
+  assert.equal(refused.emailIssue, "DELIVERY_FAILED");
+
+  t.mock.method(service, "sendTeamInvitationEmail", async () => undefined);
+  Object.defineProperty(service, "delivers", { value: true, configurable: true });
+  t.after(() => { Object.defineProperty(service, "delivers", { value: false, configurable: true }); });
+  const delivered = await resendInvitation(admin, refused.id);
+  assert.equal(delivered.emailSent, true);
+  assert.equal(delivered.emailIssue, null);
 });
 
 test("an invitation lapses when its inviter stops administering the team", async () => {

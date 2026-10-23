@@ -46,6 +46,10 @@ export function importColumns(type: ComparableType): ImportColumn[] {
     ...(isBuiltComparableType(type) ? [
       { key: "conservation", header: "Conservación", kind: "text", width: 16, hint: "Estado de conservación de la construcción." },
       { key: "quality", header: "Calidad", kind: "text", width: 16, hint: "Calidad de la construcción." },
+      { key: "constructionType", header: "Tipo de construcción", kind: "text", width: 20, hint: "Casa habitación, departamento, local, bodega…" },
+      { key: "landArea", header: "Superficie de terreno (m²)", kind: "number", width: 16, hint: "La del terreno, aparte de la construida." },
+      { key: "bedrooms", header: "Recámaras", kind: "number", width: 11, hint: "Número entero." },
+      { key: "bathrooms", header: "Baños", kind: "number", width: 10, hint: "2.5 para dos baños y medio." },
     ] satisfies ImportColumn[] : []),
     { key: "notes", header: "Observaciones", kind: "text", width: 30, hint: "Cualquier nota del comparable." },
     { key: "sourceName", header: "Fuente", kind: "text", width: 18, hint: "Portal, inmobiliaria o persona." },
@@ -65,6 +69,10 @@ const ALIASES: Partial<Record<FieldKey, string[]>> = {
   landUseKey: ["clave"],
   frontCount: ["nfrentes", "numfrentes", "numdefrentes", "nodefrentes"],
   conservation: ["estadodeconservacion"],
+  landArea: ["superficiedeterreno", "supterreno", "terreno"],
+  bedrooms: ["recamaras", "habitaciones", "cuartos"],
+  bathrooms: ["banos"],
+  constructionType: ["tipodeconstruccion", "tipodeinmueble", "tipo"],
   contactPhone: ["telefono", "tel", "celular"],
   url: ["liga", "link", "url", "enlace"],
   offerDate: ["fecha"],
@@ -98,7 +106,7 @@ export type ComparableImportPreview = {
   rows: Array<{
     row: number; errors: string[]; location: string; area: number | null; price: number | null;
     /** Comparables of the firm's base that look like the same property: the appraiser may use one instead. */
-    duplicates?: Array<{ comparableId: string; folio: number | null; valuationFolio: string; reasons: DuplicateReason[] }>;
+    duplicates?: Array<{ comparableId: string; folio: number | null; valuationFolio: string; reasons: DuplicateReason[]; updatedOn: string }>;
   }>;
   valid: number;
   invalid: number;

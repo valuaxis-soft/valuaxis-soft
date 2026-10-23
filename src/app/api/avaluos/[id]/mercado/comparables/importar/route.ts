@@ -50,6 +50,9 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     // Rows the appraiser answered with "Usar el existente": {"<row>": "<comparable id>"}.
     const reuse = reuseSchema.safeParse(parseJson(form.get("reusar")));
     if (!reuse.success) return badRequest("Los comparables existentes elegidos no son válidos.");
+    // Rows answered with "Es el mismo": {"<row>": "<comparable id>"}; the most recent data of the two stays.
+    const merge = reuseSchema.safeParse(parseJson(form.get("unificar")));
+    if (!merge.success) return badRequest("Los comparables con que se unifican no son válidos.");
 
     const sheet = await readSpreadsheet(Buffer.from(await file.arrayBuffer()), file.name);
     const parsed = parseComparableRows(sheet, type.data);
@@ -65,7 +68,10 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
         return {
           row, errors, ...summary,
           ...(matches.length ? {
-            duplicates: matches.map((match) => ({ comparableId: match.comparableId, folio: match.folio, valuationFolio: match.valuation.folio, reasons: match.reasons })),
+            duplicates: matches.map((match) => ({
+              comparableId: match.comparableId, folio: match.folio, valuationFolio: match.valuation.folio, reasons: match.reasons,
+              updatedOn: match.updatedOn,
+            })),
           } : {}),
         };
       }),
@@ -75,11 +81,15 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     };
     if (search.get("confirmar") !== "1") return NextResponse.json({ data: { preview } });
 
-    const payloads = parsed.rows.flatMap((row) => {
+    const payloads = parsed.rows.flatMap((row): Parameters<typeof importComparables>[3] => {
       if (!row.payload) return [];
-      // Only a comparable the preview offered for that row may be used instead of it.
-      const chosen = reuse.data[String(row.row)];
-      return [chosen && duplicates.get(row.row)?.some((match) => match.comparableId === chosen) ? { reuseFrom: chosen } : row.payload];
+      // Only a comparable the preview offered for that row may be used instead of it, or merged with it.
+      const offered = (chosen: string | undefined) => Boolean(chosen && duplicates.get(row.row)?.some((match) => match.comparableId === chosen));
+      const reused = reuse.data[String(row.row)];
+      const merged = merge.data[String(row.row)];
+      if (offered(reused)) return [{ reuseFrom: reused }];
+      if (offered(merged)) return [{ mergeInto: merged, payload: row.payload }];
+      return [row.payload];
     });
     if (!payloads.length) return badRequest("No hay comparables válidos para importar.");
     await importComparables(id, auth.user, type.data, payloads);
@@ -91,7 +101,10 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
       entityId: id,
       action: "COMPARABLES_IMPORT",
       result: "EXITOSO",
-      metadata: { type: type.data, imported: payloads.length, skipped: preview.invalid, file: file.name },
+      metadata: {
+        type: type.data, imported: payloads.length, skipped: preview.invalid, file: file.name,
+        reused: payloads.filter((entry) => "reuseFrom" in entry).length, merged: payloads.filter((entry) => "mergeInto" in entry).length,
+      },
     });
     return NextResponse.json({
       data: { preview, imported: payloads.length, calculation: await getMarketCalculation(id, auth.user.organizationId, type.data) },

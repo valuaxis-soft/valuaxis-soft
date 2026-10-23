@@ -11,6 +11,7 @@ import { recordAuditEvent } from "@/features/auth/repositories/audit.repository"
 import { updateSessionOrganization } from "@/features/auth/repositories/session.repository";
 import { resolveDefaultOrganization } from "@/features/auth/services/organization-access.service";
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { EmailConfigurationError } from "@/infrastructure/email/email.errors";
 import { getEmailService } from "@/infrastructure/email/email.service";
 import { buildPublicAppUrl } from "@/lib/public-url";
 import { createSecureToken, hashToken } from "@/security/tokens/token-hashing";
@@ -61,8 +62,14 @@ export type TeamDto = {
   roles: Array<{ key: TeamRole; label: string; description: string }>;
 };
 
+/**
+ * Why the invitation email did not reach the inbox: the server sends no email
+ * (Amazon SES not configured, or the development service), or the provider refused it.
+ */
+export type InvitationEmailIssue = "NOT_CONFIGURED" | "DELIVERY_FAILED";
+
 /** Returned to the administrator after inviting, so the link can also be shared by hand. */
-export type SentInvitationDto = TeamInvitationDto & { inviteUrl: string; emailSent: boolean };
+export type SentInvitationDto = TeamInvitationDto & { inviteUrl: string; emailSent: boolean; emailIssue: InvitationEmailIssue | null };
 
 export type MyInvitationDto = {
   id: string;
@@ -146,12 +153,35 @@ export async function getTeam(user: AuthUser): Promise<TeamDto> {
   };
 }
 
+/**
+ * A refusal of the database when naming the team, said so the administrator
+ * can act on it; anything else is returned as is, for the route to log as an
+ * internal error.
+ */
+export function teamSettingsError(error: unknown): unknown {
+  const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : null;
+  if (code === "P2000") return new TeamError("El nombre es demasiado largo: escribe hasta 180 caracteres.", 400);
+  if (code === "P2002") return new TeamError("Ya hay otro despacho con ese nombre. Escribe uno distinto.", 409);
+  const constraint = /violates check constraint "([^"]+)"/.exec(error instanceof Error ? error.message : "")?.[1];
+  if (!constraint) return error;
+  // Logged in full: the constraint's name says which rule of the database refused the change.
+  console.error("[TEAM_SETTINGS_CONSTRAINT]", constraint, error);
+  return new TeamError(
+    constraint.includes("SNombre")
+      ? "Escribe el nombre del equipo."
+      : `La base de datos no permitió convertir tu espacio en equipo (regla ${constraint}). Avísanos para corregirlo.`,
+    409,
+  );
+}
+
 /** Names the organization and makes it a team; a personal space keeps its valuations. */
 export async function saveTeamSettings(user: AuthUser, input: { name: string }) {
   const organization = await activeOrganization(user.organizationId);
   await prisma.organizacion.update({
     where: { IdOrganizacion: organization.IdOrganizacion },
     data: { SNombre: input.name, STipoAmbito: "TEAM" },
+  }).catch((error: unknown) => {
+    throw teamSettingsError(error);
   });
   await recordAuditEvent({
     typeKey: "MODIFICACION",
@@ -202,9 +232,10 @@ async function createInvitation(
   });
 
   const url = inviteUrl(token);
-  let emailSent = true;
+  let emailIssue: InvitationEmailIssue | null = null;
   try {
-    await getEmailService().sendTeamInvitationEmail({
+    const service = getEmailService();
+    await service.sendTeamInvitationEmail({
       to: email,
       organizationName: organization.SNombre,
       inviterName: user.name,
@@ -212,11 +243,14 @@ async function createInvitation(
       inviteUrl: url,
       expiresAt: row.DFechaExpiracion,
     });
+    // The development service only logs the link: nothing reached an inbox.
+    if (!service.delivers) emailIssue = "NOT_CONFIGURED";
   } catch (error) {
     // The invitation stands: the administrator can share the link or resend it.
     console.error("[TEAM_INVITE_EMAIL]", error);
-    emailSent = false;
+    emailIssue = error instanceof EmailConfigurationError ? "NOT_CONFIGURED" : "DELIVERY_FAILED";
   }
+  const emailSent = emailIssue === null;
 
   await recordAuditEvent({
     typeKey: "CREACION",
@@ -226,10 +260,10 @@ async function createInvitation(
     entityId: row.UIdentificadorPublico,
     action: "TEAM_INVITE",
     result: "EXITOSO",
-    metadata: { email, role: input.role, emailSent },
+    metadata: { email, role: input.role, emailSent, emailIssue },
   });
 
-  return { ...toInvitationDto(row, now), inviteUrl: url, emailSent };
+  return { ...toInvitationDto(row, now), inviteUrl: url, emailSent, emailIssue };
 }
 
 export async function inviteMember(user: AuthUser, input: { email: string; role: TeamRole }) {
