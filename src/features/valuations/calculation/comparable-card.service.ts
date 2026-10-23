@@ -11,17 +11,21 @@ import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { asRecord, decimal, findValuation } from "./access";
 import { formatAddress, todayInMexico } from "./comparable-card";
-import { addressKey, duplicateReasons, phoneKey, type DuplicateProbe, type DuplicateReason } from "./comparable-duplicates";
+import { PRICE_TOLERANCE, addressKey, duplicateReasons, phoneKey, type DuplicateProbe, type DuplicateReason } from "./comparable-duplicates";
 import { comparableWarnings, type ComparableWarning } from "./comparable-review";
+import { comparableValidity, type ComparableValidity } from "./comparable-validity";
 import { comparableInclude, toComparableDto } from "./market.service";
 import { COMPARABLE_TYPES, type ComparableDto, type ComparableType } from "./market-types";
 import { urlKey } from "../comparable-search/normalize";
+import { AREA, likePattern } from "../comparable-search/own-base-sql";
 
 /** A valuation a comparable of the base was used in. */
 export type ComparableUseDto = {
   valuationId: string;
   folio: string;
   title: string | null;
+  /** Client of that valuation, as captured. */
+  client: string | null;
   type: ComparableType;
   reference: number;
   /** Day it was added to that valuation, YYYY-MM-DD. */
@@ -32,6 +36,8 @@ export type ComparableCardDto = {
   comparable: ComparableDto;
   type: ComparableType;
   valuation: { id: string; folio: string; title: string | null };
+  /** "Fecha de alta / actualización" and "Vigente hasta" of the comparable in the firm's base. */
+  validity: ComparableValidity;
   warnings: ComparableWarning[];
   uses: ComparableUseDto[];
 };
@@ -53,6 +59,8 @@ export type DuplicateMatchDto = {
   sameValuation: boolean;
   reasons: DuplicateReason[];
   thumbnailUrl: string | null;
+  /** "Fecha de alta / actualización" of its data, YYYY-MM-DD: which of the two is the more recent. */
+  updatedOn: string;
 };
 
 const aliveValuation = (organizationId: number) => ({ IdOrganizacion: organizationId, BActivo: true, DFechaEliminacion: null });
@@ -66,8 +74,12 @@ async function subjectAreas(versionId: number) {
   return new Map(markets.map((market) => [market.tipoComparable.SClave as ComparableType, decimal(market.NSuperficieSujeto)]));
 }
 
-const warningsOf = (comparable: ComparableDto, type: ComparableType, subjectArea: number | null, today: string) =>
-  comparableWarnings({ ...comparable, hasScreenshot: Boolean(comparable.screenshot) }, { type, subjectArea, today });
+const warningsOf = (comparable: ComparableDto, type: ComparableType, subjectArea: number | null, today: string, validity?: ComparableValidity) =>
+  comparableWarnings({
+    ...comparable,
+    hasScreenshot: Boolean(comparable.screenshot),
+    validity: validity ?? (comparable.updatedOn ? comparableValidity(comparable.updatedOn, today) : null),
+  }, { type, subjectArea, today });
 
 /** The card of a comparable of the firm's base, by the id of one of its captures. */
 export async function getComparableCard(comparableId: string, organizationId: number): Promise<ComparableCardDto> {
@@ -76,7 +88,7 @@ export async function getComparableCard(comparableId: string, organizationId: nu
     include: {
       ...comparableInclude,
       tipoComparable: { select: { SClave: true } },
-      avaluo: { select: { UIdentificadorPublico: true, SFolio: true, STitulo: true } },
+      avaluo: { select: { UIdentificadorPublico: true, SFolio: true, STitulo: true, SNombreCliente: true } },
     },
   });
   if (!row) throw new ValuationWorkflowError("Comparable no encontrado", 404);
@@ -88,31 +100,37 @@ export async function getComparableCard(comparableId: string, organizationId: nu
     ? await prisma.comparableAvaluo.findMany({
       where: { propiedad: { IdOrganizacion: organizationId, IFolioComparable: folio }, avaluo: aliveValuation(organizationId) },
       select: {
-        IdVersionAvaluo: true, IReferencia: true, IOrden: true, DFechaSeleccion: true,
+        IdVersionAvaluo: true, IReferencia: true, IOrden: true, DFechaSeleccion: true, DFechaActualizacionDatos: true,
         tipoComparable: { select: { SClave: true } },
-        avaluo: { select: { UIdentificadorPublico: true, SFolio: true, STitulo: true, IdVersionTrabajo: true, IdVersionFinal: true } },
+        avaluo: { select: { UIdentificadorPublico: true, SFolio: true, STitulo: true, SNombreCliente: true, IdVersionTrabajo: true, IdVersionFinal: true } },
       },
       orderBy: { DFechaSeleccion: "desc" },
     })
     : [];
-  const uses = captures
-    .filter((capture) => capture.IdVersionAvaluo === (capture.avaluo.IdVersionTrabajo ?? capture.avaluo.IdVersionFinal))
-    .map((capture): ComparableUseDto => ({
-      valuationId: capture.avaluo.UIdentificadorPublico,
-      folio: capture.avaluo.SFolio,
-      title: capture.avaluo.STitulo,
-      type: capture.tipoComparable.SClave as ComparableType,
-      reference: capture.IReferencia ?? capture.IOrden + 1,
-      addedOn: capture.DFechaSeleccion.toISOString().slice(0, 10),
-    }));
+  const current = captures.filter((capture) => capture.IdVersionAvaluo === (capture.avaluo.IdVersionTrabajo ?? capture.avaluo.IdVersionFinal));
+  const uses = current.map((capture): ComparableUseDto => ({
+    valuationId: capture.avaluo.UIdentificadorPublico,
+    folio: capture.avaluo.SFolio,
+    title: capture.avaluo.STitulo,
+    client: capture.avaluo.SNombreCliente,
+    type: capture.tipoComparable.SClave as ComparableType,
+    reference: capture.IReferencia ?? capture.IOrden + 1,
+    addedOn: capture.DFechaSeleccion.toISOString().slice(0, 10),
+  }));
+  // The comparable of the base is as recent as its latest capture or update, in any valuation.
+  const dataUpdatedAt = current.reduce((latest, capture) => (capture.DFechaActualizacionDatos > latest ? capture.DFechaActualizacionDatos : latest),
+    row.DFechaActualizacionDatos);
+  const today = todayInMexico();
+  const validity = comparableValidity(dataUpdatedAt, today);
   const areas = await subjectAreas(row.IdVersionAvaluo);
   return {
     comparable,
     type,
     valuation: { id: row.avaluo.UIdentificadorPublico, folio: row.avaluo.SFolio, title: row.avaluo.STitulo },
-    warnings: warningsOf(comparable, type, areas.get(type) ?? null, todayInMexico()),
+    validity,
+    warnings: warningsOf(comparable, type, areas.get(type) ?? null, today, validity),
     uses: uses.length ? uses : [{
-      valuationId: row.avaluo.UIdentificadorPublico, folio: row.avaluo.SFolio, title: row.avaluo.STitulo, type,
+      valuationId: row.avaluo.UIdentificadorPublico, folio: row.avaluo.SFolio, title: row.avaluo.STitulo, client: row.avaluo.SNombreCliente, type,
       reference: comparable.reference, addedOn: row.DFechaSeleccion.toISOString().slice(0, 10),
     }],
   };
@@ -156,11 +174,11 @@ type CandidateRow = {
   publication: Prisma.JsonValue | null;
   address: Prisma.JsonValue;
   photos: Prisma.JsonValue | null;
+  dataUpdatedAt: Date;
 };
 
 const MAX_CANDIDATES = 500;
 const MAX_MATCHES = 10;
-const likePattern = (token: string) => `%${token.replace(/[\\%_]/g, "\\$&")}%`;
 const textOf = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
 
 /**
@@ -180,6 +198,9 @@ export async function findDuplicates(publicId: string, organizationId: number, p
     ...(url ? [Prisma.sql`lower(c."JPublicacionSnapshot"->>'url') LIKE ${likePattern(url)}`] : []),
     ...(phone ? [Prisma.sql`regexp_replace(COALESCE(c."JPublicacionSnapshot"->>'contactPhone', ''), '\\D', '', 'g') LIKE ${likePattern(phone)}`] : []),
     ...(number ? [Prisma.sql`concat_ws(' ', c."JDireccionSnapshot"->>'location', c."JDireccionSnapshot"->>'street', c."JDireccionSnapshot"->>'number') LIKE ${likePattern(number)}`] : []),
+    // The same area and price (±1 %), for a match on everything but a detail.
+    ...(probe.area && probe.price ? [Prisma.sql`(${AREA} BETWEEN ${probe.area * (1 - PRICE_TOLERANCE)} AND ${probe.area * (1 + PRICE_TOLERANCE)}
+      AND c."NPrecioCapturado" BETWEEN ${probe.price * (1 - PRICE_TOLERANCE)} AND ${probe.price * (1 + PRICE_TOLERANCE)})`] : []),
   ];
   if (!hints.length) return [];
   const rows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
@@ -195,7 +216,8 @@ export async function findDuplicates(publicId: string, organizationId: number, p
       c."NPrecioCapturado" AS "price",
       c."JPublicacionSnapshot" AS "publication",
       c."JDireccionSnapshot" AS "address",
-      c."JImagenesSnapshot" AS "photos"
+      c."JImagenesSnapshot" AS "photos",
+      c."DFechaActualizacionDatos" AS "dataUpdatedAt"
     FROM "devpware_comparables_avaluos" c
     JOIN "devpware_avaluos" a ON a."IdAvaluo" = c."IdAvaluo"
     JOIN "devpware_tipos_comparables" t ON t."IdTipoComparable" = c."IdTipoComparable"
@@ -205,7 +227,7 @@ export async function findDuplicates(publicId: string, organizationId: number, p
       AND c."IdVersionAvaluo" = COALESCE(a."IdVersionTrabajo", a."IdVersionFinal")
       AND c."BIncluido"
       AND (${Prisma.join(hints, " OR ")})
-    ORDER BY c."DFechaSeleccion" DESC, c."IdComparableAvaluo" DESC
+    ORDER BY c."DFechaActualizacionDatos" DESC, c."DFechaSeleccion" DESC, c."IdComparableAvaluo" DESC
     LIMIT ${MAX_CANDIDATES}
   `);
   if (rows.some((row) => row.organizationId !== organizationId)) throw new Error("Duplicate check read a row of another organization.");
@@ -224,6 +246,7 @@ export async function findDuplicates(publicId: string, organizationId: number, p
       },
       contactPhone: textOf(publication.contactPhone),
       price: decimal(row.price),
+      area: decimal(row.area),
     };
     const reasons = duplicateReasons(probe, candidate);
     if (!reasons.length) continue;
@@ -244,6 +267,7 @@ export async function findDuplicates(publicId: string, organizationId: number, p
       valuation: { id: row.valuationId, folio: row.valuationFolio },
       sameValuation: row.valuationInternalId === avaluo.IdAvaluo,
       reasons,
+      updatedOn: todayInMexico(row.dataUpdatedAt),
       photoKey: typeof firstPhoto.key === "string" && firstPhoto.key ? firstPhoto.key : null,
     });
     if (matches.length >= MAX_MATCHES) break;

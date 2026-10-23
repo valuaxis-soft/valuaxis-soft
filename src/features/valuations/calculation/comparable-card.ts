@@ -60,6 +60,11 @@ export const URBAN_PROXIMITY_LABELS: Record<UrbanProximity, string> = {
   RURAL: "5 Rural",
 };
 
+/** Offered while typing the type of construction of a built comparable; any other text is kept as written. */
+export const CONSTRUCTION_TYPE_SUGGESTIONS = [
+  "Casa habitación", "Departamento", "Local comercial", "Oficina", "Bodega", "Nave industrial", "Edificio", "Consultorio", "Hotel",
+];
+
 export const OPERATION_TYPES = ["VENTA", "RENTA"] as const;
 export type OperationType = (typeof OPERATION_TYPES)[number];
 export const OPERATION_TYPE_LABELS: Record<OperationType, string> = { VENTA: "Venta", RENTA: "Renta" };
@@ -73,6 +78,10 @@ export function coordinatesError(latitude: number | null | undefined, longitude:
   if (hasLongitude && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180)) return "La longitud va de -180 a 180.";
   return null;
 }
+
+/** A day YYYY-MM-DD as "23 oct 2026". */
+export const formatDay = (day: string) =>
+  new Date(`${day}T12:00:00Z`).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 /** Today in Mexico City, YYYY-MM-DD: the default "fecha de consulta". */
 export function todayInMexico(now = new Date()) {

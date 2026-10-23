@@ -10,6 +10,7 @@ import { asRecord, decimal } from "../../calculation/access";
 import { parseComparableId, type ComparableAddress, type OperationType, type UrbanProximity } from "../../calculation/comparable-card";
 import { reusedEvidenceOf, type ReusedComparableEvidence } from "../../calculation/market.service";
 import { searchTokens } from "../normalize";
+import { AREA, CONSULTED, HAYSTACK, likePattern, placeCondition, postalCodeCondition } from "../own-base-sql";
 import type { ComparableSearchContext, ComparableSearchQuery, ComparableSearchResult, ComparableSearchSource } from "../types";
 
 /** Rows read before ranking: the same offer repeats across valuations, and the most relevant may not be the newest. */
@@ -38,29 +39,6 @@ const day = (value: unknown) => {
   const typed = text(value);
   return typed && /^\d{4}-\d{2}-\d{2}$/.test(typed) ? typed : null;
 };
-const likePattern = (token: string) => `%${token.replace(/[\\%_]/g, "\\$&")}%`;
-
-/** Location and the texts of the property and its publication, without accents or case. */
-const HAYSTACK = Prisma.sql`unaccent(lower(concat_ws(' ',
-  COALESCE(c."JDireccionSnapshot"->>'location', p."SNombre"),
-  c."JDireccionSnapshot"->>'street', c."JDireccionSnapshot"->>'neighborhood', c."JDireccionSnapshot"->>'municipality',
-  c."JDireccionSnapshot"->>'state',
-  c."JPropiedadSnapshot"->>'landUse', c."JPropiedadSnapshot"->>'landUseKey', c."JPropiedadSnapshot"->>'zone',
-  c."JPropiedadSnapshot"->>'services', c."JPropiedadSnapshot"->>'notes',
-  c."JPublicacionSnapshot"->>'sourceName', c."JPublicacionSnapshot"->>'contactName')))`;
-const AREA = Prisma.sql`COALESCE(c."NSuperficieTerrenoCapturada", c."NSuperficieConstruccionCapturada", c."NSuperficieRentableCapturada")`;
-/** The day the offer was consulted: as captured, else the offer's date, else the day it was chosen. */
-const CONSULTED = Prisma.sql`COALESCE(c."JPublicacionSnapshot"->>'consultedOn', c."JPublicacionSnapshot"->>'offerDate', to_char(c."DFechaSeleccion", 'YYYY-MM-DD'))`;
-
-/**
- * A place filter: the part captured with that name, or, for comparables of
- * before with a single location line, that line. Every word must be there.
- */
-function placeCondition(part: string, value: string | undefined) {
-  if (!value) return [];
-  const where = Prisma.sql`unaccent(lower(concat_ws(' ', c."JDireccionSnapshot"->>${part}, c."JDireccionSnapshot"->>'location')))`;
-  return searchTokens(value).map((token) => Prisma.sql`${where} LIKE ${likePattern(token)}`);
-}
 
 function addressOf(value: Prisma.JsonValue): ComparableAddress | null {
   const address = asRecord(value);
@@ -120,6 +98,10 @@ async function toResult(row: Row): Promise<ComparableSearchResult> {
       ...(urbanProximity ? { urbanProximity: urbanProximity as UrbanProximity } : {}),
       latitude: coordinate(coordinates.latitude),
       longitude: coordinate(coordinates.longitude),
+      landArea: number(property.landArea),
+      bedrooms: coordinate(property.bedrooms),
+      bathrooms: coordinate(property.bathrooms),
+      constructionType: text(property.constructionType),
     },
   };
 }
@@ -147,9 +129,7 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
     ...placeCondition("state", filters.state),
     ...placeCondition("municipality", filters.municipality),
     ...placeCondition("neighborhood", filters.neighborhood),
-    ...(filters.postalCode
-      ? [Prisma.sql`(c."JDireccionSnapshot"->>'postalCode' = ${filters.postalCode} OR c."JDireccionSnapshot"->>'location' LIKE ${likePattern(filters.postalCode)})`]
-      : []),
+    ...postalCodeCondition(filters.postalCode),
     ...(filters.consultedFrom ? [Prisma.sql`${CONSULTED} >= ${filters.consultedFrom}`] : []),
     ...(filters.consultedTo ? [Prisma.sql`${CONSULTED} <= ${filters.consultedTo}`] : []),
     ...(query.areaMin === null ? [] : [Prisma.sql`${AREA} >= ${query.areaMin}`]),
@@ -194,7 +174,7 @@ async function evidence(comparableId: string, context: Pick<ComparableSearchCont
   if (!UUID.test(comparableId)) return {};
   const row = await prisma.comparableAvaluo.findFirst({
     where: { UIdentificadorPublico: comparableId, avaluo: { IdOrganizacion: context.organizationId, BActivo: true, DFechaEliminacion: null } },
-    select: { JImagenesSnapshot: true, JPublicacionSnapshot: true, propiedad: { select: { IFolioComparable: true } } },
+    select: { JImagenesSnapshot: true, JPublicacionSnapshot: true, DFechaActualizacionDatos: true, propiedad: { select: { IFolioComparable: true } } },
   });
   return row ? reusedEvidenceOf(row) : {};
 }

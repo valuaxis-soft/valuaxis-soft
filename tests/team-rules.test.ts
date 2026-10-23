@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildTeamInvitationEmailHtml, buildTeamInvitationEmailText } from "../src/features/notifications/templates/team-invitation";
-import { acceptInvitationSchema, inviteMemberSchema } from "../src/features/team/team-schemas";
+import { Prisma } from "@prisma/client";
+import { acceptInvitationSchema, inviteMemberSchema, teamSettingsSchema } from "../src/features/team/team-schemas";
+import { TeamError, teamSettingsError } from "../src/features/team/team.service";
 import { INVITATION_TTL_DAYS, invitationExpiration, invitationState, memberChangeBlock, normalizeEmail } from "../src/features/team/team-rules";
 
 const now = new Date("2026-09-28T12:00:00Z");
@@ -57,4 +59,39 @@ test("the invitation email names the team, the role and the link, with the names
   const text = buildTeamInvitationEmailText(content);
   assert.match(text, /Álvaro te invitó a trabajar en Valuadores <de los Altos> en Valuaxis con el rol de Valuador/);
   assert.match(text, /5 de octubre de 2026/);
+});
+
+test("the team's name is one line of 2 to 180 characters, with a message in Spanish when it is not", () => {
+  assert.equal(teamSettingsSchema.parse({ name: "  Espacio personal de Alvaro " }).name, "Espacio personal de Alvaro");
+  assert.equal(teamSettingsSchema.parse({ name: "Valuadores\n de los\tAltos" }).name, "Valuadores de los Altos");
+  const messageOf = (name: unknown) => {
+    const parsed = teamSettingsSchema.safeParse({ name });
+    return parsed.success ? null : parsed.error.issues[0]?.message;
+  };
+  assert.match(messageOf(" a ") ?? "", /al menos 2 letras/);
+  assert.match(messageOf("x".repeat(181)) ?? "", /hasta 180 caracteres/);
+  assert.match(messageOf("Despacho\u0007") ?? "", /caracteres que no se pueden guardar/);
+  assert.match(messageOf(null) ?? "", /Escribe el nombre/);
+});
+
+test("a database refusal of the team's name becomes a message the administrator can act on", () => {
+  const known = (code: string) => new Prisma.PrismaClientKnownRequestError("refused", { code, clientVersion: "6" });
+  const tooLong = teamSettingsError(known("P2000"));
+  assert.ok(tooLong instanceof TeamError);
+  assert.equal(tooLong.status, 400);
+  const taken = teamSettingsError(known("P2002"));
+  assert.ok(taken instanceof TeamError && /otro despacho/.test(taken.message));
+
+  const check = new Prisma.PrismaClientUnknownRequestError(
+    'new row for relation "devpware_organizaciones" violates check constraint "devpware_organizaciones_tipo_ambito_check"',
+    { clientVersion: "6" },
+  );
+  const refused = teamSettingsError(check);
+  assert.ok(refused instanceof TeamError);
+  assert.equal(refused.status, 409);
+  assert.match(refused.message, /devpware_organizaciones_tipo_ambito_check/);
+
+  // Anything else stays an internal error for the route to log.
+  const other = new Error("connection reset");
+  assert.equal(teamSettingsError(other), other);
 });

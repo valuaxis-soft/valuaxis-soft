@@ -108,4 +108,18 @@ SELECT
   (SELECT count(*) FROM devpware_cargas_archivos) AS cargas_registradas,
   (SELECT count(*) FROM devpware_cargas_archivos WHERE "IdArchivo" IS NULL) AS cargas_sin_archivo;
 
+\echo '== 10. "No se pudo guardar el equipo": reglas, disparadores e índices únicos de organizaciones que no vienen de las migraciones'
+SELECT conname AS restriccion, pg_get_constraintdef(oid) AS definicion
+FROM pg_constraint
+WHERE conrelid = 'devpware_organizaciones'::regclass AND contype IN ('c', 'u', 'x')
+ORDER BY conname;
+SELECT tgname AS disparador, pg_get_triggerdef(oid) AS definicion
+FROM pg_trigger
+WHERE tgrelid = 'devpware_organizaciones'::regclass AND NOT tgisinternal;
+SELECT indexname AS indice, indexdef AS definicion
+FROM pg_indexes
+WHERE tablename = 'devpware_organizaciones' AND indexdef ILIKE '%UNIQUE%';
+SELECT "STipoAmbito" AS tipo, count(*) AS organizaciones FROM devpware_organizaciones GROUP BY 1 ORDER BY 1;
+SELECT has_table_privilege(current_user, 'devpware_organizaciones', 'UPDATE') AS puede_actualizar_organizaciones;
+
 ROLLBACK;

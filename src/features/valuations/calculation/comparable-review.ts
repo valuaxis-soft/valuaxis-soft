@@ -4,7 +4,8 @@
  * the checklist, and the warnings the system raises. The appraiser's
  * judgement rules: nothing here blocks or changes a calculation.
  */
-import { hasAddress, type ComparableAddress } from "./comparable-card";
+import { formatDay, hasAddress, type ComparableAddress } from "./comparable-card";
+import type { ComparableValidity } from "./comparable-validity";
 import { isBuiltComparableType, type ComparableType } from "./market-types";
 
 export const REVIEW_STATUSES = ["POR_REVISAR", "VERIFICADO", "CON_OBSERVACIONES", "RECHAZADO"] as const;
@@ -65,7 +66,7 @@ export function isPortalName(value: string | null | undefined) {
   return Boolean(name) && PORTALS.includes(name);
 }
 
-export type ComparableWarningKey = "BUILT_AREA" | "NO_NUMBER" | "PORTAL_CONTACT" | "NO_SCREENSHOT" | "OLD_OFFER";
+export type ComparableWarningKey = "BUILT_AREA" | "NO_NUMBER" | "PORTAL_CONTACT" | "NO_SCREENSHOT" | "OLD_OFFER" | "EXPIRED";
 export type ComparableWarning = { key: ComparableWarningKey; message: string };
 
 export type WarningInput = {
@@ -78,6 +79,8 @@ export type WarningInput = {
   offerDate: string | null;
   consultedOn?: string | null;
   hasScreenshot: boolean;
+  /** Its validity in the firm's base, from the date of its data (comparableValidity). */
+  validity?: ComparableValidity | null;
 };
 
 /** Built area difference against the subject's, as a fraction (0.25 = 25 %); null when either is missing. */
@@ -125,6 +128,13 @@ export function comparableWarnings(
   const date = comparable.offerDate ?? comparable.consultedOn ?? null;
   if (date && monthsBetween(date, context.today) >= OFFER_MAX_AGE_MONTHS) {
     warnings.push({ key: "OLD_OFFER", message: `La oferta tiene más de ${OFFER_MAX_AGE_MONTHS} meses.` });
+  }
+  // Six months from its capture or last update (comparable-validity); only a warning, as every one of these.
+  if (comparable.validity?.expired) {
+    warnings.push({
+      key: "EXPIRED",
+      message: `Vencido: sus datos son del ${formatDay(comparable.validity.updatedOn)} y su vigencia terminó el ${formatDay(comparable.validity.validUntil)}. Actualízalo si lo vas a usar.`,
+    });
   }
   return warnings;
 }

@@ -24,7 +24,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { ORGANIZATIONS_CHANGED_EVENT } from "@/features/dashboard/components/organization-scope-selector";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import type { TeamRole } from "../team-rules";
-import type { SentInvitationDto, TeamDto, TeamMemberDto } from "../team.service";
+import type { InvitationEmailIssue, SentInvitationDto, TeamDto, TeamMemberDto } from "../team.service";
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
@@ -35,6 +35,17 @@ const errorMessage = (error: unknown, fallback: string) =>
     : error instanceof Error
       ? error.message
       : fallback;
+
+/** Why the email did not go, short for the toast and in full beside the link. */
+const EMAIL_ISSUE_TEXT: Record<InvitationEmailIssue, string> = {
+  NOT_CONFIGURED: "el servidor todavía no envía correos.",
+  DELIVERY_FAILED: "el servicio de correo no pudo enviarlo.",
+};
+const EMAIL_ISSUE_DETAIL: Record<InvitationEmailIssue, string> = {
+  NOT_CONFIGURED: "El envío de correos aún no está configurado en el servidor (Amazon SES), así que no se mandó ningún correo.",
+  DELIVERY_FAILED:
+    "Amazon SES rechazó el correo. Mientras la cuenta esté en modo de prueba solo envía a direcciones verificadas; puedes reenviarla más tarde.",
+};
 
 /** Team administration: name the team, invite by email, manage roles and pending invitations. */
 export function TeamManager() {
@@ -76,7 +87,7 @@ export function TeamManager() {
   const reportInvite = (sent: SentInvitationDto) => {
     setLastInvite(sent);
     if (sent.emailSent) toast.success(`Invitación enviada a ${sent.email}.`);
-    else toast.warning("La invitación quedó lista, pero el correo no salió. Comparte el enlace.");
+    else toast.warning(`La invitación quedó lista, pero ${EMAIL_ISSUE_TEXT[sent.emailIssue ?? "DELIVERY_FAILED"]} Comparte el enlace.`);
   };
 
   const copyLink = async (url: string) => {
@@ -180,8 +191,13 @@ export function TeamManager() {
             </dl>
             {lastInvite ? (
               <div className="grid gap-2 rounded-md border bg-muted/30 p-3 text-sm">
+                {lastInvite.emailSent ? null : (
+                  <p className="text-amber-800 dark:text-amber-300" data-email-issue={lastInvite.emailIssue ?? "DELIVERY_FAILED"}>
+                    {EMAIL_ISSUE_DETAIL[lastInvite.emailIssue ?? "DELIVERY_FAILED"]}
+                  </p>
+                )}
                 <p>
-                  {lastInvite.emailSent ? "Le enviamos el enlace a " : "El correo no salió. Comparte este enlace con "}
+                  {lastInvite.emailSent ? "Le enviamos el enlace a " : "Comparte este enlace con "}
                   <span className="font-medium">{lastInvite.email}</span>
                   {" "}por WhatsApp o como prefieras. Solo funciona con una cuenta de ese correo.
                 </p>

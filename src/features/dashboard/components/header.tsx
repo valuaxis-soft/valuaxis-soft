@@ -24,7 +24,7 @@ const roleLabel: Record<string, string> = {
   USUARIO: "Usuario",
 };
 
-type NavKey = "dashboard" | "avaluos" | "plantillas" | "equipo" | "despacho" | "facturacion";
+type NavKey = "dashboard" | "avaluos" | "plantillas" | "comparables" | "equipo" | "despacho" | "facturacion";
 
 export function DashboardHeader({ user, active }: { user: AuthUser; active?: NavKey }) {
   const navItems: Array<{ key: NavKey; label: string; href: string }> = [
@@ -34,6 +34,10 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
       : []),
     ...(hasPermission(user, AUTH_PERMISSIONS.editValuations)
       ? [{ key: "plantillas" as const, label: "Plantillas", href: "/organizacion/plantillas" }]
+      : []),
+    // The firm's base of comparables: whoever sees the valuations sees the comparables they used.
+    ...(hasPermission(user, AUTH_PERMISSIONS.viewValuations)
+      ? [{ key: "comparables" as const, label: "Comparables", href: "/comparables" }]
       : []),
     ...(hasPermission(user, AUTH_PERMISSIONS.manageUsers)
       ? [
@@ -61,7 +65,7 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
               </p>
             </div>
           </Link>
-          <nav aria-label="Navegación principal" className="flex items-center gap-1">
+          <nav aria-label="Navegación principal" className="flex min-w-0 items-center gap-1 overflow-x-auto">
             {navItems.map((item) => (
               <Link
                 key={item.key}

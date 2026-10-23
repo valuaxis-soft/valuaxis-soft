@@ -2445,6 +2445,8 @@ model ComparableAvaluo {
   /// The appraiser's review of the comparable in this valuation; NULL is "por revisar" (migration 044).
   JRevision                        Json?     @map("JRevision") @db.JsonB
   DFechaSeleccion                 DateTime  @default(now()) @map("DFechaSeleccion") @db.Timestamptz(3)
+  /// Day its data was captured or last updated: the comparable is valid six months from it (migration 046).
+  DFechaActualizacionDatos         DateTime  @default(now()) @map("DFechaActualizacionDatos") @db.Timestamptz(3)
   DFechaExclusion                  DateTime? @map("DFechaExclusion") @db.Timestamptz(3)
   DFechaModificacion               DateTime  @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
 
@@ -2470,6 +2472,7 @@ model ComparableAvaluo {
   @@index([NPorcentajeSimilitud])
   @@index([NDistanciaMetros])
   @@index([DFechaSeleccion])
+  @@index([DFechaActualizacionDatos])
   @@map("devpware_comparables_avaluos")
 }
 

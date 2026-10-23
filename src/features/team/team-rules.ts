@@ -5,6 +5,9 @@
 
 export const INVITATION_TTL_DAYS = 7;
 
+/** The organization's name column is VARCHAR(180). */
+export const TEAM_NAME_MAX_LENGTH = 180;
+
 export const TEAM_ROLES = ["ADMINISTRADOR", "VALUADOR", "REVISOR", "CONSULTA"] as const;
 export type TeamRole = (typeof TEAM_ROLES)[number];
 

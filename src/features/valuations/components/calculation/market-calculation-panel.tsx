@@ -345,11 +345,11 @@ function MarketTypePanel(props: {
     });
   };
 
-  const submitComparable = (current: ComparableDto | null) => async (values: ComparableFormValues, pending: PendingImages) => {
+  const submitComparable = (current: ComparableDto | null) => async (values: ComparableFormValues, pending: PendingImages, mergeInto?: string) => {
     if (current) return run(() => api.market.updateComparable(valuationId, type, current.id, values), "Comparable guardado");
     const before = new Set(calculation?.comparables.map((item) => item.id) ?? []);
     return run(async () => {
-      const created = await api.market.createComparable(valuationId, type, values);
+      const created = await api.market.createComparable(valuationId, type, values, mergeInto);
       // The screenshot pasted before saving goes up once the comparable exists.
       const added = created.comparables.find((item) => !before.has(item.id));
       if (!pending.screenshot || !added) return created;
@@ -359,7 +359,7 @@ function MarketTypePanel(props: {
         failed(error);
         return created;
       }
-    }, "Comparable agregado");
+    }, mergeInto ? "Comparable unificado con el de la base: conserva su número." : "Comparable agregado");
   };
 
   const createFactor = async (label: string) => {
