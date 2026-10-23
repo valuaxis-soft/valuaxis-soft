@@ -13,6 +13,7 @@ import { Columns3, Plus, Rows3 } from "lucide-react";
 
 import type { EditorCapabilities } from "./editor-capabilities";
 import { UploadButton } from "./image-upload-control";
+import { DOCUMENT_IMAGE_ACCEPT } from "@/features/valuations/services/document-image-upload";
 
 export function ContentCreationControl({
   capabilities,
@@ -54,7 +55,10 @@ export function ContentCreationControl({
           {canAddConcept ? conceptControl : null}
           {canAddImage && onAddImage ? (
             <UploadButton
-              label="Imagen"
+              // Several photos at once (an annex of ten): each becomes its own image, in order.
+              accept={DOCUMENT_IMAGE_ACCEPT}
+              multiple
+              label="Imágenes"
               variant="ghost"
               className="w-full justify-start"
               disabled={readOnly}

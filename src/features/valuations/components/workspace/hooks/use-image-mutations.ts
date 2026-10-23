@@ -19,6 +19,11 @@ import {
 } from "../model/section-content";
 import type { EditorState } from "./use-editor-state";
 import { useStoredValuationImages } from "./use-stored-images";
+import {
+  documentImageUploadError,
+  documentImageUploadProblem,
+  documentImageUploadSummary,
+} from "@/features/valuations/services/document-image-upload";
 
 const DOCUMENT_HEADER_IMAGE_ACCEPT = new Set(["image/png", "image/jpeg", "image/webp"]);
 const DOCUMENT_HEADER_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp"]);
@@ -123,6 +128,12 @@ export function useImageMutations({
     }
   };
 
+  /**
+   * Uploads the chosen files, several at once when the picker allows it, one
+   * after the other so they keep their order; each becomes its own image of
+   * the block or apartado. A file that fails says why, by its name, and the
+   * rest still arrive. Replacing takes the first file only.
+   */
   const addImage = async (
     sectionId: string,
     blockId: string,
@@ -130,70 +141,84 @@ export function useImageMutations({
     apartadoId?: string,
     replaceImageId?: string,
   ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      toast.loading("Subiendo imagen...");
-      const isDatos = sectionId === "datos" || sectionId === "datosGenerales";
-      if (isDatos && !valuationId) {
-        throw new Error("Guarda el avalúo antes de agregar imágenes a Datos generales.");
-      }
-      const uploaded = isDatos
-        ? await api.valuations.datosImages.upload(
-            valuationId!,
-            file,
-            blockId,
-            apartadoId,
-          )
-        : await api.uploads.create(file);
-      toast.dismiss();
-      toast.success("Imagen subida");
-
-      const image: ImageContent = {
-        id: isDatos ? uploaded.id : newId(),
-        title: isDatos ? uploaded.filename : file.name,
-        src: uploaded.url ?? "",
-        enabled: true,
-      };
-      const added = { type: "image" as const, id: image.id };
-      updateSectionBlocks(sectionId, (blocks) =>
-        blocks.map((block) => {
-          if (block.id !== blockId) return block;
-          if (!apartadoId) {
-            if (!replaceImageId) {
-              return withAddedBlockContent({ ...block, images: [...block.images, image] }, added);
-            }
-            return ensureBlockContentIntegrity({
-              ...block,
-              images: block.images.map((current) => current.id === replaceImageId
-                ? { ...image, id: current.id, title: current.title || image.title }
-                : current),
-            });
-          }
-          return {
-            ...block,
-            apartados: block.apartados.map((subBlock) => {
-              if (subBlock.id !== apartadoId) return subBlock;
-              if (!replaceImageId) {
-                return withAddedApartadoContent({ ...subBlock, images: [...subBlock.images, image] }, added);
-              }
-              const updated = {
-                ...subBlock,
-                images: subBlock.images.map((current) => current.id === replaceImageId
-                  ? { ...image, id: current.id, title: current.title || image.title }
-                  : current),
-              };
-              return { ...updated, contentLayout: resolveContentLayout(updated) };
-            }),
-          };
-        }),
-      );
-    } catch (err) {
-      toast.dismiss();
-      toast.error(`Error al subir imagen: ${err instanceof Error ? err.message : "Error desconocido"}`);
-    }
+    const chosen = Array.from(event.target.files ?? []);
     event.target.value = "";
+    const files = replaceImageId ? chosen.slice(0, 1) : chosen;
+    if (!files.length) return;
+
+    const isDatos = sectionId === "datos" || sectionId === "datosGenerales";
+    if (isDatos && !valuationId) {
+      toast.error("Guarda el avalúo antes de agregar imágenes a Datos generales.");
+      return;
+    }
+
+    const uploadedImages: ImageContent[] = [];
+    const progress = toast.loading(files.length > 1 ? `Subiendo 1 de ${files.length} imágenes...` : "Subiendo imagen...");
+    for (const [index, file] of files.entries()) {
+      if (files.length > 1) toast.loading(`Subiendo ${index + 1} de ${files.length} imágenes...`, { id: progress });
+      const problem = documentImageUploadProblem(file);
+      if (problem) {
+        toast.error(documentImageUploadError(file.name, problem));
+        continue;
+      }
+      try {
+        const uploaded = isDatos
+          ? await api.valuations.datosImages.upload(valuationId!, file, blockId, apartadoId)
+          : await api.uploads.create(file);
+        uploadedImages.push({
+          id: isDatos ? uploaded.id : newId(),
+          title: isDatos ? uploaded.filename : file.name,
+          src: uploaded.url ?? "",
+          enabled: true,
+        });
+      } catch (err) {
+        toast.error(documentImageUploadError(file.name, err instanceof Error ? err.message : "error desconocido."));
+      }
+    }
+    toast.dismiss(progress);
+    if (!uploadedImages.length) return;
+    toast.success(documentImageUploadSummary(uploadedImages.length, files.length));
+
+    const replacement = replaceImageId ? uploadedImages[0] : null;
+    updateSectionBlocks(sectionId, (blocks) =>
+      blocks.map((block) => {
+        if (block.id !== blockId) return block;
+        if (!apartadoId) {
+          if (!replacement) {
+            // In their order, each on a row of its own at the end, as one image added alone.
+            return uploadedImages.reduce(
+              (current, image) => withAddedBlockContent({ ...current, images: [...current.images, image] }, { type: "image", id: image.id }),
+              block,
+            );
+          }
+          return ensureBlockContentIntegrity({
+            ...block,
+            images: block.images.map((current) => current.id === replaceImageId
+              ? { ...replacement, id: current.id, title: current.title || replacement.title }
+              : current),
+          });
+        }
+        return {
+          ...block,
+          apartados: block.apartados.map((subBlock) => {
+            if (subBlock.id !== apartadoId) return subBlock;
+            if (!replacement) {
+              return uploadedImages.reduce(
+                (current, image) => withAddedApartadoContent({ ...current, images: [...current.images, image] }, { type: "image", id: image.id }),
+                subBlock,
+              );
+            }
+            const updated = {
+              ...subBlock,
+              images: subBlock.images.map((current) => current.id === replaceImageId
+                ? { ...replacement, id: current.id, title: current.title || replacement.title }
+                : current),
+            };
+            return { ...updated, contentLayout: resolveContentLayout(updated) };
+          }),
+        };
+      }),
+    );
   };
 
   const updateImage = (

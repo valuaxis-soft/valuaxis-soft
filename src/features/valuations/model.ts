@@ -162,6 +162,8 @@ export type ImageContent = {
   captions?: ImageCaption[];
   /** Turned clockwise in the document. Absent: as the file shows it. */
   rotation?: ImageRotation;
+  /** Its place and zoom inside its frame, as the cover image's. Absent: whole and centered. */
+  framing?: import("./services/image-framing").ImageFraming;
 };
 
 export type ImageLayoutWidth = "normal" | "wide" | "full";

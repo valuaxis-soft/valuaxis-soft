@@ -12,6 +12,7 @@ export function UploadButton({
   className,
   disabled = false,
   label,
+  multiple = false,
   onChange,
   variant = "outline",
 }: {
@@ -19,6 +20,8 @@ export function UploadButton({
   className?: string;
   disabled?: boolean;
   label: string;
+  /** Several files can be chosen at once. */
+  multiple?: boolean;
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
   variant?: "ghost" | "outline";
 }) {
@@ -37,6 +40,7 @@ export function UploadButton({
         type="file"
         accept={accept}
         disabled={disabled}
+        multiple={multiple || undefined}
         onChange={onChange}
       />
     </FieldLabel>

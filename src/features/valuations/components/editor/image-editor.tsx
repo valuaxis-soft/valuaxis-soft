@@ -29,6 +29,7 @@ import {
 import {
   ChevronDown,
   ChevronUp,
+  Crop,
   EllipsisVertical,
   ImageIcon,
   Maximize2,
@@ -42,6 +43,16 @@ import {
 
 import { cn } from "@/lib/utils";
 import { UploadButton } from "./image-upload-control";
+import { ImageFramingControl } from "./image-framing-control";
+import { DOCUMENT_IMAGE_ACCEPT } from "@/features/valuations/services/document-image-upload";
+import {
+  DEFAULT_IMAGE_SIZE,
+  imageFramingStyle,
+  isDefaultImageFraming,
+  PAIRED_IMAGE_FRAME_RATIO,
+  resolveImageFraming,
+  type ImageFraming,
+} from "@/features/valuations/services/image-framing";
 
 export function ImageEditors({
   images,
@@ -184,8 +195,10 @@ export function ImageEditorItem({
           >
             <RotateCw />
           </Button>
+          <ImageFramingPopover image={image} readOnly={readOnly} onUpdate={onUpdate} />
           {onUpload && (
             <UploadButton
+              accept={DOCUMENT_IMAGE_ACCEPT}
               label={hasResource ? "Reemplazar imagen" : "Subir imagen"}
               disabled={readOnly}
               onChange={onUpload}
@@ -247,6 +260,66 @@ export function ImageEditorItem({
       {/* Caption controls — compact, generic, optional */}
       <CaptionControls image={image} readOnly={readOnly} onUpdate={onUpdate} />
     </section>
+  );
+}
+
+/**
+ * The framing of one image, as the cover image has it: fill its frame or show
+ * it whole, zoom, and move it left, right, up or down. A small frame of the
+ * annex's shape shows the result next to the controls.
+ */
+function ImageFramingPopover({
+  image,
+  readOnly,
+  onUpdate,
+}: {
+  image: ImageContent;
+  readOnly: boolean;
+  onUpdate: (imageId: string, patch: Partial<ImageContent>) => void;
+}) {
+  const framing = resolveImageFraming(image.framing);
+  const framed = !isDefaultImageFraming(image.framing);
+  const save = (next: ImageFraming) => onUpdate(image.id, { framing: isDefaultImageFraming(next) ? undefined : next });
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Encuadre de la imagen"
+            title="Encuadre: acercar y mover la imagen en su marco"
+            className={cn(framed && "text-primary")}
+            disabled={!image.src}
+          >
+            <Crop />
+          </Button>
+        }
+      />
+      <PopoverContent align="end" className="w-[22rem] p-3">
+        <div
+          className="relative mx-auto mb-3 w-full overflow-hidden border-2 border-slate-500 bg-white"
+          style={{ aspectRatio: PAIRED_IMAGE_FRAME_RATIO }}
+          aria-hidden="true"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="block h-full w-full" style={imageFramingStyle(framing)} src={image.src} alt="" />
+        </div>
+        <ImageFramingControl
+          idPrefix={`imagen-${image.id}-encuadre`}
+          title="Encuadre en el marco"
+          description="Una foto vertical puede llenar el marco y moverse para mostrar la parte que importa."
+          focus={framing.focus}
+          size={framing.size}
+          defaultSize={DEFAULT_IMAGE_SIZE}
+          imageUrl={image.src}
+          readOnly={readOnly}
+          onFocusChange={(focus) => save({ ...framing, focus })}
+          onSizeChange={(size) => save({ ...framing, size })}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 

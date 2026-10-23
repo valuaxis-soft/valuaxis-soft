@@ -34,11 +34,11 @@ test("several caption lines print above and below the image, in their order", ()
   assert.deepEqual(printedImageCaptions(photo, "bottom").map((caption) => caption.text), ["Vista desde la calle"], "an empty line prints nothing");
 
   const html = renderToStaticMarkup(createElement(DocumentImage, { image: photo }));
-  assert.match(html, /<figure[^>]*><figcaption class="mb-1 [^"]*text-center">FOTO 1<\/figcaption><figcaption class="mb-1 [^"]*text-right">FACHADA PRINCIPAL<\/figcaption><img[^>]*><figcaption class="mt-1 [^"]*text-left">Vista desde la calle<\/figcaption><\/figure>$/);
+  assert.match(html, /<figure[^>]*><figcaption class="mb-1 [^"]*text-center">FOTO 1<\/figcaption><figcaption class="mb-1 [^"]*text-right">FACHADA PRINCIPAL<\/figcaption><div[^>]*><img[^>]*><\/div><figcaption class="mt-1 [^"]*text-left">Vista desde la calle<\/figcaption><\/figure>$/);
 
   // The single caption of before prints as it did.
   const before = renderToStaticMarkup(createElement(DocumentImage, { image: image({ captionEnabled: true, captionText: "CROQUIS", captionPosition: "bottom" }) }));
-  assert.match(before, /<img[^>]*><figcaption class="mt-1 [^"]*text-center">CROQUIS<\/figcaption>/);
+  assert.match(before, /<img[^>]*><\/div><figcaption class="mt-1 [^"]*text-center">CROQUIS<\/figcaption>/);
 });
 
 test("caption lines are added, reordered and stored, the first one copied to the fields of before", () => {
@@ -76,11 +76,11 @@ test("Girar turns the image a quarter at a time, in the editor and in the docume
   assert.match(editor, /Agregar leyenda/);
 
   const turned = renderToStaticMarkup(createElement(DocumentImage, { image: image({ rotation: 180 }) }));
-  assert.match(turned, /<img[^>]*style="transform:rotate\(180deg\)"[^>]*data-image-rotation="180"/);
+  assert.match(turned, /<img[^>]*style="max-height:600px;transform:rotate\(180deg\)"[^>]*data-image-rotation="180"/);
   const upright = renderToStaticMarkup(createElement(DocumentImage, { image: image() }));
   assert.doesNotMatch(upright, /rotate|data-image-rotation/);
 
   // In a pair the turned image stays inside its frame.
   const pair = renderToStaticMarkup(createElement(DocumentImage, { image: image({ rotation: 90 }), sideBySide: true }));
-  assert.match(pair, /<div class="relative mx-auto aspect-\[16\/9\] w-full overflow-hidden border border-slate-400 bg-white"><img[^>]*style="width:56.25%;height:177.78%;max-width:none;transform:translate\(-50%, -50%\) rotate\(90deg\)"/);
+  assert.match(pair, /<div class="mx-auto aspect-video w-full relative overflow-hidden border-2 border-slate-500 bg-white"><img[^>]*style="width:56.25%;height:177.78%;max-width:none;object-fit:contain;object-position:50% 50%;transform:translate\(-50%, -50%\) rotate\(90deg\)"/);
 });

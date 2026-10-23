@@ -1,5 +1,6 @@
 import type { BlockFlowV2, ConceptDateFormat, ConceptType, ConceptValueFormat, ContentLayout, HeaderExtraField, ImageCaption, ImageLayoutWidth, ImageRotation, ApartadoPresentationMode } from "@/features/valuations/model";
 import { readStoredCaptions, readStoredRotation } from "@/features/valuations/services/image-captions";
+import { isDefaultImageFraming, readStoredImageFraming, type ImageFraming } from "@/features/valuations/services/image-framing";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import { isBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { normalizeHeaderExtraFields } from "@/features/valuations/services/caratula-company-header";
@@ -43,6 +44,7 @@ export type ImageMetadata = {
   captionAlign?: "left" | "center" | "right";
   captions?: ImageCaption[];
   rotation?: ImageRotation;
+  framing?: ImageFraming;
 };
 
 export type SectionMetadata = {
@@ -163,6 +165,7 @@ export function imageMetadataFromContent(content: ImageMetadataContent): ImageMe
     captionAlign: content.captionAlign,
     captions: content.captions,
     rotation: content.rotation,
+    framing: content.framing && !isDefaultImageFraming(content.framing) ? content.framing : undefined,
   };
 }
 
@@ -178,6 +181,7 @@ export function hydrateImageMetadata(config: unknown): ImageMetadata {
     captionAlign: imageCaptionAlign(config),
     captions: readConfigMetadata(config, (value) => (isRecord(value) ? readStoredCaptions(value.captions) : undefined)),
     rotation: readConfigMetadata(config, (value) => (isRecord(value) ? readStoredRotation(value.rotation) : undefined)),
+    framing: readConfigMetadata(config, (value) => (isRecord(value) ? readStoredImageFraming(value.framing) : undefined)),
   };
 }
 
