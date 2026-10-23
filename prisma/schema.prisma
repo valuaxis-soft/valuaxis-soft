@@ -232,6 +232,8 @@ model Organizacion {
   UIdentificadorPublico String    @unique @default(dbgenerated("gen_random_uuid()")) @map("UIdentificadorPublico") @db.Uuid
   IdEstadoOrganizacion  Int       @map("IdEstadoOrganizacion")
   IdUsuarioPropietario  Int?      @map("IdUsuarioPropietario")
+  /// Who turned their personal space into this team: a team has no owner, so the founder is protected instead (migration 047).
+  IdUsuarioFundador     Int?      @map("IdUsuarioFundador")
   SNombre               String    @map("SNombre") @db.VarChar(180)
   SSlug                 String    @unique @map("SSlug") @db.VarChar(180)
   STipoAmbito           String    @map("STipoAmbito") @db.VarChar(20)
@@ -261,6 +263,7 @@ model Organizacion {
 
   estadoOrganizacion         EstadoOrganizacion       @relation(fields: [IdEstadoOrganizacion], references: [IdEstadoOrganizacion], onDelete: Restrict, onUpdate: Cascade)
   usuarioPropietario         Usuario?                 @relation("OrganizacionUsuarioPropietario", fields: [IdUsuarioPropietario], references: [IdUsuario], onDelete: Restrict, onUpdate: Cascade)
+  usuarioFundador            Usuario?                 @relation("OrganizacionUsuarioFundador", fields: [IdUsuarioFundador], references: [IdUsuario], onDelete: SetNull, onUpdate: Cascade)
   miembros                   MiembroOrganizacion[]
   sesiones                   Sesion[]
   avaluos                    Avaluo[]
@@ -284,6 +287,7 @@ model Organizacion {
 
   @@index([IdEstadoOrganizacion])
   @@index([IdUsuarioPropietario])
+  @@index([IdUsuarioFundador])
   @@index([STipoAmbito])
   @@index([BActivo])
   @@index([DFechaEliminacion])
@@ -338,6 +342,7 @@ model Usuario {
   concesionesAutorizadas       ConcesionFuncionalidad[]      @relation("ConcesionUsuarioAutorizador")
   miembros                     MiembroOrganizacion[]
   organizacionesPropietarias   Organizacion[]                  @relation("OrganizacionUsuarioPropietario")
+  organizacionesFundadas       Organizacion[]                  @relation("OrganizacionUsuarioFundador")
   sesiones                     Sesion[]
   intentos                     IntentoAcceso[]
   avaluosCreados               Avaluo[]                      @relation("AvaluoUsuarioCreador")
