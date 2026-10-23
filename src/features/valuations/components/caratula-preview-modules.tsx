@@ -9,7 +9,7 @@ import { DocumentConceptValue } from "./document-concept-value";
 import { isConclusionNarrativeConcept } from "@/features/valuations/services/caratula-blocks";
 import { DEFAULT_SIGNATURE_IMAGE_SIZE, SIGNATURE_IMAGE_HEIGHTS, type ValuationSignature } from "@/features/valuations/services/valuation-signatures";
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
-import { coverImageStyle } from "@/features/valuations/services/cover-image-focus";
+import { coverImageLayout, normalizeCoverImageSize } from "@/features/valuations/services/cover-image-focus";
 import { appraisedGoodWording } from "@/features/valuations/services/appraised-good-wording";
 
 // Module 1: Cover (title, location, principal image)
@@ -23,6 +23,8 @@ export function CaratulaCoverModule({
   principalImage: PrincipalCoverImage | null;
 }) {
   const wording = appraisedGoodWording(meta.propertyKind);
+  const size = normalizeCoverImageSize(caratula.tamanoImagenPrincipal);
+  const coverLayout = coverImageLayout(caratula.enfoqueImagenPrincipal, size);
   return (
     <>
       <section className="text-center">
@@ -32,24 +34,31 @@ export function CaratulaCoverModule({
         <p className="text-sm font-semibold leading-tight text-slate-600">{meta.location || "Ubicación pendiente"}</p>
       </section>
 
-      {/* The neutral background shows around an image shown whole or smaller; it prints too. */}
-      <figure className="mt-0.5 overflow-hidden bg-slate-100 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
-        {principalImage?.url ? (
-          // eslint-disable-next-line @next/next/no-img-element
+      {principalImage?.url ? (
+        // The box follows the image: white, with nothing showing around it, and
+        // as tall as the image, so a smaller image lets the page below move up.
+        <figure
+          className="mx-auto mt-0.5 overflow-hidden bg-white"
+          style={coverLayout.box}
+          data-cover-image-fit={size.fit}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            className="h-[294px] w-full object-cover"
+            className="mx-auto block"
             // The cover box crops the image, or shows it whole; the appraiser chooses the part in view and its size.
-            style={coverImageStyle(caratula.enfoqueImagenPrincipal, caratula.tamanoImagenPrincipal)}
+            style={coverLayout.image}
             src={principalImage.url}
             alt={wording.coverImageAlt}
           />
-        ) : (
+        </figure>
+      ) : (
+        <figure className="mt-0.5 overflow-hidden bg-slate-100 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
           <div className="flex h-[294px] flex-col items-center justify-center gap-2 text-slate-400">
             <ImageIcon className="size-10" />
             <span className="text-xs font-medium uppercase tracking-wide">Imagen principal pendiente</span>
           </div>
-        )}
-      </figure>
+        </figure>
+      )}
     </>
   );
 }

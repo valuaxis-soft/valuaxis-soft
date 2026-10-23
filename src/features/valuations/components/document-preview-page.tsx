@@ -204,6 +204,7 @@ export function computeDocumentLayoutKey(section: AppSection): string {
       h = hashNumber(h, img.layoutWidthPercent ?? 0);
       h = hashStr(h, JSON.stringify(img.captions ?? null));
       h = hashNumber(h, img.rotation ?? 0);
+      h = hashStr(h, JSON.stringify(img.framing ?? null));
     }
     h = hashNumber(h, block.tables.length);
     for (const t of block.tables) {
@@ -265,6 +266,7 @@ export function computeDocumentLayoutKey(section: AppSection): string {
         h = hashNumber(h, img.layoutWidthPercent ?? 0);
         h = hashStr(h, JSON.stringify(img.captions ?? null));
         h = hashNumber(h, img.rotation ?? 0);
+        h = hashStr(h, JSON.stringify(img.framing ?? null));
       }
       h = hashNumber(h, sb.tables.length);
       for (const t of sb.tables) {

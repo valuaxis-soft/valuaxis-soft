@@ -315,14 +315,16 @@ test("images that share a row print as a compact framed pair with their captions
   });
   const pair = renderItems(block({ apartados: [sketches] }));
   assert.match(pair, /grid-cols-2/);
-  assert.equal(pair.match(/aspect-\[16\/9\] w-full border border-slate-400 bg-white object-contain/g)?.length, 2);
+  // Each in a landscape frame with a firm line; whole inside it unless the appraiser framed it otherwise.
+  assert.equal(pair.match(/<div class="mx-auto aspect-video w-full relative overflow-hidden border-2 border-slate-500 bg-white"><img class="block h-full w-full" style="object-fit:contain;object-position:50% 50%"/g)?.length, 2);
   assert.equal(pair.match(/class="my-1"/g)?.length, 2);
   assert.match(pair, /<\/figure>[\s\S]*MICROLOCALIZACIÓN<\/figcaption>/);
   assert.match(pair, /MACROLOCALIZACIÓN<\/figcaption>/);
 
-  // An image alone in its row keeps its own proportions and room.
+  // An image alone in its row keeps its own proportions and room, framed with the same line.
   const alone = renderItems(block({ apartados: [{ ...sketches, contentLayout: rowsOf([{ type: "image", id: "macro" }], [{ type: "image", id: "micro" }]) }] }));
-  assert.doesNotMatch(alone, /aspect-\[16\/9\]|border-slate-400/);
+  assert.doesNotMatch(alone, /aspect-video/);
+  assert.equal(alone.match(/data-image-frame="lone"><div class="mx-auto relative overflow-hidden border-2 border-slate-500 bg-white">/g)?.length, 2);
   assert.equal(alone.match(/class="my-4"/g)?.length, 2);
 });
 
