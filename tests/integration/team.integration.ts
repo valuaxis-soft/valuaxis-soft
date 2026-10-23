@@ -119,6 +119,10 @@ test("a personal space must become a team before inviting, and keeps its valuati
   assert.equal(team.members.length, 1);
   assert.equal(team.members[0].isOwner, true);
   assert.equal(team.members[0].isYou, true);
+  // Production's rule devpware_organizaciones_ambito_propietario_check: a team has no owner user.
+  const saved = await prisma.organizacion.findUniqueOrThrow({ where: { IdOrganizacion: teamId } });
+  assert.equal(saved.IdUsuarioPropietario, null);
+  assert.equal(saved.IdUsuarioFundador, admin.id);
   assert.ok(await findValuation(prisma, valuationId, teamId));
 });
 

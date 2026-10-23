@@ -145,7 +145,7 @@ export async function getTeam(user: AuthUser): Promise<TeamDto> {
       role: member.rol.SClave,
       roleLabel: roleLabel(member.rol.SClave),
       joinedAt: member.DFechaIngreso.toISOString(),
-      isOwner: member.usuario.IdUsuario === organization.IdUsuarioPropietario,
+      isOwner: member.usuario.IdUsuario === protectedUserId(organization),
       isYou: member.usuario.IdUsuario === user.id,
     })),
     invitations: invitations.map((row) => toInvitationDto(row)),
@@ -174,12 +174,25 @@ export function teamSettingsError(error: unknown): unknown {
   );
 }
 
-/** Names the organization and makes it a team; a personal space keeps its valuations. */
+/** The member nobody can remove or demote: the owner of a personal space, or the founder of a team. */
+const protectedUserId = (organization: { IdUsuarioPropietario: number | null; IdUsuarioFundador: number | null }) =>
+  organization.IdUsuarioPropietario ?? organization.IdUsuarioFundador;
+
+/**
+ * Names the organization and makes it a team; a personal space keeps its valuations.
+ * The database requires a personal space to have an owner and a team none, so the
+ * owner becomes the team's founder and keeps the owner's protection.
+ */
 export async function saveTeamSettings(user: AuthUser, input: { name: string }) {
   const organization = await activeOrganization(user.organizationId);
   await prisma.organizacion.update({
     where: { IdOrganizacion: organization.IdOrganizacion },
-    data: { SNombre: input.name, STipoAmbito: "TEAM" },
+    data: {
+      SNombre: input.name,
+      STipoAmbito: "TEAM",
+      IdUsuarioPropietario: null,
+      IdUsuarioFundador: organization.IdUsuarioFundador ?? organization.IdUsuarioPropietario,
+    },
   }).catch((error: unknown) => {
     throw teamSettingsError(error);
   });
@@ -327,7 +340,7 @@ async function memberForChange(user: AuthUser, memberId: number, nextRole: TeamR
   const block = memberChangeBlock({
     actorUserId: user.id,
     targetUserId: member.IdUsuario,
-    ownerUserId: organization.IdUsuarioPropietario,
+    ownerUserId: protectedUserId(organization),
     targetRole: member.rol.SClave,
     nextRole,
     activeAdministrators,
