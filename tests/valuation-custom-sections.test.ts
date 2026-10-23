@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
+import { Tabs } from "../src/components/ui/tabs";
+import { ValuationNavigation } from "../src/features/valuations/components/workspace/valuation-navigation";
 import { createCustomSection } from "../src/features/valuations/components/workspace/model/content-factories";
 import { adjacentPreviewSectionId, previewSectionPosition } from "../src/features/valuations/components/workspace/model/preview-navigation";
 import { buildSectionsPayload } from "../src/features/valuations/components/workspace/model/save-payload";
@@ -11,6 +15,8 @@ import { buildCanonicalValuationSections } from "../src/features/valuations/repo
 import { createInitialSections } from "../src/features/valuations/sections";
 import { isCustomSectionId } from "../src/features/valuations/sections/section-registry";
 import { NEW_SECTION_TITLE, removeCustomSection, renameSection } from "../src/features/valuations/services/section-edit-operations";
+// Must load after the components so client-only libraries still see no DOM at import time.
+import "./support/ssr-portal-shim";
 
 /* ------------------------------------------------------------------ */
 /*  Editor operations                                                  */
@@ -175,3 +181,29 @@ function dbSection(id: number, key: string, name: string, order: number, config:
     ],
   };
 }
+
+/* ------------------------------------------------------------------ */
+/*  Deleting from the tab strip                                        */
+/* ------------------------------------------------------------------ */
+
+test("the active tab of a section the appraiser added offers to delete it; registry tabs never do", () => {
+  const custom = { ...createCustomSection(), label: "XVI" };
+  const sections = [...createInitialSections(), custom];
+  const strip = (activeSectionId: string, options: { readOnly?: boolean; remove?: boolean } = {}) => renderToStaticMarkup(createElement(
+    Tabs,
+    { defaultValue: activeSectionId },
+    createElement(ValuationNavigation, {
+      activeSectionId,
+      enabledSections: sections,
+      iconMap: {},
+      onReorder: () => {},
+      onRemoveSection: options.remove === false ? undefined : () => {},
+      readOnly: options.readOnly ?? false,
+    }),
+  ));
+  assert.match(strip(custom.id), new RegExp(`aria-label="Eliminar sección XVI\\. ${NEW_SECTION_TITLE}"`));
+  assert.equal(strip(custom.id).match(/aria-label="Eliminar sección/g)?.length, 1, "only on the active tab");
+  assert.doesNotMatch(strip("terreno"), /Eliminar sección/, "a registry section is hidden, never deleted");
+  assert.doesNotMatch(strip(custom.id, { readOnly: true }), /Eliminar sección/);
+  assert.doesNotMatch(strip(custom.id, { remove: false }), /Eliminar sección/);
+});

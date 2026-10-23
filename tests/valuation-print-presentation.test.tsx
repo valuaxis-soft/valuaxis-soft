@@ -8,6 +8,8 @@ import { AutoPaginatedDocumentFlow } from "../src/features/valuations/components
 import { DocumentTable } from "../src/features/valuations/components/document-table";
 import { DocumentThemeProvider, type DocumentThemeVariant } from "../src/features/valuations/components/document-theme";
 import { CaratulaAssumptionsModule } from "../src/features/valuations/components/caratula-preview-modules";
+import { TerrenoPreview } from "../src/features/valuations/components/terreno-preview";
+import { ensureTerrenoSection, terrenoSection } from "../src/features/valuations/sections/terreno";
 import { figureColumn, generatedTable, moneyColumn, textColumn } from "../src/features/valuations/calculation/generated-content";
 import type { Apartado, Block, Concept, ContentLayout } from "../src/features/valuations/model";
 import { formatConceptValueForDocument } from "../src/features/valuations/services/concept-value-format";
@@ -113,13 +115,14 @@ test("concept values are justified and the rows sit close, with no hairline unde
 
   // Side by side, the two concepts keep the same tight rows and nothing under them.
   const pair = renderItems(block({ apartados: [apartado("obra", target.apartados[0].concepts, { contentLayout: rowsOf([{ type: "concept", id: "a" }, { type: "concept", id: "b" }]) })] }));
-  assert.doesNotMatch(pair, /border-b/);
+  // Only the apartado's title carries a rule.
+  assert.doesNotMatch(pair.replace(/<h3 class="[^"]*">/g, "<h3>"), /border-b/);
   assert.match(pair, /class="[^"]*grid-cols-2 gap-x-4"/);
   assert.equal(pair.match(/ py-px"/g)?.length, 2);
 
   const technical = renderItems(block({ apartados: [apartado("obra", [concept("a", "Cimentación", "Mampostería")], { presentationMode: "technical-list" })] }));
   assert.match(technical, /items-start py-px"/);
-  assert.doesNotMatch(technical, /border-b/);
+  assert.doesNotMatch(technical.replace(/<h3 class="[^"]*">/g, "<h3>"), /border-b/);
   assert.match(technical, /text-justify/);
 
   // The cover keeps its compact columns: no rules, no justified short data.
@@ -237,7 +240,7 @@ test("an apartado is one flow item per row, so a long one continues on the next 
   const html = (node: ReactNode) => render(node);
   assert.match(html(first.node), /Apartado def[\s\S]*Valor comercial/);
   assert.doesNotMatch(html(first.node), /Enfoque de costos/);
-  assert.match(html(second.node), /^<div class="pl-3">[\s\S]*Enfoque de costos/, "a further row keeps the apartado's indent");
+  assert.match(html(second.node), /^<div><div class="mt-\[1px\] grid[\s\S]*Enfoque de costos/, "a further row is flush with the apartado's title");
   assert.doesNotMatch(html(second.node), /Apartado def/, "the title prints once");
   assert.match(html(third.node), /text-\[12px\] leading-\[1\.45\]/, "every row follows the apartado's text size");
 
@@ -281,9 +284,9 @@ test("block title bars are fine bars, thinner than the document's title band, an
   assert.match(bar, /class="mb-1 bg-\[#00285A\] px-3 py-0\.5 text-center text-\[11px\] font-bold uppercase/);
   assert.doesNotMatch(bar, /py-1\.5|font-black/);
   assert.equal(title.keepWithNext, true);
-  // The apartado title and its rule leave little room before the first row.
+  // The apartado title carries its rule right under the text: no separate line further down.
   const html = renderItems(block({ apartados: [apartado("datos", [concept("a", "Niveles", "4")])] }));
-  assert.match(html, /<h3 class="mb-0\.5 [^"]*">[^<]*<\/h3><div class="mb-0\.5 h-\[2px\]/);
+  assert.match(html, /<h3 class="mb-1 border-b-2 border-\[#2F5495\] pb-0\.5 [^"]*leading-tight[^"]*">III\.1 Apartado datos<\/h3><div class="mt-1 grid/);
 });
 
 test("rows of one apartado sit together on a page: the item before a continuation drops its gap", () => {
@@ -444,4 +447,30 @@ test("a text concept takes a unit from its value format; without one it stays te
   assert.equal(formatConceptValueForDocument({ ...text, valueFormat: "plain" }), "185");
   // Concepts created as "Número" before keep working.
   assert.equal(formatConceptValueForDocument({ type: "number", value: "185", valueFormat: "m2" }), "185 m²");
+});
+
+/* ------------------------------------------------------------------ */
+/*  Apartado titles: one left edge, one rule                           */
+/* ------------------------------------------------------------------ */
+
+test("every apartado title starts at the block's left edge with the same thick rule, whatever it holds", () => {
+  const section = ensureTerrenoSection({ ...structuredClone(terrenoSection), label: "III" });
+  const main = section.blocks[0];
+  const table = { ...generatedTable("vias-tabla", "Tabla configurable", [textColumn("REF")], [["1"]]), enabled: true };
+  const vias = apartado("vias", [], { title: "VÍAS DE ACCESO", tables: [table], contentLayout: rowsOf([{ type: "table", id: table.id }]) });
+  const servicios = apartado("servicios", [concept("gas", "Gas", "Pipas")], { title: "OTROS SERVICIOS" });
+  const fotos = apartado("fotos", [], { title: "CROQUIS", images: [{ id: "img", title: "Macro", src: "", enabled: true }], contentLayout: rowsOf([{ type: "image", id: "img" }]) });
+  const parrafo = apartado("parrafo", [concept("p", "", "Texto corrido", { type: "paragraph" })], { title: "NOTA" });
+  // A table, the fixed format of the measures, concepts, images and a paragraph, one after another.
+  const terrain = { ...section, blocks: [{ ...main, sectionLabel: "III", apartados: [vias, ...main.apartados, servicios, fotos, parrafo] }] };
+  const html = render(createElement(TerrenoPreview, { header: null, section: terrain }));
+
+  const titles = [...html.matchAll(/<h3 class="([^"]*)">([^<]*)<\/h3>/g)];
+  assert.deepEqual(titles.map((match) => match[2]), [
+    "III.1 VÍAS DE ACCESO", "III.2 MEDIDAS Y COLINDANCIAS", "III.3 OTROS SERVICIOS", "III.4 CROQUIS", "III.5 NOTA",
+  ]);
+  assert.equal(new Set(titles.map((match) => match[1])).size, 1, "one format for all of them");
+  assert.match(titles[0][1], /border-b-2/, "the thicker rule");
+  assert.doesNotMatch(html, /pl-3|w-\[300px\]|h-\[2px\]/, "no indent and no line of fixed width");
+  assert.doesNotMatch(html, /font-black/);
 });

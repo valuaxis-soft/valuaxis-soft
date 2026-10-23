@@ -13,6 +13,7 @@ export function ValuationNavigation({
   enabledSections,
   iconMap,
   onAddSection,
+  onRemoveSection,
   onRenameSection,
   onReorder,
   readOnly,
@@ -22,6 +23,8 @@ export function ValuationNavigation({
   iconMap: Record<string, LucideIcon>;
   /** Adds a section of the appraiser's own at the end of the strip. */
   onAddSection?: () => void;
+  /** Asks to delete a section the appraiser added. */
+  onRemoveSection?: (sectionId: string) => void;
   onRenameSection?: (sectionId: string, title: string) => void;
   onReorder: (nextSections: AppSection[]) => void;
   readOnly: boolean;
@@ -57,6 +60,7 @@ export function ValuationNavigation({
           iconMap={iconMap}
           onReorder={onReorder}
           onRename={onRenameSection}
+          onRemove={onRemoveSection}
           readOnly={readOnly}
         />
         {onAddSection ? (

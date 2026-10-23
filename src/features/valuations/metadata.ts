@@ -259,7 +259,8 @@ export function apartadoMetadataFromContent(content: ApartadoMetadataContent): A
 
 export function hydrateApartadoMetadata(config: unknown): ApartadoMetadata {
   return {
-    enabled: true,
+    // Only an explicit `false` hides it: apartados saved before visibility was stored show.
+    enabled: readConfigMetadata(config, (value) => readBooleanMetadata(value, "enabled")) !== false,
     startOnNewPage: sectionBooleanMetadata(config, "startOnNewPage"),
     contentLayout: parseContentLayout(config),
     conceptPresentation: parseConceptPresentation(config),
@@ -464,7 +465,7 @@ function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "cust
   return typeof metadata === "string" ? metadata : undefined;
 }
 
-function readBooleanMetadata(value: unknown, key: "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited") {
+function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "boolean" ? metadata : undefined;

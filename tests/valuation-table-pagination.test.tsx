@@ -272,7 +272,7 @@ test("a table alone in its row may break; tables side by side and short ones sta
   assert.match(first, /COMPARABLES/);
   assert.equal(printedRows(first).length, 10);
   assert.doesNotMatch(next, /COMPARABLES/);
-  assert.match(next, /^<div class="pl-3"><div class="grid grid-cols-1">/);
+  assert.match(next, /^<div><div class="grid grid-cols-1">/);
   assert.equal(printedRows(next).length, 20);
 
   // A table placed directly in the block breaks too.

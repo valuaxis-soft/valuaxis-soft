@@ -2,7 +2,7 @@
 
 import { useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { PencilLine } from "lucide-react";
+import { PencilLine, Trash2 } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,8 @@ import { SECTION_TITLE_MAX } from "@/features/valuations/services/section-edit-o
  * The active tab also renames the section: a pencil next to it (or a double
  * click on it) turns the tab into a text box; Enter or leaving it keeps the
  * new title, Escape drops it. While it is a text box the tab is not sortable.
+ * A section the appraiser added also shows a trash can on its active tab,
+ * which asks before deleting it.
  */
 export function SortableSectionTab({
   sectionId,
@@ -34,6 +36,7 @@ export function SortableSectionTab({
   icon,
   label,
   rename,
+  onRemove,
   children,
 }: {
   sectionId: string;
@@ -51,6 +54,8 @@ export function SortableSectionTab({
     onCommit: (title: string) => void;
     onCancel: () => void;
   };
+  /** Asks to delete the section: only for a section the appraiser added. */
+  onRemove?: () => void;
   children?: ReactNode;
 }) {
   const editing = Boolean(rename?.editing);
@@ -117,6 +122,17 @@ export function SortableSectionTab({
           onClick={rename?.onStart}
         >
           <PencilLine className="size-3.5" />
+        </button>
+      ) : null}
+      {onRemove && !disabled && isActive && !editing ? (
+        <button
+          type="button"
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-background hover:text-destructive"
+          aria-label={`Eliminar sección ${label}`}
+          title="Eliminar sección"
+          onClick={onRemove}
+        >
+          <Trash2 className="size-3.5" />
         </button>
       ) : null}
     </div>

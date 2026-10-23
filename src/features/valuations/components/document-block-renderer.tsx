@@ -510,7 +510,7 @@ function ApartadoContentRows({
   );
 }
 
-/** Rows of an apartado that follow the item carrying its title, indented like it. */
+/** Rows of an apartado that follow the item carrying its title, flush with it. */
 function DocumentApartadoRows(props: {
   subBlock: Apartado;
   rows: ContentLayoutRowV2[];
@@ -519,7 +519,7 @@ function DocumentApartadoRows(props: {
   tableFragment?: DocumentTableFragment;
 }) {
   return (
-    <div className="pl-3">
+    <div>
       <ApartadoContentRows {...props} />
     </div>
   );
@@ -550,7 +550,6 @@ function DocumentApartado({
   tableFragment?: DocumentTableFragment;
   className?: string;
 }) {
-  const theme = useDocumentTheme();
   // A title that carries its own letter ("A) TERRENO EN ESTUDIO") is not numbered again.
   const displayLabel = /^[A-Z]\)\s/.test(subBlock.title.trim())
     ? ""
@@ -558,12 +557,13 @@ function DocumentApartado({
   const isTechnicalList = subBlock.presentationMode === "technical-list";
 
   return (
-    <section className={cn("pl-3", className)}>
+    // No indent: every apartado title starts at the left edge of the block's
+    // title bar, like those of a format of their own (medidas y colindancias).
+    <section className={className}>
       {renderTitle
         ? <>{renderTitle(block, subBlock, displayLabel)}</>
-        : <h3 className={theme.apartadoTitle}>{[displayLabel, subBlock.title].filter(Boolean).join(" ")}</h3>
+        : <DocumentApartadoTitle>{[displayLabel, subBlock.title].filter(Boolean).join(" ")}</DocumentApartadoTitle>
       }
-      <div className={theme.apartadoRule} aria-hidden="true" />
       {isTechnicalList ? (
         <DocumentTechnicalList
           container={subBlock}
@@ -580,4 +580,10 @@ function DocumentApartado({
       )}
     </section>
   );
+}
+
+/** The title of an apartado, with its rule: the same in every section and for every kind of content. */
+export function DocumentApartadoTitle({ children }: { children: React.ReactNode }) {
+  const theme = useDocumentTheme();
+  return <h3 className={theme.apartadoTitle}>{children}</h3>;
 }

@@ -44,6 +44,8 @@ export type SectionDndContainerProps = {
   onReorder: (nextSections: AppSection[]) => void;
   /** Called with the new title when the appraiser renames the active tab. */
   onRename?: (sectionId: string, title: string) => void;
+  /** Asks to delete a section the appraiser added (the active tab offers it). */
+  onRemove?: (sectionId: string) => void;
   /** Whether the tabs are read-only (disables dragging). */
   readOnly: boolean;
 };
@@ -142,6 +144,7 @@ export function SectionDndContainer({
   iconMap,
   onReorder,
   onRename,
+  onRemove,
   readOnly,
 }: SectionDndContainerProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -250,6 +253,7 @@ export function SectionDndContainer({
                   },
                   onCancel: () => setRenamingId(null),
                 } : undefined}
+                onRemove={onRemove && section.custom ? () => onRemove(section.id) : undefined}
               />
             );
           })}
