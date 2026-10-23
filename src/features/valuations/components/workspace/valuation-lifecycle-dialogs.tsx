@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api-client";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,19 +20,42 @@ import { Textarea } from "@/components/ui/textarea";
 export const REOPEN_ACCEPTANCE_TEXT =
   "Entiendo que se creará una nueva versión editable del avalúo y que la versión concluida se conserva sin cambios.";
 
+/**
+ * Comparables of the valuation still "por revisar", read when the dialog
+ * opens; null while unknown. A warning only: concluding is never blocked.
+ */
+function usePendingReviews(valuationId: string | undefined, open: boolean) {
+  const [pending, setPending] = useState<{ valuationId: string; count: number } | null>(null);
+  useEffect(() => {
+    if (!open || !valuationId) return;
+    let active = true;
+    api.market.review(valuationId)
+      .then((rows) => {
+        if (active) setPending({ valuationId, count: rows.filter((row) => (row.comparable.review?.status ?? "POR_REVISAR") === "POR_REVISAR").length });
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [open, valuationId]);
+  return pending && pending.valuationId === valuationId ? pending.count : null;
+}
+
 export function ConcludeValuationDialog({
   open,
   onOpenChange,
   onConfirm,
   pending,
   hasUnsavedChanges,
+  valuationId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
   pending: boolean;
   hasUnsavedChanges: boolean;
+  /** To warn about comparables not reviewed yet. */
+  valuationId?: string;
 }) {
+  const unreviewed = usePendingReviews(valuationId, open);
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -42,6 +66,12 @@ export function ConcludeValuationDialog({
             que crea una versión nueva.
             {hasUnsavedChanges ? " Antes de concluir se guardarán los cambios pendientes." : ""}
           </AlertDialogDescription>
+          {unreviewed ? (
+            <p className="text-sm text-amber-700 dark:text-amber-400" role="status" data-unreviewed-comparables>
+              {unreviewed === 1 ? "Hay 1 comparable" : `Hay ${unreviewed} comparables`} por revisar en «Revisión de comparables». Puedes concluir de
+              todos modos.
+            </p>
+          ) : null}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Cancelar</AlertDialogCancel>

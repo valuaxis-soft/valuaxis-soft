@@ -32,7 +32,7 @@ import {
 import type { AuthUser } from "@/features/auth/model";
 import type { Letterhead } from "@/features/valuations/model";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
-import { canEditProject, canExportProject, hasPermission } from "@/features/auth/permissions";
+import { canEditProject, canExportProject, canReviewComparables, hasPermission } from "@/features/auth/permissions";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -109,6 +109,8 @@ export function ValuationWorkspace({
   const locked = initialValuation?.locked ?? false;
   const canEdit = canEditProject(currentUser) && !locked;
   const canExport = canExportProject(currentUser);
+  // Reviewing comparables is open to reviewers too, while the valuation is not concluded.
+  const canReview = canReviewComparables(currentUser) && !locked;
   const canConclude = !locked && Boolean(valuationId) && hasPermission(currentUser, AUTH_PERMISSIONS.concludeValuations);
   const canReopen = locked && Boolean(valuationId) && hasPermission(currentUser, AUTH_PERMISSIONS.reopenValuations);
 
@@ -284,6 +286,7 @@ export function ValuationWorkspace({
               <MarketCalculationPanel
                 valuationId={valuationId}
                 readOnly={!canEdit}
+                canReview={canReview}
                 suggestedSubjectArea={calculationSync.suggestedSubjectArea}
                 onCalculation={calculationSync.onMarketCalculation}
               />
@@ -296,6 +299,7 @@ export function ValuationWorkspace({
                 valuationId={valuationId}
                 types={RENT_COMPARABLE_TYPES}
                 readOnly={!canEdit}
+                canReview={canReview}
                 suggestedSubjectArea={null}
                 onCalculation={calculationSync.onMarketCalculation}
               />
@@ -479,6 +483,7 @@ export function ValuationWorkspace({
         onConfirm={() => void handleConclude()}
         pending={lifecyclePending || saving}
         hasUnsavedChanges={hasUnsavedChanges}
+        valuationId={valuationId ?? undefined}
       />
       <ReopenValuationDialog
         open={reopenOpen}

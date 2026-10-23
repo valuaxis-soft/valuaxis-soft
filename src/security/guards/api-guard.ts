@@ -8,15 +8,21 @@ export type ApiGuardResult =
   | { ok: true; user: AuthUser }
   | { ok: false; response: NextResponse };
 
-/** Pure authorization decision for route handlers: 401 without a user, 403 without the permission. */
+/** One permission, or several of which any one is enough. */
+type RequiredPermission = AuthPermission | readonly AuthPermission[];
+
+const permissionsOf = (permission?: RequiredPermission) => (permission === undefined ? [] : typeof permission === "string" ? [permission] : permission);
+
+/** Pure authorization decision for route handlers: 401 without a user, 403 without the permission (or any of the ones given). */
 export function authorizeApiUser(
   user: AuthUser | null,
-  permission?: AuthPermission,
+  permission?: RequiredPermission,
 ): ApiGuardResult {
   if (!user) {
     return { ok: false, response: NextResponse.json({ error: "No autorizado" }, { status: 401 }) };
   }
-  if (permission && !hasPermission(user, permission)) {
+  const required = permissionsOf(permission);
+  if (required.length && !required.some((item) => hasPermission(user, item))) {
     return { ok: false, response: NextResponse.json({ error: "Permiso insuficiente" }, { status: 403 }) };
   }
   return { ok: true, user };
@@ -27,7 +33,7 @@ export function authorizeApiUser(
  * route handler. An authorized request also renews the session, so a user who
  * keeps working is not logged out mid-edit.
  */
-export async function requireApiUser(permission?: AuthPermission): Promise<ApiGuardResult> {
+export async function requireApiUser(permission?: RequiredPermission): Promise<ApiGuardResult> {
   const session = await getCurrentSession();
   const result = authorizeApiUser(session?.user ?? null, permission);
   if (result.ok && session) await renewCurrentSession(session);
@@ -37,7 +43,7 @@ export async function requireApiUser(permission?: AuthPermission): Promise<ApiGu
       organizationId: session.organizationId,
       userId: session.user.id,
       entity: "Permiso",
-      entityId: permission,
+      entityId: permissionsOf(permission).join("|"),
       action: "API_PERMISSION_DENIED",
       result: "RECHAZADO",
     });

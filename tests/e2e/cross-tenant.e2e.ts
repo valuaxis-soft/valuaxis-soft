@@ -73,6 +73,8 @@ const reads: Attempt[] = [
   ["GET", (id) => `/api/avaluos/${id}/mercado?tipo=TERRENO_VENTA`],
   ["GET", (id) => `/api/avaluos/${id}/mercado?tipo=INMUEBLE_RENTA`],
   ["GET", (id) => `/api/avaluos/${id}/mercado/comparables/buscar?tipo=INMUEBLE_RENTA&q=renta`],
+  ["GET", (id) => `/api/avaluos/${id}/mercado/revision`],
+  ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/duplicados`, { json: { url: null, location: "Renta 1", contactPhone: null, price: null } }],
   ["GET", (id) => `/api/avaluos/${id}/ingresos`],
   ["GET", (id) => `/api/avaluos/${id}/conclusion`],
   ["GET", (id) => `/api/avaluos/${id}/maquinaria`],
@@ -98,6 +100,7 @@ const writes: Attempt[] = [
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/importar?tipo=TERRENO_VENTA`, { form: comparablesCsv }],
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/importar?tipo=TERRENO_VENTA&confirmar=1`, { form: comparablesCsv }],
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/buscar?tipo=TERRENO_VENTA`, { json: foundComparablesPayload }],
+  ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/reusar?tipo=TERRENO_VENTA`, { json: { comparableId: "00000000-0000-4000-8000-000000000000" } }],
   ["POST", (id) => `/api/avaluos/${id}/conclude`],
 ];
 
@@ -166,6 +169,39 @@ describe("organization B cannot reach organization A's valuation", () => {
       assert.equal(response.status, 404, describeCall(`org B admin PUT ${path(target)}`, response));
     });
   }
+});
+
+describe("organization B cannot reach organization A's comparables", () => {
+  let comparable: string;
+  before(async () => {
+    const market = await call(world.a.admin, "GET", `/api/avaluos/${target}/mercado?tipo=INMUEBLE_RENTA`);
+    comparable = String(market.data.comparables[0].id);
+  });
+
+  test("the card of A's comparable → 404", async () => {
+    const response = await call(world.b.admin, "GET", `/api/comparables/${comparable}`);
+    assert.equal(response.status, 404, describeCall("org B admin GET card", response));
+    assert.equal((await call(world.a.admin, "GET", `/api/comparables/${comparable}`)).status, 200);
+  });
+
+  test("reviewing A's comparable or replacing its screenshot → 404, and its review stays", async () => {
+    const review = await call(world.b.admin, "PUT", `/api/avaluos/${target}/mercado/comparables/${comparable}/revision`, {
+      json: { status: "RECHAZADO", checks: {}, notes: "Escrito por B" },
+    });
+    assert.equal(review.status, 404, describeCall("org B admin PUT review", review));
+    const removed = await call(world.b.admin, "DELETE", `/api/avaluos/${target}/mercado/comparables/${comparable}/pantalla?tipo=INMUEBLE_RENTA`);
+    assert.equal(removed.status, 404, describeCall("org B admin DELETE screenshot", removed));
+    const row = await prisma.comparableAvaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: comparable }, select: { JRevision: true } });
+    assert.equal(row.JRevision, null);
+  });
+
+  test("B cannot bring A's comparable into a valuation of its own", async () => {
+    const mine = await createValuation(world.b.admin, "Avalúo de B para reusar");
+    const response = await call(world.b.admin, "POST", `/api/avaluos/${mine}/mercado/comparables/reusar?tipo=INMUEBLE_RENTA`, { json: { comparableId: comparable } });
+    assert.equal(response.status, 404, describeCall("org B admin POST reuse", response));
+    const market = await call(world.b.admin, "GET", `/api/avaluos/${mine}/mercado?tipo=INMUEBLE_RENTA`);
+    assert.deepEqual(market.data.comparables, []);
+  });
 });
 
 describe("organization B cannot reach organization A's templates", () => {

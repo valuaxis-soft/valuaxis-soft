@@ -133,6 +133,39 @@ const valuationCases: Case[] = [
     expected: { ADMINISTRADOR: 200, VALUADOR: 200, REVISOR: 403, CONSULTA: 403 } },
 ];
 
+// The comparable each fresh valuation was given, for the calls on one comparable.
+const comparablesByValuation = new Map<string, string>();
+const withComparable = async (valuation: string) => {
+  const response = await call(world.a.admin, "POST", `/api/avaluos/${valuation}/mercado/comparables?tipo=TERRENO_VENTA`, { json: comparablePayload });
+  assert.equal(response.status, 201, describeCall("comparable (setup)", response));
+  comparablesByValuation.set(valuation, String(response.data.comparables[0].id));
+};
+async function screenshotForm() {
+  const png = await sharp({ create: { width: 48, height: 32, channels: 3, background: "#334155" } }).png().toBuffer();
+  const data = new FormData();
+  data.set("file", new File([new Uint8Array(png)], "image.png", { type: "image/png" }));
+  return data;
+}
+let screenshot: FormData | null = null;
+
+const comparableCardCases: Case[] = [
+  { name: "check a comparable for duplicates", method: "POST", path: (id) => `/api/avaluos/${id}/mercado/comparables/duplicados`,
+    body: () => ({ url: "https://portal.example/duplicado", location: "Calle 1 2, Arandas", contactPhone: null, price: null }), expected: all(200) },
+  { name: "read the review of the comparables", method: "GET", path: (id) => `/api/avaluos/${id}/mercado/revision`, expected: all(200) },
+  { name: "read a comparable's card", method: "GET", path: (id) => `/api/comparables/${comparablesByValuation.get(id)}`,
+    fresh: true, prepare: withComparable, expected: all(200) },
+  { name: "review a comparable", method: "PUT", path: (id) => `/api/avaluos/${id}/mercado/comparables/${comparablesByValuation.get(id)}/revision`,
+    body: () => ({ status: "CON_OBSERVACIONES", checks: { photo: true }, notes: "El precio cambió." }), fresh: true, prepare: withComparable,
+    // Reviewing comparables is the reviewer's job too (AVALUO_REVISAR), though the valuation is read-only for that role.
+    expected: { ADMINISTRADOR: 200, VALUADOR: 200, REVISOR: 200, CONSULTA: 403 } },
+  { name: "use an existing comparable", method: "POST", path: (id) => `/api/avaluos/${id}/mercado/comparables/reusar?tipo=TERRENO_VENTA`,
+    body: () => ({ comparableId: [...comparablesByValuation.values()].at(-1) }), fresh: true, prepare: withComparable, expected: editors(201) },
+  { name: "upload a reference screenshot", method: "POST", path: (id) => `/api/avaluos/${id}/mercado/comparables/${comparablesByValuation.get(id)}/pantalla?tipo=TERRENO_VENTA`,
+    form: () => screenshot as FormData, fresh: true,
+    prepare: async (valuation) => { await withComparable(valuation); screenshot = await screenshotForm(); },
+    expected: editors(201) },
+];
+
 const calculationCases: Case[] = [
   { name: "read the cost approach", method: "GET", path: (id) => `/api/avaluos/${id}/costos`, expected: all(200) },
   { name: "save the cost approach", method: "PUT", path: (id) => `/api/avaluos/${id}/costos`, body: () => costPayload, expected: editors(200) },
@@ -304,6 +337,7 @@ function matrix(title: string, cases: Case[]) {
 
 matrix("valuations", valuationCases);
 matrix("calculations", calculationCases);
+matrix("comparable cards and review", comparableCardCases);
 matrix("AI assistance", aiCases);
 matrix("dictamen", dictamenCases);
 matrix("firm data", firmCases);

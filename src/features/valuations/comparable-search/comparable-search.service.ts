@@ -56,7 +56,7 @@ export async function addFoundComparables(
   const comparables = await Promise.all(chosen.map(async ({ result, source }) => ({
     ...withProvenance(result.comparable, source.label, result.origin),
     factors: [],
-    photos: result.id && source.photos ? await source.photos(result.id, { organizationId: user.organizationId }) : [],
+    reused: result.id && source.evidence ? await source.evidence(result.id, { organizationId: user.organizationId }) : {},
   })));
   if (comparables.length) await importComparables(publicId, user, type, comparables);
   return { added: comparables.length, skipped: payload.results.length - comparables.length };

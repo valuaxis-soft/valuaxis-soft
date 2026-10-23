@@ -5,8 +5,10 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { asRecord, decimal } from "../../calculation/access";
-import type { StoredComparablePhoto } from "../../calculation/market.service";
+import { parseComparableId, type ComparableAddress, type OperationType, type UrbanProximity } from "../../calculation/comparable-card";
+import { reusedEvidenceOf, type ReusedComparableEvidence } from "../../calculation/market.service";
 import { searchTokens } from "../normalize";
 import type { ComparableSearchContext, ComparableSearchQuery, ComparableSearchResult, ComparableSearchSource } from "../types";
 
@@ -17,37 +19,77 @@ type Row = {
   id: string;
   organizationId: number;
   folio: string;
+  comparableFolio: number | null;
   propertyName: string | null;
   area: Prisma.Decimal | null;
   price: Prisma.Decimal | null;
   property: Prisma.JsonValue;
   publication: Prisma.JsonValue | null;
   address: Prisma.JsonValue;
+  coordinates: Prisma.JsonValue;
   photos: Prisma.JsonValue | null;
   capturedAt: Date;
 };
 
 const text = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
 const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null);
+const coordinate = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+const day = (value: unknown) => {
+  const typed = text(value);
+  return typed && /^\d{4}-\d{2}-\d{2}$/.test(typed) ? typed : null;
+};
 const likePattern = (token: string) => `%${token.replace(/[\\%_]/g, "\\$&")}%`;
 
 /** Location and the texts of the property and its publication, without accents or case. */
 const HAYSTACK = Prisma.sql`unaccent(lower(concat_ws(' ',
   COALESCE(c."JDireccionSnapshot"->>'location', p."SNombre"),
+  c."JDireccionSnapshot"->>'street', c."JDireccionSnapshot"->>'neighborhood', c."JDireccionSnapshot"->>'municipality',
+  c."JDireccionSnapshot"->>'state',
   c."JPropiedadSnapshot"->>'landUse', c."JPropiedadSnapshot"->>'landUseKey', c."JPropiedadSnapshot"->>'zone',
   c."JPropiedadSnapshot"->>'services', c."JPropiedadSnapshot"->>'notes',
   c."JPublicacionSnapshot"->>'sourceName', c."JPublicacionSnapshot"->>'contactName')))`;
 const AREA = Prisma.sql`COALESCE(c."NSuperficieTerrenoCapturada", c."NSuperficieConstruccionCapturada", c."NSuperficieRentableCapturada")`;
+/** The day the offer was consulted: as captured, else the offer's date, else the day it was chosen. */
+const CONSULTED = Prisma.sql`COALESCE(c."JPublicacionSnapshot"->>'consultedOn', c."JPublicacionSnapshot"->>'offerDate', to_char(c."DFechaSeleccion", 'YYYY-MM-DD'))`;
 
-function toResult(row: Row): ComparableSearchResult {
+/**
+ * A place filter: the part captured with that name, or, for comparables of
+ * before with a single location line, that line. Every word must be there.
+ */
+function placeCondition(part: string, value: string | undefined) {
+  if (!value) return [];
+  const where = Prisma.sql`unaccent(lower(concat_ws(' ', c."JDireccionSnapshot"->>${part}, c."JDireccionSnapshot"->>'location')))`;
+  return searchTokens(value).map((token) => Prisma.sql`${where} LIKE ${likePattern(token)}`);
+}
+
+function addressOf(value: Prisma.JsonValue): ComparableAddress | null {
+  const address = asRecord(value);
+  const parts: ComparableAddress = {
+    state: text(address.state), municipality: text(address.municipality), postalCode: text(address.postalCode),
+    neighborhood: text(address.neighborhood), street: text(address.street), number: text(address.number),
+  };
+  return Object.values(parts).some(Boolean) ? parts : null;
+}
+
+function firstPhotoKey(photos: Prisma.JsonValue | null) {
+  const first = Array.isArray(photos) ? asRecord(photos[0] as Prisma.JsonValue) : {};
+  return typeof first.key === "string" && first.key ? first.key : null;
+}
+
+async function toResult(row: Row): Promise<ComparableSearchResult> {
   const property = asRecord(row.property);
   const publication = asRecord(row.publication);
-  const offerDate = text(publication.offerDate);
+  const coordinates = asRecord(row.coordinates);
+  const thumbnail = firstPhotoKey(row.photos);
+  const operationType = text(property.operationType);
+  const urbanProximity = text(property.urbanProximity);
   return {
     id: row.id,
     origin: `avalúo ${row.folio}`,
     capturedOn: row.capturedAt.toISOString().slice(0, 10),
     photoCount: Array.isArray(row.photos) ? row.photos.length : 0,
+    folio: row.comparableFolio,
+    thumbnailUrl: thumbnail ? await stableDownloadUrl(thumbnail).catch(() => null) : null,
     comparable: {
       location: text(asRecord(row.address).location) ?? row.propertyName ?? "",
       area: decimal(row.area),
@@ -68,14 +110,29 @@ function toResult(row: Row): ComparableSearchResult {
       contactName: text(publication.contactName),
       contactPhone: text(publication.contactPhone),
       url: text(publication.url),
-      offerDate: offerDate && /^\d{4}-\d{2}-\d{2}$/.test(offerDate) ? offerDate : null,
+      offerDate: day(publication.offerDate),
+      consultedOn: day(publication.consultedOn),
+      validUntil: day(publication.validUntil),
+      listingText: text(publication.listingText),
+      address: addressOf(row.address),
+      // Invalid stored values are left for the schema of the orchestrator to reject.
+      ...(operationType ? { operationType: operationType as OperationType } : {}),
+      ...(urbanProximity ? { urbanProximity: urbanProximity as UrbanProximity } : {}),
+      latitude: coordinate(coordinates.latitude),
+      longitude: coordinate(coordinates.longitude),
     },
   };
 }
 
 async function search(query: ComparableSearchQuery, context: ComparableSearchContext): Promise<ComparableSearchResult[]> {
-  const tokens = searchTokens(query.text);
-  if (!tokens.length) return [];
+  const filters = query.filters ?? {};
+  // "C-00123" looks for that comparable of the base; other text, for its words.
+  const wantedFolio = parseComparableId(query.text);
+  const tokens = wantedFolio ? [] : searchTokens(query.text);
+  if (!wantedFolio && !tokens.length && !query.filters && [query.areaMin, query.areaMax, query.priceMin, query.priceMax].every((item) => item === null)) {
+    return [];
+  }
+  const types = filters.types?.length ? filters.types : [query.type];
   const conditions = [
     // The tenant: the valuation the comparable belongs to is this organization's, and alive.
     Prisma.sql`a."IdOrganizacion" = ${context.organizationId}`,
@@ -84,8 +141,17 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
     // Reopening copies comparables to the new version: only the version each valuation shows today counts.
     Prisma.sql`c."IdVersionAvaluo" = COALESCE(a."IdVersionTrabajo", a."IdVersionFinal")`,
     Prisma.sql`c."BIncluido"`,
-    Prisma.sql`t."SClave" = ${query.type}`,
+    Prisma.sql`t."SClave" IN (${Prisma.join(types)})`,
+    ...(wantedFolio ? [Prisma.sql`p."IFolioComparable" = ${wantedFolio}`] : []),
     ...tokens.map((token) => Prisma.sql`${HAYSTACK} LIKE ${likePattern(token)}`),
+    ...placeCondition("state", filters.state),
+    ...placeCondition("municipality", filters.municipality),
+    ...placeCondition("neighborhood", filters.neighborhood),
+    ...(filters.postalCode
+      ? [Prisma.sql`(c."JDireccionSnapshot"->>'postalCode' = ${filters.postalCode} OR c."JDireccionSnapshot"->>'location' LIKE ${likePattern(filters.postalCode)})`]
+      : []),
+    ...(filters.consultedFrom ? [Prisma.sql`${CONSULTED} >= ${filters.consultedFrom}`] : []),
+    ...(filters.consultedTo ? [Prisma.sql`${CONSULTED} <= ${filters.consultedTo}`] : []),
     ...(query.areaMin === null ? [] : [Prisma.sql`${AREA} >= ${query.areaMin}`]),
     ...(query.areaMax === null ? [] : [Prisma.sql`${AREA} <= ${query.areaMax}`]),
     ...(query.priceMin === null ? [] : [Prisma.sql`c."NPrecioCapturado" >= ${query.priceMin}`]),
@@ -96,12 +162,14 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
       c."UIdentificadorPublico"::text AS "id",
       a."IdOrganizacion" AS "organizationId",
       a."SFolio" AS "folio",
+      p."IFolioComparable" AS "comparableFolio",
       p."SNombre" AS "propertyName",
       ${AREA} AS "area",
       c."NPrecioCapturado" AS "price",
       c."JPropiedadSnapshot" AS "property",
       c."JPublicacionSnapshot" AS "publication",
       c."JDireccionSnapshot" AS "address",
+      c."JUbicacionSnapshot" AS "coordinates",
       c."JImagenesSnapshot" AS "photos",
       c."DFechaSeleccion" AS "capturedAt"
     FROM "devpware_comparables_avaluos" c
@@ -116,25 +184,19 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
   if (rows.some((row) => row.organizationId !== context.organizationId)) {
     throw new Error("Comparable search read a row of another organization.");
   }
-  return rows.map(toResult);
+  return Promise.all(rows.map(toResult));
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** The photos of a comparable of the firm, read only within the organization of the search. */
-async function photos(resultId: string, context: Pick<ComparableSearchContext, "organizationId">): Promise<StoredComparablePhoto[]> {
-  if (!UUID.test(resultId)) return [];
+/** The photos, screenshot and number of a comparable of the firm, read only within the organization of the search. */
+async function evidence(comparableId: string, context: Pick<ComparableSearchContext, "organizationId">): Promise<ReusedComparableEvidence> {
+  if (!UUID.test(comparableId)) return {};
   const row = await prisma.comparableAvaluo.findFirst({
-    where: { UIdentificadorPublico: resultId, avaluo: { IdOrganizacion: context.organizationId, BActivo: true, DFechaEliminacion: null } },
-    select: { JImagenesSnapshot: true },
+    where: { UIdentificadorPublico: comparableId, avaluo: { IdOrganizacion: context.organizationId, BActivo: true, DFechaEliminacion: null } },
+    select: { JImagenesSnapshot: true, JPublicacionSnapshot: true, propiedad: { select: { IFolioComparable: true } } },
   });
-  const stored = Array.isArray(row?.JImagenesSnapshot) ? row.JImagenesSnapshot : [];
-  return stored.flatMap((item) => {
-    const photo = asRecord(item as Prisma.JsonValue);
-    return typeof photo.key === "string" && photo.key
-      ? [{ key: photo.key, title: typeof photo.title === "string" && photo.title ? photo.title : "Fotografía" }]
-      : [];
-  });
+  return row ? reusedEvidenceOf(row) : {};
 }
 
 export const ownBaseSource: ComparableSearchSource = {
@@ -142,5 +204,5 @@ export const ownBaseSource: ComparableSearchSource = {
   label: "Comparables del despacho",
   isAvailable: () => true,
   search,
-  photos,
+  evidence,
 };
