@@ -8,7 +8,7 @@ import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig } from "../engin
 import type { ComparableInput, MarketApproachInput } from "../engine/market";
 import { formulaOfText, type CapturedFormulas } from "./captured-formulas";
 import type { MarketRegressionDto } from "./market-regression";
-import type { ComparableAddress, OperationType, UrbanProximity } from "./comparable-card";
+import type { ComparableAddress, ComparableListingDetails, ComparablePropertyDetails, OperationType, UrbanProximity } from "./comparable-card";
 import type { ComparableReviewDto } from "./comparable-review";
 
 export const COMPARABLE_TYPES = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"] as const;
@@ -298,6 +298,10 @@ export type ComparableDto = {
   bedrooms?: number | null;
   bathrooms?: number | null;
   constructionType?: string | null;
+  /** The master workbook's property facts (age, levels, parking, paving, position, unit basis); the calculation does not read them. */
+  propertyDetails?: ComparablePropertyDetails | null;
+  /** The master workbook's listing facts (id in the portal, currency, photo link, verification). */
+  listingDetails?: ComparableListingDetails | null;
   photos: ComparablePhotoDto[];
   /** Read only: the comparable's number in the firm's base (formatComparableId), its screenshot and its review. */
   folio?: number | null;

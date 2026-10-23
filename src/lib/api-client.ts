@@ -5,7 +5,8 @@ import type {
   MarketCalculationDto,
   MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
-import type { ComparableImportPreview } from "@/features/valuations/calculation/comparable-import";
+import type { ComparableImportPreview, ImportBaseCounts } from "@/features/valuations/calculation/comparable-import";
+import type { ImportDestination } from "@/features/valuations/calculation/comparable-master";
 import type { ComparableCardDto, DuplicateMatchDto, ReviewRowDto } from "@/features/valuations/calculation/comparable-card.service";
 import type { DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
 import type { ComparableReviewDto } from "@/features/valuations/calculation/comparable-review";
@@ -226,16 +227,18 @@ export const api = {
       request<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}?tipo=${type}`, { method: "DELETE" }),
     uploadPhoto: (id: ApiId, type: ComparableType, comparableId: string, file: File) =>
       uploadForm<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}`, { file }),
-    previewImport: (id: ApiId, type: ComparableType, file: File) =>
-      uploadForm<{ preview: ComparableImportPreview }>(`/avaluos/${id}/mercado/comparables/importar?tipo=${type}`, { file }),
+    previewImport: (id: ApiId, type: ComparableType, file: File, destination?: ImportDestination) =>
+      uploadForm<{ preview: ComparableImportPreview }>(`/avaluos/${id}/mercado/comparables/importar?tipo=${type}`, { file, destino: destination }),
     /**
      * `reuse` maps a row to the comparable of the firm's base used instead of it ("Usar el existente");
      * `merge`, to the one it is the same as ("Es el mismo": the most recent data stays, with that one's number).
      */
-    importComparables: (id: ApiId, type: ComparableType, file: File, reuse: Record<number, string> = {}, merge: Record<number, string> = {}) =>
-      uploadForm<{ preview: ComparableImportPreview; imported: number; calculation: MarketCalculationDto }>(
+    importComparables: (
+      id: ApiId, type: ComparableType, file: File, reuse: Record<number, string> = {}, merge: Record<number, string> = {}, destination?: ImportDestination,
+    ) =>
+      uploadForm<{ preview: ComparableImportPreview; imported: number; base: ImportBaseCounts; calculation: MarketCalculationDto }>(
         `/avaluos/${id}/mercado/comparables/importar?tipo=${type}&confirmar=1`,
-        { file, reusar: JSON.stringify(reuse), unificar: JSON.stringify(merge) },
+        { file, reusar: JSON.stringify(reuse), unificar: JSON.stringify(merge), destino: destination },
       ),
     searchComparables: (id: ApiId, type: ComparableType, filters: ComparableSearchFilters) => {
       const params = new URLSearchParams({ tipo: type, q: filters.text });
@@ -275,6 +278,18 @@ export const api = {
       ),
   },
   /** AI assistance: both answer a draft to review; neither saves anything. */
+  /** The firm's base of comparables (/comparables): import without a valuation, or to the valuations of each row's folio. */
+  comparableBase: {
+    previewImport: (file: File, destination?: ImportDestination, type?: ComparableType) =>
+      uploadForm<{ preview: ComparableImportPreview }>("/comparables/importar", { file, destino: destination, tipo: type }),
+    importComparables: (
+      file: File, reuse: Record<number, string>, merge: Record<number, string>, destination?: ImportDestination, type?: ComparableType,
+    ) =>
+      uploadForm<{ preview: ComparableImportPreview; imported: number; base: ImportBaseCounts }>(
+        "/comparables/importar?confirmar=1",
+        { file, reusar: JSON.stringify(reuse), unificar: JSON.stringify(merge), destino: destination, tipo: type },
+      ),
+  },
   ai: {
     extractListing: (id: ApiId, input: { text: string; url: string | null }) =>
       request<ListingProposal>(`/avaluos/${id}/ia/anuncio`, { method: "POST", body: JSON.stringify(input) }),

@@ -9,15 +9,16 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
-import { asRecord, decimal, findValuation } from "./access";
+import { asRecord, decimal, findValuation, inFirmBase } from "./access";
 import { formatAddress, todayInMexico } from "./comparable-card";
-import { PRICE_TOLERANCE, addressKey, duplicateReasons, phoneKey, type DuplicateProbe, type DuplicateReason } from "./comparable-duplicates";
+import {
+  PRICE_TOLERANCE, addressKey, canonicalUrlKey, duplicateReasons, phoneKey, type DuplicateProbe, type DuplicateReason,
+} from "./comparable-duplicates";
 import { comparableWarnings, type ComparableWarning } from "./comparable-review";
 import { comparableValidity, type ComparableValidity } from "./comparable-validity";
 import { comparableInclude, toComparableDto } from "./market.service";
 import { COMPARABLE_TYPES, type ComparableDto, type ComparableType } from "./market-types";
-import { urlKey } from "../comparable-search/normalize";
-import { AREA, likePattern } from "../comparable-search/own-base-sql";
+import { AREA, FIRM_BASE_FROM, firmBaseCondition, likePattern } from "../comparable-search/own-base-sql";
 
 /** A valuation a comparable of the base was used in. */
 export type ComparableUseDto = {
@@ -35,7 +36,8 @@ export type ComparableUseDto = {
 export type ComparableCardDto = {
   comparable: ComparableDto;
   type: ComparableType;
-  valuation: { id: string; folio: string; title: string | null };
+  /** The valuation it was captured in; null for a comparable kept in the firm's base without one. */
+  valuation: { id: string; folio: string; title: string | null } | null;
   /** "Fecha de alta / actualización" and "Vigente hasta" of the comparable in the firm's base. */
   validity: ComparableValidity;
   warnings: ComparableWarning[];
@@ -54,7 +56,8 @@ export type DuplicateMatchDto = {
   price: number | null;
   url: string | null;
   contactPhone: string | null;
-  valuation: { id: string; folio: string };
+  /** The valuation of that capture; null for one kept in the base without a valuation. */
+  valuation: { id: string; folio: string } | null;
   /** It is already a comparable of the valuation being captured. */
   sameValuation: boolean;
   reasons: DuplicateReason[];
@@ -62,8 +65,6 @@ export type DuplicateMatchDto = {
   /** "Fecha de alta / actualización" of its data, YYYY-MM-DD: which of the two is the more recent. */
   updatedOn: string;
 };
-
-const aliveValuation = (organizationId: number) => ({ IdOrganizacion: organizationId, BActivo: true, DFechaEliminacion: null });
 
 /** The subject's area of each market of a version, for the ±20 % rule of buildings. */
 async function subjectAreas(versionId: number) {
@@ -84,7 +85,7 @@ const warningsOf = (comparable: ComparableDto, type: ComparableType, subjectArea
 /** The card of a comparable of the firm's base, by the id of one of its captures. */
 export async function getComparableCard(comparableId: string, organizationId: number): Promise<ComparableCardDto> {
   const row = await prisma.comparableAvaluo.findFirst({
-    where: { UIdentificadorPublico: comparableId, avaluo: aliveValuation(organizationId) },
+    where: { UIdentificadorPublico: comparableId, ...inFirmBase(organizationId) },
     include: {
       ...comparableInclude,
       tipoComparable: { select: { SClave: true } },
@@ -98,7 +99,7 @@ export async function getComparableCard(comparableId: string, organizationId: nu
   // The same comparable of the base, in the version each valuation shows today.
   const captures = folio
     ? await prisma.comparableAvaluo.findMany({
-      where: { propiedad: { IdOrganizacion: organizationId, IFolioComparable: folio }, avaluo: aliveValuation(organizationId) },
+      where: { propiedad: { IdOrganizacion: organizationId, IFolioComparable: folio }, ...inFirmBase(organizationId) },
       select: {
         IdVersionAvaluo: true, IReferencia: true, IOrden: true, DFechaSeleccion: true, DFechaActualizacionDatos: true,
         tipoComparable: { select: { SClave: true } },
@@ -107,8 +108,10 @@ export async function getComparableCard(comparableId: string, organizationId: nu
       orderBy: { DFechaSeleccion: "desc" },
     })
     : [];
-  const current = captures.filter((capture) => capture.IdVersionAvaluo === (capture.avaluo.IdVersionTrabajo ?? capture.avaluo.IdVersionFinal));
-  const uses = current.map((capture): ComparableUseDto => ({
+  // Captures in the base without a valuation count for its date, not as uses.
+  const current = captures.filter((capture) => !capture.avaluo
+    || capture.IdVersionAvaluo === (capture.avaluo.IdVersionTrabajo ?? capture.avaluo.IdVersionFinal));
+  const uses = current.flatMap((capture): ComparableUseDto[] => (capture.avaluo ? [{
     valuationId: capture.avaluo.UIdentificadorPublico,
     folio: capture.avaluo.SFolio,
     title: capture.avaluo.STitulo,
@@ -116,21 +119,22 @@ export async function getComparableCard(comparableId: string, organizationId: nu
     type: capture.tipoComparable.SClave as ComparableType,
     reference: capture.IReferencia ?? capture.IOrden + 1,
     addedOn: capture.DFechaSeleccion.toISOString().slice(0, 10),
-  }));
+  }] : []));
   // The comparable of the base is as recent as its latest capture or update, in any valuation.
   const dataUpdatedAt = current.reduce((latest, capture) => (capture.DFechaActualizacionDatos > latest ? capture.DFechaActualizacionDatos : latest),
     row.DFechaActualizacionDatos);
   const today = todayInMexico();
   const validity = comparableValidity(dataUpdatedAt, today);
-  const areas = await subjectAreas(row.IdVersionAvaluo);
+  const areas = row.IdVersionAvaluo ? await subjectAreas(row.IdVersionAvaluo) : new Map<ComparableType, number | null>();
+  const avaluo = row.avaluo;
   return {
     comparable,
     type,
-    valuation: { id: row.avaluo.UIdentificadorPublico, folio: row.avaluo.SFolio, title: row.avaluo.STitulo },
+    valuation: avaluo ? { id: avaluo.UIdentificadorPublico, folio: avaluo.SFolio, title: avaluo.STitulo } : null,
     validity,
     warnings: warningsOf(comparable, type, areas.get(type) ?? null, today, validity),
-    uses: uses.length ? uses : [{
-      valuationId: row.avaluo.UIdentificadorPublico, folio: row.avaluo.SFolio, title: row.avaluo.STitulo, client: row.avaluo.SNombreCliente, type,
+    uses: uses.length || !avaluo ? uses : [{
+      valuationId: avaluo.UIdentificadorPublico, folio: avaluo.SFolio, title: avaluo.STitulo, client: avaluo.SNombreCliente, type,
       reference: comparable.reference, addedOn: row.DFechaSeleccion.toISOString().slice(0, 10),
     }],
   };
@@ -164,9 +168,9 @@ export async function getValuationReview(publicId: string, organizationId: numbe
 type CandidateRow = {
   id: string;
   organizationId: number;
-  valuationId: string;
-  valuationFolio: string;
-  valuationInternalId: number;
+  valuationId: string | null;
+  valuationFolio: string | null;
+  valuationInternalId: number | null;
   comparableFolio: number | null;
   type: string;
   area: Prisma.Decimal | null;
@@ -183,18 +187,22 @@ const textOf = (value: unknown) => (typeof value === "string" && value.trim() ? 
 
 /**
  * The comparables of the firm's base that are the same property as the one
- * being captured: by listing URL, by address, or by phone and price (±1 %).
- * One match per comparable of the base, its latest capture; those of the
- * valuation itself come too, marked.
+ * being captured: by its number, by portal and publication id, by listing
+ * URL, by address, or by phone and price (±1 %). One match per comparable of
+ * the base, its latest capture; those of the valuation itself come too,
+ * marked. `publicId` is null for an import to the base without a valuation.
  */
-export async function findDuplicates(publicId: string, organizationId: number, probe: DuplicateProbe): Promise<DuplicateMatchDto[]> {
-  const avaluo = await findValuation(prisma, publicId, organizationId);
-  const url = urlKey(probe.url);
+export async function findDuplicates(publicId: string | null, organizationId: number, probe: DuplicateProbe): Promise<DuplicateMatchDto[]> {
+  const avaluo = publicId ? await findValuation(prisma, publicId, organizationId) : null;
+  const url = canonicalUrlKey(probe.url);
   const phone = phoneKey(probe.contactPhone);
   const address = addressKey(probe);
   const number = address?.street.split(" ").find((word) => /\d/.test(word));
   // A coarse filter in the database; duplicateReasons decides.
+  const publicationId = probe.publicationId?.trim().toLowerCase();
   const hints = [
+    ...(probe.folio ? [Prisma.sql`p."IFolioComparable" = ${probe.folio}`] : []),
+    ...(publicationId ? [Prisma.sql`lower(c."JPublicacionSnapshot"->'details'->>'publicationId') = ${publicationId}`] : []),
     ...(url ? [Prisma.sql`lower(c."JPublicacionSnapshot"->>'url') LIKE ${likePattern(url)}`] : []),
     ...(phone ? [Prisma.sql`regexp_replace(COALESCE(c."JPublicacionSnapshot"->>'contactPhone', ''), '\\D', '', 'g') LIKE ${likePattern(phone)}`] : []),
     ...(number ? [Prisma.sql`concat_ws(' ', c."JDireccionSnapshot"->>'location', c."JDireccionSnapshot"->>'street', c."JDireccionSnapshot"->>'number') LIKE ${likePattern(number)}`] : []),
@@ -206,7 +214,7 @@ export async function findDuplicates(publicId: string, organizationId: number, p
   const rows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
     SELECT
       c."UIdentificadorPublico"::text AS "id",
-      a."IdOrganizacion" AS "organizationId",
+      COALESCE(a."IdOrganizacion", c."IdOrganizacion") AS "organizationId",
       a."UIdentificadorPublico"::text AS "valuationId",
       a."SFolio" AS "valuationFolio",
       a."IdAvaluo" AS "valuationInternalId",
@@ -218,14 +226,8 @@ export async function findDuplicates(publicId: string, organizationId: number, p
       c."JDireccionSnapshot" AS "address",
       c."JImagenesSnapshot" AS "photos",
       c."DFechaActualizacionDatos" AS "dataUpdatedAt"
-    FROM "devpware_comparables_avaluos" c
-    JOIN "devpware_avaluos" a ON a."IdAvaluo" = c."IdAvaluo"
-    JOIN "devpware_tipos_comparables" t ON t."IdTipoComparable" = c."IdTipoComparable"
-    JOIN "devpware_propiedades" p ON p."IdPropiedad" = c."IdPropiedad"
-    WHERE a."IdOrganizacion" = ${organizationId}
-      AND a."BActivo" AND a."DFechaEliminacion" IS NULL
-      AND c."IdVersionAvaluo" = COALESCE(a."IdVersionTrabajo", a."IdVersionFinal")
-      AND c."BIncluido"
+    ${FIRM_BASE_FROM}
+    WHERE ${firmBaseCondition(organizationId)}
       AND (${Prisma.join(hints, " OR ")})
     ORDER BY c."DFechaActualizacionDatos" DESC, c."DFechaSeleccion" DESC, c."IdComparableAvaluo" DESC
     LIMIT ${MAX_CANDIDATES}
@@ -247,6 +249,9 @@ export async function findDuplicates(publicId: string, organizationId: number, p
       contactPhone: textOf(publication.contactPhone),
       price: decimal(row.price),
       area: decimal(row.area),
+      publicationId: textOf(asRecord((publication.details ?? null) as Prisma.JsonValue).publicationId),
+      sourceName: textOf(publication.sourceName),
+      folio: row.comparableFolio,
     };
     const reasons = duplicateReasons(probe, candidate);
     if (!reasons.length) continue;
@@ -264,8 +269,8 @@ export async function findDuplicates(publicId: string, organizationId: number, p
       price: candidate.price,
       url: candidate.url,
       contactPhone: candidate.contactPhone,
-      valuation: { id: row.valuationId, folio: row.valuationFolio },
-      sameValuation: row.valuationInternalId === avaluo.IdAvaluo,
+      valuation: row.valuationId && row.valuationFolio ? { id: row.valuationId, folio: row.valuationFolio } : null,
+      sameValuation: Boolean(avaluo && row.valuationInternalId === avaluo.IdAvaluo),
       reasons,
       updatedOn: todayInMexico(row.dataUpdatedAt),
       photoKey: typeof firstPhoto.key === "string" && firstPhoto.key ? firstPhoto.key : null,

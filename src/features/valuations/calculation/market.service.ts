@@ -16,7 +16,8 @@ import { ENGINE_VERSION } from "../engine/config";
 import { computeMarketApproach } from "../engine/market";
 import { Trace } from "../engine/trace";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
-import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, writableVersion, type Tx } from "./access";
+import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, inFirmBase, writableVersion, type Tx } from "./access";
+import { propertyTypeKeyOf } from "./comparable-master";
 import { storedFormulas, type CapturedFormulas } from "./captured-formulas";
 import { matchOption, optionJustification, optionsFor, resolveFactorCatalog } from "./factor-catalog";
 import { recomputeCosts } from "./cost.service";
@@ -24,7 +25,15 @@ import { recomputeConclusion } from "./conclusion.service";
 import { recomputeIncome } from "./income.service";
 import { computeMarketRegression, type MarketRegressionResult } from "./market-regression";
 import { withProvenance } from "../comparable-search/normalize";
-import { coordinatesError, todayInMexico, type ComparableAddress, type OperationType, type UrbanProximity } from "./comparable-card";
+import {
+  coordinatesError,
+  todayInMexico,
+  type ComparableAddress,
+  type ComparableListingDetails,
+  type ComparablePropertyDetails,
+  type OperationType,
+  type UrbanProximity,
+} from "./comparable-card";
 import { comparableDataChanged } from "./comparable-validity";
 import { PENDING_REVIEW, REVIEW_STATUSES, type ComparableReviewDto } from "./comparable-review";
 import type { ComparableInputPayload, ComparableReviewPayload, MarketSettingsPayload } from "./market-schemas";
@@ -81,6 +90,8 @@ type PropertySnapshot = {
   bedrooms?: number | null;
   bathrooms?: number | null;
   constructionType?: string | null;
+  /** The master workbook's property facts. */
+  details?: ComparablePropertyDetails | null;
 };
 /** JDireccionSnapshot: the line the dictamen prints and, when captured, its parts. */
 type AddressSnapshot = { location: string } & ComparableAddress;
@@ -113,6 +124,8 @@ type PublicationSnapshot = {
   listingText?: string | null;
   /** "Pantalla de referencia": a stored image apart from the photos. */
   screenshot?: PhotoSnapshot | null;
+  /** The master workbook's listing facts (id in the portal, currency, verification). */
+  details?: ComparableListingDetails | null;
 };
 
 /**
@@ -166,6 +179,12 @@ function reviewOf(stored: Prisma.JsonValue | null): ComparableReviewDto {
     reviewedBy: review.reviewedBy ?? null,
     reviewedAt: review.reviewedAt ?? null,
   };
+}
+
+/** Stored details without their empty fields; null when none is captured. */
+function detailsOf<T extends object>(stored: T | null | undefined): T | null {
+  const kept = Object.entries(asRecord((stored ?? null) as Prisma.JsonValue)).filter(([, value]) => value !== null && value !== undefined && value !== "");
+  return kept.length ? (Object.fromEntries(kept) as T) : null;
 }
 
 const imageUrl = (key: string, withUrls: boolean) => (withUrls ? stableDownloadUrl(key).catch(() => "") : Promise.resolve(""));
@@ -223,6 +242,8 @@ export async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean
     bedrooms: numberOrNull(property.bedrooms),
     bathrooms: numberOrNull(property.bathrooms),
     constructionType: stringOrNull(property.constructionType),
+    propertyDetails: detailsOf(property.details),
+    listingDetails: detailsOf(publication.details),
     updatedOn: todayInMexico(row.DFechaActualizacionDatos),
     photos: await Promise.all(photos.map(async (photo) => ({
       id: photo.id,
@@ -629,6 +650,7 @@ function snapshots(payload: ComparableInputPayload, formulas: CapturedFormulas, 
     bedrooms: unlessOmitted(payload.bedrooms, stored.bedrooms),
     bathrooms: unlessOmitted(payload.bathrooms, stored.bathrooms),
     constructionType: unlessOmitted(payload.constructionType, stored.constructionType),
+    details: unlessOmitted(payload.propertyDetails, stored.details),
   };
   const publication: PublicationSnapshot = {
     sourceName: payload.sourceName,
@@ -640,6 +662,7 @@ function snapshots(payload: ComparableInputPayload, formulas: CapturedFormulas, 
     validUntil: unlessOmitted(payload.validUntil, storedPublication.validUntil),
     listingText: unlessOmitted(payload.listingText, storedPublication.listingText),
     screenshot: storedPublication.screenshot ?? null,
+    details: unlessOmitted(payload.listingDetails, storedPublication.details),
   };
   return {
     JPropiedadSnapshot: property as Prisma.InputJsonValue,
@@ -694,6 +717,9 @@ async function syncPublication(tx: Tx, input: {
     SNombreContacto: payload.contactName,
     STelefonoContacto: payload.contactPhone,
     DFechaPublicacion: payload.offerDate ? new Date(`${payload.offerDate}T12:00:00Z`) : null,
+    // The listing's id in the portal and its currency, when the master workbook brings them.
+    ...(payload.listingDetails?.publicationId ? { SIdentificadorExterno: payload.listingDetails.publicationId.slice(0, 220) } : {}),
+    ...(payload.listingDetails?.currency ? { SMoneda: payload.listingDetails.currency } : {}),
     // The pasted listing is the publication's text as the appraiser saw it.
     ...(payload.listingText === undefined ? {} : { SDescripcion: payload.listingText }),
   };
@@ -773,31 +799,43 @@ async function nextComparableFolio(tx: Tx, organizationId: number) {
 }
 
 /**
- * Adds one comparable after the last of its type; the caller recomputes.
+ * Where a new comparable goes: after the last of its type in a version of a
+ * valuation, or into the firm's base without a valuation (migration 048),
+ * where its property takes the type of inmueble its capture says.
+ */
+type InsertTarget =
+  | { kind: "valuation"; avaluo: { IdAvaluo: number; IdTipoInmueble: number }; versionId: number; typeId: number }
+  | { kind: "base"; typeId: number; propertyTypeId: number };
+
+/**
+ * Adds one comparable; the caller recomputes.
  * `reused` comes with a comparable brought from the firm's base (a search, a
  * duplicate): it keeps that one's number, and its photos and screenshot share
  * the stored files, as a reopened version shares them, since removing an
  * image never deletes its file. Without it the comparable gets a new number.
+ * `review` is the one an import brings (por revisar when absent).
  */
 async function insertComparable(
   tx: Tx,
-  context: { avaluo: { IdAvaluo: number; IdTipoInmueble: number }; versionId: number; typeId: number },
+  target: InsertTarget,
   user: AuthUser,
   type: ComparableType,
   payload: ComparableInputPayload,
   reused: ReusedComparableEvidence = {},
+  review: ReviewSnapshot | null = null,
 ) {
-  const { avaluo, versionId, typeId } = context;
   const screenshot = reused.screenshot ? { id: randomUUID(), key: reused.screenshot.key, title: reused.screenshot.title } : null;
   const captured = snapshots(payload, comparableFormulas(payload, null), screenshot ? { publication: { screenshot } } : {});
-  const last = await tx.comparableAvaluo.aggregate({
-    where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId },
-    _max: { IReferencia: true, IOrden: true },
-  });
+  const last = target.kind === "valuation"
+    ? await tx.comparableAvaluo.aggregate({
+      where: { IdVersionAvaluo: target.versionId, IdTipoComparable: target.typeId },
+      _max: { IReferencia: true, IOrden: true },
+    })
+    : null;
   const property = await tx.propiedad.create({
     data: {
       IdOrganizacion: user.organizationId,
-      IdTipoInmueble: avaluo.IdTipoInmueble,
+      IdTipoInmueble: target.kind === "valuation" ? target.avaluo.IdTipoInmueble : target.propertyTypeId,
       IFolioComparable: reused.folio ?? await nextComparableFolio(tx, user.organizationId),
       ...propertyColumns(type, payload),
     },
@@ -805,18 +843,23 @@ async function insertComparable(
   const publicationId = await syncPublication(tx, { propertyId: property.IdPropiedad, current: null, type, payload });
   const comparable = await tx.comparableAvaluo.create({
     data: {
-      IdAvaluo: avaluo.IdAvaluo,
-      IdVersionAvaluo: versionId,
+      ...(target.kind === "valuation"
+        ? {
+          IdAvaluo: target.avaluo.IdAvaluo,
+          IdVersionAvaluo: target.versionId,
+          IReferencia: (last?._max.IReferencia ?? 0) + 1,
+          IOrden: (last?._max.IOrden ?? -1) + 1,
+        }
+        : { IdOrganizacion: user.organizationId }),
       IdPropiedad: property.IdPropiedad,
       IdPublicacionPropiedad: publicationId,
       IdUsuarioSeleccion: user.id,
-      IdTipoComparable: typeId,
-      IReferencia: (last._max.IReferencia ?? 0) + 1,
-      IOrden: (last._max.IOrden ?? -1) + 1,
+      IdTipoComparable: target.typeId,
       NPrecioCapturado: payload.price,
       ...areaColumns(type, payload.area),
       NValorUnitarioCapturado: payload.price && payload.area ? payload.price / payload.area : null,
       ...captured,
+      ...(review ? { JRevision: review as Prisma.InputJsonValue } : {}),
       // A comparable brought from the base as it was keeps the date of its data; a capture is new data.
       DFechaActualizacionDatos: reused.dataUpdatedAt ?? new Date(),
       JImagenesSnapshot: (reused.photos ?? []).slice(0, MAX_PHOTOS_PER_COMPARABLE)
@@ -843,7 +886,7 @@ export async function createComparable(
     const { avaluo, versionId } = await writableVersion(tx, publicId, user);
     const typeId = await comparableTypeId(tx, type);
     const merged = options.mergeInto ? await mergedInput(tx, user.organizationId, options.mergeInto, payload) : { payload, reused: {} };
-    const id = await insertComparable(tx, { avaluo, versionId, typeId }, user, type, merged.payload, merged.reused);
+    const id = await insertComparable(tx, { kind: "valuation", avaluo, versionId, typeId }, user, type, merged.payload, merged.reused);
     await recompute(tx, versionId, type);
     return id;
   });
@@ -879,19 +922,23 @@ export function reusedEvidenceOf(row: {
  */
 async function reusedInput(tx: Tx, organizationId: number, sourceId: string) {
   const source = await tx.comparableAvaluo.findFirst({
-    where: { UIdentificadorPublico: sourceId, avaluo: { IdOrganizacion: organizationId, BActivo: true, DFechaEliminacion: null } },
+    where: { UIdentificadorPublico: sourceId, ...inFirmBase(organizationId) },
     include: { ...comparableInclude, avaluo: { select: { SFolio: true } } },
   });
   if (!source) throw new ValuationWorkflowError("Comparable no encontrado", 404);
   const { formulas, ...values } = comparableFormValues(await toComparableDto(source, false));
   const payload: ComparableInputPayload = {
-    ...withProvenance(values, "Comparables del despacho", `avalúo ${source.avaluo.SFolio}`),
+    ...withProvenance(values, "Comparables del despacho", source.avaluo ? `avalúo ${source.avaluo.SFolio}` : null),
     // The factors stay behind, and so do their formulas.
     formulas: Object.fromEntries(Object.entries(formulas ?? {}).filter(([path]) => !path.startsWith("factors."))),
     factors: [],
   };
   return { payload, reused: reusedEvidenceOf(source) };
 }
+
+/** The day a capture's data is from: when its listing was consulted, else its offer, else today. */
+const capturedDay = (payload: Pick<ComparableInputPayload, "consultedOn" | "offerDate">) =>
+  payload.consultedOn ?? payload.offerDate ?? todayInMexico();
 
 /**
  * "Es el mismo: se deja el más actualizado". The capture and the comparable of
@@ -902,12 +949,11 @@ async function reusedInput(tx: Tx, organizationId: number, sourceId: string) {
  */
 async function mergedInput(tx: Tx, organizationId: number, sourceId: string, payload: ComparableInputPayload) {
   const source = await tx.comparableAvaluo.findFirst({
-    where: { UIdentificadorPublico: sourceId, avaluo: { IdOrganizacion: organizationId, BActivo: true, DFechaEliminacion: null } },
+    where: { UIdentificadorPublico: sourceId, ...inFirmBase(organizationId) },
     include: { propiedad: { select: { IFolioComparable: true } } },
   });
   if (!source) throw new ValuationWorkflowError("Comparable no encontrado", 404);
-  const captured = payload.consultedOn ?? payload.offerDate ?? todayInMexico();
-  if (todayInMexico(source.DFechaActualizacionDatos) > captured) return reusedInput(tx, organizationId, sourceId);
+  if (todayInMexico(source.DFechaActualizacionDatos) > capturedDay(payload)) return reusedInput(tx, organizationId, sourceId);
   const { dataUpdatedAt: _kept, ...evidence } = reusedEvidenceOf(source);
   return { payload, reused: evidence };
 }
@@ -917,40 +963,122 @@ export async function reuseComparable(publicId: string, user: AuthUser, type: Co
     const { avaluo, versionId } = await writableVersion(tx, publicId, user);
     const { payload, reused } = await reusedInput(tx, user.organizationId, sourceId);
     const typeId = await comparableTypeId(tx, type);
-    const id = await insertComparable(tx, { avaluo, versionId, typeId }, user, type, payload, reused);
+    const id = await insertComparable(tx, { kind: "valuation", avaluo, versionId, typeId }, user, type, payload, reused);
     await recompute(tx, versionId, type);
     return id;
   });
 }
 
+/** A comparable to import: as captured, or the answer to a possible duplicate. The review is the one the file brings. */
+export type ImportEntry =
+  | (ComparableInputPayload & { reused?: ReusedComparableEvidence; review?: ReviewSnapshot | null })
+  | { reuseFrom: string }
+  | { mergeInto: string; payload: ComparableInputPayload; review?: ReviewSnapshot | null };
+
 /**
  * Adds many comparables at once (Excel import, comparables found in a search)
  * and recomputes once; all or none. A found comparable may bring its photos.
  */
-export async function importComparables(
-  publicId: string,
-  user: AuthUser,
-  type: ComparableType,
-  payloads: Array<
-    | (ComparableInputPayload & { reused?: ReusedComparableEvidence })
-    | { reuseFrom: string }
-    | { mergeInto: string; payload: ComparableInputPayload }
-  >,
-) {
+export async function importComparables(publicId: string, user: AuthUser, type: ComparableType, payloads: ImportEntry[]) {
   return prisma.$transaction(async (tx) => {
     const { avaluo, versionId } = await writableVersion(tx, publicId, user);
     const typeId = await comparableTypeId(tx, type);
     for (const entry of payloads) {
       // A row of an import the appraiser answered with "Usar el existente" or "Es el mismo".
-      const { payload, reused } = "reuseFrom" in entry
-        ? await reusedInput(tx, user.organizationId, entry.reuseFrom)
+      const { payload, reused, review } = "reuseFrom" in entry
+        ? { ...await reusedInput(tx, user.organizationId, entry.reuseFrom), review: null }
         : "mergeInto" in entry
-          ? await mergedInput(tx, user.organizationId, entry.mergeInto, entry.payload)
-          : (({ reused: evidence, ...captured }) => ({ payload: captured, reused: evidence }))(entry);
-      await insertComparable(tx, { avaluo, versionId, typeId }, user, type, payload, reused);
+          ? { ...await mergedInput(tx, user.organizationId, entry.mergeInto, entry.payload), review: entry.review ?? null }
+          : (({ reused: evidence, review: brought, ...captured }) => ({ payload: captured, reused: evidence, review: brought ?? null }))(entry);
+      await insertComparable(tx, { kind: "valuation", avaluo, versionId, typeId }, user, type, payload, reused, review);
     }
     await recompute(tx, versionId, type);
     return payloads.length;
+  }, { timeout: 60_000 });
+}
+
+/** A comparable to keep in the firm's base without a valuation; `mergeInto` answers "es el mismo" to one of the base. */
+export type BaseImportEntry = {
+  type: ComparableType;
+  payload: ComparableInputPayload;
+  review?: ReviewSnapshot | null;
+  mergeInto?: string;
+};
+
+/** What an import to the base did with each entry, in order. */
+export type BaseImportOutcome = "CREATED" | "UPDATED" | "KEPT";
+
+/**
+ * "Solo base general": comparables of the firm's base that belong to no
+ * valuation, all or none. A new one gets its number. "Es el mismo" keeps the
+ * number of the one of the base: a comparable of the base without a valuation
+ * takes the newer data in place; one captured in a valuation, whose capture
+ * belongs to that valuation, gets a newer capture in the base under its number.
+ * When the base's data is the more recent, it stays as it is.
+ */
+export async function importToFirmBase(user: AuthUser, entries: BaseImportEntry[]): Promise<BaseImportOutcome[]> {
+  return prisma.$transaction(async (tx) => {
+    const outcomes: BaseImportOutcome[] = [];
+    const typeIds = new Map<ComparableType, number>();
+    const typeIdOf = async (type: ComparableType) => {
+      const known = typeIds.get(type);
+      if (known) return known;
+      const id = await comparableTypeId(tx, type);
+      typeIds.set(type, id);
+      return id;
+    };
+    for (const entry of entries) {
+      const typeId = await typeIdOf(entry.type);
+      const propertyTypeKey = propertyTypeKeyOf(entry.type, entry.payload.constructionType ?? null);
+      const propertyTypeId = await catalogId(
+        (key) => tx.tipoInmueble.findUnique({ where: { SClave: key } }),
+        propertyTypeKey,
+        (row) => row.IdTipoInmueble,
+      );
+      const review = entry.review ?? null;
+      if (!entry.mergeInto) {
+        await insertComparable(tx, { kind: "base", typeId, propertyTypeId }, user, entry.type, entry.payload, {}, review);
+        outcomes.push("CREATED");
+        continue;
+      }
+      const source = await tx.comparableAvaluo.findFirst({
+        where: { UIdentificadorPublico: entry.mergeInto, ...inFirmBase(user.organizationId) },
+        include: { ...comparableInclude, tipoComparable: { select: { SClave: true } } },
+      });
+      if (!source) throw new ValuationWorkflowError("Comparable no encontrado", 404);
+      if (todayInMexico(source.DFechaActualizacionDatos) > capturedDay(entry.payload)) {
+        outcomes.push("KEPT");
+        continue;
+      }
+      if (source.IdAvaluo === null) {
+        const previous = await toComparableDto(source, false);
+        const formulas = comparableFormulas(entry.payload, previous);
+        await tx.propiedad.update({ where: { IdPropiedad: source.IdPropiedad }, data: propertyColumns(entry.type, entry.payload) });
+        const publicationId = await syncPublication(tx, {
+          propertyId: source.IdPropiedad, current: source.IdPublicacionPropiedad, type: entry.type, payload: entry.payload,
+        });
+        await tx.comparableAvaluo.update({
+          where: { IdComparableAvaluo: source.IdComparableAvaluo },
+          data: {
+            IdTipoComparable: typeId,
+            IdPublicacionPropiedad: publicationId,
+            NPrecioCapturado: entry.payload.price,
+            ...areaColumns(entry.type, entry.payload.area),
+            NValorUnitarioCapturado: entry.payload.price && entry.payload.area ? entry.payload.price / entry.payload.area : null,
+            ...snapshots(entry.payload, formulas, storedSnapshots(source)),
+            ...(review ? { JRevision: review as Prisma.InputJsonValue } : {}),
+            DFechaActualizacionDatos: new Date(),
+          },
+        });
+        await replaceFactors(tx, source.IdComparableAvaluo, entry.payload);
+        outcomes.push("UPDATED");
+        continue;
+      }
+      const { dataUpdatedAt: _kept, ...evidence } = reusedEvidenceOf(source);
+      await insertComparable(tx, { kind: "base", typeId, propertyTypeId }, user, entry.type, entry.payload, evidence, review);
+      outcomes.push("UPDATED");
+    }
+    return outcomes;
   }, { timeout: 60_000 });
 }
 

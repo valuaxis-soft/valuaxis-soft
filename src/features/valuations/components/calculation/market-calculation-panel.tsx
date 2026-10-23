@@ -1,10 +1,10 @@
 "use client";
 
-import { AlertTriangle, Calculator, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Calculator, FileDown, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
@@ -584,7 +584,7 @@ function MarketTypePanel(props: {
                 <Button type="button" size="sm" onClick={() => setEditing("nuevo")}>
                   <Plus data-icon="inline-start" /> Agregar comparable
                 </Button>
-                <ImportComparablesDialog valuationId={valuationId} type={type} onImported={applyServerState} />
+                <ImportComparablesDialog scope={{ kind: "valuation", valuationId, type, onImported: applyServerState }} />
                 {ai.enabled ? (
                   <PasteListingDialog
                     key={type}
@@ -598,6 +598,15 @@ function MarketTypePanel(props: {
             ) : null}
             {/* Searching only reads: a concluded valuation can still look, but not add. */}
             <SearchComparablesDialog key={type} valuationId={valuationId} type={type} readOnly={readOnly} onAdded={applyServerState} />
+            {comparables.length ? (
+              <a
+                className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+                href={`/api/avaluos/${valuationId}/mercado/comparables/exportar?tipo=${type}`}
+                download
+              >
+                <FileDown data-icon="inline-start" /> Exportar Excel
+              </a>
+            ) : null}
             {comparables.length ? (
               <ComparableReviewDialog
                 valuationId={valuationId}

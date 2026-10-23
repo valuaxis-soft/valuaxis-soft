@@ -16,6 +16,7 @@ import {
   hasFilters,
   parseComparableListParams,
 } from "@/features/valuations/comparable-base/comparable-list-params";
+import { ComparableBaseActions } from "@/features/valuations/comparable-base/components/comparable-base-actions";
 import { ComparableBaseFilters } from "@/features/valuations/comparable-base/components/comparable-base-filters";
 import { ComparableBaseTable } from "@/features/valuations/comparable-base/components/comparable-base-table";
 import { cn } from "@/lib/utils";
@@ -42,18 +43,24 @@ export default async function ComparablesPage({
 
   const firstItem = total === 0 ? 0 : (params.page - 1) * COMPARABLE_LIST_PAGE_SIZE + 1;
   const lastItem = Math.min(params.page * COMPARABLE_LIST_PAGE_SIZE, total);
+  // The export takes the same filters and order, every page.
+  const listHref = buildComparableListHref({ ...params, page: 1 });
+  const exportHref = `/api/comparables/exportar${listHref.includes("?") ? listHref.slice(listHref.indexOf("?")) : ""}`;
 
   return (
     <div className="min-h-screen bg-background">
       <DashboardHeader user={user} active="comparables" />
 
       <main className="mx-auto max-w-[1760px] px-4 py-8 lg:px-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">Comparables</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            La base de comparables de {user.organizationName}. Cada uno vale {OFFER_MAX_AGE_MONTHS} meses desde su alta o su última
-            actualización; uno vencido solo se marca, se puede seguir usando.
-          </p>
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Comparables</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              La base de comparables de {user.organizationName}: los de sus avalúos y los importados a la base general. Cada uno vale
+              {" "}{OFFER_MAX_AGE_MONTHS} meses desde su alta o su última actualización; uno vencido solo se marca, se puede seguir usando.
+            </p>
+          </div>
+          <ComparableBaseActions exportHref={exportHref} canImport={hasPermission(user, AUTH_PERMISSIONS.editValuations)} />
         </div>
 
         <Card className="rounded-2xl border-0 shadow-md shadow-primary/[0.03]">
@@ -74,7 +81,7 @@ export default async function ComparablesPage({
                     <MapPinned className="size-8 text-muted-foreground/40" aria-hidden="true" />
                     <p className="text-sm font-medium">Aún no hay comparables</p>
                     <p className="text-xs text-muted-foreground">
-                      Los comparables que captures o importes en el enfoque de mercado de un avalúo aparecerán aquí.
+                      Los comparables que captures o importes en un avalúo, o que importes a la base con la plantilla maestra, aparecerán aquí.
                     </p>
                   </>
                 )}

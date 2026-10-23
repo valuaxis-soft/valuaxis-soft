@@ -6,11 +6,11 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
-import { asRecord, decimal } from "../../calculation/access";
+import { asRecord, decimal, inFirmBase } from "../../calculation/access";
 import { parseComparableId, type ComparableAddress, type OperationType, type UrbanProximity } from "../../calculation/comparable-card";
 import { reusedEvidenceOf, type ReusedComparableEvidence } from "../../calculation/market.service";
 import { searchTokens } from "../normalize";
-import { AREA, CONSULTED, HAYSTACK, likePattern, placeCondition, postalCodeCondition } from "../own-base-sql";
+import { AREA, CONSULTED, FIRM_BASE_FROM, HAYSTACK, firmBaseCondition, likePattern, placeCondition, postalCodeCondition } from "../own-base-sql";
 import type { ComparableSearchContext, ComparableSearchQuery, ComparableSearchResult, ComparableSearchSource } from "../types";
 
 /** Rows read before ranking: the same offer repeats across valuations, and the most relevant may not be the newest. */
@@ -19,7 +19,7 @@ const CANDIDATES = 200;
 type Row = {
   id: string;
   organizationId: number;
-  folio: string;
+  folio: string | null;
   comparableFolio: number | null;
   propertyName: string | null;
   area: Prisma.Decimal | null;
@@ -63,7 +63,7 @@ async function toResult(row: Row): Promise<ComparableSearchResult> {
   const urbanProximity = text(property.urbanProximity);
   return {
     id: row.id,
-    origin: `avalúo ${row.folio}`,
+    origin: row.folio ? `avalúo ${row.folio}` : "base general",
     capturedOn: row.capturedAt.toISOString().slice(0, 10),
     photoCount: Array.isArray(row.photos) ? row.photos.length : 0,
     folio: row.comparableFolio,
@@ -116,13 +116,9 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
   }
   const types = filters.types?.length ? filters.types : [query.type];
   const conditions = [
-    // The tenant: the valuation the comparable belongs to is this organization's, and alive.
-    Prisma.sql`a."IdOrganizacion" = ${context.organizationId}`,
-    Prisma.sql`a."BActivo" AND a."DFechaEliminacion" IS NULL`,
-    Prisma.sql`a."IdAvaluo" <> ${context.valuationId}`,
-    // Reopening copies comparables to the new version: only the version each valuation shows today counts.
-    Prisma.sql`c."IdVersionAvaluo" = COALESCE(a."IdVersionTrabajo", a."IdVersionFinal")`,
-    Prisma.sql`c."BIncluido"`,
+    // The tenant, and only the version each valuation shows today (reopening copies comparables), or the base without a valuation.
+    firmBaseCondition(context.organizationId),
+    Prisma.sql`c."IdAvaluo" IS DISTINCT FROM ${context.valuationId}`,
     Prisma.sql`t."SClave" IN (${Prisma.join(types)})`,
     ...(wantedFolio ? [Prisma.sql`p."IFolioComparable" = ${wantedFolio}`] : []),
     ...tokens.map((token) => Prisma.sql`${HAYSTACK} LIKE ${likePattern(token)}`),
@@ -140,7 +136,7 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
   const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
     SELECT
       c."UIdentificadorPublico"::text AS "id",
-      a."IdOrganizacion" AS "organizationId",
+      COALESCE(a."IdOrganizacion", c."IdOrganizacion") AS "organizationId",
       a."SFolio" AS "folio",
       p."IFolioComparable" AS "comparableFolio",
       p."SNombre" AS "propertyName",
@@ -152,10 +148,7 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
       c."JUbicacionSnapshot" AS "coordinates",
       c."JImagenesSnapshot" AS "photos",
       c."DFechaSeleccion" AS "capturedAt"
-    FROM "devpware_comparables_avaluos" c
-    JOIN "devpware_avaluos" a ON a."IdAvaluo" = c."IdAvaluo"
-    JOIN "devpware_tipos_comparables" t ON t."IdTipoComparable" = c."IdTipoComparable"
-    JOIN "devpware_propiedades" p ON p."IdPropiedad" = c."IdPropiedad"
+    ${FIRM_BASE_FROM}
     WHERE ${Prisma.join(conditions, " AND ")}
     ORDER BY c."DFechaSeleccion" DESC, c."IdComparableAvaluo" DESC
     LIMIT ${CANDIDATES}
@@ -173,7 +166,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function evidence(comparableId: string, context: Pick<ComparableSearchContext, "organizationId">): Promise<ReusedComparableEvidence> {
   if (!UUID.test(comparableId)) return {};
   const row = await prisma.comparableAvaluo.findFirst({
-    where: { UIdentificadorPublico: comparableId, avaluo: { IdOrganizacion: context.organizationId, BActivo: true, DFechaEliminacion: null } },
+    where: { UIdentificadorPublico: comparableId, ...inFirmBase(context.organizationId) },
     select: { JImagenesSnapshot: true, JPublicacionSnapshot: true, DFechaActualizacionDatos: true, propiedad: { select: { IFolioComparable: true } } },
   });
   return row ? reusedEvidenceOf(row) : {};

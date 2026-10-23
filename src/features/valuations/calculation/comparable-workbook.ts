@@ -4,11 +4,14 @@
  */
 import ExcelJS from "exceljs";
 
-import { importColumns, MAX_IMPORT_ROWS, type CellValue } from "./comparable-import";
+import { cellText, importColumns, MAX_IMPORT_ROWS, type CellValue } from "./comparable-import";
+import { MASTER_HEADER_ROW, MASTER_SHEET, START_SHEET, parseDestination, type ImportDestination } from "./comparable-master";
 import { MARKET_LABELS, type ComparableType } from "./market-types";
 
 export const MAX_IMPORT_FILE_BYTES = 2 * 1024 * 1024;
 const SHEET_NAME = "Comparables";
+/** Where the INICIO sheet of the master workbook keeps the destination and the folio of the valuation. */
+const DESTINATION_CELL = "D7";
 
 export class SpreadsheetError extends Error {}
 
@@ -81,8 +84,37 @@ function decodeText(buffer: Buffer) {
 
 /** The uploaded sheet as rows of cells; row index = spreadsheet row number - 1. */
 export async function readSpreadsheet(buffer: Buffer, filename: string): Promise<CellValue[][]> {
+  return (await readComparableFile(buffer, filename)).rows;
+}
+
+const byName = (workbook: ExcelJS.Workbook, name: string) =>
+  workbook.worksheets.find((sheet) => sheet.name.trim().toLowerCase() === name.toLowerCase());
+
+/** The destination the INICIO sheet of the master workbook says ("Ambos" by default), or null without one. */
+function startDestination(workbook: ExcelJS.Workbook): ImportDestination | null {
+  const start = byName(workbook, START_SHEET);
+  if (!start) return null;
+  const fixed = parseDestination(cellText(start.getCell(DESTINATION_CELL).value as CellValue));
+  if (fixed) return fixed;
+  // A copy where the cell moved: the first cell of the first rows that is a destination.
+  for (let row = 1; row <= 15; row += 1) {
+    for (let column = 1; column <= 12; column += 1) {
+      const found = parseDestination(cellText(start.getCell(row, column).value as CellValue));
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * The comparables of an uploaded file as rows of cells (row index =
+ * spreadsheet row number - 1): the COMPARABLES sheet of the master workbook,
+ * the Comparables sheet of a market's template, or the first sheet; with
+ * the destination of the INICIO sheet when the file has one.
+ */
+export async function readComparableFile(buffer: Buffer, filename: string): Promise<{ rows: CellValue[][]; destination: ImportDestination | null }> {
   if (buffer.length > MAX_IMPORT_FILE_BYTES) throw new SpreadsheetError("El archivo pesa más de 2 MB.");
-  if (/\.csv$/i.test(filename)) return parseCsv(decodeText(buffer));
+  if (/\.csv$/i.test(filename)) return { rows: parseCsv(decodeText(buffer)), destination: null };
   if (!/\.xlsx$/i.test(filename)) throw new SpreadsheetError("Sube un archivo .xlsx o .csv.");
 
   if (buffer.length < 22) throw new SpreadsheetError("El archivo no es un Excel válido. Guárdalo como .xlsx e intenta de nuevo.");
@@ -93,9 +125,11 @@ export async function readSpreadsheet(buffer: Buffer, filename: string): Promise
   } catch {
     throw new SpreadsheetError("El archivo no es un Excel válido. Guárdalo como .xlsx e intenta de nuevo.");
   }
-  const sheet = workbook.getWorksheet(SHEET_NAME) ?? workbook.worksheets[0];
+  const sheet = byName(workbook, MASTER_SHEET) ?? byName(workbook, SHEET_NAME)
+    ?? workbook.worksheets.find((item) => item.name.trim().toLowerCase() !== START_SHEET.toLowerCase()) ?? workbook.worksheets[0];
   if (!sheet) throw new SpreadsheetError("El archivo no tiene hojas.");
-  if (sheet.actualRowCount > MAX_IMPORT_ROWS + 50) {
+  // The master workbook brings its title rows and 100 rows of formulas.
+  if (sheet.actualRowCount > MAX_IMPORT_ROWS + MASTER_HEADER_ROW + 50) {
     throw new SpreadsheetError(`El archivo tiene más de ${MAX_IMPORT_ROWS} comparables. Divídelo en varios archivos.`);
   }
   const rows: CellValue[][] = [];
@@ -103,7 +137,7 @@ export async function readSpreadsheet(buffer: Buffer, filename: string): Promise
     const values = Array.isArray(row.values) ? row.values.slice(1) : [];
     rows[rowNumber - 1] = values as CellValue[];
   });
-  return Array.from(rows, (row) => row ?? []);
+  return { rows: Array.from(rows, (row) => row ?? []), destination: startDestination(workbook) };
 }
 
 /** The template: a sheet to fill (header only) and one with instructions. */

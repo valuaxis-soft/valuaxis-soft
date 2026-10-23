@@ -55,3 +55,14 @@ export async function catalogId<T extends { SClave: string }>(
   if (!row) throw new ValuationWorkflowError(`Falta la clave ${key} en el catálogo.`, 500);
   return pick(row);
 }
+
+/**
+ * A comparable of the firm's base: one of an alive valuation of the
+ * organization, or one kept in its base without a valuation (migration 048).
+ */
+export const inFirmBase = (organizationId: number) => ({
+  OR: [
+    { avaluo: { IdOrganizacion: organizationId, BActivo: true, DFechaEliminacion: null } },
+    { IdAvaluo: null, IdOrganizacion: organizationId },
+  ],
+}) satisfies Prisma.ComparableAvaluoWhereInput;

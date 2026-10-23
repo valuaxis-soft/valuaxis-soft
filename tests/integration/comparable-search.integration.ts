@@ -219,7 +219,7 @@ test("the search never returns comparables of another organization", async () =>
       select: { avaluo: { select: { IdOrganizacion: true } } },
     });
     assert.equal(rows.length, ids.length);
-    assert.ok(rows.every((row) => row.avaluo.IdOrganizacion === fixture.organizationId), "a comparable of another organization was offered");
+    assert.ok(rows.every((row) => row.avaluo?.IdOrganizacion === fixture.organizationId), "a comparable of another organization was offered");
   }
 
   // The source itself, asked directly: the organization of the context decides, whatever valuation id comes with it.

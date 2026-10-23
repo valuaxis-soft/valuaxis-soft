@@ -45,7 +45,7 @@ const DATA_FIELDS = [
   "location", "area", "price", "landUse", "landUseKey", "shape", "zone", "frontCount", "frontage", "depth", "topography",
   "services", "conservation", "quality", "notes", "extra", "characteristicsText", "sourceName", "contactName", "contactPhone",
   "url", "offerDate", "consultedOn", "validUntil", "listingText", "address", "urbanProximity", "operationType", "latitude",
-  "longitude", "landArea", "bedrooms", "bathrooms", "constructionType",
+  "longitude", "landArea", "bedrooms", "bathrooms", "constructionType", "propertyDetails", "listingDetails",
 ] as const;
 
 /** Empty texts, empty objects and missing values are the same "nothing". */

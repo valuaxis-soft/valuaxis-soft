@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   ADDRESS_LABELS,
   ADDRESS_PARTS,
+  DATA_VERIFIED_LABELS,
   OPERATION_TYPE_LABELS,
+  UNIT_BASIS_LABELS,
   URBAN_PROXIMITY_LABELS,
   formatComparableId,
 } from "@/features/valuations/calculation/comparable-card";
@@ -74,7 +76,9 @@ export function ComparableCardView({ card }: { card: ComparableCardDto }) {
         <Badge variant="secondary">{COMPARABLE_TYPE_LABELS[type]}</Badge>
         <Badge variant="outline">{OPERATION_TYPE_LABELS[operation]}</Badge>
         {review ? <Badge variant={review.status === "VERIFICADO" ? "default" : "outline"}>{REVIEW_STATUS_LABELS[review.status]}</Badge> : null}
-        <span className="text-xs text-muted-foreground">Capturado en el avalúo {card.valuation.folio}, comparable {comparable.reference}</span>
+        <span className="text-xs text-muted-foreground">
+          {card.valuation ? `Capturado en el avalúo ${card.valuation.folio}, comparable ${comparable.reference}` : "En la base general, sin avalúo"}
+        </span>
       </header>
       <ComparableValidityLine validity={card.validity} />
 
@@ -180,6 +184,32 @@ export function ComparableCardView({ card }: { card: ComparableCardDto }) {
           <Item label="Observaciones" wide>{comparable.notes || "—"}</Item>
         </dl>
       </Section>
+
+      {comparable.propertyDetails || comparable.listingDetails ? (
+        <Section title="Más datos del anuncio">
+          <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-4">
+            <Item label="ID de publicación">{comparable.listingDetails?.publicationId || "—"}</Item>
+            <Item label="Moneda">{comparable.listingDetails?.currency ?? "MXN"}</Item>
+            <Item label="Origen del dato">{comparable.listingDetails?.dataOrigin || "—"}</Item>
+            <Item label="Datos verificados">{comparable.listingDetails?.dataVerified ? DATA_VERIFIED_LABELS[comparable.listingDetails.dataVerified] : "—"}</Item>
+            <Item label="Base del unitario">{comparable.propertyDetails?.unitBasis ? UNIT_BASIS_LABELS[comparable.propertyDetails.unitBasis] : "—"}</Item>
+            <Item label="Edad (años)">{number(comparable.propertyDetails?.age)}</Item>
+            <Item label="Niveles">{number(comparable.propertyDetails?.levels)}</Item>
+            <Item label="Estacionamientos">{number(comparable.propertyDetails?.parking)}</Item>
+            <Item label="Pavimento / acceso">{comparable.propertyDetails?.paving || "—"}</Item>
+            <Item label="Posición en manzana">{comparable.propertyDetails?.blockPosition || "—"}</Item>
+            <Item label="Fecha de cambio de precio">{dayText(comparable.listingDetails?.priceChangedOn)}</Item>
+            <Item label="Confianza de la extracción">{comparable.listingDetails?.extractionConfidence || "—"}</Item>
+            {comparable.listingDetails?.photoUrl ? (
+              <Item label="URL de la fotografía" wide>
+                <a className="inline-flex items-center gap-1 break-all text-primary underline-offset-2 hover:underline" href={comparable.listingDetails.photoUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="size-3.5 shrink-0" /> {comparable.listingDetails.photoUrl}
+                </a>
+              </Item>
+            ) : null}
+          </dl>
+        </Section>
+      ) : null}
 
       {review && review.status !== "POR_REVISAR" ? (
         <Section title="Revisión">

@@ -87,3 +87,53 @@ export const formatDay = (day: string) =>
 export function todayInMexico(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
+
+/** Currencies of an offer: kept as captured, never converted. */
+export const CURRENCIES = ["MXN", "USD"] as const;
+export type Currency = (typeof CURRENCIES)[number];
+
+/** What the unit price of an offer divides by ("Base del unitario" of the master workbook). */
+export const UNIT_BASES = ["TERRENO_M2", "CONSTRUCCION_M2", "TERRENO_HA"] as const;
+export type UnitBasis = (typeof UNIT_BASES)[number];
+export const UNIT_BASIS_LABELS: Record<UnitBasis, string> = {
+  TERRENO_M2: "Terreno m²",
+  CONSTRUCCION_M2: "Construcción m²",
+  TERRENO_HA: "Terreno ha",
+};
+
+/** "Datos verificados" of the master workbook. */
+export const DATA_VERIFIED = ["SI", "NO", "PARCIAL"] as const;
+export type DataVerified = (typeof DATA_VERIFIED)[number];
+export const DATA_VERIFIED_LABELS: Record<DataVerified, string> = { SI: "Sí", NO: "No", PARCIAL: "Parcialmente" };
+
+/** The property facts of the master workbook that the homologation does not use. */
+export type ComparablePropertyDetails = {
+  age?: number | null;
+  levels?: number | null;
+  parking?: number | null;
+  paving?: string | null;
+  blockPosition?: string | null;
+  unitBasis?: UnitBasis | null;
+};
+
+/** The listing facts of the master workbook: its id in the portal, currency, photo link, dates and verification. */
+export type ComparableListingDetails = {
+  publicationId?: string | null;
+  currency?: Currency | null;
+  photoUrl?: string | null;
+  priceChangedOn?: string | null;
+  dataOrigin?: string | null;
+  extractionConfidence?: string | null;
+  dataVerified?: DataVerified | null;
+};
+
+/**
+ * The unit price of an offer by the base it is quoted on: per m² of land, per
+ * m² built, or per hectare of land. Null when the area it needs is missing.
+ */
+export function unitPriceByBasis(price: number | null, basis: UnitBasis, areas: { landArea: number | null; builtArea: number | null }) {
+  if (!price || price <= 0) return null;
+  const area = basis === "CONSTRUCCION_M2" ? areas.builtArea : areas.landArea;
+  if (!area || area <= 0) return null;
+  return basis === "TERRENO_HA" ? price / (area / 10_000) : price / area;
+}
