@@ -4,7 +4,7 @@
  */
 import { ADOPTED_VALUE_TOLERANCE, type EngineConfig, type SurfaceOrientation } from "./config";
 import { productInOrder, resolveFactorSlots, surfaceFactor, type FactorSlot } from "./factors";
-import { roundIfSet } from "./rounding";
+import { roundIfSet, shownAmount, shownFactor } from "./rounding";
 import { Trace } from "./trace";
 
 export type ComparableInput = {
@@ -45,8 +45,13 @@ export type HomologationStats = {
   /** Sample standard deviation. */
   standardDeviation: number;
   coefficientOfVariation: number;
-  /** max / min; the books recommend below 1.25. */
+  /** "Dispersión final": max / min of the homologated values; the books recommend below 1.25. */
   dispersion: number;
+  /** "Dispersión inicial": max / min of the unit values of the offers, before homologating. */
+  initialDispersion: number;
+  /** The lowest and highest unit value of the offers, before homologating. */
+  offerMin: number;
+  offerMax: number;
 };
 
 export type HomologationResult = {
@@ -59,6 +64,8 @@ export function homologate(
   orientation: SurfaceOrientation,
   trace: Trace,
   keyPrefix: string,
+  /** "Calcular con la precisión mostrada": factors and unit values as shown (EngineConfig.displayedPrecision). */
+  precision: EngineConfig["displayedPrecision"] = null,
 ): HomologationResult {
   const baseArea = input.baseArea ?? input.subjectArea;
   const scale = input.unitScale ?? 1;
@@ -69,7 +76,7 @@ export function homologate(
       label: `Valor unitario, comparable ${comparable.id}`,
       formula: scale === 1 ? "precio / superficie" : `precio / superficie × ${scale}`,
       inputs: { precio: comparable.price, superficie: comparable.area },
-      value: scale === 1 ? comparable.price / comparable.area : (comparable.price / comparable.area) * scale,
+      ...shownAmount(scale === 1 ? comparable.price / comparable.area : (comparable.price / comparable.area) * scale, precision),
     });
     const surface = comparable.surfaceFactor !== undefined
       ? trace.record({
@@ -77,7 +84,7 @@ export function homologate(
           label: `Factor de superficie, comparable ${comparable.id}`,
           formula: "captura del perito",
           inputs: { capturado: comparable.surfaceFactor },
-          value: comparable.surfaceFactor,
+          ...shownFactor(comparable.surfaceFactor, precision),
         })
       : trace.record({
           key: `${key}.factorSuperficie`,
@@ -86,28 +93,30 @@ export function homologate(
             ? "(superficie del comparable / superficie base)^(1/n)"
             : "(superficie base / superficie del comparable)^(1/n)",
           inputs: { superficieComparable: comparable.area, superficieBase: baseArea, n: input.surfacePower },
-          value: surfaceFactor(comparable.area, baseArea, input.surfacePower, orientation),
+          ...shownFactor(surfaceFactor(comparable.area, baseArea, input.surfacePower, orientation), precision),
         });
-    const factors = resolveFactorSlots(comparable.factors, surface);
+    // Each factor as it is shown, when the valuation calculates with the precision shown (0.9683 is 0.97).
+    const factors = resolveFactorSlots(comparable.factors, surface).map((factor) => ({ ...factor, value: shownFactor(factor.value, precision).value }));
     const resultant = trace.record({
       key: `${key}.factorResultante`,
       label: `Factor resultante, comparable ${comparable.id}`,
       formula: factors.map((factor) => factor.key).join(" × "),
       inputs: Object.fromEntries(factors.map((factor) => [factor.key, factor.value])),
-      value: productInOrder(factors.map((factor) => factor.value)),
+      ...shownFactor(productInOrder(factors.map((factor) => factor.value)), precision),
     });
     const homologated = trace.record({
       key: `${key}.valorHomologado`,
       label: `Valor unitario homologado, comparable ${comparable.id}`,
       formula: "factor resultante × valor unitario",
       inputs: { factorResultante: resultant, valorUnitario: unitValue },
-      value: resultant * unitValue,
+      ...shownAmount(resultant * unitValue, precision),
     });
     return { id: comparable.id, unitValue, surfaceFactor: surface, resultantFactor: resultant, homologatedUnitValue: homologated };
   });
 
   const values = comparables.map((comparable) => comparable.homologatedUnitValue);
-  const stats = describe(values);
+  const offers = comparables.map((comparable) => comparable.unitValue);
+  const stats = describe(values, offers);
   trace.record({
     key: `${keyPrefix}.promedioHomologado`,
     label: "Valor unitario homologado promedio",
@@ -117,15 +126,22 @@ export function homologate(
   });
   trace.record({
     key: `${keyPrefix}.dispersion`,
-    label: "Dispersión (máximo / mínimo)",
+    label: "Dispersión final (máximo / mínimo de los valores homologados)",
     formula: "máximo / mínimo",
     inputs: { maximo: stats.max, minimo: stats.min },
     value: stats.dispersion,
   });
+  trace.record({
+    key: `${keyPrefix}.dispersionInicial`,
+    label: "Dispersión inicial (máximo / mínimo de los valores unitarios de las ofertas)",
+    formula: "máximo / mínimo",
+    inputs: { maximo: stats.offerMax, minimo: stats.offerMin },
+    value: stats.initialDispersion,
+  });
   return { comparables, stats };
 }
 
-function describe(values: number[]): HomologationStats {
+function describe(values: number[], offers: number[]): HomologationStats {
   const count = values.length;
   const mean = values.reduce((sum, value) => sum + value, 0) / count;
   const sorted = [...values].sort((a, b) => a - b);
@@ -142,6 +158,9 @@ function describe(values: number[]): HomologationStats {
     standardDeviation,
     coefficientOfVariation: standardDeviation / mean,
     dispersion: sorted[count - 1] / sorted[0],
+    initialDispersion: Math.max(...offers) / Math.min(...offers),
+    offerMin: Math.min(...offers),
+    offerMax: Math.max(...offers),
   };
 }
 
@@ -162,7 +181,7 @@ export type MarketApproachResult = {
 };
 
 export function computeMarketApproach(input: MarketApproachInput, config: EngineConfig, trace = new Trace()): MarketApproachResult {
-  const homologation = homologate(input, config.surfaceOrientation.market, trace, "mercado");
+  const homologation = homologate(input, config.surfaceOrientation.market, trace, "mercado", config.displayedPrecision);
   const suggestedUnitValue = homologation.stats.mean;
   const adoptedLimits = adoptedValueLimits(homologation.stats);
   const adoptedUnitValue = trace.record({

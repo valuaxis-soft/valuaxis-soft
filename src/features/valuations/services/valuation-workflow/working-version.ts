@@ -13,6 +13,7 @@ import {
 import { syncConcepts, upsertDocumentNode } from "./document-nodes";
 import { syncTablesForNode } from "./document-tables";
 import { ValuationWorkflowError } from "./errors";
+import { NEW_VALUATION_PRECISION } from "../../calculation/calculation-precision";
 import { createPersistenceStats, getDocumentPersistenceCatalogs } from "./persistence-context";
 import type { BlockPayload, Tx } from "./types";
 
@@ -35,12 +36,16 @@ export async function ensureWorkingVersion(input: {
   });
   if (!editableState) throw new ValuationWorkflowError("No existe estado editable de version configurado", 500);
 
+  // A new valuation calculates with the precision it shows; a valuation of before that gets a working
+  // version here keeps its behavior (NULL), so its values do not change.
+  const firstVersion = (await client.versionAvaluo.count({ where: { IdAvaluo: input.avaluoId } })) === 0;
   const version = await client.versionAvaluo.create({
     data: {
       IdAvaluo: input.avaluoId,
       IdUsuarioCreador: input.userId,
       IdEstadoVersionAvaluo: editableState.IdEstadoVersionAvaluo,
       INumeroVersion: avaluo.INumeroVersionActual,
+      ...(firstVersion ? { JConfiguracionCalculo: NEW_VALUATION_PRECISION } : {}),
     },
   });
 

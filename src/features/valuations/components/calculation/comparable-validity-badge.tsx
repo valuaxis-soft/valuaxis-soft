@@ -12,8 +12,8 @@ export function ValidityBadge({ validity }: { validity: Pick<ComparableValidity,
 }
 
 /** "Fecha de alta / actualización 23 oct 2026 · Vigente hasta 23 abr 2027", with its mark. */
-export function ComparableValidityLine({ updatedOn, validity }: { updatedOn?: string; validity?: ComparableValidity }) {
-  const value = validity ?? (updatedOn ? comparableValidity(updatedOn) : null);
+export function ComparableValidityLine({ updatedOn, validity, months }: { updatedOn?: string; validity?: ComparableValidity; /** Its months of validity; six when not given. */ months?: number | null }) {
+  const value = validity ?? (updatedOn ? comparableValidity(updatedOn, undefined, months) : null);
   if (!value) return null;
   return (
     <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" data-comparable-validity>

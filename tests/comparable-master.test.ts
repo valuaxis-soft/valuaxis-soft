@@ -80,7 +80,7 @@ test("a master row maps type, structured location, details and recomputes the un
   assert.equal(row.type, "TERRENO_VENTA");
   assert.equal(row.payload?.area, 250);
   assert.equal(row.payload?.price, 1_250_000);
-  assert.deepEqual(row.payload?.address, { street: "Hidalgo 12", neighborhood: "Centro", municipality: "Arandas", state: "Jalisco", postalCode: "01000", number: null });
+  assert.deepEqual(row.payload?.address, { street: "Hidalgo 12", neighborhood: "Centro", subdivision: null, municipality: "Arandas", state: "Jalisco", postalCode: "01000", number: null });
   assert.equal(row.payload?.location, "Hidalgo 12, col. Centro, C.P. 01000, Arandas, Jalisco");
   assert.equal(row.payload?.listingDetails?.publicationId, "145-998");
   assert.equal(row.payload?.propertyDetails?.unitBasis, "TERRENO_M2");

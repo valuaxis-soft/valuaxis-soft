@@ -1,6 +1,7 @@
 /**
  * How long a comparable of the firm's base can be trusted: from the day it
- * was captured or its data last updated, six months (the same months after
+ * was captured or its data last updated, the months it was captured with (1
+ * to 12), or the firm's (six unless it chose others, the same months after
  * which the review flags an old offer). An expired comparable is only marked:
  * the appraiser decides whether to use it, nothing is blocked.
  */
@@ -19,16 +20,26 @@ export function addMonths(day: string, months: number) {
 export type ComparableValidity = {
   /** "Fecha de alta / actualización": the day it was captured or its data last changed, YYYY-MM-DD in Mexico. */
   updatedOn: string;
-  /** "Vigente hasta": that day plus six months. */
+  /** "Vigente hasta": that day plus its months of validity. */
   validUntil: string;
   /** Past its validity: marked "Vencido", still usable. */
   expired: boolean;
 };
 
-/** The validity of a comparable whose data dates from `updated` (a timestamp, or a day YYYY-MM-DD). */
-export function comparableValidity(updated: Date | string, today = todayInMexico()): ComparableValidity {
+/** The months a comparable may be valid for, as the capture and the firm's settings offer them. */
+export const COMPARABLE_VALIDITY_MONTHS = Array.from({ length: 12 }, (_, index) => index + 1);
+
+/** Months of validity: the ones given when they are 1 to 12, otherwise six. */
+export const validityMonthsOf = (months: number | null | undefined) =>
+  (months && Number.isInteger(months) && months >= 1 && months <= 12 ? months : OFFER_MAX_AGE_MONTHS);
+
+/**
+ * The validity of a comparable whose data dates from `updated` (a timestamp,
+ * or a day YYYY-MM-DD), for `months` (its own or the firm's; six by default).
+ */
+export function comparableValidity(updated: Date | string, today = todayInMexico(), months?: number | null): ComparableValidity {
   const updatedOn = typeof updated === "string" ? updated.slice(0, 10) : todayInMexico(updated);
-  const validUntil = addMonths(updatedOn, OFFER_MAX_AGE_MONTHS);
+  const validUntil = addMonths(updatedOn, validityMonthsOf(months));
   return { updatedOn, validUntil, expired: today > validUntil };
 }
 
@@ -44,7 +55,7 @@ export const VALIDITY_STATUS_LABELS: Record<ValidityStatus, string> = { VIGENTE:
 const DATA_FIELDS = [
   "location", "area", "price", "landUse", "landUseKey", "shape", "zone", "frontCount", "frontage", "depth", "topography",
   "services", "conservation", "quality", "notes", "extra", "characteristicsText", "sourceName", "contactName", "contactPhone",
-  "url", "offerDate", "consultedOn", "validUntil", "listingText", "address", "urbanProximity", "operationType", "latitude",
+  "url", "offerDate", "consultedOn", "validUntil", "validityMonths", "listingText", "address", "urbanProximity", "operationType", "latitude",
   "longitude", "landArea", "bedrooms", "bathrooms", "constructionType", "propertyDetails", "listingDetails",
 ] as const;
 

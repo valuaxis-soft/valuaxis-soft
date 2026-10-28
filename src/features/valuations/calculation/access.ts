@@ -9,12 +9,25 @@ import type { AuthUser } from "@/features/auth/model";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { ensureWorkingVersion } from "../services/valuation-workflow/working-version";
 import { reconcileFormulas, type CapturedFormulas } from "./captured-formulas";
+import { precisionOf, type CalculationPrecision } from "./calculation-precision";
 
 export type Tx = Prisma.TransactionClient;
 
 export const decimal = (value: Prisma.Decimal | null | undefined) => (value === null || value === undefined ? null : Number(value));
 export const asRecord = (value: Prisma.JsonValue | null) =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+
+/** The months a comparable of the firm's base stays valid unless it was captured with its own. */
+export async function firmComparableMonths(tx: Tx, organizationId: number): Promise<number> {
+  const organization = await tx.organizacion.findUnique({ where: { IdOrganizacion: organizationId }, select: { IMesesVigenciaComparables: true } });
+  return organization?.IMesesVigenciaComparables ?? 6;
+}
+
+/** The precision a version calculates with (decimals shown, calculating with them or not). */
+export async function versionPrecision(tx: Tx, versionId: number): Promise<CalculationPrecision> {
+  const version = await tx.versionAvaluo.findUnique({ where: { IdVersionAvaluo: versionId }, select: { JConfiguracionCalculo: true } });
+  return precisionOf(version?.JConfiguracionCalculo ?? null);
+}
 
 export async function findValuation(tx: Tx, publicId: string, organizationId: number) {
   const avaluo = await tx.avaluo.findFirst({

@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import sharp from "sharp";
 import { findDuplicates, getComparableCard, getValuationReview } from "../../src/features/valuations/calculation/comparable-card.service";
-import { formatComparableId } from "../../src/features/valuations/calculation/comparable-card";
+import { formatComparableId, todayInMexico } from "../../src/features/valuations/calculation/comparable-card";
+import { addMonths } from "../../src/features/valuations/calculation/comparable-validity";
 import type { ComparableInputPayload } from "../../src/features/valuations/calculation/market-schemas";
 import {
   createComparable,
@@ -103,7 +104,7 @@ test("the new fields are saved and read back; a client that leaves them out keep
   }));
   const [stored] = (await market(owner.publicId, owner.organizationId)).comparables;
   assert.equal(stored.location, "Juárez 12, col. Centro, Arandas", "the single line stays what the dictamen prints");
-  assert.deepEqual(stored.address, { state: "Jalisco", municipality: "Arandas", postalCode: "47180", neighborhood: "Centro", street: "Juárez", number: "12" });
+  assert.deepEqual(stored.address, { state: "Jalisco", municipality: "Arandas", postalCode: "47180", neighborhood: "Centro", subdivision: null, street: "Juárez", number: "12" });
   assert.equal(stored.urbanProximity, "INTERMEDIA");
   assert.equal(stored.operationType, "VENTA");
   assert.equal(stored.latitude, 20.7092);
@@ -254,6 +255,51 @@ test("duplicates are found by URL, address or phone and price, across valuations
   const imported = (await market(next, owner.organizationId, "TERRENO_VENTA")).comparables;
   assert.equal(imported[0].folio, source.folio);
   assert.notEqual(imported[1].folio, source.folio);
+});
+
+test("an almost identical capture is found: same municipality, fraccionamiento in another order, same phone and area, another price", async () => {
+  // The appraiser's case of 27 Oct 2026: no warning when capturing nor in the review, because every rule asked for the same price.
+  const owner = await fixture();
+  const marker = randomUUID().replace(/\D/g, "").padEnd(7, "7").slice(0, 7);
+  const phone = `378 ${marker.slice(0, 3)} ${marker.slice(3, 7)}`;
+  await createComparable(owner.publicId, owner.user, "TERRENO_VENTA", comparable("Fracc. Valle de los Robles, Tepatitlán de Morelos", 160, 1_250_000, {
+    contactPhone: phone,
+    address: { municipality: "Tepatitlán de Morelos", state: "Jalisco", subdivision: "Valle de los Robles" },
+  }));
+  const [source] = (await market(owner.publicId, owner.organizationId, "TERRENO_VENTA")).comparables;
+  assert.equal(source.address?.subdivision, "Valle de los Robles", "the fraccionamiento is kept with the address");
+  const next = await anotherValuation(owner);
+
+  // As the dialog asks while it is typed: location and area first, then the phone; no price yet.
+  const typed = { url: null, location: "Robles del Valle, Tepatitlán", contactPhone: null, price: null, area: 160 };
+  const byPlace = await findDuplicates(next, owner.organizationId, typed);
+  assert.deepEqual(byPlace.map((match) => [match.comparableId, match.folio, match.reasons]), [[source.id, source.folio, ["PLACE_AREA"]]]);
+  const withPhone = await findDuplicates(next, owner.organizationId, { ...typed, contactPhone: `+52 ${phone.replace(/\s/g, "")}`, price: 1_390_000 });
+  assert.deepEqual(withPhone.map((match) => match.reasons), [["PHONE_AREA"]]);
+
+  // Captured anyway: the review of that valuation says which comparable it repeats.
+  await createComparable(next, owner.user, "TERRENO_VENTA", comparable("Robles del Valle, Tepatitlán", 160, 1_390_000, { contactPhone: phone }));
+  const rows = await getValuationReview(next, owner.organizationId);
+  const duplicate = rows[0].warnings.find((warning) => warning.key === "DUPLICATE");
+  assert.ok(duplicate, "the review warns");
+  assert.match(duplicate.message, new RegExp(`${formatComparableId(source.folio)}.*mismo teléfono y superficie`));
+});
+
+test("the validity is captured in months from the day of consultation; the firm's months apply to the rest", async () => {
+  const owner = await fixture();
+  await prisma.organizacion.update({ where: { IdOrganizacion: owner.organizationId }, data: { IMesesVigenciaComparables: 2 } });
+  await createComparable(owner.publicId, owner.user, "TERRENO_VENTA", comparable("Juárez 12, Arandas", 100, 1_000_000, {
+    consultedOn: "2026-10-01", validityMonths: 3,
+  }));
+  await createComparable(owner.publicId, owner.user, "TERRENO_VENTA", comparable("Hidalgo 4, Arandas", 300, 2_000_000));
+  const calculation = await market(owner.publicId, owner.organizationId, "TERRENO_VENTA");
+  assert.equal(calculation.comparableValidityMonths, 2, "a new comparable starts with the firm's months");
+  const [own, firm] = calculation.comparables;
+  assert.equal(own.validityMonths, 3);
+  assert.equal(own.validUntil, "2027-01-01", "the day of consultation plus its months");
+  const today = todayInMexico();
+  assert.equal((await getComparableCard(own.id, owner.organizationId)).validity.validUntil, addMonths(today, 3));
+  assert.equal((await getComparableCard(firm.id, owner.organizationId)).validity.validUntil, addMonths(today, 2), "the firm's months");
 });
 
 test("the review is saved per comparable with who and when, lists every market, warns, and changes no calculation", async () => {

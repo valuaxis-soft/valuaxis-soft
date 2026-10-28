@@ -9,6 +9,8 @@ import type { ComparableImportPreview, ImportBaseCounts } from "@/features/valua
 import type { ImportDestination } from "@/features/valuations/calculation/comparable-master";
 import type { ComparableCardDto, DuplicateMatchDto, ReviewRowDto } from "@/features/valuations/calculation/comparable-card.service";
 import type { DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
+import type { CalculationPrecision } from "@/features/valuations/calculation/calculation-precision";
+import type { CalculationPrecisionDto } from "@/features/valuations/calculation/calculation-precision.service";
 import type { ComparableReviewDto } from "@/features/valuations/calculation/comparable-review";
 import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 import type { ConstructionTypeDto, ConstructionTypesDto, CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
@@ -295,6 +297,12 @@ export const api = {
       request<ListingProposal>(`/avaluos/${id}/ia/anuncio`, { method: "POST", body: JSON.stringify(input) }),
     writeDraft: (id: ApiId, input: DraftInput) =>
       request<{ text: string }>(`/avaluos/${id}/ia/redaccion`, { method: "POST", body: JSON.stringify(input) }),
+  },
+  /** Decimals shown and "calcular con la precisión mostrada" of the valuation; saving recomputes every approach. */
+  precision: {
+    get: (id: ApiId) => request<CalculationPrecisionDto>(`/avaluos/${id}/calculo/precision`),
+    save: (id: ApiId, input: CalculationPrecision) =>
+      request<CalculationPrecisionDto>(`/avaluos/${id}/calculo/precision`, { method: "PUT", body: JSON.stringify(input) }),
   },
   /** Construction types of the construction section; the cost approach picks from them. */
   constructionTypes: {

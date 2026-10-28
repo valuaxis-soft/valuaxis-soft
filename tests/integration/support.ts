@@ -5,11 +5,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { TestContext } from "node:test";
+import { Prisma } from "@prisma/client";
 import { workAsyncStorage, type WorkStore } from "next/dist/server/app-render/work-async-storage.external";
 import { workUnitAsyncStorage, type WorkUnitStore } from "next/dist/server/app-render/work-unit-async-storage.external";
 import type { AuthUser } from "../../src/features/auth/model";
 import { hashPassword } from "../../src/features/auth/services/password.service";
 import { prisma } from "../../src/infrastructure/database/prisma-client";
+import { ensureWorkingVersion } from "../../src/features/valuations/services/valuation-workflow/working-version";
 import {
   getEmailService,
   type PasswordResetEmailInput,
@@ -25,8 +27,23 @@ export function assertLocalDatabase() {
   }
 }
 
-/** Creates an isolated organization, user and valuation for one test run. */
-export async function createValuationFixture() {
+/**
+ * Creates an isolated organization, user and valuation for one test run.
+ * The valuation calculates with every decimal, as the Excel books the tests
+ * reproduce; `precision: "shown"` leaves it as a new valuation is created
+ * (no version yet; its first one calculates with the precision shown).
+ */
+export async function createValuationFixture(options: { precision?: "excel" | "shown" } = {}) {
+  const created = await createBareValuationFixture();
+  if (options.precision !== "shown") {
+    const { IdAvaluo, IdUsuarioCreador } = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: created.publicId } });
+    const versionId = await ensureWorkingVersion({ avaluoId: IdAvaluo, userId: IdUsuarioCreador });
+    await prisma.versionAvaluo.update({ where: { IdVersionAvaluo: versionId }, data: { JConfiguracionCalculo: Prisma.DbNull } });
+  }
+  return created;
+}
+
+async function createBareValuationFixture() {
   assertLocalDatabase();
   const suffix = randomUUID().slice(0, 8);
   const [userState, orgState, valuationState, appraisalType, propertyType, operationType] = await Promise.all([

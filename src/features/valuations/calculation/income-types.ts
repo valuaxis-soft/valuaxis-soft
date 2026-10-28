@@ -7,6 +7,8 @@
 import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, type IncomeApproachInput, type IncomeMethod } from "../engine/income";
 import type { HomologationInput } from "../engine/market";
 import type { CapturedFormulas, PercentFields } from "./captured-formulas";
+import { withPrecision, type CalculationPrecision } from "./calculation-precision";
+import { DEFAULT_ENGINE_CONFIG, type EngineConfig } from "../engine/config";
 
 export const INCOME_METHOD_LABELS: Record<IncomeMethod, string> = {
   tabla: "Tabla de tasa (formato TCH)",
@@ -111,7 +113,13 @@ export type IncomeCalculationDto = IncomeInputDto & {
   };
   configured: boolean;
   locked: boolean;
+  /** The valuation's precision, for the homologation of the rent market; missing, the behavior of before. */
+  precision?: CalculationPrecision;
 };
+
+/** The engine settings of the income approach: the defaults with the valuation's precision. */
+export const incomeEngineConfig = (calculation: { precision?: CalculationPrecision | null }): EngineConfig =>
+  withPrecision(DEFAULT_ENGINE_CONFIG, calculation.precision);
 
 export const DEFAULT_INCOME: IncomeInputDto = {
   method: "tabla",

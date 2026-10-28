@@ -174,6 +174,7 @@ export const MASTER_COLUMNS: MasterColumn[] = [
   column("offerDate", "Fecha publicación", 0, "fecha_publicacion", "date", "No", "Fecha del anuncio, si el portal la informa. Es la «fecha de la oferta» del comparable.", { aliases: ["fechadepublicacion", "fechadelaoferta", "fecha"] }),
   column("street", "Calle y número", 1, "ubicacion_calle", "text", "Cond.", "Calle y número. Con colonia, municipio y estado forma la ubicación si «Ubicación (como se imprime)» queda vacía.", { width: 30, aliases: ["ubicacioncalle", "calle", "callenumero"] }),
   column("neighborhood", "Colonia / localidad", 1, "colonia", "text", "No", "", { width: 20, aliases: ["colonia", "localidad"] }),
+  column("subdivision", "Fraccionamiento", 1, "fraccionamiento", "text", "No", "Opcional. Con la colonia y el municipio sirve para encontrar duplicados y para buscar.", { width: 20, aliases: ["fracc", "fraccionamientoocoto", "coto"] }),
   column("municipality", "Municipio", 1, "municipio", "text", "No", "Sin municipio, la búsqueda por lugar no lo encuentra (aviso).", { width: 18, aliases: ["municipiooalcaldia", "alcaldia"] }),
   column("state", "Estado", 1, "estado", "catalog", "No", "Entidad federativa.", { catalog: "state", width: 16, aliases: ["entidad"] }),
   column("postalCode", "Código postal", 1, "codigo_postal", "text", "No", "Cinco dígitos; se guarda como texto para conservar los ceros.", { width: 11, aliases: ["cp"] }),
@@ -393,6 +394,7 @@ export function parseMasterRows(sheet: CellValue[][], headerIndex: number, optio
     const address: ComparableAddress = {
       street: textOf("street") || null,
       neighborhood: textOf("neighborhood") || null,
+      subdivision: textOf("subdivision") || null,
       municipality: textOf("municipality") || null,
       state: textOf("state") || null,
       postalCode: postalCodeOf(textOf("postalCode")) || null,
@@ -580,6 +582,7 @@ export function masterRowValues(
     offerDate: comparable.offerDate,
     street,
     neighborhood: address.neighborhood ?? null,
+    subdivision: address.subdivision ?? null,
     municipality: address.municipality ?? null,
     state: address.state ?? null,
     postalCode: address.postalCode ?? null,

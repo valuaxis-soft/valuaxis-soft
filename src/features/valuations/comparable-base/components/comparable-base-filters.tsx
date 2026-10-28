@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import {
   COMPARABLE_SORTS,
   COMPARABLE_SORT_LABELS,
+  COUNT_MODES,
+  COUNT_MODE_LABELS,
   hasAdvancedFilters,
   hasFilters,
   type ComparableListParams,
@@ -76,6 +78,9 @@ export function ComparableBaseFilters({ params }: { params: ComparableListParams
           <Filter label="Colonia" htmlFor="filtro-colonia">
             <Input id="filtro-colonia" name="colonia" defaultValue={params.neighborhood} maxLength={100} className="h-9" />
           </Filter>
+          <Filter label="Fraccionamiento" htmlFor="filtro-fraccionamiento">
+            <Input id="filtro-fraccionamiento" name="fraccionamiento" defaultValue={params.subdivision} maxLength={100} className="h-9" />
+          </Filter>
           <Filter label="Código postal" htmlFor="filtro-cp">
             <Input id="filtro-cp" name="cp" inputMode="numeric" pattern="\d{5}" maxLength={5} defaultValue={params.postalCode} className="h-9" />
           </Filter>
@@ -106,11 +111,27 @@ export function ComparableBaseFilters({ params }: { params: ComparableListParams
               <Input name="construidaMax" inputMode="decimal" placeholder="Hasta" aria-label="Superficie construida hasta" defaultValue={number(params.builtAreaMax)} className="h-9" />
             </div>
           </Filter>
-          <Filter label="Recámaras (mínimo)" htmlFor="filtro-recamaras">
-            <Input id="filtro-recamaras" name="recamaras" inputMode="numeric" defaultValue={number(params.bedrooms)} className="h-9" />
+          <Filter label="Precio u oferta ($)" htmlFor="filtro-precio-min">
+            <div className="flex items-center gap-1">
+              <Input id="filtro-precio-min" name="precioMin" inputMode="decimal" placeholder="Desde" defaultValue={number(params.priceMin)} className="h-9" />
+              <Input name="precioMax" inputMode="decimal" placeholder="Hasta" aria-label="Precio hasta" defaultValue={number(params.priceMax)} className="h-9" />
+            </div>
           </Filter>
-          <Filter label="Baños (mínimo)" htmlFor="filtro-banos">
-            <Input id="filtro-banos" name="banos" inputMode="decimal" defaultValue={number(params.bathrooms)} className="h-9" />
+          <Filter label="Recámaras" htmlFor="filtro-recamaras">
+            <div className="flex items-center gap-1">
+              <NativeSelect name="recamarasModo" defaultValue={params.bedroomsMode} aria-label="Cómo comparar las recámaras" className="w-32 [&_select]:h-9">
+                {COUNT_MODES.map((mode) => <NativeSelectOption key={mode} value={mode}>{COUNT_MODE_LABELS[mode]}</NativeSelectOption>)}
+              </NativeSelect>
+              <Input id="filtro-recamaras" name="recamaras" inputMode="numeric" defaultValue={number(params.bedrooms)} className="h-9" />
+            </div>
+          </Filter>
+          <Filter label="Baños (acepta medios: 2.5)" htmlFor="filtro-banos">
+            <div className="flex items-center gap-1">
+              <NativeSelect name="banosModo" defaultValue={params.bathroomsMode} aria-label="Cómo comparar los baños" className="w-32 [&_select]:h-9">
+                {COUNT_MODES.map((mode) => <NativeSelectOption key={mode} value={mode}>{COUNT_MODE_LABELS[mode]}</NativeSelectOption>)}
+              </NativeSelect>
+              <Input id="filtro-banos" name="banos" inputMode="decimal" step="0.5" defaultValue={number(params.bathrooms)} className="h-9" />
+            </div>
           </Filter>
           <Filter label="Alta o actualización desde" htmlFor="filtro-desde">
             <Input id="filtro-desde" name="desde" type="date" defaultValue={params.from ?? ""} className="h-9" />

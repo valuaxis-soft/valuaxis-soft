@@ -186,9 +186,14 @@ test("a possible duplicate is the same (most recent data, existing number) or a 
   });
   assert.deepEqual(similar.map((match) => [match.comparableId, match.reasons]), [[source.id, ["SIMILAR"]]]);
   assert.equal(similar[0].updatedOn, todayInMexico());
-  assert.deepEqual(await findDuplicates(next, owner.organizationId, {
+  // Another price is still the same place and area: a possible duplicate the appraiser decides on (27 Oct 2026),
+  // the case that went unnoticed when every rule asked for the same price.
+  assert.deepEqual((await findDuplicates(next, owner.organizationId, {
     url: null, location: `Allende, col. ${marker}, Arandas`, contactPhone: null, price: 1_800_000, area: 500,
-  }), [], "another price is another offer");
+  })).map((match) => [match.comparableId, match.reasons]), [[source.id, ["PLACE_AREA"]]]);
+  assert.deepEqual(await findDuplicates(next, owner.organizationId, {
+    url: null, location: `Allende, col. ${marker}, Arandas`, contactPhone: null, price: 1_800_000, area: 650,
+  }), [], "another area is another property");
 
   // "Es el mismo": the capture's data under the existing number.
   await createComparable(next, owner.user, "TERRENO_VENTA", comparable(`Allende 30, col. ${marker}, Arandas`, 500, 1_450_000, {

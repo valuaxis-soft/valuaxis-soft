@@ -57,6 +57,7 @@ const addressSchema = z.object({
   municipality: text(120).optional(),
   postalCode: z.string().trim().regex(/^(\d{5})?$/, "El código postal lleva 5 dígitos.").nullable().transform((value) => value || null).optional(),
   neighborhood: text(120).optional(),
+  subdivision: text(120).optional(),
   street: text(180).optional(),
   number: text(40).optional(),
 });
@@ -116,6 +117,7 @@ export const comparableInputSchema = z.object({
   // Fields of the card and its evidence; a client of before leaves them out and they stay as stored.
   consultedOn: day.optional(),
   validUntil: day.optional(),
+  validityMonths: z.number("La vigencia es un número de meses.").int("La vigencia va en meses completos.").min(1, "La vigencia va de 1 a 12 meses.").max(12, "La vigencia va de 1 a 12 meses.").nullable().optional(),
   listingText: text(LISTING_TEXT_MAX).optional(),
   address: addressSchema.nullable().optional(),
   urbanProximity: z.enum(URBAN_PROXIMITIES, "Proximidad urbana inválida.").nullable().optional(),
@@ -167,6 +169,8 @@ export const marketSettingsSchema = z.object({
   adoptedUnitValue: positive,
   justification: text(2000),
   additionalAmount: z.number().finite().min(0).max(1e12),
+  additionalAmountInCalculation: z.boolean().optional(),
+  showAdditionalAmount: z.boolean().optional(),
   rounding: roundingSchema.optional(),
   // Captures of the appraiser's format; clients that do not send them leave them as stored.
   offerLevel: z.enum(OFFER_LEVELS).nullable().optional(),
@@ -223,6 +227,8 @@ export const duplicateProbeSchema = z.object({
   contactPhone: z.string().trim().max(40).nullable().default(null),
   price: z.number().finite().positive().max(1e12).nullable().default(null),
   area: z.number().finite().positive().max(1e12).nullable().default(null),
+  sourceName: z.string().trim().max(180).nullable().optional(),
+  publicationId: z.string().trim().max(120).nullable().optional(),
 });
 
 /** "Usar el existente": the comparable of the firm's base to bring. */

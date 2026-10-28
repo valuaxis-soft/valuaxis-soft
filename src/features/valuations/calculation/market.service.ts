@@ -16,7 +16,9 @@ import { ENGINE_VERSION } from "../engine/config";
 import { computeMarketApproach } from "../engine/market";
 import { Trace } from "../engine/trace";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
-import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, inFirmBase, writableVersion, type Tx } from "./access";
+import {
+  asRecord, catalogId, decimal, findValuation, firmComparableMonths, formulasOrThrow, inFirmBase, versionPrecision, writableVersion, type Tx,
+} from "./access";
 import { propertyTypeKeyOf } from "./comparable-master";
 import { storedFormulas, type CapturedFormulas } from "./captured-formulas";
 import { matchOption, optionJustification, optionsFor, resolveFactorCatalog } from "./factor-catalog";
@@ -26,6 +28,7 @@ import { recomputeIncome } from "./income.service";
 import { computeMarketRegression, type MarketRegressionResult } from "./market-regression";
 import { withProvenance } from "../comparable-search/normalize";
 import {
+  addressFromRecord,
   coordinatesError,
   todayInMexico,
   type ComparableAddress,
@@ -34,10 +37,11 @@ import {
   type OperationType,
   type UrbanProximity,
 } from "./comparable-card";
-import { comparableDataChanged } from "./comparable-validity";
+import { addMonths, comparableDataChanged } from "./comparable-validity";
 import { PENDING_REVIEW, REVIEW_STATUSES, type ComparableReviewDto } from "./comparable-review";
 import type { ComparableInputPayload, ComparableReviewPayload, MarketSettingsPayload } from "./market-schemas";
 import {
+  COMPARABLE_TYPES,
   CUSTOM_FACTOR_KEY,
   OFFER_LEVELS,
   comparableFormValues,
@@ -103,7 +107,7 @@ export type ReviewSnapshot = ComparableReviewDto & { reviewedById: number | null
 type StoredConfiguration = Partial<Pick<MarketSettingsDto,
   | "factorSlots" | "adoptedUnitValue" | "rounding" | "offerLevel" | "offerLabels" | "offerMark" | "offerIntro" | "homologationBasis"
   | "typicalFrontage" | "typicalDepth" | "characteristicFields" | "subjectCharacteristics" | "showFactorJustification"
-  | "regression" | "showHomologationNote" | "homologationNote">> & {
+  | "regression" | "showHomologationNote" | "homologationNote" | "additionalAmountInCalculation" | "showAdditionalAmount">> & {
   /**
    * The lote tipo captured, kept while the homologation is against the
    * subject: NSuperficieBase holds it only against the lote tipo, so the cost
@@ -121,6 +125,8 @@ type PublicationSnapshot = {
   offerDate: string | null;
   consultedOn?: string | null;
   validUntil?: string | null;
+  /** "Vigencia" captured in months (1 to 12), from the day of consultation. */
+  validityMonths?: number | null;
   listingText?: string | null;
   /** "Pantalla de referencia": a stored image apart from the photos. */
   screenshot?: PhotoSnapshot | null;
@@ -160,13 +166,7 @@ export type ComparableRow = Prisma.ComparableAvaluoGetPayload<{ include: typeof 
 const stringOrNull = (value: unknown) => (typeof value === "string" && value ? value : null);
 const numberOrNull = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
-function addressOf(snapshot: Partial<AddressSnapshot>): ComparableAddress | null {
-  const address: ComparableAddress = {
-    state: stringOrNull(snapshot.state), municipality: stringOrNull(snapshot.municipality), postalCode: stringOrNull(snapshot.postalCode),
-    neighborhood: stringOrNull(snapshot.neighborhood), street: stringOrNull(snapshot.street), number: stringOrNull(snapshot.number),
-  };
-  return Object.values(address).some(Boolean) ? address : null;
-}
+const addressOf = (snapshot: Partial<AddressSnapshot>): ComparableAddress | null => addressFromRecord(snapshot);
 
 /** The stored review, or "por revisar" when there is none. */
 function reviewOf(stored: Prisma.JsonValue | null): ComparableReviewDto {
@@ -232,6 +232,7 @@ export async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean
     offerDate: publication.offerDate ?? null,
     consultedOn: publication.consultedOn ?? null,
     validUntil: publication.validUntil ?? null,
+    validityMonths: publication.validityMonths ?? null,
     listingText: publication.listingText ?? null,
     address: addressOf(address),
     urbanProximity: property.urbanProximity ?? null,
@@ -267,13 +268,14 @@ export async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean
 
 async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, withPhotoUrls: boolean) {
   const typeId = await comparableTypeId(tx, type);
-  const [approach, rows] = await Promise.all([
+  const [approach, rows, precision] = await Promise.all([
     tx.enfoqueMercado.findUnique({ where: { IdVersionAvaluo_IdTipoComparable: { IdVersionAvaluo: versionId, IdTipoComparable: typeId } } }),
     tx.comparableAvaluo.findMany({
       where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, BIncluido: true },
       include: comparableInclude,
       orderBy: [{ IOrden: "asc" }, { IdComparableAvaluo: "asc" }],
     }),
+    versionPrecision(tx, versionId),
   ]);
   const defaults = defaultMarketSettings(type);
   const configuration = asRecord(approach?.JConfiguracion ?? null) as StoredConfiguration;
@@ -298,11 +300,13 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
         regression: configuration.regression ?? null,
         showHomologationNote: configuration.showHomologationNote ?? true,
         homologationNote: configuration.homologationNote ?? null,
+        ...(configuration.additionalAmountInCalculation === undefined ? {} : { additionalAmountInCalculation: configuration.additionalAmountInCalculation }),
+        ...(configuration.showAdditionalAmount === undefined ? {} : { showAdditionalAmount: configuration.showAdditionalAmount }),
         formulas: storedFormulas(configuration.formulas),
       }
     : { ...defaults, formulas: {} };
   const comparables = await Promise.all(rows.map((row) => toComparableDto(row, withPhotoUrls)));
-  return { typeId, settings, comparables, configured: approach !== null };
+  return { typeId, settings, comparables, configured: approach !== null, precision };
 }
 
 /**
@@ -332,8 +336,11 @@ export async function getMarketCalculation(publicId: string, organizationId: num
     const avaluo = await findValuation(tx, publicId, organizationId);
     const versionId = avaluo.IdVersionTrabajo ?? avaluo.IdVersionFinal;
     if (!versionId) return { settings: defaultMarketSettings(type), comparables: [], locked: avaluo.BBloqueado, configured: false };
-    const { settings, comparables, configured } = await loadCalculation(tx, versionId, type, true);
-    return { settings, comparables, locked: avaluo.BBloqueado, configured };
+    const [{ settings, comparables, configured, precision }, comparableValidityMonths] = await Promise.all([
+      loadCalculation(tx, versionId, type, true),
+      firmComparableMonths(tx, organizationId),
+    ]);
+    return { settings, comparables, locked: avaluo.BBloqueado, configured, precision, comparableValidityMonths };
   });
 }
 
@@ -343,13 +350,13 @@ export async function getMarketCalculation(publicId: string, organizationId: num
 
 /** Recomputes the approach with the engine and stores the result and its trace. */
 async function recompute(tx: Tx, versionId: number, type: ComparableType) {
-  const { typeId, settings, comparables } = await loadCalculation(tx, versionId, type, false);
+  const { typeId, settings, comparables, precision } = await loadCalculation(tx, versionId, type, false);
   const engineInput = toMarketEngineInput({ settings, comparables });
   const calculationKey = `MOTOR.MERCADO.${type}`;
   await tx.ejecucionCalculo.deleteMany({ where: { IdVersionAvaluo: versionId, SClaveCalculo: calculationKey } });
 
   const trace = new Trace();
-  const config = marketEngineConfig(settings);
+  const config = marketEngineConfig(settings, precision);
   const result = engineInput.ok ? computeMarketApproach(engineInput.input, config, trace) : null;
   // The regression is a reference: its steps join the trace, its value changes nothing of the market's.
   const regressionTrace = new Trace();
@@ -409,6 +416,19 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
   await recomputeDependents(tx, versionId, type);
 }
 
+/**
+ * Every market of a version captured so far, recomputed with what is stored
+ * (after its precision changes), and what depends on them: costs, income and
+ * the conclusion.
+ */
+export async function recomputeMarkets(tx: Tx, versionId: number) {
+  const markets = await tx.enfoqueMercado.findMany({ where: { IdVersionAvaluo: versionId }, select: { tipoComparable: { select: { SClave: true } } } });
+  const captured = new Set(markets.map((market) => market.tipoComparable.SClave));
+  for (const type of COMPARABLE_TYPES) if (captured.has(type)) await recompute(tx, versionId, type);
+  await recomputeCosts(tx, versionId);
+  await recomputeIncome(tx, versionId);
+}
+
 /** What the execution keeps of the regression: the reference values, not the data the trace already has. */
 function regressionSummary({ fit, unitValue, value }: MarketRegressionResult) {
   return {
@@ -457,6 +477,9 @@ function storedConfiguration(settings: StoredConfiguration) {
     regression: settings.regression ?? null,
     ...(settings.showHomologationNote === undefined ? {} : { showHomologationNote: settings.showHomologationNote }),
     homologationNote: settings.homologationNote ?? null,
+    ...(settings.additionalAmountInCalculation === undefined ? {} : { additionalAmountInCalculation: settings.additionalAmountInCalculation }),
+    // Out of the calculation, the additional amount does not print either.
+    ...(settings.showAdditionalAmount === undefined ? {} : { showAdditionalAmount: settings.showAdditionalAmount && settings.additionalAmountInCalculation !== false }),
     formulas: settings.formulas ?? {},
   } as Prisma.InputJsonValue;
 }
@@ -567,6 +590,8 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
         regression: unlessOmitted(payload.regression, stored.regression),
         showHomologationNote: payload.showHomologationNote ?? stored.showHomologationNote,
         homologationNote: unlessOmitted(payload.homologationNote, stored.homologationNote),
+        additionalAmountInCalculation: payload.additionalAmountInCalculation ?? stored.additionalAmountInCalculation,
+        showAdditionalAmount: payload.showAdditionalAmount ?? stored.showAdditionalAmount,
         formulas,
       }),
     };
@@ -594,6 +619,14 @@ function comparableFormulas(payload: ComparableInputPayload, previous: Comparabl
     previous: previous ? comparableFormulaValues(previous) : {},
     previousFormulas: previous?.formulas ?? {},
   });
+}
+
+/** The day a comparable stops being valid: its day of consultation plus its months, or the day typed before months existed. */
+function validUntilOf(payload: ComparableInputPayload, stored: Partial<PublicationSnapshot>) {
+  const months = unlessOmitted(payload.validityMonths, stored.validityMonths);
+  const consulted = unlessOmitted(payload.consultedOn, stored.consultedOn);
+  if (months) return addMonths(consulted ?? todayInMexico(), months);
+  return unlessOmitted(payload.validUntil, stored.validUntil);
 }
 
 type StoredSnapshots = {
@@ -659,7 +692,9 @@ function snapshots(payload: ComparableInputPayload, formulas: CapturedFormulas, 
     url: payload.url,
     offerDate: payload.offerDate,
     consultedOn: unlessOmitted(payload.consultedOn, storedPublication.consultedOn),
-    validUntil: unlessOmitted(payload.validUntil, storedPublication.validUntil),
+    validityMonths: unlessOmitted(payload.validityMonths, storedPublication.validityMonths),
+    // Captured in months, the validity is the day of consultation plus them; otherwise the day typed (comparables of before).
+    validUntil: validUntilOf(payload, storedPublication),
     listingText: unlessOmitted(payload.listingText, storedPublication.listingText),
     screenshot: storedPublication.screenshot ?? null,
     details: unlessOmitted(payload.listingDetails, storedPublication.details),

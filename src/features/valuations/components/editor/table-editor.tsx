@@ -479,7 +479,7 @@ function EditableTableCell({
         onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, compiled.formula)));
         return;
       }
-      toast.error(`La fórmula no se aplicó. ${compiled.message}`);
+      toast.error("La fórmula no se aplicó", { description: compiled.message, duration: 12_000 });
       setValue(text);
     },
   });

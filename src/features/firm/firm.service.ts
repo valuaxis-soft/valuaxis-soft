@@ -82,6 +82,7 @@ export async function getFirmSettings(organizationId: number): Promise<FirmSetti
     validityMonths: organization.IMesesVigencia,
     folioPrefix: organization.SPrefijoFolio,
     logoUrl: await logoUrl(organization),
+    comparableValidityMonths: organization.IMesesVigenciaComparables,
   };
 }
 
@@ -101,6 +102,7 @@ export async function saveFirmSettings(user: AuthUser, input: FirmSettingsInput)
       SRegistroPerito: input.signers[0]?.cedula ?? null,
       IMesesVigencia: input.validityMonths,
       SPrefijoFolio: input.folioPrefix,
+      ...(input.comparableValidityMonths === undefined ? {} : { IMesesVigenciaComparables: input.comparableValidityMonths }),
     },
   });
   await recordAuditEvent({

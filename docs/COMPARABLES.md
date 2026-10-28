@@ -68,6 +68,16 @@ Tomada como guía (no como definitiva) del libro "Valuaxis_Comparables_INICIO v1
 - **Exportar:** Comparables (con los filtros, hasta 1,000) y el mercado del avalúo exportan en la misma plantilla, para editar e importar de vuelta. La de la base va sin folio y con «Solo base general»; la del avalúo, con su folio. Contacto y teléfono solo para quien puede editar comparables.
 - **Pendiente:** borrar un comparable de la base sin avalúo (no hay pantalla todavía).
 
+## Duplicados al capturar, fraccionamiento, vigencia en meses y filtros (hecha, 27 oct 2026)
+
+Del video del valuador del 27 oct 2026. Migración 052.
+
+- **Por qué no avisaba:** fuera de número, liga y publicación, toda regla pedía el mismo precio (±1 %): el teléfono iba con el precio y `SIMILAR` era colonia, superficie y precio. Un comparable con el mismo municipio, el fraccionamiento con las palabras en otro orden, el mismo teléfono y la misma superficie pero otro precio no coincidía en nada; tampoco se revisaba en "Revisión de comparables".
+- **Ahora** (`calculation/comparable-duplicates.ts`): el texto se compara sin mayúsculas, acentos, espacios, guiones ni diagonales y con las palabras en cualquier orden. Nuevas razones: `PHONE_AREA` (mismo teléfono y superficie, otro precio) y `PLACE_AREA` (misma colonia, fraccionamiento y municipio, y la misma superficie). Un municipio solo no es un lugar. El diálogo pregunta mientras se captura, desde los primeros campos (ubicación, superficie, teléfono, liga), muestra con qué comparable coincide y en qué, y ofrece "Usar el existente"; al guardar vuelve a preguntar. La revisión avisa `DUPLICATE` con el número del comparable que repite.
+- **Fraccionamiento:** parte opcional de la dirección (`address.subdivision`), en la captura, la línea que imprime el dictamen (`fracc. …`), los filtros de Comparables y la plantilla maestra (columna «Fraccionamiento»).
+- **Vigencia:** se captura en meses (1 a 12) y la fecha es la de consulta más esos meses (`validityMonths` en el snapshot de la publicación). Cada despacho elige en Datos del despacho los meses con que nace cada comparable (`Organizacion.IMesesVigenciaComparables`, 6 por omisión); "Vigente hasta" de la base, su filtro, la ficha, la revisión y el aviso de oferta vieja usan los meses del comparable o los del despacho.
+- **Filtros:** recámaras y baños con «Al menos», «Exactamente» o «Hasta» (los baños aceptan medios) y rango de precio.
+
 ## Extracción de portales
 
 Se probó leer anuncios desde el servidor el 29 de septiembre de 2026. Inmuebles24, Lamudi, Vivanuncios, Propiedades.com y Mitula bloquean a los robots (401/403, verificación anti-bots); solo Mercado Libre responde, con datos estructurados. No se evaden esas protecciones. Las opciones viables, pendientes de decidir con el cliente, son pegar el texto del anuncio y extraerlo con IA (cualquier portal) e importar por liga desde Mercado Libre.

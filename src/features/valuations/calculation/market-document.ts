@@ -10,6 +10,7 @@ import type { MarketApproachResult } from "../engine/market";
 import { CONSTANT_LETTERS, VARIABLE_LETTERS } from "../engine/regression";
 import type { AppSection, Block, TableContent } from "../model";
 import type { TableNote, TableSummaryBox } from "../services/table";
+import { factorDecimals } from "./calculation-precision";
 import {
   EMPTY,
   figure,
@@ -41,6 +42,7 @@ import {
   isRentComparableType,
   offerLabelsOf,
   offerMarkOf,
+  printsAdditionalAmount,
   type CharacteristicField,
   type ComparableDto,
   type ComparableType,
@@ -148,6 +150,10 @@ const PAGE: Record<ComparableType, {
     baseArea: "Lote Tipo", subject: "Lote Sujeto", value: "RENTA MENSUAL ESTIMADA DEL TERRENO",
   },
 };
+
+/** Above the homologation of the land rent market: its factors are those of the land sale market. */
+export const SAME_FACTORS_AS_LAND_SALE =
+  "Los factores de homologación considerados son los mismos que fueron empleados en el enfoque de mercado de venta de terrenos.";
 
 /** The sentence above the offer level grid, unless the appraiser writes another. */
 export const defaultOfferIntro = (type: ComparableType) => PAGE[type].offerIntro;
@@ -274,6 +280,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
 
   const slots = settings.factorSlots;
   const factors = "FACTORES DE HOMOLOGACIÓN";
+  const decimals = factorDecimals(calculation.precision);
   const homologationNote = homologationNoteOf(settings);
   const homologation = generatedApartado(`${prefix}-homologacion`, page.homologation, {
     tables: [generatedTable(`${prefix}-tabla-homologacion`, "Homologación",
@@ -292,10 +299,10 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
           row ? money(row.unitValue) : EMPTY,
           ...slots.map((slot) => {
             if (!row) return EMPTY;
-            if (slot.type === "SUPERFICIE") return figure(row.surfaceFactor);
-            return figure(factorValue(findFactor(comparable, slot)));
+            if (slot.type === "SUPERFICIE") return figure(row.surfaceFactor, decimals);
+            return figure(factorValue(findFactor(comparable, slot)), decimals);
           }),
-          row ? figure(row.resultantFactor) : EMPTY,
+          row ? figure(row.resultantFactor, decimals) : EMPTY,
           row ? money(row.homologatedUnitValue) : EMPTY,
         ];
       }),
@@ -303,6 +310,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
         rowKeys,
         summaryBoxes: homologationBoxes(calculation, result),
         notes: [
+          ...(settings.comparableType === "TERRENO_RENTA" ? [{ position: "top" as const, text: SAME_FACTORS_AS_LAND_SALE }] : []),
           ...(homologationNote ? [{ position: "bottom" as const, text: homologationNote }] : []),
           ...justificationNotes(calculation),
         ],
@@ -470,8 +478,23 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
   const subjectLabel = MARKET_LABELS[settings.comparableType].subjectArea.replace(" (m²)", "");
   // The engine's own subtotal: area × adopted value, as the books, with or without a lote tipo.
   const subtotal = subjectArea * result.adoptedUnitValue;
+  const stats = result.homologation.stats;
   boxes.push(
     { id: "sujeto", position: "bottom", align: "start", rows: [{ label: `${subjectLabel} (m²):`, value: squareMetres(subjectArea) }] },
+    // Before and after homologating: the lowest and highest unit values and their dispersion (max / min).
+    {
+      id: "dispersion",
+      position: "bottom",
+      align: "start",
+      rows: [
+        { label: `Mínimo de oferta (${page.unit}):`, value: money(stats.offerMin) },
+        { label: `Máximo de oferta (${page.unit}):`, value: money(stats.offerMax) },
+        { label: "Dispersión inicial:", value: figure(stats.initialDispersion, 2) },
+        { label: `Mínimo homologado (${page.unit}):`, value: money(stats.min) },
+        { label: `Máximo homologado (${page.unit}):`, value: money(stats.max) },
+        { label: "Dispersión final:", value: figure(stats.dispersion, 2) },
+      ],
+    },
     {
       id: "valores",
       position: "bottom",
@@ -488,7 +511,8 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
       rows: [
         { label: `${subjectLabel}:`, value: squareMetres(subjectArea) },
         { label: "Subtotal:", value: money(subtotal) },
-        { label: "Monto adicional a considerar:", value: settings.additionalAmount ? money(settings.additionalAmount) : "$ -" },
+        // Only when its box is marked (and it is in the calculation).
+        ...(printsAdditionalAmount(settings) ? [{ label: "Monto adicional a considerar:", value: settings.additionalAmount ? money(settings.additionalAmount) : "$ -" }] : []),
         { label: `${page.value}:`, value: money(result.value), emphasis: "total" },
       ],
     },

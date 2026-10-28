@@ -8,6 +8,8 @@ import {
 } from "@/features/valuations/services/valuation-signatures";
 import { normalizeFolioPrefix } from "./firm-rules";
 
+const COMPARABLE_MONTHS_ERROR = "La vigencia de los comparables va de 1 a 12 meses.";
+
 const optionalText = (max: number) =>
   z.string().trim().max(max).transform((value) => (value.length ? value : null)).nullable().optional()
     .transform((value) => value ?? null);
@@ -31,6 +33,8 @@ export const firmSettingsSchema = z.object({
   }),
   validityMonths: z.number().int(VALIDITY_MONTHS_ERROR).min(MIN_VALIDITY_MONTHS, VALIDITY_MONTHS_ERROR).max(MAX_VALIDITY_MONTHS, VALIDITY_MONTHS_ERROR),
   folioPrefix: z.string().transform(normalizeFolioPrefix).pipe(z.string().min(1, "Escribe un prefijo.").max(10, "Máximo 10 caracteres.")),
+  /** Months a comparable of the firm's base stays valid; a client of before leaves it out and it stays as stored. */
+  comparableValidityMonths: z.number().int(COMPARABLE_MONTHS_ERROR).min(1, COMPARABLE_MONTHS_ERROR).max(12, COMPARABLE_MONTHS_ERROR).optional(),
 });
 
 export type FirmSettingsInput = z.infer<typeof firmSettingsSchema>;

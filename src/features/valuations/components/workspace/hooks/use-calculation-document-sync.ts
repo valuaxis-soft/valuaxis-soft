@@ -6,7 +6,7 @@ import { canConclude, conclusionEngineConfig, type ConclusionCalculationDto } fr
 import { COST_TEMPLATE_BLOCK_IDS, costDocumentBlocks, withConstructionTables } from "@/features/valuations/calculation/cost-document";
 import { costEngineConfig, toCostEngineInput, type ConstructionTypesDto, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
 import { INCOME_BLOCK_PREFIX, INCOME_TEMPLATE_BLOCK_IDS, incomeDocumentBlocks } from "@/features/valuations/calculation/income-document";
-import { toIncomeEngineInput, type IncomeCalculationDto } from "@/features/valuations/calculation/income-types";
+import { incomeEngineConfig, toIncomeEngineInput, type IncomeCalculationDto } from "@/features/valuations/calculation/income-types";
 import { isMachineryCostBlock, isMachineryMarketBlock, machineryCostBlocks, machineryMarketBlocks } from "@/features/valuations/calculation/machinery-document";
 import { toMachineryCostEngineInput, toMachineryMarketEngineInput, type MachineryCalculationDto } from "@/features/valuations/calculation/machinery-types";
 import {
@@ -27,7 +27,6 @@ import {
   type MarketCalculationDto,
 } from "@/features/valuations/calculation/market-types";
 import { concludeValue } from "@/features/valuations/engine/conclusion";
-import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
 import { computeCostApproach } from "@/features/valuations/engine/costs";
 import { computeIncomeApproach } from "@/features/valuations/engine/income";
 import { computeMachineryCost, computeMachineryMarket } from "@/features/valuations/engine/machinery";
@@ -109,7 +108,7 @@ export function useCalculationDocumentSync({
   const applyIncome = (calculation: IncomeCalculationDto) => {
     if (!canEdit || calculation.locked || !calculation.configured) return;
     const input = toIncomeEngineInput(calculation);
-    const blocks = incomeDocumentBlocks(calculation, input.ok ? computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG) : null);
+    const blocks = incomeDocumentBlocks(calculation, input.ok ? computeIncomeApproach(input.input, incomeEngineConfig(calculation)) : null);
     updateBySection("motor-ingresos", (key, section) =>
       key === "INGRESOS"
         ? replaceGeneratedBlocks(section, (block) => block.id.startsWith(INCOME_BLOCK_PREFIX), blocks, { placeholderIds: INCOME_TEMPLATE_BLOCK_IDS })
@@ -190,7 +189,7 @@ export function useCalculationDocumentSync({
     for (const calculation of markets) {
       if (!calculation) continue;
       const input = toMarketEngineInput(calculation);
-      applyMarket(calculation, input.ok ? computeMarketApproach(input.input, marketEngineConfig(calculation.settings)) : null);
+      applyMarket(calculation, input.ok ? computeMarketApproach(input.input, marketEngineConfig(calculation.settings, calculation.precision)) : null);
     }
     if (machinery) {
       const calculation = await api.machinery.get(id).catch(() => null);

@@ -7,6 +7,7 @@
  */
 import { SURFACE_SLOT, type FactorSlot } from "../engine/factors";
 import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig, type RoundingDigits } from "../engine/config";
+import { withPrecision, type CalculationPrecision } from "./calculation-precision";
 import type { CostApproachInput } from "../engine/costs";
 import type { CapturedFormulas, PercentFields } from "./captured-formulas";
 
@@ -276,11 +277,15 @@ export type CostInputDto = {
 /** Completion and undivided share are typed as percentages and stored as fractions. */
 export const COST_PERCENT_FIELDS: PercentFields = (path) => /^(constructions|installations)\.\d+\.(completion|undivided)$/.test(path);
 
-export function costEngineConfig(calculation: Pick<CostInputDto, "rounding">): EngineConfig {
-  return calculation.rounding ? withRounding(DEFAULT_ENGINE_CONFIG, { costs: calculation.rounding }) : DEFAULT_ENGINE_CONFIG;
+/** The engine settings of the cost approach: the roundings the appraiser chose and the valuation's precision. */
+export function costEngineConfig(calculation: Pick<CostInputDto, "rounding"> & { precision?: CalculationPrecision | null }): EngineConfig {
+  const config = calculation.rounding ? withRounding(DEFAULT_ENGINE_CONFIG, { costs: calculation.rounding }) : DEFAULT_ENGINE_CONFIG;
+  return withPrecision(config, calculation.precision);
 }
 
 export type CostCalculationDto = Omit<CostInputDto, "land" | "constructions" | "installations"> & {
+  /** The valuation's precision (decimals shown, calculating with them); missing, the behavior of before. */
+  precision?: CalculationPrecision;
   land: CostLandDto;
   installations: InstallationDto[];
   /** The construction types picked by the cost approach, with their data from the construction section. */

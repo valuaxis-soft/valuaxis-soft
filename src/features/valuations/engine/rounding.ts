@@ -22,6 +22,23 @@ export function excelRound(value: number, digits: number): number {
   return negative ? -result : result;
 }
 
+/** Cents: the decimals a unit value is shown with. */
+const AMOUNT_DIGITS = 2;
+
+/**
+ * A factor as it is shown, when the valuation calculates with the precision
+ * shown (`EngineConfig.displayedPrecision`); as it is otherwise. Returns the
+ * value and the trace field of its rounding.
+ */
+export function shownFactor(value: number, precision: { factors: number } | null): { value: number; rounding?: number } {
+  return precision ? { value: excelRound(value, precision.factors), rounding: precision.factors } : { value };
+}
+
+/** A unit value as it is shown (cents), when the valuation calculates with the precision shown. */
+export function shownAmount(value: number, precision: { factors: number } | null): { value: number; rounding?: number } {
+  return precision ? { value: excelRound(value, AMOUNT_DIGITS), rounding: AMOUNT_DIGITS } : { value };
+}
+
 /** Rounds when a rounding is configured; `null` keeps the value as is. */
 export function roundIfSet(value: number, digits: number | null): number {
   return digits === null ? value : excelRound(value, digits);

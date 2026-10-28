@@ -100,8 +100,16 @@ test("the boxes of the homologation lead from the homologated values to the valu
   const table = homologation.tables[0];
   const boxes = printed(table).schema?.summaryBoxes ?? [];
   assert.deepEqual(boxes.map((box) => [box.id, box.position, box.align]), [
-    ["base", "top", "start"], ["sujeto", "bottom", "start"], ["valores", "bottom", "end"], ["valor", "bottom", "end"],
+    ["base", "top", "start"], ["sujeto", "bottom", "start"], ["dispersion", "bottom", "start"], ["valores", "bottom", "end"], ["valor", "bottom", "end"],
   ]);
+  // Before and after homologating: the lowest and highest values and the dispersion of each, two decimals.
+  const dispersion = boxRows(table, "dispersion") ?? [];
+  assert.deepEqual(dispersion.map(([label]) => label), [
+    "Mínimo de oferta ($/m²):", "Máximo de oferta ($/m²):", "Dispersión inicial:",
+    "Mínimo homologado ($/m²):", "Máximo homologado ($/m²):", "Dispersión final:",
+  ]);
+  assert.match(dispersion[2][1], /^\d\.\d{2}$/);
+  assert.match(dispersion[5][1], /^\d\.\d{2}$/);
   assert.deepEqual(boxes[0].rows, [
     { label: "Lote Tipo:", value: "—", mark: false },
     { label: "Lote Sujeto:", value: "169.78 m²", mark: true },
@@ -112,10 +120,9 @@ test("the boxes of the homologation lead from the homologated values to the valu
   assert.deepEqual(boxRows(table, "valor"), [
     ["Superficie del sujeto:", "169.78 m²"],
     ["Subtotal:", "$ 1,528,020.00"],
-    ["Monto adicional a considerar:", "$ -"],
     ["VALOR COMPARATIVO DE MERCADO (TERRENOS):", "$ 1,528,000.00"],
   ]);
-  assert.equal(boxes[3].rows.at(-1)?.emphasis, "total", "the value of the approach is the dark bar");
+  assert.equal(boxes[4].rows.at(-1)?.emphasis, "total", "the value of the approach is the dark bar");
   assert.deepEqual(printed(table).schema?.notes, [{ position: "bottom", text: DEFAULT_HOMOLOGATION_NOTE }], "no justification: only the legend");
 });
 

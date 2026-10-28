@@ -28,7 +28,10 @@ import {
   columnLetter,
   conceptReferenceText,
   formulaReferenceHighlights,
+  formulaTextProblem,
   isFormulaText,
+  withReference,
+  type InsertedReference,
   type FormulaReferenceHighlight,
   type FormulaConceptEntry,
   type FormulaIndex,
@@ -138,6 +141,10 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
     [index, session, begin, end, insertReference, keepsEditing, resume, highlights, showDraft],
   );
 
+  // The formula being written, in large type, and what is wrong with it while it is typed.
+  const draftText = session && draft?.fieldKey === session.fieldKey ? draft.text : null;
+  const problem = draftText === null ? null : formulaTextProblem(draftText);
+
   const openPicker = () => {
     keepEditingRef.current = true;
     setPickerOpen(true);
@@ -148,24 +155,41 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
       {children}
       {session ? (
         <div
-          className="fixed inset-x-0 bottom-4 z-40 mx-auto flex w-fit max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 shadow-lg dark:border-blue-500/40 dark:bg-blue-950 dark:text-blue-100"
+          className="fixed inset-x-0 bottom-4 z-40 mx-auto grid w-[min(56rem,calc(100vw-2rem))] gap-2 rounded-xl border-2 border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-900 shadow-xl dark:border-blue-500/60 dark:bg-blue-950 dark:text-blue-100"
           data-formula-bar=""
           // The bar is used while the field keeps the focus and the caret.
           onMouseDown={(event) => event.preventDefault()}
         >
-          <FunctionSquare className="size-4 shrink-0" />
-          <span>
-            <strong>Fórmula:</strong> haz clic en una celda o en un concepto para usarlo.
-          </span>
-          <Button type="button" size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={openPicker}>
-            <Search className="size-3" /> Buscar valor
-          </Button>
-          <Button type="button" size="sm" className="h-7 gap-1 text-xs" onClick={() => handlersRef.current?.apply()}>
-            <Check className="size-3" /> Aplicar
-          </Button>
-          <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => handlersRef.current?.cancel()}>
-            <X className="size-3" /> Cancelar
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <FunctionSquare className="size-5 shrink-0" />
+            <span>
+              <strong>Fórmula:</strong> haz clic en una celda o en un concepto para usarlo; otro clic sin operador lo cambia.
+            </span>
+            <div className="ml-auto flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" className="gap-1" onClick={openPicker}>
+                <Search className="size-4" /> Buscar valor
+              </Button>
+              <Button type="button" size="sm" className="gap-1" onClick={() => handlersRef.current?.apply()}>
+                <Check className="size-4" /> Aplicar
+              </Button>
+              <Button type="button" size="sm" variant="ghost" className="gap-1" onClick={() => handlersRef.current?.cancel()}>
+                <X className="size-4" /> Cancelar
+              </Button>
+            </div>
+          </div>
+          {draftText !== null ? (
+            <p className="overflow-x-auto rounded-md border border-blue-200 bg-background px-3 py-2 font-mono text-base whitespace-pre text-foreground dark:border-blue-500/40" data-formula-text="">
+              {draftText}
+            </p>
+          ) : null}
+          {problem ? (
+            <p className="rounded-md bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 dark:bg-red-950/60 dark:text-red-300" role="status" data-formula-problem="">
+              {problem}
+            </p>
+          ) : null}
+          <p className="text-xs text-blue-900/80 dark:text-blue-100/80">
+            Operadores + − * / ^ y paréntesis. Funciones: SUMA, PROMEDIO, MIN, MAX (de un rango A1:A5 o una columna B:B), LN, LOG (base 10), RAIZ, POTENCIA, REDONDEAR.
+          </p>
         </div>
       ) : null}
       <FormulaValuePicker
@@ -215,6 +239,8 @@ export function useFormulaField({
   const [draft, setDraft] = useState<Draft | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const caretRef = useRef<number | null>(null);
+  /** The reference the last click wrote, while nothing was typed after it. */
+  const lastReferenceRef = useRef<InsertedReference | null>(null);
   const writingFormula = draft !== null && isFormulaText(draft.text);
 
   // What the bar's buttons and the clicks on other fields act on: the field as it is now.
@@ -227,6 +253,7 @@ export function useFormulaField({
   const takeDraft = useCallback(() => {
     const current = latestRef.current.draft;
     latestRef.current = { ...latestRef.current, draft: null };
+    lastReferenceRef.current = null;
     setDraft(null);
     return current;
   }, []);
@@ -249,9 +276,10 @@ export function useFormulaField({
         if (!current) return;
         const input = inputRef.current;
         const start = input?.selectionStart ?? current.text.length;
-        const endAt = input?.selectionEnd ?? start;
-        caretRef.current = start + text.length;
-        setDraft({ ...current, text: current.text.slice(0, start) + text + current.text.slice(endAt) });
+        const next = withReference(current.text, { start, end: input?.selectionEnd ?? start }, text, lastReferenceRef.current);
+        lastReferenceRef.current = next.reference;
+        caretRef.current = next.reference.end;
+        setDraft({ ...current, text: next.text });
       },
       apply: () => {
         commit();
@@ -288,6 +316,8 @@ export function useFormulaField({
     references: writingFormula && draft ? formulaReferenceHighlights(draft.text, editing.index, homeTableId) : NO_REFERENCES,
     /** Takes what was typed when it is, or was, a formula. False: the field handles it as a plain value. */
     change: (text: string) => {
+      // Typing ends the reference a click wrote: the next click adds another.
+      lastReferenceRef.current = null;
       if (draft) {
         // A plain value that was never a formula goes back to the field's own handling.
         if (!isFormulaText(text) && !isFormulaText(draft.initial)) {

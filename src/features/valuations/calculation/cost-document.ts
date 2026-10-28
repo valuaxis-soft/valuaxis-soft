@@ -17,10 +17,12 @@ import {
   effectiveConservation,
   extraFactorLabel,
   extraFactorsOf,
+  landReferenceArea,
   remainingUsefulLife,
   type CostCalculationDto,
   type DemeritColumnsDto,
 } from "./cost-types";
+import { factorDecimals } from "./calculation-precision";
 import {
   EMPTY,
   figure,
@@ -73,12 +75,16 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
   };
   const amount = (key: string) => money(value(key) ?? 0);
   const columns = costColumnsOf(calculation.columns);
+  // Factors with the decimals of the valuation (two unless it chose four).
+  const decimals = factorDecimals(calculation.precision);
+  const factor = (found: number | null | undefined) => figure(found, decimals);
   const apartados: Apartado[] = [];
 
   if (value("costos.terreno.valor") !== undefined) {
     const land = calculation.land;
     const area = land.subjectArea ?? calculation.market.subjectArea ?? 0;
     const referenceArea = input("costos.terreno.factorSuperficie", "loteTipo") ?? area;
+    const againstSubject = landReferenceArea(calculation).source === "subject";
     const group = "Factores de Homologación";
     apartados.push(generatedApartado(`${PREFIX}-terreno`, "A) TERRENO EN ESTUDIO", {
       tables: [generatedTable(`${PREFIX}-tabla-terreno`, "Terreno",
@@ -90,12 +96,13 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
         ],
         [[
           "I", figure(area), amount("costos.terreno.valorUnitario"),
-          ...LAND_FACTORS.map((factor) => figure(factor.key === "surface" ? value("costos.terreno.factorSuperficie") : land.factors[factor.key])),
-          figure(value("costos.terreno.factorResultante")),
+          ...LAND_FACTORS.map((item) => factor(item.key === "surface" ? value("costos.terreno.factorSuperficie") : land.factors[item.key])),
+          factor(value("costos.terreno.factorResultante")),
           amount("costos.terreno.valorUnitarioNeto"), amount("costos.terreno.valorParcial"),
         ]],
         { summaryBoxes: [
-          { id: "lote-tipo", position: "top", align: "start", rows: [{ label: "Lote Tipo:", value: squareMetres(referenceArea) }] },
+          // Homologated against the subject (no lote tipo), the measure is the subject's and says so.
+          { id: "lote-tipo", position: "top", align: "start", rows: [{ label: againstSubject ? "Lote Sujeto:" : "Lote Tipo:", value: squareMetres(referenceArea) }] },
           { id: "valor-mercado", position: "top", align: "end", rows: [{ label: "Valor comparativo de Mercado ($/m²):", value: amount("costos.terreno.valorUnitario") }] },
           { id: "superficie", position: "bottom", align: "start", rows: [{ label: "Superficie valuada:", value: squareMetres(area) }] },
           { id: "medio", position: "bottom", align: "center", rows: [{ label: "Valor Unitario Medio ($/m²):", value: amount("costos.terreno.valorUnitarioNeto") }] },
@@ -119,8 +126,8 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
             const key = `costos.construcciones.${row.ref}`;
             return [
               row.ref, row.description || EMPTY, figure(row.area), whole(row.age), whole(row.usefulLife), remainingLife(row.usefulLife, row.age),
-              figure(effectiveConservation(row)), figure(value(`${key}.factorEdad`)), figure(row.otherFactor),
-              ...extraFactorsOf(row, columns.constructions).map((factor) => figure(factor)), figure(value(`${key}.factorResultante`)),
+              factor(effectiveConservation(row)), factor(value(`${key}.factorEdad`)), factor(row.otherFactor),
+              ...extraFactorsOf(row, columns.constructions).map((extra) => factor(extra)), factor(value(`${key}.factorResultante`)),
               percent(row.completion), percent(row.undivided),
             ];
           }),
@@ -137,7 +144,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
             return [
               row.ref, row.description || EMPTY, figure(row.area),
               money(row.unitReplacementCost ?? 0), amount(`${key}.vrnParcial`),
-              figure(value(`${key}.factorResultante`)),
+              factor(value(`${key}.factorResultante`)),
               amount(`${key}.vnrUnitario`), amount(`${key}.vnrParcial`),
             ];
           }),
@@ -166,8 +173,8 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
             const key = `costos.instalaciones.${row.ref}`;
             return [
               ...itemCells(row), whole(row.age), whole(row.usefulLife), remainingLife(row.usefulLife, row.age),
-              figure(effectiveConservation(row)), figure(value(`${key}.factorEdad`)), figure(row.otherFactor),
-              ...extraFactorsOf(row, columns.installations).map((factor) => figure(factor)), figure(value(`${key}.factorResultante`)),
+              factor(effectiveConservation(row)), factor(value(`${key}.factorEdad`)), factor(row.otherFactor),
+              ...extraFactorsOf(row, columns.installations).map((extra) => factor(extra)), factor(value(`${key}.factorResultante`)),
               percent(row.completion), percent(row.undivided),
             ];
           }),
@@ -184,7 +191,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
             return [
               ...itemCells(row),
               money(row.unitReplacementCost ?? 0), amount(`${key}.vrnParcial`),
-              figure(value(`${key}.factorResultante`)),
+              factor(value(`${key}.factorResultante`)),
               amount(`${key}.vnrUnitario`), amount(`${key}.vnrParcial`),
             ];
           }),

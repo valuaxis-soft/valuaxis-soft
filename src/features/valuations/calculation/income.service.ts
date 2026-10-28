@@ -7,16 +7,16 @@ import { Prisma } from "@prisma/client";
 
 import type { AuthUser } from "@/features/auth/model";
 import { prisma } from "@/infrastructure/database/prisma-client";
-import { DEFAULT_ENGINE_CONFIG, ENGINE_VERSION } from "../engine/config";
+import { ENGINE_VERSION } from "../engine/config";
 import { computeIncomeApproach } from "../engine/income";
 import { Trace } from "../engine/trace";
-import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, writableVersion, type Tx } from "./access";
+import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, versionPrecision, writableVersion, type Tx } from "./access";
 import { storedFormulas } from "./captured-formulas";
 import { recomputeConclusion } from "./conclusion.service";
 import { loadRentMarket } from "./market.service";
 import { toMarketEngineInput } from "./market-types";
 import type { IncomeInputPayload } from "./income-schemas";
-import { DEFAULT_INCOME, INCOME_PERCENT_FIELDS, toIncomeEngineInput, type IncomeCalculationDto, type IncomeInputDto } from "./income-types";
+import { DEFAULT_INCOME, INCOME_PERCENT_FIELDS, incomeEngineConfig, toIncomeEngineInput, type IncomeCalculationDto, type IncomeInputDto } from "./income-types";
 
 const CALCULATION_KEY = "MOTOR.INGRESOS";
 
@@ -68,8 +68,8 @@ export async function getIncomeCalculation(publicId: string, organizationId: num
     if (!versionId) {
       return { ...DEFAULT_INCOME, formulas: {}, rentMarket: EMPTY_RENT_MARKET, configured: false, locked: avaluo.BBloqueado };
     }
-    const [{ input, configured }, market] = await Promise.all([loadInput(tx, versionId), rentMarket(tx, versionId)]);
-    return { ...input, rentMarket: market, configured, locked: avaluo.BBloqueado };
+    const [{ input, configured }, market, precision] = await Promise.all([loadInput(tx, versionId), rentMarket(tx, versionId), versionPrecision(tx, versionId)]);
+    return { ...input, rentMarket: market, configured, locked: avaluo.BBloqueado, precision };
   });
 }
 
@@ -121,7 +121,7 @@ export async function recomputeIncome(tx: Tx, versionId: number) {
 async function recomputeIncomeValues(tx: Tx, versionId: number) {
   const approach = await tx.enfoqueIngreso.findUnique({ where: { IdVersionAvaluo: versionId } });
   if (!approach) return;
-  const [{ input }, market] = await Promise.all([loadInput(tx, versionId), rentMarket(tx, versionId)]);
+  const [{ input }, market, precision] = await Promise.all([loadInput(tx, versionId), rentMarket(tx, versionId), versionPrecision(tx, versionId)]);
   const engineInput = toIncomeEngineInput({ ...input, rentMarket: market });
   await tx.ejecucionCalculo.deleteMany({ where: { IdVersionAvaluo: versionId, SClaveCalculo: CALCULATION_KEY } });
   if (!engineInput.ok) {
@@ -135,7 +135,7 @@ async function recomputeIncomeValues(tx: Tx, versionId: number) {
     return;
   }
   const trace = new Trace();
-  const result = computeIncomeApproach(engineInput.input, DEFAULT_ENGINE_CONFIG, trace);
+  const result = computeIncomeApproach(engineInput.input, incomeEngineConfig({ precision }), trace);
   await tx.enfoqueIngreso.update({
     where: { IdEnfoqueIngreso: approach.IdEnfoqueIngreso },
     data: {

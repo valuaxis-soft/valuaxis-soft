@@ -5,7 +5,7 @@
  */
 import type { EngineConfig } from "./config";
 import { ageFactor, productInOrder, resolveFactorSlots, surfaceFactor, type FactorSlot } from "./factors";
-import { roundIfSet } from "./rounding";
+import { roundIfSet, shownAmount, shownFactor } from "./rounding";
 import { Trace } from "./trace";
 
 export type UrbanLandInput = {
@@ -179,23 +179,25 @@ function costLand(land: UrbanLandInput | RuralLandInput, config: EngineConfig, t
       loteTipo: land.referenceArea, superficieSujeto: land.subjectArea, n: land.surfacePower,
       ...(land.surfaceFactor !== undefined ? { formula: surfaceFormula } : {}),
     },
-    value: land.surfaceFactor ?? surfaceFormula,
+    ...shownFactor(land.surfaceFactor ?? surfaceFormula, config.displayedPrecision),
   });
-  const factors = resolveFactorSlots(land.factors, surface);
+  // Each factor as it is shown, when the valuation calculates with the precision shown.
+  const factors = resolveFactorSlots(land.factors, surface)
+    .map((factor) => ({ ...factor, value: shownFactor(factor.value, config.displayedPrecision).value }));
   const product = productInOrder(factors.map((factor) => factor.value));
   const resultant = trace.record({
     key: "costos.terreno.factorResultante",
     label: "Factor resultante",
     formula: land.resultantFactor === undefined ? factors.map((factor) => factor.key).join(" × ") : "capturado por el valuador",
     inputs: { ...Object.fromEntries(factors.map((factor) => [factor.key, factor.value])), ...(land.resultantFactor === undefined ? {} : { formula: product }) },
-    value: land.resultantFactor ?? product,
+    ...shownFactor(land.resultantFactor ?? product, config.displayedPrecision),
   });
   const netUnitValue = trace.record({
     key: "costos.terreno.valorUnitarioNeto",
     label: "Valor unitario neto",
     formula: "factor resultante × valor unitario",
     inputs: { factorResultante: resultant, valorUnitario: unitValue },
-    value: resultant * unitValue,
+    ...shownAmount(resultant * unitValue, config.displayedPrecision),
   });
   const partial = trace.record({
     key: "costos.terreno.valorParcial",
@@ -223,7 +225,7 @@ function costConstructions(rows: ConstructionInput[], config: EngineConfig, trac
     const completion = row.completion ?? 1;
     const undivided = row.undivided ?? 1;
     const age = recordAgeFactor(row, key, config, trace);
-    const resultant = recordResultant(row, key, age, other, trace);
+    const resultant = recordResultant(row, key, age, other, trace, config);
     trace.record({
       key: `${key}.vrnParcial`,
       label: `Valor de reposición nuevo ${row.ref}`,
@@ -236,7 +238,7 @@ function costConstructions(rows: ConstructionInput[], config: EngineConfig, trac
       label: `Valor neto de reposición unitario ${row.ref}`,
       formula: "factor resultante × VRN unitario",
       inputs: { factorResultante: resultant, vrnUnitario: row.unitReplacementCost },
-      value: resultant * row.unitReplacementCost,
+      ...shownAmount(resultant * row.unitReplacementCost, config.displayedPrecision),
     });
     subtotal += trace.record({
       key: `${key}.vnrParcial`,
@@ -276,30 +278,34 @@ function recordAgeFactor(row: DemeritRow, key: string, config: EngineConfig, tra
     label: `Factor de edad ${row.ref}`,
     formula: row.ageFactor === undefined ? `1 − (edad / vida útil)^${config.ageFactor.exponent}` : "capturado por el valuador",
     inputs: { edad: row.age, vidaUtil: row.usefulLife, ...(row.ageFactor === undefined ? {} : { formula }) },
-    value: row.ageFactor ?? formula,
+    ...shownFactor(row.ageFactor ?? formula, config.displayedPrecision),
   });
 }
 
 /**
  * FRe of the demerit factors: the captured one, or conservación × edad × otro
  * (T26, T47), times the factors the appraiser added (factor1, factor2) in order.
+ * With the precision shown, each factor and the FRe are rounded as they are shown.
  */
-function recordResultant(row: DemeritRow, key: string, age: number, other: number, trace: Trace): number {
-  const extras = row.extraFactors ?? [];
-  const formula = extras.reduce((product, factor) => product * factor, row.conservation * age * other);
+function recordResultant(row: DemeritRow, key: string, age: number, other: number, trace: Trace, config: EngineConfig): number {
+  const shown = (value: number) => shownFactor(value, config.displayedPrecision).value;
+  const conservation = shown(row.conservation);
+  const otherShown = shown(other);
+  const extras = (row.extraFactors ?? []).map(shown);
+  const formula = extras.reduce((product, factor) => product * factor, conservation * age * otherShown);
   const names = extras.map((_, index) => `factor${index + 1}`);
   return trace.record({
     key: `${key}.factorResultante`,
     label: `Factor resultante ${row.ref}`,
     formula: row.resultantFactor === undefined ? ["conservación × edad × otro", ...names].join(" × ") : "capturado por el valuador",
     inputs: {
-      conservacion: row.conservation,
+      conservacion: conservation,
       edad: age,
-      otro: other,
+      otro: otherShown,
       ...Object.fromEntries(extras.map((factor, index) => [names[index], factor])),
       ...(row.resultantFactor === undefined ? {} : { formula }),
     },
-    value: row.resultantFactor ?? formula,
+    ...shownFactor(row.resultantFactor ?? formula, config.displayedPrecision),
   });
 }
 
@@ -313,7 +319,7 @@ function costInstallations(rows: SpecialInstallationInput[], config: EngineConfi
     const completion = row.completion ?? 1;
     const undivided = row.undivided ?? 1;
     const age = recordAgeFactor(row, key, config, trace);
-    const resultant = recordResultant(row, key, age, other, trace);
+    const resultant = recordResultant(row, key, age, other, trace, config);
     trace.record({
       key: `${key}.vrnParcial`,
       label: `Valor de reposición nuevo ${row.ref}`,
@@ -326,7 +332,7 @@ function costInstallations(rows: SpecialInstallationInput[], config: EngineConfi
       label: `Valor neto de reposición unitario ${row.ref}`,
       formula: "factor resultante × VRN unitario",
       inputs: { factorResultante: resultant, vrnUnitario: row.unitReplacementCost },
-      value: resultant * row.unitReplacementCost,
+      ...shownAmount(resultant * row.unitReplacementCost, config.displayedPrecision),
     });
     const partial = trace.record({
       key: `${key}.vnrParcial`,
@@ -356,13 +362,14 @@ function costOtherAssets(rows: OtherAssetInput[], config: EngineConfig, trace: T
   let subtotal = 0;
   for (const row of rows) {
     const key = `costos.otrosBienes.${row.ref}`;
-    const age = ageFactor(row.age, row.usefulLife, config.ageFactor);
+    const shown = (value: number) => shownFactor(value, config.displayedPrecision).value;
+    const age = shown(ageFactor(row.age, row.usefulLife, config.ageFactor));
     const resultant = trace.record({
       key: `${key}.factorResultante`,
       label: `Factor resultante ${row.ref}`,
       formula: "conservación × edad × riesgo",
-      inputs: { conservacion: row.conservation, factorEdad: age, riesgo: row.riskFactor },
-      value: row.conservation * age * row.riskFactor,
+      inputs: { conservacion: shown(row.conservation), factorEdad: age, riesgo: shown(row.riskFactor) },
+      ...shownFactor(shown(row.conservation) * age * shown(row.riskFactor), config.displayedPrecision),
     });
     subtotal += trace.record({
       key: `${key}.vnrParcial`,

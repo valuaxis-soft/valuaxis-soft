@@ -191,13 +191,16 @@ test("what is not a formula is rejected, never run and never a crash", () => {
     "", " ", "=", "1+", "*2", "(1+2", "1+2)", "((", "))", "1 2", "1..2", "A", "B2C3", "A0", "A1:", "A1:B", ":A1",
     "SUMA(", "SUMA()", "SUMA(1;)", "NOEXISTE(1)", "alert(1)", "constructor(1)", "__proto__", "toString()", "hasOwnProperty(1)",
     "[", "[]", "[sin cerrar", "[]!A1", "[Tabla]!", "[Tabla]!1", "Tabla!", "'", "''", "1;2", "1,2", "A1!B2", "#REF!", "#REF!*2",
-    "process.exit(1)", "require('fs')", "this", "globalThis", "`x`", "${1}", "1e309", "=1+1", "\u0000", "😀", "A1 B1", "2(3)",
+    "process.exit(1)", "require('fs')", "this", "globalThis", "`x`", "${1}", "1e309", "\u0000", "😀", "A1 B1", "2(3)",
     "eval(1)", "Function(1)", "import(1)", "a=1", "1==1", "1<2", "&&", "{}", "[1,2][0]", "x=>x",
   ];
   for (const text of garbage) {
     assert.equal(parseFormula(text), null, JSON.stringify(text));
     assert.equal(compileFormula(`=${text}`, { index: NO_INDEX, table: tableOf("t", "T", ["A"], [["1"]]) }).ok, false, JSON.stringify(text));
   }
+  // "==" typed by habit reads as one "=" when the formula is applied; the parser alone still rejects it.
+  assert.equal(parseFormula("=1+1"), null);
+  assert.equal(compileFormula("==1+1", { index: NO_INDEX }).ok, true);
   // The names a call can use are a closed list: a property of every object is not one of them.
   assert.equal(evaluateFormula("valueOf(1)"), null);
 });
@@ -287,8 +290,11 @@ test("a formula that cannot be one says why in the appraiser's words", () => {
     return compiled.ok ? "" : compiled.message;
   };
   assert.match(message("="), /después del signo =/);
-  assert.match(message("=B2*"), /incompleta o mal escrita/);
-  assert.match(message("=NOEXISTE(B2)"), /incompleta o mal escrita/);
+  assert.match(message("=B2*"), /Falta un valor después del último operador/);
+  assert.match(message("=NOEXISTE(B2)"), /La función «NOEXISTE» no existe/);
+  assert.match(message("=(B2+C2"), /Falta un paréntesis de cierre/);
+  assert.match(message("=B2+C2)"), /Sobra un paréntesis de cierre/);
+  assert.match(message("=B2 3"), /incompleta o mal escrita/);
   assert.match(message("=Z9"), /La celda Z9 no existe: la tabla tiene 3 filas y 4 columnas/);
   assert.match(message("=B9"), /La celda B9 no existe/);
   assert.match(message("=[No hay]!A1"), /No hay una tabla llamada «No hay»/);

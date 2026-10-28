@@ -18,8 +18,8 @@ import {
   type IncomeCalculationDto,
   type IncomeDeductionDto,
   type IncomeInputDto,
+  incomeEngineConfig,
 } from "@/features/valuations/calculation/income-types";
-import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
 import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, computeIncomeApproach, type IncomeMethod } from "@/features/valuations/engine/income";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts } from "@/features/valuations/calculation/captured-formulas";
@@ -193,7 +193,7 @@ export function IncomeCalculationPanel(props: {
 
   const input = inputOf(draft);
   const engineInput = toIncomeEngineInput({ ...input, rentMarket: calculation.rentMarket });
-  const result = engineInput.ok ? computeIncomeApproach(engineInput.input, DEFAULT_ENGINE_CONFIG) : null;
+  const result = engineInput.ok ? computeIncomeApproach(engineInput.input, incomeEngineConfig(calculation)) : null;
   const save = () => { if (!readOnly) void enqueueSave(input); };
   const update = (patch: Partial<Draft>) => setDraft((current) => current && { ...current, ...patch });
   const adopted = calculation.rentMarket.adoptedUnitRent;

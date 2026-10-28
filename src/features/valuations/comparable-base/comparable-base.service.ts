@@ -9,16 +9,15 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
-import { asRecord, decimal } from "../calculation/access";
-import { parseComparableId, todayInMexico, type ComparableAddress, type OperationType } from "../calculation/comparable-card";
-import { OFFER_MAX_AGE_MONTHS } from "../calculation/comparable-review";
+import { asRecord, decimal, firmComparableMonths } from "../calculation/access";
+import { addressFromRecord, parseComparableId, todayInMexico, type ComparableAddress, type OperationType } from "../calculation/comparable-card";
 import { comparableValidity, type ComparableValidity } from "../calculation/comparable-validity";
 import { isRentComparableType, type ComparableType } from "../calculation/market-types";
 import { searchTokens } from "../comparable-search/normalize";
 import {
   AREA, FIRM_BASE_FROM, HAYSTACK, firmBaseCondition, likePattern, placeCondition, postalCodeCondition, wordsIn,
 } from "../comparable-search/own-base-sql";
-import { COMPARABLE_LIST_PAGE_SIZE, type ComparableListParams, type ComparableSort } from "./comparable-list-params";
+import { COMPARABLE_LIST_PAGE_SIZE, type ComparableListParams, type ComparableSort, type CountMode } from "./comparable-list-params";
 
 /** A valuation that used a comparable of the base. */
 export type ComparableBaseUse = { valuationId: string; folio: string; title: string | null; client: string | null };
@@ -77,7 +76,10 @@ const LAND_AREA = Prisma.sql`COALESCE(c."NSuperficieTerrenoCapturada", ${jsonNum
 const BUILT_AREA = Prisma.sql`COALESCE(c."NSuperficieConstruccionCapturada", c."NSuperficieRentableCapturada")`;
 /** The day of its data in Mexico, and that day plus the months of validity. */
 const DATA_DAY = Prisma.sql`(c."DFechaActualizacionDatos" AT TIME ZONE 'America/Mexico_City')::date`;
-const VALID_UNTIL = Prisma.sql`(${DATA_DAY} + make_interval(months => ${OFFER_MAX_AGE_MONTHS}::int))::date`;
+/** Its own months when it was captured with them (1 to 12), otherwise the firm's. */
+const VALIDITY_MONTHS = (firmMonths: number) => Prisma.sql`COALESCE(CASE WHEN jsonb_typeof(c."JPublicacionSnapshot"->'validityMonths') = 'number'
+  THEN (c."JPublicacionSnapshot"->>'validityMonths')::int END, ${firmMonths}::int)`;
+const VALID_UNTIL = (firmMonths: number) => Prisma.sql`(${DATA_DAY} + make_interval(months => ${VALIDITY_MONTHS(firmMonths)}))::date`;
 const OPERATION = Prisma.sql`COALESCE(c."JPropiedadSnapshot"->>'operationType', CASE WHEN t."SClave" LIKE '%RENTA' THEN 'RENTA' ELSE 'VENTA' END)`;
 
 const ORDER: Record<ComparableSort, Prisma.Sql> = {
@@ -102,7 +104,14 @@ const capturesOf = (organizationId: number) => Prisma.sql`
   ${FIRM_BASE_FROM}
   WHERE ${firmBaseCondition(organizationId)}`;
 
-function conditions(params: ComparableListParams, today: string): Prisma.Sql[] {
+/** Bedrooms or bathrooms: exactly, at least or at most that many (halves of a bathroom count). */
+function countCondition(expression: Prisma.Sql, value: number | null, mode: CountMode): Prisma.Sql[] {
+  if (value === null) return [];
+  if (mode === "exacto") return [Prisma.sql`${expression} = ${value}`];
+  return [mode === "hasta" ? Prisma.sql`${expression} <= ${value}` : Prisma.sql`${expression} >= ${value}`];
+}
+
+function conditions(params: ComparableListParams, today: string, firmMonths: number): Prisma.Sql[] {
   const folio = parseComparableId(params.q);
   const range = (expression: Prisma.Sql, min: number | null, max: number | null) => [
     ...(min === null ? [] : [Prisma.sql`${expression} >= ${min}`]),
@@ -120,6 +129,7 @@ function conditions(params: ComparableListParams, today: string): Prisma.Sql[] {
     ...placeCondition("state", params.state || undefined),
     ...placeCondition("municipality", params.municipality || undefined),
     ...placeCondition("neighborhood", params.neighborhood || undefined),
+    ...placeCondition("subdivision", params.subdivision || undefined),
     ...postalCodeCondition(params.postalCode || undefined),
     ...(params.types.length ? [Prisma.sql`t."SClave" IN (${Prisma.join(params.types)})`] : []),
     ...(params.operation ? [Prisma.sql`${OPERATION} = ${params.operation}`] : []),
@@ -127,31 +137,28 @@ function conditions(params: ComparableListParams, today: string): Prisma.Sql[] {
     ...wordsIn(Prisma.sql`unaccent(lower(concat_ws(' ', c."JPropiedadSnapshot"->>'landUse', c."JPropiedadSnapshot"->>'landUseKey')))`, params.landUse || undefined),
     ...range(LAND_AREA, params.landAreaMin, params.landAreaMax),
     ...range(BUILT_AREA, params.builtAreaMin, params.builtAreaMax),
-    ...range(jsonNumber("bedrooms"), params.bedrooms, null),
-    ...range(jsonNumber("bathrooms"), params.bathrooms, null),
+    ...countCondition(jsonNumber("bedrooms"), params.bedrooms, params.bedroomsMode),
+    ...countCondition(jsonNumber("bathrooms"), params.bathrooms, params.bathroomsMode),
+    ...range(Prisma.sql`c."NPrecioCapturado"`, params.priceMin, params.priceMax),
     ...(params.from ? [Prisma.sql`${DATA_DAY} >= ${params.from}::date`] : []),
     ...(params.to ? [Prisma.sql`${DATA_DAY} <= ${params.to}::date`] : []),
-    ...(params.validity === "VIGENTE" ? [Prisma.sql`${VALID_UNTIL} >= ${today}::date`] : []),
-    ...(params.validity === "VENCIDO" ? [Prisma.sql`${VALID_UNTIL} < ${today}::date`] : []),
+    ...(params.validity === "VIGENTE" ? [Prisma.sql`${VALID_UNTIL(firmMonths)} >= ${today}::date`] : []),
+    ...(params.validity === "VENCIDO" ? [Prisma.sql`${VALID_UNTIL(firmMonths)} < ${today}::date`] : []),
   ];
 }
 
 const text = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
 const finite = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
-function addressOf(value: Prisma.JsonValue): ComparableAddress | null {
-  const address = asRecord(value);
-  const parts: ComparableAddress = {
-    state: text(address.state), municipality: text(address.municipality), postalCode: text(address.postalCode),
-    neighborhood: text(address.neighborhood), street: text(address.street), number: text(address.number),
-  };
-  return Object.values(parts).some(Boolean) ? parts : null;
-}
+const addressOf = (value: Prisma.JsonValue): ComparableAddress | null => addressFromRecord(asRecord(value));
 
 function firstPhotoKey(photos: Prisma.JsonValue | null) {
   const photo = Array.isArray(photos) ? asRecord(photos[0] as Prisma.JsonValue) : {};
   return typeof photo.key === "string" && photo.key ? photo.key : null;
 }
+
+/** The months a comparable of the firm's base stays valid unless captured with its own. */
+export const firmValidityMonths = (organizationId: number) => firmComparableMonths(prisma, organizationId);
 
 /** One page of the firm's base with the filters and order of `params`. */
 export async function listComparableBase(
@@ -161,7 +168,8 @@ export async function listComparableBase(
 ): Promise<ComparableBasePage> {
   const today = options.today ?? todayInMexico();
   const pageSize = options.pageSize ?? COMPARABLE_LIST_PAGE_SIZE;
-  const where = conditions(params, today);
+  const firmMonths = await firmComparableMonths(prisma, organizationId);
+  const where = conditions(params, today, firmMonths);
   const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
     WITH "captures" AS (${capturesOf(organizationId)}),
     "latest" AS (
@@ -221,7 +229,7 @@ export async function listComparableBase(
       bedrooms: finite(property.bedrooms),
       bathrooms: finite(property.bathrooms),
       sourceName: text(publication.sourceName),
-      validity: comparableValidity(row.dataUpdatedAt, today),
+      validity: comparableValidity(row.dataUpdatedAt, today, finite(publication.validityMonths) ?? firmMonths),
       thumbnailUrl: photo && options.withThumbnails !== false ? await stableDownloadUrl(photo).catch(() => null) : null,
       uses: uses.get(row.baseKey) ?? [],
     };
