@@ -130,6 +130,11 @@ export type ColumnPresentation = {
 };
 
 export type TableSummaryRow = {
+  /**
+   * Names the row inside its box, so the appraiser's label for it follows it
+   * when rows before it come and go; absent, its place in the box.
+   */
+  id?: string;
   label: string;
   value: string;
   /** Printed with an "x" beside it: the option chosen among the rows of the box. */
@@ -173,6 +178,12 @@ export type GeneratedTableLayout = {
   /** Headers renamed, by column id or header group id. */
   labels?: Record<string, string>;
   extraColumns?: GeneratedExtraColumn[];
+  /**
+   * Labels of the boxes under or above the table renamed, by `boxId.rowKey`
+   * (see `summaryRowKey`) or `boxId.caption`: "Valor físico de reposición"
+   * printed as "Valor neto de reposición", keeping the figure.
+   */
+  boxLabels?: Record<string, string>;
 };
 
 export type GeneratedTableState = { source: TableV2; layout: GeneratedTableLayout };

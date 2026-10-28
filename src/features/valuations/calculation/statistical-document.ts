@@ -174,7 +174,7 @@ function regressionTables(calculation: StatisticalCalculationDto, result: Statis
     { column: figureColumn("Y ESTIMADO"), cells: [...data.rows.map((row) => cell(residuals.get(String(row.reference))?.fitted ?? Number.NaN)), EMPTY] },
     ...(showResidual ? [{ column: figureColumn("RESIDUO"), cells: [...data.rows.map((row) => cell(residuals.get(String(row.reference))?.residual ?? Number.NaN)), EMPTY] }] : []),
   ];
-  const unitValue = result.unitValue === null ? [] : [{ label: rent ? "RENTA ESTIMADA/M²/MES:" : "PRECIO ESTIMADO/M²:", value: money(result.unitValue), emphasis: "strong" as const }];
+  const unitValue = result.unitValue === null ? [] : [{ id: "unitario", label: rent ? "RENTA ESTIMADA/M²/MES:" : "PRECIO ESTIMADO/M²:", value: money(result.unitValue), emphasis: "strong" as const }];
   const boxes: TableSummaryBox[] = [
     { id: "constantes", position: "bottom", align: "start", caption: "CONSTANTES", rows: fit.coefficients.map((value, index) => ({ label: `${constants[index]} =`, value: significant.format(value) })) },
     {
@@ -184,7 +184,7 @@ function regressionTables(calculation: StatisticalCalculationDto, result: Statis
       caption: "VARIABLES",
       rows: [
         ...letters.map((letter, j) => ({ label: `SI: ${letter} (${data.variables[j]}) =`, value: amount(data.subject[j]) })),
-        { label: "Y =", value: fit.equation.replace("Y = ", "").replaceAll(" ", "") },
+        { id: "y", label: "Y =", value: fit.equation.replace("Y = ", "").replaceAll(" ", "") },
       ],
     },
     {
@@ -192,7 +192,7 @@ function regressionTables(calculation: StatisticalCalculationDto, result: Statis
       position: "bottom",
       align: "end",
       caption: "CONCLUSIONES",
-      rows: [...unitValue, { label: rent ? "RENTA MENSUAL ESTIMADA:" : "VALOR ESTIMADO DEL INMUEBLE:", value: money(result.value), emphasis: "total" }],
+      rows: [...unitValue, { id: "valor", label: rent ? "RENTA MENSUAL ESTIMADA:" : "VALOR ESTIMADO DEL INMUEBLE:", value: money(result.value), emphasis: "total" }],
     },
   ];
   const dataTable = splitTables(`${prefix}-tabla`, "Regresión lineal", columns, {

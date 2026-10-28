@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArchiveRestore, Check, ChevronLeft, ChevronRight, FileText, ListTree, Plus } from "lucide-react";
 
@@ -51,6 +51,9 @@ export function ValuationNavigation({
   removedSections?: AppSection[];
 }) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const activeSectionRef = useRef(activeSectionId);
+  // Whether there are tabs hidden on each side: the arrows are enabled only then.
+  const [overflow, setOverflow] = useState<StripOverflow>(NO_OVERFLOW);
 
   const scrollSections = (direction: -1 | 1) => {
     scrollSectionContainer(scrollContainerRef.current, direction);
@@ -58,8 +61,32 @@ export function ValuationNavigation({
 
   // The active tab is always in view, however it was chosen (list, undo, keyboard).
   useEffect(() => {
+    activeSectionRef.current = activeSectionId;
     revealSectionTab(scrollContainerRef.current, activeSectionId);
   }, [activeSectionId]);
+
+  // The strip measured again whenever it or its tabs change size (the browser's
+  // zoom, the window, a section renamed or added) and when it scrolls; after a
+  // change of size the active tab is brought back into view.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const update = () => setOverflow((current) => {
+      const next = stripOverflow(container);
+      return next.start === current.start && next.end === current.end ? current : next;
+    });
+    const observer = new ResizeObserver(() => {
+      update();
+      revealSectionTab(container, activeSectionRef.current);
+    });
+    observer.observe(container);
+    for (const child of container.children) observer.observe(child);
+    container.addEventListener("scroll", update, { passive: true });
+    return () => {
+      observer.disconnect();
+      container.removeEventListener("scroll", update);
+    };
+  }, [enabledSections.length]);
 
   return (
     <nav
@@ -80,8 +107,9 @@ export function ValuationNavigation({
         type="button"
         variant="ghost"
         size="icon-sm"
-        className="hidden sm:inline-flex max-lg:size-10"
+        className="shrink-0 pointer-coarse:hidden"
         aria-label="Desplazar secciones a la izquierda"
+        disabled={!overflow.start}
         onClick={() => scrollSections(-1)}
       >
         <ChevronLeft />
@@ -107,7 +135,7 @@ export function ValuationNavigation({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-9 shrink-0 rounded-full max-lg:min-h-10"
+                  className="h-9 shrink-0 rounded-full pointer-coarse:min-h-10"
                   title="Agregar una sección propia: capítulo o anexo"
                   disabled={readOnly}
                 >
@@ -140,8 +168,9 @@ export function ValuationNavigation({
         type="button"
         variant="ghost"
         size="icon-sm"
-        className="hidden sm:inline-flex max-lg:size-10"
+        className="shrink-0 pointer-coarse:hidden"
         aria-label="Desplazar secciones a la derecha"
+        disabled={!overflow.end}
         onClick={() => scrollSections(1)}
       >
         <ChevronRight />
@@ -177,7 +206,7 @@ function SectionListMenu({
             type="button"
             variant="outline"
             size="icon-sm"
-            className="shrink-0 max-lg:size-10"
+            className="shrink-0 pointer-coarse:size-10"
             aria-label="Ir a una sección"
             title="Ir a una sección"
           >
@@ -225,6 +254,15 @@ function SectionListMenu({
 }
 
 type ScrollableStrip = Pick<HTMLDivElement, "scrollBy" | "clientWidth" | "getBoundingClientRect" | "querySelectorAll">;
+
+type StripOverflow = { start: boolean; end: boolean };
+const NO_OVERFLOW: StripOverflow = { start: false, end: false };
+
+/** Whether the strip hides tabs before or after what it shows (a pixel of slack for fractional zoom). */
+export function stripOverflow(container: Pick<HTMLDivElement, "scrollLeft" | "scrollWidth" | "clientWidth">): StripOverflow {
+  const max = container.scrollWidth - container.clientWidth;
+  return { start: container.scrollLeft > 1, end: container.scrollLeft < max - 1 };
+}
 
 /** A few pixels so the tab brought in does not touch the arrow. */
 const TAB_MARGIN_PX = 8;

@@ -311,14 +311,14 @@ test("the typical frontage and depth of the zone print beside the lote tipo, eac
     ["base", "top", "start"], ["zona", "top", "end"], ["sujeto", "bottom", "start"],
   ], "on the line of the lote tipo, to its right");
   assert.deepEqual(both[1].rows, [
-    { label: "Frente tipo en la zona:", value: "8.00 m" },
-    { label: "Fondo tipo en la zona:", value: "17.50 m" },
+    { id: "frente", label: "Frente tipo en la zona:", value: "8.00 m" },
+    { id: "fondo", label: "Fondo tipo en la zona:", value: "17.50 m" },
   ]);
-  assert.deepEqual(boxes({ baseArea: 140, typicalDepth: 20 })[1].rows, [{ label: "Fondo tipo en la zona:", value: "20.00 m" }]);
+  assert.deepEqual(boxes({ baseArea: 140, typicalDepth: 20 })[1].rows, [{ id: "fondo", label: "Fondo tipo en la zona:", value: "20.00 m" }]);
   // Against the subject they are the subject's own.
   assert.deepEqual(boxes({ typicalFrontage: 7.5, typicalDepth: 22.6 })[1].rows, [
-    { label: "Frente del sujeto:", value: "7.50 m" },
-    { label: "Fondo del sujeto:", value: "22.60 m" },
+    { id: "frente", label: "Frente del sujeto:", value: "7.50 m" },
+    { id: "fondo", label: "Fondo del sujeto:", value: "22.60 m" },
   ]);
   assert.deepEqual(boxes({ typicalFrontage: null, typicalDepth: null }), boxes({}), "empty, the boxes are the ones of before");
   assert.equal(boxes({}).some((box) => box.id === "zona"), false);

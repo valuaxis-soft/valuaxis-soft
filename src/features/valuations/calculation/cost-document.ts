@@ -250,9 +250,9 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
     position: "bottom",
     align: "end",
     rows: [
-      ...parts.map((part) => ({ label: part.label, value: money(part.amount) })),
+      ...parts.map((part) => ({ id: part.letter, label: part.label, value: money(part.amount) })),
       // As the appraiser's current book closes the page (Bugambilias, video of 20 Oct 2026; REAL_ARANDAS).
-      { label: `VALOR FÍSICO DE REPOSICIÓN (${parts.map((part) => part.letter).join("+")}):`, value: money(result.physicalValue), emphasis: "total" },
+      { id: "total", label: `VALOR FÍSICO DE REPOSICIÓN (${parts.map((part) => part.letter).join("+")}):`, value: money(result.physicalValue), emphasis: "total" },
     ],
   };
   const closed = { ...last, tables: last.tables.map((item, index) => (index === last.tables.length - 1 ? withSummaryBox(item, closing) : item)) };

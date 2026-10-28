@@ -107,6 +107,12 @@ export type Concept = {
    * the last result, written as the concept's format reads it.
    */
   formula?: import("./services/table").TableFormula;
+  /**
+   * Only in a block the calculation writes: the label the calculation gave
+   * the concept, when the appraiser printed it under a name of their own
+   * (`label`). The calculation writing the block again keeps their name.
+   */
+  generatedLabel?: string;
 };
 
 export type TableContent = {

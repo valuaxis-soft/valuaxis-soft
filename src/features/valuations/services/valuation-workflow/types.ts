@@ -55,6 +55,7 @@ export type ConceptPayload = {
   customUnit?: string;
   /** Stored with the concept's configuration; `value` carries its last result. */
   formula?: unknown;
+  generatedLabel?: string;
 };
 
 export type ApartadoPayload = {

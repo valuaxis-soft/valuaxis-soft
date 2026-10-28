@@ -174,11 +174,12 @@ test("the dictamen shows the annuity and market-rate detail", () => {
   const trInputOk = toIncomeEngineInput(tr);
   assert.ok(trInputOk.ok);
   const trBlocks = incomeDocumentBlocks(tr, computeIncomeApproach(trInputOk.input, EXCEL_PROFILES.TR));
-  assert.deepEqual(trBlocks.map((block) => block.id), ["motor-ingresos-tasa-mercado", "motor-ingresos-resultado"]);
-  const rows = (trBlocks[0].tables[0] as unknown as { rows: string[][] }).rows;
+  // The rent market's dispersion first, as the market approach prints it.
+  assert.deepEqual(trBlocks.map((block) => block.id), ["motor-ingresos-dispersion", "motor-ingresos-tasa-mercado", "motor-ingresos-resultado"]);
+  const rows = (trBlocks[1].tables[0] as unknown as { rows: string[][] }).rows;
   assert.equal(rows.length, 4);
   assert.equal(rows[0][0], "1. Parcela 1");
-  assert.equal(trBlocks[1].concepts[1].value, "$5,090,678.68");
+  assert.equal(trBlocks[2].concepts[1].value, "$5,090,678.68");
 });
 
 test("sin mercado de rentas, cada tipo con su renta: la adoptada es el promedio ponderado", () => {

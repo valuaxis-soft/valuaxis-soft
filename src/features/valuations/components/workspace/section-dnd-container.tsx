@@ -223,7 +223,7 @@ export function SectionDndContainer({
     >
       <SortableContext items={sortableIds} strategy={horizontalListSortingStrategy}>
         <TabsList
-          className="h-9 min-w-max justify-start rounded-full bg-muted/70 p-1 max-lg:min-h-12"
+          className="h-9 min-w-max justify-start rounded-full bg-muted/70 p-1 pointer-coarse:h-12"
           // While a tab is being moved with the keyboard the arrows belong to
           // the drag, not to the tab list's roving focus; while one is being
           // renamed they belong to its text box.

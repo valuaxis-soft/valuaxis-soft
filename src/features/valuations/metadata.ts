@@ -40,6 +40,8 @@ export type ConceptMetadata = {
   dateFormat?: ConceptDateFormat;
   /** The concept's value is computed; its references are the ids of concepts, tables, rows and columns. */
   formula?: TableFormula;
+  /** The calculation's label of a concept of a generated block the appraiser renamed. */
+  generatedLabel?: string;
 };
 
 export type ImageMetadata = {
@@ -153,6 +155,7 @@ export function conceptMetadataFromContent(content: ConceptMetadataContent): Con
     labelKey: content.labelKey,
     valueKey: content.valueKey,
     formula: content.formula,
+    generatedLabel: content.generatedLabel,
   };
 }
 
@@ -171,6 +174,7 @@ export function hydrateConceptMetadata(config: unknown): ConceptMetadata {
     customUnit: conceptStringMetadata(config, "customUnit"),
     dateFormat: conceptDateFormat(config),
     formula: readConfigMetadata(config, (value) => (isRecord(value) ? readStoredFormula(value.formula) : undefined)),
+    generatedLabel: conceptStringMetadata(config, "generatedLabel"),
   };
 }
 
@@ -338,7 +342,7 @@ function conceptNumberMetadata(config: unknown, key: "spacingBefore" | "spacingA
   return readConfigMetadata(config, (value) => readNumberMetadata(value, key));
 }
 
-function conceptStringMetadata(config: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId") {
+function conceptStringMetadata(config: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId" | "generatedLabel") {
   const value = readConfigMetadata(config, (candidate) => readStringMetadata(candidate, key));
   return value || undefined;
 }
@@ -504,7 +508,7 @@ function readFlowSpacingBeforePx(config: unknown): number | undefined {
   });
 }
 
-function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId") {
+function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId" | "generatedLabel") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "string" ? metadata : undefined;

@@ -696,10 +696,14 @@ export function CostCalculationPanel(props: {
     return { ...current, indirects: [...current.indirects, { concept: "", percentage: "", base: "" }] };
   });
 
-  const textInput = (list: "constructions" | "installations" | "indirects", index: number, key: string, current: string, label: string, numeric = true, placeholder?: string) => {
+  /** `grouping`: amounts and areas show their thousands separator; factors, ages and percentages do not. */
+  const textInput = (
+    list: "constructions" | "installations" | "indirects", index: number, key: string, current: string, label: string, numeric = true, placeholder?: string, grouping = false,
+  ) => {
     const Control = numeric ? FormulaInput : Input;
     return (
       <Control
+        {...(numeric && grouping ? { grouping: true } : {})}
         aria-label={label}
         className={cell}
         value={current}
@@ -816,6 +820,7 @@ export function CostCalculationPanel(props: {
               <FieldLabel htmlFor="cost-land-reference">{reference.source === "subject" ? "Lote Sujeto (m²)" : "Lote Tipo (m²)"}</FieldLabel>
               <FormulaInput
                 id="cost-land-reference"
+                grouping
                 value={draft.land.referenceArea}
                 placeholder={calculation.market.baseArea !== null ? `De mercado: ${calculation.market.baseArea}` : reference.area ? `Sujeto: ${reference.area}` : "Igual al sujeto"}
                 onChange={setLand("referenceArea")}
@@ -823,7 +828,7 @@ export function CostCalculationPanel(props: {
             </Field>
             <Field>
               <FieldLabel htmlFor="cost-land-value">Valor comparativo de Mercado ($/m²)</FieldLabel>
-              <FormulaInput id="cost-land-value" value={draft.land.unitValue} placeholder={marketValue ? `De mercado: ${marketValue}` : "Captura el mercado de terrenos"} onChange={setLand("unitValue")} />
+              <FormulaInput id="cost-land-value" grouping value={draft.land.unitValue} placeholder={marketValue ? `De mercado: ${marketValue}` : "Captura el mercado de terrenos"} onChange={setLand("unitValue")} />
             </Field>
             <Field>
               <FieldLabel htmlFor="cost-land-power">Potencia</FieldLabel>
@@ -849,6 +854,7 @@ export function CostCalculationPanel(props: {
                   <td className="w-24 p-1">
                     <FormulaInput
                       id="cost-land-area"
+                      grouping
                       aria-label="Superficie de Sujeto (m²)"
                       className={cell}
                       value={draft.land.subjectArea}
@@ -977,7 +983,7 @@ export function CostCalculationPanel(props: {
                     <td className="w-20 px-1.5">{row.ref || "—"}</td>
                     <td className={`min-w-40 ${readOnlyCell}`}>{type?.description || "—"}</td>
                     <td className={`w-20 ${readOnlyCell}`}>{figure(type?.area)}</td>
-                    <td className="w-28 p-1">{textInput("constructions", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario ($/m²)")}</td>
+                    <td className="w-28 p-1">{textInput("constructions", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario ($/m²)", true, undefined, true)}</td>
                     <td className={`w-28 ${readOnlyCell}`}>{amount(`${key}.vrnParcial`)}</td>
                     <td className={cn("w-16", readOnlyCell, CALC_RESULT)}>{figure(value(`${key}.factorResultante`), 4)}</td>
                     <td className={`w-28 ${readOnlyCell}`}>{amount(`${key}.vnrUnitario`)}</td>
@@ -1062,7 +1068,7 @@ export function CostCalculationPanel(props: {
                       <td className="w-12 p-1">{textInput("installations", index, "ref", row.ref, "Referencia", false)}</td>
                       <td className="min-w-48 p-1">{textInput("installations", index, "description", row.description, "Descripción", false)}</td>
                       <td className="w-16 p-1">{textInput("installations", index, "unit", row.unit, "Unidad", false)}</td>
-                      <td className="w-16 p-1">{textInput("installations", index, "quantity", row.quantity, "Cantidad")}</td>
+                      <td className="w-16 p-1">{textInput("installations", index, "quantity", row.quantity, "Cantidad", true, undefined, true)}</td>
                       <td className="w-12 p-1">{textInput("installations", index, "age", row.age, "Edad")}</td>
                       <td className="w-12 p-1">{textInput("installations", index, "usefulLife", row.usefulLife, "Vida útil")}</td>
                       <td className={`w-12 ${readOnlyCell}`}>{figure(remainingUsefulLife(numbers))}</td>
@@ -1094,7 +1100,7 @@ export function CostCalculationPanel(props: {
                       <td className={`min-w-48 ${readOnlyCell}`}>{row.description || "—"}</td>
                       <td className={`w-16 ${readOnlyCell}`}>{row.unit || "—"}</td>
                       <td className={`w-16 ${readOnlyCell}`}>{figure(input.installations[index].quantity)}</td>
-                      <td className="w-28 p-1">{textInput("installations", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario")}</td>
+                      <td className="w-28 p-1">{textInput("installations", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario", true, undefined, true)}</td>
                       <td className={`w-28 ${readOnlyCell}`}>{amount(`${key}.vrnParcial`)}</td>
                       <td className={cn("w-16", readOnlyCell, CALC_RESULT)}>{figure(value(`${key}.factorResultante`), 4)}</td>
                       <td className={`w-28 ${readOnlyCell}`}>{amount(`${key}.vnrUnitario`)}</td>
@@ -1125,7 +1131,7 @@ export function CostCalculationPanel(props: {
             <div key={index} className="grid grid-cols-[minmax(0,1fr)_5rem_8rem_auto] items-center gap-2">
               {textInput("indirects", index, "concept", row.concept, "Concepto", false)}
               {textInput("indirects", index, "percentage", row.percentage, "Porcentaje (0.05 = 5 %)")}
-              {textInput("indirects", index, "base", row.base, "Base ($); vacía: construcciones e instalaciones")}
+              {textInput("indirects", index, "base", row.base, "Base ($); vacía: construcciones e instalaciones", true, undefined, true)}
               {!readOnly ? <Button type="button" size="icon-sm" variant="ghost" aria-label="Quitar el indirecto" onClick={() => removeRow("indirects", index)}><Trash2 /></Button> : null}
             </div>
           ))}

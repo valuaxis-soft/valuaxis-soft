@@ -46,12 +46,13 @@ function payloadOf(rows: Row[]): Payload {
 }
 const savedPayloadOf = (calculation: ConstructionTypesDto): Payload => ({ types: calculation.types, formulas: calculation.formulas });
 
-const COLUMNS: { key: keyof Omit<ConstructionTypeDto, "id">; label: string; numeric?: boolean; className: string }[] = [
+/** `grouping`: areas show their thousands separator; ages and useful lives do not. */
+const COLUMNS: { key: keyof Omit<ConstructionTypeDto, "id">; label: string; numeric?: boolean; grouping?: boolean; className: string }[] = [
   { key: "ref", label: "Tipo", className: "w-16" },
   { key: "description", label: "Descripción", className: "min-w-48" },
   { key: "classification", label: "Clasificación", className: "min-w-28" },
   { key: "quality", label: "Calidad", className: "min-w-24" },
-  { key: "area", label: "Sup. (m²)", numeric: true, className: "w-20" },
+  { key: "area", label: "Sup. (m²)", numeric: true, grouping: true, className: "w-20" },
   { key: "age", label: "Edad", numeric: true, className: "w-14" },
   { key: "usefulLife", label: "VUT", numeric: true, className: "w-14" },
 ];
@@ -183,6 +184,7 @@ export function ConstructionTypesPanel(props: {
                     return (
                       <td key={column.key} className={`p-1 ${column.className}`}>
                         <Control
+                          {...(column.grouping ? { grouping: true } : {})}
                           aria-label={column.label}
                           data-type-cell={`${index}:${column.key}`}
                           className={cell}
