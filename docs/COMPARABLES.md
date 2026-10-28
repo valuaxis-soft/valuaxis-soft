@@ -26,7 +26,7 @@ Característica 14. Cada factor se elige de un catálogo de calificaciones del d
 
 ## Carga desde Excel (hecha)
 
-"Importar Excel" en el panel de mercado descarga la plantilla del tipo de comparable (`GET /api/comparables/plantilla?tipo=`) y recibe el archivo lleno, `.xlsx` o `.csv` (con coma o punto y coma), de hasta 2 MB y 100 comparables.
+"Importar plantilla maestra" (antes "Importar Excel") en el panel de mercado descarga la plantilla del tipo de comparable (`GET /api/comparables/plantilla?tipo=`) y recibe el archivo lleno, `.xlsx` o `.csv` (con coma o punto y coma), de hasta 2 MB y 100 comparables.
 
 - Los encabezados se reconocen sin acentos ni mayúsculas y en cualquier orden. También acepta variantes comunes: "Dirección", "Precio", "Superficie", "Liga", "Fecha".
 - Los números aceptan `$1,528,000.00`; las fechas, fechas de Excel, `dd/mm/aaaa` o `aaaa-mm-dd`; la liga, un hipervínculo de Excel.
@@ -77,6 +77,18 @@ Del video del valuador del 27 oct 2026. Migración 052.
 - **Fraccionamiento:** parte opcional de la dirección (`address.subdivision`), en la captura, la línea que imprime el dictamen (`fracc. …`), los filtros de Comparables y la plantilla maestra (columna «Fraccionamiento»).
 - **Vigencia:** se captura en meses (1 a 12) y la fecha es la de consulta más esos meses (`validityMonths` en el snapshot de la publicación). Cada despacho elige en Datos del despacho los meses con que nace cada comparable (`Organizacion.IMesesVigenciaComparables`, 6 por omisión); "Vigente hasta" de la base, su filtro, la ficha, la revisión y el aviso de oferta vieja usan los meses del comparable o los del despacho.
 - **Filtros:** recámaras y baños con «Al menos», «Exactamente» o «Hasta» (los baños aceptan medios) y rango de precio.
+
+## Fichas, revisión, características y plantilla (hecha, 28 oct 2026)
+
+De las observaciones del valuador del 27 oct 2026. Sin migración: todo vive en los snapshots y en `JConfiguracion`.
+
+- **Ficha con aspecto de dictamen:** la ficha (diálogo, `/comparables/<uuid>` y memoria de cálculo) y el formulario Agregar/editar comparable se agrupan en apartados con banda azul y celdas de etiqueta en gris (`components/calculation/comparable-sheet.tsx`): Oferta, Ubicación, Fuente de información, Terreno, Construcción, Características y observaciones, Más datos del anuncio. En la memoria la ficha no lleva "Avalúos en que se usó", revisión ni avisos.
+- **Revisión de comparables:** filtros por estado (Por revisar, Verificados, Con observaciones, Rechazados) con su conteo y búsqueda por número, ubicación, fuente, contacto, notas o aviso, sin acentos ni mayúsculas. Cada estado tiene su color (insignia rellena y renglón teñido, `review-status-style.ts`). Cada aviso trae su ayuda (`WARNING_HELP`): qué significa y qué hacer, en especial "el contacto es sólo por portal" y "falta pantalla de referencia".
+- **Características agregadas:** cada comparable puede llevar características propias, nombre y valor (`JPropiedadSnapshot.attributes`, hasta 20; un cliente anterior que no las manda las conserva). Se capturan en el formulario (con los nombres ya usados como sugerencia) y filtran Comparables por nombre y, si se da, por valor (`caracteristica`, `valorCaracteristica`). El cálculo y la línea de características del dictamen no las leen; el texto libre sigue editable.
+- **Rentas:** el formulario de un comparable en renta captura la renta mensual o la anual (la otra se calcula; se guarda la mensual). La plantilla maestra trae «Renta mensual» y «Renta anual»: manda la mensual, sin ella la anual entre 12, sin las dos el precio con su periodo; si traen las dos y no cuadran, aviso.
+- **Listas abiertas:** calidad y conservación se eligen de una lista o se escriben (`QUALITY_OPTIONS`, `CONSERVATION_OPTIONS`). En la plantilla, las listas del despacho validan con alerta de «información» (Excel avisa y conserva el valor); las de Valuaxis siguen con «detener».
+- **Plantilla más didáctica:** instrucciones breves en INICIO (renglón 4), encabezados con color por bloque, columnas avanzadas (ID de publicación, coordenadas, moneda, base, periodo, fechas de revisión…) agrupadas con el esquema de Excel y plegadas (`MasterColumn.advanced`), paneles congelados en las primeras cinco columnas.
+- **Un solo nombre:** «Importar plantilla maestra» en el mercado del avalúo y en Comparables (el diálogo dice a dónde va cada renglón), «Exportar a plantilla maestra» y «Descargar plantilla maestra».
 
 ## Extracción de portales
 
