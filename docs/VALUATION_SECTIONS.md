@@ -54,3 +54,16 @@ Las operaciones viven en `services/structure-transfer.ts` (puras) y el editor la
 
 - Los valores capturados se guardan exactamente como se escribieron, en texto. Los valores guardados antes del 23 de septiembre de 2026 pueden estar en forma numérica ("7000" en lugar de "7,000.00") y se muestran así.
 - Las tablas se guardan como TableV2 sin pérdida (`table-persistence.ts`): ids de filas y columnas, texto exacto, fórmulas, formatos y esquema. Las filas, columnas y tablas borradas en el editor se marcan como eliminadas.
+
+## Capítulos, anexos y saltos de página
+
+- **Capítulos y anexos** (`services/document-structure.ts`, numeración en `section-numbering.ts`): las secciones después de Conclusión son anexos salvo que el valuador elija otra cosa en "Configuración de la sección" (`documentRole`). Un anexo imprime "ANEXO 1", "ANEXO 2"… (o el rótulo que escriba, `annexTitle`) en el título de su primer bloque impreso; sus bloques y apartados no llevan número romano. Los capítulos siguen con una sola cuenta romana. "+ Sección" pregunta Capítulo (se inserta antes de Conclusión) o Anexo (al final).
+- **Salto de página:** bloques y apartados tienen tres valores (`pageBreak`): automático, nueva página y continuar (empieza justo donde terminó el anterior; su título no se lleva a la página siguiente). Lo guardado antes con `startOnNewPage` se lee como "nueva página". Una sección empieza en página nueva o continúa la anterior (`pageBreak: "continue"`); en el dictamen las secciones que continúan comparten un solo flujo de páginas (`printableSectionGroups`). La carátula nunca comparte páginas.
+
+## Agregar al informe valuatorio
+
+Cada enfoque (costos, mercado de venta de inmuebles, de terrenos, de rentas, ingresos) tiene un interruptor en la configuración de su sección. Apagado se guarda en `excludedFromReport` de la sección (`services/report-approaches.ts`): el dictamen no imprime la sección (o, en mercado de venta, las páginas de ese mercado y sus fotos del anexo), no toma número, y la conclusión lo trata como "no aplica" (el servidor lo lee del documento guardado; el mercado se toma de inmuebles y si no de terrenos, entre los que siguen incluidos). Guardar un cambio de interruptor recalcula la conclusión.
+
+## Configuración que no se imprime
+
+La carátula abre con "Configuración del avalúo" (separador de miles, margen, barras de título, banda y precisión del cálculo) y cada sección con "Configuración de la sección": paneles de borde punteado con el rótulo "Configuración — no se imprime".

@@ -38,7 +38,9 @@ test("a custom section is saved with its content and position, renamed, and remo
   assert.equal(stored.id, custom.id);
   assert.equal(stored.title, "Planos");
   assert.equal(stored.custom, true);
-  assert.equal(stored.label, "XVI", "numbered after the fifteen registry sections");
+  // Saved as a chapter: it keeps its numeral after the map of comparables, an annex.
+  assert.equal(stored.documentRole, "chapter");
+  assert.equal(stored.label, "XV", "numbered after the fourteen registry chapters");
   assert.equal(stored.blocks[0].title, "Planos", "the banner follows the tab");
   assert.deepEqual(stored.blocks[0].concepts.map((concept) => [concept.label, concept.value]), [["Plano", "Planta baja"]]);
   assert.equal(reloaded.filter((section) => section.custom).length, 1);
