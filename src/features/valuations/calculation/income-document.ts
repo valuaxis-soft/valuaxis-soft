@@ -4,7 +4,7 @@
  */
 import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, type IncomeApproachResult } from "../engine/income";
 import type { Block, TableContent } from "../model";
-import { RATE_TABLE_OPTIONS, type IncomeCalculationDto } from "./income-types";
+import { RATE_TABLE_OPTIONS, rentMarketStats, type IncomeCalculationDto } from "./income-types";
 import { GENERATED_BLOCK_PREFIX } from "./market-document";
 
 export const INCOME_BLOCK_PREFIX = `${GENERATED_BLOCK_PREFIX}ingresos`;
@@ -24,8 +24,35 @@ function block(id: string, title: string, parts: Partial<Pick<Block, "concepts" 
   return { id, title, sectionLabel: "", enabled: true, required: false, concepts: parts.concepts ?? [], apartados: [], tables: parts.tables ?? [], images: [] };
 }
 
-const concepts = (prefix: string, rows: [string, string][]) =>
-  rows.map(([label, value], index) => ({ id: `${prefix}-${index + 1}`, label, value, enabled: true }));
+/**
+ * Concepts with an id of their own (`prefix-key`), so a label the appraiser
+ * renamed follows its concept when rows before it come and go.
+ */
+const concepts = (prefix: string, rows: [string, string, string][]) =>
+  rows.map(([key, label, value]) => ({ id: `${prefix}-${key}`, label, value, enabled: true }));
+
+/**
+ * The rent market's dispersion, as the market approach prints it: the lowest
+ * and highest rents offered and homologated, and the initial and final
+ * dispersions (max / min). None without rent comparables.
+ */
+function dispersionBlock(calculation: IncomeCalculationDto, result: IncomeApproachResult): Block[] {
+  const stats = rentMarketStats(calculation, result);
+  if (!stats) return [];
+  const prefix = `${INCOME_BLOCK_PREFIX}-dispersion`;
+  const unit = (value: number) => `${money.format(value)} /m²/mes`;
+  const ratio = (value: number) => value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return [block(prefix, "DISPERSIÓN DEL MERCADO DE RENTAS", {
+    concepts: concepts(prefix, [
+      ["oferta-minimo", "Mínimo de oferta", unit(stats.offerMin)],
+      ["oferta-maximo", "Máximo de oferta", unit(stats.offerMax)],
+      ["inicial", "Dispersión inicial", ratio(stats.initialDispersion)],
+      ["homologado-minimo", "Mínimo homologado", unit(stats.min)],
+      ["homologado-maximo", "Máximo homologado", unit(stats.max)],
+      ["final", "Dispersión final", ratio(stats.dispersion)],
+    ]),
+  })];
+}
 
 function table(id: string, title: string, columns: string[], rows: string[][]): TableContent {
   return { id, title, columns, rows, enabled: true };
@@ -33,7 +60,7 @@ function table(id: string, title: string, columns: string[], rows: string[][]): 
 
 export function incomeDocumentBlocks(calculation: IncomeCalculationDto, result: IncomeApproachResult | null): Block[] {
   if (!result) return [];
-  if (result.marketRate) return marketRateBlocks(calculation, result, result.marketRate);
+  if (result.marketRate) return [...dispersionBlock(calculation, result), ...marketRateBlocks(calculation, result, result.marketRate)];
   const prefix = INCOME_BLOCK_PREFIX;
   const units = calculation.rentableUnits.filter((unit) => (unit.area ?? calculation.rentMarket.subjectArea ?? 0) > 0);
   const rows = units.map((unit) => {
@@ -42,19 +69,20 @@ export function incomeDocumentBlocks(calculation: IncomeCalculationDto, result: 
     return [unit.description || "Superficie rentable", area(unitArea), `${money.format(unitRent)} /m²/mes`, money.format(unitArea * unitRent)];
   });
   const blocks = [
+    ...dispersionBlock(calculation, result),
     block(`${prefix}-rentas`, "CAPITALIZACIÓN DE RENTAS", {
       tables: [table(`${prefix}-tabla-rentas`, "Renta bruta mensual", ["Concepto", "Superficie rentable", "Renta unitaria", "Renta mensual"], rows)],
       concepts: concepts(`${prefix}-rentas`, [
-        ["Renta bruta mensual", money.format(result.grossMonthlyRent)],
+        ["bruta", "Renta bruta mensual", money.format(result.grossMonthlyRent)],
         ...(result.annuity
           ? [
-              ["Vacíos", `${calculation.annuity.vacancyDays ?? 0} días en ${calculation.annuity.contractYears ?? 0} años (${percent(result.annuity.vacancyFactor)})`],
-              ["Renta bruta efectiva mensual", money.format(result.annuity.effectiveGrossRent)],
-            ] as [string, string][]
+              ["vacios", "Vacíos", `${calculation.annuity.vacancyDays ?? 0} días en ${calculation.annuity.contractYears ?? 0} años (${percent(result.annuity.vacancyFactor)})`],
+              ["efectiva", "Renta bruta efectiva mensual", money.format(result.annuity.effectiveGrossRent)],
+            ] as [string, string, string][]
           : []),
-        ["Deducciones", percent(result.deductionsRate)],
-        ["Renta neta mensual", money.format(result.netMonthlyRent)],
-        ["Renta neta anual", money.format(result.netAnnualRent)],
+        ["deducciones", "Deducciones", percent(result.deductionsRate)],
+        ["neta-mensual", "Renta neta mensual", money.format(result.netMonthlyRent)],
+        ["neta-anual", "Renta neta anual", money.format(result.netAnnualRent)],
       ]),
     }),
     block(`${prefix}-deducciones`, "DEDUCCIONES", {
@@ -70,18 +98,18 @@ export function incomeDocumentBlocks(calculation: IncomeCalculationDto, result: 
     const annuity = result.annuity;
     blocks.push(block(`${prefix}-tasa`, "TASA DE CAPITALIZACIÓN", {
       concepts: concepts(`${prefix}-tasa`, [
-        ["TIIE a 28 días", percent(calculation.annuity.tiie ?? 0, 4)],
-        ["Inflación anual estimada", percent(calculation.annuity.inflation ?? 0, 4)],
-        ["Recuperación del capital (1 / vida útil remanente)", percent(1 / (calculation.annuity.remainingLifeYears ?? 1), 4)],
-        ["Tasa de capitalización", percent(annuity.option2.rate, 4)],
-        ["Valor presente de la renta neta mensual a " + annuity.option2.months + " meses", money.format(annuity.option2.value)],
-        ["Tasa de capitalización neta, base mercado", percent(annuity.option1.rate, 4)],
-        ["Valor con la tasa base mercado", money.format(annuity.option1.value)],
-        ["Valor que se concluye", annuity.option === 2 ? "Valor presente (anualidad)" : "Tasa base mercado"],
+        ["tiie", "TIIE a 28 días", percent(calculation.annuity.tiie ?? 0, 4)],
+        ["inflacion", "Inflación anual estimada", percent(calculation.annuity.inflation ?? 0, 4)],
+        ["recuperacion", "Recuperación del capital (1 / vida útil remanente)", percent(1 / (calculation.annuity.remainingLifeYears ?? 1), 4)],
+        ["tasa", "Tasa de capitalización", percent(annuity.option2.rate, 4)],
+        ["valor-presente", "Valor presente de la renta neta mensual a " + annuity.option2.months + " meses", money.format(annuity.option2.value)],
+        ["tasa-mercado", "Tasa de capitalización neta, base mercado", percent(annuity.option1.rate, 4)],
+        ["valor-mercado", "Valor con la tasa base mercado", money.format(annuity.option1.value)],
+        ["opcion", "Valor que se concluye", annuity.option === 2 ? "Valor presente (anualidad)" : "Tasa base mercado"],
       ]),
     }));
     blocks.push(block(`${prefix}-resultado`, "RESULTADO DEL ENFOQUE DE INGRESOS", {
-      concepts: concepts(`${prefix}-resultado`, [["Valor por capitalización de rentas", money.format(result.value)]]),
+      concepts: concepts(`${prefix}-resultado`, [["valor", "Valor por capitalización de rentas", money.format(result.value)]]),
     }));
     return blocks;
   }
@@ -94,12 +122,12 @@ export function incomeDocumentBlocks(calculation: IncomeCalculationDto, result: 
   blocks.push(block(`${prefix}-tasa`, "TASA DE CAPITALIZACIÓN", {
     tables: ratingRows.length ? [table(`${prefix}-tabla-tasa`, "Construcción de la tasa", ["Criterio", "Calificación", "Tasa"], ratingRows)] : [],
     concepts: concepts(`${prefix}-tasa`, [
-      ...(result.tableRate !== null ? [["Tasa resultante de la tabla", percent(result.tableRate, 4)] as [string, string]] : []),
-      ["Tasa aplicada", percent(result.appliedRate, 4)],
+      ...(result.tableRate !== null ? [["tabla", "Tasa resultante de la tabla", percent(result.tableRate, 4)] as [string, string, string]] : []),
+      ["aplicada", "Tasa aplicada", percent(result.appliedRate, 4)],
     ]),
   }));
   blocks.push(block(`${prefix}-resultado`, "RESULTADO DEL ENFOQUE DE INGRESOS", {
-    concepts: concepts(`${prefix}-resultado`, [["Valor por capitalización de rentas", money.format(result.value)]]),
+    concepts: concepts(`${prefix}-resultado`, [["valor", "Valor por capitalización de rentas", money.format(result.value)]]),
   }));
   return blocks;
 }
@@ -119,16 +147,16 @@ function marketRateBlocks(calculation: IncomeCalculationDto, result: IncomeAppro
           percent(row.rate, 4),
         ]))],
       concepts: concepts(`${prefix}-tasa-mercado`, [
-        ["Negociación", percent(calculation.marketRate.negotiation ?? 0)],
-        ["Vacíos", percent(calculation.marketRate.vacancy ?? 0)],
-        ["Gastos de operación", percent(market.expensesRate)],
-        ["Tasa de mercado (promedio)", percent(market.meanRate, 4)],
+        ["negociacion", "Negociación", percent(calculation.marketRate.negotiation ?? 0)],
+        ["vacios", "Vacíos", percent(calculation.marketRate.vacancy ?? 0)],
+        ["gastos", "Gastos de operación", percent(market.expensesRate)],
+        ["tasa", "Tasa de mercado (promedio)", percent(market.meanRate, 4)],
       ]),
     }),
     block(`${prefix}-resultado`, "RESULTADO DEL ENFOQUE DE INGRESOS", {
       concepts: concepts(`${prefix}-resultado`, [
-        ["Ingreso neto de operación anual del sujeto", money.format(result.netAnnualRent)],
-        ["Valor por capitalización de rentas", money.format(result.value)],
+        ["ingreso", "Ingreso neto de operación anual del sujeto", money.format(result.netAnnualRent)],
+        ["valor", "Valor por capitalización de rentas", money.format(result.value)],
       ]),
     }),
   ];

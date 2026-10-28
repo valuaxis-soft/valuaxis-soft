@@ -4,8 +4,9 @@
  * (comparables of type INMUEBLE_RENTA). Three methods, as the firm's books:
  * the rate table (TCH), the annuity (TU) and the market rate (TR).
  */
-import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, type IncomeApproachInput, type IncomeMethod } from "../engine/income";
-import type { HomologationInput } from "../engine/market";
+import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, type IncomeApproachInput, type IncomeApproachResult, type IncomeMethod } from "../engine/income";
+import { homologate, type HomologationInput, type HomologationStats } from "../engine/market";
+import { Trace } from "../engine/trace";
 import type { CapturedFormulas, PercentFields } from "./captured-formulas";
 import { withPrecision, type CalculationPrecision } from "./calculation-precision";
 import { DEFAULT_ENGINE_CONFIG, type EngineConfig } from "../engine/config";
@@ -120,6 +121,29 @@ export type IncomeCalculationDto = IncomeInputDto & {
 /** The engine settings of the income approach: the defaults with the valuation's precision. */
 export const incomeEngineConfig = (calculation: { precision?: CalculationPrecision | null }): EngineConfig =>
   withPrecision(DEFAULT_ENGINE_CONFIG, calculation.precision);
+
+/**
+ * The rent market's statistics as the income approach reads them: the
+ * lowest and highest rents offered and homologated and their dispersions
+ * (initial and final), as the market approach shows them. The market-rate
+ * method homologates the rents itself; the other two take the adopted rent,
+ * so the statistics come from homologating the rent comparables apart,
+ * without entering the calculation. Null without a rent market.
+ */
+export function rentMarketStats(
+  calculation: Pick<IncomeCalculationDto, "rentMarket" | "precision">,
+  result: Pick<IncomeApproachResult, "rentMarket"> | null,
+): HomologationStats | null {
+  if (result?.rentMarket) return result.rentMarket.stats;
+  const homologation = calculation.rentMarket.homologation;
+  if (!homologation?.comparables.length) return null;
+  const config = incomeEngineConfig(calculation);
+  try {
+    return homologate(homologation, config.surfaceOrientation.income, new Trace(), "ingresos.rentas", config.displayedPrecision).stats;
+  } catch {
+    return null;
+  }
+}
 
 export const DEFAULT_INCOME: IncomeInputDto = {
   method: "tabla",

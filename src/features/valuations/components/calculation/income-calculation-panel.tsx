@@ -14,6 +14,7 @@ import {
   DEFAULT_DEDUCTIONS,
   INCOME_METHOD_LABELS,
   RATE_TABLE_OPTIONS,
+  rentMarketStats,
   toIncomeEngineInput,
   type IncomeCalculationDto,
   type IncomeDeductionDto,
@@ -25,6 +26,7 @@ import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts } from "@/features/valuations/calculation/captured-formulas";
 import { FormulaInput } from "./formula-input";
 import { useSerializedSave } from "./use-serialized-save";
+import { cn } from "@/lib/utils";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 const percent = (value: number, digits = 2) => `${(value * 100).toFixed(digits)} %`;
@@ -194,6 +196,7 @@ export function IncomeCalculationPanel(props: {
   const input = inputOf(draft);
   const engineInput = toIncomeEngineInput({ ...input, rentMarket: calculation.rentMarket });
   const result = engineInput.ok ? computeIncomeApproach(engineInput.input, incomeEngineConfig(calculation)) : null;
+  const rentStats = rentMarketStats(calculation, result);
   const save = () => { if (!readOnly) void enqueueSave(input); };
   const update = (patch: Partial<Draft>) => setDraft((current) => current && { ...current, ...patch });
   const adopted = calculation.rentMarket.adoptedUnitRent;
@@ -381,6 +384,33 @@ export function IncomeCalculationPanel(props: {
         </div>
         ) : null}
       </fieldset>
+
+      {rentStats ? (
+        <div className="grid gap-2 rounded-md border bg-background p-3 text-sm" data-income-dispersion>
+          <p className="text-xs text-muted-foreground">Mercado de rentas: rentas de oferta y homologadas ($/m²/mes) y su dispersión, como en el enfoque de mercado. Informativo.</p>
+          <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-3">
+            <div>
+              <dt className="text-xs text-muted-foreground">Dispersión inicial (máx. ÷ mín. de las ofertas)</dt>
+              <dd className="tabular-nums" data-dispersion="inicial">{rentStats.initialDispersion.toFixed(2)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Dispersión final (máx. ÷ mín. homologadas)</dt>
+              <dd className={cn("tabular-nums", rentStats.dispersion > 1.25 && "text-amber-700 dark:text-amber-400")} data-dispersion="final">
+                {rentStats.dispersion.toFixed(2)}
+              </dd>
+            </div>
+            <div><dt className="text-xs text-muted-foreground">Promedio homologado</dt><dd className="tabular-nums">{money(rentStats.mean)} /m²/mes</dd></div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Renta de oferta (mín.–máx.)</dt>
+              <dd className="tabular-nums">{money(rentStats.offerMin)} – {money(rentStats.offerMax)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Rentas homologadas (mín.–máx.)</dt>
+              <dd className="tabular-nums">{money(rentStats.min)} – {money(rentStats.max)}</dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
 
       {result ? (
         <dl className="grid gap-x-4 gap-y-1 rounded-md border bg-background p-3 text-sm sm:grid-cols-4">
