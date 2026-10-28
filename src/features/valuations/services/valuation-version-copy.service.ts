@@ -301,6 +301,14 @@ export async function copyVersionContent(
     await tx.enfoqueMaquinaria.create({ data: { ...data, IdVersionAvaluo: input.toVersionId, JCostos: json(machinery.JCostos), JMercado: json(machinery.JMercado) } });
   }
 
+  // The statistical methods, one per comparable type, with their own comparables.
+  const statistical = await tx.metodoEstadistico.findMany({ where: { IdVersionAvaluo: input.fromVersionId } });
+  for (const { IdMetodoEstadistico: _id, DFechaCreacion: _created, DFechaModificacion: _modified, ...data } of statistical) {
+    await tx.metodoEstadistico.create({
+      data: { ...data, IdVersionAvaluo: input.toVersionId, JConfiguracion: data.JConfiguracion as Prisma.InputJsonValue, JComparables: data.JComparables as Prisma.InputJsonValue },
+    });
+  }
+
   const summary = await tx.resumenValor.findUnique({ where: { IdVersionAvaluo: input.fromVersionId } });
   if (summary) {
     const { IdResumenValor: _id, DFechaCreacion: _created, DFechaModificacion: _modified, ...data } = summary;

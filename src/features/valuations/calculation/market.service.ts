@@ -25,7 +25,6 @@ import { matchOption, optionJustification, optionsFor, resolveFactorCatalog } fr
 import { recomputeCosts } from "./cost.service";
 import { recomputeConclusion } from "./conclusion.service";
 import { recomputeIncome } from "./income.service";
-import { computeMarketRegression, type MarketRegressionResult } from "./market-regression";
 import { withProvenance } from "../comparable-search/normalize";
 import {
   addressFromRecord,
@@ -325,6 +324,12 @@ function offerCaptures(stored: StoredConfiguration) {
   };
 }
 
+/** A market of a version as the statistical methods read its regression of before (no photo URLs). */
+export async function loadMarketForStatistics(tx: Tx, versionId: number, type: ComparableType) {
+  const { settings, comparables } = await loadCalculation(tx, versionId, type, false);
+  return { settings, comparables };
+}
+
 /** The rent market of a version as the income approach needs it (no photo URLs). */
 export async function loadRentMarket(tx: Tx, versionId: number) {
   const { settings, comparables } = await loadCalculation(tx, versionId, "INMUEBLE_RENTA", false);
@@ -358,10 +363,7 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
   const trace = new Trace();
   const config = marketEngineConfig(settings, precision);
   const result = engineInput.ok ? computeMarketApproach(engineInput.input, config, trace) : null;
-  // The regression is a reference: its steps join the trace, its value changes nothing of the market's.
-  const regressionTrace = new Trace();
-  const regression = computeMarketRegression({ settings, comparables }, regressionTrace);
-  if (regression?.ok) trace.steps.push(...regressionTrace.steps);
+  // The regression is the statistical methods' own apartado now (statistical.service), with its own run.
   const resultColumns = {
     NSuperficieSujeto: settings.subjectArea,
     NValorPromedioHomologado: result?.homologation.stats.mean ?? null,
@@ -400,7 +402,6 @@ async function recompute(tx: Tx, versionId: number, type: ComparableType) {
         value: result?.value ?? null,
         adoptedUnitValue: result?.adoptedUnitValue ?? null,
         stats: result?.homologation.stats ?? null,
-        ...(regression?.ok ? { regression: regressionSummary(regression.result) } : {}),
       } as Prisma.InputJsonValue,
       SPoliticaRedondeo: JSON.stringify(config.rounding.market),
       BExitoso: true,
@@ -427,20 +428,6 @@ export async function recomputeMarkets(tx: Tx, versionId: number) {
   for (const type of COMPARABLE_TYPES) if (captured.has(type)) await recompute(tx, versionId, type);
   await recomputeCosts(tx, versionId);
   await recomputeIncome(tx, versionId);
-}
-
-/** What the execution keeps of the regression: the reference values, not the data the trace already has. */
-function regressionSummary({ fit, unitValue, value }: MarketRegressionResult) {
-  return {
-    method: fit.method,
-    n: fit.n,
-    coefficients: fit.coefficients,
-    estimate: fit.estimate,
-    unitValue,
-    value,
-    rSquared: fit.rSquared,
-    standardError: fit.standardError,
-  };
 }
 
 /**

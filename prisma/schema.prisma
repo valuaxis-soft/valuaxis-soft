@@ -679,6 +679,7 @@ model VersionAvaluo {
   enfoqueRenta                EnfoqueRenta?
   enfoqueIngreso              EnfoqueIngreso?
   enfoqueMaquinaria           EnfoqueMaquinaria?
+  metodosEstadisticos         MetodoEstadistico[]
   resumenValor                ResumenValor?
   conclusionAvaluo            ConclusionAvaluo?
   comparables                 ComparableAvaluo[]
@@ -2035,6 +2036,25 @@ model EnfoqueMaquinaria {
   versionAvaluo VersionAvaluo @relation(fields: [IdVersionAvaluo], references: [IdVersionAvaluo], onDelete: Cascade, onUpdate: Cascade)
 
   @@map("devpware_enfoques_maquinaria")
+}
+
+/// "Métodos estadísticos" of a version, one per comparable type: regression and goal programming with comparables of their own (migration 053).
+model MetodoEstadistico {
+  IdMetodoEstadistico Int      @id @default(autoincrement()) @map("IdMetodoEstadistico")
+  IdVersionAvaluo     Int      @map("IdVersionAvaluo")
+  STipoComparable     String   @map("STipoComparable") @db.VarChar(40)
+  JConfiguracion      Json     @map("JConfiguracion") @db.JsonB
+  JComparables        Json     @map("JComparables") @db.JsonB
+  NValorRegresion     Decimal? @map("NValorRegresion") @db.Decimal(24, 2)
+  NValorMetas         Decimal? @map("NValorMetas") @db.Decimal(24, 2)
+  DFechaCreacion      DateTime @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+  DFechaModificacion  DateTime @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
+
+  versionAvaluo VersionAvaluo @relation(fields: [IdVersionAvaluo], references: [IdVersionAvaluo], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([IdVersionAvaluo, STipoComparable])
+  @@index([IdVersionAvaluo])
+  @@map("devpware_metodos_estadisticos")
 }
 
 model DeduccionIngreso {
