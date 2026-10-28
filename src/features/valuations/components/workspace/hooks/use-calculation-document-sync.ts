@@ -4,6 +4,7 @@ import { api } from "@/lib/api-client";
 import { caratulaConclusionValues, conclusionValues, withConceptValues } from "@/features/valuations/calculation/conclusion-document";
 import { canConclude, conclusionEngineConfig, type ConclusionCalculationDto } from "@/features/valuations/calculation/conclusion-types";
 import { COST_TEMPLATE_BLOCK_IDS, costDocumentBlocks, withConstructionTables } from "@/features/valuations/calculation/cost-document";
+import { FACTOR_ANNEX_PREFIX, FACTOR_ANNEX_TEMPLATE_BLOCK_IDS, factorJustificationBlocks } from "@/features/valuations/calculation/factor-justification-document";
 import { costEngineConfig, toCostEngineInput, type ConstructionTypesDto, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
 import { INCOME_BLOCK_PREFIX, INCOME_TEMPLATE_BLOCK_IDS, incomeDocumentBlocks } from "@/features/valuations/calculation/income-document";
 import { incomeEngineConfig, toIncomeEngineInput, type IncomeCalculationDto } from "@/features/valuations/calculation/income-types";
@@ -24,6 +25,7 @@ import {
   isRentComparableType,
   marketEngineConfig,
   toMarketEngineInput,
+  type ComparableType,
   type MarketCalculationDto,
 } from "@/features/valuations/calculation/market-types";
 import { statisticalDocumentBlocks, withStatisticalBlocks } from "@/features/valuations/calculation/statistical-document";
@@ -77,7 +79,17 @@ export function useCalculationDocumentSync({
     }, { groupKey });
   };
 
-  const applyMarket = (calculation: MarketCalculationDto, result: MarketApproachResult | null) => {
+  // The last calculation of each market, for the annex that sums up their justifications.
+  const marketsByType = useRef(new Map<ComparableType, MarketCalculationDto>());
+  const applyFactorAnnex = () => {
+    const blocks = factorJustificationBlocks([...marketsByType.current.values()]);
+    updateBySection("motor-anexo-factores", (key, section) =>
+      key === "HOMOLOGACION"
+        ? replaceGeneratedBlocks(section, (block) => block.id.startsWith(FACTOR_ANNEX_PREFIX), blocks, { placeholderIds: FACTOR_ANNEX_TEMPLATE_BLOCK_IDS })
+        : section);
+  };
+
+  const applyMarket = (calculation: MarketCalculationDto, result: MarketApproachResult | null, annex = true) => {
     if (!canEdit || calculation.locked) return;
     const type = calculation.settings.comparableType;
     const mainBlocks = marketDocumentBlocks(calculation, result);
@@ -92,6 +104,8 @@ export function useCalculationDocumentSync({
         : key === "CROQUIS_COMPARABLES"
           ? withGeneratedBlocks(section, type, photoBlocks, { kind: "fotos", position: "end" })
           : section);
+    marketsByType.current.set(type, calculation);
+    if (annex) applyFactorAnnex();
   };
 
   // The statistical methods print after the market of their type, in the same section.
@@ -202,8 +216,10 @@ export function useCalculationDocumentSync({
     for (const calculation of markets) {
       if (!calculation) continue;
       const input = toMarketEngineInput(calculation);
-      applyMarket(calculation, input.ok ? computeMarketApproach(input.input, marketEngineConfig(calculation.settings, calculation.precision)) : null);
+      applyMarket(calculation, input.ok ? computeMarketApproach(input.input, marketEngineConfig(calculation.settings, calculation.precision)) : null, false);
     }
+    // Once every market is known.
+    if (markets.some(Boolean)) applyFactorAnnex();
     // After the markets: a regression the market kept before moves to its own block.
     const statistical = await Promise.all(COMPARABLE_TYPES.map((type) => api.statistical.get(id, type).catch(() => null)));
     for (const calculation of statistical) if (calculation) applyStatistical(calculation);
