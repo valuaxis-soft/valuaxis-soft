@@ -44,6 +44,7 @@ import { CostCalculationPanel } from "@/features/valuations/components/calculati
 import { IncomeCalculationPanel } from "@/features/valuations/components/calculation/income-calculation-panel";
 import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/components/calculation/machinery-calculation-panel";
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
+import { StatisticalMethodsPanel } from "@/features/valuations/components/calculation/statistical-methods-panel";
 import { RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import {
@@ -338,26 +339,37 @@ export function ValuationWorkspace({
             ) : machinery && getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
               <MachineryMarketPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} />
             ) : getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
-              <MarketCalculationPanel
-                valuationId={valuationId}
-                readOnly={!canEdit}
-                canReview={canReview}
-                suggestedSubjectArea={calculationSync.suggestedSubjectArea}
-                onCalculation={calculationSync.onMarketCalculation}
-              />
+              <div className="grid gap-4">
+                <MarketCalculationPanel
+                  valuationId={valuationId}
+                  readOnly={!canEdit}
+                  canReview={canReview}
+                  suggestedSubjectArea={calculationSync.suggestedSubjectArea}
+                  onCalculation={calculationSync.onMarketCalculation}
+                />
+                <StatisticalMethodsPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onStatisticalCalculation} />
+              </div>
             ) : getCanonicalSectionKey(section.id) === "COSTOS" ? (
               <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CONSTRUCCION" ? (
               <ConstructionTypesPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConstructionTypes} />
             ) : getCanonicalSectionKey(section.id) === "MERCADO_RENTAS" ? (
-              <MarketCalculationPanel
-                valuationId={valuationId}
-                types={RENT_COMPARABLE_TYPES}
-                readOnly={!canEdit}
-                canReview={canReview}
-                suggestedSubjectArea={null}
-                onCalculation={calculationSync.onMarketCalculation}
-              />
+              <div className="grid gap-4">
+                <MarketCalculationPanel
+                  valuationId={valuationId}
+                  types={RENT_COMPARABLE_TYPES}
+                  readOnly={!canEdit}
+                  canReview={canReview}
+                  suggestedSubjectArea={null}
+                  onCalculation={calculationSync.onMarketCalculation}
+                />
+                <StatisticalMethodsPanel
+                  valuationId={valuationId}
+                  types={RENT_COMPARABLE_TYPES}
+                  readOnly={!canEdit}
+                  onCalculation={calculationSync.onStatisticalCalculation}
+                />
+              </div>
             ) : getCanonicalSectionKey(section.id) === "INGRESOS" ? (
               <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} />
             ) : getCanonicalSectionKey(section.id) === "CONCLUSIONES" ? (
