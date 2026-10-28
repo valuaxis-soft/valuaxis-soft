@@ -163,3 +163,14 @@ Quitar las variables que el código no usa o que solo sirvieron para el alta ini
 - `UPLOAD_DIR`: producción usa S3.
 
 Después, `pnpm env:check` (paso 2.3) y reiniciar la app.
+
+## 7. Llave de Google Maps (`GOOGLE_MAPS_API_KEY`)
+
+Opcional. La usa la página de demostración de mapas (`src/features/demo-maps/`) para mostrar Google Maps, los croquis de Maps Static API y la búsqueda de direcciones. Sin ella la página funciona igual: dibuja su propio mapa con las calles de OpenStreetMap y avisa "Vista sin Google Maps (falta configurar la llave)".
+
+- Es una variable de **runtime**: va en `production.env` y el contenedor la lee al arrancar (`env_file`). No lleva el prefijo `NEXT_PUBLIC_`, porque la imagen se compila sin `production.env`; la página la lee en el servidor en cada petición y se la pasa al navegador.
+- Es una **llave de navegador**: quien abra la página la puede ver. Por eso, en Google Cloud Console (APIs y servicios → Credenciales):
+  - **Restricción de aplicación:** sitios web (referentes HTTP), solo `https://valuaxissoft.com/*`. Para probar en local se agrega `http://localhost:3000/*` (o el puerto que se use) en una llave aparte, no en la de producción.
+  - **Restricción de API:** solo Maps JavaScript API, Maps Static API y Geocoding API.
+- Después de agregarla o cambiarla: `pnpm env:check` (paso 2.3) y reiniciar la app (`docker compose ... up -d valuos-app`); no hace falta reconstruir la imagen.
+- La CSP agrega los dominios de Google (`maps.googleapis.com`, `*.googleapis.com`, `*.gstatic.com`, `fonts.googleapis.com`, `fonts.gstatic.com`, `worker-src blob:`) solo en las rutas `/demo/`; el resto de la app conserva la política de siempre (`src/security/headers/security-headers.ts`).

@@ -13,6 +13,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  */
 const STRIPE_WEBHOOK_PATH = "/api/stripe/webhook";
 
+/** Only the maps demonstration loads Google Maps, so only it gets Google's sources in the CSP. */
+const GOOGLE_MAPS_PATH_PREFIX = "/demo/";
+
 const publicPaths = [...AUTH_PUBLIC_PATHS, "/favicon.ico", "/api"];
 
 function isPublicPath(pathname: string) {
@@ -60,18 +63,19 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return withContentSecurityPolicy(request);
+  return withContentSecurityPolicy(request, pathname.startsWith(GOOGLE_MAPS_PATH_PREFIX));
 }
 
 /**
  * Pages get a per-request nonce. Next.js reads the CSP from the request headers
  * and applies the nonce to the scripts it renders.
  */
-function withContentSecurityPolicy(request: NextRequest) {
+function withContentSecurityPolicy(request: NextRequest, googleMaps: boolean) {
   const nonce = createNonce();
   const policy = contentSecurityPolicy({
     development: process.env.NODE_ENV !== "production",
     nonce,
+    googleMaps,
   });
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("Content-Security-Policy", policy);
