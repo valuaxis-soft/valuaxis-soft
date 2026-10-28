@@ -8,6 +8,7 @@ import type { AuthUser } from "@/features/auth/model";
 import { getLetterhead } from "@/features/firm/firm.service";
 import { getDocumentHeaderImage } from "@/features/files/services/valuation-document-header-image";
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { todayInMexico } from "../calculation/comparable-card";
 import { getConclusionCalculation } from "../calculation/conclusion.service";
 import { getCostCalculation } from "../calculation/cost.service";
 import { getIncomeCalculation } from "../calculation/income.service";
@@ -18,7 +19,7 @@ import { getStatisticalCalculation } from "../calculation/statistical.service";
 import { caratulaFromValuation, initialMetaFor, initialSectionsFor, mergeDocumentHeaderImage } from "../components/workspace/model/initial-hydration";
 import { getValuationByPublicId } from "../repositories/valuation.repository";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
-import { buildCalculationMemory, type StoredRun } from "./calculation-memory";
+import { buildCalculationMemory, memoryComparableCards, type StoredRun } from "./calculation-memory";
 
 async function storedRuns(publicId: string, organizationId: number): Promise<StoredRun[]> {
   const avaluo = await prisma.avaluo.findFirst({
@@ -75,5 +76,6 @@ export async function loadCalculationMemory(user: AuthUser, publicId: string, ge
     concluded: valuation.locked,
     generatedAt,
   });
-  return { memory, sections, caratula, letterhead, propertyKind: valuation.propertyKind };
+  const comparables = memoryComparableCards(markets, { id: publicId, folio: memory.folio, title: null }, todayInMexico(generatedAt));
+  return { memory, sections, caratula, letterhead, propertyKind: valuation.propertyKind, comparables };
 }

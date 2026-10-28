@@ -9,6 +9,8 @@ import { Trace } from "../src/features/valuations/engine/trace";
 import {
   buildCalculationMemory,
   formatEngineValue,
+  memoryChapters,
+  memoryComparableCards,
   type CalculationMemoryInput,
   type MemoryCalculations,
   type MemoryConcept,
@@ -203,12 +205,13 @@ function marketTrace() {
 test("each approach prints the engine's steps in the order of the calculation, with inputs and result", () => {
   const memory = memoryOf([costSection, marketSection], { ...NO_CALCULATIONS, markets: [land], cost });
   assert.equal(memory.engineVersion, ENGINE_VERSION);
+  // In the order the dictamen prints their sections: costs (VI) before the market (VII).
   assert.deepEqual(memory.approaches.map((approach) => [approach.key, approach.location]), [
-    ["MOTOR.MERCADO.TERRENO_VENTA", ["VII. ENF. MERCADO", "Enfoque de mercado · Terrenos en venta"]],
     ["MOTOR.COSTOS", ["VI. ENF. COSTOS", "Enfoque de costos"]],
+    ["MOTOR.MERCADO.TERRENO_VENTA", ["VII. ENF. MERCADO", "Enfoque de mercado · Terrenos en venta"]],
   ]);
 
-  const [market, costs] = memory.approaches;
+  const [costs, market] = memory.approaches;
   const trace = marketTrace();
   assert.deepEqual(market.steps.map((step) => step.key), trace.steps.map((step) => step.key), "the engine's order");
   const first = market.steps[0];
@@ -307,4 +310,47 @@ test("the cover carries the folio, firm, engine version and when it was generate
   assert.equal(memory.generatedAt, "2026-10-20T18:30:00.000Z");
   assert.deepEqual(memory.document, []);
   assert.deepEqual(memory.approaches, []);
+});
+
+/* ------------------------------------------------------------------ */
+/*  Order of the dictamen and memoria técnica de comparables           */
+/* ------------------------------------------------------------------ */
+
+test("the memory reads by the sections of the dictamen, in their order, each with its formulas and its approaches", () => {
+  const sections = [...terrenoSections(), costSection, marketSection];
+  const memory = memoryOf(sections, { ...NO_CALCULATIONS, markets: [land], cost });
+  assert.deepEqual(memory.sectionHeadings, ["I. CARÁTULA", "III. INFO TERRENO", "VI. ENF. COSTOS", "VII. ENF. MERCADO"]);
+  const chapters = memoryChapters(memory);
+  assert.deepEqual(chapters.map((chapter) => chapter.heading), ["III. INFO TERRENO", "VI. ENF. COSTOS", "VII. ENF. MERCADO"], "sections without formulas or approaches are left out");
+  assert.deepEqual(chapters.map((chapter) => [chapter.document.length > 0, chapter.approaches.map((approach) => approach.key)]), [
+    [true, []],
+    [false, ["MOTOR.COSTOS"]],
+    [false, ["MOTOR.MERCADO.TERRENO_VENTA"]],
+  ]);
+});
+
+test("an approach whose section is not in the document goes last, as a chapter of its own", () => {
+  const memory = memoryOf([marketSection], { ...NO_CALCULATIONS, markets: [land], cost });
+  assert.deepEqual(memory.approaches.map((approach) => approach.key), ["MOTOR.MERCADO.TERRENO_VENTA", "MOTOR.COSTOS"]);
+  assert.deepEqual(memoryChapters(memory).map((chapter) => chapter.heading), ["VII. ENF. MERCADO", "Enfoque de costos"]);
+});
+
+test("the memoria técnica de comparables has the sheet of each comparable used, market by market, without its uses", () => {
+  const buildings: MarketCalculationDto = {
+    settings: defaultMarketSettings("INMUEBLE_VENTA"),
+    comparables: [{ ...comparable(2, 100, 1000000), url: "https://example.com/anuncio", updatedOn: "2026-01-10", validityMonths: 3 }, comparable(1, 90, 900000)],
+    locked: false,
+    configured: true,
+    comparableValidityMonths: 6,
+  };
+  const cards = memoryComparableCards([buildings, land], { id: "v-1", folio: "VDA-0001", title: null }, "2026-10-20");
+  assert.deepEqual(cards.map((card) => [card.type, card.comparable.reference]), [
+    ["TERRENO_VENTA", 1], ["TERRENO_VENTA", 2], ["TERRENO_VENTA", 3], ["TERRENO_VENTA", 4],
+    ["INMUEBLE_VENTA", 1], ["INMUEBLE_VENTA", 2],
+  ], "land before buildings, as the dictamen prints them; each market by reference");
+  const withLink = cards.find((card) => card.comparable.url)!;
+  assert.equal(withLink.valuation?.folio, "VDA-0001");
+  assert.deepEqual(withLink.uses, [], "the sheet of the memory carries no uses in other valuations");
+  assert.deepEqual(withLink.warnings, []);
+  assert.deepEqual(withLink.validity, { updatedOn: "2026-01-10", validUntil: "2026-04-10", expired: true }, "its own months of validity");
 });
