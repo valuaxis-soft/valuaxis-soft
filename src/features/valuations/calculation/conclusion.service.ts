@@ -13,11 +13,41 @@ import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, writableV
 import { storedFormulas } from "./captured-formulas";
 import type { ConclusionSettingsPayload } from "./conclusion-schemas";
 import { MACHINERY_PROPERTY_TYPE } from "./machinery-types";
+import { getCanonicalSectionKey } from "../sections/section-registry";
+import {
+  REPORT_APPROACHES,
+  excludedReportApproaches,
+  marketLeftOut,
+  sectionReportApproaches,
+  valuesForConclusion,
+  type ReportApproach,
+} from "../services/report-approaches";
 import { CONCLUSION_PERCENT_FIELDS, canConclude, conclusionEngineConfig, defaultMethod, type ConclusionCalculationDto, type ConclusionMethod } from "./conclusion-types";
 
 const CALCULATION_KEY = "MOTOR.CONCLUSION";
 
-async function approachValues(tx: Tx, versionId: number): Promise<Pick<ConclusionCalculationDto, "values" | "marketSource">> {
+/**
+ * The approaches the saved document leaves out of the dictamen ("Agregar al
+ * informe valuatorio" off), read from the configuration of their sections.
+ */
+export async function reportExclusionsOf(tx: Tx, versionId: number): Promise<Set<ReportApproach>> {
+  const keys = await tx.seccionDocumento.findMany({ where: { IdVersionAvaluo: versionId }, select: { IdSeccionDocumento: true, SClave: true } });
+  const ids = keys.filter((section) => sectionReportApproaches({ id: section.SClave }).length > 0).map((section) => section.IdSeccionDocumento);
+  if (!ids.length) return new Set();
+  const sections = await tx.seccionDocumento.findMany({ where: { IdSeccionDocumento: { in: ids } }, select: { SClave: true, JConfiguracion: true } });
+  return excludedReportApproaches(sections.map((section) => {
+    const config = asRecord(section.JConfiguracion ?? null);
+    const excluded = Array.isArray(config.excludedFromReport) ? config.excludedFromReport.filter((item): item is string => typeof item === "string") : [];
+    return { id: getCanonicalSectionKey(section.SClave), excludedFromReport: excluded };
+  }));
+}
+
+/** The same exclusions in a stable order, to compare a save with what was stored. */
+export const exclusionKey = (excluded: ReadonlySet<ReportApproach>) => REPORT_APPROACHES.filter((approach) => excluded.has(approach)).join(",");
+
+async function approachValues(tx: Tx, versionId: number): Promise<Pick<ConclusionCalculationDto, "values" | "marketSource" | "excluded">> {
+  const excluded = await reportExclusionsOf(tx, versionId);
+  const excludedList = REPORT_APPROACHES.filter((approach) => excluded.has(approach));
   // A machinery valuation concludes with its own cost and market approaches; it has no income approach.
   const version = await tx.versionAvaluo.findUnique({
     where: { IdVersionAvaluo: versionId },
@@ -27,10 +57,12 @@ async function approachValues(tx: Tx, versionId: number): Promise<Pick<Conclusio
     },
   });
   if (version?.avaluo.tipoInmueble.SClave === MACHINERY_PROPERTY_TYPE) {
-    const mercado = decimal(version.enfoqueMaquinaria?.NValorMercado);
+    // An approach left out of the dictamen does not conclude: the equipment's market is left out with both markets for sale.
+    const mercado = marketLeftOut(excluded) ? null : decimal(version.enfoqueMaquinaria?.NValorMercado);
     return {
-      values: { costos: decimal(version.enfoqueMaquinaria?.NValorFisico), mercado, ingresos: null },
+      values: { costos: excluded.has("costos") ? null : decimal(version.enfoqueMaquinaria?.NValorFisico), mercado, ingresos: null },
       marketSource: mercado === null ? null : "MAQUINARIA_VENTA",
+      excluded: excludedList,
     };
   }
   const [costs, markets, income] = await Promise.all([
@@ -41,21 +73,18 @@ async function approachValues(tx: Tx, versionId: number): Promise<Pick<Conclusio
     }),
     tx.enfoqueIngreso.findUnique({ where: { IdVersionAvaluo: versionId }, select: { NValorCapitalizacion: true } }),
   ]);
-  const market = ["INMUEBLE_VENTA", "TERRENO_VENTA"]
-    .map((key) => markets.find((row) => row.tipoComparable.SClave === key && row.NValorMercado !== null))
-    .find(Boolean);
-  return {
-    values: {
-      costos: decimal(costs?.NValorFisicoTotal),
-      mercado: decimal(market?.NValorMercado),
-      ingresos: decimal(income?.NValorCapitalizacion),
-    },
-    marketSource: (market?.tipoComparable.SClave ?? null) as ConclusionCalculationDto["marketSource"],
-  };
+  const marketValue = (key: string) => decimal(markets.find((row) => row.tipoComparable.SClave === key && row.NValorMercado !== null)?.NValorMercado);
+  // The market value comes from buildings, else from land, among the markets that stay in the dictamen.
+  const { values, marketSource } = valuesForConclusion({
+    costos: decimal(costs?.NValorFisicoTotal),
+    ingresos: decimal(income?.NValorCapitalizacion),
+    markets: { buildings: marketValue("INMUEBLE_VENTA"), land: marketValue("TERRENO_VENTA") },
+  }, excluded);
+  return { values, marketSource, excluded: excludedList };
 }
 
 async function load(tx: Tx, versionId: number) {
-  const [summary, { values, marketSource }] = await Promise.all([
+  const [summary, { values, marketSource, excluded }] = await Promise.all([
     tx.resumenValor.findUnique({ where: { IdVersionAvaluo: versionId } }),
     approachValues(tx, versionId),
   ]);
@@ -63,6 +92,7 @@ async function load(tx: Tx, versionId: number) {
   return {
     values,
     marketSource,
+    excluded,
     method: configuration.method ?? defaultMethod(values),
     justification: summary?.SJustificacion ?? null,
     ...(configuration.rounding === undefined ? {} : { rounding: configuration.rounding }),
@@ -77,7 +107,7 @@ export async function getConclusionCalculation(publicId: string, organizationId:
     const versionId = avaluo.IdVersionTrabajo ?? avaluo.IdVersionFinal;
     if (!versionId) {
       const values = { costos: null, mercado: null, ingresos: null };
-      return { values, marketSource: null, method: defaultMethod(values), justification: null, configured: false, locked: avaluo.BBloqueado };
+      return { values, marketSource: null, excluded: [], method: defaultMethod(values), justification: null, configured: false, locked: avaluo.BBloqueado };
     }
     return { ...(await load(tx, versionId)), locked: avaluo.BBloqueado };
   });

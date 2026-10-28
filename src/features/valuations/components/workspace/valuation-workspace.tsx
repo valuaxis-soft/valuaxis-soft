@@ -55,6 +55,7 @@ import {
   withListedOrder,
 } from "@/features/valuations/services/section-edit-operations";
 import { createCustomSection } from "./model/content-factories";
+import { insertSectionByRole, type SectionDocumentRole } from "@/features/valuations/services/document-structure";
 import { revealEditorFocus } from "./model/editor-focus-reveal";
 import { adjacentPreviewSectionId, previewSectionPosition } from "./model/preview-navigation";
 import { flattenSectionConcepts, resolveSectionConceptsForDisplay } from "./model/section-content";
@@ -245,9 +246,10 @@ export function ValuationWorkspace({
   ]);
 
   // Sections of the appraiser's own: added at the end of the strip, renamed from the tab, removed from the editor.
-  const addSection = () => {
-    const section = createCustomSection();
-    updateSections((current) => [...current, section]);
+  // A chapter goes just before the conclusion, an annex at the end.
+  const addSection = (role: SectionDocumentRole) => {
+    const section = createCustomSection(role);
+    updateSections((current) => insertSectionByRole(current, section, role));
     handleActiveSectionChange(section.id);
   };
   const handleRenameSection = (sectionId: string, title: string) => {
@@ -408,6 +410,7 @@ export function ValuationWorkspace({
             principalCoverImageAvailable={Boolean(valuationId)}
             principalCoverImageUploading={images.uploadingCoverImage}
             onPrincipalCoverImageUpload={images.handlePrincipalCoverImageUpload}
+            valuationId={valuationId}
           />
         </TabsContent>
       ))}

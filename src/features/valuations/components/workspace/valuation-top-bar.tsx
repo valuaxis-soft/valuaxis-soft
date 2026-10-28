@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { AppSection } from "@/features/valuations/model";
+import type { SectionDocumentRole } from "@/features/valuations/services/document-structure";
 import { ValuationNavigation } from "@/features/valuations/components/workspace/valuation-navigation";
 import type { ValuationMeta } from "@/features/valuations/services/valuation-constants";
 import type { SaveStatus } from "@/features/valuations/components/feedback/save-status-indicator";
@@ -144,7 +145,7 @@ export function ValuationTopBar({
   iconMap: Record<string, LucideIcon>;
   lifecycleAction?: ValuationLifecycleAction | null;
   meta: ValuationMeta;
-  onAddSection?: () => void;
+  onAddSection?: (role: SectionDocumentRole) => void;
   /** Opens the calculation memory (memoria de cálculo), beside the dictamen. */
   onCalculationMemory: () => void;
   onExport: () => void;

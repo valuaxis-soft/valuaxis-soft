@@ -26,7 +26,7 @@ export function DocumentPageFormatControl({
 }) {
   const { bindingMargin, titleBars, titleBand } = documentPagePresentation([section]);
   return (
-    <section className="grid gap-4 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2">
+    <section className="grid gap-4 rounded-md border bg-background p-3 sm:grid-cols-2">
       <Field className="gap-1.5">
         <FieldLabel htmlFor="document-binding-margin">Margen izquierdo para encuadernar</FieldLabel>
         <NativeSelect

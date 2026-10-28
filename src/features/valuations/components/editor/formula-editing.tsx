@@ -14,7 +14,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { Check, ChevronDown, ChevronRight, FunctionSquare, Search, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FunctionSquare, Search, Type, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -56,6 +56,8 @@ type FormulaSession = {
 
 type FormulaSessionHandlers = {
   insert: (text: string) => void;
+  /** Writes a text of the valuation as the field's value, in place of the formula being written. */
+  setText: (text: string) => void;
   apply: () => void;
   cancel: () => void;
   input: () => HTMLInputElement | null;
@@ -104,6 +106,7 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
   const index = useMemo(() => buildFormulaIndex(sections), [sections]);
   const [session, setSession] = useState<FormulaSession | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerKind, setPickerKind] = useState<PickerKind>("number");
   const [draft, setDraft] = useState<{ fieldKey: string; text: string } | null>(null);
   const handlersRef = useRef<FormulaSessionHandlers | null>(null);
   const keepEditingRef = useRef(false);
@@ -145,8 +148,9 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
   const draftText = session && draft?.fieldKey === session.fieldKey ? draft.text : null;
   const problem = draftText === null ? null : formulaTextProblem(draftText);
 
-  const openPicker = () => {
+  const openPicker = (kind: PickerKind) => {
     keepEditingRef.current = true;
+    setPickerKind(kind);
     setPickerOpen(true);
   };
 
@@ -166,8 +170,11 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
               <strong>Fórmula:</strong> haz clic en una celda o en un concepto para usarlo; otro clic sin operador lo cambia.
             </span>
             <div className="ml-auto flex flex-wrap gap-2">
-              <Button type="button" size="sm" variant="outline" className="gap-1" onClick={openPicker}>
-                <Search className="size-4" /> Buscar valor
+              <Button type="button" size="sm" variant="outline" className="gap-1" onClick={() => openPicker("number")}>
+                <Search className="size-4" /> Buscar valor (número)
+              </Button>
+              <Button type="button" size="sm" variant="outline" className="gap-1" onClick={() => openPicker("text")}>
+                <Type className="size-4" /> Buscar texto
               </Button>
               <Button type="button" size="sm" className="gap-1" onClick={() => handlersRef.current?.apply()}>
                 <Check className="size-4" /> Aplicar
@@ -194,12 +201,17 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
       ) : null}
       <FormulaValuePicker
         index={index}
+        kind={pickerKind}
         session={session}
         open={pickerOpen && session !== null}
         onOpenChange={setPickerOpen}
         onPick={(text) => {
           handlersRef.current?.insert(text);
           setPickerOpen(false);
+        }}
+        onPickText={(text) => {
+          setPickerOpen(false);
+          handlersRef.current?.setText(text);
         }}
         returnFocusTo={() => handlersRef.current?.input() ?? null}
       />
@@ -281,6 +293,12 @@ export function useFormulaField({
         caretRef.current = next.reference.end;
         setDraft({ ...current, text: next.text });
       },
+      setText: (text) => {
+        const apply = latestRef.current.onCommit;
+        takeDraft();
+        apply(text);
+        inputRef.current?.blur();
+      },
       apply: () => {
         commit();
         inputRef.current?.blur();
@@ -289,7 +307,7 @@ export function useFormulaField({
       input: () => inputRef.current,
     });
     return () => end(fieldKey);
-  }, [begin, commit, discard, end, fieldKey, homeTableId, writingFormula]);
+  }, [begin, commit, discard, end, fieldKey, homeTableId, takeDraft, writingFormula]);
 
   // The cells the formula names are painted while it is typed.
   const draftText = draft?.text;
@@ -430,6 +448,20 @@ export function useFormulaReferenceTarget(fieldKey: string, referenceText: (home
 
 const PICKER_MAX_ROWS = 60;
 
+/** "number": references a formula computes with; "text": a text of the valuation written as the value. */
+type PickerKind = "number" | "text";
+
+const PICKER_COPY: Record<PickerKind, { title: string; description: string }> = {
+  number: {
+    title: "Buscar un valor del avalúo (número)",
+    description: "Elige un concepto o abre una tabla y elige una celda: su referencia se escribe en la fórmula.",
+  },
+  text: {
+    title: "Buscar un texto del avalúo",
+    description: "Elige un concepto o una celda con texto (por ejemplo, las características de los comparables): se copia como valor de este campo.",
+  },
+};
+
 function matches(query: string, ...texts: string[]) {
   const normalize = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   const words = normalize(query).split(/\s+/).filter(Boolean);
@@ -439,17 +471,21 @@ function matches(query: string, ...texts: string[]) {
 
 function FormulaValuePicker({
   index,
+  kind,
   session,
   open,
   onOpenChange,
   onPick,
+  onPickText,
   returnFocusTo,
 }: {
   index: FormulaIndex;
+  kind: PickerKind;
   session: FormulaSession | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPick: (text: string) => void;
+  onPickText: (text: string) => void;
   returnFocusTo: () => HTMLElement | null;
 }) {
   const [query, setQuery] = useState("");
@@ -464,8 +500,9 @@ function FormulaValuePicker({
       return found;
     };
     for (const entry of index.concepts) {
-      // Only values a formula can use: a text like "Jalisco" would only produce #VALOR!.
-      if (!conceptHasNumericValue(entry.concept) || `concept:${entry.id}` === session?.fieldKey) continue;
+      if (`concept:${entry.id}` === session?.fieldKey) continue;
+      // A number for a formula (a text like "Jalisco" would only produce #VALOR!); a text, as written.
+      if (kind === "number" ? !conceptHasNumericValue(entry.concept) : !pickableText(entry.concept)) continue;
       if (matches(query, entry.name, entry.sectionTitle, entry.blockTitle)) group(entry).concepts.push(entry);
     }
     for (const entry of index.tables) {
@@ -473,16 +510,14 @@ function FormulaValuePicker({
       if (matches(query, entry.name, entry.sectionTitle, entry.blockTitle)) group(entry).tables.push(entry);
     }
     return [...bySection.values()].filter((item) => item.concepts.length || item.tables.length);
-  }, [index, open, query, session?.fieldKey]);
+  }, [index, kind, open, query, session?.fieldKey]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl" finalFocus={() => returnFocusTo() ?? true}>
         <DialogHeader>
-          <DialogTitle>Buscar un valor del avalúo</DialogTitle>
-          <DialogDescription>
-            Elige un concepto o abre una tabla y elige una celda: su referencia se escribe en la fórmula.
-          </DialogDescription>
+          <DialogTitle>{PICKER_COPY[kind].title}</DialogTitle>
+          <DialogDescription>{PICKER_COPY[kind].description}</DialogDescription>
         </DialogHeader>
         <Input autoFocus placeholder="Buscar por nombre, sección o bloque" value={query} onChange={(event) => setQuery(event.target.value)} />
         <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
@@ -496,6 +531,10 @@ function FormulaValuePicker({
                   type="button"
                   className="flex w-full items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
                   onClick={() => {
+                    if (kind === "text") {
+                      onPickText(formatConceptValueForDocument(entry.concept) || entry.concept.value);
+                      return;
+                    }
                     const text = conceptReferenceText(index, entry.id);
                     if (text) onPick(text);
                   }}
@@ -519,6 +558,11 @@ function FormulaValuePicker({
                     <PickerTable
                       entry={entry}
                       onPick={(rowId, columnId) => {
+                        if (kind === "text") {
+                          const value = getCellDisplayValue(entry.table, rowId, columnId, evaluateTableFormulas(entry.table));
+                          if (value.trim()) onPickText(value.trim());
+                          return;
+                        }
                         const text = cellReferenceText(index, entry.id, entry.table, rowId, columnId, session?.homeTableId);
                         if (text) onPick(text);
                       }}
@@ -532,6 +576,11 @@ function FormulaValuePicker({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** A concept whose value is a text worth copying: written, and not a bare number. */
+function pickableText(concept: FormulaConceptEntry["concept"]) {
+  return concept.value.trim() !== "" && !conceptHasNumericValue(concept);
 }
 
 /** The cells of a table with their letters and numbers; a click picks one. */

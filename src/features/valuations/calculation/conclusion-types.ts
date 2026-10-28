@@ -5,6 +5,7 @@
 import type { Approach, ConclusionInput } from "../engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig } from "../engine/config";
 import type { CapturedFormulas, PercentFields } from "./captured-formulas";
+import type { ReportApproach } from "../services/report-approaches";
 
 export type ConclusionMethod = ConclusionInput["method"];
 
@@ -29,6 +30,8 @@ export type ConclusionCalculationDto = ConclusionSettingsDto & {
   values: Record<Approach, number | null>;
   /** The market value comes from the building comparables when there are any, else from land; from the equipment offers in a machinery valuation. */
   marketSource: "INMUEBLE_VENTA" | "TERRENO_VENTA" | "MAQUINARIA_VENTA" | null;
+  /** The approaches the document leaves out of the dictamen: their values read "no aplica". */
+  excluded?: ReportApproach[];
   configured: boolean;
   locked: boolean;
 };

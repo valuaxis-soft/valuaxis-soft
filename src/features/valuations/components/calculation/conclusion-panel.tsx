@@ -16,6 +16,7 @@ import { formulaOr, formulasOfFields, type CapturedFormulas } from "@/features/v
 import { FormulaInput } from "./formula-input";
 import { RoundingSelect } from "./calculation-controls";
 import { useSerializedSave } from "./use-serialized-save";
+import { marketLeftOut } from "@/features/valuations/services/report-approaches";
 
 const APPROACHES: Approach[] = ["costos", "mercado", "ingresos"];
 const weightPath = (approach: Approach) => `method.weights.${approach}`;
@@ -25,6 +26,12 @@ const MARKET_SOURCE_LABELS: Record<NonNullable<ConclusionCalculationDto["marketS
   MAQUINARIA_VENTA: "maquinaria y equipo",
 };
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+
+/** Whether the document leaves the approach out of the dictamen ("Agregar al informe valuatorio" off). */
+function leftOut(calculation: ConclusionCalculationDto, approach: Approach) {
+  const excluded = new Set(calculation.excluded ?? []);
+  return approach === "mercado" ? marketLeftOut(excluded) : excluded.has(approach);
+}
 
 /** Concluded value: which approach (or weights) and why, from the values each approach stored. */
 export function ConclusionPanel(props: {
@@ -125,7 +132,11 @@ export function ConclusionPanel(props: {
               {APPROACH_LABELS[approach]}
               {approach === "mercado" && calculation.marketSource ? ` (${MARKET_SOURCE_LABELS[calculation.marketSource]})` : ""}
             </dt>
-            <dd className="tabular-nums">{calculation.values[approach] === null ? "No aplica" : money(calculation.values[approach] as number)}</dd>
+            <dd className="tabular-nums">
+              {leftOut(calculation, approach)
+                ? <span className="text-muted-foreground" data-approach-left-out="">No incluido en el informe</span>
+                : calculation.values[approach] === null ? "No aplica" : money(calculation.values[approach] as number)}
+            </dd>
           </div>
         ))}
       </dl>

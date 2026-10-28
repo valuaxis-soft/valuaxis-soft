@@ -398,10 +398,11 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
       <table className={cn(
         "border-collapse",
         TABLE_TEXT,
-        plain ? "w-2/3 font-bold" : "w-full",
+        // "Ajustar al contenido": as wide as its columns need, no wider than the page.
+        plain ? "w-2/3 font-bold" : tableV2.schema?.widthMode === "content" ? "w-auto max-w-full" : "w-full",
         columnWidths && "table-fixed",
         columns.length > 7 ? "text-[10px]" : "text-[11px]",
-      )} data-split-table="">
+      )} data-split-table="" data-table-width={tableV2.schema?.widthMode === "content" ? "content" : undefined}>
         <colgroup>
           {columns.map((column, index) => (
             <col key={column.id} style={columnWidths ? { width: `${columnWidths[index]}px` } : undefined} />

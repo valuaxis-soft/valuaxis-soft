@@ -8,6 +8,7 @@ import {
 } from "./section-editor";
 import { StructuralActions } from "./structural-actions";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
+import type { PageBreakMode } from "@/features/valuations/services/document-structure";
 
 type BlockCardProps = {
   // Card shell
@@ -44,8 +45,8 @@ type BlockCardProps = {
       visible: boolean;
     };
     pageBreak?: {
-      onChange: (value: boolean) => void;
-      value: boolean;
+      onChange: (value: PageBreakMode) => void;
+      value: PageBreakMode;
     };
     deleteAction?: {
       onDelete: () => void;

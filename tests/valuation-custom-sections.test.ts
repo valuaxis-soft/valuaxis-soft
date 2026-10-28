@@ -32,8 +32,10 @@ test("a section the appraiser adds has its own id, one block titled like it, and
   const sections = resequenceSections([...createInitialSections(), section]);
   const last = sections.at(-1)!;
   assert.equal(last.id, section.id);
-  assert.equal(last.label, "XVI", "the sixteenth tab");
-  assert.equal(sectionDisplayName(last), `XVI. ${NEW_SECTION_TITLE}`);
+  // A chapter keeps its numeral even after the conclusion; the map of comparables, after it, is an annex and takes none.
+  assert.equal(last.label, "XV", "the fifteenth chapter");
+  assert.equal(sectionDisplayName(last), `XV. ${NEW_SECTION_TITLE}`);
+  assert.equal(sections.find((item) => item.id === "mapaComparables")?.label, "ANEXO 1");
 
   // Moved to the second place, it takes the second number and the rest shift.
   const moved = resequenceSections([sections[0], last, ...sections.slice(1, -1)]);

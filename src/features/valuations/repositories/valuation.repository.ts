@@ -17,6 +17,8 @@ import {
   hydrateSectionMetadata,
   hydrateApartadoMetadata,
   isRemovedSectionConfig,
+  type BlockMetadata,
+  type SectionMetadata,
 } from "@/features/valuations/metadata";
 import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import type { TableCellFormat, TableV2 } from "@/features/valuations/services/table";
@@ -79,6 +81,11 @@ export type ValuationSectionDto = {
   bindingMargin?: "normal" | "wide";
   titleBars?: "filled" | "outline";
   titleBand?: "filled" | "outline";
+  /** Chapter or annex, the label of an annex, where it starts and the approaches left out of the dictamen. */
+  documentRole?: SectionMetadata["documentRole"];
+  annexTitle?: string;
+  pageBreak?: SectionMetadata["pageBreak"];
+  excludedFromReport?: SectionMetadata["excludedFromReport"];
   /** A section the appraiser added. */
   custom?: boolean;
   /** The appraiser renamed the tab. */
@@ -97,6 +104,7 @@ export type ValuationBlockDto = {
   required: boolean;
   sortOrder: number;
   startOnNewPage?: boolean;
+  pageBreak?: BlockMetadata["pageBreak"];
   flowSpacingBeforePx?: number;
   contentLayout?: ContentLayout;
   blockFlow?: BlockFlowV2;
@@ -603,6 +611,16 @@ export function buildCanonicalValuationSections(sections: DbSection[], propertyK
     .map(({ section }) => section);
 }
 
+/** Chapter or annex, where the section starts and the approaches it leaves out, as saved. */
+function sectionStructureDto(metadata: SectionMetadata) {
+  return {
+    ...(metadata.documentRole ? { documentRole: metadata.documentRole } : {}),
+    ...(metadata.annexTitle ? { annexTitle: metadata.annexTitle } : {}),
+    ...(metadata.pageBreak ? { pageBreak: metadata.pageBreak } : {}),
+    ...(metadata.excludedFromReport?.length ? { excludedFromReport: metadata.excludedFromReport } : {}),
+  };
+}
+
 function mapCustomSection(section: DbSection): ValuationSectionDto {
   const sectionMetadata = hydrateSectionMetadata(section.JConfiguracion);
   const blocks = section.nodos
@@ -618,6 +636,7 @@ function mapCustomSection(section: DbSection): ValuationSectionDto {
     sortOrder: section.IOrden,
     startOnNewPage: sectionMetadata.startOnNewPage ?? false,
     flowSpacingBeforePx: sectionMetadata.flowSpacingBeforePx,
+    ...sectionStructureDto(sectionMetadata),
     custom: true,
     titleEdited: true,
     blocks,
@@ -687,6 +706,7 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition, 
     ...(sectionMetadata.bindingMargin ? { bindingMargin: sectionMetadata.bindingMargin } : {}),
     ...(sectionMetadata.titleBars ? { titleBars: sectionMetadata.titleBars } : {}),
     ...(sectionMetadata.titleBand ? { titleBand: sectionMetadata.titleBand } : {}),
+    ...sectionStructureDto(sectionMetadata),
     ...(renamed ? { titleEdited: true } : {}),
     ...(removed ? { removed: true } : {}),
     blocks,
@@ -803,6 +823,7 @@ function mapNodeToBlock(node: DbNode, label: string): ValuationBlockDto {
     required: node.BObligatorio,
     sortOrder: node.IOrden,
     startOnNewPage: blockMetadata.startOnNewPage ?? false,
+    ...(blockMetadata.pageBreak ? { pageBreak: blockMetadata.pageBreak } : {}),
     contentLayout: blockMetadata.contentLayout,
     blockFlow: blockMetadata.blockFlow,
     conceptPresentation: blockMetadata.conceptPresentation,

@@ -27,7 +27,7 @@ import type {
   ContentLayout,
   Apartado,
 } from "../../model";
-import { resolveContentLayout } from "../../services/content-layout";
+import { resolveContentLayout, setContentRowTagStyle } from "../../services/content-layout";
 import {
   resolveBlockFlowV2,
   moveBlockFlowV2Apartado,
@@ -454,6 +454,7 @@ export function BlockFlowRenderer({
                   disabled={readOnly || !onContentLayoutChange}
                   containerRef={{ kind: "block", blockId: block.id }}
                   slots={columnSlotsByRowId?.get(row.id)}
+                  onTagStyleChange={onContentLayoutChange ? (rowId, tagStyle) => onContentLayoutChange(setContentRowTagStyle(resolvedLayout, rowId, tagStyle)) : undefined}
                 />
               </BfRowDropZones>
             );

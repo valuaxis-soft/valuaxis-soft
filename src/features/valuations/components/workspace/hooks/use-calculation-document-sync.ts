@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 
 import { api } from "@/lib/api-client";
 import { caratulaConclusionValues, conclusionValues, withConceptValues } from "@/features/valuations/calculation/conclusion-document";
@@ -34,6 +34,7 @@ import { computeMarketApproach, type MarketApproachResult } from "@/features/val
 import { Trace } from "@/features/valuations/engine/trace";
 import type { AppSection } from "@/features/valuations/model";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
+import { REPORT_APPROACHES, excludedReportApproaches } from "@/features/valuations/services/report-approaches";
 import type { EditorState } from "./use-editor-state";
 
 const COST_PREFIX = `${GENERATED_BLOCK_PREFIX}costos`;
@@ -51,11 +52,12 @@ export function useCalculationDocumentSync({
   canEdit,
   caratula,
   machinery,
+  saveStatus,
   sections,
   updateCaratula,
   updateSections,
   valuationId,
-}: Pick<EditorState, "caratula" | "sections" | "updateCaratula" | "updateSections"> & {
+}: Pick<EditorState, "caratula" | "saveStatus" | "sections" | "updateCaratula" | "updateSections"> & {
   canEdit: boolean;
   /** The valuation is of machinery and equipment. */
   machinery: boolean;
@@ -201,6 +203,19 @@ export function useCalculationDocumentSync({
   useEffect(() => {
     if (canEdit && valuationId) void syncOnOpen(valuationId);
   }, [canEdit, valuationId]);
+
+  // An approach turned on or off for the dictamen: once the document is saved, the server concluded
+  // again without it (or with it), and the conclusion and the carátula follow.
+  const excluded = excludedReportApproaches(sections);
+  const exclusionKey = REPORT_APPROACHES.filter((approach) => excluded.has(approach)).join(",");
+  const savedExclusionKeyRef = useRef(exclusionKey);
+  const refreshConclusion = useEffectEvent(() => void refresh({ conclusion: true }));
+  useEffect(() => {
+    if (saveStatus !== "saved") return;
+    if (savedExclusionKeyRef.current === exclusionKey) return;
+    savedExclusionKeyRef.current = exclusionKey;
+    refreshConclusion();
+  }, [exclusionKey, saveStatus]);
 
   return {
     onMarketCalculation,

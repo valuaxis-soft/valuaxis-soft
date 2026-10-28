@@ -20,6 +20,8 @@ export type SectionPayload = {
   titleEdited?: boolean;
   /** A registry section the appraiser deleted: stored hidden and read back out of the tab strip. */
   removed?: boolean;
+  /** The approaches of the section left out of the dictamen; stored with its configuration. */
+  excludedFromReport?: string[];
   blocks?: BlockPayload[];
 };
 

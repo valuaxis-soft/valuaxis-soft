@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { DownloadDictamenPdfButton } from "./download-dictamen-pdf-button";
 import { SendDictamenEmailDialog } from "./send-dictamen-email-dialog";
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
-import { SectionDocument } from "@/features/valuations/components/report-preview";
+import { ContinuousSectionsDocument, SectionDocument } from "@/features/valuations/components/report-preview";
+import { printableSectionGroups } from "@/features/valuations/services/printable-sections";
 import { documentNumberPresentation } from "@/features/valuations/services/number-presentation";
 import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
 import { documentPagePresentation } from "@/features/valuations/services/page-presentation";
@@ -55,11 +56,11 @@ export function ValuationDictamen({
   const { principalCoverImage } = useStoredValuationImages({ setSections, valuationId });
   const documentHeaderImage = getDocumentHeaderImage(sections);
 
-  const printableSections = useMemo(() => {
+  // The approaches left out of the dictamen do not print, and a section that continues the one before shares its pages.
+  const printableGroups = useMemo(() => {
     const allConcepts = flattenSectionConcepts(sections);
-    return sections
-      .filter((section) => section.enabled !== false)
-      .map((section) => resolveSectionConceptsForDisplay(section, allConcepts));
+    return printableSectionGroups(sections)
+      .map((group) => group.map((section) => resolveSectionConceptsForDisplay(section, allConcepts)));
   }, [sections]);
 
   return (
@@ -90,15 +91,24 @@ export function ValuationDictamen({
         <NumberPresentationProvider presentation={documentNumberPresentation(sections)}>
         <PagePresentationProvider presentation={documentPagePresentation(sections)}>
           <div className="flex w-fit min-w-full flex-col gap-6 px-4 print:gap-0 print:p-0">
-            {printableSections.map((section) => (
+            {printableGroups.map((group) => group.length === 1 ? (
               <SectionDocument
                 caratula={initial.caratula}
                 letterhead={letterhead}
                 documentHeaderImage={documentHeaderImage}
-                key={section.id}
+                key={group[0].id}
                 meta={initial.meta}
                 principalCoverImage={principalCoverImage}
-                section={section}
+                section={group[0]}
+              />
+            ) : (
+              <ContinuousSectionsDocument
+                caratula={initial.caratula}
+                letterhead={letterhead}
+                documentHeaderImage={documentHeaderImage}
+                key={group.map((section) => section.id).join("+")}
+                meta={initial.meta}
+                sections={group}
               />
             ))}
           </div>

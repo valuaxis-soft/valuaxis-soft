@@ -200,7 +200,11 @@ export type TableSchema = {
    * appraiser's format: no header row, no rules or shading, in bold.
    */
   plain?: boolean;
+  /** "content": the printed table is as wide as its columns need; absent or "page", the width of the page. */
+  widthMode?: TableWidthMode;
 };
+
+export type TableWidthMode = "page" | "content";
 
 /* ================================================================== */
 /*  FORMULA AST TYPES                                                  */
@@ -1088,6 +1092,76 @@ export function columnValueSuggestions(table: TableV2, columnId: string, rowId: 
     if (found.length === limit) break;
   }
   return found;
+}
+
+/* ================================================================== */
+/*  HEADER GROUPS AND WIDTH — what the appraiser sets on his own tables */
+/* ================================================================== */
+
+/**
+ * Whether the appraiser may group the headers of the table: his own tables;
+ * not the homologation preset nor a table the calculation writes, whose
+ * groups follow their own structure.
+ */
+export function canGroupTableHeaders(table: Pick<TableV2, "schema">): boolean {
+  return !table.schema?.presetId && !table.schema?.generated && !table.schema?.plain;
+}
+
+let groupSequence = 0;
+const newGroupId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(groupSequence++).toString(36)}`;
+
+/**
+ * A double header: one title over the columns from `fromColumnId` to
+ * `toColumnId` as shown (their own headers go in the second row), as merging
+ * the cells above them in a spreadsheet. The columns between keep their order;
+ * a group they belonged to loses them, and is dropped if it is left empty.
+ */
+export function groupTableHeaders(table: TableV2, fromColumnId: string, toColumnId: string, title: string): TableV2 {
+  if (!canGroupTableHeaders(table)) return table;
+  const shown = getDisplayColumns(table).map((column) => column.id);
+  let from = shown.indexOf(fromColumnId);
+  let to = shown.indexOf(toColumnId);
+  if (from === -1 || to === -1) return table;
+  if (from > to) [from, to] = [to, from];
+  const zoneOf = new Map((table.schema?.zones ?? []).flatMap((zone) => zone.columnIds.map((id): [string, string] => [id, zone.id])));
+  const groupZoneId = newGroupId("zone-group");
+  // Each run of columns of one zone becomes a zone; the range becomes one of its own.
+  const segments: Array<{ key: string; columnIds: string[] }> = [];
+  shown.forEach((columnId, index) => {
+    const key = index >= from && index <= to ? groupZoneId : zoneOf.get(columnId) ?? "zone-free";
+    const last = segments.at(-1);
+    if (last && last.key === key) last.columnIds.push(columnId);
+    else segments.push({ key, columnIds: [columnId] });
+  });
+  const previousZones = new Map((table.schema?.zones ?? []).map((zone) => [zone.id, zone]));
+  const usedIds = new Set<string>();
+  const zones: StructuralZone[] = segments.map((segment) => {
+    const previous = previousZones.get(segment.key);
+    const id = usedIds.has(segment.key) ? newGroupId(segment.key) : segment.key;
+    usedIds.add(id);
+    return previous?.kind === "dynamic" ? { ...previous, id, columnIds: segment.columnIds } : { id, kind: "fixed", columnIds: segment.columnIds };
+  });
+  const zoneIds = new Set(zones.map((zone) => zone.id));
+  const headerGroups = [
+    ...(table.schema?.headerGroups ?? []).filter((group) => zoneIds.has(group.zoneId)),
+    { id: newGroupId("hg"), title: title.trim() || "Grupo", titleEditable: true, zoneId: groupZoneId },
+  ];
+  return withColumnOrder({ ...table, schema: { ...(table.schema ?? { zones: [] }), zones, headerGroups } }, shown, new Map(zones.flatMap((zone) => zone.columnIds.map((id): [string, string] => [id, zone.id]))));
+}
+
+/** The table without the header group: its columns keep their own headers, in one row. */
+export function ungroupTableHeaders(table: TableV2, groupId: string): TableV2 {
+  if (!table.schema?.headerGroups?.some((group) => group.id === groupId)) return table;
+  const headerGroups = table.schema.headerGroups.filter((group) => group.id !== groupId);
+  return { ...table, schema: { ...table.schema, headerGroups } };
+}
+
+/** How wide the table prints: the page's width or its content's. */
+export function setTableWidthMode(table: TableV2, widthMode: TableWidthMode): TableV2 {
+  const schema: TableSchema = { ...(table.schema ?? { zones: [] }) };
+  if (widthMode === "content") schema.widthMode = "content";
+  else delete schema.widthMode;
+  return { ...table, schema };
 }
 
 /** Update a header group title. */

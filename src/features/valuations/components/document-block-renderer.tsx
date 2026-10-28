@@ -3,7 +3,9 @@
 import type { Block, Concept, ImageContent, Apartado, TableContent, ContentLayoutRowV2 } from "@/features/valuations/model";
 import { resolveBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
-import { formatVisibleChildLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
+import { apartadoDisplayLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
+import { resolvePageBreak } from "@/features/valuations/services/document-structure";
+import { printedImageCaptions } from "@/features/valuations/services/image-captions";
 import { PAIRED_APARTADOS_CLASS_NAME, useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
 import { labelGuideColumns, resolveCellConceptGuide } from "@/features/valuations/services/concept-presentation";
@@ -82,7 +84,7 @@ export function documentBlockFlowItems(
   const orderedApartados = getBlockFlowApartadoOrder(block);
   const blockLongText = isLongTextList(block.concepts);
   const apartadoHead = (subBlock: Apartado) =>
-    renderApartadoHead?.(subBlock, formatVisibleChildLabel(block.sectionLabel, orderedApartados, subBlock.id)) ?? null;
+    renderApartadoHead?.(subBlock, apartadoDisplayLabel(block, orderedApartados, subBlock.id)) ?? null;
   const renderPairedApartado = (subBlock: Apartado) => {
     const head = apartadoHead(subBlock);
     if (head) {
@@ -115,10 +117,14 @@ export function documentBlockFlowItems(
   if (renderTitleBar) {
     const titleId = `${block.id}:title`;
     previous = "title";
+    // "Continue": the block starts right where the one before ended, its title
+    // close under it and not carried to the next page with its first content.
+    const pageBreak = resolvePageBreak(block);
     items.push({
       id: titleId,
-      startOnNewPage: block.startOnNewPage,
-      keepWithNext: true,
+      startOnNewPage: pageBreak === "new-page",
+      keepWithNext: pageBreak !== "continue",
+      ...(pageBreak === "continue" ? { continuesPrevious: true } : {}),
       node: renderBlockTitle
         ? <>{renderBlockTitle(block)}</>
         : <DocumentBlockTitleBar label={block.sectionLabel} title={block.title} />,
@@ -194,7 +200,14 @@ export function documentBlockFlowItems(
             tableFragment={tableFragment}
           />
         );
-        items.push({ id: apId, startOnNewPage: subBlock.startOnNewPage, continuesPrevious: underTitle, keepWithNext: head.rows.length > 0, node: head.node });
+        const headBreak = resolvePageBreak(subBlock);
+        items.push({
+          id: apId,
+          startOnNewPage: headBreak === "new-page",
+          continuesPrevious: underTitle ?? (headBreak === "continue" ? true : undefined),
+          keepWithNext: head.rows.length > 0 && headBreak !== "continue",
+          node: head.node,
+        });
         head.rows.forEach((layoutRow, index) => {
           items.push({
             id: `${apId}:${layoutRow.id}`,
@@ -234,10 +247,11 @@ export function documentBlockFlowItems(
             className="mt-1"
           />
         );
+      const apartadoBreak = resolvePageBreak(subBlock);
       items.push({
         id: apId,
-        startOnNewPage: subBlock.startOnNewPage,
-        continuesPrevious: underTitle,
+        startOnNewPage: apartadoBreak === "new-page",
+        continuesPrevious: underTitle ?? (apartadoBreak === "continue" ? true : undefined),
         node: renderTitledRow(),
         renderTableFragment: apartadoRows.length && holdsOnlyATable(apartadoRows[0], subBlock) ? renderTitledRow : undefined,
       });
@@ -267,7 +281,7 @@ export function documentBlockFlowItems(
       const underTitle = previous === "title" ? true : undefined;
       previous = "apartado";
       // For paired apartados, if EITHER requests a page break, the pair starts on a new page
-      const pairedStartOnNewPage = Boolean(sb1?.startOnNewPage) || Boolean(sb2?.startOnNewPage);
+      const pairedStartOnNewPage = [sb1, sb2].some((subBlock) => subBlock && resolvePageBreak(subBlock) === "new-page");
       const pairId = `pair-${block.id}-${structuralRow.id}`;
       items.push({
         id: pairId,
@@ -368,13 +382,28 @@ function DocumentContentRow({
   // First row: current spacing; subsequent rows: tighter 1px margin, or room
   // above a table so it does not touch the table or the concepts before it.
   const holdsTable = visibleItems.some((itemRef) => itemRef.type === "table");
+  const rowSpacing = tableFragment?.continuation ? "grid" : rowIndex === 0 ? theme.contentRow : holdsTable ? "mt-2.5 grid" : "mt-[1px] grid";
   const rowClassName = cn(
     // The continuation of a table opens its page: no room above it.
-    tableFragment?.continuation ? "grid" : rowIndex === 0 ? theme.contentRow : holdsTable ? "mt-2.5 grid" : "mt-[1px] grid",
+    rowSpacing,
     gridClass,
     columnCount > 1 && "gap-x-4",
     sharedRule && theme.conceptRule,
   );
+
+  // Concepts side by side as data labels: each as wide as what it says, with room between them.
+  if (sharedRule && layoutRow.tagStyle) {
+    const tagStyle = layoutRow.tagStyle;
+    const concepts = visibleItems.map((itemRef) => conceptsById.get(itemRef.id)).filter((concept): concept is Concept => Boolean(concept));
+    return (
+      <div className={cn(rowSpacing, "flex flex-wrap items-stretch justify-between gap-x-6 gap-y-1")} data-row-tags={tagStyle}>
+        {concepts.map((concept) => <DocumentConceptTag key={concept.id} concept={concept} tagStyle={tagStyle} />)}
+      </div>
+    );
+  }
+
+  // Images side by side keep their frames level: one without a caption keeps the room of its neighbour's.
+  const captionSlots = columnCount > 1 ? imageCaptionSlots(visibleItems, imagesById) : undefined;
 
   return (
     <div className={rowClassName}>
@@ -406,7 +435,7 @@ function DocumentContentRow({
                 // Images sharing a row (location sketches) print as a compact framed pair.
                 return (
                   <div className={columnCount > 1 ? "my-1" : "my-4"} key={itemRef.id}>
-                    <DocumentImage image={image} sideBySide={columnCount > 1} />
+                    <DocumentImage image={image} sideBySide={columnCount > 1} captionSlots={captionSlots} />
                   </div>
                 );
               }
@@ -420,6 +449,35 @@ function DocumentContentRow({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** The most caption lines above and below any image of the row. */
+function imageCaptionSlots(items: Array<{ type: string; id: string }>, imagesById: Map<string, ImageContent>) {
+  const images = items.flatMap((itemRef) => (itemRef.type === "image" ? [imagesById.get(itemRef.id)] : [])).filter((image): image is ImageContent => Boolean(image));
+  if (images.length < 2) return undefined;
+  return {
+    top: Math.max(...images.map((image) => printedImageCaptions(image, "top").length)),
+    bottom: Math.max(...images.map((image) => printedImageCaptions(image, "bottom").length)),
+  };
+}
+
+/** A concept printed as a data label: label and value in one box, white or shaded. */
+function DocumentConceptTag({ concept, tagStyle }: { concept: Concept; tagStyle: NonNullable<ContentLayoutRowV2["tagStyle"]> }) {
+  const theme = useDocumentTheme();
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 max-w-full items-baseline gap-1.5 border border-[#A9BCD6] px-2 py-0.5",
+        tagStyle === "shaded" ? "bg-[#E7EEF7] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" : "bg-white",
+      )}
+      data-concept-tag={tagStyle}
+    >
+      <strong className={cn(theme.conceptLabel, "shrink-0 whitespace-nowrap")}>{formatConceptTitleWithColon(concept.label)}</strong>
+      <span className={cn(theme.conceptValue, "text-left")}>
+        <DocumentConceptValue concept={concept} fallback="—" />
+      </span>
     </div>
   );
 }
@@ -552,7 +610,7 @@ function DocumentApartado({
   // A title that carries its own letter ("A) TERRENO EN ESTUDIO") is not numbered again.
   const displayLabel = /^[A-Z]\)\s/.test(subBlock.title.trim())
     ? ""
-    : formatVisibleChildLabel(block.sectionLabel, orderedApartados, subBlock.id);
+    : apartadoDisplayLabel(block, orderedApartados, subBlock.id);
   const isTechnicalList = subBlock.presentationMode === "technical-list";
 
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { resolvePageBreak, type PageBreakMode } from "@/features/valuations/services/document-structure";
 
 import { FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -28,7 +29,7 @@ export function ApartadoEditor({
   onMoveDown,
   onMoveUp,
   onRemove,
-  onStartOnNewPageChange,
+  onPageBreakChange,
   onTitleChange,
   onVisibleChange,
   readOnly,
@@ -50,7 +51,7 @@ export function ApartadoEditor({
   onMoveDown?: () => void;
   onMoveUp?: () => void;
   onRemove: () => void;
-  onStartOnNewPageChange?: (startOnNewPage: boolean) => void;
+  onPageBreakChange?: (pageBreak: PageBreakMode) => void;
   onTitleChange: (title: string) => void;
   onVisibleChange?: (visible: boolean) => void;
   readOnly: boolean;
@@ -107,9 +108,9 @@ export function ApartadoEditor({
               visible: subBlock.enabled,
               onChange: onVisibleChange,
             } : undefined}
-            pageBreak={capabilities.pageBreak && onStartOnNewPageChange ? {
-              value: Boolean(subBlock.startOnNewPage),
-              onChange: onStartOnNewPageChange,
+            pageBreak={capabilities.pageBreak && onPageBreakChange ? {
+              value: resolvePageBreak(subBlock),
+              onChange: onPageBreakChange,
             } : undefined}
             deleteAction={capabilities.delete ? { onDelete: onRemove } : undefined}
           />

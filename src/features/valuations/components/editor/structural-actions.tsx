@@ -4,12 +4,22 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronUp, TextAlignStart , Eye, EyeOff, FilePlus2, LayoutList, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ChevronDown, ChevronUp, TextAlignStart , Eye, EyeOff, FilePlus2, FileStack, LayoutList, Trash2 } from "lucide-react";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import { MIN_OFFSET_PX, MAX_OFFSET_PX } from "@/features/valuations/services/concept-presentation";
 import type { ApartadoPresentationMode } from "@/features/valuations/model";
+import { PAGE_BREAK_LABELS, type PageBreakMode } from "@/features/valuations/services/document-structure";
 
-function PageBreakToggle({
+const PAGE_BREAK_ICONS = { auto: FileStack, "new-page": FilePlus2, continue: ArrowDownToLine } as const;
+
+const PAGE_BREAK_HINTS: Record<PageBreakMode, string> = {
+  auto: "Sigue al anterior; si su título y su primer contenido no caben, pasan juntos a la siguiente página.",
+  "new-page": "Siempre empieza en una página nueva.",
+  continue: "Empieza justo donde terminó el anterior, sin espacio: su título no se lleva a la página siguiente aunque su contenido continúe ahí.",
+};
+
+/** Where the block or apartado starts on the printed pages: three choices, the current one marked. */
+function PageBreakControl({
   disabled = false,
   itemLabel = "sección",
   onChange,
@@ -17,26 +27,54 @@ function PageBreakToggle({
 }: {
   disabled?: boolean;
   itemLabel?: string;
-  onChange: (value: boolean) => void;
-  value: boolean;
+  onChange: (value: PageBreakMode) => void;
+  value: PageBreakMode;
 }) {
-  const label = value
-    ? `Continuar ${itemLabel} de forma consecutiva`
-    : `Iniciar ${itemLabel} en nueva página`;
-
+  const Icon = PAGE_BREAK_ICONS[value];
+  const label = `Salto de página del ${itemLabel}: ${PAGE_BREAK_LABELS[value].toLowerCase()}`;
   return (
-    <Button
-      type="button"
-      size="icon-sm"
-      variant="outline"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      className={cn(value && "border-primary/50 bg-primary/10 text-primary")}
-      onClick={() => onChange(!value)}
-    >
-      <FilePlus2 />
-    </Button>
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            aria-label={label}
+            title={label}
+            disabled={disabled}
+            className={cn(value !== "auto" && "border-primary/50 bg-primary/10 text-primary")}
+            data-page-break={value}
+          >
+            <Icon />
+          </Button>
+        }
+      />
+      <PopoverContent align="end" className="w-72 p-3">
+        <div className="space-y-2" role="radiogroup" aria-label={`Salto de página del ${itemLabel}`}>
+          <p className="text-xs font-medium text-muted-foreground">Salto de página</p>
+          {(["auto", "new-page", "continue"] as const).map((mode) => {
+            const ModeIcon = PAGE_BREAK_ICONS[mode];
+            return (
+              <Button
+                key={mode}
+                type="button"
+                size="sm"
+                role="radio"
+                aria-checked={value === mode}
+                variant={value === mode ? "default" : "outline"}
+                className="h-auto w-full flex-col items-start gap-0.5 py-1.5 text-left text-xs whitespace-normal"
+                disabled={disabled}
+                onClick={() => onChange(mode)}
+              >
+                <span className="flex items-center gap-1.5 font-medium"><ModeIcon className="size-3.5" />{PAGE_BREAK_LABELS[mode]}</span>
+                <span className="font-normal opacity-80">{PAGE_BREAK_HINTS[mode]}</span>
+              </Button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -312,8 +350,8 @@ export function StructuralActions({
   onPresentationModeChange?: (next: ApartadoPresentationMode | undefined) => void;
   onResetConceptPresentations?: () => void;
   pageBreak?: {
-    onChange: (value: boolean) => void;
-    value: boolean;
+    onChange: (value: PageBreakMode) => void;
+    value: PageBreakMode;
   };
   presentationMode?: ApartadoPresentationMode;
   visibility?: {
@@ -342,7 +380,7 @@ export function StructuralActions({
         />
       ) : null}
       {pageBreak ? (
-        <PageBreakToggle
+        <PageBreakControl
           value={pageBreak.value}
           disabled={disabled}
           itemLabel={itemLabel}

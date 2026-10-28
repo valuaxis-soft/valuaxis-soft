@@ -25,6 +25,8 @@ import {
 } from "./persistence-context";
 import type { CaratulaPayload, SectionPayload, Tx } from "./types";
 import { initializeWorkingVersionStructure } from "./working-version";
+import { exclusionKey, recomputeConclusion, reportExclusionsOf } from "@/features/valuations/calculation/conclusion.service";
+import { excludedReportApproaches } from "@/features/valuations/services/report-approaches";
 
 /**
  * A full valuation writes hundreds of rows (blocks, concepts, tables, cells);
@@ -67,10 +69,17 @@ export async function saveValuationSections(input: {
       throw new ValuationWorkflowError("El avaluo esta bloqueado", 409);
     }
 
+    // An approach turned on or off for the dictamen changes what the conclusion may use. Read
+    // before the registry sync below, which resets the configuration of the registry sections.
+    const exclusionsBefore = avaluo.IdVersionTrabajo ? exclusionKey(await reportExclusionsOf(tx, avaluo.IdVersionTrabajo)) : "";
     // Creates the working version when it is missing and syncs the registry sections.
     const versionId = await initializeWorkingVersionStructure({ avaluoId: avaluo.IdAvaluo, userId: input.user.id, tx });
     if (debug) console.log("[VALUATION_SECTIONS] versionId resolved", { versionId, idVersionTrabajo: avaluo.IdVersionTrabajo });
     await writeVersionSections(tx, versionId, input.sections, stats);
+    const exclusionsAfter = exclusionKey(excludedReportApproaches(
+      input.sections.map((section) => ({ id: section.id ?? section.label ?? "", excludedFromReport: section.excludedFromReport })),
+    ));
+    if (exclusionsAfter !== exclusionsBefore) await recomputeConclusion(tx, versionId);
 
     if (input.caratula) {
       await saveCaratula({ versionId, payload: input.caratula, tx });
