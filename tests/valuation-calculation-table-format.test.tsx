@@ -247,6 +247,15 @@ test("the calculation writes its table again with the columns the appraiser set,
   assert.equal(replaceGeneratedBlocks(next, owns, [marketBlock(homologation([["2", "1.05", "1.05"], ["3", "0.90", "0.90"]]))]), next);
 });
 
+test("a generated block the appraiser hid stays hidden and keeps its columns when the calculation writes it again", () => {
+  const written = homologation([["1", "0.95", "0.95"]]);
+  const layout = withColumnHidden({}, ensureTableV2(written).columns[1].id, true);
+  const section = marketSection([{ ...marketBlock(applyTableLayout(written, layout)), enabled: false }]);
+  const next = replaceGeneratedBlocks(section, owns, [marketBlock(homologation([["1", "0.90", "0.90"]]))]);
+  assert.equal(next.blocks[0].enabled, false);
+  assert.deepEqual(cellsOf(next.blocks[0].apartados[0].tables[0]), [["1", "0.90"]]);
+});
+
 test("an added column is placed, renamed and removed; at most four per table", () => {
   let layout = withExtraColumn({}, " ", null);
   assert.equal(layout.extraColumns?.[0].name, "Nueva columna");
