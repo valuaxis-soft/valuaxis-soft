@@ -6,16 +6,22 @@ import {
   AutoPaginatedDocumentFlow,
   computeDocumentLayoutKey,
   DocumentPreviewPage,
+  type DocumentFlowItem,
 } from "./document-preview-page";
 
 const EMPTY_VALUE = "No se proporcionó";
 
+/** The printed items of Datos generales. */
+export function datosFlowItems(section: AppSection): DocumentFlowItem[] {
+  return section.blocks
+    .filter((block) => block.enabled)
+    .flatMap((block) => documentBlockFlowItems(block, { renderTitleBar: true }));
+}
+
 export function DatosPreview({ header, section }: { header: ReactNode; section: AppSection }) {
   const theme = useDocumentTheme();
   const visibleBlocks = section.blocks.filter((block) => block.enabled);
-  const items = visibleBlocks.flatMap((block) =>
-    documentBlockFlowItems(block, { renderTitleBar: true }),
-  );
+  const items = datosFlowItems(section);
   const contentLayoutKey = useMemo(() => computeDocumentLayoutKey(section), [section]);
 
   if (!visibleBlocks.length) {

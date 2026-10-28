@@ -25,7 +25,20 @@ const FRAME_CLASS = "relative overflow-hidden border-2 border-slate-500 bg-white
  * in their order. A turned image ("Girar") takes on the page the place its
  * turned shape needs.
  */
-export function DocumentImage({ image, sideBySide = false }: { image: ImageContent; sideBySide?: boolean }) {
+export function DocumentImage({
+  image,
+  sideBySide = false,
+  captionSlots,
+}: {
+  image: ImageContent;
+  sideBySide?: boolean;
+  /**
+   * Caption lines the images of its row print above and below at most: one
+   * with fewer keeps their room empty, so the frames of a pair stay level
+   * when only one of them has a caption.
+   */
+  captionSlots?: { top: number; bottom: number };
+}) {
   const widthPercent = resolveImageWidthPercent(image);
   const widthStyle = {
     width: `${widthPercent}%`,
@@ -88,6 +101,7 @@ export function DocumentImage({ image, sideBySide = false }: { image: ImageConte
 
   return (
     <figure className={cn("mx-auto break-inside-avoid-page")} style={widthStyle} data-image-frame={sideBySide ? "pair" : "lone"}>
+      {Array.from({ length: Math.max(0, (captionSlots?.top ?? 0) - above.length) }, (_, index) => <CaptionRoom key={`room-top-${index}`} />)}
       {above.map((caption) => <ImageCaptionLine caption={caption} key={caption.id} />)}
       {!isRenderableImageSource(image.src) ? (
         <div className="flex h-24 items-center justify-center border border-dashed border-slate-300 text-[9px] italic text-slate-400">
@@ -121,6 +135,7 @@ export function DocumentImage({ image, sideBySide = false }: { image: ImageConte
         </div>
       )}
       {below.map((caption) => <ImageCaptionLine caption={caption} key={caption.id} below />)}
+      {Array.from({ length: Math.max(0, (captionSlots?.bottom ?? 0) - below.length) }, (_, index) => <CaptionRoom key={`room-bottom-${index}`} below />)}
     </figure>
   );
 }
@@ -134,6 +149,11 @@ function loneFrameStyle(width: number, height: number): CSSProperties {
     width: `min(100%, ${Math.round((LONE_IMAGE_MAX_HEIGHT_PX * width) / height)}px)`,
     aspectRatio: `${width} / ${height}`,
   };
+}
+
+/** The room of a caption line the image does not have: as tall as one, empty. */
+function CaptionRoom({ below = false }: { below?: boolean }) {
+  return <div aria-hidden="true" className={cn(below ? "mt-1" : "mb-1", "invisible text-[9px] font-semibold")} data-caption-room="">&nbsp;</div>;
 }
 
 function ImageCaptionLine({ caption, below = false }: { caption: ImageCaption; below?: boolean }) {

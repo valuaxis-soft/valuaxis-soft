@@ -20,10 +20,10 @@ import {
 } from "@/features/valuations/services/caratula-blocks";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { DocumentThemeProvider, useDocumentTheme } from "@/features/valuations/components/document-theme";
-import { DatosPreview } from "./datos-generales-preview";
-import { TerrenoPreview } from "./terreno-preview";
+import { DatosPreview, datosFlowItems } from "./datos-generales-preview";
+import { TerrenoPreview, terrenoFlowItems } from "./terreno-preview";
 import { isTerrenoSection } from "@/features/valuations/sections/terreno";
-import { ConstruccionPreview, isConstruccionSection } from "./construccion-preview";
+import { ConstruccionPreview, construccionFlowItemsInFlow, isConstruccionSection } from "./construccion-preview";
 import { documentBlockFlowItems } from "./document-block-renderer";
 import { DocumentPreviewHeader } from "./document-preview-header";
 import {
@@ -139,8 +139,7 @@ export function SectionDocument({
   principalCoverImage,
   documentHeaderImage,
 }: SectionDocumentProps) {
-  const isDatosGenerales =
-    section.id === "datos" || getCanonicalSectionKey(section.id) === "DATOS_GENERALES";
+  const isDatosGenerales = isDatosSection(section);
   const isTerreno = isTerrenoSection(section);
   const isConstruccion = isConstruccionSection(section);
   const header = <DocumentPreviewHeader caratula={caratula} letterhead={letterhead} headerImage={documentHeaderImage} propertyKind={meta.propertyKind} />;
@@ -179,6 +178,58 @@ export function SectionDocument({
         )}
       </div>
     </DocumentThemeProvider>
+  );
+}
+
+const isDatosSection = (section: AppSection) => section.id === "datos" || getCanonicalSectionKey(section.id) === "DATOS_GENERALES";
+
+/**
+ * The printed items of a section other than the carátula, as its own pages
+ * lay them out: to print it on the pages of the section before.
+ */
+export function sectionFlowItems(section: AppSection): DocumentFlowItem[] {
+  if (isDatosSection(section)) return datosFlowItems(section);
+  if (isTerrenoSection(section)) return terrenoFlowItems(section);
+  if (isConstruccionSection(section)) return construccionFlowItemsInFlow(section);
+  const applyConceptLayout = PRE_MARKET_LAYOUT_SECTION_KEYS.has(getCanonicalSectionKey(section.id));
+  return section.blocks
+    .filter((block) => block.enabled)
+    .flatMap((block) => reportBlockFlowItems(block, applyConceptLayout));
+}
+
+/**
+ * Sections that share their pages ("Continuar donde terminó la sección
+ * anterior"): one flow, so each one starts right where the one before ends.
+ */
+export function ContinuousSectionsDocument({
+  caratula,
+  letterhead,
+  meta,
+  sections,
+  documentHeaderImage,
+}: Omit<SectionDocumentProps, "section" | "principalCoverImage"> & { sections: AppSection[] }) {
+  const header = <DocumentPreviewHeader caratula={caratula} letterhead={letterhead} headerImage={documentHeaderImage} propertyKind={meta.propertyKind} />;
+  return (
+    <DocumentThemeProvider variant="standard">
+      <div className="light" style={CARATULA_COLOR_VARS}>
+        <ContinuousSectionsFlow header={header} sections={sections} />
+      </div>
+    </DocumentThemeProvider>
+  );
+}
+
+function ContinuousSectionsFlow({ header, sections }: { header: ReactNode; sections: AppSection[] }) {
+  const theme = useDocumentTheme();
+  const items = sections.flatMap(sectionFlowItems);
+  const contentLayoutKey = useMemo(() => sections.map(computeDocumentLayoutKey).join(":"), [sections]);
+  return (
+    <AutoPaginatedDocumentFlow
+      contentClassName={`${theme.sectionGap} ${theme.pagePadding}`}
+      contentLayoutKey={contentLayoutKey}
+      header={header}
+      items={items}
+      pageKeyPrefix={`continuous-${sections[0]?.id ?? "report"}`}
+    />
   );
 }
 

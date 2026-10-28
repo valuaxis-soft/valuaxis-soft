@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { AppSection } from "@/features/valuations/model";
+import type { SectionDocumentRole } from "@/features/valuations/services/document-structure";
 import { cn } from "@/lib/utils";
 import { sectionDisplayName } from "./model/section-numbering";
 import { SectionDndContainer } from "./section-dnd-container";
@@ -35,8 +36,8 @@ export function ValuationNavigation({
   activeSectionId: string;
   enabledSections: AppSection[];
   iconMap: Record<string, LucideIcon>;
-  /** Adds a section of the appraiser's own at the end of the strip. */
-  onAddSection?: () => void;
+  /** Adds a section of the appraiser's own: a chapter before the conclusion, an annex at the end. */
+  onAddSection?: (role: SectionDocumentRole) => void;
   /** Asks to delete a section (any but the required ones). */
   onRemoveSection?: (sectionId: string) => void;
   onRenameSection?: (sectionId: string, title: string) => void;
@@ -99,18 +100,40 @@ export function ValuationNavigation({
           readOnly={readOnly}
         />
         {onAddSection ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-9 shrink-0 rounded-full max-lg:min-h-10"
-            title="Agregar una sección propia al final"
-            disabled={readOnly}
-            onClick={onAddSection}
-          >
-            <Plus data-icon="inline-start" />
-            Sección
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 shrink-0 rounded-full max-lg:min-h-10"
+                  title="Agregar una sección propia: capítulo o anexo"
+                  disabled={readOnly}
+                >
+                  <Plus data-icon="inline-start" />
+                  Sección
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Agregar sección</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => onAddSection("chapter")}>
+                  <span className="grid">
+                    <span className="font-medium">Capítulo</span>
+                    <span className="text-xs text-muted-foreground">Con número romano, antes de la conclusión.</span>
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onAddSection("annex")}>
+                  <span className="grid">
+                    <span className="font-medium">Anexo</span>
+                    <span className="text-xs text-muted-foreground">Se imprime «ANEXO n», al final del dictamen.</span>
+                  </span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
       </div>
       <Button

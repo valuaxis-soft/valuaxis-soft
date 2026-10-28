@@ -28,8 +28,8 @@ import {
 } from "../editor/content-creation-control";
 
 import { CaratulaEditor, CalculatedValuesEditor } from "../editor/caratula-editor";
-import { DocumentNumberFormatControl } from "../editor/number-format-control";
-import { DocumentPageFormatControl } from "../editor/page-format-control";
+import { ValuationSettingsPanel } from "../editor/valuation-settings-panel";
+import { ReportInclusionBadge, SectionDocumentSettings } from "../editor/section-document-settings";
 import { SignaturesEditor } from "../editor/signatures-editor";
 import { GeneratedTableColumns } from "../editor/generated-table-columns";
 
@@ -84,7 +84,7 @@ import {
   isCaratulaIntermediateBlock,
   isConclusionNarrativeConcept,
 } from "@/features/valuations/services/caratula-blocks";
-import { formatVisibleChildLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
+import { apartadoDisplayLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
 import { resolveBlockFlowV2, moveBlockFlowV2ApartadoOneStep, canMoveBlockFlowV2ApartadoOneStep } from "@/features/valuations/services/block-flow";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import {
@@ -95,6 +95,7 @@ import { stripLeadingRomanNumeral } from "../datos-generales-display";
 import { pinFullLinkResolution, type ExistingConceptRelationMode } from "@/features/valuations/concept-links";
 import { canRemoveSection, SECTION_TITLE_MAX } from "@/features/valuations/services/section-edit-operations";
 import { blockContentHidden } from "@/features/valuations/services/hidden-content";
+import { pageBreakPatch, resolvePageBreak } from "@/features/valuations/services/document-structure";
 
 const PRE_MARKET_EDITOR_SECTION_KEYS = new Set([
   "DATOS_GENERALES",
@@ -282,6 +283,8 @@ export function ValuationEditorPanel(props: {
   principalCoverImageAvailable?: boolean;
   principalCoverImageUploading?: boolean;
   onPrincipalCoverImageUpload?: (event: ChangeEvent<HTMLInputElement>) => void;
+  /** The valuation, for the precision of the calculation in the carátula's settings. */
+  valuationId?: string | null;
 }) {
   const { section } = props;
 
@@ -394,6 +397,7 @@ export function ValuationEditorPanel(props: {
             : isTerreno
               ? `${section.label} ${section.title}`
             : sectionDisplayName(section)}
+          <span className="ml-2 inline-flex align-middle"><ReportInclusionBadge section={section} /></span>
         </CardTitle>
         <CardDescription>
           {isCaratula
@@ -426,6 +430,11 @@ export function ValuationEditorPanel(props: {
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-4">
+        {isCaratula ? (
+          <ValuationSettingsPanel section={section} readOnly={props.readOnly} valuationId={props.valuationId} onUpdateSection={props.onUpdateSection} />
+        ) : (
+          <SectionDocumentSettings section={section} allSections={props.allSections} readOnly={props.readOnly} onUpdateSection={props.onUpdateSection} />
+        )}
         {/* The calculation panels save on their own: Ctrl+Z in their fields is the browser's (or the panel's) own. */}
         {props.calculationPanel ? <div data-native-undo="">{props.calculationPanel}</div> : null}
         {isCaratula && props.caratula && props.meta && props.onUpdateCaratula && props.onUpdateMeta ? (
@@ -444,12 +453,6 @@ export function ValuationEditorPanel(props: {
             imageUploading={props.principalCoverImageUploading ?? false}
             onImageUpload={props.onPrincipalCoverImageUpload}
           />
-        ) : null}
-        {isCaratula ? (
-          <>
-            <DocumentNumberFormatControl section={section} readOnly={props.readOnly} onUpdateSection={props.onUpdateSection} />
-            <DocumentPageFormatControl section={section} readOnly={props.readOnly} onUpdateSection={props.onUpdateSection} />
-          </>
         ) : null}
         {isCaratula ? (
           <ContentDndScope id={`blocks-${section.id}`} blockIds={sortableBlockIds} moveRules={moveRules} onContentDrop={handleContentDrop}>
@@ -593,7 +596,7 @@ function SortableBlockEditor(props: {
     isCaratula,
     isIntermediateCaratulaBlock,
     isRemovableCaratulaBlock,
-    supportsPageBreak: hasConceptLayoutControls && !isCaratula,
+    supportsPageBreak: !isCaratula,
   });
   const apartadoCapabilities = isCaratula
     ? getCaratulaApartadoEditorCapabilities()
@@ -607,15 +610,14 @@ function SortableBlockEditor(props: {
       ...sectionBlock.apartados.flatMap((subBlock) => subBlock.concepts),
     ]),
   );
-  const conceptReferences = usesCompactConceptSystem
-    ? collectConceptReferences(allSections, block.id).filter((reference) => {
-      const needle = conceptSearch.trim().toLowerCase();
-      if (!needle) return true;
-      return `${reference.concept.label} ${reference.concept.value} ${reference.source}`
-        .toLowerCase()
-        .includes(needle);
-    })
-    : [];
+  // Every section offers the concepts of the valuation to reuse, the map of comparables too.
+  const conceptReferences = collectConceptReferences(allSections, block.id).filter((reference) => {
+    const needle = conceptSearch.trim().toLowerCase();
+    if (!needle) return true;
+    return `${reference.concept.label} ${reference.concept.value} ${reference.source}`
+      .toLowerCase()
+      .includes(needle);
+  });
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: block.id,
     disabled: readOnly || isCaratula,
@@ -684,8 +686,8 @@ function SortableBlockEditor(props: {
           onChange: (enabled) => props.onUpdateBlock(section.id, block.id, { enabled }),
         } : undefined,
         pageBreak: blockCapabilities.pageBreak ? {
-          value: Boolean(block.startOnNewPage),
-          onChange: (startOnNewPage) => props.onUpdateBlock(section.id, block.id, { startOnNewPage }),
+          value: resolvePageBreak(block),
+          onChange: (mode) => props.onUpdateBlock(section.id, block.id, pageBreakPatch(mode)),
         } : undefined,
         deleteAction: blockCapabilities.delete ? {
           size: "icon",
@@ -828,7 +830,7 @@ function SortableBlockEditor(props: {
             renderApartado={(subBlock, flowIndex, dndState) => (
               <ApartadoEditor
                 extraActions={!isCaratula ? <ApartadoTransferMenu section={section} block={block} apartado={subBlock} label={`el ${subBlockTerm}`} /> : undefined}
-                displayLabel={showStructuralNumbering ? formatVisibleChildLabel(displayBlockLabel, getBlockFlowApartadoOrder(block), subBlock.id) : ""}
+                displayLabel={showStructuralNumbering ? apartadoDisplayLabel({ annex: block.annex, sectionLabel: displayBlockLabel }, getBlockFlowApartadoOrder(block), subBlock.id) : ""}
                 readOnly={readOnly}
                 subBlock={subBlock}
                 subBlockTerm={subBlockTerm}
@@ -855,8 +857,8 @@ function SortableBlockEditor(props: {
                 onVisibleChange={(enabled) =>
                   props.onUpdateApartado(section.id, block.id, subBlock.id, { enabled })
                 }
-                onStartOnNewPageChange={(startOnNewPage) =>
-                  props.onUpdateApartado(section.id, block.id, subBlock.id, { startOnNewPage })
+                onPageBreakChange={(mode) =>
+                  props.onUpdateApartado(section.id, block.id, subBlock.id, pageBreakPatch(mode))
                 }
                 onMoveUp={() => {
                   if (!blockFlowV2 || readOnly) return;

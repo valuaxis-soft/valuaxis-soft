@@ -20,7 +20,7 @@ export function DocumentNumberFormatControl({
 }) {
   const { thousandsSeparator } = documentNumberPresentation([section]);
   return (
-    <section className="rounded-lg border bg-muted/20 p-4">
+    <section className="rounded-md border bg-background p-3">
       <Field orientation="horizontal">
         <Checkbox
           id="document-thousands-separator"

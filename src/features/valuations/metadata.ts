@@ -14,6 +14,15 @@ import {
   type TitleBarStyle,
 } from "@/features/valuations/services/page-presentation";
 import { isContentLayout, normalizeContentLayout } from "@/features/valuations/services/content-layout";
+import {
+  isPageBreakMode,
+  isSectionDocumentRole,
+  isSectionPageBreak,
+  type PageBreakMode,
+  type SectionDocumentRole,
+  type SectionPageBreak,
+} from "@/features/valuations/services/document-structure";
+import { isReportApproach, type ReportApproach } from "@/features/valuations/services/report-approaches";
 import { readStoredFormula, type TableFormula } from "@/features/valuations/services/table";
 
 export type ConceptMetadata = {
@@ -59,6 +68,14 @@ export type SectionMetadata = {
   titleBars?: TitleBarStyle;
   /** The document's style of title band, carried by its carátula section. */
   titleBand?: TitleBandStyle;
+  /** Chapter or annex, as the appraiser chose. */
+  documentRole?: SectionDocumentRole;
+  /** The label the annex prints instead of "ANEXO n". */
+  annexTitle?: string;
+  /** Whether the section starts on a new page or continues the one before. */
+  pageBreak?: SectionPageBreak;
+  /** The approaches of the section left out of the dictamen. */
+  excludedFromReport?: ReportApproach[];
   /** A section the appraiser added. */
   custom?: boolean;
   /** The appraiser renamed the section's tab. */
@@ -70,6 +87,7 @@ export type SectionMetadata = {
 export type BlockMetadata = {
   enabled: boolean;
   startOnNewPage?: boolean;
+  pageBreak?: PageBreakMode;
   contentLayout?: ContentLayout;
   blockFlow?: BlockFlowV2;
   conceptPresentation?: ConceptPresentation;
@@ -83,6 +101,7 @@ export type BlockMetadata = {
 export type ApartadoMetadata = {
   enabled: boolean;
   startOnNewPage?: boolean;
+  pageBreak?: PageBreakMode;
   contentLayout?: ContentLayout;
   conceptPresentation?: ConceptPresentation;
   presentationMode?: ApartadoPresentationMode;
@@ -196,6 +215,10 @@ export function sectionMetadataFromContent(content: SectionMetadataContent): Sec
     bindingMargin: content.bindingMargin,
     titleBars: content.titleBars,
     titleBand: content.titleBand,
+    ...(content.documentRole ? { documentRole: content.documentRole } : {}),
+    ...(content.annexTitle?.trim() ? { annexTitle: content.annexTitle.trim() } : {}),
+    ...(content.pageBreak ? { pageBreak: content.pageBreak } : {}),
+    ...(content.excludedFromReport?.length ? { excludedFromReport: content.excludedFromReport } : {}),
     custom: content.custom,
     titleEdited: content.titleEdited,
     ...(content.removed ? { removed: true } : {}),
@@ -216,6 +239,14 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
     bindingMargin: readConfigMetadata(config, (value) => (isRecord(value) && isBindingMargin(value.bindingMargin) ? value.bindingMargin : undefined)),
     titleBars: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBarStyle(value.titleBars) ? value.titleBars : undefined)),
     titleBand: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBandStyle(value.titleBand) ? value.titleBand : undefined)),
+    documentRole: readConfigMetadata(config, (value) => (isRecord(value) && isSectionDocumentRole(value.documentRole) ? value.documentRole : undefined)),
+    annexTitle: readConfigMetadata(config, (value) => (isRecord(value) && typeof value.annexTitle === "string" && value.annexTitle.trim() ? value.annexTitle.trim().slice(0, 60) : undefined)),
+    pageBreak: readConfigMetadata(config, (value) => (isRecord(value) && isSectionPageBreak(value.pageBreak) ? value.pageBreak : undefined)),
+    excludedFromReport: readConfigMetadata(config, (value) => {
+      if (!isRecord(value) || !Array.isArray(value.excludedFromReport)) return undefined;
+      const approaches = value.excludedFromReport.filter(isReportApproach);
+      return approaches.length ? approaches : undefined;
+    }),
     custom: sectionBooleanMetadata(config, "custom"),
     titleEdited: sectionBooleanMetadata(config, "titleEdited"),
     removed: sectionBooleanMetadata(config, "removed"),
@@ -226,6 +257,7 @@ export function blockMetadataFromContent(content: BlockMetadataContent): BlockMe
   return {
     enabled: content.enabled !== false,
     startOnNewPage: content.startOnNewPage,
+    ...(content.pageBreak ? { pageBreak: content.pageBreak } : {}),
     contentLayout: content.contentLayout,
     blockFlow: content.blockFlow,
     conceptPresentation: content.conceptPresentation,
@@ -238,9 +270,11 @@ export function blockMetadataFromContent(content: BlockMetadataContent): BlockMe
 export function hydrateBlockMetadata(config: unknown): BlockMetadata {
   const headerFields = readConfigMetadata(config, (value) => (isRecord(value) && Array.isArray(value.headerFields) ? normalizeHeaderExtraFields(value.headerFields) : undefined));
   const coverImageSize = readConfigMetadata(config, (value) => (isRecord(value) && isRecord(value.coverImageSize) ? normalizeCoverImageSize(value.coverImageSize) : undefined));
+  const pageBreak = readPageBreak(config);
   return {
     enabled: true,
     startOnNewPage: sectionBooleanMetadata(config, "startOnNewPage"),
+    ...(pageBreak ? { pageBreak } : {}),
     contentLayout: parseContentLayout(config),
     blockFlow: parseBlockFlow(config),
     conceptPresentation: parseConceptPresentation(config),
@@ -254,6 +288,7 @@ export function apartadoMetadataFromContent(content: ApartadoMetadataContent): A
   return {
     enabled: content.enabled !== false,
     startOnNewPage: content.startOnNewPage,
+    ...(content.pageBreak ? { pageBreak: content.pageBreak } : {}),
     contentLayout: content.contentLayout,
     conceptPresentation: content.conceptPresentation,
     presentationMode: content.presentationMode,
@@ -262,15 +297,21 @@ export function apartadoMetadataFromContent(content: ApartadoMetadataContent): A
 }
 
 export function hydrateApartadoMetadata(config: unknown): ApartadoMetadata {
+  const pageBreak = readPageBreak(config);
   return {
     // Only an explicit `false` hides it: apartados saved before visibility was stored show.
     enabled: readConfigMetadata(config, (value) => readBooleanMetadata(value, "enabled")) !== false,
     startOnNewPage: sectionBooleanMetadata(config, "startOnNewPage"),
+    ...(pageBreak ? { pageBreak } : {}),
     contentLayout: parseContentLayout(config),
     conceptPresentation: parseConceptPresentation(config),
     presentationMode: parsePresentationMode(config),
     flowSpacingBeforePx: readFlowSpacingBeforePx(config),
   };
+}
+
+function readPageBreak(config: unknown): PageBreakMode | undefined {
+  return readConfigMetadata(config, (value) => (isRecord(value) && isPageBreakMode(value.pageBreak) ? value.pageBreak : undefined));
 }
 
 function conceptTypeMetadata(config: unknown): ConceptType | undefined {

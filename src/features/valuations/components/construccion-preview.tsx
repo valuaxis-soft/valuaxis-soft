@@ -7,6 +7,7 @@ import type { DocumentTableFragment } from "../services/table-pagination";
 import {
   AutoPaginatedDocumentFlow,
   computeDocumentLayoutKey,
+  type DocumentFlowItem,
 } from "./document-preview-page";
 import { documentBlockFlowItems } from "./document-block-renderer";
 
@@ -17,6 +18,31 @@ export function isConstruccionSection(section: AppSection) {
   return section.id === "construccion" || getCanonicalSectionKey(section.id) === "CONSTRUCCION";
 }
 
+const CONSTRUCTION_TEXT_CLASS = "text-[#222]";
+const CONSTRUCTION_FONT = { fontFamily: "Arial, Calibri, sans-serif" };
+
+/** The printed items of the construction section, with its own tables. */
+export function construccionFlowItems(section: AppSection): DocumentFlowItem[] {
+  return section.blocks
+    .filter((block) => block.enabled)
+    .flatMap((block) => documentBlockFlowItems(block, {
+      renderContentRow: (props) => <ConstructionContentRow {...props} />,
+    }));
+}
+
+/**
+ * The same items printed after another section, on its pages: each carries
+ * the type and color the section's own pages give their content.
+ */
+export function construccionFlowItemsInFlow(section: AppSection): DocumentFlowItem[] {
+  const styled = (node: ReactNode) => <div className={CONSTRUCTION_TEXT_CLASS} style={CONSTRUCTION_FONT}>{node}</div>;
+  return construccionFlowItems(section).map((item) => ({
+    ...item,
+    node: styled(item.node),
+    ...(item.renderTableFragment ? { renderTableFragment: (fragment: DocumentTableFragment) => styled(item.renderTableFragment!(fragment)) } : {}),
+  }));
+}
+
 export function ConstruccionPreview({
   header,
   section,
@@ -25,20 +51,15 @@ export function ConstruccionPreview({
   section: AppSection;
 }) {
   const theme = useDocumentTheme();
-  const visibleBlocks = section.blocks.filter((block) => block.enabled);
-  const items = visibleBlocks.flatMap((block) =>
-    documentBlockFlowItems(block, {
-      renderContentRow: (props) => <ConstructionContentRow {...props} />,
-    }),
-  );
+  const items = construccionFlowItems(section);
   const contentLayoutKey = useMemo(() => computeDocumentLayoutKey(section), [section]);
 
   return (
     <AutoPaginatedDocumentFlow
-      contentClassName={`${theme.sectionGap} ${theme.pagePadding} text-[#222]`}
+      contentClassName={`${theme.sectionGap} ${theme.pagePadding} ${CONSTRUCTION_TEXT_CLASS}`}
       contentProps={{ "data-construccion-preview": true }}
       contentLayoutKey={contentLayoutKey}
-      contentStyle={{ fontFamily: "Arial, Calibri, sans-serif" }}
+      contentStyle={CONSTRUCTION_FONT}
       header={header}
       items={items}
       pageKeyPrefix="construccion"

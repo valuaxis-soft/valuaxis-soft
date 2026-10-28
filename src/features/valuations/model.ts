@@ -1,5 +1,7 @@
 import type { CoverImageFocus, CoverImageSize } from "./services/cover-image-focus";
 import type { ValuationSignature } from "./services/valuation-signatures";
+import type { PageBreakMode, SectionDocumentRole, SectionPageBreak } from "./services/document-structure";
+import type { ReportApproach } from "./services/report-approaches";
 
 export type ValuationKind = "venta" | "renta" | "ambos";
 export type PropertyKind = "casa" | "departamento" | "oficina" | "terreno";
@@ -197,10 +199,18 @@ export type ContentLayoutColumnV2 = {
   conceptPresentation?: import("./services/concept-presentation").ConceptPresentation;
 };
 
+/**
+ * Concepts side by side printed as data labels: each box as wide as its
+ * content, with room between them, on a white or a shaded background.
+ */
+export type ContentRowTagStyle = "white" | "shaded";
+
 /** A row containing 1–3 columns. */
 export type ContentLayoutRowV2 = {
   id: string;
   columns: ContentLayoutColumnV2[];
+  /** Concepts of the row printed as data labels; absent, as columns of equal width. */
+  tagStyle?: ContentRowTagStyle;
 };
 
 /** Semantic content layout — explicit row/column structure. */
@@ -252,6 +262,8 @@ export type Apartado = {
   title: string;
   enabled: boolean;
   startOnNewPage?: boolean;
+  /** Where it starts on the printed pages; absent, as `startOnNewPage` says. */
+  pageBreak?: PageBreakMode;
   concepts: Concept[];
   tables: TableContent[];
   images: ImageContent[];
@@ -268,6 +280,13 @@ export type Block = {
   enabled: boolean;
   required: boolean;
   startOnNewPage?: boolean;
+  /** Where it starts on the printed pages; absent, as `startOnNewPage` says. */
+  pageBreak?: PageBreakMode;
+  /**
+   * The block belongs to an annex: its apartados carry no number. Set by the
+   * numbering of the sections on every change, never saved.
+   */
+  annex?: boolean;
   concepts: Concept[];
   apartados: Apartado[];
   tables: TableContent[];
@@ -303,6 +322,14 @@ export type AppSection = {
   titleBars?: "filled" | "outline";
   /** The document's title band under the page header, blue or white with a line. Carátula section only; absent means "filled". */
   titleBand?: "filled" | "outline";
+  /** Chapter or annex, as the appraiser chose; absent, an annex when it comes after the conclusion. */
+  documentRole?: SectionDocumentRole;
+  /** The label an annex prints instead of "ANEXO n", when the appraiser wrote one. */
+  annexTitle?: string;
+  /** Where the section starts on the printed pages; absent, on a new page. */
+  pageBreak?: SectionPageBreak;
+  /** The approaches of this section left out of the dictamen ("Agregar al informe valuatorio" off). */
+  excludedFromReport?: ReportApproach[];
   /** Added by the appraiser; not in the section registry. */
   custom?: boolean;
   /** The appraiser renamed the tab: the stored title wins over the registry label. */

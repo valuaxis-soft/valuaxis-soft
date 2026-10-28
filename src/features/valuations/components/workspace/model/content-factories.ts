@@ -4,6 +4,7 @@ import { UNTITLED_CARATULA_CONCEPT } from "@/features/valuations/services/caratu
 import { NEW_SECTION_TITLE } from "@/features/valuations/services/section-edit-operations";
 import { CUSTOM_SECTION_ID_PREFIX } from "@/features/valuations/sections/section-registry";
 import { DEFAULT_TABLE_TITLE, createHomologationTable } from "@/features/valuations/services/table";
+import type { SectionDocumentRole } from "@/features/valuations/services/document-structure";
 
 export const newId = () => crypto.randomUUID();
 
@@ -12,7 +13,7 @@ export const newId = () => crypto.randomUUID();
  * printed banner reads the tab's name, with the same building blocks as any
  * other section. Its number follows its position among the tabs.
  */
-export function createCustomSection(): AppSection {
+export function createCustomSection(role: SectionDocumentRole = "chapter"): AppSection {
   const title = NEW_SECTION_TITLE;
   return {
     id: `${CUSTOM_SECTION_ID_PREFIX}${newId()}`,
@@ -23,6 +24,7 @@ export function createCustomSection(): AppSection {
     required: false,
     custom: true,
     titleEdited: true,
+    documentRole: role,
     blocks: [{ ...createBlock(), title }],
   };
 }

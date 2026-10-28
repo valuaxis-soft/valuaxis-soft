@@ -31,6 +31,11 @@ export function formatVisibleChildLabel(parentLabel: string, items: VisibleItem[
   return `${normalizedParentLabel}.${ordinal}`;
 }
 
+/** The number an apartado prints ("III.2"); none inside an annex. */
+export function apartadoDisplayLabel(block: Pick<Block, "annex" | "sectionLabel">, items: VisibleItem[], targetId: string) {
+  return block.annex ? "" : formatVisibleChildLabel(block.sectionLabel, items, targetId);
+}
+
 /**
  * Derive the visual order of Apartados from the Block's resolved BlockFlow V2.
  *
