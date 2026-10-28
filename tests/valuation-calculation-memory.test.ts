@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_LAND, costEngineConfig, toCostEngineInput, type CostCalculationDto } from "../src/features/valuations/calculation/cost-types";
 import { defaultMarketSettings, marketEngineConfig, toMarketEngineInput, type ComparableDto, type MarketCalculationDto } from "../src/features/valuations/calculation/market-types";
+import { defaultStatisticalSettings, type StatisticalCalculationDto } from "../src/features/valuations/calculation/statistical-types";
 import { ENGINE_VERSION } from "../src/features/valuations/engine/config";
 import { computeCostApproach } from "../src/features/valuations/engine/costs";
 import { computeMarketApproach } from "../src/features/valuations/engine/market";
@@ -353,4 +354,15 @@ test("the memoria técnica de comparables has the sheet of each comparable used,
   assert.deepEqual(withLink.uses, [], "the sheet of the memory carries no uses in other valuations");
   assert.deepEqual(withLink.warnings, []);
   assert.deepEqual(withLink.validity, { updatedOn: "2026-01-10", validUntil: "2026-04-10", expired: true }, "its own months of validity");
+});
+
+test("the statistical methods of a market go right after that market, inside its section", () => {
+  const buildings: MarketCalculationDto = { ...land, settings: { ...land.settings, comparableType: "INMUEBLE_VENTA" } };
+  const settings = defaultStatisticalSettings("TERRENO_VENTA");
+  const statistical: StatisticalCalculationDto = {
+    settings: { ...settings, regression: { ...settings.regression, enabled: true } },
+    comparables: [], locked: false, configured: true, fromMarket: false, goal: null,
+  };
+  const memory = memoryOf([marketSection], { ...NO_CALCULATIONS, markets: [land, buildings], statistical: [statistical] });
+  assert.deepEqual(memory.approaches.map((approach) => approach.key), ["MOTOR.MERCADO.TERRENO_VENTA", "MOTOR.ESTADISTICO.TERRENO_VENTA", "MOTOR.MERCADO.INMUEBLE_VENTA"]);
 });

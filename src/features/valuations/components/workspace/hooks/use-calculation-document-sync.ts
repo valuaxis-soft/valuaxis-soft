@@ -4,7 +4,7 @@ import { api } from "@/lib/api-client";
 import { caratulaConclusionValues, conclusionValues, withConceptValues } from "@/features/valuations/calculation/conclusion-document";
 import { canConclude, conclusionEngineConfig, type ConclusionCalculationDto } from "@/features/valuations/calculation/conclusion-types";
 import { COST_TEMPLATE_BLOCK_IDS, costDocumentBlocks, withConstructionTables } from "@/features/valuations/calculation/cost-document";
-import { FACTOR_ANNEX_PREFIX, FACTOR_ANNEX_TEMPLATE_BLOCK_IDS, factorJustificationBlocks } from "@/features/valuations/calculation/factor-justification-document";
+import { FACTOR_ANNEX_PREFIX, FACTOR_ANNEX_TEMPLATE_BLOCK_IDS, factorJustificationBlocks, marketsInReport } from "@/features/valuations/calculation/factor-justification-document";
 import { costEngineConfig, toCostEngineInput, type ConstructionTypesDto, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
 import { INCOME_BLOCK_PREFIX, INCOME_TEMPLATE_BLOCK_IDS, incomeDocumentBlocks } from "@/features/valuations/calculation/income-document";
 import { incomeEngineConfig, toIncomeEngineInput, type IncomeCalculationDto } from "@/features/valuations/calculation/income-types";
@@ -82,7 +82,8 @@ export function useCalculationDocumentSync({
   // The last calculation of each market, for the annex that sums up their justifications.
   const marketsByType = useRef(new Map<ComparableType, MarketCalculationDto>());
   const applyFactorAnnex = () => {
-    const blocks = factorJustificationBlocks([...marketsByType.current.values()]);
+    // A market left out of the dictamen ("Agregar al informe") is left out of the annex too.
+    const blocks = factorJustificationBlocks(marketsInReport([...marketsByType.current.values()], excludedReportApproaches(sections)));
     updateBySection("motor-anexo-factores", (key, section) =>
       key === "HOMOLOGACION"
         ? replaceGeneratedBlocks(section, (block) => block.id.startsWith(FACTOR_ANNEX_PREFIX), blocks, { placeholderIds: FACTOR_ANNEX_TEMPLATE_BLOCK_IDS })
@@ -238,6 +239,13 @@ export function useCalculationDocumentSync({
   // again without it (or with it), and the conclusion and the carátula follow.
   const excluded = excludedReportApproaches(sections);
   const exclusionKey = REPORT_APPROACHES.filter((approach) => excluded.has(approach)).join(",");
+  // The annex of factors follows at once: a market turned off leaves it, one turned on comes back.
+  const reapplyFactorAnnex = useEffectEvent(() => {
+    if (canEdit && marketsByType.current.size) applyFactorAnnex();
+  });
+  useEffect(() => {
+    reapplyFactorAnnex();
+  }, [exclusionKey]);
   const savedExclusionKeyRef = useRef(exclusionKey);
   const refreshConclusion = useEffectEvent(() => void refresh({ conclusion: true }));
   useEffect(() => {

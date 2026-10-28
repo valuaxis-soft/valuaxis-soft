@@ -6,6 +6,7 @@ import {
   FACTOR_ANNEX_TEMPLATE_BLOCK_IDS,
   IN_EACH_APPROACH,
   factorJustificationBlocks,
+  marketsInReport,
 } from "../src/features/valuations/calculation/factor-justification-document";
 import { replaceGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
 import { defaultMarketSettings, type ComparableDto, type ComparableFactorDto, type MarketCalculationDto } from "../src/features/valuations/calculation/market-types";
@@ -80,4 +81,12 @@ test("no comparables, no annex; the generated block takes the place of the templ
   const written = replaceGeneratedBlocks(section, (block) => block.id.startsWith(FACTOR_ANNEX_PREFIX), blocks, { placeholderIds: FACTOR_ANNEX_TEMPLATE_BLOCK_IDS });
   assert.deepEqual(written.blocks.map((block) => block.id), [FACTOR_ANNEX_PREFIX]);
   assert.equal(replaceGeneratedBlocks(written, (block) => block.id.startsWith(FACTOR_ANNEX_PREFIX), blocks, { placeholderIds: FACTOR_ANNEX_TEMPLATE_BLOCK_IDS }), written, "the same content leaves the section alone");
+});
+
+test("a market turned off with «Agregar al informe» leaves the annex and the memoria técnica", () => {
+  const markets = [market("TERRENO_VENTA", []), market("INMUEBLE_VENTA", []), market("INMUEBLE_RENTA", []), market("TERRENO_RENTA", [])];
+  const types = (excluded: Parameters<typeof marketsInReport>[1]) => marketsInReport(markets, excluded).map((item) => item.settings.comparableType);
+  assert.deepEqual(types(new Set()), ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"]);
+  assert.deepEqual(types(new Set(["mercado-terrenos"])), ["INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"]);
+  assert.deepEqual(types(new Set(["mercado-rentas", "costos"])), ["TERRENO_VENTA", "INMUEBLE_VENTA"], "the rent market holds land and buildings for rent");
 });

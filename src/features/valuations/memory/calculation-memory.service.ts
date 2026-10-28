@@ -9,6 +9,7 @@ import { getLetterhead } from "@/features/firm/firm.service";
 import { getDocumentHeaderImage } from "@/features/files/services/valuation-document-header-image";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { todayInMexico } from "../calculation/comparable-card";
+import { marketsInReport } from "../calculation/factor-justification-document";
 import { getConclusionCalculation } from "../calculation/conclusion.service";
 import { getCostCalculation } from "../calculation/cost.service";
 import { getIncomeCalculation } from "../calculation/income.service";
@@ -18,6 +19,7 @@ import { COMPARABLE_TYPES } from "../calculation/market-types";
 import { getStatisticalCalculation } from "../calculation/statistical.service";
 import { caratulaFromValuation, initialMetaFor, initialSectionsFor, mergeDocumentHeaderImage } from "../components/workspace/model/initial-hydration";
 import { getValuationByPublicId } from "../repositories/valuation.repository";
+import { excludedReportApproaches } from "../services/report-approaches";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { buildCalculationMemory, memoryComparableCards, type StoredRun } from "./calculation-memory";
 
@@ -76,6 +78,9 @@ export async function loadCalculationMemory(user: AuthUser, publicId: string, ge
     concluded: valuation.locked,
     generatedAt,
   });
-  const comparables = memoryComparableCards(markets, { id: publicId, folio: memory.folio, title: null }, todayInMexico(generatedAt));
+  // A market left out of the dictamen ("Agregar al informe") has no sheets in the memoria técnica.
+  const comparables = memoryComparableCards(
+    marketsInReport(markets, excludedReportApproaches(sections)), { id: publicId, folio: memory.folio, title: null }, todayInMexico(generatedAt),
+  );
   return { memory, sections, caratula, letterhead, propertyKind: valuation.propertyKind, comparables };
 }

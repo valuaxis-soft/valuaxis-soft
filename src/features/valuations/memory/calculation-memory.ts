@@ -727,11 +727,22 @@ export function buildCalculationMemory(input: CalculationMemoryInput): Calculati
     generatedAt: input.generatedAt.toISOString(),
     concluded: input.concluded,
     document: documentFormulas(input.sections),
-    approaches: approaches.map((approach, index) => ({ approach, index }))
+    approaches: approaches.map((approach, index) => ({ approach, index: engineOrder(approaches, approach, index) }))
       .sort((a, b) => rank(a.approach) - rank(b.approach) || a.index - b.index)
       .map(({ approach }) => approach),
     sectionHeadings,
   };
+}
+
+/**
+ * Where an approach goes among those of its section: its own place, but the
+ * statistical methods of a market (MOTOR.ESTADISTICO.<tipo>) right after the
+ * market of the same type (MOTOR.MERCADO.<tipo>), as the dictamen prints them.
+ */
+function engineOrder(approaches: Array<Pick<MemoryApproach, "key">>, approach: Pick<MemoryApproach, "key">, index: number) {
+  const type = /^MOTOR\.ESTADISTICO\.(.+)$/.exec(approach.key)?.[1];
+  const market = type ? approaches.findIndex((item) => item.key === `MOTOR.MERCADO.${type}`) : -1;
+  return market === -1 ? index : market + 0.5;
 }
 
 /** One section of the dictamen in the memory: its formulas, then the approaches calculated in it. */

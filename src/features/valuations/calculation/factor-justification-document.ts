@@ -9,6 +9,7 @@
  * Pure: the workspace writes it in the section as a generated block.
  */
 import type { Block } from "../model";
+import type { ReportApproach } from "../services/report-approaches";
 import { EMPTY, figure, generatedApartado, generatedBlock, generatedTable, textColumn } from "./generated-content";
 import {
   COMPARABLE_TYPE_LABELS,
@@ -24,6 +25,18 @@ import {
 export const FACTOR_ANNEX_PREFIX = "motor-anexo-factores";
 export const FACTOR_ANNEX_TEMPLATE_BLOCK_IDS = ["homologacion-block-1-factores-de-homologacion"];
 export const IN_EACH_APPROACH = "Las justificaciones se presentan en cada enfoque.";
+
+/** The approach of "Agregar al informe" each market belongs to. */
+const REPORT_APPROACH_OF: Record<ComparableType, ReportApproach> = {
+  TERRENO_VENTA: "mercado-terrenos",
+  INMUEBLE_VENTA: "mercado-inmuebles",
+  INMUEBLE_RENTA: "mercado-rentas",
+  TERRENO_RENTA: "mercado-rentas",
+};
+
+/** The markets whose approach goes into the dictamen: one turned off with "Agregar al informe" is left out. */
+export const marketsInReport = <T extends Pick<MarketCalculationDto, "settings">>(markets: T[], excluded: ReadonlySet<ReportApproach>) =>
+  markets.filter((market) => !excluded.has(REPORT_APPROACH_OF[market.settings.comparableType]));
 
 /** Land before buildings for sale, buildings before land for rent: the order the dictamen prints the markets. */
 const PRINT_ORDER: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"];
