@@ -10,6 +10,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError, type ComparableFormValues } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { useAiAssist } from "@/features/ai/ai-assist-context";
 import type { ComparablePrefill } from "@/features/ai/listing-prefill";
 import type { CustomFactor } from "@/features/firm/custom-factors";
@@ -500,17 +501,17 @@ function MarketTypePanel(props: {
       </Part>
 
       <Part number={2} title="Comparables">
-        <div className="overflow-x-auto rounded-md border bg-background">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead className="bg-muted/60 text-xs text-muted-foreground">
+        <div className={CALC_TABLE_FRAME}>
+          <table className={cn(CALC_TABLE, "w-full min-w-[560px]")}>
+            <thead className={CALC_HEAD}>
               <tr>
-                <th className="px-2 py-1.5 text-left font-medium">Ref.</th>
-                <th className="px-2 py-1.5 text-left font-medium">ID</th>
-                <th className="px-2 py-1.5 text-left font-medium">Ubicación</th>
-                <th className="px-2 py-1.5 text-right font-medium">Superficie</th>
-                <th className="px-2 py-1.5 text-right font-medium">{labels.price}</th>
-                <th className="px-2 py-1.5 text-right font-medium">${perUnit}</th>
-                <th className="px-2 py-1.5"><span className="sr-only">Acciones</span></th>
+                <th className={CALC_HEAD_CELL}>Ref.</th>
+                <th className={CALC_HEAD_CELL}>ID</th>
+                <th className={CALC_HEAD_CELL}>Ubicación</th>
+                <th className={CALC_HEAD_CELL}>Superficie</th>
+                <th className={CALC_HEAD_CELL}>{labels.price}</th>
+                <th className={CALC_HEAD_CELL}>${perUnit}</th>
+                <th className={CALC_HEAD_CELL}><span className="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
@@ -523,7 +524,7 @@ function MarketTypePanel(props: {
                 );
                 const status = comparable.review?.status ?? "POR_REVISAR";
                 return (
-                  <tr key={comparable.id} className="border-t" data-comparable-row={formatComparableId(comparable.folio) ?? comparable.id}>
+                  <tr key={comparable.id} className={CALC_ROW} data-comparable-row={formatComparableId(comparable.folio) ?? comparable.id}>
                     <td className="px-2 py-1.5">{comparable.reference}</td>
                     <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">
                       {formatComparableId(comparable.folio) ?? "—"}

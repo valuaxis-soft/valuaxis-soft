@@ -23,6 +23,7 @@ import {
   type FactorSlotConfig,
 } from "@/features/valuations/calculation/market-types";
 import { cn } from "@/lib/utils";
+import { CALC_HEAD, CALC_HEAD_CELL, CALC_RESULT, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { CommitCell } from "./commit-cell";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -92,20 +93,20 @@ export function MarketHomologationTable(props: {
 
   return (
     <div className="grid gap-1.5">
-      <div className="overflow-x-auto rounded-md border bg-background">
-        <table className="w-full min-w-[640px] text-sm" aria-label="Homologación">
-          <thead className="bg-muted/60 text-xs text-muted-foreground">
+      <div className={CALC_TABLE_FRAME}>
+        <table className={cn(CALC_TABLE, "w-full min-w-[640px]")} aria-label="Homologación">
+          <thead className={CALC_HEAD}>
             <tr>
-              <th className="px-2 py-1 text-left font-medium" rowSpan={2}>Ref.</th>
-              <th className="px-2 py-1 text-right font-medium" rowSpan={2}>{props.unitValueLabel}</th>
-              <th className="border-x px-2 py-1 text-center font-medium" colSpan={slots.length + 1}>Factores de homologación</th>
-              <th className="px-2 py-1 text-right font-medium" rowSpan={2}>{props.homologatedLabel}</th>
+              <th className={CALC_HEAD_CELL} rowSpan={2}>Ref.</th>
+              <th className={CALC_HEAD_CELL} rowSpan={2}>{props.unitValueLabel}</th>
+              <th className={CALC_HEAD_CELL} colSpan={slots.length + 1}>Factores de homologación</th>
+              <th className={CALC_HEAD_CELL} rowSpan={2}>{props.homologatedLabel}</th>
             </tr>
             <tr>
               {slots.map((slot) => (
-                <th key={factorKey(slot)} className="min-w-20 px-1 py-1 text-center font-medium">{slot.label}</th>
+                <th key={factorKey(slot)} className={cn(CALC_HEAD_CELL, "min-w-20")}>{slot.label}</th>
               ))}
-              <th className="border-r px-2 py-1 text-center font-medium">FRe</th>
+              <th className={CALC_HEAD_CELL}>FRe</th>
             </tr>
           </thead>
           <tbody>
@@ -114,7 +115,7 @@ export function MarketHomologationTable(props: {
               const warnings = row ? warningsOf(comparable, row.surfaceFactor, row.resultantFactor) : [];
               const detail = warnings.map((warning) => `${warning.label}: ${twoDecimals(warning.value)}`).join(" · ");
               return (
-                <tr key={comparable.id} className="border-t align-top">
+                <tr key={comparable.id} className={cn(CALC_ROW, "align-top")}>
                   <td className="px-2 py-1.5">{comparable.reference}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{row ? money(row.unitValue) : "—"}</td>
                   {slots.map((slot) => {
@@ -132,6 +133,7 @@ export function MarketHomologationTable(props: {
                             computed={!surface?.value}
                             placeholder="fórmula"
                             title={surface?.value ? "Factor escrito por ti; vacíalo para usar la fórmula" : "Fórmula con la potencia n; escribe otro valor si lo prefieres"}
+                            className="text-xs"
                             onCommit={typed(comparable, slot)}
                           />
                         </td>
@@ -150,6 +152,7 @@ export function MarketHomologationTable(props: {
                           value={factorInputText(factor, factorFormulaOf(comparable, slot))}
                           display={twoDecimals(factorValue(factor))}
                           computed={!factor}
+                          className="text-xs"
                           onCommit={typed(comparable, slot)}
                         />
                         {options.length ? (
@@ -171,7 +174,7 @@ export function MarketHomologationTable(props: {
                       </td>
                     );
                   })}
-                  <td className="px-2 py-1.5 text-center tabular-nums">
+                  <td className={cn("px-2 py-1.5 text-center tabular-nums", CALC_RESULT)}>
                     {row ? (
                       <span className="inline-flex items-center gap-1">
                         {warnings.length ? (
