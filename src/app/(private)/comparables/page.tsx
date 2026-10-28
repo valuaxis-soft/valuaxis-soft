@@ -8,8 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { DashboardHeader } from "@/features/dashboard/components/header";
-import { OFFER_MAX_AGE_MONTHS } from "@/features/valuations/calculation/comparable-review";
-import { listComparableBase } from "@/features/valuations/comparable-base/comparable-base.service";
+import { firmValidityMonths, listComparableBase } from "@/features/valuations/comparable-base/comparable-base.service";
 import {
   COMPARABLE_LIST_PAGE_SIZE,
   buildComparableListHref,
@@ -37,7 +36,10 @@ export default async function ComparablesPage({
   if (!hasPermission(user, AUTH_PERMISSIONS.viewValuations)) redirect("/dashboard");
 
   const params = parseComparableListParams(await searchParams);
-  const { items, total } = await listComparableBase(user.organizationId, params);
+  const [{ items, total }, months] = await Promise.all([
+    listComparableBase(user.organizationId, params),
+    firmValidityMonths(user.organizationId),
+  ]);
   const pages = Math.max(1, Math.ceil(total / COMPARABLE_LIST_PAGE_SIZE));
   if (total > 0 && params.page > pages) redirect(buildComparableListHref({ ...params, page: pages }));
 
@@ -57,7 +59,8 @@ export default async function ComparablesPage({
             <h1 className="text-2xl font-bold tracking-tight">Comparables</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               La base de comparables de {user.organizationName}: los de sus avalúos y los importados a la base general. Cada uno vale
-              {" "}{OFFER_MAX_AGE_MONTHS} meses desde su alta o su última actualización; uno vencido solo se marca, se puede seguir usando.
+              {" "}{months} {months === 1 ? "mes" : "meses"} desde su alta o su última actualización (o los que se capturaron en él; se cambian en Datos
+              del despacho); uno vencido solo se marca, se puede seguir usando.
             </p>
           </div>
           <ComparableBaseActions exportHref={exportHref} canImport={hasPermission(user, AUTH_PERMISSIONS.editValuations)} />

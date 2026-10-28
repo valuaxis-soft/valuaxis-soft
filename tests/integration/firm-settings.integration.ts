@@ -53,6 +53,7 @@ const settings = firmSettingsSchema.parse({
   ],
   validityMonths: 12,
   folioPrefix: "vda",
+  comparableValidityMonths: 4,
 });
 
 const auditRows = (organizationId: number, action: string) =>
@@ -75,6 +76,7 @@ test("a new firm starts with its name, the default prefix and validity, and noth
     validityMonths: 6,
     folioPrefix: "VLO",
     logoUrl: null,
+    comparableValidityMonths: 6,
   });
 });
 
@@ -98,6 +100,7 @@ test("saving the firm's data updates only that firm, feeds the letterhead and is
     validityMonths: 12,
     folioPrefix: "VDA",
     logoUrl: null,
+    comparableValidityMonths: 4,
   });
   assert.deepEqual(await getLetterhead(fixture.organizationId), {
     name: fixture.user.organizationName,

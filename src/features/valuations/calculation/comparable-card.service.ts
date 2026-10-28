@@ -9,7 +9,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
-import { asRecord, decimal, findValuation, inFirmBase } from "./access";
+import { asRecord, decimal, findValuation, firmComparableMonths, inFirmBase } from "./access";
 import { addressFromRecord, formatAddress, formatComparableId, todayInMexico } from "./comparable-card";
 import {
   DUPLICATE_REASON_LABELS, PRICE_TOLERANCE, addressKey, canonicalUrlKey, duplicateProbeOf, duplicateReasons, phoneKey, type DuplicateProbe,
@@ -76,12 +76,14 @@ async function subjectAreas(versionId: number) {
   return new Map(markets.map((market) => [market.tipoComparable.SClave as ComparableType, decimal(market.NSuperficieSujeto)]));
 }
 
-const warningsOf = (comparable: ComparableDto, type: ComparableType, subjectArea: number | null, today: string, validity?: ComparableValidity) =>
+const warningsOf = (
+  comparable: ComparableDto, type: ComparableType, subjectArea: number | null, today: string, months: number, validity?: ComparableValidity,
+) =>
   comparableWarnings({
     ...comparable,
     hasScreenshot: Boolean(comparable.screenshot),
-    validity: validity ?? (comparable.updatedOn ? comparableValidity(comparable.updatedOn, today) : null),
-  }, { type, subjectArea, today });
+    validity: validity ?? (comparable.updatedOn ? comparableValidity(comparable.updatedOn, today, comparable.validityMonths ?? months) : null),
+  }, { type, subjectArea, today, offerMaxAgeMonths: comparable.validityMonths ?? months });
 
 /** The card of a comparable of the firm's base, by the id of one of its captures. */
 export async function getComparableCard(comparableId: string, organizationId: number): Promise<ComparableCardDto> {
@@ -125,7 +127,8 @@ export async function getComparableCard(comparableId: string, organizationId: nu
   const dataUpdatedAt = current.reduce((latest, capture) => (capture.DFechaActualizacionDatos > latest ? capture.DFechaActualizacionDatos : latest),
     row.DFechaActualizacionDatos);
   const today = todayInMexico();
-  const validity = comparableValidity(dataUpdatedAt, today);
+  const months = await firmComparableMonths(prisma, organizationId);
+  const validity = comparableValidity(dataUpdatedAt, today, comparable.validityMonths ?? months);
   const areas = row.IdVersionAvaluo ? await subjectAreas(row.IdVersionAvaluo) : new Map<ComparableType, number | null>();
   const avaluo = row.avaluo;
   return {
@@ -133,7 +136,7 @@ export async function getComparableCard(comparableId: string, organizationId: nu
     type,
     valuation: avaluo ? { id: avaluo.UIdentificadorPublico, folio: avaluo.SFolio, title: avaluo.STitulo } : null,
     validity,
-    warnings: warningsOf(comparable, type, areas.get(type) ?? null, today, validity),
+    warnings: warningsOf(comparable, type, areas.get(type) ?? null, today, months, validity),
     uses: uses.length || !avaluo ? uses : [{
       valuationId: avaluo.UIdentificadorPublico, folio: avaluo.SFolio, title: avaluo.STitulo, client: avaluo.SNombreCliente, type,
       reference: comparable.reference, addedOn: row.DFechaSeleccion.toISOString().slice(0, 10),
@@ -168,6 +171,7 @@ export async function getValuationReview(publicId: string, organizationId: numbe
     subjectAreas(versionId),
   ]);
   const today = todayInMexico();
+  const months = await firmComparableMonths(prisma, organizationId);
   const reviewed = await Promise.all(rows.map(async (row) => {
     const type = row.tipoComparable.SClave as ComparableType;
     const comparable = await toComparableDto(row, true);
@@ -178,7 +182,7 @@ export async function getValuationReview(publicId: string, organizationId: numbe
     return {
       comparable,
       type,
-      warnings: [...warningsOf(comparable, type, areas.get(type) ?? null, today), ...duplicates.slice(0, 3).map(duplicateWarning)],
+      warnings: [...warningsOf(comparable, type, areas.get(type) ?? null, today, months), ...duplicates.slice(0, 3).map(duplicateWarning)],
     };
   }));
   return reviewed.sort((a, b) => COMPARABLE_TYPES.indexOf(a.type) - COMPARABLE_TYPES.indexOf(b.type) || a.comparable.reference - b.comparable.reference);

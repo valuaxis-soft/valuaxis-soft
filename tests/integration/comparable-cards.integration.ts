@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import sharp from "sharp";
 import { findDuplicates, getComparableCard, getValuationReview } from "../../src/features/valuations/calculation/comparable-card.service";
-import { formatComparableId } from "../../src/features/valuations/calculation/comparable-card";
+import { formatComparableId, todayInMexico } from "../../src/features/valuations/calculation/comparable-card";
+import { addMonths } from "../../src/features/valuations/calculation/comparable-validity";
 import type { ComparableInputPayload } from "../../src/features/valuations/calculation/market-schemas";
 import {
   createComparable,
@@ -282,6 +283,23 @@ test("an almost identical capture is found: same municipality, fraccionamiento i
   const duplicate = rows[0].warnings.find((warning) => warning.key === "DUPLICATE");
   assert.ok(duplicate, "the review warns");
   assert.match(duplicate.message, new RegExp(`${formatComparableId(source.folio)}.*mismo teléfono y superficie`));
+});
+
+test("the validity is captured in months from the day of consultation; the firm's months apply to the rest", async () => {
+  const owner = await fixture();
+  await prisma.organizacion.update({ where: { IdOrganizacion: owner.organizationId }, data: { IMesesVigenciaComparables: 2 } });
+  await createComparable(owner.publicId, owner.user, "TERRENO_VENTA", comparable("Juárez 12, Arandas", 100, 1_000_000, {
+    consultedOn: "2026-10-01", validityMonths: 3,
+  }));
+  await createComparable(owner.publicId, owner.user, "TERRENO_VENTA", comparable("Hidalgo 4, Arandas", 300, 2_000_000));
+  const calculation = await market(owner.publicId, owner.organizationId, "TERRENO_VENTA");
+  assert.equal(calculation.comparableValidityMonths, 2, "a new comparable starts with the firm's months");
+  const [own, firm] = calculation.comparables;
+  assert.equal(own.validityMonths, 3);
+  assert.equal(own.validUntil, "2027-01-01", "the day of consultation plus its months");
+  const today = todayInMexico();
+  assert.equal((await getComparableCard(own.id, owner.organizationId)).validity.validUntil, addMonths(today, 3));
+  assert.equal((await getComparableCard(firm.id, owner.organizationId)).validity.validUntil, addMonths(today, 2), "the firm's months");
 });
 
 test("the review is saved per comparable with who and when, lists every market, warns, and changes no calculation", async () => {

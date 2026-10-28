@@ -17,6 +17,12 @@ export const decimal = (value: Prisma.Decimal | null | undefined) => (value === 
 export const asRecord = (value: Prisma.JsonValue | null) =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 
+/** The months a comparable of the firm's base stays valid unless it was captured with its own. */
+export async function firmComparableMonths(tx: Tx, organizationId: number): Promise<number> {
+  const organization = await tx.organizacion.findUnique({ where: { IdOrganizacion: organizationId }, select: { IMesesVigenciaComparables: true } });
+  return organization?.IMesesVigenciaComparables ?? 6;
+}
+
 /** The precision a version calculates with (decimals shown, calculating with them or not). */
 export async function versionPrecision(tx: Tx, versionId: number): Promise<CalculationPrecision> {
   const version = await tx.versionAvaluo.findUnique({ where: { IdVersionAvaluo: versionId }, select: { JConfiguracionCalculo: true } });

@@ -121,3 +121,17 @@ test("the list's query string is read safely and written back the same", () => {
   )), { ...params, page: 1 });
   assert.equal(buildComparableListHref({}), "/comparables");
 });
+
+test("the validity takes the comparable's months or the firm's, 1 to 12; six when neither says", () => {
+  assert.equal(comparableValidity("2026-10-23", "2026-10-27", 3).validUntil, "2027-01-23");
+  assert.equal(comparableValidity("2026-10-23", "2026-10-27", 12).validUntil, "2027-10-23");
+  assert.equal(comparableValidity("2026-10-23", "2026-10-27").validUntil, "2027-04-23");
+  assert.equal(comparableValidity("2026-10-23", "2026-10-27", 13).validUntil, "2027-04-23", "out of range: six");
+  assert.equal(comparableValidity("2026-06-01", "2026-10-27", 3).expired, true);
+  const context = { type: "TERRENO_VENTA" as const, subjectArea: null, today: "2026-10-27", offerMaxAgeMonths: 3 };
+  const base = { location: "Juárez 12", area: 100, sourceName: "Lamudi", contactName: "Ana", contactPhone: "33 1234 5678", hasScreenshot: true };
+  assert.deepEqual(comparableWarnings({ ...base, offerDate: "2026-07-01" }, context).map((warning) => warning.key), ["OLD_OFFER"]);
+  assert.deepEqual(comparableWarnings({ ...base, offerDate: "2026-09-01" }, context), []);
+  assert.equal(comparableInputSchema.shape.validityMonths.safeParse(13).success, false);
+  assert.equal(comparableInputSchema.shape.validityMonths.safeParse(6).success, true);
+});

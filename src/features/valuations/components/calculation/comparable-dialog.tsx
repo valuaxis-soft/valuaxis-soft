@@ -35,6 +35,7 @@ import { DUPLICATE_REASON_LABELS, duplicateProbeOf, type DuplicateProbe } from "
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { ComparableCardButton } from "./comparable-card-dialog";
 import { ComparableValidityLine } from "./comparable-validity-badge";
+import { COMPARABLE_VALIDITY_MONTHS, addMonths, validityMonthsOf } from "@/features/valuations/calculation/comparable-validity";
 import { FormulaInput } from "./formula-input";
 import { ScreenshotSlot } from "./screenshot-slot";
 import {
@@ -55,7 +56,7 @@ const money = (value: number | null) => (value === null ? "—" : value.toLocale
 
 type DraftKey =
   | "location" | "area" | "price" | "sourceName" | "contactName" | "contactPhone" | "url" | "offerDate" | "landUse"
-  | "consultedOn" | "validUntil" | "urbanProximity" | "operationType" | "latitude" | "longitude" | "listingText"
+  | "consultedOn" | "validUntil" | "validityMonths" | "urbanProximity" | "operationType" | "latitude" | "longitude" | "listingText"
   | "landArea" | "bedrooms" | "bathrooms" | "constructionType";
 type Draft = Record<DraftKey, string> & { address: Record<AddressPart, string> };
 
@@ -65,7 +66,9 @@ const TOP_FIELDS = new Set(["area", "price"]);
 const emptyAddress = (): Record<AddressPart, string> =>
   Object.fromEntries(ADDRESS_PARTS.map((part) => [part, ""])) as Record<AddressPart, string>;
 
-function initialDraft(comparable: ComparableDto | null, type: ComparableType, prefill: ComparablePrefill = {}, listingText?: string): Draft {
+function initialDraft(
+  comparable: ComparableDto | null, type: ComparableType, prefill: ComparablePrefill = {}, listingText?: string, defaultMonths?: number,
+): Draft {
   const address = emptyAddress();
   for (const part of ADDRESS_PARTS) address[part] = comparable?.address?.[part] ?? "";
   return {
@@ -82,6 +85,8 @@ function initialDraft(comparable: ComparableDto | null, type: ComparableType, pr
     // A new comparable is consulted today; one of before keeps what it had.
     consultedOn: comparable ? comparable.consultedOn ?? "" : todayInMexico(),
     validUntil: comparable?.validUntil ?? "",
+    // A new comparable is valid the firm's months; one of before keeps its months, or its day typed.
+    validityMonths: comparable ? text(comparable.validityMonths) : String(validityMonthsOf(defaultMonths)),
     urbanProximity: comparable?.urbanProximity ?? "",
     operationType: comparable?.operationType ?? (isRentComparableType(type) ? "RENTA" : "VENTA"),
     latitude: text(comparable?.latitude),
@@ -152,10 +157,13 @@ export function ComparableDialog(props: {
   onCheckDuplicates: (probe: DuplicateProbe) => Promise<DuplicateMatchDto[]>;
   /** "Usar el existente": brings that comparable instead of this capture. */
   onReuse: (comparableId: string) => Promise<boolean>;
+  /** The months a new comparable is valid for: the firm's. */
+  defaultValidityMonths?: number;
 }) {
   const { comparable, readOnly } = props;
   const fields = props.characteristicFields.filter((field) => !TOP_FIELDS.has(field.key));
-  const [draft, setDraft] = useState<Draft>(() => initialDraft(comparable, props.comparableType, props.prefill, props.listingText));
+  const [draft, setDraft] = useState<Draft>(() =>
+    initialDraft(comparable, props.comparableType, props.prefill, props.listingText, props.defaultValidityMonths));
   const [characteristics, setCharacteristics] = useState<Record<string, string>>(() =>
     initialCharacteristics(comparable, fields, props.prefill));
   const [freeText, setFreeText] = useState(comparable?.characteristicsText ?? "");
@@ -178,6 +186,8 @@ export function ComparableDialog(props: {
   const location = draft.location.trim() || formatAddress(address);
 
   const built = isBuiltComparableType(props.comparableType);
+  // The validity: the day of consultation plus its months; a comparable of before without months keeps its day.
+  const validUntil = draft.validityMonths ? addMonths(draft.consultedOn || todayInMexico(), Number(draft.validityMonths)) : draft.validUntil;
 
   /** Land area, bedrooms, bathrooms and type of construction of a built comparable, or what to correct. */
   const buildingValues = (): Pick<ComparableFormValues, "landArea" | "bedrooms" | "bathrooms" | "constructionType"> | { error: string } => {
@@ -222,7 +232,8 @@ export function ComparableDialog(props: {
       url: draft.url.trim() || null,
       offerDate: draft.offerDate || null,
       consultedOn: draft.consultedOn || null,
-      validUntil: draft.validUntil || null,
+      validityMonths: draft.validityMonths ? Number(draft.validityMonths) : null,
+      validUntil: validUntil || null,
       urbanProximity: (draft.urbanProximity || null) as UrbanProximity | null,
       operationType: (draft.operationType || null) as OperationType | null,
       latitude,
@@ -333,7 +344,7 @@ export function ComparableDialog(props: {
           </DialogDescription>
         </DialogHeader>
 
-        {comparable?.updatedOn ? <ComparableValidityLine updatedOn={comparable.updatedOn} /> : null}
+        {comparable?.updatedOn ? <ComparableValidityLine updatedOn={comparable.updatedOn} months={comparable.validityMonths ?? props.defaultValidityMonths} /> : null}
 
         {duplicates ? (
           <section className="grid gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40" aria-label="Posibles duplicados" data-duplicates>
@@ -521,8 +532,16 @@ export function ComparableDialog(props: {
                   <Input id="comparable-date" type="date" value={draft.offerDate} onChange={set("offerDate")} />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="comparable-valid">Vigencia (opcional)</FieldLabel>
-                  <Input id="comparable-valid" type="date" value={draft.validUntil} onChange={set("validUntil")} />
+                  <FieldLabel htmlFor="comparable-valid">Vigencia (meses)</FieldLabel>
+                  <NativeSelect id="comparable-valid" className="w-full" value={draft.validityMonths} onChange={set("validityMonths")}>
+                    <NativeSelectOption value="">{draft.validUntil ? "La fecha capturada" : "Sin indicar"}</NativeSelectOption>
+                    {COMPARABLE_VALIDITY_MONTHS.map((months) => (
+                      <NativeSelectOption key={months} value={String(months)}>{months} {months === 1 ? "mes" : "meses"}</NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                  <p className="text-xs text-muted-foreground" data-valid-until>
+                    {validUntil ? `Vigente hasta el ${formatDay(validUntil)}, desde la fecha de consulta.` : "Desde la fecha de consulta."}
+                  </p>
                 </Field>
                 {draft.listingText ? (
                   <Field className="sm:col-span-4">

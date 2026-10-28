@@ -16,7 +16,9 @@ import { ENGINE_VERSION } from "../engine/config";
 import { computeMarketApproach } from "../engine/market";
 import { Trace } from "../engine/trace";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
-import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, inFirmBase, versionPrecision, writableVersion, type Tx } from "./access";
+import {
+  asRecord, catalogId, decimal, findValuation, firmComparableMonths, formulasOrThrow, inFirmBase, versionPrecision, writableVersion, type Tx,
+} from "./access";
 import { propertyTypeKeyOf } from "./comparable-master";
 import { storedFormulas, type CapturedFormulas } from "./captured-formulas";
 import { matchOption, optionJustification, optionsFor, resolveFactorCatalog } from "./factor-catalog";
@@ -35,7 +37,7 @@ import {
   type OperationType,
   type UrbanProximity,
 } from "./comparable-card";
-import { comparableDataChanged } from "./comparable-validity";
+import { addMonths, comparableDataChanged } from "./comparable-validity";
 import { PENDING_REVIEW, REVIEW_STATUSES, type ComparableReviewDto } from "./comparable-review";
 import type { ComparableInputPayload, ComparableReviewPayload, MarketSettingsPayload } from "./market-schemas";
 import {
@@ -123,6 +125,8 @@ type PublicationSnapshot = {
   offerDate: string | null;
   consultedOn?: string | null;
   validUntil?: string | null;
+  /** "Vigencia" captured in months (1 to 12), from the day of consultation. */
+  validityMonths?: number | null;
   listingText?: string | null;
   /** "Pantalla de referencia": a stored image apart from the photos. */
   screenshot?: PhotoSnapshot | null;
@@ -228,6 +232,7 @@ export async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean
     offerDate: publication.offerDate ?? null,
     consultedOn: publication.consultedOn ?? null,
     validUntil: publication.validUntil ?? null,
+    validityMonths: publication.validityMonths ?? null,
     listingText: publication.listingText ?? null,
     address: addressOf(address),
     urbanProximity: property.urbanProximity ?? null,
@@ -331,8 +336,11 @@ export async function getMarketCalculation(publicId: string, organizationId: num
     const avaluo = await findValuation(tx, publicId, organizationId);
     const versionId = avaluo.IdVersionTrabajo ?? avaluo.IdVersionFinal;
     if (!versionId) return { settings: defaultMarketSettings(type), comparables: [], locked: avaluo.BBloqueado, configured: false };
-    const { settings, comparables, configured, precision } = await loadCalculation(tx, versionId, type, true);
-    return { settings, comparables, locked: avaluo.BBloqueado, configured, precision };
+    const [{ settings, comparables, configured, precision }, comparableValidityMonths] = await Promise.all([
+      loadCalculation(tx, versionId, type, true),
+      firmComparableMonths(tx, organizationId),
+    ]);
+    return { settings, comparables, locked: avaluo.BBloqueado, configured, precision, comparableValidityMonths };
   });
 }
 
@@ -613,6 +621,14 @@ function comparableFormulas(payload: ComparableInputPayload, previous: Comparabl
   });
 }
 
+/** The day a comparable stops being valid: its day of consultation plus its months, or the day typed before months existed. */
+function validUntilOf(payload: ComparableInputPayload, stored: Partial<PublicationSnapshot>) {
+  const months = unlessOmitted(payload.validityMonths, stored.validityMonths);
+  const consulted = unlessOmitted(payload.consultedOn, stored.consultedOn);
+  if (months) return addMonths(consulted ?? todayInMexico(), months);
+  return unlessOmitted(payload.validUntil, stored.validUntil);
+}
+
 type StoredSnapshots = {
   property?: Partial<PropertySnapshot>;
   publication?: Partial<PublicationSnapshot>;
@@ -676,7 +692,9 @@ function snapshots(payload: ComparableInputPayload, formulas: CapturedFormulas, 
     url: payload.url,
     offerDate: payload.offerDate,
     consultedOn: unlessOmitted(payload.consultedOn, storedPublication.consultedOn),
-    validUntil: unlessOmitted(payload.validUntil, storedPublication.validUntil),
+    validityMonths: unlessOmitted(payload.validityMonths, storedPublication.validityMonths),
+    // Captured in months, the validity is the day of consultation plus them; otherwise the day typed (comparables of before).
+    validUntil: validUntilOf(payload, storedPublication),
     listingText: unlessOmitted(payload.listingText, storedPublication.listingText),
     screenshot: storedPublication.screenshot ?? null,
     details: unlessOmitted(payload.listingDetails, storedPublication.details),

@@ -47,6 +47,9 @@ test("invalid RFC, email, validity or prefix are rejected", () => {
   assert.equal(firmSettingsSchema.safeParse({ ...valid, email: "no-es-correo" }).success, false);
   assert.equal(firmSettingsSchema.safeParse({ ...valid, validityMonths: 0 }).success, false);
   assert.equal(firmSettingsSchema.safeParse({ ...valid, validityMonths: 13 }).success, false);
+  assert.equal(firmSettingsSchema.safeParse({ ...valid, comparableValidityMonths: 13 }).success, false, "comparables: 1 to 12 months");
+  assert.equal(firmSettingsSchema.safeParse({ ...valid, comparableValidityMonths: 3 }).data?.comparableValidityMonths, 3);
+  assert.equal(firmSettingsSchema.safeParse(valid).data?.comparableValidityMonths, undefined, "a client of before leaves them as stored");
   assert.equal(firmSettingsSchema.safeParse({ ...valid, validityMonths: 6.5 }).success, false);
   assert.equal(firmSettingsSchema.safeParse({ ...valid, validityMonths: 12 }).success, true);
   assert.equal(firmSettingsSchema.safeParse({ ...valid, folioPrefix: "--" }).success, false);

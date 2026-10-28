@@ -277,8 +277,10 @@ export type ComparableDto = {
   offerDate: string | null;
   /** Day the listing was consulted, YYYY-MM-DD; the form starts with today. */
   consultedOn?: string | null;
-  /** Day the offer stops being valid, when the listing says. */
+  /** Day the offer stops being valid: the day of consultation plus `validityMonths`, or the day typed before months existed. */
   validUntil?: string | null;
+  /** "Vigencia" in months (1 to 12), from the day of consultation; the firm's months when the comparable is new. */
+  validityMonths?: number | null;
   /** The listing as it was pasted ("Pegar anuncio"), kept as evidence. */
   listingText?: string | null;
   /** The location in parts; `location` stays the line the dictamen prints. */
@@ -395,6 +397,8 @@ export type MarketCalculationDto = {
   locked: boolean;
   /** The valuation's precision (decimals shown, calculating with them); missing, the behavior of before. */
   precision?: CalculationPrecision;
+  /** The months a new comparable is valid for, the firm's; missing, six. */
+  comparableValidityMonths?: number;
   /** The market has stored settings: its tab shows even without comparables. */
   configured?: boolean;
 };

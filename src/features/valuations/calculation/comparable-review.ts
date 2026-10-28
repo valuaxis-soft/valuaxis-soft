@@ -104,7 +104,7 @@ const percent = (value: number) => `${Math.round(Math.abs(value) * 100)} %`;
  */
 export function comparableWarnings(
   comparable: WarningInput,
-  context: { type: ComparableType; subjectArea: number | null; today: string },
+  context: { type: ComparableType; subjectArea: number | null; today: string; /** The firm's or the comparable's months of validity; six by default. */ offerMaxAgeMonths?: number },
 ): ComparableWarning[] {
   const warnings: ComparableWarning[] = [];
   const difference = isBuiltComparableType(context.type) ? builtAreaDifference(comparable.area, context.subjectArea) : null;
@@ -126,10 +126,11 @@ export function comparableWarnings(
   }
   if (!comparable.hasScreenshot) warnings.push({ key: "NO_SCREENSHOT", message: "Sin pantalla de referencia." });
   const date = comparable.offerDate ?? comparable.consultedOn ?? null;
-  if (date && monthsBetween(date, context.today) >= OFFER_MAX_AGE_MONTHS) {
-    warnings.push({ key: "OLD_OFFER", message: `La oferta tiene más de ${OFFER_MAX_AGE_MONTHS} meses.` });
+  const maxAge = context.offerMaxAgeMonths ?? OFFER_MAX_AGE_MONTHS;
+  if (date && monthsBetween(date, context.today) >= maxAge) {
+    warnings.push({ key: "OLD_OFFER", message: `La oferta tiene más de ${maxAge} ${maxAge === 1 ? "mes" : "meses"}.` });
   }
-  // Six months from its capture or last update (comparable-validity); only a warning, as every one of these.
+  // Its months from its capture or last update (comparable-validity); only a warning, as every one of these.
   if (comparable.validity?.expired) {
     warnings.push({
       key: "EXPIRED",

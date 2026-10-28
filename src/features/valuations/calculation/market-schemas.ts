@@ -117,6 +117,7 @@ export const comparableInputSchema = z.object({
   // Fields of the card and its evidence; a client of before leaves them out and they stay as stored.
   consultedOn: day.optional(),
   validUntil: day.optional(),
+  validityMonths: z.number("La vigencia es un número de meses.").int("La vigencia va en meses completos.").min(1, "La vigencia va de 1 a 12 meses.").max(12, "La vigencia va de 1 a 12 meses.").nullable().optional(),
   listingText: text(LISTING_TEXT_MAX).optional(),
   address: addressSchema.nullable().optional(),
   urbanProximity: z.enum(URBAN_PROXIMITIES, "Proximidad urbana inválida.").nullable().optional(),
