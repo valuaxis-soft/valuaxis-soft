@@ -307,5 +307,12 @@ export type AppSection = {
   custom?: boolean;
   /** The appraiser renamed the tab: the stored title wins over the registry label. */
   titleEdited?: boolean;
+  /**
+   * A registry section the appraiser deleted. It stays in the document, hidden
+   * (`enabled: false`) and out of the tab strip, so its calculations keep a
+   * place to write to and it can be restored. A section he added is removed
+   * from the array instead.
+   */
+  removed?: boolean;
   blocks: Block[];
 };

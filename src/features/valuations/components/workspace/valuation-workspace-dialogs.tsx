@@ -85,14 +85,17 @@ export function UnsavedChangesExitDialog({
   );
 }
 
-/** Asks before deleting a section the appraiser added, with everything it holds. */
+/** Asks before deleting a section, with everything it holds. */
 export function RemoveSectionDialog({
   sectionName,
+  restorable = false,
   onOpenChange,
   onConfirm,
 }: {
   /** The section to delete; null keeps the dialog closed. */
   sectionName: string | null;
+  /** A registry section: it can be restored from the list of sections after it is saved. */
+  restorable?: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }) {
@@ -102,8 +105,9 @@ export function RemoveSectionDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>¿Eliminar la sección {sectionName}?</AlertDialogTitle>
           <AlertDialogDescription>
-            Se quita la pestaña con sus bloques, apartados, conceptos, tablas e imágenes, y deja de salir en el
+            Se quita la pestaña con sus bloques, subbloques, conceptos, tablas e imágenes, y deja de salir en el
             dictamen. Si solo quieres que no se imprima, usa &quot;Ocultar&quot;. Puedes deshacerlo antes de guardar.
+            {restorable ? " Después de guardar, la puedes restaurar desde la lista de secciones." : null}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

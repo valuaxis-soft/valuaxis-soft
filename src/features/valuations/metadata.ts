@@ -63,6 +63,8 @@ export type SectionMetadata = {
   custom?: boolean;
   /** The appraiser renamed the section's tab. */
   titleEdited?: boolean;
+  /** The appraiser deleted the section. */
+  removed?: boolean;
 };
 
 export type BlockMetadata = {
@@ -196,6 +198,7 @@ export function sectionMetadataFromContent(content: SectionMetadataContent): Sec
     titleBand: content.titleBand,
     custom: content.custom,
     titleEdited: content.titleEdited,
+    ...(content.removed ? { removed: true } : {}),
   };
 }
 
@@ -215,6 +218,7 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
     titleBand: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBandStyle(value.titleBand) ? value.titleBand : undefined)),
     custom: sectionBooleanMetadata(config, "custom"),
     titleEdited: sectionBooleanMetadata(config, "titleEdited"),
+    removed: sectionBooleanMetadata(config, "removed"),
   };
 }
 
@@ -342,7 +346,7 @@ function imageCaptionAlign(config: unknown): "left" | "center" | "right" | undef
   });
 }
 
-function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited") {
+function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited" | "removed") {
   return readConfigMetadata(config, (value) => readBooleanMetadata(value, key));
 }
 
@@ -465,7 +469,7 @@ function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "cust
   return typeof metadata === "string" ? metadata : undefined;
 }
 
-function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited") {
+function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited" | "removed") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "boolean" ? metadata : undefined;

@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { FileText } from "lucide-react";
 import type { AppSection } from "../../model";
 import { moveSection } from "../../services/section-order-operations";
+import { canRemoveSection } from "../../services/section-edit-operations";
 import {
   DndContext,
   KeyboardSensor,
@@ -44,7 +45,7 @@ export type SectionDndContainerProps = {
   onReorder: (nextSections: AppSection[]) => void;
   /** Called with the new title when the appraiser renames the active tab. */
   onRename?: (sectionId: string, title: string) => void;
-  /** Asks to delete a section the appraiser added (the active tab offers it). */
+  /** Asks to delete a section; the active tab offers it, except on a required one. */
   onRemove?: (sectionId: string) => void;
   /** Whether the tabs are read-only (disables dragging). */
   readOnly: boolean;
@@ -253,7 +254,7 @@ export function SectionDndContainer({
                   },
                   onCancel: () => setRenamingId(null),
                 } : undefined}
-                onRemove={onRemove && section.custom ? () => onRemove(section.id) : undefined}
+                onRemove={onRemove && canRemoveSection(section) ? () => onRemove(section.id) : undefined}
               />
             );
           })}

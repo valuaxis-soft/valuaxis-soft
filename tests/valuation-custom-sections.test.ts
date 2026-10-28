@@ -186,7 +186,7 @@ function dbSection(id: number, key: string, name: string, order: number, config:
 /*  Deleting from the tab strip                                        */
 /* ------------------------------------------------------------------ */
 
-test("the active tab of a section the appraiser added offers to delete it; registry tabs never do", () => {
+test("the active tab offers to delete its section, except on a required one", () => {
   const custom = { ...createCustomSection(), label: "XVI" };
   const sections = [...createInitialSections(), custom];
   const strip = (activeSectionId: string, options: { readOnly?: boolean; remove?: boolean } = {}) => renderToStaticMarkup(createElement(
@@ -203,7 +203,9 @@ test("the active tab of a section the appraiser added offers to delete it; regis
   ));
   assert.match(strip(custom.id), new RegExp(`aria-label="Eliminar sección XVI\\. ${NEW_SECTION_TITLE}"`));
   assert.equal(strip(custom.id).match(/aria-label="Eliminar sección/g)?.length, 1, "only on the active tab");
-  assert.doesNotMatch(strip("terreno"), /Eliminar sección/, "a registry section is hidden, never deleted");
+  assert.match(strip("terreno"), /Eliminar sección/, "a registry section is deleted too");
+  assert.doesNotMatch(strip("caratula"), /Eliminar sección/, "the carátula is required");
+  assert.doesNotMatch(strip("conclusiones"), /Eliminar sección/, "so is the conclusión");
   assert.doesNotMatch(strip(custom.id, { readOnly: true }), /Eliminar sección/);
   assert.doesNotMatch(strip(custom.id, { remove: false }), /Eliminar sección/);
 });

@@ -212,6 +212,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
     ...(section.titleBand ? { titleBand: section.titleBand } : {}),
     ...(section.custom ? { custom: true } : {}),
     ...(section.titleEdited ? { titleEdited: true } : {}),
+    ...(section.removed ? { removed: true } : {}),
       blocks: section.blocks.map((block) => ({
       id: block.id,
       title: block.title,
