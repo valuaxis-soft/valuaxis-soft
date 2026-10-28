@@ -37,6 +37,8 @@ export type ConstructionInput = {
   usefulLife: number;
   conservation: number;
   otherFactor?: number;
+  /** Up to two more demerit factors the appraiser adds; they multiply the FRe like "otro". */
+  extraFactors?: number[];
   /** Captured age factor (R26); absent, 1 − (edad / vida útil)^1.4. */
   ageFactor?: number;
   /** Captured FRe (T26); absent, conservación × edad × otro. */
@@ -58,6 +60,8 @@ export type SpecialInstallationInput = {
   usefulLife: number;
   conservation: number;
   otherFactor?: number;
+  /** Up to two more demerit factors the appraiser adds; they multiply the FRe like "otro". */
+  extraFactors?: number[];
   /** Captured age factor (R47); absent, the formula. */
   ageFactor?: number;
   /** Captured FRe (T47); absent, conservación × edad × otro. */
@@ -262,7 +266,7 @@ function costConstructions(rows: ConstructionInput[], config: EngineConfig, trac
   return value;
 }
 
-type DemeritRow = Pick<ConstructionInput, "ref" | "age" | "usefulLife" | "conservation" | "ageFactor" | "resultantFactor">;
+type DemeritRow = Pick<ConstructionInput, "ref" | "age" | "usefulLife" | "conservation" | "ageFactor" | "resultantFactor" | "extraFactors">;
 
 /** Edad of the demerit factors: the captured one, or 1 − (edad / vida útil)^1.4 (R26, R47). */
 function recordAgeFactor(row: DemeritRow, key: string, config: EngineConfig, trace: Trace): number {
@@ -276,14 +280,25 @@ function recordAgeFactor(row: DemeritRow, key: string, config: EngineConfig, tra
   });
 }
 
-/** FRe of the demerit factors: the captured one, or conservación × edad × otro (T26, T47). */
+/**
+ * FRe of the demerit factors: the captured one, or conservación × edad × otro
+ * (T26, T47), times the factors the appraiser added (factor1, factor2) in order.
+ */
 function recordResultant(row: DemeritRow, key: string, age: number, other: number, trace: Trace): number {
-  const formula = row.conservation * age * other;
+  const extras = row.extraFactors ?? [];
+  const formula = extras.reduce((product, factor) => product * factor, row.conservation * age * other);
+  const names = extras.map((_, index) => `factor${index + 1}`);
   return trace.record({
     key: `${key}.factorResultante`,
     label: `Factor resultante ${row.ref}`,
-    formula: row.resultantFactor === undefined ? "conservación × edad × otro" : "capturado por el valuador",
-    inputs: { conservacion: row.conservation, edad: age, otro: other, ...(row.resultantFactor === undefined ? {} : { formula }) },
+    formula: row.resultantFactor === undefined ? ["conservación × edad × otro", ...names].join(" × ") : "capturado por el valuador",
+    inputs: {
+      conservacion: row.conservation,
+      edad: age,
+      otro: other,
+      ...Object.fromEntries(extras.map((factor, index) => [names[index], factor])),
+      ...(row.resultantFactor === undefined ? {} : { formula }),
+    },
     value: row.resultantFactor ?? formula,
   });
 }

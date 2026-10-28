@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { capturedFormulasSchema } from "./captured-formulas";
-import { isConservationRating } from "./cost-types";
+import { MAX_EXTRA_DEMERIT_FACTORS, isConservationRating } from "./cost-types";
 import { roundingSchema, surfacePowerSchema } from "./market-schemas";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -11,6 +11,13 @@ const fraction = z.number().finite().min(0).max(1);
 const formulaFactor = factor.nullable().default(null);
 /** Calificación of the conservation, as the sheet «ROSS HEIDECKE» rates it; missing in older clients. */
 const conservationRating = z.number().refine(isConservationRating, "La calificación de conservación va de 2 a 10.").nullable().default(null);
+
+/** The factors added after "Otro"; missing in older clients. */
+const extraFactors = z.array(factor).max(MAX_EXTRA_DEMERIT_FACTORS).default([]);
+const demeritColumns = z.object({
+  other: text(40),
+  extra: z.array(text(40)).max(MAX_EXTRA_DEMERIT_FACTORS),
+});
 
 const uniqueRefs = (rows: { ref: string }[]) => new Set(rows.map((row) => row.ref.toLowerCase())).size === rows.length;
 
@@ -63,6 +70,7 @@ export const costInputSchema = z.object({
     conservationRating,
     ageFactor: formulaFactor,
     otherFactor: factor,
+    extraFactors,
     resultantFactor: formulaFactor,
     completion: fraction,
     undivided: fraction,
@@ -81,6 +89,7 @@ export const costInputSchema = z.object({
     maintenance: text(120),
     ageFactor: formulaFactor,
     otherFactor: factor,
+    extraFactors,
     resultantFactor: formulaFactor,
     completion: fraction,
     undivided: fraction,
@@ -92,6 +101,11 @@ export const costInputSchema = z.object({
     base: amount,
   })).max(20),
   rounding: z.object({ land: roundingSchema, constructions: roundingSchema, installations: roundingSchema, physicalValue: roundingSchema }).optional(),
+  columns: z.object({
+    constructions: demeritColumns,
+    installations: demeritColumns,
+    showMaintenance: z.boolean().nullable(),
+  }).optional(),
   formulas: capturedFormulasSchema.optional(),
 });
 

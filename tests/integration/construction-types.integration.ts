@@ -177,6 +177,30 @@ test("the calificación of the conservation is kept per construction and install
   assert.equal((await storedConstructionValue(fixture)).value, 0);
 });
 
+test("the factors added after «Otro» and the names of the demerit columns are saved, enter the stored FRe and stay when an older client saves", async () => {
+  const fixture = await createValuationFixture();
+  const user = editor(fixture);
+  await saveConstructionTypes(fixture.publicId, user, { types: [arandasType] });
+  const columns = {
+    constructions: { other: "Obsolescencia", extra: ["Funcional", "Ubicación"] },
+    installations: { other: "Otro", extra: [] },
+    showMaintenance: false,
+  };
+  await saveCostCalculation(fixture.publicId, user, { ...costsOf([{ ...arandasCost, extraFactors: [0.9, 0.95] }]), columns });
+  let costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual(costs.columns, columns);
+  assert.deepEqual(costs.constructions[0].extraFactors, [0.9, 0.95]);
+  // T26 = 0.98 · (1 − (2/70)^1.4) = 0.97324647, times the two added factors.
+  assert.equal(Number((await storedConstructionValue(fixture)).rows[0].NFactorResultante), 0.83212573);
+
+  // A client that sends no columns keeps the names; a row without added factors takes 1 in each.
+  await saveCostCalculation(fixture.publicId, user, costsOf([arandasCost]));
+  costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual(costs.columns, columns);
+  assert.deepEqual(costs.constructions[0].extraFactors, []);
+  assert.equal(Number((await storedConstructionValue(fixture)).rows[0].NFactorResultante), 0.97324647);
+});
+
 test("a capture that still carries the type's data creates the type (valuations saved before the types had their panel)", async () => {
   const fixture = await createValuationFixture();
   const user = editor(fixture);
