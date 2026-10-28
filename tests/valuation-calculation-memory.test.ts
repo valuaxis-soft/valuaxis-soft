@@ -361,7 +361,7 @@ test("the statistical methods of a market go right after that market, inside its
   const settings = defaultStatisticalSettings("TERRENO_VENTA");
   const statistical: StatisticalCalculationDto = {
     settings: { ...settings, regression: { ...settings.regression, enabled: true } },
-    comparables: [], locked: false, configured: true, fromMarket: false, goal: null,
+    comparables: [], locked: false, configured: true, fromMarket: false, goal: null, market: null,
   };
   const memory = memoryOf([marketSection], { ...NO_CALCULATIONS, markets: [land, buildings], statistical: [statistical] });
   assert.deepEqual(memory.approaches.map((approach) => approach.key), ["MOTOR.MERCADO.TERRENO_VENTA", "MOTOR.ESTADISTICO.TERRENO_VENTA", "MOTOR.MERCADO.INMUEBLE_VENTA"]);
