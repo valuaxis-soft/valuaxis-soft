@@ -456,10 +456,12 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
                           selectComparable(comparable);
                         }}
                       >
-                        <Dot color={comparableType(comparable.kind).color} />
+                        <ComparableDot color={comparableType(comparable.kind).color} current={comparable.current} />
                         <span className="min-w-0 flex-1">
                           <span className="font-mono text-xs font-medium">{comparable.ref}</span> · {Math.round(distance)} m
-                          <small className="block text-muted-foreground">{comparableType(comparable.kind).name}</small>
+                          <small className="block text-muted-foreground">
+                            {comparableType(comparable.kind).name} · {comparable.current ? "vigente" : "vencido"}
+                          </small>
                         </span>
                         <span className="font-mono text-xs tabular-nums">{formatMoney(comparable.price)}</span>
                       </Button>
@@ -515,6 +517,11 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
 
 function Dot({ color, border = "#ffffff" }: { color: string; border?: string }) {
   return <span className="inline-block size-2.5 shrink-0 rounded-full shadow-[0_0_0_1px_rgba(0,0,0,.25)]" style={{ background: color, border: `2px solid ${border}` }} />;
+}
+
+/** Same look as the map pin: filled for a current offer, hollow for an expired one. */
+function ComparableDot({ color, current }: { color: string; current: boolean }) {
+  return current ? <Dot color={color} /> : <Dot color="#ffffff" border={color} />;
 }
 
 function PanelTitle({ title, children }: { title: string; children: React.ReactNode }) {
