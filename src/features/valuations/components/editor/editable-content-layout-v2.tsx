@@ -3,12 +3,13 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   Concept,
+  ContentRowTagStyle,
   ContentLayoutItemRef,
   ContentLayout,
   ImageContent,
   TableContent,
 } from "../../model";
-import { resolveContentLayout } from "../../services/content-layout";
+import { resolveContentLayout, setContentRowTagStyle } from "../../services/content-layout";
 import {
   planContentDropSlots,
   type ContentRowSlotPlan,
@@ -21,6 +22,7 @@ import { ConceptEditorRow } from "./concept-editor";
 import { ImageEditorItem } from "./image-editor";
 import { TableEditorItem } from "./table-editor";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { findBoundarySource, findBoundaryTable, getTerrenoElementKind } from "../../sections/terreno";
 import type { ExistingConceptRelationMode } from "../../concept-links";
@@ -518,6 +520,7 @@ export function EditableContentLayout({
             disabled={readOnly || !onContentLayoutChange}
             containerRef={containerRef}
             slots={slotPlan?.get(row.id)?.columns}
+            onTagStyleChange={onContentLayoutChange ? (rowId, tagStyle) => onContentLayoutChange(setContentRowTagStyle(resolvedLayout, rowId, tagStyle)) : undefined}
           />
         </V2RowDropTarget>
       ))}
@@ -560,6 +563,39 @@ export function EditableContentLayout({
 /*  Exported: row content with per-row SortableContext                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Concepts side by side print as data labels or as columns: the choice shows
+ * over a row that holds only concepts, two or three of them.
+ */
+function RowTagStyleControl({ value, disabled, onChange }: { value: ContentRowTagStyle | undefined; disabled: boolean; onChange: (next: ContentRowTagStyle | undefined) => void }) {
+  const options: Array<{ value: ContentRowTagStyle | undefined; label: string }> = [
+    { value: undefined, label: "Columnas" },
+    { value: "white", label: "Etiquetas, fondo blanco" },
+    { value: "shaded", label: "Etiquetas sombreadas" },
+  ];
+  return (
+    <div className="col-span-12 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground" role="radiogroup" aria-label="Formato de los conceptos del renglón" data-row-tag-control="">
+      <span className="mr-1">Renglón:</span>
+      {options.map((option) => (
+        <button
+          key={option.label}
+          type="button"
+          role="radio"
+          aria-checked={value === option.value}
+          disabled={disabled}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "rounded-full border px-2 py-0.5 transition-colors disabled:opacity-50",
+            value === option.value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:bg-accent",
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function V2RowContent({
   row,
   activeColumnId,
@@ -568,8 +604,11 @@ export function V2RowContent({
   disabled,
   containerRef,
   slots,
+  onTagStyleChange,
 }: {
-  row: { id: string; columns: { id: string; items: ContentLayoutItemRef[]; conceptPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation }[] };
+  row: { id: string; tagStyle?: ContentRowTagStyle; columns: { id: string; items: ContentLayoutItemRef[]; conceptPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation }[] };
+  /** Prints the concepts of the row as data labels (white or shaded) or as columns again. */
+  onTagStyleChange?: (rowId: string, tagStyle: ContentRowTagStyle | undefined) => void;
   rowIndex: number;
   activeColumnId: string | null;
   activeTarget: string | null;
@@ -589,6 +628,8 @@ export function V2RowContent({
     [row.columns, containerRef],
   );
 
+  const conceptsSideBySide = row.columns.length > 1 && row.columns.every((column) => column.items[0]?.type === "concept");
+
   return (
     <SortableContext items={rowSortableIds}>
       <div
@@ -598,7 +639,11 @@ export function V2RowContent({
           gridTemplateColumns: "repeat(12, 1fr)",
           gap: "0.5rem",
         }}
+        data-row-tags={conceptsSideBySide ? row.tagStyle : undefined}
       >
+        {conceptsSideBySide && onTagStyleChange ? (
+          <RowTagStyleControl value={row.tagStyle} disabled={disabled} onChange={(next) => onTagStyleChange(row.id, next)} />
+        ) : null}
         {row.columns.map((column, columnIndex) => {
           const itemRef = column.items[0] ?? null;
           const columnSlots = slots?.[columnIndex];

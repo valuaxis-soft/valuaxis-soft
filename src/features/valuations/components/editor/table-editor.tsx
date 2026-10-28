@@ -62,6 +62,7 @@ import {
   useFormulaReferenceTarget,
 } from "./formula-editing";
 import { useNumberPresentation } from "../number-presentation-context";
+import { TableFormatControl } from "./table-format-control";
 
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
@@ -1082,6 +1083,7 @@ export function TableEditorItem({
           <Button type="button" size="icon" variant="outline" aria-label="Agregar fila" disabled={readOnly} title="Agregar fila" onClick={() => onAddRow(table.id)}>
             <Rows3 />
           </Button>
+          <TableFormatControl table={tableV2} readOnly={readOnly} onChange={(updater) => onUpdate(table.id, v2Updater(updater))} />
           <Button type="button" size="icon" variant="ghost" aria-label={`Quitar ${tableV2.title}`} disabled={readOnly} title="Quitar tabla" onClick={() => onRemove(table.id)}>
             <Trash2 />
           </Button>

@@ -295,11 +295,31 @@ export function normalizeContentLayout(layout: ContentLayout): ContentLayout {
       const chunk = repairedColumns.slice(offset, offset + CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW);
       const chunkIdx = Math.floor(offset / CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW);
       const id = totalChunks === 1 ? row.id : `${row.id}-split-${chunkIdx}`;
-      normalizedRows.push({ id: claimUniqueId(id, usedRowIds, normalizedRows.length), columns: chunk });
+      normalizedRows.push({ id: claimUniqueId(id, usedRowIds, normalizedRows.length), columns: chunk, ...rowTagStyle(row, chunk) });
     }
   }
 
   return { version: 2, rows: normalizedRows };
+}
+
+/** A row keeps its data-label style while it still holds concepts side by side. */
+function rowTagStyle(row: { tagStyle?: unknown }, columns: ContentLayoutColumnV2[]): Pick<ContentLayoutRowV2, "tagStyle"> {
+  const style = row.tagStyle;
+  if ((style !== "white" && style !== "shaded") || columns.length < 2) return {};
+  return { tagStyle: style };
+}
+
+/** The row with its concepts printed as data labels, white or shaded; undefined prints them as columns again. */
+export function setContentRowTagStyle(layout: ContentLayout, rowId: string, tagStyle: ContentLayoutRowV2["tagStyle"]): ContentLayout {
+  return {
+    ...layout,
+    rows: layout.rows.map((row) => {
+      if (row.id !== rowId) return row;
+      if (tagStyle) return { ...row, tagStyle };
+      const { tagStyle: _removed, ...rest } = row;
+      return rest;
+    }),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -407,7 +427,7 @@ export function reconcileContentLayout(
       const chunkIdx = Math.floor(offset / CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW);
       // Only add split suffix when a row is actually split into multiple chunks
       const id = totalChunks === 1 ? row.id : `${row.id}-split-${chunkIdx}`;
-      reconciledRows.push({ id: claimUniqueId(id, usedRowIds, reconciledRows.length), columns: chunk });
+      reconciledRows.push({ id: claimUniqueId(id, usedRowIds, reconciledRows.length), columns: chunk, ...rowTagStyle(row, chunk) });
     }
   }
 
