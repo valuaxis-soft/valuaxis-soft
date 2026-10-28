@@ -525,12 +525,15 @@ export function replaceGeneratedBlocks(
   const isPlaceholder = (item: Block) => placeholders.has(item.id.toLowerCase());
   const current = section.blocks.filter(owns);
   if (sameContent(current, blocks) && !section.blocks.some(isPlaceholder)) return section;
+  // A block the appraiser hid stays hidden when the calculation writes it again.
+  const hidden = new Set(current.filter((item) => item.enabled === false).map((item) => item.id.toLowerCase()));
+  const written = hidden.size ? blocks.map((item) => (hidden.has(item.id.toLowerCase()) ? { ...item, enabled: false } : item)) : blocks;
   const firstIndex = section.blocks.findIndex((item) => owns(item) || isPlaceholder(item));
   const kept = section.blocks.filter((item) => !owns(item) && !isPlaceholder(item));
   const insertAt = firstIndex !== -1
     ? section.blocks.slice(0, firstIndex).filter((item) => kept.includes(item)).length
     : options.placeAmong?.(kept) ?? (options.position === "end" ? kept.length : 0);
-  return { ...section, blocks: [...kept.slice(0, insertAt), ...blocks, ...kept.slice(insertAt)] };
+  return { ...section, blocks: [...kept.slice(0, insertAt), ...written, ...kept.slice(insertAt)] };
 }
 
 /** The order the markets print in, as the appraiser's books: land before buildings for sale, buildings before land for rent. */

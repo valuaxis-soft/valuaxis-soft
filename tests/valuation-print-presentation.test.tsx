@@ -284,9 +284,10 @@ test("block title bars are fine bars, thinner than the document's title band, an
   assert.match(bar, /class="mb-1 bg-\[#00285A\] px-3 py-0\.5 text-center text-\[11px\] font-bold uppercase/);
   assert.doesNotMatch(bar, /py-1\.5|font-black/);
   assert.equal(title.keepWithNext, true);
-  // The apartado title carries its rule right under the text: no separate line further down.
+  // The apartado title carries its rule right under the text, 2px thick and half the page long: no separate line further down.
   const html = renderItems(block({ apartados: [apartado("datos", [concept("a", "Niveles", "4")])] }));
-  assert.match(html, /<h3 class="mb-1 border-b-2 border-\[#2F5495\] pb-0\.5 [^"]*leading-tight[^"]*">III\.1 Apartado datos<\/h3><div class="mt-1 grid/);
+  assert.match(html, /<h3 class="relative mb-1 pb-0\.5 [^"]*leading-tight[^"]*after:bottom-0 after:left-0 after:w-1\/2 after:border-b-2 after:border-\[#2F5495\][^"]*">III\.1 Apartado datos<\/h3><div class="mt-1 grid/);
+  assert.doesNotMatch(html, /<h3 class="[^"]*(?<!after:)border-b-2/, "the rule is not the title's own border, which ran edge to edge");
 });
 
 test("rows of one apartado sit together on a page: the item before a continuation drops its gap", () => {

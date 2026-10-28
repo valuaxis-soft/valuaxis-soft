@@ -2,6 +2,7 @@ import type { TableContent } from "@/features/valuations/model";
 import { appendTableColumn, ensureTableV2 } from "@/features/valuations/services/table";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { createTable } from "../model/content-factories";
+import { changedTableCell, type EditorHistoryOptions } from "../model/editor-history";
 import {
   ensureBlockContentIntegrity,
   withAddedApartadoContent,
@@ -44,32 +45,38 @@ export function useTableMutations({
     updater: (table: TableContent) => TableContent,
     apartadoId?: string,
   ) => {
+    // Each cell is its own undo step, and undoing it brings the editor to that cell. The
+    // history reads these options once the update ran, so the change found is in them.
+    const history: EditorHistoryOptions = { focus: { sectionId, blockId, tableId } };
+    const update = (table: TableContent) => {
+      if (table.id !== tableId) return table;
+      const next = updater(table);
+      const cell = changedTableCell(table, next);
+      // Typing in one cell groups as text does; any other change (rows, columns, several cells) is a step of its own.
+      if (cell) {
+        history.groupKey = `table:${tableId}:${cell.rowId}:${cell.columnId}`;
+        history.focus = { sectionId, blockId, tableId, ...cell };
+      } else if (next.title !== table.title) {
+        history.groupKey = `table:${tableId}:title`;
+      }
+      return next;
+    };
     updateSectionBlocks(
       sectionId,
       (blocks) =>
         blocks.map((block) => {
           if (block.id !== blockId) return block;
           if (!apartadoId) {
-            return {
-              ...block,
-              tables: block.tables.map((table) => (table.id === tableId ? updater(table) : table)),
-            };
+            return { ...block, tables: block.tables.map(update) };
           }
           return {
             ...block,
             apartados: block.apartados.map((subBlock) =>
-              subBlock.id === apartadoId
-                ? {
-                    ...subBlock,
-                    tables: subBlock.tables.map((table) =>
-                      table.id === tableId ? updater(table) : table,
-                    ),
-                  }
-                : subBlock,
+              subBlock.id === apartadoId ? { ...subBlock, tables: subBlock.tables.map(update) } : subBlock,
             ),
           };
         }),
-      { groupKey: `table:${tableId}` },
+      history,
     );
   };
 

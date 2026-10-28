@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
+import { Button } from "@/components/ui/button";
 import { ReportPreview } from "@/features/valuations/components/report-preview";
 import { DEFAULT_NUMBER_PRESENTATION } from "@/features/valuations/services/number-presentation";
 import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
@@ -17,6 +18,16 @@ import {
 
 export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: string | null }) {
   const [payload, setPayload] = useState<ExternalPreviewPayload | null>(null);
+  // The window browses the whole document as the preview beside the editor does: it asks the editor for the section.
+  const navigate = (direction: -1 | 1) => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel(getExternalPreviewChannelName(valuationId));
+    channel.postMessage({ type: "preview-navigate", direction } satisfies ExternalPreviewMessage);
+    channel.close();
+  };
+  const navigation = payload?.navigation
+    ? { ...payload.navigation, onPrevious: () => navigate(-1), onNext: () => navigate(1) }
+    : undefined;
 
   useEffect(() => {
     if (typeof BroadcastChannel === "undefined") return;
@@ -88,13 +99,20 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
   return (
     <main className="h-screen min-h-0 bg-muted/40 p-4 text-foreground">
       {payload.activeSection.enabled === false ? (
-        <div className="flex h-full items-center justify-center rounded-2xl border bg-card p-6 text-center text-sm text-muted-foreground">
+        <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border bg-card p-6 text-center text-sm text-muted-foreground">
           Esta sección está oculta en el documento.
+          {navigation ? (
+            <span className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={!navigation.canPrevious} onClick={navigation.onPrevious}>Sección anterior</Button>
+              <Button type="button" variant="outline" size="sm" disabled={!navigation.canNext} onClick={navigation.onNext}>Sección siguiente</Button>
+            </span>
+          ) : null}
         </div>
       ) : (
         <NumberPresentationProvider presentation={payload.numberPresentation ?? DEFAULT_NUMBER_PRESENTATION}>
         <PagePresentationProvider presentation={payload.pagePresentation ?? DEFAULT_PAGE_PRESENTATION}>
           <ReportPreview
+            navigation={navigation}
             caratula={payload.caratula}
             letterhead={payload.letterhead}
             documentHeaderImage={payload.documentHeaderImage}

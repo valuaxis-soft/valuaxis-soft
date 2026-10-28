@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef } from "react";
 import { toast } from "sonner";
 
 import {
+  externalPreviewNavigation,
   getExternalPreviewChannelName,
   type ExternalPreviewMessage,
   type ExternalPreviewPayload,
@@ -24,11 +25,14 @@ export function readStoredExternalPreview(): boolean {
  * editor over a BroadcastChannel while the split layout is external.
  */
 export function useExternalPreviewSync({
+  onNavigate,
   payload: externalPreviewPayload,
   splitLayout,
   valuationId,
   workspaceMode,
 }: {
+  /** The window asked for the previous or next section: the preview browses there, the window follows. */
+  onNavigate?: (direction: -1 | 1) => void;
   payload: ExternalPreviewPayload;
   splitLayout: SplitLayout;
   valuationId: string | null;
@@ -40,6 +44,7 @@ export function useExternalPreviewSync({
   // Whether the layout was external, so leaving it (not a reload) clears the stored choice.
   const wasExternalRef = useRef(false);
   const externalPreviewChannelName = getExternalPreviewChannelName(valuationId);
+  const navigate = useEffectEvent((direction: -1 | 1) => onNavigate?.(direction));
 
   const postExternalPreviewState = useCallback(() => {
     const payload = externalPreviewPayloadRef.current;
@@ -108,6 +113,8 @@ export function useExternalPreviewSync({
       if (event.data?.type === "preview-ready" || event.data?.type === "main-ready") {
         postExternalPreviewState();
       }
+      const direction = externalPreviewNavigation(event.data);
+      if (direction !== null) navigate(direction);
     };
 
     // Announce main is ready so external popup can request state after F5

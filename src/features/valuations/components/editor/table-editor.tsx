@@ -558,6 +558,8 @@ function EditableTableCell({
                 readOnly={Boolean(formulaMode)}
                 value={shownValue}
                 data-table-cell={tableId}
+                data-row-id={row.id}
+                data-column-id={column.id}
                 data-row={rowIndex}
                 data-col={columnIndex}
                 onChange={(event) => {

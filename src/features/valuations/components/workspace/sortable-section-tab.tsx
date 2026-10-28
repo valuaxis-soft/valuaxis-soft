@@ -25,8 +25,8 @@ import { SECTION_TITLE_MAX } from "@/features/valuations/services/section-edit-o
  * The active tab also renames the section: a pencil next to it (or a double
  * click on it) turns the tab into a text box; Enter or leaving it keeps the
  * new title, Escape drops it. While it is a text box the tab is not sortable.
- * A section the appraiser added also shows a trash can on its active tab,
- * which asks before deleting it.
+ * Every section but the required ones also shows a trash can on its active
+ * tab, which asks before deleting it.
  */
 export function SortableSectionTab({
   sectionId,
@@ -54,7 +54,7 @@ export function SortableSectionTab({
     onCommit: (title: string) => void;
     onCancel: () => void;
   };
-  /** Asks to delete the section: only for a section the appraiser added. */
+  /** Asks to delete the section: absent for a required one. */
   onRemove?: () => void;
   children?: ReactNode;
 }) {
@@ -89,6 +89,7 @@ export function SortableSectionTab({
     <div
       ref={setNodeRef}
       style={style}
+      data-section-tab={sectionId}
       className={cn(
         "inline-flex items-center",
         isDragging && "z-50",

@@ -177,22 +177,14 @@ test("a signature image is stored as its storage key and read back as an address
   assert.equal(signatureImageKey(address), key);
 });
 
-test("the dictamen prints the scanned signature over its line, and keeps the blank space when there is none", () => {
+test("the dictamen prints no scanned signature, even a saved one: every signature leaves the room to sign by hand", () => {
   const render = (firmas: CaratulaFormData["firmas"]) => renderToStaticMarkup(createElement(CaratulaSignaturesModule, { caratula: { ...caratula, firmas } }));
-  const signed = render([{ ...ana, image: "/api/archivos/imagen?key=uploads%2F2026-10%2F7a1c.jpg" }, beto]);
-  assert.equal(signed.match(/<img /g)?.length, 1);
-  assert.match(signed, /<img[^>]*src="\/api\/archivos\/imagen\?key=uploads%2F2026-10%2F7a1c\.jpg"[^>]*alt="Firma de Arq\. Ana Ruiz"/);
-  // Image, then the line, then the name.
-  assert.match(signed, /<img[\s\S]*border-t[\s\S]*Arq\. Ana Ruiz/);
-  assert.equal(signed.match(/border-t/g)?.length, 2);
-  // Both leave the same room over the line (the image's height), so the names stay level.
-  assert.equal(signed.match(/style="height:48px"/g)?.length, 3, "la imagen y una caja igual para la firma con imagen y para la que se firma a mano");
-  assert.match(signed, /style="height:48px"><\/div><div class="border-t[\s\S]*Ing\. Beto Díaz/, "sin imagen queda el espacio para firmar a mano");
-  // The chosen size prints, and the tallest one sets the room of every signature.
-  const sized = render([{ ...ana, image: "/api/archivos/imagen?key=uploads%2F2026-10%2F7a1c.jpg", imageSize: "grande" }, beto]);
-  assert.match(sized, /<img[^>]*style="height:72px"/);
-  assert.equal(sized.match(/style="height:72px"/g)?.length, 3, "la imagen y las dos cajas");
-  assert.match(render([ana, beto]), /style="height:36px"/, "sin imágenes, el espacio de siempre para firmar a mano");
+  const signed = render([{ ...ana, image: "/api/archivos/imagen?key=uploads%2F2026-10%2F7a1c.jpg", imageSize: "grande" }, beto]);
+  assert.doesNotMatch(signed, /<img /, "a pasted signature has no legal validity");
+  assert.equal(signed.match(/border-t/g)?.length, 2, "the line, the name and the cédula of each one");
+  assert.equal(signed.match(/style="height:36px"/g)?.length, 2, "the same room over every line");
+  assert.match(signed, /Arq\. Ana Ruiz/);
+  assert.match(signed, /Ing\. Beto Díaz/);
 });
 
 test("the size of a signature image travels with the signature and only its three values are read", () => {

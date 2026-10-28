@@ -119,6 +119,8 @@ export function ValuationTopBar({
   onRemoveSection,
   onRenameSection,
   onReorderSections,
+  onRestoreSection,
+  onSelectSection,
   onRedo,
   onSave,
   onSaveAsTemplate,
@@ -127,6 +129,7 @@ export function ValuationTopBar({
   onWorkspaceModeChange,
   readOnly,
   redoAvailable,
+  removedSections,
   saving,
   saveStatus,
   splitLayout = "horizontal",
@@ -149,6 +152,8 @@ export function ValuationTopBar({
   onRemoveSection?: (sectionId: string) => void;
   onRenameSection?: (sectionId: string, title: string) => void;
   onReorderSections: (nextSections: AppSection[]) => void;
+  onRestoreSection?: (sectionId: string) => void;
+  onSelectSection?: (sectionId: string) => void;
   onRedo: () => void;
   onSave: () => void;
   /** "Guardar como plantilla"; absent for those who do not edit. */
@@ -158,6 +163,8 @@ export function ValuationTopBar({
   onWorkspaceModeChange: (mode: WorkspaceMode) => void;
   readOnly: boolean;
   redoAvailable: boolean;
+  /** Registry sections the appraiser deleted, offered to restore in the list of sections. */
+  removedSections?: AppSection[];
   saving: boolean;
   saveStatus: SaveStatus;
   splitLayout?: SplitLayout;
@@ -344,6 +351,7 @@ export function ValuationTopBar({
                   Guardar como plantilla
                 </DropdownMenuItem>
               ) : null}
+              {lifecycleAction ? <DropdownMenuSeparator /> : null}
               {lifecycleAction ? (
                 <DropdownMenuItem
                   className="min-h-10"
@@ -376,32 +384,13 @@ export function ValuationTopBar({
         onRemoveSection={onRemoveSection}
         onRenameSection={onRenameSection}
         onReorder={onReorderSections}
+        onRestoreSection={onRestoreSection}
+        onSelectSection={onSelectSection}
         readOnly={readOnly}
+        removedSections={removedSections}
       />
 
       <div className="hidden flex-none flex-nowrap items-center justify-end gap-2 lg:flex">
-        {lifecycleAction ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={lifecycleAction.disabled}
-            onClick={lifecycleAction.onClick}
-            className="flex-none whitespace-nowrap"
-          >
-            {lifecycleAction.kind === "conclude" ? (
-              <>
-                <CircleCheck data-icon="inline-start" />
-                Concluir
-              </>
-            ) : (
-              <>
-                <RotateCcw data-icon="inline-start" />
-                Reabrir
-              </>
-            )}
-          </Button>
-        ) : null}
-
         <Button
           type="button"
           variant={hasPendingChanges ? "default" : "outline"}
@@ -465,6 +454,32 @@ export function ValuationTopBar({
           <FileDown data-icon="inline-start" />
           Generar avalúo
         </Button>
+
+        {/* Concluir closes the valuation: at the far end, set apart from the strip's arrow and the
+            other actions, so it is not pressed by mistake. It still asks before concluding. */}
+        {lifecycleAction ? (
+          <div className="ml-4 flex flex-none items-center border-l pl-4" data-lifecycle-action="">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={lifecycleAction.disabled}
+              onClick={lifecycleAction.onClick}
+              className="flex-none whitespace-nowrap"
+            >
+              {lifecycleAction.kind === "conclude" ? (
+                <>
+                  <CircleCheck data-icon="inline-start" />
+                  Concluir
+                </>
+              ) : (
+                <>
+                  <RotateCcw data-icon="inline-start" />
+                  Reabrir
+                </>
+              )}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

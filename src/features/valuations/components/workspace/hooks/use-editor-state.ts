@@ -12,7 +12,9 @@ import {
   TEXT_EDIT_GROUP_MS,
   editorSnapshotChanged,
   emptyEditorHistory,
+  locateEditorChange,
   textEditGroupKey,
+  type EditorFocus,
   type EditorHistory,
   type EditorHistoryOptions,
   type EditorSnapshot,
@@ -106,7 +108,7 @@ export function useEditorState({
       return;
     }
 
-    history.past = [...history.past, snapshot].slice(-EDITOR_HISTORY_LIMIT);
+    history.past = [...history.past, { snapshot, focus: options?.focus }].slice(-EDITOR_HISTORY_LIMIT);
     syncHistoryAvailability();
   };
 
@@ -124,34 +126,40 @@ export function useEditorState({
     setSaveStatus("dirty");
   };
 
-  const undoEditorChange = () => {
+  /** Takes back the last change; null when there is none. Says where the change was, to show it. */
+  const undoEditorChange = (): AppliedHistoryStep | null => {
     const history = historyRef.current;
-    const previous = history.past.at(-1);
+    const entry = history.past.at(-1);
     const current = snapshotRef.current;
-    if (!previous || !current || !canEdit) return;
+    if (!entry || !current || !canEdit) return null;
+    const previous = entry.snapshot;
 
     history.past = history.past.slice(0, -1);
-    history.future = [current, ...history.future].slice(0, EDITOR_HISTORY_LIMIT);
+    history.future = [{ snapshot: current, focus: entry.focus }, ...history.future].slice(0, EDITOR_HISTORY_LIMIT);
     history.lastGroupKey = null;
     history.lastPushedAt = 0;
     applyEditorSnapshot(previous);
     setSaveStatus(savedSnapshotRef.current && !editorSnapshotChanged(previous, savedSnapshotRef.current) ? "saved" : "dirty");
     syncHistoryAvailability();
+    return { focus: entry.focus ?? locateEditorChange(current.sections, previous.sections) };
   };
 
-  const redoEditorChange = () => {
+  /** Does again the last change taken back; null when there is none. */
+  const redoEditorChange = (): AppliedHistoryStep | null => {
     const history = historyRef.current;
-    const next = history.future[0];
+    const entry = history.future[0];
     const current = snapshotRef.current;
-    if (!next || !current || !canEdit) return;
+    if (!entry || !current || !canEdit) return null;
+    const next = entry.snapshot;
 
     history.future = history.future.slice(1);
-    history.past = [...history.past, current].slice(-EDITOR_HISTORY_LIMIT);
+    history.past = [...history.past, { snapshot: current, focus: entry.focus }].slice(-EDITOR_HISTORY_LIMIT);
     history.lastGroupKey = null;
     history.lastPushedAt = 0;
     applyEditorSnapshot(next);
     setSaveStatus(savedSnapshotRef.current && !editorSnapshotChanged(next, savedSnapshotRef.current) ? "saved" : "dirty");
     syncHistoryAvailability();
+    return { focus: entry.focus ?? locateEditorChange(current.sections, next.sections) };
   };
 
   useEffect(() => {
@@ -168,31 +176,6 @@ export function useEditorState({
     snapshotRef.current = { caratula, meta, sections };
     savedSnapshotRef.current = { caratula, meta, sections };
   }, [valuationId, caratula, meta, sections]);
-
-  const handleEditorHistoryKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (!canEdit || event.defaultPrevented || (!event.ctrlKey && !event.metaKey)) return;
-    const key = event.key.toLowerCase();
-    const isUndo = key === "z" && !event.shiftKey;
-    const isRedo = key === "y" || (key === "z" && event.shiftKey);
-    if (!isUndo && !isRedo) return;
-
-    if (isUndo && historyRef.current.past.length > 0) {
-      event.preventDefault();
-      undoEditorChange();
-      return;
-    }
-
-    if (isRedo && historyRef.current.future.length > 0) {
-      event.preventDefault();
-      redoEditorChange();
-    }
-  });
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => handleEditorHistoryKeyDown(event);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
 
   const updateMeta = (patch: Partial<ValuationMeta>) => {
     updateEditorState((current) => ({
@@ -292,3 +275,39 @@ export function useEditorState({
 }
 
 export type EditorState = ReturnType<typeof useEditorState>;
+
+/** An undo or a redo that was applied, and where the change it took back (or did again) is. */
+export type AppliedHistoryStep = { focus: EditorFocus | null };
+
+/**
+ * Ctrl+Z undoes and Ctrl+Y (or Ctrl+Shift+Z) redoes the document's changes,
+ * anywhere in the editor but in the fields of a panel with an undo of its own
+ * or of the browser (`data-native-undo`). With nothing to undo, the key is the
+ * browser's.
+ */
+export function useEditorHistoryShortcuts({
+  canEdit,
+  onRedo,
+  onUndo,
+}: {
+  canEdit: boolean;
+  onRedo: () => AppliedHistoryStep | null;
+  onUndo: () => AppliedHistoryStep | null;
+}) {
+  const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (!canEdit || event.defaultPrevented || (!event.ctrlKey && !event.metaKey)) return;
+    // A field outside the document (a calculation panel, saved on its own) keeps its own undo.
+    if (event.target instanceof Element && event.target.closest("[data-native-undo]")) return;
+    const key = event.key.toLowerCase();
+    const isUndo = key === "z" && !event.shiftKey;
+    const isRedo = key === "y" || (key === "z" && event.shiftKey);
+    if (!isUndo && !isRedo) return;
+    if ((isUndo ? onUndo() : onRedo()) !== null) event.preventDefault();
+  });
+
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => handleKeyDown(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
+}

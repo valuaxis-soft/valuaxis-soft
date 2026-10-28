@@ -230,7 +230,7 @@ export function PasteBlockButton({ section }: { section: AppSection }) {
   );
 }
 
-/** "Pegar apartado" inside a Block, once one was copied. */
+/** "Pegar subbloque" inside a Block, once one was copied. */
 export function PasteApartadoButton({ section, block }: { section: AppSection; block: Block }) {
   const transfer = useStructureTransfer();
   if (!transfer || transfer.readOnly || transfer.clipboard?.kind !== "apartado" || structureLockReason(section, block.id)) return null;
@@ -243,7 +243,7 @@ export function PasteApartadoButton({ section, block }: { section: AppSection; b
       onClick={() => transfer.pasteApartado({ sectionId: section.id, blockId: block.id })}
     >
       <ClipboardPaste data-icon="inline-start" />
-      Pegar apartado
+      Pegar subbloque
     </Button>
   );
 }

@@ -85,15 +85,36 @@ test("dirty y error conservan el estado azul y el intercambio de copy por hover"
   }
 });
 
-test("las flechas desplazan el contenedor en ambas direcciones", () => {
+/** A strip 300 px wide over six tabs of 100 px, scrolled by `scrollLeft`. */
+function strip(scrollLeft: number) {
   const calls: ScrollToOptions[] = [];
-  const container = { scrollBy: (options: ScrollToOptions) => calls.push(options) };
-  scrollSectionContainer(container as Pick<HTMLDivElement, "scrollBy">, -1);
-  scrollSectionContainer(container as Pick<HTMLDivElement, "scrollBy">, 1);
+  const tabs = [0, 1, 2, 3, 4, 5].map((index) => ({
+    getBoundingClientRect: () => ({ left: index * 100 - scrollLeft, right: index * 100 + 100 - scrollLeft }),
+  }));
+  const container = {
+    clientWidth: 300,
+    scrollBy: (options: ScrollToOptions) => calls.push(options),
+    getBoundingClientRect: () => ({ left: 0, right: 300 }),
+    querySelectorAll: () => tabs,
+  };
+  return { calls, container: container as unknown as Parameters<typeof scrollSectionContainer>[0] };
+}
+
+test("las flechas traen solo la siguiente pestaña oculta de ese lado, sin saltarse ninguna", () => {
+  const { calls, container } = strip(150);
+  scrollSectionContainer(container, 1);
+  scrollSectionContainer(container, -1);
+  // Scrolled 150 px: the fifth tab (250-350 on screen) is cut on the right, the second (-50-50) on the left.
   assert.deepEqual(calls, [
-    { left: -280, behavior: "smooth" },
-    { left: 280, behavior: "smooth" },
+    { left: 58, behavior: "smooth" },
+    { left: -58, behavior: "smooth" },
   ]);
+});
+
+test("pasada la última pestaña, la flecha avanza media barra", () => {
+  const { calls, container } = strip(300);
+  scrollSectionContainer(container, 1);
+  assert.deepEqual(calls, [{ left: 150, behavior: "smooth" }]);
 });
 
 test("la navegación renderiza secciones y controles horizontales dentro de Tabs", () => {

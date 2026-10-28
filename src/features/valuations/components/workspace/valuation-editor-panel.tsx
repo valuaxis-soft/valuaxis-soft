@@ -32,7 +32,7 @@ import { DocumentNumberFormatControl } from "../editor/number-format-control";
 import { DocumentPageFormatControl } from "../editor/page-format-control";
 import { SignaturesEditor } from "../editor/signatures-editor";
 
-import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { Check, Eye, EyeOff, GripVertical, PencilLine, Plus, Trash2, X } from "lucide-react";
 
 import { ChangeEvent, useMemo, useState, type ReactNode } from "react";
 import { ensureTableV2 } from "@/features/valuations/services/table";
@@ -92,6 +92,8 @@ import {
 import { cn } from "@/lib/utils";
 import { stripLeadingRomanNumeral } from "../datos-generales-display";
 import { pinFullLinkResolution, type ExistingConceptRelationMode } from "@/features/valuations/concept-links";
+import { canRemoveSection, SECTION_TITLE_MAX } from "@/features/valuations/services/section-edit-operations";
+import { blockContentHidden } from "@/features/valuations/services/hidden-content";
 
 const PRE_MARKET_EDITOR_SECTION_KEYS = new Set([
   "DATOS_GENERALES",
@@ -126,13 +128,19 @@ function hasPreMarketConceptControls(section: AppSection) {
   return PRE_MARKET_CONCEPT_CONTROL_SECTION_KEYS.has(getCanonicalSectionKey(section.id));
 }
 
+/**
+ * Every section has the same controls: hide, delete, rename, import and add
+ * blocks. A required one (carátula, datos generales, conclusión) shows hide
+ * and delete disabled, saying why.
+ */
 function getSectionEditorCapabilities(section: AppSection): EditorCapabilities {
-  // A section the appraiser added is hidden or deleted at will; registry sections are only hidden.
   return {
-    visibility: (hasPreMarketConceptControls(section) || section.custom === true) && !section.required,
-    delete: section.custom === true,
+    visibility: canRemoveSection(section),
+    delete: canRemoveSection(section),
   };
 }
+
+const REQUIRED_SECTION_HINT = "Sección obligatoria del dictamen: no se oculta ni se elimina";
 
 function getBlockEditorCapabilities({
   isCaratula,
@@ -232,8 +240,10 @@ export function ValuationEditorPanel(props: {
   onRemoveConcept: (sectionId: string, blockId: string, conceptId: string) => void;
   onRemoveImage: (sectionId: string, blockId: string, imageId: string, apartadoId?: string) => void;
   onRemoveApartado: (sectionId: string, blockId: string, apartadoId: string) => void;
-  /** Asks to delete a section the appraiser added; the workspace confirms first. */
+  /** Asks to delete the section; the workspace confirms first. */
   onRemoveSection?: (sectionId: string) => void;
+  /** Renames the section, as its tab does. */
+  onRenameSection?: (sectionId: string, title: string) => void;
   onRemoveSubConcept: (sectionId: string, blockId: string, apartadoId: string, conceptId: string) => void;
   onRemoveTable: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
   onUpdateBlock: (sectionId: string, blockId: string, patch: Partial<Block>) => void;
@@ -279,10 +289,11 @@ export function ValuationEditorPanel(props: {
     section.id === "datos" || getCanonicalSectionKey(section.id) === "DATOS_GENERALES";
   const isTerreno = isTerrenoSection(section);
   const sectionCapabilities = getSectionEditorCapabilities(section);
+  const [renaming, setRenaming] = useState(false);
   const usesSectionTerminology = hasPreMarketSectionBoundary(section);
   const blockTerm = usesSectionTerminology ? "Sección" : "Bloque";
   const blocksTerm = usesSectionTerminology ? "secciones" : "bloques";
-  const subBlocksTerm = usesSectionTerminology ? "apartados" : "subbloques";
+  const subBlocksTerm = "subbloques";
   const editableBlocks = section.blocks.filter(
     (block) => !(isCaratula && block.id === COMPANY_HEADER_BLOCK_ID),
   );
@@ -316,7 +327,12 @@ export function ValuationEditorPanel(props: {
     if (result.changed) props.onUpdateSection(section.id, { blocks: result.blocks });
   };
   const renderBlockEditor = (block: Block, blockIndex: number, blockCount: number) => isGeneratedBlock(block) ? (
-    <GeneratedBlockNotice key={block.id} block={block} />
+    <GeneratedBlockNotice
+      key={block.id}
+      block={block}
+      readOnly={props.readOnly}
+      onVisibleChange={(enabled) => props.onUpdateBlock(section.id, block.id, { enabled })}
+    />
   ) : (
     <SortableBlockEditor
       key={block.id}
@@ -360,7 +376,16 @@ export function ValuationEditorPanel(props: {
     <Card className="min-h-[680px] rounded-lg">
       <CardHeader>
         <CardTitle>
-          {isCaratula
+          {renaming && props.onRenameSection ? (
+            <SectionTitleField
+              title={section.title}
+              onCommit={(title) => {
+                setRenaming(false);
+                props.onRenameSection?.(section.id, title);
+              }}
+              onCancel={() => setRenaming(false)}
+            />
+          ) : isCaratula
             ? "Encabezado del Avalúo"
             : isDatosGenerales
               ? "Datos generales"
@@ -376,23 +401,16 @@ export function ValuationEditorPanel(props: {
             : `Formato de la sección. Agrega y ordena ${blocksTerm}, ${subBlocksTerm}, conceptos, tablas e imágenes.`}
         </CardDescription>
         <CardAction className="flex flex-wrap gap-2">
-          {hasStructuralActionCapabilities(sectionCapabilities) ? (
-            <StructuralActions
-              disabled={props.readOnly}
-              itemLabel="sección"
-              visibility={sectionCapabilities.visibility ? {
-                visible: section.enabled,
-                onChange: (enabled) => props.onUpdateSection(section.id, { enabled }),
-              } : undefined}
-            />
-          ) : null}
-          {/* Deleting a section takes it whole: a labeled button, not a bare trash can that reads like "clear". */}
-          {sectionCapabilities.delete && props.onRemoveSection && !props.readOnly ? (
-            <Button type="button" size="sm" variant="outline" title="Eliminar la sección con todo su contenido" onClick={() => props.onRemoveSection?.(section.id)}>
-              <Trash2 />
-              Eliminar sección
-            </Button>
-          ) : null}
+          <SectionHeaderActions
+            section={section}
+            capabilities={sectionCapabilities}
+            readOnly={props.readOnly}
+            renaming={renaming}
+            onStartRename={() => setRenaming(true)}
+            onVisibleChange={(enabled) => props.onUpdateSection(section.id, { enabled })}
+            onRemove={props.onRemoveSection ? () => props.onRemoveSection?.(section.id) : undefined}
+            onRename={props.onRenameSection}
+          />
           {!isCaratula ? (
             <>
               <PasteBlockButton section={section} />
@@ -406,7 +424,8 @@ export function ValuationEditorPanel(props: {
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-4">
-        {props.calculationPanel}
+        {/* The calculation panels save on their own: Ctrl+Z in their fields is the browser's (or the panel's) own. */}
+        {props.calculationPanel ? <div data-native-undo="">{props.calculationPanel}</div> : null}
         {isCaratula && props.caratula && props.meta && props.onUpdateCaratula && props.onUpdateMeta ? (
           <CaratulaEditor
             caratula={props.caratula}
@@ -561,8 +580,9 @@ function SortableBlockEditor(props: {
   const hasConceptLayoutControls = hasPreMarketConceptControls(section);
   const usesSectionTerminology = hasPreMarketConceptControls(section);
   const blockTerm = usesSectionTerminology ? "sección" : "bloque";
-  const subBlockTerm = usesSectionTerminology ? "apartado" : "subbloque";
-  const subBlockButtonLabel = usesSectionTerminology ? "Apartado" : "Subbloque";
+  const subBlockTerm = "subbloque";
+  // One word on the buttons of every section (observations of 27 Oct 2026).
+  const subBlockButtonLabel = "Subbloque";
   const caratulaBlockKind = isCaratula ? getCaratulaBlockKind(block) : "intermediate";
   const isIntermediateCaratulaBlock = isCaratula && caratulaBlockKind === "intermediate";
   const isRemovableCaratulaBlock =
@@ -621,7 +641,7 @@ function SortableBlockEditor(props: {
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn("rounded-lg", hasSectionBoundary && "border bg-muted/20", !block.enabled && "border-dashed opacity-65")}
       badge={showStructuralNumbering
-        ? block.enabled
+        ? block.enabled && !blockContentHidden(block)
           ? displayBlockLabel
             ? `${displayBlockLabel.replace(/\.+$/, "")}.`
             : "Fijo"
@@ -980,15 +1000,124 @@ function SortableBlockEditor(props: {
   );
 }
 
-/** A block written by the calculation: its data is edited in the calculation panel, not here. */
-function GeneratedBlockNotice({ block }: { block: Block }) {
+/** A block written by the calculation: its data is edited in the calculation panel, not here. It is still hidden here. */
+function GeneratedBlockNotice({ block, readOnly, onVisibleChange }: { block: Block; readOnly: boolean; onVisibleChange: (visible: boolean) => void }) {
   const rows = block.tables.reduce((count, table) => count + ensureTableV2(table).rows.length, 0);
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
-      <span className="font-medium">{block.sectionLabel ? `${block.sectionLabel} ` : ""}{block.title}</span>
-      <span className="text-xs text-muted-foreground">
+    <div className={cn("flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 text-sm", !block.enabled && "opacity-65")} data-block-id={block.id}>
+      <span className="font-medium">{block.sectionLabel && block.enabled ? `${block.sectionLabel} ` : ""}{block.title}{block.enabled ? "" : " · oculto"}</span>
+      <span className="flex items-center gap-2 text-xs text-muted-foreground">
         Generado por el cálculo{rows ? ` · ${rows} filas` : ""}{block.images.length ? ` · ${block.images.length} fotos` : ""}. Se edita en el panel de cálculo.
+        <StructuralActions
+          disabled={readOnly}
+          itemLabel="bloque"
+          visibility={{ visible: block.enabled, onChange: onVisibleChange }}
+        />
       </span>
     </div>
+  );
+}
+
+/**
+ * The controls of a section's header, the same for every section: hide,
+ * rename and delete. A required section shows hide and delete disabled.
+ */
+function SectionHeaderActions({
+  capabilities,
+  onRemove,
+  onRename,
+  onStartRename,
+  onVisibleChange,
+  readOnly,
+  renaming,
+  section,
+}: {
+  capabilities: EditorCapabilities;
+  onRemove?: () => void;
+  onRename?: (sectionId: string, title: string) => void;
+  onStartRename: () => void;
+  onVisibleChange: (visible: boolean) => void;
+  readOnly: boolean;
+  renaming: boolean;
+  section: AppSection;
+}) {
+  const visible = section.enabled !== false;
+  const hideLabel = capabilities.visibility ? `${visible ? "Ocultar" : "Mostrar"} sección` : REQUIRED_SECTION_HINT;
+  const deleteLabel = capabilities.delete ? "Eliminar la sección con todo su contenido" : REQUIRED_SECTION_HINT;
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        aria-label={hideLabel}
+        title={hideLabel}
+        disabled={readOnly || !capabilities.visibility}
+        onClick={() => onVisibleChange(!visible)}
+      >
+        {visible ? <EyeOff /> : <Eye />}
+        {visible ? "Ocultar" : "Mostrar"}
+      </Button>
+      {onRename ? (
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="outline"
+          aria-label="Renombrar sección"
+          title="Renombrar sección"
+          disabled={readOnly || renaming}
+          onClick={onStartRename}
+        >
+          <PencilLine />
+        </Button>
+      ) : null}
+      {/* Deleting a section takes it whole: a labeled button, not a bare trash can that reads like "clear". */}
+      {onRemove ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          aria-label={capabilities.delete ? "Eliminar sección" : REQUIRED_SECTION_HINT}
+          title={deleteLabel}
+          disabled={readOnly || !capabilities.delete}
+          onClick={onRemove}
+        >
+          <Trash2 />
+          Eliminar sección
+        </Button>
+      ) : null}
+    </>
+  );
+}
+
+/** The section's title as a text box: Enter or the check keeps it, Escape or the cross drops it. */
+function SectionTitleField({ title, onCommit, onCancel }: { title: string; onCommit: (title: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState(title);
+  return (
+    <span className="flex items-center gap-1">
+      <Input
+        autoFocus
+        aria-label="Título de la sección"
+        className="h-8 max-w-80 font-semibold uppercase"
+        maxLength={SECTION_TITLE_MAX}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            onCommit(value);
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            onCancel();
+          }
+        }}
+      />
+      <Button type="button" size="icon-sm" variant="ghost" aria-label="Guardar el título" onClick={() => onCommit(value)}>
+        <Check />
+      </Button>
+      <Button type="button" size="icon-sm" variant="ghost" aria-label="Cancelar" onClick={onCancel}>
+        <X />
+      </Button>
+    </span>
   );
 }

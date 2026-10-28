@@ -7,7 +7,7 @@ import type { Block, CaratulaFormData, PrincipalCoverImage } from "../model";
 import type { ValuationMeta } from "../model";
 import { DocumentConceptValue } from "./document-concept-value";
 import { isConclusionNarrativeConcept } from "@/features/valuations/services/caratula-blocks";
-import { DEFAULT_SIGNATURE_IMAGE_SIZE, SIGNATURE_IMAGE_HEIGHTS, type ValuationSignature } from "@/features/valuations/services/valuation-signatures";
+import type { ValuationSignature } from "@/features/valuations/services/valuation-signatures";
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
 import { coverImageLayout, normalizeCoverImageSize } from "@/features/valuations/services/cover-image-focus";
 import { appraisedGoodWording } from "@/features/valuations/services/appraised-good-wording";
@@ -128,24 +128,20 @@ export function CaratulaConclusionModule({
   );
 }
 
+/** The room over each signature's line, to sign by hand. */
+const HAND_SIGNATURE_ROOM_PX = 36;
+
 // Module 4: Signatures (one or many; the grid wraps three per row)
 export function CaratulaSignaturesModule({ caratula }: { caratula: CaratulaFormData }) {
   const signatures: ValuationSignature[] = caratula.firmas.length ? caratula.firmas : [{ name: "", cedula: "", role: "" }];
-  // Room for a hand signature when nobody has an image; otherwise the tallest image on the page.
-  const signatureRoom = Math.max(36, ...signatures.map((signature) => (signature.image ? SIGNATURE_IMAGE_HEIGHTS[signature.imageSize ?? DEFAULT_SIGNATURE_IMAGE_SIZE] : 0)));
 
   return (
     <section className="mb-2 flex flex-wrap justify-center gap-x-6" data-caratula-signatures>
       {signatures.map((signature, index) => (
         <div className="mt-2 w-[30%] min-w-[150px] break-inside-avoid text-center" key={index}>
-          {/* Every signature leaves the same room over its line, so the names stay level with or without an image. */}
-          <div className="flex items-end justify-center" style={{ height: signatureRoom }}>
-            {signature.image ? (
-              // The scanned signature sits where a hand would sign: just over the line.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={signature.image} alt={`Firma de ${signature.name}`} className="mx-auto max-w-full object-contain mix-blend-multiply" style={{ height: SIGNATURE_IMAGE_HEIGHTS[signature.imageSize ?? DEFAULT_SIGNATURE_IMAGE_SIZE] }} />
-            ) : null}
-          </div>
+          {/* Room to sign by hand over the line. An image saved with the signature is not printed:
+              a pasted signature has no legal validity. */}
+          <div style={{ height: HAND_SIGNATURE_ROOM_PX }} />
           <div className="border-t border-slate-500 pt-1.5">
           <p className="break-words text-xs font-bold text-slate-700">{signature.name || "Firma pendiente"}</p>
           <p className="mt-0.5 break-words text-[10px] leading-tight text-slate-600">

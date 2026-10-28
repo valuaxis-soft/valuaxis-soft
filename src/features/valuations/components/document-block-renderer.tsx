@@ -4,10 +4,11 @@ import type { Block, Concept, ImageContent, Apartado, TableContent, ContentLayou
 import { resolveBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { formatVisibleChildLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
-import { useDocumentTheme } from "@/features/valuations/components/document-theme";
+import { PAIRED_APARTADOS_CLASS_NAME, useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
 import { labelGuideColumns, resolveCellConceptGuide } from "@/features/valuations/services/concept-presentation";
 import { isLongTextList } from "@/features/valuations/services/document-long-text";
+import { apartadoContentHidden, blockContentHidden } from "@/features/valuations/services/hidden-content";
 import { MIN_ROWS_BEFORE_BREAK, MIN_ROWS_WITH_TAIL, type DocumentTableFragment } from "@/features/valuations/services/table-pagination";
 import { cn } from "@/lib/utils";
 import { DocumentConceptValue } from "./document-concept-value";
@@ -58,6 +59,9 @@ export function documentBlockFlowItems(
     pairedApartadosClassName?: string;
   },
 ): DocumentFlowItem[] {
+  // A block whose content is all hidden prints nothing: not its title either, nor the room
+  // between its bands. A block with no content at all still prints its title, as a heading.
+  if (blockContentHidden(block)) return [];
   const applyConceptLayout = options?.applyConceptLayout ?? false;
   const renderTitleBar = options?.renderTitleBar ?? true;
   const renderBlockTitle = options?.renderBlockTitle;
@@ -174,7 +178,7 @@ export function documentBlockFlowItems(
     // instead of being cut at the end of this one.
     if (firstItem.type === "apartado" && structuralRow.items.length === 1) {
       const subBlock = subBlocksById.get(firstItem.apartadoId);
-      if (!subBlock || subBlock.enabled === false || holdsOnlyHiddenTables(subBlock)) continue;
+      if (!subBlock || subBlock.enabled === false || apartadoContentHidden(subBlock)) continue;
       const apId = `ap-${block.id}-${structuralRow.id}`;
       // The first apartado sits right under the block's title bar.
       const underTitle = previous === "title" ? true : undefined;
@@ -256,7 +260,7 @@ export function documentBlockFlowItems(
       const item1 = structuralRow.items[1];
       if (item0.type !== "apartado" || item1.type !== "apartado") continue;
       const shown = (subBlock: Apartado | undefined) =>
-        subBlock && subBlock.enabled !== false && !holdsOnlyHiddenTables(subBlock) ? subBlock : undefined;
+        subBlock && subBlock.enabled !== false && !apartadoContentHidden(subBlock) ? subBlock : undefined;
       const sb1 = shown(subBlocksById.get(item0.apartadoId));
       const sb2 = shown(subBlocksById.get(item1.apartadoId));
       if (!sb1 && !sb2) continue;
@@ -270,7 +274,7 @@ export function documentBlockFlowItems(
         startOnNewPage: pairedStartOnNewPage,
         continuesPrevious: underTitle,
         node: (
-          <div className={`mt-1 grid grid-cols-2 gap-4 ${pairedApartadosClassName ?? ""}`}>
+          <div className={`mt-1 grid grid-cols-2 gap-4 ${PAIRED_APARTADOS_CLASS_NAME} ${pairedApartadosClassName ?? ""}`}>
             {sb1 ? renderPairedApartado(sb1) : null}
             {sb2 ? renderPairedApartado(sb2) : null}
           </div>
@@ -307,11 +311,6 @@ function hasVisibleItems(layoutRow: ContentLayoutRowV2, container: ContentContai
  * An apartado that holds tables and nothing else, every one of them hidden:
  * its title belongs to the tables, so it does not print either.
  */
-function holdsOnlyHiddenTables(subBlock: Apartado): boolean {
-  if (!subBlock.tables.length) return false;
-  return [...subBlock.concepts, ...subBlock.images, ...subBlock.tables].every((entry) => entry.enabled === false);
-}
-
 function holdsOnlyATable(layoutRow: ContentLayoutRowV2, container: ContentContainer): boolean {
   if (layoutRow.columns.length !== 1) return false;
   const visible = visibleRowItems(layoutRow, container);

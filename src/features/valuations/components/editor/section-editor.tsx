@@ -14,18 +14,21 @@ import { Input } from "@/components/ui/input";
 
 
 export function BlockEditorCard({
+  blockId,
   cardRef,
   children,
   className,
   style,
 }: {
+  /** The block it edits, so an undo can bring the editor to it. */
+  blockId?: string;
   cardRef: (node: HTMLElement | null) => void;
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
 }) {
   return (
-    <Card ref={cardRef} style={style} className={className}>
+    <Card ref={cardRef} style={style} className={className} data-block-id={blockId}>
       {children}
     </Card>
   );

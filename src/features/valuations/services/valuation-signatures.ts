@@ -12,13 +12,13 @@ import { extractStorageKey } from "@/features/valuations/services/image-source";
 /** Who realizes, who reviews and who authorizes: the appraiser asked for three at most (15 Oct 2026). */
 export const MAX_SIGNATURES = 3;
 
-/** Printed height of the scanned signature. */
-export const SIGNATURE_IMAGE_SIZES = ["chica", "mediana", "grande"] as const;
-export type SignatureImageSize = (typeof SIGNATURE_IMAGE_SIZES)[number];
-export const DEFAULT_SIGNATURE_IMAGE_SIZE: SignatureImageSize = "mediana";
-export const SIGNATURE_IMAGE_SIZE_LABELS: Record<SignatureImageSize, string> = { chica: "Chica", mediana: "Mediana", grande: "Grande" };
-/** Height in document pixels of each size; the tallest one on the page sets the room every signature leaves. */
-export const SIGNATURE_IMAGE_HEIGHTS: Record<SignatureImageSize, number> = { chica: 32, mediana: 48, grande: 72 };
+/**
+ * Printed size of a scanned signature, as signatures saved before 27 Oct 2026
+ * carry it. Scanned signatures are no longer uploaded nor printed (a pasted
+ * image has no legal validity); what was saved is kept as it was.
+ */
+const SIGNATURE_IMAGE_SIZES = ["chica", "mediana", "grande"] as const;
+type SignatureImageSize = (typeof SIGNATURE_IMAGE_SIZES)[number];
 
 const readImageSize = (value: unknown): SignatureImageSize | undefined =>
   (SIGNATURE_IMAGE_SIZES as readonly string[]).includes(String(value)) ? (value as SignatureImageSize) : undefined;

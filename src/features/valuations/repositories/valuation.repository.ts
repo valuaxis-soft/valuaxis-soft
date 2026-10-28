@@ -83,6 +83,8 @@ export type ValuationSectionDto = {
   custom?: boolean;
   /** The appraiser renamed the tab. */
   titleEdited?: boolean;
+  /** A registry section the appraiser deleted: read back hidden, out of the tab strip. */
+  removed?: boolean;
   blocks: ValuationBlockDto[];
   _count?: { blocks: number };
 };
@@ -577,20 +579,28 @@ export function buildCanonicalValuationSections(sections: DbSection[], propertyK
     byCanonical.set(canonical, group);
   }
 
-  const result = getOrderedValuationSections().map((definition) => {
+  // Every section takes the place it was saved in: the editor saves each
+  // section's position as its index, the registry's included, so a section the
+  // appraiser moved (Conclusión before Fotografías) is read back there. A
+  // registry section never saved takes its place in the registry, which is the
+  // index a new valuation stores it with.
+  const placed: { order: number; rank: number; section: ValuationSectionDto }[] = getOrderedValuationSections().map((definition, index) => {
     const persisted = selectCanonicalSection(byCanonical.get(definition.key) ?? []);
-    return persisted ? mapSection(persisted, definition, propertyKind) : createEmptySection(definition, propertyKind);
+    return persisted
+      ? { order: persisted.IOrden, rank: index, section: mapSection(persisted, definition, propertyKind) }
+      : { order: index, rank: index, section: createEmptySection(definition, propertyKind) };
   });
-
-  // The sections the appraiser added take the place they were saved in, in
-  // order: the editor saves every section's position as its index.
+  const registryCount = placed.length;
   const custom = sections
     .filter((section) => isCustomSectionId(section.SClave) && !isRemovedSectionConfig(section.JConfiguracion))
     .sort((a, b) => a.IOrden - b.IOrden || a.IdSeccionDocumento - b.IdSeccionDocumento);
-  for (const section of custom) {
-    result.splice(Math.min(Math.max(section.IOrden, 0), result.length), 0, mapCustomSection(section));
-  }
-  return result;
+  custom.forEach((section, index) => {
+    placed.push({ order: section.IOrden, rank: registryCount + index, section: mapCustomSection(section) });
+  });
+  // On a tie (older saves), the sections the appraiser added go before the registry section at that place.
+  return placed
+    .sort((a, b) => a.order - b.order || Number(b.rank >= registryCount) - Number(a.rank >= registryCount) || a.rank - b.rank)
+    .map(({ section }) => section);
 }
 
 function mapCustomSection(section: DbSection): ValuationSectionDto {
@@ -662,11 +672,13 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition, 
 
   // The registry's label, unless the appraiser renamed the tab; its name is then what was saved.
   const renamed = sectionMetadata.titleEdited === true && section.SNombre.trim().length > 0;
+  // A required section is never deleted, whatever was stored.
+  const removed = sectionMetadata.removed === true && !definition.required;
   return {
     id: sectionKeyToWorkspaceId(definition.key),
     label: definition.key,
     title: renamed ? section.SNombre : definition.label,
-    enabled: section.BVisible !== false && sectionMetadata.enabled !== false,
+    enabled: !removed && section.BVisible !== false && sectionMetadata.enabled !== false,
     required: definition.required,
     sortOrder: definition.order,
     startOnNewPage: sectionMetadata.startOnNewPage ?? false,
@@ -676,6 +688,7 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition, 
     ...(sectionMetadata.titleBars ? { titleBars: sectionMetadata.titleBars } : {}),
     ...(sectionMetadata.titleBand ? { titleBand: sectionMetadata.titleBand } : {}),
     ...(renamed ? { titleEdited: true } : {}),
+    ...(removed ? { removed: true } : {}),
     blocks,
     _count: { blocks: blocks.length },
   };

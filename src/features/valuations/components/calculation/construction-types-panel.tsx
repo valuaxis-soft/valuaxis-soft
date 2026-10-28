@@ -16,6 +16,7 @@ import {
 import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
 import { FormulaInput } from "./formula-input";
+import { useDraftHistory } from "./use-draft-history";
 import { useSerializedSave } from "./use-serialized-save";
 
 const cell = "h-7 min-w-0 px-1.5 text-xs";
@@ -95,6 +96,15 @@ export function ConstructionTypesPanel(props: {
       setSaving(false);
     }
   });
+  // Ctrl+Z in the table goes back through the drafts typed here, each one saved as an edit is.
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const history = useDraftHistory<Row[]>({
+    apply: (next) => {
+      setDraft(next);
+      if (!readOnly) void enqueueSave(payloadOf(next));
+    },
+    cellElement: (cell) => sectionRef.current?.querySelector<HTMLElement>(`[data-type-cell="${CSS.escape(cell)}"]`) ?? null,
+  });
   const report = useEffectEvent((next: ConstructionTypesDto) => {
     if (!props.readOnly) props.onCalculation(next);
   });
@@ -124,17 +134,26 @@ export function ConstructionTypesPanel(props: {
   const save = () => {
     if (!readOnly) void enqueueSave(payloadOf(draft));
   };
-  const setCell = (index: number, key: keyof Omit<ConstructionTypeDto, "id">, value: string) =>
+  const setCell = (index: number, key: keyof Omit<ConstructionTypeDto, "id">, value: string) => {
+    history.record(draft, `${index}:${key}`);
     setDraft((current) => current && current.map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: value } : row)));
+  };
   // A removal has no blur to wait for: it saves at once.
   const remove = (index: number) => {
+    history.record(draft, null);
     const next = draft.filter((_, rowIndex) => rowIndex !== index);
     setDraft(next);
     if (!readOnly) void enqueueSave(payloadOf(next));
   };
 
   return (
-    <section className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby="construction-types-title" onBlur={save}>
+    <section
+      ref={sectionRef}
+      className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:p-4"
+      aria-labelledby="construction-types-title"
+      onBlur={save}
+      onKeyDown={(event) => history.onKeyDown(event, draft)}
+    >
       <header className="flex items-center justify-between gap-2">
         <h3 id="construction-types-title" className="flex items-center gap-2 text-sm font-semibold">
           <Building2 className="size-4" /> Tipos de construcción
@@ -164,6 +183,7 @@ export function ConstructionTypesPanel(props: {
                       <td key={column.key} className={`p-1 ${column.className}`}>
                         <Control
                           aria-label={column.label}
+                          data-type-cell={`${index}:${column.key}`}
                           className={cell}
                           value={row[column.key]}
                           onChange={(event) => setCell(index, column.key, event.target.value)}
@@ -185,7 +205,10 @@ export function ConstructionTypesPanel(props: {
           </table>
         </div>
         {!readOnly ? (
-          <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => setDraft([...draft, rowOf(emptyConstructionType(draft.length))])}>
+          <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => {
+            history.record(draft, null);
+            setDraft([...draft, rowOf(emptyConstructionType(draft.length))]);
+          }}>
             <Plus data-icon="inline-start" /> Tipo de construcción
           </Button>
         ) : null}

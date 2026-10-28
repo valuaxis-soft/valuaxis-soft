@@ -976,6 +976,7 @@ export function ConceptEditorRow({
           "grid w-full min-w-0 grid-cols-[auto_minmax(0,220px)_minmax(0,1fr)_auto] items-start gap-2 overflow-hidden",
           referenceClassName,
         )}
+        data-concept-id={concept.id}
         data-concept-name={conceptReferenceText(formulaIndex, concept.id) ?? undefined}
         ref={setNodeRef}
         style={{ opacity: isDragging ? 0.35 : undefined }}
@@ -1111,6 +1112,7 @@ export function ConceptEditorRow({
           : "grid-cols-[auto_minmax(0,220px)_minmax(0,1fr)_auto] items-start",
         referenceClassName,
       )}
+      data-concept-id={concept.id}
       data-concept-name={conceptReferenceText(formulaIndex, concept.id) ?? undefined}
       data-concept-paragraph={conceptType === "paragraph" ? "" : undefined}
       ref={setNodeRef}

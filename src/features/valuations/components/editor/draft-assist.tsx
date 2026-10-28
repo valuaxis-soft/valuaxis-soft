@@ -10,6 +10,13 @@ import type { AppSection, Concept, TableContent } from "@/features/valuations/mo
 import { assumptionsDraftData, draftFactsOf, draftTablesFor, ownFieldFacts } from "@/features/valuations/services/draft-facts";
 import { api, SessionExpiredError } from "@/lib/api-client";
 
+/**
+ * The "Redactar borrador" and "Redactar resumen" buttons of the concepts are
+ * hidden for now (observations of 27 Oct 2026). Their code stays: set this to
+ * true to show them again wherever the installation has the AI assistance.
+ */
+const DRAFT_BUTTONS_ENABLED = false;
+
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudo redactar el borrador.";
 
@@ -80,7 +87,7 @@ export function ApartadoSummaryDraft({
   onInsert: (conceptId: string, value: string) => void;
 }) {
   const ai = useAiAssist();
-  if (!ai.enabled) return null;
+  if (!DRAFT_BUTTONS_ENABLED || !ai.enabled) return null;
   if (!target) {
     return (
       <p className="text-xs text-muted-foreground" data-apartado-summary-hint>
@@ -161,7 +168,7 @@ function DraftPreview({
   // Only the answer to the last request is shown.
   const lastRequest = useRef(0);
 
-  if (!ai.enabled || !ai.valuationId) return null;
+  if (!DRAFT_BUTTONS_ENABLED || !ai.enabled || !ai.valuationId) return null;
   const valuationId = ai.valuationId;
   const current = value.trim();
 

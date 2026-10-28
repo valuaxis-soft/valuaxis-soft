@@ -50,11 +50,17 @@ export interface DocumentThemeTokens {
 
 /**
  * One title for every apartado: the thicker rule (2px) the appraiser chose,
- * from edge to edge and right under the text, so no title has its line half
- * way, thinner or further down than another.
+ * right under the text and as long as half the page (observations of 27 Oct
+ * 2026: it ran edge to edge), so no title has its line shorter, thinner or
+ * further down than another. The rule is a border, which prints even without
+ * background graphics. Side by side, an apartado's column is half the page
+ * already and its rule fills it (`PAIRED_APARTADOS_CLASS_NAME`).
  */
 const APARTADO_TITLE =
-  "mb-1 border-b-2 border-[#2F5495] pb-0.5 text-[11px] font-bold uppercase leading-tight text-[#2F5495]";
+  "relative mb-1 pb-0.5 text-[11px] font-bold uppercase leading-tight text-[#2F5495] after:absolute after:bottom-0 after:left-0 after:w-1/2 after:border-b-2 after:border-[#2F5495] after:content-['']";
+
+/** Two apartados side by side: each column is half the page, so their title rules fill it. */
+export const PAIRED_APARTADOS_CLASS_NAME = "[&_h3]:after:w-full";
 
 /* ── Carátula variant ──────────────────────────────────────────── */
 const CARATULA_THEME: DocumentThemeTokens = {

@@ -18,6 +18,8 @@ export type SectionPayload = {
   custom?: boolean;
   /** The appraiser renamed the tab; the title is kept as sent. */
   titleEdited?: boolean;
+  /** A registry section the appraiser deleted: stored hidden and read back out of the tab strip. */
+  removed?: boolean;
   blocks?: BlockPayload[];
 };
 
