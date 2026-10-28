@@ -169,6 +169,9 @@ const comparableCardCases: Case[] = [
 const calculationCases: Case[] = [
   { name: "read the cost approach", method: "GET", path: (id) => `/api/avaluos/${id}/costos`, expected: all(200) },
   { name: "save the cost approach", method: "PUT", path: (id) => `/api/avaluos/${id}/costos`, body: () => costPayload, expected: editors(200) },
+  { name: "read the precision of the calculation", method: "GET", path: (id) => `/api/avaluos/${id}/calculo/precision`, expected: all(200) },
+  { name: "change the precision of the calculation", method: "PUT", path: (id) => `/api/avaluos/${id}/calculo/precision`,
+    body: () => ({ decimals: 2, calculateWithShown: true }), expected: editors(200) },
   { name: "read the market approach", method: "GET", path: (id) => `/api/avaluos/${id}/mercado?tipo=TERRENO_VENTA`, expected: all(200) },
   { name: "save the market approach", method: "PUT", path: (id) => `/api/avaluos/${id}/mercado`, body: () => marketPayload, expected: editors(200) },
   { name: "add a comparable", method: "POST", path: (id) => `/api/avaluos/${id}/mercado/comparables?tipo=TERRENO_VENTA`,

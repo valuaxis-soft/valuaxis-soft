@@ -105,7 +105,7 @@ export type IncomeApproachResult = {
 
 export function computeIncomeApproach(input: IncomeApproachInput, config: EngineConfig, trace = new Trace()): IncomeApproachResult {
   const method = input.method ?? "tabla";
-  const rentMarket = input.rentMarket ? homologate(input.rentMarket, config.surfaceOrientation.income, trace, "ingresos.rentas") : null;
+  const rentMarket = input.rentMarket ? homologate(input.rentMarket, config.surfaceOrientation.income, trace, "ingresos.rentas", config.displayedPrecision) : null;
   if (method === "mercado") return marketRateMethod(input, rentMarket, trace);
   // When every unit carries its own rent there is no market to average; the
   // adopted rent is then their area-weighted mean.

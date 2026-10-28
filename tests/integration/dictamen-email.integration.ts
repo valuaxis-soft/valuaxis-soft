@@ -194,7 +194,7 @@ test("another organization cannot email a valuation: nothing is printed, stored 
 test("a valuation without content cannot be emailed", async (t) => {
   const opened = fakeChromium(t);
   const sent = captureDictamenEmails(t);
-  const fixture = await createValuationFixture();
+  const fixture = await createValuationFixture({ precision: "shown" });
   await assert.rejects(sendDictamenByEmail(fixture.user, fixture.publicId, "token", INPUT), (error: unknown) =>
     error instanceof ValuationWorkflowError && error.status === 409);
   assert.equal(opened.length, 0);

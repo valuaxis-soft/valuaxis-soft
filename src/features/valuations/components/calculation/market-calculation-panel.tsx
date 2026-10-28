@@ -29,6 +29,7 @@ import {
   marketEngineConfig,
   offerLabelsOf,
   offerMarkOf,
+  printsAdditionalAmount,
   toMarketEngineInput,
   type ComparableDto,
   type ComparableType,
@@ -36,7 +37,7 @@ import {
   type MarketCalculationDto,
   type MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
-import { DEFAULT_HOMOLOGATION_NOTE, defaultOfferIntro } from "@/features/valuations/calculation/market-document";
+import { DEFAULT_HOMOLOGATION_NOTE, SAME_FACTORS_AS_LAND_SALE, defaultOfferIntro } from "@/features/valuations/calculation/market-document";
 import {
   COMPUTED_FACTORS,
   DIRECT_FACTORS,
@@ -54,6 +55,8 @@ import { ComparableCardButton } from "./comparable-card-dialog";
 import { ComparableDialog, type PendingImages } from "./comparable-dialog";
 import { ComparableReviewDialog } from "./comparable-review-dialog";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
+import { CalculationPrecisionControl } from "./calculation-precision-control";
+import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
 import { ImportComparablesDialog } from "./import-comparables-dialog";
 import { MarketCharacteristicsTable } from "./market-characteristics-table";
 import { MarketFactorSlots } from "./market-factor-slots";
@@ -67,11 +70,11 @@ import { useSerializedSave } from "./use-serialized-save";
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 const text = (value: number | null) => (value === null ? "" : String(value));
 
-function compute(calculation: Pick<MarketCalculationDto, "settings" | "comparables">):
+function compute(calculation: Pick<MarketCalculationDto, "settings" | "comparables" | "precision">):
   { result: MarketApproachResult | null; reason: string | null } {
   const input = toMarketEngineInput(calculation);
   if (!input.ok) return { result: null, reason: input.reason };
-  return { result: computeMarketApproach(input.input, marketEngineConfig(calculation.settings)), reason: null };
+  return { result: computeMarketApproach(input.input, marketEngineConfig(calculation.settings, calculation.precision)), reason: null };
 }
 
 type SettingsDraft = Record<
@@ -305,7 +308,7 @@ function MarketTypePanel(props: {
 
   const liveSettings = calculation && draft ? settingsFrom(calculation.settings, draft) : null;
   // Recomputed on every render: a handful of comparables, and it follows every keystroke.
-  const live = calculation && liveSettings ? compute({ settings: liveSettings, comparables: calculation.comparables }) : null;
+  const live = calculation && liveSettings ? compute({ settings: liveSettings, comparables: calculation.comparables, precision: calculation.precision }) : null;
 
   // The settings last asked to be saved, until the server has them: a change made right after another builds on it.
   const requested = useRef<MarketSettingsDto | null>(null);
@@ -427,6 +430,7 @@ function MarketTypePanel(props: {
             <FieldLabel htmlFor="market-subject-area">{labels.subjectArea}</FieldLabel>
             <FormulaInput
               id="market-subject-area"
+              grouping
               value={draft.subjectArea}
               placeholder={props.suggestedSubjectArea ? String(props.suggestedSubjectArea) : undefined}
               onChange={setDraftField("subjectArea")}
@@ -465,7 +469,7 @@ function MarketTypePanel(props: {
           {againstBase ? (
             <Field>
               <FieldLabel htmlFor="market-base-area">Lote tipo (m²)</FieldLabel>
-              <FormulaInput id="market-base-area" value={draft.baseArea} onChange={setDraftField("baseArea")} />
+              <FormulaInput id="market-base-area" grouping value={draft.baseArea} onChange={setDraftField("baseArea")} />
               {!draft.baseArea ? <p className="text-xs text-amber-700 dark:text-amber-400">Sin lote tipo, el factor de superficie usa el sujeto.</p> : null}
             </Field>
           ) : null}
@@ -646,7 +650,45 @@ function MarketTypePanel(props: {
         ) : null}
       </Part>
 
-      <Part number={3} title="Homologación">
+      {/* After the comparables, as the appraiser asked (video of 27 Oct 2026); it prints only when its box is marked. */}
+      <Part number={3} title="Monto adicional">
+        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
+          <Field>
+            <FieldLabel htmlFor="market-additional">Monto adicional a considerar ($)</FieldLabel>
+            <FormulaInput id="market-additional" grouping value={draft.additionalAmount} placeholder="0" onChange={setDraftField("additionalAmount")} />
+          </Field>
+          <div className="flex flex-wrap items-end gap-4 pb-1 text-sm sm:col-span-3">
+            <label className="flex items-center gap-1.5">
+              <Checkbox
+                checked={liveSettings.additionalAmountInCalculation !== false}
+                onCheckedChange={(checked) => {
+                  const inCalculation = checked === true;
+                  // Out of the calculation it cannot print either.
+                  void saveSettings({ ...liveSettings, additionalAmountInCalculation: inCalculation, ...(inCalculation ? {} : { showAdditionalAmount: false }) });
+                }}
+              />
+              Cálculo
+            </label>
+            <label className="flex items-center gap-1.5">
+              <Checkbox
+                checked={printsAdditionalAmount(liveSettings)}
+                disabled={readOnly || liveSettings.additionalAmountInCalculation === false}
+                onCheckedChange={(checked) => void saveSettings({ ...liveSettings, showAdditionalAmount: checked === true })}
+              />
+              Mostrar en el dictamen
+            </label>
+          </div>
+        </fieldset>
+      </Part>
+
+      <Part number={4} title="Homologación">
+        {type === "TERRENO_RENTA" ? <p className="text-sm font-medium" data-same-factors="">{SAME_FACTORS_AS_LAND_SALE}</p> : null}
+        <CalculationPrecisionControl
+          valuationId={valuationId}
+          precision={calculation.precision}
+          readOnly={readOnly}
+          onChanged={() => void api.market.get(valuationId, type).then(applyServerState).catch(failed)}
+        />
         <MarketFactorSlots
           slots={calculation.settings.factorSlots}
           customFactors={customFactors}
@@ -697,15 +739,17 @@ function MarketTypePanel(props: {
           onNote={(note) => void saveSettings({ ...liveSettings, ...note })}
           onFactors={changeComparable}
           onInvalid={(message) => toast.error(message)}
+          decimals={factorDecimals(calculation.precision)}
         />
       </Part>
 
-      <Part number={4} title="Resultados">
+      <Part number={5} title="Resultados">
         <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="market-adopted">{labels.adopted}</FieldLabel>
             <FormulaInput
               id="market-adopted"
+              grouping
               value={draft.adoptedUnitValue}
               placeholder={stats ? `Promedio: ${stats.mean.toFixed(2)}` : undefined}
               // A warning, never a lock: the field is always free to be retyped or cleared.
@@ -732,10 +776,23 @@ function MarketTypePanel(props: {
             <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-3">
               <div><dt className="text-xs text-muted-foreground">Promedio homologado</dt><dd className="tabular-nums">{money(stats.mean)} {perUnit}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Mediana homologada</dt><dd className="tabular-nums">{money(stats.median)} {perUnit}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Dispersión (máx. ÷ mín.)</dt><dd className="tabular-nums">{stats.dispersion.toFixed(2)}</dd></div>
               <div>
-                <dt className="text-xs text-muted-foreground">Rango de valores homologados (mín.–máx.)</dt>
-                <dd className="tabular-nums">{money(stats.min)} – {money(stats.max)}</dd>
+                <dt className="text-xs text-muted-foreground">Dispersión inicial (máx. ÷ mín. de las ofertas)</dt>
+                <dd className="tabular-nums" data-dispersion="inicial">{stats.initialDispersion.toFixed(2)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Dispersión final (máx. ÷ mín. homologados)</dt>
+                <dd className={cn("tabular-nums", stats.dispersion > 1.25 && "text-amber-700 dark:text-amber-400")} data-dispersion="final">
+                  {stats.dispersion.toFixed(2)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">{labels.unitValue} de oferta (mín.–máx.)</dt>
+                <dd className="tabular-nums">{money(stats.offerMin)} – {money(stats.offerMax)} {perUnit}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Valores homologados (mín.–máx.)</dt>
+                <dd className="tabular-nums">{money(stats.min)} – {money(stats.max)} {perUnit}</dd>
               </div>
               <div className="sm:col-span-2">
                 <dt className="text-xs text-muted-foreground">Rango permitido para el valor adoptado (±30 % del promedio y la mediana)</dt>
@@ -759,7 +816,7 @@ function MarketTypePanel(props: {
         ) : null}
       </Part>
 
-      <Part number={5} title="Homologación por el método de regresión lineal">
+      <Part number={6} title="Homologación por el método de regresión lineal">
         <MarketRegression
           calculation={{ settings: liveSettings, comparables }}
           stats={stats ?? null}
@@ -767,15 +824,6 @@ function MarketTypePanel(props: {
           onChange={saveChange}
           onExclude={(comparable, regressionExcluded) => changeComparable(comparable, (current) => ({ ...current, regressionExcluded }))}
         />
-      </Part>
-
-      <Part number={6} title="Monto adicional">
-        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
-          <Field>
-            <FieldLabel htmlFor="market-additional">Monto adicional a considerar ($)</FieldLabel>
-            <FormulaInput id="market-additional" value={draft.additionalAmount} placeholder="0" onChange={setDraftField("additionalAmount")} />
-          </Field>
-        </fieldset>
       </Part>
 
       <Part

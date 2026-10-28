@@ -13,7 +13,7 @@ import { ENGINE_VERSION } from "../engine/config";
 import { computeCostApproach } from "../engine/costs";
 import { Trace } from "../engine/trace";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
-import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, writableVersion, type Tx } from "./access";
+import { asRecord, catalogId, decimal, findValuation, formulasOrThrow, versionPrecision, writableVersion, type Tx } from "./access";
 import { renumberFormulas, storedFormulas, type CapturedFormulas } from "./captured-formulas";
 import { recomputeConclusion } from "./conclusion.service";
 import { constructionOf, createConstructionType, loadConstructionTypes, typeFormulasOf, updateBuiltArea } from "./construction-types.service";
@@ -164,14 +164,16 @@ export async function getCostCalculation(publicId: string, organizationId: numbe
         market: { adoptedUnitValue: null, subjectArea: null, baseArea: null }, configured: false, typesCaptured: false, locked: avaluo.BBloqueado,
       };
     }
-    const [input, market, approach, construction] = await Promise.all([
+    const [input, market, approach, construction, precision] = await Promise.all([
       loadInput(tx, versionId),
       landMarket(tx, versionId),
       tx.enfoqueCosto.findUnique({ where: { IdVersionAvaluo: versionId }, select: { IdEnfoqueCosto: true } }),
       tx.construccionAvaluo.findFirst({ where: { IdVersionAvaluo: versionId }, orderBy: { IdConstruccionAvaluo: "asc" }, select: { IdConstruccionAvaluo: true, JDatosAdicionales: true } }),
+      versionPrecision(tx, versionId),
     ]);
     return {
       ...input,
+      precision,
       typeFormulas: typeFormulasOf(construction),
       market,
       configured: Boolean(approach),
@@ -319,7 +321,7 @@ export async function recomputeCosts(tx: Tx, versionId: number) {
 async function recomputeCostsValues(tx: Tx, versionId: number) {
   const approach = await tx.enfoqueCosto.findUnique({ where: { IdVersionAvaluo: versionId } });
   if (!approach) return;
-  const [input, market] = await Promise.all([loadInput(tx, versionId), landMarket(tx, versionId)]);
+  const [input, market, precision] = await Promise.all([loadInput(tx, versionId), landMarket(tx, versionId), versionPrecision(tx, versionId)]);
   const engineInput = toCostEngineInput({ ...input, market });
   await tx.ejecucionCalculo.deleteMany({ where: { IdVersionAvaluo: versionId, SClaveCalculo: CALCULATION_KEY } });
   await tx.costoTerreno.deleteMany({ where: { IdEnfoqueCosto: approach.IdEnfoqueCosto } });
@@ -333,7 +335,7 @@ async function recomputeCostsValues(tx: Tx, versionId: number) {
   }
 
   const trace = new Trace();
-  const config = costEngineConfig(input);
+  const config = costEngineConfig({ ...input, precision });
   const result = computeCostApproach(engineInput.input, config, trace);
   const value = (key: string) => trace.find(key)?.value ?? null;
 

@@ -447,11 +447,11 @@ export function ComparableDialog(props: {
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-area">Superficie (m²)</FieldLabel>
-                <FormulaInput id="comparable-area" value={draft.area} onChange={set("area")} />
+                <FormulaInput id="comparable-area" grouping value={draft.area} onChange={set("area")} />
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-price">{props.unitLabel}</FieldLabel>
-                <FormulaInput id="comparable-price" value={draft.price} onChange={set("price")} />
+                <FormulaInput id="comparable-price" grouping value={draft.price} onChange={set("price")} />
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel>Valor unitario</FieldLabel>

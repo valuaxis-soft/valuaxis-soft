@@ -5,7 +5,7 @@
  * docs/fase0/README.md until the appraiser confirms them.
  */
 /** Stored with every calculation (EjecucionCalculo.SVersionCalculo); change it when formulas change. */
-export const ENGINE_VERSION = "motor-2026.10.1";
+export const ENGINE_VERSION = "motor-2026.10.2";
 
 export type SurfaceOrientation = "reference-over-subject" | "subject-over-reference";
 
@@ -34,10 +34,19 @@ export type EngineConfig = {
     /** Each approach value in the summary and the concluded value. */
     conclusion: RoundingDigits;
   };
+  /**
+   * "Calcular con la precisión mostrada", as Excel's precision as displayed:
+   * every homologation and demerit factor is rounded to the decimals it is
+   * shown with, and unit values to cents, before it is used, so the printed
+   * figures multiply to the printed result (14,361.99 × 0.97 = 13,931.13).
+   * Null computes with every decimal, as the Excel books do.
+   */
+  displayedPrecision: { factors: number } | null;
 };
 
 const ARANDAS: EngineConfig = {
   ageFactor: { exponent: 1.4, floor: null, extendUsefulLife: false },
+  displayedPrecision: null,
   surfaceOrientation: { costs: "subject-over-reference", market: "reference-over-subject", income: "reference-over-subject" },
   rounding: {
     costs: { marketUnitValue: -1, land: -2, constructions: -4, installations: -3, otherAssets: null, physicalValue: -4 },

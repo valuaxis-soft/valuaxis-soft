@@ -158,9 +158,12 @@ export async function reopenValuation(input: {
     }
 
     const nextVersionNumber = avaluo.INumeroVersionActual + 1;
+    // The reopened version calculates with the precision of the one it comes from.
+    const origin = await tx.versionAvaluo.findUnique({ where: { IdVersionAvaluo: avaluo.IdVersionFinal }, select: { JConfiguracionCalculo: true } });
     const newVersion = await tx.versionAvaluo.create({
       data: {
         IdAvaluo: avaluo.IdAvaluo,
+        ...(origin?.JConfiguracionCalculo ? { JConfiguracionCalculo: origin.JConfiguracionCalculo } : {}),
         IdVersionOrigen: avaluo.IdVersionFinal,
         IdUsuarioCreador: input.user.id,
         IdEstadoVersionAvaluo: editableVersionState.IdEstadoVersionAvaluo,

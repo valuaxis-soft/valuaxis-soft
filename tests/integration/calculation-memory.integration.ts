@@ -279,7 +279,7 @@ test("without a session the route answers 401", async (t) => {
 
 test("a valuation without content has no memory to print", async (t) => {
   const opened = fakeChromium(t);
-  const fixture = await createValuationFixture();
+  const fixture = await createValuationFixture({ precision: "shown" });
   const { jar } = await signIn(fixture, "VALUADOR");
   const response = await post(jar, fixture.publicId);
   assert.equal(response.status, 409);

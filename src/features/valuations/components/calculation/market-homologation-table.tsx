@@ -27,8 +27,9 @@ import { CALC_HEAD, CALC_HEAD_CELL, CALC_RESULT, CALC_ROW, CALC_TABLE, CALC_TABL
 import { CommitCell } from "./commit-cell";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
-/** Factors and FRe show two decimals, as the printed homologation; the engine keeps every digit. */
-const twoDecimals = (value: number) => value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Factors and FRe show the decimals of the valuation (two unless it chose four), as the printed homologation. */
+const withDecimals = (decimals: number) => (value: number) =>
+  value.toLocaleString("es-MX", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 
 /** Options of the firm's catalog for a column; the firm's own factors have none. */
 const slotOptions = (catalog: FactorCatalog, slot: FactorSlotConfig) => (slot.key ? [] : optionsFor(catalog, slot.type));
@@ -53,8 +54,11 @@ export function MarketHomologationTable(props: {
   /** A change of the comparable's factors (and their formulas), applied to what the server holds of it. */
   onFactors: (comparable: ComparableDto, change: (current: ComparableDto) => ComparableDto) => void;
   onInvalid: (message: string) => void;
+  /** Decimals the factors are shown with; two by default. */
+  decimals?: number;
 }) {
   const { comparables, slots, catalog, readOnly } = props;
+  const twoDecimals = withDecimals(props.decimals ?? 2);
   const byReference = new Map(props.result?.homologation.comparables.map((row) => [row.id, row]) ?? []);
 
   const typed = (comparable: ComparableDto, slot: FactorSlotConfig) => (text: string) => {

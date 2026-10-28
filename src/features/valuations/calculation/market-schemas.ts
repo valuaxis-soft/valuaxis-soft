@@ -168,6 +168,8 @@ export const marketSettingsSchema = z.object({
   adoptedUnitValue: positive,
   justification: text(2000),
   additionalAmount: z.number().finite().min(0).max(1e12),
+  additionalAmountInCalculation: z.boolean().optional(),
+  showAdditionalAmount: z.boolean().optional(),
   rounding: roundingSchema.optional(),
   // Captures of the appraiser's format; clients that do not send them leave them as stored.
   offerLevel: z.enum(OFFER_LEVELS).nullable().optional(),

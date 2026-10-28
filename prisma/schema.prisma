@@ -245,6 +245,8 @@ model Organizacion {
   SNombrePerito         String?   @map("SNombrePerito") @db.VarChar(180)
   SRegistroPerito       String?   @map("SRegistroPerito") @db.VarChar(120)
   IMesesVigencia        Int       @default(6) @map("IMesesVigencia")
+  /// Months a comparable of the firm's base stays valid from its capture or update, 1 to 12 (migration 052).
+  IMesesVigenciaComparables Int   @default(6) @map("IMesesVigenciaComparables")
   JFirmas               Json?     @map("JFirmas") @db.JsonB
   SPrefijoFolio         String    @default("VLO") @map("SPrefijoFolio") @db.VarChar(10)
   JCatalogoFactores     Json?     @map("JCatalogoFactores") @db.JsonB
@@ -641,6 +643,8 @@ model VersionAvaluo {
   STextoAceptacion         String?   @map("STextoAceptacion")
   BTerminosAceptados       Boolean   @default(false) @map("BTerminosAceptados")
   SHashContenido           String?   @map("SHashContenido") @db.VarChar(128)
+  /// Decimals shown and "calcular con la precisión mostrada" of this version; NULL keeps the behavior of before (migration 051).
+  JConfiguracionCalculo    Json?     @map("JConfiguracionCalculo") @db.JsonB
   DFechaCreacion           DateTime  @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
   DFechaModificacion       DateTime  @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
   DFechaFinalizacion       DateTime? @map("DFechaFinalizacion") @db.Timestamptz(3)

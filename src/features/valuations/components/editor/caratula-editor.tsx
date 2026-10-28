@@ -63,6 +63,12 @@ import { ImageFramingControl } from "./image-framing-control";
 /** 1 to 12 whole months, at the appraiser's discretion. */
 const VALIDITY_MONTH_OPTIONS = Array.from({ length: MAX_VALIDITY_MONTHS }, (_, index) => index + 1);
 
+/** "8440000" as "$8,440,000.00"; empty or not a number, as it is. */
+function moneyText(value: string) {
+  const amount = value.trim() ? Number(value.replace(/[$,\s]/g, "")) : Number.NaN;
+  return Number.isFinite(amount) ? amount.toLocaleString("es-MX", { style: "currency", currency: "MXN" }) : value;
+}
+
 export function CaratulaEditor({
   caratula,
   meta,
@@ -437,7 +443,8 @@ export function CalculatedValuesEditor({
           description="Este valor será calculado automáticamente por el sistema."
           inputReadOnly
           label="Valor total"
-          value={caratula.valorTotal}
+          // The concluded value with its sign and separators ("$8,440,000.00"); it is stored as the bare number.
+          value={moneyText(caratula.valorTotal)}
           readOnly={readOnly}
           onChange={(valorTotal) => onUpdate({ valorTotal })}
         />

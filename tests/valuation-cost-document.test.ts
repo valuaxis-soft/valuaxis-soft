@@ -77,7 +77,7 @@ test("the cost page is one block with land, constructions and installations, eac
   assert.deepEqual(landTable.groups, [["Factores de Homologación", 7]]);
   assert.deepEqual(landTable.rows, [["I", "169.78", "$ 9,000.00", "1.00", "1.00", "1.00", "1.00", "1.00", "1.00", "1.00", "$ 9,000.00", "$ 1,528,020.00"]]);
   assert.deepEqual(landTable.boxes, {
-    "top:lote-tipo": [["Lote Tipo:", "169.78 m²"]],
+    "top:lote-tipo": [["Lote Sujeto:", "169.78 m²"]],
     "top:valor-mercado": [["Valor comparativo de Mercado ($/m²):", "$ 9,000.00"]],
     "bottom:superficie": [["Superficie valuada:", "169.78 m²"]],
     "bottom:medio": [["Valor Unitario Medio ($/m²):", "$ 9,000.00"]],
@@ -154,7 +154,7 @@ test("the land block prints the book's A) TERRENO: lote tipo, market value, the 
   const directTrace = new Trace();
   const directResult = computeCostApproach(directInput.input, costEngineConfig(direct), directTrace);
   const directLand = printed(costDocumentBlocks(direct, directResult, directTrace)[0].apartados[0].tables[0]);
-  assert.deepEqual(directLand.boxes["top:lote-tipo"], [["Lote Tipo:", "160.00 m²"]]);
+  assert.deepEqual(directLand.boxes["top:lote-tipo"], [["Lote Sujeto:", "160.00 m²"]], "against the subject the box says so");
   assert.equal(directLand.rows[0][5], "1.00");
   assert.deepEqual(directLand.boxes["bottom:valor"], [["A) Valor del Terreno:", "$ 720,000.00"]]);
 });

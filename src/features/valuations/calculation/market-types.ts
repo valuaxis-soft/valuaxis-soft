@@ -10,6 +10,7 @@ import { formulaOfText, type CapturedFormulas } from "./captured-formulas";
 import type { MarketRegressionDto } from "./market-regression";
 import type { ComparableAddress, ComparableListingDetails, ComparablePropertyDetails, OperationType, UrbanProximity } from "./comparable-card";
 import type { ComparableReviewDto } from "./comparable-review";
+import { withPrecision, type CalculationPrecision } from "./calculation-precision";
 
 export const COMPARABLE_TYPES = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"] as const;
 export type ComparableType = (typeof COMPARABLE_TYPES)[number];
@@ -344,6 +345,10 @@ export type MarketSettingsDto = {
   /** General text of the justification of the factors, before the one of each comparable. */
   justification: string | null;
   additionalAmount: number;
+  /** "Cálculo": the additional amount enters the value; missing, it does (as before). */
+  additionalAmountInCalculation?: boolean;
+  /** "Mostrar en dictamen": the line of the additional amount prints; missing, only when there is one. Never without "cálculo". */
+  showAdditionalAmount?: boolean;
   factorSlots: FactorSlotConfig[];
   /** Excel ROUND digits of the value, the appraiser's choice; undefined keeps the default, null is no rounding. */
   rounding?: number | null;
@@ -388,6 +393,8 @@ export type MarketCalculationDto = {
   settings: MarketSettingsDto;
   comparables: ComparableDto[];
   locked: boolean;
+  /** The valuation's precision (decimals shown, calculating with them); missing, the behavior of before. */
+  precision?: CalculationPrecision;
   /** The market has stored settings: its tab shows even without comparables. */
   configured?: boolean;
 };
@@ -419,10 +426,19 @@ export function comparableFormValues(comparable: ComparableDto): Omit<Comparable
   return values;
 }
 
-/** The engine settings of a market calculation: the defaults with the rounding the appraiser chose. */
-export function marketEngineConfig(settings: Pick<MarketSettingsDto, "rounding">): EngineConfig {
-  return settings.rounding === undefined ? DEFAULT_ENGINE_CONFIG : withRounding(DEFAULT_ENGINE_CONFIG, { market: settings.rounding });
+/** The engine settings of a market calculation: the defaults with the rounding the appraiser chose and the valuation's precision. */
+export function marketEngineConfig(settings: Pick<MarketSettingsDto, "rounding">, precision?: CalculationPrecision | null): EngineConfig {
+  const config = settings.rounding === undefined ? DEFAULT_ENGINE_CONFIG : withRounding(DEFAULT_ENGINE_CONFIG, { market: settings.rounding });
+  return withPrecision(config, precision);
 }
+
+/** The additional amount the value takes: none when the appraiser left it out of the calculation. */
+export const additionalAmountOf = (settings: Pick<MarketSettingsDto, "additionalAmount" | "additionalAmountInCalculation">) =>
+  (settings.additionalAmountInCalculation === false ? 0 : settings.additionalAmount);
+
+/** Whether the dictamen prints the line of the additional amount: only marked, and only when it is in the calculation. */
+export const printsAdditionalAmount = (settings: Pick<MarketSettingsDto, "additionalAmount" | "additionalAmountInCalculation" | "showAdditionalAmount">) =>
+  settings.additionalAmountInCalculation !== false && (settings.showAdditionalAmount ?? settings.additionalAmount > 0);
 
 /** A comparable enters the calculation once it has a positive area and price. */
 export function isComparableComplete(comparable: Pick<ComparableDto, "area" | "price">) {
@@ -481,7 +497,7 @@ export function toMarketEngineInput(dto: Pick<MarketCalculationDto, "settings" |
       surfacePower: settings.surfacePower,
       comparables,
       ...(settings.adoptedUnitValue ? { adoptedUnitValue: settings.adoptedUnitValue } : {}),
-      additionalAmount: settings.additionalAmount,
+      additionalAmount: additionalAmountOf(settings),
     },
   };
 }

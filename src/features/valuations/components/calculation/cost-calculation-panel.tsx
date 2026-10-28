@@ -47,6 +47,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
 import { FormulaInput } from "./formula-input";
+import { CalculationPrecisionControl } from "./calculation-precision-control";
 import { useSerializedSave } from "./use-serialized-save";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -430,7 +431,7 @@ export function CostCalculationPanel(props: {
     const subtotal = step(key)?.inputs.subtotal;
     return typeof subtotal === "number" ? money(subtotal) : "—";
   };
-  const config = costEngineConfig(input);
+  const config = costEngineConfig({ ...input, precision: calculation.precision });
   const marketValue = calculation.market.adoptedUnitValue;
   const reference = landReferenceArea({ land: input.land, market: calculation.market });
   const subjectArea = input.land.subjectArea ?? calculation.market.subjectArea;
@@ -619,6 +620,12 @@ export function CostCalculationPanel(props: {
         {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
       </header>
       {calculation.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
+      <CalculationPrecisionControl
+        valuationId={valuationId}
+        precision={calculation.precision}
+        readOnly={readOnly}
+        onChanged={() => void api.costs.get(valuationId).then(applyServerState).catch(() => undefined)}
+      />
       <p className="text-xs text-muted-foreground">
         Los factores con fórmula en el Excel (Sup. y FRe del terreno; Edad y FRe de construcciones e instalaciones) se calculan solos mientras el campo está vacío; el número gris es el resultado de la fórmula. Escribe un valor para sustituirla y bórralo para volver a la fórmula. El factor de conservación (Cons.) sale del estado de conservación y su calificación (criterio de Ross-Heidecke) mientras no escribas otro.
       </p>
@@ -628,11 +635,12 @@ export function CostCalculationPanel(props: {
           <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">A) Terreno en estudio</h4>
           <div className="grid gap-3 sm:grid-cols-3">
             <Field>
-              <FieldLabel htmlFor="cost-land-reference">Lote Tipo (m²)</FieldLabel>
+              {/* Without a lote tipo the homologation is against the subject, and the field says so with its measure. */}
+              <FieldLabel htmlFor="cost-land-reference">{reference.source === "subject" ? "Lote Sujeto (m²)" : "Lote Tipo (m²)"}</FieldLabel>
               <FormulaInput
                 id="cost-land-reference"
                 value={draft.land.referenceArea}
-                placeholder={calculation.market.baseArea !== null ? `De mercado: ${calculation.market.baseArea}` : "Igual al sujeto"}
+                placeholder={calculation.market.baseArea !== null ? `De mercado: ${calculation.market.baseArea}` : reference.area ? `Sujeto: ${reference.area}` : "Igual al sujeto"}
                 onChange={setLand("referenceArea")}
               />
             </Field>

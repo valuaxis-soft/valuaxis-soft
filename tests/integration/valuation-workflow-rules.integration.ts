@@ -149,7 +149,7 @@ test("concluding twice reports that it is already concluded", async () => {
 });
 
 test("a valuation that was never edited cannot be concluded", async () => {
-  const fixture = await createValuationFixture();
+  const fixture = await createValuationFixture({ precision: "shown" });
   await rejectsWith(conclude(fixture), 409, "No existe version de trabajo");
   assert.equal((await avaluo(fixture)).BBloqueado, false);
 });

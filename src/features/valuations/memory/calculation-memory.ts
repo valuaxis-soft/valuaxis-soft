@@ -21,7 +21,7 @@ import { COST_PERCENT_FIELDS, costEngineConfig, toCostEngineInput } from "../cal
 import type { ConclusionCalculationDto } from "../calculation/conclusion-types";
 import { CONCLUSION_PERCENT_FIELDS, canConclude, conclusionEngineConfig } from "../calculation/conclusion-types";
 import { roundDecimal } from "../calculation/free-formula";
-import { INCOME_PERCENT_FIELDS, toIncomeEngineInput, type IncomeCalculationDto } from "../calculation/income-types";
+import { INCOME_PERCENT_FIELDS, incomeEngineConfig, toIncomeEngineInput, type IncomeCalculationDto } from "../calculation/income-types";
 import { toMachineryCostEngineInput, toMachineryMarketEngineInput, type MachineryCalculationDto } from "../calculation/machinery-types";
 import { isGeneratedBlock } from "../calculation/market-document";
 import {
@@ -37,7 +37,7 @@ import {
   type MarketCalculationDto,
 } from "../calculation/market-types";
 import { APPROACH_LABELS, concludeValue, type Approach } from "../engine/conclusion";
-import { DEFAULT_ENGINE_CONFIG, ENGINE_VERSION } from "../engine/config";
+import { ENGINE_VERSION } from "../engine/config";
 import { computeCostApproach } from "../engine/costs";
 import { computeIncomeApproach } from "../engine/income";
 import { computeMachineryCost, computeMachineryMarket } from "../engine/machinery";
@@ -584,7 +584,7 @@ export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
       captured: [...capturedRatings(calculation), ...marketTypedFormulas(calculation)],
       labels: marketFactorLabels(calculation),
       ...(input.ok
-        ? run((trace) => computeMarketApproach(input.input, marketEngineConfig(calculation.settings), trace))
+        ? run((trace) => computeMarketApproach(input.input, marketEngineConfig(calculation.settings, calculation.precision), trace))
         : { trace: null, pending: input.reason }),
     });
   }
@@ -635,7 +635,7 @@ export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
           deductions: (index) => `Deducción ${calculations.income?.deductions[index]?.concept || index + 1}`,
         },
       }),
-      ...(input.ok ? run((trace) => computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG, trace)) : { trace: null, pending: input.reason }),
+      ...(input.ok ? run((trace) => computeIncomeApproach(input.input, incomeEngineConfig({ precision: calculations.income?.precision }), trace)) : { trace: null, pending: input.reason }),
     });
   }
 
