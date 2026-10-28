@@ -4,6 +4,9 @@ import { toast } from "sonner";
 import {
   externalPreviewNavigation,
   getExternalPreviewChannelName,
+  PREVIEW_WINDOW_FEATURES,
+  previewWindowName,
+  previewWindowUrl,
   type ExternalPreviewMessage,
   type ExternalPreviewPayload,
 } from "@/features/valuations/components/workspace/external-preview-sync";
@@ -68,8 +71,7 @@ export function useExternalPreviewSync({
       return;
     }
 
-    const previewUrl = `/workspace/preview-window?id=${encodeURIComponent(valuationId ?? "draft")}`;
-    const openedWindow = window.open(previewUrl, `valuation-preview-${valuationId ?? "draft"}`, "popup,width=1100,height=900");
+    const openedWindow = window.open(previewWindowUrl(valuationId), previewWindowName(valuationId), PREVIEW_WINDOW_FEATURES);
 
     if (!openedWindow) {
       toast.error("No se pudo abrir la vista en 2 pantallas. Revisa el bloqueo de ventanas emergentes.");
