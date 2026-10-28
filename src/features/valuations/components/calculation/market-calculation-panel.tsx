@@ -62,7 +62,6 @@ import { MarketCharacteristicsTable } from "./market-characteristics-table";
 import { MarketFactorSlots } from "./market-factor-slots";
 import { MarketHomologationTable } from "./market-homologation-table";
 import { MarketOfferLevel } from "./market-offer-level";
-import { MarketRegression } from "./market-regression";
 import { PasteListingDialog } from "./paste-listing-dialog";
 import { SearchComparablesDialog } from "./search-comparables-dialog";
 import { useSerializedSave } from "./use-serialized-save";
@@ -324,13 +323,6 @@ function MarketTypePanel(props: {
     requested.current = settings;
     await enqueueSettings(settings);
   };
-  /** One change on top of any still on its way (a cell left by clicking a checkbox sends both). */
-  const saveChange = (change: (current: MarketSettingsDto) => Partial<MarketSettingsDto>) => {
-    if (!calculation || !draft) return;
-    const current = settingsFrom(requested.current ?? calculation.settings, draft);
-    void saveSettings({ ...current, ...change(current) });
-  };
-
   /**
    * Changes one comparable from a cell of a table: shown at once, and sent
    * after any change still on its way, built on what the server answered last.
@@ -816,18 +808,8 @@ function MarketTypePanel(props: {
         ) : null}
       </Part>
 
-      <Part number={6} title="Homologación por el método de regresión lineal">
-        <MarketRegression
-          calculation={{ settings: liveSettings, comparables }}
-          stats={stats ?? null}
-          readOnly={readOnly}
-          onChange={saveChange}
-          onExclude={(comparable, regressionExcluded) => changeComparable(comparable, (current) => ({ ...current, regressionExcluded }))}
-        />
-      </Part>
-
       <Part
-        number={7}
+        number={6}
         title="Justificación de los factores utilizados"
         aside={(
           <label className="flex items-center gap-1.5 text-xs font-normal">

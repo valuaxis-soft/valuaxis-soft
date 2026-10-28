@@ -14,6 +14,7 @@ import { getIncomeCalculation } from "../calculation/income.service";
 import { getMachineryCalculation } from "../calculation/machinery.service";
 import { getMarketCalculation } from "../calculation/market.service";
 import { COMPARABLE_TYPES } from "../calculation/market-types";
+import { getStatisticalCalculation } from "../calculation/statistical.service";
 import { caratulaFromValuation, initialMetaFor, initialSectionsFor, mergeDocumentHeaderImage } from "../components/workspace/model/initial-hydration";
 import { getValuationByPublicId } from "../repositories/valuation.repository";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
@@ -48,7 +49,7 @@ export async function loadCalculationMemory(user: AuthUser, publicId: string, ge
   const valuation = await getValuationByPublicId(publicId, user.organizationId);
   if (!valuation) throw new ValuationWorkflowError("Avalúo no encontrado", 404);
 
-  const [letterhead, headerImage, markets, cost, income, machinery, conclusion, stored] = await Promise.all([
+  const [letterhead, headerImage, markets, cost, income, machinery, conclusion, stored, statistical] = await Promise.all([
     getLetterhead(user.organizationId),
     // The header prints without the valuation's own image when it cannot be read.
     getDocumentHeaderImage(user, publicId).catch(() => null),
@@ -58,6 +59,7 @@ export async function loadCalculationMemory(user: AuthUser, publicId: string, ge
     getMachineryCalculation(publicId, user.organizationId),
     getConclusionCalculation(publicId, user.organizationId),
     storedRuns(publicId, user.organizationId),
+    Promise.all(COMPARABLE_TYPES.map((type) => getStatisticalCalculation(publicId, user.organizationId, type))),
   ]);
 
   const sections = mergeDocumentHeaderImage(initialSectionsFor(valuation), headerImage);
@@ -65,7 +67,7 @@ export async function loadCalculationMemory(user: AuthUser, publicId: string, ge
   const caratula = caratulaFromValuation(valuation, meta, sections);
   const memory = buildCalculationMemory({
     sections,
-    calculations: { markets, cost, income, machinery, conclusion },
+    calculations: { markets, cost, income, machinery, conclusion, statistical },
     stored,
     folio: caratula.folio || meta.folio,
     valuationDate: caratula.fechaAvaluo,

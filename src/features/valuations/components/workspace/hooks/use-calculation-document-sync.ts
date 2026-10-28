@@ -26,6 +26,8 @@ import {
   toMarketEngineInput,
   type MarketCalculationDto,
 } from "@/features/valuations/calculation/market-types";
+import { statisticalDocumentBlocks, withStatisticalBlocks } from "@/features/valuations/calculation/statistical-document";
+import type { StatisticalCalculationDto } from "@/features/valuations/calculation/statistical-types";
 import { concludeValue } from "@/features/valuations/engine/conclusion";
 import { computeCostApproach } from "@/features/valuations/engine/costs";
 import { computeIncomeApproach } from "@/features/valuations/engine/income";
@@ -90,6 +92,15 @@ export function useCalculationDocumentSync({
         : key === "CROQUIS_COMPARABLES"
           ? withGeneratedBlocks(section, type, photoBlocks, { kind: "fotos", position: "end" })
           : section);
+  };
+
+  // The statistical methods print after the market of their type, in the same section.
+  const applyStatistical = (calculation: StatisticalCalculationDto) => {
+    if (!canEdit || calculation.locked) return;
+    const type = calculation.settings.comparableType;
+    const blocks = statisticalDocumentBlocks(calculation);
+    const sectionKey = isRentComparableType(type) ? "MERCADO_RENTAS" : "MERCADO_VENTA";
+    updateBySection(`motor-estadistico-${type}`, (key, section) => (key === sectionKey ? withStatisticalBlocks(section, type, blocks) : section));
   };
 
   // The construction tables follow the types even before the cost approach is configured.
@@ -193,6 +204,9 @@ export function useCalculationDocumentSync({
       const input = toMarketEngineInput(calculation);
       applyMarket(calculation, input.ok ? computeMarketApproach(input.input, marketEngineConfig(calculation.settings, calculation.precision)) : null);
     }
+    // After the markets: a regression the market kept before moves to its own block.
+    const statistical = await Promise.all(COMPARABLE_TYPES.map((type) => api.statistical.get(id, type).catch(() => null)));
+    for (const calculation of statistical) if (calculation) applyStatistical(calculation);
     if (machinery) {
       const calculation = await api.machinery.get(id).catch(() => null);
       if (calculation) applyMachinery(calculation);
@@ -223,6 +237,7 @@ export function useCalculationDocumentSync({
     onConstructionTypes,
     onIncomeCalculation,
     onMachineryCalculation,
+    onStatisticalCalculation: applyStatistical,
     onConclusionCalculation: applyConclusion,
     suggestedSubjectArea: findSubjectLandArea(sections),
   };

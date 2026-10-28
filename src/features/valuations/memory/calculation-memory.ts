@@ -23,6 +23,8 @@ import { CONCLUSION_PERCENT_FIELDS, canConclude, conclusionEngineConfig } from "
 import { roundDecimal } from "../calculation/free-formula";
 import { INCOME_PERCENT_FIELDS, incomeEngineConfig, toIncomeEngineInput, type IncomeCalculationDto } from "../calculation/income-types";
 import { toMachineryCostEngineInput, toMachineryMarketEngineInput, type MachineryCalculationDto } from "../calculation/machinery-types";
+import type { StatisticalCalculationDto } from "../calculation/statistical-types";
+import { statisticalRuns } from "./statistical-memory";
 import { isGeneratedBlock } from "../calculation/market-document";
 import {
   COMPARABLE_TYPE_LABELS,
@@ -143,6 +145,8 @@ export type MemoryCalculations = {
   income: IncomeCalculationDto | null;
   machinery: MachineryCalculationDto | null;
   conclusion: ConclusionCalculationDto | null;
+  /** The statistical methods of each comparable type (regression and goal programming). */
+  statistical?: StatisticalCalculationDto[];
 };
 
 /** A run of the engine the server stored: its version and the value of each step by key. */
@@ -588,6 +592,7 @@ export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
         : { trace: null, pending: input.reason }),
     });
   }
+  runs.push(...statisticalRuns(calculations.statistical));
 
   if (machinery) {
     if (machinery.configured.cost) {

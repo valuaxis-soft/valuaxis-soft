@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  MAX_REGRESSION_VARIABLES,
   RECOMMENDED_REGRESSION_COMPARABLES,
+  constantLetters,
+  fDistributionRightTail,
   fitLinearRegression,
+  variableLetters,
   type EstimationInput,
   type RegressionFit,
 } from "../src/features/valuations/engine/regression";
@@ -148,8 +152,11 @@ test("singular designs and too few comparables answer with a reason, without thr
     /«Suma» depende linealmente de «Superficie», «Edad»/,
   );
   // n = k + 1 passes through every point: nothing left to measure the error with.
-  assert.equal(reason({ ...base, observations: base.observations.slice(0, 3) }), "Con 2 variables la regresión necesita al menos 4 comparables; hay 3.");
-  assert.equal(reason({ ...base, observations: [] }), "Con 2 variables la regresión necesita al menos 4 comparables; hay 0.");
+  assert.equal(
+    reason({ ...base, observations: base.observations.slice(0, 3) }),
+    "Con 2 variables la regresión necesita al menos 4 comparables (variables + 2); hay 3. Agrega comparables o quita variables.",
+  );
+  assert.match(reason({ ...base, observations: [] }), /al menos 4 comparables \(variables \+ 2\); hay 0/);
   assert.equal(reason({ ...base, variables: [], subject: [], observations: base.observations.map((row) => ({ ...row, x: [] })) }), "Elige al menos una variable para la regresión.");
   assert.equal(reason({ ...base, subject: [200, Number.NaN] }), "Los datos de la regresión deben ser números.");
   assert.equal(reason({ ...base, subject: [200] }), "Cada comparable y el sujeto necesitan un valor por variable.");
@@ -167,4 +174,52 @@ test("more than thirty comparables is the recommended size", () => {
   const observations = Array.from({ length: RECOMMENDED_REGRESSION_COMPARABLES + 1 }, (_, index) => ({ id: String(index + 1), y: 100 + index * 2 + (index % 3), x: [index] }));
   assert.equal(fitted({ dependent: "$/m²", variables: ["x"], observations, subject: [5] }).reliable, true);
   assert.equal(fitted({ dependent: "$/m²", variables: ["x"], observations: observations.slice(1), subject: [5] }).reliable, false);
+});
+
+test("R and the analysis of variance, as Excel's regression output", () => {
+  const trace = new Trace();
+  const fit = fitted(workbookInput(), trace);
+  const anova = fit.anova;
+  assert.ok(anova && fit.rSquared !== null && fit.multipleR !== null);
+  closeTo(fit.multipleR, Math.sqrt(fit.rSquared), 4);
+  assert.deepEqual([anova.regression.df, anova.residual.df, anova.total.df], [2, 7, 9]);
+  const residualSquares = fit.residuals.reduce((total, row) => total + row.residual ** 2, 0);
+  assert.ok(Math.abs(anova.residual.sumSquares - residualSquares) < 1e-9);
+  assert.ok(Math.abs(anova.regression.sumSquares + anova.residual.sumSquares - anova.total.sumSquares) < 1e-9);
+  assert.ok(Math.abs(fit.rSquared - anova.regression.sumSquares / anova.total.sumSquares) < 1e-12);
+  assert.ok(Math.abs((anova.f as number) - (anova.regression.sumSquares / 2) / (anova.residual.sumSquares / 7)) < 1e-9);
+  // With two degrees of freedom in the numerator F.DIST.RT has a closed form: (d2 / (d2 + 2F))^(d2/2).
+  const closed = (7 / (7 + 2 * (anova.f as number))) ** 3.5;
+  assert.ok(Math.abs((anova.significanceF as number) - closed) < 1e-12, `${anova.significanceF} ≠ ${closed}`);
+  assert.ok(trace.find("regresion.anova.valorCriticoF"));
+  assert.ok(trace.find("regresion.r"));
+});
+
+test("F.DIST.RT against known values", () => {
+  // Closed forms: d1 = 2 gives (d2 / (d2 + 2F))^(d2/2); d1 = d2 = 2 gives 1 / (1 + F); d1 = d2 = 1 gives 1 − (2/π)·atan(√F).
+  assert.ok(Math.abs(fDistributionRightTail(3.5, 2, 7) - (7 / 14) ** 3.5) < 1e-12);
+  assert.ok(Math.abs(fDistributionRightTail(4.2, 2, 2) - 1 / 5.2) < 1e-12);
+  assert.ok(Math.abs(fDistributionRightTail(3, 1, 1) - 1 / 3) < 1e-12);
+  assert.ok(Math.abs(fDistributionRightTail(1, 1, 1) - 0.5) < 1e-12);
+  assert.equal(fDistributionRightTail(0, 3, 10), 1);
+});
+
+test("up to twelve variables, named X1… and b0… beyond the workbook's six", () => {
+  assert.equal(MAX_REGRESSION_VARIABLES, 12);
+  assert.deepEqual(variableLetters(2), ["X", "Z"]);
+  assert.deepEqual(constantLetters(2), ["A", "B", "C"]);
+  assert.deepEqual(variableLetters(7).slice(0, 2), ["X1", "X2"]);
+  assert.deepEqual(constantLetters(7).slice(-1), ["b7"]);
+  const k = 8;
+  const truth = [100, 3, -2, 1.5, 0.5, 4, -1, 2, 0.25];
+  const observations = Array.from({ length: k + 4 }, (_, i) => {
+    const x = Array.from({ length: k }, (_, j) => ((i + 1) * (j + 3) * 7919) % 97 + j);
+    return { id: String(i + 1), x, y: truth[0] + x.reduce((total, value, j) => total + value * truth[j + 1], 0) };
+  });
+  const fit = fitted({ dependent: "precio", variables: Array.from({ length: k }, (_, j) => `v${j}`), observations, subject: observations[0].x });
+  fit.coefficients.forEach((value, index) => assert.ok(Math.abs(value - truth[index]) < 1e-6, `${value} ≠ ${truth[index]}`));
+  assert.equal(fit.equation.startsWith("Y = b0 + b1·X1 + b2·X2"), true);
+  assert.equal(fit.columns.length, 1 + k + 1, "beyond three variables, only N and the data");
+  const few = fitLinearRegression({ dependent: "precio", variables: Array.from({ length: k }, (_, j) => `v${j}`), observations: observations.slice(0, k + 1), subject: observations[0].x });
+  assert.ok(!few.ok && /al menos 10 comparables/.test(few.reason));
 });

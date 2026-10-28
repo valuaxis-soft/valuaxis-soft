@@ -1,24 +1,30 @@
 /**
- * Statistical estimates of a unit value from the comparables, beside the
+ * Statistical estimates of a value from the comparables, beside the
  * homologated mean and median: a reference for the appraiser, never the value
  * adopted. Linear regression follows the appraiser's workbook
  * "2._Regresion_Lineal_Multiple.xlsx" (sheets REG LIN and REG.LIN.3):
  * Y = A + B·X + C·Z…, with Y the price or $/m² and X, Z… the variables he
- * chooses. Other methods (goal programming, for one) take the same input and
- * go next to it under their own `EstimationMethod`.
+ * chooses. Goal programming (`goal-programming.ts`) takes the same input.
  */
 import { Trace } from "./trace";
 
-export type EstimationMethod = "REGRESION_LINEAL";
-
-export const ESTIMATION_METHOD_LABELS: Record<EstimationMethod, string> = {
-  REGRESION_LINEAL: "Regresión lineal (mínimos cuadrados)",
-};
-
 /** Letters of the workbook: Y the dependent variable, X and Z the first two variables, A, B, C… the constants. */
-export const VARIABLE_LETTERS = ["X", "Z", "W", "V", "U", "T"] as const;
-export const CONSTANT_LETTERS = ["A", "B", "C", "D", "E", "F", "G"] as const;
-export const MAX_REGRESSION_VARIABLES = VARIABLE_LETTERS.length;
+const WORKBOOK_VARIABLE_LETTERS = ["X", "Z", "W", "V", "U", "T"] as const;
+const WORKBOOK_CONSTANT_LETTERS = ["A", "B", "C", "D", "E", "F", "G"] as const;
+/** The appraiser asked for more than the workbook's six (28 Oct 2026). */
+export const MAX_REGRESSION_VARIABLES = 12;
+
+/**
+ * Names of the variables of a model with k of them: the workbook's X, Z, W,
+ * V, U, T up to six; beyond, the letters run out against the constants, so
+ * X1…Xk (and b0…bk for the constants), as the textbooks write them.
+ */
+export const variableLetters = (k: number): string[] =>
+  (k <= WORKBOOK_VARIABLE_LETTERS.length ? WORKBOOK_VARIABLE_LETTERS.slice(0, k) : Array.from({ length: k }, (_, j) => `X${j + 1}`));
+/** A (intercept), B, C… up to six variables; b0, b1… beyond. */
+export const constantLetters = (k: number): string[] =>
+  (k <= WORKBOOK_VARIABLE_LETTERS.length ? WORKBOOK_CONSTANT_LETTERS.slice(0, k + 1) : Array.from({ length: k + 1 }, (_, j) => `b${j}`));
+
 /** The appraiser recommends more than 30 comparables; with fewer the result is a weak reference. */
 export const RECOMMENDED_REGRESSION_COMPARABLES = 30;
 
@@ -37,6 +43,23 @@ export type RegressionColumn = { name: string; values: number[]; sum: number };
 
 export type RegressionResidual = { id: string; observed: number; fitted: number; residual: number };
 
+/** A row of the analysis of variance: degrees of freedom, sum of squares and mean square. */
+export type AnovaRow = { df: number; sumSquares: number; meanSquare: number | null };
+
+export type RegressionAnova = {
+  regression: AnovaRow;
+  residual: AnovaRow;
+  total: AnovaRow;
+  /** F = CM regresión / CM residuos; null when the fit is exact. */
+  f: number | null;
+  /**
+   * What Excel's Spanish output calls "Valor crítico de F": the probability of
+   * an F at least this large if the variables explained nothing (F.DIST.RT),
+   * "Significance F" in English.
+   */
+  significanceF: number | null;
+};
+
 export type RegressionFit = {
   method: "REGRESION_LINEAL";
   n: number;
@@ -50,8 +73,12 @@ export type RegressionFit = {
   /** Null when every Y is the same: there is no variation to explain. */
   rSquared: number | null;
   adjustedRSquared: number | null;
+  /** Multiple correlation coefficient R = √R², Excel's "Coeficiente de correlación múltiple". */
+  multipleR: number | null;
   /** Standard error of the estimate, √(SSres / (n − k − 1)). */
   standardError: number;
+  /** Excel's "Análisis de varianza"; null when every Y is the same. */
+  anova: RegressionAnova | null;
   residuals: RegressionResidual[];
   /** N, then X, Y, Z…, their squares and cross products, as the workbook's data table. */
   columns: RegressionColumn[];
@@ -66,6 +93,9 @@ const COLLINEARITY_TOLERANCE = 1e-10;
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
 const quoted = (names: string[]) => names.map((name) => `«${name}»`).join(", ");
+
+/** The comparables a regression with k variables needs: k + 2 (with k + 1 the fit passes through every one). */
+export const minimumRegressionComparables = (k: number) => k + 2;
 
 /**
  * Ordinary least squares with k variables. The normal equations are solved
@@ -84,10 +114,10 @@ export function fitLinearRegression(input: EstimationInput, trace = new Trace(),
   const numbers = [...input.subject, ...input.observations.flatMap((row) => [row.y, ...row.x])];
   if (!numbers.every(Number.isFinite)) return { ok: false, reason: "Los datos de la regresión deben ser números." };
   // n = k + 1 passes exactly through every comparable: no degrees of freedom left to measure the error.
-  if (n < k + 2) {
+  if (n < minimumRegressionComparables(k)) {
     return {
       ok: false,
-      reason: `Con ${k} ${k === 1 ? "variable" : "variables"} la regresión necesita al menos ${k + 2} comparables; hay ${n}.`,
+      reason: `Con ${k} ${k === 1 ? "variable" : "variables"} la regresión necesita al menos ${minimumRegressionComparables(k)} comparables (variables + 2); hay ${n}. Agrega comparables o quita variables.`,
     };
   }
 
@@ -108,9 +138,9 @@ export function fitLinearRegression(input: EstimationInput, trace = new Trace(),
   const intercept = meanY - dot(slopes, means);
   const coefficients = [intercept, ...slopes];
 
-  const letters = VARIABLE_LETTERS.slice(0, k);
-  const constants = CONSTANT_LETTERS.slice(0, k + 1);
-  const columns = workbookColumns(ys, xs);
+  const letters = variableLetters(k);
+  const constants = constantLetters(k);
+  const columns = workbookColumns(ys, xs, letters);
   for (const column of columns) {
     trace.record({
       key: `${keyPrefix}.suma.${column.name}`,
@@ -124,13 +154,14 @@ export function fitLinearRegression(input: EstimationInput, trace = new Trace(),
   const names = Object.fromEntries(letters.map((letter, j) => [letter, input.variables[j]]));
   coefficients.forEach((value, index) => trace.record({
     key: `${keyPrefix}.constante.${constants[index]}`,
-    label: index === 0 ? "Constante A (ordenada al origen)" : `Constante ${constants[index]} (coeficiente de ${input.variables[index - 1]})`,
+    label: index === 0 ? `Constante ${constants[0]} (ordenada al origen)` : `Constante ${constants[index]} (coeficiente de ${input.variables[index - 1]})`,
     formula: "mínimos cuadrados: ecuaciones normales resueltas por eliminación de Gauss con pivoteo parcial",
     inputs: { ...sums, ...(index === 0 ? {} : { variable: names[letters[index - 1]] }) },
     value,
   }));
 
-  const equation = `Y = ${constants[0]}${letters.map((letter, j) => ` + ${constants[j + 1]}${letter}`).join("")}`;
+  const wide = k > WORKBOOK_VARIABLE_LETTERS.length;
+  const equation = `Y = ${constants[0]}${letters.map((letter, j) => ` + ${constants[j + 1]}${wide ? "·" : ""}${letter}`).join("")}`;
   const predict = (values: number[]) => intercept + dot(slopes, values);
   const estimate = trace.record({
     key: `${keyPrefix}.estimado`,
@@ -180,6 +211,14 @@ export function fitLinearRegression(input: EstimationInput, trace = new Trace(),
     inputs: { sumaResiduos2: residualSquares, N: n, k },
     value: Math.sqrt(residualSquares / (n - k - 1)),
   });
+  const multipleR = rSquared === null ? null : trace.record({
+    key: `${keyPrefix}.r`,
+    label: "Coeficiente de correlación múltiple R",
+    formula: "√R²",
+    inputs: { r2: rSquared },
+    value: Math.sqrt(Math.max(rSquared, 0)),
+  });
+  const anova = totalSquares > 0 ? analysisOfVariance(totalSquares, residualSquares, n, k, trace, keyPrefix) : null;
 
   return {
     ok: true,
@@ -192,7 +231,9 @@ export function fitLinearRegression(input: EstimationInput, trace = new Trace(),
       estimate,
       rSquared,
       adjustedRSquared,
+      multipleR,
       standardError,
+      anova,
       residuals,
       columns,
       reliable: n > RECOMMENDED_REGRESSION_COMPARABLES,
@@ -201,25 +242,108 @@ export function fitLinearRegression(input: EstimationInput, trace = new Trace(),
 }
 
 /**
- * The data table of REG.LIN.3: N, X, Y, Z…, the squares of the variables and
- * the products of each pair (X², Z², XY, XZ, YZ with two variables).
+ * Excel's "Análisis de varianza": regression (k degrees of freedom), residuals
+ * (N − k − 1) and total (N − 1), their sums of squares and means, F and its
+ * probability.
  */
-function workbookColumns(ys: number[], xs: number[][]): RegressionColumn[] {
+function analysisOfVariance(totalSquares: number, residualSquares: number, n: number, k: number, trace: Trace, keyPrefix: string): RegressionAnova {
+  const regressionSquares = totalSquares - residualSquares;
+  const residualDf = n - k - 1;
+  const regressionMean = regressionSquares / k;
+  const residualMean = residualSquares / residualDf;
+  const record = (name: string, label: string, formula: string, inputs: Record<string, number>, value: number) =>
+    trace.record({ key: `${keyPrefix}.anova.${name}`, label, formula, inputs, value });
+  record("scRegresion", "Suma de cuadrados de la regresión", "Σ (Y − Ȳ)² − Σ residuo²", { sumaTotal2: totalSquares, sumaResiduos2: residualSquares }, regressionSquares);
+  record("cmRegresion", "Cuadrado medio de la regresión", "SC regresión / k", { sc: regressionSquares, k }, regressionMean);
+  record("cmResiduos", "Cuadrado medio de los residuos", "SC residuos / (N − k − 1)", { sc: residualSquares, gl: residualDf }, residualMean);
+  const f = residualMean > 0
+    ? record("f", "Estadístico F", "CM regresión / CM residuos", { cmRegresion: regressionMean, cmResiduos: residualMean }, regressionMean / residualMean)
+    : null;
+  const significanceF = f === null ? null : record(
+    "valorCriticoF",
+    "Valor crítico de F (probabilidad de F, como Excel)",
+    "DISTR.F.CD(F; k; N − k − 1)",
+    { F: f, k, gl: residualDf },
+    fDistributionRightTail(f, k, residualDf),
+  );
+  return {
+    regression: { df: k, sumSquares: regressionSquares, meanSquare: regressionMean },
+    residual: { df: residualDf, sumSquares: residualSquares, meanSquare: residualMean },
+    total: { df: n - 1, sumSquares: totalSquares, meanSquare: null },
+    f,
+    significanceF,
+  };
+}
+
+/** P(F ≥ f) for an F distribution with d1 and d2 degrees of freedom: Excel's F.DIST.RT. */
+export function fDistributionRightTail(f: number, d1: number, d2: number): number {
+  if (!(f > 0)) return 1;
+  return regularizedBeta(d2 / (d2 + d1 * f), d2 / 2, d1 / 2);
+}
+
+/** ln Γ(x), Lanczos approximation (g = 7, nine terms): about fifteen digits for x > 0. */
+function logGamma(x: number): number {
+  const c = [
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+    12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+  ];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - logGamma(1 - x);
+  const z = x - 1;
+  let a = c[0];
+  const t = z + 7.5;
+  for (let i = 1; i < 9; i += 1) a += c[i] / (z + i);
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(a);
+}
+
+/** Regularized incomplete beta I_x(a, b), by its continued fraction (modified Lentz). */
+function regularizedBeta(x: number, a: number, b: number): number {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  // The fraction converges fast for x < (a + 1) / (a + b + 2); otherwise by symmetry.
+  if (x > (a + 1) / (a + b + 2)) return 1 - regularizedBeta(1 - x, b, a);
+  const front = Math.exp(logGamma(a + b) - logGamma(a) - logGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+  const tiny = 1e-300;
+  const guard = (value: number) => (Math.abs(value) < tiny ? tiny : value);
+  let c = 1;
+  let d = 1 / guard(1 - ((a + b) * x) / (a + 1));
+  let result = d;
+  for (let m = 1; m <= 300; m += 1) {
+    const m2 = 2 * m;
+    const even = (m * (b - m) * x) / ((a + m2 - 1) * (a + m2));
+    d = 1 / guard(1 + even * d);
+    c = guard(1 + even / c);
+    result *= d * c;
+    const odd = (-(a + m) * (a + b + m) * x) / ((a + m2) * (a + m2 + 1));
+    d = 1 / guard(1 + odd * d);
+    c = guard(1 + odd / c);
+    const delta = d * c;
+    result *= delta;
+    if (Math.abs(delta - 1) < 1e-15) break;
+  }
+  return (front * result) / a;
+}
+
+/** With more variables the squares and products of the workbook are too many (78 with twelve) and no page prints them. */
+export const MAX_PRODUCT_VARIABLES = 3;
+
+/**
+ * The data table of REG.LIN.3: N, X, Y, Z…, the squares of the variables and
+ * the products of each pair (X², Z², XY, XZ, YZ with two variables); beyond
+ * three variables, only the data.
+ */
+function workbookColumns(ys: number[], xs: number[][], letters: string[]): RegressionColumn[] {
   const column = (name: string, values: number[]): RegressionColumn => ({ name, values, sum: sum(values) });
   const data: Array<[string, number[]]> = [
-    [VARIABLE_LETTERS[0], xs[0]],
+    [letters[0], xs[0]],
     ["Y", ys],
-    ...xs.slice(1).map((values, j): [string, number[]] => [VARIABLE_LETTERS[j + 1], values]),
+    ...xs.slice(1).map((values, j): [string, number[]] => [letters[j + 1], values]),
   ];
-  const squares = xs.map((values, j) => column(`${VARIABLE_LETTERS[j]}²`, values.map((value) => value ** 2)));
+  const base = [column("N", ys.map(() => 1)), ...data.map(([name, values]) => column(name, values))];
+  if (xs.length > MAX_PRODUCT_VARIABLES) return base;
+  const squares = xs.map((values, j) => column(`${letters[j]}²`, values.map((value) => value ** 2)));
   const products = data.flatMap(([left, leftValues], i) => data.slice(i + 1).map(([right, rightValues]) =>
     column(`${left}${right}`, leftValues.map((value, index) => value * rightValues[index]))));
-  return [
-    column("N", ys.map(() => 1)),
-    ...data.map(([name, values]) => column(name, values)),
-    ...squares,
-    ...products,
-  ];
+  return [...base, ...squares, ...products];
 }
 
 /**
