@@ -379,6 +379,11 @@ function evaluateFunction(ctx: Context, rawName: string, args: FormulaExpression
 
   // Logic picks what to evaluate.
   switch (name) {
+    // Parentheses as the appraiser wrote them: the value inside, as it is.
+    case "PAREN": {
+      if (args.length !== 1) return failure("INVALID_OPERATION", "PAREN needs 1 arg");
+      return evaluate(args[0]);
+    }
     case "IF": {
       if (args.length !== 3) return failure("INVALID_OPERATION", "IF needs 3 args (condition, true, false)");
       const condition = evaluate(args[0]);

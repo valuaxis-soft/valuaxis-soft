@@ -1,8 +1,10 @@
 /**
  * Free calculations, as in a spreadsheet: a value that starts with "=" is
  * computed. Operators + − * / ^ and %, parentheses, and the functions
- * SUMA, PROMEDIO, PRODUCTO, MIN, MAX, ABS, RAIZ(x), RAIZ(x; n), POTENCIA(x; n)
- * and REDONDEAR(x; decimales), also by their English names. Precedence follows
+ * SUMA, PROMEDIO, PRODUCTO, MIN, MAX, ABS, RAIZ(x), RAIZ(x; n), POTENCIA(x; n),
+ * REDONDEAR(x; decimales), LN(x) and LOG(x) (base 10, or LOG(x; base)), also
+ * by their English names. Parentheses are kept as written: the formula reads
+ * back with the ones the appraiser typed, no more and no fewer. Precedence follows
  * Excel: a sign binds first, then ^ (left to right), then * /, then + −.
  * So =(1345*235)^1/6 is the product divided by six; the sixth root is
  * =(1345*235)^(1/6) or =RAIZ(1345*235; 6).
@@ -22,7 +24,7 @@
 /** Zero-based position of a cell in its table as shown: column A row 1 is { column: 0, row: 0 }. */
 export type CellPosition = { column: number; row: number };
 
-export type FormulaFunctionName = "SUM" | "AVERAGE" | "PRODUCT" | "MIN" | "MAX" | "ABS" | "SQRT" | "POWER" | "ROUND";
+export type FormulaFunctionName = "SUM" | "AVERAGE" | "PRODUCT" | "MIN" | "MAX" | "ABS" | "SQRT" | "POWER" | "ROUND" | "LN" | "LOG";
 
 /** A formula as written, before its references are resolved. */
 export type FormulaSyntax =
@@ -30,8 +32,12 @@ export type FormulaSyntax =
   | { type: "unary"; operator: "-" | "%"; operand: FormulaSyntax }
   | { type: "binary"; operator: "+" | "-" | "*" | "/" | "^"; left: FormulaSyntax; right: FormulaSyntax }
   | { type: "call"; name: FormulaFunctionName; args: FormulaSyntax[] }
+  /** Parentheses the appraiser wrote, kept so the formula reads back as typed. */
+  | { type: "group"; inner: FormulaSyntax }
   | { type: "cell"; table?: string; position: CellPosition }
   | { type: "range"; table?: string; from: CellPosition; to: CellPosition }
+  /** Whole columns, B:B or B:D: every row of them, also the rows added later. */
+  | { type: "columns"; table?: string; from: number; to: number }
   | { type: "name"; name: string };
 
 /** Longest formula read; anything longer is not a formula someone typed. */
@@ -64,6 +70,10 @@ export const FORMULA_FUNCTIONS: Record<FormulaFunctionName, (args: number[]) => 
   SQRT: (args) => (args.length === 1 ? Math.sqrt(args[0]) : args.length === 2 ? args[0] ** (1 / args[1]) : Number.NaN),
   POWER: (args) => (args.length === 2 ? args[0] ** args[1] : Number.NaN),
   ROUND: (args) => (args.length === 2 ? roundDecimal(args[0], args[1]) : args.length === 1 ? roundDecimal(args[0], 0) : Number.NaN),
+  LN: (args) => (args.length === 1 && args[0] > 0 ? Math.log(args[0]) : Number.NaN),
+  // Base 10, as LOG of Excel; a second argument is the base.
+  LOG: (args) => (args.length === 1 && args[0] > 0 ? Math.log10(args[0])
+    : args.length === 2 && args[0] > 0 && args[1] > 0 && args[1] !== 1 ? Math.log(args[0]) / Math.log(args[1]) : Number.NaN),
 };
 
 /** The names a function is written with; the first one is how a formula is shown back. */
@@ -77,6 +87,8 @@ export const FORMULA_FUNCTION_NAMES: Record<FormulaFunctionName, string[]> = {
   SQRT: ["RAIZ", "SQRT"],
   POWER: ["POTENCIA", "POWER"],
   ROUND: ["REDONDEAR", "ROUND"],
+  LN: ["LN"],
+  LOG: ["LOG"],
 };
 
 const FUNCTION_BY_NAME = new Map<string, FormulaFunctionName>(
@@ -88,6 +100,8 @@ type Token =
   | { kind: "number"; value: number }
   | { kind: "name"; value: string }
   | { kind: "cell"; position: CellPosition }
+  /** B:B or B:D, whole columns by their letters. */
+  | { kind: "columns"; from: number; to: number }
   /** A name between brackets or quotes: a concept, or a table when "!" follows. */
   | { kind: "quoted"; value: string }
   | { kind: "symbol"; value: string };
@@ -129,6 +143,12 @@ function tokenize(source: string): Token[] | null {
     if (rest[0] === "×" || (/^x/i.test(rest) && afterOperand())) {
       tokens.push({ kind: "symbol", value: "*" });
       index += 1;
+      continue;
+    }
+    const columns = /^\$?([A-Za-z]{1,3}):\$?([A-Za-z]{1,3})(?![\w(])/.exec(rest);
+    if (columns) {
+      tokens.push({ kind: "columns", from: columnIndex(columns[1]), to: columnIndex(columns[2]) });
+      index += columns[0].length;
       continue;
     }
     const cell = /^([A-Za-z]{1,3})\$?(\d{1,5})(?![\w(])/.exec(rest);
@@ -275,9 +295,13 @@ export function parseFormula(source: string): FormulaSyntax | null {
     while (take("%")) value = { type: "unary", operator: "%", operand: value };
     return value;
   };
-  /** B2 or A1:A5, of the formula's own table or of `table`. */
+  /** B2, A1:A5 or B:B, of the formula's own table or of `table`. */
   const cells = (table?: string): FormulaSyntax => {
     const from = tokens[position];
+    if (from?.kind === "columns") {
+      position += 1;
+      return { type: "columns", ...(table === undefined ? {} : { table }), from: from.from, to: from.to };
+    }
     if (from?.kind !== "cell") return fail();
     position += 1;
     const qualifier = table === undefined ? {} : { table };
@@ -291,7 +315,7 @@ export function parseFormula(source: string): FormulaSyntax | null {
     const token = tokens[position];
     if (!token) return fail();
     if (token.kind === "number") { position += 1; return { type: "number", value: token.value }; }
-    if (token.kind === "cell") return cells();
+    if (token.kind === "cell" || token.kind === "columns") return cells();
     if (token.kind === "quoted") {
       position += 1;
       return take("!") ? cells(token.value) : { type: "name", name: token.value };
@@ -309,9 +333,9 @@ export function parseFormula(source: string): FormulaSyntax | null {
         return { type: "call", name, args };
       }
       if (take("(")) {
-        const value = expression();
+        const inner = expression();
         if (!take(")")) return fail();
-        return value;
+        return { type: "group", inner };
       }
       return fail();
     });
@@ -343,6 +367,8 @@ function computePlain(node: FormulaSyntax): number {
     }
     case "call":
       return FORMULA_FUNCTIONS[node.name](node.args.map(computePlain));
+    case "group":
+      return computePlain(node.inner);
     default:
       return Number.NaN;
   }
@@ -359,7 +385,8 @@ export function evaluateFormula(source: string): number | null {
 /** "1,260,000.50", "$ 9000" or "=5*10000" → number; empty or invalid → null. */
 export function parseDecimal(value: string): number | null {
   const trimmed = value.trim();
-  if (trimmed.startsWith("=")) return evaluateFormula(trimmed.slice(1));
+  // An "==" typed by habit is one "=".
+  if (trimmed.startsWith("=")) return evaluateFormula(trimmed.replace(/^(=\s*)+/, ""));
   const cleaned = trimmed.replace(/[$,\s]/g, "");
   if (!cleaned) return null;
   const parsed = Number(cleaned);

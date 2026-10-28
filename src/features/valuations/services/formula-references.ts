@@ -196,6 +196,9 @@ export type CompiledFormula = { ok: true; formula: TableFormula } | { ok: false;
 
 class FormulaReferenceError extends Error {}
 
+/** The parentheses the appraiser wrote, stored as a function of one argument that gives it back. */
+export const GROUP_FUNCTION = "PAREN";
+
 const BINARY_OPERATORS: Record<"+" | "-" | "*" | "/" | "^", FormulaBinaryOp> = {
   "+": "ADD",
   "-": "SUBTRACT",
@@ -233,6 +236,28 @@ function resolveSyntax(node: FormulaSyntax, scope: FormulaScope): FormulaExpress
       return { type: "binary", operator: BINARY_OPERATORS[node.operator], left: resolveSyntax(node.left, scope), right: resolveSyntax(node.right, scope) };
     case "call":
       return { type: "function", name: node.name, args: node.args.map((arg) => resolveSyntax(arg, scope)) };
+    case "group":
+      // Kept as written, so the formula reads back with the appraiser's own parentheses.
+      return { type: "function", name: GROUP_FUNCTION, args: [resolveSyntax(node.inner, scope)] };
+    case "columns": {
+      const { table, tableId } = tableFor(node.table);
+      const columns = getDisplayColumns(table);
+      const [first, last] = [Math.min(node.from, node.to), Math.max(node.from, node.to)];
+      if (!columns[first] || !columns[last]) {
+        throw new FormulaReferenceError(`La columna ${columnLetter(columns[first] ? last : first)} no existe: la tabla tiene ${columns.length} columnas.`);
+      }
+      // One column of the formula's own table follows its rows, also the ones added later.
+      if (!tableId && first === last) return { type: "operand", operand: { type: "column", columnId: columns[first].id } };
+      if (!table.rows.length) throw new FormulaReferenceError("La tabla no tiene filas todavía.");
+      const rows = table.rows;
+      return {
+        type: "operand",
+        operand: {
+          type: "span", ...(tableId ? { tableId } : {}),
+          from: { rowId: rows[0].id, columnId: columns[first].id }, to: { rowId: rows[rows.length - 1].id, columnId: columns[last].id },
+        },
+      };
+    }
     case "cell": {
       const { table, tableId } = tableFor(node.table);
       return { type: "operand", operand: { type: "cell", ...(tableId ? { tableId } : {}), ...cellOf(table, node.position) } };
@@ -252,6 +277,57 @@ function resolveSyntax(node: FormulaSyntax, scope: FormulaScope): FormulaExpress
   }
 }
 
+/** What follows the "=" of a formula: without the spaces around it nor the extra "=" of "==B2". */
+export const formulaSource = (text: string) => text.trim().replace(/^(=\s*)+/, "").trim();
+
+const FUNCTION_LIST = "SUMA, PROMEDIO, PRODUCTO, MIN, MAX, ABS, RAIZ, POTENCIA, REDONDEAR, LN y LOG";
+
+/** Why a formula cannot be read, as precisely as the text tells. */
+function formulaSyntaxProblem(source: string): string {
+  let depth = 0;
+  for (const character of source.replace(/\[[^\]]*\]|'[^']*'/g, "")) {
+    if (character === "(") depth += 1;
+    if (character === ")") depth -= 1;
+    if (depth < 0) return "Sobra un paréntesis de cierre «)»: cada «(» lleva el suyo.";
+  }
+  if (depth > 0) return `Falta ${depth === 1 ? "un paréntesis de cierre «)»" : `cerrar ${depth} paréntesis «)»`}.`;
+  if (/\[[^\]]*$/.test(source)) return "Falta el corchete de cierre «]» del nombre.";
+  const unknown = [...source.matchAll(/([A-Za-zÁÉÍÓÚÜÑáéíóúüñ_]{2,})\s*\(/g)]
+    .map((match) => match[1])
+    .find((name) => !Object.values(FORMULA_FUNCTION_NAMES).flat().includes(name.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase()));
+  if (unknown) return `La función «${unknown}» no existe. Puedes usar ${FUNCTION_LIST}.`;
+  if (/[+\-*/^]\s*$/.test(source)) return "Falta un valor después del último operador.";
+  if (/[+*/^]{2,}|[+\-*/^]\s*[*/^]/.test(source)) return "Hay dos operadores seguidos: escribe un valor entre ellos.";
+  if (/=/.test(source)) return "El signo = va solo al principio de la fórmula.";
+  return `La fórmula está incompleta o mal escrita. Ejemplos: =B2*C2, =(B2+C2)/2, =SUMA(A1:A5), =MIN(B:B), =RAIZ(B2; 3). Funciones: ${FUNCTION_LIST}.`;
+}
+
+/** A reference a click wrote into a formula: where it is and what it says. */
+export type InsertedReference = { start: number; end: number; text: string };
+
+/**
+ * The formula with a clicked reference written at the caret. A click right
+ * after another, with no operator typed between them, replaces the reference
+ * the first one wrote, as a spreadsheet does: =B2, then a click on C3, reads
+ * =C3, not =B2C3.
+ */
+export function withReference(text: string, selection: { start: number; end: number }, reference: string, last: InsertedReference | null) {
+  let { start } = selection;
+  const { end } = selection;
+  if (last && start === end && start === last.end && text.slice(last.start, last.end) === last.text) start = last.start;
+  return {
+    text: text.slice(0, start) + reference + text.slice(end),
+    reference: { start, end: start + reference.length, text: reference } satisfies InsertedReference,
+  };
+}
+
+/** What is wrong with the writing of a formula, while it is typed; null when it reads (its references are checked on applying it). */
+export function formulaTextProblem(text: string): string | null {
+  const source = formulaSource(text);
+  if (!source) return null;
+  return parseFormula(source) ? null : formulaSyntaxProblem(source);
+}
+
 /** Whether a written value asks to be computed. */
 export const isFormulaText = (text: string) => text.trimStart().startsWith("=");
 
@@ -260,12 +336,11 @@ export const isFormulaText = (text: string) => text.trimStart().startsWith("=");
  * When it cannot be one, `message` says why in the appraiser's words.
  */
 export function compileFormula(text: string, scope: FormulaScope): CompiledFormula {
-  const source = text.trim().replace(/^=/, "");
+  // Spaces anywhere and an "==" typed by habit are not mistakes.
+  const source = formulaSource(text);
   if (!source.trim()) return { ok: false, message: "Escribe la operación después del signo =." };
   const syntax = parseFormula(source);
-  if (!syntax) {
-    return { ok: false, message: "La fórmula está incompleta o mal escrita. Ejemplos: =B2*C2, =SUMA(A1:A5), =RAIZ(B2; 3)." };
-  }
+  if (!syntax) return { ok: false, message: formulaSyntaxProblem(source) };
   try {
     return { ok: true, formula: { expression: resolveSyntax(syntax, scope) } };
   } catch (error) {
@@ -328,9 +403,8 @@ function operandText(operand: FormulaOperand, scope: FormulaScope): string {
       return cells(undefined, { rowId: operand.rowId, columnId: columns[0].id }, { rowId: operand.rowId, columnId: columns[columns.length - 1].id });
     }
     case "column": {
-      const rows = scope.table?.rows ?? [];
-      if (!rows.length) return MISSING_REFERENCE_TEXT;
-      return cells(undefined, { rowId: rows[0].id, columnId: operand.columnId }, { rowId: rows[rows.length - 1].id, columnId: operand.columnId });
+      const column = scope.table ? getDisplayColumns(scope.table).findIndex((item) => item.id === operand.columnId) : -1;
+      return column === -1 ? MISSING_REFERENCE_TEXT : `${columnLetter(column)}:${columnLetter(column)}`;
     }
     case "range":
       return operand.cells.map((cell) => cells(undefined, cell)).join("; ");
@@ -377,6 +451,7 @@ function write(expression: FormulaExpression, scope: FormulaScope, depth: number
       const name = String(expression.name ?? "").toUpperCase();
       if (name === "NEG" && args.length === 1) return { text: `-${grouped(args[0], SIGN_PRECEDENCE)}`, precedence: SIGN_PRECEDENCE };
       if (name === "PERCENT" && args.length === 1) return { text: `${grouped(args[0], PRIMARY_PRECEDENCE)}%`, precedence: PRIMARY_PRECEDENCE };
+      if (name === GROUP_FUNCTION && args.length === 1) return { text: `(${write(args[0], scope, depth + 1).text})`, precedence: PRIMARY_PRECEDENCE };
       const written = args.map((arg) =>
         arg?.type === "operand" && arg.operand?.type === "range" ? operandText(arg.operand, scope) : write(arg, scope, depth + 1).text);
       return { text: `${functionName(name)}(${written.join("; ")})`, precedence: PRIMARY_PRECEDENCE };
