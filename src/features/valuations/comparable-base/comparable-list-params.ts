@@ -23,6 +23,11 @@ export const COMPARABLE_SORT_LABELS: Record<ComparableSort, string> = {
   numero: "Número (C-00001 primero)",
 };
 
+/** How a count filter compares: exactly that many, at least or at most. */
+export const COUNT_MODES = ["al_menos", "exacto", "hasta"] as const;
+export type CountMode = (typeof COUNT_MODES)[number];
+export const COUNT_MODE_LABELS: Record<CountMode, string> = { al_menos: "Al menos", exacto: "Exactamente", hasta: "Hasta" };
+
 export type ComparableListParams = {
   page: number;
   /** Words of the location, use or source, or a comparable's number ("C-00123"). */
@@ -32,6 +37,7 @@ export type ComparableListParams = {
   state: string;
   municipality: string;
   neighborhood: string;
+  subdivision: string;
   postalCode: string;
   /** Empty: every type. */
   types: ComparableType[];
@@ -42,9 +48,14 @@ export type ComparableListParams = {
   landAreaMax: number | null;
   builtAreaMin: number | null;
   builtAreaMax: number | null;
-  /** At least this many. */
+  /** Bedrooms and bathrooms (halves too), compared as their mode says; at least by default. */
   bedrooms: number | null;
+  bedroomsMode: CountMode;
   bathrooms: number | null;
+  bathroomsMode: CountMode;
+  /** Offer price (or monthly rent) from and to. */
+  priceMin: number | null;
+  priceMax: number | null;
   /** "Fecha de alta / actualización" from and to, YYYY-MM-DD, both inclusive. */
   from: string | null;
   to: string | null;
@@ -95,6 +106,7 @@ export function parseComparableListParams(searchParams: Record<string, RawParam>
     state: textOf(searchParams.estado),
     municipality: textOf(searchParams.municipio),
     neighborhood: textOf(searchParams.colonia),
+    subdivision: textOf(searchParams.fraccionamiento),
     postalCode: /^\d{5}$/.test(postalCode) ? postalCode : "",
     types: [...new Set(all(searchParams.tipo).map((item) => item.trim().toUpperCase()))]
       .filter((item): item is ComparableType => (COMPARABLE_TYPES as readonly string[]).includes(item)),
@@ -106,7 +118,11 @@ export function parseComparableListParams(searchParams: Record<string, RawParam>
     builtAreaMin: numberOf(searchParams.construidaMin),
     builtAreaMax: numberOf(searchParams.construidaMax),
     bedrooms: numberOf(searchParams.recamaras),
+    bedroomsMode: oneOf(searchParams.recamarasModo, COUNT_MODES) ?? "al_menos",
     bathrooms: numberOf(searchParams.banos),
+    bathroomsMode: oneOf(searchParams.banosModo, COUNT_MODES) ?? "al_menos",
+    priceMin: numberOf(searchParams.precioMin),
+    priceMax: numberOf(searchParams.precioMax),
     from: dayOf(searchParams.desde),
     to: dayOf(searchParams.hasta),
     validity: oneOf(searchParams.vigencia, VALIDITY_STATUSES, (raw) => raw.toUpperCase()),
@@ -116,9 +132,9 @@ export function parseComparableListParams(searchParams: Record<string, RawParam>
 
 /** Whether any filter beyond the text and the order is set: the page opens its "Más filtros" then. */
 export function hasAdvancedFilters(params: ComparableListParams) {
-  return Boolean(params.client || params.state || params.municipality || params.neighborhood || params.postalCode
+  return Boolean(params.client || params.state || params.municipality || params.neighborhood || params.subdivision || params.postalCode
     || params.types.length || params.operation || params.constructionType || params.landUse
-    || [params.landAreaMin, params.landAreaMax, params.builtAreaMin, params.builtAreaMax, params.bedrooms, params.bathrooms]
+    || [params.landAreaMin, params.landAreaMax, params.builtAreaMin, params.builtAreaMax, params.bedrooms, params.bathrooms, params.priceMin, params.priceMax]
       .some((value) => value !== null)
     || params.from || params.to || params.validity);
 }
@@ -136,6 +152,7 @@ export function buildComparableListHref(params: Partial<ComparableListParams>) {
   set("estado", params.state);
   set("municipio", params.municipality);
   set("colonia", params.neighborhood);
+  set("fraccionamiento", params.subdivision);
   set("cp", params.postalCode);
   for (const type of params.types ?? []) query.append("tipo", type);
   set("operacion", params.operation?.toLowerCase());
@@ -146,7 +163,11 @@ export function buildComparableListHref(params: Partial<ComparableListParams>) {
   set("construidaMin", params.builtAreaMin);
   set("construidaMax", params.builtAreaMax);
   set("recamaras", params.bedrooms);
+  if (params.bedroomsMode && params.bedroomsMode !== "al_menos") set("recamarasModo", params.bedroomsMode);
   set("banos", params.bathrooms);
+  if (params.bathroomsMode && params.bathroomsMode !== "al_menos") set("banosModo", params.bathroomsMode);
+  set("precioMin", params.priceMin);
+  set("precioMax", params.priceMax);
   set("desde", params.from);
   set("hasta", params.to);
   set("vigencia", params.validity?.toLowerCase());

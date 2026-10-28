@@ -57,6 +57,7 @@ const addressSchema = z.object({
   municipality: text(120).optional(),
   postalCode: z.string().trim().regex(/^(\d{5})?$/, "El código postal lleva 5 dígitos.").nullable().transform((value) => value || null).optional(),
   neighborhood: text(120).optional(),
+  subdivision: text(120).optional(),
   street: text(180).optional(),
   number: text(40).optional(),
 });
@@ -223,6 +224,8 @@ export const duplicateProbeSchema = z.object({
   contactPhone: z.string().trim().max(40).nullable().default(null),
   price: z.number().finite().positive().max(1e12).nullable().default(null),
   area: z.number().finite().positive().max(1e12).nullable().default(null),
+  sourceName: z.string().trim().max(180).nullable().optional(),
+  publicationId: z.string().trim().max(120).nullable().optional(),
 });
 
 /** "Usar el existente": the comparable of the firm's base to bring. */

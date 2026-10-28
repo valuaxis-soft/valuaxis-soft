@@ -7,7 +7,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { asRecord, decimal, inFirmBase } from "../../calculation/access";
-import { parseComparableId, type ComparableAddress, type OperationType, type UrbanProximity } from "../../calculation/comparable-card";
+import { addressFromRecord, parseComparableId, type ComparableAddress, type OperationType, type UrbanProximity } from "../../calculation/comparable-card";
 import { reusedEvidenceOf, type ReusedComparableEvidence } from "../../calculation/market.service";
 import { searchTokens } from "../normalize";
 import { AREA, CONSULTED, FIRM_BASE_FROM, HAYSTACK, firmBaseCondition, likePattern, placeCondition, postalCodeCondition } from "../own-base-sql";
@@ -40,14 +40,7 @@ const day = (value: unknown) => {
   return typed && /^\d{4}-\d{2}-\d{2}$/.test(typed) ? typed : null;
 };
 
-function addressOf(value: Prisma.JsonValue): ComparableAddress | null {
-  const address = asRecord(value);
-  const parts: ComparableAddress = {
-    state: text(address.state), municipality: text(address.municipality), postalCode: text(address.postalCode),
-    neighborhood: text(address.neighborhood), street: text(address.street), number: text(address.number),
-  };
-  return Object.values(parts).some(Boolean) ? parts : null;
-}
+const addressOf = (value: Prisma.JsonValue): ComparableAddress | null => addressFromRecord(asRecord(value));
 
 function firstPhotoKey(photos: Prisma.JsonValue | null) {
   const first = Array.isArray(photos) ? asRecord(photos[0] as Prisma.JsonValue) : {};

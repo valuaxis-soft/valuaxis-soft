@@ -26,6 +26,7 @@ import { recomputeIncome } from "./income.service";
 import { computeMarketRegression, type MarketRegressionResult } from "./market-regression";
 import { withProvenance } from "../comparable-search/normalize";
 import {
+  addressFromRecord,
   coordinatesError,
   todayInMexico,
   type ComparableAddress,
@@ -160,13 +161,7 @@ export type ComparableRow = Prisma.ComparableAvaluoGetPayload<{ include: typeof 
 const stringOrNull = (value: unknown) => (typeof value === "string" && value ? value : null);
 const numberOrNull = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
-function addressOf(snapshot: Partial<AddressSnapshot>): ComparableAddress | null {
-  const address: ComparableAddress = {
-    state: stringOrNull(snapshot.state), municipality: stringOrNull(snapshot.municipality), postalCode: stringOrNull(snapshot.postalCode),
-    neighborhood: stringOrNull(snapshot.neighborhood), street: stringOrNull(snapshot.street), number: stringOrNull(snapshot.number),
-  };
-  return Object.values(address).some(Boolean) ? address : null;
-}
+const addressOf = (snapshot: Partial<AddressSnapshot>): ComparableAddress | null => addressFromRecord(snapshot);
 
 /** The stored review, or "por revisar" when there is none. */
 function reviewOf(stored: Prisma.JsonValue | null): ComparableReviewDto {

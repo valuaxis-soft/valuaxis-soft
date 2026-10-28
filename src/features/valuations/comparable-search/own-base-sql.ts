@@ -33,7 +33,8 @@ export const likePattern = (token: string) => `%${token.replace(/[\\%_]/g, "\\$&
 /** Location and the texts of the property and its publication, without accents or case. */
 export const HAYSTACK = Prisma.sql`unaccent(lower(concat_ws(' ',
   COALESCE(c."JDireccionSnapshot"->>'location', p."SNombre"),
-  c."JDireccionSnapshot"->>'street', c."JDireccionSnapshot"->>'neighborhood', c."JDireccionSnapshot"->>'municipality',
+  c."JDireccionSnapshot"->>'street', c."JDireccionSnapshot"->>'neighborhood', c."JDireccionSnapshot"->>'subdivision',
+  c."JDireccionSnapshot"->>'municipality',
   c."JDireccionSnapshot"->>'state',
   c."JPropiedadSnapshot"->>'landUse', c."JPropiedadSnapshot"->>'landUseKey', c."JPropiedadSnapshot"->>'zone',
   c."JPropiedadSnapshot"->>'services', c."JPropiedadSnapshot"->>'notes', c."JPropiedadSnapshot"->>'constructionType',

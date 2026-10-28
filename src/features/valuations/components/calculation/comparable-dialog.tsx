@@ -1,7 +1,7 @@
 "use client";
 
 import { Copy, ImagePlus, Loader2, Trash2 } from "lucide-react";
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useEffectEvent, useState, type ChangeEvent, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -31,7 +31,7 @@ import {
   type UrbanProximity,
 } from "@/features/valuations/calculation/comparable-card";
 import type { DuplicateMatchDto } from "@/features/valuations/calculation/comparable-card.service";
-import { DUPLICATE_REASON_LABELS, type DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
+import { DUPLICATE_REASON_LABELS, duplicateProbeOf, type DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { ComparableCardButton } from "./comparable-card-dialog";
 import { ComparableValidityLine } from "./comparable-validity-badge";
@@ -165,6 +165,8 @@ export function ComparableDialog(props: {
   const [error, setError] = useState<string | null>(null);
   // Matches of the firm's base for a new comparable, waiting for the appraiser's answer.
   const [duplicates, setDuplicates] = useState<DuplicateMatchDto[] | null>(null);
+  // What the check while typing found, shown above the form without stopping the capture.
+  const [liveMatches, setLiveMatches] = useState<DuplicateMatchDto[]>([]);
 
   const set = (key: DraftKey) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setDraft((current) => ({ ...current, [key]: event.target.value }));
@@ -250,10 +252,8 @@ export function ComparableDialog(props: {
     const { values } = parsed;
     // Only a new comparable is checked: an edited one already is in the base.
     if (!comparable && checkDuplicates) {
-      const found = await props.onCheckDuplicates({
-        url: values.url, location: values.location, address: values.address, contactPhone: values.contactPhone, price: values.price,
-        area: values.area,
-      }).catch(() => []);
+      const found = await props.onCheckDuplicates(duplicateProbeOf({ ...values, area: values.area ?? null, price: values.price ?? null }))
+        .catch(() => liveMatches);
       if (found.length) {
         setDuplicates(found);
         setSaving(false);
@@ -300,6 +300,27 @@ export function ComparableDialog(props: {
   const price = parseDecimal(draft.price);
   const id = formatComparableId(comparable?.folio);
 
+  // A new comparable is checked against the firm's base while it is typed, from its first fields
+  // (location, area, phone, listing): the appraiser sees at once that it is already there.
+  const probe: DuplicateProbe = {
+    url: draft.url.trim() || null, location, address: hasAddress(address) ? address : null, contactPhone: draft.contactPhone.trim() || null,
+    price, area, sourceName: draft.sourceName.trim() || null,
+  };
+  const probeKey = JSON.stringify(probe);
+  // Something to compare: an area, a listing, a phone or a street number.
+  const checkWhileTyping = !comparable && !readOnly
+    && Boolean(probe.area || probe.url || (probe.contactPhone?.replace(/\D/g, "").length ?? 0) >= 7 || /\d/.test(location));
+  const onCheckDuplicates = useEffectEvent((next: DuplicateProbe) => props.onCheckDuplicates(next));
+  useEffect(() => {
+    if (!checkWhileTyping) return;
+    const next = JSON.parse(probeKey) as DuplicateProbe;
+    let active = true;
+    const timer = setTimeout(() => {
+      onCheckDuplicates(next).then((found) => { if (active) setLiveMatches(found); }).catch(() => undefined);
+    }, 600);
+    return () => { active = false; clearTimeout(timer); };
+  }, [checkWhileTyping, probeKey]);
+
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
@@ -324,35 +345,12 @@ export function ComparableDialog(props: {
               Si es el mismo, se conserva su número y se queda la información más reciente (la que capturas ahora), con sus fotos.
               Si son diferentes, se guardan los dos, cada uno con su número.
             </p>
-            <ul className="grid gap-2">
-              {duplicates.map((match) => (
-                <li key={match.comparableId} className="grid gap-2 rounded-md border bg-background p-2 text-sm sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center" data-duplicate={formatComparableId(match.folio) ?? match.comparableId}>
-                  {match.thumbnailUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={match.thumbnailUrl} alt="" className="size-12 rounded object-cover" />
-                  ) : <span className="hidden sm:block sm:w-12" />}
-                  <div className="min-w-0">
-                    <p className="font-medium">
-                      <span className="font-mono">{formatComparableId(match.folio) ?? "Sin número"}</span> · {match.location}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {COMPARABLE_TYPE_LABELS[match.type]} · {money(match.price)} · {match.valuation ? `avalúo ${match.valuation.folio}` : "base general"}
-                      {match.sameValuation ? " (este avalúo)" : ""} · {match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")}
-                      {" "}· datos del {formatDay(match.updatedOn)}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    <ComparableCardButton comparableId={match.comparableId} />
-                    <Button type="button" size="sm" disabled={saving} onClick={() => void save(false, match.comparableId)}>
-                      Es el mismo: conservar el más reciente
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void reuse(match.comparableId)}>
-                      Usar el existente sin cambios
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <DuplicateMatchList
+              matches={duplicates}
+              busy={saving}
+              onSame={(comparableId) => void save(false, comparableId)}
+              onReuse={(comparableId) => void reuse(comparableId)}
+            />
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => void save(false)}>Son diferentes: conservar ambos</Button>
               <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={() => setDuplicates(null)}>Volver a la captura</Button>
@@ -361,6 +359,25 @@ export function ComparableDialog(props: {
         ) : null}
 
         <form className="grid gap-5" onSubmit={submit} hidden={duplicates !== null}>
+          {checkWhileTyping && liveMatches.length ? (
+            <section
+              className="grid gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40"
+              aria-label="Ya está en la base"
+              aria-live="polite"
+              data-duplicates-live
+            >
+              <p className="flex items-start gap-1.5 text-sm font-medium text-amber-900 dark:text-amber-200">
+                <Copy className="mt-0.5 size-4 shrink-0" />
+                Este inmueble parece estar ya en la base del despacho. Puedes usar el existente en lugar de capturarlo otra vez.
+              </p>
+              <DuplicateMatchList
+                matches={liveMatches}
+                busy={saving}
+                onSame={(comparableId) => void save(false, comparableId)}
+                onReuse={(comparableId) => void reuse(comparableId)}
+              />
+            </section>
+          ) : null}
           <fieldset disabled={readOnly || saving} className="grid gap-5">
             <section className="grid gap-3" aria-label="Ubicación">
               <h3 className="text-sm font-medium">Ubicación</h3>
@@ -377,11 +394,15 @@ export function ComparableDialog(props: {
                   <FieldLabel htmlFor="comparable-postalCode">{ADDRESS_LABELS.postalCode}</FieldLabel>
                   <Input id="comparable-postalCode" inputMode="numeric" maxLength={5} value={draft.address.postalCode} onChange={setAddress("postalCode")} />
                 </Field>
-                <Field className="sm:col-span-2">
+                <Field className="sm:col-span-3">
                   <FieldLabel htmlFor="comparable-neighborhood">{ADDRESS_LABELS.neighborhood}</FieldLabel>
                   <Input id="comparable-neighborhood" value={draft.address.neighborhood} onChange={setAddress("neighborhood")} />
                 </Field>
                 <Field className="sm:col-span-3">
+                  <FieldLabel htmlFor="comparable-subdivision">{ADDRESS_LABELS.subdivision} (opcional)</FieldLabel>
+                  <Input id="comparable-subdivision" value={draft.address.subdivision} onChange={setAddress("subdivision")} />
+                </Field>
+                <Field className="sm:col-span-5">
                   <FieldLabel htmlFor="comparable-street">{ADDRESS_LABELS.street}</FieldLabel>
                   <Input id="comparable-street" value={draft.address.street} onChange={setAddress("street")} />
                 </Field>
@@ -610,5 +631,49 @@ export function ComparableDialog(props: {
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** The comparables of the base a capture matches, with what they match on and the answers. */
+function DuplicateMatchList(props: {
+  matches: DuplicateMatchDto[];
+  busy: boolean;
+  onSame: (comparableId: string) => void;
+  onReuse: (comparableId: string) => void;
+}) {
+  return (
+    <ul className="grid gap-2">
+      {props.matches.map((match) => (
+        <li key={match.comparableId} className="grid gap-2 rounded-md border bg-background p-2 text-sm sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center" data-duplicate={formatComparableId(match.folio) ?? match.comparableId}>
+          {match.thumbnailUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={match.thumbnailUrl} alt="" className="size-12 rounded object-cover" />
+          ) : <span className="hidden sm:block sm:w-12" />}
+          <div className="min-w-0">
+            <p className="font-medium">
+              Coincide con <span className="font-mono">{formatComparableId(match.folio) ?? "un comparable sin número"}</span> · {match.location}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {COMPARABLE_TYPE_LABELS[match.type]} · {money(match.price)}
+              {match.area ? ` · ${match.area.toLocaleString("es-MX", { maximumFractionDigits: 2 })} m²` : ""}
+              {match.contactPhone ? ` · tel. ${match.contactPhone}` : ""} · {match.valuation ? `avalúo ${match.valuation.folio}` : "base general"}
+              {match.sameValuation ? " (este avalúo)" : ""} · datos del {formatDay(match.updatedOn)}
+            </p>
+            <p className="text-xs font-medium text-amber-900 dark:text-amber-200">
+              Coinciden: {match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            <ComparableCardButton comparableId={match.comparableId} />
+            <Button type="button" size="sm" disabled={props.busy} onClick={() => props.onReuse(match.comparableId)}>
+              Usar el existente
+            </Button>
+            <Button type="button" size="sm" variant="outline" disabled={props.busy} onClick={() => props.onSame(match.comparableId)}>
+              Es el mismo: conservar lo que capturo
+            </Button>
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

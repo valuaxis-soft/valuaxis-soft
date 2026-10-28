@@ -66,7 +66,7 @@ export function isPortalName(value: string | null | undefined) {
   return Boolean(name) && PORTALS.includes(name);
 }
 
-export type ComparableWarningKey = "BUILT_AREA" | "NO_NUMBER" | "PORTAL_CONTACT" | "NO_SCREENSHOT" | "OLD_OFFER" | "EXPIRED";
+export type ComparableWarningKey = "BUILT_AREA" | "NO_NUMBER" | "PORTAL_CONTACT" | "NO_SCREENSHOT" | "OLD_OFFER" | "EXPIRED" | "DUPLICATE";
 export type ComparableWarning = { key: ComparableWarningKey; message: string };
 
 export type WarningInput = {

@@ -10,9 +10,10 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { asRecord, decimal, findValuation, inFirmBase } from "./access";
-import { formatAddress, todayInMexico } from "./comparable-card";
+import { addressFromRecord, formatAddress, formatComparableId, todayInMexico } from "./comparable-card";
 import {
-  PRICE_TOLERANCE, addressKey, canonicalUrlKey, duplicateReasons, phoneKey, type DuplicateProbe, type DuplicateReason,
+  DUPLICATE_REASON_LABELS, PRICE_TOLERANCE, addressKey, canonicalUrlKey, duplicateProbeOf, duplicateReasons, phoneKey, type DuplicateProbe,
+  type DuplicateReason,
 } from "./comparable-duplicates";
 import { comparableWarnings, type ComparableWarning } from "./comparable-review";
 import { comparableValidity, type ComparableValidity } from "./comparable-validity";
@@ -140,6 +141,16 @@ export async function getComparableCard(comparableId: string, organizationId: nu
   };
 }
 
+/** "Posible duplicado de C-00012 (avalúo VLO-1): mismo teléfono y superficie." */
+function duplicateWarning(match: DuplicateMatchDto): ComparableWarning {
+  const where = match.sameValuation ? "este avalúo" : match.valuation ? `avalúo ${match.valuation.folio}` : "base general";
+  return {
+    key: "DUPLICATE",
+    message: `Posible duplicado de ${formatComparableId(match.folio) ?? "un comparable sin número"} (${where}): `
+      + `${match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")}.`,
+  };
+}
+
 /**
  * "Revisión de comparables": every comparable of the version the editor
  * shows, across its markets, with its review and its warnings.
@@ -160,7 +171,15 @@ export async function getValuationReview(publicId: string, organizationId: numbe
   const reviewed = await Promise.all(rows.map(async (row) => {
     const type = row.tipoComparable.SClave as ComparableType;
     const comparable = await toComparableDto(row, true);
-    return { comparable, type, warnings: warningsOf(comparable, type, areas.get(type) ?? null, today) };
+    // The same property already in the firm's base (this valuation included) is a warning too, as when it was captured.
+    const duplicates = await findDuplicates(publicId, organizationId, duplicateProbeOf(comparable), {
+      exclude: { comparableId: comparable.id, folio: comparable.folio ?? null }, thumbnails: false,
+    });
+    return {
+      comparable,
+      type,
+      warnings: [...warningsOf(comparable, type, areas.get(type) ?? null, today), ...duplicates.slice(0, 3).map(duplicateWarning)],
+    };
   }));
   return reviewed.sort((a, b) => COMPARABLE_TYPES.indexOf(a.type) - COMPARABLE_TYPES.indexOf(b.type) || a.comparable.reference - b.comparable.reference);
 }
@@ -192,7 +211,12 @@ const textOf = (value: unknown) => (typeof value === "string" && value.trim() ? 
  * the base, its latest capture; those of the valuation itself come too,
  * marked. `publicId` is null for an import to the base without a valuation.
  */
-export async function findDuplicates(publicId: string | null, organizationId: number, probe: DuplicateProbe): Promise<DuplicateMatchDto[]> {
+export async function findDuplicates(
+  publicId: string | null,
+  organizationId: number,
+  probe: DuplicateProbe,
+  options: { exclude?: { comparableId: string; folio: number | null }; thumbnails?: boolean } = {},
+): Promise<DuplicateMatchDto[]> {
   const avaluo = publicId ? await findValuation(prisma, publicId, organizationId) : null;
   const url = canonicalUrlKey(probe.url);
   const phone = phoneKey(probe.contactPhone);
@@ -206,9 +230,8 @@ export async function findDuplicates(publicId: string | null, organizationId: nu
     ...(url ? [Prisma.sql`lower(c."JPublicacionSnapshot"->>'url') LIKE ${likePattern(url)}`] : []),
     ...(phone ? [Prisma.sql`regexp_replace(COALESCE(c."JPublicacionSnapshot"->>'contactPhone', ''), '\\D', '', 'g') LIKE ${likePattern(phone)}`] : []),
     ...(number ? [Prisma.sql`concat_ws(' ', c."JDireccionSnapshot"->>'location', c."JDireccionSnapshot"->>'street', c."JDireccionSnapshot"->>'number') LIKE ${likePattern(number)}`] : []),
-    // The same area and price (±1 %), for a match on everything but a detail.
-    ...(probe.area && probe.price ? [Prisma.sql`(${AREA} BETWEEN ${probe.area * (1 - PRICE_TOLERANCE)} AND ${probe.area * (1 + PRICE_TOLERANCE)}
-      AND c."NPrecioCapturado" BETWEEN ${probe.price * (1 - PRICE_TOLERANCE)} AND ${probe.price * (1 + PRICE_TOLERANCE)})`] : []),
+    // The same area (±1 %), for a match on the place or the phone with another price; duplicateReasons decides.
+    ...(probe.area ? [Prisma.sql`${AREA} BETWEEN ${probe.area * (1 - PRICE_TOLERANCE)} AND ${probe.area * (1 + PRICE_TOLERANCE)}`] : []),
   ];
   if (!hints.length) return [];
   const rows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
@@ -242,10 +265,7 @@ export async function findDuplicates(publicId: string | null, organizationId: nu
     const candidate: DuplicateProbe = {
       url: textOf(publication.url),
       location: textOf(stored.location) ?? "",
-      address: {
-        state: textOf(stored.state), municipality: textOf(stored.municipality), postalCode: textOf(stored.postalCode),
-        neighborhood: textOf(stored.neighborhood), street: textOf(stored.street), number: textOf(stored.number),
-      },
+      address: addressFromRecord(stored),
       contactPhone: textOf(publication.contactPhone),
       price: decimal(row.price),
       area: decimal(row.area),
@@ -253,6 +273,8 @@ export async function findDuplicates(publicId: string | null, organizationId: nu
       sourceName: textOf(publication.sourceName),
       folio: row.comparableFolio,
     };
+    // A comparable is not a duplicate of itself, nor of the other captures of its number.
+    if (options.exclude && (row.id === options.exclude.comparableId || (options.exclude.folio && row.comparableFolio === options.exclude.folio))) continue;
     const reasons = duplicateReasons(probe, candidate);
     if (!reasons.length) continue;
     // The same comparable of the base repeats across valuations: the latest capture stands for it.
@@ -279,6 +301,6 @@ export async function findDuplicates(publicId: string | null, organizationId: nu
   }
   return Promise.all(matches.map(async ({ photoKey, ...match }) => ({
     ...match,
-    thumbnailUrl: photoKey ? await stableDownloadUrl(photoKey).catch(() => null) : null,
+    thumbnailUrl: photoKey && options.thumbnails !== false ? await stableDownloadUrl(photoKey).catch(() => null) : null,
   })));
 }

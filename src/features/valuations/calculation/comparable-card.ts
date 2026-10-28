@@ -17,7 +17,7 @@ export function parseComparableId(text: string) {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
-export const ADDRESS_PARTS = ["state", "municipality", "postalCode", "neighborhood", "street", "number"] as const;
+export const ADDRESS_PARTS = ["state", "municipality", "postalCode", "neighborhood", "subdivision", "street", "number"] as const;
 export type AddressPart = (typeof ADDRESS_PARTS)[number];
 /** The location in parts, as the competitor's and the SHF formats ask for it; every part is optional. */
 export type ComparableAddress = Partial<Record<AddressPart, string | null>>;
@@ -27,19 +27,30 @@ export const ADDRESS_LABELS: Record<AddressPart, string> = {
   municipality: "Municipio o alcaldía",
   postalCode: "Código postal",
   neighborhood: "Colonia",
+  subdivision: "Fraccionamiento",
   street: "Calle",
   number: "Número",
 };
 
 const part = (value: string | null | undefined) => value?.trim() ?? "";
 
-/** "Juárez 12, col. Centro, C.P. 47180, Arandas, Jalisco": the parts as one line, the way the dictamen prints a location. */
+/** "Juárez 12, col. Centro, fracc. Valle Real, C.P. 47180, Arandas, Jalisco": the parts as one line, the way the dictamen prints a location. */
 export function formatAddress(address: ComparableAddress | null | undefined) {
   if (!address) return "";
   const street = [part(address.street), part(address.number)].filter(Boolean).join(" ");
   const neighborhood = part(address.neighborhood) ? `col. ${part(address.neighborhood)}` : "";
+  const subdivision = part(address.subdivision) ? `fracc. ${part(address.subdivision)}` : "";
   const postalCode = part(address.postalCode) ? `C.P. ${part(address.postalCode)}` : "";
-  return [street, neighborhood, postalCode, part(address.municipality), part(address.state)].filter(Boolean).join(", ");
+  return [street, neighborhood, subdivision, postalCode, part(address.municipality), part(address.state)].filter(Boolean).join(", ");
+}
+
+/** The parts of a stored address (a snapshot read as a record); null when none is captured. */
+export function addressFromRecord(record: Record<string, unknown>): ComparableAddress | null {
+  const parts = Object.fromEntries(ADDRESS_PARTS.map((key) => {
+    const value = record[key];
+    return [key, typeof value === "string" && value.trim() ? value.trim() : null];
+  })) as ComparableAddress;
+  return Object.values(parts).some(Boolean) ? parts : null;
 }
 
 /** True when the address has at least one part captured. */
