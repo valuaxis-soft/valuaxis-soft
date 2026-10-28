@@ -221,7 +221,7 @@ test("the capture fills the construction section tables once, and a reload leave
     templateTable("instalaciones_especiales", ["#", "Tipo", "Edad", "VUT", "VUR", "Conservación", "Mantenimiento", "Descripción"]),
   ]);
   const filled = withConstructionTables(section, arandas);
-  const [types, installations] = filled.blocks[0].apartados[0].tables as (TableContent & { rows: string[][] })[];
+  const [types, installations] = filled.blocks[0].apartados[0].tables.map(printed);
   assert.deepEqual(types.rows[0], ["T-1", "Edificio de uso mixto", "Moderno", "Media", "0.98", "2", "70", "68", "467.27", ""]);
   assert.equal(installations.rows.length, 8);
 
@@ -243,7 +243,7 @@ test("the construction types table follows the types of the construction section
   ]);
   const bodega = { ref: "T-2", description: "Bodega", classification: "Industrial", quality: "Económica", area: 80, age: 10, usefulLife: 50 };
   const filled = withConstructionTables(section, { ...arandas, types: [arandasType, bodega] });
-  const [types] = filled.blocks[0].apartados[0].tables as (TableContent & { rows: string[][] })[];
+  const [types] = filled.blocks[0].apartados[0].tables.map(printed);
   assert.deepEqual(types.rows, [
     ["T-1", "Edificio de uso mixto", "Moderno", "Media", "0.98", "2", "70", "68", "467.27", ""],
     // Not valued yet: no conservation factor, but its own data.
