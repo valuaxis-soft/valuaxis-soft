@@ -31,7 +31,7 @@ import { CaratulaEditor, CalculatedValuesEditor } from "../editor/caratula-edito
 import { ValuationSettingsPanel } from "../editor/valuation-settings-panel";
 import { ReportInclusionBadge, SectionDocumentSettings } from "../editor/section-document-settings";
 import { SignaturesEditor } from "../editor/signatures-editor";
-import { GeneratedTableColumns } from "../editor/generated-table-columns";
+import { GeneratedConceptLabels, GeneratedTableColumns } from "../editor/generated-table-columns";
 
 import { Check, Eye, EyeOff, GripVertical, PencilLine, Plus, Trash2, X } from "lucide-react";
 
@@ -336,6 +336,7 @@ export function ValuationEditorPanel(props: {
       block={block}
       readOnly={props.readOnly}
       onVisibleChange={(enabled) => props.onUpdateBlock(section.id, block.id, { enabled })}
+      onUpdateBlock={(patch) => props.onUpdateBlock(section.id, block.id, patch)}
       onUpdateTable={(tableId, table, apartadoId) => props.onUpdateTable(section.id, block.id, tableId, () => table, apartadoId)}
     />
   ) : (
@@ -1009,10 +1010,11 @@ function SortableBlockEditor(props: {
  * panel. It can still be hidden here, and the columns of its tables hidden,
  * renamed or added.
  */
-function GeneratedBlockNotice({ block, readOnly, onVisibleChange, onUpdateTable }: {
+function GeneratedBlockNotice({ block, readOnly, onVisibleChange, onUpdateBlock, onUpdateTable }: {
   block: Block;
   readOnly: boolean;
   onVisibleChange: (visible: boolean) => void;
+  onUpdateBlock: (patch: Partial<Block>) => void;
   onUpdateTable: (tableId: string, table: TableContent, apartadoId?: string) => void;
 }) {
   const tables = [
@@ -1033,6 +1035,7 @@ function GeneratedBlockNotice({ block, readOnly, onVisibleChange, onUpdateTable 
           />
         </span>
       </div>
+      {block.enabled ? <GeneratedConceptLabels block={block} readOnly={readOnly} onChange={onUpdateBlock} /> : null}
       {block.enabled ? tables.map(({ table, apartadoId }) => (
         <GeneratedTableColumns
           key={table.id}

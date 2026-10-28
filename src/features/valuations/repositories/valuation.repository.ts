@@ -135,6 +135,7 @@ export type ValuationConceptDto = {
   spacingAfter?: number;
   valueFormat?: ConceptValueFormat;
   customUnit?: string;
+  generatedLabel?: string;
 };
 
 export type ValuationTableDto = {

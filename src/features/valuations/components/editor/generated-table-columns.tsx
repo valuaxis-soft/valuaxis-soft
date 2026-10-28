@@ -1,6 +1,6 @@
 "use client";
 
-import { Columns3, Plus, Trash2 } from "lucide-react";
+import { Columns3, PencilLine, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -10,13 +10,17 @@ import {
   applyTableLayout,
   layoutOf,
   sourceOf,
+  summaryCaptionKey,
+  summaryRowKey,
+  withBoxLabel,
   withColumnHidden,
   withExtraColumn,
   withExtraColumnChange,
+  withConceptLabel,
   withHeaderLabel,
   withoutExtraColumn,
 } from "@/features/valuations/calculation/generated-table-layout";
-import type { TableContent } from "@/features/valuations/model";
+import type { Block, Concept, TableContent } from "@/features/valuations/model";
 import { getDisplayColumns, type GeneratedTableLayout } from "@/features/valuations/services/table";
 import { CommitCell } from "../calculation/commit-cell";
 
@@ -35,6 +39,8 @@ export function GeneratedTableColumns(props: { table: TableContent; readOnly: bo
   const groups = source.schema?.headerGroups ?? [];
   const hidden = new Set(layout.hidden ?? []);
   const extras = layout.extraColumns ?? [];
+  const boxes = source.schema?.summaryBoxes ?? [];
+  const renamedBoxLabels = Object.values(layout.boxLabels ?? {}).filter((label) => label.trim()).length;
   const change = (next: GeneratedTableLayout) => props.onChange(applyTableLayout(source, next));
   const firstColumn = columns[0];
   const rowLabel = (index: number) => {
@@ -45,12 +51,13 @@ export function GeneratedTableColumns(props: { table: TableContent; readOnly: bo
   const summary = [
     hidden.size ? `${hidden.size} ${hidden.size === 1 ? "oculta" : "ocultas"}` : "",
     extras.length ? `${extras.length} ${extras.length === 1 ? "agregada" : "agregadas"}` : "",
+    renamedBoxLabels ? `${renamedBoxLabels} ${renamedBoxLabels === 1 ? "etiqueta renombrada" : "etiquetas renombradas"}` : "",
   ].filter(Boolean).join(", ");
 
   return (
     <details className="rounded-md border bg-background text-xs" data-generated-table-columns={source.id}>
       <summary className="flex cursor-pointer items-center gap-1.5 px-2 py-1.5 font-medium">
-        <Columns3 className="size-3.5" aria-hidden /> Columnas de «{source.title}»{summary ? <span className="font-normal text-muted-foreground">· {summary}</span> : null}
+        <Columns3 className="size-3.5" aria-hidden /> Columnas{boxes.length ? " y recuadros" : ""} de «{source.title}»{summary ? <span className="font-normal text-muted-foreground">· {summary}</span> : null}
       </summary>
       <div className="grid gap-3 border-t p-2">
         <p className="text-muted-foreground">
@@ -94,6 +101,29 @@ export function GeneratedTableColumns(props: { table: TableContent; readOnly: bo
             </div>
           ))}
         </div>
+        {boxes.length ? (
+          <div className="grid gap-1" data-generated-table-boxes>
+            <span className="font-semibold">Etiquetas de los recuadros</span>
+            <span className="text-muted-foreground">
+              Escribe el nombre con el que se imprime cada renglón (por ejemplo, «Valor neto de reposición»); la cifra la sigue escribiendo el cálculo. Vacío, vuelve el nombre del
+              cálculo.
+            </span>
+            {boxes.flatMap((box) => [
+              ...(box.caption !== undefined ? [{ key: summaryCaptionKey(box), name: box.caption }] : []),
+              ...box.rows.map((row, index) => ({ key: summaryRowKey(box, row, index), name: row.label })),
+            ]).map(({ key, name }) => (
+              <CommitCell
+                key={key}
+                ariaLabel={`Etiqueta ${name}`}
+                disabled={props.readOnly}
+                value={layout.boxLabels?.[key] ?? ""}
+                placeholder={name}
+                className="border-input text-xs"
+                onCommit={(text) => change(withBoxLabel(layout, key, text))}
+              />
+            ))}
+          </div>
+        ) : null}
         {extras.map((extra) => (
           <div key={extra.id} className="grid gap-1 rounded-md border border-dashed p-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -147,6 +177,50 @@ export function GeneratedTableColumns(props: { table: TableContent; readOnly: bo
             <Plus data-icon="inline-start" /> Columna informativa
           </Button>
         ) : null}
+      </div>
+    </details>
+  );
+}
+
+/**
+ * The labels of the concepts a calculation writes as label and value (the
+ * income approach's result, for one): the appraiser prints them under names
+ * of their own; the values stay the calculation's and the name stays when the
+ * calculation writes the block again.
+ */
+export function GeneratedConceptLabels(props: { block: Block; readOnly: boolean; onChange: (patch: Pick<Block, "concepts" | "apartados">) => void }) {
+  const concepts = [...props.block.concepts, ...props.block.apartados.flatMap((apartado) => apartado.concepts)];
+  if (!concepts.length) return null;
+  const renamed = concepts.filter((concept) => concept.generatedLabel !== undefined).length;
+  const rename = (id: string, name: string) => {
+    const relabel = (items: Concept[]) => items.map((concept) => (concept.id === id ? withConceptLabel(concept, name) : concept));
+    props.onChange({
+      concepts: relabel(props.block.concepts),
+      apartados: props.block.apartados.map((apartado) => ({ ...apartado, concepts: relabel(apartado.concepts) })),
+    });
+  };
+  return (
+    <details className="rounded-md border bg-background text-xs" data-generated-concept-labels={props.block.id}>
+      <summary className="flex cursor-pointer items-center gap-1.5 px-2 py-1.5 font-medium">
+        <PencilLine className="size-3.5" aria-hidden /> Etiquetas de «{props.block.title}»
+        {renamed ? <span className="font-normal text-muted-foreground">· {renamed} {renamed === 1 ? "renombrada" : "renombradas"}</span> : null}
+      </summary>
+      <div className="grid gap-1 border-t p-2">
+        <p className="text-muted-foreground">Escribe el nombre con el que se imprime cada dato; la cifra la sigue escribiendo el cálculo. Vacío, vuelve el nombre del cálculo.</p>
+        {concepts.map((concept) => {
+          const original = concept.generatedLabel ?? concept.label;
+          return (
+            <CommitCell
+              key={concept.id}
+              ariaLabel={`Etiqueta ${original}`}
+              disabled={props.readOnly}
+              value={concept.generatedLabel !== undefined ? concept.label : ""}
+              placeholder={original}
+              className="border-input text-xs"
+              onCommit={(text) => rename(concept.id, text)}
+            />
+          );
+        })}
       </div>
     </details>
   );

@@ -6,7 +6,7 @@
  * it every time, and the table keeps what the calculation wrote, so a column
  * hidden today can be shown again.
  */
-import type { Block, TableContent } from "../model";
+import type { Block, Concept, TableContent } from "../model";
 import {
   ensureTableV2,
   getDisplayColumns,
@@ -15,6 +15,8 @@ import {
   type HeaderGroup,
   type StructuralZone,
   type TableColumn,
+  type TableSummaryBox,
+  type TableSummaryRow,
   type TableV2,
 } from "../services/table";
 
@@ -32,8 +34,26 @@ export function layoutOf(table: TableContent | TableV2): GeneratedTableLayout {
   return ensureTableV2(table).schema?.generated?.layout ?? {};
 }
 
+const hasText = (labels: Record<string, string> | undefined) => Object.values(labels ?? {}).some((label) => label.trim());
+
 const isEmptyLayout = (layout: GeneratedTableLayout) =>
-  !layout.hidden?.length && !Object.values(layout.labels ?? {}).some((label) => label.trim()) && !layout.extraColumns?.length;
+  !layout.hidden?.length && !hasText(layout.labels) && !layout.extraColumns?.length && !hasText(layout.boxLabels);
+
+/** The key of a row of a box in `boxLabels`: its id, or its place in the box. */
+export const summaryRowKey = (box: Pick<TableSummaryBox, "id">, row: Pick<TableSummaryRow, "id">, index: number) => `${box.id}.${row.id ?? index}`;
+
+/** The key of a box's caption in `boxLabels`. */
+export const summaryCaptionKey = (box: Pick<TableSummaryBox, "id">) => `${box.id}.caption`;
+
+/** The boxes with the labels the appraiser gave them; the figures stay the calculation's. */
+function relabeledBoxes(boxes: TableSummaryBox[], labels: Record<string, string>): TableSummaryBox[] {
+  const label = (key: string, name: string) => labels[key]?.trim() || name;
+  return boxes.map((box) => ({
+    ...box,
+    ...(box.caption !== undefined ? { caption: label(summaryCaptionKey(box), box.caption) } : {}),
+    rows: box.rows.map((row, index) => ({ ...row, label: label(summaryRowKey(box, row, index), row.label) })),
+  }));
+}
 
 /** The columns of the calculation, in order, with the ones added after the column each follows. */
 function orderedColumns(source: TableV2, extras: GeneratedExtraColumn[]): (TableColumn | GeneratedExtraColumn)[] {
@@ -88,6 +108,7 @@ export function applyTableLayout(table: TableContent | TableV2, layout: Generate
     ? groupedZones(ordered.map((column) => column.id), zoneOf, schema.zones)
     : [];
   const headerGroups: HeaderGroup[] | undefined = schema.headerGroups?.map((group) => ({ ...group, title: label(group.id, group.title) }));
+  const summaryBoxes = schema.summaryBoxes ? relabeledBoxes(schema.summaryBoxes, layout.boxLabels ?? {}) : undefined;
   const { generated: _previous, ...rest } = schema;
   const { schema: _sourceSchema, ...plainSource } = source;
   return {
@@ -98,6 +119,7 @@ export function applyTableLayout(table: TableContent | TableV2, layout: Generate
       ...rest,
       zones,
       ...(headerGroups ? { headerGroups } : {}),
+      ...(summaryBoxes ? { summaryBoxes } : {}),
       generated: { source: { ...plainSource, ...(source.schema ? { schema: withoutGenerated(source.schema) } : {}) }, layout },
     },
   } as unknown as TableContent;
@@ -134,25 +156,56 @@ function tablesById(blocks: Block[]) {
   return tables;
 }
 
+/** Every concept of the blocks the appraiser renamed, by id in lower case. */
+function renamedConcepts(blocks: Block[]) {
+  const renamed = new Map<string, string>();
+  for (const block of blocks) {
+    for (const concept of [...block.concepts, ...block.apartados.flatMap((apartado) => apartado.concepts)]) {
+      if (concept.generatedLabel !== undefined && concept.label.trim()) renamed.set(concept.id.toLowerCase(), concept.label);
+    }
+  }
+  return renamed;
+}
+
 /**
- * The blocks the calculation just wrote, with the columns the appraiser set
- * on the same tables of the blocks they replace.
+ * The blocks the calculation just wrote, with what the appraiser set on the
+ * blocks they replace: the columns and box labels of the same tables, and the
+ * labels of the same concepts.
  */
 export function withTableLayouts(blocks: Block[], previous: Block[]): Block[] {
   const layouts = new Map([...tablesById(previous)].flatMap(([id, table]) => {
     const layout = layoutOf(table);
     return isEmptyLayout(layout) ? [] : [[id, layout] as const];
   }));
-  if (!layouts.size) return blocks;
+  const labels = renamedConcepts(previous);
+  if (!layouts.size && !labels.size) return blocks;
   const apply = (tables: TableContent[]) => tables.map((table) => {
     const layout = layouts.get(table.id.toLowerCase());
     return layout ? applyTableLayout(table, layout) : table;
   });
+  const relabel = (concepts: Concept[]) => concepts.map((concept) => {
+    const label = labels.get(concept.id.toLowerCase());
+    return label === undefined ? concept : withConceptLabel(concept, label);
+  });
   return blocks.map((block) => ({
     ...block,
+    concepts: relabel(block.concepts),
     tables: apply(block.tables),
-    apartados: block.apartados.map((apartado) => ({ ...apartado, tables: apply(apartado.tables) })),
+    apartados: block.apartados.map((apartado) => ({ ...apartado, concepts: relabel(apartado.concepts), tables: apply(apartado.tables) })),
   }));
+}
+
+/**
+ * A concept the calculation writes, with the label the appraiser gave it
+ * ("Valor por capitalización de rentas" as "Valor por ingresos"): the
+ * calculation's own stays in `generatedLabel`, so an empty name gives it back
+ * and the next calculation can write it again.
+ */
+export function withConceptLabel(concept: Concept, name: string): Concept {
+  const { generatedLabel, ...rest } = concept;
+  const original = generatedLabel ?? concept.label;
+  const label = name.trim();
+  return !label || label === original ? { ...rest, label: original } : { ...rest, label, generatedLabel: original };
 }
 
 /* ── Changes the editor makes ─────────────────────────────────────── */
@@ -204,6 +257,12 @@ export function withExtraColumnChange(
       };
     }),
   };
+}
+
+/** A label of a box renamed (`summaryRowKey` or `summaryCaptionKey`); an empty name gives back the calculation's. */
+export function withBoxLabel(layout: GeneratedTableLayout, key: string, name: string): GeneratedTableLayout {
+  const { [key]: _previous, ...labels } = layout.boxLabels ?? {};
+  return { ...layout, boxLabels: name.trim() ? { ...labels, [key]: name.trim() } : labels };
 }
 
 /** A column of the appraiser's taken out, with what was written in it. */

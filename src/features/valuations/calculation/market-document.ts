@@ -349,8 +349,8 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
     position: "top",
     align: "end",
     rows: [
-      ...(settings.typicalFrontage ? [{ label: frontLabel, value: metres(settings.typicalFrontage) as string }] : []),
-      ...(settings.typicalDepth ? [{ label: depthLabel, value: metres(settings.typicalDepth) as string }] : []),
+      ...(settings.typicalFrontage ? [{ id: "frente", label: frontLabel, value: metres(settings.typicalFrontage) as string }] : []),
+      ...(settings.typicalDepth ? [{ id: "fondo", label: depthLabel, value: metres(settings.typicalDepth) as string }] : []),
     ],
   };
   const boxes: TableSummaryBox[] = [
@@ -403,11 +403,11 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
       position: "bottom",
       align: "end",
       rows: [
-        { label: `${subjectLabel}:`, value: squareMetres(subjectArea) },
-        { label: "Subtotal:", value: money(subtotal) },
+        { id: "superficie", label: `${subjectLabel}:`, value: squareMetres(subjectArea) },
+        { id: "subtotal", label: "Subtotal:", value: money(subtotal) },
         // Only when its box is marked (and it is in the calculation).
-        ...(printsAdditionalAmount(settings) ? [{ label: "Monto adicional a considerar:", value: settings.additionalAmount ? money(settings.additionalAmount) : "$ -" }] : []),
-        { label: `${page.value}:`, value: money(result.value), emphasis: "total" },
+        ...(printsAdditionalAmount(settings) ? [{ id: "adicional", label: "Monto adicional a considerar:", value: settings.additionalAmount ? money(settings.additionalAmount) : "$ -" }] : []),
+        { id: "valor", label: `${page.value}:`, value: money(result.value), emphasis: "total" },
       ],
     },
   );
@@ -500,7 +500,7 @@ export function withGeneratedBlocks(
 /** Compares what the dictamen shows, ignoring labels the editor renumbers and photo URLs that expire. */
 function sameContent(left: Block[], right: Block[]) {
   const content = (item: Pick<Block, "concepts" | "tables" | "images">) => ({
-    concepts: item.concepts.map((concept) => [concept.label, concept.value]),
+    concepts: item.concepts.map((concept) => [concept.label, concept.value, concept.generatedLabel ?? null]),
     // What prints, and what the calculation wrote under the appraiser's columns (a hidden column may be shown again).
     tables: item.tables.map((table) => [printedTable(table), printedTable(sourceOf(table) as unknown as TableContent), layoutOf(table)]),
     images: item.images.map((image) => [image.id, image.title]),
