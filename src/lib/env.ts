@@ -18,6 +18,10 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().optional(),
+  /**
+   * Browser key for Google Maps (Maps JavaScript, Maps Static and Geocoding APIs), read at runtime.
+   * Optional: without it the maps demonstration draws its own map. Restricted by referrer; see docs/OPERACION.md.
+   */
   GOOGLE_MAPS_API_KEY: z.string().optional(),
   NEXT_PUBLIC_APP_URL: z.string().optional(),
   UPLOAD_DIR: z.string().default("public/uploads"),
