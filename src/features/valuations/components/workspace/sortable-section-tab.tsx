@@ -101,7 +101,7 @@ export function SortableSectionTab({
         <TabsTrigger
           value={sectionId}
           className={cn(
-            "touch-manipulation select-none [-webkit-touch-callout:none] max-lg:min-h-10 max-lg:px-3",
+            "touch-manipulation select-none [-webkit-touch-callout:none] pointer-coarse:min-h-10 pointer-coarse:px-3",
             !disabled && !pinned && "cursor-grab active:cursor-grabbing",
             isActive && "data-active:bg-background data-active:shadow-sm",
           )}

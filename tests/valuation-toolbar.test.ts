@@ -10,6 +10,7 @@ import { createInitialSections } from "../src/features/valuations/sections";
 import { initialMeta } from "../src/features/valuations/services/valuation-constants";
 import {
   scrollSectionContainer,
+  stripOverflow,
   ValuationNavigation,
 } from "../src/features/valuations/components/workspace/valuation-navigation";
 import { ValuationTopBar } from "../src/features/valuations/components/workspace/valuation-top-bar";
@@ -109,6 +110,14 @@ test("las flechas traen solo la siguiente pestaña oculta de ese lado, sin salta
     { left: 58, behavior: "smooth" },
     { left: -58, behavior: "smooth" },
   ]);
+});
+
+test("las flechas se habilitan solo del lado donde hay pestañas ocultas, con un píxel de holgura por el zoom", () => {
+  assert.deepEqual(stripOverflow({ scrollLeft: 0, scrollWidth: 300, clientWidth: 300 }), { start: false, end: false });
+  assert.deepEqual(stripOverflow({ scrollLeft: 0, scrollWidth: 900, clientWidth: 300 }), { start: false, end: true });
+  assert.deepEqual(stripOverflow({ scrollLeft: 300, scrollWidth: 900, clientWidth: 300 }), { start: true, end: true });
+  assert.deepEqual(stripOverflow({ scrollLeft: 599.5, scrollWidth: 900, clientWidth: 300 }), { start: true, end: false });
+  assert.deepEqual(stripOverflow({ scrollLeft: 0, scrollWidth: 300.6, clientWidth: 300 }), { start: false, end: false }, "a fractional width at 110 % is not overflow");
 });
 
 test("pasada la última pestaña, la flecha avanza media barra", () => {
