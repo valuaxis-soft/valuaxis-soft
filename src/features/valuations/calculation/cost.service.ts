@@ -22,10 +22,12 @@ import {
   COST_PERCENT_FIELDS,
   DEFAULT_COST_ROUNDING,
   DEFAULT_LAND,
+  costColumnsOf,
   costEngineConfig,
   isConservationRating,
   toCostEngineInput,
   type CostCalculationDto,
+  type CostColumnsDto,
   type CostLandDto,
   type CostRoundingDto,
 } from "./cost-types";
@@ -51,7 +53,13 @@ type StoredCost = Omit<CostCalculationDto, "market" | "configured" | "typesCaptu
  * conservation; a row missing here (or an older capture) takes the formulas
  * and has no calificación.
  */
-type CapturedFactors = { ageFactor: number | null; resultantFactor: number | null; conservationRating: number | null };
+type CapturedFactors = {
+  ageFactor: number | null;
+  resultantFactor: number | null;
+  conservationRating: number | null;
+  /** The factors added after "Otro" (CostColumnsDto), in the order of their columns. */
+  extraFactors: number[];
+};
 type StoredFactors = {
   /** By construction type id, as the cost rows themselves. */
   constructions?: Record<string, CapturedFactors>;
@@ -63,6 +71,9 @@ const capturedOf = (stored: Partial<CapturedFactors> | undefined): CapturedFacto
   ageFactor: typeof stored?.ageFactor === "number" ? stored.ageFactor : null,
   resultantFactor: typeof stored?.resultantFactor === "number" ? stored.resultantFactor : null,
   conservationRating: isConservationRating(stored?.conservationRating) ? stored.conservationRating : null,
+  extraFactors: Array.isArray(stored?.extraFactors)
+    ? stored.extraFactors.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+    : [],
 });
 const refKey = (ref: string) => ref.trim().toLowerCase();
 
@@ -106,6 +117,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
         conservationRating: captured.conservationRating,
         ageFactor: captured.ageFactor,
         otherFactor: decimal(cost.NFactorOtro) ?? 1,
+        extraFactors: captured.extraFactors,
         resultantFactor: captured.resultantFactor,
         completion: decimal(shares?.NGradoTerminacion) ?? 1,
         undivided: decimal(shares?.NIndiviso) ?? 1,
@@ -128,6 +140,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
         maintenance: row.SMantenimiento ?? "",
         ageFactor: captured.ageFactor,
         otherFactor: decimal(cost?.NFactorOtro) ?? 1,
+        extraFactors: captured.extraFactors,
         resultantFactor: captured.resultantFactor,
         completion: decimal(row.NGradoTerminacion) ?? 1,
         undivided: decimal(row.NIndiviso) ?? 1,
@@ -136,6 +149,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
     }),
     indirects: indirects.map((row) => ({ concept: row.SConcepto, percentage: decimal(row.NPorcentaje), base: decimal(row.NValorBase) })),
     ...(rounding ? { rounding: { ...DEFAULT_COST_ROUNDING, ...rounding } } : {}),
+    columns: costColumnsOf(configuration.columns),
     formulas: storedFormulas(configuration.formulas),
   };
 }
@@ -146,7 +160,7 @@ export async function getCostCalculation(publicId: string, organizationId: numbe
     const versionId = avaluo.IdVersionTrabajo ?? avaluo.IdVersionFinal;
     if (!versionId) {
       return {
-        land: DEFAULT_LAND, constructions: [], types: [], installations: [], indirects: [],
+        land: DEFAULT_LAND, constructions: [], types: [], installations: [], indirects: [], columns: costColumnsOf(null),
         market: { adoptedUnitValue: null, subjectArea: null, baseArea: null }, configured: false, typesCaptured: false, locked: avaluo.BBloqueado,
       };
     }
@@ -167,13 +181,13 @@ export async function getCostCalculation(publicId: string, organizationId: numbe
   });
 }
 
-const storedConfiguration = (payload: CostInputPayload, factors: StoredFactors, formulas: CapturedFormulas) =>
-  ({ land: payload.land, ...(payload.rounding ? { rounding: payload.rounding } : {}), factors, formulas }) as Prisma.InputJsonValue;
+const storedConfiguration = (payload: CostInputPayload, factors: StoredFactors, formulas: CapturedFormulas, columns: CostColumnsDto) =>
+  ({ land: payload.land, ...(payload.rounding ? { rounding: payload.rounding } : {}), columns, factors, formulas }) as Prisma.InputJsonValue;
 
 const capturedFactors = (row: Partial<CapturedFactors>): CapturedFactors => capturedOf(row);
 const hasCaptured = (row: Partial<CapturedFactors>) => {
   const factors = capturedOf(row);
-  return factors.ageFactor !== null || factors.resultantFactor !== null || factors.conservationRating !== null;
+  return factors.ageFactor !== null || factors.resultantFactor !== null || factors.conservationRating !== null || factors.extraFactors.length > 0;
 };
 
 /** Replaces the whole capture of the version and recomputes the approach. */
@@ -191,14 +205,16 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
       previousFormulas: previous.formulas ?? {},
       percent: COST_PERCENT_FIELDS,
     });
+    // A client that sends no columns (older ones) keeps the names and factors already set.
+    const columns = costColumnsOf(payload.columns ?? previous.columns);
     const factors: Required<StoredFactors> = {
       constructions: {},
       installations: Object.fromEntries(payload.installations.filter(hasCaptured).map((row) => [refKey(row.ref), capturedFactors(row)])),
     };
     const approach = await tx.enfoqueCosto.upsert({
       where: { IdVersionAvaluo: versionId },
-      create: { IdVersionAvaluo: versionId, JConfiguracion: storedConfiguration(payload, factors, formulas) },
-      update: { JConfiguracion: storedConfiguration(payload, factors, formulas) },
+      create: { IdVersionAvaluo: versionId, JConfiguracion: storedConfiguration(payload, factors, formulas, columns) },
+      update: { JConfiguracion: storedConfiguration(payload, factors, formulas, columns) },
     });
 
     await tx.costoConstruccion.deleteMany({ where: { IdEnfoqueCosto: approach.IdEnfoqueCosto } });
@@ -245,7 +261,7 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
     }
     if (construction && createdTypes) await updateBuiltArea(tx, construction.IdConstruccionAvaluo);
     if (Object.keys(factors.constructions).length) {
-      await tx.enfoqueCosto.update({ where: { IdEnfoqueCosto: approach.IdEnfoqueCosto }, data: { JConfiguracion: storedConfiguration(payload, factors, formulas) } });
+      await tx.enfoqueCosto.update({ where: { IdEnfoqueCosto: approach.IdEnfoqueCosto }, data: { JConfiguracion: storedConfiguration(payload, factors, formulas, columns) } });
     }
 
     const shares = await tx.tipoParticipacion.findMany({ where: { SClave: { in: ["PRIVATIVA", "COMUN"] } } });

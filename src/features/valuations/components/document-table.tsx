@@ -107,8 +107,9 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
         <tr>
           {layout.bottomRow.map((colId) => {
             const column = columnMap.get(colId);
+            // The same size and weight as the headers above: a header group is one band.
             return (
-              <th className="border-r border-white px-1.5 py-0.5 text-center text-wrap text-[0.9em] font-semibold break-words" key={colId}>
+              <th className={cell} key={colId}>
                 <HeaderText name={column?.name ?? ""} fixed={fixed} />
               </th>
             );
@@ -122,6 +123,15 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
 /* ================================================================== */
 /*  Summary boxes                                                      */
 /* ================================================================== */
+
+/** Dark gray, as the text of the other sections: tables do not print in black. */
+const TABLE_TEXT = "text-[#333333]";
+/** Rules of the boxes: a soft blue gray of the document's palette, not black. */
+const BOX_RULE = "border-[#A9BCD6]";
+/** A box or a cell marked with an X is shaded, as the appraiser asked, and prints so. */
+const MARKED = "bg-[#BDD7EE] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]";
+/** "( X )", the mark of the option chosen in a grid of options. */
+const isMarkedCell = (text: string) => /^\(\s*x\s*\)$/i.test(text.trim());
 
 const ALIGN_ORDER = { start: 0, center: 1, end: 2 } as const;
 const LONG_LABEL = 60;
@@ -149,7 +159,7 @@ function SummaryBoxes({ tableV2, position }: { tableV2: TableV2; position: Table
   if (!lines.length) return null;
 
   return (
-    <div className={cn("flex flex-col gap-1.5 text-[10px] leading-snug text-slate-900", position === "top" ? "mb-1.5" : "mt-1.5")} data-table-summary={position}>
+    <div className={cn("flex flex-col gap-1.5 text-[10px] leading-snug", TABLE_TEXT, position === "top" ? "mb-1.5" : "mt-1.5")} data-table-summary={position}>
       {lines.map((line) => (
         <div className="flex items-start gap-3" key={line[0].id}>
           {line.map((box) => {
@@ -157,7 +167,7 @@ function SummaryBoxes({ tableV2, position }: { tableV2: TableV2; position: Table
             return (
               <div className={cn("flex min-w-0 items-start gap-2", BOX_ALIGN[box.align ?? "start"])} key={box.id}>
                 {box.caption ? <span className="py-px font-bold">{box.caption}</span> : null}
-                <table className="border-collapse border border-[var(--caratula-dark-blue)]">
+                <table className={cn("border-collapse border", BOX_RULE)}>
                   <tbody>
                     {box.rows.map((row, index) => (
                       <tr
@@ -165,12 +175,12 @@ function SummaryBoxes({ tableV2, position }: { tableV2: TableV2; position: Table
                           "[-webkit-print-color-adjust:exact] [print-color-adjust:exact]",
                           row.emphasis === "total" && "bg-[var(--caratula-dark-blue)] font-bold text-white",
                           row.emphasis === "strong" && "bg-slate-200 font-bold",
-                          marked && "border-b border-[var(--caratula-dark-blue)] last:border-b-0",
+                          marked && cn("border-b last:border-b-0", BOX_RULE),
                         )}
                         key={index}
                       >
                         {marked ? (
-                          <td className="w-6 border-r border-[var(--caratula-dark-blue)] px-1 py-px text-center font-bold">{row.mark ? "x" : ""}</td>
+                          <td className={cn("w-6 border-r px-1 py-px text-center font-bold", BOX_RULE, row.mark && MARKED)}>{row.mark ? "x" : ""}</td>
                         ) : null}
                         {/* Short labels stay on one line when boxes share a line; a sentence-long one wraps. */}
                         <th
@@ -198,7 +208,7 @@ function TableNotes({ tableV2, position }: { tableV2: TableV2; position: TableNo
   const notes = (tableV2.schema?.notes ?? []).filter((note) => note.position === position && note.text.trim());
   if (!notes.length) return null;
   return (
-    <div className={cn("text-[10px] leading-snug text-slate-900", position === "top" ? "mb-1.5" : "mt-1.5")} data-table-notes={position}>
+    <div className={cn("text-[10px] leading-snug", TABLE_TEXT, position === "top" ? "mb-1.5" : "mt-1.5")} data-table-notes={position}>
       {notes.map((note, index) => (
         <p className="text-justify" key={index}>
           {note.label ? <strong>{note.label} </strong> : null}
@@ -217,6 +227,7 @@ function cellPresentation(tableV2: TableV2, columnId: string) {
   return cn(
     presentation?.align && CELL_ALIGN[presentation.align],
     presentation?.noWrap ? "whitespace-nowrap tabular-nums" : "whitespace-normal text-wrap break-words",
+    presentation?.bold && "font-bold",
   );
 }
 
@@ -362,7 +373,6 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
   // A table still named as the editor created it, or one whose schema hides its title, prints no caption.
   const title = tableV2.title.trim();
   const caption = tableV2.schema?.hideCaption || title === DEFAULT_TABLE_TITLE ? "" : title;
-  const density = tableV2.schema?.density;
   // A grid of labels and marks: printed as written, to the left, without header, rules or shading.
   const plain = tableV2.schema?.plain === true;
   // A table that breaks across pages prints some of its rows on each: what
@@ -381,16 +391,16 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
     <div className="w-full overflow-hidden">
       {opens ? <TableNotes tableV2={tableV2} position="top" /> : null}
       {opens ? <SummaryBoxes tableV2={tableV2} position="top" /> : null}
-      {/* Column widths follow the content so amounts stay on one line; wider
-          tables (homologation, costs) use a smaller font to fit the page, and
-          the rest print at the size of the concepts around them. */}
+      {/* One format for every table, the ones the appraiser configures and the
+          ones the calculation writes: the size of the concepts around them, a
+          point less when it has many columns, in dark gray. Column widths follow
+          the content so amounts stay on one line. */}
       <table className={cn(
         "border-collapse",
+        TABLE_TEXT,
         plain ? "w-2/3 font-bold" : "w-full",
         columnWidths && "table-fixed",
-        density === "compact" ? "text-[9px] leading-[1.35]"
-          : density === "dense" ? "text-[10px] leading-[1.35]"
-            : columns.length > 7 ? "text-[10px]" : "text-[11px]",
+        columns.length > 7 ? "text-[10px]" : "text-[11px]",
       )} data-split-table="">
         <colgroup>
           {columns.map((column, index) => (
@@ -404,9 +414,12 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
             // Gray and white rows alternate, first one gray, as in the appraiser's own format;
             // by the row's place in the whole table, so a continuation follows on.
             <TableRow className={cn(plain ? "border-0" : "border-slate-200", !plain && (firstRow + index) % 2 === 0 && "bg-slate-100")} data-split-table-row="" key={row.id}>
-              {columns.map((column) => (
-                <TableCell className={cn("px-2", density ? "py-[3px]" : "py-1", cellPresentation(tableV2, column.id))} key={column.id}>{getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation)}</TableCell>
-              ))}
+              {columns.map((column) => {
+                const value = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
+                return (
+                  <TableCell className={cn("px-2 py-1", cellPresentation(tableV2, column.id), isMarkedCell(value) && MARKED)} key={column.id}>{value}</TableCell>
+                );
+              })}
             </TableRow>
           ))}
         </TableBody>

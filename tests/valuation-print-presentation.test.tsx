@@ -386,7 +386,7 @@ test("a generated table prints its header group, aligned figures and no caption"
   assert.match(html, /<td[^>]*class="[^"]*text-right[^"]*whitespace-nowrap[^"]*"[^>]*>\$ 1,260,000\.00<\/td>/, "amounts are right-aligned on one line");
   assert.match(html, /<td[^>]*class="[^"]*text-center[^"]*whitespace-nowrap[^"]*"[^>]*>0\.95<\/td>/);
   assert.match(html, /<td[^>]*class="[^"]*whitespace-normal[^"]*"[^>]*>Calle Villa Toledo<\/td>/, "text wraps");
-  assert.match(html, /<table class="[^"]*text-\[10px\]/, "tables of figures print dense");
+  assert.match(html, /<table class="[^"]*text-\[11px\]/, "a calculation table prints at the size of a configurable one of as many columns");
 });
 
 test("summary boxes print with their table: the basis above, subtotals and the final bar below", () => {

@@ -81,7 +81,7 @@ test("the construction types: reference, texts, surface, age and useful life; un
   assert.equal(merged.ref, "t-2");
   assert.equal(merged.conservation, 0.9);
   assert.deepEqual(constructionCostOf(merged), {
-    ref: "t-2", conservation: 0.9, conservationRating: null, ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: 1000,
+    ref: "t-2", conservation: 0.9, conservationRating: null, ageFactor: null, otherFactor: 1, extraFactors: [], resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: 1000,
   });
   assert.equal(withConstructionType(emptyConstructionCost("T-9"), types).area, null);
   assert.equal(findConstructionType(types, " t-1 ")?.ref, "T-1");

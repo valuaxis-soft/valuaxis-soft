@@ -13,6 +13,7 @@ import {
   EMPTY,
   figure,
   figureColumn,
+  resultantColumn,
   generatedApartado,
   generatedBlock,
   generatedTable,
@@ -118,7 +119,7 @@ export function machineryCostBlocks(cost: MachineryCostDto, result: MachineryCos
           textColumn("Tipo de Mantenimiento", "center"), figureColumn("Edad"), figureColumn("Vida Útil Total"),
           figureColumn("Factor Edad FEd", { group: DEPRECIATION }),
           ...itemFactors.map((factor) => figureColumn(factor.label, { group: DEPRECIATION })),
-          figureColumn("FRe", { group: DEPRECIATION }),
+          resultantColumn("FRe", DEPRECIATION),
           moneyColumn("V.N.R. Unitario Instalado"),
         ],
         [[
@@ -143,7 +144,7 @@ export function machineryCostBlocks(cost: MachineryCostDto, result: MachineryCos
             figureColumn("REF"), figureColumn("F.E.E.S."), figureColumn("Gastos Ing."), figureColumn("Gastos Instal."), figureColumn("Σ Gast"),
             moneyColumn("V.R.N. Instalado"), figureColumn("Edad"), figureColumn("VUT"), figureColumn("VUR"),
             figureColumn("FEd", { group: DEPRECIATION }), figureColumn("FCo", { group: DEPRECIATION }), figureColumn("FMt", { group: DEPRECIATION }),
-            figureColumn("Obs. Tecno", { group: DEPRECIATION }), figureColumn("Obs. Eco", { group: DEPRECIATION }), figureColumn("FRe", { group: DEPRECIATION }),
+            figureColumn("Obs. Tecno", { group: DEPRECIATION }), figureColumn("Obs. Eco", { group: DEPRECIATION }), resultantColumn("FRe", DEPRECIATION),
             moneyColumn("V.N.R. Unitario Instalado"),
           ],
           attachments.map((row) => {
@@ -196,8 +197,7 @@ export function machineryMarketBlocks(market: MachineryMarketDto, subject: Machi
         { notes: [{ position: "top", label: "Obtención del valor unitario.", text: "Comparables de bienes en venta semejantes en uso al sujeto que se valúa." }] }),
       generatedTable(`${MARKET_PREFIX}-tabla-contacto`, "Información de contacto",
         [figureColumn("REF."), textColumn("Contacto"), textColumn("Empresa"), figureColumn("Teléfono"), textColumn("Correo"), textColumn("Link"), textColumn("Ubicación"), textColumn("Observaciones")],
-        offers.map((row) => [row.ref, cell(row.contact), cell(row.company), cell(row.phone), cell(row.email), cell(row.link), cell(row.location), cell(row.notes)]),
-        { compact: true }),
+        offers.map((row) => [row.ref, cell(row.contact), cell(row.company), cell(row.phone), cell(row.email), cell(row.link), cell(row.location), cell(row.notes)])),
     ],
   }));
 
@@ -238,7 +238,7 @@ export function machineryMarketBlocks(market: MachineryMarketDto, subject: Machi
           moneyColumn("Valor de oferta puesto en sitio"),
           figureColumn("FEd", { group: HOMOLOGATION }),
           ...MACHINERY_FACTORS.map((factor) => figureColumn(factor.short, { group: HOMOLOGATION })),
-          figureColumn("FRe", { group: HOMOLOGATION }),
+          resultantColumn("FRe", HOMOLOGATION),
           moneyColumn("V.N.R. Unitario Instalado"),
         ],
         homologated.map((row) => {

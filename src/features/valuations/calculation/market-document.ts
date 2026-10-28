@@ -8,12 +8,13 @@
  */
 import type { MarketApproachResult } from "../engine/market";
 import { CONSTANT_LETTERS, VARIABLE_LETTERS } from "../engine/regression";
-import type { AppSection, Block } from "../model";
+import type { AppSection, Block, TableContent } from "../model";
 import type { TableNote, TableSummaryBox } from "../services/table";
 import {
   EMPTY,
   figure,
   figureColumn,
+  resultantColumn,
   generatedApartado,
   generatedBlock,
   generatedTable,
@@ -25,6 +26,7 @@ import {
   textColumn,
   whole,
 } from "./generated-content";
+import { layoutOf, sourceOf, withTableLayouts } from "./generated-table-layout";
 import { computeMarketRegression, regressionFieldOptions, type MarketRegressionResult } from "./market-regression";
 import {
   COMPARABLE_TYPE_LABELS,
@@ -229,6 +231,8 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
   // The fourth column of the offers table: the books give the offer date for land and the conservation for buildings.
   const offersOfLand = isLandComparableType(settings.comparableType);
   const fields = characteristicFieldsOf(settings);
+  // The appraiser's added columns follow each comparable by its reference.
+  const rowKeys = comparables.map(reference);
 
   // The offer level of the market research: the options of the books (or the appraiser's), with an X on the one observed.
   const offerMark = offerMarkOf(settings);
@@ -248,7 +252,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
           landUseCell(comparable),
           characteristics(comparable, fields),
         ]),
-        { compact: true, notes: [{ position: "top", label: "Obtención del valor unitario.", text: page.intro }] }),
+        { notes: [{ position: "top", label: "Obtención del valor unitario.", text: page.intro }], rowKeys }),
       generatedTable(`${prefix}-tabla-ofertas`, "Ofertas de los comparables",
         [
           figureColumn("REF."), textColumn("CONTACTO"), figureColumn("TELÉFONO"),
@@ -263,7 +267,8 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
           figure(comparable.area),
           comparable.price ? money(comparable.price) : EMPTY,
           comparable.area && comparable.price ? money(comparable.price / comparable.area) : EMPTY,
-        ])),
+        ]),
+        { rowKeys }),
     ],
   });
 
@@ -275,7 +280,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
       [
         figureColumn("REF"), moneyColumn(page.price), figureColumn(page.shortArea), moneyColumn(`${words.unitValue} ${page.unit}`),
         ...slots.map((slot) => figureColumn(factorTitle(slot), { group: factors })),
-        figureColumn("FRe", { group: factors }),
+        resultantColumn("FRe", factors),
         moneyColumn(`${page.homologated} ${page.unit}`),
       ],
       comparables.map((comparable) => {
@@ -295,6 +300,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
         ];
       }),
       {
+        rowKeys,
         summaryBoxes: homologationBoxes(calculation, result),
         notes: [
           ...(homologationNote ? [{ position: "bottom" as const, text: homologationNote }] : []),
@@ -524,10 +530,12 @@ export function replaceGeneratedBlocks(
   const placeholders = new Set((blocks.length ? options.placeholderIds ?? [] : []).map((id) => id.toLowerCase()));
   const isPlaceholder = (item: Block) => placeholders.has(item.id.toLowerCase());
   const current = section.blocks.filter(owns);
-  if (sameContent(current, blocks) && !section.blocks.some(isPlaceholder)) return section;
+  // The columns the appraiser hid, renamed or added stay on the tables the calculation writes again.
+  const laidOut = withTableLayouts(blocks, current);
+  if (sameContent(current, laidOut) && !section.blocks.some(isPlaceholder)) return section;
   // A block the appraiser hid stays hidden when the calculation writes it again.
   const hidden = new Set(current.filter((item) => item.enabled === false).map((item) => item.id.toLowerCase()));
-  const written = hidden.size ? blocks.map((item) => (hidden.has(item.id.toLowerCase()) ? { ...item, enabled: false } : item)) : blocks;
+  const written = hidden.size ? laidOut.map((item) => (hidden.has(item.id.toLowerCase()) ? { ...item, enabled: false } : item)) : laidOut;
   const firstIndex = section.blocks.findIndex((item) => owns(item) || isPlaceholder(item));
   const kept = section.blocks.filter((item) => !owns(item) && !isPlaceholder(item));
   const insertAt = firstIndex !== -1
@@ -575,7 +583,8 @@ export function withGeneratedBlocks(
 function sameContent(left: Block[], right: Block[]) {
   const content = (item: Pick<Block, "concepts" | "tables" | "images">) => ({
     concepts: item.concepts.map((concept) => [concept.label, concept.value]),
-    tables: item.tables.map(printedTable),
+    // What prints, and what the calculation wrote under the appraiser's columns (a hidden column may be shown again).
+    tables: item.tables.map((table) => [printedTable(table), printedTable(sourceOf(table) as unknown as TableContent), layoutOf(table)]),
     images: item.images.map((image) => [image.id, image.title]),
   });
   const shape = (blocks: Block[]) => JSON.stringify(blocks.map((item) => ({

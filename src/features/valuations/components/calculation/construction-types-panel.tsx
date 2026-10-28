@@ -18,6 +18,7 @@ import { numbersOf, textsOf, type Texts } from "./draft-texts";
 import { FormulaInput } from "./formula-input";
 import { useDraftHistory } from "./use-draft-history";
 import { useSerializedSave } from "./use-serialized-save";
+import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 
 const cell = "h-7 min-w-0 px-1.5 text-xs";
 const figure = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
@@ -165,18 +166,18 @@ export function ConstructionTypesPanel(props: {
         Superficie, edad y vida útil de cada tipo se capturan aquí una sola vez; el enfoque de costos los elige de esta lista y no los vuelve a teclear.
       </p>
       <fieldset disabled={readOnly} className="grid gap-2">
-        <div className="overflow-x-auto rounded-md border bg-background">
-          <table className="w-full min-w-[760px] text-xs" aria-label="Tipos de construcción">
-            <thead className="bg-muted/60 text-muted-foreground">
+        <div className={CALC_TABLE_FRAME}>
+          <table className={`${CALC_TABLE} w-full min-w-[760px]`} aria-label="Tipos de construcción">
+            <thead className={CALC_HEAD}>
               <tr>
-                {COLUMNS.map((column) => <th key={column.key} className="px-1.5 py-1 text-left font-medium">{column.label}</th>)}
-                <th className="px-1.5 py-1 text-left font-medium">VUR</th>
-                <th><span className="sr-only">Acciones</span></th>
+                {COLUMNS.map((column) => <th key={column.key} className={CALC_HEAD_CELL}>{column.label}</th>)}
+                <th className={CALC_HEAD_CELL}>VUR</th>
+                <th className={CALC_HEAD_CELL}><span className="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
               {draft.map((row, index) => (
-                <tr key={index} className="border-t">
+                <tr key={index} className={CALC_ROW}>
                   {COLUMNS.map((column) => {
                     const Control = column.numeric ? FormulaInput : Input;
                     return (
@@ -191,7 +192,7 @@ export function ConstructionTypesPanel(props: {
                       </td>
                     );
                   })}
-                  <td className="w-14 px-1.5 whitespace-nowrap tabular-nums text-muted-foreground">{figure(remainingUsefulLife(types[index]))}</td>
+                  <td className="w-14 px-1.5 whitespace-nowrap tabular-nums">{figure(remainingUsefulLife(types[index]))}</td>
                   <td className="p-1">
                     {!readOnly ? (
                       <Button type="button" size="icon-sm" variant="ghost" aria-label={`Quitar el tipo ${row.ref}`} onClick={() => remove(index)}>

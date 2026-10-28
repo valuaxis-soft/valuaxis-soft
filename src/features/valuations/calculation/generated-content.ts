@@ -41,15 +41,23 @@ export type GeneratedColumn = {
   noWrap?: boolean;
   /** Title of the header group the column sits under; neighbours with the same title share it. */
   group?: string;
+  /** Printed in bold: the resultant factors. */
+  strong?: boolean;
 };
 
 /** A column of text. */
 export const textColumn = (name: string, align?: GeneratedColumn["align"]): GeneratedColumn => ({ name, ...(align ? { align } : {}) });
 /** A column of figures: on one line, centered unless told otherwise. */
-export const figureColumn = (name: string, options: { align?: GeneratedColumn["align"]; group?: string } = {}): GeneratedColumn =>
-  ({ name, align: options.align ?? "center", noWrap: true, ...(options.group ? { group: options.group } : {}) });
+export const figureColumn = (name: string, options: { align?: GeneratedColumn["align"]; group?: string; strong?: boolean } = {}): GeneratedColumn =>
+  ({ name, align: options.align ?? "center", noWrap: true, ...(options.group ? { group: options.group } : {}), ...(options.strong ? { strong: true } : {}) });
+/** A resultant factor (FRe): a figure in bold, as the appraiser asked. */
+export const resultantColumn = (name: string, group?: string): GeneratedColumn => figureColumn(name, { group, strong: true });
+
 /** A column of amounts, right-aligned. */
 export const moneyColumn = (name: string, group?: string): GeneratedColumn => figureColumn(name, { align: "right", group });
+
+/** A row id the appraiser's added columns can follow: the row's reference, in lower case. */
+const rowIdPart = (key: string) => key.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 /**
  * A table with stable column and row ids, so a regenerated table is the same
@@ -61,7 +69,16 @@ export function generatedTable(
   title: string,
   columns: GeneratedColumn[],
   rows: string[][],
-  options: { summaryBoxes?: TableSummaryBox[]; compact?: boolean; notes?: TableNote[]; plain?: boolean } = {},
+  options: {
+    summaryBoxes?: TableSummaryBox[];
+    notes?: TableNote[];
+    plain?: boolean;
+    /**
+     * What each row is (a construction's or a comparable's reference), so its
+     * id stays when rows are added or removed before it; by position when missing.
+     */
+    rowKeys?: string[];
+  } = {},
 ): TableContent {
   const columnIds = columns.map((_, index) => `col-${index + 1}`);
   const zones: StructuralZone[] = [];
@@ -80,25 +97,35 @@ export function generatedTable(
   }
   const columnPresentation: NonNullable<TableSchema["columnPresentation"]> = {};
   columns.forEach((column, index) => {
-    if (column.align || column.noWrap) {
-      columnPresentation[columnIds[index]] = { ...(column.align ? { align: column.align } : {}), ...(column.noWrap ? { noWrap: true } : {}) };
+    if (column.align || column.noWrap || column.strong) {
+      columnPresentation[columnIds[index]] = {
+        ...(column.align ? { align: column.align } : {}),
+        ...(column.noWrap ? { noWrap: true } : {}),
+        ...(column.strong ? { bold: true } : {}),
+      };
     }
   });
   const boxes = (options.summaryBoxes ?? []).filter((box) => box.rows.length);
+  const used = new Set<string>();
+  const rowIdOf = (rowIndex: number) => {
+    if (!options.rowKeys) return `r-${id}-${rowIndex}`;
+    const part = rowIdPart(options.rowKeys[rowIndex] ?? "");
+    const unique = part && !used.has(part) ? part : `${part || "fila"}-${rowIndex + 1}`;
+    used.add(unique);
+    return `r-${id}-k-${unique}`;
+  };
   const table: TableV2 = {
     id,
     title,
     version: 2,
     columns: columns.map((column, index) => ({ id: columnIds[index], name: column.name })),
     rows: rows.map((row, rowIndex) => ({
-      id: `r-${id}-${rowIndex}`,
+      id: rowIdOf(rowIndex),
       cells: Object.fromEntries(columnIds.map((columnId, index): [string, TableCellV2] => [columnId, { kind: "value", value: row[index] ?? "" }])),
     })),
     enabled: true,
     schema: {
       hideCaption: true,
-      // Long texts and very wide tables print at the smallest size.
-      density: options.compact || columns.length > 12 ? "compact" : "dense",
       zones,
       ...(headerGroups.length ? { headerGroups } : {}),
       columnPresentation,
@@ -168,11 +195,14 @@ export function printedTable(table: TableContent) {
   return [
     normalized.title,
     normalized.schema?.hideCaption ?? false,
-    normalized.schema?.density ?? null,
     normalized.schema?.plain ?? false,
     (normalized.schema?.notes ?? []).map((note) => [note.position, note.label ?? null, note.text]),
     getTableHeaderLayout(normalized).topRow.map((cell) => (cell.kind === "group-title" ? [cell.group.title, cell.colSpan] : null)),
-    normalized.columns.map((column) => [column.name, presentation[column.id]?.align ?? null, presentation[column.id]?.noWrap ?? false]),
+    normalized.columns.map((column) => [
+      column.name, presentation[column.id]?.align ?? null, presentation[column.id]?.noWrap ?? false, presentation[column.id]?.bold ?? false,
+    ]),
+    // The rows' ids too: the columns the appraiser adds follow them.
+    normalized.rows.map((row) => row.id),
     normalized.rows.map((row) => normalized.columns.map((column) => {
       const cell = row.cells[column.id];
       return cell?.kind === "value" ? cell.value : "";

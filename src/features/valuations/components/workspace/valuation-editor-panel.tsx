@@ -31,6 +31,7 @@ import { CaratulaEditor, CalculatedValuesEditor } from "../editor/caratula-edito
 import { DocumentNumberFormatControl } from "../editor/number-format-control";
 import { DocumentPageFormatControl } from "../editor/page-format-control";
 import { SignaturesEditor } from "../editor/signatures-editor";
+import { GeneratedTableColumns } from "../editor/generated-table-columns";
 
 import { Check, Eye, EyeOff, GripVertical, PencilLine, Plus, Trash2, X } from "lucide-react";
 
@@ -332,6 +333,7 @@ export function ValuationEditorPanel(props: {
       block={block}
       readOnly={props.readOnly}
       onVisibleChange={(enabled) => props.onUpdateBlock(section.id, block.id, { enabled })}
+      onUpdateTable={(tableId, table, apartadoId) => props.onUpdateTable(section.id, block.id, tableId, () => table, apartadoId)}
     />
   ) : (
     <SortableBlockEditor
@@ -1000,20 +1002,43 @@ function SortableBlockEditor(props: {
   );
 }
 
-/** A block written by the calculation: its data is edited in the calculation panel, not here. It is still hidden here. */
-function GeneratedBlockNotice({ block, readOnly, onVisibleChange }: { block: Block; readOnly: boolean; onVisibleChange: (visible: boolean) => void }) {
-  const rows = block.tables.reduce((count, table) => count + ensureTableV2(table).rows.length, 0);
+/**
+ * A block the calculation writes: its figures are edited in the calculation
+ * panel. It can still be hidden here, and the columns of its tables hidden,
+ * renamed or added.
+ */
+function GeneratedBlockNotice({ block, readOnly, onVisibleChange, onUpdateTable }: {
+  block: Block;
+  readOnly: boolean;
+  onVisibleChange: (visible: boolean) => void;
+  onUpdateTable: (tableId: string, table: TableContent, apartadoId?: string) => void;
+}) {
+  const tables = [
+    ...block.tables.map((table) => ({ table, apartadoId: undefined as string | undefined })),
+    ...block.apartados.flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id }))),
+  ].filter(({ table }) => !ensureTableV2(table).schema?.plain);
+  const rows = tables.reduce((count, { table }) => count + ensureTableV2(table).rows.length, 0);
   return (
-    <div className={cn("flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 text-sm", !block.enabled && "opacity-65")} data-block-id={block.id}>
-      <span className="font-medium">{block.sectionLabel && block.enabled ? `${block.sectionLabel} ` : ""}{block.title}{block.enabled ? "" : " · oculto"}</span>
-      <span className="flex items-center gap-2 text-xs text-muted-foreground">
-        Generado por el cálculo{rows ? ` · ${rows} filas` : ""}{block.images.length ? ` · ${block.images.length} fotos` : ""}. Se edita en el panel de cálculo.
-        <StructuralActions
-          disabled={readOnly}
-          itemLabel="bloque"
-          visibility={{ visible: block.enabled, onChange: onVisibleChange }}
+    <div className={cn("grid gap-2 rounded-lg border border-dashed px-3 py-2 text-sm", !block.enabled && "opacity-65")} data-block-id={block.id}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium">{block.sectionLabel && block.enabled ? `${block.sectionLabel} ` : ""}{block.title}{block.enabled ? "" : " · oculto"}</span>
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
+          Generado por el cálculo{rows ? ` · ${rows} filas` : ""}{block.images.length ? ` · ${block.images.length} fotos` : ""}. Las cifras se editan en el panel de cálculo.
+          <StructuralActions
+            disabled={readOnly}
+            itemLabel="bloque"
+            visibility={{ visible: block.enabled, onChange: onVisibleChange }}
+          />
+        </span>
+      </div>
+      {block.enabled ? tables.map(({ table, apartadoId }) => (
+        <GeneratedTableColumns
+          key={table.id}
+          table={table}
+          readOnly={readOnly}
+          onChange={(next) => onUpdateTable(table.id, next, apartadoId)}
         />
-      </span>
+      )) : null}
     </div>
   );
 }

@@ -125,6 +125,8 @@ export type ColumnPresentation = {
   align?: "left" | "center" | "right";
   /** Figures stay on one line in the printed document. */
   noWrap?: boolean;
+  /** Printed in bold: the resultant factors of the calculation tables. */
+  bold?: boolean;
 };
 
 export type TableSummaryRow = {
@@ -152,6 +154,29 @@ export type TableSummaryBox = {
 
 export type TableNote = { position: "top" | "bottom"; label?: string; text: string };
 
+/**
+ * A column the appraiser adds to a table the calculation writes: text that
+ * prints and does not enter the calculation, by row id.
+ */
+export type GeneratedExtraColumn = {
+  id: string;
+  name: string;
+  /** The column it prints after; null, at the end. */
+  after: string | null;
+  values: Record<string, string>;
+};
+
+/** How the appraiser set the columns of a table the calculation writes. */
+export type GeneratedTableLayout = {
+  /** Columns of the calculation left out of the printed table, by id. */
+  hidden?: string[];
+  /** Headers renamed, by column id or header group id. */
+  labels?: Record<string, string>;
+  extraColumns?: GeneratedExtraColumn[];
+};
+
+export type GeneratedTableState = { source: TableV2; layout: GeneratedTableLayout };
+
 export type TableSchema = {
   presetId?: string;
   zones: StructuralZone[];
@@ -163,11 +188,11 @@ export type TableSchema = {
   /** The title names the table in the editor and is not printed above it. */
   hideCaption?: boolean;
   /**
-   * How tightly the printed table sets its cells: "dense" for tables of
-   * figures, "compact" for long texts and many columns. Follows the number of
-   * columns when missing.
+   * A table the calculation writes, as the appraiser set its columns: the
+   * table as the calculation wrote it and the columns hidden, renamed or added
+   * (see calculation/generated-table-layout.ts). The table itself is what prints.
    */
-  density?: "dense" | "compact";
+  generated?: GeneratedTableState;
   /** Notes printed as written: above the table and its boxes, or under them. */
   notes?: TableNote[];
   /**

@@ -13,8 +13,10 @@ import {
   DEFAULT_COST_ROUNDING,
   LAND_FACTORS,
   LAND_FACTOR_SHORT_LABELS,
+  MAX_EXTRA_DEMERIT_FACTORS,
   constructionCostOf,
   conservationOfRating,
+  costColumnsOf,
   costEngineConfig,
   emptyConstructionCost,
   emptyInstallation,
@@ -26,8 +28,10 @@ import {
   withConstructionType,
   type ConstructionCostDto,
   type CostCalculationDto,
+  type CostColumnsDto,
   type CostLandDto,
   type CostRoundingDto,
+  type DemeritColumnsDto,
   type IndirectDto,
   type InstallationDto,
   type LandFactorKey,
@@ -38,14 +42,17 @@ import { Trace } from "@/features/valuations/engine/trace";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
+import { CALC_HEAD, CALC_HEAD_CELL, CALC_RESULT, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
 import { FormulaInput } from "./formula-input";
 import { useSerializedSave } from "./use-serialized-save";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
-/** Completion and undivided share are fractions (1 = 100 %) edited as percentages. */
-type PercentRow<T> = Omit<Texts<T>, "completion" | "undivided"> & { completion: string; undivided: string };
+/** Completion and undivided share are fractions (1 = 100 %) edited as percentages; the added factors are texts too. */
+type PercentRow<T> = Omit<Texts<T>, "completion" | "undivided" | "extraFactors"> & { completion: string; undivided: string; extraFactors: string[] };
 
 type Draft = {
   land: Omit<Texts<CostLandDto>, "factors"> & { factors: Record<LandFactorKey, string> };
@@ -53,6 +60,7 @@ type Draft = {
   installations: PercentRow<InstallationDto>[];
   indirects: Texts<IndirectDto>[];
   rounding: CostRoundingDto;
+  columns: CostColumnsDto;
 };
 
 /** What the panel edits: every column of the capture, factors with a formula empty (null) when they take it. */
@@ -62,6 +70,7 @@ type PanelInput = {
   installations: InstallationDto[];
   indirects: IndirectDto[];
   rounding: CostRoundingDto;
+  columns: CostColumnsDto;
   /** The formulas typed in its numeric fields, by path; see captured-formulas.ts. */
   formulas?: CapturedFormulas;
 };
@@ -81,12 +90,25 @@ const fractionOf = (text: string) => {
   return percent === null ? 1 : Number((percent / 100).toFixed(10));
 };
 
-function percentRow<T extends { completion: number; undivided: number }>(row: T): PercentRow<T> {
-  return { ...textsOf(row), completion: percentText(row.completion), undivided: percentText(row.undivided) } as PercentRow<T>;
+type CostRow = { completion: number; undivided: number; extraFactors?: number[] };
+
+function percentRow<T extends CostRow>(row: T): PercentRow<T> {
+  return {
+    ...textsOf(row),
+    completion: percentText(row.completion),
+    undivided: percentText(row.undivided),
+    extraFactors: (row.extraFactors ?? []).map(String),
+  } as PercentRow<T>;
 }
 
-function fractionRow<T extends { completion: number; undivided: number }>(row: PercentRow<T>, template: T): T {
-  return { ...numbersOf(row as Texts<T>, template), completion: fractionOf(row.completion), undivided: fractionOf(row.undivided) };
+/** An added factor left empty is 1, as "Otro". */
+function fractionRow<T extends CostRow>(row: PercentRow<T>, template: T): T {
+  return {
+    ...numbersOf(row as unknown as Texts<T>, template),
+    completion: fractionOf(row.completion),
+    undivided: fractionOf(row.undivided),
+    extraFactors: row.extraFactors.map((text) => parseDecimal(text) ?? 1),
+  };
 }
 
 /** The draft of what the server holds; a field typed as a formula reads back as typed. */
@@ -109,6 +131,7 @@ function plainDraftOf(input: CostCalculationDto): Draft {
     installations: input.installations.map(percentRow),
     indirects: input.indirects.map(textsOf),
     rounding: input.rounding ?? DEFAULT_COST_ROUNDING,
+    columns: costColumnsOf(input.columns),
   };
 }
 
@@ -127,6 +150,7 @@ function inputOf(draft: Draft): PanelInput {
     installations: draft.installations.map((row, index) => fractionRow(row, emptyInstallation(index))),
     indirects: draft.indirects.map((row) => numbersOf(row, { concept: "", percentage: null, base: null })),
     rounding: draft.rounding,
+    columns: draft.columns,
   };
 }
 
@@ -147,6 +171,7 @@ function payloadOf(draft: Draft): PanelInput {
     installations: installations.map((index) => input.installations[index]),
     indirects: indirects.map((index) => input.indirects[index]),
     rounding: input.rounding,
+    columns: input.columns,
   };
   const typed = {
     land: draft.land,
@@ -163,6 +188,7 @@ const savedInputOf = (calculation: CostCalculationDto): PanelInput => ({
   installations: calculation.installations,
   indirects: calculation.indirects,
   rounding: calculation.rounding ?? DEFAULT_COST_ROUNDING,
+  columns: costColumnsOf(calculation.columns),
   formulas: calculation.formulas ?? {},
 });
 
@@ -180,10 +206,12 @@ function computeCalculation(calculation: CostCalculationDto) {
 }
 
 const cell = "h-7 min-w-0 px-1.5 text-xs";
+const resultCell = cn(cell, CALC_RESULT);
 const figure = (value: number | null | undefined, digits = 2) =>
   (value === null || value === undefined ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: digits }));
-const head = "px-1.5 py-1 text-center font-medium";
-const readOnlyCell = "px-1.5 whitespace-nowrap tabular-nums text-muted-foreground";
+const head = CALC_HEAD_CELL;
+// What the calculation gives, in the gray of the table, not lighter.
+const readOnlyCell = "px-1.5 whitespace-nowrap tabular-nums";
 const FORMULA_HINT = "Vacío: se calcula con la fórmula del Excel. Escribe un valor para sustituirla; bórralo para volver a la fórmula.";
 
 const LAND_REFERENCE_SOURCE = {
@@ -192,29 +220,88 @@ const LAND_REFERENCE_SOURCE = {
   subject: "Sin lote tipo: homologación directa, el factor de superficie vale 1. Escribe un lote tipo para homologar el sujeto contra él.",
 } as const;
 
+/** The demerit columns of a table: Cons., Edad, "Otro" as named, the factors added and FRe. */
+const demeritLabels = (factors: DemeritColumnsDto) => [
+  "Cons.", "Edad", factors.other.trim() || "Otro", ...factors.extra.map((name, index) => name.trim() || `Factor ${index + 1}`), "FRe",
+];
+
 /** Header of a demerit block, as the books group Cons., Edad, Otro and FRe under "Factores de Demérito". */
-function DemeritHeader(props: { leading: string[]; remaining: string; trailing?: string[] }) {
+function DemeritHeader(props: { leading: string[]; remaining: string; factors: DemeritColumnsDto; trailing?: string[] }) {
+  const labels = demeritLabels(props.factors);
   return (
-    <thead className="bg-muted/60 text-muted-foreground">
+    <thead className={CALC_HEAD}>
       <tr>
         {props.leading.map((label) => <th key={label} rowSpan={2} className={head}>{label}</th>)}
         <th rowSpan={2} className={head}>{props.remaining}</th>
         <th rowSpan={2} className={head} title="Estado de conservación y calificación (criterio de Ross-Heidecke): da el factor Cons.">Estado de conservación</th>
-        <th colSpan={4} className={head}>Factores de Demérito</th>
+        <th colSpan={labels.length} className={head}>Factores de Demérito</th>
         <th rowSpan={2} className={head}>Grado de terminación (%)</th>
         <th rowSpan={2} className={head}>Indiviso (%)</th>
         {(props.trailing ?? []).map((label) => <th key={label} rowSpan={2} className={head}>{label}</th>)}
-        <th rowSpan={2}><span className="sr-only">Acciones</span></th>
+        <th rowSpan={2} className={head}><span className="sr-only">Acciones</span></th>
       </tr>
-      <tr>{["Cons.", "Edad", "Otro", "FRe"].map((label) => <th key={label} className={head}>{label}</th>)}</tr>
+      <tr>{labels.map((label, index) => <th key={index} className={head}>{label}</th>)}</tr>
     </thead>
+  );
+}
+
+/**
+ * The names of the demerit columns of a table and its added factors: "Otro"
+ * renamed, and up to two factors more that multiply the FRe as "Otro" does.
+ */
+function DemeritColumnsEditor(props: {
+  id: string;
+  factors: DemeritColumnsDto;
+  readOnly: boolean;
+  onRename: (next: DemeritColumnsDto) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+}) {
+  const { factors } = props;
+  return (
+    <div className="flex flex-wrap items-end gap-2 text-xs" data-testid={`${props.id}-demerit-columns`}>
+      <label className="grid gap-0.5">
+        <span className="text-muted-foreground">Nombre de la columna «Otro»</span>
+        <Input
+          aria-label="Nombre de la columna Otro"
+          className="h-7 w-36 text-xs"
+          value={factors.other}
+          onChange={(event) => props.onRename({ ...factors, other: event.target.value })}
+        />
+      </label>
+      {factors.extra.map((name, index) => (
+        <label key={index} className="grid gap-0.5">
+          <span className="text-muted-foreground">Factor agregado {index + 1}</span>
+          <span className="flex items-center gap-1">
+            <Input
+              aria-label={`Nombre del factor agregado ${index + 1}`}
+              className="h-7 w-36 text-xs"
+              value={name}
+              placeholder={`Factor ${index + 1}`}
+              onChange={(event) => props.onRename({ ...factors, extra: factors.extra.map((item, position) => (position === index ? event.target.value : item)) })}
+            />
+            {!props.readOnly ? (
+              <Button type="button" size="icon-sm" variant="ghost" aria-label={`Quitar el factor agregado ${index + 1}`} onClick={() => props.onRemove(index)}><Trash2 /></Button>
+            ) : null}
+          </span>
+        </label>
+      ))}
+      {!props.readOnly ? (
+        <Button type="button" size="sm" variant="outline" disabled={factors.extra.length >= MAX_EXTRA_DEMERIT_FACTORS} onClick={props.onAdd}>
+          <Plus data-icon="inline-start" /> Factor de demérito
+        </Button>
+      ) : null}
+      <span className="basis-full text-muted-foreground">
+        Los factores agregados multiplican el FRe igual que «Otro» (vacíos valen 1). Hasta {MAX_EXTRA_DEMERIT_FACTORS} por tabla.
+      </span>
+    </div>
   );
 }
 
 /** Header of a valuation block: VRN and VNR, each with its unit and partial value, around the resultant factor. */
 function ValuationHeader(props: { leading: string[]; resultant: string; netValue: string }) {
   return (
-    <thead className="bg-muted/60 text-muted-foreground">
+    <thead className={CALC_HEAD}>
       <tr>
         {props.leading.map((label) => <th key={label} rowSpan={2} className={head}>{label}</th>)}
         <th colSpan={2} className={head}>Valor de Reposición Nuevo (VRN)</th>
@@ -378,9 +465,50 @@ export function CostCalculationPanel(props: {
     setDraft(next);
     save(next);
   }
-  // The calificación is a select too: it saves at once, and gives the Cons. unless one is typed.
+  // The calificación is a select too: it saves at once and gives the Cons. Picking one replaces a Cons.
+  // typed before (it used to win over the calificación, so changing the calificación changed nothing).
   const pickRating = (list: "constructions" | "installations", index: number, rating: string) => {
-    const next = { ...draft, [list]: draft[list].map((row, rowIndex) => (rowIndex === index ? { ...row, conservationRating: rating } : row)) };
+    const next = {
+      ...draft,
+      [list]: draft[list].map((row, rowIndex) => (rowIndex === index ? { ...row, conservationRating: rating, ...(rating ? { conservation: "" } : {}) } : row)),
+    };
+    setDraft(next);
+    save(next);
+  };
+  // The names of the demerit columns are typed (saved when the field is left); adding or removing a factor saves at once.
+  const renameDemerit = (list: "constructions" | "installations", factors: DemeritColumnsDto) =>
+    setDraft((current) => current && { ...current, columns: { ...current.columns, [list]: factors } });
+  const addDemerit = (list: "constructions" | "installations") => {
+    const factors = draft.columns[list];
+    if (factors.extra.length >= MAX_EXTRA_DEMERIT_FACTORS) return;
+    const next = { ...draft, columns: { ...draft.columns, [list]: { ...factors, extra: [...factors.extra, ""] } } };
+    setDraft(next);
+    save(next);
+  };
+  const removeDemerit = (list: "constructions" | "installations", index: number) => {
+    const factors = draft.columns[list];
+    const next = {
+      ...draft,
+      columns: { ...draft.columns, [list]: { ...factors, extra: factors.extra.filter((_, position) => position !== index) } },
+      [list]: draft[list].map((row) => ({ ...row, extraFactors: row.extraFactors.filter((_, position) => position !== index) })),
+    };
+    setDraft(next);
+    save(next);
+  };
+  const setExtraFactor = (list: "constructions" | "installations", index: number, position: number, text: string) =>
+    setDraft((current) => current && {
+      ...current,
+      [list]: current[list].map((row, rowIndex) => {
+        if (rowIndex !== index) return row;
+        const extraFactors = Array.from({ length: Math.max(row.extraFactors.length, position + 1) }, (_, item) => row.extraFactors[item] ?? "");
+        extraFactors[position] = text;
+        return { ...row, extraFactors };
+      }),
+    });
+  // Mantenim. prints in the construction section and does not enter the calculation: an appraisal of a building may leave it out.
+  const showMaintenance = draft.columns.showMaintenance ?? draft.installations.some((row) => row.maintenance.trim());
+  const toggleMaintenance = (show: boolean) => {
+    const next = { ...draft, columns: { ...draft.columns, showMaintenance: show } };
     setDraft(next);
     save(next);
   };
@@ -433,7 +561,7 @@ export function CostCalculationPanel(props: {
   const demeritCells = (
     list: "constructions" | "installations",
     index: number,
-    row: { conservation: string; conservationRating: string; ageFactor: string; otherFactor: string; resultantFactor: string },
+    row: { conservation: string; conservationRating: string; ageFactor: string; otherFactor: string; extraFactors: string[]; resultantFactor: string },
     key: string,
     age: number | null,
     usefulLife: number | null,
@@ -449,8 +577,28 @@ export function CostCalculationPanel(props: {
           {textInput(list, index, "conservation", row.conservation, "Factor de conservación (Cons.)", true, fromRating === null ? undefined : figure(fromRating, 3))}
         </td>
         <td className="w-16 p-1">{textInput(list, index, "ageFactor", row.ageFactor, "Factor de edad = 1 − (edad / vida útil)^1.4", true, hint(ageFormula))}</td>
-        <td className="w-14 p-1">{textInput(list, index, "otherFactor", row.otherFactor, "Otro factor", true, "1")}</td>
-        <td className="w-16 p-1">{textInput(list, index, "resultantFactor", row.resultantFactor, "Factor resultante FRe = Cons. × Edad × Otro", true, hint(formulaValue(`${key}.factorResultante`)))}</td>
+        <td className="w-14 p-1">{textInput(list, index, "otherFactor", row.otherFactor, draft.columns[list].other, true, "1")}</td>
+        {draft.columns[list].extra.map((name, position) => (
+          <td key={position} className="w-14 p-1">
+            <FormulaInput
+              aria-label={name.trim() || `Factor ${position + 1}`}
+              className={cell}
+              value={row.extraFactors[position] ?? ""}
+              placeholder="1"
+              onChange={(event) => setExtraFactor(list, index, position, event.target.value)}
+            />
+          </td>
+        ))}
+        <td className="w-16 p-1">
+          <FormulaInput
+            aria-label="Factor resultante FRe = Cons. × Edad × Otro"
+            className={resultCell}
+            value={row.resultantFactor}
+            placeholder={hint(formulaValue(`${key}.factorResultante`))}
+            title={`Factor resultante FRe = ${demeritLabels(draft.columns[list]).slice(0, -1).join(" × ")}. ${FORMULA_HINT}`}
+            onChange={(event) => setRow(list, index, "resultantFactor", event.target.value)}
+          />
+        </td>
       </>
     );
   };
@@ -497,9 +645,9 @@ export function CostCalculationPanel(props: {
               <SurfacePowerSelect id="cost-land-power" value={input.land.surfacePower} onChange={(surfacePower) => change({ surfacePower })} />
             </Field>
           </div>
-          <div className="overflow-x-auto rounded-md border bg-background">
-            <table className="w-auto min-w-[900px] text-xs" aria-label="Terreno en estudio">
-              <thead className="bg-muted/60 text-muted-foreground">
+          <div className={CALC_TABLE_FRAME}>
+            <table className={cn(CALC_TABLE, "w-auto min-w-[900px]")} aria-label="Terreno en estudio">
+              <thead className={CALC_HEAD}>
                 <tr>
                   {["Fracción", "Superficie de Sujeto (m²)", "Valor Unitario ($/m²)"].map((label) => <th key={label} rowSpan={2} className={head}>{label}</th>)}
                   <th colSpan={LAND_FACTORS.length + 1} className={head}>Factores de Homologación</th>
@@ -511,7 +659,7 @@ export function CostCalculationPanel(props: {
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-t">
+                <tr className={CALC_ROW}>
                   <td className="px-1.5 text-center">I</td>
                   <td className="w-24 p-1">
                     <FormulaInput
@@ -545,7 +693,7 @@ export function CostCalculationPanel(props: {
                     <FormulaInput
                       id="cost-factor-resultant"
                       aria-label="Factor resultante del terreno (FRe)"
-                      className={cell}
+                      className={resultCell}
                       value={draft.land.resultantFactor}
                       placeholder={hint(formulaValue("costos.terreno.factorResultante"))}
                       title={`FRe = Neg. × Ubic. × Sup. × Serv. × Clas. × Top. ${FORMULA_HINT}`}
@@ -581,12 +729,24 @@ export function CostCalculationPanel(props: {
             Quitar un renglón lo saca del cálculo y del enfoque impreso; el tipo sigue descrito en la sección de construcciones. Para quitarlo de todo el avalúo, bórralo allá.
             {calculation.types.length ? "" : " Aún no hay tipos: captúralos en la sección INF. CONSTRUCCIÓN."}
           </p>
-          <div className="overflow-x-auto rounded-md border bg-background">
-            <table className="w-full min-w-[1000px] text-xs" aria-label="Construcciones: factores de demérito">
-              <DemeritHeader leading={["Ref.", "Tipo de Construcción", "Superficie Construida (m²)", "Edad", "Vida útil"]} remaining="Vida remanente" />
+          <DemeritColumnsEditor
+            id="cost-constructions"
+            factors={draft.columns.constructions}
+            readOnly={readOnly}
+            onRename={(factors) => renameDemerit("constructions", factors)}
+            onAdd={() => addDemerit("constructions")}
+            onRemove={(position) => removeDemerit("constructions", position)}
+          />
+          <div className={CALC_TABLE_FRAME}>
+            <table className={cn(CALC_TABLE, "w-full min-w-[1000px]")} aria-label="Construcciones: factores de demérito">
+              <DemeritHeader
+                leading={["Ref.", "Tipo de Construcción", "Superficie Construida (m²)", "Edad", "Vida útil"]}
+                remaining="Vida remanente"
+                factors={draft.columns.constructions}
+              />
               <tbody>
                 {constructionRows.map(({ row, type, key }, index) => (
-                  <tr key={index} className="border-t">
+                  <tr key={index} className={CALC_ROW}>
                     <td className="w-20 p-1">
                       <select
                         aria-label="Tipo de construcción"
@@ -614,18 +774,18 @@ export function CostCalculationPanel(props: {
               </tbody>
             </table>
           </div>
-          <div className="overflow-x-auto rounded-md border bg-background">
-            <table className="w-full min-w-[900px] text-xs" aria-label="Construcciones: valor de reposición">
+          <div className={CALC_TABLE_FRAME}>
+            <table className={cn(CALC_TABLE, "w-full min-w-[900px]")} aria-label="Construcciones: valor de reposición">
               <ValuationHeader leading={["Ref.", "Tipo de Construcción", "Superficie Construida (m²)"]} resultant="Factor Resultante" netValue="Valor Neto de Reposición (VNR)" />
               <tbody>
                 {constructionRows.map(({ row, type, key }, index) => (
-                  <tr key={index} className="border-t">
+                  <tr key={index} className={CALC_ROW}>
                     <td className="w-20 px-1.5">{row.ref || "—"}</td>
                     <td className={`min-w-40 ${readOnlyCell}`}>{type?.description || "—"}</td>
                     <td className={`w-20 ${readOnlyCell}`}>{figure(type?.area)}</td>
                     <td className="w-28 p-1">{textInput("constructions", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario ($/m²)")}</td>
                     <td className={`w-28 ${readOnlyCell}`}>{amount(`${key}.vrnParcial`)}</td>
-                    <td className={`w-16 ${readOnlyCell}`}>{figure(value(`${key}.factorResultante`), 4)}</td>
+                    <td className={cn("w-16", readOnlyCell, CALC_RESULT)}>{figure(value(`${key}.factorResultante`), 4)}</td>
                     <td className={`w-28 ${readOnlyCell}`}>{amount(`${key}.vnrUnitario`)}</td>
                     <td className="w-28 px-1.5 text-right font-medium whitespace-nowrap tabular-nums">{amount(`${key}.vnrParcial`)}</td>
                   </tr>
@@ -657,16 +817,36 @@ export function CostCalculationPanel(props: {
           <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">C) Instalaciones especiales, elementos accesorios y obras complementarias (IE, EA, OC)</h4>
           <p className="text-xs text-muted-foreground" data-testid="cost-installations-legend">
             P/C: P = Privativa, C = Común. Las sumas privativa y común son informativas; el subtotal incluye las dos.
-            Mantenim. se imprime en la tabla de instalaciones de la sección de construcciones y no entra en el cálculo.
+            Mantenim. se imprime en la tabla de instalaciones de la sección de construcciones y no entra en el cálculo; si el avalúo no lo lleva, quítalo aquí
+            y borra la columna de esa tabla.
           </p>
-          <div className="overflow-x-auto rounded-md border bg-background">
-            <table className="w-full min-w-[1200px] text-xs" aria-label="Instalaciones especiales: factores de demérito">
-              <DemeritHeader leading={["P/C", "Ref.", "Descripción", "Unidad", "Cant.", "Edad", "Vida útil"]} remaining="Vida Remanente" trailing={["Mantenim."]} />
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <DemeritColumnsEditor
+              id="cost-installations"
+              factors={draft.columns.installations}
+              readOnly={readOnly}
+              onRename={(factors) => renameDemerit("installations", factors)}
+              onAdd={() => addDemerit("installations")}
+              onRemove={(position) => removeDemerit("installations", position)}
+            />
+            <label className="flex items-center gap-1.5 text-xs">
+              <Checkbox checked={showMaintenance} disabled={readOnly} onCheckedChange={(checked) => toggleMaintenance(checked === true)} />
+              Capturar Mantenim.
+            </label>
+          </div>
+          <div className={CALC_TABLE_FRAME}>
+            <table className={cn(CALC_TABLE, "w-full min-w-[1200px]")} aria-label="Instalaciones especiales: factores de demérito">
+              <DemeritHeader
+                leading={["P/C", "Ref.", "Descripción", "Unidad", "Cant.", "Edad", "Vida útil"]}
+                remaining="Vida Remanente"
+                factors={draft.columns.installations}
+                trailing={showMaintenance ? ["Mantenim."] : []}
+              />
               <tbody>
                 {draft.installations.map((row, index) => {
                   const numbers = input.installations[index];
                   return (
-                    <tr key={index} className="border-t">
+                    <tr key={index} className={CALC_ROW}>
                       <td className="w-14 p-1">
                         <select
                           aria-label="P/C (P = Privativa, C = Común)"
@@ -689,7 +869,9 @@ export function CostCalculationPanel(props: {
                       {demeritCells("installations", index, row, installationKey(row.ref), numbers.age, numbers.usefulLife)}
                       <td className="w-20 p-1">{percentInput("installations", index, "completion", row.completion, "Grado de terminación")}</td>
                       <td className="w-20 p-1">{percentInput("installations", index, "undivided", row.undivided, "Indiviso")}</td>
-                      <td className="w-24 p-1">{textInput("installations", index, "maintenance", row.maintenance, "Mantenimiento (sección de construcciones)", false)}</td>
+                      {showMaintenance ? (
+                        <td className="w-24 p-1">{textInput("installations", index, "maintenance", row.maintenance, "Mantenimiento (sección de construcciones)", false)}</td>
+                      ) : null}
                       <td className="p-1">
                         {!readOnly ? <Button type="button" size="icon-sm" variant="ghost" aria-label={`Quitar la instalación ${row.ref}`} onClick={() => removeRow("installations", index)}><Trash2 /></Button> : null}
                       </td>
@@ -699,14 +881,14 @@ export function CostCalculationPanel(props: {
               </tbody>
             </table>
           </div>
-          <div className="overflow-x-auto rounded-md border bg-background">
-            <table className="w-full min-w-[1000px] text-xs" aria-label="Instalaciones especiales: valor de reposición">
+          <div className={CALC_TABLE_FRAME}>
+            <table className={cn(CALC_TABLE, "w-full min-w-[1000px]")} aria-label="Instalaciones especiales: valor de reposición">
               <ValuationHeader leading={["P/C", "Ref.", "Descripción", "Unidad", "Cant."]} resultant="F. Result" netValue="Valor Neto Reposición (VNR)" />
               <tbody>
                 {draft.installations.map((row, index) => {
                   const key = installationKey(row.ref);
                   return (
-                    <tr key={index} className="border-t">
+                    <tr key={index} className={CALC_ROW}>
                       <td className="w-14 px-1.5">{row.share}</td>
                       <td className="w-12 px-1.5">{row.ref || "—"}</td>
                       <td className={`min-w-48 ${readOnlyCell}`}>{row.description || "—"}</td>
@@ -714,7 +896,7 @@ export function CostCalculationPanel(props: {
                       <td className={`w-16 ${readOnlyCell}`}>{figure(input.installations[index].quantity)}</td>
                       <td className="w-28 p-1">{textInput("installations", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario")}</td>
                       <td className={`w-28 ${readOnlyCell}`}>{amount(`${key}.vrnParcial`)}</td>
-                      <td className={`w-16 ${readOnlyCell}`}>{figure(value(`${key}.factorResultante`), 4)}</td>
+                      <td className={cn("w-16", readOnlyCell, CALC_RESULT)}>{figure(value(`${key}.factorResultante`), 4)}</td>
                       <td className={`w-28 ${readOnlyCell}`}>{amount(`${key}.vnrUnitario`)}</td>
                       <td className="w-28 px-1.5 text-right font-medium whitespace-nowrap tabular-nums">{amount(`${key}.vnrParcial`)}</td>
                     </tr>

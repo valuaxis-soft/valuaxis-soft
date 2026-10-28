@@ -72,6 +72,69 @@ export function effectiveConservation(row: { conservation: number | null; conser
   return row.conservation ?? conservationOfRating(row.conservationRating);
 }
 
+/** Factors the appraiser may add to the demerit factors of a table, after "Otro". */
+export const MAX_EXTRA_DEMERIT_FACTORS = 2;
+
+/**
+ * The names of the demerit columns of the constructions or the installations:
+ * "Otro" as the appraiser renames it, and the factors added after it (up to
+ * two) that multiply the FRe as "Otro" does.
+ */
+export type DemeritColumnsDto = { other: string; extra: string[] };
+
+/**
+ * How the appraiser set the columns of the cost tables: the demerit columns
+ * of each table and whether the installations capture their maintenance
+ * (null: only when one was written, as before).
+ */
+export type CostColumnsDto = {
+  constructions: DemeritColumnsDto;
+  installations: DemeritColumnsDto;
+  showMaintenance: boolean | null;
+};
+
+export const DEFAULT_OTHER_FACTOR_LABEL = "Otro";
+
+export const DEFAULT_COST_COLUMNS: CostColumnsDto = {
+  constructions: { other: DEFAULT_OTHER_FACTOR_LABEL, extra: [] },
+  installations: { other: DEFAULT_OTHER_FACTOR_LABEL, extra: [] },
+  showMaintenance: null,
+};
+
+/** The columns as stored, completed with the defaults; a blank "Otro" takes the default name. */
+export function costColumnsOf(stored: unknown): CostColumnsDto {
+  const record = (value: unknown) => (typeof value === "object" && value !== null ? value as Record<string, unknown> : {});
+  const demerit = (value: unknown): DemeritColumnsDto => {
+    const { other, extra } = record(value);
+    return {
+      other: typeof other === "string" && other.trim() ? other.trim() : DEFAULT_OTHER_FACTOR_LABEL,
+      extra: Array.isArray(extra)
+        ? extra.filter((name): name is string => typeof name === "string").slice(0, MAX_EXTRA_DEMERIT_FACTORS)
+        : [],
+    };
+  };
+  const columns = record(stored);
+  return {
+    constructions: demerit(columns.constructions),
+    installations: demerit(columns.installations),
+    showMaintenance: typeof columns.showMaintenance === "boolean" ? columns.showMaintenance : null,
+  };
+}
+
+/** Name of the added factor `index` (0 or 1) as printed: the appraiser's, or "Factor 1". */
+export const extraFactorLabel = (columns: DemeritColumnsDto, index: number) => columns.extra[index]?.trim() || `Factor ${index + 1}`;
+
+/**
+ * The added factors of a row that enter the FRe: one per column the table
+ * has, 1 where the row has none.
+ */
+export function extraFactorsOf(row: { extraFactors?: number[] }, columns: DemeritColumnsDto): number[] {
+  return columns.extra.map((_, index) => {
+    const value = row.extraFactors?.[index];
+    return typeof value === "number" && Number.isFinite(value) ? value : 1;
+  });
+}
+
 /** A construction type as the construction section captures it: the single source of its surface, age and useful life. */
 export type ConstructionTypeDto = {
   /**
@@ -103,6 +166,8 @@ export type ConstructionCostDto = {
   /** Edad of the demerit factors (R26); empty to take the formula. */
   ageFactor: number | null;
   otherFactor: number;
+  /** The factors added after "Otro", in the order of their columns (see CostColumnsDto); 1 when missing. */
+  extraFactors?: number[];
   /** FRe (T26); empty to take conservación × edad × otro. */
   resultantFactor: number | null;
   /** Fractions: 1 is 100 %; the panel shows them as percentages. */
@@ -124,7 +189,7 @@ export function emptyConstructionType(index: number): ConstructionTypeDto {
 }
 
 export function emptyConstructionCost(ref = ""): ConstructionCostDto {
-  return { ref, conservation: null, conservationRating: null, ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: null };
+  return { ref, conservation: null, conservationRating: null, ageFactor: null, otherFactor: 1, extraFactors: [], resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: null };
 }
 
 /** The cost row with the data of its type; a row whose type is gone keeps only its reference. */
@@ -141,7 +206,8 @@ export function findConstructionType(types: ConstructionTypeDto[], ref: string):
 /** The cost columns of a construction, what the cost approach saves. */
 export function constructionCostOf(row: ConstructionDto): ConstructionCostDto {
   return {
-    ref: row.ref, conservation: row.conservation, conservationRating: row.conservationRating, ageFactor: row.ageFactor, otherFactor: row.otherFactor, resultantFactor: row.resultantFactor,
+    ref: row.ref, conservation: row.conservation, conservationRating: row.conservationRating, ageFactor: row.ageFactor, otherFactor: row.otherFactor,
+    extraFactors: row.extraFactors, resultantFactor: row.resultantFactor,
     completion: row.completion, undivided: row.undivided, unitReplacementCost: row.unitReplacementCost,
   };
 }
@@ -163,6 +229,8 @@ export type InstallationDto = {
   /** Edad of the demerit factors (R47); empty to take the formula. */
   ageFactor: number | null;
   otherFactor: number;
+  /** The factors added after "Otro", in the order of their columns; 1 when missing. */
+  extraFactors?: number[];
   /** FRe (T47); empty to take conservación × edad × otro. */
   resultantFactor: number | null;
   completion: number;
@@ -199,6 +267,8 @@ export type CostInputDto = {
   installations: WithRating<WithFormulaFactors<InstallationDto, "ageFactor">>[];
   indirects: IndirectDto[];
   rounding?: CostRoundingDto;
+  /** Names of the demerit columns and the factors added; absent in older clients (the defaults). */
+  columns?: CostColumnsDto;
   /** Formulas typed in the numeric fields, by path ("constructions.0.unitReplacementCost"); absent keeps the stored ones whose value did not change. */
   formulas?: CapturedFormulas;
 };
@@ -245,7 +315,8 @@ export function emptyConstruction(index: number): ConstructionDto {
 export function emptyInstallation(index: number): InstallationDto {
   return {
     ref: String(index + 1), description: "", share: "P", unit: "", quantity: null, age: null, usefulLife: null,
-    conservation: null, conservationRating: null, maintenance: "", ageFactor: null, otherFactor: 1, resultantFactor: null, completion: 1, undivided: 1, unitReplacementCost: null,
+    conservation: null, conservationRating: null, maintenance: "", ageFactor: null, otherFactor: 1, extraFactors: [], resultantFactor: null, completion: 1, undivided: 1,
+    unitReplacementCost: null,
   };
 }
 
@@ -282,10 +353,18 @@ export function landReferenceArea(calculation: Pick<CostCalculationDto, "land" |
   return { area: calculation.land.subjectArea ?? calculation.market.subjectArea, source: "subject" };
 }
 
-export function toCostEngineInput(calculation: Pick<CostCalculationDto, "land" | "market" | "constructions" | "installations" | "indirects">):
+export function toCostEngineInput(
+  calculation: Pick<CostCalculationDto, "land" | "market" | "constructions" | "installations" | "indirects"> & { columns?: CostColumnsDto },
+):
   | { ok: true; input: CostApproachInput }
   | { ok: false; reason: string } {
   const { land } = calculation;
+  const columns = calculation.columns ?? DEFAULT_COST_COLUMNS;
+  // Only a table with added factors sends them, so the input of the others stays as it was.
+  const extras = (row: { extraFactors?: number[] }, table: DemeritColumnsDto) => {
+    const factors = extraFactorsOf(row, table);
+    return factors.length ? { extraFactors: factors } : {};
+  };
   const subjectArea = land.subjectArea ?? calculation.market.subjectArea;
   const unitValue = landUnitValue(calculation);
   const hasLand = positive(subjectArea) && positive(unitValue);
@@ -326,6 +405,7 @@ export function toCostEngineInput(calculation: Pick<CostCalculationDto, "land" |
         usefulLife: row.usefulLife as number,
         conservation: effectiveConservation(row) as number,
         otherFactor: row.otherFactor,
+        ...extras(row, columns.constructions),
         ...captured({ ageFactor: row.ageFactor, resultantFactor: row.resultantFactor }),
         completion: row.completion,
         undivided: row.undivided,
@@ -341,6 +421,7 @@ export function toCostEngineInput(calculation: Pick<CostCalculationDto, "land" |
         usefulLife: row.usefulLife as number,
         conservation: effectiveConservation(row) as number,
         otherFactor: row.otherFactor,
+        ...extras(row, columns.installations),
         ...captured({ ageFactor: row.ageFactor, resultantFactor: row.resultantFactor }),
         completion: row.completion,
         undivided: row.undivided,

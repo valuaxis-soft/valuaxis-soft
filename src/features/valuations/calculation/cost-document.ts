@@ -9,8 +9,18 @@
 import type { CostApproachResult } from "../engine/costs";
 import type { Trace } from "../engine/trace";
 import type { Apartado, AppSection, Block, TableContent } from "../model";
-import { ensureTableV2, type TableSummaryBox } from "../services/table";
-import { LAND_FACTORS, LAND_FACTOR_SHORT_LABELS, effectiveConservation, remainingUsefulLife, type CostCalculationDto } from "./cost-types";
+import { ensureTableV2, getDisplayColumns, type TableCellV2, type TableColumn, type TableRow, type TableSummaryBox } from "../services/table";
+import {
+  LAND_FACTORS,
+  LAND_FACTOR_SHORT_LABELS,
+  costColumnsOf,
+  effectiveConservation,
+  extraFactorLabel,
+  extraFactorsOf,
+  remainingUsefulLife,
+  type CostCalculationDto,
+  type DemeritColumnsDto,
+} from "./cost-types";
 import {
   EMPTY,
   figure,
@@ -21,6 +31,7 @@ import {
   money,
   moneyColumn,
   percent,
+  resultantColumn,
   squareMetres,
   textColumn,
   whole,
@@ -40,14 +51,15 @@ export const COST_TEMPLATE_BLOCK_IDS = [
 const number = (digits: number) => new Intl.NumberFormat("es-MX", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const text = (value: number | null | undefined, digits = 2) => (value === null || value === undefined ? "—" : number(digits).format(value));
 
-function table(id: string, title: string, columns: string[], rows: string[][]): TableContent {
-  return { id, title, columns, rows, enabled: true };
-}
-
 const DEMERIT = "Factores de Demérito";
 const NEW_VALUE = "Valor de Reposición Nuevo (VRN)";
 const NET_VALUE = "Valor Neto de Reposición (VNR)";
-const demeritColumns = ["Cons.", "Edad", "Otro", "FRe"].map((name) => figureColumn(name, { group: DEMERIT }));
+/** Cons., Edad, "Otro" as the appraiser named it, the factors added after it and FRe, in bold. */
+const demeritColumns = (columns: DemeritColumnsDto) => [
+  ...["Cons.", "Edad", columns.other].map((name) => figureColumn(name, { group: DEMERIT })),
+  ...columns.extra.map((_, index) => figureColumn(extraFactorLabel(columns, index), { group: DEMERIT })),
+  resultantColumn("FRe", DEMERIT),
+];
 const remainingLife = (usefulLife: number | null, age: number | null) =>
   (usefulLife !== null && age !== null ? whole(Math.max(usefulLife - age, 0)) : EMPTY);
 
@@ -60,6 +72,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
     return typeof found === "number" ? found : undefined;
   };
   const amount = (key: string) => money(value(key) ?? 0);
+  const columns = costColumnsOf(calculation.columns);
   const apartados: Apartado[] = [];
 
   if (value("costos.terreno.valor") !== undefined) {
@@ -72,7 +85,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
         [
           figureColumn("Fracción"), figureColumn("Superficie de Sujeto (m²)"), moneyColumn("Valor Unitario ($/m²)"),
           ...LAND_FACTORS.map((factor) => figureColumn(LAND_FACTOR_SHORT_LABELS[factor.key], { group })),
-          figureColumn("FRe", { group }),
+          resultantColumn("FRe", group),
           moneyColumn("Valor Unitario Neto $/m²"), moneyColumn("Valor Parcial $"),
         ],
         [[
@@ -100,21 +113,23 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
         generatedTable(`${PREFIX}-tabla-construcciones-tipos`, "Tipos de construcción",
           [
             ...type, figureColumn("Edad"), figureColumn("Vida útil"), figureColumn("Vida remanente"),
-            ...demeritColumns, figureColumn("Grado de terminación"), figureColumn("Indiviso"),
+            ...demeritColumns(columns.constructions), figureColumn("Grado de terminación"), figureColumn("Indiviso"),
           ],
           constructions.map((row) => {
             const key = `costos.construcciones.${row.ref}`;
             return [
               row.ref, row.description || EMPTY, figure(row.area), whole(row.age), whole(row.usefulLife), remainingLife(row.usefulLife, row.age),
-              figure(effectiveConservation(row)), figure(value(`${key}.factorEdad`)), figure(row.otherFactor), figure(value(`${key}.factorResultante`)),
+              figure(effectiveConservation(row)), figure(value(`${key}.factorEdad`)), figure(row.otherFactor),
+              ...extraFactorsOf(row, columns.constructions).map((factor) => figure(factor)), figure(value(`${key}.factorResultante`)),
               percent(row.completion), percent(row.undivided),
             ];
-          })),
+          }),
+          { rowKeys: constructions.map((row) => row.ref) }),
         generatedTable(`${PREFIX}-tabla-construcciones-valores`, "Valor de las construcciones",
           [
             ...type,
             moneyColumn("Valor Unit. $", NEW_VALUE), moneyColumn("Valor Parcial VRN $", NEW_VALUE),
-            figureColumn("Factor Resultante"),
+            resultantColumn("Factor Resultante"),
             moneyColumn("Valor Unit. $", NET_VALUE), moneyColumn("Valor Parcial VNR $", NET_VALUE),
           ],
           constructions.map((row) => {
@@ -126,7 +141,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
               amount(`${key}.vnrUnitario`), amount(`${key}.vnrParcial`),
             ];
           }),
-          { summaryBoxes: [
+          { rowKeys: constructions.map((row) => row.ref), summaryBoxes: [
             { id: "subtotal", position: "bottom", align: "end", rows: [{ label: "Subtotal:", value: money(input("costos.construcciones.valor", "subtotal") ?? result.constructions) }] },
             { id: "superficie", position: "bottom", align: "start", rows: [{ label: "Superficie valuada:", value: squareMetres(builtArea) }] },
             { id: "medio", position: "bottom", align: "center", rows: [{ label: "Valor Unitario Medio ($/m²):", value: amount("costos.construcciones.valorUnitarioMedio") }] },
@@ -145,21 +160,23 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
         generatedTable(`${PREFIX}-tabla-instalaciones-partidas`, "Partidas de instalaciones especiales",
           [
             ...item, figureColumn("Edad"), figureColumn("Vida útil"), figureColumn("Vida remanente"),
-            ...demeritColumns, figureColumn("Grado de terminación"), figureColumn("Indiviso"),
+            ...demeritColumns(columns.installations), figureColumn("Grado de terminación"), figureColumn("Indiviso"),
           ],
           installations.map((row) => {
             const key = `costos.instalaciones.${row.ref}`;
             return [
               ...itemCells(row), whole(row.age), whole(row.usefulLife), remainingLife(row.usefulLife, row.age),
-              figure(effectiveConservation(row)), figure(value(`${key}.factorEdad`)), figure(row.otherFactor), figure(value(`${key}.factorResultante`)),
+              figure(effectiveConservation(row)), figure(value(`${key}.factorEdad`)), figure(row.otherFactor),
+              ...extraFactorsOf(row, columns.installations).map((factor) => figure(factor)), figure(value(`${key}.factorResultante`)),
               percent(row.completion), percent(row.undivided),
             ];
-          })),
+          }),
+          { rowKeys: installations.map((row) => row.ref) }),
         generatedTable(`${PREFIX}-tabla-instalaciones-valores`, "Valor de las instalaciones especiales",
           [
             ...item,
             moneyColumn("Valor Unit. $", NEW_VALUE), moneyColumn("Valor Parcial VRN $", NEW_VALUE),
-            figureColumn("F. Result."),
+            resultantColumn("F. Result."),
             moneyColumn("Valor Unit. $", NET_VALUE), moneyColumn("Valor Parcial VNR $", NET_VALUE),
           ],
           installations.map((row) => {
@@ -171,7 +188,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
               amount(`${key}.vnrUnitario`), amount(`${key}.vnrParcial`),
             ];
           }),
-          { summaryBoxes: [
+          { rowKeys: installations.map((row) => row.ref), summaryBoxes: [
             {
               id: "sumas",
               position: "bottom",
@@ -242,17 +259,6 @@ export function withSummaryBox(tableItem: TableContent, box: TableSummaryBox): T
   return { ...normalized, schema: { ...schema, summaryBoxes: [...(schema.summaryBoxes ?? []), box] } } as unknown as TableContent;
 }
 
-function cellsOf(tableItem: TableContent) {
-  const normalized = ensureTableV2(tableItem);
-  return {
-    columns: normalized.columns.map((column) => column.name),
-    rows: normalized.rows.map((row) => normalized.columns.map((column) => {
-      const cell = row.cells[column.id];
-      return cell?.kind === "value" ? cell.value : "";
-    })),
-  };
-}
-
 const CONSTRUCTION_TYPES_TABLE = "construccion_tipos";
 const SPECIAL_INSTALLATIONS_TABLE = "instalaciones_especiales";
 
@@ -267,12 +273,69 @@ export function isCostCaptureTable(tableId: string) {
 }
 
 /**
- * Rows of the construction section tables, from the capture. Once the types
- * (or the cost approach, for the installations) are captured the table
- * follows them, so a type deleted in the section leaves the printed table
- * too, even the last one; before that the table stays as the appraiser wrote it.
+ * What each column of the construction section tables shows, in the order of
+ * the template (sections/construccion): the key of the column and the headers
+ * it is known by. The template has two "Tipo" columns in the types table: the
+ * first is the reference, the second the type's description.
  */
-function constructionRows(calculation: CostCalculationDto, tableId: string): string[][] | null {
+const TYPES_COLUMNS = [
+  { key: "tipo", names: ["tipo"] },
+  { key: "tipo_construccion", names: ["tipo", "tipo de construccion"] },
+  { key: "clasificacion", names: ["clasificacion"] },
+  { key: "calidad", names: ["calidad"] },
+  { key: "conservacion", names: ["conservacion"] },
+  { key: "edad", names: ["edad"] },
+  { key: "vut", names: ["vut", "vida util", "vida util total"] },
+  { key: "vur", names: ["vur", "vida remanente", "vida util remanente"] },
+  { key: "sup_m2", names: ["sup m2", "superficie", "superficie m2", "sup"] },
+  { key: "descripcion", names: ["descripcion"] },
+] as const;
+
+const INSTALLATIONS_COLUMNS = [
+  { key: "numero", names: ["", "no", "num", "numero", "ref"] },
+  { key: "tipo", names: ["tipo"] },
+  { key: "edad", names: ["edad"] },
+  { key: "vut", names: ["vut", "vida util", "vida util total"] },
+  { key: "vur", names: ["vur", "vida remanente", "vida util remanente"] },
+  { key: "conservacion", names: ["conservacion"] },
+  { key: "mantenimiento", names: ["mantenimiento", "mantenim"] },
+  { key: "descripcion", names: ["descripcion"] },
+] as const;
+
+type CaptureColumns = typeof TYPES_COLUMNS | typeof INSTALLATIONS_COLUMNS;
+
+const headerName = (name: string) =>
+  name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * The key of each column of the table, or null for a column the appraiser
+ * added (it keeps what was written in it). A column is known by its id (the
+ * template's key) or by its header; a header two columns share ("Tipo") goes
+ * to them in order. A table whose headers were all renamed is read by
+ * position, as before.
+ */
+function captureKeys(columns: TableColumn[], known: CaptureColumns): (string | null)[] {
+  const taken = new Set<string>();
+  const keys = columns.map((column): string | null => {
+    const id = column.id.toLowerCase();
+    const byId = known.find((item) => item.key === id && !taken.has(item.key));
+    const name = headerName(column.name);
+    const found = byId ?? known.find((item) => !taken.has(item.key) && (item.names as readonly string[]).includes(name));
+    if (!found) return null;
+    taken.add(found.key);
+    return found.key;
+  });
+  if (keys.filter(Boolean).length >= Math.min(2, known.length)) return keys;
+  return columns.map((_, index) => known[index]?.key ?? null);
+}
+
+/**
+ * Rows of the construction section tables, from the capture, by column key.
+ * Once the types (or the cost approach, for the installations) are captured
+ * the table follows them, so a type deleted in the section leaves the printed
+ * table too, even the last one; before that the table stays as the appraiser wrote it.
+ */
+function constructionRows(calculation: CostCalculationDto, tableId: string): { known: CaptureColumns; rows: Record<string, string>[] } | null {
   const id = tableId.toLowerCase();
   // Rows added in the panel but still empty stay out of the dictamen.
   const types = calculation.types.filter((row) => row.description.trim() || row.area !== null);
@@ -283,20 +346,55 @@ function constructionRows(calculation: CostCalculationDto, tableId: string): str
       const row = calculation.constructions.find((item) => item.ref.trim().toLowerCase() === ref.trim().toLowerCase());
       return row ? effectiveConservation(row) : null;
     };
-    return types.map((row) => [
-      row.ref, row.description, row.classification, row.quality, text(conservationOf(row.ref), 2), text(row.age, 0),
-      text(row.usefulLife, 0), text(remainingUsefulLife(row), 0),
-      text(row.area), "",
-    ]);
+    return {
+      known: TYPES_COLUMNS,
+      rows: types.map((row) => ({
+        tipo: row.ref, tipo_construccion: row.description, clasificacion: row.classification, calidad: row.quality,
+        conservacion: text(conservationOf(row.ref), 2), edad: text(row.age, 0), vut: text(row.usefulLife, 0), vur: text(remainingUsefulLife(row), 0),
+        sup_m2: text(row.area), descripcion: "",
+      })),
+    };
   }
   if (id.endsWith(SPECIAL_INSTALLATIONS_TABLE) && (installations.length || calculation.configured)) {
-    return installations.map((row) => [
-      row.ref, row.share === "C" ? "Común" : "Privativa", text(row.age, 0), text(row.usefulLife, 0),
-      row.usefulLife !== null && row.age !== null ? text(Math.max(row.usefulLife - row.age, 0), 0) : "—",
-      text(effectiveConservation(row), 3), row.maintenance || "—", `${row.description}${row.quantity ? ` (${text(row.quantity)}${row.unit ? ` ${row.unit}` : ""})` : ""}`,
-    ]);
+    return {
+      known: INSTALLATIONS_COLUMNS,
+      rows: installations.map((row) => ({
+        numero: row.ref, tipo: row.share === "C" ? "Común" : "Privativa", edad: text(row.age, 0), vut: text(row.usefulLife, 0),
+        vur: row.usefulLife !== null && row.age !== null ? text(Math.max(row.usefulLife - row.age, 0), 0) : "—",
+        conservacion: text(effectiveConservation(row), 3), mantenimiento: row.maintenance || "—",
+        descripcion: `${row.description}${row.quantity ? ` (${text(row.quantity)}${row.unit ? ` ${row.unit}` : ""})` : ""}`,
+      })),
+    };
   }
   return null;
+}
+
+/**
+ * The table with the rows of the capture. It keeps its columns as the
+ * appraiser left them: one deleted (Mantenimiento, in an appraisal of a
+ * building) stays deleted, one renamed or moved keeps its data, and one added
+ * keeps what was written in it, row by row.
+ */
+function filledTable(tableItem: TableContent, filled: { known: CaptureColumns; rows: Record<string, string>[] }): TableContent {
+  const table = ensureTableV2(tableItem);
+  const keys = new Map(captureKeys(getDisplayColumns(table), filled.known).map((key, index) => [getDisplayColumns(table)[index].id, key]));
+  const ids = new Set(table.rows.map((row) => row.id));
+  const rows = filled.rows.map((values, index): TableRow => {
+    const current = table.rows[index];
+    let id = current?.id ?? `r-${table.id}-${index}`;
+    if (!current) {
+      while (ids.has(id)) id = `${id}-n`;
+      ids.add(id);
+    }
+    const cells = Object.fromEntries(table.columns.map((column): [string, TableCellV2] => {
+      const key = keys.get(column.id);
+      if (key) return [column.id, { kind: "value", value: values[key] ?? "" }];
+      return [column.id, current?.cells[column.id] ?? { kind: "value", value: "" }];
+    }));
+    return { id, cells };
+  });
+  if (JSON.stringify(rows) === JSON.stringify(table.rows)) return tableItem;
+  return { ...table, title: tableItem.title, rows } as unknown as TableContent;
 }
 
 /**
@@ -309,12 +407,11 @@ export function withConstructionTables(section: AppSection, calculation: CostCal
   const blocks = section.blocks.map((item) => {
     const apartados = item.apartados.map((apartado) => {
       const tables = apartado.tables.map((tableItem) => {
-        const rows = constructionRows(calculation, tableItem.id);
-        if (!rows) return tableItem;
-        const current = cellsOf(tableItem);
-        if (JSON.stringify(current.rows) === JSON.stringify(rows)) return tableItem;
-        changed = true;
-        return table(tableItem.id, tableItem.title, current.columns, rows);
+        const filled = constructionRows(calculation, tableItem.id);
+        if (!filled) return tableItem;
+        const next = filledTable(tableItem, filled);
+        if (next !== tableItem) changed = true;
+        return next;
       });
       return tables.some((tableItem, index) => tableItem !== apartado.tables[index]) ? { ...apartado, tables } : apartado;
     });
