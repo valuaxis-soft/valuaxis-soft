@@ -25,7 +25,22 @@ export const TRUSTED_STYLE_HASHES = [
   "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='",
 ];
 
-export function contentSecurityPolicy(options: { development: boolean; nonce: string }) {
+/**
+ * Sources Google Maps needs (Maps JavaScript, Static and Geocoding APIs).
+ * Only the maps demonstration under /demo/ gets them; the rest of the app keeps
+ * the base policy. The loader script carries the nonce and 'strict-dynamic'
+ * lets it add Google's own scripts; the host is listed for CSP2 browsers.
+ */
+const GOOGLE_MAPS_SOURCES: Record<string, string[]> = {
+  "script-src": ["https://maps.googleapis.com"],
+  "style-src-elem": ["https://fonts.googleapis.com"],
+  "img-src": ["https://maps.gstatic.com", "https://maps.googleapis.com", "https://*.googleapis.com", "https://*.gstatic.com"],
+  "font-src": ["https://fonts.gstatic.com"],
+  "connect-src": ["https://maps.googleapis.com", "https://*.googleapis.com"],
+  "worker-src": ["blob:"],
+};
+
+export function contentSecurityPolicy(options: { development: boolean; nonce: string; googleMaps?: boolean }) {
   const directives: Record<string, string[]> = {
     "default-src": ["'self'"],
     "script-src": [
@@ -47,6 +62,11 @@ export function contentSecurityPolicy(options: { development: boolean; nonce: st
     "form-action": ["'self'"],
     "object-src": ["'none'"],
   };
+  if (options.googleMaps) {
+    for (const [name, sources] of Object.entries(GOOGLE_MAPS_SOURCES)) {
+      directives[name] = [...(directives[name] ?? []), ...sources];
+    }
+  }
   const policy = Object.entries(directives)
     .map(([name, values]) => `${name} ${values.join(" ")}`)
     .join("; ");
