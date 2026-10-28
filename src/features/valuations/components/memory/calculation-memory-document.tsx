@@ -1,8 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import type { CaratulaFormData, ImageContent, Letterhead } from "../../model";
-import type { CalculationMemory, MemoryApproach, MemoryConcept, MemoryTable } from "../../memory/calculation-memory";
+import type { ComparableCardDto } from "../../calculation/comparable-card.service";
+import { memoryChapters, type CalculationMemory, type MemoryApproach, type MemoryConcept, type MemoryTable } from "../../memory/calculation-memory";
 import { formatDateValue } from "../../services/concept-value-format";
+import { ComparableCardView } from "../calculation/comparable-card-view";
 import { DocumentPreviewHeader } from "../document-preview-header";
 
 /** The dictamen's blues, so the header prints as in the dictamen. */
@@ -28,6 +30,21 @@ function byLocation<T extends { location: string[] }>(items: T[]) {
 
 function Heading({ children }: { children: ReactNode }) {
   return <h3 className="mb-1.5 break-after-avoid text-[10.5px] font-bold uppercase tracking-wide text-slate-700">{children}</h3>;
+}
+
+/** The explanation of a table or a calculation, apart from it: a tinted box with its own caption. */
+function Explanation({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="mt-2 rounded-sm border-l-4 border-[var(--caratula-blue)] bg-slate-50 px-2 py-1.5" data-memory-explanation>
+      <p className="mb-1 text-[9px] font-bold tracking-wide text-[var(--caratula-blue)] uppercase">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+/** The caption over a table of the memory, so it reads apart from the text before it. */
+function TableCaption({ children }: { children: ReactNode }) {
+  return <p className="mb-1 text-[9px] font-bold tracking-wide text-slate-600 uppercase">{children}</p>;
 }
 
 function Formula({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -66,7 +83,8 @@ function Cover({ memory }: { memory: CalculationMemory }) {
 function FormulaTable({ table }: { table: MemoryTable }) {
   const developed = table.rows.flatMap((row) => row.cells).filter((cell) => cell.computed && cell.withValues);
   return (
-    <div data-memory-item className="mb-4">
+    <div data-memory-item className="mb-5">
+      <TableCaption>Tabla: {table.title}</TableCaption>
       <table className="w-full border-collapse text-[9px] leading-tight">
         <thead>
           <tr className="bg-slate-100 text-slate-600">
@@ -97,15 +115,17 @@ function FormulaTable({ table }: { table: MemoryTable }) {
         </tbody>
       </table>
       {developed.length ? (
-        <ul className="mt-1.5 space-y-0.5 text-[9px]">
-          {developed.map((cell) => (
-            <li key={cell.address} className="break-inside-avoid">
-              <strong className="inline-block w-9 text-slate-700">{cell.address}</strong>
-              <Formula>{cell.formula}</Formula> <span className="text-slate-400">→</span> <Formula>{cell.withValues}</Formula>{" "}
-              <span className="text-slate-400">=</span> <span className={`font-semibold ${COMPUTED}`}>{cell.text}</span>
-            </li>
-          ))}
-        </ul>
+        <Explanation title="Desarrollo de las fórmulas de la tabla">
+          <ul className="space-y-0.5 text-[9px]">
+            {developed.map((cell) => (
+              <li key={cell.address} className="break-inside-avoid">
+                <strong className="inline-block w-9 text-slate-700">{cell.address}</strong>
+                <Formula>{cell.formula}</Formula> <span className="text-slate-400">→</span> <Formula>{cell.withValues}</Formula>{" "}
+                <span className="text-slate-400">=</span> <span className={`font-semibold ${COMPUTED}`}>{cell.text}</span>
+              </li>
+            ))}
+          </ul>
+        </Explanation>
       ) : null}
     </div>
   );
@@ -113,7 +133,9 @@ function FormulaTable({ table }: { table: MemoryTable }) {
 
 function FormulaConcepts({ concepts }: { concepts: MemoryConcept[] }) {
   return (
-    <table data-memory-item className="mb-4 w-full border-collapse text-[9.5px] leading-tight">
+    <div data-memory-item className="mb-5">
+    <TableCaption>Conceptos calculados con fórmula</TableCaption>
+    <table className="w-full border-collapse text-[9.5px] leading-tight">
       <thead>
         <tr className="bg-slate-100 text-left text-slate-700">
           <th className="w-[30%] border border-slate-300 px-1.5 py-0.5">Concepto</th>
@@ -134,13 +156,14 @@ function FormulaConcepts({ concepts }: { concepts: MemoryConcept[] }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
 function Approach({ approach, engineVersion }: { approach: MemoryApproach; engineVersion: string }) {
   return (
-    <section data-memory-item className="mb-5">
-      <Heading>{approach.location.join(" › ")}</Heading>
+    <section data-memory-item className="mb-6">
+      <Heading>{approach.title}</Heading>
       {approach.storedVersion && approach.storedVersion !== engineVersion ? (
         <p className="mb-1 text-[9px] text-amber-800">
           Lo guardado se calculó con el motor {approach.storedVersion}; aquí se reproduce con {engineVersion}.
@@ -153,8 +176,8 @@ function Approach({ approach, engineVersion }: { approach: MemoryApproach; engin
       ) : null}
       {approach.pending ? <p className="text-[9.5px] text-slate-600">Sin cálculo: {approach.pending}</p> : null}
       {approach.captured.length ? (
-        <div className="mb-2 text-[9px]">
-          <p className="font-semibold text-slate-700">Valores capturados con fórmula</p>
+        <div className="mb-3 rounded-sm border border-slate-200 px-2 py-1.5 text-[9px]">
+          <p className="mb-1 text-[9px] font-bold tracking-wide text-slate-600 uppercase">Valores capturados con fórmula</p>
           <ul className="space-y-0.5">
             {approach.captured.map((item, index) => (
               <li key={`${item.label}-${index}`} data-captured-formula={item.formula}>
@@ -166,6 +189,8 @@ function Approach({ approach, engineVersion }: { approach: MemoryApproach; engin
         </div>
       ) : null}
       {approach.steps.length ? (
+        <>
+        <TableCaption>Cálculo paso a paso</TableCaption>
         <table className="w-full border-collapse text-[9px] leading-tight">
           <thead>
             <tr className="bg-slate-100 text-left text-slate-700">
@@ -200,7 +225,28 @@ function Approach({ approach, engineVersion }: { approach: MemoryApproach; engin
             ))}
           </tbody>
         </table>
+        </>
       ) : null}
+    </section>
+  );
+}
+
+/** "Memoria técnica de comparables": the sheet of each comparable used, with its photos and an active link to its listing. */
+function ComparableSheets({ comparables }: { comparables: ComparableCardDto[] }) {
+  if (!comparables.length) return null;
+  return (
+    <section className="mt-4 break-before-page" data-memory-comparables>
+      <h2 className="mb-1 border-b border-slate-300 pb-0.5 text-[12px] font-black text-[var(--caratula-blue)]">Memoria técnica de comparables</h2>
+      <p className="mb-3 text-[9.5px] text-slate-600">
+        La ficha de cada comparable que usa el avalúo, con los datos capturados, sus fotografías y su fuente. La liga del anuncio queda activa en el PDF.
+      </p>
+      <div className="grid gap-6">
+        {comparables.map((card) => (
+          <div key={card.comparable.id} data-memory-item className="text-[10px]">
+            <ComparableCardView card={card} printable />
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -212,6 +258,7 @@ function Approach({ approach, engineVersion }: { approach: MemoryApproach; engin
  */
 export function CalculationMemoryDocument({
   caratula,
+  comparables = [],
   headerImage,
   letterhead,
   memory,
@@ -222,8 +269,10 @@ export function CalculationMemoryDocument({
   letterhead: Letterhead;
   memory: CalculationMemory;
   propertyKind: string | null;
+  /** The sheets of the comparables used, for the memoria técnica de comparables. */
+  comparables?: ComparableCardDto[];
 }) {
-  const conceptsAndTables = byLocation(memory.document);
+  const chapters = memoryChapters(memory);
   return (
     <main data-print-memory className="py-8 print:p-0" style={HEADER_COLORS}>
       <style>{"@page { size: letter; margin: 10mm 12mm 14mm; } @media print { [data-print-memory] thead.memory-page-header { display: table-header-group; } }"}</style>
@@ -243,27 +292,31 @@ export function CalculationMemoryDocument({
             <td className="px-5 pt-4 pb-8 sm:px-8">
               <Cover memory={memory} />
 
-              <h2 className="mb-2 border-b border-slate-300 pb-0.5 text-[12px] font-black text-[var(--caratula-blue)]">1. Fórmulas del documento</h2>
-              {conceptsAndTables.length ? (
-                conceptsAndTables.map((group, index) => (
-                  <section key={`${group.heading}-${index}`} className="mb-2">
-                    <Heading>{group.heading}</Heading>
-                    {group.items.filter((item) => item.kind === "concept").length ? (
-                      <FormulaConcepts concepts={group.items.filter((item): item is MemoryConcept => item.kind === "concept")} />
-                    ) : null}
-                    {group.items.filter((item): item is MemoryTable => item.kind === "table").map((table) => <FormulaTable key={table.id} table={table} />)}
+              {chapters.length ? (
+                chapters.map((chapter) => (
+                  <section key={chapter.heading} className="mb-4" data-memory-chapter={chapter.heading}>
+                    <h2 className="mb-2 border-b border-slate-300 pb-0.5 text-[12px] font-black text-[var(--caratula-blue)]">
+                      {chapter.heading}
+                    </h2>
+                    {byLocation(chapter.document).map((group, groupIndex) => {
+                      const concepts = group.items.filter((item): item is MemoryConcept => item.kind === "concept");
+                      const subheading = group.items[0]?.location.slice(1, group.items[0].kind === "table" ? -1 : undefined).join(" › ");
+                      return (
+                        <div key={`${group.heading}-${groupIndex}`} className="mb-2">
+                          {subheading ? <Heading>{subheading}</Heading> : null}
+                          {concepts.length ? <FormulaConcepts concepts={concepts} /> : null}
+                          {group.items.filter((item): item is MemoryTable => item.kind === "table").map((table) => <FormulaTable key={table.id} table={table} />)}
+                        </div>
+                      );
+                    })}
+                    {chapter.approaches.map((approach) => <Approach key={approach.key} approach={approach} engineVersion={memory.engineVersion} />)}
                   </section>
                 ))
               ) : (
-                <p data-memory-item className="mb-4 text-[10px] text-slate-600">El documento no tiene tablas ni conceptos calculados con fórmulas.</p>
+                <p data-memory-item className="mb-4 text-[10px] text-slate-600">El avalúo todavía no tiene tablas con fórmulas ni enfoques calculados.</p>
               )}
 
-              <h2 className="mt-4 mb-2 border-b border-slate-300 pb-0.5 text-[12px] font-black text-[var(--caratula-blue)]">2. Cálculos de los enfoques</h2>
-              {memory.approaches.length ? (
-                memory.approaches.map((approach) => <Approach key={approach.key} approach={approach} engineVersion={memory.engineVersion} />)
-              ) : (
-                <p data-memory-item className="text-[10px] text-slate-600">El avalúo todavía no tiene enfoques calculados.</p>
-              )}
+              <ComparableSheets comparables={comparables} />
             </td>
           </tr>
         </tbody>

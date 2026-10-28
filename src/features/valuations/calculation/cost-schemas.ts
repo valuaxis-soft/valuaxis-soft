@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { capturedFormulasSchema } from "./captured-formulas";
-import { MAX_EXTRA_DEMERIT_FACTORS, isConservationRating } from "./cost-types";
+import { CONSERVATION_CRITERIA, MAX_CONSERVATION_OPTIONS, MAX_EXTRA_DEMERIT_FACTORS, isConservationRating } from "./cost-types";
 import { roundingSchema, surfacePowerSchema } from "./market-schemas";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -14,9 +14,17 @@ const conservationRating = z.number().refine(isConservationRating, "La calificac
 
 /** The factors added after "Otro"; missing in older clients. */
 const extraFactors = z.array(factor).max(MAX_EXTRA_DEMERIT_FACTORS).default([]);
+/** The state picked in a criterion other than Ross-Heidecke; missing in older clients. */
+const conservationState = text(60).nullable().optional();
 const demeritColumns = z.object({
   other: text(40),
   extra: z.array(text(40)).max(MAX_EXTRA_DEMERIT_FACTORS),
+  conservation: z.object({
+    kind: z.enum(CONSERVATION_CRITERIA, "Criterio de conservación inválido."),
+    name: text(60),
+    options: z.array(z.object({ label: text(60), factor: z.number().finite().min(0, "Un factor de conservación va de 0 a 10.").max(10, "Un factor de conservación va de 0 a 10.") }))
+      .max(MAX_CONSERVATION_OPTIONS, `Un criterio lleva hasta ${MAX_CONSERVATION_OPTIONS} estados.`),
+  }).optional(),
 });
 
 const uniqueRefs = (rows: { ref: string }[]) => new Set(rows.map((row) => row.ref.toLowerCase())).size === rows.length;
@@ -68,6 +76,7 @@ export const costInputSchema = z.object({
     usefulLife: amount.optional(),
     conservation: factor.nullable(),
     conservationRating,
+    conservationState,
     ageFactor: formulaFactor,
     otherFactor: factor,
     extraFactors,
@@ -86,6 +95,7 @@ export const costInputSchema = z.object({
     usefulLife: amount,
     conservation: factor.nullable(),
     conservationRating,
+    conservationState,
     maintenance: text(120),
     ageFactor: formulaFactor,
     otherFactor: factor,
@@ -105,6 +115,7 @@ export const costInputSchema = z.object({
     constructions: demeritColumns,
     installations: demeritColumns,
     showMaintenance: z.boolean().nullable(),
+    excludedTypes: z.array(text(20)).max(30).optional(),
   }).optional(),
   formulas: capturedFormulasSchema.optional(),
 });

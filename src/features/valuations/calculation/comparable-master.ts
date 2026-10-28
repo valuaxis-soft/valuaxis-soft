@@ -12,9 +12,11 @@
  * catalog value Valuaxis cannot map); everything else is a warning.
  */
 import {
+  CONSERVATION_OPTIONS,
   CONSTRUCTION_TYPE_SUGGESTIONS,
   DATA_VERIFIED_LABELS,
   OPERATION_TYPE_LABELS,
+  QUALITY_OPTIONS,
   UNIT_BASIS_LABELS,
   URBAN_PROXIMITIES,
   URBAN_PROXIMITY_LABELS,
@@ -31,7 +33,6 @@ import {
   type UnitBasis,
 } from "./comparable-card";
 import { canonicalUrlKey } from "./comparable-duplicates";
-import { RATE_TABLE_OPTIONS } from "./income-types";
 import { cellDate, cellNumber, cellText, friendlyMessage, MAX_IMPORT_ROWS, normalizeHeader, type CellValue } from "./comparable-import";
 import { comparableInputSchema, type ComparableInputPayload } from "./market-schemas";
 import { isLandComparableType, isRentComparableType, type ComparableDto, type ComparableType } from "./market-types";
@@ -119,8 +120,8 @@ export const MASTER_CATALOGS = {
   services: { title: "Servicios", options: ["Completos", "Incompletos", "Sin servicios", "Sin dato"], strict: false },
   paving: { title: "Pavimento", options: ["Concreto", "Asfalto", "Adoquín", "Empedrado", "Terracería", "Sin acceso", "Otro"], strict: false },
   blockPosition: { title: "Posición", options: ["Intermedio", "Esquina", "Cabecera", "Manzana completa", "Otra"], strict: false },
-  quality: { title: "Calidad", options: ["Económica", "Media", "Buena", "Muy buena", "Lujo", "Industrial", "Otro", "Sin dato"], strict: false },
-  conservation: { title: "Conservación", options: [...RATE_TABLE_OPTIONS["Estado de conservación"]], strict: false },
+  quality: { title: "Calidad", options: QUALITY_OPTIONS, strict: false },
+  conservation: { title: "Conservación", options: CONSERVATION_OPTIONS, strict: false },
   currency: { title: "Moneda", options: ["MXN", "USD"], strict: true },
   rentPeriod: { title: "Periodo renta", options: RENT_PERIODS.map((period) => RENT_PERIOD_LABELS[period]), strict: true },
   unitBasis: { title: "Base del unitario", options: Object.values(UNIT_BASIS_LABELS), strict: true },
@@ -154,11 +155,16 @@ export type MasterColumn = {
   catalog?: MasterCatalog;
   /** Other headers that mean this column (normalized), from the per-market template and common wording. */
   aliases?: string[];
+  /**
+   * A column most captures leave empty: the workbook groups it with Excel's
+   * outline, collapsed, so the sheet opens with the essential ones.
+   */
+  advanced?: boolean;
 };
 
 const column = (
   key: string, header: string, group: number, apiKey: string, kind: Kind, required: Required, rule: string,
-  extra: Partial<Pick<MasterColumn, "catalog" | "aliases" | "width">> = {},
+  extra: Partial<Pick<MasterColumn, "catalog" | "aliases" | "width" | "advanced">> = {},
 ): MasterColumn => ({ key, header, group, apiKey, kind, required, rule, width: extra.width ?? (kind === "text" ? 20 : 14), ...extra });
 
 export const MASTER_COLUMNS: MasterColumn[] = [
@@ -167,9 +173,9 @@ export const MASTER_COLUMNS: MasterColumn[] = [
   column("useStatus", "Estado de uso", 0, "estado_uso", "catalog", "Sí", "Pendiente se importa por revisar; Aceptado con datos verificados «Sí» se importa verificado si quien importa puede revisar comparables; Descartado no se importa.", { catalog: "useStatus", width: 13 }),
   column("propertyType", "Tipo de inmueble", 0, "tipo_inmueble", "catalog", "Cond.", "Terreno, o el tipo de construcción. Con la operación decide el mercado: terrenos o inmuebles, en venta o en renta. Importando desde un mercado, vacío es el de ese mercado.", { catalog: "propertyType", width: 18, aliases: ["tipodecomparable"] }),
   column("operation", "Operación", 0, "operacion", "catalog", "Cond.", "Venta o Renta.", { catalog: "operation", width: 11, aliases: ["tipodeoperacion"] }),
-  column("dataOrigin", "Origen de dato", 0, "origen_dato", "catalog", "No", "Procedencia del registro. Si es «Portal inmobiliario», avisa cuando falta la URL.", { catalog: "dataOrigin", width: 16 }),
+  column("dataOrigin", "Origen de dato", 0, "origen_dato", "catalog", "No", "Procedencia del registro. Si es «Portal inmobiliario», avisa cuando falta la URL.", { catalog: "dataOrigin", width: 16, advanced: true }),
   column("sourceName", "Portal / fuente", 0, "portal_fuente", "catalog", "No", "Portal, inmobiliaria o persona. Con el ID de publicación identifica el anuncio.", { catalog: "sourceName", width: 18, aliases: ["fuente", "portal"] }),
-  column("publicationId", "ID publicación", 0, "id_publicacion", "text", "No", "Identificador del anuncio en el portal. El mismo portal con el mismo ID es el mismo comparable.", { width: 16, aliases: ["idanuncio", "iddepublicacion"] }),
+  column("publicationId", "ID publicación", 0, "id_publicacion", "text", "No", "Identificador del anuncio en el portal. El mismo portal con el mismo ID es el mismo comparable.", { width: 16, aliases: ["idanuncio", "iddepublicacion"], advanced: true }),
   column("consultedOn", "Fecha de consulta", 0, "fecha_consulta", "date", "No", "Día en que se consultó o verificó la oferta (dd/mm/aaaa).", { aliases: ["fechaconsulta"] }),
   column("offerDate", "Fecha publicación", 0, "fecha_publicacion", "date", "No", "Fecha del anuncio, si el portal la informa. Es la «fecha de la oferta» del comparable.", { aliases: ["fechadepublicacion", "fechadelaoferta", "fecha"] }),
   column("street", "Calle y número", 1, "ubicacion_calle", "text", "Cond.", "Calle y número. Con colonia, municipio y estado forma la ubicación si «Ubicación (como se imprime)» queda vacía.", { width: 30, aliases: ["ubicacioncalle", "calle", "callenumero"] }),
@@ -178,46 +184,48 @@ export const MASTER_COLUMNS: MasterColumn[] = [
   column("municipality", "Municipio", 1, "municipio", "text", "No", "Sin municipio, la búsqueda por lugar no lo encuentra (aviso).", { width: 18, aliases: ["municipiooalcaldia", "alcaldia"] }),
   column("state", "Estado", 1, "estado", "catalog", "No", "Entidad federativa.", { catalog: "state", width: 16, aliases: ["entidad"] }),
   column("postalCode", "Código postal", 1, "codigo_postal", "text", "No", "Cinco dígitos; se guarda como texto para conservar los ceros.", { width: 11, aliases: ["cp"] }),
-  column("latitude", "Latitud", 1, "latitud", "number", "No", "Grados decimales; latitud y longitud van juntas o ninguna.", { width: 11 }),
-  column("longitude", "Longitud", 1, "longitud", "number", "No", "Grados decimales, negativa en México.", { width: 11 }),
+  column("latitude", "Latitud", 1, "latitud", "number", "No", "Grados decimales; latitud y longitud van juntas o ninguna.", { width: 11, advanced: true }),
+  column("longitude", "Longitud", 1, "longitud", "number", "No", "Grados decimales, negativa en México.", { width: 11, advanced: true }),
   column("location", "Ubicación (como se imprime)", 1, "ubicacion_dictamen", "text", "Cond.", "La línea que imprime el dictamen. Vacía, Valuaxis la arma con las partes. Hace falta esta o la calle.", { width: 36, aliases: ["ubicacion", "direccion", "domicilio"] }),
   column("landUse", "Uso de suelo", 1, "uso_suelo", "catalog", "No", "El uso declarado o el del plan; no se confunde con la normativa verificada.", { catalog: "landUse", width: 16, aliases: ["uso"] }),
-  column("landUseKey", "Clave de uso de suelo", 1, "clave_uso_suelo", "text", "No", "La clave del plan, por ejemplo AU-I/H-3.", { width: 14, aliases: ["clave"] }),
+  column("landUseKey", "Clave de uso de suelo", 1, "clave_uso_suelo", "text", "No", "La clave del plan, por ejemplo AU-I/H-3.", { width: 14, aliases: ["clave"], advanced: true }),
   column("zone", "Tipo de zona", 1, "tipo_zona", "catalog", "No", "Calle tipo, superior, inferior…", { catalog: "zone", width: 15, aliases: ["zona"] }),
-  column("urbanProximity", "Proximidad urbana (SHF)", 1, "proximidad_urbana", "catalog", "No", "1 Céntrica a 5 Rural, como las reglas de la SHF.", { catalog: "urbanProximity", width: 16, aliases: ["proximidadurbana"] }),
+  column("urbanProximity", "Proximidad urbana (SHF)", 1, "proximidad_urbana", "catalog", "No", "1 Céntrica a 5 Rural, como las reglas de la SHF.", { catalog: "urbanProximity", width: 16, aliases: ["proximidadurbana"], advanced: true }),
   column("landArea", "Sup. terreno (m²)", 2, "superficie_terreno_m2", "number", "Cond.", "Requerida cuando el unitario es por terreno; en terrenos es la superficie del cálculo.", { aliases: ["superficiedelterrenom2", "superficiedeterrenom2", "supterreno", "superficieterreno"] }),
   column("frontage", "Frente (m)", 2, "frente_m", "number", "No", "Metros."),
   column("depth", "Fondo (m)", 2, "fondo_m", "number", "No", "Metros."),
-  column("frontCount", "N.º de frentes", 2, "numero_frentes", "integer", "No", "Entero: 1, 2…", { aliases: ["numerodefrentes", "nfrentes"] }),
+  column("frontCount", "N.º de frentes", 2, "numero_frentes", "integer", "No", "Entero: 1, 2…", { aliases: ["numerodefrentes", "nfrentes"], advanced: true }),
   column("shape", "Forma", 2, "forma", "catalog", "No", "", { catalog: "shape" }),
   column("topography", "Topografía", 2, "topografia", "catalog", "No", "", { catalog: "topography", width: 18 }),
   column("services", "Servicios", 2, "servicios", "catalog", "No", "", { catalog: "services" }),
-  column("paving", "Pavimento / acceso", 2, "pavimento", "catalog", "No", "", { catalog: "paving" }),
-  column("blockPosition", "Posición en manzana", 2, "posicion_manzana", "catalog", "No", "", { catalog: "blockPosition" }),
+  column("paving", "Pavimento / acceso", 2, "pavimento", "catalog", "No", "", { catalog: "paving", advanced: true }),
+  column("blockPosition", "Posición en manzana", 2, "posicion_manzana", "catalog", "No", "", { catalog: "blockPosition", advanced: true }),
   column("builtArea", "Sup. construcción (m²)", 3, "superficie_construccion_m2", "number", "Cond.", "Requerida cuando el unitario es por construcción; en inmuebles es la superficie del cálculo (en rentas, la rentable).", { aliases: ["superficieconstruidam2", "superficierentablem2", "supconstruccion"] }),
   column("age", "Edad (años)", 3, "edad_anos", "number", "No", "Declarada o estimada; no es la edad efectiva.", { aliases: ["edad"] }),
   column("quality", "Calidad", 3, "calidad_construccion", "catalog", "No", "", { catalog: "quality" }),
   column("conservation", "Conservación", 3, "estado_conservacion", "catalog", "No", "", { catalog: "conservation", aliases: ["estadodeconservacion"] }),
-  column("levels", "Niveles", 3, "niveles", "integer", "No", "Entero.", { width: 10 }),
+  column("levels", "Niveles", 3, "niveles", "integer", "No", "Entero.", { width: 10, advanced: true }),
   column("bedrooms", "Recámaras", 3, "recamaras", "integer", "No", "Entero.", { width: 11 }),
   column("bathrooms", "Baños", 3, "banos", "number", "No", "Enteros o medios: 2.5 para dos baños y medio.", { width: 10, aliases: ["banoscompletos"] }),
-  column("parking", "Estacionamientos", 3, "estacionamientos", "integer", "No", "Entero.", { width: 12 }),
-  column("price", "Precio de oferta", 4, "precio_oferta", "number", "Sí", "Solo el número. En rentas, la renta del periodo indicado. Sin precio se importa, pero no entra al cálculo hasta completarlo (aviso).", { width: 16, aliases: ["precio", "preciodeoferta", "rentamensual", "oferta"] }),
-  column("currency", "Moneda", 4, "moneda", "catalog", "No", "MXN o USD; vacía es MXN. Se guarda como está, sin convertir; un precio en USD lleva aviso.", { catalog: "currency", width: 9 }),
-  column("rentPeriod", "Periodo renta", 4, "periodicidad_renta", "catalog", "Cond.", "En rentas: mensual o anual. Valuaxis guarda la renta mensual: una anual se divide entre 12 (aviso).", { catalog: "rentPeriod", width: 12, aliases: ["periododerenta"] }),
-  column("unitBasis", "Base del unitario", 4, "base_unitario", "catalog", "No", "Terreno m², Construcción m² o Terreno ha. Vacía: terreno m² en terrenos, construcción m² en inmuebles.", { catalog: "unitBasis", width: 15 }),
+  column("parking", "Estacionamientos", 3, "estacionamientos", "integer", "No", "Entero.", { width: 12, advanced: true }),
+  column("price", "Precio de oferta", 4, "precio_oferta", "number", "Sí", "Solo el número. En rentas, puedes usar «Renta mensual» o «Renta anual» en su lugar; si solo llenas este, es la renta del periodo indicado. Sin precio se importa, pero no entra al cálculo hasta completarlo (aviso).", { width: 16, aliases: ["precio", "preciodeoferta", "oferta"] }),
+  column("monthlyRent", "Renta mensual", 4, "renta_mensual", "number", "Cond.", "En rentas: la renta de un mes. Si falta y hay renta anual, Valuaxis la calcula (anual entre 12). Es la que se guarda.", { width: 14, aliases: ["rentamensual"] }),
+  column("annualRent", "Renta anual", 4, "renta_anual", "number", "Cond.", "En rentas: la renta de un año. Si falta y hay renta mensual, se calcula (mensual por 12). Si traen las dos y no cuadran, manda la mensual (aviso).", { width: 14, aliases: ["rentaanual"] }),
+  column("currency", "Moneda", 4, "moneda", "catalog", "No", "MXN o USD; vacía es MXN. Se guarda como está, sin convertir; un precio en USD lleva aviso.", { catalog: "currency", width: 9, advanced: true }),
+  column("rentPeriod", "Periodo renta", 4, "periodicidad_renta", "catalog", "Cond.", "En rentas, cuando la renta va en «Precio de oferta»: mensual o anual. Valuaxis guarda la renta mensual: una anual se divide entre 12 (aviso).", { catalog: "rentPeriod", width: 12, aliases: ["periododerenta"], advanced: true }),
+  column("unitBasis", "Base del unitario", 4, "base_unitario", "catalog", "No", "Terreno m², Construcción m² o Terreno ha. Vacía: terreno m² en terrenos, construcción m² en inmuebles.", { catalog: "unitBasis", width: 15, advanced: true }),
   column("unitPrice", "Precio unitario (auto)", 4, "precio_unitario", "formula", "Auto", "Precio entre el área de la base. Es una ayuda: Valuaxis lo vuelve a calcular y no lee esta columna. No es homologación.", { width: 16 }),
-  column("priceChangedOn", "Fecha cambio de precio", 4, "fecha_precio", "date", "No", "Última fecha comprobable en que cambió la oferta."),
+  column("priceChangedOn", "Fecha cambio de precio", 4, "fecha_precio", "date", "No", "Última fecha comprobable en que cambió la oferta.", { advanced: true }),
   column("url", "URL de publicación", 5, "url_publicacion", "url", "Cond.", "Empieza con http:// o https://. Se compara sin parámetros ni fragmento para encontrar duplicados.", { width: 34, aliases: ["ligadelanuncio", "liga", "url", "enlace", "link"] }),
-  column("photoUrl", "URL fotografía", 5, "url_fotografia", "url", "No", "Liga a la foto; no se descarga ni se incrusta.", { width: 26 }),
+  column("photoUrl", "URL fotografía", 5, "url_fotografia", "url", "No", "Liga a la foto; no se descarga ni se incrusta.", { width: 26, advanced: true }),
   column("contactName", "Contacto / anunciante", 5, "contacto", "text", "No", "Dato sensible: solo lo exportan quienes pueden editar comparables y no entra a estadísticas.", { aliases: ["contacto", "anunciante", "oferente"] }),
   column("contactPhone", "Teléfono", 5, "telefono", "text", "No", "Dato sensible; se guarda como texto.", { width: 15, aliases: ["telefono", "tel", "celular"] }),
   column("description", "Descripción anunciada", 5, "descripcion_portal", "text", "No", "Resumen del anuncio; se guarda como el texto del anuncio del comparable.", { width: 34, aliases: ["descripcion"] }),
   column("notes", "Notas del perito", 5, "observaciones", "text", "No", "Aclaraciones verificadas, ofertas duplicadas, etc.", { width: 30, aliases: ["observaciones", "notas", "comentarios"] }),
-  column("extractionConfidence", "Confianza extracción", 6, "confianza_extraccion", "catalog", "No", "Nivel técnico de la extracción, no calidad valuatoria.", { catalog: "extractionConfidence" }),
+  column("extractionConfidence", "Confianza extracción", 6, "confianza_extraccion", "catalog", "No", "Nivel técnico de la extracción, no calidad valuatoria.", { catalog: "extractionConfidence", advanced: true }),
   column("verified", "Datos verificados", 6, "datos_verificados", "catalog", "No", "Sí / No / Parcialmente.", { catalog: "verified", width: 12 }),
-  column("reviewedBy", "Revisó", 6, "revisado_por", "text", "No", "Quien validó el registro.", { width: 16 }),
-  column("reviewedOn", "Fecha revisión", 6, "fecha_revision", "date", "No", ""),
+  column("reviewedBy", "Revisó", 6, "revisado_por", "text", "No", "Quien validó el registro.", { width: 16, advanced: true }),
+  column("reviewedOn", "Fecha revisión", 6, "fecha_revision", "date", "No", "", { advanced: true }),
   column("control", "Control automático", 6, "control_automatico", "formula", "Auto", "Alerta mínima de captura; no sustituye la revisión del perito. Valuaxis repite estas alertas al importar.", { width: 20 }),
 ];
 
@@ -340,6 +348,33 @@ export function propertyTypeKeyOf(type: ComparableType, constructionType: string
   return rules.find(([pattern]) => pattern.test(text))?.[1] ?? "OTRO";
 }
 
+/** A month within a cent of a twelfth of the year: the two columns agree. */
+const RENT_TOLERANCE = 0.01;
+
+/**
+ * The monthly rent of a row, the one Valuaxis keeps: the "Renta mensual"
+ * column; else "Renta anual" over 12; else the offer price by its period.
+ * With both columns, the month rules and a mismatch is a warning.
+ */
+export function monthlyAndAnnualRent(input: { monthly: number | null; annual: number | null; price: number | null; period: RentPeriod | null }) {
+  const warnings: string[] = [];
+  if (input.monthly !== null) {
+    if (input.annual !== null && Math.abs(input.monthly * 12 - input.annual) > RENT_TOLERANCE * 12) {
+      warnings.push("La renta anual no es la mensual por 12: se tomó la mensual.");
+    }
+    return { monthly: input.monthly, annual: input.monthly * 12, warnings };
+  }
+  if (input.annual !== null) {
+    warnings.push("Solo trae renta anual: la mensual se calculó entre 12.");
+    return { monthly: input.annual / 12, annual: input.annual, warnings };
+  }
+  if (input.price !== null && input.period === "ANUAL") {
+    warnings.push("Renta anual: Valuaxis guarda la renta mensual, así que se dividió entre 12.");
+    return { monthly: input.price / 12, annual: input.price, warnings };
+  }
+  return { monthly: input.price, annual: input.price === null ? null : input.price * 12, warnings };
+}
+
 /** "1000" → "01000": Excel drops the leading zero of a postal code typed as a number. */
 const postalCodeOf = (text: string) => (/^\d{4}$/.test(text) ? `0${text}` : text);
 
@@ -442,9 +477,14 @@ export function parseMasterRows(sheet: CellValue[][], headerIndex: number, optio
     if (coordinates) errors.push(coordinates);
 
     const rent = type ? isRentComparableType(type) : operation === "RENTA";
-    if (rent && rentPeriod === "ANUAL" && price) {
-      price /= 12;
-      warnings.push("Renta anual: Valuaxis guarda la renta mensual, así que se dividió entre 12.");
+    const monthlyRent = numberOf("monthlyRent");
+    const annualRent = numberOf("annualRent");
+    if (rent) {
+      const rents = monthlyAndAnnualRent({ monthly: monthlyRent, annual: annualRent, price, period: rentPeriod });
+      price = rents.monthly;
+      warnings.push(...rents.warnings);
+    } else if (monthlyRent || annualRent) {
+      warnings.push("Trae renta mensual o anual, pero la operación es venta: se tomó el precio de oferta.");
     }
     if (currency === "USD") warnings.push("Precio en dólares (USD): se guarda sin convertir y el cálculo lo toma como está.");
     const basis: UnitBasis = statedBasis ?? (land ? "TERRENO_M2" : "CONSTRUCCION_M2");
@@ -612,7 +652,9 @@ export function masterRowValues(
     parking: property.parking ?? null,
     price: comparable.price,
     currency: listing.currency ?? "MXN",
-    // Valuaxis keeps the monthly rent.
+    // Valuaxis keeps the monthly rent; the year is twelve of them.
+    monthlyRent: rent ? comparable.price : null,
+    annualRent: rent && comparable.price !== null ? Number((comparable.price * 12).toFixed(2)) : null,
     rentPeriod: rent ? RENT_PERIOD_LABELS.MENSUAL : RENT_PERIOD_LABELS.NO_APLICA,
     unitBasis: UNIT_BASIS_LABELS[basis],
     priceChangedOn: listing.priceChangedOn ?? null,

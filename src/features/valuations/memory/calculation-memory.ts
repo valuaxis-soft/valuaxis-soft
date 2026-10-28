@@ -16,6 +16,8 @@
  * Pure TypeScript — no React, no database.
  */
 import { valueAtPath, type CapturedFormulas, type PercentFields } from "../calculation/captured-formulas";
+import type { ComparableCardDto } from "../calculation/comparable-card.service";
+import { comparableValidity } from "../calculation/comparable-validity";
 import type { CostCalculationDto } from "../calculation/cost-types";
 import { COST_PERCENT_FIELDS, costEngineConfig, toCostEngineInput } from "../calculation/cost-types";
 import type { ConclusionCalculationDto } from "../calculation/conclusion-types";
@@ -36,6 +38,7 @@ import {
   isRentComparableType,
   marketEngineConfig,
   toMarketEngineInput,
+  type ComparableType,
   type MarketCalculationDto,
 } from "../calculation/market-types";
 import { APPROACH_LABELS, concludeValue, type Approach } from "../engine/conclusion";
@@ -135,7 +138,10 @@ export type CalculationMemory = {
   generatedAt: string;
   concluded: boolean;
   document: Array<MemoryTable | MemoryConcept>;
+  /** In the order their sections print in the dictamen; one without its section goes last. */
   approaches: MemoryApproach[];
+  /** The headings of the dictamen's sections ("3. ENFOQUE DE COSTOS"), in the order they print. */
+  sectionHeadings: string[];
 };
 
 /** The calculations of a valuation, as the editor's panels read them. */
@@ -707,6 +713,12 @@ export function buildCalculationMemory(input: CalculationMemoryInput): Calculati
       differs: steps.some((step) => step.storedValue !== undefined),
     };
   });
+  const sectionHeadings = input.sections.filter((section) => section.enabled !== false).map(sectionHeading);
+  // As the dictamen prints them: an approach whose section is not in the document goes last, in the engine's order.
+  const rank = (approach: MemoryApproach) => {
+    const index = approach.location.length > 1 ? sectionHeadings.indexOf(approach.location[0]) : -1;
+    return index === -1 ? sectionHeadings.length : index;
+  };
   return {
     folio: input.folio,
     valuationDate: input.valuationDate,
@@ -715,6 +727,70 @@ export function buildCalculationMemory(input: CalculationMemoryInput): Calculati
     generatedAt: input.generatedAt.toISOString(),
     concluded: input.concluded,
     document: documentFormulas(input.sections),
-    approaches,
+    approaches: approaches.map((approach, index) => ({ approach, index: engineOrder(approaches, approach, index) }))
+      .sort((a, b) => rank(a.approach) - rank(b.approach) || a.index - b.index)
+      .map(({ approach }) => approach),
+    sectionHeadings,
   };
+}
+
+/**
+ * Where an approach goes among those of its section: its own place, but the
+ * statistical methods of a market (MOTOR.ESTADISTICO.<tipo>) right after the
+ * market of the same type (MOTOR.MERCADO.<tipo>), as the dictamen prints them.
+ */
+function engineOrder(approaches: Array<Pick<MemoryApproach, "key">>, approach: Pick<MemoryApproach, "key">, index: number) {
+  const type = /^MOTOR\.ESTADISTICO\.(.+)$/.exec(approach.key)?.[1];
+  const market = type ? approaches.findIndex((item) => item.key === `MOTOR.MERCADO.${type}`) : -1;
+  return market === -1 ? index : market + 0.5;
+}
+
+/** One section of the dictamen in the memory: its formulas, then the approaches calculated in it. */
+export type MemoryChapter = { heading: string; document: Array<MemoryTable | MemoryConcept>; approaches: MemoryApproach[] };
+
+/**
+ * The memory by the sections of the dictamen, in their order: each with the
+ * formulas of its tables and concepts and the engine's steps of its
+ * approaches. Sections with neither are left out; approaches without a
+ * section in the document form chapters of their own, last.
+ */
+export function memoryChapters(memory: Pick<CalculationMemory, "document" | "approaches" | "sectionHeadings">): MemoryChapter[] {
+  const chapters = new Map<string, MemoryChapter>();
+  const chapter = (heading: string) => {
+    const found = chapters.get(heading);
+    if (found) return found;
+    const created: MemoryChapter = { heading, document: [], approaches: [] };
+    chapters.set(heading, created);
+    return created;
+  };
+  for (const heading of memory.sectionHeadings) chapter(heading);
+  for (const item of memory.document) chapter(item.location[0] ?? "Documento").document.push(item);
+  for (const approach of memory.approaches) chapter(approach.location.length > 1 ? approach.location[0] : approach.title).approaches.push(approach);
+  return [...chapters.values()].filter((item) => item.document.length || item.approaches.length);
+}
+
+/** The order the markets print in the dictamen: land before buildings for sale, buildings before land for rent. */
+const PRINT_ORDER: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"];
+
+/**
+ * "Memoria técnica de comparables": the sheet of every comparable the
+ * valuation uses, market by market as the dictamen prints them, with the
+ * data, photos and source captured. A sheet of the memory carries no uses
+ * in other valuations, review or warnings.
+ */
+export function memoryComparableCards(
+  markets: Array<Pick<MarketCalculationDto, "settings" | "comparables" | "comparableValidityMonths">>,
+  valuation: { id: string; folio: string; title: string | null },
+  today: string,
+): ComparableCardDto[] {
+  return [...markets]
+    .sort((a, b) => PRINT_ORDER.indexOf(a.settings.comparableType) - PRINT_ORDER.indexOf(b.settings.comparableType))
+    .flatMap((market) => [...market.comparables].sort((a, b) => a.reference - b.reference).map((comparable): ComparableCardDto => ({
+      comparable,
+      type: market.settings.comparableType,
+      valuation,
+      validity: comparableValidity(comparable.updatedOn ?? today, today, comparable.validityMonths ?? market.comparableValidityMonths),
+      warnings: [],
+      uses: [],
+    })));
 }

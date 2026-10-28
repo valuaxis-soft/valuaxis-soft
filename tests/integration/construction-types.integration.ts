@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { getConstructionTypes, saveConstructionTypes } from "../../src/features/valuations/calculation/construction-types.service";
 import { getCostCalculation, saveCostCalculation } from "../../src/features/valuations/calculation/cost.service";
-import { DEFAULT_LAND, emptyConstructionCost, type CostInputDto } from "../../src/features/valuations/calculation/cost-types";
+import { DEFAULT_COST_COLUMNS, DEFAULT_LAND, conservationCriterionOf, emptyConstructionCost, type CostInputDto } from "../../src/features/valuations/calculation/cost-types";
 import { concludeValuation, saveValuationSections } from "../../src/features/valuations/services/valuation-workflow.service";
 import { createValuationFixture, prisma } from "./support";
 
@@ -241,4 +241,25 @@ test("the types belong to the organization and a concluded valuation keeps them 
     saveConstructionTypes(fixture.publicId, user, { types: [] }),
     (error: Error & { status?: number }) => error.status === 409,
   );
+});
+
+test("a table rated by the table of states keeps its criterion and each row its state; the types taken out stay out", async () => {
+  const fixture = await createValuationFixture();
+  const user = editor(fixture);
+  const bodega = { ...arandasType, ref: "T-2", description: "Bodega", area: 80, age: 10, usefulLife: 50 };
+  await saveConstructionTypes(fixture.publicId, user, { types: [arandasType, bodega] });
+  const table = conservationCriterionOf("TABLA_ESTADO");
+  table.options[1].factor = 0.92;
+  await saveCostCalculation(fixture.publicId, user, {
+    ...costsOf([{ ...arandasCost, conservation: 0.92, conservationState: "Normal" }]),
+    columns: { ...DEFAULT_COST_COLUMNS, constructions: { other: "Otro", extra: [], conservation: table }, excludedTypes: ["T-2"] },
+  });
+  const costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  assert.equal(costs.constructions[0].conservationState, "Normal");
+  assert.equal(costs.constructions[0].conservation, 0.92, "the state's factor is the Cons. of the row");
+  assert.deepEqual(costs.columns?.constructions.conservation?.options[1], { label: "Normal", factor: 0.92 }, "the factors adjusted stay");
+  assert.equal(costs.columns?.installations.conservation, undefined, "the other table keeps Ross-Heidecke");
+  assert.deepEqual(costs.columns?.excludedTypes, ["T-2"]);
+  // 467.27 × 14,361.99 × 0.92 × (1 − (2/70)^1.4), rounded as the books.
+  assert.ok((await storedConstructionValue(fixture)).value > 0);
 });

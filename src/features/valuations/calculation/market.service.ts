@@ -43,6 +43,7 @@ import {
   COMPARABLE_TYPES,
   CUSTOM_FACTOR_KEY,
   OFFER_LEVELS,
+  cleanAttributes,
   comparableFormValues,
   comparableFormulaValues,
   defaultMarketSettings,
@@ -53,6 +54,7 @@ import {
   marketEngineConfig,
   offerMarkOf,
   toMarketEngineInput,
+  type ComparableAttribute,
   type ComparableDto,
   type ComparableType,
   type FactorSlotConfig,
@@ -85,6 +87,7 @@ type PropertySnapshot = {
   notes: string | null;
   extra?: Record<string, string>;
   characteristicsText?: string | null;
+  attributes?: ComparableAttribute[];
   factorJustification?: string | null;
   regressionExcluded?: boolean;
   urbanProximity?: UrbanProximity | null;
@@ -221,6 +224,7 @@ export async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean
     notes: property.notes ?? null,
     extra: property.extra ?? {},
     characteristicsText: property.characteristicsText ?? null,
+    attributes: cleanAttributes(property.attributes),
     factorJustification: property.factorJustification ?? null,
     ...(property.regressionExcluded ? { regressionExcluded: true } : {}),
     formulas: storedFormulas(property.formulas),
@@ -662,6 +666,7 @@ function snapshots(payload: ComparableInputPayload, formulas: CapturedFormulas, 
     notes: payload.notes,
     extra: payload.extra ?? stored.extra ?? {},
     characteristicsText: unlessOmitted(payload.characteristicsText, stored.characteristicsText),
+    attributes: cleanAttributes(payload.attributes ?? stored.attributes),
     factorJustification: unlessOmitted(payload.factorJustification, stored.factorJustification),
     ...((payload.regressionExcluded ?? stored.regressionExcluded) ? { regressionExcluded: true } : {}),
     urbanProximity: unlessOmitted(payload.urbanProximity, stored.urbanProximity),

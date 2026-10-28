@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, ImagePlus, Loader2, Trash2 } from "lucide-react";
+import { Copy, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useEffectEvent, useState, type ChangeEvent, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,13 @@ import type { ComparablePrefill } from "@/features/ai/listing-prefill";
 import {
   ADDRESS_LABELS,
   ADDRESS_PARTS,
+  CONSERVATION_OPTIONS,
   OPERATION_TYPES,
   OPERATION_TYPE_LABELS,
   URBAN_PROXIMITIES,
   URBAN_PROXIMITY_LABELS,
   CONSTRUCTION_TYPE_SUGGESTIONS,
+  QUALITY_OPTIONS,
   coordinatesError,
   formatAddress,
   formatComparableId,
@@ -38,9 +40,12 @@ import { ComparableValidityLine } from "./comparable-validity-badge";
 import { COMPARABLE_VALIDITY_MONTHS, addMonths, validityMonthsOf } from "@/features/valuations/calculation/comparable-validity";
 import { FormulaInput } from "./formula-input";
 import { ScreenshotSlot } from "./screenshot-slot";
+import { SheetFormSection } from "./comparable-sheet";
 import {
   COMPARABLE_TYPE_LABELS,
+  MAX_COMPARABLE_ATTRIBUTES,
   NUMERIC_CHARACTERISTICS,
+  cleanAttributes,
   characteristicText,
   isBuiltComparableType,
   isBuiltinCharacteristic,
@@ -62,6 +67,18 @@ type Draft = Record<DraftKey, string> & { address: Record<AddressPart, string> }
 
 /** Area and price are captured at the top of the form; the list of characteristics shows the rest. */
 const TOP_FIELDS = new Set(["area", "price"]);
+
+/** Lists offered while typing these characteristics; any other wording is kept as written. */
+const OPEN_LISTS: Record<string, { id: string; options: string[] }> = {
+  quality: { id: "comparable-quality-options", options: QUALITY_OPTIONS },
+  conservation: { id: "comparable-conservation-options", options: CONSERVATION_OPTIONS },
+};
+
+/** The annual rent of a monthly one, as typed in the form; empty when the month is not a number. */
+const annualOf = (monthly: string) => {
+  const value = parseDecimal(monthly);
+  return value === null ? "" : String(Number((value * 12).toFixed(2)));
+};
 
 const emptyAddress = (): Record<AddressPart, string> =>
   Object.fromEntries(ADDRESS_PARTS.map((part) => [part, ""])) as Record<AddressPart, string>;
@@ -118,7 +135,7 @@ function initialCharacteristics(comparable: ComparableDto | null, fields: Charac
 
 const EMPTY_VALUES: ComparableFormValues = {
   location: "", area: null, price: null, landUse: null, landUseKey: null, shape: null, zone: null, frontCount: null, frontage: null,
-  depth: null, topography: null, services: null, conservation: null, quality: null, notes: null, extra: {}, characteristicsText: null,
+  depth: null, topography: null, services: null, conservation: null, quality: null, notes: null, extra: {}, characteristicsText: null, attributes: [],
   sourceName: null, contactName: null, contactPhone: null, url: null, offerDate: null, factors: [],
 };
 
@@ -159,6 +176,8 @@ export function ComparableDialog(props: {
   onReuse: (comparableId: string) => Promise<boolean>;
   /** The months a new comparable is valid for: the firm's. */
   defaultValidityMonths?: number;
+  /** Names of the characteristics added to other comparables, offered while typing a new one. */
+  attributeNames?: string[];
 }) {
   const { comparable, readOnly } = props;
   const fields = props.characteristicFields.filter((field) => !TOP_FIELDS.has(field.key));
@@ -167,6 +186,10 @@ export function ComparableDialog(props: {
   const [characteristics, setCharacteristics] = useState<Record<string, string>>(() =>
     initialCharacteristics(comparable, fields, props.prefill));
   const [freeText, setFreeText] = useState(comparable?.characteristicsText ?? "");
+  // Characteristics of this comparable only: a name and a value each, to capture and to filter the firm's base.
+  const [attributes, setAttributes] = useState(() => comparable?.attributes?.map((item) => ({ ...item })) ?? []);
+  // A rent can be typed as the year: the month (what is stored) is a twelfth of it.
+  const [annualRent, setAnnualRent] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<"photo" | "screenshot" | null>(null);
   const [pendingScreenshot, setPendingScreenshot] = useState<File | null>(null);
@@ -186,6 +209,9 @@ export function ComparableDialog(props: {
   const location = draft.location.trim() || formatAddress(address);
 
   const built = isBuiltComparableType(props.comparableType);
+  const rent = isRentComparableType(props.comparableType);
+  const setAttribute = (index: number, key: "name" | "value", value: string) =>
+    setAttributes((current) => current.map((item, position) => (position === index ? { ...item, [key]: value } : item)));
   // The validity: the day of consultation plus its months; a comparable of before without months keeps its day.
   const validUntil = draft.validityMonths ? addMonths(draft.consultedOn || todayInMexico(), Number(draft.validityMonths)) : draft.validUntil;
 
@@ -241,6 +267,7 @@ export function ComparableDialog(props: {
       listingText: draft.listingText.trim() || null,
       landUse: draft.landUse.trim() || null,
       characteristicsText: freeText.trim() || null,
+      attributes: cleanAttributes(attributes),
       ...(building ?? {}),
     };
     for (const key of ["area", "price"] as const) values = withCharacteristic(values, key, draft[key], parseDecimal(draft[key]));
@@ -390,8 +417,7 @@ export function ComparableDialog(props: {
             </section>
           ) : null}
           <fieldset disabled={readOnly || saving} className="grid gap-5">
-            <section className="grid gap-3" aria-label="Ubicación">
-              <h3 className="text-sm font-medium">Ubicación</h3>
+            <SheetFormSection title="Ubicación">
               <FieldGroup className="grid gap-3 sm:grid-cols-6">
                 <Field className="sm:col-span-2">
                   <FieldLabel htmlFor="comparable-state">{ADDRESS_LABELS.state}</FieldLabel>
@@ -447,8 +473,9 @@ export function ComparableDialog(props: {
                   <Input id="comparable-longitude" inputMode="decimal" placeholder="-102.3467" value={draft.longitude} onChange={set("longitude")} />
                 </Field>
               </FieldGroup>
-            </section>
+            </SheetFormSection>
 
+            <SheetFormSection title={built ? "Oferta, superficies y construcción" : "Oferta y superficie"}>
             <FieldGroup className="grid gap-3 sm:grid-cols-6">
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-operation">Tipo de operación</FieldLabel>
@@ -462,8 +489,30 @@ export function ComparableDialog(props: {
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-price">{props.unitLabel}</FieldLabel>
-                <FormulaInput id="comparable-price" grouping value={draft.price} onChange={set("price")} />
+                <FormulaInput
+                  id="comparable-price"
+                  grouping
+                  value={draft.price}
+                  onChange={(event) => { setAnnualRent(null); set("price")(event); }}
+                />
               </Field>
+              {rent ? (
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="comparable-annual-rent">Renta anual</FieldLabel>
+                  <Input
+                    id="comparable-annual-rent"
+                    inputMode="decimal"
+                    value={annualRent ?? annualOf(draft.price)}
+                    onChange={(event) => {
+                      const typed = event.target.value;
+                      setAnnualRent(typed);
+                      const yearly = parseDecimal(typed);
+                      setDraft((current) => ({ ...current, price: yearly === null ? "" : String(Number((yearly / 12).toFixed(2))) }));
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">Captura la mensual o la anual: la otra se calcula. Se guarda la mensual.</p>
+                </Field>
+              ) : null}
               <Field className="sm:col-span-2">
                 <FieldLabel>Valor unitario</FieldLabel>
                 <p className="flex h-8 items-center text-sm text-muted-foreground">
@@ -503,9 +552,9 @@ export function ComparableDialog(props: {
                 </>
               ) : null}
             </FieldGroup>
+            </SheetFormSection>
 
-            <section className="grid gap-3" aria-label="Origen o fuente de información">
-              <h3 className="text-sm font-medium">Origen o fuente de información</h3>
+            <SheetFormSection title="Origen o fuente de información">
               <FieldGroup className="grid gap-3 sm:grid-cols-4">
                 <Field className="sm:col-span-2">
                   <FieldLabel htmlFor="comparable-source">Fuente</FieldLabel>
@@ -550,10 +599,9 @@ export function ComparableDialog(props: {
                   </Field>
                 ) : null}
               </FieldGroup>
-            </section>
+            </SheetFormSection>
 
-            <section className="grid gap-3">
-              <h3 className="text-sm font-medium">Características</h3>
+            <SheetFormSection title="Terreno y características">
               <FieldGroup className="grid gap-3 sm:grid-cols-4">
                 <Field className="sm:col-span-4">
                   <FieldLabel htmlFor="comparable-landUse">Uso de suelo (descripción, columna del dictamen)</FieldLabel>
@@ -563,14 +611,22 @@ export function ComparableDialog(props: {
                   const fieldId = `comparable-${field.key.replace(":", "-")}`;
                   const long = field.key === "notes" || field.key === "services" || !isBuiltinCharacteristic(field.key);
                   const Control = NUMERIC_CHARACTERISTICS.has(field.key) ? FormulaInput : Input;
+                  const list = OPEN_LISTS[field.key];
                   return (
                     <Field key={field.key} className={long ? "sm:col-span-2" : undefined}>
                       <FieldLabel htmlFor={fieldId}>{field.label}</FieldLabel>
                       <Control
                         id={fieldId}
+                        list={list?.id}
+                        placeholder={list ? "Elige o escribe otro" : undefined}
                         value={characteristics[field.key] ?? ""}
                         onChange={(event) => setCharacteristics((current) => ({ ...current, [field.key]: event.target.value }))}
                       />
+                      {list ? (
+                        <datalist id={list.id}>
+                          {list.options.map((option) => <option key={option} value={option} />)}
+                        </datalist>
+                      ) : null}
                     </Field>
                   );
                 })}
@@ -585,7 +641,56 @@ export function ComparableDialog(props: {
                   />
                 </Field>
               </FieldGroup>
-            </section>
+            </SheetFormSection>
+
+            <SheetFormSection
+              title="Características agregadas"
+              hint="Agrega lo que este comparable tiene y la lista no (alberca, vista, amueblado…): nombre y valor. Sirven para capturar y para filtrar en Comparables; el cálculo no las usa."
+            >
+              <div className="grid gap-2" data-comparable-attributes>
+                {attributes.map((item, index) => (
+                  <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2">
+                    <Input
+                      aria-label={`Nombre de la característica ${index + 1}`}
+                      list="comparable-attribute-names"
+                      placeholder="Nombre"
+                      maxLength={60}
+                      value={item.name}
+                      onChange={(event) => setAttribute(index, "name", event.target.value)}
+                    />
+                    <Input
+                      aria-label={`Valor de la característica ${index + 1}`}
+                      placeholder="Valor"
+                      maxLength={200}
+                      value={item.value}
+                      onChange={(event) => setAttribute(index, "value", event.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={`Quitar la característica ${item.name || index + 1}`}
+                      onClick={() => setAttributes((current) => current.filter((_, position) => position !== index))}
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                ))}
+                <datalist id="comparable-attribute-names">
+                  {(props.attributeNames ?? []).map((name) => <option key={name} value={name} />)}
+                </datalist>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="w-fit"
+                  disabled={attributes.length >= MAX_COMPARABLE_ATTRIBUTES}
+                  onClick={() => setAttributes((current) => [...current, { name: "", value: "" }])}
+                >
+                  <Plus data-icon="inline-start" /> Agregar característica
+                </Button>
+              </div>
+            </SheetFormSection>
           </fieldset>
 
           <ScreenshotSlot
@@ -601,8 +706,7 @@ export function ComparableDialog(props: {
           />
 
           {comparable ? (
-            <section className="grid gap-2">
-              <h3 className="text-sm font-medium">Fotografías del inmueble</h3>
+            <SheetFormSection title="Fotografías del inmueble">
               <div className="flex flex-wrap gap-2">
                 {comparable.photos.map((photo) => (
                   <figure key={photo.id} className="relative size-24 overflow-hidden rounded-md border bg-muted">
@@ -630,7 +734,7 @@ export function ComparableDialog(props: {
                   </label>
                 ) : null}
               </div>
-            </section>
+            </SheetFormSection>
           ) : (
             <p className="text-xs text-muted-foreground">Guarda el comparable para agregar fotografías del inmueble.</p>
           )}

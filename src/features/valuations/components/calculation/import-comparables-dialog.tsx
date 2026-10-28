@@ -62,7 +62,10 @@ export type ImportScope =
  * file's INICIO says and the user confirms it; the preview shows each row's
  * errors, warnings, destination and possible duplicates before importing.
  */
-export function ImportComparablesDialog({ scope, triggerLabel }: { scope: ImportScope; triggerLabel?: string }) {
+/** The same name everywhere: one template, the master one, wherever it is imported from. */
+const IMPORT_MASTER_LABEL = "Importar plantilla maestra";
+
+export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ComparableImportPreview | null>(null);
@@ -141,14 +144,25 @@ export function ImportComparablesDialog({ scope, triggerLabel }: { scope: Import
 
   return (
     <>
-      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
-        <FileSpreadsheet data-icon="inline-start" /> {triggerLabel ?? "Importar Excel"}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        title={scope.kind === "valuation"
+          ? "La plantilla maestra de comparables (Excel): a este avalúo, a la base del despacho o a los dos"
+          : "La plantilla maestra de comparables (Excel): a la base del despacho y a los avalúos de sus folios"}
+        onClick={() => setOpen(true)}
+      >
+        <FileSpreadsheet data-icon="inline-start" /> {IMPORT_MASTER_LABEL}
       </Button>
       <Dialog open={open} onOpenChange={(next) => { if (busy === null) { setOpen(next); if (!next) reset(); } }}>
         <DialogContent className="sm:max-w-5xl">
           <DialogHeader>
-            <DialogTitle>{scope.kind === "valuation" ? "Importar comparables desde Excel" : "Importar comparables a la base"}</DialogTitle>
+            <DialogTitle>{IMPORT_MASTER_LABEL}</DialogTitle>
             <DialogDescription>
+              {scope.kind === "valuation"
+                ? "Desde este avalúo: los comparables van a este avalúo, a la base del despacho o a los dos, según el destino que confirmes. "
+                : "Desde Comparables: los comparables van a la base del despacho y, con su «Folio avalúo», a esos avalúos. "}
               Usa la plantilla maestra (cualquier tipo de comparable, a un avalúo, a la base general o a los dos) o la plantilla de un mercado.
               Antes de guardar verás los errores, los avisos, el destino de cada renglón y los posibles duplicados.
               Los factores y las fotos se capturan después, en el avalúo.

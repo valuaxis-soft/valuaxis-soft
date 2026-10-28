@@ -24,6 +24,7 @@ export function CalculationMemoryToolbar({ folio, valuationId }: { folio: string
           Imprimir
         </Button>
         <DownloadDictamenPdfButton kind="memoria" label="Descargar PDF" valuationId={valuationId} />
+        <DownloadDictamenPdfButton kind="entregables" variant="outline" valuationId={valuationId} />
       </div>
     </header>
   );

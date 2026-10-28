@@ -15,7 +15,7 @@ import { uploadRateLimitResponse } from "@/security/rate-limit/upload-limit";
 const badRequest = (error: string) => NextResponse.json({ error }, { status: 400 });
 
 /**
- * "Importar a la base" from the Comparables page: the master workbook (or a
+ * "Importar plantilla maestra" from the Comparables page: the master workbook (or a
  * market's template, with `tipo`). "Solo base general" keeps every row in the
  * firm's base without a valuation; "Ambos" and "Solo avalúo" add each row to
  * the valuation of its "Folio avalúo" (one of the organization the user can

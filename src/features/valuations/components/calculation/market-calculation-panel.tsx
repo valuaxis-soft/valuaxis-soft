@@ -601,7 +601,7 @@ function MarketTypePanel(props: {
                 href={`/api/avaluos/${valuationId}/mercado/comparables/exportar?tipo=${type}`}
                 download
               >
-                <FileDown data-icon="inline-start" /> Exportar Excel
+                <FileDown data-icon="inline-start" /> Exportar a plantilla maestra
               </a>
             ) : null}
             {comparables.length ? (
@@ -867,6 +867,7 @@ function MarketTypePanel(props: {
           onCheckDuplicates={(probe) => api.market.duplicates(valuationId, probe)}
           onReuse={(comparableId) => run(() => api.market.reuseComparable(valuationId, type, comparableId), "Comparable existente agregado. Califica sus factores.")}
           defaultValidityMonths={calculation.comparableValidityMonths}
+          attributeNames={[...new Set(comparables.flatMap((item) => (item.attributes ?? []).map((attribute) => attribute.name)))]}
         />
       ) : null}
     </section>

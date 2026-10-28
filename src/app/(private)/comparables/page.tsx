@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { DashboardHeader } from "@/features/dashboard/components/header";
-import { firmValidityMonths, listComparableBase } from "@/features/valuations/comparable-base/comparable-base.service";
+import { comparableAttributeNames, firmValidityMonths, listComparableBase } from "@/features/valuations/comparable-base/comparable-base.service";
 import {
   COMPARABLE_LIST_PAGE_SIZE,
   buildComparableListHref,
@@ -36,9 +36,10 @@ export default async function ComparablesPage({
   if (!hasPermission(user, AUTH_PERMISSIONS.viewValuations)) redirect("/dashboard");
 
   const params = parseComparableListParams(await searchParams);
-  const [{ items, total }, months] = await Promise.all([
+  const [{ items, total }, months, attributeNames] = await Promise.all([
     listComparableBase(user.organizationId, params),
     firmValidityMonths(user.organizationId),
+    comparableAttributeNames(user.organizationId),
   ]);
   const pages = Math.max(1, Math.ceil(total / COMPARABLE_LIST_PAGE_SIZE));
   if (total > 0 && params.page > pages) redirect(buildComparableListHref({ ...params, page: pages }));
@@ -68,7 +69,7 @@ export default async function ComparablesPage({
 
         <Card className="rounded-2xl border-0 shadow-md shadow-primary/[0.03]">
           <CardContent className="grid gap-4 p-4 sm:p-6">
-            <ComparableBaseFilters params={params} />
+            <ComparableBaseFilters params={params} attributeNames={attributeNames} />
 
             {items.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-16 text-center">

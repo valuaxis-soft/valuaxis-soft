@@ -238,6 +238,22 @@ export type ComparableFactorDto = {
 
 export type ComparablePhotoDto = { id: string; title: string; url: string };
 
+/** A characteristic added to one comparable: its name and its value, as written. */
+export type ComparableAttribute = { name: string; value: string };
+export const MAX_COMPARABLE_ATTRIBUTES = 20;
+
+/** The attributes with a name and a value, trimmed, each name once (the last value wins), in their order. */
+export function cleanAttributes(attributes: ReadonlyArray<{ name?: unknown; value?: unknown }> | null | undefined): ComparableAttribute[] {
+  const byName = new Map<string, ComparableAttribute>();
+  for (const item of Array.isArray(attributes) ? attributes : []) {
+    const name = typeof item?.name === "string" ? item.name.replace(/\s+/g, " ").trim() : "";
+    const value = typeof item?.value === "string" ? item.value.replace(/\s+/g, " ").trim() : "";
+    if (!name || !value) continue;
+    byName.set(name.toLocaleLowerCase("es-MX"), { name, value });
+  }
+  return [...byName.values()].slice(0, MAX_COMPARABLE_ATTRIBUTES);
+}
+
 export type ComparableDto = {
   id: string;
   reference: number;
@@ -266,6 +282,12 @@ export type ComparableDto = {
   extra?: Record<string, string>;
   /** Written instead of the characteristics line, when the appraiser prefers a text of their own. */
   characteristicsText?: string | null;
+  /**
+   * Characteristics the appraiser adds to this comparable only, by name
+   * ("Alberca": "Sí"), to capture and to filter the firm's base; neither the
+   * calculation nor the characteristics line of the dictamen reads them.
+   */
+  attributes?: ComparableAttribute[];
   /** "Justificación de los factores utilizados" for this comparable. */
   factorJustification?: string | null;
   /** Left out of the linear regression by the appraiser; it stays in the homologation. */

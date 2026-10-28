@@ -73,6 +73,70 @@ export function effectiveConservation(row: { conservation: number | null; conser
   return row.conservation ?? conservationOfRating(row.conservationRating);
 }
 
+/**
+ * How a table rates the conservation before its Cons. is chosen: the sheet
+ * «ROSS HEIDECKE» (estado and calificación, as before), a table of states of
+ * conservation, or a criterion of the appraiser's own (its name, its states
+ * and their factors). Picking a state of the last two writes its factor in
+ * Cons., which stays editable: the criterion only proposes.
+ */
+export const CONSERVATION_CRITERIA = ["ROSS_HEIDECKE", "TABLA_ESTADO", "PROPIO"] as const;
+export type ConservationCriterion = (typeof CONSERVATION_CRITERIA)[number];
+export const CONSERVATION_CRITERION_LABELS: Record<ConservationCriterion, string> = {
+  ROSS_HEIDECKE: "Ross-Heidecke",
+  TABLA_ESTADO: "Tabla de estado de conservación",
+  PROPIO: "Criterio propio",
+};
+export type ConservationOption = { label: string; factor: number };
+export type ConservationCriterionDto = { kind: ConservationCriterion; name: string; options: ConservationOption[] };
+export const MAX_CONSERVATION_OPTIONS = 12;
+
+/**
+ * The states of the table of conservation with the factors it starts with.
+ * Suggested values: the appraiser still has to confirm the table, so the
+ * panel says so and lets him adjust each factor.
+ */
+export const CONSERVATION_STATE_TABLE: ConservationOption[] = [
+  { label: "Bueno", factor: 1 },
+  { label: "Normal", factor: 0.9 },
+  { label: "Reparaciones sencillas", factor: 0.75 },
+  { label: "Reparaciones mayores", factor: 0.6 },
+  { label: "Ruinoso", factor: 0.3 },
+];
+
+/** A table rates its conservation by Ross-Heidecke until the appraiser picks another criterion. */
+export const DEFAULT_CONSERVATION_CRITERION: ConservationCriterionDto = { kind: "ROSS_HEIDECKE", name: "", options: [] };
+
+/** What a criterion starts with when it is picked: the suggested table, or one empty state to name. */
+export function conservationCriterionOf(kind: ConservationCriterion, current?: ConservationCriterionDto): ConservationCriterionDto {
+  if (kind === "ROSS_HEIDECKE") return { kind, name: "", options: [] };
+  if (current?.kind === kind) return current;
+  return kind === "TABLA_ESTADO"
+    ? { kind, name: "", options: CONSERVATION_STATE_TABLE.map((option) => ({ ...option })) }
+    : { kind, name: "", options: [{ label: "", factor: 1 }] };
+}
+
+/** A stored criterion read back: unknown kinds take Ross-Heidecke; options need a label and a factor from 0 to 10. */
+function conservationCriterionFrom(value: unknown): ConservationCriterionDto {
+  const record = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+  const kind = CONSERVATION_CRITERIA.find((item) => item === record.kind) ?? "ROSS_HEIDECKE";
+  if (kind === "ROSS_HEIDECKE") return DEFAULT_CONSERVATION_CRITERION;
+  const options = (Array.isArray(record.options) ? record.options : []).flatMap((item): ConservationOption[] => {
+    const option = typeof item === "object" && item !== null ? item as Record<string, unknown> : {};
+    const label = typeof option.label === "string" ? option.label.trim() : "";
+    const factor = typeof option.factor === "number" && Number.isFinite(option.factor) && option.factor >= 0 && option.factor <= 10 ? option.factor : null;
+    return label && factor !== null ? [{ label, factor }] : [];
+  }).slice(0, MAX_CONSERVATION_OPTIONS);
+  return { kind, name: typeof record.name === "string" ? record.name.trim().slice(0, 60) : "", options };
+}
+
+/** The factor of a state of the criterion, by its label (case and accents ignored); null when it is not one of its states. */
+export function conservationOfState(criterion: ConservationCriterionDto, label: string | null | undefined): number | null {
+  const key = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  if (!label?.trim()) return null;
+  return criterion.options.find((option) => key(option.label) === key(label))?.factor ?? null;
+}
+
 /** Factors the appraiser may add to the demerit factors of a table, after "Otro". */
 export const MAX_EXTRA_DEMERIT_FACTORS = 2;
 
@@ -81,7 +145,12 @@ export const MAX_EXTRA_DEMERIT_FACTORS = 2;
  * "Otro" as the appraiser renames it, and the factors added after it (up to
  * two) that multiply the FRe as "Otro" does.
  */
-export type DemeritColumnsDto = { other: string; extra: string[] };
+export type DemeritColumnsDto = {
+  other: string;
+  extra: string[];
+  /** How the table rates its conservation; Ross-Heidecke when missing (captures of before). */
+  conservation?: ConservationCriterionDto;
+};
 
 /**
  * How the appraiser set the columns of the cost tables: the demerit columns
@@ -92,6 +161,12 @@ export type CostColumnsDto = {
   constructions: DemeritColumnsDto;
   installations: DemeritColumnsDto;
   showMaintenance: boolean | null;
+  /**
+   * References of the construction types the appraiser took out of the cost
+   * approach. Every other type of the construction section enters it on its
+   * own, with its data filled; the appraiser only captures its cost columns.
+   */
+  excludedTypes?: string[];
 };
 
 export const DEFAULT_OTHER_FACTOR_LABEL = "Otro";
@@ -107,19 +182,40 @@ export function costColumnsOf(stored: unknown): CostColumnsDto {
   const record = (value: unknown) => (typeof value === "object" && value !== null ? value as Record<string, unknown> : {});
   const demerit = (value: unknown): DemeritColumnsDto => {
     const { other, extra } = record(value);
+    const conservation = conservationCriterionFrom(record(value).conservation);
     return {
       other: typeof other === "string" && other.trim() ? other.trim() : DEFAULT_OTHER_FACTOR_LABEL,
       extra: Array.isArray(extra)
         ? extra.filter((name): name is string => typeof name === "string").slice(0, MAX_EXTRA_DEMERIT_FACTORS)
         : [],
+      // Ross-Heidecke is what a table without a criterion has always used: it is not written.
+      ...(conservation.kind === "ROSS_HEIDECKE" ? {} : { conservation }),
     };
   };
   const columns = record(stored);
+  const excluded = Array.isArray(columns.excludedTypes)
+    ? [...new Set(columns.excludedTypes.filter((ref): ref is string => typeof ref === "string" && Boolean(ref.trim())).map((ref) => ref.trim()))].slice(0, 30)
+    : [];
   return {
     constructions: demerit(columns.constructions),
     installations: demerit(columns.installations),
     showMaintenance: typeof columns.showMaintenance === "boolean" ? columns.showMaintenance : null,
+    ...(excluded.length ? { excludedTypes: excluded } : {}),
   };
+}
+
+/** The criterion a table rates its conservation by. */
+export const conservationCriterionOfColumns = (columns: DemeritColumnsDto) => columns.conservation ?? DEFAULT_CONSERVATION_CRITERION;
+
+/**
+ * The construction types the cost approach does not have yet and the
+ * appraiser did not take out: they enter it on their own, in the order of the
+ * construction section, with empty cost columns.
+ */
+export function typesToAdd(types: Pick<ConstructionTypeDto, "ref">[], picked: Array<{ ref: string }>, excluded: string[] = []) {
+  const key = (ref: string) => ref.trim().toLowerCase();
+  const taken = new Set([...picked.map((row) => key(row.ref)), ...excluded.map(key)]);
+  return types.filter((type) => type.ref.trim() && !taken.has(key(type.ref)));
 }
 
 /** Name of the added factor `index` (0 or 1) as printed: the appraiser's, or "Factor 1". */
@@ -164,6 +260,8 @@ export type ConstructionCostDto = {
   conservation: number | null;
   /** Calificación of the conservation (10 to 2, CONSERVATION_RATINGS); null when not rated. */
   conservationRating: number | null;
+  /** The state picked in a criterion other than Ross-Heidecke; its factor was written in Cons. */
+  conservationState?: string | null;
   /** Edad of the demerit factors (R26); empty to take the formula. */
   ageFactor: number | null;
   otherFactor: number;
@@ -207,7 +305,9 @@ export function findConstructionType(types: ConstructionTypeDto[], ref: string):
 /** The cost columns of a construction, what the cost approach saves. */
 export function constructionCostOf(row: ConstructionDto): ConstructionCostDto {
   return {
-    ref: row.ref, conservation: row.conservation, conservationRating: row.conservationRating, ageFactor: row.ageFactor, otherFactor: row.otherFactor,
+    ref: row.ref, conservation: row.conservation, conservationRating: row.conservationRating,
+    ...(row.conservationState ? { conservationState: row.conservationState } : {}),
+    ageFactor: row.ageFactor, otherFactor: row.otherFactor,
     extraFactors: row.extraFactors, resultantFactor: row.resultantFactor,
     completion: row.completion, undivided: row.undivided, unitReplacementCost: row.unitReplacementCost,
   };
@@ -225,6 +325,8 @@ export type InstallationDto = {
   conservation: number | null;
   /** Calificación of the conservation (10 to 2, CONSERVATION_RATINGS); null when not rated. */
   conservationRating: number | null;
+  /** The state picked in a criterion other than Ross-Heidecke; its factor was written in Cons. */
+  conservationState?: string | null;
   /** Printed in the installations table of the construction section; not part of the calculation. */
   maintenance: string;
   /** Edad of the demerit factors (R47); empty to take the formula. */

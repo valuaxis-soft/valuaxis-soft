@@ -111,6 +111,36 @@ function countCondition(expression: Prisma.Sql, value: number | null, mode: Coun
   return [mode === "hasta" ? Prisma.sql`${expression} <= ${value}` : Prisma.sql`${expression} >= ${value}`];
 }
 
+/** The characteristics added to a comparable (`attributes` of its snapshot), one row each. */
+const ATTRIBUTES = Prisma.sql`jsonb_array_elements(CASE WHEN jsonb_typeof(c."JPropiedadSnapshot"->'attributes') = 'array'
+  THEN c."JPropiedadSnapshot"->'attributes' ELSE '[]'::jsonb END) AS attribute(item)`;
+
+/**
+ * A comparable with an added characteristic of that name (its words, without
+ * accents or case) and, when given, a value with those words; a value alone
+ * matches any of its characteristics.
+ */
+function attributeCondition(name: string, value: string): Prisma.Sql[] {
+  const matches = [
+    ...wordsIn(Prisma.sql`unaccent(lower(COALESCE(attribute.item->>'name', '')))`, name || undefined),
+    ...wordsIn(Prisma.sql`unaccent(lower(COALESCE(attribute.item->>'value', '')))`, value || undefined),
+  ];
+  return matches.length ? [Prisma.sql`EXISTS (SELECT 1 FROM ${ATTRIBUTES} WHERE ${Prisma.join(matches, " AND ")})`] : [];
+}
+
+/** The names of the characteristics added to the firm's comparables, for the filter and the capture to offer; at most 200. */
+export async function comparableAttributeNames(organizationId: number): Promise<string[]> {
+  const rows = await prisma.$queryRaw<Array<{ name: string }>>(Prisma.sql`
+    SELECT DISTINCT ON (lower(attribute.item->>'name')) attribute.item->>'name' AS "name"
+    ${FIRM_BASE_FROM}
+    CROSS JOIN LATERAL ${ATTRIBUTES}
+    WHERE ${firmBaseCondition(organizationId)} AND COALESCE(attribute.item->>'name', '') <> ''
+    ORDER BY lower(attribute.item->>'name')
+    LIMIT 200
+  `);
+  return rows.map((row) => row.name);
+}
+
 function conditions(params: ComparableListParams, today: string, firmMonths: number): Prisma.Sql[] {
   const folio = parseComparableId(params.q);
   const range = (expression: Prisma.Sql, min: number | null, max: number | null) => [
@@ -135,6 +165,7 @@ function conditions(params: ComparableListParams, today: string, firmMonths: num
     ...(params.operation ? [Prisma.sql`${OPERATION} = ${params.operation}`] : []),
     ...wordsIn(Prisma.sql`unaccent(lower(COALESCE(c."JPropiedadSnapshot"->>'constructionType', '')))`, params.constructionType || undefined),
     ...wordsIn(Prisma.sql`unaccent(lower(concat_ws(' ', c."JPropiedadSnapshot"->>'landUse', c."JPropiedadSnapshot"->>'landUseKey')))`, params.landUse || undefined),
+    ...attributeCondition(params.attribute, params.attributeValue),
     ...range(LAND_AREA, params.landAreaMin, params.landAreaMax),
     ...range(BUILT_AREA, params.builtAreaMin, params.builtAreaMax),
     ...countCondition(jsonNumber("bedrooms"), params.bedrooms, params.bedroomsMode),

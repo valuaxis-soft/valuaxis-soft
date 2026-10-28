@@ -9,13 +9,19 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import {
+  CONSERVATION_CRITERIA,
+  CONSERVATION_CRITERION_LABELS,
   CONSERVATION_RATINGS,
   DEFAULT_COST_ROUNDING,
   LAND_FACTORS,
   LAND_FACTOR_SHORT_LABELS,
+  MAX_CONSERVATION_OPTIONS,
   MAX_EXTRA_DEMERIT_FACTORS,
   constructionCostOf,
+  conservationCriterionOf,
+  conservationCriterionOfColumns,
   conservationOfRating,
+  conservationOfState,
   costColumnsOf,
   costEngineConfig,
   emptyConstructionCost,
@@ -25,7 +31,10 @@ import {
   landUnitValue,
   remainingUsefulLife,
   toCostEngineInput,
+  typesToAdd,
   withConstructionType,
+  type ConservationCriterion,
+  type ConservationCriterionDto,
   type ConstructionCostDto,
   type CostCalculationDto,
   type CostColumnsDto,
@@ -104,11 +113,14 @@ function percentRow<T extends CostRow>(row: T): PercentRow<T> {
 
 /** An added factor left empty is 1, as "Otro". */
 function fractionRow<T extends CostRow>(row: PercentRow<T>, template: T): T {
+  // The state of a criterion other than Ross-Heidecke is a text: the template of numbers does not carry it.
+  const state = (row as unknown as { conservationState?: unknown }).conservationState;
   return {
     ...numbersOf(row as unknown as Texts<T>, template),
     completion: fractionOf(row.completion),
     undivided: fractionOf(row.undivided),
     extraFactors: row.extraFactors.map((text) => parseDecimal(text) ?? 1),
+    ...(typeof state === "string" && state ? { conservationState: state } : {}),
   };
 }
 
@@ -128,7 +140,11 @@ function plainDraftOf(input: CostCalculationDto): Draft {
       surfaceFactor: toText(input.land.surfaceFactor),
       resultantFactor: toText(input.land.resultantFactor),
     },
-    constructions: input.constructions.map((row) => percentRow(constructionCostOf(row))),
+    // Every type of the construction section enters with its data; the appraiser only captures its cost columns.
+    constructions: [
+      ...input.constructions.map((row) => percentRow(constructionCostOf(row))),
+      ...typesToAdd(input.types, input.constructions, costColumnsOf(input.columns).excludedTypes).map((type) => percentRow(emptyConstructionCost(type.ref))),
+    ],
     installations: input.installations.map(percentRow),
     indirects: input.indirects.map(textsOf),
     rounding: input.rounding ?? DEFAULT_COST_ROUNDING,
@@ -234,7 +250,7 @@ function DemeritHeader(props: { leading: string[]; remaining: string; factors: D
       <tr>
         {props.leading.map((label) => <th key={label} rowSpan={2} className={head}>{label}</th>)}
         <th rowSpan={2} className={head}>{props.remaining}</th>
-        <th rowSpan={2} className={head} title="Estado de conservación y calificación (criterio de Ross-Heidecke): da el factor Cons.">Estado de conservación</th>
+        <th rowSpan={2} className={head} title={`Estado de conservación (${CONSERVATION_CRITERION_LABELS[props.factors.conservation?.kind ?? "ROSS_HEIDECKE"]}): propone el factor Cons.`}>Estado de conservación</th>
         <th colSpan={labels.length} className={head}>Factores de Demérito</th>
         <th rowSpan={2} className={head}>Grado de terminación (%)</th>
         <th rowSpan={2} className={head}>Indiviso (%)</th>
@@ -321,7 +337,24 @@ const CONSERVATION_STATES = [...new Set(CONSERVATION_RATINGS.map((row) => row.st
  * Estado de conservación and calificación of a row, as the sheet rates them;
  * "Sin calificar" leaves the Cons. to be typed, as before the ratings.
  */
-function ConservationRatingSelect(props: { value: string; label: string; onChange: (value: string) => void }) {
+function ConservationRatingSelect(props: { value: string; label: string; criterion: ConservationCriterionDto; onChange: (value: string) => void }) {
+  if (props.criterion.kind !== "ROSS_HEIDECKE") {
+    const listed = props.criterion.options.some((option) => option.label === props.value);
+    return (
+      <select
+        aria-label={props.label}
+        className="h-7 w-full min-w-32 rounded-md border bg-transparent px-1 text-xs"
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+      >
+        <option value="">Sin calificar</option>
+        {props.value && !listed ? <option value={props.value}>{props.value}</option> : null}
+        {props.criterion.options.filter((option) => option.label.trim()).map((option) => (
+          <option key={option.label} value={option.label}>{option.label} = {option.factor.toFixed(2)}</option>
+        ))}
+      </select>
+    );
+  }
   return (
     <select
       aria-label={props.label}
@@ -338,6 +371,115 @@ function ConservationRatingSelect(props: { value: string; label: string; onChang
         </optgroup>
       ))}
     </select>
+  );
+}
+
+/**
+ * The criterion a table rates its conservation by, chosen before the value:
+ * Ross-Heidecke (estado and calificación), the table of states of
+ * conservation (suggested factors, to adjust) or the appraiser's own (name,
+ * states and factors). The state picked writes its factor in Cons.
+ */
+function ConservationCriterionEditor(props: {
+  id: string;
+  criterion: ConservationCriterionDto;
+  readOnly: boolean;
+  onChange: (next: ConservationCriterionDto, commit: boolean) => void;
+}) {
+  const { criterion } = props;
+  const setOption = (index: number, patch: Partial<{ label: string; factor: string }>) => props.onChange({
+    ...criterion,
+    options: criterion.options.map((option, position) => (position === index ? {
+      label: patch.label ?? option.label,
+      factor: patch.factor === undefined ? option.factor : parseDecimal(patch.factor) ?? option.factor,
+    } : option)),
+  }, false);
+  return (
+    <div className="grid gap-2 rounded-md border bg-background/60 p-2 text-xs" data-testid={`${props.id}-conservation-criterion`}>
+      <label className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">Criterio de conservación</span>
+        <select
+          aria-label="Criterio de conservación"
+          className="h-7 rounded-md border bg-transparent px-1 text-xs"
+          value={criterion.kind}
+          disabled={props.readOnly}
+          onChange={(event) => props.onChange(conservationCriterionOf(event.target.value as ConservationCriterion, criterion), true)}
+        >
+          {CONSERVATION_CRITERIA.map((kind) => <option key={kind} value={kind}>{CONSERVATION_CRITERION_LABELS[kind]}</option>)}
+        </select>
+        <span className="text-muted-foreground">
+          {criterion.kind === "ROSS_HEIDECKE"
+            ? "Elige el estado y la calificación de la hoja Ross-Heidecke en cada renglón."
+            : "Elige el estado en cada renglón: su factor llena Cons., que puedes cambiar a mano."}
+        </span>
+      </label>
+      {criterion.kind === "TABLA_ESTADO" ? (
+        <p className="rounded-sm bg-amber-50 px-2 py-1 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" data-suggested-values>
+          Valores sugeridos, ajústalos: la tabla aún debe confirmarse con el despacho.
+        </p>
+      ) : null}
+      {criterion.kind === "PROPIO" ? (
+        <label className="grid max-w-xs gap-0.5">
+          <span className="text-muted-foreground">Nombre del criterio</span>
+          <Input
+            aria-label="Nombre del criterio propio"
+            className="h-7 text-xs"
+            value={criterion.name}
+            maxLength={60}
+            placeholder="Criterio del despacho"
+            onChange={(event) => props.onChange({ ...criterion, name: event.target.value }, false)}
+          />
+        </label>
+      ) : null}
+      {criterion.kind !== "ROSS_HEIDECKE" ? (
+        <div className="grid gap-1">
+          <div className="grid max-w-md grid-cols-[minmax(0,1fr)_6rem_auto] gap-1 font-medium text-muted-foreground">
+            <span>Calificación</span><span>Factor</span><span className="sr-only">Acciones</span>
+          </div>
+          {criterion.options.map((option, index) => (
+            <div key={index} className="grid max-w-md grid-cols-[minmax(0,1fr)_6rem_auto] items-center gap-1">
+              <Input
+                aria-label={`Calificación ${index + 1}`}
+                className="h-7 text-xs"
+                value={option.label}
+                maxLength={60}
+                onChange={(event) => setOption(index, { label: event.target.value })}
+              />
+              <Input
+                aria-label={`Factor de ${option.label || `la calificación ${index + 1}`}`}
+                className="h-7 text-xs"
+                inputMode="decimal"
+                defaultValue={String(option.factor)}
+                onChange={(event) => setOption(index, { factor: event.target.value })}
+              />
+              {!props.readOnly ? (
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={`Quitar ${option.label || `la calificación ${index + 1}`}`}
+                  onClick={() => props.onChange({ ...criterion, options: criterion.options.filter((_, position) => position !== index) }, true)}
+                >
+                  <Trash2 />
+                </Button>
+              ) : <span />}
+            </div>
+          ))}
+          {!props.readOnly ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-fit"
+              disabled={criterion.options.length >= MAX_CONSERVATION_OPTIONS}
+              onClick={() => props.onChange({ ...criterion, options: [...criterion.options, { label: "", factor: 1 }] }, true)}
+            >
+              <Plus data-icon="inline-start" /> Calificación
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -462,19 +604,38 @@ export function CostCalculationPanel(props: {
   // A removal has no blur to wait for: it saves at once. A construction removed here stays described in its section.
   function removeRow(list: "constructions" | "installations" | "indirects", index: number) {
     if (!draft) return;
-    const next = { ...draft, [list]: draft[list].filter((_, rowIndex) => rowIndex !== index) };
+    // A type taken out stays out: the others of the construction section keep entering on their own.
+    const removedRef = list === "constructions" ? draft.constructions[index]?.ref.trim() : "";
+    const columns = removedRef
+      ? { ...draft.columns, excludedTypes: [...new Set([...(draft.columns.excludedTypes ?? []), removedRef])] }
+      : draft.columns;
+    const next = { ...draft, columns, [list]: draft[list].filter((_, rowIndex) => rowIndex !== index) };
     setDraft(next);
     save(next);
   }
   // The calificación is a select too: it saves at once and gives the Cons. Picking one replaces a Cons.
   // typed before (it used to win over the calificación, so changing the calificación changed nothing).
+  // With another criterion the state picked writes its factor in Cons., which stays editable.
   const pickRating = (list: "constructions" | "installations", index: number, rating: string) => {
+    const criterion = conservationCriterionOfColumns(draft.columns[list]);
+    const ross = criterion.kind === "ROSS_HEIDECKE";
+    const factor = ross ? null : conservationOfState(criterion, rating);
     const next = {
       ...draft,
-      [list]: draft[list].map((row, rowIndex) => (rowIndex === index ? { ...row, conservationRating: rating, ...(rating ? { conservation: "" } : {}) } : row)),
+      [list]: draft[list].map((row, rowIndex) => {
+        if (rowIndex !== index) return row;
+        if (ross) return { ...row, conservationRating: rating, conservationState: null, ...(rating ? { conservation: "" } : {}) };
+        return { ...row, conservationRating: "", conservationState: rating || null, ...(factor === null ? {} : { conservation: String(factor) }) };
+      }),
     };
     setDraft(next);
     save(next);
+  };
+  // The criterion of a table: typed changes wait for the field to be left; picking a criterion or adding a state saves at once.
+  const changeCriterion = (list: "constructions" | "installations", criterion: ConservationCriterionDto, commit: boolean) => {
+    const next = { ...draft, columns: { ...draft.columns, [list]: { ...draft.columns[list], conservation: criterion } } };
+    setDraft(next);
+    if (commit) save(next);
   };
   // The names of the demerit columns are typed (saved when the field is left); adding or removing a factor saves at once.
   const renameDemerit = (list: "constructions" | "installations", factors: DemeritColumnsDto) =>
@@ -521,8 +682,16 @@ export function CostCalculationPanel(props: {
   };
   const addRow = (list: "constructions" | "installations" | "indirects") => setDraft((current) => {
     if (!current) return current;
-    // A new construction row picks the first type not valued yet; the appraiser can change it.
-    if (list === "constructions") return { ...current, constructions: [...current.constructions, percentRow(emptyConstructionCost(unpickedTypes[0]?.ref ?? ""))] };
+    // A new construction row picks the first type not valued yet, and takes it back into the cost approach.
+    if (list === "constructions") {
+      const ref = unpickedTypes[0]?.ref ?? "";
+      const excludedTypes = (current.columns.excludedTypes ?? []).filter((item) => item.trim().toLowerCase() !== ref.trim().toLowerCase());
+      return {
+        ...current,
+        columns: { ...current.columns, excludedTypes },
+        constructions: [...current.constructions, percentRow(emptyConstructionCost(ref))],
+      };
+    }
     if (list === "installations") return { ...current, installations: [...current.installations, percentRow(emptyInstallation(current.installations.length))] };
     return { ...current, indirects: [...current.indirects, { concept: "", percentage: "", base: "" }] };
   });
@@ -568,11 +737,19 @@ export function CostCalculationPanel(props: {
     usefulLife: number | null,
   ) => {
     const ageFormula = formulaValue(`${key}.factorEdad`) ?? (age !== null && usefulLife ? ageFactor(age, usefulLife, config.ageFactor) : undefined);
-    const fromRating = conservationOfRating(parseDecimal(row.conservationRating));
+    const criterion = conservationCriterionOfColumns(draft.columns[list]);
+    const ross = criterion.kind === "ROSS_HEIDECKE";
+    const fromRating = ross ? conservationOfRating(parseDecimal(row.conservationRating)) : null;
+    const state = (row as { conservationState?: string | null }).conservationState ?? "";
     return (
       <>
         <td className="w-36 p-1">
-          <ConservationRatingSelect value={row.conservationRating} label="Estado de conservación y calificación" onChange={(rating) => pickRating(list, index, rating)} />
+          <ConservationRatingSelect
+            value={ross ? row.conservationRating : state}
+            criterion={criterion}
+            label={ross ? "Estado de conservación y calificación" : `Estado de conservación (${criterion.name.trim() || CONSERVATION_CRITERION_LABELS[criterion.kind]})`}
+            onChange={(rating) => pickRating(list, index, rating)}
+          />
         </td>
         <td className="w-16 p-1">
           {textInput(list, index, "conservation", row.conservation, "Factor de conservación (Cons.)", true, fromRating === null ? undefined : figure(fromRating, 3))}
@@ -733,10 +910,17 @@ export function CostCalculationPanel(props: {
         <div className="grid gap-2">
           <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">B) Construcciones</h4>
           <p className="text-xs text-muted-foreground">
-            Cada renglón elige un tipo de la sección de construcciones; su descripción, superficie, edad y vida útil se capturan allá una sola vez.
-            Quitar un renglón lo saca del cálculo y del enfoque impreso; el tipo sigue descrito en la sección de construcciones. Para quitarlo de todo el avalúo, bórralo allá.
+            Cada tipo dado de alta en la sección de construcciones entra solo, con su referencia, descripción, clasificación, calidad, superficie, edad y vida útil:
+            aquí solo capturas sus columnas de costo. Quitar un renglón lo saca del cálculo y del enfoque impreso; el tipo sigue descrito en la sección de construcciones
+            y vuelve con «+ Construcción». Para quitarlo de todo el avalúo, bórralo allá.
             {calculation.types.length ? "" : " Aún no hay tipos: captúralos en la sección INF. CONSTRUCCIÓN."}
           </p>
+          <ConservationCriterionEditor
+            id="cost-constructions"
+            criterion={conservationCriterionOfColumns(draft.columns.constructions)}
+            readOnly={readOnly}
+            onChange={(criterion, commit) => changeCriterion("constructions", criterion, commit)}
+          />
           <DemeritColumnsEditor
             id="cost-constructions"
             factors={draft.columns.constructions}
@@ -748,7 +932,7 @@ export function CostCalculationPanel(props: {
           <div className={CALC_TABLE_FRAME}>
             <table className={cn(CALC_TABLE, "w-full min-w-[1000px]")} aria-label="Construcciones: factores de demérito">
               <DemeritHeader
-                leading={["Ref.", "Tipo de Construcción", "Superficie Construida (m²)", "Edad", "Vida útil"]}
+                leading={["Ref.", "Tipo de Construcción", "Clasificación", "Calidad", "Superficie Construida (m²)", "Edad", "Vida útil"]}
                 remaining="Vida remanente"
                 factors={draft.columns.constructions}
               />
@@ -767,6 +951,8 @@ export function CostCalculationPanel(props: {
                       </select>
                     </td>
                     <td className={`min-w-40 ${readOnlyCell}`}>{type?.description || "—"}</td>
+                    <td className={`min-w-24 ${readOnlyCell}`}>{type?.classification || "—"}</td>
+                    <td className={`min-w-20 ${readOnlyCell}`}>{type?.quality || "—"}</td>
                     <td className={`w-20 ${readOnlyCell}`}>{figure(type?.area)}</td>
                     <td className={`w-12 ${readOnlyCell}`}>{figure(type?.age)}</td>
                     <td className={`w-12 ${readOnlyCell}`}>{figure(type?.usefulLife)}</td>
@@ -829,6 +1015,12 @@ export function CostCalculationPanel(props: {
             y borra la columna de esa tabla.
           </p>
           <div className="flex flex-wrap items-start justify-between gap-2">
+            <ConservationCriterionEditor
+              id="cost-installations"
+              criterion={conservationCriterionOfColumns(draft.columns.installations)}
+              readOnly={readOnly}
+              onChange={(criterion, commit) => changeCriterion("installations", criterion, commit)}
+            />
             <DemeritColumnsEditor
               id="cost-installations"
               factors={draft.columns.installations}

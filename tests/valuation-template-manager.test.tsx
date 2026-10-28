@@ -9,7 +9,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { TemplateManager } from "../src/features/valuations/components/template-manager";
+import { printableTemplateSections } from "../src/features/valuations/components/template-preview-dialog";
+import type { AppSection, Letterhead } from "../src/features/valuations/model";
 import type { ValuationTemplateSummary } from "../src/features/valuations/services/valuation-template.service";
+
+const letterhead: Letterhead = { name: "Valuadores de los Altos", legalName: null, rfc: null, address: null, phone: null, email: null, logoUrl: null };
 
 const template = (overrides: Partial<ValuationTemplateSummary>): ValuationTemplateSummary => ({
   id: "6f1c2b0e-8d4a-4c1e-9f3b-2a5d7e9c1b40",
@@ -32,6 +36,7 @@ const text = (markup: string) => markup.replace(/<[^>]+>/g, " ").replace(/&quot;
 test("each template shows its sections, blocks, what it includes, its version and who saved it", () => {
   const markup = renderToStaticMarkup(createElement(TemplateManager, {
     canCreate: true,
+    letterhead,
     initialTemplates: [
       template({}),
       template({
@@ -48,20 +53,29 @@ test("each template shows its sections, blocks, what it includes, its version an
     ],
   }));
   const shown = text(markup);
-  assert.match(shown, /Casa habitación 1 sección 3 bloques Creada: 16 oct 2026 por Ana López/);
-  assert.match(shown, /Terreno Lotes urbanos 4 secciones 3 bloques Con datos Con imágenes Versión 2/);
+  assert.match(shown, /1 Casa habitación Sin notas\. Agrégalas con «Editar nombre y notas»\. 1 sección 3 bloques Creada: 16 oct 2026 por Ana López/);
+  assert.match(shown, /2 Terreno Lotes urbanos 4 secciones 3 bloques Con datos Con imágenes Versión 2/);
   assert.match(shown, /Actualizada: 20 oct 2026 · versión 2 de Luis Pérez/);
   assert.doesNotMatch(shown, /Casa habitación.*Con datos.*Terreno/, "a template without data says nothing about it");
-  assert.equal(markup.match(/Renombrar/g)?.length, 2);
+  assert.equal(markup.match(/Editar nombre y notas<\/button>/g)?.length, 2);
+  assert.equal(markup.match(/Vista previa/g)?.length, 2);
+  assert.ok(markup.includes('data-template-number="2"'), "templates are numbered");
   assert.equal(markup.match(/Eliminar/g)?.length, 2);
   assert.ok(markup.includes('href="/workspace?action=new&amp;plantilla=6f1c2b0e-8d4a-4c1e-9f3b-2a5d7e9c1b40"'));
 });
 
 test("without AVALUO_CREAR there is no link to create a valuation; without templates, how to save one", () => {
-  const readOnly = renderToStaticMarkup(createElement(TemplateManager, { canCreate: false, initialTemplates: [template({})] }));
+  const readOnly = renderToStaticMarkup(createElement(TemplateManager, { canCreate: false, letterhead, initialTemplates: [template({})] }));
   assert.ok(!readOnly.includes("Crear avalúo con esta plantilla"));
-  assert.ok(readOnly.includes("Renombrar"));
+  assert.ok(readOnly.includes("Editar nombre y notas"));
+  assert.ok(readOnly.includes("Vista previa"), "previewing does not need AVALUO_CREAR");
 
-  const empty = text(renderToStaticMarkup(createElement(TemplateManager, { canCreate: true, initialTemplates: [] })));
+  const empty = text(renderToStaticMarkup(createElement(TemplateManager, { canCreate: true, letterhead, initialTemplates: [] })));
   assert.match(empty, /El despacho aún no tiene plantillas\. Abre un avalúo y usa "Guardar como plantilla"/);
+});
+
+test("the preview walks through the sections that print: enabled and with blocks", () => {
+  const section = (id: string, blocks: number, enabled = true) =>
+    ({ id, label: "", title: id, sourceFile: "", enabled, required: false, blocks: Array.from({ length: blocks }, (_, index) => ({ id: `${id}-${index}` })) }) as unknown as AppSection;
+  assert.deepEqual(printableTemplateSections([section("caratula", 1), section("vacia", 0), section("oculta", 2, false), section("terreno", 3)]).map((item) => item.id), ["caratula", "terreno"]);
 });

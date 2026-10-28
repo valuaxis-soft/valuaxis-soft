@@ -69,6 +69,17 @@ export function isPortalName(value: string | null | undefined) {
 export type ComparableWarningKey = "BUILT_AREA" | "NO_NUMBER" | "PORTAL_CONTACT" | "NO_SCREENSHOT" | "OLD_OFFER" | "EXPIRED" | "DUPLICATE";
 export type ComparableWarning = { key: ComparableWarningKey; message: string };
 
+/** What each warning means and what to do about it, for the help next to it. None blocks anything. */
+export const WARNING_HELP: Record<ComparableWarningKey, string> = {
+  BUILT_AREA: `La superficie construida difiere más de ±${Math.round(BUILT_AREA_TOLERANCE * 100)} % de la del sujeto. Un inmueble mucho más grande o más chico suele no ser comparable; consérvalo solo si lo justificas.`,
+  NO_NUMBER: "La dirección no trae número exterior: sin él no se puede ubicar ni verificar el inmueble. Captura el número o anota en las notas por qué falta.",
+  PORTAL_CONTACT: "El contacto es sólo por portal: el anunciante quedó como el nombre del portal (Inmuebles24, Lamudi…) o igual que la fuente, y no hay teléfono. Anota el nombre de la persona o inmobiliaria que anuncia, o su teléfono, para poder confirmar la oferta.",
+  NO_SCREENSHOT: "Falta pantalla de referencia: es la captura del anuncio como estaba el día de la consulta, la evidencia si el anuncio cambia o se borra. Pégala con Ctrl+V o súbela en la ficha del comparable.",
+  OLD_OFFER: "La fecha de la oferta (o la de consulta) tiene más meses que la vigencia: el precio puede ya no ser el de mercado. Confirma la oferta o actualiza la fecha de consulta.",
+  EXPIRED: "Pasó la vigencia desde la fecha de alta o actualización de sus datos. Revisa el anuncio y actualiza el comparable para renovarla.",
+  DUPLICATE: "Coincide con otro comparable de la base del despacho (misma liga, dirección, teléfono, número o lugar y superficie). Revisa si es el mismo inmueble antes de usarlo dos veces.",
+};
+
 export type WarningInput = {
   location: string;
   address?: ComparableAddress | null;

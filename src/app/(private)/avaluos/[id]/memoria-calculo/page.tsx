@@ -48,6 +48,7 @@ export default async function CalculationMemoryPage({ params }: { params: Promis
       <CalculationMemoryToolbar folio={loaded.memory.folio} valuationId={id} />
       <CalculationMemoryDocument
         caratula={loaded.caratula}
+        comparables={loaded.comparables}
         headerImage={getDocumentHeaderImage(loaded.sections)}
         letterhead={loaded.letterhead}
         memory={loaded.memory}

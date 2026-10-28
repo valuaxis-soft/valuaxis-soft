@@ -54,7 +54,7 @@ export const VALIDITY_STATUS_LABELS: Record<ValidityStatus, string> = { VIGENTE:
  */
 const DATA_FIELDS = [
   "location", "area", "price", "landUse", "landUseKey", "shape", "zone", "frontCount", "frontage", "depth", "topography",
-  "services", "conservation", "quality", "notes", "extra", "characteristicsText", "sourceName", "contactName", "contactPhone",
+  "services", "conservation", "quality", "notes", "extra", "characteristicsText", "attributes", "sourceName", "contactName", "contactPhone",
   "url", "offerDate", "consultedOn", "validUntil", "validityMonths", "listingText", "address", "urbanProximity", "operationType", "latitude",
   "longitude", "landArea", "bedrooms", "bathrooms", "constructionType", "propertyDetails", "listingDetails",
 ] as const;

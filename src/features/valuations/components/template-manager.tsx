@@ -24,7 +24,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import type { Letterhead } from "../model";
 import type { ValuationTemplateSummary } from "../services/valuation-template.service";
+import { TemplatePreviewButton } from "./template-preview-dialog";
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
@@ -39,15 +41,17 @@ const errorMessage = (error: unknown, fallback: string) =>
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /**
- * The firm's templates: what each one brings, who saved it and when, and
- * "Renombrar", "Eliminar" and "Crear avalúo con esta plantilla". A template
- * is saved, or replaced by a new version, from the editor ("Guardar como
- * plantilla").
+ * The firm's templates, numbered: what each one brings, who saved it and
+ * when, its notes, "Vista previa" of its sections, "Editar nombre y notas",
+ * "Eliminar" and "Crear avalúo con esta plantilla". A template is saved, or
+ * replaced by a new version, from the editor ("Guardar como plantilla").
  */
-export function TemplateManager({ initialTemplates, canCreate }: {
+export function TemplateManager({ initialTemplates, canCreate, letterhead }: {
   initialTemplates: ValuationTemplateSummary[];
   /** The user creates valuations (AVALUO_CREAR). */
   canCreate: boolean;
+  /** The firm's letterhead, for the header of the preview. */
+  letterhead: Letterhead;
 }) {
   const [templates, setTemplates] = useState(initialTemplates);
   const [editing, setEditing] = useState<ValuationTemplateSummary | null>(null);
@@ -85,7 +89,7 @@ export function TemplateManager({ initialTemplates, canCreate }: {
     void run(async () => {
       await api.templates.update(template.id, { name: name.trim(), description: description.trim() || null });
       toast.success("Plantilla actualizada.");
-    }, "No se pudo cambiar el nombre.").then((ok) => { if (ok) setEditing(null); });
+    }, "No se pudo guardar la plantilla.").then((ok) => { if (ok) setEditing(null); });
   };
 
   if (templates.length === 0) {
@@ -103,16 +107,26 @@ export function TemplateManager({ initialTemplates, canCreate }: {
   return (
     <>
       <ul className="grid gap-3" data-template-list>
-        {templates.map((template) => (
-          <li key={template.id} data-template-row={template.name}>
+        {templates.map((template, index) => (
+          <li key={template.id} data-template-row={template.name} data-template-number={index + 1}>
             <Card>
               <CardContent className="grid gap-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold wrap-break-word">{template.name}</p>
-                    {template.description ? (
-                      <p className="mt-0.5 text-sm wrap-break-word text-muted-foreground">{template.description}</p>
-                    ) : null}
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <span
+                      className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#003B73] text-base font-bold text-white tabular-nums"
+                      aria-label={`Plantilla ${index + 1}`}
+                    >
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-lg font-semibold wrap-break-word">{template.name}</p>
+                      {template.description ? (
+                        <p className="mt-0.5 text-base wrap-break-word whitespace-pre-line text-muted-foreground">{template.description}</p>
+                      ) : (
+                        <p className="mt-0.5 text-sm text-muted-foreground italic">Sin notas. Agrégalas con «Editar nombre y notas».</p>
+                      )}
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     <Badge variant="secondary">{plural(template.sections, "sección", "secciones")}</Badge>
@@ -122,7 +136,7 @@ export function TemplateManager({ initialTemplates, canCreate }: {
                     {template.version > 1 ? <Badge variant="outline">Versión {template.version}</Badge> : null}
                   </div>
                 </div>
-                <dl className="grid gap-x-6 gap-y-0.5 text-xs text-muted-foreground sm:grid-cols-2">
+                <dl className="grid gap-x-6 gap-y-0.5 text-sm text-muted-foreground sm:grid-cols-2">
                   <div>
                     <dt className="inline">Creada: </dt>
                     <dd className="inline">{formatDate(template.createdAt)}{template.createdBy ? ` por ${template.createdBy}` : ""}</dd>
@@ -136,6 +150,7 @@ export function TemplateManager({ initialTemplates, canCreate }: {
                   </div>
                 </dl>
                 <div className="flex flex-wrap gap-2">
+                  <TemplatePreviewButton templateId={template.id} name={template.name} letterhead={letterhead} canCreate={canCreate} number={index + 1} />
                   {canCreate ? (
                     <Link
                       href={`/workspace?action=new&plantilla=${template.id}`}
@@ -147,7 +162,7 @@ export function TemplateManager({ initialTemplates, canCreate }: {
                   ) : null}
                   <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => startEditing(template)}>
                     <Pencil data-icon="inline-start" />
-                    Renombrar
+                    Editar nombre y notas
                   </Button>
                   <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { setRemoving(template); setRemoveOpen(true); }}>
                     <Trash2 data-icon="inline-start" />
@@ -163,8 +178,10 @@ export function TemplateManager({ initialTemplates, canCreate }: {
       <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Renombrar plantilla</DialogTitle>
-            <DialogDescription>El nombre no se repite en el despacho, sin importar mayúsculas ni acentos.</DialogDescription>
+            <DialogTitle>Editar nombre y notas</DialogTitle>
+            <DialogDescription>
+              El nombre no se repite en el despacho, sin importar mayúsculas ni acentos. Las notas dicen para qué sirve la plantilla y se ven en su tarjeta.
+            </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={saveEdit}>
             <Field>
@@ -172,12 +189,13 @@ export function TemplateManager({ initialTemplates, canCreate }: {
               <Input id="rename-template-name" value={name} maxLength={120} autoFocus onChange={(event) => setName(event.target.value)} />
             </Field>
             <Field>
-              <FieldLabel htmlFor="rename-template-description">Descripción (opcional)</FieldLabel>
+              <FieldLabel htmlFor="rename-template-description">Notas o descripción (opcional)</FieldLabel>
               <Textarea
                 id="rename-template-description"
                 value={description}
                 maxLength={500}
-                rows={2}
+                rows={4}
+                placeholder="Para qué tipo de avalúo es, qué secciones trae, qué falta completar…"
                 onChange={(event) => setDescription(event.target.value)}
               />
             </Field>

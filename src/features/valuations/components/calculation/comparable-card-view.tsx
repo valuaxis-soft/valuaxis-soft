@@ -1,5 +1,4 @@
 import { AlertTriangle, ExternalLink, ImageOff } from "lucide-react";
-import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -20,7 +19,10 @@ import {
   isRentComparableType,
   type ComparableType,
 } from "@/features/valuations/calculation/market-types";
+import { cn } from "@/lib/utils";
 import { ComparableValidityLine } from "./comparable-validity-badge";
+import { SheetSection, SheetTable, type SheetItem } from "./comparable-sheet";
+import { REVIEW_STATUS_STYLES } from "./review-status-style";
 
 const money = (value: number | null | undefined) =>
   value === null || value === undefined ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -28,24 +30,7 @@ const number = (value: number | null | undefined) =>
   value === null || value === undefined ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 4 });
 /** "2026-10-07" → "07/10/2026". */
 export const dayText = (value: string | null | undefined) => (value ? value.split("-").reverse().join("/") : "—");
-
-function Item(props: { label: string; children: ReactNode; wide?: boolean }) {
-  return (
-    <div className={props.wide ? "sm:col-span-2" : undefined}>
-      <dt className="text-xs text-muted-foreground">{props.label}</dt>
-      <dd className="wrap-break-word">{props.children}</dd>
-    </div>
-  );
-}
-
-function Section(props: { title: string; children: ReactNode }) {
-  return (
-    <section className="grid content-start gap-2" aria-label={props.title}>
-      <h3 className="text-sm font-semibold">{props.title}</h3>
-      {props.children}
-    </section>
-  );
-}
+const orDash = (value: string | null | undefined) => (value?.trim() ? value : "—");
 
 const AREA_LABELS: Record<ComparableType, string> = {
   TERRENO_VENTA: "Superficie de terreno (m²)",
@@ -54,12 +39,28 @@ const AREA_LABELS: Record<ComparableType, string> = {
   INMUEBLE_RENTA: "Superficie rentable (m²)",
 };
 
+/** A link to the listing that stays active in a printed PDF. */
+function ListingLink({ href, printable }: { href: string; printable: boolean }) {
+  return (
+    <a
+      className={cn("inline-flex items-center gap-1 break-all underline-offset-2 hover:underline", printable ? "text-[#1d4ed8] underline" : "text-primary")}
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <ExternalLink className="size-3.5 shrink-0" /> {href}
+    </a>
+  );
+}
+
 /**
  * "Ficha del comparable": what the appraiser checks against the listing —
  * the photos and the screenshot of the listing, the offer, where it is, who
  * offers it, its land and construction, and the valuations it was used in.
+ * Grouped as the tables of the dictamen. In the calculation memory
+ * (`printable`) it leaves out the review, the warnings and the uses.
  */
-export function ComparableCardView({ card }: { card: ComparableCardDto }) {
+export function ComparableCardView({ card, printable = false }: { card: ComparableCardDto; printable?: boolean }) {
   const { comparable, type } = card;
   const rent = isRentComparableType(type);
   const unitValue = comparable.area && comparable.price ? comparable.price / comparable.area : null;
@@ -68,21 +69,89 @@ export function ComparableCardView({ card }: { card: ComparableCardDto }) {
   const builtins = defaultCharacteristicFields(type);
   const extra = Object.entries(comparable.extra ?? {});
   const review = comparable.review;
+  const built = isBuiltComparableType(type);
+
+  const offer: SheetItem[] = [
+    { label: rent ? "Renta mensual" : "Precio de oferta", value: <span className="font-semibold tabular-nums">{money(comparable.price)}</span> },
+    ...(rent ? [{ label: "Renta anual", value: <span className="tabular-nums">{money(comparable.price === null ? null : comparable.price * 12)}</span> }] : []),
+    { label: rent ? "$/m²/mes" : "$/m²", value: <span className="tabular-nums">{money(unitValue)}</span> },
+    { label: AREA_LABELS[type], value: <span className="tabular-nums">{number(comparable.area)}</span> },
+    { label: "Operación", value: OPERATION_TYPE_LABELS[operation] },
+    { label: "Fecha de la oferta", value: dayText(comparable.offerDate) },
+  ];
+  const location: SheetItem[] = [
+    { label: "Ubicación", value: orDash(comparable.location), wide: true },
+    ...ADDRESS_PARTS.map((part) => ({ label: ADDRESS_LABELS[part], value: orDash(comparable.address?.[part]) })),
+    { label: "Proximidad urbana", value: comparable.urbanProximity ? URBAN_PROXIMITY_LABELS[comparable.urbanProximity] : "—" },
+    {
+      label: "Latitud, longitud",
+      value: comparable.latitude !== null && comparable.latitude !== undefined && comparable.longitude !== null && comparable.longitude !== undefined
+        ? `${comparable.latitude}, ${comparable.longitude}` : "—",
+    },
+  ];
+  const source: SheetItem[] = [
+    { label: "Fuente o portal", value: orDash(comparable.sourceName) },
+    { label: "Anunciante", value: orDash(comparable.contactName) },
+    { label: "Teléfono", value: orDash(comparable.contactPhone) },
+    { label: "Fecha de consulta", value: dayText(comparable.consultedOn) },
+    { label: "Vigencia de la oferta", value: dayText(comparable.validUntil) },
+    { label: "ID de publicación", value: orDash(comparable.listingDetails?.publicationId) },
+    { label: "Liga del anuncio", value: comparable.url ? <ListingLink href={comparable.url} printable={printable} /> : "—", wide: true },
+  ];
+  const land: SheetItem[] = [
+    { label: "Uso de suelo", value: orDash(comparable.landUse) },
+    ...builtins.filter((field) => !["area", "price", "notes", "conservation", "quality"].includes(field.key)).map((field) => {
+      const value = comparable[field.key as keyof typeof comparable];
+      // The format's tag of the zoning key reads "USO DE SUELO", like the description above it.
+      const label = field.key === "landUseKey" ? "Clave de uso de suelo" : field.label.charAt(0) + field.label.slice(1).toLowerCase();
+      return { label, value: value === null || value === undefined || value === "" ? "—" : String(value) };
+    }),
+    { label: "Pavimento / acceso", value: orDash(comparable.propertyDetails?.paving) },
+    { label: "Posición en manzana", value: orDash(comparable.propertyDetails?.blockPosition) },
+  ];
+  const construction: SheetItem[] = built ? [
+    { label: "Tipo de construcción", value: orDash(comparable.constructionType) },
+    { label: "Superficie de terreno (m²)", value: <span className="tabular-nums">{number(comparable.landArea)}</span> },
+    { label: "Calidad", value: orDash(comparable.quality) },
+    { label: "Conservación", value: orDash(comparable.conservation) },
+    { label: "Edad (años)", value: number(comparable.propertyDetails?.age) },
+    { label: "Niveles", value: number(comparable.propertyDetails?.levels) },
+    { label: "Recámaras", value: number(comparable.bedrooms) },
+    { label: "Baños", value: number(comparable.bathrooms) },
+    { label: "Estacionamientos", value: number(comparable.propertyDetails?.parking) },
+  ] : [];
+  const characteristics: SheetItem[] = [
+    ...extra.map(([key, value]) => ({ label: key.replace(/^custom:/, ""), value })),
+    ...(comparable.attributes ?? []).map((attribute) => ({ label: attribute.name, value: attribute.value })),
+    ...(comparable.characteristicsText ? [{ label: "Texto de características", value: comparable.characteristicsText, wide: true }] : []),
+    { label: "Observaciones", value: orDash(comparable.notes), wide: true },
+  ];
+  const details: SheetItem[] = comparable.propertyDetails || comparable.listingDetails ? [
+    { label: "Moneda", value: comparable.listingDetails?.currency ?? "MXN" },
+    { label: "Base del unitario", value: comparable.propertyDetails?.unitBasis ? UNIT_BASIS_LABELS[comparable.propertyDetails.unitBasis] : "—" },
+    { label: "Origen del dato", value: orDash(comparable.listingDetails?.dataOrigin) },
+    { label: "Datos verificados", value: comparable.listingDetails?.dataVerified ? DATA_VERIFIED_LABELS[comparable.listingDetails.dataVerified] : "—" },
+    { label: "Cambio de precio", value: dayText(comparable.listingDetails?.priceChangedOn) },
+    { label: "Confianza de la extracción", value: orDash(comparable.listingDetails?.extractionConfidence) },
+    ...(comparable.listingDetails?.photoUrl ? [{ label: "URL de la fotografía", value: <ListingLink href={comparable.listingDetails.photoUrl} printable={printable} />, wide: true }] : []),
+  ] : [];
 
   return (
-    <article className="grid gap-5 text-sm" data-comparable-card={id ?? comparable.id}>
-      <header className="flex flex-wrap items-center gap-2">
+    <article className={cn("grid gap-3 text-sm", printable && "text-black")} data-comparable-card={id ?? comparable.id}>
+      <header className="flex flex-wrap items-center gap-2 rounded-sm bg-[#003B73] px-3 py-2 text-white">
         <span className="font-mono text-base font-semibold">{id ?? "Sin número"}</span>
-        <Badge variant="secondary">{COMPARABLE_TYPE_LABELS[type]}</Badge>
-        <Badge variant="outline">{OPERATION_TYPE_LABELS[operation]}</Badge>
-        {review ? <Badge variant={review.status === "VERIFICADO" ? "default" : "outline"}>{REVIEW_STATUS_LABELS[review.status]}</Badge> : null}
-        <span className="text-xs text-muted-foreground">
-          {card.valuation ? `Capturado en el avalúo ${card.valuation.folio}, comparable ${comparable.reference}` : "En la base general, sin avalúo"}
+        <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs">{COMPARABLE_TYPE_LABELS[type]}</span>
+        <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs">Comparable {comparable.reference}</span>
+        {review && !printable ? (
+          <span className={cn("rounded-sm px-1.5 py-0.5 text-xs font-medium", REVIEW_STATUS_STYLES[review.status].solid)}>{REVIEW_STATUS_LABELS[review.status]}</span>
+        ) : null}
+        <span className="ml-auto text-xs text-white/80">
+          {card.valuation ? `Capturado en el avalúo ${card.valuation.folio}` : "En la base general, sin avalúo"}
         </span>
       </header>
-      <ComparableValidityLine validity={card.validity} />
+      {printable ? null : <ComparableValidityLine validity={card.validity} />}
 
-      {card.warnings.length ? (
+      {!printable && card.warnings.length ? (
         <ul className="grid gap-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300" aria-label="Avisos">
           {card.warnings.map((warning) => (
             <li key={warning.key} className="flex items-start gap-1"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> {warning.message}</li>
@@ -90,156 +159,87 @@ export function ComparableCardView({ card }: { card: ComparableCardDto }) {
         </ul>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Section title="Fotografías">
+      <div className={cn("grid gap-3", printable ? "grid-cols-2" : "sm:grid-cols-2")}>
+        <SheetSection title="Fotografías" printable={printable}>
           {comparable.photos.length ? (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5 p-1.5">
               {comparable.photos.map((photo) => (
-                <a key={photo.id} href={photo.url} target="_blank" rel="noopener noreferrer" className="block aspect-square overflow-hidden rounded-md border bg-muted">
+                <a key={photo.id} href={photo.url} target="_blank" rel="noopener noreferrer" className="block aspect-square overflow-hidden rounded-sm border bg-muted">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={photo.url} alt={photo.title} className="size-full object-cover" />
                 </a>
               ))}
             </div>
           ) : (
-            <p className="flex items-center gap-1 text-muted-foreground"><ImageOff className="size-4" /> Sin fotografías.</p>
+            <p className="flex items-center gap-1 p-2 text-xs text-muted-foreground"><ImageOff className="size-4" /> Sin fotografías.</p>
           )}
-        </Section>
-        <Section title="Pantalla de referencia">
+        </SheetSection>
+        <SheetSection title="Pantalla de referencia" printable={printable}>
           {comparable.screenshot ? (
-            <a href={comparable.screenshot.url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-md border bg-muted">
+            <a href={comparable.screenshot.url} target="_blank" rel="noopener noreferrer" className="block p-1.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={comparable.screenshot.url} alt="Pantalla de referencia del anuncio" className="max-h-64 w-full object-contain" />
             </a>
           ) : (
-            <p className="flex items-center gap-1 text-amber-700 dark:text-amber-400"><AlertTriangle className="size-4" /> Sin pantalla de referencia.</p>
+            <p className="flex items-center gap-1 p-2 text-xs text-amber-700 dark:text-amber-400"><AlertTriangle className="size-4" /> Sin pantalla de referencia.</p>
           )}
-        </Section>
+        </SheetSection>
       </div>
 
-      <Section title="Oferta">
-        <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-4">
-          <Item label={rent ? "Renta mensual" : "Precio de oferta"}><span className="text-base font-semibold tabular-nums">{money(comparable.price)}</span></Item>
-          <Item label={rent ? "$/m²/mes" : "$/m²"}><span className="tabular-nums">{money(unitValue)}</span></Item>
-          <Item label={AREA_LABELS[type]}><span className="tabular-nums">{number(comparable.area)}</span></Item>
-          <Item label="Fecha de la oferta">{dayText(comparable.offerDate)}</Item>
-        </dl>
-      </Section>
-
-      <Section title="Ubicación">
-        <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-4">
-          <Item label="Ubicación (como la imprime el dictamen)" wide>{comparable.location || "—"}</Item>
-          {ADDRESS_PARTS.map((part) => (
-            <Item key={part} label={ADDRESS_LABELS[part]}>{comparable.address?.[part] || "—"}</Item>
-          ))}
-          <Item label="Proximidad urbana">{comparable.urbanProximity ? URBAN_PROXIMITY_LABELS[comparable.urbanProximity] : "—"}</Item>
-          <Item label="Latitud, longitud">
-            {comparable.latitude !== null && comparable.latitude !== undefined && comparable.longitude !== null && comparable.longitude !== undefined
-              ? `${comparable.latitude}, ${comparable.longitude}` : "—"}
-          </Item>
-        </dl>
-      </Section>
-
-      <Section title="Fuente de información">
-        <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-4">
-          <Item label="Fuente o portal">{comparable.sourceName || "—"}</Item>
-          <Item label="Anunciante">{comparable.contactName || "—"}</Item>
-          <Item label="Teléfono">{comparable.contactPhone || "—"}</Item>
-          <Item label="Fecha de consulta">{dayText(comparable.consultedOn)}</Item>
-          <Item label="Liga del anuncio" wide>
-            {comparable.url ? (
-              <a className="inline-flex items-center gap-1 break-all text-primary underline-offset-2 hover:underline" href={comparable.url} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="size-3.5 shrink-0" /> {comparable.url}
-              </a>
-            ) : "—"}
-          </Item>
-          <Item label="Vigencia de la oferta">{dayText(comparable.validUntil)}</Item>
-        </dl>
-        {comparable.listingText ? (
-          <details className="rounded-md border p-2">
+      <SheetSection title="Oferta" printable={printable}><SheetTable items={offer} printable={printable} /></SheetSection>
+      <SheetSection title="Ubicación" printable={printable}><SheetTable items={location} printable={printable} /></SheetSection>
+      <SheetSection title="Fuente de información" printable={printable}>
+        <SheetTable items={source} printable={printable} />
+        {comparable.listingText && !printable ? (
+          <details className="border-t p-2">
             <summary className="cursor-pointer text-xs text-muted-foreground">Texto del anuncio como se pegó</summary>
             <p className="mt-2 text-xs whitespace-pre-wrap">{comparable.listingText}</p>
           </details>
         ) : null}
-      </Section>
-
-      <Section title="Terreno, construcción y características">
-        <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-4">
-          <Item label="Uso de suelo">{comparable.landUse || "—"}</Item>
-          {builtins.filter((field) => !["area", "price", "notes"].includes(field.key)).map((field) => {
-            const value = comparable[field.key as keyof typeof comparable];
-            // The format's tag of the zoning key reads "USO DE SUELO", like the description above it.
-            const label = field.key === "landUseKey" ? "Clave de uso de suelo" : field.label.charAt(0) + field.label.slice(1).toLowerCase();
-            return <Item key={field.key} label={label}>{value === null || value === undefined || value === "" ? "—" : String(value)}</Item>;
-          })}
-          {isBuiltComparableType(type) ? (
-            <>
-              <Item label="Tipo de construcción">{comparable.constructionType || "—"}</Item>
-              <Item label="Superficie de terreno (m²)"><span className="tabular-nums">{number(comparable.landArea)}</span></Item>
-              <Item label="Recámaras">{number(comparable.bedrooms)}</Item>
-              <Item label="Baños">{number(comparable.bathrooms)}</Item>
-            </>
-          ) : null}
-          {extra.map(([key, value]) => <Item key={key} label={key.replace(/^custom:/, "")}>{value}</Item>)}
-          <Item label="Observaciones" wide>{comparable.notes || "—"}</Item>
-        </dl>
-      </Section>
-
-      {comparable.propertyDetails || comparable.listingDetails ? (
-        <Section title="Más datos del anuncio">
-          <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-4">
-            <Item label="ID de publicación">{comparable.listingDetails?.publicationId || "—"}</Item>
-            <Item label="Moneda">{comparable.listingDetails?.currency ?? "MXN"}</Item>
-            <Item label="Origen del dato">{comparable.listingDetails?.dataOrigin || "—"}</Item>
-            <Item label="Datos verificados">{comparable.listingDetails?.dataVerified ? DATA_VERIFIED_LABELS[comparable.listingDetails.dataVerified] : "—"}</Item>
-            <Item label="Base del unitario">{comparable.propertyDetails?.unitBasis ? UNIT_BASIS_LABELS[comparable.propertyDetails.unitBasis] : "—"}</Item>
-            <Item label="Edad (años)">{number(comparable.propertyDetails?.age)}</Item>
-            <Item label="Niveles">{number(comparable.propertyDetails?.levels)}</Item>
-            <Item label="Estacionamientos">{number(comparable.propertyDetails?.parking)}</Item>
-            <Item label="Pavimento / acceso">{comparable.propertyDetails?.paving || "—"}</Item>
-            <Item label="Posición en manzana">{comparable.propertyDetails?.blockPosition || "—"}</Item>
-            <Item label="Fecha de cambio de precio">{dayText(comparable.listingDetails?.priceChangedOn)}</Item>
-            <Item label="Confianza de la extracción">{comparable.listingDetails?.extractionConfidence || "—"}</Item>
-            {comparable.listingDetails?.photoUrl ? (
-              <Item label="URL de la fotografía" wide>
-                <a className="inline-flex items-center gap-1 break-all text-primary underline-offset-2 hover:underline" href={comparable.listingDetails.photoUrl} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="size-3.5 shrink-0" /> {comparable.listingDetails.photoUrl}
-                </a>
-              </Item>
-            ) : null}
-          </dl>
-        </Section>
+      </SheetSection>
+      <SheetSection title="Terreno" printable={printable}><SheetTable items={land} printable={printable} /></SheetSection>
+      {construction.length ? (
+        <SheetSection title="Construcción" printable={printable}><SheetTable items={construction} printable={printable} /></SheetSection>
+      ) : null}
+      <SheetSection title="Características y observaciones" printable={printable}><SheetTable items={characteristics} printable={printable} /></SheetSection>
+      {details.length ? (
+        <SheetSection title="Más datos del anuncio" printable={printable}><SheetTable items={details} printable={printable} /></SheetSection>
       ) : null}
 
-      {review && review.status !== "POR_REVISAR" ? (
-        <Section title="Revisión">
-          <p>
-            {REVIEW_STATUS_LABELS[review.status]}
-            {review.reviewedBy ? ` por ${review.reviewedBy}` : ""}
-            {review.reviewedAt ? ` el ${new Date(review.reviewedAt).toLocaleString("es-MX")}` : ""}
-          </p>
-          <ul className="flex flex-wrap gap-1 text-xs">
-            {REVIEW_CHECKS.filter((check) => review.checks[check] !== undefined).map((check) => (
-              <li key={check}><Badge variant={review.checks[check] ? "secondary" : "destructive"}>{review.checks[check] ? "✓" : "✗"} {REVIEW_CHECK_LABELS[check]}</Badge></li>
+      {!printable && review && review.status !== "POR_REVISAR" ? (
+        <SheetSection title="Revisión">
+          <div className="grid gap-2 p-2 text-xs">
+            <p>
+              {REVIEW_STATUS_LABELS[review.status]}
+              {review.reviewedBy ? ` por ${review.reviewedBy}` : ""}
+              {review.reviewedAt ? ` el ${new Date(review.reviewedAt).toLocaleString("es-MX")}` : ""}
+            </p>
+            <ul className="flex flex-wrap gap-1">
+              {REVIEW_CHECKS.filter((check) => review.checks[check] !== undefined).map((check) => (
+                <li key={check}><Badge variant={review.checks[check] ? "secondary" : "destructive"}>{review.checks[check] ? "✓" : "✗"} {REVIEW_CHECK_LABELS[check]}</Badge></li>
+              ))}
+            </ul>
+            {review.notes ? <p className="whitespace-pre-wrap">{review.notes}</p> : null}
+          </div>
+        </SheetSection>
+      ) : null}
+
+      {!printable ? (
+        <SheetSection title="Avalúos en que se usó">
+          <ul className="grid gap-1 p-2 text-xs">
+            {card.uses.map((use) => (
+              <li key={`${use.valuationId}:${use.type}:${use.reference}`} className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{use.folio}</span>
+                <span className="text-muted-foreground">{use.title ?? ""}</span>
+                {use.client ? <span className="text-muted-foreground">· cliente {use.client}</span> : null}
+                <span className="text-muted-foreground">· {COMPARABLE_TYPE_LABELS[use.type]}, comparable {use.reference}, agregado el {dayText(use.addedOn)}</span>
+                <a className="text-primary underline-offset-2 hover:underline" href={`/workspace?id=${use.valuationId}`} target="_blank" rel="noopener noreferrer">Abrir avalúo</a>
+              </li>
             ))}
+            {!card.uses.length ? <li className="text-muted-foreground">Todavía no se usa en un avalúo.</li> : null}
           </ul>
-          {review.notes ? <p className="text-xs whitespace-pre-wrap">{review.notes}</p> : null}
-        </Section>
+        </SheetSection>
       ) : null}
-
-      <Section title="Avalúos en que se usó">
-        <ul className="grid gap-1">
-          {card.uses.map((use) => (
-            <li key={`${use.valuationId}:${use.type}:${use.reference}`} className="flex flex-wrap items-center gap-2">
-              <span className="font-medium">{use.folio}</span>
-              <span className="text-muted-foreground">{use.title ?? ""}</span>
-              {use.client ? <span className="text-xs text-muted-foreground">· cliente {use.client}</span> : null}
-              <span className="text-xs text-muted-foreground">· {COMPARABLE_TYPE_LABELS[use.type]}, comparable {use.reference}, agregado el {dayText(use.addedOn)}</span>
-              <a className="text-xs text-primary underline-offset-2 hover:underline" href={`/workspace?id=${use.valuationId}`} target="_blank" rel="noopener noreferrer">Abrir avalúo</a>
-            </li>
-          ))}
-        </ul>
-      </Section>
     </article>
   );
 }

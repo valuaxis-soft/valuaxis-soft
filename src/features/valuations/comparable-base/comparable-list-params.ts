@@ -44,6 +44,9 @@ export type ComparableListParams = {
   operation: OperationType | null;
   constructionType: string;
   landUse: string;
+  /** An added characteristic of the comparable: its name and, optionally, words of its value. */
+  attribute: string;
+  attributeValue: string;
   landAreaMin: number | null;
   landAreaMax: number | null;
   builtAreaMin: number | null;
@@ -113,6 +116,8 @@ export function parseComparableListParams(searchParams: Record<string, RawParam>
     operation: oneOf(searchParams.operacion, OPERATION_TYPES, (raw) => raw.toUpperCase()),
     constructionType: textOf(searchParams.construccion),
     landUse: textOf(searchParams.uso),
+    attribute: textOf(searchParams.caracteristica),
+    attributeValue: textOf(searchParams.valorCaracteristica),
     landAreaMin: numberOf(searchParams.terrenoMin),
     landAreaMax: numberOf(searchParams.terrenoMax),
     builtAreaMin: numberOf(searchParams.construidaMin),
@@ -133,7 +138,7 @@ export function parseComparableListParams(searchParams: Record<string, RawParam>
 /** Whether any filter beyond the text and the order is set: the page opens its "Más filtros" then. */
 export function hasAdvancedFilters(params: ComparableListParams) {
   return Boolean(params.client || params.state || params.municipality || params.neighborhood || params.subdivision || params.postalCode
-    || params.types.length || params.operation || params.constructionType || params.landUse
+    || params.types.length || params.operation || params.constructionType || params.landUse || params.attribute || params.attributeValue
     || [params.landAreaMin, params.landAreaMax, params.builtAreaMin, params.builtAreaMax, params.bedrooms, params.bathrooms, params.priceMin, params.priceMax]
       .some((value) => value !== null)
     || params.from || params.to || params.validity);
@@ -158,6 +163,8 @@ export function buildComparableListHref(params: Partial<ComparableListParams>) {
   set("operacion", params.operation?.toLowerCase());
   set("construccion", params.constructionType);
   set("uso", params.landUse);
+  set("caracteristica", params.attribute);
+  set("valorCaracteristica", params.attributeValue);
   set("terrenoMin", params.landAreaMin);
   set("terrenoMax", params.landAreaMax);
   set("construidaMin", params.builtAreaMin);

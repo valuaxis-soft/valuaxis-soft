@@ -34,7 +34,11 @@ function Filter({ label, htmlFor, children, className }: { label: string; htmlFo
  * The filters of the firm's base, as a plain GET form: it works without
  * JavaScript, every search goes back to page 1, and the URL can be shared.
  */
-export function ComparableBaseFilters({ params }: { params: ComparableListParams }) {
+export function ComparableBaseFilters({ params, attributeNames = [] }: {
+  params: ComparableListParams;
+  /** Names of the characteristics added to the firm's comparables, to offer while typing. */
+  attributeNames?: string[];
+}) {
   return (
     <form action="/comparables" method="get" role="search" className="grid gap-3" aria-label="Buscar comparables">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -98,6 +102,30 @@ export function ComparableBaseFilters({ params }: { params: ComparableListParams
           </Filter>
           <Filter label="Uso de suelo" htmlFor="filtro-uso">
             <Input id="filtro-uso" name="uso" defaultValue={params.landUse} maxLength={100} placeholder="Habitacional, H-3…" className="h-9" />
+          </Filter>
+          <Filter label="Característica agregada" htmlFor="filtro-caracteristica">
+            <div className="flex items-center gap-1">
+              <Input
+                id="filtro-caracteristica"
+                name="caracteristica"
+                list="filtro-caracteristicas"
+                defaultValue={params.attribute}
+                maxLength={100}
+                placeholder="Nombre: alberca…"
+                className="h-9"
+              />
+              <Input
+                name="valorCaracteristica"
+                aria-label="Valor de la característica agregada"
+                defaultValue={params.attributeValue}
+                maxLength={100}
+                placeholder="Valor: sí…"
+                className="h-9"
+              />
+            </div>
+            <datalist id="filtro-caracteristicas">
+              {attributeNames.map((item) => <option key={item} value={item} />)}
+            </datalist>
           </Filter>
           <Filter label="Superficie de terreno (m²)" htmlFor="filtro-terreno-min">
             <div className="flex items-center gap-1">
