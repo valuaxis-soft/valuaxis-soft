@@ -308,7 +308,7 @@ test("a title before a table that starts on the next page goes with it, and the 
   assert.deepEqual(first && [first.from, first.to], [0, 26]);
 });
 
-test("a hidden table prints nothing: neither its row nor the apartado titled after it", () => {
+test("a hidden table prints nothing: neither its row, nor the apartado titled after it, nor the block that holds nothing else", () => {
   const hidden = { ...generatedTable("t", "Homologación", [textColumn("A")], [["1"]]), enabled: false };
   const onlyTable = { id: "ap", title: "Tabla de homologación", enabled: true, concepts: [], images: [], tables: [hidden] } as Apartado;
   const layout: ContentLayout = { version: 2, rows: [{ id: "r", columns: [{ id: "c", items: [{ type: "table", id: "t" }] }] }] };
@@ -317,7 +317,8 @@ test("a hidden table prints nothing: neither its row nor the apartado titled aft
     concepts: [], images: [], tables: [table], apartados: [apartado], contentLayout: layout,
   } as Block);
   const items = documentBlockFlowItems(marketBlock(hidden, onlyTable));
-  assert.deepEqual(items.map((entry) => entry.id), ["b:title"]);
+  // With all its content hidden, the block does not print its title either (observations of 27 Oct 2026).
+  assert.deepEqual(items.map((entry) => entry.id), []);
   const html = renderToStaticMarkup(createElement("div", null, items.map((entry) => createElement("div", { key: entry.id }, entry.node))));
   assert.doesNotMatch(html, /Homologación/);
 

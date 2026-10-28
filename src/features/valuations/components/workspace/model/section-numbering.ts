@@ -1,5 +1,6 @@
 import type { AppSection } from "@/features/valuations/model";
 import { ensureTerrenoSections } from "@/features/valuations/sections/terreno";
+import { blockContentHidden } from "@/features/valuations/services/hidden-content";
 
 export function normalizeEditorSections(sections: AppSection[]) {
   return ensureTerrenoSections(
@@ -31,7 +32,8 @@ export function resequenceSections(sections: AppSection[]) {
         if (section.id === "caratula") {
           return { ...block, sectionLabel: `${label}.${blockIndex + 1}` };
         }
-        if (!block.enabled) return { ...block, sectionLabel: "" };
+        // A block that prints nothing (hidden, or all its content hidden) takes no number.
+        if (!block.enabled || blockContentHidden(block)) return { ...block, sectionLabel: "" };
         globalBlockIndex += 1;
         return { ...block, sectionLabel: toRomanNumeral(globalBlockIndex) };
       }),

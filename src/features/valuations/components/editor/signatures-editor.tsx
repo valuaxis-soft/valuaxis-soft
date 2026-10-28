@@ -1,31 +1,23 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Loader2, Plus, Trash2, X } from "lucide-react";
-import { useState, type ChangeEvent } from "react";
-import { toast } from "sonner";
+import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { api } from "@/lib/api-client";
-import { UploadButton } from "./image-upload-control";
 import {
-  DEFAULT_SIGNATURE_IMAGE_SIZE,
   emptySignature,
   MAX_SIGNATURES,
-  SIGNATURE_IMAGE_SIZE_LABELS,
-  SIGNATURE_IMAGE_SIZES,
   signatureErrors,
   type ValuationSignature,
 } from "@/features/valuations/services/valuation-signatures";
 
-const SIGNATURE_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
-const SIGNATURE_IMAGE_FORMATS = "PNG, JPG o WEBP";
-
 /**
- * Who signs: one row per signature with name, cédula profesional, an optional
- * title and an optional scanned signature that prints over the line. Rows are
- * added, removed and reordered; they print in this order.
+ * Who signs: one row per signature with name, cédula profesional and an
+ * optional title, printed under the line where each one signs by hand. Rows
+ * are added, removed and reordered; they print in this order. There is no
+ * scanned signature: a pasted image has no legal validity (observations of
+ * 27 Oct 2026).
  */
 export function SignaturesEditor({
   description,
@@ -50,27 +42,6 @@ export function SignaturesEditor({
     onChange(next);
   };
   const full = signatures.length >= MAX_SIGNATURES;
-  const [uploading, setUploading] = useState<number | null>(null);
-  const uploadImage = async (index: number, event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    // The reasons the appraiser can act on, said before anything is sent.
-    if (!SIGNATURE_IMAGE_TYPES.includes(file.type)) {
-      toast.error(`No se pudo subir la firma: el archivo es ${file.type || "de un tipo desconocido"}. Usa una imagen ${SIGNATURE_IMAGE_FORMATS}.`);
-      return;
-    }
-    setUploading(index);
-    try {
-      const uploaded = await api.uploads.create(file);
-      if (!uploaded.url) throw new Error("No se recibió la imagen.");
-      update(index, { image: uploaded.url });
-    } catch (error) {
-      toast.error(`No se pudo subir la firma: ${error instanceof Error ? error.message : "Error desconocido"}. Usa una imagen ${SIGNATURE_IMAGE_FORMATS} sobre fondo blanco; si es muy pesada, redúcela.`);
-    } finally {
-      setUploading(null);
-    }
-  };
 
   return (
     <section className="space-y-4 rounded-lg border bg-muted/20 p-4">
@@ -117,44 +88,6 @@ export function SignaturesEditor({
                 disabled={readOnly} onClick={() => onChange(signatures.filter((_, position) => position !== index))}>
                 <Trash2 />
               </Button>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 md:col-span-4">
-              {signature.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={signature.image} alt={`Firma de ${signature.name || `la firma ${index + 1}`}`} className="h-12 max-w-48 rounded border bg-white object-contain p-1" />
-              ) : null}
-              {uploading === index ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Subiendo la firma" /> : null}
-              <UploadButton
-                accept="image/png,image/jpeg,image/webp"
-                disabled={readOnly || uploading !== null}
-                label={signature.image ? "Cambiar imagen de la firma" : "Subir imagen de la firma"}
-                onChange={(event) => void uploadImage(index, event)}
-              />
-              {signature.image ? (
-                <div className="flex items-center gap-1" role="group" aria-label={`Tamaño de la firma ${index + 1}`}>
-                  <span className="text-xs text-muted-foreground">Tamaño:</span>
-                  {SIGNATURE_IMAGE_SIZES.map((size) => (
-                    <Button
-                      key={size}
-                      type="button"
-                      size="xs"
-                      variant={(signature.imageSize ?? DEFAULT_SIGNATURE_IMAGE_SIZE) === size ? "default" : "outline"}
-                      disabled={readOnly}
-                      onClick={() => update(index, { imageSize: size })}
-                    >
-                      {SIGNATURE_IMAGE_SIZE_LABELS[size]}
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
-              {signature.image && !readOnly ? (
-                <Button type="button" size="sm" variant="ghost" onClick={() => update(index, { image: undefined })}>
-                  <X /> Quitar imagen
-                </Button>
-              ) : null}
-              {!signature.image ? (
-                <FieldDescription>Opcional. Foto o escaneo de la firma sobre fondo blanco; se imprime sobre la línea.</FieldDescription>
-              ) : null}
             </div>
           </div>
         );
