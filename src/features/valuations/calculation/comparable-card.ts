@@ -76,6 +76,14 @@ export const CONSTRUCTION_TYPE_SUGGESTIONS = [
   "Casa habitación", "Departamento", "Local comercial", "Oficina", "Bodega", "Nave industrial", "Edificio", "Consultorio", "Hotel",
 ];
 
+/**
+ * Quality and conservation of a built comparable: offered as lists, open to
+ * any other wording (in the capture and as an "information" alert in the
+ * master workbook), because each appraiser words them his own way.
+ */
+export const QUALITY_OPTIONS = ["Económica", "Media", "Buena", "Muy buena", "Lujo", "Industrial", "Otro", "Sin dato"];
+export const CONSERVATION_OPTIONS = ["Nueva", "Muy bueno", "Bueno", "Regular", "Malo", "Ruinoso"];
+
 export const OPERATION_TYPES = ["VENTA", "RENTA"] as const;
 export type OperationType = (typeof OPERATION_TYPES)[number];
 export const OPERATION_TYPE_LABELS: Record<OperationType, string> = { VENTA: "Venta", RENTA: "Renta" };

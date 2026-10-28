@@ -867,6 +867,7 @@ function MarketTypePanel(props: {
           onCheckDuplicates={(probe) => api.market.duplicates(valuationId, probe)}
           onReuse={(comparableId) => run(() => api.market.reuseComparable(valuationId, type, comparableId), "Comparable existente agregado. Califica sus factores.")}
           defaultValidityMonths={calculation.comparableValidityMonths}
+          attributeNames={[...new Set(comparables.flatMap((item) => (item.attributes ?? []).map((attribute) => attribute.name)))]}
         />
       ) : null}
     </section>

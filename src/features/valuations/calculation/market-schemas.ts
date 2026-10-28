@@ -12,6 +12,7 @@ import {
   CUSTOM_FACTOR_KEY,
   FACTOR_TYPES,
   HOMOLOGATION_BASES,
+  MAX_COMPARABLE_ATTRIBUTES,
   MAX_FACTOR_SLOTS,
   MAX_OFFER_OPTIONS,
   OFFER_LEVELS,
@@ -105,6 +106,11 @@ export const comparableInputSchema = z.object({
   notes: text(1000),
   extra: characteristicValues,
   characteristicsText: text(2000).optional(),
+  // Characteristics added to this comparable only; a client of before leaves them out and they stay as stored.
+  attributes: z.array(z.object({
+    name: z.string().trim().max(60, "El nombre de una característica lleva hasta 60 letras."),
+    value: z.string().trim().max(200, "El valor de una característica lleva hasta 200 letras."),
+  })).max(MAX_COMPARABLE_ATTRIBUTES, `Hasta ${MAX_COMPARABLE_ATTRIBUTES} características agregadas por comparable.`).optional(),
   factorJustification: text(2000).optional(),
   regressionExcluded: z.boolean().optional(),
   sourceName: text(180),

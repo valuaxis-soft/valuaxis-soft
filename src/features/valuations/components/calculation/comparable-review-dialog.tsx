@@ -1,12 +1,14 @@
 "use client";
 
-import { AlertTriangle, ClipboardCheck, ExternalLink, Image as ImageIcon, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, CircleHelp, ClipboardCheck, ExternalLink, Image as ImageIcon, Loader2, Search } from "lucide-react";
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,7 +20,9 @@ import {
   REVIEW_CHECK_LABELS,
   REVIEW_STATUSES,
   REVIEW_STATUS_LABELS,
+  WARNING_HELP,
   type ComparableReviewDto,
+  type ComparableWarning,
   type ReviewCheck,
   type ReviewStatus,
 } from "@/features/valuations/calculation/comparable-review";
@@ -26,17 +30,51 @@ import { COMPARABLE_TYPE_LABELS, isLandComparableType, isRentComparableType } fr
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { ComparableCardButton } from "./comparable-card-dialog";
+import { REVIEW_STATUS_STYLES } from "./review-status-style";
 
 const money = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" }));
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudo guardar la revisión.";
 
-const STATUS_TONES: Record<ReviewStatus, string> = {
-  POR_REVISAR: "text-muted-foreground",
-  VERIFICADO: "text-emerald-700 dark:text-emerald-400",
-  CON_OBSERVACIONES: "text-amber-700 dark:text-amber-400",
-  RECHAZADO: "text-destructive",
-};
+const statusOf = (row: ReviewRowDto): ReviewStatus => row.comparable.review?.status ?? "POR_REVISAR";
+
+/** Words of the comparable to find it by: number, reference, location, source, contact, notes and warnings. */
+export function reviewRowMatches(row: ReviewRowDto, query: string) {
+  const plain = (text: string) => text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const words = plain(query).split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const { comparable } = row;
+  const haystack = plain([
+    formatComparableId(comparable.folio) ?? "", `comparable ${comparable.reference}`, COMPARABLE_TYPE_LABELS[row.type], comparable.location,
+    comparable.sourceName ?? "", comparable.contactName ?? "", comparable.contactPhone ?? "", comparable.url ?? "",
+    comparable.review?.notes ?? "", REVIEW_STATUS_LABELS[statusOf(row)], ...row.warnings.map((warning) => warning.message),
+  ].join(" "));
+  return words.every((word) => haystack.includes(word));
+}
+
+/** A warning with its help on hover or focus: what it means and what to do. */
+function WarningLine({ warning }: { warning: ComparableWarning }) {
+  return (
+    <li className="flex items-start gap-1">
+      <AlertTriangle className="mt-0.5 size-3 shrink-0" /> <span>{warning.message}</span>
+      <TooltipPrimitive.Root>
+        <TooltipPrimitive.Trigger
+          className="inline-flex shrink-0 rounded-full text-amber-800/80 hover:text-amber-900 focus-visible:outline-2 dark:text-amber-300/80"
+          aria-label={`Qué significa: ${WARNING_HELP[warning.key]}`}
+        >
+          <CircleHelp className="size-3.5" />
+        </TooltipPrimitive.Trigger>
+        <TooltipPrimitive.Portal>
+          <TooltipPrimitive.Positioner sideOffset={4} className="isolate z-[60]">
+            <TooltipPrimitive.Popup className="max-w-xs rounded-md bg-foreground px-3 py-1.5 text-xs text-background shadow-md" data-warning-help={warning.key}>
+              {WARNING_HELP[warning.key]}
+            </TooltipPrimitive.Popup>
+          </TooltipPrimitive.Positioner>
+        </TooltipPrimitive.Portal>
+      </TooltipPrimitive.Root>
+    </li>
+  );
+}
 
 /** One comparable under review: its listing and screenshot to open, the checklist and the notes. */
 function ReviewRow(props: { row: ReviewRowDto; readOnly: boolean; onSaved: (review: ComparableReviewDto) => void; valuationId: string }) {
@@ -65,13 +103,13 @@ function ReviewRow(props: { row: ReviewRowDto; readOnly: boolean; onSaved: (revi
   };
 
   return (
-    <li className="grid gap-2 rounded-md border bg-background p-3" data-review-row={id ?? comparable.id}>
+    <li className={cn("grid gap-2 rounded-md border p-3", REVIEW_STATUS_STYLES[stored.status].row)} data-review-row={id ?? comparable.id} data-review-status={stored.status}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
             <span className="font-mono">{id ?? "Sin número"}</span>
             <Badge variant="secondary">{COMPARABLE_TYPE_LABELS[type]} · {comparable.reference}</Badge>
-            <span className={cn("text-xs", STATUS_TONES[stored.status])}>{REVIEW_STATUS_LABELS[stored.status]}</span>
+            <span className={cn("rounded-sm px-1.5 py-0.5 text-xs font-medium", REVIEW_STATUS_STYLES[stored.status].solid)}>{REVIEW_STATUS_LABELS[stored.status]}</span>
           </p>
           <p className="truncate text-sm">{comparable.location}</p>
           <p className="text-xs text-muted-foreground tabular-nums">
@@ -96,9 +134,7 @@ function ReviewRow(props: { row: ReviewRowDto; readOnly: boolean; onSaved: (revi
 
       {warnings.length ? (
         <ul className="grid gap-0.5 text-xs text-amber-700 dark:text-amber-400" data-review-warnings>
-          {warnings.map((warning) => (
-            <li key={warning.key} className="flex items-start gap-1"><AlertTriangle className="mt-0.5 size-3 shrink-0" /> {warning.message}</li>
-          ))}
+          {warnings.map((warning, index) => <WarningLine key={`${warning.key}-${index}`} warning={warning} />)}
         </ul>
       ) : null}
 
@@ -159,6 +195,13 @@ export function ComparableReviewDialog(props: {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<ReviewRowDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Which states to show (none chosen: all) and the words to find a comparable by.
+  const [statusFilter, setStatusFilter] = useState<ReviewStatus | null>(null);
+  const [query, setQuery] = useState("");
+  const shown = useMemo(
+    () => rows?.filter((row) => (statusFilter === null || statusOf(row) === statusFilter) && reviewRowMatches(row, query)) ?? null,
+    [rows, statusFilter, query],
+  );
 
   const load = () => {
     setRows(null);
@@ -173,7 +216,7 @@ export function ComparableReviewDialog(props: {
     props.onReviewed(comparableId, review);
   };
 
-  const counts = REVIEW_STATUSES.map((status) => [status, rows?.filter((row) => (row.comparable.review?.status ?? "POR_REVISAR") === status).length ?? 0] as const);
+  const counts = REVIEW_STATUSES.map((status) => [status, rows?.filter((row) => statusOf(row) === status).length ?? 0] as const);
 
   return (
     <>
@@ -190,19 +233,46 @@ export function ComparableReviewDialog(props: {
             </DialogDescription>
           </DialogHeader>
           {rows ? (
-            <p className="flex flex-wrap gap-3 text-xs" aria-live="polite">
-              {counts.map(([status, count]) => (
-                <span key={status} className={STATUS_TONES[status]}>{REVIEW_STATUS_LABELS[status]}: {count}</span>
-              ))}
-            </p>
+            <div className="grid gap-2" data-review-filters>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por estado">
+                <Button type="button" size="sm" variant={statusFilter === null ? "default" : "outline"} aria-pressed={statusFilter === null} onClick={() => setStatusFilter(null)}>
+                  Todos: {rows.length}
+                </Button>
+                {counts.map(([status, count]) => (
+                  <Button
+                    key={status}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    aria-pressed={statusFilter === status}
+                    className={cn(statusFilter === status && cn(REVIEW_STATUS_STYLES[status].solid, "border-transparent hover:opacity-90"))}
+                    onClick={() => setStatusFilter((current) => (current === status ? null : status))}
+                  >
+                    <span className={cn("size-2 rounded-full", REVIEW_STATUS_STYLES[status].solid)} aria-hidden="true" />
+                    {REVIEW_STATUS_LABELS[status]}: {count}
+                  </Button>
+                ))}
+              </div>
+              <div className="relative max-w-md">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  type="search"
+                  value={query}
+                  placeholder="Buscar por número, ubicación, fuente, contacto o aviso"
+                  aria-label="Buscar comparables en la revisión"
+                  className="pl-8"
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </div>
+            </div>
           ) : null}
           {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
           {!rows && !error ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Cargando los comparables…</p>
           ) : null}
-          {rows ? (
+          {shown ? (
             <ul className="grid gap-3">
-              {rows.map((row) => (
+              {shown.map((row) => (
                 <ReviewRow
                   key={row.comparable.id}
                   row={row}
@@ -211,7 +281,8 @@ export function ComparableReviewDialog(props: {
                   onSaved={(review) => saved(row.comparable.id, review)}
                 />
               ))}
-              {!rows.length ? <li className="text-sm text-muted-foreground">El avalúo no tiene comparables.</li> : null}
+              {!rows?.length ? <li className="text-sm text-muted-foreground">El avalúo no tiene comparables.</li> : null}
+              {rows?.length && !shown.length ? <li className="text-sm text-muted-foreground">Ningún comparable coincide con el filtro.</li> : null}
             </ul>
           ) : null}
           <DialogFooter>

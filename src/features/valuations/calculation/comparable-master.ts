@@ -12,9 +12,11 @@
  * catalog value Valuaxis cannot map); everything else is a warning.
  */
 import {
+  CONSERVATION_OPTIONS,
   CONSTRUCTION_TYPE_SUGGESTIONS,
   DATA_VERIFIED_LABELS,
   OPERATION_TYPE_LABELS,
+  QUALITY_OPTIONS,
   UNIT_BASIS_LABELS,
   URBAN_PROXIMITIES,
   URBAN_PROXIMITY_LABELS,
@@ -31,7 +33,6 @@ import {
   type UnitBasis,
 } from "./comparable-card";
 import { canonicalUrlKey } from "./comparable-duplicates";
-import { RATE_TABLE_OPTIONS } from "./income-types";
 import { cellDate, cellNumber, cellText, friendlyMessage, MAX_IMPORT_ROWS, normalizeHeader, type CellValue } from "./comparable-import";
 import { comparableInputSchema, type ComparableInputPayload } from "./market-schemas";
 import { isLandComparableType, isRentComparableType, type ComparableDto, type ComparableType } from "./market-types";
@@ -119,8 +120,8 @@ export const MASTER_CATALOGS = {
   services: { title: "Servicios", options: ["Completos", "Incompletos", "Sin servicios", "Sin dato"], strict: false },
   paving: { title: "Pavimento", options: ["Concreto", "Asfalto", "Adoquín", "Empedrado", "Terracería", "Sin acceso", "Otro"], strict: false },
   blockPosition: { title: "Posición", options: ["Intermedio", "Esquina", "Cabecera", "Manzana completa", "Otra"], strict: false },
-  quality: { title: "Calidad", options: ["Económica", "Media", "Buena", "Muy buena", "Lujo", "Industrial", "Otro", "Sin dato"], strict: false },
-  conservation: { title: "Conservación", options: [...RATE_TABLE_OPTIONS["Estado de conservación"]], strict: false },
+  quality: { title: "Calidad", options: QUALITY_OPTIONS, strict: false },
+  conservation: { title: "Conservación", options: CONSERVATION_OPTIONS, strict: false },
   currency: { title: "Moneda", options: ["MXN", "USD"], strict: true },
   rentPeriod: { title: "Periodo renta", options: RENT_PERIODS.map((period) => RENT_PERIOD_LABELS[period]), strict: true },
   unitBasis: { title: "Base del unitario", options: Object.values(UNIT_BASIS_LABELS), strict: true },
