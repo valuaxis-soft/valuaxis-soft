@@ -55,6 +55,13 @@ test("the cost approach rounds conservation, age and resultant factors as they a
   const result = computeCostApproach({ constructions: [construction] }, { ...config, rounding: { ...config.rounding, costs: { ...config.rounding.costs, constructions: null } } });
   // Edad 1 − (10/60)^1.4 = 0.9188… → 0.92; Cons. 0.987 → 0.99; FRe 0.99 × 0.92 = 0.9108 → 0.91.
   assert.equal(result.constructions, 0.91 * 10_000 * 100);
+
+  // The factors added after "Otro" are rounded as shown too, and so is the FRe they give: 0.99 × 0.92 × 0.95 = 0.86526 → 0.87.
+  const withExtras = computeCostApproach(
+    { constructions: [{ ...construction, extraFactors: [0.954] }] },
+    { ...config, rounding: { ...config.rounding, costs: { ...config.rounding.costs, constructions: null } } },
+  );
+  assert.equal(withExtras.constructions, 0.87 * 10_000 * 100);
 });
 
 test("dispersion before and after homologating, and the lowest and highest offer", () => {
