@@ -31,7 +31,10 @@ Los libros difieren en redondeos y en la dirección del factor de superficie. `E
 - **Indirectos.** Sobre el valor de construcciones e instalaciones, salvo que se capture otra base.
 - **Factores de homologación.** El sistema no propone valores ni rangos; cada despacho puede guardar su propio catálogo.
 
-Los campos numéricos de cálculo aceptan fórmulas que empiezan con `=` (`calculation/free-formula.ts`): + − × ÷ ^ %, paréntesis, `RAIZ`, `POTENCIA` y `REDONDEAR`, con la precedencia de Excel.
+Los campos numéricos de cálculo aceptan fórmulas que empiezan con `=` (`calculation/free-formula.ts`): + − × ÷ ^ %, paréntesis, `RAIZ`, `POTENCIA`, `REDONDEAR`, `LN` y `LOG` (base 10, o `LOG(x; base)`), con la precedencia de Excel. Las tablas aceptan además `MIN` y `MAX` de un rango (`A1:A5`) o de columnas completas (`B:B`, `A:C`); la fórmula se lee de vuelta con los paréntesis que escribió el valuador (se guardan como `PAREN`), tolera espacios y un `==` inicial, y un clic en otra celda sin operador de por medio cambia la referencia en lugar de agregarla.
+
+- **Precisión del cálculo** (migración 051, `calculation/calculation-precision.ts`). Cada versión guarda `JConfiguracionCalculo`: decimales de los factores (2 o 4) y «calcular con la precisión mostrada», como la precisión de pantalla de Excel. Con ella, `EngineConfig.displayedPrecision` redondea a esos decimales cada factor de homologación (superficie, capturados y FRe) y de demérito (conservación, edad, otro y FRe, también en el terreno de costos) antes de usarlo, y los valores unitarios a centavos, de modo que lo impreso cuadra (14,361.99 × 0.97 = 13,931.13). Los avalúos nuevos nacen con 2 decimales y la opción activa; las versiones de antes (NULL) calculan con todos los decimales, como antes y como los libros. Reabrir copia la elección; cambiarla (`PUT /api/avaluos/<uuid>/calculo/precision`) recalcula todos los enfoques. Las pruebas de integración usan la de antes salvo `createValuationFixture({ precision: "shown" })`.
+- **Dispersión.** Cada homologación da la dispersión inicial (máximo / mínimo de los valores unitarios de las ofertas) y la final (de los homologados), y los mínimos y máximos de ambos, en el panel y en el dictamen.
 
 `PENDING_DECISIONS` lista lo que aún espera respuesta del perito; está vacía desde el 9 de octubre de 2026.
 
