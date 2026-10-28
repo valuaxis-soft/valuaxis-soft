@@ -20,6 +20,16 @@ export type ExternalPreviewPayload = {
   numberPresentation?: NumberPresentation;
   /** How the document lays out its pages; a main tab on an older version sends none. */
   pagePresentation?: PagePresentation;
+  /** Where the section shown is in the document, so the window browses it too; absent from an older main tab. */
+  navigation?: ExternalPreviewNavigation;
+};
+
+/** The section the window shows among the ones it can browse. */
+export type ExternalPreviewNavigation = {
+  label: string;
+  position: { index: number; total: number };
+  canPrevious: boolean;
+  canNext: boolean;
 };
 
 export type ExternalPreviewMessage =
@@ -29,7 +39,16 @@ export type ExternalPreviewMessage =
   /** The editor tab is going away (closed, or reloading). */
   | { type: "main-closed" }
   /** A preview window of the valuation just opened; any other one gives way to it. */
-  | { type: "preview-opened"; windowId: string };
+  | { type: "preview-opened"; windowId: string }
+  /** The window asks the editor for the previous or next section of the document. */
+  | { type: "preview-navigate"; direction: -1 | 1 };
+
+/** The previous or next section the window asked for; null for any other message. */
+export function externalPreviewNavigation(message: unknown): -1 | 1 | null {
+  if (!message || typeof message !== "object") return null;
+  const data = message as { type?: unknown; direction?: unknown };
+  return data.type === "preview-navigate" && (data.direction === -1 || data.direction === 1) ? data.direction : null;
+}
 
 /**
  * How long a preview window waits, once its editor goes away, for an editor

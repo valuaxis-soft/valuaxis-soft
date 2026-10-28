@@ -46,15 +46,23 @@ import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
 import { RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
-import { removeCustomSection, renameSection } from "@/features/valuations/services/section-edit-operations";
+import {
+  canRemoveSection,
+  listedSections,
+  removeSection,
+  renameSection,
+  restoreSection,
+  withListedOrder,
+} from "@/features/valuations/services/section-edit-operations";
 import { createCustomSection } from "./model/content-factories";
+import { revealEditorFocus } from "./model/editor-focus-reveal";
 import { adjacentPreviewSectionId, previewSectionPosition } from "./model/preview-navigation";
 import { flattenSectionConcepts, resolveSectionConceptsForDisplay } from "./model/section-content";
 import { sectionIconMap } from "./model/section-icons";
 import { sectionDisplayName } from "./model/section-numbering";
 import { useBlockMutations } from "./hooks/use-block-mutations";
 import { useCalculationDocumentSync } from "./hooks/use-calculation-document-sync";
-import { useEditorState } from "./hooks/use-editor-state";
+import { useEditorHistoryShortcuts, useEditorState, type AppliedHistoryStep } from "./hooks/use-editor-state";
 import { useExternalPreviewSync } from "./hooks/use-external-preview-sync";
 import { useImageMutations } from "./hooks/use-image-mutations";
 import { useSessionHeartbeat } from "./hooks/use-session-heartbeat";
@@ -137,6 +145,8 @@ export function ValuationWorkspace({
   // active one; null while it follows the editor's active section.
   const [previewSectionId, setPreviewSectionId] = useState<string | null>(null);
   const handleActiveSectionChange = (sectionId: string) => {
+    // Another section opens at its top: the editor's scroll used to stay where the last one was, near its end.
+    if (sectionId !== activeSectionId) document.getElementById("valuation-form")?.scrollTo({ top: 0 });
     setActiveSectionId(sectionId);
     setPreviewSectionId(null);
   };
@@ -159,7 +169,9 @@ export function ValuationWorkspace({
   const images = useImageMutations({ ...editor, canEdit, valuationId });
   const { documentHeaderImage, principalCoverImage } = images;
 
-  const enabledSections = sections;
+  // The tab strip, the preview and the editor show every section but the deleted ones.
+  const enabledSections = useMemo(() => listedSections(sections), [sections]);
+  const removedSections = useMemo(() => sections.filter((section) => section.removed), [sections]);
   const rawActiveSection =
     enabledSections.find((section) => section.id === activeSectionId) ?? enabledSections[0];
   const allConceptsForDisplay = useMemo(() => flattenSectionConcepts(sections), [sections]);
@@ -194,6 +206,12 @@ export function ValuationWorkspace({
     () => ({ bindingMargin: pagePresentationChoice.bindingMargin, titleBars: pagePresentationChoice.titleBars, titleBand: pagePresentationChoice.titleBand }),
     [pagePresentationChoice.bindingMargin, pagePresentationChoice.titleBars, pagePresentationChoice.titleBand],
   );
+  const {
+    label: navigationLabel,
+    position: { index: navigationIndex, total: navigationTotal },
+    canPrevious: navigationCanPrevious,
+    canNext: navigationCanNext,
+  } = previewNavigation;
   const externalPreviewPayload = useMemo<ExternalPreviewPayload>(() => ({
     activeSection: previewSection,
     caratula,
@@ -203,7 +221,19 @@ export function ValuationWorkspace({
     principalCoverImage,
     numberPresentation,
     pagePresentation,
+    // The window browses the document too: it asks this editor for the previous or next section.
+    navigation: {
+      label: navigationLabel,
+      position: { index: navigationIndex, total: navigationTotal },
+      canPrevious: navigationCanPrevious,
+      canNext: navigationCanNext,
+    },
   }), [
+    navigationLabel,
+    navigationIndex,
+    navigationTotal,
+    navigationCanPrevious,
+    navigationCanNext,
     previewSection,
     caratula,
     letterhead,
@@ -224,14 +254,34 @@ export function ValuationWorkspace({
     updateSections((current) => renameSection(current, sectionId, title));
   };
   // Deleting asks first: the tab's trash can and the section header's button open the same dialog.
+  // Any section but the required ones is deleted; a registry section can be restored from the list.
   const [removingSectionId, setRemovingSectionId] = useState<string | null>(null);
-  const removingSection = sections.find((section) => section.id === removingSectionId && section.custom) ?? null;
+  const removingSection = sections.find((section) => section.id === removingSectionId && canRemoveSection(section) && !section.removed) ?? null;
   const handleRemoveSection = (sectionId: string) => {
     setRemovingSectionId(null);
-    updateSections((current) => removeCustomSection(current, sectionId));
+    updateSections((current) => removeSection(current, sectionId));
     if (activeSectionId === sectionId) handleActiveSectionChange(enabledSections.find((section) => section.id !== sectionId)?.id ?? "caratula");
   };
+  // An undo or a redo opens the section it changed and shows the change, lit for a moment.
+  const revealHistoryStep = (step: AppliedHistoryStep | null) => {
+    const focus = step?.focus;
+    if (focus) {
+      if (focus.sectionId !== activeSectionId && enabledSections.some((section) => section.id === focus.sectionId)) {
+        handleActiveSectionChange(focus.sectionId);
+      }
+      revealEditorFocus(focus);
+    }
+    return step;
+  };
+  const undo = () => revealHistoryStep(undoEditorChange());
+  const redo = () => revealHistoryStep(redoEditorChange());
+  useEditorHistoryShortcuts({ canEdit, onUndo: undo, onRedo: redo });
+  const handleRestoreSection = (sectionId: string) => {
+    updateSections((current) => restoreSection(current, sectionId));
+    handleActiveSectionChange(sectionId);
+  };
   const { openExternalPreviewWindow } = useExternalPreviewSync({
+    onNavigate: browsePreview,
     payload: externalPreviewPayload,
     splitLayout,
     valuationId,
@@ -332,6 +382,7 @@ export function ValuationWorkspace({
             onRemoveImage={images.removeImage}
             onRemoveApartado={blocks.removeApartado}
             onRemoveSection={setRemovingSectionId}
+            onRenameSection={handleRenameSection}
             onRemoveSubConcept={blocks.removeSubConcept}
             onRemoveTable={tables.removeTable}
             onUpdateBlock={blocks.updateBlock}
@@ -406,15 +457,18 @@ export function ValuationWorkspace({
             onExit={handleExit}
             onRemoveSection={canEdit ? setRemovingSectionId : undefined}
             onRenameSection={handleRenameSection}
-            onReorderSections={(next) => updateSections(() => next)}
-            onRedo={redoEditorChange}
+            onReorderSections={(next) => updateSections((current) => withListedOrder(current, next))}
+            onRestoreSection={canEdit ? handleRestoreSection : undefined}
+            onSelectSection={handleActiveSectionChange}
+            onRedo={() => void redo()}
             onSave={() => void handleSave()}
             onSaveAsTemplate={valuationId && canEdit ? () => setTemplateDialogOpen(true) : undefined}
             onSplitLayoutChange={handleSplitLayoutChange}
-            onUndo={undoEditorChange}
+            onUndo={() => void undo()}
             onWorkspaceModeChange={handleWorkspaceModeChange}
             readOnly={!canEdit}
             redoAvailable={canRedo}
+            removedSections={removedSections}
             saveStatus={saveStatus}
             saving={saving}
             splitLayout={splitLayout}
@@ -505,6 +559,7 @@ export function ValuationWorkspace({
       />
       <RemoveSectionDialog
         sectionName={removingSection ? sectionDisplayName(removingSection) : null}
+        restorable={Boolean(removingSection && !removingSection.custom)}
         onOpenChange={(open) => { if (!open) setRemovingSectionId(null); }}
         onConfirm={() => { if (removingSection) handleRemoveSection(removingSection.id); }}
       />

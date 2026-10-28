@@ -242,8 +242,8 @@ function ApartadoPresentationModeControl({
             type="button"
             size="icon-sm"
             variant="outline"
-            aria-label="Diseño del apartado"
-            title="Diseño del apartado"
+            aria-label="Diseño del subbloque"
+            title="Diseño del subbloque"
             disabled={disabled}
           >
             <LayoutList />
@@ -252,7 +252,7 @@ function ApartadoPresentationModeControl({
       />
       <PopoverContent align="end" className="w-48 p-3">
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Diseño del apartado</p>
+          <p className="text-xs font-medium text-muted-foreground">Diseño del subbloque</p>
           <Button
             type="button"
             size="sm"

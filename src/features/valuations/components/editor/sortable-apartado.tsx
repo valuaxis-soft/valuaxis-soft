@@ -61,7 +61,7 @@ export function SortableApartado({
           type="button"
           size="icon-sm"
           variant="ghost"
-          aria-label="Reordenar apartado"
+          aria-label="Reordenar subbloque"
           title="Arrastrar para reordenar"
           disabled={disabled}
           className={cn(

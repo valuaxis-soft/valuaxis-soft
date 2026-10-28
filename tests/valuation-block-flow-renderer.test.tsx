@@ -427,7 +427,7 @@ test("Apartado renders through SortableApartado (grip handle present)", () => {
 
   const html = renderBlockFlow(b);
   // SortableApartado renders a grip handle button with aria-label
-  assert.ok(html.includes("Reordenar apartado"), "grip handle aria-label present");
+  assert.ok(html.includes("Reordenar subbloque"), "grip handle aria-label present");
   assert.ok(html.includes("My Apartado"), "apartado content renders");
 });
 
@@ -438,7 +438,7 @@ test("Structural handle is a button with grab cursor", () => {
 
   const html = renderBlockFlow(b);
   assert.ok(html.includes("cursor-grab"), "grab cursor class present");
-  assert.ok(html.includes("Reordenar apartado"), "handle button present");
+  assert.ok(html.includes("Reordenar subbloque"), "handle button present");
 });
 
 test("Multiple apartados each have their own grip handle", () => {
@@ -448,7 +448,7 @@ test("Multiple apartados each have their own grip handle", () => {
 
   const html = renderBlockFlow(b);
   // Count occurrences of the grip handle aria-label
-  const handleCount = (html.match(/Reordenar apartado/g) ?? []).length;
+  const handleCount = (html.match(/Reordenar subbloque/g) ?? []).length;
   assert.equal(handleCount, 3, "each apartado has a grip handle");
 });
 
@@ -458,7 +458,7 @@ test("Apartado with onBlockFlowChange renders SortableApartado enabled", () => {
   });
 
   const html = renderBlockFlowWithCallbacks(b);
-  assert.ok(html.includes("Reordenar apartado"), "handle present when onBlockFlowChange provided");
+  assert.ok(html.includes("Reordenar subbloque"), "handle present when onBlockFlowChange provided");
 });
 
 test("Apartado without onBlockFlowChange renders SortableApartado disabled", () => {
@@ -469,7 +469,7 @@ test("Apartado without onBlockFlowChange renders SortableApartado disabled", () 
   // renderBlockFlow does NOT pass onBlockFlowChange
   const html = renderBlockFlow(b);
   // When disabled, the button should have disabled attribute
-  assert.ok(html.includes("Reordenar apartado"), "handle still renders when disabled");
+  assert.ok(html.includes("Reordenar subbloque"), "handle still renders when disabled");
 });
 
 /* ================================================================== */
@@ -511,7 +511,7 @@ test("V2 — single apartado structural row renders full width", () => {
 
   const html = renderBlockFlow(b);
   assert.ok(html.includes("Apartado A"), "apartado renders");
-  assert.ok(html.includes("Reordenar apartado"), "grip handle present");
+  assert.ok(html.includes("Reordenar subbloque"), "grip handle present");
   // Single apartado should NOT be in a grid
   assert.ok(!html.includes("grid-cols-2"), "single apartado is not in grid");
 });
@@ -538,7 +538,7 @@ test("V2 — paired apartados structural row renders 50/50 grid", () => {
   assert.ok(html.includes("Apartado B"), "apartado B renders");
   assert.ok(html.includes("grid-cols-2"), "paired apartados use 50/50 grid");
   // Both grip handles present
-  const handleCount = (html.match(/Reordenar apartado/g) ?? []).length;
+  const handleCount = (html.match(/Reordenar subbloque/g) ?? []).length;
   assert.equal(handleCount, 2, "both apartados have grip handles");
 });
 

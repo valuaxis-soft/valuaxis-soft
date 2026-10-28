@@ -11,6 +11,7 @@ import type { ConceptPresentation } from "@/features/valuations/services/concept
 
 type BlockCardProps = {
   // Card shell
+  blockId?: string;
   cardRef: (node: HTMLElement | null) => void;
   style?: CSSProperties;
   className?: string;
@@ -60,6 +61,7 @@ type BlockCardProps = {
 };
 
 export function BlockCard({
+  blockId,
   cardRef,
   style,
   className,
@@ -73,6 +75,7 @@ export function BlockCard({
 }: BlockCardProps) {
   return (
     <BlockEditorCard
+      blockId={blockId}
       cardRef={cardRef}
       style={style}
       className={className}
