@@ -84,6 +84,7 @@ export function ValuationDictamen({
           {canShare ? <SendDictamenEmailDialog valuationId={valuationId} folio={initial.meta.folio} firmName={letterhead.name} /> : null}
           <DownloadDictamenPdfButton kind="memoria" variant="outline" valuationId={valuationId} />
           <DownloadDictamenPdfButton valuationId={valuationId} />
+          <DownloadDictamenPdfButton kind="entregables" variant="outline" valuationId={valuationId} />
         </div>
       </header>
 

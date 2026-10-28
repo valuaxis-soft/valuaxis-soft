@@ -492,7 +492,12 @@ export function ValuationWorkspace({
             workspaceMode={workspaceMode}
           />
 
-          {!canEdit ? <ReadOnlyValuationAlert reason={locked ? "concluded" : "role"} /> : null}
+          {!canEdit ? (
+            <ReadOnlyValuationAlert
+              reason={locked ? "concluded" : "role"}
+              deliverablesOf={valuationId && hasPermission(currentUser, AUTH_PERMISSIONS.exportValuations) ? valuationId : null}
+            />
+          ) : null}
         </div>
       </section>
 
