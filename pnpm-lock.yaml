@@ -205,6 +205,9 @@ importers:
       exceljs:
         specifier: 4.4.0
         version: 4.4.0
+      highs:
+        specifier: 1.15.3
+        version: 1.15.3
       jose:
         specifier: ^6.2.3
         version: 6.2.3
@@ -2604,6 +2607,10 @@ packages:
 
   hermes-parser@0.25.1:
     resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
+
+  highs@1.15.3:
+    resolution: {integrity: sha512-5rzjBlAkqRxr7FOv+iZjxF8nNfKsEt8uOaP3S6gls6yRf4+Jv4BqBIE3iPFsgfOHutQBMNxRE9jWhxRAM7Oycw==}
+    engines: {node: '>=18'}
 
   hono@4.12.23:
     resolution: {integrity: sha512-eIaZ9qDgu7XV0pxOCrg7/WhnQ6Ivm22UcxhXx/A3dcbqbbYgBEkc6e/J/s7j2tS96zoB0S9VBdLwQNCWwUo4LA==}
@@ -6707,6 +6714,8 @@ snapshots:
   hermes-parser@0.25.1:
     dependencies:
       hermes-estree: 0.25.1
+
+  highs@1.15.3: {}
 
   hono@4.12.23: {}
 
