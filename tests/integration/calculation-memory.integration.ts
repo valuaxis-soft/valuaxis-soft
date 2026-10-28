@@ -182,7 +182,9 @@ async function post(jar: TestCookieJar, publicId: string) {
 
 test("the memory of a captured valuation has its formula table and the traces of the market and the cost approach", async () => {
   const fixture = await capturedValuation();
-  const { memory } = await loadCalculationMemory(fixture.user, fixture.publicId, new Date("2026-10-20T12:00:00Z"));
+  const { memory, comparables } = await loadCalculationMemory(fixture.user, fixture.publicId, new Date("2026-10-20T12:00:00Z"));
+  assert.equal(comparables.length, 4, "the memoria técnica has the sheet of each comparable used");
+  assert.ok(comparables.every((card) => card.type === "TERRENO_VENTA" && card.uses.length === 0));
 
   const [table] = memory.document.filter((item): item is MemoryTable => item.kind === "table");
   assert.equal(table.title, "Cálculo libre");
@@ -194,13 +196,14 @@ test("the memory of a captured valuation has its formula table and the traces of
   ]);
   assert.equal(table.rows[0].cells[2].withValues, "=169.78*9000");
 
-  assert.deepEqual(memory.approaches.map((approach) => approach.key), ["MOTOR.MERCADO.TERRENO_VENTA", "MOTOR.COSTOS", "MOTOR.CONCLUSION"]);
+  // In the order of the dictamen: the cost approach prints before the market (as in the books), the conclusion last.
+  assert.deepEqual(memory.approaches.map((approach) => approach.key), ["MOTOR.COSTOS", "MOTOR.MERCADO.TERRENO_VENTA", "MOTOR.CONCLUSION"]);
   for (const approach of memory.approaches) {
     assert.ok(approach.steps.length > 0, `${approach.key} has steps`);
     assert.equal(approach.storedVersion, ENGINE_VERSION, `${approach.key} was stored by this engine`);
     assert.equal(approach.differs, false, `${approach.key} reproduces what was stored`);
   }
-  const market = memory.approaches[0];
+  const market = memory.approaches.find((approach) => approach.key === "MOTOR.MERCADO.TERRENO_VENTA")!;
   assert.equal(market.steps.at(-1)?.key, "mercado.valor");
   assert.equal(market.captured.length, 4, "the zone factor of each comparable was typed as =0.9/1");
   assert.equal(market.captured[0].formula, "=0.9/1");

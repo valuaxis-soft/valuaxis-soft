@@ -13,7 +13,7 @@ import {
   updateComparable,
 } from "../../src/features/valuations/calculation/market.service";
 import { comparableFormValues, type ComparableType } from "../../src/features/valuations/calculation/market-types";
-import { listComparableBase } from "../../src/features/valuations/comparable-base/comparable-base.service";
+import { comparableAttributeNames, listComparableBase } from "../../src/features/valuations/comparable-base/comparable-base.service";
 import { parseComparableListParams } from "../../src/features/valuations/comparable-base/comparable-list-params";
 import { createValuationFixture, prisma } from "./support";
 
@@ -224,4 +224,31 @@ test("a possible duplicate is the same (most recent data, existing number) or a 
     createComparable(stranger.publicId, stranger.user, "TERRENO_VENTA", comparable("Allende 30", 500, 1_450_000), { mergeInto: source.id }),
     (error: Error & { status?: number }) => error.status === 404,
   );
+});
+
+test("characteristics added to a comparable are kept, offered by name, and filter the base by name and value", async () => {
+  const owner = await createValuationFixture();
+  const marker = randomUUID().slice(0, 8);
+  await createComparable(owner.publicId, owner.user, "INMUEBLE_VENTA", comparable(`Juárez 40, col. Centro ${marker}, Arandas`, 150, 2_500_000, {
+    attributes: [{ name: "Alberca", value: "Sí, techada" }, { name: "Vista", value: "Al lago" }, { name: "", value: "sin nombre" }],
+  }));
+  await createComparable(owner.publicId, owner.user, "INMUEBLE_VENTA", comparable(`Juárez 42, col. Centro ${marker}, Arandas`, 150, 2_400_000, {
+    attributes: [{ name: "Alberca", value: "No" }],
+  }));
+  const [first] = await comparablesOf(owner.publicId, owner.organizationId, "INMUEBLE_VENTA");
+  assert.deepEqual(first.attributes, [{ name: "Alberca", value: "Sí, techada" }, { name: "Vista", value: "Al lago" }]);
+
+  // An edit from a client of before (without attributes) keeps them.
+  const { attributes: _attributes, ...values } = comparableFormValues(first);
+  await updateComparable(owner.publicId, owner.user, first.id, { ...values, notes: "Revisado" });
+  assert.equal((await comparablesOf(owner.publicId, owner.organizationId, "INMUEBLE_VENTA"))[0].attributes?.length, 2);
+
+  const names = await comparableAttributeNames(owner.organizationId);
+  assert.ok(names.includes("Alberca") && names.includes("Vista"));
+  const locations = async (query: Record<string, string>) =>
+    (await list(owner.organizationId, { q: marker, ...query })).items.map((item) => item.location).sort();
+  assert.deepEqual(await locations({ caracteristica: "alberca" }), [`Juárez 40, col. Centro ${marker}, Arandas`, `Juárez 42, col. Centro ${marker}, Arandas`]);
+  assert.deepEqual(await locations({ caracteristica: "alberca", valorCaracteristica: "si" }), [`Juárez 40, col. Centro ${marker}, Arandas`], "the value without accents or case");
+  assert.deepEqual(await locations({ valorCaracteristica: "lago" }), [`Juárez 40, col. Centro ${marker}, Arandas`], "a value alone looks in every characteristic");
+  assert.deepEqual(await locations({ caracteristica: "jardín" }), []);
 });
