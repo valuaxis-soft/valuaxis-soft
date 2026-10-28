@@ -17,11 +17,11 @@ export function ComparableBaseActions({ exportHref, canImport }: { exportHref: s
   return (
     <div className="flex flex-wrap items-center gap-2">
       <a className={cn(buttonVariants({ variant: "outline", size: "sm" }))} href="/api/comparables/plantilla?destino=BASE" download>
-        <FileDown data-icon="inline-start" /> Plantilla maestra
+        <FileDown data-icon="inline-start" /> Descargar plantilla maestra
       </a>
-      {canImport ? <ImportComparablesDialog scope={{ kind: "base", onImported: () => router.refresh() }} triggerLabel="Importar a la base" /> : null}
-      <a className={cn(buttonVariants({ variant: "outline", size: "sm" }))} href={exportHref} download>
-        <FileDown data-icon="inline-start" /> Exportar Excel
+      {canImport ? <ImportComparablesDialog scope={{ kind: "base", onImported: () => router.refresh() }} /> : null}
+      <a className={cn(buttonVariants({ variant: "outline", size: "sm" }))} href={exportHref} download title="Los comparables filtrados, en la plantilla maestra, para editarlos e importarlos de vuelta">
+        <FileDown data-icon="inline-start" /> Exportar a plantilla maestra
       </a>
     </div>
   );

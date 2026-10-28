@@ -601,7 +601,7 @@ function MarketTypePanel(props: {
                 href={`/api/avaluos/${valuationId}/mercado/comparables/exportar?tipo=${type}`}
                 download
               >
-                <FileDown data-icon="inline-start" /> Exportar Excel
+                <FileDown data-icon="inline-start" /> Exportar a plantilla maestra
               </a>
             ) : null}
             {comparables.length ? (

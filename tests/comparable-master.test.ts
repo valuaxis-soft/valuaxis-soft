@@ -12,6 +12,7 @@ import {
   columnLetter,
   findMasterHeader,
   masterRowValues,
+  monthlyAndAnnualRent,
   parseDestination,
   propertyTypeKeyOf,
   resolveComparableType,
@@ -246,4 +247,53 @@ test("column letters", () => {
   assert.equal(columnLetter(25), "Z");
   assert.equal(columnLetter(26), "AA");
   assert.equal(columnLetter(52), "BA");
+});
+
+test("rent: monthly or annual, the other computed; with both the month rules", () => {
+  assert.deepEqual(monthlyAndAnnualRent({ monthly: 20_000, annual: null, price: null, period: null }), { monthly: 20_000, annual: 240_000, warnings: [] });
+  const fromYear = monthlyAndAnnualRent({ monthly: null, annual: 240_000, price: null, period: null });
+  assert.equal(fromYear.monthly, 20_000);
+  assert.match(fromYear.warnings.join(" "), /calculó entre 12/);
+  const both = monthlyAndAnnualRent({ monthly: 20_000, annual: 250_000, price: 1, period: "ANUAL" });
+  assert.equal(both.monthly, 20_000);
+  assert.match(both.warnings.join(" "), /no es la mensual por 12/);
+  assert.deepEqual(monthlyAndAnnualRent({ monthly: 20_000, annual: 240_000, price: null, period: null }).warnings, [], "they agree");
+  assert.equal(monthlyAndAnnualRent({ monthly: null, annual: null, price: 240_000, period: "ANUAL" }).monthly, 20_000, "the price by its period, as before");
+
+  const { rows } = parseComparableSheet(masterSheet([
+    { "Tipo de inmueble": "Local comercial", "Operación": "Renta", "Calle y número": "Juárez 4", "Municipio": "Arandas", "Renta anual": 180_000, "Sup. construcción (m²)": 60 },
+    { "Tipo de inmueble": "Local comercial", "Operación": "Renta", "Calle y número": "Juárez 6", "Municipio": "Arandas", "Renta mensual": 12_000, "Sup. construcción (m²)": 60 },
+  ]), { defaultType: null });
+  assert.equal(rows[0].payload?.price, 15_000);
+  assert.equal(rows[1].payload?.price, 12_000);
+  assert.deepEqual(rows[1].errors, []);
+});
+
+test("an exported rent carries its monthly and annual rent", () => {
+  const comparable = { id: "r", reference: 1, location: "Juárez 4", area: 60, price: 15_000, photos: [], factors: [] } as unknown as ComparableDto;
+  const values = masterRowValues(comparable, "INMUEBLE_RENTA", { valuationFolio: null, includeContact: false });
+  assert.equal(values.monthlyRent, 15_000);
+  assert.equal(values.annualRent, 180_000);
+  const sale = masterRowValues({ ...comparable, price: 1_000_000 } as ComparableDto, "INMUEBLE_VENTA", { valuationFolio: null, includeContact: false });
+  assert.equal(sale.monthlyRent, null);
+});
+
+test("the template groups the advanced columns, freezes the first ones, and the appraiser's lists only inform", async () => {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await buildMasterWorkbook() as unknown as ArrayBuffer);
+  const sheet = workbook.getWorksheet("COMPARABLES")!;
+  const at = (key: string) => MASTER_COLUMNS.findIndex((column) => column.key === key) + 1;
+  for (const key of ["latitude", "publicationId", "currency", "reviewedOn"]) {
+    assert.equal(sheet.getColumn(at(key)).outlineLevel, 1, key);
+    assert.equal(sheet.getColumn(at(key)).hidden, true, key);
+  }
+  for (const key of ["price", "street", "useStatus"]) assert.equal(sheet.getColumn(at(key)).hidden, false, key);
+  assert.equal(sheet.views[0].state, "frozen");
+  assert.equal((sheet.views[0] as { xSplit?: number }).xSplit, 5);
+  assert.equal(sheet.getCell(7, at("quality")).dataValidation?.errorStyle, "information");
+  assert.equal(sheet.getCell(7, at("conservation")).dataValidation?.showErrorMessage, true);
+  assert.equal(sheet.getCell(7, at("operation")).dataValidation?.errorStyle, "stop");
+  const start = workbook.getWorksheet("INICIO")!;
+  assert.match(String(start.getCell("A4").value), /INSTRUCCIONES BREVES/);
+  assert.match(String(start.getCell("A4").value), /Importar plantilla maestra/);
 });

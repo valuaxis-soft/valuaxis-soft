@@ -42,6 +42,24 @@ const TEMPLATE_ROWS = MAX_IMPORT_ROWS;
 const fill = (argb: string): ExcelJS.Fill => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * The dropdown of a catalog column. A list of Valuaxis maps 1:1 and only
+ * takes its options ("stop"); the appraiser's lists (quality, conservation,
+ * zone…) accept other words: Excel only informs that the value is not in the
+ * list and keeps it ("information").
+ */
+export function catalogValidation(header: string, range: string, strict: boolean): ExcelJS.DataValidation {
+  return {
+    type: "list",
+    allowBlank: true,
+    formulae: [range],
+    showErrorMessage: true,
+    errorStyle: strict ? "stop" : "information",
+    errorTitle: header,
+    error: strict ? "Elige una opción de la lista." : "Ese valor no está en la lista. Se acepta tal como lo escribiste; pulsa Aceptar para conservarlo.",
+  };
+}
+
 /** Each catalog's column in CATALOGOS, as the dropdowns reference it. */
 function catalogRanges() {
   const ranges = new Map<MasterCatalog | "destination", string>();
@@ -71,17 +89,35 @@ function addCatalogs(workbook: ExcelJS.Workbook) {
   sheet.views = [{ state: "frozen", ySplit: 1 }];
 }
 
+/** Columns frozen on the left: the reference, folio, use status, type and operation stay in view while scrolling. */
+const FROZEN_COLUMNS = 5;
+
 function addComparables(workbook: ExcelJS.Workbook, rows: Array<Record<string, MasterRowValue>>, ranges: ReturnType<typeof catalogRanges>) {
-  const sheet = workbook.addWorksheet(MASTER_SHEET, { views: [{ state: "frozen", ySplit: MASTER_HEADER_ROW, xSplit: 1 }] });
+  const sheet = workbook.addWorksheet(MASTER_SHEET, {
+    views: [{ state: "frozen", ySplit: MASTER_HEADER_ROW, xSplit: FROZEN_COLUMNS }],
+    // The outline's [+] goes over the first column of a group, by its headers.
+    properties: { outlineProperties: { summaryBelow: false, summaryRight: false } } as Partial<ExcelJS.WorksheetProperties>,
+  });
   const lastColumn = MASTER_COLUMNS.length;
   sheet.getCell("A1").value = "VALUAXIS SOFT  /  CAPTURA MAESTRA DE COMPARABLES";
   sheet.getCell("A1").font = { bold: true, size: 14, color: { argb: NAVY } };
-  sheet.getCell("A3").value = "Una fila = una oferta comparable • celdas azul claro: captura • celdas amarillas: cálculo de ayuda • no renombres los encabezados.";
+  sheet.getCell("A3").value = "Una fila = una oferta comparable • celdas azul claro: captura • celdas amarillas: cálculo de ayuda • no renombres los encabezados • "
+    + "las columnas avanzadas están agrupadas: ábrelas con [+] sobre los encabezados.";
   sheet.getCell("A3").font = { italic: true, color: { argb: "FF555555" } };
   sheet.getCell(`${columnLetter(18)}3`).value = "Datos observados ≠ valor homologado: los factores se capturan en el avalúo.";
   sheet.getCell(`${columnLetter(18)}3`).font = { italic: true, color: { argb: "FF555555" } };
 
-  MASTER_COLUMNS.forEach((item, index) => { sheet.getColumn(index + 1).width = item.width; });
+  MASTER_COLUMNS.forEach((item, index) => {
+    const column = sheet.getColumn(index + 1);
+    column.width = item.width;
+    // Excel's outline: the advanced columns start collapsed and open with [+].
+    if (item.advanced) {
+      column.outlineLevel = 1;
+      column.hidden = true;
+    }
+  });
+  // Excel shows the outline's buttons only when the sheet says how deep its column groups go.
+  sheet.properties.outlineLevelCol = 1;
   // Group row: one merged band per group.
   MASTER_GROUPS.forEach((group, groupIndex) => {
     const first = MASTER_COLUMNS.findIndex((item) => item.group === groupIndex) + 1;
@@ -132,16 +168,7 @@ function addComparables(workbook: ExcelJS.Workbook, rows: Array<Record<string, M
   MASTER_COLUMNS.forEach((item, index) => {
     if (!item.catalog) return;
     const letter = columnLetter(index);
-    validations.add(`${letter}${firstRow}:${letter}${lastRow}`, {
-      type: "list",
-      allowBlank: true,
-      formulae: [ranges.get(item.catalog) ?? ""],
-      // A list of Valuaxis maps 1:1 and only takes its options; the appraiser's lists accept other words.
-      showErrorMessage: MASTER_CATALOGS[item.catalog].strict,
-      errorStyle: "stop",
-      errorTitle: item.header,
-      error: "Elige una opción de la lista.",
-    });
+    validations.add(`${letter}${firstRow}:${letter}${lastRow}`, catalogValidation(item.header, ranges.get(item.catalog) ?? "", MASTER_CATALOGS[item.catalog].strict));
   });
   sheet.autoFilter = { from: { row: MASTER_HEADER_ROW, column: 1 }, to: { row: MASTER_HEADER_ROW, column: lastColumn } };
   return lastRow;
@@ -162,6 +189,15 @@ function fillStart(sheet: ExcelJS.Worksheet, input: { destination: ImportDestina
   sheet.getCell("A1").font = { bold: true, size: 16, color: { argb: NAVY } };
   sheet.getCell("A3").value = `Importar a un avalúo  +  conservar en la base general  |  Versión ${MASTER_TEMPLATE_VERSION}`;
   sheet.getCell("A3").font = { color: { argb: "FF555555" } };
+  // In short, before the details: what to do, in the order it is done.
+  sheet.mergeCells("A4:L4");
+  sheet.getCell("A4").value = "INSTRUCCIONES BREVES:  ① Elige el destino aquí abajo.  ② En COMPARABLES llena una fila por anuncio: los encabezados "
+    + "tienen colores por bloque y una nota con su regla; las listas aceptan otros valores en calidad, conservación, zona y similares.  "
+    + "③ Las columnas avanzadas están agrupadas: ábrelas con [+].  ④ En Valuaxis usa «Importar plantilla maestra» en Comparables o en el mercado del avalúo.";
+  sheet.getCell("A4").alignment = { wrapText: true, vertical: "middle" };
+  sheet.getCell("A4").font = { size: 10, color: { argb: NAVY } };
+  sheet.getCell("A4").fill = fill(LIGHT);
+  sheet.getRow(4).height = 48;
 
   section("A5", "01  |  DESTINO DE LOS COMPARABLES");
   sheet.getCell("A7").value = "¿Dónde se usarán estos registros?";
@@ -207,7 +243,7 @@ function fillStart(sheet: ExcelJS.Worksheet, input: { destination: ImportDestina
   const steps: Array<[string, string]> = [
     ["1   DEFINIR DESTINO", "Elige «Ambos», «Solo avalúo» o «Solo base general». Para vincular comparables a un avalúo, anota su folio en la columna «Folio avalúo» de COMPARABLES."],
     ["2   CAPTURAR Y REVISAR", "Una fila por publicación en COMPARABLES. Marca «Aceptado» solo lo que verificaste; «Descartado» no se importa."],
-    ["3   IMPORTAR A VALUAXIS", "Sube el archivo en Comparables o en el enfoque de mercado del avalúo, revisa errores, avisos y posibles duplicados, y confirma el destino."],
+    ["3   IMPORTAR A VALUAXIS", "Usa «Importar plantilla maestra» en Comparables (va a la base y a los avalúos de sus folios) o en el enfoque de mercado del avalúo (va a ese avalúo); revisa errores, avisos y posibles duplicados, y confirma el destino."],
   ];
   steps.forEach(([title, text], index) => {
     const row = 19 + index * 2;
@@ -259,7 +295,9 @@ const IMPORT_RULES = [
   "Se importa la hoja COMPARABLES, desde el renglón 7; cada fila es una ficha de oferta. Los encabezados se reconocen sin acentos ni mayúsculas.",
   `Hasta ${MAX_IMPORT_ROWS} comparables por archivo y 2 MB.`,
   "Errores (el renglón no se importa): sin ubicación ni calle, sin tipo de inmueble u operación cuando no se importa desde un mercado, un número o fecha ilegible, una opción que no es de la lista en Operación, Estado de uso, Moneda, Periodo, Base, Proximidad o Datos verificados, latitud sin longitud.",
-  "Avisos (el renglón se importa): sin precio o sin la superficie de su base, base del unitario que no es la del mercado, precio en USD, renta anual (se guarda mensual, entre 12), origen portal sin URL, sin municipio, la misma publicación dos veces en el archivo.",
+  "Avisos (el renglón se importa): sin precio o sin la superficie de su base, base del unitario que no es la del mercado, precio en USD, renta anual (se guarda mensual, entre 12), renta mensual y anual que no cuadran (manda la mensual), origen portal sin URL, sin municipio, la misma publicación dos veces en el archivo.",
+  "Rentas: captura «Renta mensual» o «Renta anual» (la otra se calcula); también puedes dejar la renta en «Precio de oferta» con su «Periodo renta».",
+  "Listas abiertas: en calidad, conservación, zona, forma, topografía, servicios y las demás listas del despacho puedes escribir otro valor; Excel solo te avisa y lo conserva. Las listas de Valuaxis (estado de uso, operación, moneda, periodo, base, proximidad, datos verificados) solo aceptan sus opciones.",
   "El precio unitario se vuelve a calcular en Valuaxis; las columnas «Precio unitario (auto)» y «Control automático» solo ayudan a capturar.",
   "La moneda se guarda como está; Valuaxis no convierte divisas.",
   "Duplicados: el mismo número de comparable (REF / ID), el mismo portal con el mismo ID de publicación, o la misma URL (sin parámetros ni fragmento) son el mismo comparable; también se buscan la misma dirección, el mismo teléfono con el mismo precio y la misma colonia con superficie y precio. Para cada uno eliges «Es el mismo», «Usar el existente» o «Son diferentes».",
