@@ -278,8 +278,8 @@ export function comparablesWithinRadius(comparables: readonly DemoComparable[], 
 export function comparableDestinations(comparable: Pick<DemoComparable, "land" | "rent">) {
   const what = comparable.land ? "Terrenos" : "Inmuebles";
   return comparable.rent
-    ? [`Mercado de rentas · ${what}`, "Métodos estadísticos · Rentas"]
-    : [`Mercado de venta · ${what}`, `Métodos estadísticos · ${what}`];
+    ? [`Mercado de rentas · ${what}`, "Métodos alternativos · Rentas"]
+    : [`Mercado de venta · ${what}`, `Métodos alternativos · ${what}`];
 }
 
 export function formatMoney(value: number) {

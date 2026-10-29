@@ -17,7 +17,7 @@ export async function GET(request: Request, { params }: RouteContext<"/api/avalu
     const { id } = await params;
     return NextResponse.json({ data: await getStatisticalCalculation(id, auth.user.organizationId, type.data) });
   } catch (error) {
-    return valuationErrorResponse("STATISTICAL_GET", error, "No se pudieron cargar los métodos estadísticos.");
+    return valuationErrorResponse("STATISTICAL_GET", error, "No se pudieron cargar los métodos alternativos.");
   }
 }
 
@@ -32,6 +32,6 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/avalu
     await saveStatisticalCalculation(id, auth.user, body.data);
     return NextResponse.json({ data: await getStatisticalCalculation(id, auth.user.organizationId, body.data.settings.comparableType) });
   } catch (error) {
-    return valuationErrorResponse("STATISTICAL_SAVE", error, "No se pudieron guardar los métodos estadísticos.");
+    return valuationErrorResponse("STATISTICAL_SAVE", error, "No se pudieron guardar los métodos alternativos.");
   }
 }

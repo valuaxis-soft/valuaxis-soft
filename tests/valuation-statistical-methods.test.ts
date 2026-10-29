@@ -205,7 +205,7 @@ const cellsOf = (table: TableV2, row: number) => table.columns.map((column) => {
 test("the dictamen prints the goal programming: deviations to look at, criteria that do not contribute, the value", () => {
   const [block] = statisticalDocumentBlocks(solvedGoal());
   assert.equal(block.id, "motor-estadistico-inmueble_venta");
-  assert.equal(block.title, "APLICACIÓN ESTADÍSTICA");
+  assert.equal(block.title, "MÉTODOS ALTERNATIVOS PARA ESTIMACIÓN DE VALOR");
   assert.deepEqual(block.apartados.map((apartado) => apartado.title), [
     "CRITERIOS, CODIFICACIÓN Y DATOS (INMUEBLES)", "CÁLCULO POR EL MÉTODO DE PROGRAMACIÓN POR METAS (INMUEBLES)",
   ]);

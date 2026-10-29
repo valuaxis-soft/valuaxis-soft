@@ -23,7 +23,7 @@ import {
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ComparableCardButton } from "./comparable-card-dialog";
 import { SEARCH_TEXT_MIN, searchText } from "@/features/valuations/comparable-search/normalize";
-import type { ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
+import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 
 const number = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
 const money = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" }));
@@ -81,18 +81,28 @@ function filtersFrom(draft: Draft, type: ComparableType): { filters: ComparableS
 /**
  * Searches comparables in the available sources and adds the chosen ones to
  * the valuation. Factors are rated afterwards, as with the Excel import.
+ * With `onChoose` the chosen results go to the caller instead (the
+ * statistical methods take them as rows of their own, not of the market).
  */
 export function SearchComparablesDialog({
   valuationId,
   type,
   readOnly,
   onAdded,
+  onChoose,
+  label = "Buscar comparables",
+  description,
 }: {
   valuationId: string;
   type: ComparableType;
   /** A valuation that cannot be edited can search, but not add. */
   readOnly: boolean;
-  onAdded: (calculation: MarketCalculationDto) => void;
+  onAdded?: (calculation: MarketCalculationDto) => void;
+  /** Takes the chosen results instead of adding them to the market approach. */
+  onChoose?: (chosen: ComparableSearchHit[]) => void;
+  /** The button that opens the search, and the dialog's title. */
+  label?: string;
+  description?: string;
 }) {
   const labels = MARKET_LABELS[type];
   const perUnit = isRentComparableType(type) ? "$/m²/mes" : "$/m²";
@@ -149,10 +159,16 @@ export function SearchComparablesDialog({
 
   const add = async () => {
     if (!chosen.length) return;
+    if (onChoose) {
+      onChoose(chosen);
+      setOpen(false);
+      reset();
+      return;
+    }
     setBusy("add");
     try {
       const result = await api.market.addFoundComparables(valuationId, type, chosen);
-      onAdded(result.calculation);
+      onAdded?.(result.calculation);
       const plural = result.added === 1 ? "" : "s";
       toast.success(`${result.added} comparable${plural} agregado${plural}${result.skipped ? `; ${result.skipped} ya estaba${result.skipped === 1 ? "" : "n"} en el avalúo` : ""}. Califica sus factores.`);
       setOpen(false);
@@ -171,15 +187,17 @@ export function SearchComparablesDialog({
   return (
     <>
       <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
-        <Search data-icon="inline-start" /> Buscar comparables
+        <Search data-icon="inline-start" /> {label}
       </Button>
       <Dialog open={open} onOpenChange={(next) => { if (busy !== "add") { setOpen(next); if (!next) reset(); } }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Buscar comparables</DialogTitle>
+            <DialogTitle>{label}</DialogTitle>
             <DialogDescription>
-              Escribe la zona, colonia, municipio, calle o el ID del comparable (C-00123), o usa los filtros, y elige las ofertas que quieras
-              agregar al avalúo. Se agregan con sus fotos, su pantalla de referencia y su ID; los factores se califican después.
+              {description ?? (
+                "Escribe la zona, colonia, municipio, calle o el ID del comparable (C-00123), o usa los filtros, y elige las ofertas que quieras "
+                + "agregar al avalúo. Se agregan con sus fotos, su pantalla de referencia y su ID; los factores se califican después."
+              )}
             </DialogDescription>
           </DialogHeader>
 

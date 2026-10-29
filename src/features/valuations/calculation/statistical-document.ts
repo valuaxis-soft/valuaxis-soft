@@ -1,6 +1,6 @@
 /**
- * The statistical methods in the dictamen: a block "APLICACIÓN ESTADÍSTICA"
- * of its own, after the market's pages of the same comparable type, with the
+ * The statistical methods in the dictamen: a block "MÉTODOS ALTERNATIVOS
+ * PARA ESTIMACIÓN DE VALOR" (once "APLICACIÓN ESTADÍSTICA") of its own, after the market's pages of the same comparable type, with the
  * criteria and their scales, the regression (as Excel's output: equation,
  * statistics and analysis of variance) and the goal programming (deviations
  * and contributions), each only when the appraiser turns "Mostrar en el
@@ -42,6 +42,9 @@ import {
   type StatisticalRegressionResult,
   type StatisticalVariableDto,
 } from "./statistical-types";
+
+/** The title of the block, as the appraiser renamed the apartado (observation 4.12). */
+export const STATISTICAL_BLOCK_TITLE = "MÉTODOS ALTERNATIVOS PARA ESTIMACIÓN DE VALOR";
 
 const prefixFor = (type: ComparableType) => `${GENERATED_BLOCK_PREFIX}estadistico-${type.toLowerCase()}`;
 
@@ -142,7 +145,7 @@ function dataTables(calculation: StatisticalCalculationDto, prefix: string, unit
       cells: [printedValue(variable, settings.subject[variable.key] ?? ""), ...included.map((comparable) => printedValue(variable, comparable.values[variable.key] ?? ""))],
     })),
   ];
-  return splitTables(`${prefix}-tabla-datos`, "Datos de los métodos estadísticos", columns, {
+  return splitTables(`${prefix}-tabla-datos`, "Datos de los métodos alternativos", columns, {
     rowKeys: ["sujeto", ...included.map((comparable) => String(comparable.reference))],
     notes: [
       { position: "top", text: "Criterios de cada comparable y del sujeto; entre paréntesis, el número que toma cada uno con su codificación." },
@@ -313,7 +316,7 @@ export function statisticalDocumentBlocks(calculation: StatisticalCalculationDto
     })] : []),
     ...(comparison ? [generatedApartado(`${prefix}-comparacion`, `COMPARACIÓN DE MÉTODOS ${scope}`, { tables: [comparison] })] : []),
   ];
-  return [generatedBlock(prefix, "APLICACIÓN ESTADÍSTICA", { apartados })];
+  return [generatedBlock(prefix, STATISTICAL_BLOCK_TITLE, { apartados })];
 }
 
 /**

@@ -66,6 +66,7 @@ export const statisticalInputSchema = z.object({
     values,
     excluded: z.boolean().optional(),
     marketComparableId: z.string().max(80).nullable().optional(),
+    sourceKey: z.string().max(200).nullable().optional(),
   }))
     .max(MAX_STATISTICAL_COMPARABLES, `Se capturan hasta ${MAX_STATISTICAL_COMPARABLES} comparables.`)
     .refine((comparables) => new Set(comparables.map((comparable) => comparable.id)).size === comparables.length, "Cada comparable va una sola vez."),

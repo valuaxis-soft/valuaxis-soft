@@ -25,14 +25,17 @@ import {
   computeStatisticalGoal,
   computeStatisticalRegression,
   renumbered,
+  withFoundComparables,
   withMarketComparables,
   type StatisticalCalculationDto,
   type StatisticalDependent,
   type StatisticalMethodSettings,
 } from "@/features/valuations/calculation/statistical-types";
+import type { ComparableSearchHit } from "@/features/valuations/comparable-search/types";
 import { goalProgrammingWarnings } from "@/features/valuations/engine/goal-programming";
 import { RECOMMENDED_REGRESSION_COMPARABLES, minimumRegressionComparables } from "@/features/valuations/engine/regression";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { SearchComparablesDialog } from "./search-comparables-dialog";
 import { StatisticalDataTable, type SubjectSource } from "./statistical-data-table";
 import { StatisticalVariables } from "./statistical-variables";
 import { useSerializedSave } from "./use-serialized-save";
@@ -89,7 +92,7 @@ export function StatisticalMethodsPanel(props: {
     >
       <header className="grid gap-0.5">
         <h3 id="statistical-methods-title" className="flex items-center gap-2 text-base font-semibold">
-          <BarChart3 className="size-4" /> Métodos estadísticos (otros métodos alternativos)
+          <BarChart3 className="size-4" /> Métodos alternativos para estimación de valor
         </h3>
         <p className="text-xs text-muted-foreground">
           Regresión lineal múltiple y programación por metas, con comparables propios. Son una referencia: no cambian el valor del enfoque de mercado
@@ -98,7 +101,7 @@ export function StatisticalMethodsPanel(props: {
       </header>
       <div className="flex flex-wrap items-center gap-2">
         {visible.length ? (
-          <div role="tablist" aria-label="Métodos estadísticos por tipo de comparable" className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1">
+          <div role="tablist" aria-label="Métodos alternativos por tipo de comparable" className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1">
             {visible.map((item) => (
               <button
                 key={item}
@@ -127,7 +130,7 @@ export function StatisticalMethodsPanel(props: {
             <Plus data-icon="inline-start" /> {COMPARABLE_TYPE_LABELS[item]}
           </Button>
         )) : null}
-        {!visible.length && props.readOnly ? <span className="text-xs text-muted-foreground">Sin métodos estadísticos capturados.</span> : null}
+        {!visible.length && props.readOnly ? <span className="text-xs text-muted-foreground">Sin métodos alternativos capturados.</span> : null}
       </div>
       {type ? <StatisticalTypePanel key={type} {...props} type={type} /> : null}
     </section>
@@ -227,7 +230,7 @@ function StatisticalTypePanel(props: {
         setDraft(draftOf(next));
         latestDraft.current = draftOf(next);
       })
-      .catch((error: unknown) => { if (active) setLoadError(error instanceof Error ? error.message : "No se pudieron cargar los métodos estadísticos."); });
+      .catch((error: unknown) => { if (active) setLoadError(error instanceof Error ? error.message : "No se pudieron cargar los métodos alternativos."); });
     // The market of the same type: the subject's data for "=", and its comparables to import.
     api.market.get(valuationId, type).then((next) => { if (active) setMarket(next); }).catch(() => undefined);
     return () => { active = false; };
@@ -268,7 +271,7 @@ function StatisticalTypePanel(props: {
   if (!calculation || !draft) {
     return (
       <div className="flex items-center gap-2 rounded-lg border p-4 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Cargando los métodos estadísticos…
+        <Loader2 className="size-4 animate-spin" /> Cargando los métodos alternativos…
       </div>
     );
   }
@@ -303,6 +306,15 @@ function StatisticalTypePanel(props: {
     });
     toast.success(imported ? `Se importaron ${imported} comparables del enfoque de mercado.` : "Los comparables del mercado ya estaban importados.");
   };
+  const addFound = (found: ComparableSearchHit[]) => {
+    let added = 0;
+    update((current) => {
+      const next = withFoundComparables(current, found, newId);
+      added = next.added;
+      return { settings: next.settings, comparables: next.comparables };
+    });
+    toast.success(added ? `Se agregaron ${added} comparables a este análisis.` : "Esos comparables ya estaban en este análisis.");
+  };
   const fitted = regression?.ok ? new Map(regression.result.fit.residuals.map((row) => [row.id, row])) : null;
   const comparison = methodComparison(live);
 
@@ -311,7 +323,7 @@ function StatisticalTypePanel(props: {
       {calculation.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
       {calculation.fromMarket ? (
         <p className="rounded-md border border-sky-500/40 bg-sky-50 p-2 text-xs text-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
-          Esta regresión se capturó dentro del enfoque de mercado, antes de que los métodos estadísticos fueran un apartado propio. Se lee de ahí con los
+          Esta regresión se capturó dentro del enfoque de mercado, antes de que los métodos alternativos fueran un apartado propio. Se lee de ahí con los
           comparables del mercado; al primer cambio que hagas aquí se guarda una copia propia y el mercado queda como estaba.
         </p>
       ) : null}
@@ -326,6 +338,20 @@ function StatisticalTypePanel(props: {
               <Button type="button" size="sm" variant="outline" onClick={importMarket} disabled={!market}>
                 <Download data-icon="inline-start" /> Importar del enfoque de mercado
               </Button>
+            ) : null}
+            {!readOnly ? (
+              <SearchComparablesDialog
+                valuationId={valuationId}
+                type={type}
+                readOnly={readOnly}
+                label="Agregar de mis comparables"
+                description={
+                  "Busca entre los comparables que ya capturaste en otros avalúos (la base de tu despacho) por zona, colonia, municipio, calle o ID "
+                  + "(C-00123), o con los filtros. Los elegidos se copian a esta tabla con su precio, superficie y características; no se agregan al "
+                  + "enfoque de mercado."
+                }
+                onChoose={addFound}
+              />
             ) : null}
           </span>
         )}
