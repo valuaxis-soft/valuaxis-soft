@@ -151,7 +151,8 @@ async function buildRichValuation() {
   // Rent market and income approach.
   await saveMarketSettings(fixture.publicId, user, {
     comparableType: "INMUEBLE_RENTA", subjectArea: 250, baseArea: null, surfacePower: 3,
-    adoptedUnitValue: 30, justification: null, additionalAmount: 0, factorSlots: DEFAULT_FACTOR_SLOTS,
+    // Within the ±30 % of the homologated rents: the valuation concludes only so (observation 4.12).
+    adoptedUnitValue: 22, justification: null, additionalAmount: 0, factorSlots: DEFAULT_FACTOR_SLOTS,
   });
   for (const [location, area, price] of [["Renta 1", 410, 9500], ["Renta 2", 400, 9000], ["Renta 3", 380, 8300], ["Renta 4", 350, 8000]] as const) {
     await createComparable(fixture.publicId, user, "INMUEBLE_RENTA", { ...comparable(location, area, price), factors: [factor("NEGOCIACION", 0.95)] });

@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
 import { consumeCreditForValuation } from "@/features/billing/credits.service";
+import { adoptedValueConcludeError, marketsWithAdoptedValueOutside } from "@/features/valuations/calculation/adopted-value-check";
+import { reportExclusionsOf } from "@/features/valuations/calculation/conclusion.service";
+import { loadVersionMarkets } from "@/features/valuations/calculation/market.service";
 import { resolveSignatures, signatureListError } from "@/features/valuations/services/valuation-signatures";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import type { AuthUser } from "@/features/auth/model";
@@ -56,6 +59,11 @@ export async function concludeValuation(input: {
       ? signatureListError(resolveSignatures(caratula.JFirmas, { name: caratula.SNombreValuador, registration: caratula.SRegistroValuador }))
       : null;
     if (signaturesError) throw new ValuationWorkflowError(`Para concluir, completa las firmas en la carátula. ${signaturesError}`, 409);
+
+    // A market of the dictamen concludes only with its adopted value within the ±30 % (the value outside is saved, not concluded).
+    const [markets, excluded] = await Promise.all([loadVersionMarkets(tx, avaluo.IdVersionTrabajo), reportExclusionsOf(tx, avaluo.IdVersionTrabajo)]);
+    const adoptedError = adoptedValueConcludeError(marketsWithAdoptedValueOutside(markets, excluded));
+    if (adoptedError) throw new ValuationWorkflowError(adoptedError, 409);
 
     // Pay per appraisal: the first conclusion of this valuation consumes one credit (see docs/COBRO.md).
     const credit = await consumeCreditForValuation(tx, {
