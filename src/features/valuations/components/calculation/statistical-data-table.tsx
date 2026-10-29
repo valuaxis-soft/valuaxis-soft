@@ -215,16 +215,17 @@ export function StatisticalDataTable(props: {
     const trimmed = label.trim();
     if (trimmed) props.onFields(settings.fields.map((field, at) => (at === index ? { ...field, label: trimmed } : field)));
   };
-  const head = cn(CALC_HEAD_CELL, "text-left");
+  // The header as the other calculation tables (homologation, costs): centered, in the band's navy bold.
+  const head = CALC_HEAD_CELL;
 
   return (
     <div className="grid gap-1.5">
       <div className={CALC_TABLE_FRAME}>
-        <table className={cn(CALC_TABLE, "w-full min-w-160")} aria-label="Comparables de los métodos estadísticos" data-grid={GRID}>
+        <table className={cn(CALC_TABLE, "w-full min-w-160")} aria-label="Comparables de los métodos alternativos" data-grid={GRID}>
           <thead className={CALC_HEAD}>
             <tr>
               <th className={cn(head, "w-10")}>Entra</th>
-              <th className={cn(head, "w-10")}>Ref</th>
+              <th className={cn(head, "w-10")}>Ref.</th>
               <th className={cn(head, "min-w-28")}>{props.priceLabel}</th>
               {settings.fields.map((field, index) => (
                 <th key={field.key} className={cn(head, "min-w-28")}>
@@ -234,7 +235,7 @@ export function StatisticalDataTable(props: {
                       disabled={readOnly}
                       defaultValue={field.label}
                       key={field.label}
-                      className="h-6 w-full min-w-0 rounded-sm border border-transparent bg-transparent px-1 text-left text-xs font-bold outline-none hover:border-input focus:border-ring focus:bg-background"
+                      className="h-6 w-full min-w-0 rounded-sm border border-transparent bg-transparent px-1 text-center text-xs font-bold text-inherit outline-none hover:border-input focus:border-ring focus:bg-background focus:text-foreground"
                       onBlur={(event) => { if (event.target.value.trim() !== field.label) rename(index)(event.target.value); }}
                       onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
                     />
@@ -271,7 +272,7 @@ export function StatisticalDataTable(props: {
           </thead>
           <tbody>
             <tr className={cn(CALC_ROW, "bg-sky-50 dark:bg-sky-950/30")}>
-              <td className="px-1.5 py-1 text-muted-foreground" colSpan={2}>Sujeto</td>
+              <td className="px-1.5 py-1 font-bold" colSpan={2}>Sujeto</td>
               <td className="px-1.5 py-1 text-muted-foreground">—</td>
               {settings.fields.map((field) => (
                 <td key={field.key} className="px-0.5 py-0.5">
@@ -295,7 +296,7 @@ export function StatisticalDataTable(props: {
               <tr key={comparable.id} className={cn(CALC_ROW, comparable.excluded && "text-muted-foreground line-through")}>
                 <td className="px-1.5 py-1">
                   <Checkbox
-                    aria-label={`Comparable ${comparable.reference} en los métodos estadísticos`}
+                    aria-label={`Comparable ${comparable.reference} en los métodos alternativos`}
                     checked={!comparable.excluded}
                     disabled={readOnly}
                     onCheckedChange={(checked) => props.onComparable(comparable.id, (current) => ({ ...current, excluded: checked !== true }))}

@@ -405,6 +405,12 @@ export type MarketSettingsDto = {
   showFactorJustification?: boolean;
   /** "Homologación por el método de regresión lineal": a reference beside the mean and median; missing, not used. */
   regression?: MarketRegressionDto | null;
+  /**
+   * Whether the homologation table (the factors of each comparable) prints in
+   * the dictamen; it does unless turned off. Off, the comparables, the
+   * statistics and the value still print; the memoria de cálculo keeps it.
+   */
+  showHomologationTable?: boolean;
   /** Whether the note under the homologation table prints; it does unless turned off. */
   showHomologationNote?: boolean;
   /** The appraiser's own note under the homologation table; empty, the one of the format. */

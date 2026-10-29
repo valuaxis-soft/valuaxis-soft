@@ -244,6 +244,8 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
       })]
     : [];
 
+  // The appraiser may leave the homologation table out of the dictamen: the offers then carry the statistics and the value.
+  const homologationShown = settings.showHomologationTable !== false;
   const data = generatedApartado(`${prefix}-datos`, `DATOS DE COMPARABLES ${page.scope}`, {
     tables: [
       generatedTable(`${prefix}-tabla-caracteristicas`, "Características de los comparables",
@@ -270,9 +272,16 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
           comparable.price ? money(comparable.price) : EMPTY,
           comparable.area && comparable.price ? money(comparable.price / comparable.area) : EMPTY,
         ]),
-        { rowKeys }),
+        homologationShown
+          ? { rowKeys }
+          : {
+              rowKeys,
+              summaryBoxes: homologationBoxes(calculation, result).filter((box) => box.position === "bottom"),
+              notes: justificationNotes(calculation),
+            }),
     ],
   });
+  if (!homologationShown) return [generatedBlock(prefix, page.title, { apartados: [...offer, data] })];
 
   const slots = settings.factorSlots;
   const factors = "FACTORES DE HOMOLOGACIÓN";

@@ -15,6 +15,9 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
+import { adoptedValueConcludeError, marketsWithAdoptedValueOutside } from "@/features/valuations/calculation/adopted-value-check";
+import { COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
+import type { ReportApproach } from "@/features/valuations/services/report-approaches";
 
 /** Text the user accepts when reopening; it is stored with the reopening record. */
 export const REOPEN_ACCEPTANCE_TEXT =
@@ -39,6 +42,27 @@ function usePendingReviews(valuationId: string | undefined, open: boolean) {
   return pending && pending.valuationId === valuationId ? pending.count : null;
 }
 
+/**
+ * Why the valuation cannot conclude yet: a market of the dictamen with its
+ * adopted value outside the ±30 %, read when the dialog opens; null while
+ * unknown or when nothing holds it back. The server checks it again.
+ */
+function useAdoptedValueBlock(valuationId: string | undefined, open: boolean, excluded: ReadonlySet<ReportApproach>) {
+  const [markets, setMarkets] = useState<{ valuationId: string; list: Awaited<ReturnType<typeof api.market.get>>[] } | null>(null);
+  useEffect(() => {
+    if (!open || !valuationId) return;
+    let active = true;
+    Promise.all(COMPARABLE_TYPES.map((type) => api.market.get(valuationId, type)))
+      .then((list) => { if (active) setMarkets({ valuationId, list }); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [open, valuationId]);
+  if (!markets || markets.valuationId !== valuationId) return null;
+  return adoptedValueConcludeError(marketsWithAdoptedValueOutside(markets.list, excluded));
+}
+
+const NO_EXCLUSIONS: ReadonlySet<ReportApproach> = new Set();
+
 export function ConcludeValuationDialog({
   open,
   onOpenChange,
@@ -46,16 +70,20 @@ export function ConcludeValuationDialog({
   pending,
   hasUnsavedChanges,
   valuationId,
+  excluded = NO_EXCLUSIONS,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
   pending: boolean;
   hasUnsavedChanges: boolean;
-  /** To warn about comparables not reviewed yet. */
+  /** To warn about comparables not reviewed yet, and to hold back a value adopted outside its range. */
   valuationId?: string;
+  /** The approaches left out of the dictamen: their markets do not hold the conclusion back. */
+  excluded?: ReadonlySet<ReportApproach>;
 }) {
   const unreviewed = usePendingReviews(valuationId, open);
+  const blocked = useAdoptedValueBlock(valuationId, open, excluded);
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -72,10 +100,15 @@ export function ConcludeValuationDialog({
               todos modos.
             </p>
           ) : null}
+          {blocked ? (
+            <p className="text-sm font-medium text-destructive" role="alert" data-adopted-outside>
+              {blocked}
+            </p>
+          ) : null}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>Cancelar</AlertDialogCancel>
-          <AlertDialogAction type="button" onClick={onConfirm} disabled={pending}>
+          <AlertDialogAction type="button" onClick={onConfirm} disabled={pending || Boolean(blocked)}>
             {pending ? "Concluyendo..." : "Concluir avalúo"}
           </AlertDialogAction>
         </AlertDialogFooter>

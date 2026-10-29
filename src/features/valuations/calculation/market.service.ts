@@ -109,7 +109,7 @@ export type ReviewSnapshot = ComparableReviewDto & { reviewedById: number | null
 type StoredConfiguration = Partial<Pick<MarketSettingsDto,
   | "factorSlots" | "adoptedUnitValue" | "rounding" | "offerLevel" | "offerLabels" | "offerMark" | "offerIntro" | "homologationBasis"
   | "typicalFrontage" | "typicalDepth" | "characteristicFields" | "subjectCharacteristics" | "showFactorJustification"
-  | "regression" | "showHomologationNote" | "homologationNote" | "additionalAmountInCalculation" | "showAdditionalAmount">> & {
+  | "regression" | "showHomologationTable" | "showHomologationNote" | "homologationNote" | "additionalAmountInCalculation" | "showAdditionalAmount">> & {
   /**
    * The lote tipo captured, kept while the homologation is against the
    * subject: NSuperficieBase holds it only against the lote tipo, so the cost
@@ -301,6 +301,7 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
         subjectCharacteristics: configuration.subjectCharacteristics ?? {},
         showFactorJustification: configuration.showFactorJustification ?? true,
         regression: configuration.regression ?? null,
+        showHomologationTable: configuration.showHomologationTable ?? true,
         showHomologationNote: configuration.showHomologationNote ?? true,
         homologationNote: configuration.homologationNote ?? null,
         ...(configuration.additionalAmountInCalculation === undefined ? {} : { additionalAmountInCalculation: configuration.additionalAmountInCalculation }),
@@ -332,6 +333,19 @@ function offerCaptures(stored: StoredConfiguration) {
 export async function loadMarketForStatistics(tx: Tx, versionId: number, type: ComparableType) {
   const { settings, comparables } = await loadCalculation(tx, versionId, type, false);
   return { settings, comparables };
+}
+
+/** Every market captured in a version, as the conclude check reads its adopted value (no photo URLs). */
+export async function loadVersionMarkets(tx: Tx, versionId: number) {
+  const captured = await tx.enfoqueMercado.findMany({ where: { IdVersionAvaluo: versionId }, select: { tipoComparable: { select: { SClave: true } } } });
+  const types = new Set(captured.map((market) => market.tipoComparable.SClave));
+  const markets = [];
+  for (const type of COMPARABLE_TYPES) {
+    if (!types.has(type)) continue;
+    const { settings, comparables, precision } = await loadCalculation(tx, versionId, type, false);
+    markets.push({ settings, comparables, precision });
+  }
+  return markets;
 }
 
 /** The rent market of a version as the income approach needs it (no photo URLs). */
@@ -466,6 +480,7 @@ function storedConfiguration(settings: StoredConfiguration) {
     subjectCharacteristics: settings.subjectCharacteristics ?? {},
     ...(settings.showFactorJustification === undefined ? {} : { showFactorJustification: settings.showFactorJustification }),
     regression: settings.regression ?? null,
+    ...(settings.showHomologationTable === undefined ? {} : { showHomologationTable: settings.showHomologationTable }),
     ...(settings.showHomologationNote === undefined ? {} : { showHomologationNote: settings.showHomologationNote }),
     homologationNote: settings.homologationNote ?? null,
     ...(settings.additionalAmountInCalculation === undefined ? {} : { additionalAmountInCalculation: settings.additionalAmountInCalculation }),
@@ -494,9 +509,10 @@ function offerToStore(payload: MarketSettingsPayload, stored: StoredConfiguratio
   };
 }
 
-// The ±30 % of the homologated mean and median is a warning, not a lock: the
-// appraiser answers for the value adopted (his observations of 13–14 Oct 2026). The panel and the
-// engine's `adoptedOutsideLimits` flag it; the value is stored as captured.
+// The ±30 % of the homologated mean and median does not stop saving: the value
+// is stored as captured (observations of 13–14 Oct 2026). Since observation 4.12
+// (29 Oct 2026) it stops concluding while the market is in the dictamen
+// (adopted-value-check, checked by concludeValuation).
 
 /* ------------------------------------------------------------------ */
 /*  Settings                                                           */
@@ -579,6 +595,7 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
         subjectCharacteristics: payload.subjectCharacteristics ?? stored.subjectCharacteristics,
         showFactorJustification: payload.showFactorJustification ?? stored.showFactorJustification,
         regression: unlessOmitted(payload.regression, stored.regression),
+        showHomologationTable: payload.showHomologationTable ?? stored.showHomologationTable,
         showHomologationNote: payload.showHomologationNote ?? stored.showHomologationNote,
         homologationNote: unlessOmitted(payload.homologationNote, stored.homologationNote),
         additionalAmountInCalculation: payload.additionalAmountInCalculation ?? stored.additionalAmountInCalculation,

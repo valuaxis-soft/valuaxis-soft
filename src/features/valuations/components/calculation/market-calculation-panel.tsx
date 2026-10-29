@@ -37,6 +37,7 @@ import {
   type MarketCalculationDto,
   type MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
+import { ADOPTED_VALUE_OUTSIDE_MESSAGE } from "@/features/valuations/calculation/adopted-value-check";
 import { DEFAULT_HOMOLOGATION_NOTE, SAME_FACTORS_AS_LAND_SALE, defaultOfferIntro } from "@/features/valuations/calculation/market-document";
 import {
   COMPUTED_FACTORS,
@@ -673,7 +674,20 @@ function MarketTypePanel(props: {
         </fieldset>
       </Part>
 
-      <Part number={4} title="Homologación">
+      <Part
+        number={4}
+        title="Homologación"
+        aside={(
+          <label className="flex items-center gap-1.5 text-xs font-normal">
+            <Checkbox
+              checked={liveSettings.showHomologationTable !== false}
+              disabled={readOnly}
+              onCheckedChange={(checked) => void saveSettings({ ...liveSettings, showHomologationTable: checked === true })}
+            />
+            Mostrar en el dictamen
+          </label>
+        )}
+      >
         {type === "TERRENO_RENTA" ? <p className="text-sm font-medium" data-same-factors="">{SAME_FACTORS_AS_LAND_SALE}</p> : null}
         <CalculationPrecisionControl
           valuationId={valuationId}
@@ -733,6 +747,12 @@ function MarketTypePanel(props: {
           onInvalid={(message) => toast.error(message)}
           decimals={factorDecimals(calculation.precision)}
         />
+        {liveSettings.showHomologationTable === false ? (
+          <p className="text-xs text-muted-foreground" data-homologation-hidden="">
+            La tabla de homologación no se imprime en el dictamen; los datos de los comparables, las estadísticas y el valor sí. La memoria de cálculo
+            la conserva.
+          </p>
+        ) : null}
       </Part>
 
       <Part number={5} title="Resultados">
@@ -744,8 +764,8 @@ function MarketTypePanel(props: {
               grouping
               value={draft.adoptedUnitValue}
               placeholder={stats ? `Promedio: ${stats.mean.toFixed(2)}` : undefined}
-              // A warning, never a lock: the field is always free to be retyped or cleared.
-              className={result?.adoptedOutsideLimits ? "border-amber-500 focus-visible:ring-amber-500/30" : undefined}
+              // Saved as typed: the field is always free to be retyped or cleared; only concluding waits for a value within the range.
+              className={result?.adoptedOutsideLimits ? "border-destructive focus-visible:ring-destructive/30" : undefined}
               onChange={setDraftField("adoptedUnitValue")}
             />
           </Field>
@@ -762,8 +782,8 @@ function MarketTypePanel(props: {
         {result && stats ? (
           <div className="grid gap-2 rounded-md border bg-background p-3 text-sm">
             <p className="text-xs text-muted-foreground">
-              Estadísticas informativas: el promedio y la mediana son referencia para el valor que adoptas; el rango permitido solo avisa de
-              un posible error de captura (como 130,000 por 13,000) y no impide guardar.
+              Estadísticas informativas: el promedio y la mediana son referencia para el valor que adoptas. Un valor fuera del rango permitido
+              se guarda, pero el avalúo no se puede concluir mientras este mercado esté en el informe.
             </p>
             <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-3">
               <div><dt className="text-xs text-muted-foreground">Promedio homologado</dt><dd className="tabular-nums">{money(stats.mean)} {perUnit}</dd></div>
@@ -797,9 +817,8 @@ function MarketTypePanel(props: {
               </div>
             </dl>
             {result.adoptedOutsideLimits ? (
-              <p className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
-                <AlertTriangle className="size-3.5 shrink-0" /> El valor adoptado sale del rango permitido (±30 % del promedio y la mediana): revisa que no
-                sea un error de captura. Se guarda como lo capturaste.
+              <p role="alert" className="flex items-center gap-1 text-sm font-medium text-destructive" data-adopted-outside="">
+                <AlertTriangle className="size-3.5 shrink-0" /> {ADOPTED_VALUE_OUTSIDE_MESSAGE}
               </p>
             ) : null}
           </div>

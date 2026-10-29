@@ -48,6 +48,7 @@ import { MarketCalculationPanel } from "@/features/valuations/components/calcula
 import { StatisticalMethodsPanel } from "@/features/valuations/components/calculation/statistical-methods-panel";
 import { RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
+import { excludedReportApproaches } from "@/features/valuations/services/report-approaches";
 import {
   canRemoveSection,
   listedSections,
@@ -177,6 +178,8 @@ export function ValuationWorkspace({
 
   // The tab strip, the preview and the editor show every section but the deleted ones.
   const enabledSections = useMemo(() => listedSections(sections), [sections]);
+  // The markets left out of the dictamen do not hold back concluding.
+  const excludedApproaches = useMemo(() => excludedReportApproaches(sections), [sections]);
   const removedSections = useMemo(() => sections.filter((section) => section.removed), [sections]);
   const rawActiveSection =
     enabledSections.find((section) => section.id === activeSectionId) ?? enabledSections[0];
@@ -570,6 +573,7 @@ export function ValuationWorkspace({
         pending={lifecyclePending || saving}
         hasUnsavedChanges={hasUnsavedChanges}
         valuationId={valuationId ?? undefined}
+        excluded={excludedApproaches}
       />
       <ReopenValuationDialog
         open={reopenOpen}

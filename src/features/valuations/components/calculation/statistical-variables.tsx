@@ -232,7 +232,7 @@ export function StatisticalVariables(props: {
   return (
     <div className="grid gap-2">
       <div className={CALC_TABLE_FRAME}>
-        <table className={cn(CALC_TABLE, "w-full min-w-140")} aria-label="Criterios de los métodos estadísticos">
+        <table className={cn(CALC_TABLE, "w-full min-w-140")} aria-label="Criterios de los métodos alternativos">
           <thead className={CALC_HEAD}>
             <tr>
               <th className={cn(CALC_HEAD_CELL, "w-16 text-left")}>Criterio</th>

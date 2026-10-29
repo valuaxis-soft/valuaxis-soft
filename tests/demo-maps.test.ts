@@ -116,8 +116,8 @@ test("filters by layer, price and validity; the radius list is sorted by distanc
   assert.ok(near.every((entry) => entry.distance <= 600));
   for (let i = 1; i < near.length; i++) assert.ok(near[i - 1].distance <= near[i].distance);
   assert.ok(comparablesWithinRadius(comps, SUBJECT_START, 1500).length >= near.length);
-  assert.deepEqual(comparableDestinations({ land: true, rent: true }), ["Mercado de rentas · Terrenos", "Métodos estadísticos · Rentas"]);
-  assert.deepEqual(comparableDestinations({ land: false, rent: false }), ["Mercado de venta · Inmuebles", "Métodos estadísticos · Inmuebles"]);
+  assert.deepEqual(comparableDestinations({ land: true, rent: true }), ["Mercado de rentas · Terrenos", "Métodos alternativos · Rentas"]);
+  assert.deepEqual(comparableDestinations({ land: false, rent: false }), ["Mercado de venta · Inmuebles", "Métodos alternativos · Inmuebles"]);
 });
 
 test("the croquis image URL carries the center, zoom, red pin and encoded streets", () => {

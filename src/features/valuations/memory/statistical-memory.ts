@@ -59,7 +59,7 @@ export function statisticalRuns(calculations: StatisticalCalculationDto[] | unde
     const type = settings.comparableType;
     return [{
       key: `MOTOR.ESTADISTICO.${type}`,
-      title: `Métodos estadísticos · ${COMPARABLE_TYPE_LABELS[type]}`,
+      title: `Métodos alternativos para estimación de valor · ${COMPARABLE_TYPE_LABELS[type]}`,
       sectionKey: isRentComparableType(type) ? "MERCADO_RENTAS" : "MERCADO_VENTA",
       trace: trace.steps.length ? trace : null,
       ...(pending ? { pending } : {}),

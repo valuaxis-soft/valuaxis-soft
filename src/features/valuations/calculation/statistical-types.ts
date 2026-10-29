@@ -20,7 +20,10 @@ import { regressionFieldOptions } from "./market-regression";
 import {
   characteristicValueText,
   defaultCharacteristicFields,
+  defaultMarketSettings,
+  isBuiltinCharacteristic,
   isRentComparableType,
+  type BuiltinCharacteristic,
   type CharacteristicField,
   type ComparableType,
   type MarketCalculationDto,
@@ -109,6 +112,8 @@ export type StatisticalComparableDto = {
   excluded?: boolean;
   /** Brought from the market approach: the id of that comparable, so it is not imported twice. */
   marketComparableId?: string | null;
+  /** Brought from the appraiser's comparables (the search of the market): the result's key, so it is not brought twice. */
+  sourceKey?: string | null;
 };
 
 /** What the market's homologation gave, to compare: never adopted from here. */
@@ -495,6 +500,54 @@ export function withMarketComparables(
     if (text && !subject[field.key]?.trim()) subject[field.key] = text;
   }
   return { settings: { ...calculation.settings, fields, subject }, comparables: [...calculation.comparables, ...added], imported: added.length };
+}
+
+/** A comparable found by the search of the market: its price, area and characteristics, without factors. */
+export type FoundStatisticalComparable = {
+  key: string;
+  comparable: { price: number | null; area: number | null; extra?: Record<string, string> | null }
+    & Partial<Record<BuiltinCharacteristic, string | number | null>>;
+};
+
+/** A characteristic of a found comparable as this apartado keeps it: figures as numbers, the rest as written. */
+function foundValue(comparable: FoundStatisticalComparable["comparable"], key: string): string {
+  const value = isBuiltinCharacteristic(key) ? comparable[key] : comparable.extra?.[key];
+  return value === null || value === undefined ? "" : String(value).trim();
+}
+
+/**
+ * "Agregar de mis comparables": comparables the appraiser already has (the
+ * firm's base, searched as in the market approach) as rows of this apartado
+ * only, numbered after the ones captured here. Their price, area and
+ * characteristics are copied; the characteristics of the market's format this
+ * apartado lacks are added when one of them has a value. They never reach the
+ * market approach, and one already brought is not brought again.
+ */
+export function withFoundComparables(
+  calculation: Pick<StatisticalCalculationDto, "settings" | "comparables">,
+  found: FoundStatisticalComparable[],
+  newId: () => string,
+): Pick<StatisticalCalculationDto, "settings" | "comparables"> & { added: number } {
+  const already = new Set(calculation.comparables.map((comparable) => comparable.sourceKey).filter(Boolean));
+  const fresh = found
+    .filter((item) => !already.has(item.key))
+    .slice(0, MAX_STATISTICAL_COMPARABLES - calculation.comparables.length);
+  const known = new Set(calculation.settings.fields.map((field) => field.key));
+  const missing = marketFields(defaultMarketSettings(calculation.settings.comparableType))
+    .filter((field) => !known.has(field.key) && fresh.some((item) => foundValue(item.comparable, field.key)));
+  const fields = [...calculation.settings.fields, ...missing].slice(0, MAX_STATISTICAL_FIELDS);
+  const next = Math.max(0, ...calculation.comparables.map((comparable) => comparable.reference));
+  const added = fresh.map((item, index): StatisticalComparableDto => ({
+    id: newId(),
+    reference: next + index + 1,
+    price: item.comparable.price && item.comparable.price > 0 ? item.comparable.price : null,
+    values: Object.fromEntries(fields.flatMap((field) => {
+      const text = foundValue(item.comparable, field.key);
+      return text ? [[field.key, text]] : [];
+    })),
+    sourceKey: item.key,
+  }));
+  return { settings: { ...calculation.settings, fields }, comparables: [...calculation.comparables, ...added], added: added.length };
 }
 
 /** References 1, 2, 3… in the order of the rows, after one is removed. */
