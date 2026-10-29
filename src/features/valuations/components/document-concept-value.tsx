@@ -9,7 +9,7 @@ import { hasTextMarks, parseTextMarks } from "@/features/valuations/services/tex
 import { useNumberPresentation } from "./number-presentation-context";
 
 /** The runs of a marked value, each in its own span with its marks nested bold > italic > underline. */
-function markedRuns(value: string): ReactNode {
+export function markedRuns(value: string): ReactNode {
   return parseTextMarks(value).map((segment, index) => {
     let node: ReactNode = segment.text;
     if (segment.underline) node = <u>{node}</u>;

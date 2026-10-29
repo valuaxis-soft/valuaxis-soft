@@ -3,7 +3,8 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { hasTextMarks, parseTextMarks, stripTextMarks, toggleTextMark } from "../src/features/valuations/services/text-marks";
+import { activeTextMarks, applyTextMark, hasTextMarks, parseTextMarks, stripTextMarks, toggleTextMark } from "../src/features/valuations/services/text-marks";
+import { TextMarksField } from "../src/features/valuations/components/editor/text-marks-toolbar";
 import { draftFactsFor } from "../src/features/valuations/services/draft-facts";
 import { ConceptEditorList } from "../src/features/valuations/components/editor/concept-editor";
 import { commonSpacingAfter, ConceptSelectionScope } from "../src/features/valuations/components/editor/concept-selection";
@@ -48,6 +49,61 @@ test("a mark toggles on the selection, or on the whole value when nothing is sel
   assert.equal(toggleTextMark("Casa sola", "bold", 4, 5), "Casa sola", "a blank selection changes nothing");
   assert.equal(toggleTextMark("", "bold"), "");
   assert.equal(toggleTextMark("<b>Casa</b> sola", "italic", 3, 7), "<b><i>Casa</i></b> sola", "marks nest");
+});
+
+test("a mark comes off as easily as it goes on, whatever the selection takes of its tags", () => {
+  const bold = "Casa <b>sola de dos</b> niveles";
+  // Only a word inside the bold: that word loses it, the rest keeps it.
+  assert.equal(toggleTextMark(bold, "bold", 16, 19), "Casa <b>sola de </b>dos niveles");
+  assert.equal(toggleTextMark(bold, "bold", 8, 12), "Casa sola<b> de dos</b> niveles");
+  // Half a tag or a tag and a half in the selection read as the text alone.
+  assert.equal(toggleTextMark(bold, "bold", 6, 22), "Casa sola de dos niveles");
+  assert.equal(toggleTextMark(bold, "bold", 5, 23), "Casa sola de dos niveles");
+  // Bold over text that is partly bold makes all of it bold, without nesting tags.
+  assert.equal(toggleTextMark(bold, "bold"), "<b>Casa sola de dos niveles</b>");
+  assert.equal(toggleTextMark(toggleTextMark(bold, "bold"), "bold"), "Casa sola de dos niveles", "and once more takes it off");
+  // Only the caret inside a bold stretch: the button takes the bold off that stretch.
+  assert.equal(toggleTextMark(bold, "bold", 10, 10), "Casa sola de dos niveles");
+  assert.equal(toggleTextMark("Casa sola", "italic", 2, 2), "<i>Casa sola</i>", "outside any, the whole value");
+  assert.equal(toggleTextMark("<b><i>Casa</i></b>", "italic", 6, 6), "<b>Casa</b>", "the other marks stay");
+
+  // The selection follows the text it worked on.
+  assert.deepEqual(applyTextMark("Casa sola", "bold", 5, 9), { value: "Casa <b>sola</b>", selectionStart: 8, selectionEnd: 12 });
+  assert.deepEqual(applyTextMark("Casa <b>sola</b>", "bold", 8, 12), { value: "Casa sola", selectionStart: 5, selectionEnd: 9 });
+});
+
+test("the buttons know which marks the text they would work on already has", () => {
+  const value = "Casa <b>sola <i>de</i></b> dos";
+  const none = { bold: false, italic: false, underline: false };
+  assert.deepEqual(activeTextMarks(value), none, "the whole value is not bold throughout");
+  assert.deepEqual(activeTextMarks("<u><b>Casa</b> sola</u>"), { ...none, underline: true });
+  assert.deepEqual(activeTextMarks(value, 8, 12), { ...none, bold: true }, "the selected word");
+  assert.deepEqual(activeTextMarks(value, 16, 18), { ...none, bold: true, italic: true });
+  assert.deepEqual(activeTextMarks(value, 2, 12), none, "a selection only partly bold");
+  assert.deepEqual(activeTextMarks(value, 8, 13), { ...none, bold: true }, "a blank edge does not count");
+  // The caret: the character before it decides, at the start of a stretch the one after.
+  assert.deepEqual(activeTextMarks(value, 10, 10), { ...none, bold: true });
+  assert.deepEqual(activeTextMarks(value, 17, 17), { ...none, bold: true, italic: true });
+  assert.deepEqual(activeTextMarks(value, 2, 2), none);
+  assert.deepEqual(activeTextMarks("<b>Casa</b>", 0, 0), { ...none, bold: true });
+  assert.deepEqual(activeTextMarks(""), none);
+});
+
+test("the format buttons show themselves pressed and the marked text shows as it prints", () => {
+  const render = (value: string) => renderToStaticMarkup(
+    <TextMarksField value={value} onChange={noop} disabled={false}>
+      <textarea value={value} readOnly />
+    </TextMarksField>,
+  );
+  const marked = render("<b>Casa sola</b> de dos");
+  assert.match(marked, /aria-label="Negrita" aria-pressed="false"/, "only part of the value is bold");
+  assert.match(marked, /data-text-marks-preview=""[^>]*><span[^>]*><span><strong>Casa sola<\/strong><\/span><span> de dos<\/span><\/span><\/p>/);
+
+  const whole = render("<i>Casa sola</i>");
+  assert.match(whole, /aria-label="Cursiva" aria-pressed="true" data-active=""/);
+  assert.match(whole, /aria-label="Negrita" aria-pressed="false"/);
+
+  assert.doesNotMatch(render("Casa sola"), /data-text-marks-preview/, "plain text needs no preview");
 });
 
 test("the facts an AI draft is written from carry the text without marks", () => {
