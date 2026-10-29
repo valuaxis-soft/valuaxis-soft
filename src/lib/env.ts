@@ -42,6 +42,11 @@ const envSchema = z.object({
   /** Model overrides; empty uses the defaults of src/infrastructure/ai/anthropic-gateway.ts. */
   AI_EXTRACTION_MODEL: z.string().optional(),
   AI_DRAFTING_MODEL: z.string().optional(),
+  /**
+   * Key of the HMAC that stores the CURP of an accreditation (docs/ACREDITACION.md).
+   * Optional; without it the CURP is kept as a plain SHA-256, weaker. Never change it once set.
+   */
+  ACCREDITATION_HASH_SECRET: z.string().min(32).optional().or(z.literal("")),
 });
 
 export type Env = z.infer<typeof envSchema>;

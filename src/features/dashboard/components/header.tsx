@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogOut, UserCircle2, Building2, ChevronDown } from "lucide-react";
+import { BadgeCheck, LogOut, UserCircle2, Building2, ChevronDown } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -106,6 +106,10 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
                 </Badge>
               </div>
               <DropdownMenuSeparator />
+              <DropdownMenuItem className="gap-2" render={<Link href="/cuenta" />}>
+                <BadgeCheck className="size-4" />
+                Mi cuenta y acreditación
+              </DropdownMenuItem>
               <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive">
                 <form action={logoutAction}>
                   <button type="submit" className="flex items-center gap-2">

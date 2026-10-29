@@ -23,6 +23,7 @@ import type { MyInvitationDto, SentInvitationDto, TeamDto } from "@/features/tea
 import type { FirmSettingsInput } from "@/features/firm/firm-schemas";
 import type { FirmSettingsDto } from "@/features/firm/firm.service";
 import type { BillingOverviewDto } from "@/features/billing/billing.service";
+import type { AccreditationView } from "@/features/accreditation/accreditation.service";
 import type { FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 import type { CustomFactor } from "@/features/firm/custom-factors";
 import type { DraftInput } from "@/features/ai/draft-writing";
@@ -372,6 +373,10 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ label }),
       }),
+  },
+  /** The signed-in user's professional accreditation (docs/ACREDITACION.md). */
+  accreditation: {
+    upload: (file: File) => uploadForm<AccreditationView>(`/cuenta/acreditacion`, { file }),
   },
   billing: {
     get: () => request<BillingOverviewDto>(`/organizacion/facturacion`),

@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DownloadDictamenPdfButton } from "./download-dictamen-pdf-button";
+import { UnaccreditedNoticeProvider } from "@/features/accreditation/components/unaccredited-notice";
 import { SendDictamenEmailDialog } from "./send-dictamen-email-dialog";
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
 import { ContinuousSectionsDocument, SectionDocument } from "@/features/valuations/components/report-preview";
@@ -37,11 +38,14 @@ export function ValuationDictamen({
   letterhead,
   initialValuation,
   valuationId,
+  unaccreditedNotice,
 }: {
   canShare: boolean;
   letterhead: Letterhead;
   initialValuation: ValuationDetail;
   valuationId: string;
+  /** The issuer is not accredited: every copy prints "DOCUMENTO SIN VALIDEZ OFICIAL" (docs/ACREDITACION.md). */
+  unaccreditedNotice: boolean;
 }) {
   const [initial] = useState(() => {
     const sections = initialSectionsFor(initialValuation);
@@ -59,9 +63,9 @@ export function ValuationDictamen({
   // The approaches left out of the dictamen do not print, and a section that continues the one before shares its pages.
   const printableGroups = useMemo(() => {
     const allConcepts = flattenSectionConcepts(sections);
-    return printableSectionGroups(sections)
+    return printableSectionGroups(sections, { unaccreditedNotice })
       .map((group) => group.map((section) => resolveSectionConceptsForDisplay(section, allConcepts)));
-  }, [sections]);
+  }, [sections, unaccreditedNotice]);
 
   return (
     <div className="min-h-dvh bg-muted/40 print:bg-white">
@@ -89,6 +93,7 @@ export function ValuationDictamen({
       </header>
 
       <main data-print-document className="overflow-x-auto py-8 print:overflow-visible print:p-0">
+        <UnaccreditedNoticeProvider show={unaccreditedNotice}>
         <NumberPresentationProvider presentation={documentNumberPresentation(sections)}>
         <PagePresentationProvider presentation={documentPagePresentation(sections)}>
           <div className="flex w-fit min-w-full flex-col gap-6 px-4 print:gap-0 print:p-0">
@@ -115,6 +120,7 @@ export function ValuationDictamen({
           </div>
         </PagePresentationProvider>
         </NumberPresentationProvider>
+        </UnaccreditedNoticeProvider>
       </main>
     </div>
   );

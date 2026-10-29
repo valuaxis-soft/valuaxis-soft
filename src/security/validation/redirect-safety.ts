@@ -5,6 +5,7 @@ const allowedInternalPrefixes = [
   "/avaluos",
   "/comparables",
   "/configuracion",
+  "/cuenta",
   // Unlisted demonstrations: after signing in, the link sent to the client opens again.
   "/demo",
   "/organizacion",

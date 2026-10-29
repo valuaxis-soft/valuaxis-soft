@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { valuationRequiresUnaccreditedNotice } from "@/features/accreditation/accreditation.service";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { getLetterhead } from "@/features/firm/firm.service";
@@ -33,13 +34,17 @@ export default async function DictamenPage({ params }: { params: Promise<{ id: s
     });
   }
 
-  const letterhead = await getLetterhead(user.organizationId);
+  const [letterhead, unaccreditedNotice] = await Promise.all([
+    getLetterhead(user.organizationId),
+    valuationRequiresUnaccreditedNotice(id, user.organizationId),
+  ]);
   return (
     <ValuationDictamen
       letterhead={letterhead}
       initialValuation={valuation}
       valuationId={id}
       canShare={hasPermission(user, AUTH_PERMISSIONS.shareValuations)}
+      unaccreditedNotice={unaccreditedNotice}
     />
   );
 }

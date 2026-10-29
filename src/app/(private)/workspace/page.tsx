@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { valuationIssuerNotice } from "@/features/accreditation/accreditation.service";
 import { CreateValuationForm } from "@/features/valuations/components/create-valuation-form";
 import { ValuationWorkspace } from "@/features/valuations/components/workspace/valuation-workspace";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
@@ -33,6 +34,7 @@ export default async function WorkspacePage({
     getCustomUnits(user.organizationId),
   ]);
   if (!initialValuation) redirect("/dashboard");
+  const issuerNotice = await valuationIssuerNotice(valuationId, user.organizationId);
 
   return (
     <ValuationWorkspace
@@ -42,6 +44,7 @@ export default async function WorkspacePage({
       valuationId={valuationId}
       initialValuation={initialValuation}
       aiEnabled={isAiEnabled()}
+      unaccreditedNotice={issuerNotice.show ? { issuerIsCurrentUser: issuerNotice.issuerUserId === user.id } : null}
     />
   );
 }
