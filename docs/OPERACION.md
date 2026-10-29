@@ -174,3 +174,37 @@ Opcional. La usa la página de demostración de mapas (`src/features/demo-maps/`
   - **Restricción de API:** solo Maps JavaScript API, Maps Static API y Geocoding API.
 - Después de agregarla o cambiarla: `pnpm env:check` (paso 2.3) y reiniciar la app (`docker compose ... up -d valuos-app`); no hace falta reconstruir la imagen.
 - La CSP agrega los dominios de Google (`maps.googleapis.com`, `*.googleapis.com`, `*.gstatic.com`, `fonts.googleapis.com`, `fonts.gstatic.com`, `worker-src blob:`) solo en las rutas `/demo/`; el resto de la app conserva la política de siempre (`src/security/headers/security-headers.ts`).
+
+## 8. Precio por avalúo ($170 MXN + IVA) y lo que falta para cobrar
+
+El precio acordado (28 oct 2026) es $170.00 MXN antes de IVA por avalúo, paquete `AVALUO_1`. Con el contenedor arriba:
+
+```bash
+docker exec -it valuos-app node --import tsx scripts/billing-set-unit-price.ts           # simulación
+docker exec -it valuos-app node --import tsx scripts/billing-set-unit-price.ts --apply   # escribe
+```
+
+Es idempotente y no llama a Stripe. **El cobro todavía no está activo en producción.** Falta, en este orden (detalle en [COBRO.md](COBRO.md), "Lista para salir a producción"):
+
+1. El cliente crea la **clave restringida** en vivo de su cuenta de Stripe (compartida con su tienda: no tocar sus llaves ni su configuración) → `STRIPE_SECRET_KEY` en `production.env`.
+2. Crear el **endpoint del webhook** `https://valuaxissoft.com/api/stripe/webhook` con sus eventos → `STRIPE_WEBHOOK_SECRET`.
+3. `pnpm env:check` (paso 2.3) y reiniciar la app.
+4. `docker exec -it valuos-app node --import tsx scripts/stripe-sync.ts`: crea en Stripe el producto y el precio de `AVALUO_1` (etiquetados `app = valuaxis`) y imprime `STRIPE_PORTAL_CONFIGURATION`; ponerla en `production.env` y reiniciar.
+5. Una compra real de prueba y su reembolso; después encender el bloqueo por organización (`scripts/billing-credits.ts enforce <slug> on`) solo cuando el cliente lo decida. Hasta entonces nadie queda bloqueado: concluir sin saldo deja el saldo en negativo.
+
+## 9. Acreditación profesional
+
+Ver [ACREDITACION.md](ACREDITACION.md). Tras desplegar la migración 054:
+
+- **Secreto de la CURP (una sola vez):** agregar a `production.env` `ACCREDITATION_HASH_SECRET` con 32 caracteres o más (`openssl rand -hex 32`), `pnpm env:check` y reiniciar. Hacerlo **antes** de que alguien suba su constancia y **no cambiarlo nunca**: los hashes guardados dejarían de compararse. Sin él la app funciona, con un SHA-256 simple.
+- **Revisar solicitudes:** la validación automática con la SEP no está disponible (su página exige reCAPTCHA), así que toda constancia queda "En revisión":
+
+  ```bash
+  docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts pendientes
+  docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts aprobar  <correo> --por "<quién>"            # simulación
+  docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts aprobar  <correo> --por "<quién>" --apply
+  docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts rechazar <correo> "<motivo>" --por "<quién>" --apply
+  docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts revocar  <correo> "<motivo>" --por "<quién>" --apply
+  ```
+
+  Antes de aprobar, abrir en un navegador el enlace de la SEP que imprime `pendientes` y comparar nombre y cédula con la cuenta.

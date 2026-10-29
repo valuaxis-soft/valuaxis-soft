@@ -27,6 +27,7 @@
     "billing:example-plans": "tsx --env-file-if-exists=.env scripts/billing-example-plans.ts",
     "billing:example-packages": "tsx --env-file-if-exists=.env scripts/billing-example-packages.ts",
     "billing:credits": "tsx --env-file-if-exists=.env scripts/billing-credits.ts",
+    "billing:set-unit-price": "tsx --env-file-if-exists=.env scripts/billing-set-unit-price.ts",
     "accreditation:review": "tsx --env-file-if-exists=.env scripts/ops/acreditacion.ts"
   },
   "dependencies": {

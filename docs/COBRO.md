@@ -22,6 +22,20 @@ La cuenta en vivo del cliente también la usa su tienda en línea (WooCommerce).
 5. **Bloqueo, apagado por omisión.** `devpware_organizaciones.BCobroPorAvaluo` decide qué pasa al concluir sin saldo: `false` (valor inicial de todas las organizaciones) registra el consumo y el saldo queda negativo, mostrado como pendiente de pago; `true` impide concluir con el mensaje "Tu organización no tiene avalúos disponibles…" y un enlace a comprar. Se enciende por organización con `pnpm billing:credits enforce <slug|uuid> on`.
 6. **Ajustes manuales.** Hasta que existan reglas de créditos y referidos, `pnpm billing:credits adjust <slug|uuid> <créditos> "<motivo>"` abona o retira créditos; `pnpm billing:credits balance <slug|uuid>` muestra saldo y movimientos.
 
+### Precio acordado: $170 MXN + IVA por avalúo
+
+El cliente fijó el precio por avalúo en **$170.00 MXN antes de IVA (16%)**, $197.20 con IVA (28 oct 2026). Lo publica el paquete `AVALUO_1` ("1 avalúo", 1 crédito, activo y público), que crea o corrige un script idempotente; no toca Stripe ni los demás paquetes:
+
+```bash
+pnpm billing:set-unit-price            # simulación: muestra qué crearía o cambiaría
+pnpm billing:set-unit-price --apply    # escribe
+# dentro del contenedor de producción:
+docker exec -it valuos-app node --import tsx scripts/billing-set-unit-price.ts           # simulación
+docker exec -it valuos-app node --import tsx scripts/billing-set-unit-price.ts --apply
+```
+
+El precio de Stripe **no** lo crea este script: lo crea `pnpm stripe:sync` (o la primera compra, que sincroniza el paquete elegido) cuando existan las llaves; si el importe cambia después, la sincronización crea un precio nuevo y archiva el anterior. Lo que falta en producción está en [OPERACION.md](OPERACION.md), sección 8.
+
 Para probar en local: `pnpm billing:example-packages` inserta los cuatro paquetes tentativos (1 × $150, 10 × $140, 30 × $125, 100 × $110, antes de IVA) marcados como de prueba; solo corre contra una base local.
 
 ### Publicar o cambiar un paquete
@@ -115,7 +129,7 @@ Para probar en local hay dos planes de ejemplo: `pnpm billing:example-plans` (so
 
 ## Lista para salir a producción
 
-1. Definir los paquetes y precios reales e insertarlos en la base de producción (los planes de suscripción solo cuando exista la base de datos de comparables).
+1. Definir los paquetes y precios reales e insertarlos en la base de producción (los planes de suscripción solo cuando exista la base de datos de comparables). El de un avalúo ya está definido: `scripts/billing-set-unit-price.ts --apply`.
 2. Crear la clave restringida en vivo con los permisos de arriba → `STRIPE_SECRET_KEY`.
 3. Crear el endpoint del webhook con sus eventos → `STRIPE_WEBHOOK_SECRET`.
 4. `pnpm stripe:sync` en producción → copiar `STRIPE_PORTAL_CONFIGURATION` y reiniciar la app.
