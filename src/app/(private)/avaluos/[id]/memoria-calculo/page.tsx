@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { valuationRequiresUnaccreditedNotice } from "@/features/accreditation/accreditation.service";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { isInternalRender } from "@/infrastructure/pdf/internal-render";
@@ -31,6 +32,7 @@ export default async function CalculationMemoryPage({ params }: { params: Promis
   });
   if (!loaded) redirect("/avaluos");
 
+  const unaccreditedNotice = await valuationRequiresUnaccreditedNotice(id, user.organizationId);
   const requestHeaders = await headers();
   // The server's PDF renderer opening this page is not a separate export: the PDF route audits it.
   if (!isInternalRender(requestHeaders)) {
@@ -53,6 +55,7 @@ export default async function CalculationMemoryPage({ params }: { params: Promis
         letterhead={loaded.letterhead}
         memory={loaded.memory}
         propertyKind={loaded.propertyKind}
+        unaccreditedNotice={unaccreditedNotice}
       />
     </div>
   );

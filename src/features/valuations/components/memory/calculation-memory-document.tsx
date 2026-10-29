@@ -6,6 +6,7 @@ import { memoryChapters, type CalculationMemory, type MemoryApproach, type Memor
 import { formatDateValue } from "../../services/concept-value-format";
 import { ComparableCardView } from "../calculation/comparable-card-view";
 import { DocumentPreviewHeader } from "../document-preview-header";
+import { UnaccreditedNotice } from "@/features/accreditation/components/unaccredited-notice";
 
 /** The dictamen's blues, so the header prints as in the dictamen. */
 const HEADER_COLORS = { "--caratula-blue": "#003B73", "--caratula-dark-blue": "#00285A" } as CSSProperties;
@@ -263,6 +264,7 @@ export function CalculationMemoryDocument({
   letterhead,
   memory,
   propertyKind,
+  unaccreditedNotice = false,
 }: {
   caratula: CaratulaFormData;
   headerImage: ImageContent | null;
@@ -271,6 +273,8 @@ export function CalculationMemoryDocument({
   propertyKind: string | null;
   /** The sheets of the comparables used, for the memoria técnica de comparables. */
   comparables?: ComparableCardDto[];
+  /** The issuer is not accredited: the memory opens with "DOCUMENTO SIN VALIDEZ OFICIAL" (docs/ACREDITACION.md). */
+  unaccreditedNotice?: boolean;
 }) {
   const chapters = memoryChapters(memory);
   return (
@@ -290,6 +294,7 @@ export function CalculationMemoryDocument({
         <tbody>
           <tr>
             <td className="px-5 pt-4 pb-8 sm:px-8">
+              {unaccreditedNotice ? <div className="mb-3"><UnaccreditedNotice location="memoria-calculo" /></div> : null}
               <Cover memory={memory} />
 
               {chapters.length ? (

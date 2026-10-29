@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { ReadOnlyValuationAlert } from "@/features/valuations/components/feedback/valuation-error-alert";
+import { UnaccreditedEditorAlert, UnaccreditedNoticeProvider } from "@/features/accreditation/components/unaccredited-notice";
 import { FormulaEditingProvider } from "@/features/valuations/components/editor/formula-editing";
 import { CustomUnitsProvider } from "@/features/valuations/components/editor/custom-units-context";
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
@@ -90,7 +91,10 @@ export function ValuationWorkspace({
   initialValuation,
   aiEnabled = false,
   customUnits = [],
+  unaccreditedNotice = null,
 }: {
+  /** The issuer is not accredited: the preview shows the notice the dictamen prints, and the editor says why. */
+  unaccreditedNotice?: { issuerIsCurrentUser: boolean } | null;
   currentUser: AuthUser;
   letterhead: Letterhead;
   valuationId?: string | null;
@@ -443,6 +447,7 @@ export function ValuationWorkspace({
 
   return (
     <AiAssistProvider enabled={aiEnabled && canEdit} valuationId={valuationId}>
+    <UnaccreditedNoticeProvider show={unaccreditedNotice !== null}>
     <FormulaEditingProvider sections={sections}>
     <NumberPresentationProvider presentation={numberPresentation}>
     <PagePresentationProvider presentation={pagePresentation}>
@@ -498,6 +503,7 @@ export function ValuationWorkspace({
               deliverablesOf={valuationId && hasPermission(currentUser, AUTH_PERMISSIONS.exportValuations) ? valuationId : null}
             />
           ) : null}
+          {unaccreditedNotice ? <UnaccreditedEditorAlert issuerIsCurrentUser={unaccreditedNotice.issuerIsCurrentUser} /> : null}
         </div>
       </section>
 
@@ -605,6 +611,7 @@ export function ValuationWorkspace({
     </PagePresentationProvider>
     </NumberPresentationProvider>
     </FormulaEditingProvider>
+    </UnaccreditedNoticeProvider>
     </AiAssistProvider>
   );
 }

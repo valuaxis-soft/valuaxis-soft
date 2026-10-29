@@ -37,6 +37,8 @@ import {
   CaratulaConclusionModule,
   CaratulaSignaturesModule,
 } from "./caratula-preview-modules";
+import { UnaccreditedNotice, useUnaccreditedNotice } from "@/features/accreditation/components/unaccredited-notice";
+import { NOTICE_SECTION_KEYS } from "@/features/accreditation/accreditation-notice";
 
 const CARATULA_BLUE = "#003B73";
 const CARATULA_DARK_BLUE = "#00285A";
@@ -187,14 +189,33 @@ const isDatosSection = (section: AppSection) => section.id === "datos" || getCan
  * The printed items of a section other than the carátula, as its own pages
  * lay them out: to print it on the pages of the section before.
  */
-export function sectionFlowItems(section: AppSection): DocumentFlowItem[] {
+export function sectionFlowItems(section: AppSection, unaccreditedNotice = false): DocumentFlowItem[] {
   if (isDatosSection(section)) return datosFlowItems(section);
   if (isTerrenoSection(section)) return terrenoFlowItems(section);
   if (isConstruccionSection(section)) return construccionFlowItemsInFlow(section);
   const applyConceptLayout = PRE_MARKET_LAYOUT_SECTION_KEYS.has(getCanonicalSectionKey(section.id));
-  return section.blocks
+  const items = section.blocks
     .filter((block) => block.enabled)
     .flatMap((block) => reportBlockFlowItems(block, applyConceptLayout));
+  return withUnaccreditedNotice(section, items, unaccreditedNotice);
+}
+
+const NOTICE_SECTIONS: ReadonlySet<string> = new Set(NOTICE_SECTION_KEYS);
+
+/**
+ * Consideraciones and Conclusión carry the "DOCUMENTO SIN VALIDEZ OFICIAL"
+ * notice of an unaccredited issuer as a fixed item: right under the section's
+ * first title, or first when it starts with no title.
+ */
+function withUnaccreditedNotice(section: AppSection, items: DocumentFlowItem[], show: boolean): DocumentFlowItem[] {
+  const key = getCanonicalSectionKey(section.id);
+  if (!show || !NOTICE_SECTIONS.has(key)) return items;
+  const notice: DocumentFlowItem = {
+    id: `${section.id}-unaccredited-notice`,
+    node: <UnaccreditedNotice location={key.toLowerCase()} />,
+  };
+  const at = items[0]?.keepWithNext ? 1 : 0;
+  return [...items.slice(0, at), notice, ...items.slice(at)];
 }
 
 /**
@@ -220,7 +241,8 @@ export function ContinuousSectionsDocument({
 
 function ContinuousSectionsFlow({ header, sections }: { header: ReactNode; sections: AppSection[] }) {
   const theme = useDocumentTheme();
-  const items = sections.flatMap(sectionFlowItems);
+  const unaccreditedNotice = useUnaccreditedNotice();
+  const items = sections.flatMap((section) => sectionFlowItems(section, unaccreditedNotice));
   const contentLayoutKey = useMemo(() => sections.map(computeDocumentLayoutKey).join(":"), [sections]);
   return (
     <AutoPaginatedDocumentFlow
@@ -247,6 +269,7 @@ function CaratulaPreview({
   header: ReactNode;
 }) {
   const theme = useDocumentTheme();
+  const unaccreditedNotice = useUnaccreditedNotice();
   const visibleBlocks = section.blocks.filter(
     (block) => block.enabled && block.id !== COMPANY_HEADER_BLOCK_ID,
   );
@@ -272,6 +295,8 @@ function CaratulaPreview({
   const items: DocumentFlowItem[] = [
     // Fixed: Cover
     { id: "caratula-cover", node: <CaratulaCoverModule caratula={caratula} meta={meta} principalImage={principalImage} /> },
+    // Fixed, for an unaccredited issuer: on the cover, under the principal image
+    ...(unaccreditedNotice ? [{ id: "caratula-unaccredited-notice", node: <UnaccreditedNotice location="caratula" /> }] : []),
     // Editable blocks — no title bar in carátula document rendering
     ...columnBlocks.flatMap((block) => reportBlockFlowItems(block, true, { renderTitleBar: false, ...caratulaTitleOptions })),
     // Fixed: Assumptions
@@ -305,9 +330,12 @@ function ReportSection({
   section: AppSection;
 }) {
   const theme = useDocumentTheme();
-  const items = section.blocks
-    .filter((block) => block.enabled)
-    .flatMap((block) => reportBlockFlowItems(block, applyConceptLayout));
+  const unaccreditedNotice = useUnaccreditedNotice();
+  const items = withUnaccreditedNotice(
+    section,
+    section.blocks.filter((block) => block.enabled).flatMap((block) => reportBlockFlowItems(block, applyConceptLayout)),
+    unaccreditedNotice,
+  );
   const contentLayoutKey = useMemo(() => computeDocumentLayoutKey(section), [section]);
 
   return (

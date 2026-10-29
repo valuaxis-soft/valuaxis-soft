@@ -90,6 +90,8 @@ No se deben borrar migraciones históricas ni usar `prisma db push` para forzar 
 - [Secciones de avaluos](docs/VALUATION_SECTIONS.md)
 - [Comparables](docs/COMPARABLES.md)
 - [Asistencia con IA](docs/IA.md)
+- [Acreditación profesional](docs/ACREDITACION.md)
+- [Cobro](docs/COBRO.md)
 - [Motor de cálculo](docs/MOTOR-CALCULO.md)
 - [Archivos y storage](docs/FILES.md)
 - [Testing](docs/TESTING.md)

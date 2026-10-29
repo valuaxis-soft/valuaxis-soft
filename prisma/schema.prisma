@@ -379,11 +379,41 @@ model Usuario {
   invitacionesEnviadas         InvitacionOrganizacion[]      @relation("InvitacionInvitador")
   invitacionesAceptadas        InvitacionOrganizacion[]      @relation("InvitacionAceptante")
   movimientosCreditos          MovimientoCreditos[]
+  acreditacion                 AcreditacionUsuario?
 
   @@index([IdEstadoUsuario])
   @@index([BActivo])
   @@index([DFechaEliminacion])
   @@map("devpware_usuarios")
+}
+
+/// Professional accreditation of a user (migration 054, docs/ACREDITACION.md). No CURP in clear,
+/// only its hash; the SEP verification URL is kept only while the request is EN_REVISION.
+model AcreditacionUsuario {
+  IdAcreditacionUsuario Int       @id @default(autoincrement()) @map("IdAcreditacionUsuario")
+  IdUsuario             Int       @unique(map: "devpware_acreditaciones_usuarios_IdUsuario_key") @map("IdUsuario")
+  /// NO_ACREDITADO, EN_REVISION, ACREDITADO or RECHAZADO (check constraint in the migration).
+  SEstado               String    @default("NO_ACREDITADO") @map("SEstado") @db.VarChar(20)
+  SFolio                String?   @map("SFolio") @db.VarChar(20)
+  SCurpHash             String?   @map("SCurpHash") @db.VarChar(80)
+  SNumeroCedula         String?   @map("SNumeroCedula") @db.VarChar(30)
+  SNombreSep            String?   @map("SNombreSep") @db.VarChar(300)
+  SUrlVerificacion      String?   @map("SUrlVerificacion") @db.VarChar(500)
+  /// What the automatic check found: NO_DISPONIBLE, COINCIDE, NO_COINCIDE, CEDULA_NO_VALIDA.
+  SResultadoAutomatico  String?   @map("SResultadoAutomatico") @db.VarChar(30)
+  SMotivo               String?   @map("SMotivo") @db.VarChar(500)
+  SResueltoPor          String?   @map("SResueltoPor") @db.VarChar(180)
+  DFechaSolicitud       DateTime? @map("DFechaSolicitud") @db.Timestamptz(3)
+  DFechaVerificacion    DateTime? @map("DFechaVerificacion") @db.Timestamptz(3)
+  DFechaRevocacion      DateTime? @map("DFechaRevocacion") @db.Timestamptz(3)
+  DFechaCreacion        DateTime  @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+  DFechaModificacion    DateTime  @default(now()) @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
+
+  usuario Usuario @relation(fields: [IdUsuario], references: [IdUsuario], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([SEstado])
+  @@index([SCurpHash])
+  @@map("devpware_acreditaciones_usuarios")
 }
 
 model Rol {
