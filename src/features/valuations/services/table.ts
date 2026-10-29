@@ -5,6 +5,7 @@
  * This module is pure TypeScript — no React, no side effects.
  */
 
+import type { CellAnchors } from "../calculation/free-formula";
 import type { ConceptValueFormat } from "../model";
 
 /* ================================================================== */
@@ -221,13 +222,14 @@ export type TableWidthMode = "page" | "content";
 /*  FORMULA AST TYPES                                                  */
 /* ================================================================== */
 
+/** A cell a formula reads; the "$" it was written with ($B$2, B$2, $B2) stays with it. */
+export type FormulaCellCorner = { rowId: string; columnId: string } & CellAnchors;
+
 export type FormulaCellRef = {
   type: "cell";
   /** The table of the cell; the formula's own table when missing. */
   tableId?: string;
-  rowId: string;
-  columnId: string;
-};
+} & FormulaCellCorner;
 
 export type FormulaRowRef = {
   type: "row";
@@ -251,8 +253,8 @@ export type FormulaRangeRef = {
 export type FormulaSpanRef = {
   type: "span";
   tableId?: string;
-  from: { rowId: string; columnId: string };
-  to: { rowId: string; columnId: string };
+  from: FormulaCellCorner;
+  to: FormulaCellCorner;
 };
 
 /** The value of a concept of the valuation. */
@@ -936,9 +938,9 @@ export function setCellResultFormat(table: TableV2, rowId: string, columnId: str
   };
 }
 
-/** The same expression with every reference to a cell of row `fromRowId` of its own table moved to `toRowId`. */
+/** The same expression with every reference to a cell of row `fromRowId` of its own table, but a row fixed with "$", moved to `toRowId`. */
 function expressionForRow(expression: FormulaExpression, fromRowId: string, toRowId: string): FormulaExpression {
-  const move = <T extends { rowId: string }>(ref: T): T => (ref.rowId === fromRowId ? { ...ref, rowId: toRowId } : ref);
+  const move = <T extends { rowId: string; fixedRow?: true }>(ref: T): T => (ref.rowId === fromRowId && !ref.fixedRow ? { ...ref, rowId: toRowId } : ref);
   switch (expression.type) {
     case "operand": {
       const operand = expression.operand;
@@ -962,22 +964,64 @@ function formulaForRow(formula: TableFormula, fromRowId: string, toRowId: string
   return { ...formula, expression: expressionForRow(formula.expression, fromRowId, toRowId) };
 }
 
+/** Where a reference copied past the first or the last row points: no row, so it reads #REF! as in Excel. */
+const OUTSIDE_ROW_ID = "#REF!";
+
+/**
+ * The same expression copied `offset` rows down its own table (up when
+ * negative), as a spreadsheet copies a formula: every reference to a cell of
+ * that table moves as many rows, except a row fixed with "$" (B$2, $B$2).
+ * References to other tables and to concepts stay where they are.
+ */
+function expressionShifted(expression: FormulaExpression, rowIds: string[], offset: number): FormulaExpression {
+  const shiftRow = (rowId: string) => {
+    const index = rowIds.indexOf(rowId);
+    // A row that is no longer in the table stays a broken reference.
+    if (index === -1) return rowId;
+    return rowIds[index + offset] ?? OUTSIDE_ROW_ID;
+  };
+  const move = <T extends FormulaCellCorner>(corner: T): T => (corner.fixedRow ? corner : { ...corner, rowId: shiftRow(corner.rowId) });
+  switch (expression.type) {
+    case "operand": {
+      const operand = expression.operand;
+      if (operand.type === "cell" && !operand.tableId) return { type: "operand", operand: move(operand) };
+      if (operand.type === "row") return { type: "operand", operand: { ...operand, rowId: shiftRow(operand.rowId) } };
+      if (operand.type === "range") return { type: "operand", operand: { ...operand, cells: operand.cells.map(move) } };
+      if (operand.type === "span" && !operand.tableId) return { type: "operand", operand: { ...operand, from: move(operand.from), to: move(operand.to) } };
+      return expression;
+    }
+    case "binary":
+    case "compare":
+      return { ...expression, left: expressionShifted(expression.left, rowIds, offset), right: expressionShifted(expression.right, rowIds, offset) };
+    case "function":
+      return { ...expression, args: expression.args.map((arg) => expressionShifted(arg, rowIds, offset)) };
+    default:
+      return expression;
+  }
+}
+
 /**
  * Copies the formula of a cell to the same column of every other row, as
- * dragging it down a spreadsheet does: what it reads from its own row, each
- * copy reads from its row. Rows whose cell already holds a value are skipped
- * unless `overwrite`.
+ * dragging it down a spreadsheet does: each reference to a cell of the table
+ * moves as many rows as the copy is from the original, so what it reads from
+ * its own row each copy reads from its row, and what it reads one row up,
+ * one row up from the copy. A row fixed with "$" ($B$2, B$2) does not move;
+ * the column of a reference never does, the copies stay in their column.
+ * Rows whose cell already holds a value are skipped unless `overwrite`.
  */
 export function fillColumnWithFormula(table: TableV2, rowId: string, columnId: string, options: { overwrite?: boolean } = {}): TableV2 {
-  const source = table.rows.find((row) => row.id === rowId)?.cells[columnId];
+  const sourceIndex = table.rows.findIndex((row) => row.id === rowId);
+  const source = table.rows[sourceIndex]?.cells[columnId];
   if (source?.kind !== "formula") return table;
+  const rowIds = table.rows.map((row) => row.id);
   return {
     ...table,
-    rows: table.rows.map((row) => {
+    rows: table.rows.map((row, index) => {
       if (row.id === rowId) return row;
       const current = row.cells[columnId];
       if (!options.overwrite && current?.kind === "value" && current.value.trim() !== "") return row;
-      return { ...row, cells: { ...row.cells, [columnId]: { ...source, formula: formulaForRow(source.formula, rowId, row.id) } } };
+      const formula = { ...source.formula, expression: expressionShifted(source.formula.expression, rowIds, index - sourceIndex) };
+      return { ...row, cells: { ...row.cells, [columnId]: { ...source, formula } } };
     }),
   };
 }

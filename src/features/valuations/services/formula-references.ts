@@ -1,7 +1,8 @@
 /**
  * Formulas as the appraiser writes and reads them, and as they are stored.
  *
- * Written: cells by their position in the table as shown (B2, A1:A5), a cell
+ * Written: cells by their position in the table as shown (B2, A1:A5, with
+ * the "$" of Excel to fix a row or a column: $B$2, B$2, $B2), a cell
  * of another table by the table's name ([Tabla de homologación]!C3) and a
  * concept by its title ([Superficie total de terreno]).
  *
@@ -20,6 +21,7 @@ import {
   ensureTableV2,
   getDisplayColumns,
   type FormulaBinaryOp,
+  type FormulaCellCorner,
   type FormulaExpression,
   type FormulaOperand,
   type TableFormula,
@@ -171,6 +173,14 @@ export function cellAddress(table: TableV2, rowId: string, columnId: string): st
   return row === -1 || column === -1 ? null : positionText({ column, row });
 }
 
+/** "$B$2", "B$2" or "B2": the address of a cell a formula reads, with the "$" it was written with. */
+function anchoredAddress(table: TableV2, corner: FormulaCellCorner): string | null {
+  const row = table.rows.findIndex((item) => item.id === corner.rowId);
+  const column = getDisplayColumns(table).findIndex((item) => item.id === corner.columnId);
+  if (row === -1 || column === -1) return null;
+  return `${corner.fixedColumn ? "$" : ""}${columnLetter(column)}${corner.fixedRow ? "$" : ""}${row + 1}`;
+}
+
 function cellAt(table: TableV2, position: CellPosition): { rowId: string; columnId: string } | null {
   const row = table.rows[position.row];
   const column = getDisplayColumns(table)[position.column];
@@ -218,13 +228,14 @@ function resolveSyntax(node: FormulaSyntax, scope: FormulaScope): FormulaExpress
     if (!entry) throw new FormulaReferenceError(`No hay una tabla llamada «${name}».`);
     return entry.id === scope.table?.id ? { table: scope.table } : { table: entry.table, tableId: entry.id };
   };
-  const cellOf = (table: TableV2, position: CellPosition) => {
+  const cellOf = (table: TableV2, position: CellPosition): FormulaCellCorner => {
     const cell = cellAt(table, position);
     if (!cell) {
       const size = `${table.rows.length} ${table.rows.length === 1 ? "fila" : "filas"} y ${getDisplayColumns(table).length} columnas`;
       throw new FormulaReferenceError(`La celda ${positionText(position)} no existe: la tabla tiene ${size}.`);
     }
-    return cell;
+    // The "$" of the reference stays with it, for the copies of the formula.
+    return { ...cell, ...(position.fixedColumn ? { fixedColumn: true } : {}), ...(position.fixedRow ? { fixedRow: true } : {}) };
   };
 
   switch (node.type) {
@@ -379,10 +390,10 @@ function operandText(operand: FormulaOperand, scope: FormulaScope): string {
     const entry = scope.index.tableById.get(tableId);
     return entry ? { table: entry.table, prefix: `[${entry.name}]!` } : null;
   };
-  const cells = (tableId: string | undefined, ...corners: Array<{ rowId: string; columnId: string }>) => {
+  const cells = (tableId: string | undefined, ...corners: FormulaCellCorner[]) => {
     const found = place(tableId);
     if (!found) return MISSING_REFERENCE_TEXT;
-    const addresses = corners.map((corner) => cellAddress(found.table, corner.rowId, corner.columnId));
+    const addresses = corners.map((corner) => anchoredAddress(found.table, corner));
     return addresses.some((address) => address === null) ? MISSING_REFERENCE_TEXT : `${found.prefix}${addresses.join(":")}`;
   };
 

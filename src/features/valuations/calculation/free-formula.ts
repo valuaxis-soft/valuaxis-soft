@@ -19,10 +19,17 @@
  * point at is resolved in services/formula-references.ts. The numeric fields
  * of the calculation panels take plain arithmetic: a formula that names a
  * value has no result there.
+ *
+ * A "$" fixes the part of a cell that follows it, as in Excel: $B$2, B$2 and
+ * $B2 read the same cell as B2, but a copy of the formula to other rows keeps
+ * a fixed row where it is.
  */
 
+/** Which parts of a reference a "$" fixes ($B$2: both); only set when fixed. */
+export type CellAnchors = { fixedColumn?: true; fixedRow?: true };
+
 /** Zero-based position of a cell in its table as shown: column A row 1 is { column: 0, row: 0 }. */
-export type CellPosition = { column: number; row: number };
+export type CellPosition = { column: number; row: number } & CellAnchors;
 
 export type FormulaFunctionName = "SUM" | "AVERAGE" | "PRODUCT" | "MIN" | "MAX" | "ABS" | "SQRT" | "POWER" | "ROUND" | "LN" | "LOG";
 
@@ -127,8 +134,8 @@ function tokenize(source: string): Token[] | null {
   let index = 0;
   while (index < text.length) {
     const rest = text.slice(index);
-    // The currency sign is noise, and so are the anchors of $A$1.
-    const skipped = /^[\s$]+/.exec(rest);
+    // The currency sign is noise; the "$" of $A$1 is read with its cell.
+    const skipped = /^(?:\s|\$(?![A-Za-z]))+/.exec(rest);
     if (skipped) {
       index += skipped[0].length;
       continue;
@@ -151,10 +158,18 @@ function tokenize(source: string): Token[] | null {
       index += columns[0].length;
       continue;
     }
-    const cell = /^([A-Za-z]{1,3})\$?(\d{1,5})(?![\w(])/.exec(rest);
-    if (cell && Number(cell[2]) > 0) {
-      tokens.push({ kind: "cell", position: { column: columnIndex(cell[1]), row: Number(cell[2]) - 1 } });
+    const cell = /^(\$?)([A-Za-z]{1,3})(\$?)(\d{1,5})(?![\w(])/.exec(rest);
+    if (cell && Number(cell[4]) > 0) {
+      const position: CellPosition = { column: columnIndex(cell[2]), row: Number(cell[4]) - 1 };
+      if (cell[1]) position.fixedColumn = true;
+      if (cell[3]) position.fixedRow = true;
+      tokens.push({ kind: "cell", position });
       index += cell[0].length;
+      continue;
+    }
+    // A "$" before anything that is not a cell is noise, like the currency sign.
+    if (rest[0] === "$") {
+      index += 1;
       continue;
     }
     const name = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ_]+/.exec(rest);

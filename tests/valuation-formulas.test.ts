@@ -145,7 +145,15 @@ test("the parser reads cells, ranges, names of tables and concepts, and function
     right: { type: "cell", position: { column: 2, row: 1 } },
   });
   assert.deepEqual(parseFormula("b2"), { type: "cell", position: { column: 1, row: 1 } }, "lower case reads the same");
-  assert.deepEqual(parseFormula("$B$2"), { type: "cell", position: { column: 1, row: 1 } }, "anchors are ignored");
+  assert.deepEqual(parseFormula("$B$2"), { type: "cell", position: { column: 1, row: 1, fixedColumn: true, fixedRow: true } }, "the anchors stay with the cell");
+  assert.deepEqual(parseFormula("B$2"), { type: "cell", position: { column: 1, row: 1, fixedRow: true } });
+  assert.deepEqual(parseFormula("$B2"), { type: "cell", position: { column: 1, row: 1, fixedColumn: true } });
+  assert.deepEqual(parseFormula("$A$1:A$3"), {
+    type: "range",
+    from: { column: 0, row: 0, fixedColumn: true, fixedRow: true },
+    to: { column: 0, row: 2, fixedRow: true },
+  });
+  assert.equal(evaluateFormula("$ 9000*2"), 18000, "a currency sign before a number is still noise");
   assert.deepEqual(parseFormula("AA10"), { type: "cell", position: { column: 26, row: 9 } });
   assert.deepEqual(parseFormula("SUMA(A1:A5)"), {
     type: "call",
@@ -250,7 +258,8 @@ test("text → stored → text is stable for every kind of formula", () => {
   for (const [written, expected] of [
     ["=B1*C1", "B1*C1"],
     ["= b1 * c1 ", "B1*C1"],
-    ["=$B$1*C1", "B1*C1"],
+    ["=$B$1*C1", "$B$1*C1"],
+    ["=$b1*c$1", "$B1*C$1"],
     ["=(B1+B2)*C1", "(B1+B2)*C1"],
     ["=B1+B2*C1", "B1+B2*C1"],
     ["=B1-(B2-B3)", "B1-(B2-B3)"],
@@ -396,6 +405,34 @@ test("copying a formula down the column and duplicating its row move the referen
   const copy = table.rows[1];
   assert.equal(textOf(table, copy.id, "c4"), "B2*C2");
   assert.equal(shown(table, "D2"), shown(table, "D1"));
+});
+
+test("a $ keeps its part of a reference where it is when the formula is copied down the column, as in Excel", () => {
+  // $B$2 and $B2 read the same cell as B2.
+  const plain = typed(areas(), "D1", "=B2*C1");
+  for (const anchored of ["$B$2*C1", "B$2*C1", "$B2*C1"]) {
+    assert.equal(shown(typed(areas(), "D1", `=${anchored}`), "D1"), shown(plain, "D1"), `${anchored} reads as B2*C1`);
+  }
+
+  let table = typed(areas(), "D1", "=B1*$C$1+B$1-$B1");
+  assert.equal(textOf(table, "r1", "c4"), "B1*$C$1+B$1-$B1", "the formula reads back with its $");
+  table = fillColumnWithFormula(table, "r1", "c4");
+  assert.equal(textOf(table, "r2", "c4"), "B2*$C$1+B$1-$B2", "the fixed rows stay, the relative ones move");
+  assert.equal(textOf(table, "r3", "c4"), "B3*$C$1+B$1-$B3");
+  // 10 × 9000 + 169.78 − 10
+  assert.equal(shown(table, "D3"), "$90,159.78");
+
+  // A reference to another row moves as many rows as the copy, and past the table it reads #REF!.
+  let shifted = typed(areas(), "D2", "=B1+SUMA(B$1:B2)");
+  shifted = fillColumnWithFormula(shifted, "r2", "c4");
+  assert.equal(textOf(shifted, "r3", "c4"), "B2+SUMA(B$1:B3)", "a range fixed at its top grows with the copies");
+  assert.equal(textOf(shifted, "r1", "c4"), "#REF!+SUMA(B$1:B1)", "one row up from the first row is no row");
+  assert.equal(shown(shifted, "D1"), "#REF!");
+  assert.equal(shown(shifted, "D3"), "420.78");
+
+  // Duplicating a row keeps a fixed row too.
+  const duplicated = duplicateTableRow(typed(areas(), "D1", "=B1*$C$1"), 0);
+  assert.equal(textOf(duplicated, duplicated.rows[1].id, "c4"), "B2*$C$1");
 });
 
 /* ------------------------------------------------------------------ */
