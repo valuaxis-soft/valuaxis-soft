@@ -1,7 +1,7 @@
 "use client";
 
-import type { Concept, ConceptType } from "@/features/valuations/model";
-import { Copy, FilePlus2, Link, Link2, ListPlus, Pilcrow } from "lucide-react";
+import type { Concept, ConceptCreationKind } from "@/features/valuations/model";
+import { Copy, Link, Link2, ListPlus } from "lucide-react";
 
 
 import { Badge } from "@/components/ui/badge";
@@ -9,44 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { UNTITLED_CARATULA_CONCEPT } from "@/features/valuations/services/caratula-blocks";
+import { CONCEPT_CREATION_OPTIONS, conceptTypeLabel } from "@/features/valuations/services/concept-types";
 
 type ConceptReference ={
     concept: Concept;
     source: string;
-}
-
-const CONCEPT_TYPE_OPTIONS: Array<{
-    type: ConceptType;
-    label: string;
-    Icon?: typeof Link;
-}> = [
-    { type: "text", label: "Texto" },
-    { type: "date", label: "Fecha" },
-    { type: "phone", label: "Teléfono" },
-    // "Número" and "Correo" are no longer offered: a text concept takes a unit
-    // from "Formato del valor", and a mail reads the same as text. Concepts
-    // already created with those types keep working.
-    { type: "url", label: "Url", Icon: FilePlus2 },
-    { type: "longText", label: "Texto largo", Icon: ListPlus },
-    // A text with no concept label, printed from edge to edge.
-    { type: "paragraph", label: "Párrafo", Icon: Pilcrow },
-];
-
-function conceptTypeLabel(type: ConceptType | undefined) {
-  const labels: Record<ConceptType, string> = {
-    text: "Texto",
-    date: "Fecha",
-    phone: "Teléfono",
-    email: "Correo",
-    number: "Número",
-    currency: "Moneda",
-    measurement: "Medida",
-    longText: "Texto largo",
-    url: "Vínculo / URL",
-    paragraph: "Párrafo",
-  };
-
-  return labels[type ?? "text"];
 }
 
 function conceptPreview(value: string) {
@@ -66,7 +33,7 @@ export function ConceptCreationControl({
 }: {
   conceptReferences: ConceptReference[];
   conceptSearch: string;
-  onAddConcept: (type?: ConceptType) => void;
+  onAddConcept: (kind?: ConceptCreationKind) => void;
   onAddConceptFromExisting?: (
     concept: Concept,
     mode: "copy" | "full" | "value"
@@ -90,17 +57,16 @@ export function ConceptCreationControl({
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-2">
             <p className="text-xs font-medium text-muted-foreground">Crear concepto</p>
-            <div className="flex flex-wrap gap-1.5">
-              {CONCEPT_TYPE_OPTIONS.map((option) => (
+            <div className="flex flex-wrap gap-1.5" data-concept-types>
+              {CONCEPT_CREATION_OPTIONS.map((option) => (
                 <Button
-                  key={option.type}
+                  key={option.kind}
                   type="button"
                   size="sm"
                   variant="outline"
                   className="h-7 px-2 text-xs"
-                  onClick={() => onAddConcept(option.type)}
+                  onClick={() => onAddConcept(option.kind)}
                 >
-                  {option.Icon ? <option.Icon data-icon="inline-start" /> : null}
                   {option.label}
                 </Button>
               ))}

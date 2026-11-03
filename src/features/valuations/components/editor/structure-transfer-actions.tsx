@@ -91,6 +91,42 @@ const containerOptions = (destinations: TransferDestination[], onPick: (address:
     onPick: () => onPick(destination.address),
   }));
 
+/** "Mover a…" of one concept, as an item of its ⋮ menu. */
+export function MoveConceptMenuItem({ source, conceptId, disabled = false }: { source: ContainerAddress; conceptId: string; disabled?: boolean }) {
+  const transfer = useStructureTransfer();
+  const [open, setOpen] = useState(false);
+  const options = open && transfer
+    ? containerOptions(conceptDestinations(transfer.sections, source), (destination) => {
+        transfer.moveConcepts(source, [conceptId], destination);
+      })
+    : [];
+  const lock = !transfer ? "No se puede mover desde aquí." : transfer.readOnly ? "El avalúo es de solo lectura." : null;
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="justify-start"
+        aria-label="Mover concepto a otro bloque"
+        title={lock ?? "Mover el concepto a otro bloque o subbloque"}
+        disabled={disabled || Boolean(lock)}
+        onClick={() => setOpen(true)}
+      >
+        <FolderInput data-icon="inline-start" />
+        Mover a…
+      </Button>
+      <DestinationPicker
+        open={open}
+        onOpenChange={setOpen}
+        title="Mover el concepto"
+        description="Va al final del bloque o subbloque que elijas."
+        options={options}
+      />
+    </>
+  );
+}
+
 /** "Mover a…" of the concepts chosen in a Block or Apartado. */
 export function MoveConceptsButton({ source, conceptIds, onMoved }: { source: ContainerAddress; conceptIds: string[]; onMoved: () => void }) {
   const transfer = useStructureTransfer();
@@ -118,6 +154,8 @@ export function MoveConceptsButton({ source, conceptIds, onMoved }: { source: Co
   );
 }
 
+const READ_ONLY_LOCK = "El avalúo es de solo lectura: no se copia ni se mueve.";
+
 function TransferMenu({ label, lock, onCopy, onDuplicate, onMove, moveLabel }: {
   label: string;
   lock: string | null;
@@ -130,7 +168,7 @@ function TransferMenu({ label, lock, onCopy, onDuplicate, onMove, moveLabel }: {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button type="button" size="icon-sm" variant="outline" aria-label={`Copiar o mover ${label}`} title={lock ?? `Copiar, duplicar o mover ${label}`}>
+          <Button type="button" size="icon-sm" variant="outline" aria-label={`Copiar o mover ${label}`} title={lock ?? `Copiar, duplicar o mover ${label}`} data-structural-action="transfer">
             <Ellipsis />
           </Button>
         }
@@ -154,11 +192,15 @@ function TransferMenu({ label, lock, onCopy, onDuplicate, onMove, moveLabel }: {
   );
 }
 
-/** Copiar, Duplicar and "Mover a otra sección…" of a Block. */
-export function BlockTransferMenu({ section, block, label }: { section: AppSection; block: Block; label: string }) {
+/**
+ * Copiar, Duplicar and "Mover a otra sección…" of a Block. Every Block shows
+ * the menu; one that cannot be copied or moved (the carátula's, the ones the
+ * calculation writes, a read-only valuation) shows its items disabled and why.
+ */
+export function BlockTransferMenu({ section, block, label, lock }: { section: AppSection; block: Block; label: string; lock?: string | null }) {
   const transfer = useStructureTransfer();
   const [moving, setMoving] = useState(false);
-  if (!transfer || transfer.readOnly) return null;
+  if (!transfer) return null;
   const options: PickerOption[] = moving
     ? blockDestinationSections(transfer.sections, section.id).map((destination) => ({
         key: destination.id,
@@ -171,7 +213,7 @@ export function BlockTransferMenu({ section, block, label }: { section: AppSecti
     <>
       <TransferMenu
         label={label}
-        lock={structureLockReason(section, block.id)}
+        lock={transfer.readOnly ? READ_ONLY_LOCK : lock ?? structureLockReason(section, block.id)}
         onCopy={() => transfer.copyBlock(block)}
         onDuplicate={() => transfer.duplicateBlock(section.id, block.id)}
         onMove={() => setMoving(true)}
@@ -192,7 +234,7 @@ export function BlockTransferMenu({ section, block, label }: { section: AppSecti
 export function ApartadoTransferMenu({ section, block, apartado, label }: { section: AppSection; block: Block; apartado: Apartado; label: string }) {
   const transfer = useStructureTransfer();
   const [moving, setMoving] = useState(false);
-  if (!transfer || transfer.readOnly) return null;
+  if (!transfer) return null;
   const source = { sectionId: section.id, blockId: block.id, apartadoId: apartado.id };
   const options = moving
     ? containerOptions(apartadoDestinations(transfer.sections, source), (destination) => transfer.moveApartado(source, destination))
@@ -201,7 +243,7 @@ export function ApartadoTransferMenu({ section, block, apartado, label }: { sect
     <>
       <TransferMenu
         label={label}
-        lock={structureLockReason(section, block.id)}
+        lock={transfer.readOnly ? READ_ONLY_LOCK : structureLockReason(section, block.id)}
         onCopy={() => transfer.copyApartado(apartado)}
         onDuplicate={() => transfer.duplicateApartado(section.id, block.id, apartado.id)}
         onMove={() => setMoving(true)}

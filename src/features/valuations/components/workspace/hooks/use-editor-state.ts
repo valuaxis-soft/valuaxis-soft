@@ -11,6 +11,7 @@ import {
   EDITOR_HISTORY_LIMIT,
   TEXT_EDIT_GROUP_MS,
   editorSnapshotChanged,
+  editorSnapshotEquals,
   emptyEditorHistory,
   locateEditorChange,
   textEditGroupKey,
@@ -139,7 +140,7 @@ export function useEditorState({
     history.lastGroupKey = null;
     history.lastPushedAt = 0;
     applyEditorSnapshot(previous);
-    setSaveStatus(savedSnapshotRef.current && !editorSnapshotChanged(previous, savedSnapshotRef.current) ? "saved" : "dirty");
+    setSaveStatus(savedSnapshotRef.current && editorSnapshotEquals(previous, savedSnapshotRef.current) ? "saved" : "dirty");
     syncHistoryAvailability();
     return { focus: entry.focus ?? locateEditorChange(current.sections, previous.sections) };
   };
@@ -157,7 +158,7 @@ export function useEditorState({
     history.lastGroupKey = null;
     history.lastPushedAt = 0;
     applyEditorSnapshot(next);
-    setSaveStatus(savedSnapshotRef.current && !editorSnapshotChanged(next, savedSnapshotRef.current) ? "saved" : "dirty");
+    setSaveStatus(savedSnapshotRef.current && editorSnapshotEquals(next, savedSnapshotRef.current) ? "saved" : "dirty");
     syncHistoryAvailability();
     return { focus: entry.focus ?? locateEditorChange(current.sections, next.sections) };
   };

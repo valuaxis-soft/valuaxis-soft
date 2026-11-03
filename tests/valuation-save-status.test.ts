@@ -15,8 +15,15 @@ test("a save with no edits in flight leaves the document saved", () => {
 
 test("edits made while the save was in flight keep the document dirty", () => {
   const sent = snapshot();
-  assert.equal(statusAfterSave(sent, { ...sent, sections: [] }), "dirty");
-  assert.equal(statusAfterSave(sent, { ...sent, meta: {} as EditorSnapshot["meta"] }), "dirty");
+  assert.equal(statusAfterSave(sent, { ...sent, sections: [{ id: "x" } as unknown as EditorSnapshot["sections"][number]] }), "dirty");
+  assert.equal(statusAfterSave(sent, { ...sent, meta: { folio: "F-1" } as unknown as EditorSnapshot["meta"] }), "dirty");
+});
+
+test("a save rebuilt from the same content reads as saved", () => {
+  // The snapshot sent is rebuilt when saving (the phone formatted, the header written): same content, other objects.
+  const sent = snapshot();
+  assert.equal(statusAfterSave(sent, { ...sent, sections: [] }), "saved");
+  assert.equal(statusAfterSave(sent, { ...sent, meta: {} as EditorSnapshot["meta"] }), "saved");
 });
 
 test("autosave only runs for editable, persisted documents with pending changes", () => {

@@ -74,6 +74,10 @@ type EditableContentContainer = {
 export type EditableConceptCallbacks = {
   onRemove: (conceptId: string) => void;
   onUpdate: (conceptId: string, patch: Partial<Concept>) => void;
+  /** "Duplicar" of the concept's ⋮ menu: a copy right after it. */
+  onDuplicate?: (conceptId: string) => void;
+  /** Where the concepts live, for "Mover a…" of their ⋮ menu. */
+  moveSource?: import("@/features/valuations/services/structure-transfer").ContainerAddress;
   onUpdateEverywhere?: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
   onChangeRelation?: (conceptId: string, mode: ExistingConceptRelationMode) => void;
   onUnlink?: (conceptId: string) => void;
@@ -574,7 +578,16 @@ function RowTagStyleControl({ value, disabled, onChange }: { value: ContentRowTa
     { value: "shaded", label: "Etiquetas sombreadas" },
   ];
   return (
-    <div className="col-span-12 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground" role="radiogroup" aria-label="Formato de los conceptos del renglón" data-row-tag-control="">
+    // Shown while the pointer or the focus is on the row (or while the row prints with labels): the form reads cleaner.
+    <div
+      className={cn(
+        "col-span-12 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground transition-opacity",
+        value === undefined && "opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100",
+      )}
+      role="radiogroup"
+      aria-label="Formato de los conceptos del renglón"
+      data-row-tag-control=""
+    >
       <span className="mr-1">Renglón:</span>
       {options.map((option) => (
         <button
@@ -633,7 +646,7 @@ export function V2RowContent({
   return (
     <SortableContext items={rowSortableIds}>
       <div
-        className="content-layout-v2-row"
+        className="content-layout-v2-row group/row"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(12, 1fr)",
@@ -747,6 +760,8 @@ export function renderLayoutItem({
         layout={layout}
         onRemove={conceptCallbacks.onRemove}
         onUpdate={conceptCallbacks.onUpdate}
+        onDuplicate={conceptCallbacks.onDuplicate}
+        moveSource={conceptCallbacks.moveSource}
         onUpdateEverywhere={conceptCallbacks.onUpdateEverywhere}
         onChangeRelation={conceptCallbacks.onChangeRelation}
         onUnlink={conceptCallbacks.onUnlink}

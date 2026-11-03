@@ -61,6 +61,19 @@ export function editorSnapshotChanged(current: EditorSnapshot, next: EditorSnaps
     current.sections !== next.sections;
 }
 
+/**
+ * Whether two states of the document read the same, whatever objects hold
+ * them: the saved snapshot is rebuilt when saving (the phone is formatted,
+ * the company header written), so an undo back to what was saved compares
+ * by content, not by reference, and the "Cambios pendientes" badge clears.
+ */
+export function editorSnapshotEquals(left: EditorSnapshot, right: EditorSnapshot) {
+  if (!editorSnapshotChanged(left, right)) return true;
+  return JSON.stringify(left.caratula) === JSON.stringify(right.caratula) &&
+    JSON.stringify(left.meta) === JSON.stringify(right.meta) &&
+    JSON.stringify(left.sections) === JSON.stringify(right.sections);
+}
+
 export function textEditGroupKey(scope: string, patch: object) {
   const entries = Object.entries(patch).sort(([left], [right]) => left.localeCompare(right));
   if (!entries.length || entries.some(([, value]) => typeof value !== "string")) return undefined;

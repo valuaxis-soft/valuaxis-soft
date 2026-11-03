@@ -1,7 +1,7 @@
 import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 
-import type { Apartado, AppSection, Block, Concept, ConceptType } from "@/features/valuations/model";
+import type { Apartado, AppSection, Block, Concept, ConceptCreationKind } from "@/features/valuations/model";
 import { COMPANY_HEADER_BLOCK_ID } from "@/features/valuations/services/caratula-company-header";
 import {
   isCaratulaIntermediateBlock,
@@ -12,6 +12,7 @@ import {
   applyConceptFormulaEverywhere,
   applyConceptUpdateEverywhere,
   changeExistingConceptRelation,
+  copyConceptAsIndependent,
   linkConceptToCollection,
   unlinkConcept,
   type ExistingConceptRelationMode,
@@ -27,6 +28,7 @@ import {
   mapAllConcepts,
   withAddedApartadoContent,
   withAddedBlockContent,
+  withDuplicatedConcepts,
 } from "../model/section-content";
 import type { EditorState } from "./use-editor-state";
 
@@ -56,7 +58,7 @@ export function useBlockMutations({
     });
   };
 
-  const addConcept = (sectionId: string, blockId: string, type?: ConceptType) => {
+  const addConcept = (sectionId: string, blockId: string, type?: ConceptCreationKind) => {
     updateSectionBlocks(sectionId, (blocks) =>
       blocks.map((block) => {
         if (block.id !== blockId) return block;
@@ -218,6 +220,70 @@ export function useBlockMutations({
     );
   };
 
+  /** The same change to several concepts of a Block or Apartado at once, as one step of the history. */
+  const updateConcepts = (
+    sectionId: string,
+    blockId: string,
+    conceptIds: readonly string[],
+    patch: Partial<Concept> | ((concept: Concept) => Partial<Concept>),
+    apartadoId?: string,
+  ) => {
+    const chosen = new Set(conceptIds);
+    const patchOf = (concept: Concept) => (typeof patch === "function" ? patch(concept) : patch);
+    const apply = (concepts: Concept[]) => concepts.map((concept) => (chosen.has(concept.id) ? { ...concept, ...patchOf(concept) } : concept));
+    updateSectionBlocks(
+      sectionId,
+      (blocks) =>
+        blocks.map((block) => {
+          if (block.id !== blockId) return block;
+          if (!apartadoId) return { ...block, concepts: apply(block.concepts) };
+          return {
+            ...block,
+            apartados: block.apartados.map((subBlock) => (subBlock.id === apartadoId ? { ...subBlock, concepts: apply(subBlock.concepts) } : subBlock)),
+          };
+        }),
+      { normalize: false },
+    );
+  };
+
+  /** Several concepts of a Block or Apartado deleted at once, as one step of the history. */
+  const removeConcepts = (sectionId: string, blockId: string, conceptIds: readonly string[], apartadoId?: string) => {
+    const chosen = new Set(conceptIds);
+    updateSectionBlocks(sectionId, (blocks) =>
+      blocks.map((block) => {
+        if (block.id !== blockId) return block;
+        if (!apartadoId) {
+          return ensureBlockContentIntegrity({ ...block, concepts: block.concepts.filter((concept) => !chosen.has(concept.id)) });
+        }
+        return {
+          ...block,
+          apartados: block.apartados.map((subBlock) => {
+            if (subBlock.id !== apartadoId) return subBlock;
+            const updated = { ...subBlock, concepts: subBlock.concepts.filter((concept) => !chosen.has(concept.id)) };
+            return { ...updated, contentLayout: resolveContentLayout(updated) };
+          }),
+        };
+      }),
+    );
+  };
+
+  /** A copy of each concept right after it, independent of the original (no link), as one step of the history. */
+  const duplicateConcepts = (sectionId: string, blockId: string, conceptIds: readonly string[], apartadoId?: string) => {
+    const chosen = new Set(conceptIds);
+    const copiesOf = (concepts: Concept[]) =>
+      new Map(concepts.filter((concept) => chosen.has(concept.id)).map((concept) => [concept.id, { ...copyConceptAsIndependent(concept, newId()), options: concept.options }]));
+    updateSectionBlocks(sectionId, (blocks) =>
+      blocks.map((block) => {
+        if (block.id !== blockId) return block;
+        if (!apartadoId) return withDuplicatedConcepts(block, copiesOf(block.concepts));
+        return {
+          ...block,
+          apartados: block.apartados.map((subBlock) => (subBlock.id === apartadoId ? withDuplicatedConcepts(subBlock, copiesOf(subBlock.concepts)) : subBlock)),
+        };
+      }),
+    );
+  };
+
   const addApartado = (sectionId: string, blockId: string) => {
     updateSectionBlocks(sectionId, (blocks) =>
       blocks.map((block) =>
@@ -270,7 +336,7 @@ export function useBlockMutations({
     );
   };
 
-  const addSubConcept = (sectionId: string, blockId: string, apartadoId: string, type?: ConceptType) => {
+  const addSubConcept = (sectionId: string, blockId: string, apartadoId: string, type?: ConceptCreationKind) => {
     updateSectionBlocks(sectionId, (blocks) =>
       blocks.map((block) =>
         block.id === blockId
@@ -385,18 +451,21 @@ export function useBlockMutations({
     addConceptFromExisting,
     addSubConcept,
     changeConceptRelation,
+    duplicateConcepts,
     editConceptOnlyHere,
     moveBlock,
     onBlockDragEnd,
     removeApartado,
     removeBlock,
     removeConcept,
+    removeConcepts,
     removeSubConcept,
     unlinkConceptEverywhere,
     updateApartado,
     updateBlock,
     updateConcept,
     updateConceptEverywhere,
+    updateConcepts,
     updateSubConcept,
   };
 }

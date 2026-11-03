@@ -45,10 +45,10 @@ export function resolveWorkspaceMode({
 export function focusWorkspacePanels(
   previewPanel: PanelImperativeHandle | null,
   editorPanel: PanelImperativeHandle | null,
-  splitLayout: SplitLayout = "horizontal",
 ) {
-  const previewSize = splitLayout === "vertical" ? "50%" : "42%";
-  const editorSize = splitLayout === "vertical" ? "50%" : "58%";
+  // Half and half: a smaller preview was hard to read and to scroll (observations of 2 Nov 2026).
+  const previewSize = "50%";
+  const editorSize = "50%";
   previewPanel?.resize(previewSize);
   editorPanel?.resize(editorSize);
   return { previewSize, editorSize };

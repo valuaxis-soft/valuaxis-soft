@@ -6,7 +6,7 @@ import {
   BlockEditorContent,
   BlockEditorHeader,
 } from "./section-editor";
-import { StructuralActions } from "./structural-actions";
+import { StructuralActions, type StructuralActionLocks } from "./structural-actions";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import type { PageBreakMode } from "@/features/valuations/services/document-structure";
 
@@ -32,6 +32,7 @@ type BlockCardProps = {
     conceptPresentation?: ConceptPresentation;
     disabled?: boolean;
     itemLabel: string;
+    locks?: StructuralActionLocks;
     move?: {
       canMoveDown: boolean;
       canMoveUp: boolean;
@@ -97,6 +98,7 @@ export function BlockCard({
             conceptPresentation={structuralActions.conceptPresentation}
             disabled={structuralActions.disabled}
             itemLabel={structuralActions.itemLabel}
+            locks={structuralActions.locks}
             onConceptPresentationChange={structuralActions.onConceptPresentationChange}
             onResetConceptPresentations={structuralActions.onResetConceptPresentations}
             move={structuralActions.move}

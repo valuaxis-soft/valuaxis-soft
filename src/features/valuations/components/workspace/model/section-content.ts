@@ -7,6 +7,7 @@ import {
   contentLayoutWithOwnRowFor,
   ensureContentLayout,
   isContentLayout,
+  resolveContentLayout,
 } from "@/features/valuations/services/content-layout";
 
 /**
@@ -64,6 +65,30 @@ export function withAddedBlockContent(block: Block, added: ContentLayoutItemRef)
 /** The same for an Apartado. */
 export function withAddedApartadoContent(apartado: Apartado, added: ContentLayoutItemRef): Apartado {
   return { ...apartado, contentLayout: contentLayoutWithOwnRowFor(apartado, added) };
+}
+
+/**
+ * A Block or Apartado with a copy of some of its concepts, each right after
+ * its original: in the list of concepts and, in the layout, in a column of
+ * its own beside the original's, so the copy prints where the original does.
+ */
+export function withDuplicatedConcepts<T extends Block | Apartado>(container: T, copies: ReadonlyMap<string, Concept>): T {
+  if (!copies.size) return container;
+  const concepts = container.concepts.flatMap((concept) => {
+    const copy = copies.get(concept.id);
+    return copy ? [concept, copy] : [concept];
+  });
+  const layout = resolveContentLayout({ ...container, concepts: container.concepts });
+  const rows = layout.rows.map((row) => ({
+    ...row,
+    columns: row.columns.flatMap((column) => {
+      const item = column.items[0];
+      const copy = item?.type === "concept" ? copies.get(item.id) : undefined;
+      return copy ? [column, { id: `col-${copy.id}`, items: [{ type: "concept" as const, id: copy.id }] }] : [column];
+    }),
+  }));
+  const next = { ...container, concepts, contentLayout: { version: 2 as const, rows } };
+  return "apartados" in next ? ensureBlockContentIntegrity(next as Block) as T : next;
 }
 
 export function getDocumentHeaderImage(sections: AppSection[]) {

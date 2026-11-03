@@ -425,13 +425,13 @@ export function ValuationTopBar({
           <Button
             type="button"
             variant="outline"
-            size="icon"
             aria-label="Guardar como plantilla"
-            title="Guardar como plantilla"
+            title="Guardar este avalúo como plantilla del despacho"
             onClick={onSaveAsTemplate}
-            className="flex-none"
+            className="flex-none whitespace-nowrap"
           >
-            <LayoutTemplate />
+            <LayoutTemplate data-icon="inline-start" />
+            Plantilla
           </Button>
         ) : null}
 

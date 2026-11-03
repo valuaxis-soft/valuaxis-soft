@@ -4,13 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { ArrowDownToLine, ChevronDown, ChevronUp, TextAlignStart , Eye, EyeOff, FilePlus2, FileStack, LayoutList, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ChevronDown, ChevronUp, TextAlignStart , Eye, EyeOff, FilePlus2, LayoutList, SeparatorHorizontal, Trash2 } from "lucide-react";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import { MIN_OFFSET_PX, MAX_OFFSET_PX } from "@/features/valuations/services/concept-presentation";
 import type { ApartadoPresentationMode } from "@/features/valuations/model";
 import { PAGE_BREAK_LABELS, type PageBreakMode } from "@/features/valuations/services/document-structure";
 
-const PAGE_BREAK_ICONS = { auto: FileStack, "new-page": FilePlus2, continue: ArrowDownToLine } as const;
+const PAGE_BREAK_ICONS = { auto: SeparatorHorizontal, "new-page": FilePlus2, continue: ArrowDownToLine } as const;
+
+/**
+ * A control that does not apply to this item is shown disabled and says why
+ * (the reason is its tooltip), so every toolbar offers the same controls.
+ */
+export type StructuralActionLocks = Partial<Record<"move" | "visibility" | "pageBreak" | "alignment" | "delete", string>>;
 
 const PAGE_BREAK_HINTS: Record<PageBreakMode, string> = {
   auto: "Sigue al anterior; si su título y su primer contenido no caben, pasan juntos a la siguiente página.",
@@ -22,31 +28,34 @@ const PAGE_BREAK_HINTS: Record<PageBreakMode, string> = {
 function PageBreakControl({
   disabled = false,
   itemLabel = "sección",
+  lock,
   onChange,
   value,
 }: {
   disabled?: boolean;
   itemLabel?: string;
+  lock?: string;
   onChange: (value: PageBreakMode) => void;
   value: PageBreakMode;
 }) {
-  const Icon = PAGE_BREAK_ICONS[value];
   const label = `Salto de página del ${itemLabel}: ${PAGE_BREAK_LABELS[value].toLowerCase()}`;
   return (
     <Popover>
       <PopoverTrigger
         render={
+          // One icon for the control whatever its value (the stacked pages read as "copy"); the value tints it.
           <Button
             type="button"
             size="icon-sm"
             variant="outline"
             aria-label={label}
-            title={label}
-            disabled={disabled}
+            title={lock ?? label}
+            disabled={disabled || Boolean(lock)}
             className={cn(value !== "auto" && "border-primary/50 bg-primary/10 text-primary")}
             data-page-break={value}
+            data-structural-action="pageBreak"
           >
-            <Icon />
+            <SeparatorHorizontal />
           </Button>
         }
       />
@@ -81,11 +90,13 @@ function PageBreakControl({
 function VisibilityToggle({
   disabled = false,
   itemLabel = "elemento",
+  lock,
   onChange,
   visible,
 }: {
   disabled?: boolean;
   itemLabel?: string;
+  lock?: string;
   onChange: (visible: boolean) => void;
   visible: boolean;
 }) {
@@ -98,8 +109,9 @@ function VisibilityToggle({
       size="sm"
       variant="outline"
       aria-label={label}
-      title={label}
-      disabled={disabled}
+      title={lock ?? label}
+      disabled={disabled || Boolean(lock)}
+      data-structural-action="visibility"
       onClick={() => onChange(!visible)}
     >
       {visible ? <EyeOff /> : <Eye />}
@@ -113,6 +125,7 @@ function MoveControls({
   canMoveUp,
   disabled = false,
   itemLabel = "elemento",
+  lock,
   onMoveDown,
   onMoveUp,
 }: {
@@ -120,6 +133,7 @@ function MoveControls({
   canMoveUp: boolean;
   disabled?: boolean;
   itemLabel?: string;
+  lock?: string;
   onMoveDown: () => void;
   onMoveUp: () => void;
 }) {
@@ -130,8 +144,9 @@ function MoveControls({
         size="icon-sm"
         variant="outline"
         aria-label={`Mover ${itemLabel} arriba`}
-        title={`Mover ${itemLabel} arriba`}
-        disabled={disabled || !canMoveUp}
+        title={lock ?? `Mover ${itemLabel} arriba`}
+        disabled={disabled || Boolean(lock) || !canMoveUp}
+        data-structural-action="move-up"
         onClick={onMoveUp}
       >
         <ChevronUp />
@@ -141,8 +156,9 @@ function MoveControls({
         size="icon-sm"
         variant="outline"
         aria-label={`Mover ${itemLabel} abajo`}
-        title={`Mover ${itemLabel} abajo`}
-        disabled={disabled || !canMoveDown}
+        title={lock ?? `Mover ${itemLabel} abajo`}
+        disabled={disabled || Boolean(lock) || !canMoveDown}
+        data-structural-action="move-down"
         onClick={onMoveDown}
       >
         <ChevronDown />
@@ -154,11 +170,13 @@ function MoveControls({
 function DeleteAction({
   disabled = false,
   itemLabel = "elemento",
+  lock,
   onDelete,
   size = "icon-sm",
 }: {
   disabled?: boolean;
   itemLabel?: string;
+  lock?: string;
   onDelete: () => void;
   size?: "icon" | "icon-sm";
 }) {
@@ -170,8 +188,9 @@ function DeleteAction({
       size={size}
       variant="ghost"
       aria-label={label}
-      title={label}
-      disabled={disabled}
+      title={lock ?? label}
+      disabled={disabled || Boolean(lock)}
+      data-structural-action="delete"
       onClick={onDelete}
     >
       <Trash2 />
@@ -182,11 +201,13 @@ function DeleteAction({
 function ConceptPresentationControl({
   conceptPresentation,
   disabled = false,
+  lock,
   onChange,
   onResetAll,
 }: {
   conceptPresentation?: ConceptPresentation;
   disabled?: boolean;
+  lock?: string;
   onChange: (next: ConceptPresentation | undefined) => void;
   onResetAll?: () => void;
 }) {
@@ -202,8 +223,9 @@ function ConceptPresentationControl({
             size="icon-sm"
             variant="outline"
             aria-label="Alineación de conceptos"
-            title="Alineación de conceptos"
-            disabled={disabled}
+            title={lock ?? "Alineación de conceptos"}
+            disabled={disabled || Boolean(lock)}
+            data-structural-action="alignment"
           >
             <TextAlignStart/>
           </Button>
@@ -325,6 +347,7 @@ export function StructuralActions({
   deleteAction,
   disabled = false,
   itemLabel,
+  locks = {},
   move,
   onConceptPresentationChange,
   onPresentationModeChange,
@@ -340,6 +363,8 @@ export function StructuralActions({
   };
   disabled?: boolean;
   itemLabel: string;
+  /** The controls that do not apply here, each with the reason shown in its tooltip. */
+  locks?: StructuralActionLocks;
   move?: {
     canMoveDown: boolean;
     canMoveUp: boolean;
@@ -367,6 +392,7 @@ export function StructuralActions({
           canMoveDown={move.canMoveDown}
           disabled={disabled}
           itemLabel={itemLabel}
+          lock={locks.move}
           onMoveUp={move.onMoveUp}
           onMoveDown={move.onMoveDown}
         />
@@ -376,6 +402,7 @@ export function StructuralActions({
           visible={visibility.visible}
           disabled={disabled}
           itemLabel={itemLabel}
+          lock={locks.visibility}
           onChange={visibility.onChange}
         />
       ) : null}
@@ -384,6 +411,7 @@ export function StructuralActions({
           value={pageBreak.value}
           disabled={disabled}
           itemLabel={itemLabel}
+          lock={locks.pageBreak}
           onChange={pageBreak.onChange}
         />
       ) : null}
@@ -391,6 +419,7 @@ export function StructuralActions({
         <ConceptPresentationControl
           conceptPresentation={conceptPresentation}
           disabled={disabled}
+          lock={locks.alignment}
           onChange={onConceptPresentationChange}
           onResetAll={onResetConceptPresentations}
         />
@@ -404,7 +433,9 @@ export function StructuralActions({
       ) : null}
       {deleteAction ? (
         <DeleteAction
+          disabled={disabled}
           itemLabel={itemLabel}
+          lock={locks.delete}
           size={deleteAction.size}
           onDelete={deleteAction.onDelete}
         />
