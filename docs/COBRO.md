@@ -22,9 +22,9 @@ La cuenta en vivo del cliente también la usa su tienda en línea (WooCommerce).
 5. **Bloqueo, apagado por omisión.** `devpware_organizaciones.BCobroPorAvaluo` decide qué pasa al concluir sin saldo: `false` (valor inicial de todas las organizaciones) registra el consumo y el saldo queda negativo, mostrado como pendiente de pago; `true` impide concluir con el mensaje "Tu organización no tiene avalúos disponibles…" y un enlace a comprar. Se enciende por organización con `pnpm billing:credits enforce <slug|uuid> on`.
 6. **Ajustes manuales.** Hasta que existan reglas de créditos y referidos, `pnpm billing:credits adjust <slug|uuid> <créditos> "<motivo>"` abona o retira créditos; `pnpm billing:credits balance <slug|uuid>` muestra saldo y movimientos.
 
-### Precio acordado: $170 MXN + IVA por avalúo
+### Precio acordado: $170 MXN con IVA por avalúo
 
-El cliente fijó el precio por avalúo en **$170.00 MXN antes de IVA (16%)**, $197.20 con IVA (28 oct 2026). Lo publica el paquete `AVALUO_1` ("1 avalúo", 1 crédito, activo y público), que crea o corrige un script idempotente; no toca Stripe ni los demás paquetes:
+El cliente fijó el precio por avalúo en **$170.00 MXN finales, IVA incluido** (video 5.2 del 2 nov 2026; antes se había entendido $170 + IVA). Se guarda como $146.55 antes de IVA (16 %), que con el redondeo a centavos da $170.00. Lo publica el paquete `AVALUO_1` ("1 avalúo", 1 crédito, activo y público), que crea o corrige un script idempotente; no toca Stripe ni los demás paquetes:
 
 ```bash
 pnpm billing:set-unit-price            # simulación: muestra qué crearía o cambiaría
