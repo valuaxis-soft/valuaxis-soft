@@ -211,9 +211,9 @@ export async function runComparableImport(
     preview,
     toValuations,
     toBase: {
-      created: outcomes.filter((outcome) => outcome === "CREATED").length,
-      updated: outcomes.filter((outcome) => outcome === "UPDATED").length,
-      kept: outcomes.filter((outcome) => outcome === "KEPT").length + keptByAnswer,
+      created: outcomes.filter((result) => result.outcome === "CREATED").length,
+      updated: outcomes.filter((result) => result.outcome === "UPDATED").length,
+      kept: outcomes.filter((result) => result.outcome === "KEPT").length + keptByAnswer,
     },
     markets: [
       ...[...markets.values()].map((market) => ({ valuationId: market.valuationId, type: market.type, count: market.entries.length })),

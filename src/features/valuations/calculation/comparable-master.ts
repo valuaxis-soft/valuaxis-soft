@@ -343,7 +343,7 @@ export function propertyTypeKeyOf(type: ComparableType, constructionType: string
   const rules: Array<[RegExp, string]> = [
     [/^casa/, "CASA_HABITACION"], [/^depa/, "DEPARTAMENTO"], [/^local/, "LOCAL_COMERCIAL"], [/^bodega/, "BODEGA"],
     [/^(oficina|consultorio)/, "OFICINA"], [/^(edificio|hotel)/, "EDIFICIO"], [/^(nave|industrial)/, "INDUSTRIAL"],
-    [/^(rancho|rural)/, "RURAL"], [/^mixto/, "MIXTO"],
+    [/^(rancho|rural)/, "RURAL"], [/^mixto/, "MIXTO"], [/^(equipo|maquinaria)/, "MAQUINARIA_EQUIPO"],
   ];
   return rules.find(([pattern]) => pattern.test(text))?.[1] ?? "OTRO";
 }

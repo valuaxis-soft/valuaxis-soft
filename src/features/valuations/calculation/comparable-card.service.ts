@@ -34,6 +34,20 @@ export type ComparableUseDto = {
   addedOn: string;
 };
 
+/** One capture of a comparable of the base, in a valuation or in the base itself: the "Historial" of the card. */
+export type ComparableCaptureDto = {
+  id: string;
+  /** Where it was captured; null for the base without a valuation. */
+  valuation: { id: string; folio: string; title: string | null } | null;
+  /** Day it was captured, day its data was last updated, and day anything of it last changed (factors, review…), YYYY-MM-DD. */
+  capturedOn: string;
+  dataUpdatedOn: string;
+  modifiedOn: string;
+  capturedBy: string | null;
+  /** Whether it is the capture the card shows. */
+  current: boolean;
+};
+
 export type ComparableCardDto = {
   comparable: ComparableDto;
   type: ComparableType;
@@ -43,6 +57,8 @@ export type ComparableCardDto = {
   validity: ComparableValidity;
   warnings: ComparableWarning[];
   uses: ComparableUseDto[];
+  /** Every capture of the comparable (its number) in the base, most recent data first; the dates come from the captures themselves. */
+  history: ComparableCaptureDto[];
 };
 
 export type ReviewRowDto = { comparable: ComparableDto; type: ComparableType; warnings: ComparableWarning[] };
@@ -92,7 +108,8 @@ export async function getComparableCard(comparableId: string, organizationId: nu
     include: {
       ...comparableInclude,
       tipoComparable: { select: { SClave: true } },
-      avaluo: { select: { UIdentificadorPublico: true, SFolio: true, STitulo: true, SNombreCliente: true } },
+      avaluo: { select: { UIdentificadorPublico: true, SFolio: true, STitulo: true, SNombreCliente: true, IdVersionTrabajo: true, IdVersionFinal: true } },
+      usuarioSeleccion: { select: { SNombre: true, SApellidoPaterno: true } },
     },
   });
   if (!row) throw new ValuationWorkflowError("Comparable no encontrado", 404);
@@ -104,13 +121,19 @@ export async function getComparableCard(comparableId: string, organizationId: nu
     ? await prisma.comparableAvaluo.findMany({
       where: { propiedad: { IdOrganizacion: organizationId, IFolioComparable: folio }, ...inFirmBase(organizationId) },
       select: {
-        IdVersionAvaluo: true, IReferencia: true, IOrden: true, DFechaSeleccion: true, DFechaActualizacionDatos: true,
+        UIdentificadorPublico: true, IdVersionAvaluo: true, IReferencia: true, IOrden: true, DFechaSeleccion: true, DFechaActualizacionDatos: true,
+        DFechaModificacion: true,
         tipoComparable: { select: { SClave: true } },
         avaluo: { select: { UIdentificadorPublico: true, SFolio: true, STitulo: true, SNombreCliente: true, IdVersionTrabajo: true, IdVersionFinal: true } },
+        usuarioSeleccion: { select: { SNombre: true, SApellidoPaterno: true } },
       },
       orderBy: { DFechaSeleccion: "desc" },
     })
-    : [];
+    : [{
+      UIdentificadorPublico: row.UIdentificadorPublico, IdVersionAvaluo: row.IdVersionAvaluo, IReferencia: row.IReferencia, IOrden: row.IOrden,
+      DFechaSeleccion: row.DFechaSeleccion, DFechaActualizacionDatos: row.DFechaActualizacionDatos, DFechaModificacion: row.DFechaModificacion,
+      tipoComparable: row.tipoComparable, avaluo: row.avaluo, usuarioSeleccion: row.usuarioSeleccion,
+    }];
   // Captures in the base without a valuation count for its date, not as uses.
   const current = captures.filter((capture) => !capture.avaluo
     || capture.IdVersionAvaluo === (capture.avaluo.IdVersionTrabajo ?? capture.avaluo.IdVersionFinal));
@@ -131,6 +154,18 @@ export async function getComparableCard(comparableId: string, organizationId: nu
   const validity = comparableValidity(dataUpdatedAt, today, comparable.validityMonths ?? months);
   const areas = row.IdVersionAvaluo ? await subjectAreas(row.IdVersionAvaluo) : new Map<ComparableType, number | null>();
   const avaluo = row.avaluo;
+  // The "Historial": every current capture of the number, the most recent data first, with who captured it.
+  const history = [...current]
+    .sort((a, b) => b.DFechaActualizacionDatos.getTime() - a.DFechaActualizacionDatos.getTime() || b.DFechaSeleccion.getTime() - a.DFechaSeleccion.getTime())
+    .map((capture): ComparableCaptureDto => ({
+      id: capture.UIdentificadorPublico,
+      valuation: capture.avaluo ? { id: capture.avaluo.UIdentificadorPublico, folio: capture.avaluo.SFolio, title: capture.avaluo.STitulo } : null,
+      capturedOn: todayInMexico(capture.DFechaSeleccion),
+      dataUpdatedOn: todayInMexico(capture.DFechaActualizacionDatos),
+      modifiedOn: todayInMexico(capture.DFechaModificacion),
+      capturedBy: [capture.usuarioSeleccion.SNombre, capture.usuarioSeleccion.SApellidoPaterno].filter(Boolean).join(" ") || null,
+      current: capture.UIdentificadorPublico === row.UIdentificadorPublico,
+    }));
   return {
     comparable,
     type,
@@ -141,6 +176,7 @@ export async function getComparableCard(comparableId: string, organizationId: nu
       valuationId: avaluo.UIdentificadorPublico, folio: avaluo.SFolio, title: avaluo.STitulo, client: avaluo.SNombreCliente, type,
       reference: comparable.reference, addedOn: row.DFechaSeleccion.toISOString().slice(0, 10),
     }],
+    history,
   };
 }
 
