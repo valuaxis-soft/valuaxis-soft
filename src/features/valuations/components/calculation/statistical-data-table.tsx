@@ -21,6 +21,7 @@ import {
 } from "@/features/valuations/calculation/statistical-types";
 import { cn } from "@/lib/utils";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CalcTableContextMenu } from "./calc-table-context-menu";
 
 /** A datum of the subject the appraiser may bring with "=": the market's capture of the subject. */
 export type SubjectSource = { label: string; value: string };
@@ -220,7 +221,7 @@ export function StatisticalDataTable(props: {
 
   return (
     <div className="grid gap-1.5">
-      <div className={CALC_TABLE_FRAME}>
+      <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={{ count: comparables.length + 1, delete: (rowIndex) => { const comparable = comparables[rowIndex - 1]; if (comparable) props.onRemove(comparable.id); } }}>
         <table className={cn(CALC_TABLE, "w-full min-w-160")} aria-label="Comparables de los métodos alternativos" data-grid={GRID}>
           <thead className={CALC_HEAD}>
             <tr>
@@ -347,7 +348,7 @@ export function StatisticalDataTable(props: {
             ))}
           </tbody>
         </table>
-      </div>
+      </CalcTableContextMenu>
       <div className="flex flex-wrap items-center gap-2">
         {!readOnly ? (
           <Button type="button" size="sm" variant="outline" disabled={comparables.length >= MAX_STATISTICAL_COMPARABLES} onClick={props.onAdd}>

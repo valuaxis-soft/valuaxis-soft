@@ -52,6 +52,7 @@ import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_RESULT, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
@@ -696,6 +697,10 @@ export function CostCalculationPanel(props: {
     return { ...current, indirects: [...current.indirects, { concept: "", percentage: "", base: "" }] };
   });
 
+  // What the right-click menu of each table can do with its rows: the construction rows follow the types, so they are only taken out.
+  const constructionRowActions = { count: draft.constructions.length, delete: (index: number) => removeRow("constructions", index) };
+  const installationRowActions = { count: draft.installations.length, delete: (index: number) => removeRow("installations", index) };
+
   /** `grouping`: amounts and areas show their thousands separator; factors, ages and percentages do not. */
   const textInput = (
     list: "constructions" | "installations" | "indirects", index: number, key: string, current: string, label: string, numeric = true, placeholder?: string, grouping = false,
@@ -835,7 +840,7 @@ export function CostCalculationPanel(props: {
               <SurfacePowerSelect id="cost-land-power" value={input.land.surfacePower} onChange={(surfacePower) => change({ surfacePower })} />
             </Field>
           </div>
-          <div className={CALC_TABLE_FRAME}>
+          <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly}>
             <table className={cn(CALC_TABLE, "w-auto min-w-[900px]")} aria-label="Terreno en estudio">
               <thead className={CALC_HEAD}>
                 <tr>
@@ -896,7 +901,7 @@ export function CostCalculationPanel(props: {
                 </tr>
               </tbody>
             </table>
-          </div>
+          </CalcTableContextMenu>
           <p className="text-xs text-muted-foreground">
             Sup. = {surfaceFormula && surfaceFormula !== "capturado por el valuador" ? surfaceFormula : "(lote tipo / superficie del sujeto)^(1/n)"}, n = potencia. FRe = Neg. × Ubic. × Sup. × Serv. × Clas. × Top.
           </p>
@@ -935,7 +940,7 @@ export function CostCalculationPanel(props: {
             onAdd={() => addDemerit("constructions")}
             onRemove={(position) => removeDemerit("constructions", position)}
           />
-          <div className={CALC_TABLE_FRAME}>
+          <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={constructionRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[1000px]")} aria-label="Construcciones: factores de demérito">
               <DemeritHeader
                 leading={["Ref.", "Tipo de Construcción", "Clasificación", "Calidad", "Superficie Construida (m²)", "Edad", "Vida útil"]}
@@ -973,8 +978,8 @@ export function CostCalculationPanel(props: {
                 ))}
               </tbody>
             </table>
-          </div>
-          <div className={CALC_TABLE_FRAME}>
+          </CalcTableContextMenu>
+          <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={constructionRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[900px]")} aria-label="Construcciones: valor de reposición">
               <ValuationHeader leading={["Ref.", "Tipo de Construcción", "Superficie Construida (m²)"]} resultant="Factor Resultante" netValue="Valor Neto de Reposición (VNR)" />
               <tbody>
@@ -992,7 +997,7 @@ export function CostCalculationPanel(props: {
                 ))}
               </tbody>
             </table>
-          </div>
+          </CalcTableContextMenu>
           {constructionRows.length ? (
             <div className="grid gap-2 sm:grid-cols-4">
               <Box label="Subtotal:" value={subtotalOf("costos.construcciones.valor")} />
@@ -1040,7 +1045,7 @@ export function CostCalculationPanel(props: {
               Capturar Mantenim.
             </label>
           </div>
-          <div className={CALC_TABLE_FRAME}>
+          <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={installationRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[1200px]")} aria-label="Instalaciones especiales: factores de demérito">
               <DemeritHeader
                 leading={["P/C", "Ref.", "Descripción", "Unidad", "Cant.", "Edad", "Vida útil"]}
@@ -1086,8 +1091,8 @@ export function CostCalculationPanel(props: {
                 })}
               </tbody>
             </table>
-          </div>
-          <div className={CALC_TABLE_FRAME}>
+          </CalcTableContextMenu>
+          <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={installationRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[1000px]")} aria-label="Instalaciones especiales: valor de reposición">
               <ValuationHeader leading={["P/C", "Ref.", "Descripción", "Unidad", "Cant."]} resultant="F. Result" netValue="Valor Neto Reposición (VNR)" />
               <tbody>
@@ -1110,7 +1115,7 @@ export function CostCalculationPanel(props: {
                 })}
               </tbody>
             </table>
-          </div>
+          </CalcTableContextMenu>
           {draft.installations.length ? (
             <div className="grid gap-2 sm:grid-cols-4">
               <Box label="Suma Privativa (P):" value={amount("costos.instalaciones.privativas")} />

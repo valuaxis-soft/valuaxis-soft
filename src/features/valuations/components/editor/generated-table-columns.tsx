@@ -1,9 +1,12 @@
 "use client";
 
 import { Columns3, PencilLine, Plus, Trash2 } from "lucide-react";
+import { Fragment, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { tableContextMenu, type TableMenuAction } from "@/features/valuations/services/table-context-menu";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
   MAX_EXTRA_COLUMNS,
@@ -83,22 +86,15 @@ export function GeneratedTableColumns(props: { table: TableContent; readOnly: bo
         <div className="grid gap-1">
           <span className="font-semibold">Columnas del cálculo</span>
           {columns.map((column) => (
-            <div key={column.id} className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
-              <Checkbox
-                aria-label={`Mostrar la columna ${column.name}`}
-                checked={!hidden.has(column.id)}
-                disabled={props.readOnly}
-                onCheckedChange={(checked) => change(withColumnHidden(layout, column.id, checked !== true))}
-              />
-              <CommitCell
-                ariaLabel={`Encabezado de la columna ${column.name}`}
-                disabled={props.readOnly || hidden.has(column.id)}
-                value={layout.labels?.[column.id] ?? ""}
-                placeholder={column.name}
-                className="border-input text-xs"
-                onCommit={(text) => change(withHeaderLabel(layout, column.id, text))}
-              />
-            </div>
+            <GeneratedColumnRow
+              key={column.id}
+              column={column}
+              hidden={hidden.has(column.id)}
+              readOnly={props.readOnly}
+              label={layout.labels?.[column.id] ?? ""}
+              onHidden={(isHidden) => change(withColumnHidden(layout, column.id, isHidden))}
+              onLabel={(text) => change(withHeaderLabel(layout, column.id, text))}
+            />
           ))}
         </div>
         {boxes.length ? (
@@ -179,6 +175,75 @@ export function GeneratedTableColumns(props: { table: TableContent; readOnly: bo
         ) : null}
       </div>
     </details>
+  );
+}
+
+/**
+ * A column of a table the calculation writes, with the same right-click menu
+ * as the columns of the other tables: renaming and hiding work here; what
+ * the calculation fixes (inserting, moving, deleting) stays disabled with the
+ * reason.
+ */
+function GeneratedColumnRow({ column, hidden, readOnly, label, onHidden, onLabel }: {
+  column: { id: string; name: string };
+  hidden: boolean;
+  readOnly: boolean;
+  label: string;
+  onHidden: (hidden: boolean) => void;
+  onLabel: (text: string) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const groups = tableContextMenu("generated", {
+    kind: "column",
+    canInsertBeside: false,
+    canRename: !readOnly && !hidden,
+    canMoveLeft: false,
+    canMoveRight: false,
+    canDelete: false,
+    hidden,
+    canHide: !readOnly,
+  });
+  const run = (action: TableMenuAction) => {
+    if (action === "rename") rowRef.current?.querySelector("input")?.focus();
+    if (action === "hide-column") onHidden(true);
+    if (action === "show-column") onHidden(false);
+  };
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger>
+        <div ref={rowRef} className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2" data-generated-column={column.id}>
+          <Checkbox
+            aria-label={`Mostrar la columna ${column.name}`}
+            checked={!hidden}
+            disabled={readOnly}
+            onCheckedChange={(checked) => onHidden(checked !== true)}
+          />
+          <CommitCell
+            ariaLabel={`Encabezado de la columna ${column.name}`}
+            disabled={readOnly || hidden}
+            value={label}
+            placeholder={column.name}
+            className="border-input text-xs"
+            onCommit={onLabel}
+          />
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-60">
+        {groups.map((group, index) => (
+          <Fragment key={index}>
+            {index > 0 ? <ContextMenuSeparator /> : null}
+            {group.map((item) => {
+              const node = (
+                <ContextMenuItem key={`${item.action}:${item.label}`} variant={item.destructive ? "destructive" : undefined} disabled={item.disabled} onClick={() => run(item.action)}>
+                  {item.label}
+                </ContextMenuItem>
+              );
+              return item.disabled && item.hint ? <div key={`${item.action}:${item.label}`} title={item.hint}>{node}</div> : node;
+            })}
+          </Fragment>
+        ))}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 

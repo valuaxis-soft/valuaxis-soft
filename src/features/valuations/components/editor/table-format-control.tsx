@@ -9,10 +9,13 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
+  TABLE_DECIMALS_MAX,
   canGroupTableHeaders,
   getDisplayColumns,
   groupTableHeaders,
+  setTableDecimals,
   setTableWidthMode,
+  tableDecimals,
   ungroupTableHeaders,
   type TableV2,
 } from "@/features/valuations/services/table";
@@ -48,7 +51,7 @@ export function TableFormatControl({
     <Popover>
       <PopoverTrigger
         render={
-          <Button type="button" size="icon" variant="outline" aria-label="Formato de la tabla" title="Formato de la tabla: ancho y encabezado doble" disabled={readOnly}>
+          <Button type="button" size="icon" variant="outline" aria-label="Formato de la tabla" title="Formato de la tabla: ancho, decimales y encabezado doble" disabled={readOnly}>
             <Merge />
           </Button>
         }
@@ -65,6 +68,22 @@ export function TableFormatControl({
             <NativeSelectOption value="page">Ajustar a la página</NativeSelectOption>
             <NativeSelectOption value="content">Ajustar al contenido</NativeSelectOption>
           </NativeSelect>
+        </Field>
+
+        <Field className="gap-1.5">
+          <FieldLabel htmlFor={`table-decimals-${table.id}`}>Decimales</FieldLabel>
+          <NativeSelect
+            id={`table-decimals-${table.id}`}
+            className="w-full"
+            value={tableDecimals(table) === undefined ? "auto" : String(tableDecimals(table))}
+            onChange={(event) => onChange((current) => setTableDecimals(current, event.target.value === "auto" ? null : Number(event.target.value)))}
+          >
+            <NativeSelectOption value="auto">Automático (según la fórmula)</NativeSelectOption>
+            {Array.from({ length: TABLE_DECIMALS_MAX + 1 }, (_, decimals) => (
+              <NativeSelectOption key={decimals} value={String(decimals)}>{decimals === 0 ? "Sin decimales" : `${decimals} ${decimals === 1 ? "decimal" : "decimales"}`}</NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <FieldDescription>Con cuántos decimales se muestran los resultados de las fórmulas de esta tabla, aquí y en el dictamen. Una celda con formato propio lo conserva.</FieldDescription>
         </Field>
 
         {groupable ? (

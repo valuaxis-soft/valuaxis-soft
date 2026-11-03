@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError, type ComparableFormValues } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { useAiAssist } from "@/features/ai/ai-assist-context";
 import type { ComparablePrefill } from "@/features/ai/listing-prefill";
 import type { CustomFactor } from "@/features/firm/custom-factors";
@@ -498,7 +499,7 @@ function MarketTypePanel(props: {
       </Part>
 
       <Part number={2} title="Comparables">
-        <div className={CALC_TABLE_FRAME}>
+        <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly>
           <table className={cn(CALC_TABLE, "w-full min-w-[560px]")}>
             <thead className={CALC_HEAD}>
               <tr>
@@ -573,7 +574,7 @@ function MarketTypePanel(props: {
               ) : null}
             </tbody>
           </table>
-        </div>
+        </CalcTableContextMenu>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">

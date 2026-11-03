@@ -15,6 +15,7 @@ import {
 } from "../editor/structure-transfer-actions";
 import { ImportBlockButton } from "./template-dialogs";
 import { BlockCard } from "../editor/block-card";
+import { BlockTitleContextMenu } from "../editor/block-title-context-menu";
 import { StructuralActions } from "../editor/structural-actions";
 import { ApartadoEditor } from "../editor/apartado-editor";
 import { BlockFlowRenderer } from "../editor/block-flow-renderer";
@@ -654,6 +655,21 @@ function SortableBlockEditor(props: {
         : null}
       dragHandle={dragHandle}
       extraActions={!isCaratula ? <BlockTransferMenu section={section} block={block} label={blockTerm === "sección" ? "la sección" : "el bloque"} /> : undefined}
+      titleContextMenu={!readOnly ? ({ titleRef }) => (
+        <BlockTitleContextMenu
+          section={section}
+          block={block}
+          label={blockTerm === "sección" ? "la sección" : "el bloque"}
+          titleRef={titleRef}
+          canRename={caratulaBlockKind === "intermediate"}
+          visibility={blockCapabilities.visibility ? { visible: block.enabled, onChange: (enabled) => props.onUpdateBlock(section.id, block.id, { enabled }) } : undefined}
+          pageBreak={blockCapabilities.pageBreak ? {
+            before: resolvePageBreak(block) === "new-page",
+            onChange: (before) => props.onUpdateBlock(section.id, block.id, pageBreakPatch(before ? "new-page" : "auto")),
+          } : undefined}
+          onDelete={blockCapabilities.delete ? () => props.onRemoveBlock(section.id, block.id) : undefined}
+        />
+      ) : undefined}
       title={stripLeadingRomanNumeral(block.title)}
       titleEdit={
         caratulaBlockKind === "intermediate"

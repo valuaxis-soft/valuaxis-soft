@@ -10,9 +10,11 @@ import { cn } from "@/lib/utils";
 import {
   DEFAULT_TABLE_TITLE,
   ensureTableV2,
-  getDisplayColumns,
+  columnWidthOf,
   getTableHeaderLayout,
   headerLineChars,
+  printableColumns,
+  printableRows,
   type TableColumn,
   type TableNote,
   type TableResultGroup,
@@ -88,16 +90,21 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
     <thead className={TABLE_HEADER_BAND}>
       <tr>
         {layout.topRow.map((item) => {
+          // A column hidden in the editor prints neither its header nor its place under a group.
           if (item.kind === "column") {
             const column = columnMap.get(item.columnId);
+            if (!column) return null;
             return (
               <th rowSpan={item.rowSpan} className={cell} key={item.columnId}>
-                <HeaderText name={column?.name ?? ""} fixed={fixed} />
+                <HeaderText name={column.name} fixed={fixed} />
               </th>
             );
           }
+          const zone = tableV2.schema?.zones.find((candidate) => candidate.id === item.group.zoneId);
+          const colSpan = zone ? zone.columnIds.filter((id) => columnMap.has(id)).length : item.colSpan;
+          if (!colSpan) return null;
           return (
-            <th colSpan={item.colSpan} className={cn(cell, "border-b")} key={item.group.id}>
+            <th colSpan={colSpan} className={cn(cell, "border-b")} key={item.group.id}>
               {item.group.title}
             </th>
           );
@@ -105,7 +112,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
       </tr>
       {layout.bottomRow && (
         <tr>
-          {layout.bottomRow.map((colId) => {
+          {layout.bottomRow.filter((colId) => columnMap.has(colId)).map((colId) => {
             const column = columnMap.get(colId);
             // The same size and weight as the headers above: a header group is one band.
             return (
@@ -321,7 +328,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
   const tableV2 = ensureTableV2(table);
   const formulaResults = useMemo(() => evaluateTableFormulas(tableV2), [tableV2]);
   const presentation = useNumberPresentation();
-  const displayColumns = getDisplayColumns(tableV2);
+  const displayColumns = printableColumns(tableV2);
   const columns = displayColumns.length ? displayColumns : [{ id: "__empty", name: "" }];
 
   return (
@@ -339,7 +346,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
           </colgroup>
           {renderSchemaHeader(tableV2, columns, { fixed: true })}
           <tbody>
-            {tableV2.rows.length ? tableV2.rows.map((row) => (
+            {printableRows(tableV2).length ? printableRows(tableV2).map((row) => (
               <tr className="border-t border-slate-300 odd:bg-slate-50" key={row.id}>
                 {columns.map((column) => {
                   const displayValue = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
@@ -379,11 +386,12 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
   // opens it goes with the first ones, what closes it with the last, and the
   // caption and the header repeat on every page.
   const firstRow = fragment?.from ?? 0;
-  const rows = fragment ? tableV2.rows.slice(fragment.from, fragment.to) : tableV2.rows;
+  const printable = printableRows(tableV2);
+  const rows = fragment ? printable.slice(fragment.from, fragment.to) : printable;
   const opens = !fragment?.continuation;
   const closes = fragment?.last ?? true;
-  // The columns as the editor shows them: a structured table orders them by its zones.
-  const columns = getDisplayColumns(tableV2);
+  // The columns as the editor shows them, less the ones hidden there: a structured table orders them by its zones.
+  const columns = printableColumns(tableV2);
   // Fragments keep the column widths of the whole table, so the columns line up from page to page.
   const columnWidths = fragment?.columnWidths.length === columns.length ? fragment.columnWidths : null;
 
@@ -405,7 +413,7 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
       )} data-split-table="" data-table-width={tableV2.schema?.widthMode === "content" ? "content" : undefined}>
         <colgroup>
           {columns.map((column, index) => (
-            <col key={column.id} style={columnWidths ? { width: `${columnWidths[index]}px` } : undefined} />
+            <col key={column.id} style={columnWidths ? { width: `${columnWidths[index]}px` } : columnWidthOf(tableV2, column.id) ? { width: `${columnWidthOf(tableV2, column.id)}px` } : undefined} />
           ))}
         </colgroup>
         {caption ? <TableCaption className="mt-0 mb-1 text-[11px]">{caption}{opens ? null : " (continúa)"}</TableCaption> : null}
@@ -438,7 +446,7 @@ function CompactDocumentTable({ table }: { table: TableContent }) {
   const tableV2 = ensureTableV2(table);
   const formulaResults = useMemo(() => evaluateTableFormulas(tableV2), [tableV2]);
   const presentation = useNumberPresentation();
-  const columns = getDisplayColumns(tableV2);
+  const columns = printableColumns(tableV2);
 
   return (
     <table className="w-full border-collapse table-fixed text-[8.5px]">
@@ -455,7 +463,7 @@ function CompactDocumentTable({ table }: { table: TableContent }) {
         </tr>
       </thead>
       <tbody>
-        {tableV2.rows.map((row) => (
+        {printableRows(tableV2).map((row) => (
           <tr key={row.id}>
             {columns.map((column) => (
               <td className="overflow-hidden break-words border border-slate-300 px-1 py-0.5" key={column.id}>

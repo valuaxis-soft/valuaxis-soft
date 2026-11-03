@@ -10,10 +10,12 @@ import {
   type TableV2,
   type TableCellV2,
   type TableColumn,
+  type TableCellFormat,
   type FormulaResult,
   type FormulaSelectionOperation,
   type ColumnCapability,
-  type TableCellFormat,
+  CELL_FORMAT_OPTIONS,
+  HOMOLOGATION_HEADER_HINTS,
   moveTableColumnBy,
   moveTableColumnTo,
   canMoveTableColumn,
@@ -21,26 +23,40 @@ import {
   canInsertBesideColumn,
   columnHasData,
   columnValueSuggestions,
+  columnWidthOf,
   estimateColumnChars,
   moveTableRow,
   insertTableColumnBeside,
+  isColumnHidden,
   isHomologationFactorColumn,
+  isRowHidden,
+  numericCellProblem,
   removeTableColumn,
   renameTableColumn,
   insertTableRow,
   removeTableRow,
-  clearTableRow,
-  clearTableColumn,
   duplicateTableRow,
   setCellFormula,
   setCellResultFormat,
+  setColumnFormat,
+  setColumnHidden,
+  setColumnWidth,
+  setRowHidden,
+  sortTableRows,
   fillColumnWithFormula,
+  fillRowWithFormula,
   buildFormulaFromSelection,
   resolveColumnCapability,
   getTableHeaderLayout,
   getDisplayColumns,
   updateHeaderGroupTitle,
 } from "../../services/table";
+import {
+  tableContextMenu,
+  type TableMenuAction,
+  type TableMenuGroup,
+  type TableMenuItem,
+} from "../../services/table-context-menu";
 import {
   evaluateTableFormulas,
   formulaCellKey,
@@ -90,6 +106,9 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 
@@ -151,15 +170,19 @@ type FormulaSelectionState = {
   parameter: string;
 };
 
-/** The operations of "Resultado / Fórmula", in the order the menu offers them. */
+/** The operations of "Operaciones", in the order the menu offers them. */
 const SELECTION_OPERATIONS: Array<{ operation: FormulaSelectionOperation; label: string; hint: string }> = [
   { operation: "ADD", label: "Sumar", hint: "Selecciona las celdas que se suman." },
   { operation: "SUBTRACT", label: "Restar", hint: "Selecciona la celda de la que se resta y luego las que se restan." },
   { operation: "MULTIPLY", label: "Multiplicar", hint: "Selecciona todas las celdas que se multiplican entre sí." },
   { operation: "DIVIDE", label: "Dividir", hint: "Selecciona la celda que se divide y luego entre cuál." },
   { operation: "AVERAGE", label: "Promedio", hint: "Selecciona las celdas que se promedian." },
+  { operation: "MIN", label: "Mínimo (MIN)", hint: "Selecciona las celdas de las que se toma la menor." },
+  { operation: "MAX", label: "Máximo (MAX)", hint: "Selecciona las celdas de las que se toma la mayor." },
   { operation: "POWER", label: "Potencia", hint: "Selecciona la celda base. El exponente se escribe aquí o se toma de una segunda celda." },
   { operation: "ROOT", label: "Raíz", hint: "Selecciona la celda. Sin índice es la raíz cuadrada; el índice se escribe aquí o se toma de una segunda celda." },
+  { operation: "LN", label: "Logaritmo natural (LN)", hint: "Selecciona la celda de la que se toma el logaritmo natural." },
+  { operation: "LOG", label: "Logaritmo (LOG)", hint: "Selecciona la celda; una segunda celda es la base (sin ella, base 10)." },
 ];
 const SELECTION_LABELS: Record<FormulaSelectionOperation, string> = {
   SUM: "Sumar",
@@ -167,19 +190,12 @@ const SELECTION_LABELS: Record<FormulaSelectionOperation, string> = {
 } as Record<FormulaSelectionOperation, string>;
 /** A power and a root read one cell, and a second one for the exponent or the index. */
 const takesParameter = (operation: FormulaSelectionOperation) => operation === "POWER" || operation === "ROOT";
-
-/** How the result of a formula cell can be written. */
-const RESULT_FORMATS: Array<{ label: string; format: TableCellFormat | null }> = [
-  { label: "Automático", format: null },
-  { label: "Número (2 decimales)", format: { type: "number", precision: 2 } },
-  { label: "Número (4 decimales)", format: { type: "number", precision: 4 } },
-  { label: "Moneda ($)", format: { type: "currency", precision: 2 } },
-  { label: "Porcentaje (%)", format: { type: "percent", precision: 2 } },
-];
+/** Most cells an operation reads; the others take as many as are selected. */
+const sourceLimit = (operation: FormulaSelectionOperation) => (operation === "LN" ? 1 : takesParameter(operation) || operation === "LOG" ? 2 : Infinity);
 
 const NO_SUGGESTIONS: string[] = [];
-/** Narrowest a column gets in the editor, in characters, before the table scrolls sideways. */
-const EDITOR_MIN_COLUMN_CHARS = 6;
+/** Narrowest a column gets in the editor, in characters, before the table scrolls sideways: a short header ("Clas", "Re") stays whole. */
+const EDITOR_MIN_COLUMN_CHARS = 8;
 /** About what a character of the editor's cells takes, and what a header's handle, letter and menu take. */
 const EDITOR_CHAR_PX = 7.5;
 const EDITOR_HEADER_CHROME_PX = 68;
@@ -196,8 +212,117 @@ function focusTableCell(tableId: string, rowIndex: number, columnIndex: number) 
 }
 
 /* ================================================================== */
+/*  Clipboard of cells                                                 */
+/* ================================================================== */
+
+/**
+ * What "Copiar" took from a cell: the value shown and, when the cell holds a
+ * formula, its text. The system clipboard gets the value; a paste inside the
+ * app pastes the formula while the system clipboard still holds that value.
+ */
+let cellClipboard: { text: string; formulaText: string | null } | null = null;
+
+async function copyCellToClipboard(text: string, formulaText: string | null) {
+  cellClipboard = { text, formulaText };
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // Without permission the copy lives in memory, for a paste inside the app.
+  }
+}
+
+/** What a paste brings: the formula copied in the app, or the text of the system clipboard. */
+async function readCellClipboard(): Promise<{ text: string; formulaText: string | null } | null> {
+  let system: string | null = null;
+  try {
+    system = await navigator.clipboard.readText();
+  } catch {
+    system = null;
+  }
+  if (cellClipboard && (system === null || system === "" || system === cellClipboard.text)) return cellClipboard;
+  if (system) return { text: system, formulaText: isFormulaText(system) ? system : null };
+  return cellClipboard;
+}
+
+/* ================================================================== */
+/*  Menu rendering — the same groups in a right click and in a button  */
+/* ================================================================== */
+
+type MenuParts = {
+  Item: typeof ContextMenuItem | typeof DropdownMenuItem;
+  Separator: typeof ContextMenuSeparator | typeof DropdownMenuSeparator;
+  Sub: typeof ContextMenuSub | typeof DropdownMenuSub;
+  SubTrigger: typeof ContextMenuSubTrigger | typeof DropdownMenuSubTrigger;
+  SubContent: typeof ContextMenuSubContent | typeof DropdownMenuSubContent;
+};
+
+const CONTEXT_PARTS: MenuParts = { Item: ContextMenuItem, Separator: ContextMenuSeparator, Sub: ContextMenuSub, SubTrigger: ContextMenuSubTrigger, SubContent: ContextMenuSubContent };
+const DROPDOWN_PARTS: MenuParts = { Item: DropdownMenuItem, Separator: DropdownMenuSeparator, Sub: DropdownMenuSub, SubTrigger: DropdownMenuSubTrigger, SubContent: DropdownMenuSubContent };
+
+type MenuHandlers = {
+  onAction: (action: TableMenuAction) => void;
+  /** The formats of "Formato del valor…" and "Formato de la columna". */
+  onFormat?: (format: TableCellFormat | null) => void;
+  /** The operations of "Operaciones", and writing a formula by hand. */
+  onOperation?: (operation: FormulaSelectionOperation | null) => void;
+};
+
+/** The items of the menu, as the model gives them: a disabled item keeps its reason as a tooltip. */
+function MenuGroups({ groups, parts, handlers }: { groups: TableMenuGroup[]; parts: MenuParts; handlers: MenuHandlers }) {
+  const { Item, Separator, Sub, SubTrigger, SubContent } = parts;
+  const renderItem = (item: TableMenuItem) => {
+    if (item.submenu && !item.disabled) {
+      return (
+        <Sub key={`${item.action}:${item.label}`}>
+          <SubTrigger>{item.label}</SubTrigger>
+          <SubContent className="w-52">
+            {item.submenu === "formats" ? CELL_FORMAT_OPTIONS.map((option) => (
+              <Item key={option.key} onClick={() => handlers.onFormat?.(option.format)}>{option.label}</Item>
+            )) : (
+              <>
+                {SELECTION_OPERATIONS.map((operation) => (
+                  <Item key={operation.operation} onClick={() => handlers.onOperation?.(operation.operation)}>{operation.label}</Item>
+                ))}
+                <Separator />
+                <Item onClick={() => handlers.onOperation?.(null)}>Escribir fórmula (=)</Item>
+              </>
+            )}
+          </SubContent>
+        </Sub>
+      );
+    }
+    const node = (
+      <Item
+        key={`${item.action}:${item.label}`}
+        variant={item.destructive ? "destructive" : undefined}
+        disabled={item.disabled}
+        aria-description={item.disabled ? item.hint : undefined}
+        onClick={() => handlers.onAction(item.action)}
+      >
+        {item.label}
+      </Item>
+    );
+    // A disabled item takes no pointer events: the reason hangs from what wraps it.
+    return item.disabled && item.hint ? <div key={`${item.action}:${item.label}`} title={item.hint} data-menu-hint={item.hint}>{node}</div> : node;
+  };
+  return (
+    <>
+      {groups.map((group, index) => (
+        <Fragment key={index}>
+          {index > 0 ? <Separator /> : null}
+          {group.map(renderItem)}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+/* ================================================================== */
 /*  Sortable column header                                             */
 /* ================================================================== */
+
+/** What the header asks of the table for a column; `format` goes with "column-format". */
+type ColumnActionHandler = (columnId: string, action: TableMenuAction, format?: TableCellFormat | null) => void;
 
 function SortableColumnHeader({
   column,
@@ -213,12 +338,7 @@ function SortableColumnHeader({
   colSpan,
   cellStyle,
   onUpdate,
-  onContextMenuRename,
-  onContextMenuInsertLeft,
-  onContextMenuInsertRight,
-  onContextMenuMove,
-  onContextMenuClear,
-  onContextMenuDelete,
+  onColumnAction,
 }: {
   column: TableColumn;
   /** The column's letter in formulas (A, B, C…). */
@@ -234,18 +354,12 @@ function SortableColumnHeader({
   colSpan?: number;
   cellStyle?: CSSProperties;
   onUpdate: (id: string, updater: (table: TableContent) => TableContent) => void;
-  onContextMenuRename: (columnId: string, currentName: string) => void;
-  onContextMenuInsertLeft: (columnId: string) => void;
-  onContextMenuInsertRight: (columnId: string) => void;
-  onContextMenuMove: (columnId: string, direction: -1 | 1) => void;
-  onContextMenuClear: (columnId: string) => void;
-  onContextMenuDelete: (columnId: string) => void;
+  onColumnAction: ColumnActionHandler;
 }) {
   const isMovable = capability.movable !== false;
-  const canMoveLeft = canMoveTableColumn(tableV2, column.id, -1);
-  const canMoveRight = canMoveTableColumn(tableV2, column.id, 1);
-  const canDelete = canRemoveTableColumn(tableV2, column.id);
   const columnName = column.name.trim() || `columna ${letter}`;
+  const hidden = isColumnHidden(tableV2, column.id);
+  const hint = HOMOLOGATION_HEADER_HINTS[column.id];
 
   // Local draft state — typing is free, normalization happens only on commit
   const [draftName, setDraftName] = useState(column.name);
@@ -277,27 +391,24 @@ function SortableColumnHeader({
     opacity: isDragging ? 0.5 : undefined,
   };
 
-  // The actions of the right click and of the header's menu, in groups.
-  const groups: ColumnAction[][] = [
-    canInsertBesideColumn(tableV2, column.id) ? [
-      { key: "insert-left", label: "Insertar columna a la izquierda", onSelect: () => onContextMenuInsertLeft(column.id) },
-      { key: "insert-right", label: "Insertar columna a la derecha", onSelect: () => onContextMenuInsertRight(column.id) },
-    ] : [],
-    isMovable ? [
-      { key: "move-left", label: "Mover a la izquierda", disabled: !canMoveLeft, onSelect: () => onContextMenuMove(column.id, -1) },
-      { key: "move-right", label: "Mover a la derecha", disabled: !canMoveRight, onSelect: () => onContextMenuMove(column.id, 1) },
-    ] : [],
-    [
-      ...(capability.headerEditable !== false ? [{ key: "rename", label: "Renombrar", onSelect: () => onContextMenuRename(column.id, column.name) }] : []),
-      ...(capability.clearable !== false ? [{ key: "clear", label: "Limpiar columna", onSelect: () => onContextMenuClear(column.id) }] : []),
-    ],
-    capability.removable !== false ? [
-      { key: "delete", label: "Eliminar columna", destructive: true, disabled: !canDelete, onSelect: () => onContextMenuDelete(column.id) },
-    ] : [],
-  ].filter((group) => group.length > 0);
+  // The actions of the right click and of the header's menu, the same in both.
+  const groups = tableContextMenu("editable", {
+    kind: "column",
+    canInsertBeside: canInsertBesideColumn(tableV2, column.id),
+    canRename: capability.headerEditable !== false,
+    canMoveLeft: isMovable && canMoveTableColumn(tableV2, column.id, -1),
+    canMoveRight: isMovable && canMoveTableColumn(tableV2, column.id, 1),
+    canDelete: capability.removable !== false && canRemoveTableColumn(tableV2, column.id),
+    hidden,
+    canHide: true,
+  });
+  const handlers: MenuHandlers = {
+    onAction: (action) => onColumnAction(column.id, action),
+    onFormat: (format) => onColumnAction(column.id, "column-format", format),
+  };
 
   return (
-    <TableHead ref={setNodeRef} style={{ ...style, ...cellStyle }} className="h-auto p-0 align-top" rowSpan={rowSpan} colSpan={colSpan}>
+    <TableHead ref={setNodeRef} style={{ ...style, ...cellStyle }} className="h-auto p-0 align-top" rowSpan={rowSpan} colSpan={colSpan} data-column-hidden={hidden ? "" : undefined}>
       <ContextMenu>
         <ContextMenuTrigger>
           <div
@@ -305,7 +416,9 @@ function SortableColumnHeader({
               "flex min-w-0 items-start gap-1 rounded-sm border border-border bg-muted/50 px-1.5 py-1 transition-colors",
               isOver && !isDragging && "border-blue-400 bg-blue-50 dark:bg-blue-500/15",
               formulaMode && "opacity-60",
+              hidden && "opacity-50",
             )}
+            title={hidden ? `${hint ?? columnName}: oculta en el dictamen` : hint}
           >
             {!readOnly && isMovable && (
               <div
@@ -324,10 +437,11 @@ function SortableColumnHeader({
             {/* A long header takes a second line instead of widening the column; Alt+Enter breaks it where wanted. */}
             <textarea
               aria-label={`Encabezado de la columna ${columnName}`}
-              className="field-sizing-content min-h-6 min-w-0 flex-1 resize-none overflow-hidden border-0 bg-transparent px-0.5 py-0.5 text-xs leading-tight font-semibold wrap-break-word outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
+              className="field-sizing-content min-h-6 min-w-[3ch] flex-1 resize-none overflow-hidden border-0 bg-transparent px-0.5 py-0.5 text-xs leading-tight font-semibold wrap-break-word outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
               rows={1}
               disabled={readOnly || capability.headerEditable === false}
               value={draftName}
+              data-column-header={column.id}
               onChange={(event) => setDraftName(event.target.value)}
               onBlur={commitDraft}
               onKeyDown={(event) => {
@@ -359,44 +473,36 @@ function SortableColumnHeader({
                 >
                   <ChevronDown className="h-3 w-3" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  {groups.map((group, index) => (
-                    <Fragment key={group[0].key}>
-                      {index > 0 ? <DropdownMenuSeparator /> : null}
-                      {group.map((action) => (
-                        <DropdownMenuItem key={action.key} variant={action.destructive ? "destructive" : undefined} disabled={action.disabled} onClick={action.onSelect}>
-                          {action.label}
-                        </DropdownMenuItem>
-                      ))}
-                    </Fragment>
-                  ))}
+                <DropdownMenuContent align="end" className="w-60">
+                  <MenuGroups groups={groups} parts={DROPDOWN_PARTS} handlers={handlers} />
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="w-56">
-          {groups.map((group, index) => (
-            <Fragment key={group[0].key}>
-              {index > 0 ? <ContextMenuSeparator /> : null}
-              {group.map((action) => (
-                <ContextMenuItem key={action.key} variant={action.destructive ? "destructive" : undefined} disabled={action.disabled} onClick={action.onSelect}>
-                  {action.label}
-                </ContextMenuItem>
-              ))}
-            </Fragment>
-          ))}
-        </ContextMenuContent>
+        {!readOnly ? (
+          <ContextMenuContent className="w-60">
+            <MenuGroups groups={groups} parts={CONTEXT_PARTS} handlers={handlers} />
+          </ContextMenuContent>
+        ) : null}
       </ContextMenu>
     </TableHead>
   );
 }
 
-type ColumnAction = { key: string; label: string; disabled?: boolean; destructive?: boolean; onSelect: () => void };
-
 /* ================================================================== */
 /*  Cell — a value or a formula                                        */
 /* ================================================================== */
+
+/** What a cell asks of its row and column: inserting and deleting beside it. */
+type CellStructureActions = {
+  insertRowAbove: (rowId: string) => void;
+  insertRowBelow: (rowId: string) => void;
+  deleteRow: (rowId: string) => void;
+  insertColumnLeft: (columnId: string) => void;
+  insertColumnRight: (columnId: string) => void;
+  deleteColumn: (columnId: string) => void;
+};
 
 /**
  * A cell of the table. It holds what is typed, or a formula when what is
@@ -415,9 +521,11 @@ function EditableTableCell({
   readOnly,
   formulaMode,
   formulaResults,
+  hidden,
   onUpdate,
   onFormulaCellClick,
   onStartSelection,
+  structure,
 }: {
   row: { id: string; cells: Record<string, TableCellV2> };
   rowIndex: number;
@@ -430,9 +538,12 @@ function EditableTableCell({
   readOnly: boolean;
   formulaMode: FormulaSelectionState | null;
   formulaResults: Map<string, FormulaResult>;
+  /** The row or the column is hidden in the dictamen. */
+  hidden: boolean;
   onUpdate: (id: string, updater: (table: TableContent) => TableContent) => void;
   onFormulaCellClick: (rowId: string, columnId: string) => void;
   onStartSelection: (rowId: string, columnId: string, operation: FormulaSelectionOperation) => void;
+  structure: CellStructureActions;
 }) {
   const { index, highlights } = useFormulaEditing();
   const presentation = useNumberPresentation();
@@ -448,6 +559,10 @@ function EditableTableCell({
   const isFormulaSource = formulaMode?.sources.some((s) => s.rowId === row.id && s.columnId === column.id);
   // A factor of a homologation shows two decimals; it is written and computed with all of them.
   const factor = isHomologationFactorColumn(tableV2, column.id);
+  // A number typed in a cell with a format shows as the format says; entered, it shows as typed.
+  const formatted = cell?.kind === "value" && Boolean(cell.format ?? column.format) && displayValue !== cell.value;
+  // Letters in a numeric cell: marked, and left out of the calculations.
+  const numericProblem = numericCellProblem(tableV2, column.id, cell);
   const [focused, setFocused] = useState(false);
 
   /* ---- What was already written in the column, offered while typing ---- */
@@ -463,8 +578,21 @@ function EditableTableCell({
   const setValue = (value: string) => {
     onUpdate(tableId, v2Updater((v2) => ({
       ...v2,
-      rows: v2.rows.map((r) => (r.id === row.id ? { ...r, cells: { ...r.cells, [column.id]: { kind: "value", value } } } : r)),
+      rows: v2.rows.map((r) => {
+        if (r.id !== row.id) return r;
+        const format = r.cells[column.id]?.format;
+        return { ...r, cells: { ...r.cells, [column.id]: { kind: "value", value, ...(format ? { format } : {}) } } };
+      }),
     })));
+  };
+  const applyFormulaText = (text: string) => {
+    const compiled = compileFormula(text, { index, table: tableV2 });
+    if (compiled.ok) {
+      onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, compiled.formula)));
+      return;
+    }
+    toast.error("La fórmula no se aplicó", { description: compiled.message, duration: 12_000 });
+    setValue(text);
   };
   const { inputRef, draftText, writingFormula, references, change, onFocus, onBlur, onKeyDown, onMouseDown, start } = useFormulaField({
     fieldKey,
@@ -475,20 +603,16 @@ function EditableTableCell({
         setValue(text);
         return;
       }
-      const compiled = compileFormula(text, { index, table: tableV2 });
-      if (compiled.ok) {
-        onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, compiled.formula)));
-        return;
-      }
-      toast.error("La fórmula no se aplicó", { description: compiled.message, duration: 12_000 });
-      setValue(text);
+      applyFormulaText(text);
     },
   });
   const reference = useFormulaReferenceTarget(fieldKey, (homeTableId) => cellReferenceText(index, tableId, tableV2, row.id, column.id, homeTableId));
   const failed = (result && !result.ok) || unreadFormula;
   const title = result && !result.ok
     ? `${formulaErrorMessage(result.error)} ${formulaText ?? ""}`
-    : unreadFormula ? "Esta fórmula no se pudo leer: corrígela o bórrala." : formulaText ?? undefined;
+    : unreadFormula ? "Esta fórmula no se pudo leer: corrígela o bórrala."
+    : numericProblem ? `${numericProblem}: lo escrito no entra en los cálculos.`
+    : formulaText ?? (hidden ? "Oculta en el dictamen" : undefined);
   // The color of the reference that names this cell, in the formula being written anywhere.
   const referenceColor = highlights.get(tableId)?.get(formulaCellKey(row.id, column.id));
   const overlayRef = useRef<HTMLSpanElement | null>(null);
@@ -518,10 +642,68 @@ function EditableTableCell({
   };
 
   const shownValue = draftText
-    ?? (isFormula ? displayValue : cell?.kind === "value" ? (factor && !focused ? displayValue : cell.value) : "");
+    ?? (isFormula ? displayValue : cell?.kind === "value" ? ((factor || formatted) && !focused ? displayValue : cell.value) : "");
   // A formula is written in a field as wide as it needs, over the cells beside it: the whole formula is in view.
   const formulaWidth = writingFormula && draftText !== null ? Math.min(Math.max(draftText.length + 3, 24), 96) : null;
   const opensLeft = columnIndex >= Math.ceil(columnCount / 2) && columnCount > 1;
+
+  /* ---- The right-click menu ---- */
+  const groups = tableContextMenu("editable", {
+    kind: "cell",
+    editable: true,
+    hasFormula: isFormula,
+    canPaste: true,
+    canInsertRow: true,
+    canInsertColumn: canInsertBesideColumn(tableV2, column.id),
+    canDeleteColumn: canRemoveTableColumn(tableV2, column.id),
+    canDeleteRow: tableV2.rows.length > 1,
+  });
+  // The menu gives the focus back when it closes; the cell is entered after that.
+  const enterCell = () => window.setTimeout(start, 80);
+  const runAction = async (action: TableMenuAction) => {
+    switch (action) {
+      case "copy":
+        await copyCellToClipboard(displayValue, formulaText);
+        return;
+      case "cut":
+        await copyCellToClipboard(displayValue, formulaText);
+        onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, null)));
+        setValue("");
+        return;
+      case "paste":
+      case "paste-values": {
+        const pasted = await readCellClipboard();
+        if (!pasted) {
+          toast.info("No hay nada que pegar.");
+          return;
+        }
+        if (action === "paste" && pasted.formulaText) applyFormulaText(pasted.formulaText);
+        else setValue(pasted.text);
+        return;
+      }
+      case "insert-row-above": structure.insertRowAbove(row.id); return;
+      case "insert-row-below": structure.insertRowBelow(row.id); return;
+      case "delete-row": structure.deleteRow(row.id); return;
+      case "insert-column-left": structure.insertColumnLeft(column.id); return;
+      case "insert-column-right": structure.insertColumnRight(column.id); return;
+      case "delete-column": structure.deleteColumn(column.id); return;
+      case "edit-formula": enterCell(); return;
+      case "fill-column": onUpdate(tableId, v2Updater((v2) => fillColumnWithFormula(v2, row.id, column.id))); return;
+      case "fill-row": onUpdate(tableId, v2Updater((v2) => fillRowWithFormula(v2, row.id, column.id))); return;
+      case "remove-formula":
+      case "clear":
+        onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, null)));
+        if (action === "clear") setValue("");
+        return;
+      default:
+        return;
+    }
+  };
+  const handlers: MenuHandlers = {
+    onAction: (action) => void runAction(action),
+    onFormat: (format) => onUpdate(tableId, v2Updater((v2) => setCellResultFormat(v2, row.id, column.id, format))),
+    onOperation: (operation) => (operation ? onStartSelection(row.id, column.id, operation) : enterCell()),
+  };
 
   return (
     <TableCell
@@ -533,10 +715,12 @@ function EditableTableCell({
         formulaMode && !isFormulaTarget && !isFormulaSource && "opacity-60",
         writingFormula && "ring-2 ring-blue-500 ring-inset",
         reference.active && "cursor-cell hover:ring-2 hover:ring-blue-300 hover:ring-inset [&_input]:cursor-cell",
+        hidden && "opacity-50",
       )}
       style={formulaReferenceCellStyle(referenceColor)}
       data-cell={`${cellReferenceText(index, tableId, tableV2, row.id, column.id, tableId) ?? ""}`}
       data-reference-color={referenceColor}
+      data-numeric-problem={numericProblem ?? undefined}
       onClick={() => formulaMode ? onFormulaCellClick(row.id, column.id) : undefined}
       onMouseDownCapture={reference.onMouseDownCapture}
     >
@@ -563,6 +747,7 @@ function EditableTableCell({
                 data-column-id={column.id}
                 data-row={rowIndex}
                 data-col={columnIndex}
+                aria-invalid={numericProblem ? true : undefined}
                 onChange={(event) => {
                   if (change(event.target.value)) {
                     closeSuggestions();
@@ -594,7 +779,9 @@ function EditableTableCell({
                   (isFormula || writingFormula) && "font-mono text-blue-600 dark:text-blue-400",
                   writingFormula && references.length > 0 && "text-transparent caret-blue-600 dark:text-transparent dark:caret-blue-400",
                   failed && draftText === null && "text-destructive dark:text-red-400",
-                  factor && "tabular-nums",
+                  (factor || formatted) && "tabular-nums",
+                  // A numeric cell with letters: a red border, and the reason when hovered.
+                  numericProblem && draftText === null && "border border-destructive ring-1 ring-destructive/40 text-destructive dark:text-red-400",
                 )}
                 title={title}
               />
@@ -639,58 +826,11 @@ function EditableTableCell({
             document.body,
           ) : null}
         </ContextMenuTrigger>
-        <ContextMenuContent className="w-56">
-          {isFormula ? (
-            <>
-              <ContextMenuItem onClick={() => {
-                // The menu gives the focus back when it closes; the cell is entered after that.
-                window.setTimeout(start, 80);
-              }}>
-                Editar fórmula
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => onUpdate(tableId, v2Updater((v2) => fillColumnWithFormula(v2, row.id, column.id)))}>
-                Copiar fórmula a toda la columna
-              </ContextMenuItem>
-              <ContextMenuSub>
-                <ContextMenuSubTrigger>Formato del resultado</ContextMenuSubTrigger>
-                <ContextMenuSubContent className="w-48">
-                  {RESULT_FORMATS.map((item) => (
-                    <ContextMenuItem key={item.label} onClick={() => onUpdate(tableId, v2Updater((v2) => setCellResultFormat(v2, row.id, column.id, item.format)))}>
-                      {item.label}
-                    </ContextMenuItem>
-                  ))}
-                </ContextMenuSubContent>
-              </ContextMenuSub>
-              <ContextMenuItem onClick={() => onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, null)))}>
-                Quitar fórmula
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-            </>
-          ) : (
-            <>
-              <ContextMenuSub>
-                <ContextMenuSubTrigger>Resultado / Fórmula</ContextMenuSubTrigger>
-                <ContextMenuSubContent className="w-44">
-                  {SELECTION_OPERATIONS.map((item) => (
-                    <ContextMenuItem key={item.operation} onClick={() => onStartSelection(row.id, column.id, item.operation)}>
-                      {item.label}
-                    </ContextMenuItem>
-                  ))}
-                  <ContextMenuSeparator />
-                  <ContextMenuItem onClick={() => window.setTimeout(start, 80)}>
-                    Escribir fórmula (=)
-                  </ContextMenuItem>
-                </ContextMenuSubContent>
-              </ContextMenuSub>
-              <ContextMenuSeparator />
-            </>
-          )}
-          <ContextMenuItem onClick={() => {
-            onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, null)));
-          }}>
-            Limpiar contenido
-          </ContextMenuItem>
-        </ContextMenuContent>
+        {!readOnly ? (
+          <ContextMenuContent className="w-64">
+            <MenuGroups groups={groups} parts={CONTEXT_PARTS} handlers={handlers} />
+          </ContextMenuContent>
+        ) : null}
       </ContextMenu>
     </TableCell>
   );
@@ -700,9 +840,13 @@ function EditableTableCell({
 /*  Sortable row                                                       */
 /* ================================================================== */
 
+/** What the row's number and handle ask of the table. */
+type RowActionHandler = (rowId: string, action: TableMenuAction) => void;
+
 function SortableRow({
   row,
   rowIndex,
+  rowCount,
   tableV2,
   displayColumns,
   tableId,
@@ -713,15 +857,13 @@ function SortableRow({
   isDragging,
   onUpdate,
   onFormulaCellClick,
-  onContextMenuInsertAbove,
-  onContextMenuInsertBelow,
-  onContextMenuDuplicate,
-  onContextMenuClear,
-  onContextMenuDelete,
+  onRowAction,
   onStartSelection,
+  structure,
 }: {
   row: { id: string; cells: Record<string, TableCellV2> };
   rowIndex: number;
+  rowCount: number;
   tableV2: TableV2;
   displayColumns: TableColumn[];
   tableId: string;
@@ -732,12 +874,9 @@ function SortableRow({
   isDragging: boolean;
   onUpdate: (id: string, updater: (table: TableContent) => TableContent) => void;
   onFormulaCellClick: (rowId: string, columnId: string) => void;
-  onContextMenuInsertAbove: (rowId: string) => void;
-  onContextMenuInsertBelow: (rowId: string) => void;
-  onContextMenuDuplicate: (rowId: string) => void;
-  onContextMenuClear: (rowId: string) => void;
-  onContextMenuDelete: (rowId: string) => void;
+  onRowAction: RowActionHandler;
   onStartSelection: (rowId: string, columnId: string, operation: FormulaSelectionOperation) => void;
+  structure: CellStructureActions;
 }) {
   const {
     attributes,
@@ -754,14 +893,36 @@ function SortableRow({
     zIndex: isDragging ? 50 : undefined,
     opacity: isDragging ? 0.5 : undefined,
   };
+  const hidden = isRowHidden(tableV2, row.id);
+  // The same menu from the row's number and from its handle.
+  const groups = tableContextMenu("editable", {
+    kind: "row",
+    canInsert: true,
+    canMoveUp: rowIndex > 0,
+    canMoveDown: rowIndex < rowCount - 1,
+    hidden,
+    canHide: true,
+    canDelete: rowCount > 1,
+  });
+  const handlers: MenuHandlers = { onAction: (action) => onRowAction(row.id, action) };
+  const menu = !readOnly ? (
+    <ContextMenuContent className="w-56">
+      <MenuGroups groups={groups} parts={CONTEXT_PARTS} handlers={handlers} />
+    </ContextMenuContent>
+  ) : null;
 
   return (
     <TableRow ref={setNodeRef} style={style} className={cn(
       rowIndex % 2 === 1 && "bg-primary/[0.03]",
       isOver && !isDragging && "bg-blue-50 dark:bg-blue-500/15",
-    )}>
-      <TableCell className="w-6 select-none p-0 text-center font-mono text-[10px] text-muted-foreground/70" title={`Fila ${rowIndex + 1} en las fórmulas`}>
-        {rowIndex + 1}
+    )} data-row-hidden={hidden ? "" : undefined}>
+      <TableCell className={cn("w-6 select-none p-0 text-center font-mono text-[10px] text-muted-foreground/70", hidden && "line-through")} title={hidden ? `Fila ${rowIndex + 1}: oculta en el dictamen` : `Fila ${rowIndex + 1} en las fórmulas`}>
+        <ContextMenu>
+          <ContextMenuTrigger>
+            <div className="flex h-7 items-center justify-center" data-row-number={rowIndex + 1}>{rowIndex + 1}</div>
+          </ContextMenuTrigger>
+          {menu}
+        </ContextMenu>
       </TableCell>
       {displayColumns.map((column, columnIndex) => (
         <EditableTableCell
@@ -776,9 +937,11 @@ function SortableRow({
           readOnly={readOnly}
           formulaMode={formulaMode}
           formulaResults={formulaResults}
+          hidden={hidden || isColumnHidden(tableV2, column.id)}
           onUpdate={onUpdate}
           onFormulaCellClick={onFormulaCellClick}
           onStartSelection={onStartSelection}
+          structure={structure}
         />
       ))}
       {/* Row context menu + drag handle */}
@@ -794,27 +957,7 @@ function SortableRow({
               <GripVertical className="h-3.5 w-3.5 cursor-grab text-muted-foreground/70" />
             </div>
           </ContextMenuTrigger>
-          <ContextMenuContent className="w-44">
-            <ContextMenuItem onClick={() => onContextMenuInsertAbove(row.id)}>
-              Insertar fila arriba
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => onContextMenuInsertBelow(row.id)}>
-              Insertar fila abajo
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => onContextMenuDuplicate(row.id)}>
-              Duplicar fila
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem onClick={() => onContextMenuClear(row.id)}>
-              Limpiar fila
-            </ContextMenuItem>
-            <ContextMenuItem
-              variant="destructive"
-              onClick={() => onContextMenuDelete(row.id)}
-            >
-              Eliminar fila
-            </ContextMenuItem>
-          </ContextMenuContent>
+          {menu}
         </ContextMenu>
       </TableCell>
     </TableRow>
@@ -950,7 +1093,7 @@ export function TableEditorItem({
     if (!formulaMode) return;
     if (rowId === formulaMode.targetRowId && columnId === formulaMode.targetColumnId) return;
     if (formulaMode.sources.some((s) => s.rowId === rowId && s.columnId === columnId)) return;
-    if (takesParameter(formulaMode.operation) && formulaMode.sources.length >= 2) return;
+    if (formulaMode.sources.length >= sourceLimit(formulaMode.operation)) return;
     setFormulaMode((prev) => prev ? { ...prev, sources: [...prev.sources, { rowId, columnId }] } : null);
   }, [formulaMode]);
 
@@ -974,64 +1117,83 @@ export function TableEditorItem({
     if (e.key === "Enter" && selectionFormula) applyFormulaSelection();
   }, [formulaMode, selectionFormula, cancelFormulaSelection, applyFormulaSelection]);
 
-  /* ---- Context menu column actions ---- */
-  const ctxRenameColumn = useCallback((columnId: string, currentName: string) => {
-    const newName = prompt("Nuevo nombre de columna:", currentName);
-    if (newName !== null && newName.trim()) {
-      onUpdate(table.id, v2Updater((v2) => renameTableColumn(v2, columnId, newName)));
-    }
-  }, [table.id, onUpdate]);
+  /* ---- Column actions, from the header's menus and the cells' ---- */
+  const columnName = useCallback((columnId: string) => tableV2.columns.find((c) => c.id === columnId)?.name.trim() || "La columna", [tableV2]);
 
-  const ctxInsertColumnLeft = useCallback((columnId: string) => {
-    onUpdate(table.id, v2Updater((v2) => insertTableColumnBeside(v2, columnId, "left", "Nueva columna")));
-  }, [table.id, onUpdate]);
-
-  const ctxInsertColumnRight = useCallback((columnId: string) => {
-    onUpdate(table.id, v2Updater((v2) => insertTableColumnBeside(v2, columnId, "right", "Nueva columna")));
-  }, [table.id, onUpdate]);
-
-  const ctxClearColumn = useCallback((columnId: string) => {
-    onUpdate(table.id, v2Updater((v2) => clearTableColumn(v2, columnId)));
-  }, [table.id, onUpdate]);
-
-  const ctxMoveColumn = useCallback((columnId: string, direction: -1 | 1) => {
-    onUpdate(table.id, v2Updater((v2) => moveTableColumnBy(v2, columnId, direction)));
+  const ctxInsertColumn = useCallback((columnId: string, side: "left" | "right") => {
+    onUpdate(table.id, v2Updater((v2) => insertTableColumnBeside(v2, columnId, side, "Nueva columna")));
   }, [table.id, onUpdate]);
 
   const ctxDeleteColumn = useCallback((columnId: string) => {
     // A column with something written is only deleted on purpose; formulas that read it will show #REF!.
     if (columnHasData(tableV2, columnId)) {
-      const name = tableV2.columns.find((c) => c.id === columnId)?.name.trim() || "La columna";
-      if (!window.confirm(`${name} tiene datos. ¿Eliminar la columna y lo que contiene?`)) return;
+      if (!window.confirm(`${columnName(columnId)} tiene datos. ¿Eliminar la columna y lo que contiene?`)) return;
     }
     onUpdate(table.id, v2Updater((v2) => removeTableColumn(v2, columnId)));
-  }, [table.id, tableV2, onUpdate]);
+  }, [table.id, tableV2, columnName, onUpdate]);
 
-  /* ---- Context menu row actions ---- */
-  const ctxInsertRowAbove = useCallback((rowId: string) => {
-    const idx = tableV2.rows.findIndex((r) => r.id === rowId);
-    onUpdate(table.id, v2Updater((v2) => insertTableRow(v2, idx)));
-  }, [table.id, tableV2.rows, onUpdate]);
+  const handleColumnAction = useCallback<ColumnActionHandler>((columnId, action, format) => {
+    switch (action) {
+      case "insert-column-left": ctxInsertColumn(columnId, "left"); return;
+      case "insert-column-right": ctxInsertColumn(columnId, "right"); return;
+      case "rename": {
+        const newName = prompt("Nuevo nombre de columna:", tableV2.columns.find((c) => c.id === columnId)?.name ?? "");
+        if (newName !== null && newName.trim()) onUpdate(table.id, v2Updater((v2) => renameTableColumn(v2, columnId, newName)));
+        return;
+      }
+      case "move-left": onUpdate(table.id, v2Updater((v2) => moveTableColumnBy(v2, columnId, -1))); return;
+      case "move-right": onUpdate(table.id, v2Updater((v2) => moveTableColumnBy(v2, columnId, 1))); return;
+      case "column-width": {
+        const current = columnWidthOf(tableV2, columnId);
+        const typed = prompt("Ancho de la columna en píxeles (vacío: según su contenido):", current === undefined ? "" : String(current));
+        if (typed === null) return;
+        const width = typed.trim() === "" ? null : Number(typed.replace(/[^\d.]/g, ""));
+        if (width !== null && !(width > 0)) {
+          toast.error("Escribe un número de píxeles, por ejemplo 120.");
+          return;
+        }
+        onUpdate(table.id, v2Updater((v2) => setColumnWidth(v2, columnId, width)));
+        return;
+      }
+      case "column-format": onUpdate(table.id, v2Updater((v2) => setColumnFormat(v2, columnId, format ?? null))); return;
+      case "sort-asc":
+      case "sort-desc": onUpdate(table.id, v2Updater((v2) => sortTableRows(v2, columnId, action === "sort-asc" ? "asc" : "desc", formulaResults))); return;
+      case "hide-column": onUpdate(table.id, v2Updater((v2) => setColumnHidden(v2, columnId, true))); return;
+      case "show-column": onUpdate(table.id, v2Updater((v2) => setColumnHidden(v2, columnId, false))); return;
+      case "delete-column": ctxDeleteColumn(columnId); return;
+      default:
+        return;
+    }
+  }, [ctxInsertColumn, ctxDeleteColumn, formulaResults, table.id, tableV2, onUpdate]);
 
-  const ctxInsertRowBelow = useCallback((rowId: string) => {
-    const idx = tableV2.rows.findIndex((r) => r.id === rowId);
-    onUpdate(table.id, v2Updater((v2) => insertTableRow(v2, idx + 1)));
-  }, [table.id, tableV2.rows, onUpdate]);
+  /* ---- Row actions, from the row's number and handle and from the cells ---- */
+  const rowIndexOf = useCallback((rowId: string) => tableV2.rows.findIndex((r) => r.id === rowId), [tableV2.rows]);
 
-  const ctxDuplicateRow = useCallback((rowId: string) => {
-    const idx = tableV2.rows.findIndex((r) => r.id === rowId);
-    onUpdate(table.id, v2Updater((v2) => duplicateTableRow(v2, idx)));
-  }, [table.id, tableV2.rows, onUpdate]);
+  const handleRowAction = useCallback<RowActionHandler>((rowId, action) => {
+    const idx = rowIndexOf(rowId);
+    if (idx === -1) return;
+    switch (action) {
+      case "insert-row-above": onUpdate(table.id, v2Updater((v2) => insertTableRow(v2, idx))); return;
+      case "insert-row-below": onUpdate(table.id, v2Updater((v2) => insertTableRow(v2, idx + 1))); return;
+      case "duplicate-row": onUpdate(table.id, v2Updater((v2) => duplicateTableRow(v2, idx))); return;
+      case "move-row-up": onUpdate(table.id, v2Updater((v2) => moveTableRow(v2, idx, idx - 1))); return;
+      case "move-row-down": onUpdate(table.id, v2Updater((v2) => moveTableRow(v2, idx, idx + 1))); return;
+      case "hide-row": onUpdate(table.id, v2Updater((v2) => setRowHidden(v2, rowId, true))); return;
+      case "show-row": onUpdate(table.id, v2Updater((v2) => setRowHidden(v2, rowId, false))); return;
+      case "delete-row": onUpdate(table.id, v2Updater((v2) => removeTableRow(v2, idx))); return;
+      default:
+        return;
+    }
+  }, [rowIndexOf, table.id, onUpdate]);
 
-  const ctxClearRow = useCallback((rowId: string) => {
-    const idx = tableV2.rows.findIndex((r) => r.id === rowId);
-    onUpdate(table.id, v2Updater((v2) => clearTableRow(v2, idx)));
-  }, [table.id, tableV2.rows, onUpdate]);
-
-  const ctxDeleteRow = useCallback((rowId: string) => {
-    const idx = tableV2.rows.findIndex((r) => r.id === rowId);
-    onUpdate(table.id, v2Updater((v2) => removeTableRow(v2, idx)));
-  }, [table.id, tableV2.rows, onUpdate]);
+  const structure = useMemo<CellStructureActions>(() => ({
+    insertRowAbove: (rowId) => handleRowAction(rowId, "insert-row-above"),
+    insertRowBelow: (rowId) => handleRowAction(rowId, "insert-row-below"),
+    deleteRow: (rowId) => handleRowAction(rowId, "delete-row"),
+    insertColumnLeft: (columnId) => ctxInsertColumn(columnId, "left"),
+    insertColumnRight: (columnId) => ctxInsertColumn(columnId, "right"),
+    deleteColumn: ctxDeleteColumn,
+  }), [handleRowAction, ctxInsertColumn, ctxDeleteColumn]);
 
   /* ---- Group title editing ---- */
   const ctxRenameGroupTitle = useCallback((groupId: string, currentTitle: string) => {
@@ -1059,12 +1221,28 @@ export function TableEditorItem({
     cells: tableV2.rows.map((row) => getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation)),
     noWrap: tableV2.schema?.columnPresentation?.[column.id]?.noWrap,
   }))), [displayColumns, formulaResults, presentation, tableV2]);
-  // Each column also holds its handle, its letter and its menu beside the header.
-  const columnPixels = columnChars.map((chars) => Math.max(chars, EDITOR_MIN_COLUMN_CHARS) * EDITOR_CHAR_PX + EDITOR_HEADER_CHROME_PX);
+  // Each column also holds its handle, its letter and its menu beside the header; a width given by hand wins.
+  const columnPixels = displayColumns.map((column, index) =>
+    columnWidthOf(tableV2, column.id) ?? Math.max(columnChars[index], EDITOR_MIN_COLUMN_CHARS) * EDITOR_CHAR_PX + EDITOR_HEADER_CHROME_PX);
   const totalPixels = columnPixels.reduce((total, pixels) => total + pixels, 0) || 1;
   const widthOf = new Map(displayColumns.map((column, index) => [column.id, columnPixels[index]]));
   const getColumnWidth = (columnId: string): CSSProperties => ({ width: `${((widthOf.get(columnId) ?? 0) / totalPixels) * 100}%` });
   const tableMinWidth = totalPixels + EDITOR_ROW_CHROME_PX;
+
+  const headerProps = (columnId: string) => ({
+    column: tableV2.columns.find((c) => c.id === columnId)!,
+    letter: letterOf(columnId),
+    tableV2,
+    tableId: table.id,
+    readOnly,
+    formulaMode,
+    capability: resolveColumnCapability(columnId, tableV2.schema),
+    isOver: overColId === columnId,
+    isDragging: activeColId === columnId,
+    cellStyle: getColumnWidth(columnId),
+    onUpdate,
+    onColumnAction: handleColumnAction,
+  });
 
   return (
     <section className="rounded-lg border bg-muted/20 p-4" onKeyDown={handleKeyDown} tabIndex={-1} data-table-editor={table.id}>
@@ -1122,7 +1300,7 @@ export function TableEditorItem({
       {/* Hint */}
       {!readOnly && !formulaMode && (
         <p className="mb-2 text-[10px] text-muted-foreground">
-          Clic derecho para más opciones. Para calcular, escribe = en una celda, por ejemplo =B2*C2 o =SUMA(A1:A5).
+          Clic derecho en una celda, en un encabezado o en el número de fila para más opciones. Para calcular, escribe = en una celda, por ejemplo =B2*C2 o =SUMA(A1:A5); «10%» vale 0.10.
         </p>
       )}
 
@@ -1155,27 +1333,7 @@ export function TableEditorItem({
                       <TableHead className="w-6 p-0" rowSpan={2} />
                       {headerLayout.topRow.map((cell) => (
                         cell.kind === "column" ? (
-                          <SortableColumnHeader
-                            key={cell.columnId}
-                            column={tableV2.columns.find((c) => c.id === cell.columnId)!}
-                            letter={letterOf(cell.columnId)}
-                            tableV2={tableV2}
-                            tableId={table.id}
-                            readOnly={readOnly}
-                            formulaMode={formulaMode}
-                            capability={resolveColumnCapability(cell.columnId, tableV2.schema)}
-                            isOver={overColId === cell.columnId}
-                            isDragging={activeColId === cell.columnId}
-                            rowSpan={cell.rowSpan}
-                            cellStyle={getColumnWidth(cell.columnId)}
-                            onUpdate={onUpdate}
-                            onContextMenuRename={ctxRenameColumn}
-                            onContextMenuInsertLeft={ctxInsertColumnLeft}
-                            onContextMenuInsertRight={ctxInsertColumnRight}
-                            onContextMenuMove={ctxMoveColumn}
-                            onContextMenuClear={ctxClearColumn}
-                            onContextMenuDelete={ctxDeleteColumn}
-                          />
+                          <SortableColumnHeader key={cell.columnId} {...headerProps(cell.columnId)} rowSpan={cell.rowSpan} />
                         ) : (
                           <TableHead
                             key={cell.group.id}
@@ -1210,30 +1368,8 @@ export function TableEditorItem({
                     {headerLayout.bottomRow && (
                       <TableRow>
                           {headerLayout.bottomRow.map((colId) => {
-                            const column = tableV2.columns.find((c) => c.id === colId);
-                            if (!column) return null;
-                            return (
-                              <SortableColumnHeader
-                                key={colId}
-                                column={column}
-                                letter={letterOf(colId)}
-                                tableV2={tableV2}
-                                tableId={table.id}
-                                readOnly={readOnly}
-                                formulaMode={formulaMode}
-                                capability={resolveColumnCapability(colId, tableV2.schema)}
-                                isOver={overColId === colId}
-                                isDragging={activeColId === colId}
-                                cellStyle={getColumnWidth(colId)}
-                                onUpdate={onUpdate}
-                                onContextMenuRename={ctxRenameColumn}
-                                onContextMenuInsertLeft={ctxInsertColumnLeft}
-                                onContextMenuInsertRight={ctxInsertColumnRight}
-                                onContextMenuMove={ctxMoveColumn}
-                                onContextMenuClear={ctxClearColumn}
-                                onContextMenuDelete={ctxDeleteColumn}
-                              />
-                            );
+                            if (!tableV2.columns.some((c) => c.id === colId)) return null;
+                            return <SortableColumnHeader key={colId} {...headerProps(colId)} />;
                           })}
                       </TableRow>
                     )}
@@ -1243,26 +1379,7 @@ export function TableEditorItem({
                   <TableRow>
                     <TableHead className="w-6 p-0" />
                       {displayColumns.map((column) => (
-                        <SortableColumnHeader
-                          key={column.id}
-                          column={column}
-                          letter={letterOf(column.id)}
-                          tableV2={tableV2}
-                          tableId={table.id}
-                          readOnly={readOnly}
-                          formulaMode={formulaMode}
-                          capability={resolveColumnCapability(column.id, tableV2.schema)}
-                          isOver={overColId === column.id}
-                          isDragging={activeColId === column.id}
-                          cellStyle={getColumnWidth(column.id)}
-                          onUpdate={onUpdate}
-                          onContextMenuRename={ctxRenameColumn}
-                          onContextMenuInsertLeft={ctxInsertColumnLeft}
-                          onContextMenuInsertRight={ctxInsertColumnRight}
-                          onContextMenuMove={ctxMoveColumn}
-                          onContextMenuClear={ctxClearColumn}
-                          onContextMenuDelete={ctxDeleteColumn}
-                        />
+                        <SortableColumnHeader key={column.id} {...headerProps(column.id)} />
                       ))}
                     <TableHead className="w-8 p-0" />
                   </TableRow>
@@ -1276,6 +1393,7 @@ export function TableEditorItem({
                       key={row.id}
                       row={row}
                       rowIndex={rowIndex}
+                      rowCount={tableV2.rows.length}
                       tableV2={tableV2}
                       displayColumns={displayColumns}
                       tableId={table.id}
@@ -1286,12 +1404,9 @@ export function TableEditorItem({
                       isDragging={activeRowId === row.id}
                       onUpdate={onUpdate}
                       onFormulaCellClick={handleFormulaCellClick}
-                      onContextMenuInsertAbove={ctxInsertRowAbove}
-                      onContextMenuInsertBelow={ctxInsertRowBelow}
-                      onContextMenuDuplicate={ctxDuplicateRow}
-                      onContextMenuClear={ctxClearRow}
-                      onContextMenuDelete={ctxDeleteRow}
+                      onRowAction={handleRowAction}
                       onStartSelection={startFormulaMode}
+                      structure={structure}
                     />
                   ))}
                 </SortableContext>
