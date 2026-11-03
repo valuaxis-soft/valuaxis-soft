@@ -8,6 +8,8 @@ import type {
 import type { ComparableImportPreview, ImportBaseCounts } from "@/features/valuations/calculation/comparable-import";
 import type { ImportDestination } from "@/features/valuations/calculation/comparable-master";
 import type { ComparableCardDto, DuplicateMatchDto, ReviewRowDto } from "@/features/valuations/calculation/comparable-card.service";
+import type { BaseImportResult } from "@/features/valuations/calculation/market.service";
+import type { DeleteBaseOutcome } from "@/features/valuations/comparable-base/comparable-base-write.service";
 import type { DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
 import type { CalculationPrecision } from "@/features/valuations/calculation/calculation-precision";
 import type { CalculationPrecisionDto } from "@/features/valuations/calculation/calculation-precision.service";
@@ -293,6 +295,25 @@ export const api = {
         "/comparables/importar?confirmar=1",
         { file, reusar: JSON.stringify(reuse), unificar: JSON.stringify(merge), destino: destination, tipo: type },
       ),
+    /** "Nuevo comparable" kept in the base without a valuation; `mergeInto` answers "es el mismo" to one of the base. */
+    create: (type: ComparableType, comparable: ComparableFormValues, mergeInto?: string) =>
+      request<BaseImportResult>(`/comparables?tipo=${type}${mergeInto ? `&unificar=${encodeURIComponent(mergeInto)}` : ""}`, {
+        method: "POST", body: JSON.stringify(comparable),
+      }),
+    /** "Editar ficha": the id of the capture that shows the data now (a new one when the comparable was captured in a valuation). */
+    update: (comparableId: string, type: ComparableType, comparable: ComparableFormValues) =>
+      request<{ id: string; created: boolean }>(`/comparables/${comparableId}?tipo=${type}`, { method: "PUT", body: JSON.stringify(comparable) }),
+    remove: (comparableId: string) => request<DeleteBaseOutcome>(`/comparables/${comparableId}`, { method: "DELETE" }),
+    removeMany: (ids: string[]) => request<DeleteBaseOutcome>("/comparables/eliminar", { method: "POST", body: JSON.stringify({ ids }) }),
+    duplicate: (comparableId: string) => request<{ id: string; folio: number | null }>(`/comparables/${comparableId}/duplicar`, { method: "POST" }),
+    locate: (comparableId: string, coordinates: { latitude: number; longitude: number }) =>
+      request<{ latitude: number; longitude: number }>(`/comparables/${comparableId}/ubicacion`, { method: "PUT", body: JSON.stringify(coordinates) }),
+    duplicates: (probe: DuplicateProbe) => request<DuplicateMatchDto[]>("/comparables/duplicados", { method: "POST", body: JSON.stringify(probe) }),
+    uploadPhoto: (comparableId: string, file: File) => uploadForm<ComparableCardDto>(`/comparables/${comparableId}/fotos`, { file }),
+    deletePhoto: (comparableId: string, photoId: string) =>
+      request<ComparableCardDto>(`/comparables/${comparableId}/fotos?fotoId=${encodeURIComponent(photoId)}`, { method: "DELETE" }),
+    uploadScreenshot: (comparableId: string, file: File) => uploadForm<ComparableCardDto>(`/comparables/${comparableId}/pantalla`, { file }),
+    deleteScreenshot: (comparableId: string) => request<ComparableCardDto>(`/comparables/${comparableId}/pantalla`, { method: "DELETE" }),
   },
   ai: {
     extractListing: (id: ApiId, input: { text: string; url: string | null }) =>

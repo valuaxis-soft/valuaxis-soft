@@ -295,5 +295,5 @@ test("the template groups the advanced columns, freezes the first ones, and the 
   assert.equal(sheet.getCell(7, at("operation")).dataValidation?.errorStyle, "stop");
   const start = workbook.getWorksheet("INICIO")!;
   assert.match(String(start.getCell("A4").value), /INSTRUCCIONES BREVES/);
-  assert.match(String(start.getCell("A4").value), /Importar plantilla maestra/);
+  assert.match(String(start.getCell("A4").value), /Importar Excel/);
 });

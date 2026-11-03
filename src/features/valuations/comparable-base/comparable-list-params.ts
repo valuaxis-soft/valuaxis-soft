@@ -11,7 +11,10 @@ export const COMPARABLE_LIST_PAGE_SIZE = 25;
 const TEXT_MAX_LENGTH = 100;
 const MAX_PAGE = 10_000;
 
-export const COMPARABLE_SORTS = ["reciente", "antiguo", "precio_asc", "precio_desc", "superficie_asc", "superficie_desc", "numero"] as const;
+export const COMPARABLE_SORTS = [
+  "reciente", "antiguo", "precio_asc", "precio_desc", "superficie_asc", "superficie_desc", "numero", "numero_desc",
+  "ubicacion_asc", "ubicacion_desc", "tipo_asc", "tipo_desc", "vigencia_asc", "vigencia_desc",
+] as const;
 export type ComparableSort = (typeof COMPARABLE_SORTS)[number];
 export const COMPARABLE_SORT_LABELS: Record<ComparableSort, string> = {
   reciente: "Actualizados recientemente",
@@ -21,6 +24,13 @@ export const COMPARABLE_SORT_LABELS: Record<ComparableSort, string> = {
   superficie_asc: "Superficie: menor a mayor",
   superficie_desc: "Superficie: mayor a menor",
   numero: "Número (C-00001 primero)",
+  numero_desc: "Número (el más reciente primero)",
+  ubicacion_asc: "Ubicación: A a Z",
+  ubicacion_desc: "Ubicación: Z a A",
+  tipo_asc: "Tipo: terrenos primero",
+  tipo_desc: "Tipo: inmuebles primero",
+  vigencia_asc: "Vigencia: vence primero",
+  vigencia_desc: "Vigencia: vence al último",
 };
 
 /** How a count filter compares: exactly that many, at least or at most. */
@@ -44,6 +54,8 @@ export type ComparableListParams = {
   operation: OperationType | null;
   constructionType: string;
   landUse: string;
+  /** Words of the source or portal of the listing ("Inmuebles24"). */
+  source: string;
   /** An added characteristic of the comparable: its name and, optionally, words of its value. */
   attribute: string;
   attributeValue: string;
@@ -116,6 +128,7 @@ export function parseComparableListParams(searchParams: Record<string, RawParam>
     operation: oneOf(searchParams.operacion, OPERATION_TYPES, (raw) => raw.toUpperCase()),
     constructionType: textOf(searchParams.construccion),
     landUse: textOf(searchParams.uso),
+    source: textOf(searchParams.fuente),
     attribute: textOf(searchParams.caracteristica),
     attributeValue: textOf(searchParams.valorCaracteristica),
     landAreaMin: numberOf(searchParams.terrenoMin),
@@ -138,7 +151,7 @@ export function parseComparableListParams(searchParams: Record<string, RawParam>
 /** Whether any filter beyond the text and the order is set: the page opens its "Más filtros" then. */
 export function hasAdvancedFilters(params: ComparableListParams) {
   return Boolean(params.client || params.state || params.municipality || params.neighborhood || params.subdivision || params.postalCode
-    || params.types.length || params.operation || params.constructionType || params.landUse || params.attribute || params.attributeValue
+    || params.types.length || params.operation || params.constructionType || params.landUse || params.source || params.attribute || params.attributeValue
     || [params.landAreaMin, params.landAreaMax, params.builtAreaMin, params.builtAreaMax, params.bedrooms, params.bathrooms, params.priceMin, params.priceMax]
       .some((value) => value !== null)
     || params.from || params.to || params.validity);
@@ -163,6 +176,7 @@ export function buildComparableListHref(params: Partial<ComparableListParams>) {
   set("operacion", params.operation?.toLowerCase());
   set("construccion", params.constructionType);
   set("uso", params.landUse);
+  set("fuente", params.source);
   set("caracteristica", params.attribute);
   set("valorCaracteristica", params.attributeValue);
   set("terrenoMin", params.landAreaMin);

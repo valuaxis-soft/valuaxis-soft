@@ -71,9 +71,16 @@ export const URBAN_PROXIMITY_LABELS: Record<UrbanProximity, string> = {
   RURAL: "5 Rural",
 };
 
-/** Offered while typing the type of construction of a built comparable; any other text is kept as written. */
+/**
+ * Offered while typing the type of construction (the kind of good) of a built
+ * comparable; any other text is kept as written. The text is kept as the
+ * comparable's `constructionType` and filed under the nearest type of the
+ * inmuebles catalog (propertyTypeKeyOf): no catalog or enum changes for a
+ * new kind.
+ */
 export const CONSTRUCTION_TYPE_SUGGESTIONS = [
   "Casa habitación", "Departamento", "Local comercial", "Oficina", "Bodega", "Nave industrial", "Edificio", "Consultorio", "Hotel",
+  "Equipo y maquinaria",
 ];
 
 /**

@@ -47,6 +47,21 @@ export async function exportFirmBase(user: AuthUser, params: ComparableListParam
   return { buffer: await buildMasterWorkbook({ rows: values, destination: "BASE" }), count: values.length, total };
 }
 
+/** "Exportar selección": the comparables marked in the list, by number, in the same workbook as the whole base. */
+export async function exportFirmBaseSelection(user: AuthUser, comparableIds: string[]) {
+  const rows = await prisma.comparableAvaluo.findMany({
+    where: { UIdentificadorPublico: { in: comparableIds.slice(0, MAX_EXPORT_ROWS) }, ...inFirmBase(user.organizationId) },
+    include: { ...comparableInclude, tipoComparable: { select: { SClave: true } } },
+    orderBy: [{ propiedad: { IFolioComparable: "asc" } }, { IdComparableAvaluo: "asc" }],
+  });
+  const includeContact = canExportContact(user);
+  const values: Array<Record<string, MasterRowValue>> = [];
+  for (const row of rows) {
+    values.push(masterRowValues(await toComparableDto(row, false), row.tipoComparable.SClave as ComparableType, { valuationFolio: null, includeContact }));
+  }
+  return { buffer: await buildMasterWorkbook({ rows: values, destination: "BASE" }), count: values.length, total: values.length };
+}
+
 /**
  * The comparables of a valuation, of one market or of all of them, with its
  * folio: imported back into it, each row is recognized by its number.

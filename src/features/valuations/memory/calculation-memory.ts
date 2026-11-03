@@ -792,5 +792,6 @@ export function memoryComparableCards(
       validity: comparableValidity(comparable.updatedOn ?? today, today, comparable.validityMonths ?? market.comparableValidityMonths),
       warnings: [],
       uses: [],
+      history: [],
     })));
 }

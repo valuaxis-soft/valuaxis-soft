@@ -82,6 +82,10 @@ const VALIDITY_MONTHS = (firmMonths: number) => Prisma.sql`COALESCE(CASE WHEN js
 const VALID_UNTIL = (firmMonths: number) => Prisma.sql`(${DATA_DAY} + make_interval(months => ${VALIDITY_MONTHS(firmMonths)}))::date`;
 const OPERATION = Prisma.sql`COALESCE(c."JPropiedadSnapshot"->>'operationType', CASE WHEN t."SClave" LIKE '%RENTA' THEN 'RENTA' ELSE 'VENTA' END)`;
 
+/** The location as the list prints it, without accents or case, to sort it as a spreadsheet would. */
+const LOCATION = Prisma.sql`unaccent(lower(COALESCE(NULLIF(c."JDireccionSnapshot"->>'location', ''), p."SNombre", '')))`;
+
+/** The order of a header click. "Vigencia" needs the firm's months, so it is resolved per query. */
 const ORDER: Record<ComparableSort, Prisma.Sql> = {
   reciente: Prisma.sql`c."DFechaActualizacionDatos" DESC`,
   antiguo: Prisma.sql`c."DFechaActualizacionDatos" ASC`,
@@ -90,7 +94,21 @@ const ORDER: Record<ComparableSort, Prisma.Sql> = {
   superficie_asc: Prisma.sql`${AREA} ASC NULLS LAST`,
   superficie_desc: Prisma.sql`${AREA} DESC NULLS LAST`,
   numero: Prisma.sql`p."IFolioComparable" ASC NULLS LAST`,
+  numero_desc: Prisma.sql`p."IFolioComparable" DESC NULLS LAST`,
+  ubicacion_asc: Prisma.sql`${LOCATION} ASC`,
+  ubicacion_desc: Prisma.sql`${LOCATION} DESC`,
+  // The types in the order of the catalog: land, buildings, buildings for rent, land for rent.
+  tipo_asc: Prisma.sql`t."IOrden" ASC, t."SClave" ASC`,
+  tipo_desc: Prisma.sql`t."IOrden" DESC, t."SClave" DESC`,
+  // Replaced by the day of validity once the firm's months are known.
+  vigencia_asc: Prisma.sql`c."DFechaActualizacionDatos" ASC`,
+  vigencia_desc: Prisma.sql`c."DFechaActualizacionDatos" DESC`,
 };
+
+const orderOf = (sort: ComparableSort, firmMonths: number) =>
+  sort === "vigencia_asc" ? Prisma.sql`${VALID_UNTIL(firmMonths)} ASC`
+    : sort === "vigencia_desc" ? Prisma.sql`${VALID_UNTIL(firmMonths)} DESC`
+      : ORDER[sort];
 
 /**
  * The comparables of the organization's valuations, in the version each one
@@ -126,6 +144,18 @@ function attributeCondition(name: string, value: string): Prisma.Sql[] {
     ...wordsIn(Prisma.sql`unaccent(lower(COALESCE(attribute.item->>'value', '')))`, value || undefined),
   ];
   return matches.length ? [Prisma.sql`EXISTS (SELECT 1 FROM ${ATTRIBUTES} WHERE ${Prisma.join(matches, " AND ")})`] : [];
+}
+
+/** The sources or portals of the firm's comparables ("Inmuebles24"), for the filter to offer; at most 200. */
+export async function comparableSourceNames(organizationId: number): Promise<string[]> {
+  const rows = await prisma.$queryRaw<Array<{ name: string }>>(Prisma.sql`
+    SELECT DISTINCT ON (lower(c."JPublicacionSnapshot"->>'sourceName')) c."JPublicacionSnapshot"->>'sourceName' AS "name"
+    ${FIRM_BASE_FROM}
+    WHERE ${firmBaseCondition(organizationId)} AND COALESCE(c."JPublicacionSnapshot"->>'sourceName', '') <> ''
+    ORDER BY lower(c."JPublicacionSnapshot"->>'sourceName')
+    LIMIT 200
+  `);
+  return rows.map((row) => row.name);
 }
 
 /** The names of the characteristics added to the firm's comparables, for the filter and the capture to offer; at most 200. */
@@ -165,6 +195,7 @@ function conditions(params: ComparableListParams, today: string, firmMonths: num
     ...(params.operation ? [Prisma.sql`${OPERATION} = ${params.operation}`] : []),
     ...wordsIn(Prisma.sql`unaccent(lower(COALESCE(c."JPropiedadSnapshot"->>'constructionType', '')))`, params.constructionType || undefined),
     ...wordsIn(Prisma.sql`unaccent(lower(concat_ws(' ', c."JPropiedadSnapshot"->>'landUse', c."JPropiedadSnapshot"->>'landUseKey')))`, params.landUse || undefined),
+    ...wordsIn(Prisma.sql`unaccent(lower(COALESCE(c."JPublicacionSnapshot"->>'sourceName', '')))`, params.source || undefined),
     ...attributeCondition(params.attribute, params.attributeValue),
     ...range(LAND_AREA, params.landAreaMin, params.landAreaMax),
     ...range(BUILT_AREA, params.builtAreaMin, params.builtAreaMax),
@@ -228,7 +259,7 @@ export async function listComparableBase(
     JOIN "devpware_propiedades" p ON p."IdPropiedad" = c."IdPropiedad"
     JOIN "devpware_tipos_comparables" t ON t."IdTipoComparable" = c."IdTipoComparable"
     ${where.length ? Prisma.sql`WHERE ${Prisma.join(where, " AND ")}` : Prisma.empty}
-    ORDER BY ${ORDER[params.sort]}, c."IdComparableAvaluo" DESC
+    ORDER BY ${orderOf(params.sort, firmMonths)}, c."IdComparableAvaluo" DESC
     LIMIT ${pageSize} OFFSET ${(params.page - 1) * pageSize}
   `);
   // The query already filters by organization; a row of another one here is a bug, and nothing is returned.

@@ -1,4 +1,4 @@
-export type OrganizationAssetArea = "perfil" | "usuarios" | "avaluos" | "compartidos";
+export type OrganizationAssetArea = "perfil" | "usuarios" | "avaluos" | "compartidos" | "comparables";
 export type ComparableAssetArea = "imagenes" | "documentos";
 export type ValuationExportFormat = "pdf" | "word" | "excel";
 
@@ -110,6 +110,23 @@ export function buildComparableAssetKey(
     organizationUuid,
     valuationUuid,
     ["comparables", comparableUuid, area],
+    archivoUuid,
+    extension,
+  );
+}
+
+/** Images of a comparable kept in the firm's base without a valuation: under the organization, apart from any valuation. */
+export function buildBaseComparableAssetKey(
+  organizationUuid: string,
+  comparableUuid: string,
+  area: ComparableAssetArea,
+  archivoUuid: string,
+  extension: string,
+) {
+  return buildOrganizationAssetKey(
+    organizationUuid,
+    "comparables",
+    [comparableUuid, area],
     archivoUuid,
     extension,
   );

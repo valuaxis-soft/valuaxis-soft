@@ -34,10 +34,12 @@ function Filter({ label, htmlFor, children, className }: { label: string; htmlFo
  * The filters of the firm's base, as a plain GET form: it works without
  * JavaScript, every search goes back to page 1, and the URL can be shared.
  */
-export function ComparableBaseFilters({ params, attributeNames = [] }: {
+export function ComparableBaseFilters({ params, attributeNames = [], sourceNames = [] }: {
   params: ComparableListParams;
   /** Names of the characteristics added to the firm's comparables, to offer while typing. */
   attributeNames?: string[];
+  /** Sources or portals of the firm's comparables, to offer while typing. */
+  sourceNames?: string[];
 }) {
   return (
     <form action="/comparables" method="get" role="search" className="grid gap-3" aria-label="Buscar comparables">
@@ -102,6 +104,12 @@ export function ComparableBaseFilters({ params, attributeNames = [] }: {
           </Filter>
           <Filter label="Uso de suelo" htmlFor="filtro-uso">
             <Input id="filtro-uso" name="uso" defaultValue={params.landUse} maxLength={100} placeholder="Habitacional, H-3…" className="h-9" />
+          </Filter>
+          <Filter label="Fuente o portal" htmlFor="filtro-fuente">
+            <Input id="filtro-fuente" name="fuente" list="filtro-fuentes" defaultValue={params.source} maxLength={100} placeholder="Inmuebles24, Vivanuncios…" className="h-9" />
+            <datalist id="filtro-fuentes">
+              {sourceNames.map((item) => <option key={item} value={item} />)}
+            </datalist>
           </Filter>
           <Filter label="Característica agregada" htmlFor="filtro-caracteristica">
             <div className="flex items-center gap-1">

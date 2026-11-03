@@ -193,7 +193,7 @@ function fillStart(sheet: ExcelJS.Worksheet, input: { destination: ImportDestina
   sheet.mergeCells("A4:L4");
   sheet.getCell("A4").value = "INSTRUCCIONES BREVES:  ① Elige el destino aquí abajo.  ② En COMPARABLES llena una fila por anuncio: los encabezados "
     + "tienen colores por bloque y una nota con su regla; las listas aceptan otros valores en calidad, conservación, zona y similares.  "
-    + "③ Las columnas avanzadas están agrupadas: ábrelas con [+].  ④ En Valuaxis usa «Importar plantilla maestra» en Comparables o en el mercado del avalúo.";
+    + "③ Las columnas avanzadas están agrupadas: ábrelas con [+].  ④ En Valuaxis usa «Importar Excel» en Comparables o en el mercado del avalúo.";
   sheet.getCell("A4").alignment = { wrapText: true, vertical: "middle" };
   sheet.getCell("A4").font = { size: 10, color: { argb: NAVY } };
   sheet.getCell("A4").fill = fill(LIGHT);
@@ -243,7 +243,7 @@ function fillStart(sheet: ExcelJS.Worksheet, input: { destination: ImportDestina
   const steps: Array<[string, string]> = [
     ["1   DEFINIR DESTINO", "Elige «Ambos», «Solo avalúo» o «Solo base general». Para vincular comparables a un avalúo, anota su folio en la columna «Folio avalúo» de COMPARABLES."],
     ["2   CAPTURAR Y REVISAR", "Una fila por publicación en COMPARABLES. Marca «Aceptado» solo lo que verificaste; «Descartado» no se importa."],
-    ["3   IMPORTAR A VALUAXIS", "Usa «Importar plantilla maestra» en Comparables (va a la base y a los avalúos de sus folios) o en el enfoque de mercado del avalúo (va a ese avalúo); revisa errores, avisos y posibles duplicados, y confirma el destino."],
+    ["3   IMPORTAR A VALUAXIS", "Usa «Importar Excel» en Comparables (va a la base y a los avalúos de sus folios) o en el enfoque de mercado del avalúo (va a ese avalúo); revisa errores, avisos y posibles duplicados, y confirma el destino."],
   ];
   steps.forEach(([title, text], index) => {
     const row = 19 + index * 2;

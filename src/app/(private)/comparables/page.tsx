@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { DashboardHeader } from "@/features/dashboard/components/header";
-import { comparableAttributeNames, firmValidityMonths, listComparableBase } from "@/features/valuations/comparable-base/comparable-base.service";
+import { comparableAttributeNames, comparableSourceNames, firmValidityMonths, listComparableBase } from "@/features/valuations/comparable-base/comparable-base.service";
 import {
   COMPARABLE_LIST_PAGE_SIZE,
   buildComparableListHref,
@@ -36,10 +36,12 @@ export default async function ComparablesPage({
   if (!hasPermission(user, AUTH_PERMISSIONS.viewValuations)) redirect("/dashboard");
 
   const params = parseComparableListParams(await searchParams);
-  const [{ items, total }, months, attributeNames] = await Promise.all([
+  const canEdit = hasPermission(user, AUTH_PERMISSIONS.editValuations);
+  const [{ items, total }, months, attributeNames, sourceNames] = await Promise.all([
     listComparableBase(user.organizationId, params),
     firmValidityMonths(user.organizationId),
     comparableAttributeNames(user.organizationId),
+    comparableSourceNames(user.organizationId),
   ]);
   const pages = Math.max(1, Math.ceil(total / COMPARABLE_LIST_PAGE_SIZE));
   if (total > 0 && params.page > pages) redirect(buildComparableListHref({ ...params, page: pages }));
@@ -64,12 +66,12 @@ export default async function ComparablesPage({
               del despacho); uno vencido solo se marca, se puede seguir usando.
             </p>
           </div>
-          <ComparableBaseActions exportHref={exportHref} canImport={hasPermission(user, AUTH_PERMISSIONS.editValuations)} />
+          <ComparableBaseActions exportHref={exportHref} canEdit={canEdit} validityMonths={months} attributeNames={attributeNames} />
         </div>
 
         <Card className="rounded-2xl border-0 shadow-md shadow-primary/[0.03]">
           <CardContent className="grid gap-4 p-4 sm:p-6">
-            <ComparableBaseFilters params={params} attributeNames={attributeNames} />
+            <ComparableBaseFilters params={params} attributeNames={attributeNames} sourceNames={sourceNames} />
 
             {items.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-16 text-center">
@@ -85,14 +87,14 @@ export default async function ComparablesPage({
                     <MapPinned className="size-8 text-muted-foreground/40" aria-hidden="true" />
                     <p className="text-sm font-medium">Aún no hay comparables</p>
                     <p className="text-xs text-muted-foreground">
-                      Los comparables que captures o importes en un avalúo, o que importes a la base con la plantilla maestra, aparecerán aquí.
+                      Los comparables que captures aquí con «Nuevo comparable» o en un avalúo, o que importes de Excel, aparecerán aquí.
                     </p>
                   </>
                 )}
               </div>
             ) : (
               <>
-                <ComparableBaseTable items={items} />
+                <ComparableBaseTable items={items} params={params} userId={user.id} canEdit={canEdit} />
                 <nav aria-label="Paginación" className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                   <p>
                     {firstItem}–{lastItem} de {total} {total === 1 ? "comparable" : "comparables"} · Página {params.page} de {pages}
