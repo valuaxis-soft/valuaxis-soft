@@ -4,7 +4,7 @@
 
 import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
@@ -23,7 +23,6 @@ import {
   COMPARABLE_TYPES,
   DEMO_BOUNDS,
   NAMED_WAYS,
-  NO_MANUAL_STREETS,
   STREET_NAMES,
   SUBJECT_START,
   comparableDestinations,
@@ -36,16 +35,40 @@ import {
   isInsideDemoArea,
   passesFilters,
   summarizeNames,
-  toggleSideStreet,
   type ComparableKind,
   type DemoComparable,
   type LatLon,
-  type ManualStreets,
 } from "../geo";
 import { loadGoogleMaps } from "../google-maps-loader";
-import { DEFAULT_HIGHLIGHT_STYLES, type HighlightKey, type HighlightStyles } from "../static-map";
-import { DictamenPreview } from "./dictamen-preview";
-import type { MapViewProps, Stage } from "./map-view";
+import {
+  DEFAULT_HIGHLIGHT_STYLES,
+  STREET_CATEGORIES,
+  WEIGHT_RANGE,
+  highlightedWays,
+  isMacroZoom,
+  paintStreet,
+  seedPaint,
+  streetLabels,
+  type CategoryKey,
+  type HighlightKey,
+  type HighlightStyle,
+  type HighlightStyles,
+  type StreetPaint,
+} from "../highlights";
+import {
+  DEFAULT_NORTH_ARROW,
+  MACRO_FRAME,
+  MAP_CORNERS,
+  MICRO_FRAME,
+  NORTH_ARROW_STYLES,
+  frameFromView,
+  type MapCorner,
+  type NorthArrow as NorthArrowConfig,
+  type NorthArrowStyle,
+} from "../map-styles";
+import { DictamenPreview, type CroquisSnapshot } from "./dictamen-preview";
+import type { MapViewProps, MapViewState, Stage } from "./map-view";
+import { NorthArrow } from "./north-arrow";
 
 const mapLoading = () => <Skeleton className="h-[420px] w-full rounded-none sm:h-[560px]" />;
 const LeafletMapView = dynamic(() => import("./leaflet-map"), { ssr: false, loading: mapLoading });
@@ -57,14 +80,15 @@ const STAGES: { value: Stage; title: string; subtitle: string }[] = [
   { value: "etapa-3", title: "Etapa 3", subtitle: "Mapa de comparables" },
 ];
 
-const HIGHLIGHT_ROWS: { key: HighlightKey; title: string; min: number; max: number }[] = [
-  { key: "front", title: "Calle de frente", min: 3, max: 12 },
-  { key: "side", title: "Calles colindantes", min: 2, max: 10 },
-  { key: "main", title: "Vialidades principales", min: 2, max: 12 },
-];
+const HIGHLIGHT_TITLES: Record<HighlightKey, string> = {
+  front: "Calle de frente",
+  ...Object.fromEntries(STREET_CATEGORIES.map((category) => [category.key, category.title])),
+} as Record<HighlightKey, string>;
 
 /** Same seed, same 34 comparables on every visit. */
 const COMPARABLES = generateComparables();
+const START_DETECTION = detectStreets(SUBJECT_START, NAMED_WAYS);
+const START_PAINT = seedPaint(START_DETECTION);
 
 type MapMode = "loading" | "google" | "leaflet";
 
@@ -74,15 +98,6 @@ function subscribeHash(onChange: () => void) {
   return () => window.removeEventListener("hashchange", onChange);
 }
 const readStage = (hash: string): Stage => (STAGES.some((s) => `#${s.value}` === hash) ? (hash.slice(1) as Stage) : "etapa-1");
-
-function useDebounced<T>(value: T, delay: number) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
-}
 
 const firstValue = (value: number | readonly number[]) => (Array.isArray(value) ? value[0] : (value as number));
 const parsePrice = (text: string) => {
@@ -110,11 +125,16 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
   }, [googleMapsKey, nonce]);
 
   const [subject, setSubject] = useState<LatLon>(SUBJECT_START);
-  const [manual, setManual] = useState<ManualStreets>(NO_MANUAL_STREETS);
-  const detection = useMemo(() => detectStreets(subject, NAMED_WAYS, manual), [subject, manual]);
+  const detection = useMemo(() => detectStreets(subject, NAMED_WAYS), [subject]);
+  const [paint, setPaint] = useState<StreetPaint>(START_PAINT);
+  const [category, setCategory] = useState<CategoryKey>("principal");
   const [styles, setStyles] = useState<HighlightStyles>(DEFAULT_HIGHLIGHT_STYLES);
+  const [showNames, setShowNames] = useState(true);
+  const [clean, setClean] = useState(true);
+  const [northArrow, setNorthArrow] = useState<NorthArrowConfig>(DEFAULT_NORTH_ARROW);
   const [view, setView] = useState({ center: SUBJECT_START, zoom: 17, key: 0 });
   const [framing, setFraming] = useState<15 | 17>(17);
+  const liveView = useRef<MapViewState>({ center: SUBJECT_START, zoom: 17 });
   const [search, setSearch] = useState("");
 
   const [layers, setLayers] = useState<Record<ComparableKind, boolean>>(ALL_LAYERS);
@@ -126,7 +146,6 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
   const [selected, setSelected] = useState<DemoComparable | null>(null);
   const [destination, setDestination] = useState("");
   const [popupHost] = useState(() => (typeof document === "undefined" ? null : document.createElement("div")));
-  const [sheetKey, setSheetKey] = useState(0);
 
   const filters = useMemo(
     () => ({ layers, minPrice: parsePrice(minPrice), maxPrice: parsePrice(maxPrice), onlyCurrent }),
@@ -135,20 +154,28 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
   const shown = useMemo(() => COMPARABLES.filter((c) => passesFilters(c, filters)), [filters]);
   const near = useMemo(() => comparablesWithinRadius(shown, subject, radius), [shown, subject, radius]);
 
+  const highlights = useMemo(() => highlightedWays({ front: detection.front, paint }, styles), [detection.front, paint, styles]);
+  const labels = useMemo(() => (showNames ? streetLabels(highlights, subject) : []), [showNames, highlights, subject]);
+
   const moveSubject = useCallback((point: LatLon, recenter: boolean) => {
     setSubject(point);
-    setManual(NO_MANUAL_STREETS);
+    setPaint(seedPaint(detectStreets(point, NAMED_WAYS)));
     if (recenter) setView((v) => ({ center: point, zoom: 17, key: v.key + 1 }));
   }, []);
 
   const onStreetClick = useCallback(
     (name: string) => {
-      if (stage !== "etapa-2" || name === detection.front) return;
-      const next = toggleSideStreet(detection, manual, name);
-      setManual(next);
-      toast(detectStreets(subject, NAMED_WAYS, next).side.has(name) ? `${name}: colindante` : `${name}: ya no se resalta`);
+      if (stage !== "etapa-2") return;
+      if (name === detection.front) {
+        toast(`${name} es la calle de frente: siempre se resalta`);
+        return;
+      }
+      const next = paintStreet(paint, name, category, detection.front);
+      setPaint(next);
+      const painted = next.get(name);
+      toast(painted ? `${name}: ${HIGHLIGHT_TITLES[painted].toLowerCase()}` : `${name}: ya no se resalta`);
     },
-    [stage, detection, manual, subject],
+    [stage, detection.front, paint, category],
   );
 
   const selectComparable = useCallback((comparable: DemoComparable | null) => {
@@ -196,17 +223,55 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
     placeOnStreet(query);
   };
 
-  // The croquis follow the map a moment later, as the prototype did.
-  const sheetInput = useMemo(() => ({ stage, subject, detection, styles, shown }), [stage, subject, detection, styles, shown]);
-  const sheet = useDebounced(sheetInput, 250);
+  // What the croquis would carry if "Aplicar al croquis" were pressed now; the preview only changes when it is.
+  const liveKey = useMemo(
+    () => JSON.stringify({ subject, paint: [...paint], styles, showNames, clean, northArrow, comparables: shown.map((c) => c.ref) }),
+    [subject, paint, styles, showNames, clean, northArrow, shown],
+  );
+  const [applied, setApplied] = useState<{ key: string; snapshot: CroquisSnapshot }>(() => ({
+    key: liveKey,
+    snapshot: {
+      subject: SUBJECT_START,
+      front: START_DETECTION.front,
+      macro: MACRO_FRAME,
+      micro: MICRO_FRAME,
+      highlights: highlightedWays({ front: START_DETECTION.front, paint: START_PAINT }, DEFAULT_HIGHLIGHT_STYLES),
+      names: true,
+      clean: true,
+      northArrow: DEFAULT_NORTH_ARROW,
+      comparables: COMPARABLES,
+    },
+  }));
+  const pending = applied.key !== liveKey;
+
+  const applyToCroquis = () => {
+    const frame = frameFromView(liveView.current, subject);
+    const macro = isMacroZoom(frame.zoom);
+    setApplied((previous) => ({
+      key: liveKey,
+      snapshot: {
+        subject,
+        front: detection.front,
+        macro: macro ? frame : previous.snapshot.macro,
+        micro: macro ? previous.snapshot.micro : frame,
+        highlights,
+        names: showNames,
+        clean,
+        northArrow,
+        comparables: shown,
+      },
+    }));
+    toast.success("Croquis actualizado", { description: `Encuadre ${macro ? "macro" : "micro"} tomado del mapa, con resaltados y norte.` });
+  };
 
   const mapProps: MapViewProps = {
     stage,
     subject,
     onSubjectMove: (point) => moveSubject(point, false),
-    detection,
-    highlightStyles: styles,
+    highlights: stage === "etapa-2" ? highlights : [],
+    labels: stage === "etapa-2" ? labels : [],
     onStreetClick,
+    clean,
     comparables: shown,
     radius,
     showValuations,
@@ -214,6 +279,9 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
     onSelect: selectComparable,
     popupHost,
     view,
+    onViewChange: (next) => {
+      liveView.current = next;
+    },
     dark,
   };
 
@@ -221,11 +289,15 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
     window.location.hash = value;
   };
 
+  const updateStyle = (key: HighlightKey, patch: Partial<HighlightStyle>) => setStyles((s) => ({ ...s, [key]: { ...s[key], ...patch } }));
+
   const legendItems = (() => {
     const items: { label: string; swatch: React.ReactNode }[] = [{ label: "Inmueble sujeto", swatch: <Dot color="#c0392b" /> }];
     if (stage === "etapa-2") {
-      for (const row of HIGHLIGHT_ROWS) {
-        if (styles[row.key].on) items.push({ label: row.title, swatch: <span className="inline-block h-1 w-5 rounded-sm" style={{ background: styles[row.key].color }} /> });
+      for (const key of Object.keys(HIGHLIGHT_TITLES) as HighlightKey[]) {
+        if (styles[key].on && highlights.some((item) => item.key === key)) {
+          items.push({ label: HIGHLIGHT_TITLES[key], swatch: <span className="inline-block h-1 w-5 rounded-sm" style={{ background: styles[key].color }} /> });
+        }
       }
     } else if (stage === "etapa-3") {
       for (const type of COMPARABLE_TYPES) items.push({ label: type.name, swatch: <Dot color={type.color} /> });
@@ -236,6 +308,11 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
     }
     return items;
   })();
+
+  const paintedNames = (key: CategoryKey) => {
+    const names = new Set([...paint].filter(([, value]) => value === key).map(([name]) => name));
+    return names.size ? summarizeNames(names) : "Ninguna";
+  };
 
   return (
     <main className="mx-auto grid max-w-[1240px] gap-4 px-4 py-6">
@@ -269,8 +346,42 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
 
         <div className="mt-2 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_330px]">
           <div className="grid min-w-0 gap-4">
+            <div className="grid gap-2 rounded-xl border bg-card p-2.5 text-card-foreground">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+                <Label className="font-normal">
+                  <Checkbox checked={clean} onCheckedChange={(on) => setClean(on === true)} disabled={mode === "leaflet"} /> Mapa limpio
+                </Label>
+                <span className="inline-flex items-center gap-1.5">
+                  <Label htmlFor="demo-north-style" className="text-xs text-muted-foreground">
+                    Norte
+                  </Label>
+                  <NativeSelect id="demo-north-style" size="sm" value={northArrow.style} onChange={(event) => setNorthArrow((n) => ({ ...n, style: event.target.value as NorthArrowStyle }))}>
+                    {NORTH_ARROW_STYLES.map((style) => (
+                      <NativeSelectOption key={style.key} value={style.key}>
+                        {style.title}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                  <NativeSelect aria-label="Esquina del norte" size="sm" value={northArrow.corner} onChange={(event) => setNorthArrow((n) => ({ ...n, corner: event.target.value as MapCorner }))}>
+                    {MAP_CORNERS.map((corner) => (
+                      <NativeSelectOption key={corner.key} value={corner.key}>
+                        {corner.title}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </span>
+              </div>
+              {mode === "leaflet" && (
+                <p className="text-xs text-muted-foreground">
+                  Sin Google Maps el mapa se dibuja solo con las calles, así que no muestra negocios; con teselas de OpenStreetMap no se podrían quitar. «Mapa
+                  limpio» aplica al mapa de Google y a los croquis del dictamen.
+                </p>
+              )}
+            </div>
+
             <div className="relative isolate overflow-hidden rounded-xl border">
               {mode === "loading" ? mapLoading() : mode === "google" ? <GoogleMapView {...mapProps} /> : <LeafletMapView {...mapProps} />}
+              <NorthArrow {...northArrow} size={56} />
               <div className={`pointer-events-none absolute ${mode === "google" ? "bottom-8" : "bottom-2.5"} left-2.5 z-[500] grid max-w-[calc(100%-20px)] gap-1 rounded-lg border bg-card/95 px-2.5 py-2 text-xs text-card-foreground`}>
                 {legendItems.map((item) => (
                   <span key={item.label} className="inline-flex items-center gap-1.5">
@@ -282,28 +393,22 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
             </div>
 
             <section className="grid gap-2.5 rounded-xl border bg-card p-4 text-card-foreground">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="text-[15px] font-semibold">Así sale en el dictamen</h2>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSheetKey((k) => k + 1);
-                    toast("Croquis actualizado");
-                  }}
-                >
-                  Actualizar croquis
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-[15px] font-semibold">Así sale en el dictamen</h2>
+                  <p className="text-xs text-muted-foreground" role="status">
+                    {pending ? "Hay cambios en el mapa que todavía no están en el croquis." : "El croquis está al día con el mapa."}
+                  </p>
+                </div>
+                <Button variant={pending ? "default" : "outline"} size="sm" onClick={applyToCroquis}>
+                  Aplicar al croquis
                 </Button>
               </div>
-              <DictamenPreview
-                key={sheetKey}
-                apiKey={mode === "leaflet" ? null : googleMapsKey}
-                stage={sheet.stage}
-                subject={sheet.subject}
-                detection={sheet.detection}
-                highlightStyles={sheet.styles}
-                comparables={sheet.shown}
-              />
+              <DictamenPreview apiKey={mode === "leaflet" ? null : googleMapsKey} stage={stage} snapshot={applied.snapshot} />
+              <Note>
+                «Aplicar al croquis» fija en el dictamen el encuadre actual del mapa (en el croquis macro hasta zoom 16, en el micro a partir de 17), las
+                vialidades resaltadas, sus nombres y el norte. Hasta entonces el croquis no cambia.
+              </Note>
             </section>
           </div>
 
@@ -360,50 +465,36 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
                   ))}
                 </div>
               </div>
-              <Note>El croquis toma el encuadre y el zoom que elijas. Con «Actualizar croquis» se vuelve a generar la imagen que va en el dictamen.</Note>
+              <Note>Encuadra el mapa como quieras que salga (mueve y acerca) y pulsa «Aplicar al croquis». Cada encuadre, macro o micro, se guarda por separado.</Note>
             </TabsContent>
 
             <TabsContent value="etapa-2" className="grid gap-3.5">
               <PanelTitle title="Resaltar vialidades">
-                Se detectan solas a partir del pin. Toca una calle en el mapa para agregarla o quitarla como colindante.
+                Elige una categoría y toca las calles del mapa para pintarlas con ella; tócalas de nuevo para quitarlas. Con el encuadre macro solo se tocan
+                las avenidas.
               </PanelTitle>
-              {HIGHLIGHT_ROWS.map((row) => {
-                const style = styles[row.key];
-                const update = (patch: Partial<typeof style>) => setStyles((s) => ({ ...s, [row.key]: { ...s[row.key], ...patch } }));
-                const names =
-                  row.key === "front"
-                    ? (detection.front ?? "—")
-                    : row.key === "side"
-                      ? detection.side.size ? summarizeNames(detection.side) : "Ninguna"
-                      : detection.main.size ? summarizeNames(detection.main) : "Ninguna cerca";
-                return (
-                  <div key={row.key} className="grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded-lg border p-2">
-                    <Checkbox checked={style.on} onCheckedChange={(on) => update({ on })} aria-label={`Mostrar ${row.title.toLowerCase()}`} />
-                    <div className="min-w-0">
-                      <strong className="text-[13px]">{row.title}</strong>
-                      <small className="block text-[11.5px] text-muted-foreground">{names}</small>
-                    </div>
-                    <input
-                      type="color"
-                      value={style.color}
-                      onChange={(event) => update({ color: event.target.value })}
-                      aria-label={`Color de ${row.title.toLowerCase()}`}
-                      className="h-6 w-8 cursor-pointer rounded border border-input bg-transparent p-0"
-                    />
-                    <span className="col-span-3 flex items-center gap-2 text-xs text-muted-foreground">
-                      Grosor
-                      <Slider
-                        min={row.min}
-                        max={row.max}
-                        value={[style.weight]}
-                        onValueChange={(value) => update({ weight: firstValue(value) })}
-                        aria-label={`Grosor de ${row.title.toLowerCase()}`}
-                      />
-                    </span>
-                  </div>
-                );
-              })}
-              <Note>Colores y grosor quedan guardados en el avalúo y así se imprimen en el croquis.</Note>
+              <StyleRow title={HIGHLIGHT_TITLES.front} names={detection.front ?? "—"} style={styles.front} onChange={(patch) => updateStyle("front", patch)} />
+              <div role="radiogroup" aria-label="Categoría para pintar" className="grid gap-2">
+                <span className="text-xs font-semibold text-muted-foreground">Categoría para pintar</span>
+                {STREET_CATEGORIES.map((item) => (
+                  <StyleRow
+                    key={item.key}
+                    title={item.title}
+                    names={paintedNames(item.key)}
+                    style={styles[item.key]}
+                    onChange={(patch) => updateStyle(item.key, patch)}
+                    selected={category === item.key}
+                    onSelect={() => setCategory(item.key)}
+                  />
+                ))}
+              </div>
+              <Label className="text-[13px] font-normal">
+                <Checkbox checked={showNames} onCheckedChange={(on) => setShowNames(on === true)} /> Mostrar nombres
+              </Label>
+              <Note>
+                Al mover el pin se proponen de nuevo las avenidas cercanas y las calles colindantes. Colores, grosor y nombres quedan guardados en el avalúo y así
+                se imprimen en el croquis; en el macro solo salen las avenidas.
+              </Note>
             </TabsContent>
 
             <TabsContent value="etapa-3" className="grid gap-3.5">
@@ -512,6 +603,58 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
           popupHost,
         )}
     </main>
+  );
+}
+
+interface StyleRowProps {
+  title: string;
+  /** The streets drawn with this style. */
+  names: string;
+  style: HighlightStyle;
+  onChange: (patch: Partial<HighlightStyle>) => void;
+  /** Categories of the palette: the row is also the option to paint with. */
+  selected?: boolean;
+  onSelect?: () => void;
+}
+
+/** One highlight style: on/off, color and width; for a category, also whether it is the one to paint with. */
+function StyleRow({ title, names, style, onChange, selected, onSelect }: StyleRowProps) {
+  const lower = title.toLowerCase();
+  const text = (
+    <>
+      <strong className="text-[13px]">{title}</strong>
+      <small className="block text-[11.5px] text-muted-foreground">{names}</small>
+    </>
+  );
+  return (
+    <div className={`grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded-lg border p-2 ${selected ? "border-primary ring-2 ring-primary/30" : ""}`}>
+      <Checkbox checked={style.on} onCheckedChange={(on) => onChange({ on: on === true })} aria-label={`Mostrar ${lower}`} />
+      {onSelect ? (
+        <button type="button" role="radio" aria-checked={selected} onClick={onSelect} className="min-w-0 cursor-pointer rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {text}
+          {selected && <span className="block text-[11px] font-semibold text-primary">Toca calles para pintarlas así</span>}
+        </button>
+      ) : (
+        <div className="min-w-0">{text}</div>
+      )}
+      <input
+        type="color"
+        value={style.color}
+        onChange={(event) => onChange({ color: event.target.value })}
+        aria-label={`Color de ${lower}`}
+        className="h-6 w-8 cursor-pointer rounded border border-input bg-transparent p-0"
+      />
+      <span className="col-span-3 flex items-center gap-2 text-xs text-muted-foreground">
+        Grosor
+        <Slider
+          min={WEIGHT_RANGE.min}
+          max={WEIGHT_RANGE.max}
+          value={[style.weight]}
+          onValueChange={(value) => onChange({ weight: firstValue(value) })}
+          aria-label={`Grosor de ${lower}`}
+        />
+      </span>
+    </div>
   );
 }
 

@@ -68,4 +68,8 @@ export function basePalette(dark: boolean) {
 }
 
 export const SUBJECT_COLOR = "#c0392b";
+
+/** Street name next to a highlighted street: a white chip, readable over any map. Both renderers and the croquis use it. */
+export const STREET_LABEL_CLASS =
+  "rounded-sm! border-0! bg-white/95! px-1! py-px! text-[11px]! leading-4! font-semibold! text-[#12212f]! whitespace-nowrap! shadow-[0_0_0_1px_rgba(0,0,0,.18)]! before:hidden!";
 export const VALUATION_COLOR = "#0b3a5b";

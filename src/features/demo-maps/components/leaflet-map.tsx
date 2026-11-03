@@ -7,7 +7,6 @@ import { useEffect, useRef } from "react";
 
 import { DEMO_BOUNDS, DEMO_VALUATIONS, comparableType } from "../geo";
 import { basePalette, comparableCardHtml, escapeHtml, VALUATION_COLOR } from "../map-content";
-import { highlightedWays } from "../static-map";
 import {
   CARD_TOOLTIP_CLASS,
   comparableIcon,
@@ -39,7 +38,7 @@ export default function LeafletMapView(props: MapViewProps) {
     latest.current = props;
   });
 
-  const { stage, subject, detection, highlightStyles, comparables, radius, showValuations, selected, popupHost, view, dark } = props;
+  const { stage, subject, highlights, labels, comparables, radius, showValuations, selected, popupHost, view, dark } = props;
 
   // Created once; the effects below run after this one in the same commit.
   useEffect(() => {
@@ -48,7 +47,9 @@ export default function LeafletMapView(props: MapViewProps) {
     const [[south, west], [north, east]] = DEMO_BOUNDS;
     const bounds = L.latLngBounds([south, west], [north, east]).pad(0.05);
     const { center, zoom } = latest.current.view;
-    const map = L.map(container, { zoomControl: true, attributionControl: false, minZoom: 14, maxZoom: 18, maxBounds: bounds }).setView(latLng(center), zoom);
+    // Controls at the bottom right, so the corners stay free for the north arrow.
+    const map = L.map(container, { zoomControl: false, attributionControl: false, minZoom: 14, maxZoom: 18, maxBounds: bounds }).setView(latLng(center), zoom);
+    L.control.zoom({ position: "bottomright" }).addTo(map);
     createPanes(map);
     const marker = L.marker(latLng(latest.current.subject), { draggable: true, icon: subjectIcon(), zIndexOffset: 1000, title: "Inmueble sujeto", keyboard: true })
       .bindTooltip(SUBJECT_TITLE, { direction: "top", offset: [0, -24] })
@@ -56,6 +57,10 @@ export default function LeafletMapView(props: MapViewProps) {
     marker.on("dragend", () => {
       const { lat, lng } = marker.getLatLng();
       latest.current.onSubjectMove([lat, lng]);
+    });
+    map.on("moveend", () => {
+      const { lat, lng } = map.getCenter();
+      latest.current.onViewChange({ center: [lat, lng], zoom: map.getZoom() });
     });
     partsRef.current = { map, highlights: L.layerGroup().addTo(map), comparables: L.layerGroup().addTo(map), subject: marker };
     const resize = new ResizeObserver(() => map.invalidateSize());
@@ -86,8 +91,8 @@ export default function LeafletMapView(props: MapViewProps) {
   useEffect(() => {
     const parts = partsRef.current;
     if (!parts) return;
-    drawHighlights(parts.highlights, stage === "etapa-2" ? highlightedWays(detection, highlightStyles) : []);
-  }, [stage, detection, highlightStyles]);
+    drawHighlights(parts.highlights, highlights, labels);
+  }, [highlights, labels]);
 
   useEffect(() => {
     const parts = partsRef.current;

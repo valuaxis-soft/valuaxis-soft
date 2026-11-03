@@ -1,16 +1,25 @@
-import type { DemoComparable, LatLon, StreetDetection } from "../geo";
-import type { HighlightStyles } from "../static-map";
+import type { DemoComparable, LatLon } from "../geo";
+import type { HighlightedWay, StreetLabel } from "../highlights";
 
 export type Stage = "etapa-1" | "etapa-2" | "etapa-3";
+
+export interface MapViewState {
+  center: LatLon;
+  zoom: number;
+}
 
 /** What both map renderers (Google Maps and the drawn Leaflet map) receive. */
 export interface MapViewProps {
   stage: Stage;
   subject: LatLon;
   onSubjectMove: (point: LatLon) => void;
-  detection: StreetDetection;
-  highlightStyles: HighlightStyles;
+  /** Streets to paint, already in drawing order; empty outside etapa 2. */
+  highlights: readonly HighlightedWay[];
+  /** Names next to the highlighted streets; empty when hidden. */
+  labels: readonly StreetLabel[];
   onStreetClick: (name: string) => void;
+  /** Base map without points of interest or businesses (Google Maps only). */
+  clean: boolean;
   /** Already filtered. */
   comparables: readonly DemoComparable[];
   radius: number;
@@ -20,7 +29,9 @@ export interface MapViewProps {
   /** Element the page renders the "Agregar como comparable" form into. */
   popupHost: HTMLElement | null;
   /** A new key moves the map to this center and zoom. */
-  view: { center: LatLon; zoom: number; key: number };
+  view: MapViewState & { key: number };
+  /** The map reports where the user left it, for "Aplicar al croquis". */
+  onViewChange: (view: MapViewState) => void;
   dark: boolean;
 }
 
