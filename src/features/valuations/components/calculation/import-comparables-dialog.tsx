@@ -62,8 +62,8 @@ export type ImportScope =
  * file's INICIO says and the user confirms it; the preview shows each row's
  * errors, warnings, destination and possible duplicates before importing.
  */
-/** The same name everywhere: one template, the master one, wherever it is imported from. */
-const IMPORT_MASTER_LABEL = "Importar plantilla maestra";
+/** The same name everywhere («Importar Excel», decided 29 oct 2026): one template, the master one, wherever it is imported from. */
+const IMPORT_MASTER_LABEL = "Importar Excel";
 
 export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
   const [open, setOpen] = useState(false);

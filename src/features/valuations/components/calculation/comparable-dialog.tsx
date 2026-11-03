@@ -42,6 +42,7 @@ import { FormulaInput } from "./formula-input";
 import { ScreenshotSlot } from "./screenshot-slot";
 import { SheetFormSection } from "./comparable-sheet";
 import {
+  COMPARABLE_TYPES,
   COMPARABLE_TYPE_LABELS,
   MAX_COMPARABLE_ATTRIBUTES,
   NUMERIC_CHARACTERISTICS,
@@ -178,6 +179,8 @@ export function ComparableDialog(props: {
   defaultValidityMonths?: number;
   /** Names of the characteristics added to other comparables, offered while typing a new one. */
   attributeNames?: string[];
+  /** In the firm's base the comparable is not in a market: its type is chosen in the form. */
+  onTypeChange?: (type: ComparableType) => void;
 }) {
   const { comparable, readOnly } = props;
   const fields = props.characteristicFields.filter((field) => !TOP_FIELDS.has(field.key));
@@ -477,6 +480,19 @@ export function ComparableDialog(props: {
 
             <SheetFormSection title={built ? "Oferta, superficies y construcción" : "Oferta y superficie"}>
             <FieldGroup className="grid gap-3 sm:grid-cols-6">
+              {props.onTypeChange ? (
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="comparable-type">Tipo de comparable</FieldLabel>
+                  <NativeSelect
+                    id="comparable-type"
+                    className="w-full"
+                    value={props.comparableType}
+                    onChange={(event) => props.onTypeChange?.(event.target.value as ComparableType)}
+                  >
+                    {COMPARABLE_TYPES.map((item) => <NativeSelectOption key={item} value={item}>{COMPARABLE_TYPE_LABELS[item]}</NativeSelectOption>)}
+                  </NativeSelect>
+                </Field>
+              ) : null}
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-operation">Tipo de operación</FieldLabel>
                 <NativeSelect id="comparable-operation" className="w-full" value={draft.operationType} onChange={set("operationType")}>
