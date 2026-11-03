@@ -404,6 +404,9 @@ export function parseDecimal(value: string): number | null {
   if (trimmed.startsWith("=")) return evaluateFormula(trimmed.replace(/^(=\s*)+/, ""));
   const cleaned = trimmed.replace(/[$,\s]/g, "");
   if (!cleaned) return null;
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) ? parsed : null;
+  // "10%" and "10 %" are a tenth, as in a spreadsheet; "-5%" is -0.05.
+  const percent = cleaned.endsWith("%");
+  const parsed = Number(percent ? cleaned.slice(0, -1) : cleaned);
+  if (!Number.isFinite(parsed) || (percent && !cleaned.slice(0, -1))) return null;
+  return percent ? parsed / 100 : parsed;
 }

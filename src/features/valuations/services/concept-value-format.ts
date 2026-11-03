@@ -290,14 +290,38 @@ export function formatNumericValue(
   return unit ? `${formattedNumber} ${unit}` : rawValue;
 }
 
-export function normalizeNumericConceptInput(value: string) {
-  return normalizeNumericInput(value);
+/**
+ * What a numeric concept stores for what was typed. "10%" typed in a concept
+ * shown as a percentage is "10" (it prints "10 %"); typed in any other
+ * numeric concept it is the fraction, "0.1", as a spreadsheet reads it.
+ */
+export function normalizeNumericConceptInput(value: string, concept?: Pick<Concept, "type" | "valueFormat">) {
+  return normalizeNumericInput(value, { percentUnit: concept !== undefined && resolveConceptValueFormat(concept) === "percent" });
 }
 
-export function normalizeNumericInput(value: string) {
+/**
+ * A percentage typed with its sign, as a number: "10%" and "10 %" are "0.1",
+ * "-5%" is "-0.05"; with `percentUnit` the field itself shows "%", so "10%"
+ * is "10". Null when the text is not a percentage.
+ */
+function percentInput(value: string, percentUnit: boolean): string | null {
+  const match = /^(-?)\s*(\d[\d,]*\.?\d*|\.\d+)\s*%$/.exec(value.trim());
+  if (!match) return null;
+  const [, sign, digits] = match;
+  const magnitude = Number(digits.replace(/,/g, ""));
+  if (!Number.isFinite(magnitude)) return null;
+  if (percentUnit) return `${sign}${digits.replace(/,/g, "")}`;
+  // Divided as written in decimal, so 10% is 0.1 and not 0.1000000000000001.
+  const fraction = Number(`${magnitude}e-2`);
+  return `${sign}${String(fraction)}`;
+}
+
+export function normalizeNumericInput(value: string, options: { percentUnit?: boolean } = {}) {
   let normalized = value.trim();
   // Remove optional $ currency prefix (MXN canonical)
   normalized = normalized.replace(/^\$\s*/, "");
+  const percent = percentInput(normalized, options.percentUnit === true);
+  if (percent !== null) return percent;
 
   // Allow intermediate editing states that are prefixes of valid numbers:
   // "" "-" "-12" "12" "12." "12.5" "1,234" "1,234." "1,234.5"

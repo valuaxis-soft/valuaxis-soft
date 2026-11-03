@@ -14,6 +14,9 @@ import { DEFAULT_NUMBER_PRESENTATION, withoutThousandsSeparator, type NumberPres
 import {
   getDisplayColumns,
   isHomologationFactorColumn,
+  isNumericCell,
+  readTypedNumber,
+  tableDecimals,
   type TableV2,
   type TableRow,
   type TableCellFormat,
@@ -87,19 +90,10 @@ const TEXT: SourceValue = { kind: "text" };
 export function readSourceNumber(text: string): SourceValue {
   const written = String(text ?? "").trim();
   if (!written || written === "—" || written === "-") return BLANK;
-  const match = /^(-?)\s*\$?\s*(-?)\s*(\d[\d,]*\.?\d*|\.\d+)\s*(.*)$/.exec(written);
-  if (!match) return TEXT;
-  const [, signBefore, signAfter, digits, suffix] = match;
-  // A unit follows the number ("m²", "MXN", "%"); more figures mean a date, a range or an address.
-  if (suffix.length > 16 || /\d/.test(suffix)) return TEXT;
-  const magnitude = Number(digits.replace(/,/g, ""));
-  if (!Number.isFinite(magnitude)) return TEXT;
-  const signed = signBefore || signAfter ? -magnitude : magnitude;
-  return {
-    kind: "number",
-    value: suffix.startsWith("%") ? signed / 100 : signed,
-    money: written.includes("$") || /^(mxn|pesos)\b/i.test(suffix),
-  };
+  // A unit may follow the number ("m²", "MXN", "%"); more figures mean a date, a range or an address.
+  const value = readTypedNumber(written);
+  if (value === null) return TEXT;
+  return { kind: "number", value, money: written.includes("$") || /\d\s*(mxn|pesos)\b/i.test(written) };
 }
 
 /* ================================================================== */
@@ -651,10 +645,17 @@ export function getCellDisplayValue(
   if (!cell) return "";
 
   const factor = isHomologationFactorColumn(table, columnId);
+  const decimals = tableDecimals(table);
   if (cell.kind === "value") {
+    // A number typed in a cell or a column given a format is written as the format says; "abc" there stays as typed, marked.
+    const format = cell.format ?? table.columns.find((column) => column.id === columnId)?.format;
+    if (format && format.type !== "text" && isNumericCell(table, columnId, cell)) {
+      const written = readSourceNumber(cell.value);
+      if (written.kind === "number") return formatFormulaNumber(written.value, format, written.money, presentation);
+    }
     // A factor written as a plain number shows two decimals: "0.9" reads "0.90". What it is worth does not change.
     const written = factor ? readSourceNumber(cell.value) : null;
-    if (written?.kind === "number" && !written.money && !cell.value.includes("%")) return formatFactor(written.value, presentation);
+    if (written?.kind === "number" && !written.money && !cell.value.includes("%")) return formatFactor(written.value, presentation, decimals);
     return presentation.thousandsSeparator ? cell.value : withoutThousandsSeparator(cell.value);
   }
 
@@ -663,15 +664,19 @@ export function getCellDisplayValue(
   if (!result) return "#PENDING";
   if (!result.ok) return formulaErrorLabel(result.error);
   // The resultant factor and any factor computed by a formula show two decimals unless the cell was given a format.
-  if (factor && !cell.format && !result.money) return formatFactor(result.value, presentation);
+  if (factor && !cell.format && !result.money) return formatFactor(result.value, presentation, decimals);
+  // The table's decimals apply to every result without a format of its own.
+  if (!cell.format && decimals !== undefined) {
+    return formatFormulaNumber(result.value, { type: result.money ? "currency" : "number", precision: decimals }, result.money === true, presentation);
+  }
   return formatFormulaNumber(result.value, cell.format, result.money === true, presentation);
 }
 
 /** Decimals a homologation factor is shown with, in the editor and in print; it is computed with all of them. */
 export const HOMOLOGATION_FACTOR_DECIMALS = 2;
 
-function formatFactor(value: number, presentation: NumberPresentation) {
-  return formatFormulaNumber(value, { type: "number", precision: HOMOLOGATION_FACTOR_DECIMALS }, false, presentation);
+function formatFactor(value: number, presentation: NumberPresentation, decimals = HOMOLOGATION_FACTOR_DECIMALS) {
+  return formatFormulaNumber(value, { type: "number", precision: decimals }, false, presentation);
 }
 
 /** Longest tail of decimals a result shows when nothing says how many; REDONDEAR asks for fewer. */
