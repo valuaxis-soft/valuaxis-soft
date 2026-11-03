@@ -55,9 +55,9 @@ export function DocumentPageFormatControl({
           }}
         >
           <NativeSelectOption value="filled">Barra azul</NativeSelectOption>
-          <NativeSelectOption value="outline">Sin relleno (texto con línea)</NativeSelectOption>
+          <NativeSelectOption value="outline">Fondo blanco (título con marco)</NativeSelectOption>
         </NativeSelect>
-        <FieldDescription>Las barras de título de los bloques se imprimen {titleBars === "outline" ? "sin relleno, con texto oscuro y una línea fina" : "en azul"}.</FieldDescription>
+        <FieldDescription>Los títulos de los bloques se imprimen {titleBars === "outline" ? "en azul sobre blanco, con un marco fino, como el recuadro del folio" : "en una barra azul, sin marco"}.</FieldDescription>
       </Field>
       <Field className="gap-1.5">
         <FieldLabel htmlFor="document-title-band">Banda «Dictamen valuatorio»</FieldLabel>

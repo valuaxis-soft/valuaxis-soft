@@ -19,6 +19,7 @@ import {
 } from "@/features/valuations/services/valuation-signatures";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { formatValuationFolio, normalizeFolioPrefix } from "../firm-rules";
+import { CustomUnitsCard } from "./custom-units-card";
 import type { FirmSettingsDto } from "../firm.service";
 import { COMPARABLE_VALIDITY_MONTHS } from "@/features/valuations/calculation/comparable-validity";
 
@@ -241,6 +242,8 @@ export function FirmSettingsForm() {
           </Field>
         </CardContent>
       </Card>
+
+      <CustomUnitsCard />
 
       <div className="flex justify-end">
         <Button type="submit" disabled={busy !== null}>

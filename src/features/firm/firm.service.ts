@@ -16,7 +16,7 @@ import { Prisma } from "@prisma/client";
 import { resolveFactorCatalog, type FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 import { resolveSignatures, signatureErrors } from "@/features/valuations/services/valuation-signatures";
 import { addCustomFactorTo, resolveCustomFactors, type CustomFactor } from "./custom-factors";
-import { addCustomUnitTo, resolveCustomUnits } from "./custom-units";
+import { addCustomUnitTo, removeCustomUnitFrom, renameCustomUnitIn, resolveCustomUnits } from "./custom-units";
 import { todayInMexico } from "./firm-rules";
 import type { FirmSettingsInput } from "./firm-schemas";
 
@@ -291,6 +291,50 @@ export async function addCustomUnit(user: AuthUser, unit: string): Promise<strin
     action: "CUSTOM_UNIT_ADD",
     result: "EXITOSO",
     metadata: { unit: next.units.at(-1) },
+  });
+  return next.units;
+}
+
+/** Writes a unit of the firm under another name; the concepts that use it keep the name they had. */
+export async function renameCustomUnit(user: AuthUser, unit: string, nextUnit: string): Promise<string[]> {
+  const organization = await findOrganization(user.organizationId);
+  const next = renameCustomUnitIn(resolveCustomUnits(organization.JUnidadesPersonalizadas), unit, nextUnit);
+  if (!next.renamed) return next.units;
+  await prisma.organizacion.update({
+    where: { IdOrganizacion: organization.IdOrganizacion },
+    data: { JUnidadesPersonalizadas: next.units },
+  });
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    organizationId: organization.IdOrganizacion,
+    userId: user.id,
+    entity: "Organizacion",
+    entityId: String(organization.IdOrganizacion),
+    action: "CUSTOM_UNIT_RENAME",
+    result: "EXITOSO",
+    metadata: { unit, nextUnit },
+  });
+  return next.units;
+}
+
+/** Takes a unit out of the firm's list; the concepts that use it keep it as "Otra unidad". */
+export async function removeCustomUnit(user: AuthUser, unit: string): Promise<string[]> {
+  const organization = await findOrganization(user.organizationId);
+  const next = removeCustomUnitFrom(resolveCustomUnits(organization.JUnidadesPersonalizadas), unit);
+  if (!next.removed) return next.units;
+  await prisma.organizacion.update({
+    where: { IdOrganizacion: organization.IdOrganizacion },
+    data: { JUnidadesPersonalizadas: next.units },
+  });
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    organizationId: organization.IdOrganizacion,
+    userId: user.id,
+    entity: "Organizacion",
+    entityId: String(organization.IdOrganizacion),
+    action: "CUSTOM_UNIT_REMOVE",
+    result: "EXITOSO",
+    metadata: { unit },
   });
   return next.units;
 }

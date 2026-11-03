@@ -107,10 +107,11 @@ const STANDARD_THEME: DocumentThemeTokens = {
 
 /**
  * Block title bars without the blue fill, for the documents that ask for it:
- * dark text over a thin rule, of the same size as the bar.
+ * blue text on white inside a thin blue frame, like the folio box of the
+ * header (video 5.1). The filled bar has no frame: just the blue band.
  */
 const OUTLINE_SECTION_TITLE =
-  "mb-1 border-b border-[#00285A] pb-px text-center text-[11px] font-bold uppercase leading-tight text-[#00285A]";
+  "mb-1 border border-[#00285A] bg-white px-3 py-0.5 text-center text-[11px] font-bold uppercase leading-tight text-[#00285A]";
 
 /* ── Theme map ─────────────────────────────────────────────────── */
 const THEMES: Record<DocumentThemeVariant, DocumentThemeTokens> = {
