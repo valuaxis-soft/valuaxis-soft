@@ -1,11 +1,13 @@
 import L from "leaflet";
 
-import { STREET_DATA, type DemoComparable, type LatLon, type StreetWay } from "../geo";
-import { escapeHtml, type BasePalette, SUBJECT_COLOR } from "../map-content";
-import type { HighlightStyle } from "../static-map";
+import { STREET_DATA, type DemoComparable, type LatLon } from "../geo";
+import { isMacroZoom, isMainRoad, type HighlightedWay, type StreetLabel } from "../highlights";
+import { escapeHtml, type BasePalette, STREET_LABEL_CLASS, SUBJECT_COLOR } from "../map-content";
 
 export const latLng = (p: LatLon): L.LatLngTuple => [p[0], p[1]];
 const path = (points: readonly LatLon[]) => points.map(latLng);
+
+const MINOR_HIT_PANE = "demo-hit-minor";
 
 /** Panes keep the drawn base under the highlights, whatever is redrawn first. */
 export function createPanes(map: L.Map) {
@@ -13,6 +15,14 @@ export function createPanes(map: L.Map) {
   map.createPane("demo-highlights").style.zIndex = "420";
   // Invisible wide lines over everything drawn, so a thin street is easy to touch.
   map.createPane("demo-hit").style.zIndex = "430";
+  // Streets other than avenues can only be touched at micro zoom.
+  map.createPane(MINOR_HIT_PANE).style.zIndex = "430";
+  const sync = () => {
+    const pane = map.getPane(MINOR_HIT_PANE);
+    if (pane) pane.style.display = isMacroZoom(map.getZoom()) ? "none" : "";
+  };
+  map.on("zoomend", sync);
+  sync();
 }
 
 const LABEL_CLASS = "bg-transparent! border-0! shadow-none! p-0! before:hidden! whitespace-nowrap text-[11px] font-semibold";
@@ -41,7 +51,7 @@ export function drawBase(
     for (const way of byRank(rank)) {
       L.polyline(path(way.g), { pane, color: big ? palette.avenue : palette.road, weight: big ? 6.5 : rank === 3 ? 4 : 2.8, lineCap: "round", interactive: false }).addTo(group);
       if (onStreet && way.n) {
-        L.polyline(path(way.g), { pane: "demo-hit", color: "#000", opacity: 0, weight: 16, lineCap: "round", className: "outline-none" })
+        L.polyline(path(way.g), { pane: isMainRoad(way) ? "demo-hit" : MINOR_HIT_PANE, color: "#000", opacity: 0, weight: 16, lineCap: "round", className: "outline-none" })
           .bindTooltip(escapeHtml(way.n), { sticky: true })
           .on("click", () => onStreet(way.n))
           .addTo(group);
@@ -67,10 +77,17 @@ export function drawBase(
   return group;
 }
 
-export function drawHighlights(group: L.LayerGroup, items: readonly { way: StreetWay; style: HighlightStyle }[]) {
+/** The highlighted streets and, next to each one, its name on a white chip. */
+export function drawHighlights(group: L.LayerGroup, items: readonly HighlightedWay[], labels: readonly StreetLabel[] = []) {
   group.clearLayers();
   for (const { way, style } of items) {
     L.polyline(path(way.g), { pane: "demo-highlights", color: style.color, weight: style.weight, opacity: 0.9, lineCap: "round", interactive: false }).addTo(group);
+  }
+  for (const label of labels) {
+    L.tooltip({ permanent: true, direction: "top", offset: [0, -6], className: STREET_LABEL_CLASS, interactive: false, opacity: 1 })
+      .setLatLng(latLng(label.point))
+      .setContent(`<span style="border-left:3px solid ${label.color};padding-left:4px">${escapeHtml(label.name)}</span>`)
+      .addTo(group);
   }
 }
 

@@ -69,14 +69,6 @@ export function isInsideDemoArea(p: LatLon) {
 /*  Etapa 2: streets around the subject                                */
 /* ------------------------------------------------------------------ */
 
-/** Streets the user added or removed by touching them on the map. */
-export interface ManualStreets {
-  add: ReadonlySet<string>;
-  remove: ReadonlySet<string>;
-}
-
-export const NO_MANUAL_STREETS: ManualStreets = { add: new Set(), remove: new Set() };
-
 export interface StreetDetection {
   front: string | null;
   side: ReadonlySet<string>;
@@ -90,10 +82,10 @@ export const MAIN_ROAD_METERS = 900;
 
 /**
  * The front street is the closest named street; adjoining streets are the
- * others within 110 m, plus the ones added by hand and minus the ones removed;
- * main roads are rank 1–2 streets within 900 m that are neither.
+ * others within 110 m; main roads are rank 1–2 streets within 900 m that are
+ * neither. The appraiser then paints streets by category on top of this.
  */
-export function detectStreets(p: LatLon, ways: readonly StreetWay[], manual: ManualStreets = NO_MANUAL_STREETS): StreetDetection {
+export function detectStreets(p: LatLon, ways: readonly StreetWay[]): StreetDetection {
   let front: string | null = null;
   let best = Infinity;
   for (const way of ways) {
@@ -105,28 +97,11 @@ export function detectStreets(p: LatLon, ways: readonly StreetWay[], manual: Man
   }
   const side = new Set<string>();
   for (const way of ways) if (way.n !== front && wayDistance(p, way) < SIDE_STREET_METERS) side.add(way.n);
-  manual.add.forEach((name) => side.add(name));
-  manual.remove.forEach((name) => side.delete(name));
   const main = new Set<string>();
   for (const way of ways) {
     if (way.r <= 2 && way.n !== front && !side.has(way.n) && wayDistance(p, way) < MAIN_ROAD_METERS) main.add(way.n);
   }
   return { front, side, main };
-}
-
-/** Touching a street toggles it as adjoining. The front street stays as it is. */
-export function toggleSideStreet(detection: StreetDetection, manual: ManualStreets, name: string): ManualStreets {
-  if (name === detection.front) return manual;
-  const add = new Set(manual.add);
-  const remove = new Set(manual.remove);
-  if (detection.side.has(name)) {
-    add.delete(name);
-    remove.add(name);
-  } else {
-    remove.delete(name);
-    add.add(name);
-  }
-  return { add, remove };
 }
 
 /** "A, B, C, D y 2 más". */

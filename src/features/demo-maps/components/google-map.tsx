@@ -5,8 +5,9 @@
 import { useEffect, useRef } from "react";
 
 import { DEMO_VALUATIONS, NAMED_WAYS, comparableType, type LatLon } from "../geo";
-import { comparableCardHtml, escapeHtml, SUBJECT_COLOR, VALUATION_COLOR } from "../map-content";
-import { highlightedWays } from "../static-map";
+import { isMacroZoom, isMainRoad } from "../highlights";
+import { comparableCardHtml, escapeHtml, STREET_LABEL_CLASS, SUBJECT_COLOR, VALUATION_COLOR } from "../map-content";
+import { CLEAN_MAP_STYLES } from "../map-styles";
 import { RADIUS_COLOR, SUBJECT_TITLE, type MapViewProps } from "./map-view";
 
 const toLatLng = (p: LatLon): google.maps.LatLngLiteral => ({ lat: p[0], lng: p[1] });
@@ -14,6 +15,9 @@ const toLatLng = (p: LatLon): google.maps.LatLngLiteral => ({ lat: p[0], lng: p[
 const SUBJECT_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40" viewBox="0 0 30 40"><path d="M15 38C15 38 3 23 3 14a12 12 0 0 1 24 0c0 9-12 24-12 24z" fill="${SUBJECT_COLOR}" stroke="#fff" stroke-width="3"/><circle cx="15" cy="14" r="4" fill="#fff"/></svg>`,
 )}`;
+
+/** `styles` is mutable in the API's types; the rules themselves never change. */
+const mapStyles = (clean: boolean) => (clean ? CLEAN_MAP_STYLES.map((rule) => ({ ...rule, stylers: [...rule.stylers] })) : null);
 
 interface GoogleParts {
   map: google.maps.Map;
@@ -33,7 +37,7 @@ export default function GoogleMapView(props: MapViewProps) {
     latest.current = props;
   });
 
-  const { stage, subject, detection, highlightStyles, comparables, radius, showValuations, selected, popupHost, view } = props;
+  const { stage, subject, highlights, labels, clean, comparables, radius, showValuations, selected, popupHost, view } = props;
 
   // Created once; the effects below run after this one in the same commit.
   useEffect(() => {
@@ -45,7 +49,10 @@ export default function GoogleMapView(props: MapViewProps) {
       mapTypeControl: false,
       streetViewControl: false,
       fullscreenControl: true,
+      // Bottom right, next to the zoom, so the corners stay free for the north arrow.
+      fullscreenControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
       clickableIcons: false,
+      styles: mapStyles(latest.current.clean),
     });
     const marker = new google.maps.Marker({
       map,
@@ -59,6 +66,11 @@ export default function GoogleMapView(props: MapViewProps) {
       const position = marker.getPosition();
       if (position) latest.current.onSubjectMove([position.lat(), position.lng()]);
     });
+    map.addListener("idle", () => {
+      const center = map.getCenter();
+      const zoom = map.getZoom();
+      if (center && zoom !== undefined) latest.current.onViewChange({ center: [center.lat(), center.lng()], zoom });
+    });
     partsRef.current = {
       map,
       subject: marker,
@@ -66,6 +78,7 @@ export default function GoogleMapView(props: MapViewProps) {
       popup: new google.maps.InfoWindow(),
     };
     return () => {
+      google.maps.event.clearInstanceListeners(map);
       google.maps.event.clearInstanceListeners(marker);
       marker.setMap(null);
       partsRef.current = null;
@@ -73,12 +86,16 @@ export default function GoogleMapView(props: MapViewProps) {
   }, []);
 
   useEffect(() => {
+    partsRef.current?.map.setOptions({ styles: mapStyles(clean) });
+  }, [clean]);
+
+  useEffect(() => {
     const marker = partsRef.current?.subject;
     const position = marker?.getPosition();
     if (marker && (position?.lat() !== subject[0] || position?.lng() !== subject[1])) marker.setPosition(toLatLng(subject));
   }, [subject]);
 
-  // Etapa 2: every named street can be touched to add or remove it as adjoining.
+  // Etapa 2: every named street can be touched to paint it; at macro zoom, only the avenues.
   useEffect(() => {
     const parts = partsRef.current;
     if (!parts || stage !== "etapa-2") return;
@@ -95,11 +112,18 @@ export default function GoogleMapView(props: MapViewProps) {
         parts.hover.close();
       });
       line.addListener("click", () => latest.current.onStreetClick(way.n));
-      return line;
+      return { way, line };
     });
+    const sync = () => {
+      const macro = isMacroZoom(parts.map.getZoom() ?? 17);
+      for (const { way, line } of lines) line.setVisible(!macro || isMainRoad(way));
+    };
+    const listener = parts.map.addListener("zoom_changed", sync);
+    sync();
     return () => {
+      listener.remove();
       parts.hover.close();
-      for (const line of lines) {
+      for (const { line } of lines) {
         google.maps.event.clearInstanceListeners(line);
         line.setMap(null);
       }
@@ -108,13 +132,28 @@ export default function GoogleMapView(props: MapViewProps) {
 
   useEffect(() => {
     const parts = partsRef.current;
-    if (!parts || stage !== "etapa-2") return;
-    const lines = highlightedWays(detection, highlightStyles).map(
+    if (!parts) return;
+    const lines = highlights.map(
       ({ way, style }, index) =>
         new google.maps.Polyline({ map: parts.map, path: way.g.map(toLatLng), strokeColor: style.color, strokeWeight: style.weight, strokeOpacity: 0.9, clickable: false, zIndex: 2 + index / 1000 }),
     );
-    return () => lines.forEach((line) => line.setMap(null));
-  }, [stage, detection, highlightStyles]);
+    // A marker without a symbol carries the name as a label on a white chip.
+    const chips = labels.map(
+      (label) =>
+        new google.maps.Marker({
+          map: parts.map,
+          position: toLatLng(label.point),
+          clickable: false,
+          zIndex: 4,
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0, labelOrigin: new google.maps.Point(0, -14) },
+          label: { text: label.name, className: STREET_LABEL_CLASS, color: "#12212f", fontSize: "11px", fontWeight: "600" },
+        }),
+    );
+    return () => {
+      for (const line of lines) line.setMap(null);
+      for (const chip of chips) chip.setMap(null);
+    };
+  }, [highlights, labels]);
 
   useEffect(() => {
     const map = partsRef.current?.map;
