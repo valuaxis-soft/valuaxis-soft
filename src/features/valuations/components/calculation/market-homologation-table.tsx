@@ -24,6 +24,7 @@ import {
 } from "@/features/valuations/calculation/market-types";
 import { cn } from "@/lib/utils";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_RESULT, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { CommitCell } from "./commit-cell";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -97,7 +98,7 @@ export function MarketHomologationTable(props: {
 
   return (
     <div className="grid gap-1.5">
-      <div className={CALC_TABLE_FRAME}>
+      <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly}>
         <table className={cn(CALC_TABLE, "w-full min-w-[640px]")} aria-label="Homologación">
           <thead className={CALC_HEAD}>
             <tr>
@@ -199,7 +200,7 @@ export function MarketHomologationTable(props: {
             ) : null}
           </tbody>
         </table>
-      </div>
+      </CalcTableContextMenu>
       <HomologationNote note={props.note} readOnly={readOnly} onChange={props.onNote} />
     </div>
   );

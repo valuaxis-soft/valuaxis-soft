@@ -91,9 +91,9 @@ function digitsOnly(value: string) {
   return value.replace(/\D/g, "");
 }
 
-function normalizeCaratulaConceptValue(type: ConceptType, value: string) {
+function normalizeCaratulaConceptValue(type: ConceptType, value: string, concept?: Pick<Concept, "type" | "valueFormat">) {
   if (type === "phone") return digitsOnly(value);
-  if (type === "number" || type === "currency" || type === "measurement") return normalizeNumericConceptInput(value);
+  if (type === "number" || type === "currency" || type === "measurement") return normalizeNumericConceptInput(value, concept);
   return value;
 }
 
@@ -1051,9 +1051,9 @@ export function ConceptEditorRow({
               placeholder="Dato"
               type={caratulaInputType(conceptType)}
               value={isNumericConcept(effectiveConcept) && isValueFocused ? effectiveConcept.value : formatCaratulaConceptValue(effectiveConcept, presentation)}
-              normalize={(text) => normalizeCaratulaConceptValue(conceptType, text)}
+              normalize={(text) => normalizeCaratulaConceptValue(conceptType, text, effectiveConcept)}
               onBlur={() => setIsValueFocused(false)}
-              onValueChange={(text) => handleLinkedAwareUpdate({ value: normalizeCaratulaConceptValue(conceptType, text) })}
+              onValueChange={(text) => handleLinkedAwareUpdate({ value: normalizeCaratulaConceptValue(conceptType, text, effectiveConcept) })}
               onFormulaChange={setFormula}
               onFocus={() => setIsValueFocused(true)}
             />,
@@ -1198,9 +1198,9 @@ export function ConceptEditorRow({
               disabled={readOnly}
               inputMode="decimal"
               value={isValueFocused ? effectiveConcept.value : formatNumericConceptValue(effectiveConcept, presentation)}
-              normalize={normalizeNumericConceptInput}
+              normalize={(text) => normalizeNumericConceptInput(text, effectiveConcept)}
               onBlur={() => setIsValueFocused(false)}
-              onValueChange={(text) => onUpdate(concept.id, { value: normalizeNumericConceptInput(text) })}
+              onValueChange={(text) => onUpdate(concept.id, { value: normalizeNumericConceptInput(text, effectiveConcept) })}
               onFormulaChange={setFormula}
               onFocus={() => setIsValueFocused(true)}
             />
@@ -1213,8 +1213,8 @@ export function ConceptEditorRow({
                 inputMode={conceptType === "phone" ? "numeric" : undefined}
                 type={caratulaInputType(conceptType)}
                 value={formatCaratulaConceptValue(effectiveConcept, presentation)}
-                normalize={(text) => normalizeCaratulaConceptValue(conceptType, text)}
-                onValueChange={(text) => onUpdate(concept.id, { value: normalizeCaratulaConceptValue(conceptType, text) })}
+                normalize={(text) => normalizeCaratulaConceptValue(conceptType, text, effectiveConcept)}
+                onValueChange={(text) => onUpdate(concept.id, { value: normalizeCaratulaConceptValue(conceptType, text, effectiveConcept) })}
                 onFormulaChange={setFormula}
               />,
             )

@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import type { AppSection, TableContent } from "../model";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { useDocumentTheme } from "@/features/valuations/components/document-theme";
-import { ensureTableV2 } from "../services/table";
+import { ensureTableV2, printableColumns, printableRows } from "../services/table";
 import type { DocumentTableFragment } from "../services/table-pagination";
 import {
   AutoPaginatedDocumentFlow,
@@ -119,9 +119,11 @@ function ConstructionTable({ table, fragment }: { table: TableContent; fragment?
   if (table.enabled === false) return null;
 
   const t2 = ensureTableV2(table);
-  const columns = t2.columns.length ? t2.columns : [{ id: "__empty", name: "" }];
-  // The rows this page prints when the table breaks across pages; the header repeats on each.
-  const rows = fragment ? t2.rows.slice(fragment.from, fragment.to) : t2.rows;
+  const shown = printableColumns(t2);
+  const columns = shown.length ? shown : [{ id: "__empty", name: "" }];
+  // The rows this page prints when the table breaks across pages; the header repeats on each. Rows hidden in the editor stay out.
+  const printable = printableRows(t2);
+  const rows = fragment ? printable.slice(fragment.from, fragment.to) : printable;
 
   return (
     <div className={fragment?.continuation ? "overflow-hidden" : "mt-1 overflow-hidden"}>

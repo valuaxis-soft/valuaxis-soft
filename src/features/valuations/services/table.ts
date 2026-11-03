@@ -214,7 +214,19 @@ export type TableSchema = {
   plain?: boolean;
   /** "content": the printed table is as wide as its columns need; absent or "page", the width of the page. */
   widthMode?: TableWidthMode;
+  /**
+   * Decimals the results of the table's formulas are shown with (0–4), in the
+   * editor and in print; a cell with a format of its own keeps it. Absent, a
+   * result follows its sources.
+   */
+  decimals?: number;
+  /** Columns and rows the editor keeps and the dictamen does not print, by id. */
+  hiddenColumns?: string[];
+  hiddenRows?: string[];
 };
+
+/** Most decimals the results of a table can be asked to show. */
+export const TABLE_DECIMALS_MAX = 4;
 
 export type TableWidthMode = "page" | "content";
 
@@ -865,26 +877,6 @@ export function removeTableRow(table: TableV2, rowIndex: number): TableV2 {
   return { ...table, rows: table.rows.filter((_, i) => i !== rowIndex) };
 }
 
-/** Clear all cell values in a row (keeps row structure). */
-export function clearTableRow(table: TableV2, rowIndex: number): TableV2 {
-  const newRows = table.rows.map((row, i) => {
-    if (i !== rowIndex) return row;
-    const cells: Record<string, TableCellV2> = {};
-    for (const col of table.columns) { cells[col.id] = { kind: "value", value: "" }; }
-    return { ...row, cells };
-  });
-  return { ...table, rows: newRows };
-}
-
-/** Clear all cell values in a column (keeps column structure). */
-export function clearTableColumn(table: TableV2, columnId: string): TableV2 {
-  const newRows = table.rows.map((row) => ({
-    ...row,
-    cells: { ...row.cells, [columnId]: { kind: "value" as const, value: "" } },
-  }));
-  return { ...table, rows: newRows };
-}
-
 /**
  * Duplicate a row immediately after the given index. A formula of the row is
  * copied too: what it reads from its own row, the copy reads from the new one.
@@ -926,16 +918,88 @@ export function setCellFormula(table: TableV2, rowId: string, columnId: string, 
   return { ...table, rows: newRows };
 }
 
-/** How the result of a formula cell is written; `null` lets it follow its sources. */
+/**
+ * How the value of a cell is written: the result of its formula, or the
+ * number typed in it. `null` lets it follow its sources (a formula) or shows
+ * it as typed (a value). A numeric format marks the cell as numeric.
+ */
 export function setCellResultFormat(table: TableV2, rowId: string, columnId: string, format: TableCellFormat | null): TableV2 {
   return {
     ...table,
     rows: table.rows.map((row) => {
       const cell = row.cells[columnId];
-      if (row.id !== rowId || cell?.kind !== "formula") return row;
-      return { ...row, cells: { ...row.cells, [columnId]: { kind: "formula", formula: cell.formula, ...(format ? { format } : {}) } } };
+      if (row.id !== rowId || !cell) return row;
+      const { format: _previous, ...rest } = cell;
+      return { ...row, cells: { ...row.cells, [columnId]: { ...rest, ...(format ? { format } : {}) } as TableCellV2 } };
     }),
   };
+}
+
+/** How every value of a column is written and whether it is numeric; `null` makes it free text again. */
+export function setColumnFormat(table: TableV2, columnId: string, format: TableCellFormat | null): TableV2 {
+  return {
+    ...table,
+    columns: table.columns.map((column) => {
+      if (column.id !== columnId) return column;
+      const { format: _previous, ...rest } = column;
+      return format ? { ...rest, format } : rest;
+    }),
+  };
+}
+
+/** The formats a cell or a column can take from the editor's menu. */
+export const CELL_FORMAT_OPTIONS: Array<{ key: string; label: string; format: TableCellFormat | null }> = [
+  { key: "auto", label: "Automático", format: null },
+  { key: "number-0", label: "Número (sin decimales)", format: { type: "number", precision: 0 } },
+  { key: "number-2", label: "Número (2 decimales)", format: { type: "number", precision: 2 } },
+  { key: "number-4", label: "Número (4 decimales)", format: { type: "number", precision: 4 } },
+  { key: "currency", label: "Moneda ($)", format: { type: "currency", precision: 2 } },
+  { key: "percent", label: "Porcentaje (%)", format: { type: "percent", precision: 2 } },
+  { key: "text", label: "Texto", format: { type: "text" } },
+];
+
+const NUMERIC_FORMAT_TYPES = new Set<TableCellColumnType>(["number", "currency", "percent", "measurement"]);
+
+/**
+ * Whether a cell takes numbers only: its own format, its column's format or
+ * the factors of a homologation say so. A formula computes a number anyway.
+ */
+export function isNumericCell(table: TableV2, columnId: string, cell: TableCellV2 | undefined): boolean {
+  if (cell?.format) return NUMERIC_FORMAT_TYPES.has(cell.format.type);
+  const column = table.columns.find((item) => item.id === columnId);
+  if (column?.format) return NUMERIC_FORMAT_TYPES.has(column.format.type);
+  return isHomologationFactorColumn(table, columnId);
+}
+
+/** What a numeric cell says when letters are typed in it. */
+export const NUMERIC_CELL_MESSAGE = "Este campo es numérico";
+
+/**
+ * The problem of what is typed in a numeric cell, if any: text that is not a
+ * number ("abc") is marked and left out of the calculations; a number with a
+ * unit or a sign ("$ 9,000", "10 %", "-5") is a number.
+ */
+export function numericCellProblem(table: TableV2, columnId: string, cell: TableCellV2 | undefined): string | null {
+  if (!cell || cell.kind !== "value" || !isNumericCell(table, columnId, cell)) return null;
+  const written = cell.value.trim();
+  if (!written || written.startsWith("=")) return null;
+  return readTypedNumber(written) === null ? NUMERIC_CELL_MESSAGE : null;
+}
+
+/**
+ * The number a value typed in a cell stands for: "$ 9,000.00" is 9000,
+ * "169.78 m²" is 169.78, "10%" and "10 %" are 0.1 and "-5%" is -0.05. Text
+ * that is not a number with a unit is null.
+ */
+export function readTypedNumber(written: string): number | null {
+  const match = /^(-?)\s*\$?\s*(-?)\s*(\d[\d,]*\.?\d*|\.\d+)\s*(.*)$/.exec(written);
+  if (!match) return null;
+  const [, signBefore, signAfter, digits, suffix] = match;
+  if (suffix.length > 16 || /\d/.test(suffix)) return null;
+  const magnitude = Number(digits.replace(/,/g, ""));
+  if (!Number.isFinite(magnitude)) return null;
+  const signed = signBefore || signAfter ? -magnitude : magnitude;
+  return suffix.startsWith("%") ? signed / 100 : signed;
 }
 
 /** The same expression with every reference to a cell of row `fromRowId` of its own table, but a row fixed with "$", moved to `toRowId`. */
@@ -1026,7 +1090,65 @@ export function fillColumnWithFormula(table: TableV2, rowId: string, columnId: s
   };
 }
 
-export type FormulaSelectionOperation = "SUM" | "AVERAGE" | "ADD" | "SUBTRACT" | "MULTIPLY" | "DIVIDE" | "POWER" | "ROOT";
+/**
+ * The same expression copied `offset` columns to the right of where it is
+ * (to the left when negative), among the columns as the table shows them:
+ * every reference to a cell of the formula's own table moves as many columns,
+ * except a column fixed with "$" ($B2, $B$2). Rows never move.
+ */
+function expressionShiftedColumns(expression: FormulaExpression, columnIds: string[], offset: number): FormulaExpression {
+  const shiftColumn = (columnId: string) => {
+    const index = columnIds.indexOf(columnId);
+    if (index === -1) return columnId;
+    return columnIds[index + offset] ?? OUTSIDE_ROW_ID;
+  };
+  const move = <T extends FormulaCellCorner>(corner: T): T => (corner.fixedColumn ? corner : { ...corner, columnId: shiftColumn(corner.columnId) });
+  switch (expression.type) {
+    case "operand": {
+      const operand = expression.operand;
+      if (operand.type === "cell" && !operand.tableId) return { type: "operand", operand: move(operand) };
+      if (operand.type === "column") return { type: "operand", operand: { ...operand, columnId: shiftColumn(operand.columnId) } };
+      if (operand.type === "range") return { type: "operand", operand: { ...operand, cells: operand.cells.map(move) } };
+      if (operand.type === "span" && !operand.tableId) return { type: "operand", operand: { ...operand, from: move(operand.from), to: move(operand.to) } };
+      return expression;
+    }
+    case "binary":
+    case "compare":
+      return { ...expression, left: expressionShiftedColumns(expression.left, columnIds, offset), right: expressionShiftedColumns(expression.right, columnIds, offset) };
+    case "function":
+      return { ...expression, args: expression.args.map((arg) => expressionShiftedColumns(arg, columnIds, offset)) };
+    default:
+      return expression;
+  }
+}
+
+/**
+ * Copies the formula of a cell to the other columns of its row, as dragging
+ * it sideways in a spreadsheet does: each reference to a cell of the table
+ * moves as many columns as the copy is from the original, so what it reads
+ * from its own column each copy reads from its column. A column fixed with
+ * "$" ($B2, $B$2) does not move; the row of a reference never does. Cells
+ * that already hold a value are skipped unless `overwrite`.
+ */
+export function fillRowWithFormula(table: TableV2, rowId: string, columnId: string, options: { overwrite?: boolean } = {}): TableV2 {
+  const row = table.rows.find((item) => item.id === rowId);
+  const source = row?.cells[columnId];
+  if (!row || source?.kind !== "formula") return table;
+  const columnIds = getDisplayColumns(table).map((column) => column.id);
+  const sourceIndex = columnIds.indexOf(columnId);
+  if (sourceIndex === -1) return table;
+  const cells = { ...row.cells };
+  columnIds.forEach((id, index) => {
+    if (id === columnId) return;
+    const current = cells[id];
+    if (!options.overwrite && current?.kind === "value" && current.value.trim() !== "") return;
+    const formula = { ...source.formula, expression: expressionShiftedColumns(source.formula.expression, columnIds, index - sourceIndex) };
+    cells[id] = { ...source, formula };
+  });
+  return { ...table, rows: table.rows.map((item) => (item.id === rowId ? { ...item, cells } : item)) };
+}
+
+export type FormulaSelectionOperation = "SUM" | "AVERAGE" | "ADD" | "SUBTRACT" | "MULTIPLY" | "DIVIDE" | "POWER" | "ROOT" | "MIN" | "MAX" | "LN" | "LOG";
 
 /**
  * Build a formula expression from selected source cells and an operation.
@@ -1034,6 +1156,7 @@ export type FormulaSelectionOperation = "SUM" | "AVERAGE" | "ADD" | "SUBTRACT" |
  * POWER raises the first cell to the second one, or to `parameter` when a
  * single cell is selected. ROOT takes the root of the first cell: its index is
  * the second cell or `parameter`, and the square root when there is neither.
+ * LN takes one cell; LOG takes one cell (base 10) or a second one as its base.
  */
 export function buildFormulaFromSelection(
   operation: FormulaSelectionOperation,
@@ -1046,6 +1169,11 @@ export function buildFormulaFromSelection(
     type: "operand",
     operand: { type: "cell", rowId: s.rowId, columnId: s.columnId },
   }));
+
+  if (operation === "LN" || operation === "LOG") {
+    if (args.length > (operation === "LN" ? 1 : 2)) return null;
+    return { expression: { type: "function", name: operation, args } };
+  }
 
   if (operation === "POWER" || operation === "ROOT") {
     if (args.length > 2) return null;
@@ -1219,6 +1347,108 @@ export function setTableWidthMode(table: TableV2, widthMode: TableWidthMode): Ta
   return { ...table, schema };
 }
 
+/** Decimals the results of the table's formulas show (0–4); `null` lets each result follow its sources. */
+export function setTableDecimals(table: TableV2, decimals: number | null): TableV2 {
+  const schema: TableSchema = { ...(table.schema ?? { zones: [] }) };
+  if (decimals === null || !Number.isInteger(decimals)) delete schema.decimals;
+  else schema.decimals = Math.max(0, Math.min(TABLE_DECIMALS_MAX, decimals));
+  return { ...table, schema };
+}
+
+/** The decimals the table asks its results to show; undefined when it asks nothing. */
+export function tableDecimals(table: Pick<TableV2, "schema">): number | undefined {
+  const decimals = table.schema?.decimals;
+  return typeof decimals === "number" && Number.isInteger(decimals) ? Math.max(0, Math.min(TABLE_DECIMALS_MAX, decimals)) : undefined;
+}
+
+/* ================================================================== */
+/*  HIDDEN COLUMNS AND ROWS, WIDTHS AND ORDER — the editor's menus     */
+/* ================================================================== */
+
+const withoutId = (ids: string[] | undefined, id: string) => (ids ?? []).filter((item) => item !== id);
+
+/** Hides the column in the dictamen (or shows it again); the editor keeps it, and formulas keep reading it. */
+export function setColumnHidden(table: TableV2, columnId: string, hidden: boolean): TableV2 {
+  const schema: TableSchema = { ...(table.schema ?? { zones: [] }) };
+  const hiddenColumns = hidden ? [...withoutId(schema.hiddenColumns, columnId), columnId] : withoutId(schema.hiddenColumns, columnId);
+  if (hiddenColumns.length) schema.hiddenColumns = hiddenColumns;
+  else delete schema.hiddenColumns;
+  return { ...table, schema };
+}
+
+/** Hides the row in the dictamen (or shows it again); the editor keeps it, and formulas keep reading it. */
+export function setRowHidden(table: TableV2, rowId: string, hidden: boolean): TableV2 {
+  const schema: TableSchema = { ...(table.schema ?? { zones: [] }) };
+  const hiddenRows = hidden ? [...withoutId(schema.hiddenRows, rowId), rowId] : withoutId(schema.hiddenRows, rowId);
+  if (hiddenRows.length) schema.hiddenRows = hiddenRows;
+  else delete schema.hiddenRows;
+  return { ...table, schema };
+}
+
+export const isColumnHidden = (table: Pick<TableV2, "schema">, columnId: string) => Boolean(table.schema?.hiddenColumns?.includes(columnId));
+export const isRowHidden = (table: Pick<TableV2, "schema">, rowId: string) => Boolean(table.schema?.hiddenRows?.includes(rowId));
+
+/** The columns the dictamen prints, as shown, without the hidden ones. */
+export function printableColumns(table: TableV2): TableColumn[] {
+  const columns = getDisplayColumns(table);
+  return table.schema?.hiddenColumns?.length ? columns.filter((column) => !isColumnHidden(table, column.id)) : columns;
+}
+
+/** The rows the dictamen prints, in their order, without the hidden ones. */
+export function printableRows(table: TableV2): TableRow[] {
+  return table.schema?.hiddenRows?.length ? table.rows.filter((row) => !isRowHidden(table, row.id)) : table.rows;
+}
+
+/** Width of a column in pixels, in the editor and in print; `null` lets it follow its content. */
+export function setColumnWidth(table: TableV2, columnId: string, width: number | null): TableV2 {
+  const schema: TableSchema = { ...(table.schema ?? { zones: [] }) };
+  const { [columnId]: current, ...others } = schema.columnPresentation ?? {};
+  const { width: _previous, ...rest } = current ?? {};
+  const next: ColumnPresentation = width !== null && Number.isFinite(width) && width > 0 ? { ...rest, width: Math.round(width) } : rest;
+  const columnPresentation = Object.keys(next).length ? { ...others, [columnId]: next } : others;
+  if (Object.keys(columnPresentation).length) schema.columnPresentation = columnPresentation;
+  else delete schema.columnPresentation;
+  return { ...table, schema };
+}
+
+/** The width a column was given, in pixels; undefined when it follows its content. */
+export function columnWidthOf(table: Pick<TableV2, "schema">, columnId: string): number | undefined {
+  const width = table.schema?.columnPresentation?.[columnId]?.width;
+  return typeof width === "number" && Number.isFinite(width) && width > 0 ? width : undefined;
+}
+
+/**
+ * The rows sorted by the values of a column, as a spreadsheet's "Ordenar":
+ * numbers before texts, numbers by size, texts alphabetically without case or
+ * accents, and empty cells last. Formulas name rows by id, so they keep
+ * reading the same cells. A formula cell sorts by its result, when given.
+ */
+export function sortTableRows(table: TableV2, columnId: string, direction: "asc" | "desc", results?: Map<string, FormulaResult>): TableV2 {
+  const key = (row: TableRow): { number: number | null; text: string } => {
+    const cell = row.cells[columnId];
+    if (cell?.kind === "formula") {
+      const result = results?.get(`${row.id}:${columnId}`);
+      return { number: result?.ok ? result.value : null, text: "" };
+    }
+    const text = cell?.kind === "value" ? cell.value.trim() : "";
+    const number = readTypedNumber(text);
+    return { number, text: number === null ? text : "" };
+  };
+  const collator = new Intl.Collator("es", { sensitivity: "base", numeric: true });
+  const sign = direction === "asc" ? 1 : -1;
+  const sorted = table.rows.map((row, index) => ({ row, index, key: key(row) })).sort((a, b) => {
+    const emptyA = a.key.number === null && !a.key.text;
+    const emptyB = b.key.number === null && !b.key.text;
+    if (emptyA !== emptyB) return emptyA ? 1 : -1;
+    if (emptyA) return a.index - b.index;
+    if (a.key.number !== null && b.key.number !== null) return sign * (a.key.number - b.key.number) || a.index - b.index;
+    if (a.key.number !== null) return -1;
+    if (b.key.number !== null) return 1;
+    return sign * collator.compare(a.key.text, b.key.text) || a.index - b.index;
+  });
+  return { ...table, rows: sorted.map((item) => item.row) };
+}
+
 /** Update a header group title. */
 export function updateHeaderGroupTitle(schema: TableSchema, groupId: string, newTitle: string): TableSchema {
   return {
@@ -1378,6 +1608,17 @@ const HOMOLOGY_COLUMN_IDS = {
   netUnitValue: "hom-net-unit-value",
   partialValue: "hom-partial-value",
 } as const;
+
+/** What the short headers of the homologation stand for, shown when hovering them. */
+export const HOMOLOGATION_HEADER_HINTS: Record<string, string> = {
+  [HOMOLOGY_COLUMN_IDS.neg]: "Negociación",
+  [HOMOLOGY_COLUMN_IDS.ubic]: "Ubicación",
+  [HOMOLOGY_COLUMN_IDS.sup]: "Superficie",
+  [HOMOLOGY_COLUMN_IDS.serv]: "Servicios",
+  [HOMOLOGY_COLUMN_IDS.clas]: "Clasificación",
+  [HOMOLOGY_COLUMN_IDS.top]: "Topografía",
+  [HOMOLOGY_COLUMN_IDS.re]: "Factor resultante",
+};
 
 /** Create the initial homologation table instance with preset schema. */
 export function createHomologationTable(): TableV2 {

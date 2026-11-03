@@ -1,5 +1,5 @@
 import type { TableContent } from "@/features/valuations/model";
-import { appendTableColumn, ensureTableV2 } from "@/features/valuations/services/table";
+import { appendTableColumn, ensureTableV2, insertTableRow } from "@/features/valuations/services/table";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { createTable } from "../model/content-factories";
 import { changedTableCell, type EditorHistoryOptions } from "../model/editor-history";
@@ -96,14 +96,10 @@ export function useTableMutations({
       sectionId,
       blockId,
       tableId,
+      // An empty row after the last one, as the right-click's "Insertar fila abajo" adds it: one handler for every section.
       (table) => {
         const v2 = ensureTableV2(table);
-        const newRowId = `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-        const cells: Record<string, { kind: "value"; value: string }> = {};
-        for (const col of v2.columns) {
-          cells[col.id] = { kind: "value", value: "" };
-        }
-        return { ...v2, rows: [...v2.rows, { id: newRowId, cells }] } as unknown as TableContent;
+        return insertTableRow(v2, v2.rows.length) as unknown as TableContent;
       },
       apartadoId,
     );

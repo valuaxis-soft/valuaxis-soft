@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import {
   BlockEditorCard,
   BlockEditorContent,
@@ -56,6 +56,8 @@ type BlockCardProps = {
 
   /** Actions of the editor's own shown before the structural ones (copy, move). */
   extraActions?: ReactNode;
+  /** The right-click menu of the title, with the block's actions. */
+  titleContextMenu?: (controls: { titleRef: RefObject<HTMLInputElement | null> }) => ReactNode;
 
   // Content
   children?: ReactNode;
@@ -72,6 +74,7 @@ export function BlockCard({
   titleEdit,
   structuralActions,
   extraActions,
+  titleContextMenu,
   children,
 }: BlockCardProps) {
   return (
@@ -86,6 +89,7 @@ export function BlockCard({
         dragHandle={dragHandle}
         title={title}
         titleEdit={titleEdit}
+        titleContextMenu={titleContextMenu}
       >
         {extraActions}
         {structuralActions ? (

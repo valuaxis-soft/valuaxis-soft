@@ -1,17 +1,23 @@
 "use client";
 
-import { Building2, Loader2, Plus, Trash2 } from "lucide-react";
+import { Building2, Link2, Loader2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import {
+  constructionTypesLinkedToCosts,
+  costColumnsOf,
+  costInputOf,
   emptyConstructionType,
   remainingUsefulLife,
   type ConstructionTypeDto,
   type ConstructionTypesDto,
+  type CostCalculationDto,
 } from "@/features/valuations/calculation/cost-types";
 import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
@@ -19,6 +25,7 @@ import { FormulaInput } from "./formula-input";
 import { useDraftHistory } from "./use-draft-history";
 import { useSerializedSave } from "./use-serialized-save";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CalcTableContextMenu } from "./calc-table-context-menu";
 
 const cell = "h-7 min-w-0 px-1.5 text-xs";
 const figure = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
@@ -156,18 +163,21 @@ export function ConstructionTypesPanel(props: {
       onBlur={save}
       onKeyDown={(event) => history.onKeyDown(event, draft)}
     >
-      <header className="flex items-center justify-between gap-2">
+      <header className="flex flex-wrap items-center justify-between gap-2">
         <h3 id="construction-types-title" className="flex items-center gap-2 text-sm font-semibold">
           <Building2 className="size-4" /> Tipos de construcción
         </h3>
-        {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
+        <span className="flex items-center gap-2">
+          <CostLinkBadge valuationId={valuationId} types={types} readOnly={readOnly} savedAt={calculation} />
+          {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
+        </span>
       </header>
       {calculation.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: los tipos son de solo lectura.</p> : null}
       <p className="text-xs text-muted-foreground">
         Superficie, edad y vida útil de cada tipo se capturan aquí una sola vez; el enfoque de costos los elige de esta lista y no los vuelve a teclear.
       </p>
       <fieldset disabled={readOnly} className="grid gap-2">
-        <div className={CALC_TABLE_FRAME}>
+        <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={{ count: draft.length, delete: remove }}>
           <table className={`${CALC_TABLE} w-full min-w-[760px]`} aria-label="Tipos de construcción">
             <thead className={CALC_HEAD}>
               <tr>
@@ -206,7 +216,7 @@ export function ConstructionTypesPanel(props: {
               ))}
             </tbody>
           </table>
-        </div>
+        </CalcTableContextMenu>
         {!readOnly ? (
           <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => {
             history.record(draft, null);
@@ -217,6 +227,77 @@ export function ConstructionTypesPanel(props: {
         ) : null}
       </fieldset>
     </section>
+  );
+}
+
+/**
+ * "Vinculado con Costos": what of this table the cost approach takes on its
+ * own, and the way to stop it ("Desvincular") or to take it up again ("Volver
+ * a sincronizar"). Unlinking takes every type out of the cost approach, as
+ * removing their rows there does; the types already valued keep their cost
+ * columns, and the data of each type is still read from here.
+ */
+function CostLinkBadge({ valuationId, types, readOnly, savedAt }: {
+  valuationId: string;
+  types: ConstructionTypeDto[];
+  readOnly: boolean;
+  /** The types as last saved: the cost approach is read again after each save. */
+  savedAt: ConstructionTypesDto;
+}) {
+  const [costs, setCosts] = useState<CostCalculationDto | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api.costs.get(valuationId)
+      .then((next) => { if (active) setCosts(next); })
+      .catch(() => { if (active) setCosts(null); });
+    return () => { active = false; };
+  }, [valuationId, savedAt]);
+  if (!costs) return null;
+  const columns = costColumnsOf(costs.columns);
+  const linked = constructionTypesLinkedToCosts(types, columns);
+  const named = types.filter((type) => type.ref.trim()).map((type) => type.ref.trim());
+  const setExcluded = async (excludedTypes: string[]) => {
+    setBusy(true);
+    try {
+      const input = costInputOf(costs);
+      const next = await api.costs.save(valuationId, { ...input, columns: { ...columns, excludedTypes } });
+      setCosts(next);
+      toast.success(excludedTypes.length ? "Los tipos ya no entran solos al enfoque de costos." : "Los tipos vuelven a entrar al enfoque de costos.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cambiar el vínculo con el enfoque de costos.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const unlink = () => {
+    if (!window.confirm("¿Desvincular los tipos del enfoque de costos? Dejarán de entrar solos; los que ya tienen renglón ahí lo conservan y vuelven con «+ Construcción».")) return;
+    void setExcluded(named);
+  };
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={<Badge variant={linked ? "secondary" : "outline"} className="cursor-pointer" data-cost-link={linked ? "linked" : "unlinked"} />}
+      >
+        <Link2 /> {linked ? "Vinculado con Costos" : "Desvinculado de Costos"}
+      </PopoverTrigger>
+      <PopoverContent align="end" className="grid w-80 gap-2 p-3 text-xs">
+        <p className="text-sm font-medium">{linked ? "Vinculado con el enfoque de costos" : "Desvinculado del enfoque de costos"}</p>
+        <p className="text-muted-foreground">
+          {linked
+            ? "Cada tipo entra solo al enfoque de costos con su referencia, descripción, clasificación, calidad, superficie, edad y vida útil; ahí solo se capturan sus columnas de costo. Al cambiar un tipo aquí, el cálculo se rehace."
+            : "Los tipos no entran solos al enfoque de costos. Los que ya tienen renglón ahí lo conservan y siguen leyendo sus datos de esta tabla; los demás vuelven con «+ Construcción» o al sincronizar."}
+        </p>
+        {!costs.configured ? (
+          <p className="text-muted-foreground">El enfoque de costos aún no se ha capturado: el vínculo se podrá soltar cuando exista.</p>
+        ) : !readOnly ? (
+          <Button type="button" size="sm" variant={linked ? "outline" : "default"} className="w-fit" disabled={busy || !named.length} onClick={linked ? unlink : () => void setExcluded([])}>
+            {busy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
+            {linked ? "Desvincular" : "Volver a sincronizar"}
+          </Button>
+        ) : null}
+      </PopoverContent>
+    </Popover>
   );
 }
 

@@ -13,6 +13,7 @@ import {
   type CharacteristicField,
   type ComparableDto,
 } from "@/features/valuations/calculation/market-types";
+import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { CommitCell } from "./commit-cell";
 
 /** A key for a field the appraiser adds: short, and unlike any other in the list. */
@@ -54,7 +55,7 @@ export function MarketCharacteristicsTable(props: {
 
   return (
     <div className="grid gap-1.5">
-      <div className="overflow-x-auto rounded-md border bg-background">
+      <CalcTableContextMenu className="overflow-x-auto rounded-md border bg-background" readOnly={readOnly}>
         <table className="w-full min-w-[640px] text-sm" aria-label="Características de los comparables">
           <thead className="bg-muted/60 text-xs text-muted-foreground">
             <tr>
@@ -133,7 +134,7 @@ export function MarketCharacteristicsTable(props: {
             </tr>
           </tbody>
         </table>
-      </div>
+      </CalcTableContextMenu>
       {!readOnly ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" variant="outline" onClick={() => props.onFields([...fields, { key: newFieldKey(), label: "NUEVA CARACTERÍSTICA" }])}>

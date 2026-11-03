@@ -24,12 +24,12 @@ import {
 import { sectionDisplayName } from "../workspace/model/section-numbering";
 import { useStructureTransfer } from "../workspace/structure-transfer-context";
 
-type PickerOption = { key: string; group: string; label: string; detail?: string; onPick: () => void };
+export type PickerOption = { key: string; group: string; label: string; detail?: string; onPick: () => void };
 
 const destinationKey = (address: ContainerAddress) => `${address.sectionId}/${address.blockId}/${address.apartadoId ?? ""}`;
 
 /** A list of places to choose one from, grouped by section, with a filter for long documents. */
-function DestinationPicker({
+export function DestinationPicker({
   open,
   onOpenChange,
   title,

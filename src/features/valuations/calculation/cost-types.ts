@@ -302,6 +302,33 @@ export function findConstructionType(types: ConstructionTypeDto[], ref: string):
   return types.find((type) => type.ref.trim().toLowerCase() === key);
 }
 
+/**
+ * Whether the construction types feed the cost approach on their own: they do
+ * until every type with a reference was taken out of it (`excludedTypes`).
+ */
+export function constructionTypesLinkedToCosts(types: Pick<ConstructionTypeDto, "ref">[], columns: Pick<CostColumnsDto, "excludedTypes"> | undefined): boolean {
+  const excluded = new Set((columns?.excludedTypes ?? []).map((ref) => ref.trim().toLowerCase()));
+  const named = types.filter((type) => type.ref.trim());
+  return !named.length || named.some((type) => !excluded.has(type.ref.trim().toLowerCase()));
+}
+
+/**
+ * The capture of the cost approach as the server holds it, ready to be saved
+ * again with one change (the types taken out, for one): the panel's draft
+ * before anything is typed.
+ */
+export function costInputOf(calculation: CostCalculationDto): CostInputDto {
+  return {
+    land: calculation.land,
+    constructions: calculation.constructions.map(constructionCostOf),
+    installations: calculation.installations,
+    indirects: calculation.indirects,
+    rounding: calculation.rounding ?? DEFAULT_COST_ROUNDING,
+    columns: costColumnsOf(calculation.columns),
+    formulas: calculation.formulas ?? {},
+  };
+}
+
 /** The cost columns of a construction, what the cost approach saves. */
 export function constructionCostOf(row: ConstructionDto): ConstructionCostDto {
   return {
