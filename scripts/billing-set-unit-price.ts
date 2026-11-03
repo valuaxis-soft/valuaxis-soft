@@ -1,6 +1,6 @@
 /**
  * Publishes the price of one valuation agreed with the owner: the package
- * "1 avalúo" (SClave AVALUO_1), 1 credit, $170.00 MXN before tax + 16% IVA,
+ * "1 avalúo" (SClave AVALUO_1), 1 credit, $146.55 MXN before tax + 16% IVA = $170.00 total,
  * active and public. Idempotent: it creates the row or brings it back to
  * these values, and leaves everything else alone (other packages, the Stripe
  * price id). It never calls Stripe: `pnpm stripe:sync` (or the next purchase)
@@ -18,10 +18,10 @@ import { prisma } from "../src/infrastructure/database/prisma-client";
 const UNIT_PACKAGE = {
   SClave: "AVALUO_1",
   SNombre: "1 avalúo",
-  SDescripcion: "Un avalúo: se descuenta al concluirlo por primera vez. $170.00 MXN + IVA (16%).",
+  SDescripcion: "Un avalúo: se descuenta al concluirlo por primera vez. $170.00 MXN, IVA incluido.",
   ICreditos: 1,
   SMoneda: "MXN",
-  NImporte: new Prisma.Decimal("170.00"),
+  NImporte: new Prisma.Decimal("146.55"),
   NImpuestoPorcentaje: new Prisma.Decimal("16"),
   BActivo: true,
   BEsPublico: true,
