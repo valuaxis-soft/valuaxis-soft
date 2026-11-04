@@ -53,9 +53,10 @@ import { getCanonicalSectionKey } from "../sections/section-registry";
 import { formatConceptValueForDocument } from "../services/concept-value-format";
 import { buildFormulaIndex, canonicalTable, cellAddress, columnLetter, formulaToText, type FormulaIndex } from "../services/formula-references";
 import { DEFAULT_NUMBER_PRESENTATION, documentNumberPresentation, type NumberPresentation } from "../services/number-presentation";
-import { getDisplayColumns, type FormulaOperand, type TableFormula, type TableV2 } from "../services/table";
-import { evaluateTableFormulas, formulaCellKey, getCellDisplayValue, readSourceNumber, referenceKey } from "../services/table-formula-engine";
-import { conceptSourceValue, conceptTakesFormula } from "../services/valuation-formulas";
+import { formulaNumber, formulaWithValues } from "../services/formula-reference-values";
+import { getDisplayColumns, type TableFormula, type TableV2 } from "../services/table";
+import { evaluateTableFormulas, getCellDisplayValue } from "../services/table-formula-engine";
+import { conceptTakesFormula } from "../services/valuation-formulas";
 import { getBlockFlowApartadoOrder } from "../services/visible-numbering";
 
 /* ================================================================== */
@@ -176,8 +177,6 @@ export type CalculationMemoryInput = {
 
 /** Most decimals an engine figure prints with: factors and rates need them. */
 const ENGINE_DECIMALS = 6;
-/** A range of more cells than this keeps its reference in the formula with values. */
-const MAX_SUBSTITUTED_CELLS = 12;
 
 const engineNumber = new Intl.NumberFormat("es-MX", { maximumFractionDigits: ENGINE_DECIMALS });
 
@@ -186,13 +185,6 @@ export function formatEngineValue(value: number | string | null | undefined): st
   if (value === null || value === undefined) return "—";
   if (typeof value === "string") return value || "—";
   return Number.isFinite(value) ? engineNumber.format(roundDecimal(value, ENGINE_DECIMALS)) : "—";
-}
-
-/** A number as it is typed in a formula: no separators, no exponent, a negative in parentheses. */
-function formulaNumber(value: number) {
-  const fixed = roundDecimal(value, ENGINE_DECIMALS).toFixed(ENGINE_DECIMALS).replace(/\.?0+$/, "");
-  const text = fixed === "-0" ? "0" : fixed;
-  return value < 0 ? `(${text})` : text;
 }
 
 /**
@@ -241,70 +233,10 @@ const hasOwnFormula = (concept: Concept): concept is Concept & { formula: TableF
 
 const tableHasFormulas = (table: TableV2) => table.rows.some((row) => Object.values(row.cells).some((cell) => cell?.kind === "formula"));
 
-/** The number a cell holds for a formula: its result, or what was typed when it reads as one. */
-function cellNumber(table: TableV2, rowId: string, columnId: string): number | null {
-  const cell = table.rows.find((row) => row.id === rowId)?.cells[columnId];
-  if (!cell) return null;
-  if (cell.kind === "formula") {
-    const result = table.formulaResults?.[formulaCellKey(rowId, columnId)];
-    return result?.ok ? result.value : null;
-  }
-  const read = readSourceNumber(cell.value);
-  return read.kind === "number" ? read.value : null;
-}
-
-/** The cells between two corners as the table shows them, by rows. */
-function spanCells(table: TableV2, from: { rowId: string; columnId: string }, to: { rowId: string; columnId: string }) {
-  const columns = getDisplayColumns(table);
-  const rowIndex = (id: string) => table.rows.findIndex((row) => row.id === id);
-  const columnIndex = (id: string) => columns.findIndex((column) => column.id === id);
-  const [r1, r2, c1, c2] = [rowIndex(from.rowId), rowIndex(to.rowId), columnIndex(from.columnId), columnIndex(to.columnId)];
-  if ([r1, r2, c1, c2].includes(-1)) return null;
-  const cells: Array<{ rowId: string; columnId: string }> = [];
-  for (let row = Math.min(r1, r2); row <= Math.max(r1, r2); row += 1) {
-    for (let column = Math.min(c1, c2); column <= Math.max(c1, c2); column += 1) {
-      cells.push({ rowId: table.rows[row].id, columnId: columns[column].id });
-    }
-  }
-  return cells;
-}
-
-/** The values a reference reads, written as a formula takes them; null keeps the reference. */
-function referenceValues(index: FormulaIndex, operand: FormulaOperand, home: TableV2 | undefined): string | null {
-  const tableOf = (tableId: string | undefined) => (tableId && tableId !== home?.id ? index.tableById.get(tableId)?.table : home);
-  const list = (table: TableV2 | undefined, cells: Array<{ rowId: string; columnId: string }> | null) => {
-    if (!table || !cells?.length || cells.length > MAX_SUBSTITUTED_CELLS) return null;
-    const values = cells.map((cell) => cellNumber(table, cell.rowId, cell.columnId));
-    if (values.some((value) => value === null)) return null;
-    return values.map((value) => formulaNumber(value as number)).join("; ");
-  };
-  switch (operand.type) {
-    case "cell":
-      return list(tableOf(operand.tableId), [operand]);
-    case "span": {
-      const table = tableOf(operand.tableId);
-      return list(table, table ? spanCells(table, operand.from, operand.to) : null);
-    }
-    case "range":
-      return list(home, operand.cells);
-    case "row":
-      return list(home, home ? getDisplayColumns(home).map((column) => ({ rowId: operand.rowId, columnId: column.id })) : null);
-    case "column":
-      return list(home, home?.rows.map((row) => ({ rowId: row.id, columnId: operand.columnId })) ?? null);
-    case "concept": {
-      const concept = index.conceptById.get(referenceKey(String(operand.conceptId)))?.concept;
-      const read = concept ? conceptSourceValue(concept) : null;
-      return read?.kind === "number" ? formulaNumber(read.value) : null;
-    }
-    default:
-      return null;
-  }
-}
-
 /** "=G1*F1" and, when it names something, "=1200*0.95". */
 function writtenFormula(formula: TableFormula, index: FormulaIndex, table: TableV2 | undefined) {
   const written = `=${formulaToText(formula, { index, table })}`;
-  const substituted = `=${formulaToText(formula, { index, table, referenceValue: (operand, home) => referenceValues(index, operand, home) })}`;
+  const substituted = formulaWithValues(formula, index, table);
   return { formula: written, ...(substituted === written ? {} : { withValues: substituted }) };
 }
 

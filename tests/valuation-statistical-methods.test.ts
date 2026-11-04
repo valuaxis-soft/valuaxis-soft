@@ -9,6 +9,7 @@ import {
   type MarketCalculationDto,
 } from "../src/features/valuations/calculation/market-types";
 import {
+  COEFFICIENTS_NOTE,
   MAX_PRINTED_COLUMNS,
   NO_CONTRIBUTION_NOTE,
   STATISTICAL_VALUE_NOTE,
@@ -234,7 +235,14 @@ test("the regression prints as Excel: equation, statistics, analysis of variance
   const [block] = statisticalDocumentBlocks(dto(legacy));
   const apartado = block.apartados[1];
   assert.equal(apartado.title, "CÁLCULO POR EL MÉTODO DE REGRESIÓN LINEAL MÚLTIPLE (INMUEBLES)");
-  const [first, data, statistics, anova] = apartado.tables.map((table) => ensureTableV2(table) as TableV2);
+  const [first, data, statistics, anova, coefficients] = apartado.tables.map((table) => ensureTableV2(table) as TableV2);
+  // Excel's coefficients table, after the analysis of variance: intercept and one row per variable.
+  assert.equal(coefficients.title, "Coeficientes de la regresión");
+  assert.deepEqual(coefficients.columns.map((column) => column.name), ["", "COEFICIENTES", "ERROR TÍPICO", "ESTADÍSTICO t", "PROBABILIDAD", "INFERIOR 95 %", "SUPERIOR 95 %"]);
+  assert.deepEqual(coefficients.rows.map((row, index) => cellsOf(coefficients, index)[0]), ["Intercepción", "B (SUP. CONST.)", "C (EDAD)"]);
+  assert.deepEqual(cellsOf(coefficients, 0).slice(1, 4), ["37.242817", "6.2382", "5.9701"]);
+  assert.equal(cellsOf(coefficients, 0)[4], "0.0006");
+  assert.ok((coefficients.schema?.notes ?? []).some((note) => note.text === COEFFICIENTS_NOTE));
   // Ten columns do not fit: the table goes on under, with N (the comparable's number) again.
   assert.deepEqual(first.columns.map((column) => column.name), ["N", "X (SUP. CONST.)", "Y ($/M²)", "Z (EDAD)", "X²", "Z²", "XY", "XZ"]);
   assert.deepEqual(data.columns.map((column) => column.name), ["N", "YZ", "Y ESTIMADO"]);

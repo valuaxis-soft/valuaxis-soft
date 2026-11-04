@@ -6,6 +6,9 @@ import {
   constantLetters,
   fDistributionRightTail,
   fitLinearRegression,
+  studentTCdf,
+  studentTQuantile,
+  studentTTwoTailed,
   variableLetters,
   type EstimationInput,
   type RegressionFit,
@@ -222,4 +225,86 @@ test("up to twelve variables, named X1… and b0… beyond the workbook's six", 
   assert.equal(fit.columns.length, 1 + k + 1, "beyond three variables, only N and the data");
   const few = fitLinearRegression({ dependent: "precio", variables: Array.from({ length: k }, (_, j) => `v${j}`), observations: observations.slice(0, k + 1), subject: observations[0].x });
   assert.ok(!few.ok && /al menos 10 comparables/.test(few.reason));
+});
+
+test("Student's t against known values: T.DIST.2T, T.DIST and T.INV", () => {
+  // Critical values of the tables: t(0.975; 5) = 2.570582, t(0.975; 10) = 2.228139, t(0.975; 1) = 12.7062, t(0.975; 30) = 2.042272.
+  assert.ok(Math.abs(studentTTwoTailed(2.570582, 5) - 0.05) < 1e-6);
+  assert.ok(Math.abs(studentTTwoTailed(2.228139, 10) - 0.05) < 1e-6);
+  assert.ok(Math.abs(studentTQuantile(0.975, 5) - 2.570582) < 1e-6);
+  assert.ok(Math.abs(studentTQuantile(0.975, 10) - 2.228139) < 1e-6);
+  assert.ok(Math.abs(studentTQuantile(0.975, 1) - 12.7062) < 1e-4);
+  assert.ok(Math.abs(studentTQuantile(0.975, 30) - 2.042272) < 1e-6);
+  assert.ok(Math.abs(studentTQuantile(0.025, 5) + 2.570582) < 1e-6, "symmetric");
+  // With one degree of freedom the distribution is Cauchy: P(T ≤ t) = ½ + atan(t)/π.
+  assert.ok(Math.abs(studentTCdf(1, 1) - 0.75) < 1e-12);
+  assert.ok(Math.abs(studentTTwoTailed(1, 1) - 0.5) < 1e-12);
+  assert.equal(studentTCdf(0, 7), 0.5);
+  assert.equal(studentTQuantile(0.5, 7), 0);
+  assert.equal(studentTTwoTailed(Number.POSITIVE_INFINITY, 4), 0);
+  // The quantile is the inverse of the cumulative distribution.
+  for (const [p, df] of [[0.9, 3], [0.995, 12], [0.6, 25]]) assert.ok(Math.abs(studentTCdf(studentTQuantile(p, df), df) - p) < 1e-12);
+});
+
+/** The standard errors from the raw normal equations, σ²·(XᵀX)⁻¹, the textbook way. */
+function rawStandardErrors(rows: number[][], residualSquares: number, df: number) {
+  const design = rows.map((row) => [1, ...row]);
+  const size = design[0].length;
+  const normal = Array.from({ length: size }, (_, i) => Array.from({ length: size }, (_, j) => design.reduce((total, row) => total + row[i] * row[j], 0)));
+  const augmented = normal.map((row, i) => [...row, ...Array.from({ length: size }, (_, j) => (i === j ? 1 : 0))]);
+  for (let pivot = 0; pivot < size; pivot += 1) {
+    const divisor = augmented[pivot][pivot];
+    for (let column = 0; column < 2 * size; column += 1) augmented[pivot][column] /= divisor;
+    for (let row = 0; row < size; row += 1) {
+      if (row === pivot) continue;
+      const factor = augmented[row][pivot];
+      for (let column = 0; column < 2 * size; column += 1) augmented[row][column] -= factor * augmented[pivot][column];
+    }
+  }
+  return augmented.map((row, i) => Math.sqrt((residualSquares / df) * row[size + i]));
+}
+
+test("the coefficients table of Excel's Analysis ToolPak: error, t, probability and the 95 % limits", () => {
+  const trace = new Trace();
+  const fit = fitted(workbookInput(), trace);
+  const table = fit.coefficientTable;
+  assert.deepEqual(table.map((row) => [row.constant, row.name]), [["A", "Intercepción"], ["B", "Superficie"], ["C", "Edad"]]);
+  assert.deepEqual(table.map((row) => row.coefficient), fit.coefficients);
+  // Seven degrees of freedom: t crítico 2.364624.
+  assert.ok(Math.abs(fit.tCritical95 - 2.364624) < 1e-6);
+  const residualSquares = fit.residuals.reduce((total, row) => total + row.residual ** 2, 0);
+  const expected = rawStandardErrors(WORKBOOK.x.map((x, index) => [x, WORKBOOK.z[index]]), residualSquares, 7);
+  table.forEach((row, index) => {
+    assert.ok(Math.abs(row.standardError - expected[index]) < 1e-9 * Math.max(1, expected[index]), `${row.standardError} ≠ ${expected[index]}`);
+    assert.ok(Math.abs((row.t as number) - row.coefficient / row.standardError) < 1e-12);
+    assert.ok(Math.abs((row.p as number) - studentTTwoTailed(row.t as number, 7)) < 1e-15);
+    assert.ok(Math.abs((row.lower95 as number) - (row.coefficient - fit.tCritical95 * row.standardError)) < 1e-9);
+    assert.ok(Math.abs((row.upper95 as number) - (row.coefficient + fit.tCritical95 * row.standardError)) < 1e-9);
+  });
+  // The workbook's intercept: 37.2428 ± 6.2382, t = 5.97, p = 0.00056; the surface explains nothing (p = 0.83).
+  assert.ok(Math.abs(table[0].standardError - 6.238178) < 1e-6);
+  assert.ok(Math.abs((table[0].p as number) - 0.000559) < 1e-6);
+  assert.ok((table[1].p as number) > 0.8);
+  // Every figure is in the trace, for the calculation memory.
+  assert.ok(trace.find("regresion.errorTipico.A"));
+  assert.ok(trace.find("regresion.probabilidad.C"));
+  assert.ok(trace.find("regresion.superior95.B"));
+  assert.equal(trace.find("regresion.tCritico")?.inputs.gl, 7);
+});
+
+test("an exact fit leaves the statistics of the coefficients blank", () => {
+  const rows = [[1, 4, 2], [2, 1, 7], [3, 9, 1], [4, 2, 2], [5, 6, 5], [6, 3, 8]];
+  const fit = fitted({
+    dependent: "precio",
+    variables: ["a", "b", "c"],
+    observations: rows.map((x, index) => ({ id: String(index + 1), y: 5 + 2 * x[0] - 3 * x[1] + 0.5 * x[2], x })),
+    subject: [10, 1, 4],
+  });
+  assert.equal(fit.coefficientTable.length, 4);
+  for (const row of fit.coefficientTable) {
+    assert.ok(row.standardError < 1e-9);
+    assert.equal(row.t, null);
+    assert.equal(row.p, null);
+    assert.equal(row.lower95, null);
+  }
 });

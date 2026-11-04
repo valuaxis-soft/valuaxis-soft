@@ -41,6 +41,7 @@ import { PENDING_REVIEW, REVIEW_STATUSES, type ComparableReviewDto } from "./com
 import type { ComparableInputPayload, ComparableReviewPayload, MarketSettingsPayload } from "./market-schemas";
 import {
   COMPARABLE_TYPES,
+  COMPARABLE_TYPE_LABELS,
   CUSTOM_FACTOR_KEY,
   OFFER_LEVELS,
   cleanAttributes,
@@ -109,7 +110,8 @@ export type ReviewSnapshot = ComparableReviewDto & { reviewedById: number | null
 type StoredConfiguration = Partial<Pick<MarketSettingsDto,
   | "factorSlots" | "adoptedUnitValue" | "rounding" | "offerLevel" | "offerLabels" | "offerMark" | "offerIntro" | "homologationBasis"
   | "typicalFrontage" | "typicalDepth" | "characteristicFields" | "subjectCharacteristics" | "showFactorJustification"
-  | "regression" | "showHomologationTable" | "showHomologationNote" | "homologationNote" | "additionalAmountInCalculation" | "showAdditionalAmount">> & {
+  | "regression" | "showHomologationTable" | "showHomologationNote" | "homologationNote" | "homologate" | "additionalAmountInCalculation"
+  | "showAdditionalAmount">> & {
   /**
    * The lote tipo captured, kept while the homologation is against the
    * subject: NSuperficieBase holds it only against the lote tipo, so the cost
@@ -304,6 +306,7 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
         showHomologationTable: configuration.showHomologationTable ?? true,
         showHomologationNote: configuration.showHomologationNote ?? true,
         homologationNote: configuration.homologationNote ?? null,
+        ...(configuration.homologate === undefined ? {} : { homologate: configuration.homologate }),
         ...(configuration.additionalAmountInCalculation === undefined ? {} : { additionalAmountInCalculation: configuration.additionalAmountInCalculation }),
         ...(configuration.showAdditionalAmount === undefined ? {} : { showAdditionalAmount: configuration.showAdditionalAmount }),
         formulas: storedFormulas(configuration.formulas),
@@ -483,6 +486,7 @@ function storedConfiguration(settings: StoredConfiguration) {
     ...(settings.showHomologationTable === undefined ? {} : { showHomologationTable: settings.showHomologationTable }),
     ...(settings.showHomologationNote === undefined ? {} : { showHomologationNote: settings.showHomologationNote }),
     homologationNote: settings.homologationNote ?? null,
+    ...(settings.homologate === undefined ? {} : { homologate: settings.homologate }),
     ...(settings.additionalAmountInCalculation === undefined ? {} : { additionalAmountInCalculation: settings.additionalAmountInCalculation }),
     // Out of the calculation, the additional amount does not print either.
     ...(settings.showAdditionalAmount === undefined ? {} : { showAdditionalAmount: settings.showAdditionalAmount && settings.additionalAmountInCalculation !== false }),
@@ -598,6 +602,7 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
         showHomologationTable: payload.showHomologationTable ?? stored.showHomologationTable,
         showHomologationNote: payload.showHomologationNote ?? stored.showHomologationNote,
         homologationNote: unlessOmitted(payload.homologationNote, stored.homologationNote),
+        homologate: payload.homologate ?? stored.homologate,
         additionalAmountInCalculation: payload.additionalAmountInCalculation ?? stored.additionalAmountInCalculation,
         showAdditionalAmount: payload.showAdditionalAmount ?? stored.showAdditionalAmount,
         formulas,
@@ -609,6 +614,25 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
       update: data,
     });
     await recompute(tx, versionId, payload.comparableType);
+  });
+}
+
+/**
+ * Takes a market out of the valuation: its settings and its stored result.
+ * Only an empty one (no comparables), so nothing captured is lost; one with
+ * comparables is emptied first, comparable by comparable.
+ */
+export async function deleteMarket(publicId: string, user: AuthUser, type: ComparableType) {
+  return prisma.$transaction(async (tx) => {
+    const { versionId } = await writableVersion(tx, publicId, user);
+    const typeId = await comparableTypeId(tx, type);
+    const comparables = await tx.comparableAvaluo.count({ where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, BIncluido: true } });
+    if (comparables) {
+      throw new ValuationWorkflowError(`El mercado de ${COMPARABLE_TYPE_LABELS[type].toLowerCase()} tiene ${comparables} comparables: elimínalos antes de quitarlo.`, 409);
+    }
+    await tx.enfoqueMercado.deleteMany({ where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId } });
+    await tx.ejecucionCalculo.deleteMany({ where: { IdVersionAvaluo: versionId, SClaveCalculo: `MOTOR.MERCADO.${type}` } });
+    await recomputeDependents(tx, versionId, type);
   });
 }
 

@@ -12,6 +12,7 @@ import {
   CUSTOM_FACTOR_KEY,
   FACTOR_TYPES,
   HOMOLOGATION_BASES,
+  MAX_CHARACTERISTIC_FIELDS,
   MAX_COMPARABLE_ATTRIBUTES,
   MAX_FACTOR_SLOTS,
   MAX_OFFER_OPTIONS,
@@ -187,8 +188,12 @@ export const marketSettingsSchema = z.object({
   homologationBasis: z.enum(HOMOLOGATION_BASES).nullable().optional(),
   typicalFrontage: positive.optional(),
   typicalDepth: positive.optional(),
-  characteristicFields: z.array(z.object({ key: characteristicKey, label: z.string().trim().min(1, "Cada característica necesita un nombre.").max(60) }))
-    .max(40)
+  characteristicFields: z.array(z.object({
+    key: characteristicKey,
+    label: z.string().trim().min(1, "Cada característica necesita un nombre.").max(60),
+    hidden: z.boolean().optional(),
+  }))
+    .max(MAX_CHARACTERISTIC_FIELDS, `Hasta ${MAX_CHARACTERISTIC_FIELDS} características por mercado.`)
     .refine((fields) => new Set(fields.map((field) => field.key)).size === fields.length, "Cada característica va una sola vez.")
     .nullable()
     .optional(),
@@ -198,6 +203,7 @@ export const marketSettingsSchema = z.object({
   showHomologationTable: z.boolean().optional(),
   showHomologationNote: z.boolean().optional(),
   homologationNote: text(500).optional(),
+  homologate: z.boolean().optional(),
   factorSlots: z.array(z.object({
     type: z.enum(FACTOR_TYPES),
     label: z.string().trim().min(1).max(60),

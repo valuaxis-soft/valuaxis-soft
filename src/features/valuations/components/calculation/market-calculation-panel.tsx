@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Calculator, FileDown, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Calculator, FileDown, Loader2, Pencil, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -24,6 +24,7 @@ import {
   SALE_COMPARABLE_TYPES,
   characteristicFieldsOf,
   comparableFormValues,
+  homologatesOf,
   homologationBasisOf,
   isComparableComplete,
   isRentComparableType,
@@ -60,13 +61,27 @@ import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { CalculationPrecisionControl } from "./calculation-precision-control";
 import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
 import { ImportComparablesDialog } from "./import-comparables-dialog";
-import { MarketCharacteristicsTable } from "./market-characteristics-table";
+import { MarketCharacteristicsTable, characteristicNumberText } from "./market-characteristics-table";
 import { MarketFactorSlots } from "./market-factor-slots";
 import { MarketHomologationTable } from "./market-homologation-table";
 import { MarketOfferLevel } from "./market-offer-level";
 import { PasteListingDialog } from "./paste-listing-dialog";
 import { SearchComparablesDialog } from "./search-comparables-dialog";
+import { useDraftHistory } from "./use-draft-history";
 import { useSerializedSave } from "./use-serialized-save";
+import { useNumberPresentation } from "@/features/valuations/components/number-presentation-context";
+
+/** What the panel's undo goes back to: the settings (chips and their order included) and the comparables as captured. */
+export type MarketSnapshot = { settings: MarketSettingsDto; comparables: ComparableDto[] };
+
+/** The comparables of `target` that differ from those of `current` in what the appraiser captures (by id; added or removed ones are not restored). */
+export function changedComparables(current: ComparableDto[], target: ComparableDto[]): ComparableDto[] {
+  const byId = new Map(current.map((item) => [item.id, item]));
+  return target.filter((item) => {
+    const now = byId.get(item.id);
+    return now !== undefined && JSON.stringify(comparableFormValues(now)) !== JSON.stringify(comparableFormValues(item));
+  });
+}
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 const text = (value: number | null) => (value === null ? "" : String(value));
@@ -151,6 +166,18 @@ export function MarketCalculationPanel(props: {
 
   const visible = types.filter((item) => shown.has(item));
   const missing = types.filter((item) => !shown.has(item));
+  // An empty market added by mistake goes away: its tab, and its settings if they were saved.
+  const removeMarket = async (item: ComparableType, configured: boolean) => {
+    if (!window.confirm(`¿Quitar el mercado de ${COMPARABLE_TYPE_LABELS[item].toLowerCase()}? No tiene comparables; sus especificaciones se borran.`)) return;
+    try {
+      if (configured) await api.market.deleteMarket(valuationId, item);
+      setShown((current) => new Set([...current].filter((kept) => kept !== item)));
+      if (type === item) setType(types.find((other) => other !== item && shown.has(other)) ?? types[0]);
+      toast.success("Mercado quitado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo quitar el mercado.");
+    }
+  };
 
   return (
     <div className="grid gap-2">
@@ -192,7 +219,7 @@ export function MarketCalculationPanel(props: {
           </span>
         </div>
       ) : null}
-      <MarketTypePanel key={type} {...props} type={type} />
+      <MarketTypePanel key={type} {...props} type={type} onRemoveMarket={types.length > 1 && !props.readOnly ? removeMarket : undefined} />
     </div>
   );
 }
@@ -224,9 +251,12 @@ function MarketTypePanel(props: {
   canReview?: boolean;
   suggestedSubjectArea: number | null;
   onCalculation: (calculation: MarketCalculationDto, result: MarketApproachResult | null) => void;
+  /** Takes this market out when it has no comparables; absent for a single market or a reader. */
+  onRemoveMarket?: (type: ComparableType, configured: boolean) => void;
 }) {
   const { valuationId, type } = props;
   const labels = MARKET_LABELS[type];
+  const { thousandsSeparator } = useNumberPresentation();
   const rent = isRentComparableType(type);
   const perUnit = rent ? "/m²/mes" : "/m²";
   const priceLabel = rent ? "Renta mensual ($)" : "Precio de oferta ($)";
@@ -243,6 +273,13 @@ function MarketTypePanel(props: {
   // What the server last answered, for the changes of a comparable made one after another.
   const latest = useRef<MarketCalculationDto | null>(null);
   const comparableQueue = useRef<Promise<unknown>>(Promise.resolve());
+  // Undo and redo of the panel: settings (chips and their order included) and comparables, as captured, go back together.
+  const restoreRef = useRef<(snapshot: MarketSnapshot) => void>(() => undefined);
+  const history = useDraftHistory<MarketSnapshot>({
+    apply: (snapshot) => restoreRef.current(snapshot),
+    cellElement: () => null,
+  });
+  const resetHistory = useEffectEvent(() => history.reset());
 
   // The firm's own factor catalog and factors, if it keeps them; without a catalog every factor is typed.
   useEffect(() => {
@@ -278,6 +315,7 @@ function MarketTypePanel(props: {
         latest.current = next;
         setCalculation(next);
         setDraft(draftFrom(next.settings));
+        resetHistory();
       })
       .catch((error: unknown) => {
         if (active) setLoadError(error instanceof Error ? error.message : "No se pudo cargar el enfoque de mercado.");
@@ -319,9 +357,10 @@ function MarketTypePanel(props: {
     if (requested.current === settings) requested.current = null;
     setSavingSettings(false);
   });
-  const saveSettings = async (settings = liveSettings) => {
+  const saveSettings = async (settings = liveSettings, options: { record?: boolean } = {}) => {
     if (!calculation || !settings || readOnly) return;
     if (JSON.stringify(settings) === JSON.stringify(calculation.settings)) return;
+    if (options.record !== false) history.record({ settings: calculation.settings, comparables: calculation.comparables }, null);
     requested.current = settings;
     await enqueueSettings(settings);
   };
@@ -329,8 +368,9 @@ function MarketTypePanel(props: {
    * Changes one comparable from a cell of a table: shown at once, and sent
    * after any change still on its way, built on what the server answered last.
    */
-  const changeComparable = (comparable: ComparableDto, change: (current: ComparableDto) => ComparableDto) => {
+  const changeComparable = (comparable: ComparableDto, change: (current: ComparableDto) => ComparableDto, options: { record?: boolean } = {}) => {
     if (readOnly) return;
+    if (options.record !== false && calculation) history.record({ settings: calculation.settings, comparables: calculation.comparables }, `comparable:${comparable.id}`);
     setCalculation((current) => current
       ? { ...current, comparables: current.comparables.map((item) => (item.id === comparable.id ? change(item) : item)) }
       : current);
@@ -342,6 +382,18 @@ function MarketTypePanel(props: {
       if (!ok && latest.current) setCalculation(latest.current);
     });
   };
+
+  // What an undo or a redo puts back: the settings as they were, and each comparable whose capture changed.
+  useEffect(() => {
+    restoreRef.current = (snapshot) => {
+      if (!calculation) return;
+      void saveSettings(snapshot.settings, { record: false });
+      for (const target of changedComparables(calculation.comparables, snapshot.comparables)) {
+        changeComparable(target, () => target, { record: false });
+      }
+    };
+  });
+  const snapshot = (): MarketSnapshot | null => (calculation ? { settings: calculation.settings, comparables: calculation.comparables } : null);
 
   const submitComparable = (current: ComparableDto | null) => async (values: ComparableFormValues, pending: PendingImages, mergeInto?: string) => {
     if (current) return run(() => api.market.updateComparable(valuationId, type, current.id, values), "Comparable guardado");
@@ -403,10 +455,29 @@ function MarketTypePanel(props: {
       className="grid gap-5 rounded-lg border-2 border-dashed border-primary/30 bg-muted/20 p-3 sm:p-4"
       aria-labelledby="market-calculation-title"
       data-comparable-type={type}
+      onKeyDown={(event) => {
+        const current = snapshot();
+        if (current) history.onKeyDown(event, current);
+      }}
     >
       <header className="grid gap-0.5">
-        <h3 id="market-calculation-title" className="flex items-center gap-2 text-base font-semibold">
+        <h3 id="market-calculation-title" className="flex flex-wrap items-center gap-2 text-base font-semibold">
           <Calculator className="size-4" /> {labels.title} · {COMPARABLE_TYPE_LABELS[type]}
+          {!readOnly ? (
+            <span className="ml-auto inline-flex items-center gap-1" role="group" aria-label="Deshacer y rehacer del cálculo">
+              <Button type="button" size="sm" variant="ghost" disabled={!history.canUndo} title="Deshacer el último cambio del cálculo (Ctrl+Z)" onClick={() => { const current = snapshot(); if (current) history.undo(current); }}>
+                <Undo2 data-icon="inline-start" /> Deshacer
+              </Button>
+              <Button type="button" size="sm" variant="ghost" disabled={!history.canRedo} title="Rehacer (Ctrl+Y)" onClick={() => { const current = snapshot(); if (current) history.redo(current); }}>
+                <Redo2 data-icon="inline-start" /> Rehacer
+              </Button>
+              {props.onRemoveMarket && !comparables.length ? (
+                <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => props.onRemoveMarket?.(type, calculation.configured === true)}>
+                  <Trash2 data-icon="inline-start" /> Quitar este mercado
+                </Button>
+              ) : null}
+            </span>
+          ) : null}
         </h3>
         <p className="text-xs text-muted-foreground">
           Aquí capturas y se calcula; con estos datos se escriben las páginas del dictamen que ves abajo, fuera de este recuadro.
@@ -542,7 +613,7 @@ function MarketTypePanel(props: {
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{comparable.area ?? "—"}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{comparable.area === null ? "—" : characteristicNumberText(String(comparable.area), thousandsSeparator)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{comparable.price ? money(comparable.price) : "—"}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{row ? money(row.unitValue) : "—"}</td>
                     <td className="px-2 py-1.5 text-right whitespace-nowrap">
@@ -679,23 +750,41 @@ function MarketTypePanel(props: {
         number={4}
         title="Homologación"
         aside={(
-          <label className="flex items-center gap-1.5 text-xs font-normal">
-            <Checkbox
-              checked={liveSettings.showHomologationTable !== false}
-              disabled={readOnly}
-              onCheckedChange={(checked) => void saveSettings({ ...liveSettings, showHomologationTable: checked === true })}
-            />
-            Mostrar en el dictamen
-          </label>
+          <span className="flex flex-wrap items-center gap-4 text-xs font-normal">
+            <label className="flex items-center gap-1.5">
+              <Checkbox
+                checked={homologatesOf(liveSettings)}
+                disabled={readOnly}
+                aria-label="Homologar"
+                onCheckedChange={(checked) => void saveSettings({ ...liveSettings, homologate: checked === true })}
+              />
+              Homologar
+            </label>
+            <label className="flex items-center gap-1.5">
+              <Checkbox
+                checked={homologatesOf(liveSettings) && liveSettings.showHomologationTable !== false}
+                disabled={readOnly || !homologatesOf(liveSettings)}
+                onCheckedChange={(checked) => void saveSettings({ ...liveSettings, showHomologationTable: checked === true })}
+              />
+              Mostrar en el dictamen
+            </label>
+          </span>
         )}
       >
-        {type === "TERRENO_RENTA" ? <p className="text-sm font-medium" data-same-factors="">{SAME_FACTORS_AS_LAND_SALE}</p> : null}
+        {!homologatesOf(liveSettings) ? (
+          <p className="rounded-md border border-amber-500/40 bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200" data-homologation-off="">
+            Sin homologación: ningún factor se aplica. El promedio, la mediana y el rango del ±30 % salen de los valores unitarios de las ofertas tal como
+            se capturaron, y el dictamen no imprime la tabla de homologación. Los factores capturados se conservan por si vuelves a homologar.
+          </p>
+        ) : null}
+        {type === "TERRENO_RENTA" && homologatesOf(liveSettings) ? <p className="text-sm font-medium" data-same-factors="">{SAME_FACTORS_AS_LAND_SALE}</p> : null}
         <CalculationPrecisionControl
           valuationId={valuationId}
           precision={calculation.precision}
           readOnly={readOnly}
           onChanged={() => void api.market.get(valuationId, type).then(applyServerState).catch(failed)}
         />
+        {homologatesOf(liveSettings) ? (<>
         <MarketFactorSlots
           slots={calculation.settings.factorSlots}
           customFactors={customFactors}
@@ -748,7 +837,8 @@ function MarketTypePanel(props: {
           onInvalid={(message) => toast.error(message)}
           decimals={factorDecimals(calculation.precision)}
         />
-        {liveSettings.showHomologationTable === false ? (
+        </>) : null}
+        {homologatesOf(liveSettings) && liveSettings.showHomologationTable === false ? (
           <p className="text-xs text-muted-foreground" data-homologation-hidden="">
             La tabla de homologación no se imprime en el dictamen; los datos de los comparables, las estadísticas y el valor sí. La memoria de cálculo
             la conserva.

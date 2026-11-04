@@ -208,19 +208,25 @@ export async function getValuationReview(publicId: string, organizationId: numbe
   ]);
   const today = todayInMexico();
   const months = await firmComparableMonths(prisma, organizationId);
-  const reviewed = await Promise.all(rows.map(async (row) => {
+  // One comparable after another: a valuation with many of them does not open as many searches of the base at once,
+  // and a search that fails leaves that comparable without its duplicate warning instead of taking the review down.
+  const reviewed: ReviewRowDto[] = [];
+  for (const row of rows) {
     const type = row.tipoComparable.SClave as ComparableType;
     const comparable = await toComparableDto(row, true);
     // The same property already in the firm's base (this valuation included) is a warning too, as when it was captured.
     const duplicates = await findDuplicates(publicId, organizationId, duplicateProbeOf(comparable), {
       exclude: { comparableId: comparable.id, folio: comparable.folio ?? null }, thumbnails: false,
+    }).catch((error: unknown) => {
+      console.error(`[COMPARABLES_REVIEW] duplicate check failed for comparable ${comparable.id}`, error);
+      return [] as DuplicateMatchDto[];
     });
-    return {
+    reviewed.push({
       comparable,
       type,
       warnings: [...warningsOf(comparable, type, areas.get(type) ?? null, today, months), ...duplicates.slice(0, 3).map(duplicateWarning)],
-    };
-  }));
+    });
+  }
   return reviewed.sort((a, b) => COMPARABLE_TYPES.indexOf(a.type) - COMPARABLE_TYPES.indexOf(b.type) || a.comparable.reference - b.comparable.reference);
 }
 

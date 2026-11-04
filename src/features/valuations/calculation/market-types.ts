@@ -162,7 +162,30 @@ export const BUILTIN_CHARACTERISTICS = [
   "services", "price", "notes",
 ] as const;
 export type BuiltinCharacteristic = (typeof BUILTIN_CHARACTERISTICS)[number];
-export type CharacteristicField = { key: string; label: string };
+/** A field of the characteristics line; hidden, it keeps what was captured but prints nothing. */
+export type CharacteristicField = { key: string; label: string; hidden?: boolean };
+
+/** As many characteristics as a market's list takes: the thirteen of the format and the appraiser's own. */
+export const MAX_CHARACTERISTIC_FIELDS = 30;
+
+/** The name of the next characteristic added: "Nueva característica", then "Nueva característica 2", 3… */
+export function nextCharacteristicLabel(fields: ReadonlyArray<Pick<CharacteristicField, "label">>): string {
+  const base = "Nueva característica";
+  const taken = new Set(fields.map((field) => field.label.trim().toLocaleLowerCase("es-MX")));
+  if (!taken.has(base.toLocaleLowerCase("es-MX"))) return base;
+  let number = 2;
+  while (taken.has(`${base} ${number}`.toLocaleLowerCase("es-MX"))) number += 1;
+  return `${base} ${number}`;
+}
+
+/** Another field with the same name (apart from the one at `index`), to warn before two lines print alike. */
+export function duplicateCharacteristicLabel(fields: ReadonlyArray<CharacteristicField>, label: string, index: number): CharacteristicField | null {
+  const wanted = label.trim().toLocaleLowerCase("es-MX");
+  return fields.find((field, at) => at !== index && field.label.trim().toLocaleLowerCase("es-MX") === wanted) ?? null;
+}
+
+/** The fields the dictamen prints: those not hidden. */
+export const printedCharacteristicFields = (fields: ReadonlyArray<CharacteristicField>) => fields.filter((field) => !field.hidden);
 
 export const isBuiltinCharacteristic = (key: string): key is BuiltinCharacteristic =>
   (BUILTIN_CHARACTERISTICS as readonly string[]).includes(key);
@@ -413,6 +436,13 @@ export type MarketSettingsDto = {
   showHomologationTable?: boolean;
   /** Whether the note under the homologation table prints; it does unless turned off. */
   showHomologationNote?: boolean;
+  /**
+   * "Homologar": the comparables are homologated with their factors (as
+   * always, when missing). Off, no factor applies: the statistics and the
+   * adopted value come from the offers' unit values as captured, the
+   * dictamen prints no homologation table, and the ±30 % check stays.
+   */
+  homologate?: boolean;
   /** The appraiser's own note under the homologation table; empty, the one of the format. */
   homologationNote?: string | null;
   /** Formulas typed in the numeric fields ("subjectArea", "adoptedUnitValue"); absent keeps the stored ones whose value did not change. */
@@ -464,6 +494,13 @@ export function marketEngineConfig(settings: Pick<MarketSettingsDto, "rounding">
   return withPrecision(config, precision);
 }
 
+/** Whether the market homologates its comparables: it does unless "Homologar" was turned off. */
+export const homologatesOf = (settings: Pick<MarketSettingsDto, "homologate">) => settings.homologate !== false;
+
+/** Whether the dictamen prints the homologation table: only when the market homologates and the table was not left out. */
+export const printsHomologationTable = (settings: Pick<MarketSettingsDto, "homologate" | "showHomologationTable">) =>
+  homologatesOf(settings) && settings.showHomologationTable !== false;
+
 /** The additional amount the value takes: none when the appraiser left it out of the calculation. */
 export const additionalAmountOf = (settings: Pick<MarketSettingsDto, "additionalAmount" | "additionalAmountInCalculation">) =>
   (settings.additionalAmountInCalculation === false ? 0 : settings.additionalAmount);
@@ -512,13 +549,16 @@ export function toMarketEngineInput(dto: Pick<MarketCalculationDto, "settings" |
   const complete = dto.comparables.filter(isComparableComplete);
   if (!complete.length) return { ok: false, reason: "Captura al menos un comparable con superficie y precio." };
 
+  // Without homologation every factor is 1: the homologated value is the offer's unit value.
+  const homologated = homologatesOf(settings);
   const comparables: ComparableInput[] = complete.map((comparable) => ({
     id: String(comparable.reference),
     price: comparable.price as number,
     area: comparable.area as number,
-    factors: settings.factorSlots.map((slot): FactorSlot =>
-      slot.type === "SUPERFICIE" ? SURFACE_SLOT : capturedFactor(slot, findFactor(comparable, slot))),
-    ...typedSurfaceFactor(comparable),
+    factors: homologated
+      ? settings.factorSlots.map((slot): FactorSlot => (slot.type === "SUPERFICIE" ? SURFACE_SLOT : capturedFactor(slot, findFactor(comparable, slot))))
+      : [],
+    ...(homologated ? typedSurfaceFactor(comparable) : { surfaceFactor: 1 }),
   }));
   return {
     ok: true,

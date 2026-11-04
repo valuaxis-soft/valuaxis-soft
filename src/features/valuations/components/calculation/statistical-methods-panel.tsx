@@ -18,7 +18,7 @@ import {
   type ComparableType,
   type MarketCalculationDto,
 } from "@/features/valuations/calculation/market-types";
-import { NO_CONTRIBUTION_NOTE, STATISTICAL_VALUE_NOTE, methodComparison, regressionEquation } from "@/features/valuations/calculation/statistical-document";
+import { COEFFICIENTS_NOTE, NO_CONTRIBUTION_NOTE, STATISTICAL_VALUE_NOTE, methodComparison, regressionEquation } from "@/features/valuations/calculation/statistical-document";
 import {
   DEFAULT_GOAL_TITLE,
   DEFAULT_REGRESSION_TITLE,
@@ -33,7 +33,7 @@ import {
 } from "@/features/valuations/calculation/statistical-types";
 import type { ComparableSearchHit } from "@/features/valuations/comparable-search/types";
 import { goalProgrammingWarnings } from "@/features/valuations/engine/goal-programming";
-import { RECOMMENDED_REGRESSION_COMPARABLES, minimumRegressionComparables } from "@/features/valuations/engine/regression";
+import { RECOMMENDED_REGRESSION_COMPARABLES, minimumRegressionComparables, sampleSizeRecommendation } from "@/features/valuations/engine/regression";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { SearchComparablesDialog } from "./search-comparables-dialog";
 import { StatisticalDataTable, type SubjectSource } from "./statistical-data-table";
@@ -298,6 +298,19 @@ function StatisticalTypePanel(props: {
       toast.info("El enfoque de mercado de este tipo no tiene comparables.");
       return;
     }
+    // What the import would add, told before it happens: the comparables and the characteristics the market brings.
+    const preview = withMarketComparables(draft, market, () => "preview");
+    const newFields = preview.settings.fields.slice(draft.settings.fields.length).map((field) => field.label);
+    if (!preview.imported && !newFields.length) {
+      toast.info("Los comparables y las características del mercado ya estaban importados.");
+      return;
+    }
+    const lines = [
+      `Se agregarán ${preview.imported} comparables del enfoque de mercado (quedarán ${draft.comparables.length + preview.imported}).`,
+      newFields.length ? `Se agregarán ${newFields.length} características: ${newFields.join(", ")}.` : "No se agregan características nuevas.",
+      "Los comparables que ya estaban importados no se repiten. ¿Importar?",
+    ];
+    if (!window.confirm(lines.join("\n"))) return;
     let imported = 0;
     update((current) => {
       const next = withMarketComparables(current, market, newId);
@@ -455,6 +468,34 @@ function StatisticalTypePanel(props: {
                   </div>
                 ) : null}
                 <div className={CALC_TABLE_FRAME}>
+                  <table className={cn(CALC_TABLE, "w-full")} aria-label="Coeficientes de la regresión">
+                    <thead className={CALC_HEAD}>
+                      <tr>
+                        {["", "Coeficientes", "Error típico", "Estadístico t", "Probabilidad", "Inferior 95 %", "Superior 95 %"].map((name, index) => (
+                          <th key={name || "nombre"} className={cn(CALC_HEAD_CELL, index ? "text-right" : "text-left")}>{name}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {regression.result.fit.coefficientTable.map((row) => {
+                        const stat = (value: number | null) => (value === null ? "" : figure(value, Math.max(decimals, 4)));
+                        return (
+                          <tr key={row.constant} className={CALC_ROW} data-coefficient={row.constant}>
+                            <td className="px-1.5 py-1">{row.name === "Intercepción" ? row.name : `${row.constant} (${row.name})`}</td>
+                            <td className="px-1.5 py-1 text-right font-mono tabular-nums">{row.coefficient.toLocaleString("es-MX", { maximumSignificantDigits: 8 })}</td>
+                            <td className="px-1.5 py-1 text-right tabular-nums">{stat(row.standardError)}</td>
+                            <td className="px-1.5 py-1 text-right tabular-nums">{stat(row.t)}</td>
+                            <td className={cn("px-1.5 py-1 text-right tabular-nums", row.p !== null && row.p < 0.05 && "font-medium")}>{stat(row.p)}</td>
+                            <td className="px-1.5 py-1 text-right tabular-nums">{stat(row.lower95)}</td>
+                            <td className="px-1.5 py-1 text-right tabular-nums">{stat(row.upper95)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <p className="px-1.5 py-1 text-xs text-muted-foreground">{COEFFICIENTS_NOTE}</p>
+                </div>
+                <div className={CALC_TABLE_FRAME}>
                   <table className={cn(CALC_TABLE, "w-full")} aria-label="Valores estimados por la regresión">
                     <thead className={CALC_HEAD}>
                       <tr>
@@ -502,9 +543,13 @@ function StatisticalTypePanel(props: {
                     regresión es poco confiable y muy sensible a errores de captura.
                   </p>
                 ) : null}
+                <SampleSizeAdvice n={regression.result.fit.n} k={regression.result.fit.k} />
               </div>
             ) : regression && !regression.ok ? (
-              <p className="text-sm text-muted-foreground">{regression.reason}</p>
+              <div className="grid gap-1">
+                <p className="text-sm text-muted-foreground">{regression.reason}</p>
+                <SampleSizeAdvice n={included} k={k} />
+              </div>
             ) : null}
             {settings.regression.showInDictamen && regression && !regression.ok ? <NotPrintedWarning reason={regression.reason} /> : null}
           </div>
@@ -519,6 +564,7 @@ function StatisticalTypePanel(props: {
               Mismos comparables y criterios; Y es el precio total de oferta. Mínimo de Σ (p + n) con Σ criterio × coeficiente + p − n = precio, coeficientes y
               desviaciones ≥ 0, sin ordenada al origen, como LINGO. Se resuelve en el servidor (HiGHS) al guardar.
             </p>
+            <SampleSizeAdvice n={goal?.outcome.ok ? goal.outcome.fit.n : included} k={goal?.outcome.ok ? goal.outcome.fit.k : k} />
             {goal?.outcome.ok ? (
               <div className="grid gap-3 rounded-md border bg-background p-3 text-sm" aria-label="Resultado de la programación por metas">
                 {goalProgrammingWarnings(goal.outcome.fit.n, goal.outcome.fit.k).map((warning) => (
@@ -623,5 +669,16 @@ function StatisticalTypePanel(props: {
         <p className="text-xs text-muted-foreground">Ningún método se adopta automáticamente: el valor lo concluye el valuador.</p>
       </Part>
     </div>
+  );
+}
+
+/** The appraiser's rule of ten to twenty comparables per criterion, as advice: nothing stops for it. */
+function SampleSizeAdvice({ n, k }: { n: number; k: number }) {
+  const advice = sampleSizeRecommendation(n, k);
+  if (!advice) return null;
+  return (
+    <p className="rounded-md border border-sky-500/40 bg-sky-50 p-2 text-xs text-sky-900 dark:bg-sky-950/30 dark:text-sky-200" data-sample-size-advice="">
+      {advice}
+    </p>
   );
 }

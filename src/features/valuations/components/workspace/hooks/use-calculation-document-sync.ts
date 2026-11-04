@@ -136,7 +136,10 @@ export function useCalculationDocumentSync({
   const applyIncome = (calculation: IncomeCalculationDto) => {
     if (!canEdit || calculation.locked || !calculation.configured) return;
     const input = toIncomeEngineInput(calculation);
-    const blocks = incomeDocumentBlocks(calculation, input.ok ? computeIncomeApproach(input.input, incomeEngineConfig(calculation)) : null);
+    // Without a result the blocks print what was captured and why the value is not there yet, instead of a dash in every line.
+    const blocks = input.ok
+      ? incomeDocumentBlocks(calculation, computeIncomeApproach(input.input, incomeEngineConfig(calculation)))
+      : incomeDocumentBlocks(calculation, null, input.reason);
     updateBySection("motor-ingresos", (key, section) =>
       key === "INGRESOS"
         ? replaceGeneratedBlocks(section, (block) => block.id.startsWith(INCOME_BLOCK_PREFIX), blocks, { placeholderIds: INCOME_TEMPLATE_BLOCK_IDS })

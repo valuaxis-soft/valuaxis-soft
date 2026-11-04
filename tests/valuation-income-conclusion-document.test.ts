@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { caratulaConclusionValues, conclusionValues, withConceptValues } from "../src/features/valuations/calculation/conclusion-document";
-import { incomeDocumentBlocks } from "../src/features/valuations/calculation/income-document";
+import { NO_CAPITALIZATION_RATE, NO_UNIT_RENT, incomeDocumentBlocks } from "../src/features/valuations/calculation/income-document";
 import { DEFAULT_ANNUITY, DEFAULT_DEDUCTIONS, DEFAULT_MARKET_RATE, toIncomeEngineInput, type IncomeCalculationDto } from "../src/features/valuations/calculation/income-types";
 import { concludeValue } from "../src/features/valuations/engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
@@ -34,6 +34,33 @@ test("the income blocks show rents, deductions, the rate table and the value", (
 test("the income approach waits for the rate: the whole table or a captured rate", () => {
   const withoutRate = { ...tch, appliedRate: null, ratingColumns: [1, 3, null, 2, 2, 0, 4] };
   assert.deepEqual(toIncomeEngineInput(withoutRate), { ok: false, reason: "Califica los siete criterios de la tabla de tasa, o captura la tasa." });
+});
+
+test("without the rate the blocks print what was captured and «Sin tasa de capitalización», not a dash everywhere", () => {
+  // The audit's case (2 Nov 2026): 100 m² at $100 captured, no rate.
+  const partial: IncomeCalculationDto = {
+    ...tch, appliedRate: null, ratingColumns: [null, null, null, null, null, null, null],
+    rentableUnits: [{ description: "Local", area: 100, unitRent: 100 }],
+    rentMarket: { adoptedUnitRent: null, subjectArea: null, comparables: [], homologation: null },
+  };
+  const input = toIncomeEngineInput(partial);
+  assert.equal(input.ok, false);
+  const blocks = incomeDocumentBlocks(partial, null, input.ok ? "" : input.reason);
+  assert.deepEqual(blocks.map((block) => block.id), ["motor-ingresos-rentas", "motor-ingresos-deducciones", "motor-ingresos-tasa", "motor-ingresos-resultado"]);
+  const rents = blocks[0].tables[0] as unknown as { rows: string[][] };
+  assert.deepEqual(rents.rows[0], ["Local", "100.00 m²", "$100.00 /m²/mes", "$10,000.00"]);
+  const values = Object.fromEntries(blocks.flatMap((block) => block.concepts.map((concept) => [concept.id, concept.value])));
+  assert.equal(values["motor-ingresos-rentas-bruta"], "$10,000.00");
+  assert.equal(values["motor-ingresos-rentas-deducciones"], "31.00 %");
+  assert.equal(values["motor-ingresos-rentas-neta-mensual"], "$6,900.00");
+  assert.equal(values["motor-ingresos-rentas-neta-anual"], "$82,800.00");
+  assert.equal(values["motor-ingresos-tasa-aplicada"], `${NO_CAPITALIZATION_RATE}: califica los siete criterios de la tabla o captura la tasa`);
+  assert.equal(values["motor-ingresos-resultado-valor"], "Califica los siete criterios de la tabla de tasa, o captura la tasa.");
+  // Without any rent the rents say so; without anything captured the template stays.
+  const noRent = incomeDocumentBlocks({ ...partial, rentableUnits: [{ description: "Local", area: 100, unitRent: null }] }, null, "Captura la renta unitaria, o el mercado de rentas.");
+  assert.equal(noRent[0].concepts[0].value, NO_UNIT_RENT);
+  assert.deepEqual(incomeDocumentBlocks({ ...partial, rentableUnits: [{ description: "", area: null, unitRent: null }] }, null, "Captura la superficie rentable."), []);
+  assert.deepEqual(incomeDocumentBlocks(partial, null), [], "without the reason nothing partial prints, as before");
 });
 
 test("the concluded value fills the conclusion and carátula concepts and leaves the appraiser's text", () => {

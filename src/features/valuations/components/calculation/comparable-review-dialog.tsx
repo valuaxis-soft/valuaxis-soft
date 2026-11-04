@@ -1,8 +1,8 @@
 "use client";
 
-import { AlertTriangle, CircleHelp, ClipboardCheck, ExternalLink, Image as ImageIcon, Loader2, Search } from "lucide-react";
+import { AlertTriangle, CircleHelp, ClipboardCheck, ExternalLink, Image as ImageIcon, Loader2, RefreshCw, Search } from "lucide-react";
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,9 @@ const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudo guardar la revisión.";
 
 const statusOf = (row: ReviewRowDto): ReviewStatus => row.comparable.review?.status ?? "POR_REVISAR";
+
+/** How long the review waits for the server before saying so and offering to try again. */
+export const REVIEW_LOAD_TIMEOUT_MS = 25_000;
 
 /** Words of the comparable to find it by: number, reference, location, source, contact, notes and warnings. */
 export function reviewRowMatches(row: ReviewRowDto, query: string) {
@@ -203,12 +206,22 @@ export function ComparableReviewDialog(props: {
     [rows, statusFilter, query],
   );
 
+  // Which load is the latest: an answer of an earlier one (or one that arrives after the dialog closed) is not shown.
+  const loading = useRef(0);
   const load = () => {
+    const attempt = loading.current + 1;
+    loading.current = attempt;
     setRows(null);
     setError(null);
+    const current = () => loading.current === attempt;
+    // The review never stays on "Cargando…": past the wait, it says so and offers to try again.
+    const timer = window.setTimeout(() => {
+      if (current()) setError(`La revisión tardó más de ${REVIEW_LOAD_TIMEOUT_MS / 1000} segundos en cargar. Revisa tu conexión e inténtalo de nuevo.`);
+    }, REVIEW_LOAD_TIMEOUT_MS);
     api.market.review(props.valuationId)
-      .then(setRows)
-      .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : "No se pudo cargar la revisión."));
+      .then((next) => { if (current()) { setError(null); setRows(next); } })
+      .catch((failure: unknown) => { if (current()) setError(failure instanceof Error ? failure.message : "No se pudo cargar la revisión."); })
+      .finally(() => window.clearTimeout(timer));
   };
 
   const saved = (comparableId: string, review: ComparableReviewDto) => {
@@ -266,7 +279,12 @@ export function ComparableReviewDialog(props: {
               </div>
             </div>
           ) : null}
-          {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
+          {error ? (
+            <div className="flex flex-wrap items-center gap-2" role="alert">
+              <p className="text-sm text-destructive">{error}</p>
+              <Button type="button" size="sm" variant="outline" onClick={load}><RefreshCw data-icon="inline-start" /> Reintentar</Button>
+            </div>
+          ) : null}
           {!rows && !error ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Cargando los comparables…</p>
           ) : null}
