@@ -4,7 +4,7 @@ import type { Block, Concept, ImageContent, Apartado, TableContent, ContentLayou
 import { resolveBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { apartadoDisplayLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
-import { resolvePageBreak } from "@/features/valuations/services/document-structure";
+import { resolvePageBreak, resolvePageOrientation } from "@/features/valuations/services/document-structure";
 import { printedImageCaptions } from "@/features/valuations/services/image-captions";
 import { PAIRED_APARTADOS_CLASS_NAME, useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
@@ -297,7 +297,8 @@ export function documentBlockFlowItems(
     }
   }
 
-  return items;
+  // A landscape block: every item of it goes to pages lying on their side.
+  return resolvePageOrientation(block) === "landscape" ? items.map((item) => ({ ...item, landscape: true })) : items;
 }
 
 /** An apartado printed in a format of its own; see `renderApartadoHead`. */

@@ -285,7 +285,7 @@ test("the conclusion follows the approaches: Arandas concludes 8,580,000 with th
   const avaluo = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
   const summary = await prisma.resumenValor.findUniqueOrThrow({ where: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1 } });
   assert.equal(Number(summary.NValorConcluido), 8580000);
-  assert.equal(summary.SValorConLetra, "( OCHO MILLONES QUINIENTOS OCHENTA MIL PESOS 00/100 M. N.)");
+  assert.equal(summary.SValorConLetra, "(OCHO MILLONES QUINIENTOS OCHENTA MIL PESOS 00/100 M.N.)");
 
   await saveConclusionSettings(fixture.publicId, user, {
     method: { kind: "weighted", weights: { costos: 0.5, mercado: 0.5 } },

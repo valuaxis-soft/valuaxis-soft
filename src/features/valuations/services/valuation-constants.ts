@@ -8,5 +8,5 @@ export const initialMeta: ValuationMeta = {
   postalCode: "",
   location: "",
   valuationKind: "venta",
-  propertyKind: "casa",
+  propertyKind: "casa_habitacion",
 };

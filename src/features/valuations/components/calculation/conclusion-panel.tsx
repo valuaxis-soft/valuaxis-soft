@@ -1,14 +1,27 @@
 "use client";
 
-import { Calculator, Loader2 } from "lucide-react";
+import { Calculator, Loader2, X } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 import { toast } from "sonner";
 
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError } from "@/lib/api-client";
-import { canConclude, conclusionEngineConfig, type ConclusionCalculationDto, type ConclusionMethod } from "@/features/valuations/calculation/conclusion-types";
+import {
+  SUMMARY_SOURCES,
+  SUMMARY_SOURCE_LABELS,
+  canConclude,
+  conclusionEngineConfig,
+  conclusionInput,
+  summaryRowValues,
+  type ConclusionCalculationDto,
+  type ConclusionMethod,
+  type ConclusionSummaryRow,
+  type SummarySource,
+} from "@/features/valuations/calculation/conclusion-types";
 import { APPROACH_LABELS, concludeValue, type Approach } from "@/features/valuations/engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG, type RoundingDigits } from "@/features/valuations/engine/config";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
@@ -31,6 +44,84 @@ const money = (value: number) => value.toLocaleString("es-MX", { style: "currenc
 function leftOut(calculation: ConclusionCalculationDto, approach: Approach) {
   const excluded = new Set(calculation.excluded ?? []);
   return approach === "mercado" ? marketLeftOut(excluded) : excluded.has(approach);
+}
+
+/**
+ * "Resumen de valores": which values the conclusion lists and under what
+ * name (video 5.1, 3 Nov 2026). Without rows the three approaches print as
+ * always; with one row only, the concluded value is that value.
+ */
+function ConclusionSummaryEditor({
+  calculation,
+  readOnly,
+  onChange,
+}: {
+  calculation: ConclusionCalculationDto;
+  readOnly: boolean;
+  onChange: (rows: ConclusionSummaryRow[]) => void;
+}) {
+  const rows = calculation.summaryRows ?? [];
+  const available = calculation.available ?? {};
+  const unused = SUMMARY_SOURCES.filter((source) => !rows.some((row) => row.source === source));
+  const [draft, setDraft] = useState<Record<number, string>>({});
+  const valueText = (source: SummarySource) => {
+    const value = available[source];
+    return value === null || value === undefined ? "sin calcular" : money(value);
+  };
+  return (
+    <fieldset disabled={readOnly} className="grid gap-2 rounded-md border bg-background p-3" data-conclusion-summary>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">Resumen de valores</p>
+        {unused.length ? (
+          <NativeSelect
+            aria-label="Agregar un valor al resumen"
+            className="w-64"
+            value=""
+            onChange={(event) => {
+              const source = event.target.value as SummarySource | "";
+              if (!source) return;
+              onChange([...rows, { source, label: SUMMARY_SOURCE_LABELS[source] }]);
+            }}
+          >
+            <NativeSelectOption value="">Agregar un valor…</NativeSelectOption>
+            {unused.map((source) => (
+              <NativeSelectOption key={source} value={source}>
+                {SUMMARY_SOURCE_LABELS[source]} · {valueText(source)}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        ) : null}
+      </div>
+      {rows.length ? (
+        <ul className="grid gap-2">
+          {rows.map((row, index) => (
+            <li key={row.source} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2" data-summary-row={row.source}>
+              <Input
+                aria-label={`Nombre del valor ${SUMMARY_SOURCE_LABELS[row.source]}`}
+                value={draft[index] ?? row.label}
+                maxLength={200}
+                onChange={(event) => setDraft((current) => ({ ...current, [index]: event.target.value }))}
+                onBlur={() => {
+                  const label = (draft[index] ?? row.label).trim() || SUMMARY_SOURCE_LABELS[row.source];
+                  setDraft((current) => { const next = { ...current }; delete next[index]; return next; });
+                  if (label !== row.label) onChange(rows.map((item, position) => (position === index ? { ...item, label } : item)));
+                }}
+              />
+              <span className="text-sm tabular-nums text-muted-foreground">{valueText(row.source)}</span>
+              <Button type="button" size="icon-sm" variant="ghost" aria-label={`Quitar ${row.label} del resumen`} onClick={() => onChange(rows.filter((_, position) => position !== index))}>
+                <X />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <FieldDescription>
+          Sin filas, el dictamen lista los tres enfoques como siempre. Agrega los valores que concluyes (mercado de inmuebles, terrenos, rentas, costos, ingresos, regresión o programación por metas) y nómbralos como deben leerse.
+        </FieldDescription>
+      )}
+      {rows.length === 1 ? <FieldDescription>Con un solo valor en el resumen, el valor concluido es ese valor.</FieldDescription> : null}
+    </fieldset>
+  );
 }
 
 /** Concluded value: which approach (or weights) and why, from the values each approach stored. */
@@ -57,7 +148,7 @@ export function ConclusionPanel(props: {
       setWeights({ costos: weight("costos"), mercado: weight("mercado"), ingresos: weight("ingresos") });
     }
   };
-  const enqueueSave = useSerializedSave(async (settings: { method: ConclusionMethod; justification: string | null; rounding: RoundingDigits; formulas: CapturedFormulas }) => {
+  const enqueueSave = useSerializedSave(async (settings: { method: ConclusionMethod; justification: string | null; rounding: RoundingDigits; formulas: CapturedFormulas; summaryRows: ConclusionSummaryRow[] }) => {
     setSaving(true);
     try {
       applyServerState(await api.conclusion.save(valuationId, settings));
@@ -99,17 +190,18 @@ export function ConclusionPanel(props: {
     weights: Object.fromEntries(APPROACHES.map((approach) => [approach, (parseDecimal(weights[approach]) ?? 0) / 100])),
   };
   const method = calculation.method.kind === "weighted" ? weightedMethod : calculation.method;
-  const result = canConclude({ values: calculation.values, method })
-    ? concludeValue({ values: calculation.values, method }, conclusionEngineConfig(calculation))
-    : null;
+  const current = { ...calculation, method };
+  const summaryRows = summaryRowValues(calculation);
+  const result = canConclude(current) ? concludeValue(conclusionInput(current), conclusionEngineConfig(calculation)) : null;
   const rounding = calculation.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.conclusion : calculation.rounding;
-  const save = (next: { method?: ConclusionMethod; justification?: string; rounding?: RoundingDigits }) => {
+  const save = (next: { method?: ConclusionMethod; justification?: string; rounding?: RoundingDigits; summaryRows?: ConclusionSummaryRow[] }) => {
     if (readOnly) return;
     const sent = next.method ?? method;
     void enqueueSave({
       method: sent,
       justification: (next.justification ?? justification).trim() || null,
       rounding: next.rounding === undefined ? rounding : next.rounding,
+      summaryRows: next.summaryRows ?? calculation.summaryRows ?? [],
       // The weights' formulas go with the weights; concluding with one approach has none.
       formulas: sent.kind === "weighted" ? formulasOfFields(APPROACHES.map((approach) => [weightPath(approach), weights[approach]] as const)) : {},
     });
@@ -141,7 +233,16 @@ export function ConclusionPanel(props: {
         ))}
       </dl>
 
-      <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-2">
+      <ConclusionSummaryEditor
+        calculation={calculation}
+        readOnly={readOnly}
+        onChange={(rows) => {
+          setCalculation({ ...calculation, summaryRows: rows });
+          save({ summaryRows: rows });
+        }}
+      />
+
+      <fieldset disabled={readOnly || summaryRows.length === 1} className="grid gap-3 sm:grid-cols-2">
         <Field>
           <FieldLabel htmlFor="conclusion-method">Se concluye con</FieldLabel>
           <NativeSelect
@@ -204,13 +305,15 @@ export function ConclusionPanel(props: {
 
       {result ? (
         <div className="rounded-md border bg-background p-3">
-          <p className="text-xs text-muted-foreground">Valor concluido</p>
+          <p className="text-xs text-muted-foreground">Valor concluido{summaryRows.length === 1 ? ` · ${summaryRows[0].label}` : ""}</p>
           <p className="text-lg font-semibold tabular-nums">{money(result.value)}</p>
           <p className="text-xs text-muted-foreground">{result.valueInWords}</p>
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">
-          {calculation.method.kind === "weighted" ? "Los pesos de los enfoques con valor deben sumar 100 %." : "El enfoque elegido todavía no tiene valor."}
+          {summaryRows.length === 1
+            ? "El valor elegido en el resumen todavía no está calculado."
+            : calculation.method.kind === "weighted" ? "Los pesos de los enfoques con valor deben sumar 100 %." : "El enfoque elegido todavía no tiene valor."}
         </p>
       )}
     </section>

@@ -79,7 +79,8 @@ test("the sections after the conclusion are annexes: ANEXO 1, ANEXO 2…, no rom
     section("fotosAnexo", [block("fotos", { enabled: false }), block("fotos-2")]),
   ]);
 
-  assert.deepEqual(sections.map((item) => item.label), ["I", "II", "III", "ANEXO 1", "ANEXO 2"]);
+  // A chapter reads as its first printed block; the carátula has no numeral.
+  assert.deepEqual(sections.map((item) => item.label), ["", "I", "III", "ANEXO 1", "ANEXO 2"]);
   // The chapters' blocks keep one roman count across the document.
   assert.deepEqual(sections[1].blocks.map((item) => item.sectionLabel), ["I", "II"]);
   assert.equal(sections[2].blocks[0].sectionLabel, "III");
@@ -118,7 +119,7 @@ test("the appraiser chooses chapter or annex and may write the annex's label; a 
   const withAnnex = insertSectionByRole(withChapter, annex, "annex");
   assert.equal(withAnnex.at(-1)?.id, annex.id);
   const numbered = resequenceSections(withAnnex);
-  assert.equal(numbered[2].label, "III");
+  assert.equal(numbered[2].label, "II");
   assert.equal(numbered.at(-1)?.label, "ANEXO 2");
 });
 
@@ -126,7 +127,8 @@ test("the registry document numbers the map of comparables, after the conclusion
   const sections = resequenceSections(createInitialSections());
   const map = sections.find((item) => item.id === "mapaComparables");
   assert.equal(map?.label, "ANEXO 1");
-  assert.equal(sections.find((item) => item.id === "conclusiones")?.label, "XIV");
+  const conclusion = sections.find((item) => item.id === "conclusiones");
+  assert.equal(conclusion?.label, conclusion?.blocks[0].sectionLabel, "the tab reads the numeral the dictamen prints");
 });
 
 test("chapter or annex, the annex's label, the section's page break and its exclusions are saved and read back", () => {

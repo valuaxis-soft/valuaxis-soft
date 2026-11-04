@@ -79,6 +79,7 @@ export function ValuationDateField({
   className,
   display = "long",
   label,
+  minDate,
   onChange,
   placeholder = "Selecciona una fecha",
   readOnly,
@@ -88,6 +89,8 @@ export function ValuationDateField({
   className?: string;
   display?: "long" | "short" | ConceptDateFormat;
   label?: string;
+  /** Earliest day offered; the days before it cannot be chosen. */
+  minDate?: Date;
   onChange: (value: string) => void;
   placeholder?: string;
   readOnly: boolean;
@@ -95,6 +98,8 @@ export function ValuationDateField({
 }) {
   const [open, setOpen] = useState(false);
   const selectedDate = parseDateInput(value);
+  // The valuation date is never earlier than today (video 5.2, 3 Nov 2026): the days before are not offered.
+  const disabledDays = minDate ? { before: minDate } : undefined;
   const selectedDateLabel = selectedDate?.toLocaleDateString(
     "es-MX",
     display === "short"
@@ -139,6 +144,7 @@ export function ValuationDateField({
             startMonth={new Date(NAV_START_YEAR, 0)}
             endMonth={new Date(NAV_END_YEAR, 11)}
             selected={selectedDate}
+            disabled={disabledDays}
             onSelect={(date) => {
               onChange(date ? formatDateInput(date) : "");
               setOpen(false);

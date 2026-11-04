@@ -180,7 +180,7 @@ test("saving under a taken name is refused unless replaced: a new version, read 
   assert.equal(second.id, original.id, "the same template");
   assert.equal(second.name, "Departamento", "the name stays as it was");
   assert.equal(second.version, 2);
-  assert.equal(second.includeData, true);
+  assert.equal(second.includeData, false, "a template never keeps the client's data, even when asked");
   assert.equal(second.description, "Para departamentos en condominio", "a replacement without a description keeps it");
   assert.equal(second.createdBy, "Perito");
 
@@ -196,7 +196,7 @@ test("saving under a taken name is refused unless replaced: a new version, read 
   // "Importar bloque" and a new valuation read the latest version.
   const read = await call(jar, getTemplate, "GET", `/api/plantillas/${original.id}`, undefined, original.id);
   const content = (read.body!.data as { content: DocumentTemplateContent }).content;
-  assert.deepEqual(content.sections.find((section) => section.id === customId)!.blocks[0].concepts.map((concept) => [concept.label, concept.value]), [["Plano nuevo", "Planta baja"]]);
+  assert.deepEqual(content.sections.find((section) => section.id === customId)!.blocks[0].concepts.map((concept) => [concept.label, concept.value]), [["Plano nuevo", ""]], "the structure, without the data");
   const catalogs = await getValuationCreationCatalogs(fixture.organizationId);
   const option = catalogs.templates.find((template) => template.publicId === original.id)!;
   assert.equal(option.description, "Para departamentos en condominio");
@@ -257,7 +257,7 @@ test("a rename keeps the name unique ignoring case and accents, and a removed te
   assert.equal(row.BActivo, false);
   assert.ok(row.DFechaEliminacion, "a soft delete: the row stays");
   assert.deepEqual(await load(publicId, fixture.organizationId), before, "the valuation created from it is unchanged");
-  assert.equal(before.find((section) => section.id === customId)!.blocks[0].concepts[0].value, "Planta baja");
+  assert.equal(before.find((section) => section.id === customId)!.blocks[0].concepts[0].value, "", "a new valuation never inherits the data");
   assert.ok(!(await getValuationCreationCatalogs(fixture.organizationId)).templates.some((template) => template.publicId === a.id));
 
   // The name is free again once removed.
@@ -313,7 +313,7 @@ test("another firm's templates and valuations are not found, the roles that do n
   assert.equal((await call(anonymous, getTemplate, "GET", `/api/plantillas/${id}`, undefined, id)).status, 401);
 });
 
-test("a new valuation starts from the firm's template, with the data when the template kept it", async () => {
+test("a new valuation starts from the firm's template, never with the data of the valuation it came from", async () => {
   const fixture = await createValuationFixture();
   const jar = await signIn(fixture);
   const customId = await captureDocument(fixture);
@@ -340,7 +340,7 @@ test("a new valuation starts from the firm's template, with the data when the te
   const sections = await load(publicId, fixture.organizationId);
   const custom = sections.find((section) => section.id === customId);
   assert.ok(custom, "the firm's own section comes with the template");
-  assert.deepEqual(custom.blocks[0].concepts.map((concept) => [concept.label, concept.value]), [["Plano", "Planta baja"]]);
+  assert.deepEqual(custom.blocks[0].concepts.map((concept) => [concept.label, concept.value]), [["Plano", ""]], "the client's data stay with the original");
   assert.equal(sections.find((section) => section.id === "mercadoVenta")!.blocks.some((block) => block.id.startsWith("motor-")), false);
   const row = await prisma.avaluo.findFirstOrThrow({ where: { UIdentificadorPublico: publicId }, select: { IdPlantillaAvaluo: true, IdOrganizacion: true } });
   assert.equal(row.IdPlantillaAvaluo, option.id);

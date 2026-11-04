@@ -32,6 +32,14 @@ import {
 } from "@/features/valuations/services/caratula-validation";
 
 import { isMachineryPropertyKind } from "@/features/valuations/calculation/machinery-types";
+import {
+  OTHER_PROPERTY_KIND,
+  OTHER_VALUATION_KIND,
+  PROPERTY_KIND_OPTIONS,
+  VALUATION_KIND_OPTIONS,
+  normalizePropertyKind,
+  normalizeValuationKind,
+} from "@/features/valuations/services/property-kinds";
 import { formatDateValue } from "@/features/valuations/services/concept-value-format";
 import {
   DEFAULT_COVER_IMAGE_SIZE,
@@ -61,6 +69,9 @@ import { UploadButton } from "./image-upload-control";
 import { ImageFramingControl } from "./image-framing-control";
 
 /** 1 to 12 whole months, at the appraiser's discretion. */
+/** Today at midnight, local time: the earliest valuation date (video 5.2, 3 Nov 2026). */
+const startOfToday = () => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), now.getDate()); };
+
 const VALIDITY_MONTH_OPTIONS = Array.from({ length: MAX_VALIDITY_MONTHS }, (_, index) => index + 1);
 
 /** "8440000" as "$8,440,000.00"; empty or not a number, as it is. */
@@ -146,6 +157,7 @@ export function CaratulaEditor({
           <div className="min-w-0 md:col-span-3 xl:col-span-4">
             <ValuationDateField
               label="Fecha del avalúo"
+              minDate={startOfToday()}
             value={caratula.fechaAvaluo}
             readOnly={readOnly}
               onChange={(fechaAvaluo) => onUpdate({ fechaAvaluo })}
@@ -235,15 +247,28 @@ export function CaratulaEditor({
             <NativeSelect
               className="w-full"
               disabled={readOnly}
-              value={meta.propertyKind}
-              onChange={(event) => onUpdateMeta({ propertyKind: event.target.value as ValuationMeta["propertyKind"] })}
+              value={normalizePropertyKind(meta.propertyKind)}
+              onChange={(event) => onUpdateMeta({ propertyKind: event.target.value })}
             >
-              <NativeSelectOption value="casa">Casa</NativeSelectOption>
-              <NativeSelectOption value="departamento">Departamento</NativeSelectOption>
-              <NativeSelectOption value="oficina">Oficina</NativeSelectOption>
-                <NativeSelectOption value="terreno">Terreno</NativeSelectOption>
-              </NativeSelect>
+              {PROPERTY_KIND_OPTIONS.map((option) => (
+                // Machinery is chosen when the valuation is created: its panels and wordings depend on it.
+                <NativeSelectOption key={option.key} value={option.key} disabled={isMachineryPropertyKind(option.key)}>
+                  {option.label}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
             )}
+            {normalizePropertyKind(meta.propertyKind) === OTHER_PROPERTY_KIND ? (
+              <Input
+                aria-label="Nombre del tipo de bien"
+                className="mt-1"
+                placeholder="Escribe el tipo de bien"
+                maxLength={120}
+                readOnly={readOnly}
+                value={meta.propertyKindOther ?? ""}
+                onChange={(event) => onUpdateMeta({ propertyKindOther: event.target.value })}
+              />
+            ) : null}
             </Field>
           </div>
           <div className="min-w-0 md:col-span-3 xl:col-span-3">
@@ -252,13 +277,24 @@ export function CaratulaEditor({
             <NativeSelect
               className="w-full"
               disabled={readOnly}
-              value={meta.valuationKind}
-              onChange={(event) => onUpdateMeta({ valuationKind: event.target.value as ValuationMeta["valuationKind"] })}
+              value={normalizeValuationKind(meta.valuationKind)}
+              onChange={(event) => onUpdateMeta({ valuationKind: event.target.value })}
             >
-              <NativeSelectOption value="venta">Venta</NativeSelectOption>
-              <NativeSelectOption value="renta">Renta</NativeSelectOption>
-                <NativeSelectOption value="ambos">Venta y renta</NativeSelectOption>
-              </NativeSelect>
+              {VALUATION_KIND_OPTIONS.map((option) => (
+                <NativeSelectOption key={option.key} value={option.key}>{option.label}</NativeSelectOption>
+              ))}
+            </NativeSelect>
+            {normalizeValuationKind(meta.valuationKind) === OTHER_VALUATION_KIND ? (
+              <Input
+                aria-label="Nombre del tipo de avalúo"
+                className="mt-1"
+                placeholder="Escribe el tipo de avalúo"
+                maxLength={120}
+                readOnly={readOnly}
+                value={meta.valuationKindOther ?? ""}
+                onChange={(event) => onUpdateMeta({ valuationKindOther: event.target.value })}
+              />
+            ) : null}
             </Field>
           </div>
         </div>

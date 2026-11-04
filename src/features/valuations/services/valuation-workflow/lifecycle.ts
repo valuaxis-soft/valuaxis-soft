@@ -9,6 +9,18 @@ import type { AuthUser } from "@/features/auth/model";
 import { copyVersionContent } from "@/features/valuations/services/valuation-version-copy.service";
 import { ValuationWorkflowError } from "./errors";
 
+/** Today's date in Mexico, "YYYY-MM-DD", to compare with the valuation date. */
+const todayInMexico = (now = new Date()) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+
+/** The valuation date is never earlier than the day it is concluded (video 5.2, 3 Nov 2026). */
+export const VALUATION_DATE_IN_PAST = "La fecha del avalúo no puede ser anterior a hoy";
+
+export function valuationDateInPast(valuationDate: Date | null | undefined, now = new Date()) {
+  if (!valuationDate) return false;
+  return valuationDate.toISOString().slice(0, 10) < todayInMexico(now);
+}
+
 export async function concludeValuation(input: {
   publicId: string;
   organizationId: number;
@@ -53,12 +65,13 @@ export async function concludeValuation(input: {
     // Whoever signs must have a cédula profesional.
     const caratula = await tx.caratulaAvaluo.findUnique({
       where: { IdVersionAvaluo: avaluo.IdVersionTrabajo },
-      select: { JFirmas: true, SNombreValuador: true, SRegistroValuador: true },
+      select: { JFirmas: true, SNombreValuador: true, SRegistroValuador: true, DFechaAvaluo: true },
     });
     const signaturesError = caratula
       ? signatureListError(resolveSignatures(caratula.JFirmas, { name: caratula.SNombreValuador, registration: caratula.SRegistroValuador }))
       : null;
     if (signaturesError) throw new ValuationWorkflowError(`Para concluir, completa las firmas en la carátula. ${signaturesError}`, 409);
+    if (valuationDateInPast(caratula?.DFechaAvaluo)) throw new ValuationWorkflowError(VALUATION_DATE_IN_PAST, 409);
 
     // A market of the dictamen concludes only with its adopted value within the ±30 % (the value outside is saved, not concluded).
     const [markets, excluded] = await Promise.all([loadVersionMarkets(tx, avaluo.IdVersionTrabajo), reportExclusionsOf(tx, avaluo.IdVersionTrabajo)]);

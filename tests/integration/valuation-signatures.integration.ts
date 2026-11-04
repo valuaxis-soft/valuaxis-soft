@@ -39,25 +39,25 @@ const rejects400 = (promise: Promise<unknown>, message: RegExp) =>
 
 test("signatures and validity months are saved, trimmed, in order, and read back", async () => {
   const fixture = await createValuationFixture();
-  await save(fixture, { fechaAvaluo: "2026-08-31", mesesVigencia: 6, firmas: [{ name: "  Arq. Ana Ruiz ", cedula: " 7654321 ", role: "Perito valuador" }, { name: "Ing. Beto Díaz", cedula: "1234567" }] });
+  await save(fixture, { fechaAvaluo: "2027-08-31", mesesVigencia: 6, firmas: [{ name: "  Arq. Ana Ruiz ", cedula: " 7654321 ", role: "Perito valuador" }, { name: "Ing. Beto Díaz", cedula: "1234567" }] });
 
   const caratula = await read(fixture);
   assert.deepEqual(caratula.firmas, [ana, beto]);
   assert.equal(caratula.mesesVigencia, 6);
-  assert.equal(caratula.fechaVigencia, "2027-02-28", "the valuation date plus the months, clamped to the month's end");
+  assert.equal(caratula.fechaVigencia, "2028-02-29", "the valuation date plus the months, clamped to the month's end (a leap year)");
 
   const row = await caratulaRow(fixture);
   assert.equal(row.SNombreValuador, "Arq. Ana Ruiz", "the single-signer columns follow the first signature");
   assert.equal(row.SRegistroValuador, "7654321");
 
   // Reordered, one removed, another validity: the list is replaced.
-  await save(fixture, { fechaAvaluo: "2026-08-31", mesesVigencia: 1, firmas: [beto] });
+  await save(fixture, { fechaAvaluo: "2027-08-31", mesesVigencia: 1, firmas: [beto] });
   const next = await read(fixture);
   assert.deepEqual(next.firmas, [beto]);
   assert.equal(next.mesesVigencia, 1);
-  assert.equal(next.fechaVigencia, "2026-09-30");
+  assert.equal(next.fechaVigencia, "2027-09-30");
 
-  await save(fixture, { fechaAvaluo: "2026-08-31", mesesVigencia: 12, firmas: [] });
+  await save(fixture, { fechaAvaluo: "2027-08-31", mesesVigencia: 12, firmas: [] });
   assert.deepEqual((await read(fixture)).firmas, []);
   assert.equal((await caratulaRow(fixture)).SNombreValuador, null);
 });
@@ -80,19 +80,19 @@ test("one signature or three are stored; a save without the list leaves it as it
 
 test("incomplete signatures, more than three, or a validity outside 1 to 12 whole months are rejected and nothing is saved", async () => {
   const fixture = await createValuationFixture();
-  await save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: 6, firmas: [ana] });
+  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 6, firmas: [ana] });
 
   await rejects400(save(fixture, { mesesVigencia: 6, firmas: [{ name: "", cedula: "1" }] }), /Firma 1: Escribe el nombre/);
   await rejects400(save(fixture, { mesesVigencia: 6, firmas: Array.from({ length: 4 }, () => ana) }), /máximo 3 firmas/);
   await rejects400(save(fixture, { mesesVigencia: 6, firmas: "Ana" }), /Las firmas no son válidas/);
   for (const months of [0, 13, 24, 6.5]) {
-    await rejects400(save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: months, firmas: [beto] }), /de 1 a 12 meses completos/);
+    await rejects400(save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: months, firmas: [beto] }), /de 1 a 12 meses completos/);
   }
 
   const caratula = await read(fixture);
   assert.deepEqual(caratula.firmas, [ana]);
   assert.equal(caratula.mesesVigencia, 6);
-  assert.equal(caratula.fechaVigencia, "2027-03-28");
+  assert.equal(caratula.fechaVigencia, "2028-03-28");
 });
 
 test("the database rejects validity months outside 1 to 12 and signatures that are not a list", async () => {
@@ -111,7 +111,7 @@ test("the database rejects validity months outside 1 to 12 and signatures that a
 
 test("a valuation with the old single signer shows it as the first signature, and its date as months", async () => {
   const fixture = await createValuationFixture();
-  await save(fixture, { valuador: "Ing. Álvaro Gutiérrez", registroValuador: "CED-12345", fechaAvaluo: "2026-09-28", fechaVigencia: "2027-03-28" });
+  await save(fixture, { valuador: "Ing. Álvaro Gutiérrez", registroValuador: "CED-12345", fechaAvaluo: "2027-09-28", fechaVigencia: "2028-03-28" });
   const row = await caratulaRow(fixture);
   assert.equal(row.JFirmas, null);
   assert.equal(row.IMesesVigencia, null);
@@ -119,7 +119,7 @@ test("a valuation with the old single signer shows it as the first signature, an
   const caratula = await read(fixture);
   assert.deepEqual(caratula.firmas, [{ name: "Ing. Álvaro Gutiérrez", cedula: "CED-12345", role: "" }]);
   assert.equal(caratula.mesesVigencia, 6);
-  assert.equal(caratula.fechaVigencia, "2027-03-28");
+  assert.equal(caratula.fechaVigencia, "2028-03-28");
 
   // Adding a second signature from the editor keeps the old one first.
   await save(fixture, { fechaAvaluo: caratula.fechaAvaluo, mesesVigencia: caratula.mesesVigencia, firmas: [...caratula.firmas, ana] });
@@ -128,20 +128,20 @@ test("a valuation with the old single signer shows it as the first signature, an
 
 test("an old validity that is not whole months keeps its date until the appraiser chooses the months", async () => {
   const fixture = await createValuationFixture();
-  await save(fixture, { valuador: "Sin cédula", fechaAvaluo: "2026-09-28", fechaVigencia: "2028-03-15" });
+  await save(fixture, { valuador: "Sin cédula", fechaAvaluo: "2027-09-28", fechaVigencia: "2029-03-15" });
   const caratula = await read(fixture);
   assert.equal(caratula.mesesVigencia, null);
-  assert.equal(caratula.fechaVigencia, "2028-03-15");
+  assert.equal(caratula.fechaVigencia, "2029-03-15");
   assert.deepEqual(caratula.firmas, [{ name: "Sin cédula", cedula: "", role: "" }]);
 
   // The editor sends the list back as it read it: it is saved, but it cannot be concluded without the cédula.
-  await save(fixture, { fechaAvaluo: "2026-09-28", fechaVigencia: "2028-03-15", firmas: caratula.firmas });
+  await save(fixture, { fechaAvaluo: "2027-09-28", fechaVigencia: "2029-03-15", firmas: caratula.firmas });
   await assert.rejects(
     concludeValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user: fixture.user }),
     (error: unknown) => error instanceof Error && /Para concluir, completa las firmas.*Firma 1: Escribe la cédula profesional/.test(error.message),
   );
-  await save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: 12, firmas: [{ name: "Sin cédula", cedula: "99" }] });
-  assert.equal((await read(fixture)).fechaVigencia, "2027-09-28");
+  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 12, firmas: [{ name: "Sin cédula", cedula: "99" }] });
+  assert.equal((await read(fixture)).fechaVigencia, "2028-09-28");
 });
 
 /* ------------------------------------------------------------------ */
@@ -150,11 +150,11 @@ test("an old validity that is not whole months keeps its date until the appraise
 
 test("the firm's signatures and validity seed new valuations; an incomplete old appraiser is not seeded", async () => {
   const fixture = await createValuationFixture();
-  const defaults = () => prisma.$transaction((tx) => getValuationDefaults(tx, fixture.organizationId, new Date("2026-09-28T18:00:00Z")));
+  const defaults = () => prisma.$transaction((tx) => getValuationDefaults(tx, fixture.organizationId, new Date("2027-09-28T18:00:00Z")));
 
   await saveFirmSettings(fixture.user, firmSettingsSchema.parse({ validityMonths: 8, folioPrefix: "VDA", signers: [ana, beto] }));
   assert.deepEqual((await getFirmSettings(fixture.organizationId)).signers, [ana, beto]);
-  assert.deepEqual(await defaults(), { folioPrefix: "VDA", signers: [ana, beto], valuationDate: "2026-09-28", validityMonths: 8 });
+  assert.deepEqual(await defaults(), { folioPrefix: "VDA", signers: [ana, beto], valuationDate: "2027-09-28", validityMonths: 8 });
   const organization = await prisma.organizacion.findUniqueOrThrow({ where: { IdOrganizacion: fixture.organizationId } });
   assert.equal(organization.SNombrePerito, "Arq. Ana Ruiz");
   assert.equal(organization.SRegistroPerito, "7654321");
@@ -176,7 +176,7 @@ test("the firm's signatures and validity seed new valuations; an incomplete old 
 
 test("a concluded version keeps its signatures and validity after reopening and editing", async () => {
   const fixture = await createValuationFixture();
-  await save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: 6, firmas: [ana, beto] });
+  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 6, firmas: [ana, beto] });
   await concludeValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user: fixture.user });
   const concluded = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
   await reopenValuation({
@@ -193,30 +193,30 @@ test("a concluded version keeps its signatures and validity after reopening and 
   assert.equal(reopened.mesesVigencia, 6);
 
   const carla = { name: "Lic. Carla Soto", cedula: "5550001", role: "Revisora" };
-  await save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: 12, firmas: [carla, ana] });
+  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 12, firmas: [carla, ana] });
   const edited = await read(fixture);
   assert.deepEqual(edited.firmas, [carla, ana]);
-  assert.equal(edited.fechaVigencia, "2027-09-28");
+  assert.equal(edited.fechaVigencia, "2028-09-28");
 
   const final = await prisma.caratulaAvaluo.findUniqueOrThrow({ where: { IdVersionAvaluo: concluded.IdVersionFinal! } });
   assert.notEqual(final.IdVersionAvaluo, (await caratulaRow(fixture)).IdVersionAvaluo);
   assert.deepEqual(final.JFirmas, [ana, beto]);
   assert.equal(final.IMesesVigencia, 6);
-  assert.equal(final.DFechaVigencia?.toISOString().slice(0, 10), "2027-03-28");
+  assert.equal(final.DFechaVigencia?.toISOString().slice(0, 10), "2028-03-28");
 });
 
 test("a signature image is saved as a key, comes back as an address, and stays with the concluded version", async () => {
   const fixture = await createValuationFixture();
   const key = "uploads/2026-10/firma-ana.jpg";
   const address = "/api/archivos/imagen?key=uploads%2F2026-10%2Ffirma-ana.jpg";
-  await save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: 6, firmas: [{ ...ana, image: address }, beto] });
+  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 6, firmas: [{ ...ana, image: address }, beto] });
 
   const row = await caratulaRow(fixture);
   assert.deepEqual(row.JFirmas, [{ ...ana, image: key }, beto], "in the database, the key and nothing that expires");
   assert.deepEqual((await read(fixture)).firmas, [{ ...ana, image: address }, beto]);
 
   // The editor sends back what it read: nothing changes.
-  await save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: 6, firmas: (await read(fixture)).firmas });
+  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 6, firmas: (await read(fixture)).firmas });
   assert.deepEqual((await caratulaRow(fixture)).JFirmas, [{ ...ana, image: key }, beto]);
 
   await concludeValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user: fixture.user });
@@ -225,10 +225,25 @@ test("a signature image is saved as a key, comes back as an address, and stays w
   assert.deepEqual((await read(fixture)).firmas, [{ ...ana, image: address }, beto], "the reopened version starts with the image");
 
   // Removing it in the new version leaves the concluded one signed.
-  await save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: 6, firmas: [ana, beto] });
+  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 6, firmas: [ana, beto] });
   assert.deepEqual((await caratulaRow(fixture)).JFirmas, [ana, beto]);
   const final = await prisma.caratulaAvaluo.findUniqueOrThrow({ where: { IdVersionAvaluo: concluded.IdVersionFinal! } });
   assert.deepEqual(final.JFirmas, [{ ...ana, image: key }, beto]);
+});
+
+test("a valuation whose date is earlier than today cannot be concluded; dated today or later, it can", async () => {
+  const fixture = await createValuationFixture();
+  await save(fixture, { fechaAvaluo: "2020-01-15", mesesVigencia: 6, firmas: [ana] });
+  await assert.rejects(
+    concludeValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user: fixture.user }),
+    (error: Error & { status?: number }) => error.status === 409 && error.message === "La fecha del avalúo no puede ser anterior a hoy",
+  );
+  assert.equal((await getValuationByPublicId(fixture.publicId, fixture.organizationId))!.locked, false, "still open");
+
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  await save(fixture, { fechaAvaluo: today, mesesVigencia: 6, firmas: [ana] });
+  await concludeValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user: fixture.user });
+  assert.equal((await getValuationByPublicId(fixture.publicId, fixture.organizationId))!.locked, true);
 });
 
 test("the firm's default signatures keep their image and seed new valuations with it", async () => {

@@ -12,12 +12,15 @@ export function ValuationsFilters({
   q,
   status,
   statuses,
+  archived = false,
 }: {
   q: string;
   status: string | null;
   statuses: Array<{ key: string; name: string }>;
+  /** The list shows the archived valuations. */
+  archived?: boolean;
 }) {
-  const hasFilters = Boolean(q || status);
+  const hasFilters = Boolean(q || status || archived);
 
   return (
     <form action="/avaluos" method="get" role="search" className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -46,6 +49,10 @@ export function ValuationsFilters({
           </NativeSelectOption>
         ))}
       </NativeSelect>
+      <label className="flex h-9 items-center gap-2 text-sm whitespace-nowrap">
+        <input type="checkbox" name="archivados" value="1" defaultChecked={archived} className="size-4 accent-primary" />
+        Archivados
+      </label>
       <div className="flex gap-2">
         <Button type="submit" variant="secondary" className="h-9 px-3">
           Buscar

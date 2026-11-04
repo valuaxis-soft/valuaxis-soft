@@ -3,6 +3,10 @@ import { test } from "node:test";
 import {
   VALUATION_SEARCH_MAX_LENGTH,
   buildValuationListHref,
+  buildValuationSortHref,
+  parseArchived,
+  parseDirection,
+  parseSort,
   parsePage,
   parseSearch,
   parseStatus,
@@ -48,13 +52,16 @@ test("estado only accepts keys from the catalog, case-insensitive", () => {
   assert.equal(parseStatus("nuevo", []), null);
 });
 
-test("parseValuationListParams combines the three params", () => {
+test("parseValuationListParams combines the params, with the default order", () => {
   assert.deepEqual(parseValuationListParams({ page: "2", q: " VAL-01 ", estado: "NUEVO" }, statusKeys), {
     page: 2,
     q: "VAL-01",
     status: "nuevo",
+    sort: "modificacion",
+    direction: "desc",
+    archived: false,
   });
-  assert.deepEqual(parseValuationListParams({}, statusKeys), { page: 1, q: "", status: null });
+  assert.deepEqual(parseValuationListParams({}, statusKeys), { page: 1, q: "", status: null, sort: "modificacion", direction: "desc", archived: false });
 });
 
 test("totalPages never returns less than one page", () => {
@@ -79,4 +86,27 @@ test("status labels are in Spanish with accents and fall back to the catalog nam
   assert.equal(getStatusPresentation("terminado").pluralLabel, "Terminados");
   assert.equal(getStatusPresentation("pausado", "Pausado").label, "Pausado");
   assert.equal(getStatusPresentation("en_espera").label, "En espera");
+});
+
+test("the list sorts by a column in either direction; the default order is left out of the href", () => {
+  assert.equal(parseSort(undefined), "modificacion");
+  assert.equal(parseSort("FOLIO"), "folio");
+  assert.equal(parseSort("otra"), "modificacion");
+  assert.equal(parseDirection(undefined, "modificacion"), "desc", "dates newest first");
+  assert.equal(parseDirection(undefined, "titulo"), "asc", "texts A–Z");
+  assert.equal(parseDirection("desc", "titulo"), "desc");
+  assert.equal(parseDirection("sideways", "folio"), "asc");
+  assert.equal(parseArchived("1"), true);
+  assert.equal(parseArchived(undefined), false);
+
+  const params = parseValuationListParams({ orden: "estado", dir: "desc", archivados: "1", q: "casa" }, statusKeys);
+  assert.deepEqual([params.sort, params.direction, params.archived], ["estado", "desc", true]);
+  assert.equal(buildValuationListHref(params), "/avaluos?q=casa&archivados=1&orden=estado&dir=desc");
+  assert.equal(buildValuationListHref({ sort: "modificacion", direction: "desc" }), "/avaluos", "the default order needs no parameters");
+  assert.equal(buildValuationListHref({ sort: "modificacion", direction: "asc" }), "/avaluos?orden=modificacion&dir=asc");
+
+  // Clicking the sorted column turns it around; another column starts in its natural direction, on page 1.
+  assert.equal(buildValuationSortHref({ ...params, page: 3 }, "estado"), "/avaluos?q=casa&archivados=1&orden=estado&dir=asc");
+  assert.equal(buildValuationSortHref(params, "folio"), "/avaluos?q=casa&archivados=1&orden=folio&dir=asc");
+  assert.equal(buildValuationSortHref({ sort: "folio", direction: "asc" }, "modificacion"), "/avaluos");
 });

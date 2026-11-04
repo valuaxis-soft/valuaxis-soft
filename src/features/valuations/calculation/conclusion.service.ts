@@ -22,7 +22,18 @@ import {
   valuesForConclusion,
   type ReportApproach,
 } from "../services/report-approaches";
-import { CONCLUSION_PERCENT_FIELDS, canConclude, conclusionEngineConfig, defaultMethod, type ConclusionCalculationDto, type ConclusionMethod } from "./conclusion-types";
+import {
+  CONCLUSION_PERCENT_FIELDS,
+  SUMMARY_SOURCES,
+  canConclude,
+  conclusionEngineConfig,
+  conclusionInput,
+  defaultMethod,
+  type ConclusionCalculationDto,
+  type ConclusionMethod,
+  type ConclusionSummaryRow,
+  type SummarySource,
+} from "./conclusion-types";
 
 const CALCULATION_KEY = "MOTOR.CONCLUSION";
 
@@ -44,6 +55,42 @@ export async function reportExclusionsOf(tx: Tx, versionId: number): Promise<Set
 
 /** The same exclusions in a stable order, to compare a save with what was stored. */
 export const exclusionKey = (excluded: ReadonlySet<ReportApproach>) => REPORT_APPROACHES.filter((approach) => excluded.has(approach)).join(",");
+
+/**
+ * Every value the valuation has for the resumen de valores: the approaches,
+ * the rent market and the statistical methods of the market for sale
+ * (buildings, else land). An approach left out of the dictamen is null.
+ */
+async function availableValues(tx: Tx, versionId: number, excluded: ReadonlySet<ReportApproach>): Promise<Record<SummarySource, number | null>> {
+  const [costs, markets, income, statistical] = await Promise.all([
+    tx.enfoqueCosto.findUnique({ where: { IdVersionAvaluo: versionId }, select: { NValorFisicoTotal: true } }),
+    tx.enfoqueMercado.findMany({ where: { IdVersionAvaluo: versionId }, select: { NValorMercado: true, tipoComparable: { select: { SClave: true } } } }),
+    tx.enfoqueIngreso.findUnique({ where: { IdVersionAvaluo: versionId }, select: { NValorCapitalizacion: true } }),
+    tx.metodoEstadistico.findMany({ where: { IdVersionAvaluo: versionId }, select: { STipoComparable: true, NValorRegresion: true, NValorMetas: true } }),
+  ]);
+  const market = (key: string) => decimal(markets.find((row) => row.tipoComparable.SClave === key && row.NValorMercado !== null)?.NValorMercado);
+  const sale = statistical.find((row) => row.STipoComparable === "INMUEBLE_VENTA") ?? statistical.find((row) => row.STipoComparable === "TERRENO_VENTA");
+  return {
+    costos: excluded.has("costos") ? null : decimal(costs?.NValorFisicoTotal),
+    "mercado-inmuebles": excluded.has("mercado-inmuebles") ? null : market("INMUEBLE_VENTA"),
+    "mercado-terrenos": excluded.has("mercado-terrenos") ? null : market("TERRENO_VENTA"),
+    "mercado-rentas": excluded.has("mercado-rentas") ? null : market("INMUEBLE_RENTA") ?? market("TERRENO_RENTA"),
+    ingresos: excluded.has("ingresos") ? null : decimal(income?.NValorCapitalizacion),
+    regresion: decimal(sale?.NValorRegresion),
+    metas: decimal(sale?.NValorMetas),
+  };
+}
+
+const isSummarySource = (value: unknown): value is SummarySource => typeof value === "string" && (SUMMARY_SOURCES as readonly string[]).includes(value);
+
+/** The rows stored in the configuration, only the well-formed ones. */
+function storedSummaryRows(value: unknown): ConclusionSummaryRow[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((row) => {
+    const record = asRecord(row);
+    return isSummarySource(record.source) ? [{ source: record.source, label: typeof record.label === "string" ? record.label : "" }] : [];
+  });
+}
 
 async function approachValues(tx: Tx, versionId: number): Promise<Pick<ConclusionCalculationDto, "values" | "marketSource" | "excluded">> {
   const excluded = await reportExclusionsOf(tx, versionId);
@@ -88,11 +135,15 @@ async function load(tx: Tx, versionId: number) {
     tx.resumenValor.findUnique({ where: { IdVersionAvaluo: versionId } }),
     approachValues(tx, versionId),
   ]);
-  const configuration = asRecord(summary?.JConfiguracion ?? null) as { method?: ConclusionMethod; rounding?: number | null; formulas?: unknown };
+  const available = await availableValues(tx, versionId, new Set(excluded));
+  const configuration = asRecord(summary?.JConfiguracion ?? null) as { method?: ConclusionMethod; rounding?: number | null; formulas?: unknown; summaryRows?: unknown };
+  const summaryRows = storedSummaryRows(configuration.summaryRows);
   return {
     values,
     marketSource,
     excluded,
+    available,
+    ...(summaryRows ? { summaryRows } : {}),
     method: configuration.method ?? defaultMethod(values),
     justification: summary?.SJustificacion ?? null,
     ...(configuration.rounding === undefined ? {} : { rounding: configuration.rounding }),
@@ -124,7 +175,14 @@ export async function saveConclusionSettings(publicId: string, user: AuthUser, p
       previousFormulas: previous.formulas,
       percent: CONCLUSION_PERCENT_FIELDS,
     });
-    const configuration = { method: payload.method, ...(payload.rounding === undefined ? {} : { rounding: payload.rounding }), formulas };
+    // The resumen's rows change only when sent; an empty list lists the approaches as always.
+    const summaryRows = payload.summaryRows ?? previous.summaryRows;
+    const configuration = {
+      method: payload.method,
+      ...(payload.rounding === undefined ? {} : { rounding: payload.rounding }),
+      formulas,
+      ...(summaryRows?.length ? { summaryRows } : {}),
+    };
     const data = { JConfiguracion: configuration as Prisma.InputJsonValue, SJustificacion: payload.justification };
     await tx.resumenValor.upsert({ where: { IdVersionAvaluo: versionId }, create: { IdVersionAvaluo: versionId, ...data }, update: data });
     await recomputeConclusion(tx, versionId);
@@ -137,7 +195,7 @@ export async function recomputeConclusion(tx: Tx, versionId: number) {
   await tx.ejecucionCalculo.deleteMany({ where: { IdVersionAvaluo: versionId, SClaveCalculo: CALCULATION_KEY } });
   const trace = new Trace();
   const config = conclusionEngineConfig(current);
-  const result = canConclude(current) ? concludeValue({ values: current.values, method: current.method }, config, trace) : null;
+  const result = canConclude(current) ? concludeValue(conclusionInput(current), config, trace) : null;
   const data = {
     NValorEnfoqueCostos: result?.summary.costos ?? current.values.costos,
     NValorEnfoqueMercado: result?.summary.mercado ?? current.values.mercado,
@@ -158,7 +216,7 @@ export async function recomputeConclusion(tx: Tx, versionId: number) {
       IdCalculoPermitido: calculation,
       SClaveCalculo: CALCULATION_KEY,
       SVersionCalculo: ENGINE_VERSION,
-      JValoresEntrada: { values: current.values, method: current.method } as unknown as Prisma.InputJsonValue,
+      JValoresEntrada: conclusionInput(current) as unknown as Prisma.InputJsonValue,
       JValoresSalida: result as unknown as Prisma.InputJsonValue,
       SPoliticaRedondeo: JSON.stringify({ conclusion: config.rounding.conclusion }),
       BExitoso: true,

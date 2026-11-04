@@ -19,6 +19,14 @@ import {
   resolveResponsibleValuatorName,
   type GeneralCaratulaDefaults,
 } from "@/features/valuations/services/general-valuation-template";
+import { stripClientDataFromSections } from "@/features/valuations/services/document-template";
+import {
+  OTHER_PROPERTY_KIND,
+  OTHER_VALUATION_KIND,
+  normalizePropertyKind,
+  normalizeValuationKind,
+  type OwnKindNames,
+} from "@/features/valuations/services/property-kinds";
 import { templateSectionsForCreation } from "@/features/valuations/services/valuation-template.service";
 import { writeVersionSections } from "@/features/valuations/services/valuation-workflow/save-sections";
 import type { SectionPayload } from "@/features/valuations/services/valuation-workflow/types";
@@ -39,6 +47,8 @@ export type SaveValuationInput = {
   postalCode?: string;
   valuationKind?: string;
   propertyKind?: string;
+  propertyKindOther?: string;
+  valuationKindOther?: string;
   appraisalTypeId?: number;
   propertyTypeId?: number;
   operationTypeId?: number;
@@ -66,7 +76,7 @@ export async function saveValuation(input: SaveValuationInput) {
           BActivo: true,
           DFechaEliminacion: null,
         },
-        select: { IdAvaluo: true, IdPropiedadSujeto: true, IdTipoInmueble: true, SFolio: true, BBloqueado: true },
+        select: { IdAvaluo: true, IdPropiedadSujeto: true, IdTipoInmueble: true, IdTipoOperacion: true, SFolio: true, BBloqueado: true, IdEstadoAvaluo: true, IdVersionTrabajo: true, estadoAvaluo: { select: { BEsInicial: true } } },
       });
 
       if (!existing) {
@@ -77,11 +87,19 @@ export async function saveValuation(input: SaveValuationInput) {
       }
 
       await prisma.$transaction(async (tx) => {
+        // The kinds the carátula chose, by their catalog keys; an unknown key keeps the current kind.
+        const [propertyType, operationType] = await Promise.all([
+          input.propertyKind ? tx.tipoInmueble.findFirst({ where: { BActivo: true, SClave: { equals: normalizePropertyKind(input.propertyKind), mode: "insensitive" } }, select: { IdTipoInmueble: true } }) : null,
+          input.valuationKind ? tx.tipoOperacion.findFirst({ where: { BActivo: true, SClave: { equals: normalizeValuationKind(input.valuationKind), mode: "insensitive" } }, select: { IdTipoOperacion: true } }) : null,
+        ]);
+        const propertyTypeId = input.propertyTypeId ?? propertyType?.IdTipoInmueble ?? existing.IdTipoInmueble;
         await tx.avaluo.update({
           where: { IdAvaluo: existing.IdAvaluo },
           data: {
             STitulo: input.title || input.location || existing.SFolio,
             SNombreCliente: input.clientName ?? input.client ?? null,
+            IdTipoInmueble: propertyTypeId,
+            ...(operationType ? { IdTipoOperacion: operationType.IdTipoOperacion } : {}),
           },
         });
 
@@ -90,11 +108,14 @@ export async function saveValuation(input: SaveValuationInput) {
           valuationId: existing.IdAvaluo,
           organizationId: user.organizationId,
           propertyId: existing.IdPropiedadSujeto,
-          propertyTypeId: input.propertyTypeId ?? existing.IdTipoInmueble,
+          propertyTypeId,
           propertyName: input.title || input.location || existing.SFolio,
           location: input.location,
           postalCode: input.postalCode,
         });
+        await saveOwnKindNames(tx, existing.IdAvaluo, user.organizationId, propertyTypeId, input);
+        // The first edit moves the valuation from "Nuevo" to "En edición" (2 Nov 2026: every valuation stayed "Nuevo").
+        if (existing.estadoAvaluo.BEsInicial) await advanceToEditing(tx, existing, user.id);
       });
 
       revalidatePath("/");
@@ -291,8 +312,67 @@ async function validateCreationCatalogs(input: SaveValuationInput, organizationI
  * system's template does.
  */
 function templateDocumentPayload(sections: AppSection[], defaults: GeneralCaratulaDefaults): SectionPayload[] {
-  const hydrated = sections.map((section) => (section.id === "caratula" ? hydrateGeneralCaratulaTemplate(section, defaults) : section));
+  // A template saved with a client's data (before 2 Nov 2026) never passes them on: the new valuation starts blank.
+  const clean = stripClientDataFromSections(sections, { includeImages: true });
+  const hydrated = clean.map((section) => (section.id === "caratula" ? hydrateGeneralCaratulaTemplate(section, defaults) : section));
   return buildSectionsPayload(hydrated) as SectionPayload[];
+}
+
+/** The valuation leaves "Nuevo" for "En edición" once somebody edits it; its history records the change. */
+async function advanceToEditing(tx: Prisma.TransactionClient, valuation: { IdAvaluo: number; IdEstadoAvaluo: number; IdVersionTrabajo: number | null }, userId: number) {
+  const editing = await tx.estadoAvaluo.findFirst({
+    where: { BActivo: true, SClave: { equals: "EN_EDICION", mode: "insensitive" } },
+    select: { IdEstadoAvaluo: true },
+  });
+  if (!editing || editing.IdEstadoAvaluo === valuation.IdEstadoAvaluo || !valuation.IdVersionTrabajo) return;
+  await tx.avaluo.update({ where: { IdAvaluo: valuation.IdAvaluo }, data: { IdEstadoAvaluo: editing.IdEstadoAvaluo } });
+  await tx.estadoAvaluoHistorial.create({
+    data: {
+      IdAvaluo: valuation.IdAvaluo,
+      IdVersionAvaluo: valuation.IdVersionTrabajo,
+      IdUsuario: userId,
+      IdEstadoAnterior: valuation.IdEstadoAvaluo,
+      IdEstadoNuevo: editing.IdEstadoAvaluo,
+      SMotivo: "Primera edicion",
+    },
+  });
+}
+
+/**
+ * The names of the kinds of the appraiser's own ("Otro…"), on the subject
+ * property's characteristics (no column of their own). A name is kept only
+ * while its kind is "otro"/"otra".
+ */
+async function saveOwnKindNames(
+  tx: Prisma.TransactionClient,
+  valuationId: number,
+  organizationId: number,
+  propertyTypeId: number,
+  input: Pick<SaveValuationInput, "propertyKind" | "valuationKind" | "propertyKindOther" | "valuationKindOther" | "title" | "location">,
+) {
+  if (input.propertyKindOther === undefined && input.valuationKindOther === undefined) return;
+  const names: OwnKindNames = {
+    ...(normalizePropertyKind(input.propertyKind) === OTHER_PROPERTY_KIND && input.propertyKindOther?.trim() ? { tipoBienOtro: input.propertyKindOther.trim() } : {}),
+    ...(normalizeValuationKind(input.valuationKind) === OTHER_VALUATION_KIND && input.valuationKindOther?.trim() ? { tipoAvaluoOtro: input.valuationKindOther.trim() } : {}),
+  };
+  const valuation = await tx.avaluo.findUnique({ where: { IdAvaluo: valuationId }, select: { IdPropiedadSujeto: true, SFolio: true } });
+  if (!valuation) return;
+  let propertyId = valuation.IdPropiedadSujeto;
+  if (!propertyId) {
+    if (!Object.keys(names).length) return;
+    const created = await tx.propiedad.create({
+      data: { IdOrganizacion: organizationId, IdTipoInmueble: propertyTypeId, SNombre: cleanOptionalText(input.title) ?? cleanOptionalText(input.location) ?? valuation.SFolio },
+      select: { IdPropiedad: true },
+    });
+    propertyId = created.IdPropiedad;
+    await tx.avaluo.update({ where: { IdAvaluo: valuationId }, data: { IdPropiedadSujeto: propertyId } });
+  }
+  const property = await tx.propiedad.findUnique({ where: { IdPropiedad: propertyId }, select: { JCaracteristicas: true } });
+  const current = property?.JCaracteristicas && typeof property.JCaracteristicas === "object" && !Array.isArray(property.JCaracteristicas)
+    ? (property.JCaracteristicas as Record<string, unknown>)
+    : {};
+  const { tipoBienOtro: _bien, tipoAvaluoOtro: _avaluo, ...rest } = current;
+  await tx.propiedad.update({ where: { IdPropiedad: propertyId }, data: { JCaracteristicas: { ...rest, ...names } as Prisma.InputJsonObject } });
 }
 
 function missingCatalog(code: string, label: string) {

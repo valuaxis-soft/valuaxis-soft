@@ -21,7 +21,7 @@ import { comparableValidity } from "../calculation/comparable-validity";
 import type { CostCalculationDto } from "../calculation/cost-types";
 import { COST_PERCENT_FIELDS, costEngineConfig, toCostEngineInput } from "../calculation/cost-types";
 import type { ConclusionCalculationDto } from "../calculation/conclusion-types";
-import { CONCLUSION_PERCENT_FIELDS, canConclude, conclusionEngineConfig } from "../calculation/conclusion-types";
+import { CONCLUSION_PERCENT_FIELDS, canConclude, conclusionEngineConfig, conclusionInput } from "../calculation/conclusion-types";
 import { roundDecimal } from "../calculation/free-formula";
 import { INCOME_PERCENT_FIELDS, incomeEngineConfig, toIncomeEngineInput, type IncomeCalculationDto } from "../calculation/income-types";
 import { toMachineryCostEngineInput, toMachineryMarketEngineInput, type MachineryCalculationDto } from "../calculation/machinery-types";
@@ -565,7 +565,16 @@ export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
     });
   }
 
-  if (!machinery && calculations.income?.configured) {
+  if (!machinery && calculations.income && !calculations.income.configured) {
+    // The approach is in the document but nothing was captured: the memory says so instead of staying silent.
+    runs.push({
+      key: "MOTOR.INGRESOS",
+      title: "Enfoque de ingresos",
+      sectionKey: "INGRESOS",
+      trace: null,
+      pending: "falta capturar el enfoque de ingresos (superficie rentable, renta unitaria y tasa de capitalización).",
+    });
+  } else if (!machinery && calculations.income?.configured) {
     const input = toIncomeEngineInput(calculations.income);
     runs.push({
       key: "MOTOR.INGRESOS",
@@ -590,7 +599,7 @@ export function engineRuns(calculations: MemoryCalculations): EngineRun[] {
       sectionKey: "CONCLUSIONES",
       captured: typedFormulas(conclusion.formulas, conclusion, { percent: CONCLUSION_PERCENT_FIELDS }),
       ...(canConclude(conclusion)
-        ? run((trace) => concludeValue({ values: conclusion.values, method: conclusion.method }, conclusionEngineConfig(conclusion), trace))
+        ? run((trace) => concludeValue(conclusionInput(conclusion), conclusionEngineConfig(conclusion), trace))
         : { trace: null, pending: "Elige con qué enfoque se concluye, o una ponderación que sume 100 %." }),
     });
   }

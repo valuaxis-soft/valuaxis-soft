@@ -56,10 +56,12 @@
 | PATCH, DELETE | `/api/organizacion/equipo/miembros/[id]` | Cambia el rol o da de baja a un miembro |
 | GET, POST | `/api/organizacion/invitaciones` | Invitaciones pendientes para el correo del usuario; `POST` acepta por `token` o `id` y abre el equipo |
 | GET, POST | `/api/avaluos` | Lista (máximo 200, los más recientes) y crea avalúos |
-| GET, PUT, DELETE | `/api/avaluos/[id]` | Detalle, metadatos y borrado lógico |
+| GET, PUT, DELETE | `/api/avaluos/[id]` | Detalle, metadatos (tipo de bien y de avalúo, nombre libre de «Otro…») y borrado lógico. La primera edición pasa el avalúo de «Nuevo» a «En edición» con su historial |
 | PUT | `/api/avaluos/[id]/full` | Guarda el avalúo completo |
 | POST | `/api/avaluos/[id]/conclude` | Concluye (botón "Concluir" en el editor) |
 | POST | `/api/avaluos/[id]/reopen` | Reabre con motivo y aceptación (botón "Reabrir" en el editor) |
+| POST | `/api/avaluos/[id]/duplicar` | Un avalúo nuevo del despacho (folio propio, «Nuevo», `IdAvaluoOrigen`) con copia del documento, tablas, carátula, comparables y propiedad del original (`valuation-duplicate.service.ts`). `AVALUO_CREAR` |
+| POST | `/api/avaluos/[id]/archivar` | `{ archived }`: lo saca de la lista principal (`DFechaArchivo`, migración 055) o lo devuelve; la lista lo muestra con el filtro «Archivados». `AVALUO_EDITAR` |
 | POST | `/api/avaluos/[id]/dictamen/pdf` | Genera el dictamen en PDF con Chromium, lo guarda como archivo del avalúo (`PDF_BORRADOR`, o `PDF_FINAL` si está concluido), registra la exportación y lo devuelve como descarga. `AVALUO_EXPORTAR`; 10 por usuario cada 10 minutos |
 | POST | `/api/avaluos/[id]/entregables` | Los dos entregables en un `.zip` (`Entregables-<folio>.zip`): el dictamen en PDF (que se guarda con el avalúo, como su propia descarga) y la memoria de cálculo en PDF, generados uno tras otro. Registra la exportación (`entregables-zip`). `AVALUO_EXPORTAR`; 5 por usuario cada 10 minutos |
 | POST | `/api/avaluos/[id]/memoria-calculo/pdf` | Genera la memoria de cálculo en PDF con Chromium (números de página al pie) y la devuelve como descarga; no se guarda, se rehace del avalúo cada vez. Registra la exportación (`memoria-calculo-pdf`). También para avalúos concluidos. `AVALUO_EXPORTAR`; 10 por usuario cada 10 minutos |

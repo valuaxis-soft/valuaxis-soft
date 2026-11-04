@@ -28,6 +28,9 @@ const valuationMetaShape = {
   postalCode: z.string().max(10).optional(),
   valuationKind: z.string().max(64).optional(),
   propertyKind: z.string().max(64).optional(),
+  /** The name of a kind of the appraiser's own ("Otro…"). */
+  propertyKindOther: z.string().trim().max(120).optional(),
+  valuationKindOther: z.string().trim().max(120).optional(),
   status: z.string().max(64).optional(),
 };
 

@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import type { CaratulaFormData, ImageContent, Letterhead } from "../../model";
 import type { ComparableCardDto } from "../../calculation/comparable-card.service";
-import { memoryChapters, type CalculationMemory, type MemoryApproach, type MemoryConcept, type MemoryTable } from "../../memory/calculation-memory";
+import { memoryChapters, type CalculationMemory, type MemoryApproach, type MemoryChapter, type MemoryConcept, type MemoryTable } from "../../memory/calculation-memory";
 import { formatDateValue } from "../../services/concept-value-format";
 import { ComparableCardView } from "../calculation/comparable-card-view";
 import { DocumentPreviewHeader } from "../document-preview-header";
@@ -75,8 +75,40 @@ function Cover({ memory }: { memory: CalculationMemory }) {
         Anexo técnico del dictamen: muestra cómo se obtuvo cada valor calculado. Los valores en{" "}
         <strong className={COMPUTED}>azul</strong> se calculan con una fórmula; los valores en <strong>negro</strong> se capturaron
         directamente. Las tablas llevan las letras de columna y los números de renglón del editor, para seguir referencias como
-        G1·F1. Los cálculos del motor se reproducen paso a paso, en el orden en que se calculan, con lo que el avalúo tiene guardado.
+        G1·F1 (columna G, renglón 1). Los cálculos del motor se reproducen paso a paso (P1, P2…), en el orden en que se calculan,
+        con lo que el avalúo tiene guardado. Un enfoque sin datos suficientes dice «Sin cálculo» y qué falta.
       </p>
+    </section>
+  );
+}
+
+/**
+ * The índice: the chapters of the memory with what each one holds, in the
+ * order they print. The pages are laid out by the browser when printing, so
+ * the index lists the contents without page numbers.
+ */
+function Index({ chapters, comparables }: { chapters: MemoryChapter[]; comparables: number }) {
+  if (!chapters.length && !comparables) return null;
+  return (
+    <section data-memory-item data-memory-index className="mb-5 break-inside-avoid">
+      <h2 className="mb-1 border-b border-slate-300 pb-0.5 text-[12px] font-black text-[var(--caratula-blue)]">Índice</h2>
+      <ol className="list-decimal space-y-0.5 pl-5 text-[10px]">
+        {chapters.map((chapter) => (
+          <li key={chapter.heading}>
+            <span className="font-semibold">{chapter.heading}</span>
+            {chapter.document.length || chapter.approaches.length ? (
+              <ul className="list-disc pl-4 text-[9.5px] text-slate-600">
+                {chapter.document.some((item) => item.kind === "concept") ? <li>Conceptos calculados con fórmula</li> : null}
+                {chapter.document.filter((item): item is MemoryTable => item.kind === "table").map((table) => <li key={table.id}>Tabla: {table.title}</li>)}
+                {chapter.approaches.map((approach) => (
+                  <li key={approach.key}>{approach.title}{approach.pending ? " · sin cálculo" : ""}</li>
+                ))}
+              </ul>
+            ) : null}
+          </li>
+        ))}
+        {comparables ? <li><span className="font-semibold">Memoria técnica de comparables</span> ({comparables})</li> : null}
+      </ol>
     </section>
   );
 }
@@ -175,7 +207,11 @@ function Approach({ approach, engineVersion }: { approach: MemoryApproach; engin
           Algún paso no coincide con el valor guardado; se indica en el renglón. Abre el avalúo para recalcularlo.
         </p>
       ) : null}
-      {approach.pending ? <p className="text-[9.5px] text-slate-600">Sin cálculo: {approach.pending}</p> : null}
+      {approach.pending ? (
+        <p className="mb-2 rounded-sm border border-amber-300 bg-amber-50 px-2 py-1 text-[9.5px] text-amber-900" data-memory-pending>
+          <strong>Sin cálculo:</strong> {approach.pending}
+        </p>
+      ) : null}
       {approach.captured.length ? (
         <div className="mb-3 rounded-sm border border-slate-200 px-2 py-1.5 text-[9px]">
           <p className="mb-1 text-[9px] font-bold tracking-wide text-slate-600 uppercase">Valores capturados con fórmula</p>
@@ -195,7 +231,7 @@ function Approach({ approach, engineVersion }: { approach: MemoryApproach; engin
         <table className="w-full border-collapse text-[9px] leading-tight">
           <thead>
             <tr className="bg-slate-100 text-left text-slate-700">
-              <th className="w-6 border border-slate-300 px-1 py-0.5 text-center">#</th>
+              <th className="w-7 border border-slate-300 px-1 py-0.5 text-center">Paso</th>
               <th className="w-[24%] border border-slate-300 px-1.5 py-0.5">Concepto</th>
               <th className="w-[26%] border border-slate-300 px-1.5 py-0.5">Fórmula</th>
               <th className="border border-slate-300 px-1.5 py-0.5">Datos</th>
@@ -205,7 +241,7 @@ function Approach({ approach, engineVersion }: { approach: MemoryApproach; engin
           <tbody>
             {approach.steps.map((step, index) => (
               <tr key={`${step.key}-${index}`} className="break-inside-avoid" data-step={step.key}>
-                <td className="border border-slate-300 px-1 py-0.5 text-center align-top text-slate-500">{index + 1}</td>
+                <td className="border border-slate-300 px-1 py-0.5 text-center align-top text-slate-500">P{index + 1}</td>
                 <td className="border border-slate-300 px-1.5 py-0.5 align-top">{step.label}</td>
                 <td className="border border-slate-300 px-1.5 py-0.5 align-top">
                   <Formula>{step.formula}</Formula>
@@ -296,6 +332,7 @@ export function CalculationMemoryDocument({
             <td className="px-5 pt-4 pb-8 sm:px-8">
               {unaccreditedNotice ? <div className="mb-3"><UnaccreditedNotice location="memoria-calculo" /></div> : null}
               <Cover memory={memory} />
+              <Index chapters={chapters} comparables={comparables.length} />
 
               {chapters.length ? (
                 chapters.map((chapter) => (

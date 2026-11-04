@@ -20,6 +20,7 @@ const template = (overrides: Partial<ValuationTemplateSummary>): ValuationTempla
   name: "Casa habitación",
   description: null,
   includeData: false,
+  containsData: false,
   includeImages: false,
   sections: 1,
   blocks: 3,
@@ -44,6 +45,7 @@ test("each template shows its sections, blocks, what it includes, its version an
         name: "Terreno",
         description: "Lotes urbanos",
         includeData: true,
+        containsData: true,
         includeImages: true,
         sections: 4,
         version: 2,
@@ -54,9 +56,9 @@ test("each template shows its sections, blocks, what it includes, its version an
   }));
   const shown = text(markup);
   assert.match(shown, /1 Casa habitación Sin notas\. Agrégalas con «Editar nombre y notas»\. 1 sección 3 bloques Creada: 16 oct 2026 por Ana López/);
-  assert.match(shown, /2 Terreno Lotes urbanos 4 secciones 3 bloques Con datos Con imágenes Versión 2/);
+  assert.match(shown, /2 Terreno Lotes urbanos 4 secciones 3 bloques Contiene datos Con imágenes Versión 2/);
   assert.match(shown, /Actualizada: 20 oct 2026 · versión 2 de Luis Pérez/);
-  assert.doesNotMatch(shown, /Casa habitación.*Con datos.*Terreno/, "a template without data says nothing about it");
+  assert.doesNotMatch(shown, /Casa habitación.*Contiene datos.*Terreno/, "a template without data says nothing about it");
   assert.equal(markup.match(/Editar nombre y notas<\/button>/g)?.length, 2);
   assert.equal(markup.match(/Vista previa/g)?.length, 2);
   assert.ok(markup.includes('data-template-number="2"'), "templates are numbered");

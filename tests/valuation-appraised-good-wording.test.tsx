@@ -13,8 +13,9 @@ import type { CaratulaFormData, Letterhead, ValuationMeta } from "../src/feature
 import { buildCanonicalValuationSections } from "../src/features/valuations/repositories/valuation.repository";
 import { getInitialSectionTemplate } from "../src/features/valuations/sections";
 import { appraisedGoodWording } from "../src/features/valuations/services/appraised-good-wording";
+import { formatConceptValueForDocument } from "../src/features/valuations/services/concept-value-format";
 
-const caratula = { tituloInmueble: "", valorTotal: "980000", valorConLetra: "( NOVECIENTOS OCHENTA MIL PESOS 00/100 M. N.)", firmas: [], fechaAvaluo: "", mesesVigencia: null, fechaVigencia: "" } as unknown as CaratulaFormData;
+const caratula = { tituloInmueble: "", valorTotal: "980000", valorConLetra: "(NOVECIENTOS OCHENTA MIL PESOS 00/100 M.N.)", firmas: [], fechaAvaluo: "", mesesVigencia: null, fechaVigencia: "" } as unknown as CaratulaFormData;
 const letterhead: Letterhead = { name: "Empresa", legalName: null, rfc: null, address: null, phone: null, email: null, logoUrl: null };
 // The repository hands the property type key in lower case.
 const MACHINERY = MACHINERY_PROPERTY_TYPE.toLowerCase();
@@ -36,7 +37,7 @@ test("a real estate valuation prints the same fixed wordings as before", () => {
     assert.deepEqual(printed(kind), {
       header: "DICTAMEN VALUATORIO",
       cover: "Título del inmueble pendiente",
-      conclusion: ["CONCLUSIÓN", "VALOR COMERCIAL DEL INMUEBLE", "$980,000.00", "( NOVECIENTOS OCHENTA MIL PESOS 00/100 M. N.)"],
+      conclusion: ["CONCLUSIÓN", "VALOR COMERCIAL DEL INMUEBLE", "$980,000.00 M.N.", "(NOVECIENTOS OCHENTA MIL PESOS 00/100 M.N.)"],
     }, kind);
   }
   // No property type (a header rendered alone) is real estate too.
@@ -52,7 +53,7 @@ test("a machinery valuation names the good as the MEH book does", () => {
   assert.deepEqual(printed(MACHINERY), {
     header: "DICTAMEN VALUATORIO DE MAQUINARIA Y EQUIPO",
     cover: "Título del bien pendiente",
-    conclusion: ["CONCLUSIÓN", "VALOR COMERCIAL DEL BIEN", "$980,000.00", "( NOVECIENTOS OCHENTA MIL PESOS 00/100 M. N.)"],
+    conclusion: ["CONCLUSIÓN", "VALOR COMERCIAL DEL BIEN", "$980,000.00 M.N.", "(NOVECIENTOS OCHENTA MIL PESOS 00/100 M.N.)"],
   });
   assert.equal(appraisedGoodWording(MACHINERY_PROPERTY_TYPE).commercialValueTitle, "VALOR COMERCIAL DEL BIEN", "whatever the case of the key");
 });
@@ -80,5 +81,5 @@ test("the conclusion template of a machinery valuation names the concluded value
     { ...template, label: "X" },
     conclusionValues({ values, marketSource: "MAQUINARIA_VENTA", method, justification: null, configured: true, locked: false }, result),
   );
-  assert.deepEqual(filled.blocks[0].concepts.slice(3, 5).map((concept) => concept.value), ["$980,000.00", "( NOVECIENTOS OCHENTA MIL PESOS 00/100 M. N.)"]);
+  assert.deepEqual(filled.blocks[0].concepts.slice(3, 5).map((concept) => formatConceptValueForDocument(concept)), ["$980,000.00 M.N.", "(NOVECIENTOS OCHENTA MIL PESOS 00/100 M.N.)"]);
 });

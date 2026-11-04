@@ -173,6 +173,12 @@ export const api = {
         body: JSON.stringify(data),
       }),
     conclude: (id: ApiId) => request<JsonRecord>(`/avaluos/${id}/conclude`, { method: "POST" }),
+    /** A new valuation of the firm that starts as a copy of this one. */
+    duplicate: (id: ApiId) => request<{ id: string; folio: string }>(`/avaluos/${id}/duplicar`, { method: "POST" }),
+    /** Out of the main list (or back, with false). */
+    archive: (id: ApiId, archived: boolean) =>
+      request<{ id: string; archived: boolean }>(`/avaluos/${id}/archivar`, { method: "POST", body: JSON.stringify({ archived }) }),
+    remove: (id: ApiId) => request<JsonRecord>(`/avaluos/${id}`, { method: "DELETE" }),
     reopen: (id: ApiId, input: { reason: string; acceptedText: string }) =>
       request<JsonRecord>(`/avaluos/${id}/reopen`, { method: "POST", body: JSON.stringify(input) }),
     saveFull: (id: ApiId, data: JsonRecord) =>

@@ -131,7 +131,7 @@ export function TemplateManager({ initialTemplates, canCreate, letterhead }: {
                   <div className="flex flex-wrap gap-1.5">
                     <Badge variant="secondary">{plural(template.sections, "sección", "secciones")}</Badge>
                     <Badge variant="secondary">{plural(template.blocks, "bloque", "bloques")}</Badge>
-                    {template.includeData ? <Badge variant="outline">Con datos</Badge> : null}
+                    {template.containsData ? <Badge variant="destructive" title="Guardada con datos de un cliente; límpiala con scripts/ops/limpiar-plantillas.ts o reemplázala">Contiene datos</Badge> : null}
                     {template.includeImages ? <Badge variant="outline">Con imágenes</Badge> : null}
                     {template.version > 1 ? <Badge variant="outline">Versión {template.version}</Badge> : null}
                   </div>

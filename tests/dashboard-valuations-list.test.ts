@@ -42,14 +42,23 @@ test("valuations table links each row to the workspace and shows the status badg
           statusName: "En revision",
           createdAt: now,
           updatedAt: now,
+          archivedAt: null,
         },
       ],
+      params: { q: "", status: null, sort: "modificacion", direction: "desc", archived: false },
+      canCreate: true,
+      canDelete: true,
     }),
   );
   assert.match(html, /href="\/workspace\?id=3f1c2a8e-0000-4000-8000-000000000001"/);
   assert.match(html, /En revisión/);
   assert.match(html, /Sin cliente/);
   assert.match(html, /Abrir/);
+  assert.match(html, /Más acciones del avalúo VAL-001/, "every row has its ··· menu");
+  // The headers sort: the sorted column turns around, another starts in its natural direction.
+  assert.match(html, /data-sort="modificacion" data-sort-active="true" href="\/avaluos\?orden=modificacion&amp;dir=asc"/);
+  assert.match(html, /data-sort="folio" href="\/avaluos\?orden=folio&amp;dir=asc"/);
+  assert.match(html, /aria-sort="descending"/);
 });
 
 test("filters keep the current search and status", () => {
@@ -66,6 +75,7 @@ test("filters keep the current search and status", () => {
   assert.match(html, /value="zapopan"/);
   assert.match(html, /value="terminado" selected="">Terminado<\/option>/);
   assert.match(html, /Limpiar/);
+  assert.match(html, /name="archivados"/, "the archived ones are a filter");
 });
 
 test("dashboard links point to /avaluos and hide creation without permission", () => {
