@@ -7,7 +7,7 @@ import { useEffect, useRef } from "react";
 import { DEMO_VALUATIONS, NAMED_WAYS, comparableType, type LatLon } from "../geo";
 import { isMacroZoom, isMainRoad } from "../highlights";
 import { comparableCardHtml, escapeHtml, STREET_LABEL_CLASS, SUBJECT_COLOR, VALUATION_COLOR } from "../map-content";
-import { CLEAN_MAP_STYLES } from "../map-styles";
+import { CLEAN_MAP_STYLES } from "@/features/maps/map-styles";
 import { RADIUS_COLOR, SUBJECT_TITLE, type MapViewProps } from "./map-view";
 
 const toLatLng = (p: LatLon): google.maps.LatLngLiteral => ({ lat: p[0], lng: p[1] });

@@ -31,6 +31,11 @@ import type { CustomFactor } from "@/features/firm/custom-factors";
 import type { DraftInput } from "@/features/ai/draft-writing";
 import type { ListingProposal } from "@/features/ai/listing-extraction";
 import type { ValuationDetail, ValuationListItem } from "@/features/valuations/repositories/valuation.repository";
+import type { CroquisKind, CroquisSettings } from "@/features/maps/croquis";
+import type { SubjectLocationInput } from "@/features/maps/subject-location";
+import type { SubjectLocationDto } from "@/features/maps/server/subject-location.service";
+import type { GeocodingResult } from "@/features/maps/server/geocoding.service";
+import type { EditorImageDto } from "@/features/files/services/editor-image";
 import type { ValuationTemplateDetail, ValuationTemplateSummary } from "@/features/valuations/services/valuation-template.service";
 
 /** What the comparable form sends: the comparable without its id, reference, images and review. */
@@ -40,6 +45,16 @@ const BASE = "/api";
 
 type JsonRecord = Record<string, unknown>;
 type ApiId = string;
+
+/** What "Aplicar al croquis" sends for one croquis (POST /api/avaluos/[id]/croquis). */
+export type CroquisRequest = {
+  kind: CroquisKind;
+  center: [number, number];
+  zoom: number;
+  clean: boolean;
+  northArrow: CroquisSettings["northArrow"];
+  includeComparables: boolean;
+};
 
 export type PrincipalCoverImageResponse = {
   id: string;
@@ -221,6 +236,19 @@ export const api = {
       upload: (id: ApiId, file: File, slot: "macro" | "micro") =>
         uploadForm<TerrainSketchResponse>(`/avaluos/${id}/info-terreno/croquis`, { file, slot }),
     },
+    /** "Ubicar el inmueble sujeto": the pin, the croquis settings and the comparables with coordinates. */
+    location: {
+      get: (id: ApiId) => request<SubjectLocationDto>(`/avaluos/${id}/ubicacion`),
+      save: (id: ApiId, input: SubjectLocationInput) =>
+        request<SubjectLocationDto>(`/avaluos/${id}/ubicacion`, { method: "PUT", body: JSON.stringify(input) }),
+    },
+    /** "Aplicar al croquis": one croquis rendered and stored as an image of the valuation. */
+    croquis: (id: ApiId, input: CroquisRequest) =>
+      request<EditorImageDto>(`/avaluos/${id}/croquis`, { method: "POST", body: JSON.stringify(input) }),
+  },
+  maps: {
+    /** Address search through the server (Geocoding API); 503 when maps are not configured. */
+    geocode: (query: string) => request<GeocodingResult[]>(`/mapas/geocodificar?q=${encodeURIComponent(query)}`),
   },
   market: {
     get: (id: ApiId, type: ComparableType) =>

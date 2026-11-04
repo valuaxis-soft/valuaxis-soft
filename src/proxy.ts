@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_PUBLIC_PATHS, AUTH_SESSION_COOKIE } from "@/features/auth/constants/auth.constants";
 import { buildPublicAppUrl, getPublicAppUrl } from "@/lib/public-url";
-import { NONCE_HEADER, contentSecurityPolicy, createNonce } from "@/security/headers/security-headers";
+import { NONCE_HEADER, contentSecurityPolicy, createNonce, googleMapsPage } from "@/security/headers/security-headers";
 import { isSameOriginRequest } from "@/security/validation/origin";
 import { safeRedirectPath } from "@/security/validation/redirect-safety";
 
@@ -12,9 +12,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * path skips the origin check; its handler authenticates by signature.
  */
 const STRIPE_WEBHOOK_PATH = "/api/stripe/webhook";
-
-/** Only the maps demonstration loads Google Maps, so only it gets Google's sources in the CSP. */
-const GOOGLE_MAPS_PATH_PREFIX = "/demo/";
 
 const publicPaths = [...AUTH_PUBLIC_PATHS, "/favicon.ico", "/api"];
 
@@ -63,7 +60,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return withContentSecurityPolicy(request, pathname.startsWith(GOOGLE_MAPS_PATH_PREFIX));
+  // Only the pages that render Google Maps get Google's sources in the CSP.
+  return withContentSecurityPolicy(request, googleMapsPage(pathname));
 }
 
 /**

@@ -42,7 +42,7 @@ import {
   frameCenter,
   frameFromView,
   staticMapStyle,
-} from "../src/features/demo-maps/map-styles";
+} from "../src/features/maps/map-styles";
 import { STATIC_MAP_SIZE, encodePolyline, imagePosition, staticMapUrl } from "../src/features/demo-maps/static-map";
 import { contentSecurityPolicy } from "../src/security/headers/security-headers";
 
@@ -267,7 +267,7 @@ test("the hover card escapes text and says the listing is fictitious", () => {
   assert.match(card, /Anuncio ficticio de ejemplo/);
 });
 
-test("only the maps demonstration gets Google's sources in the CSP", () => {
+test("Google's sources enter the CSP only when the page draws the map", () => {
   const base = contentSecurityPolicy({ development: false, nonce: "n" });
   assert.doesNotMatch(base, /google|gstatic|worker-src/);
   const maps = contentSecurityPolicy({ development: false, nonce: "n", googleMaps: true });

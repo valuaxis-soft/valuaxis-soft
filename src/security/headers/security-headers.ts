@@ -26,10 +26,12 @@ export const TRUSTED_STYLE_HASHES = [
 ];
 
 /**
- * Sources Google Maps needs (Maps JavaScript, Static and Geocoding APIs).
- * Only the maps demonstration under /demo/ gets them; the rest of the app keeps
- * the base policy. The loader script carries the nonce and 'strict-dynamic'
- * lets it add Google's own scripts; the host is listed for CSP2 browsers.
+ * Sources the Maps JavaScript API needs in the browser. Only the pages that
+ * render the interactive map get them (googleMapsPage); the rest of the app
+ * keeps the base policy. The loader script carries the nonce and
+ * 'strict-dynamic' lets it add Google's own scripts; the host is listed for
+ * CSP2 browsers. The Static and Geocoding APIs are called from the server,
+ * so the dictamen and the PDF need none of this.
  */
 const GOOGLE_MAPS_SOURCES: Record<string, string[]> = {
   "script-src": ["https://maps.googleapis.com"],
@@ -39,6 +41,15 @@ const GOOGLE_MAPS_SOURCES: Record<string, string[]> = {
   "connect-src": ["https://maps.googleapis.com", "https://*.googleapis.com"],
   "worker-src": ["blob:"],
 };
+
+/**
+ * The pages that load Google Maps: the maps demonstration (/demo/…) and the
+ * valuation editor (/workspace, where the croquis panel renders the map).
+ * Nowhere else: not the editor's preview window, not the dictamen.
+ */
+export function googleMapsPage(pathname: string) {
+  return pathname.startsWith("/demo/") || pathname === "/workspace";
+}
 
 export function contentSecurityPolicy(options: { development: boolean; nonce: string; googleMaps?: boolean }) {
   const directives: Record<string, string[]> = {

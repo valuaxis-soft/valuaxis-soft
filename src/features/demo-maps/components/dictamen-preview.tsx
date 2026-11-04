@@ -8,10 +8,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { DemoComparable, LatLon } from "../geo";
 import { macroHighlights, streetLabels, type HighlightedWay, type StreetLabel } from "../highlights";
 import { STREET_LABEL_CLASS } from "../map-content";
-import { frameCenter, type CroquisFrame, type NorthArrow as NorthArrowConfig } from "../map-styles";
+import { frameCenter, type CroquisFrame, type NorthArrow as NorthArrowConfig } from "@/features/maps/map-styles";
 import { imagePosition, staticMapUrl } from "../static-map";
 import type { Stage } from "./map-view";
-import { NorthArrow } from "./north-arrow";
+import { NorthArrow } from "@/features/maps/components/north-arrow";
 
 const LeafletMiniMap = dynamic(() => import("./leaflet-mini-map"), { ssr: false, loading: () => <Skeleton className="aspect-[8/5] w-full rounded-none" /> });
 

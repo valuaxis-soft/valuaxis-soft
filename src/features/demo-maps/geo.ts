@@ -3,9 +3,11 @@
  * the subject pin, the sample comparables and their filters. Everything here is
  * example data over real OpenStreetMap streets; nothing reads the database.
  */
+import type { LatLon } from "@/features/maps/types";
+
 import streets from "./streets.json";
 
-export type LatLon = readonly [number, number];
+export type { LatLon } from "@/features/maps/types";
 
 export interface StreetWay {
   /** Street name; empty for unnamed pieces. */

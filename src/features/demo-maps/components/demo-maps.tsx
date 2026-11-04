@@ -39,7 +39,7 @@ import {
   type DemoComparable,
   type LatLon,
 } from "../geo";
-import { loadGoogleMaps } from "../google-maps-loader";
+import { loadGoogleMaps } from "@/features/maps/google-maps-loader";
 import {
   DEFAULT_HIGHLIGHT_STYLES,
   STREET_CATEGORIES,
@@ -65,10 +65,10 @@ import {
   type MapCorner,
   type NorthArrow as NorthArrowConfig,
   type NorthArrowStyle,
-} from "../map-styles";
+} from "@/features/maps/map-styles";
 import { DictamenPreview, type CroquisSnapshot } from "./dictamen-preview";
 import type { MapViewProps, MapViewState, Stage } from "./map-view";
-import { NorthArrow } from "./north-arrow";
+import { NorthArrow } from "@/features/maps/components/north-arrow";
 
 const mapLoading = () => <Skeleton className="h-[420px] w-full rounded-none sm:h-[560px]" />;
 const LeafletMapView = dynamic(() => import("./leaflet-map"), { ssr: false, loading: mapLoading });
