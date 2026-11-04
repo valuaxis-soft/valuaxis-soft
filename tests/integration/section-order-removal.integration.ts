@@ -54,7 +54,7 @@ test("Conclusión moved between Ingresos and Fotografías is read back there, al
   assert.equal(reloaded.length, initial.length, "no section lost or doubled");
   // Numbered in its new place.
   const labelOf = (id: string) => reloaded.find((section) => section.id === id)!.label;
-  assert.equal(labelOf("caratula"), "I");
+  assert.equal(labelOf("caratula"), "", "the carátula prints no numeral");
   assert.notEqual(labelOf("conclusiones"), initial.find((section) => section.id === "conclusiones")!.label);
 
   // Saved again as it was read (an autosave of another edit): the order stays.

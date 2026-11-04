@@ -7,13 +7,17 @@ export function valuationMetaFromDb(v: {
   postalCode: string;
   valuationKind: string;
   propertyKind: string;
+  propertyKindOther?: string;
+  valuationKindOther?: string;
 }): ValuationMeta {
   return {
     folio: v.folio,
     client: v.client,
     location: v.location,
     postalCode: v.postalCode,
-    valuationKind: v.valuationKind as ValuationMeta["valuationKind"],
-    propertyKind: v.propertyKind as ValuationMeta["propertyKind"],
+    valuationKind: v.valuationKind,
+    propertyKind: v.propertyKind,
+    ...(v.propertyKindOther ? { propertyKindOther: v.propertyKindOther } : {}),
+    ...(v.valuationKindOther ? { valuationKindOther: v.valuationKindOther } : {}),
   };
 }

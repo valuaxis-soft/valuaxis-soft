@@ -5,6 +5,7 @@ import { DEFAULT_NUMBER_PRESENTATION, type NumberPresentation } from "@/features
 export const NUMERIC_VALUE_FORMAT_OPTIONS: Array<{ value: ConceptValueFormat; label: string; symbol?: string }> = [
   { value: "plain", label: "Sin formato" },
   { value: "mxn", label: "MXN", symbol: "MXN" },
+  { value: "mxn-mn", label: "MXN M.N.", symbol: "M.N." },
   { value: "m", label: "m", symbol: "m" },
   { value: "m2", label: "m²", symbol: "m²" },
   { value: "m3", label: "m³", symbol: "m³" },
@@ -29,6 +30,7 @@ export function isBoundaryDistanceValueFormat(value: unknown): value is ConceptV
 
 const FORMAT_SYMBOLS: Partial<Record<ConceptValueFormat, string>> = {
   mxn: "MXN",
+  "mxn-mn": "M.N.",
   m: "m",
   m2: "m²",
   m3: "m³",
@@ -244,7 +246,18 @@ export function formatNumericConceptValue(
 }
 
 /** Formats that represent non-physical or non-convertible dimensions. */
-const NON_CONVERTIBLE_FORMATS = new Set<ConceptValueFormat>(["plain", "mxn", "percent", "custom"]);
+const NON_CONVERTIBLE_FORMATS = new Set<ConceptValueFormat>(["plain", "mxn", "mxn-mn", "percent", "custom"]);
+
+/** Money as the dictamen prints it: "$2,200,000.00", with the legal tender mark when asked ("$2,200,000.00 M.N."). */
+export function formatMoneyForDocument(value: number, options: { legalTender?: boolean } = {}) {
+  const money = new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+  return options.legalTender ? `${money} M.N.` : money;
+}
 
 export function formatNumericValue(
   value: string,
@@ -275,15 +288,11 @@ export function formatNumericValue(
 
   if (format === "plain") return formattedNumber;
 
-  if (format === "mxn") {
+  // Money keeps its separators whatever the document chose (number-presentation.ts).
+  if (format === "mxn" || format === "mxn-mn") {
     const num = Number(numericValue);
     if (!Number.isFinite(num)) return rawValue;
-    return new Intl.NumberFormat("es-MX", {
-      style: "currency",
-      currency: "MXN",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(num);
+    return formatMoneyForDocument(num, { legalTender: format === "mxn-mn" });
   }
 
   const unit = format === "custom" ? formatMetadata.customUnit?.trim() : FORMAT_SYMBOLS[format];

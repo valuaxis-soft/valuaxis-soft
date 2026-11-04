@@ -113,7 +113,7 @@ async function buildRichValuation() {
     organizationId: fixture.organizationId,
     user,
     sections: sections(false),
-    caratula: { solicitante: "Valuadores de los Altos", propietario: "Juan Pérez", valorTotal: 8580000, fechaAvaluo: "2026-09-28", fechaVigencia: "2027-03-28" },
+    caratula: { solicitante: "Valuadores de los Altos", propietario: "Juan Pérez", valorTotal: 8580000, fechaAvaluo: "2027-09-28", fechaVigencia: "2028-03-28" },
   });
   const { IdVersionTrabajo } = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
   const versionId = IdVersionTrabajo!;

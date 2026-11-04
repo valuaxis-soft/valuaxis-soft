@@ -172,7 +172,7 @@ test("the cost page follows the book's sheet: identification, V.R.N., expenses, 
   ]);
   assert.deepEqual(attachments.boxes, {
     aditamentos: [["Total V.N.R. de Piezas Especiales / Aditamentos:", "$ 192,389.25"]],
-    valor: [["VALOR FÍSICO DEL BIEN V.N.R.:", "$ 933,000.00"], ["Cifra en letras:", "( NOVECIENTOS TREINTA Y TRES MIL PESOS 00/100 M. N.)"]],
+    valor: [["VALOR FÍSICO DEL BIEN V.N.R.:", "$ 933,000.00"], ["Cifra en letras:", "(NOVECIENTOS TREINTA Y TRES MIL PESOS 00/100 M.N.)"]],
   });
 });
 
@@ -222,7 +222,7 @@ test("the market page follows the book's sheet: offer level, comparables, charac
   ]);
   assert.deepEqual(homologation.boxes, {
     valores: [["Valor Prom. Homologado:", "$ 1,004,837.78"], ["Mediana:", "$ 978,738.73"]],
-    valor: [["VALOR COMPARATIVO DE MERCADO:", "$ 980,000.00"], ["Cifra en letras:", "( NOVECIENTOS OCHENTA MIL PESOS 00/100 M. N.)"]],
+    valor: [["VALOR COMPARATIVO DE MERCADO:", "$ 980,000.00"], ["Cifra en letras:", "(NOVECIENTOS OCHENTA MIL PESOS 00/100 M.N.)"]],
   });
 });
 

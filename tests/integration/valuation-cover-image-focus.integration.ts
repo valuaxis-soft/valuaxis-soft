@@ -57,7 +57,7 @@ test("the database rejects a focus outside 0 to 100", async () => {
 
 test("a reopened valuation starts with the focus of the concluded version, which keeps its own", async () => {
   const fixture = await createValuationFixture();
-  await save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: 6, firmas: [signer], enfoqueImagenPrincipal: { x: 35, y: 10 } });
+  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 6, firmas: [signer], enfoqueImagenPrincipal: { x: 35, y: 10 } });
   await concludeValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user: fixture.user });
   const concluded = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
   await reopenValuation({
@@ -69,7 +69,7 @@ test("a reopened valuation starts with the focus of the concluded version, which
   });
   assert.deepEqual(await focus(fixture), { x: 35, y: 10 });
 
-  await save(fixture, { fechaAvaluo: "2026-09-28", mesesVigencia: 6, firmas: [signer], enfoqueImagenPrincipal: { x: 80, y: 60 } });
+  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 6, firmas: [signer], enfoqueImagenPrincipal: { x: 80, y: 60 } });
   assert.deepEqual(await focus(fixture), { x: 80, y: 60 });
 
   const { IdVersionTrabajo } = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });

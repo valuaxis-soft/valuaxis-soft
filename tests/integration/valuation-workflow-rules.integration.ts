@@ -310,7 +310,7 @@ test("the general caratula template replaces an empty placeholder only when aske
     avaluoId: IdAvaluo,
     userId: fixture.user.id,
     initializeGeneralCaratula: true,
-    generalCaratulaDefaults: { responsibleName: "Ing. Álvaro Gutiérrez", valuationDate: "2026-09-28" },
+    generalCaratulaDefaults: { responsibleName: "Ing. Álvaro Gutiérrez", valuationDate: "2027-09-28" },
   });
   const live = await prisma.nodoDocumento.findMany({ where: { IdSeccionDocumento: caratula.IdSeccionDocumento, DFechaEliminacion: null } });
   assert.ok(live.length > 1, "the template blocks were written");
@@ -345,7 +345,7 @@ test("saving the same section by id or label updates one section, and the caratu
     organizationId: fixture.organizationId,
     user: fixture.user,
     sections: [{ ...document()[0], title: longTitle, enabled: false, sortOrder: 7 }],
-    caratula: { solicitante: "  Valuadores de los Altos  ", valorTotal: "8,580,000.00", fechaAvaluo: "2026-09-28", valuador: "" },
+    caratula: { solicitante: "  Valuadores de los Altos  ", valorTotal: "8,580,000.00", fechaAvaluo: "2027-09-28", valuador: "" },
   });
   await saveValuationSections({
     publicId: fixture.publicId,
@@ -362,5 +362,5 @@ test("saving the same section by id or label updates one section, and the caratu
   assert.equal(caratula.SNombreSolicitante, "Valuadores de los Altos");
   assert.equal(Number(caratula.NValorTotal), 8580000);
   assert.equal(caratula.SNombreValuador, null);
-  assert.equal(caratula.DFechaAvaluo?.toISOString().slice(0, 10), "2026-09-28");
+  assert.equal(caratula.DFechaAvaluo?.toISOString().slice(0, 10), "2027-09-28");
 });

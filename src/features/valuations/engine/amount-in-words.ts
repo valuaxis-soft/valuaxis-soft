@@ -1,7 +1,9 @@
 /**
  * Amount in words for the dictamen, in the books' format:
- * "( OCHO MILLONES QUINIENTOS OCHENTA MIL PESOS 00/100 M. N.)".
- * Corrected version: the books write "TREINTA Y TRÉS" and always "00/100".
+ * "(OCHO MILLONES QUINIENTOS OCHENTA MIL PESOS 00/100 M.N.)".
+ * Corrected version: the books write "TREINTA Y TRÉS", always "00/100", and
+ * leave a space after the parenthesis and inside "M. N."; the dictamen prints
+ * it tight, as the appraiser asked (2 Nov 2026).
  */
 import { excelRound } from "./rounding";
 
@@ -64,5 +66,5 @@ export function amountInWords(amount: number): string {
   // "UN MILLÓN DE PESOS", "DOS MILLONES DE PESOS": a round million takes "DE".
   const preposition = pesos >= 1_000_000 && pesos % 1_000_000 === 0 ? " DE" : "";
   const currency = pesos === 1 ? "PESO" : "PESOS";
-  return `( ${words}${preposition} ${currency} ${String(cents).padStart(2, "0")}/100 M. N.)`;
+  return `(${words}${preposition} ${currency} ${String(cents).padStart(2, "0")}/100 M.N.)`;
 }

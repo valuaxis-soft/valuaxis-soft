@@ -197,8 +197,12 @@ test("the memory of a captured valuation has its formula table and the traces of
   assert.equal(table.rows[0].cells[2].withValues, "=169.78*9000");
 
   // In the order of the dictamen: the cost approach prints before the market (as in the books), the conclusion last.
-  assert.deepEqual(memory.approaches.map((approach) => approach.key), ["MOTOR.COSTOS", "MOTOR.MERCADO.TERRENO_VENTA", "MOTOR.CONCLUSION"]);
-  for (const approach of memory.approaches) {
+  // The income approach was never captured: the memory says so ("Sin cálculo") instead of staying silent.
+  assert.deepEqual(memory.approaches.map((approach) => approach.key), ["MOTOR.COSTOS", "MOTOR.MERCADO.TERRENO_VENTA", "MOTOR.INGRESOS", "MOTOR.CONCLUSION"]);
+  const income = memory.approaches.find((approach) => approach.key === "MOTOR.INGRESOS")!;
+  assert.match(income.pending ?? "", /falta capturar el enfoque de ingresos/);
+  assert.equal(income.steps.length, 0);
+  for (const approach of memory.approaches.filter((item) => !item.pending)) {
     assert.ok(approach.steps.length > 0, `${approach.key} has steps`);
     assert.equal(approach.storedVersion, ENGINE_VERSION, `${approach.key} was stored by this engine`);
     assert.equal(approach.differs, false, `${approach.key} reproduces what was stored`);

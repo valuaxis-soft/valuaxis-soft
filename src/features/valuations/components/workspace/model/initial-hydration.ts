@@ -225,6 +225,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
       required: block.required,
       startOnNewPage: block.startOnNewPage ?? false,
       ...(block.pageBreak ? { pageBreak: block.pageBreak } : {}),
+      ...(block.pageOrientation ? { pageOrientation: block.pageOrientation } : {}),
       contentLayout: block.contentLayout,
       blockFlow: block.blockFlow,
       conceptPresentation: block.conceptPresentation,

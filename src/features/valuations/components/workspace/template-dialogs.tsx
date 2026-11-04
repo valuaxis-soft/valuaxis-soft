@@ -55,7 +55,6 @@ export function SaveAsTemplateDialog({
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [includeData, setIncludeData] = useState(false);
   const [includeImages, setIncludeImages] = useState(false);
   const [pending, setPending] = useState(false);
   /** The name is already one of the firm's templates: replace it or write another. */
@@ -65,7 +64,6 @@ export function SaveAsTemplateDialog({
     if (!next) {
       setName("");
       setDescription("");
-      setIncludeData(false);
       setIncludeImages(false);
       setNameTaken(false);
     }
@@ -80,7 +78,8 @@ export function SaveAsTemplateDialog({
         // Left empty, a replacement keeps the template's description.
         description: description.trim() || undefined,
         valuationId,
-        includeData,
+        // The client's data never go into a template: only the structure, the formats and the appraiser's texts.
+        includeData: false,
         includeImages,
         replace,
       });
@@ -101,8 +100,9 @@ export function SaveAsTemplateDialog({
         <DialogHeader>
           <DialogTitle>Guardar como plantilla</DialogTitle>
           <DialogDescription>
-            Guarda las secciones, bloques y apartados de este avalúo, con los títulos y tipos de sus conceptos y los
-            encabezados y fórmulas de sus tablas. Lo que escribe el cálculo no se guarda.
+            Guarda las secciones, bloques y apartados de este avalúo, con los títulos, tipos y formatos de sus conceptos, los
+            encabezados y fórmulas de sus tablas y los textos de Consideraciones. Los datos del cliente y del inmueble no se
+            guardan; lo que escribe el cálculo tampoco.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -144,14 +144,7 @@ export function SaveAsTemplateDialog({
               onChange={(event) => setDescription(event.target.value)}
             />
           </Field>
-          <OptionCheckbox
-            id="template-include-data"
-            checked={includeData}
-            onChange={setIncludeData}
-            label="Incluir datos"
-            description="Los valores capturados y el contenido de las tablas. Sin esto, la plantilla va vacía."
-          />
-          <OptionCheckbox id="template-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" />
+          <OptionCheckbox id="template-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" description="Las imágenes de los bloques (no las fotografías de Datos generales, que son del avalúo)." />
           <DialogFooter>
             <Button type="button" variant="outline" disabled={pending} onClick={() => close(false)}>Cancelar</Button>
             <Button type="submit" variant={nameTaken ? "destructive" : "default"} disabled={pending || !name.trim()}>
@@ -196,7 +189,7 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
         ? (await api.templates.list()).map((template) => ({
             id: template.id,
             label: template.name,
-            detail: `${template.blocks} bloques${template.includeData ? " · con datos" : ""}`,
+            detail: `${template.blocks} bloques${template.containsData ? " · contiene datos" : ""}`,
           }))
         : (await api.templates.valuations())
             .filter((valuation) => valuation.id !== transfer.valuationId)

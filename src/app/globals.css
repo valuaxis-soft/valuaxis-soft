@@ -147,6 +147,18 @@
   margin: 0;
 }
 
+/* A block with "Orientación de página: horizontal" prints its pages on their side (1056 × 816 px). */
+@page landscape {
+  size: letter landscape;
+  margin: 0;
+}
+
+@media print {
+  article[data-page-orientation="landscape"] {
+    page: landscape;
+  }
+}
+
 @media print {
   body {
     background: white;

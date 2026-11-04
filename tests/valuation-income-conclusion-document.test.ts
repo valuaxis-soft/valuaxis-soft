@@ -7,6 +7,7 @@ import { concludeValue } from "../src/features/valuations/engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeIncomeApproach } from "../src/features/valuations/engine/income";
 import type { AppSection } from "../src/features/valuations/model";
+import { formatConceptValueForDocument } from "../src/features/valuations/services/concept-value-format";
 
 const tch: IncomeCalculationDto = {
   method: "tabla",
@@ -83,8 +84,18 @@ test("the concluded value fills the conclusion and carátula concepts and leaves
   };
   const filled = withConceptValues(section, conclusionValues(calculation, result));
   assert.deepEqual(filled.blocks[0].concepts.map((item) => item.value), [
-    "$8,580,000.00", "$1,530,000.00", "NO APLICA", "$8,580,000.00", "( OCHO MILLONES QUINIENTOS OCHENTA MIL PESOS 00/100 M. N.)", "Texto del perito",
+    "8580000.00", "1530000.00", "NO APLICA", "8580000.00", "(OCHO MILLONES QUINIENTOS OCHENTA MIL PESOS 00/100 M.N.)", "Texto del perito",
+  ]);
+  // The amounts print with their format: the approaches as money, the concluded value with "M.N.".
+  assert.deepEqual(filled.blocks[0].concepts.slice(0, 4).map((item) => formatConceptValueForDocument(item)), [
+    "$8,580,000.00", "$1,530,000.00", "NO APLICA", "$8,580,000.00 M.N.",
+  ]);
+  assert.deepEqual(filled.blocks[0].concepts.slice(0, 4).map((item) => [item.type, item.valueFormat]), [
+    ["currency", "mxn"], ["currency", "mxn"], [undefined, undefined], ["currency", "mxn-mn"],
   ]);
   assert.equal(withConceptValues(filled, conclusionValues(calculation, result)), filled, "sin cambios devuelve la misma sección");
-  assert.equal(caratulaConclusionValues(result)["valor comercial del bien"], "$8,580,000.00");
+  // A format the appraiser chose stays: only the number changes.
+  const chosen = { ...filled, blocks: [{ ...filled.blocks[0], concepts: filled.blocks[0].concepts.map((item) => (item.id === "c4" ? { ...item, valueFormat: "mxn" as const } : item)) }] };
+  assert.equal(withConceptValues(chosen, conclusionValues(calculation, result)).blocks[0].concepts[3].valueFormat, "mxn");
+  assert.deepEqual(caratulaConclusionValues(result)["valor comercial del bien"], { amount: 8580000, valueFormat: "mxn-mn" });
 });

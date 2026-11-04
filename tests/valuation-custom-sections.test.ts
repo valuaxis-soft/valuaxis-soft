@@ -33,14 +33,18 @@ test("a section the appraiser adds has its own id, one block titled like it, and
   const last = sections.at(-1)!;
   assert.equal(last.id, section.id);
   // A chapter keeps its numeral even after the conclusion; the map of comparables, after it, is an annex and takes none.
-  assert.equal(last.label, "XV", "the fifteenth chapter");
-  assert.equal(sectionDisplayName(last), `XV. ${NEW_SECTION_TITLE}`);
+  // Its numeral is the one its block prints in the dictamen: the count of blocks across the document.
+  assert.equal(last.label, last.blocks[0].sectionLabel, "the chapter reads as its first block");
+  assert.notEqual(last.label, "");
+  assert.equal(sectionDisplayName(last), `${last.label}. ${NEW_SECTION_TITLE}`);
   assert.equal(sections.find((item) => item.id === "mapaComparables")?.label, "ANEXO 1");
 
-  // Moved to the second place, it takes the second number and the rest shift.
+  // Moved to the second place (after the carátula, which has no numeral), it takes the first number and the rest shift.
   const moved = resequenceSections([sections[0], last, ...sections.slice(1, -1)]);
-  assert.equal(moved[1].label, "II");
-  assert.equal(moved[2].label, "III");
+  assert.equal(moved[0].label, "");
+  assert.equal(moved[1].label, "I");
+  assert.equal(moved[2].label, "II");
+  assert.equal(moved[2].blocks[0].sectionLabel, "II");
 });
 
 test("renaming a tab keeps the title, marks it edited and renames the block that carried the section's name", () => {

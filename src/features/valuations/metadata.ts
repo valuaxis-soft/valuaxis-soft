@@ -16,9 +16,11 @@ import {
 import { isContentLayout, normalizeContentLayout } from "@/features/valuations/services/content-layout";
 import {
   isPageBreakMode,
+  isPageOrientation,
   isSectionDocumentRole,
   isSectionPageBreak,
   type PageBreakMode,
+  type PageOrientation,
   type SectionDocumentRole,
   type SectionPageBreak,
 } from "@/features/valuations/services/document-structure";
@@ -92,6 +94,8 @@ export type BlockMetadata = {
   enabled: boolean;
   startOnNewPage?: boolean;
   pageBreak?: PageBreakMode;
+  /** Only when "landscape": the block prints on pages lying on their side. */
+  pageOrientation?: PageOrientation;
   contentLayout?: ContentLayout;
   blockFlow?: BlockFlowV2;
   conceptPresentation?: ConceptPresentation;
@@ -266,6 +270,7 @@ export function blockMetadataFromContent(content: BlockMetadataContent): BlockMe
     enabled: content.enabled !== false,
     startOnNewPage: content.startOnNewPage,
     ...(content.pageBreak ? { pageBreak: content.pageBreak } : {}),
+    ...(content.pageOrientation === "landscape" ? { pageOrientation: "landscape" } : {}),
     contentLayout: content.contentLayout,
     blockFlow: content.blockFlow,
     conceptPresentation: content.conceptPresentation,
@@ -279,10 +284,12 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
   const headerFields = readConfigMetadata(config, (value) => (isRecord(value) && Array.isArray(value.headerFields) ? normalizeHeaderExtraFields(value.headerFields) : undefined));
   const coverImageSize = readConfigMetadata(config, (value) => (isRecord(value) && isRecord(value.coverImageSize) ? normalizeCoverImageSize(value.coverImageSize) : undefined));
   const pageBreak = readPageBreak(config);
+  const pageOrientation = readConfigMetadata(config, (value) => (isRecord(value) && isPageOrientation(value.pageOrientation) ? value.pageOrientation : undefined));
   return {
     enabled: true,
     startOnNewPage: sectionBooleanMetadata(config, "startOnNewPage"),
     ...(pageBreak ? { pageBreak } : {}),
+    ...(pageOrientation === "landscape" ? { pageOrientation } : {}),
     contentLayout: parseContentLayout(config),
     blockFlow: parseBlockFlow(config),
     conceptPresentation: parseConceptPresentation(config),
@@ -433,6 +440,7 @@ function readConceptValueFormat(value: unknown): ConceptValueFormat | undefined 
   const valueFormat = value.valueFormat;
   return valueFormat === "plain" ||
     valueFormat === "mxn" ||
+    valueFormat === "mxn-mn" ||
     valueFormat === "m" ||
     valueFormat === "m2" ||
     valueFormat === "m3" ||
@@ -457,6 +465,7 @@ function readConceptSourceUnit(value: unknown): ConceptValueFormat | undefined {
   const sourceUnit = value.sourceUnit;
   return sourceUnit === "plain" ||
     sourceUnit === "mxn" ||
+    sourceUnit === "mxn-mn" ||
     sourceUnit === "m" ||
     sourceUnit === "m2" ||
     sourceUnit === "m3" ||

@@ -40,7 +40,9 @@ test("a custom section is saved with its content and position, renamed, and remo
   assert.equal(stored.custom, true);
   // Saved as a chapter: it keeps its numeral after the map of comparables, an annex.
   assert.equal(stored.documentRole, "chapter");
-  assert.equal(stored.label, "XV", "numbered after the fourteen registry chapters");
+  // Its numeral is the one its block prints: the count of blocks across the document, after the registry chapters.
+  assert.equal(stored.label, stored.blocks[0].sectionLabel, "the tab reads the numeral the dictamen prints");
+  assert.notEqual(stored.label, "");
   assert.equal(stored.blocks[0].title, "Planos", "the banner follows the tab");
   assert.deepEqual(stored.blocks[0].concepts.map((concept) => [concept.label, concept.value]), [["Plano", "Planta baja"]]);
   assert.equal(reloaded.filter((section) => section.custom).length, 1);
@@ -50,7 +52,7 @@ test("a custom section is saved with its content and position, renamed, and remo
   await save(fixture, moved);
   const afterMove = await load(fixture);
   assert.equal(afterMove[1].id, custom.id);
-  assert.equal(afterMove[1].label, "II");
+  assert.equal(afterMove[1].label, "I", "right after the carátula, which has no numeral");
   assert.equal(afterMove.length, 16);
 
   // Removed from the editor: not read back, and no section is lost.

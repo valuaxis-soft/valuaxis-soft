@@ -8,7 +8,7 @@ import {
 } from "./section-editor";
 import { StructuralActions, type StructuralActionLocks } from "./structural-actions";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
-import type { PageBreakMode } from "@/features/valuations/services/document-structure";
+import type { PageBreakMode, PageOrientation } from "@/features/valuations/services/document-structure";
 
 type BlockCardProps = {
   // Card shell
@@ -48,6 +48,10 @@ type BlockCardProps = {
     pageBreak?: {
       onChange: (value: PageBreakMode) => void;
       value: PageBreakMode;
+    };
+    pageOrientation?: {
+      onChange: (value: PageOrientation) => void;
+      value: PageOrientation;
     };
     deleteAction?: {
       onDelete: () => void;
@@ -104,6 +108,7 @@ export function BlockCard({
             move={structuralActions.move}
             visibility={structuralActions.visibility}
             pageBreak={structuralActions.pageBreak}
+            pageOrientation={structuralActions.pageOrientation}
             deleteAction={structuralActions.deleteAction}
           />
         ) : null}

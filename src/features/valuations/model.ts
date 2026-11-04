@@ -1,10 +1,12 @@
 import type { CoverImageFocus, CoverImageSize } from "./services/cover-image-focus";
 import type { ValuationSignature } from "./services/valuation-signatures";
-import type { PageBreakMode, SectionDocumentRole, SectionPageBreak } from "./services/document-structure";
+import type { PageBreakMode, PageOrientation, SectionDocumentRole, SectionPageBreak } from "./services/document-structure";
 import type { ReportApproach } from "./services/report-approaches";
 
-export type ValuationKind = "venta" | "renta" | "ambos";
-export type PropertyKind = "casa" | "departamento" | "oficina" | "terreno";
+/** Lowercase key of devpware_tipos_operaciones ("venta", "renta", "otra"…): see services/property-kinds.ts. */
+export type ValuationKind = string;
+/** Lowercase key of devpware_tipos_inmuebles ("casa_habitacion", "terreno", "otro"…): see services/property-kinds.ts. */
+export type PropertyKind = string;
 
 /** Apartado document presentation mode. */
 export type ApartadoPresentationMode = "normal" | "technical-list";
@@ -16,6 +18,9 @@ export type ValuationMeta = {
   location: string;
   valuationKind: ValuationKind;
   propertyKind: PropertyKind;
+  /** The name of a kind of the appraiser's own, when the kind is "otro"/"otra". */
+  propertyKindOther?: string;
+  valuationKindOther?: string;
 };
 
 export type CaratulaFormData = {
@@ -73,6 +78,8 @@ export type ConceptCreationKind = ConceptType | "percent";
 export type ConceptValueFormat =
   | "plain"
   | "mxn"
+  /** Pesos with the legal tender mark the dictamen prints: "$2,200,000.00 M.N.". */
+  | "mxn-mn"
   | "m"
   | "m2"
   | "m3"
@@ -295,6 +302,8 @@ export type Block = {
   startOnNewPage?: boolean;
   /** Where it starts on the printed pages; absent, as `startOnNewPage` says. */
   pageBreak?: PageBreakMode;
+  /** Its pages lying on their side ("landscape"), for wide tables; absent, upright. */
+  pageOrientation?: PageOrientation;
   /**
    * The block belongs to an annex: its apartados carry no number. Set by the
    * numbering of the sections on every change, never saved.

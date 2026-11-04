@@ -29,6 +29,8 @@ import { usePagePresentation } from "./page-presentation-context";
 export type DocumentFlowItem = {
   id: string;
   startOnNewPage?: boolean;
+  /** Prints on pages lying on their side (a block with "Orientación de página: horizontal"). */
+  landscape?: boolean;
   /**
    * Continues the item before it (a further row of the same apartado): when
    * both land on one page they sit together, without the gap between items.
@@ -308,46 +310,80 @@ type AutoPaginatedContentProps = Omit<
 > &
   Partial<Record<`data-${string}`, string | number | boolean>>;
 
+/** US Letter at 96 dpi: 816 × 1056 px upright, 1056 × 816 px on its side. */
 const LETTER_PAGE_HEIGHT_PX = 1056;
+const LETTER_PAGE_WIDTH_PX = 816;
 const DEFAULT_CONTENT_HEIGHT_PX = 760;
+
+const pageHeightPx = (landscape: boolean) => (landscape ? LETTER_PAGE_WIDTH_PX : LETTER_PAGE_HEIGHT_PX);
+
+/**
+ * Whether the pages print a footer with their number ("Página n de m"): the
+ * whole dictamen does; the preview of one section in the editor does not,
+ * as its numbers would not be the document's. The numbers themselves are
+ * written by the document once every section is paginated
+ * (`numberDocumentPages`), so one count runs across its sections.
+ */
+const DocumentPageFooterContext = createContext(false);
+
+export function DocumentPageFooterProvider({ children, enabled }: { children: ReactNode; enabled: boolean }) {
+  return <DocumentPageFooterContext.Provider value={enabled}>{children}</DocumentPageFooterContext.Provider>;
+}
+
+export const DOCUMENT_PAGE_FOOTER_SELECTOR = "[data-document-page-footer]";
+
+/** Writes "Página n de m" on the footer of every page of the container, in order. The pages of the measurement copy are outside it. */
+export function numberDocumentPages(container: ParentNode) {
+  const footers = Array.from(container.querySelectorAll<HTMLElement>(`article[data-document-page] ${DOCUMENT_PAGE_FOOTER_SELECTOR}`));
+  footers.forEach((footer, index) => {
+    const text = `Página ${index + 1} de ${footers.length}`;
+    if (footer.textContent !== text) footer.textContent = text;
+  });
+}
 
 export function DocumentPreviewPage({
   children,
   className = "",
   header,
+  landscape = false,
   pageNumber,
 }: {
   children: ReactNode;
   className?: string;
   header: ReactNode;
+  /** The page lies on its side (Letter landscape). */
+  landscape?: boolean;
   pageNumber?: number;
 }) {
   // The binding margin: every page, in the preview and the PDF, leaves it on its left.
   const bindingExtraPx = BINDING_MARGIN_EXTRA_PX[usePagePresentation().bindingMargin];
+  const footer = useContext(DocumentPageFooterContext);
+  const size = landscape ? "h-[816px] max-h-[816px] w-[1056px] max-w-[1056px]" : "h-[1056px] max-h-[1056px] w-[816px] max-w-[816px]";
   return (
     <article
       style={bindingExtraPx ? { paddingLeft: bindingExtraPx } : undefined}
       data-binding-margin={bindingExtraPx ? "wide" : undefined}
-      className={`light mx-auto break-inside-avoid print:break-before-page print:border-0 print:shadow-none h-[1056px] max-h-[1056px] w-[816px] max-w-[816px] overflow-hidden border border-slate-300 bg-white text-slate-900 shadow-xl shadow-slate-900/10 ${className}`}
+      data-page-orientation={landscape ? "landscape" : undefined}
+      className={`light relative mx-auto break-inside-avoid print:break-before-page print:border-0 print:shadow-none ${size} overflow-hidden border border-slate-300 bg-white text-slate-900 shadow-xl shadow-slate-900/10 ${className}`}
       data-document-page={pageNumber}
       data-preview-page={pageNumber}
     >
       {header}
       {children}
+      {footer ? (
+        <footer
+          aria-hidden="true"
+          className="absolute inset-x-0 bottom-0 px-8 pb-3 text-right text-[8px] leading-none text-slate-500"
+          data-document-page-footer=""
+        >
+          Página
+        </footer>
+      ) : null}
     </article>
   );
 }
 
-export function AutoPaginatedDocumentFlow({
-  contentClassName,
-  contentProps,
-  contentStyle,
-  contentLayoutKey = "",
-  header,
-  items,
-  pageKeyPrefix,
-  pageClassName,
-}: {
+type AutoPaginatedDocumentFlowProps = {
   contentClassName: string;
   contentProps?: AutoPaginatedContentProps;
   contentStyle?: CSSProperties;
@@ -357,7 +393,55 @@ export function AutoPaginatedDocumentFlow({
   pageKeyPrefix: string;
   /** Extra className applied to each DocumentPreviewPage article (e.g. borderless for caratula). */
   pageClassName?: string;
-}) {
+};
+
+/**
+ * The items on their pages. A run of landscape items (a block printed on its
+ * side) gets pages of its own between the upright ones: each run paginates
+ * on pages of its size, and the page count reported upward is the sum.
+ */
+export function AutoPaginatedDocumentFlow(props: AutoPaginatedDocumentFlowProps) {
+  const runs = useMemo(() => splitByOrientation(props.items), [props.items]);
+  const reportPageCount = useReportPageCount();
+  const countsRef = useRef<number[]>([]);
+  const reportRun = useCallback((index: number, count: number) => {
+    countsRef.current[index] = count;
+    reportPageCount(countsRef.current.reduce((sum, value) => sum + (value ?? 0), 0));
+  }, [reportPageCount]);
+  if (runs.length === 1 && !runs[0].landscape) return <AutoPaginatedDocumentFlowRun {...props} />;
+  return (
+    <>
+      {runs.map((run, index) => (
+        <PaginationReporterProvider key={`${props.pageKeyPrefix}-run-${index}`} onReportPageCount={(count) => reportRun(index, count)}>
+          <AutoPaginatedDocumentFlowRun {...props} items={run.items} landscape={run.landscape} pageKeyPrefix={`${props.pageKeyPrefix}-run-${index}`} />
+        </PaginationReporterProvider>
+      ))}
+    </>
+  );
+}
+
+function splitByOrientation(items: DocumentFlowItem[]): Array<{ landscape: boolean; items: DocumentFlowItem[] }> {
+  const runs: Array<{ landscape: boolean; items: DocumentFlowItem[] }> = [];
+  for (const item of items) {
+    const landscape = item.landscape === true;
+    const last = runs.at(-1);
+    if (last && last.landscape === landscape) last.items.push(item);
+    else runs.push({ landscape, items: [item] });
+  }
+  return runs.length ? runs : [{ landscape: false, items: [] }];
+}
+
+function AutoPaginatedDocumentFlowRun({
+  contentClassName,
+  contentProps,
+  contentStyle,
+  contentLayoutKey = "",
+  header,
+  items,
+  landscape = false,
+  pageKeyPrefix,
+  pageClassName,
+}: AutoPaginatedDocumentFlowProps & { landscape?: boolean }) {
   const measurePageRef = useRef<HTMLDivElement | null>(null);
   const measureContentRef = useRef<HTMLDivElement | null>(null);
   const itemsRef = useRef(items);
@@ -368,12 +452,15 @@ export function AutoPaginatedDocumentFlow({
   // Keep latest signature in a ref so measurement reads the CURRENT revision,
   // not a stale closure value from the first render.
   const itemLayoutSignatureRef = useRef(itemLayoutSignature);
+  // The page size the run measures with; read through a ref so the measuring callbacks stay stable.
+  const landscapeRef = useRef(landscape);
   // Refs are synced after commit (layout phase, before any scheduled rAF
   // measurement can run) instead of during render.
   useLayoutEffect(() => {
     itemsRef.current = items;
     itemLayoutSignatureRef.current = itemLayoutSignature;
-  }, [items, itemLayoutSignature]);
+    landscapeRef.current = landscape;
+  }, [items, itemLayoutSignature, landscape]);
 
   const [availableHeight, setAvailableHeight] = useState(DEFAULT_CONTENT_HEIGHT_PX);
   // Pagination stores ONLY item IDs per page (and the rows of a split table),
@@ -400,13 +487,14 @@ export function AutoPaginatedDocumentFlow({
     if (!measurePage || !measureContent || !canMeasure(measurePage)) return false;
 
     const pageHeader = measurePage.querySelector<HTMLElement>("[data-document-preview-header]");
+    const pageFooter = measurePage.querySelector<HTMLElement>(DOCUMENT_PAGE_FOOTER_SELECTOR);
     const computedContentStyle = window.getComputedStyle(measureContent);
     const contentVerticalPadding =
       Number.parseFloat(computedContentStyle.paddingTop || "0") +
       Number.parseFloat(computedContentStyle.paddingBottom || "0");
     const nextAvailableHeight = Math.max(
       0,
-      LETTER_PAGE_HEIGHT_PX - (pageHeader?.offsetHeight ?? 0) - contentVerticalPadding,
+      pageHeightPx(landscapeRef.current) - (pageHeader?.offsetHeight ?? 0) - (pageFooter?.offsetHeight ?? 0) - contentVerticalPadding,
     );
 
     const elements = Array.from(
@@ -575,7 +663,7 @@ export function AutoPaginatedDocumentFlow({
           className="pointer-events-none absolute left-[-10000px] top-0 opacity-0 print:hidden"
           ref={measurePageRef}
         >
-          <DocumentPreviewPage header={header} className="shadow-none" pageNumber={0}>
+          <DocumentPreviewPage header={header} className="shadow-none" landscape={landscape} pageNumber={0}>
             <div {...contentProps} className={contentClassName} ref={measureContentRef} style={contentStyle} data-document-pagination-content="measurement">
               {items.map((item, index) => (
                 <DocumentFlowItemFrame itemId={item.id} joinsNext={items[index + 1]?.continuesPrevious} key={item.id}>
@@ -590,7 +678,7 @@ export function AutoPaginatedDocumentFlow({
 
       <div className="space-y-6 print:space-y-0" ref={pagesContainerRef} data-document-pagination="pending">
         {visiblePages.map((pageItems, pageIndex) => (
-          <DocumentPreviewPage header={header} key={`${pageKeyPrefix}-page-${pageIndex + 1}`} pageNumber={pageIndex + 1} className={pageClassName}>
+          <DocumentPreviewPage header={header} key={`${pageKeyPrefix}-page-${pageIndex + 1}`} landscape={landscape} pageNumber={pageIndex + 1} className={pageClassName}>
             <div {...contentProps} className={contentClassName} style={paginatedContentStyle} data-document-pagination-content="visible">
               {pageItems.map(({ item, fragment }, index) => (
                 <DocumentFlowItemFrame fragment={fragment} itemId={item.id} joinsNext={pageItems[index + 1]?.item.continuesPrevious} key={item.id}>

@@ -46,13 +46,17 @@ export default async function ValuationsPage({
     pageSize: VALUATION_LIST_PAGE_SIZE,
     q: params.q,
     status: params.status,
+    archived: params.archived,
+    sort: params.sort,
+    direction: params.direction,
   });
 
   const pages = totalPages(total);
   if (total > 0 && params.page > pages) redirect(buildValuationListHref({ ...params, page: pages }));
 
   const canCreate = hasPermission(user, AUTH_PERMISSIONS.createValuations);
-  const hasFilters = Boolean(params.q || params.status);
+  const canEdit = hasPermission(user, AUTH_PERMISSIONS.editValuations);
+  const hasFilters = Boolean(params.q || params.status || params.archived);
   const firstItem = total === 0 ? 0 : (params.page - 1) * VALUATION_LIST_PAGE_SIZE + 1;
   const lastItem = Math.min(params.page * VALUATION_LIST_PAGE_SIZE, total);
 
@@ -76,15 +80,15 @@ export default async function ValuationsPage({
 
         <Card className="rounded-2xl border-0 shadow-md shadow-primary/[0.03]">
           <CardContent className="grid gap-4 p-4 sm:p-6">
-            <ValuationsFilters q={params.q} status={params.status} statuses={statuses} />
+            <ValuationsFilters q={params.q} status={params.status} statuses={statuses} archived={params.archived} />
 
             {items.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-16 text-center">
                 {hasFilters ? (
                   <>
                     <SearchX className="size-8 text-muted-foreground/40" aria-hidden="true" />
-                    <p className="text-sm font-medium">Ningún avalúo coincide con la búsqueda</p>
-                    <p className="text-xs text-muted-foreground">Prueba con otro folio, título, cliente o estado.</p>
+                    <p className="text-sm font-medium">{params.archived && !params.q && !params.status ? "No hay avalúos archivados" : "Ningún avalúo coincide con la búsqueda"}</p>
+                    <p className="text-xs text-muted-foreground">{params.archived && !params.q && !params.status ? "Archiva un avalúo desde el menú ··· de su renglón." : "Prueba con otro folio, título, cliente o estado."}</p>
                     <Link href="/avaluos" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-2")}>
                       Limpiar filtros
                     </Link>
@@ -109,7 +113,7 @@ export default async function ValuationsPage({
               </div>
             ) : (
               <>
-                <ValuationsTable items={items} />
+                <ValuationsTable items={items} params={params} canCreate={canCreate} canDelete={canEdit} />
                 <nav
                   aria-label="Paginación"
                   className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between"

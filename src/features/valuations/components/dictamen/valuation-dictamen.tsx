@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DownloadDictamenPdfButton } from "./download-dictamen-pdf-button";
@@ -10,6 +10,7 @@ import { UnaccreditedNoticeProvider } from "@/features/accreditation/components/
 import { SendDictamenEmailDialog } from "./send-dictamen-email-dialog";
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
 import { ContinuousSectionsDocument, SectionDocument } from "@/features/valuations/components/report-preview";
+import { DocumentPageFooterProvider, numberDocumentPages } from "@/features/valuations/components/document-preview-page";
 import { printableSectionGroups } from "@/features/valuations/services/printable-sections";
 import { documentNumberPresentation } from "@/features/valuations/services/number-presentation";
 import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
@@ -59,6 +60,16 @@ export function ValuationDictamen({
   const [sections, setSections] = useState(initial.sections);
   const { principalCoverImage } = useStoredValuationImages({ setSections, valuationId });
   const documentHeaderImage = getDocumentHeaderImage(sections);
+  // "Página n de m" across every section: written whenever the pages change, as each section paginates on its own.
+  const documentRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const container = documentRef.current;
+    if (!container) return;
+    numberDocumentPages(container);
+    const observer = new MutationObserver(() => numberDocumentPages(container));
+    observer.observe(container, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   // The approaches left out of the dictamen do not print, and a section that continues the one before shares its pages.
   const printableGroups = useMemo(() => {
@@ -92,7 +103,8 @@ export function ValuationDictamen({
         </div>
       </header>
 
-      <main data-print-document className="overflow-x-auto py-8 print:overflow-visible print:p-0">
+      <main data-print-document className="overflow-x-auto py-8 print:overflow-visible print:p-0" ref={documentRef}>
+        <DocumentPageFooterProvider enabled>
         <UnaccreditedNoticeProvider show={unaccreditedNotice}>
         <NumberPresentationProvider presentation={documentNumberPresentation(sections)}>
         <PagePresentationProvider presentation={documentPagePresentation(sections)}>
@@ -121,6 +133,7 @@ export function ValuationDictamen({
         </PagePresentationProvider>
         </NumberPresentationProvider>
         </UnaccreditedNoticeProvider>
+        </DocumentPageFooterProvider>
       </main>
     </div>
   );

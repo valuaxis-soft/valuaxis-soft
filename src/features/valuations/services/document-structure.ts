@@ -41,6 +41,26 @@ export function isPageBreakMode(value: unknown): value is PageBreakMode {
   return value === "auto" || value === "new-page" || value === "continue";
 }
 
+/**
+ * How the pages of a block are turned: "landscape" prints the block on its
+ * own Letter pages lying on their side, for wide tables (2 Nov 2026).
+ * Absent means portrait, as every page always printed.
+ */
+export type PageOrientation = "portrait" | "landscape";
+
+export const PAGE_ORIENTATION_LABELS: Record<PageOrientation, string> = {
+  portrait: "Vertical",
+  landscape: "Horizontal",
+};
+
+export function isPageOrientation(value: unknown): value is PageOrientation {
+  return value === "portrait" || value === "landscape";
+}
+
+export function resolvePageOrientation(block: { pageOrientation?: PageOrientation }): PageOrientation {
+  return block.pageOrientation ?? "portrait";
+}
+
 export function isSectionPageBreak(value: unknown): value is SectionPageBreak {
   return value === "new-page" || value === "continue";
 }

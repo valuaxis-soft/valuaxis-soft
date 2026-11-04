@@ -15,7 +15,7 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { initialSectionsFor } from "@/features/valuations/components/workspace/model/initial-hydration";
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
 import type { AppSection } from "@/features/valuations/model";
-import { buildDocumentTemplate, readDocumentTemplate, type DocumentTemplateContent } from "./document-template";
+import { buildDocumentTemplate, readDocumentTemplate, templateContainsData, type DocumentTemplateContent } from "./document-template";
 import { ValuationWorkflowError } from "./valuation-workflow/errors";
 import type { Tx } from "./valuation-workflow/types";
 
@@ -24,6 +24,8 @@ export type ValuationTemplateSummary = {
   name: string;
   description: string | null;
   includeData: boolean;
+  /** The template still carries data of a client or a property (saved before 2 Nov 2026 with "Incluir datos"). */
+  containsData: boolean;
   includeImages: boolean;
   sections: number;
   blocks: number;
@@ -85,6 +87,7 @@ function toSummary(row: TemplateRow, content: DocumentTemplateContent, createdBy
     name: row.SNombre,
     description: row.SDescripcion,
     includeData: content.includeData,
+    containsData: templateContainsData(content.sections),
     includeImages: content.includeImages,
     sections: visible.length,
     blocks: visible.reduce((total, section) => total + section.blocks.length, 0),

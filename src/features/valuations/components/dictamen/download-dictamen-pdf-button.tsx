@@ -7,10 +7,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 const DOCUMENTS = {
-  dictamen: { path: "dictamen/pdf", label: "Descargar PDF", filename: "Dictamen.pdf" },
-  memoria: { path: "memoria-calculo/pdf", label: "Memoria de cálculo", filename: "Memoria-de-calculo.pdf" },
+  dictamen: { path: "dictamen/pdf", label: "Descargar PDF", filename: "Dictamen.pdf", generating: "Generando el dictamen…", done: "Dictamen descargado." },
+  memoria: { path: "memoria-calculo/pdf", label: "Memoria de cálculo", filename: "Memoria-de-calculo.pdf", generating: "Generando memoria…", done: "Memoria descargada." },
   /** The dictamen and its calculation memory, together in one .zip. */
-  entregables: { path: "entregables", label: "Informe y memoria (.zip)", filename: "Entregables.zip" },
+  entregables: { path: "entregables", label: "Informe y memoria (.zip)", filename: "Entregables.zip", generating: "Generando el informe y la memoria…", done: "Informe y memoria descargados." },
 } as const;
 
 /**
@@ -34,6 +34,8 @@ export function DownloadDictamenPdfButton({
 
   const download = async () => {
     setPending(true);
+    // The download gives no sign of its own: the toast says it is generating and when it is saved.
+    const notice = toast.loading(target.generating);
     try {
       const response = await fetch(`/api/avaluos/${valuationId}/${target.path}`, { method: "POST" });
       if (!response.ok) {
@@ -47,8 +49,9 @@ export function DownloadDictamenPdfButton({
       link.download = filename;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      toast.success(target.done, { id: notice });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo generar el PDF.");
+      toast.error(error instanceof Error ? error.message : "No se pudo generar el PDF.", { id: notice });
     } finally {
       setPending(false);
     }

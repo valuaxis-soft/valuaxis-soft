@@ -586,6 +586,8 @@ model Avaluo {
   DFechaConclusion      DateTime? @map("DFechaConclusion") @db.Timestamptz(3)
   DFechaBloqueo         DateTime? @map("DFechaBloqueo") @db.Timestamptz(3)
   DFechaEliminacion     DateTime? @map("DFechaEliminacion") @db.Timestamptz(3)
+  /// Archivado por el despacho: fuera de la lista principal, sin borrarse (055).
+  DFechaArchivo         DateTime? @map("DFechaArchivo") @db.Timestamptz(3)
 
   organizacion       Organizacion     @relation(fields: [IdOrganizacion], references: [IdOrganizacion], onDelete: Restrict, onUpdate: Cascade)
   usuarioCreador     Usuario          @relation("AvaluoUsuarioCreador", fields: [IdUsuarioCreador], references: [IdUsuario], onDelete: Restrict, onUpdate: Cascade)

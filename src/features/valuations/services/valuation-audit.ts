@@ -2,7 +2,7 @@ import type { AuthUser } from "@/features/auth/model";
 import { recordAuditEvent } from "@/features/auth/repositories/audit.repository";
 import { clientIp } from "@/security/rate-limit/rate-limiter";
 
-type ValuationAuditAction = "CREATE" | "CONCLUDE" | "REOPEN" | "DELETE" | "EXPORT";
+type ValuationAuditAction = "CREATE" | "CONCLUDE" | "REOPEN" | "DELETE" | "EXPORT" | "ARCHIVE" | "DUPLICATE";
 
 const TYPE_BY_ACTION: Record<ValuationAuditAction, string> = {
   CREATE: "CREACION",
@@ -10,6 +10,8 @@ const TYPE_BY_ACTION: Record<ValuationAuditAction, string> = {
   REOPEN: "REAPERTURA",
   DELETE: "ELIMINACION_LOGICA",
   EXPORT: "EXPORTACION",
+  ARCHIVE: "CAMBIO_ESTADO",
+  DUPLICATE: "CREACION",
 };
 
 /** Records who did what to which valuation, from where. */

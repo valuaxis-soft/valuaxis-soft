@@ -1,8 +1,8 @@
 import { useEffect, useEffectEvent, useRef } from "react";
 
 import { api } from "@/lib/api-client";
-import { caratulaConclusionValues, conclusionValues, withConceptValues } from "@/features/valuations/calculation/conclusion-document";
-import { canConclude, conclusionEngineConfig, type ConclusionCalculationDto } from "@/features/valuations/calculation/conclusion-types";
+import { caratulaConclusionValues, conclusionValues, withConceptValues, withSummaryRowConcepts } from "@/features/valuations/calculation/conclusion-document";
+import { canConclude, conclusionEngineConfig, conclusionInput, type ConclusionCalculationDto } from "@/features/valuations/calculation/conclusion-types";
 import { COST_TEMPLATE_BLOCK_IDS, costDocumentBlocks, withConstructionTables } from "@/features/valuations/calculation/cost-document";
 import { FACTOR_ANNEX_PREFIX, FACTOR_ANNEX_TEMPLATE_BLOCK_IDS, factorJustificationBlocks, marketsInReport } from "@/features/valuations/calculation/factor-justification-document";
 import { costEngineConfig, toCostEngineInput, type ConstructionTypesDto, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
@@ -164,11 +164,11 @@ export function useCalculationDocumentSync({
 
   const applyConclusion = (calculation: ConclusionCalculationDto) => {
     if (!canEdit || calculation.locked || !canConclude(calculation)) return;
-    const result = concludeValue({ values: calculation.values, method: calculation.method }, conclusionEngineConfig(calculation));
+    const result = concludeValue(conclusionInput(calculation), conclusionEngineConfig(calculation));
     const sectionValues = conclusionValues(calculation, result);
     const caratulaValues = caratulaConclusionValues(result);
     updateBySection("motor-conclusion", (key, section) =>
-      key === "CONCLUSIONES" ? withConceptValues(section, sectionValues)
+      key === "CONCLUSIONES" ? withConceptValues(withSummaryRowConcepts(section, calculation), sectionValues)
         : key === "CARATULA" ? withConceptValues(section, caratulaValues)
           : section);
     const total = String(result.value);

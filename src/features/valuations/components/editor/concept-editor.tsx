@@ -7,7 +7,7 @@ import {
   moveConceptIntoRows,
   type ConceptDropPosition,
 } from "@/features/valuations/services/concept-layout";
-import { useState, type ComponentProps, type ReactNode } from "react";
+import { createContext, useContext, useState, type ComponentProps, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { closestCenter, DndContext, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/core";
@@ -127,6 +127,16 @@ function caratulaInputType(type: ConceptType) {
   if (type === "number") return "text";
   if (type === "currency" || type === "measurement") return "text";
   return type;
+}
+
+/**
+ * Sections without the layout controls (Ingresos, Conclusión…) still offer
+ * "Formato del valor" on every concept when this says so (2 Nov 2026).
+ */
+const ConceptValueFormatEverywhereContext = createContext(false);
+
+export function ConceptValueFormatEverywhere({ children, enabled }: { children: ReactNode; enabled: boolean }) {
+  return <ConceptValueFormatEverywhereContext.Provider value={enabled}>{children}</ConceptValueFormatEverywhereContext.Provider>;
 }
 
 export function ConceptEditorList({
@@ -1033,6 +1043,7 @@ export function ConceptEditorRow({
   allConcepts: Concept[];
 }) {
   const effectiveConcept = resolveEffectiveConcept(concept, allConcepts);
+  const valueFormatEverywhere = useContext(ConceptValueFormatEverywhereContext);
   const cleanConceptLabel = normalizeConceptTitle(effectiveConcept.label);
   const titleMissing = requireTitle && !cleanConceptLabel.trim();
   const [isValueFocused, setIsValueFocused] = useState(false);
@@ -1056,7 +1067,7 @@ export function ConceptEditorRow({
   });
 
   if (layout === "caratulaGrid") {
-    const showValueFormatControl = enableLayoutControls && supportsValueFormat(effectiveConcept);
+    const showValueFormatControl = (enableLayoutControls || valueFormatEverywhere) && supportsValueFormat(effectiveConcept);
     const linkState = conceptLinkIndicator(concept, allConcepts);
     const handleLinkedAwareUpdate = (patch: Partial<Pick<Concept, "label" | "value">>) => {
       if (linkState !== "none" && onUpdateEverywhere) {
@@ -1198,7 +1209,7 @@ export function ConceptEditorRow({
     );
   }
 
-  const showValueFormatControl = enableLayoutControls && supportsValueFormat(effectiveConcept);
+  const showValueFormatControl = (enableLayoutControls || valueFormatEverywhere) && supportsValueFormat(effectiveConcept);
   // A paragraph is one text with no title, from edge to edge of the row.
   const paragraphField = conceptType === "paragraph" ? (
     <TextMarksField className="col-span-2" value={effectiveConcept.value} disabled={readOnly} onChange={(value) => onUpdate(concept.id, { value })}>

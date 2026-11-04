@@ -4,11 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { ArrowDownToLine, ChevronDown, ChevronUp, TextAlignStart , Eye, EyeOff, FilePlus2, LayoutList, SeparatorHorizontal, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ChevronDown, ChevronUp, TextAlignStart , Eye, EyeOff, FilePlus2, LayoutList, RectangleHorizontal, RectangleVertical, SeparatorHorizontal, Trash2 } from "lucide-react";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import { MIN_OFFSET_PX, MAX_OFFSET_PX } from "@/features/valuations/services/concept-presentation";
 import type { ApartadoPresentationMode } from "@/features/valuations/model";
-import { PAGE_BREAK_LABELS, type PageBreakMode } from "@/features/valuations/services/document-structure";
+import { PAGE_BREAK_LABELS, PAGE_ORIENTATION_LABELS, type PageBreakMode, type PageOrientation } from "@/features/valuations/services/document-structure";
 
 const PAGE_BREAK_ICONS = { auto: SeparatorHorizontal, "new-page": FilePlus2, continue: ArrowDownToLine } as const;
 
@@ -23,6 +23,73 @@ const PAGE_BREAK_HINTS: Record<PageBreakMode, string> = {
   "new-page": "Siempre empieza en una página nueva.",
   continue: "Empieza justo donde terminó el anterior, sin espacio: su título no se lleva a la página siguiente aunque su contenido continúe ahí.",
 };
+
+/**
+ * "Orientación de página": the block prints upright, as always, or on pages
+ * lying on their side, for its wide tables (2 Nov 2026).
+ */
+function PageOrientationControl({
+  disabled = false,
+  itemLabel = "bloque",
+  onChange,
+  value,
+}: {
+  disabled?: boolean;
+  itemLabel?: string;
+  onChange: (value: PageOrientation) => void;
+  value: PageOrientation;
+}) {
+  const Icon = value === "landscape" ? RectangleHorizontal : RectangleVertical;
+  const label = `Orientación de página del ${itemLabel}: ${PAGE_ORIENTATION_LABELS[value].toLowerCase()}`;
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            aria-label={label}
+            title={label}
+            disabled={disabled}
+            className={cn(value === "landscape" && "border-primary/50 bg-primary/10 text-primary")}
+            data-page-orientation={value}
+          >
+            <Icon />
+          </Button>
+        }
+      />
+      <PopoverContent align="end" className="w-72 p-3">
+        <div className="space-y-2" role="radiogroup" aria-label={`Orientación de página del ${itemLabel}`}>
+          <p className="text-xs font-medium text-muted-foreground">Orientación de página</p>
+          {(["portrait", "landscape"] as const).map((orientation) => {
+            const ModeIcon = orientation === "landscape" ? RectangleHorizontal : RectangleVertical;
+            return (
+              <Button
+                key={orientation}
+                type="button"
+                size="sm"
+                variant={value === orientation ? "secondary" : "ghost"}
+                role="radio"
+                aria-checked={value === orientation}
+                className="w-full justify-start"
+                onClick={() => onChange(orientation)}
+              >
+                <ModeIcon data-icon="inline-start" />
+                {PAGE_ORIENTATION_LABELS[orientation]}
+              </Button>
+            );
+          })}
+          <p className="text-xs text-muted-foreground">
+            {value === "landscape"
+              ? "El bloque se imprime en páginas horizontales, con más ancho para sus tablas."
+              : "Horizontal imprime el bloque en páginas acostadas: sus tablas anchas caben sin recortarse."}
+          </p>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 /** Where the block or apartado starts on the printed pages: three choices, the current one marked. */
 function PageBreakControl({
@@ -353,6 +420,7 @@ export function StructuralActions({
   onPresentationModeChange,
   onResetConceptPresentations,
   pageBreak,
+  pageOrientation,
   presentationMode,
   visibility,
 }: {
@@ -377,6 +445,10 @@ export function StructuralActions({
   pageBreak?: {
     onChange: (value: PageBreakMode) => void;
     value: PageBreakMode;
+  };
+  pageOrientation?: {
+    onChange: (value: PageOrientation) => void;
+    value: PageOrientation;
   };
   presentationMode?: ApartadoPresentationMode;
   visibility?: {
@@ -413,6 +485,14 @@ export function StructuralActions({
           itemLabel={itemLabel}
           lock={locks.pageBreak}
           onChange={pageBreak.onChange}
+        />
+      ) : null}
+      {pageOrientation ? (
+        <PageOrientationControl
+          value={pageOrientation.value}
+          disabled={disabled}
+          itemLabel={itemLabel}
+          onChange={pageOrientation.onChange}
         />
       ) : null}
       {onConceptPresentationChange ? (

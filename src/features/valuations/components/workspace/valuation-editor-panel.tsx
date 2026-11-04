@@ -3,6 +3,7 @@
 import { ConceptCreationControl } from "../editor/concept-creation-control";
 import { isGeneratedBlock } from "@/features/valuations/calculation/market-document";
 import {
+  ConceptValueFormatEverywhere,
   LongTextConceptEditor,
 } from "../editor/concept-editor";
 import { ConceptSelectionScope } from "../editor/concept-selection";
@@ -106,7 +107,7 @@ import { stripLeadingRomanNumeral } from "../datos-generales-display";
 import { pinFullLinkResolution, type ExistingConceptRelationMode } from "@/features/valuations/concept-links";
 import { canRemoveSection, SECTION_TITLE_MAX } from "@/features/valuations/services/section-edit-operations";
 import { blockContentHidden } from "@/features/valuations/services/hidden-content";
-import { pageBreakPatch, resolvePageBreak } from "@/features/valuations/services/document-structure";
+import { pageBreakPatch, resolvePageBreak, resolvePageOrientation } from "@/features/valuations/services/document-structure";
 import { isNumericConcept, supportsValueFormat } from "@/features/valuations/services/concept-value-format";
 import { setContentRowTagStyle } from "@/features/valuations/services/content-layout";
 import { applyTextMark, type TextMark } from "@/features/valuations/services/text-marks";
@@ -431,6 +432,7 @@ export function ValuationEditorPanel(props: {
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-4">
+        <ConceptValueFormatEverywhere enabled={!isCaratula}>
         {isCaratula ? (
           <ValuationSettingsPanel section={section} readOnly={props.readOnly} valuationId={props.valuationId} onUpdateSection={props.onUpdateSection} />
         ) : (
@@ -532,6 +534,7 @@ export function ValuationEditorPanel(props: {
             </SortableContext>
           </ContentDndScope>
         )}
+        </ConceptValueFormatEverywhere>
       </CardContent>
     </Card>
   );
@@ -721,6 +724,10 @@ function SortableBlockEditor(props: {
         pageBreak: {
           value: resolvePageBreak(block),
           onChange: (mode) => props.onUpdateBlock(section.id, block.id, pageBreakPatch(mode)),
+        },
+        pageOrientation: {
+          value: resolvePageOrientation(block),
+          onChange: (orientation) => props.onUpdateBlock(section.id, block.id, { pageOrientation: orientation === "landscape" ? "landscape" : undefined }),
         },
         deleteAction: {
           size: "icon",

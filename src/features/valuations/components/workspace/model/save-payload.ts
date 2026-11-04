@@ -73,5 +73,7 @@ export function valuationMetaPayload(meta: ValuationMeta) {
     postalCode: meta.postalCode,
     valuationKind: meta.valuationKind,
     propertyKind: meta.propertyKind,
+    propertyKindOther: meta.propertyKindOther ?? "",
+    valuationKindOther: meta.valuationKindOther ?? "",
   };
 }
