@@ -38,7 +38,9 @@ import {
   isLandComparableType,
   offerLabelsOf,
   offerMarkOf,
+  printedCharacteristicFields,
   printsAdditionalAmount,
+  printsHomologationTable,
   type CharacteristicField,
   type ComparableDto,
   type ComparableType,
@@ -214,7 +216,7 @@ function printedCharacteristic(comparable: ComparableDto, key: string): string |
  */
 function characteristics(comparable: ComparableDto, fields: CharacteristicField[]) {
   if (comparable.characteristicsText?.trim()) return comparable.characteristicsText.trim();
-  return fields
+  return printedCharacteristicFields(fields)
     .map((field): [string, string | null | undefined] => [field.label, printedCharacteristic(comparable, field.key)])
     .filter(([, value]) => value)
     .map(([tag, value]) => `${tag}: ${value}`)
@@ -245,7 +247,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
     : [];
 
   // The appraiser may leave the homologation table out of the dictamen: the offers then carry the statistics and the value.
-  const homologationShown = settings.showHomologationTable !== false;
+  const homologationShown = printsHomologationTable(settings);
   const data = generatedApartado(`${prefix}-datos`, `DATOS DE COMPARABLES ${page.scope}`, {
     tables: [
       generatedTable(`${prefix}-tabla-caracteristicas`, "Características de los comparables",

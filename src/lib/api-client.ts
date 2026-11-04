@@ -221,6 +221,9 @@ export const api = {
       request<MarketCalculationDto>(`/avaluos/${id}/mercado?tipo=${type}`),
     saveSettings: (id: ApiId, settings: MarketSettingsDto) =>
       request<MarketCalculationDto>(`/avaluos/${id}/mercado`, { method: "PUT", body: JSON.stringify(settings) }),
+    /** Takes an empty market out of the valuation, with its settings. */
+    deleteMarket: (id: ApiId, type: ComparableType) =>
+      request<{ deleted: boolean }>(`/avaluos/${id}/mercado?tipo=${type}`, { method: "DELETE" }),
     /** `mergeInto`: "es el mismo" that comparable of the firm's base; the new one keeps its number. */
     createComparable: (id: ApiId, type: ComparableType, comparable: ComparableFormValues, mergeInto?: string) =>
       request<MarketCalculationDto>(

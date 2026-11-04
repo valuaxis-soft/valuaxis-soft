@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 
 import { EDITOR_HISTORY_LIMIT, TEXT_EDIT_GROUP_MS } from "@/features/valuations/components/workspace/model/editor-history";
 
@@ -9,6 +9,7 @@ type Step<T> = { draft: T; cell: string | null };
  * outside the document's history: Ctrl+Z and Ctrl+Y (or Ctrl+Shift+Z) in its
  * fields go back and forth through its drafts, typing in one cell is one
  * step, as in the document, and the cell changed is brought into view and lit.
+ * `undo`, `redo`, `canUndo` and `canRedo` serve the panel's own buttons.
  */
 export function useDraftHistory<T>({
   apply,
@@ -22,6 +23,9 @@ export function useDraftHistory<T>({
   const past = useRef<Step<T>[]>([]);
   const future = useRef<Step<T>[]>([]);
   const last = useRef<{ cell: string | null; at: number }>({ cell: null, at: 0 });
+  // How many steps each stack holds, as state, so the buttons that read them render again.
+  const [counts, setCounts] = useState({ past: 0, future: 0 });
+  const changed = () => setCounts({ past: past.current.length, future: future.current.length });
 
   /** Call with the draft as it was before an edit; `cell` names the cell typed in, null for any other change. */
   const record = (before: T, cell: string | null) => {
@@ -30,6 +34,7 @@ export function useDraftHistory<T>({
     last.current = { cell, at: now };
     future.current = [];
     if (!grouped) past.current = [...past.current, { draft: before, cell }].slice(-EDITOR_HISTORY_LIMIT);
+    changed();
   };
 
   const reveal = (cell: string | null) => {
@@ -54,21 +59,28 @@ export function useDraftHistory<T>({
     to.push({ draft: current, cell: target.cell });
     from.pop();
     last.current = { cell: null, at: 0 };
+    changed();
     apply(target.draft);
     reveal(target.cell);
     return target;
   };
 
+  const undo = (current: T) => step(past.current, future.current, current);
+  const redo = (current: T) => step(future.current, past.current, current);
+
   /** Handles Ctrl+Z / Ctrl+Y in the panel; the document's undo does not see them. */
   const onKeyDown = (event: KeyboardEvent, current: T) => {
     if (!event.ctrlKey && !event.metaKey) return;
     const key = event.key.toLowerCase();
-    const undo = key === "z" && !event.shiftKey;
-    const redo = key === "y" || (key === "z" && event.shiftKey);
-    if (!undo && !redo) return;
-    const done = undo ? step(past.current, future.current, current) : step(future.current, past.current, current);
+    const isUndo = key === "z" && !event.shiftKey;
+    const isRedo = key === "y" || (key === "z" && event.shiftKey);
+    if (!isUndo && !isRedo) return;
+    const done = isUndo ? undo(current) : redo(current);
     // With nothing to undo here, the field keeps the browser's own undo.
-    if (done) event.preventDefault();
+    if (done) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   };
 
   /** Forgets the steps: the panel loaded another state from the server. */
@@ -76,7 +88,8 @@ export function useDraftHistory<T>({
     past.current = [];
     future.current = [];
     last.current = { cell: null, at: 0 };
+    changed();
   };
 
-  return { onKeyDown, record, reset };
+  return { onKeyDown, record, reset, undo, redo, canUndo: counts.past > 0, canRedo: counts.future > 0 };
 }

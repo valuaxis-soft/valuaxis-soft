@@ -132,6 +132,7 @@ export function MarketHomologationTable(props: {
                           <CommitCell
                             ariaLabel={label}
                             numeric
+                            formulaKey={`homologacion:${comparable.id}:${factorKey(slot)}`}
                             disabled={readOnly}
                             value={factorInputText(surface, factorFormulaOf(comparable, slot))}
                             display={surface?.value ? twoDecimals(surface.value) : row ? twoDecimals(row.surfaceFactor) : ""}
@@ -153,6 +154,7 @@ export function MarketHomologationTable(props: {
                         <CommitCell
                           ariaLabel={label}
                           numeric
+                          formulaKey={`homologacion:${comparable.id}:${factorKey(slot)}`}
                           disabled={readOnly}
                           value={factorInputText(factor, factorFormulaOf(comparable, slot))}
                           display={twoDecimals(factorValue(factor))}

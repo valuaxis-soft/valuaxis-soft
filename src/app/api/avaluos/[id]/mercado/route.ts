@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { comparableTypeSchema, marketSettingsSchema } from "@/features/valuations/calculation/market-schemas";
-import { getMarketCalculation, saveMarketSettings } from "@/features/valuations/calculation/market.service";
+import { deleteMarket, getMarketCalculation, saveMarketSettings } from "@/features/valuations/calculation/market.service";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
 import { readJsonBody } from "@/lib/api-response";
 import { requireApiUser } from "@/security/guards/api-guard";
@@ -31,5 +31,20 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/avalu
     return NextResponse.json({ data: await getMarketCalculation(id, auth.user.organizationId, body.data.comparableType) });
   } catch (error) {
     return valuationErrorResponse("MARKET_SETTINGS", error, "No se pudo guardar el enfoque de mercado.");
+  }
+}
+
+/** Takes an empty market (no comparables) out of the valuation, with its settings. */
+export async function DELETE(request: Request, { params }: RouteContext<"/api/avaluos/[id]/mercado">) {
+  try {
+    const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
+    if (!auth.ok) return auth.response;
+    const type = comparableTypeSchema.safeParse(new URL(request.url).searchParams.get("tipo"));
+    if (!type.success) return NextResponse.json({ error: "Tipo de comparable inválido" }, { status: 400 });
+    const { id } = await params;
+    await deleteMarket(id, auth.user, type.data);
+    return NextResponse.json({ data: { deleted: true } });
+  } catch (error) {
+    return valuationErrorResponse("MARKET_DELETE", error, "No se pudo quitar el mercado.");
   }
 }

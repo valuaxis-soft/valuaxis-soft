@@ -58,8 +58,75 @@ function table(id: string, title: string, columns: string[], rows: string[][]): 
   return { id, title, columns, rows, enabled: true };
 }
 
-export function incomeDocumentBlocks(calculation: IncomeCalculationDto, result: IncomeApproachResult | null): Block[] {
-  if (!result) return [];
+/** Printed where the rate is missing: the value cannot be capitalized yet. */
+export const NO_CAPITALIZATION_RATE = "Sin tasa de capitalización";
+/** Printed where the rent is missing: no unit rent captured nor adopted in the rent market. */
+export const NO_UNIT_RENT = "Sin renta unitaria";
+
+/**
+ * What the income approach can already print while the calculation is not
+ * complete: the rentable units captured with their rents, the gross and net
+ * rents when every unit has a rent, the deductions, and the reason the value
+ * is not there yet ("Sin tasa de capitalización") instead of a dash in
+ * every line. Nothing while nothing is captured, so the template's blocks
+ * stay.
+ */
+export function partialIncomeBlocks(calculation: IncomeCalculationDto, reason: string): Block[] {
+  const prefix = INCOME_BLOCK_PREFIX;
+  const subjectArea = calculation.rentMarket.subjectArea;
+  const adopted = calculation.rentMarket.adoptedUnitRent;
+  const units = calculation.rentableUnits
+    .map((unit) => ({ ...unit, area: unit.area ?? (calculation.rentableUnits.length === 1 ? subjectArea : null) }))
+    .filter((unit) => (unit.area ?? 0) > 0)
+    .map((unit) => ({ description: unit.description || "Superficie rentable", area: unit.area as number, unitRent: unit.unitRent ?? (adopted && adopted > 0 ? adopted : null) }));
+  if (calculation.method === "mercado") {
+    const priced = Object.values(calculation.marketRate.salePrices).some((price) => price && price > 0);
+    if (!priced && !calculation.rentMarket.comparables.length) return [];
+    return [block(`${prefix}-resultado`, "RESULTADO DEL ENFOQUE DE INGRESOS", {
+      concepts: concepts(`${prefix}-resultado`, [["valor", "Valor por capitalización de rentas", reason]]),
+    })];
+  }
+  if (!units.length) return [];
+  const gross = units.every((unit) => unit.unitRent !== null) ? units.reduce((sum, unit) => sum + unit.area * (unit.unitRent as number), 0) : null;
+  const deductionsRate = calculation.deductions.reduce((sum, deduction) => sum + (deduction.rate ?? 0), 0);
+  const net = gross === null ? null : gross * (1 - deductionsRate);
+  const rows = units.map((unit) => [
+    unit.description, area(unit.area), unit.unitRent === null ? NO_UNIT_RENT : `${money.format(unit.unitRent)} /m²/mes`,
+    unit.unitRent === null ? NO_UNIT_RENT : money.format(unit.area * unit.unitRent),
+  ]);
+  const rentOr = (value: number | null) => (value === null ? NO_UNIT_RENT : money.format(value));
+  const rateMissing = calculation.method === "anualidad"
+    ? "Sin datos de la anualidad: TIIE, inflación y vida útil remanente"
+    : `${NO_CAPITALIZATION_RATE}: califica los siete criterios de la tabla o captura la tasa`;
+  return [
+    block(`${prefix}-rentas`, "CAPITALIZACIÓN DE RENTAS", {
+      tables: [table(`${prefix}-tabla-rentas`, "Renta bruta mensual", ["Concepto", "Superficie rentable", "Renta unitaria", "Renta mensual"], rows)],
+      concepts: concepts(`${prefix}-rentas`, [
+        ["bruta", "Renta bruta mensual", rentOr(gross)],
+        ["deducciones", "Deducciones", percent(deductionsRate)],
+        ["neta-mensual", "Renta neta mensual", rentOr(net)],
+        ["neta-anual", "Renta neta anual", rentOr(net === null ? null : net * 12)],
+      ]),
+    }),
+    block(`${prefix}-deducciones`, "DEDUCCIONES", {
+      tables: [table(`${prefix}-tabla-deducciones`, "Deducciones sobre la renta bruta", ["Concepto", "Porcentaje", "Importe mensual"],
+        calculation.deductions.map((deduction) => [
+          deduction.concept,
+          percent(deduction.rate ?? 0),
+          gross === null ? NO_UNIT_RENT : money.format((deduction.rate ?? 0) * gross),
+        ]))],
+    }),
+    block(`${prefix}-tasa`, "TASA DE CAPITALIZACIÓN", {
+      concepts: concepts(`${prefix}-tasa`, [["aplicada", "Tasa aplicada", calculation.appliedRate ? percent(calculation.appliedRate, 4) : rateMissing]]),
+    }),
+    block(`${prefix}-resultado`, "RESULTADO DEL ENFOQUE DE INGRESOS", {
+      concepts: concepts(`${prefix}-resultado`, [["valor", "Valor por capitalización de rentas", gross === null ? `${NO_UNIT_RENT}: ${reason}` : reason]]),
+    }),
+  ];
+}
+
+export function incomeDocumentBlocks(calculation: IncomeCalculationDto, result: IncomeApproachResult | null, reason?: string): Block[] {
+  if (!result) return reason ? partialIncomeBlocks(calculation, reason) : [];
   if (result.marketRate) return [...dispersionBlock(calculation, result), ...marketRateBlocks(calculation, result, result.marketRate)];
   const prefix = INCOME_BLOCK_PREFIX;
   const units = calculation.rentableUnits.filter((unit) => (unit.area ?? calculation.rentMarket.subjectArea ?? 0) > 0);

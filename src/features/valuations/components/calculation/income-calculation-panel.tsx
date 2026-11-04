@@ -230,6 +230,10 @@ export function IncomeCalculationPanel(props: {
             <NativeSelectOption key={key} value={key}>{INCOME_METHOD_LABELS[key]}</NativeSelectOption>
           ))}
         </NativeSelect>
+        <p className="text-xs text-muted-foreground" data-income-methods="">
+          Métodos disponibles: capitalización directa con la tasa de la tabla (TCH), anualidad con TIIE (TU) y tasa de mercado venta / renta (TR). La
+          capitalización inversa, el método residual y el flujo de efectivo descontado (VAN) no están disponibles.
+        </p>
       </Field>
       {!adopted && method !== "mercado" ? (
         <p className="text-xs text-muted-foreground">La renta unitaria sale del mercado de rentas. Captúralo en su sección, o escribe la renta de cada superficie.</p>
