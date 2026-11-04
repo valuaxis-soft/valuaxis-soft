@@ -164,16 +164,24 @@ Quitar las variables que el código no usa o que solo sirvieron para el alta ini
 
 Después, `pnpm env:check` (paso 2.3) y reiniciar la app.
 
-## 7. Llave de Google Maps (`GOOGLE_MAPS_API_KEY`)
+## 7. Llaves de Google Maps (`GOOGLE_MAPS_API_KEY`, `GOOGLE_MAPS_SERVER_KEY`)
 
-Opcional. La usa la página de demostración de mapas (`src/features/demo-maps/`) para mostrar Google Maps, los croquis de Maps Static API y la búsqueda de direcciones. Sin ella la página funciona igual: dibuja su propio mapa con las calles de OpenStreetMap y avisa "Vista sin Google Maps (falta configurar la llave)".
+Opcionales. Las usan la sección Croquis del editor ("Ubicación y croquis del inmueble": el mapa para ubicar el inmueble sujeto, la búsqueda de direcciones y "Aplicar al croquis", que guarda los croquis de macro y microlocalización y el mapa de comparables como imágenes del avalúo; `src/features/maps/`) y la página de demostración (`src/features/demo-maps/`). Sin llave la app funciona igual: el panel avisa que los mapas no están configurados y los croquis se agregan como cualquier imagen; la demostración dibuja su propio mapa con calles de OpenStreetMap.
 
-- Es una variable de **runtime**: va en `production.env` y el contenedor la lee al arrancar (`env_file`). No lleva el prefijo `NEXT_PUBLIC_`, porque la imagen se compila sin `production.env`; la página la lee en el servidor en cada petición y se la pasa al navegador.
-- Es una **llave de navegador**: quien abra la página la puede ver. Por eso, en Google Cloud Console (APIs y servicios → Credenciales):
-  - **Restricción de aplicación:** sitios web (referentes HTTP), solo `https://valuaxissoft.com/*`. Para probar en local se agrega `http://localhost:3000/*` (o el puerto que se use) en una llave aparte, no en la de producción.
-  - **Restricción de API:** solo Maps JavaScript API, Maps Static API y Geocoding API.
-- Después de agregarla o cambiarla: `pnpm env:check` (paso 2.3) y reiniciar la app (`docker compose ... up -d valuos-app`); no hace falta reconstruir la imagen.
-- La CSP agrega los dominios de Google (`maps.googleapis.com`, `*.googleapis.com`, `*.gstatic.com`, `fonts.googleapis.com`, `fonts.gstatic.com`, `worker-src blob:`) solo en las rutas `/demo/`; el resto de la app conserva la política de siempre (`src/security/headers/security-headers.ts`).
+Google se consulta desde dos lugares distintos, y por eso conviene tener dos llaves:
+
+| Variable | Quién la usa | API que necesita | Restricción en Google Cloud |
+|---|---|---|---|
+| `GOOGLE_MAPS_API_KEY` | El navegador, para el mapa interactivo del editor y de la demostración. Quien abra la página la puede ver. | Maps JavaScript API | **Aplicación:** sitios web (referentes HTTP), solo `https://valuaxissoft.com/*`. **API:** solo Maps JavaScript API. |
+| `GOOGLE_MAPS_SERVER_KEY` | El servidor, para la búsqueda de direcciones (`/api/mapas/geocodificar`) y la imagen de cada croquis (`/api/avaluos/[id]/croquis`). Nunca sale del servidor. | Geocoding API y Maps Static API | **Aplicación:** direcciones IP, solo la IP pública del VPS (`168.231.74.90`), o ninguna si cambia de IP. **API:** solo Geocoding API y Maps Static API. |
+
+- Una llave restringida por referente **no funciona desde el servidor**: Google rechaza las llamadas sin `Referer`. Si solo se configura `GOOGLE_MAPS_API_KEY`, el servidor la usa también para la geocodificación y los croquis, así que entonces esa llave debe permitir las tres APIs y no puede llevar restricción por referente (o se le quita la restricción de aplicación, con menos protección). La separación en dos llaves es la configuración recomendada.
+- Las dos son variables de **runtime**: van en `production.env` y el contenedor las lee al arrancar (`env_file`). No llevan el prefijo `NEXT_PUBLIC_`, porque la imagen se compila sin `production.env`; la página lee la del navegador en el servidor en cada petición y se la pasa al navegador.
+- Para probar en local se crean llaves aparte (`http://localhost:3000/*` como referente; sin restricción de IP para la del servidor), nunca se tocan las de producción.
+- Después de agregarlas o cambiarlas: `pnpm env:check` (paso 2.3) y reiniciar la app (`docker compose ... up -d valuos-app`); no hace falta reconstruir la imagen.
+- **Costo:** cada búsqueda de dirección es una llamada a Geocoding API y cada "Aplicar al croquis" pide una imagen de Maps Static API por croquis (dos en la sección Croquis, una en el anexo); el mapa interactivo cobra por carga de página del editor con la sección abierta. Conviene fijar una cuota diaria por API en Google Cloud (APIs y servicios → Cuotas). La app limita la geocodificación a 30 búsquedas por usuario por minuto y los croquis cuentan en el límite de subidas (60 cada 10 minutos).
+- Los croquis quedan guardados como imágenes del avalúo: el dictamen, su PDF y los entregables no consultan a Google ni necesitan la llave.
+- La CSP agrega los dominios de Google (`maps.googleapis.com`, `*.googleapis.com`, `*.gstatic.com`, `fonts.googleapis.com`, `fonts.gstatic.com`, `worker-src blob:`) solo en el editor (`/workspace`) y en las rutas `/demo/`; el resto de la app, incluidos el dictamen y la ventana de vista previa, conserva la política de siempre (`googleMapsPage` en `src/security/headers/security-headers.ts`).
 
 ## 8. Precio por avalúo ($170 MXN + IVA) y lo que falta para cobrar
 

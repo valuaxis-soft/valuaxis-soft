@@ -4,7 +4,7 @@
  * Loads the Maps JavaScript API once. The script carries the request's CSP
  * nonce; the API reuses it for the scripts and styles it adds afterwards.
  */
-const CALLBACK = "__valuaxisDemoMapsReady";
+const CALLBACK = "__valuaxisMapsReady";
 
 type GoogleWindow = Window & {
   [CALLBACK]?: () => void;

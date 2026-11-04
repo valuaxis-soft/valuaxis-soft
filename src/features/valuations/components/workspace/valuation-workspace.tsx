@@ -47,6 +47,9 @@ import { IncomeCalculationPanel } from "@/features/valuations/components/calcula
 import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/components/calculation/machinery-calculation-panel";
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
 import { StatisticalMethodsPanel } from "@/features/valuations/components/calculation/statistical-methods-panel";
+import { LocationPanel, type GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
+import { croquisSectionKey, withCroquisImage } from "@/features/maps/croquis-document";
+import type { CroquisKind } from "@/features/maps/croquis";
 import { RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { excludedReportApproaches } from "@/features/valuations/services/report-approaches";
@@ -92,6 +95,7 @@ export function ValuationWorkspace({
   valuationId: propValuationId,
   initialValuation,
   aiEnabled = false,
+  googleMaps = { apiKey: null },
   customUnits = [],
   unaccreditedNotice = null,
 }: {
@@ -104,6 +108,8 @@ export function ValuationWorkspace({
   initialValuation?: ValuationDetail | null;
   /** The installation has the AI assistance configured. */
   aiEnabled?: boolean;
+  /** The browser key of Google Maps and the request's nonce, for the croquis panel; no key, no map. */
+  googleMaps?: GoogleMapsPageConfig;
   /** The firm's own units, offered in "Formato del valor". */
   customUnits?: string[];
 }) {
@@ -321,6 +327,18 @@ export function ValuationWorkspace({
   const machinery = isMachineryPropertyKind(initialValuation?.propertyKind);
   const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, machinery, valuationId });
 
+  // "Aplicar al croquis": the stored image goes into its section; false when the appraiser removed that section.
+  const placeCroquisImage = (kind: CroquisKind, src: string) => {
+    const key = croquisSectionKey(kind);
+    if (!sections.some((section) => !section.removed && getCanonicalSectionKey(section.id) === key)) return false;
+    updateSections((current) => withCroquisImage(current, kind, src).sections);
+    return true;
+  };
+  const locationPanel = (captures: readonly CroquisKind[]) =>
+    valuationId ? (
+      <LocationPanel valuationId={valuationId} readOnly={!canEdit} googleMaps={googleMaps} address={meta.location} captures={captures} onCroquisImage={placeCroquisImage} />
+    ) : undefined;
+
   // A template is made from what is saved, so pending changes are saved first.
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const saveBeforeTemplate = async () => !hasUnsavedChanges || (await handleSave());
@@ -384,6 +402,10 @@ export function ValuationWorkspace({
               <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} />
             ) : getCanonicalSectionKey(section.id) === "CONCLUSIONES" ? (
               <ConclusionPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConclusionCalculation} />
+            ) : !machinery && getCanonicalSectionKey(section.id) === "CROQUIS_COMPARABLES" ? (
+              locationPanel(["macro", "micro"])
+            ) : !machinery && getCanonicalSectionKey(section.id) === "MAPA_COMPARABLES" ? (
+              locationPanel(["comparables"])
             ) : undefined}
             allSections={enabledSections}
             readOnly={!canEdit}

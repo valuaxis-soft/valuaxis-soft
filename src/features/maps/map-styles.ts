@@ -3,7 +3,7 @@
  * (no businesses or points of interest), the north arrow and the framing of
  * each croquis. Pure values and functions, tested without a browser.
  */
-import type { LatLon } from "./geo";
+import type { LatLon } from "./types";
 
 /** A rule in the format of the Maps JavaScript API (`google.maps.MapTypeStyle`). */
 export interface MapStyleRule {

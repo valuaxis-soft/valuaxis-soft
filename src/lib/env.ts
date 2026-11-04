@@ -28,10 +28,17 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().optional(),
   /**
-   * Browser key for Google Maps (Maps JavaScript, Maps Static and Geocoding APIs), read at runtime.
-   * Optional: without it the maps demonstration draws its own map. Restricted by referrer; see docs/OPERACION.md.
+   * Browser key for Google Maps (Maps JavaScript API), read at runtime. Optional: without it the
+   * croquis panel says maps are not configured and the demonstration draws its own map.
+   * Restricted by referrer; see docs/OPERACION.md, section 7.
    */
   GOOGLE_MAPS_API_KEY: z.string().optional(),
+  /**
+   * Key the server uses for the Maps Static and Geocoding APIs (the croquis images and the address
+   * search). A referrer-restricted key does not work from the server, so this one is restricted by
+   * IP or not at all. Optional: without it the server uses GOOGLE_MAPS_API_KEY.
+   */
+  GOOGLE_MAPS_SERVER_KEY: z.string().optional(),
   NEXT_PUBLIC_APP_URL: z.string().optional(),
   UPLOAD_DIR: z.string().default("public/uploads"),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().positive().default(10),
