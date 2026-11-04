@@ -4,6 +4,7 @@ import type { ComparableInputPayload } from "../../src/features/valuations/calcu
 import {
   createComparable,
   deleteComparable,
+  deleteMarket,
   getMarketCalculation,
   saveMarketSettings,
   updateComparable,
@@ -295,4 +296,32 @@ test("the conclusion follows the approaches: Arandas concludes 8,580,000 with th
   // 0.5 × 8,580,000 + 0.5 × 1,530,000 = 5,055,000 → 5,060,000.
   assert.equal(Number(weighted.NValorConcluido), 5060000);
   assert.equal(weighted.SJustificacion, "Ponderación de prueba.");
+});
+
+test("«Homologar» off is stored and the stored value follows the offers; an empty market can be removed, one with comparables cannot", async () => {
+  const fixture = await createValuationFixture();
+  const user = await loadArandas(fixture);
+  const before = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
+  assert.equal(before.settings.homologate, undefined, "missing until the appraiser turns it off");
+  await saveMarketSettings(fixture.publicId, user, { ...before.settings, adoptedUnitValue: null, homologate: false });
+  const off = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
+  assert.equal(off.settings.homologate, false);
+  const offers = off.comparables.map((item) => (item.price as number) / (item.area as number));
+  const stored = await storedApproach(fixture);
+  assert.ok(Math.abs(Number(stored.approach.NValorPromedioHomologado) - offers.reduce((a, b) => a + b, 0) / offers.length) < 0.01, "the stored mean is the offers' mean");
+  // The factors captured stay with the comparables.
+  assert.ok(off.comparables.every((item) => item.factors.length > 0));
+
+  await assert.rejects(deleteMarket(fixture.publicId, user, "TERRENO_VENTA"), /tiene \d+ comparables/);
+  await saveMarketSettings(fixture.publicId, user, {
+    comparableType: "INMUEBLE_VENTA", subjectArea: 120, baseArea: null, surfacePower: 6, adoptedUnitValue: null,
+    justification: null, additionalAmount: 0, factorSlots: DEFAULT_FACTOR_SLOTS,
+  });
+  assert.equal((await getMarketCalculation(fixture.publicId, fixture.organizationId, "INMUEBLE_VENTA")).configured, true);
+  await deleteMarket(fixture.publicId, user, "INMUEBLE_VENTA");
+  const removed = await getMarketCalculation(fixture.publicId, fixture.organizationId, "INMUEBLE_VENTA");
+  assert.equal(removed.configured, false);
+  assert.equal(removed.settings.subjectArea, null);
+  // The land market is untouched.
+  assert.equal((await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA")).comparables.length, before.comparables.length);
 });
