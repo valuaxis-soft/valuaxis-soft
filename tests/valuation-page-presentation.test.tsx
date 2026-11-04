@@ -70,14 +70,15 @@ test("a wide binding margin leaves 1.5 cm more on the left of every page", () =>
   assert.match(page({ ...DEFAULT_PAGE_PRESENTATION, bindingMargin: "wide" }), /<article style="padding-left:57px" data-binding-margin="wide"/);
 });
 
-test("title bars print blue, or without the fill as dark text over a thin rule", () => {
+test("title bars print as a blue band without frame, or on white inside a thin blue frame", () => {
   const [title] = documentBlockFlowItems(block);
   const filled = printed(DEFAULT_PAGE_PRESENTATION, title.node);
   assert.match(filled, /bg-\[#00285A\][^"]*text-white/);
+  assert.doesNotMatch(filled, /border-\[#00285A\]/);
 
   const outline = printed({ ...DEFAULT_PAGE_PRESENTATION, titleBars: "outline" }, title.node);
   assert.doesNotMatch(outline, /bg-\[#00285A\]|text-white/);
-  assert.match(outline, /border-b border-\[#00285A\][^"]*text-\[#00285A\]/);
+  assert.match(outline, /border border-\[#00285A\] bg-white[^"]*text-\[#00285A\]/);
   assert.match(outline, /III\. TERRENO/);
 
   // The cover keeps its own titles whatever the choice.

@@ -15,6 +15,30 @@ import { readStoredExternalPreview } from "./use-external-preview-sync";
 
 const subscribeToNothing = () => () => {};
 
+/** The view mode and the split chosen last time, kept in the browser so they come back after a reload. */
+const WORKSPACE_MODE_KEY = "valuoWorkspaceMode";
+const SPLIT_LAYOUT_KEY = "valuoSplitLayout";
+
+const isWorkspaceMode = (value: unknown): value is WorkspaceMode => value === "form" || value === "split" || value === "preview";
+const isSplitLayout = (value: unknown): value is SplitLayout => value === "horizontal" || value === "vertical" || value === "external";
+
+export function readStoredWorkspaceLayout(): { mode: WorkspaceMode | null; splitLayout: SplitLayout | null } {
+  try {
+    const mode = localStorage.getItem(WORKSPACE_MODE_KEY);
+    const splitLayout = localStorage.getItem(SPLIT_LAYOUT_KEY);
+    return { mode: isWorkspaceMode(mode) ? mode : null, splitLayout: isSplitLayout(splitLayout) ? splitLayout : null };
+  } catch {
+    return { mode: null, splitLayout: null };
+  }
+}
+
+function storeWorkspaceLayout(mode: WorkspaceMode, splitLayout: SplitLayout) {
+  try {
+    localStorage.setItem(WORKSPACE_MODE_KEY, mode);
+    localStorage.setItem(SPLIT_LAYOUT_KEY, splitLayout);
+  } catch {}
+}
+
 function subscribeToDesktopQuery(onChange: () => void) {
   const mediaQuery = window.matchMedia(DESKTOP_WORKSPACE_QUERY);
   mediaQuery.addEventListener("change", onChange);
@@ -63,11 +87,19 @@ export function useWorkspaceLayout() {
   const [storedModeRestored, setStoredModeRestored] = useState(false);
   if (isClient && !storedModeRestored) {
     setStoredModeRestored(true);
+    const stored = readStoredWorkspaceLayout();
+    if (stored.mode) setDesktopMode(stored.mode);
+    if (stored.splitLayout && stored.splitLayout !== "external") setSplitLayout(stored.splitLayout);
     if (readStoredExternalPreview()) {
       setDesktopMode("split");
       setSplitLayout("external");
     }
   }
+
+  // What was chosen is remembered for the next time the editor opens.
+  useEffect(() => {
+    if (storedModeRestored) storeWorkspaceLayout(desktopMode, splitLayout);
+  }, [desktopMode, splitLayout, storedModeRestored]);
 
   const workspaceMode = resolveWorkspaceMode({
     compactPane,
@@ -88,7 +120,7 @@ export function useWorkspaceLayout() {
 
   useEffect(() => {
     if (workspaceMode !== "split" || splitLayout === "external") return;
-    focusWorkspacePanels(previewPanelRef.current, editorPanelRef.current, splitLayout);
+    focusWorkspacePanels(previewPanelRef.current, editorPanelRef.current);
   }, [splitLayout, workspaceMode, previewPanelRef, editorPanelRef]);
 
   const workspaceComposition = getWorkspaceComposition(workspaceMode, splitLayout);

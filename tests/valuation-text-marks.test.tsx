@@ -174,8 +174,11 @@ test("a container with concepts offers to select several of them; a read-only on
 
   const readOnly = renderToStaticMarkup(createElement(ConceptSelectionScope, { concepts, readOnly: true, onApplySpacing: noop }, createElement("p", null, "filas")));
   assert.doesNotMatch(readOnly, /Seleccionar conceptos/);
+  // One concept is offered too: it can be duplicated, moved or deleted from the selection.
   const single = renderToStaticMarkup(createElement(ConceptSelectionScope, { concepts: concepts.slice(0, 1), readOnly: false, onApplySpacing: noop }, createElement("p", null, "filas")));
-  assert.doesNotMatch(single, /Seleccionar conceptos/);
+  assert.match(single, /Seleccionar conceptos/);
+  const none = renderToStaticMarkup(createElement(ConceptSelectionScope, { concepts: [], readOnly: false, onApplySpacing: noop }, createElement("p", null, "filas")));
+  assert.doesNotMatch(none, /Seleccionar conceptos/);
 
   assert.equal(commonSpacingAfter(concepts), 15);
   assert.equal(commonSpacingAfter([concepts[0], concept("c", "Objeto", "")]), null, "0 and 15 differ");

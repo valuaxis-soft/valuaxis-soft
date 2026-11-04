@@ -63,8 +63,13 @@ export type Letterhead = {
   logoUrl: string | null;
 };
 
-/** "paragraph": a free text with no label, printed edge to edge. */
-export type ConceptType = "text" | "date" | "phone" | "email" | "number" | "currency" | "measurement" | "longText" | "url" | "paragraph";
+/**
+ * "paragraph": a free text with no label, printed edge to edge.
+ * "list": one of the options the appraiser wrote for the concept (`options`).
+ */
+export type ConceptType = "text" | "date" | "phone" | "email" | "number" | "currency" | "measurement" | "longText" | "url" | "paragraph" | "list";
+/** What "+ Concepto" offers: a type, or a text with a unit already chosen ("percent": a number in %). */
+export type ConceptCreationKind = ConceptType | "percent";
 export type ConceptValueFormat =
   | "plain"
   | "mxn"
@@ -102,6 +107,8 @@ export type Concept = {
   sourceUnit?: ConceptValueFormat;
   customUnit?: string;
   dateFormat?: ConceptDateFormat;
+  /** Only for a "list" concept: the options to choose the value from, in order. */
+  options?: string[];
   /**
    * The value is computed from other concepts and table cells; `value` holds
    * the last result, written as the concept's format reads it.

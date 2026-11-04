@@ -16,8 +16,17 @@ import {
 import { ImportBlockButton } from "./template-dialogs";
 import { BlockCard } from "../editor/block-card";
 import { BlockTitleContextMenu } from "../editor/block-title-context-menu";
-import { StructuralActions } from "../editor/structural-actions";
 import { ApartadoEditor } from "../editor/apartado-editor";
+import {
+  ADD_BLOCK_LABEL,
+  ADD_SUBBLOCK_LABEL,
+  BLOCK_TERM,
+  SUBBLOCK_TERM,
+  blockToolbarLocks,
+  blockToolbarState,
+} from "../editor/block-toolbar";
+import { deleteConfirmation, useConfirmDelete } from "../editor/delete-confirm";
+import { structureLockReason } from "@/features/valuations/services/structure-transfer";
 import { BlockFlowRenderer } from "../editor/block-flow-renderer";
 import { AssumptionsDraftAssist, DraftScopeProvider, ApartadoSummaryDraft } from "../editor/draft-assist";
 import type { EditorCapabilities } from "../editor/editor-capabilities";
@@ -72,7 +81,8 @@ import type {
   Block,
   CaratulaFormData,
   Concept,
-  ConceptType,
+  ConceptCreationKind,
+  ConceptValueFormat,
   ImageContent,
   PrincipalCoverImage,
   Apartado,
@@ -97,6 +107,10 @@ import { pinFullLinkResolution, type ExistingConceptRelationMode } from "@/featu
 import { canRemoveSection, SECTION_TITLE_MAX } from "@/features/valuations/services/section-edit-operations";
 import { blockContentHidden } from "@/features/valuations/services/hidden-content";
 import { pageBreakPatch, resolvePageBreak } from "@/features/valuations/services/document-structure";
+import { isNumericConcept, supportsValueFormat } from "@/features/valuations/services/concept-value-format";
+import { setContentRowTagStyle } from "@/features/valuations/services/content-layout";
+import { applyTextMark, type TextMark } from "@/features/valuations/services/text-marks";
+import type { ContentRowTagStyle } from "@/features/valuations/model";
 
 const PRE_MARKET_EDITOR_SECTION_KEYS = new Set([
   "DATOS_GENERALES",
@@ -106,15 +120,13 @@ const PRE_MARKET_EDITOR_SECTION_KEYS = new Set([
   "COSTOS",
 ]);
 
-const PRE_MARKET_CONCEPT_CONTROL_SECTION_KEYS = new Set([
-  "CARATULA",
-  ...PRE_MARKET_EDITOR_SECTION_KEYS,
-]);
-
 type ConceptReference = {
   concept: Concept;
   source: string;
 };
+
+/** One patch for every chosen concept, or one written for each. */
+type ConceptsPatch = Partial<Concept> | ((concept: Concept) => Partial<Concept>);
 
 const GENERIC_CONTENT_CAPABILITIES: Pick<EditorCapabilities, "apartados" | "concepts" | "images" | "tables"> = {
   apartados: true,
@@ -125,10 +137,6 @@ const GENERIC_CONTENT_CAPABILITIES: Pick<EditorCapabilities, "apartados" | "conc
 
 function hasPreMarketSectionBoundary(section: AppSection) {
   return PRE_MARKET_EDITOR_SECTION_KEYS.has(getCanonicalSectionKey(section.id));
-}
-
-function hasPreMarketConceptControls(section: AppSection) {
-  return PRE_MARKET_CONCEPT_CONTROL_SECTION_KEYS.has(getCanonicalSectionKey(section.id));
 }
 
 /**
@@ -145,34 +153,21 @@ function getSectionEditorCapabilities(section: AppSection): EditorCapabilities {
 
 const REQUIRED_SECTION_HINT = "Sección obligatoria del dictamen: no se oculta ni se elimina";
 
-function getBlockEditorCapabilities({
+/**
+ * What "Agregar" offers in a Block: everything, except in the carátula, whose
+ * Blocks hold concepts and subbloques only (its fixed Blocks, nothing). The
+ * structural controls are the same in every Block: see block-toolbar.ts.
+ */
+function getBlockContentCapabilities({
   isCaratula,
   isIntermediateCaratulaBlock,
-  isRemovableCaratulaBlock,
-  supportsPageBreak,
 }: {
   isCaratula: boolean;
   isIntermediateCaratulaBlock: boolean;
-  isRemovableCaratulaBlock: boolean;
-  supportsPageBreak: boolean;
 }): EditorCapabilities {
-  if (isIntermediateCaratulaBlock) {
-    return {
-      apartados: true,
-      delete: isRemovableCaratulaBlock,
-      move: true,
-      visibility: true,
-    };
-  }
-  if (isCaratula) return { visibility: true };
-
-  return {
-    ...GENERIC_CONTENT_CAPABILITIES,
-    delete: true,
-    move: true,
-    pageBreak: supportsPageBreak,
-    visibility: true,
-  };
+  if (isIntermediateCaratulaBlock) return { apartados: true, concepts: true };
+  if (isCaratula) return {};
+  return { ...GENERIC_CONTENT_CAPABILITIES };
 }
 
 function getApartadoEditorCapabilities(): EditorCapabilities {
@@ -195,13 +190,6 @@ function getCaratulaApartadoEditorCapabilities(): EditorCapabilities {
   };
 }
 
-function hasStructuralActionCapabilities(capabilities: EditorCapabilities) {
-  return Boolean(capabilities.delete || capabilities.move || capabilities.pageBreak || capabilities.visibility);
-}
-
-function hasContentCreationCapabilities(capabilities: EditorCapabilities) {
-  return Boolean(capabilities.apartados || capabilities.concepts || capabilities.images || capabilities.tables);
-}
 
 function collectConceptReferences(sections: AppSection[], currentBlockId: string): ConceptReference[] {
   return sections.flatMap((section) =>
@@ -228,19 +216,23 @@ export function ValuationEditorPanel(props: {
   allSections: AppSection[];
   readOnly: boolean;
   onAddBlock: (sectionId: string) => void;
-  onAddConcept: (sectionId: string, blockId: string, type?: ConceptType) => void;
+  onAddConcept: (sectionId: string, blockId: string, type?: ConceptCreationKind) => void;
   onAddConceptFromExisting: (sectionId: string, blockId: string, source: Concept, mode: "copy" | "full" | "value", apartadoId?: string) => void;
   onAddImage: (sectionId: string, blockId: string, event: ChangeEvent<HTMLInputElement>, apartadoId?: string, replaceImageId?: string) => void;
   onAddApartado: (sectionId: string, blockId: string) => void;
-  onAddSubConcept: (sectionId: string, blockId: string, apartadoId: string, type?: ConceptType) => void;
+  onAddSubConcept: (sectionId: string, blockId: string, apartadoId: string, type?: ConceptCreationKind) => void;
   onAddTable: (sectionId: string, blockId: string, apartadoId?: string) => void;
   onAddHomologationTable: (sectionId: string, blockId: string, apartadoId?: string) => void;
   onAddTableColumn: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
   onAddTableRow: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
   onBlockDragEnd: (sectionId: string, event: DragEndEvent) => void;
+  /** "Duplicar" of one or several concepts: a copy after each, in one step. */
+  onDuplicateConcepts: (sectionId: string, blockId: string, conceptIds: string[], apartadoId?: string) => void;
   onMoveBlock: (sectionId: string, blockId: string, direction: -1 | 1) => void;
   onRemoveBlock: (sectionId: string, blockId: string) => void;
   onRemoveConcept: (sectionId: string, blockId: string, conceptId: string) => void;
+  /** Several concepts deleted at once, in one step. */
+  onRemoveConcepts: (sectionId: string, blockId: string, conceptIds: string[], apartadoId?: string) => void;
   onRemoveImage: (sectionId: string, blockId: string, imageId: string, apartadoId?: string) => void;
   onRemoveApartado: (sectionId: string, blockId: string, apartadoId: string) => void;
   /** Asks to delete the section; the workspace confirms first. */
@@ -252,6 +244,8 @@ export function ValuationEditorPanel(props: {
   onUpdateBlock: (sectionId: string, blockId: string, patch: Partial<Block>) => void;
   onUpdateSection: (sectionId: string, patch: Partial<AppSection>) => void;
   onUpdateConcept: (sectionId: string, blockId: string, conceptId: string, patch: Partial<Concept>) => void;
+  /** The same patch to several concepts at once, in one step. */
+  onUpdateConcepts: (sectionId: string, blockId: string, conceptIds: string[], patch: ConceptsPatch, apartadoId?: string) => void;
   onUpdateConceptEverywhere: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
   onEditConceptOnlyHere: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
   onChangeConceptRelation: (conceptId: string, mode: ExistingConceptRelationMode) => void;
@@ -295,10 +289,9 @@ export function ValuationEditorPanel(props: {
   const isTerreno = isTerrenoSection(section);
   const sectionCapabilities = getSectionEditorCapabilities(section);
   const [renaming, setRenaming] = useState(false);
-  const usesSectionTerminology = hasPreMarketSectionBoundary(section);
-  const blockTerm = usesSectionTerminology ? "Sección" : "Bloque";
-  const blocksTerm = usesSectionTerminology ? "secciones" : "bloques";
-  const subBlocksTerm = "subbloques";
+  // One word in every tab: a tab is a section, what it holds are blocks ("+ Sección" used to create a block).
+  const blocksTerm = `${BLOCK_TERM}s`;
+  const subBlocksTerm = `${SUBBLOCK_TERM}s`;
   const editableBlocks = section.blocks.filter(
     (block) => !(isCaratula && block.id === COMPANY_HEADER_BLOCK_ID),
   );
@@ -332,11 +325,14 @@ export function ValuationEditorPanel(props: {
     if (result.changed) props.onUpdateSection(section.id, { blocks: result.blocks });
   };
   const renderBlockEditor = (block: Block, blockIndex: number, blockCount: number) => isGeneratedBlock(block) ? (
-    <GeneratedBlockNotice
+    <GeneratedBlockEditor
       key={block.id}
       block={block}
+      blockCount={blockCount}
+      blockIndex={blockIndex}
       readOnly={props.readOnly}
-      onVisibleChange={(enabled) => props.onUpdateBlock(section.id, block.id, { enabled })}
+      section={section}
+      onMoveBlock={props.onMoveBlock}
       onUpdateBlock={(patch) => props.onUpdateBlock(section.id, block.id, patch)}
       onUpdateTable={(tableId, table, apartadoId) => props.onUpdateTable(section.id, block.id, tableId, () => table, apartadoId)}
     />
@@ -358,15 +354,18 @@ export function ValuationEditorPanel(props: {
       onAddHomologationTable={props.onAddHomologationTable}
       onAddTableColumn={props.onAddTableColumn}
       onAddTableRow={props.onAddTableRow}
+      onDuplicateConcepts={props.onDuplicateConcepts}
       onMoveBlock={props.onMoveBlock}
       onRemoveBlock={props.onRemoveBlock}
       onRemoveConcept={props.onRemoveConcept}
+      onRemoveConcepts={props.onRemoveConcepts}
       onRemoveImage={props.onRemoveImage}
       onRemoveApartado={props.onRemoveApartado}
       onRemoveSubConcept={props.onRemoveSubConcept}
       onRemoveTable={props.onRemoveTable}
       onUpdateBlock={props.onUpdateBlock}
       onUpdateConcept={props.onUpdateConcept}
+      onUpdateConcepts={props.onUpdateConcepts}
       onUpdateConceptEverywhere={props.onUpdateConceptEverywhere}
       onEditConceptOnlyHere={props.onEditConceptOnlyHere}
       onChangeConceptRelation={props.onChangeConceptRelation}
@@ -423,9 +422,9 @@ export function ValuationEditorPanel(props: {
             <>
               <PasteBlockButton section={section} />
               <ImportBlockButton section={section} />
-              <Button type="button" size="sm" disabled={props.readOnly} onClick={() => props.onAddBlock(section.id)}>
+              <Button type="button" size="sm" disabled={props.readOnly} title="Agregar un bloque al final de la sección" onClick={() => props.onAddBlock(section.id)}>
                 <Plus />
-                {blockTerm}
+                {ADD_BLOCK_LABEL}
               </Button>
             </>
           ) : null}
@@ -457,20 +456,27 @@ export function ValuationEditorPanel(props: {
           />
         ) : null}
         {isCaratula ? (
-          <ContentDndScope id={`blocks-${section.id}`} blockIds={sortableBlockIds} moveRules={moveRules} onContentDrop={handleContentDrop}>
+          <ContentDndScope
+            id={`blocks-${section.id}`}
+            blockIds={sortableBlockIds}
+            moveRules={moveRules}
+            onBlockDragEnd={(event) => props.onBlockDragEnd(section.id, event)}
+            onContentDrop={handleContentDrop}
+          >
             <SortableContext items={sortableBlockIds} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
                 <section className="space-y-4">
                   <div className="flex items-center justify-between gap-3">
-                    <FieldTitle>Secciones de Carátula</FieldTitle>
+                    <FieldTitle>Bloques de la carátula</FieldTitle>
                     <Button
                       type="button"
                       size="sm"
                       disabled={props.readOnly}
+                      title="Agregar un bloque a la carátula"
                       onClick={() => props.onAddBlock(section.id)}
                     >
                       <Plus />
-                      Sección
+                      {ADD_BLOCK_LABEL}
                     </Button>
                   </div>
                   {intermediateBlocks.map((block, index) =>
@@ -542,24 +548,27 @@ function SortableBlockEditor(props: {
   blockIndex: number;
   readOnly: boolean;
   sectionCapabilities: EditorCapabilities;
-  onAddConcept: (sectionId: string, blockId: string, type?: ConceptType) => void;
+  onAddConcept: (sectionId: string, blockId: string, type?: ConceptCreationKind) => void;
   onAddConceptFromExisting: (sectionId: string, blockId: string, source: Concept, mode: "copy" | "full" | "value", apartadoId?: string) => void;
   onAddImage: (sectionId: string, blockId: string, event: ChangeEvent<HTMLInputElement>, apartadoId?: string, replaceImageId?: string) => void;
   onAddApartado: (sectionId: string, blockId: string) => void;
-  onAddSubConcept: (sectionId: string, blockId: string, apartadoId: string, type?: ConceptType) => void;
+  onAddSubConcept: (sectionId: string, blockId: string, apartadoId: string, type?: ConceptCreationKind) => void;
   onAddTable: (sectionId: string, blockId: string, apartadoId?: string) => void;
   onAddHomologationTable: (sectionId: string, blockId: string, apartadoId?: string) => void;
   onAddTableColumn: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
   onAddTableRow: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
+  onDuplicateConcepts: (sectionId: string, blockId: string, conceptIds: string[], apartadoId?: string) => void;
   onMoveBlock: (sectionId: string, blockId: string, direction: -1 | 1) => void;
   onRemoveBlock: (sectionId: string, blockId: string) => void;
   onRemoveConcept: (sectionId: string, blockId: string, conceptId: string) => void;
+  onRemoveConcepts: (sectionId: string, blockId: string, conceptIds: string[], apartadoId?: string) => void;
   onRemoveImage: (sectionId: string, blockId: string, imageId: string, apartadoId?: string) => void;
   onRemoveApartado: (sectionId: string, blockId: string, apartadoId: string) => void;
   onRemoveSubConcept: (sectionId: string, blockId: string, apartadoId: string, conceptId: string) => void;
   onRemoveTable: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
   onUpdateBlock: (sectionId: string, blockId: string, patch: Partial<Block>) => void;
   onUpdateConcept: (sectionId: string, blockId: string, conceptId: string, patch: Partial<Concept>) => void;
+  onUpdateConcepts: (sectionId: string, blockId: string, conceptIds: string[], patch: ConceptsPatch, apartadoId?: string) => void;
   onUpdateConceptEverywhere: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
   onEditConceptOnlyHere: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
   onChangeConceptRelation: (conceptId: string, mode: ExistingConceptRelationMode) => void;
@@ -584,26 +593,29 @@ function SortableBlockEditor(props: {
   const { allSections, block, readOnly, section } = props;
   const isCaratula = section.id === "caratula";
   const hasSectionBoundary = hasPreMarketSectionBoundary(section);
-  const hasConceptLayoutControls = hasPreMarketConceptControls(section);
-  const usesSectionTerminology = hasPreMarketConceptControls(section);
-  const blockTerm = usesSectionTerminology ? "sección" : "bloque";
-  const subBlockTerm = "subbloque";
+  // The ⋮ menu of a concept offers the same in every section: spacing, format, indent, duplicate, move, delete.
+  const hasConceptLayoutControls = true;
+  const subBlockTerm = SUBBLOCK_TERM;
   // One word on the buttons of every section (observations of 27 Oct 2026).
-  const subBlockButtonLabel = "Subbloque";
+  const subBlockButtonLabel = ADD_SUBBLOCK_LABEL;
   const caratulaBlockKind = isCaratula ? getCaratulaBlockKind(block) : "intermediate";
   const isIntermediateCaratulaBlock = isCaratula && caratulaBlockKind === "intermediate";
   const isRemovableCaratulaBlock =
     isIntermediateCaratulaBlock && !block.id.startsWith("caratula-block-");
-  const blockCapabilities = getBlockEditorCapabilities({
-    isCaratula,
-    isIntermediateCaratulaBlock,
-    isRemovableCaratulaBlock,
-    supportsPageBreak: !isCaratula,
+  const blockCapabilities = getBlockContentCapabilities({ isCaratula, isIntermediateCaratulaBlock });
+  // The same toolbar in every Block; what cannot apply here is disabled and says why.
+  const toolbar = blockToolbarState({
+    kind: isIntermediateCaratulaBlock ? "caratula-block" : isCaratula ? "caratula-fixed" : "content",
+    readOnly,
+    transferLock: structureLockReason(section, block.id),
+    deletable: !isCaratula || isRemovableCaratulaBlock,
   });
+  const locks = blockToolbarLocks(toolbar);
+  const confirmDelete = useConfirmDelete();
   const apartadoCapabilities = isCaratula
     ? getCaratulaApartadoEditorCapabilities()
     : getApartadoEditorCapabilities();
-  const usesCompactConceptSystem = isIntermediateCaratulaBlock || (!isCaratula && hasConceptLayoutControls);
+  const usesCompactConceptSystem = isIntermediateCaratulaBlock || !isCaratula;
   const conclusionNarrativeConcepts = block.concepts.filter(isConclusionNarrativeConcept);
   const [conceptSearch, setConceptSearch] = useState("");
   const allWorkspaceConcepts = allSections.flatMap((item) =>
@@ -620,26 +632,28 @@ function SortableBlockEditor(props: {
       .toLowerCase()
       .includes(needle);
   });
+  // The carátula's own blocks are dragged among themselves; its fixed ones stay where they print.
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: block.id,
-    disabled: readOnly || isCaratula,
+    disabled: readOnly || (isCaratula && !isIntermediateCaratulaBlock),
   });
   const displayBlockLabel = block.enabled ? block.sectionLabel : "";
   const showStructuralNumbering = !isCaratula;
   const blockFlowV2 = useMemo(() => resolveBlockFlowV2(block), [block]);
-  const dragHandle = !isCaratula ? (
+  const dragHandle = (
     <Button
       type="button"
       size="icon-sm"
       variant="ghost"
       aria-label={`Mover ${block.title}`}
-      disabled={readOnly}
+      title={isCaratula && !isIntermediateCaratulaBlock ? "Bloque fijo de la carátula: se imprime en su lugar" : "Arrastrar para reordenar"}
+      disabled={readOnly || (isCaratula && !isIntermediateCaratulaBlock)}
       {...attributes}
       {...listeners}
     >
       <GripVertical />
     </Button>
-  ) : null;
+  );
 
   return (
     <BlockCard
@@ -654,20 +668,21 @@ function SortableBlockEditor(props: {
           : "Oculto"
         : null}
       dragHandle={dragHandle}
-      extraActions={!isCaratula ? <BlockTransferMenu section={section} block={block} label={blockTerm === "sección" ? "la sección" : "el bloque"} /> : undefined}
+      extraActions={<BlockTransferMenu section={section} block={block} label="el bloque" lock={toolbar.transfer.enabled ? null : toolbar.transfer.reason} />}
       titleContextMenu={!readOnly ? ({ titleRef }) => (
+        // The right-click menu of the title offers what the toolbar does, under the same locks.
         <BlockTitleContextMenu
           section={section}
           block={block}
-          label={blockTerm === "sección" ? "la sección" : "el bloque"}
+          label="el bloque"
           titleRef={titleRef}
           canRename={caratulaBlockKind === "intermediate"}
-          visibility={blockCapabilities.visibility ? { visible: block.enabled, onChange: (enabled) => props.onUpdateBlock(section.id, block.id, { enabled }) } : undefined}
-          pageBreak={blockCapabilities.pageBreak ? {
+          visibility={toolbar.visibility.enabled ? { visible: block.enabled, onChange: (enabled) => props.onUpdateBlock(section.id, block.id, { enabled }) } : undefined}
+          pageBreak={toolbar.pageBreak.enabled ? {
             before: resolvePageBreak(block) === "new-page",
             onChange: (before) => props.onUpdateBlock(section.id, block.id, pageBreakPatch(before ? "new-page" : "auto")),
           } : undefined}
-          onDelete={blockCapabilities.delete ? () => props.onRemoveBlock(section.id, block.id) : undefined}
+          onDelete={toolbar.delete.enabled ? () => props.onRemoveBlock(section.id, block.id) : undefined}
         />
       ) : undefined}
       title={stripLeadingRomanNumeral(block.title)}
@@ -680,16 +695,17 @@ function SortableBlockEditor(props: {
             }
           : undefined
       }
-      structuralActions={hasStructuralActionCapabilities(blockCapabilities) ? {
+      structuralActions={{
         conceptPresentation: block.conceptPresentation,
         disabled: readOnly,
-        itemLabel: usesSectionTerminology ? "sección" : blockTerm.toLowerCase(),
-        move: blockCapabilities.move ? {
+        itemLabel: BLOCK_TERM,
+        locks,
+        move: {
           canMoveUp: props.blockIndex > 0,
           canMoveDown: props.blockIndex < props.blockCount - 1,
           onMoveUp: () => props.onMoveBlock(section.id, block.id, -1),
           onMoveDown: () => props.onMoveBlock(section.id, block.id, 1),
-        } : undefined,
+        },
         onConceptPresentationChange: (next) =>
           props.onUpdateBlock(section.id, block.id, { conceptPresentation: next }),
         onResetConceptPresentations: () => {
@@ -698,19 +714,23 @@ function SortableBlockEditor(props: {
           const next = clearConceptCellPresentations(layout, conceptIds);
           props.onUpdateBlock(section.id, block.id, { contentLayout: next });
         },
-        visibility: blockCapabilities.visibility ? {
+        visibility: {
           visible: block.enabled,
           onChange: (enabled) => props.onUpdateBlock(section.id, block.id, { enabled }),
-        } : undefined,
-        pageBreak: blockCapabilities.pageBreak ? {
+        },
+        pageBreak: {
           value: resolvePageBreak(block),
           onChange: (mode) => props.onUpdateBlock(section.id, block.id, pageBreakPatch(mode)),
-        } : undefined,
-        deleteAction: blockCapabilities.delete ? {
+        },
+        deleteAction: {
           size: "icon",
-          onDelete: () => props.onRemoveBlock(section.id, block.id),
-        } : undefined,
-      } : undefined}
+          // Deleting asks first; the block comes back with "Deshacer".
+          onDelete: () => confirmDelete({
+            ...deleteConfirmation("block", stripLeadingRomanNumeral(block.title)),
+            onConfirm: () => props.onRemoveBlock(section.id, block.id),
+          }),
+        },
+      }}
     >
         {isIntermediateCaratulaBlock ? <div className="grid gap-3 md:grid-cols-[120px_1fr]">
           <Field>
@@ -723,9 +743,9 @@ function SortableBlockEditor(props: {
           </Field>
         </div> : null}
 
-          {hasContentCreationCapabilities(blockCapabilities) ? (
-            <ActionStrip
+          <ActionStrip
               capabilities={blockCapabilities}
+              locks={{ add: locks.add, subblock: locks.subblock }}
               readOnly={readOnly}
               conceptControl={
                 <ConceptCreationControl
@@ -762,7 +782,6 @@ function SortableBlockEditor(props: {
               }
               subBlockLabel={subBlockButtonLabel}
             />
-          ) : null}
           {!isCaratula ? <PasteApartadoButton section={section} block={block} /> : null}
         {caratulaBlockKind === "assumptions" ? (
           <LongTextConceptEditor
@@ -800,9 +819,16 @@ function SortableBlockEditor(props: {
           <ConceptSelectionScope
             concepts={block.concepts}
             readOnly={readOnly}
-            onApplySpacing={(conceptIds, spacingAfter) =>
-              conceptIds.forEach((conceptId) => props.onUpdateConcept(section.id, block.id, conceptId, { spacingAfter }))
+            onApplySpacing={(conceptIds, spacingAfter) => props.onUpdateConcepts(section.id, block.id, conceptIds, { spacingAfter })}
+            onApplyValueFormat={(conceptIds, valueFormat, customUnit) =>
+              props.onUpdateConcepts(section.id, block.id, formattableConceptIds(block.concepts, conceptIds), valueFormatPatch(valueFormat, customUnit))
             }
+            onApplyTagStyle={(conceptIds, tagStyle) =>
+              props.onUpdateBlock(section.id, block.id, { contentLayout: layoutWithTagStyle(resolveContentLayout(block), conceptIds, tagStyle) })
+            }
+            onApplyTextMark={(conceptIds, mark) => props.onUpdateConcepts(section.id, block.id, conceptIds, textMarkPatch(mark))}
+            onDuplicate={(conceptIds) => props.onDuplicateConcepts(section.id, block.id, conceptIds)}
+            onRemove={(conceptIds) => props.onRemoveConcepts(section.id, block.id, conceptIds)}
             renderMove={(conceptIds, done) => (
               <MoveConceptsButton source={{ sectionId: section.id, blockId: block.id }} conceptIds={conceptIds} onMoved={done} />
             )}
@@ -813,6 +839,8 @@ function SortableBlockEditor(props: {
             conceptCallbacks={{
               onRemove: (conceptId) => props.onRemoveConcept(section.id, block.id, conceptId),
               onUpdate: (conceptId, patch) => props.onUpdateConcept(section.id, block.id, conceptId, patch),
+              onDuplicate: (conceptId) => props.onDuplicateConcepts(section.id, block.id, [conceptId]),
+              moveSource: { sectionId: section.id, blockId: block.id },
               onUpdateEverywhere: props.onUpdateConceptEverywhere,
               onChangeRelation: props.onChangeConceptRelation,
               onUnlink: props.onUnlinkConcept,
@@ -846,7 +874,7 @@ function SortableBlockEditor(props: {
             }
             renderApartado={(subBlock, flowIndex, dndState) => (
               <ApartadoEditor
-                extraActions={!isCaratula ? <ApartadoTransferMenu section={section} block={block} apartado={subBlock} label={`el ${subBlockTerm}`} /> : undefined}
+                extraActions={<ApartadoTransferMenu section={section} block={block} apartado={subBlock} label={`el ${subBlockTerm}`} />}
                 displayLabel={showStructuralNumbering ? apartadoDisplayLabel({ annex: block.annex, sectionLabel: displayBlockLabel }, getBlockFlowApartadoOrder(block), subBlock.id) : ""}
                 readOnly={readOnly}
                 subBlock={subBlock}
@@ -895,11 +923,16 @@ function SortableBlockEditor(props: {
                 <ConceptSelectionScope
                   concepts={subBlock.concepts}
                   readOnly={readOnly}
-                  onApplySpacing={(conceptIds, spacingAfter) =>
-                    conceptIds.forEach((conceptId) =>
-                      props.onUpdateSubConcept(section.id, block.id, subBlock.id, conceptId, { spacingAfter }),
-                    )
+                  onApplySpacing={(conceptIds, spacingAfter) => props.onUpdateConcepts(section.id, block.id, conceptIds, { spacingAfter }, subBlock.id)}
+                  onApplyValueFormat={(conceptIds, valueFormat, customUnit) =>
+                    props.onUpdateConcepts(section.id, block.id, formattableConceptIds(subBlock.concepts, conceptIds), valueFormatPatch(valueFormat, customUnit), subBlock.id)
                   }
+                  onApplyTagStyle={(conceptIds, tagStyle) =>
+                    props.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: layoutWithTagStyle(resolveContentLayout(subBlock), conceptIds, tagStyle) })
+                  }
+                  onApplyTextMark={(conceptIds, mark) => props.onUpdateConcepts(section.id, block.id, conceptIds, textMarkPatch(mark), subBlock.id)}
+                  onDuplicate={(conceptIds) => props.onDuplicateConcepts(section.id, block.id, conceptIds, subBlock.id)}
+                  onRemove={(conceptIds) => props.onRemoveConcepts(section.id, block.id, conceptIds, subBlock.id)}
                   renderMove={(conceptIds, done) => (
                     <MoveConceptsButton
                       source={{ sectionId: section.id, blockId: block.id, apartadoId: subBlock.id }}
@@ -950,6 +983,8 @@ function SortableBlockEditor(props: {
                       props.onRemoveSubConcept(section.id, block.id, subBlock.id, conceptId),
                     onUpdate: (conceptId, patch) =>
                       props.onUpdateSubConcept(section.id, block.id, subBlock.id, conceptId, patch),
+                    onDuplicate: (conceptId) => props.onDuplicateConcepts(section.id, block.id, [conceptId], subBlock.id),
+                    moveSource: { sectionId: section.id, blockId: block.id, apartadoId: subBlock.id },
                     onUpdateEverywhere: props.onUpdateConceptEverywhere,
                     onUnlink: props.onUnlinkConcept,
                     onColumnPresentationChange: (columnId, presentation) => {
@@ -1021,15 +1056,48 @@ function SortableBlockEditor(props: {
   );
 }
 
+/** The concepts a "Formato del valor" applies to: texts and numbers, never dates, phones or paragraphs. */
+function formattableConceptIds(concepts: Concept[], conceptIds: string[]) {
+  const chosen = new Set(conceptIds);
+  return concepts.filter((concept) => chosen.has(concept.id) && supportsValueFormat(concept)).map((concept) => concept.id);
+}
+
+/** The layout with the rows that hold any of the concepts printed in the style ("Renglón" of the selection). */
+function layoutWithTagStyle(layout: ReturnType<typeof resolveContentLayout>, conceptIds: string[], tagStyle: ContentRowTagStyle | undefined) {
+  const chosen = new Set(conceptIds);
+  return layout.rows
+    .filter((row) => row.columns.some((column) => column.items[0]?.type === "concept" && chosen.has(column.items[0].id)))
+    .reduce((next, row) => setContentRowTagStyle(next, row.id, tagStyle), layout);
+}
+
+/** N, K or S on the whole value of each chosen text; a date, a number or a phone is left as it is. */
+function textMarkPatch(mark: TextMark) {
+  return (concept: Concept): Partial<Concept> => {
+    const type = concept.type ?? "text";
+    const takesMarks = (type === "text" || type === "longText" || type === "paragraph") && !isNumericConcept(concept);
+    return takesMarks && concept.value.trim() ? { value: applyTextMark(concept.value, mark).value } : {};
+  };
+}
+
+/** The patch "Formato del valor" writes on a concept. */
+function valueFormatPatch(valueFormat: ConceptValueFormat, customUnit?: string): Partial<Concept> {
+  return { valueFormat, customUnit: valueFormat === "custom" ? customUnit : undefined };
+}
+
 /**
  * A block the calculation writes: its figures are edited in the calculation
- * panel. It can still be hidden here, and the columns of its tables hidden,
- * renamed or added.
+ * panel. It has the same toolbar as any other block: it is hidden, moved,
+ * aligned or given a page break here; what the calculation owns (its
+ * content, copying it, deleting it) is disabled and says why. The columns
+ * of its tables are hidden, renamed or added.
  */
-function GeneratedBlockNotice({ block, readOnly, onVisibleChange, onUpdateBlock, onUpdateTable }: {
+function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section, onMoveBlock, onUpdateBlock, onUpdateTable }: {
   block: Block;
+  blockCount: number;
+  blockIndex: number;
   readOnly: boolean;
-  onVisibleChange: (visible: boolean) => void;
+  section: AppSection;
+  onMoveBlock: (sectionId: string, blockId: string, direction: -1 | 1) => void;
   onUpdateBlock: (patch: Partial<Block>) => void;
   onUpdateTable: (tableId: string, table: TableContent, apartadoId?: string) => void;
 }) {
@@ -1038,19 +1106,53 @@ function GeneratedBlockNotice({ block, readOnly, onVisibleChange, onUpdateBlock,
     ...block.apartados.flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id }))),
   ].filter(({ table }) => !ensureTableV2(table).schema?.plain);
   const rows = tables.reduce((count, { table }) => count + ensureTableV2(table).rows.length, 0);
+  const toolbar = blockToolbarState({ kind: "generated", readOnly });
+  const locks = blockToolbarLocks(toolbar);
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: block.id, disabled: readOnly });
   return (
-    <div className={cn("grid gap-2 rounded-lg border border-dashed px-3 py-2 text-sm", !block.enabled && "opacity-65")} data-block-id={block.id}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-medium">{block.sectionLabel && block.enabled ? `${block.sectionLabel} ` : ""}{block.title}{block.enabled ? "" : " · oculto"}</span>
-        <span className="flex items-center gap-2 text-xs text-muted-foreground">
-          Generado por el cálculo{rows ? ` · ${rows} filas` : ""}{block.images.length ? ` · ${block.images.length} fotos` : ""}. Las cifras se editan en el panel de cálculo.
-          <StructuralActions
-            disabled={readOnly}
-            itemLabel="bloque"
-            visibility={{ visible: block.enabled, onChange: onVisibleChange }}
-          />
-        </span>
-      </div>
+    <BlockCard
+      blockId={block.id}
+      cardRef={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn("rounded-lg border border-dashed bg-muted/20", !block.enabled && "opacity-65")}
+      badge={block.enabled ? (block.sectionLabel ? `${block.sectionLabel.replace(/\.+$/, "")}.` : "Fijo") : "Oculto"}
+      dragHandle={
+        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Mover ${block.title}`} title="Arrastrar para reordenar" disabled={readOnly} {...attributes} {...listeners}>
+          <GripVertical />
+        </Button>
+      }
+      extraActions={<BlockTransferMenu section={section} block={block} label="el bloque" lock={toolbar.transfer.reason} />}
+      title={stripLeadingRomanNumeral(block.title)}
+      structuralActions={{
+        conceptPresentation: block.conceptPresentation,
+        disabled: readOnly,
+        itemLabel: BLOCK_TERM,
+        locks,
+        move: {
+          canMoveUp: blockIndex > 0,
+          canMoveDown: blockIndex < blockCount - 1,
+          onMoveUp: () => onMoveBlock(section.id, block.id, -1),
+          onMoveDown: () => onMoveBlock(section.id, block.id, 1),
+        },
+        onConceptPresentationChange: (next) => onUpdateBlock({ conceptPresentation: next }),
+        visibility: { visible: block.enabled, onChange: (enabled) => onUpdateBlock({ enabled }) },
+        pageBreak: { value: resolvePageBreak(block), onChange: (mode) => onUpdateBlock(pageBreakPatch(mode)) },
+        deleteAction: { size: "icon", onDelete: () => undefined },
+      }}
+    >
+      <ActionStrip
+        capabilities={{}}
+        locks={{ add: locks.add, subblock: locks.subblock }}
+        readOnly={readOnly}
+        conceptControl={null}
+        onAddImage={() => undefined}
+        onAddApartado={() => undefined}
+        onAddTable={() => undefined}
+        subBlockLabel={ADD_SUBBLOCK_LABEL}
+      />
+      <p className="text-xs text-muted-foreground" data-generated-block-notice>
+        Generado por el cálculo{rows ? ` · ${rows} filas` : ""}{block.images.length ? ` · ${block.images.length} fotos` : ""}. Las cifras se editan en el panel de cálculo.
+      </p>
       {block.enabled ? <GeneratedConceptLabels block={block} readOnly={readOnly} onChange={onUpdateBlock} /> : null}
       {block.enabled ? tables.map(({ table, apartadoId }) => (
         <GeneratedTableColumns
@@ -1060,7 +1162,7 @@ function GeneratedBlockNotice({ block, readOnly, onVisibleChange, onUpdateBlock,
           onChange={(next) => onUpdateTable(table.id, next, apartadoId)}
         />
       )) : null}
-    </div>
+    </BlockCard>
   );
 }
 

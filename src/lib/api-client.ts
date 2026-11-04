@@ -388,6 +388,10 @@ export const api = {
     customUnits: () => request<{ units: string[] }>(`/organizacion/despacho/unidades`),
     addCustomUnit: (unit: string) =>
       request<{ units: string[] }>(`/organizacion/despacho/unidades`, { method: "POST", body: JSON.stringify({ unit }) }),
+    renameCustomUnit: (unit: string, nextUnit: string) =>
+      request<{ units: string[] }>(`/organizacion/despacho/unidades`, { method: "PATCH", body: JSON.stringify({ unit, nextUnit }) }),
+    removeCustomUnit: (unit: string) =>
+      request<{ units: string[] }>(`/organizacion/despacho/unidades`, { method: "DELETE", body: JSON.stringify({ unit }) }),
     customFactors: () => request<{ factors: CustomFactor[] }>(`/organizacion/despacho/factores/personalizados`),
     addCustomFactor: (label: string) =>
       request<{ factors: CustomFactor[]; factor: CustomFactor | null }>(`/organizacion/despacho/factores/personalizados`, {

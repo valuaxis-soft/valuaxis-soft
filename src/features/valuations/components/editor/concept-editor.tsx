@@ -22,7 +22,8 @@ import { AlignHorizontalDistributeCenter,
          Check,
          ChevronDown,
          ChevronUp, 
-         Copy, 
+         Copy,
+         CopyPlus,
          EllipsisVertical, 
          FilePlus2, FunctionSquare, Hash, Link, Link2, ListPlus, 
          LockKeyhole, Minus, Plus, Trash2, Unlink } from "lucide-react";
@@ -34,7 +35,6 @@ import {
   isNumericConcept,
   supportsValueFormat,
   normalizeNumericConceptInput,
-  NUMERIC_VALUE_FORMAT_OPTIONS,
   resolveConceptValueFormat,
   resolveEffectiveSourceUnit,
 } from "@/features/valuations/services/concept-value-format";
@@ -68,9 +68,12 @@ import { useNumberPresentation } from "../number-presentation-context";
 import type { NumberPresentation } from "@/features/valuations/services/number-presentation";
 import { useCustomUnits } from "./custom-units-context";
 import { MAX_CUSTOM_UNIT_LENGTH, findCustomUnit, normalizeCustomUnit } from "@/features/firm/custom-units";
+import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
+import { MoveConceptMenuItem } from "./structure-transfer-actions";
+import type { ContainerAddress } from "@/features/valuations/services/structure-transfer";
+import { CONCEPT_DATA_TYPE_OPTIONS, conceptDataTypePatch, conceptDataTypeValue } from "@/features/valuations/services/concept-types";
 
-/** Marks the firm's own units among the options of "Formato del valor". */
-const FIRM_UNIT_PREFIX = "unit:";
+import { ValueFormatSelect, firmUnitOptionValue } from "./value-format-select";
 
 import { Textarea } from "@/components/ui/textarea";
 import { DraftAssist } from "./draft-assist";
@@ -118,6 +121,7 @@ function normalizeConceptLineBreaks(value: string) {
 
 function caratulaInputType(type: ConceptType) {
   if (type === "phone") return "tel";
+  if (type === "list") return "text";
   if (type === "email") return "email";
   if (type === "url") return "url";
   if (type === "number") return "text";
@@ -392,45 +396,51 @@ function ConceptLinkStatus({
   );
 }
 
+/** The blank lines before or after the concept in the document, one row of the ⋮ menu each. */
 function ConceptSpacingInline({
   concept,
+  field,
   onUpdate,
   readOnly,
 }: {
   concept: Concept;
+  field: "spacingBefore" | "spacingAfter";
   onUpdate: (conceptId: string, patch: Partial<Concept>) => void;
   readOnly: boolean;
 }) {
-  const spacingAfter = concept.spacingAfter ?? 0;
-  const updateSpacingAfter = (value: number) => {
+  const spacing = concept[field] ?? 0;
+  const label = field === "spacingBefore" ? "Espacio antes" : "Espacio después";
+  const updateSpacing = (value: number) => {
     if (!Number.isFinite(value)) return;
-    onUpdate(concept.id, { spacingAfter: Math.max(0, value) });
+    onUpdate(concept.id, { [field]: Math.max(0, value) });
   };
 
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-xs text-muted-foreground">Espacio</span>
-      <Button
-        type="button"
-        size="icon-sm"
-        variant="ghost"
-        aria-label="Disminuir espacio"
-        disabled={readOnly || spacingAfter <= 0}
-        onClick={() => updateSpacingAfter(spacingAfter - 1)}
-      >
-        <Minus className="size-3" />
-      </Button>
-      <span className="min-w-[1.5rem] text-center text-xs tabular-nums">{spacingAfter}</span>
-      <Button
-        type="button"
-        size="icon-sm"
-        variant="ghost"
-        aria-label="Aumentar espacio"
-        disabled={readOnly}
-        onClick={() => updateSpacingAfter(spacingAfter + 1)}
-      >
-        <Plus className="size-3" />
-      </Button>
+    <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm" data-concept-spacing={field}>
+      <span>{label}</span>
+      <span className="flex items-center gap-1">
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label={`Disminuir ${label.toLowerCase()}`}
+          disabled={readOnly || spacing <= 0}
+          onClick={() => updateSpacing(spacing - 1)}
+        >
+          <Minus className="size-3" />
+        </Button>
+        <span className="min-w-[1.5rem] text-center text-xs tabular-nums">{spacing}</span>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label={`Aumentar ${label.toLowerCase()}`}
+          disabled={readOnly}
+          onClick={() => updateSpacing(spacing + 1)}
+        >
+          <Plus className="size-3" />
+        </Button>
+      </span>
     </div>
   );
 }
@@ -450,7 +460,7 @@ function ConceptValueFormatControl({
   const { units: firmUnits, add: addFirmUnit } = useCustomUnits();
   // A unit the firm already keeps is chosen in the list by its own name; any other custom unit is "Otra unidad".
   const knownUnit = valueFormat === "custom" ? findCustomUnit(firmUnits, customUnit) : undefined;
-  const selected = knownUnit ? `${FIRM_UNIT_PREFIX}${knownUnit}` : valueFormat;
+  const selected = knownUnit ? firmUnitOptionValue(knownUnit) : valueFormat;
   const typedUnit = normalizeCustomUnit(customUnit);
   const canConfirm = valueFormat === "custom" && typedUnit.length > 0 && !knownUnit;
 
@@ -470,43 +480,26 @@ function ConceptValueFormatControl({
     <Popover>
       <PopoverTrigger
         render={
+          // The whole row opens it, not only the # icon.
           <Button
             type="button"
-            size="icon-sm"
+            size="sm"
             variant="ghost"
+            className="w-full justify-between"
             aria-label="Formato del valor"
             disabled={readOnly}
             title={`Formato del valor: ${conceptValueFormatLabel(concept)}`}
+            data-concept-value-format
           >
-            <Hash />
+            <span className="flex items-center gap-2"><Hash data-icon="inline-start" />Formato del valor</span>
+            <span className="text-xs text-muted-foreground">{conceptValueFormatLabel(concept)}</span>
           </Button>
         }
       />
       <PopoverContent align="end" className="w-56 p-3">
         <div className="space-y-3">
           <p className="text-xs font-medium text-muted-foreground">Formato del valor</p>
-          <NativeSelect
-            className="w-full"
-            disabled={readOnly}
-            size="sm"
-            value={selected}
-            onChange={(event) => {
-              const chosen = event.target.value;
-              if (chosen.startsWith(FIRM_UNIT_PREFIX)) choose("custom", chosen.slice(FIRM_UNIT_PREFIX.length));
-              else choose(chosen as ConceptValueFormat);
-            }}
-          >
-            {NUMERIC_VALUE_FORMAT_OPTIONS.map((option) => (
-              <NativeSelectOption key={option.value} value={option.value}>
-                {option.label}
-              </NativeSelectOption>
-            ))}
-            {firmUnits.map((unit) => (
-              <NativeSelectOption key={`${FIRM_UNIT_PREFIX}${unit}`} value={`${FIRM_UNIT_PREFIX}${unit}`}>
-                {unit}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          <ValueFormatSelect selected={selected} readOnly={readOnly} onChoose={choose} />
           {valueFormat === "custom" ? (
             <Field className="gap-1.5">
               <FieldLabel className="text-xs text-muted-foreground">Unidad</FieldLabel>
@@ -669,6 +662,47 @@ function ConceptCellAlignmentControl({
   );
 }
 
+/** The options of a "list" concept, one per line. */
+function ConceptListOptionsEditor({
+  concept,
+  onUpdate,
+  readOnly,
+}: {
+  concept: Concept;
+  onUpdate: (conceptId: string, patch: Partial<Concept>) => void;
+  readOnly: boolean;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const text = draft ?? (concept.options ?? []).join("\n");
+  const commit = () => {
+    if (draft === null) return;
+    const options = draft.split(/\r?\n/).map((option) => option.trim()).filter(Boolean);
+    onUpdate(concept.id, { options });
+    setDraft(null);
+  };
+  return (
+    <Field className="gap-1 px-2 py-1">
+      <FieldLabel className="text-xs text-muted-foreground">Opciones de la lista</FieldLabel>
+      <Textarea
+        aria-label="Opciones de la lista"
+        className="min-h-20 text-sm"
+        disabled={readOnly}
+        placeholder={"Una opción por renglón\nBueno\nRegular\nMalo"}
+        value={text}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+      />
+      <FieldDescription className="text-[11px]">Una opción por renglón. El dato se elige entre ellas.</FieldDescription>
+    </Field>
+  );
+}
+
+/**
+ * The ⋮ menu of a concept, the same in every section: Espacio antes y
+ * después, Formato del valor, Sangría, Duplicar, Mover a…, Eliminar (asking
+ * first), with the controls of its type (date format, list options) and the
+ * data type to change it.
+ */
 function ConceptOptionsMenu({
   concept,
   concepts,
@@ -676,7 +710,9 @@ function ConceptOptionsMenu({
   currentPresentation,
   enableSpacingControl,
   enableValueFormatControl,
+  moveSource,
   onColumnPresentationChange,
+  onDuplicate,
   onMove,
   onRemove,
   onUpdate,
@@ -690,7 +726,9 @@ function ConceptOptionsMenu({
   enableSpacingControl: boolean;
   enableValueFormatControl: boolean;
   enableWidthControl: boolean;
+  moveSource?: ContainerAddress;
   onColumnPresentationChange?: (columnId: string, presentation: ConceptPresentation | undefined) => void;
+  onDuplicate?: (conceptId: string) => void;
   onMove?: (conceptId: string, direction: -1 | 1) => void;
   onRemove: (conceptId: string) => void;
   onUpdate: (conceptId: string, patch: Partial<Concept>) => void;
@@ -698,6 +736,8 @@ function ConceptOptionsMenu({
   valueFormatReadOnly?: boolean;
 }) {
   const showLineBreakAction = canNormalizeConceptLineBreaks(concept);
+  const confirmDelete = useConfirmDelete();
+  const conceptName = normalizeConceptTitle(concept.label);
 
   return (
     <Popover>
@@ -709,6 +749,7 @@ function ConceptOptionsMenu({
             variant="ghost"
             aria-label="Opciones del concepto"
             title="Opciones del concepto"
+            data-concept-options
           >
             <EllipsisVertical />
           </Button>
@@ -717,13 +758,33 @@ function ConceptOptionsMenu({
       <PopoverContent align="end" className="w-64 p-2">
         <div className="flex flex-col gap-1">
           {enableSpacingControl ? (
-            <ConceptSpacingInline concept={concept} readOnly={readOnly} onUpdate={onUpdate} />
+            <>
+              <ConceptSpacingInline concept={concept} field="spacingBefore" readOnly={readOnly} onUpdate={onUpdate} />
+              <ConceptSpacingInline concept={concept} field="spacingAfter" readOnly={readOnly} onUpdate={onUpdate} />
+            </>
           ) : null}
           {enableValueFormatControl ? (
-            <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm">
-              <span>Formato del valor</span>
-              <ConceptValueFormatControl concept={concept} readOnly={readOnly || valueFormatReadOnly} onUpdate={onUpdate} />
+            <ConceptValueFormatControl concept={concept} readOnly={readOnly || valueFormatReadOnly} onUpdate={onUpdate} />
+          ) : null}
+          {concept.type !== "paragraph" ? (
+            <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm">
+              <span>Tipo de dato</span>
+              <NativeSelect
+                aria-label="Tipo de dato"
+                className="w-32"
+                size="sm"
+                disabled={readOnly}
+                value={conceptDataTypeValue(concept)}
+                onChange={(event) => onUpdate(concept.id, conceptDataTypePatch(concept, event.target.value))}
+              >
+                {CONCEPT_DATA_TYPE_OPTIONS.map((option) => (
+                  <NativeSelectOption key={option.kind} value={option.kind}>{option.label}</NativeSelectOption>
+                ))}
+              </NativeSelect>
             </div>
+          ) : null}
+          {concept.type === "list" ? (
+            <ConceptListOptionsEditor concept={concept} readOnly={readOnly} onUpdate={onUpdate} />
           ) : null}
           {concept.type === "date" ? (
             <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm">
@@ -782,6 +843,22 @@ function ConceptOptionsMenu({
               onChange={onColumnPresentationChange}
             />
           ) : null}
+          {onDuplicate ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="justify-start"
+              aria-label="Duplicar concepto"
+              disabled={readOnly}
+              title="Una copia del concepto, a continuación"
+              onClick={() => onDuplicate(concept.id)}
+            >
+              <CopyPlus data-icon="inline-start" />
+              Duplicar
+            </Button>
+          ) : null}
+          {moveSource ? <MoveConceptMenuItem source={moveSource} conceptId={concept.id} disabled={readOnly} /> : null}
           <Button
             type="button"
             size="sm"
@@ -790,7 +867,7 @@ function ConceptOptionsMenu({
             aria-label="Eliminar concepto"
             disabled={readOnly}
             title="Eliminar concepto"
-            onClick={() => onRemove(concept.id)}
+            onClick={() => confirmDelete({ ...deleteConfirmation("concept", conceptName), onConfirm: () => onRemove(concept.id) })}
           >
             <Trash2 data-icon="inline-start" />
             Eliminar concepto
@@ -883,6 +960,35 @@ function ConceptValueInput({
   );
 }
 
+/** The value of a "list" concept: one of its options, or none. A value not in the list is kept and shown. */
+function ConceptListValueSelect({
+  concept,
+  onChange,
+  readOnly,
+}: {
+  concept: Concept;
+  onChange: (value: string) => void;
+  readOnly: boolean;
+}) {
+  const options = concept.options ?? [];
+  const stray = concept.value && !options.includes(concept.value) ? concept.value : null;
+  return (
+    <NativeSelect
+      aria-label="Dato"
+      className="h-10 min-w-0 w-full"
+      disabled={readOnly}
+      value={concept.value}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <NativeSelectOption value="">{options.length ? "Elige una opción" : "Escribe las opciones en el menú ⋮"}</NativeSelectOption>
+      {stray ? <NativeSelectOption value={stray}>{stray}</NativeSelectOption> : null}
+      {options.map((option) => (
+        <NativeSelectOption key={option} value={option}>{option}</NativeSelectOption>
+      ))}
+    </NativeSelect>
+  );
+}
+
 export function ConceptEditorRow({
   concept,
   concepts,
@@ -891,6 +997,8 @@ export function ConceptEditorRow({
   dragEnabled,
   enableLayoutControls,
   layout,
+  moveSource,
+  onDuplicate,
   onMove,
   onRemove,
   onUpdate,
@@ -910,6 +1018,8 @@ export function ConceptEditorRow({
   dragEnabled: boolean;
   enableLayoutControls: boolean;
   layout: "default" | "caratulaGrid";
+  moveSource?: ContainerAddress;
+  onDuplicate?: (conceptId: string) => void;
   onMove?: (conceptId: string, direction: -1 | 1) => void;
   onRemove: (conceptId: string) => void;
   onUpdate: (conceptId: string, patch: Partial<Concept>) => void;
@@ -1013,7 +1123,9 @@ export function ConceptEditorRow({
           {titleMissing ? <FieldError>Escribe un título para este campo.</FieldError> : null}
         </Field>
         )}
-        {conceptType === "date" ? (
+        {conceptType === "list" ? (
+          <ConceptListValueSelect concept={effectiveConcept} readOnly={readOnly} onChange={(value) => handleLinkedAwareUpdate({ value })} />
+        ) : conceptType === "date" ? (
           <ValuationDateField
             allowClear
             className="h-10 min-w-0"
@@ -1073,8 +1185,10 @@ export function ConceptEditorRow({
             enableSpacingControl={enableLayoutControls}
             enableValueFormatControl={showValueFormatControl}
             enableWidthControl={enableLayoutControls}
+            moveSource={moveSource}
             readOnly={readOnly}
             valueFormatReadOnly={formatIsSourceOwned}
+            onDuplicate={onDuplicate}
             onRemove={onRemove}
             onUpdate={onUpdate}
             onColumnPresentationChange={onColumnPresentationChange}
@@ -1182,7 +1296,9 @@ export function ConceptEditorRow({
             />
             {titleMissing ? <FieldError>Escribe un título para este campo.</FieldError> : null}
           </Field>
-          {conceptType === "date" ? (
+          {conceptType === "list" ? (
+            <ConceptListValueSelect concept={effectiveConcept} readOnly={readOnly} onChange={(value) => onUpdate(concept.id, { value })} />
+          ) : conceptType === "date" ? (
             <ValuationDateField
               allowClear
               className="h-10 min-w-0"
@@ -1237,8 +1353,10 @@ export function ConceptEditorRow({
           enableSpacingControl={enableLayoutControls}
           enableValueFormatControl={showValueFormatControl}
           enableWidthControl={enableLayoutControls || showTerrenoLengthHint}
+          moveSource={moveSource}
           readOnly={readOnly}
           valueFormatReadOnly={formatIsSourceOwned}
+          onDuplicate={onDuplicate}
           onMove={onMove}
           onRemove={onRemove}
           onUpdate={onUpdate}

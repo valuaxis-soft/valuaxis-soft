@@ -6,6 +6,7 @@ import { ReadOnlyValuationAlert } from "@/features/valuations/components/feedbac
 import { UnaccreditedEditorAlert, UnaccreditedNoticeProvider } from "@/features/accreditation/components/unaccredited-notice";
 import { FormulaEditingProvider } from "@/features/valuations/components/editor/formula-editing";
 import { CustomUnitsProvider } from "@/features/valuations/components/editor/custom-units-context";
+import { DeleteConfirmProvider } from "@/features/valuations/components/editor/delete-confirm";
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
 import { documentNumberPresentation } from "@/features/valuations/services/number-presentation";
 import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
@@ -397,9 +398,11 @@ export function ValuationWorkspace({
             onAddTableColumn={tables.addTableColumn}
             onAddTableRow={tables.addTableRow}
             onBlockDragEnd={blocks.onBlockDragEnd}
+            onDuplicateConcepts={blocks.duplicateConcepts}
             onMoveBlock={blocks.moveBlock}
             onRemoveBlock={blocks.removeBlock}
             onRemoveConcept={blocks.removeConcept}
+            onRemoveConcepts={blocks.removeConcepts}
             onRemoveImage={images.removeImage}
             onRemoveApartado={blocks.removeApartado}
             onRemoveSection={setRemovingSectionId}
@@ -409,6 +412,7 @@ export function ValuationWorkspace({
             onUpdateBlock={blocks.updateBlock}
             onUpdateSection={updateSection}
             onUpdateConcept={blocks.updateConcept}
+            onUpdateConcepts={blocks.updateConcepts}
             onUpdateConceptEverywhere={blocks.updateConceptEverywhere}
             onEditConceptOnlyHere={blocks.editConceptOnlyHere}
             onChangeConceptRelation={blocks.changeConceptRelation}
@@ -456,6 +460,7 @@ export function ValuationWorkspace({
     <PagePresentationProvider presentation={pagePresentation}>
     <CustomUnitsProvider initialUnits={customUnits}>
     <StructureTransferProvider sections={sections} readOnly={!canEdit} updateSections={updateSections} valuationId={valuationId}>
+    <DeleteConfirmProvider>
     <Tabs value={activeSection.id} onValueChange={handleActiveSectionChange} className="gap-0 h-full">
       <main className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-hidden">
       <section className="shrink-0 border-b bg-background">
@@ -529,7 +534,7 @@ export function ValuationWorkspace({
               <ResizablePanel
                 id="valuation-preview"
                 panelRef={previewPanelRef}
-                defaultSize={splitLayout === "vertical" ? "50%" : "42%"}
+                defaultSize="50%"
                 minSize="25%"
                 maxSize="75%"
               >
@@ -541,14 +546,15 @@ export function ValuationWorkspace({
             {workspaceComposition.showSplitter ? (
               <ResizableHandle
                 withHandle
-                className={splitLayout === "vertical" ? "mx-1" : "my-1 w-full"}
+                // A wider grab area than the hairline, so the divider is found and dragged with ease.
+                className={cn("after:bg-transparent hover:bg-primary/40", splitLayout === "vertical" ? "mx-1 after:w-3" : "my-1 w-full after:h-3")}
               />
             ) : null}
             {workspaceComposition.showEditor ? (
               <ResizablePanel
                 id="valuation-editor"
                 panelRef={editorPanelRef}
-                defaultSize={splitLayout === "vertical" ? "50%" : "58%"}
+                defaultSize="50%"
                 minSize="25%"
                 maxSize="75%"
               >
@@ -610,6 +616,7 @@ export function ValuationWorkspace({
       ) : null}
       </main>
     </Tabs>
+    </DeleteConfirmProvider>
     </StructureTransferProvider>
     </CustomUnitsProvider>
     </PagePresentationProvider>

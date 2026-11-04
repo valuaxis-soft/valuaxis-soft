@@ -30,10 +30,10 @@ test("workspace focus applies the visualization split to existing panels", () =>
 
   assert.deepEqual(
     focusWorkspacePanels(previewPanel as never, editorPanel as never),
-    { previewSize: "42%", editorSize: "58%" },
+    { previewSize: "50%", editorSize: "50%" },
   );
-  assert.deepEqual(previewCalls, ["42%"]);
-  assert.deepEqual(editorCalls, ["58%"]);
+  assert.deepEqual(previewCalls, ["50%"]);
+  assert.deepEqual(editorCalls, ["50%"]);
 });
 
 test("the desktop query matches Tailwind's lg breakpoint", () => {

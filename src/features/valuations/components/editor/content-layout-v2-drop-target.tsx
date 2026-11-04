@@ -209,8 +209,9 @@ function RowDropSlot({
       ref={setNodeRef}
       {...marker}
       data-slot-state={isVisible ? (isHovered ? "target" : "open") : undefined}
-      className="pointer-events-none absolute inset-x-0 z-20 h-3"
-      style={{ [edge]: "-0.5rem" }}
+      // A hand's width of hit area (the line itself stays thin): the slot used to take only the very edge.
+      className="pointer-events-none absolute inset-x-0 z-20 h-6"
+      style={{ [edge]: "-0.875rem" }}
     >
       {isVisible ? (
         <div
@@ -253,8 +254,8 @@ function ColumnDropSlot({
       ref={setNodeRef}
       data-drop-zone={side}
       data-slot-state={isVisible ? (isHovered ? "target" : "open") : undefined}
-      className="pointer-events-none absolute inset-y-0 z-20 w-3"
-      style={{ [side]: "-0.625rem" }}
+      className="pointer-events-none absolute inset-y-0 z-20 w-6"
+      style={{ [side]: "-1rem" }}
     >
       {isVisible ? (
         <div

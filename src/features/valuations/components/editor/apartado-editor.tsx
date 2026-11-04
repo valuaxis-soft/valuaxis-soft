@@ -12,6 +12,7 @@ import type { Apartado, ApartadoPresentationMode } from "@/features/valuations/m
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 
 import { StructuralActions } from "./structural-actions";
+import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
 
 import type { EditorCapabilities } from "./editor-capabilities";
 
@@ -61,6 +62,7 @@ export function ApartadoEditor({
 }) {
   const itemLabel = subBlockTerm === "apartados" ? "apartado" : "subbloque";
   const useBlueTone = siblingIndex % 2 === 0;
+  const confirmDelete = useConfirmDelete();
 
   return (
     <section
@@ -112,7 +114,10 @@ export function ApartadoEditor({
               value: resolvePageBreak(subBlock),
               onChange: onPageBreakChange,
             } : undefined}
-            deleteAction={capabilities.delete ? { onDelete: onRemove } : undefined}
+            deleteAction={capabilities.delete ? {
+              // Deleting asks first; what was deleted comes back with "Deshacer".
+              onDelete: () => confirmDelete({ ...deleteConfirmation("subblock", subBlock.title), onConfirm: onRemove }),
+            } : undefined}
           />
         </div>
       </div>

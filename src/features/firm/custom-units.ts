@@ -17,9 +17,12 @@ export const normalizeCustomUnit = (value: string) => value.replace(/\s+/g, " ")
 /** Units compare without case or accents: "Piezas" and "piezas" are one. */
 const unitKey = (unit: string) => unit.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-export const customUnitSchema = z.object({
-  unit: z.string().transform(normalizeCustomUnit).pipe(z.string().min(1, "Escribe la unidad.")),
-});
+const unitField = z.string().transform(normalizeCustomUnit).pipe(z.string().min(1, "Escribe la unidad."));
+
+export const customUnitSchema = z.object({ unit: unitField });
+
+/** Renaming a unit of the firm: the one kept and its new name. */
+export const customUnitRenameSchema = z.object({ unit: unitField, nextUnit: unitField });
 
 /** The stored list read back; anything that is not a list of short texts is no list. */
 export function resolveCustomUnits(stored: unknown): string[] {
@@ -47,6 +50,27 @@ export function addCustomUnitTo(units: string[], unit: string): { units: string[
   if (!normalized || units.some((item) => unitKey(item) === unitKey(normalized))) return { units, added: false };
   const next = [...units, normalized];
   return { units: next.length > MAX_CUSTOM_UNITS ? next.slice(next.length - MAX_CUSTOM_UNITS) : next, added: true };
+}
+
+/**
+ * The list with `unit` written as `nextUnit` in its place, or the same list
+ * when the unit is not there, the new name is empty or another unit already
+ * has it. Renaming only the case or the accents of a unit is a rename too.
+ */
+export function renameCustomUnitIn(units: string[], unit: string, nextUnit: string): { units: string[]; renamed: boolean } {
+  const normalized = normalizeCustomUnit(nextUnit);
+  const index = units.findIndex((item) => unitKey(item) === unitKey(normalizeCustomUnit(unit)));
+  if (index < 0 || !normalized || normalized === units[index]) return { units, renamed: false };
+  const taken = units.some((item, position) => position !== index && unitKey(item) === unitKey(normalized));
+  if (taken) return { units, renamed: false };
+  return { units: units.map((item, position) => (position === index ? normalized : item)), renamed: true };
+}
+
+/** The list without `unit` (however it was written), or the same list when it was not there. */
+export function removeCustomUnitFrom(units: string[], unit: string): { units: string[]; removed: boolean } {
+  const key = unitKey(normalizeCustomUnit(unit));
+  const next = key ? units.filter((item) => unitKey(item) !== key) : units;
+  return next.length === units.length ? { units, removed: false } : { units: next, removed: true };
 }
 
 /** Whether a unit is one of the built-in symbols or the firm's own; what the list shows as itself. */

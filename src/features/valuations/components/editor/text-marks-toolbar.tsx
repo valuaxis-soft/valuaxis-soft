@@ -74,7 +74,7 @@ export function TextMarksField({
 
   return (
     <div
-      className={cn("grid min-w-0 gap-1", className)}
+      className={cn("group/marks grid min-w-0 gap-1", className)}
       ref={fieldRef}
       onSelect={readSelection}
       onKeyUp={readSelection}
@@ -84,7 +84,16 @@ export function TextMarksField({
     >
       {children}
       <div className="flex min-w-0 items-start gap-2">
-        <div className={cn("flex items-center gap-0.5", toolbarClassName)} role="toolbar" aria-label="Formato del texto">
+        {/* The buttons show while the pointer or the focus is on the field, or while the text has marks. */}
+        <div
+          className={cn(
+            "flex items-center gap-0.5 transition-opacity",
+            !hasTextMarks(value) && "opacity-0 group-focus-within/marks:opacity-100 group-hover/marks:opacity-100",
+            toolbarClassName,
+          )}
+          role="toolbar"
+          aria-label="Formato del texto"
+        >
           {MARKS.map((item) => (
             <Button
               key={item.mark}

@@ -18,6 +18,7 @@ import { DOCUMENT_IMAGE_ACCEPT } from "@/features/valuations/services/document-i
 export function ContentCreationControl({
   capabilities,
   conceptControl,
+  lock,
   onAddImage,
   onAddTable,
   onAddHomologationTable,
@@ -29,6 +30,8 @@ export function ContentCreationControl({
     tables?: boolean;
   };
   conceptControl?: ReactNode;
+  /** Why nothing can be added here: the button stays, disabled, and says so. */
+  lock?: string;
   onAddImage?: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddTable?: () => void;
   onAddHomologationTable?: () => void;
@@ -38,13 +41,20 @@ export function ContentCreationControl({
   const canAddImage = Boolean(capabilities.images && onAddImage);
   const canAddTable = Boolean(capabilities.tables && onAddTable);
 
-  if (!canAddConcept && !canAddImage && !canAddTable) return null;
+  if (lock || (!canAddConcept && !canAddImage && !canAddTable)) {
+    return (
+      <Button type="button" size="sm" variant="outline" disabled title={lock ?? "Aquí no se agrega contenido."} data-structural-action="add">
+        <Plus data-icon="inline-start" />
+        Agregar
+      </Button>
+    );
+  }
 
   return (
     <Popover>
       <PopoverTrigger
         render={
-          <Button type="button" size="sm" variant="outline" disabled={readOnly}>
+          <Button type="button" size="sm" variant="outline" disabled={readOnly} data-structural-action="add">
             <Plus data-icon="inline-start" />
             Agregar
           </Button>
@@ -99,9 +109,11 @@ export function ContentCreationControl({
   );
 }
 
+/** "Agregar" and "Subbloque" of a Block, in every Block: where one does not apply it is disabled and says why. */
 export function ActionStrip({
   capabilities,
   conceptControl,
+  locks = {},
   onAddImage,
   onAddApartado,
   onAddTable,
@@ -111,6 +123,7 @@ export function ActionStrip({
 }: {
   capabilities: Pick<EditorCapabilities, "apartados" | "concepts" | "images" | "tables">;
   conceptControl: ReactNode;
+  locks?: { add?: string; subblock?: string };
   onAddImage: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddApartado: () => void;
   onAddTable: () => void;
@@ -118,22 +131,30 @@ export function ActionStrip({
   readOnly: boolean;
   subBlockLabel: string;
 }) {
+  const subblockLock = locks.subblock ?? (capabilities.apartados ? undefined : "Este bloque no lleva subbloques.");
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2" data-block-action-strip>
       <ContentCreationControl
         capabilities={capabilities}
         conceptControl={conceptControl}
+        lock={locks.add}
         readOnly={readOnly}
         onAddImage={onAddImage}
         onAddTable={onAddTable}
         onAddHomologationTable={onAddHomologationTable}
       />
-      {capabilities.apartados ? (
-        <Button type="button" size="sm" variant="outline" disabled={readOnly} onClick={onAddApartado}>
-          <Rows3 />
-          {subBlockLabel}
-        </Button>
-      ) : null}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={readOnly || Boolean(subblockLock)}
+        title={subblockLock}
+        data-structural-action="subblock"
+        onClick={onAddApartado}
+      >
+        <Rows3 />
+        {subBlockLabel}
+      </Button>
     </div>
   );
 }

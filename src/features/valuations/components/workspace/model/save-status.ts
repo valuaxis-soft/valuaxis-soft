@@ -1,4 +1,4 @@
-import { editorSnapshotChanged, type EditorSnapshot } from "./editor-history";
+import { editorSnapshotEquals, type EditorSnapshot } from "./editor-history";
 
 /** Wait after the last edit before saving automatically. */
 export const AUTOSAVE_DELAY_MS = 15_000;
@@ -8,7 +8,7 @@ export const AUTOSAVE_DELAY_MS = 15_000;
  * not in what was sent, so the document is still dirty.
  */
 export function statusAfterSave(sent: EditorSnapshot, current: EditorSnapshot | null): "saved" | "dirty" {
-  return current && editorSnapshotChanged(sent, current) ? "dirty" : "saved";
+  return current && !editorSnapshotEquals(sent, current) ? "dirty" : "saved";
 }
 
 /** Autosave only runs for editable, persisted valuations with pending changes. */

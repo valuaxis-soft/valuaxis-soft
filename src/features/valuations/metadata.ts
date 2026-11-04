@@ -38,6 +38,8 @@ export type ConceptMetadata = {
   sourceUnit?: ConceptValueFormat;
   customUnit?: string;
   dateFormat?: ConceptDateFormat;
+  /** The options of a "list" concept. */
+  options?: string[];
   /** The concept's value is computed; its references are the ids of concepts, tables, rows and columns. */
   formula?: TableFormula;
   /** The calculation's label of a concept of a generated block the appraiser renamed. */
@@ -151,6 +153,7 @@ export function conceptMetadataFromContent(content: ConceptMetadataContent): Con
     sourceUnit: content.sourceUnit,
     customUnit: content.customUnit,
     dateFormat: content.dateFormat,
+    options: content.options,
     type: content.type,
     labelKey: content.labelKey,
     valueKey: content.valueKey,
@@ -173,6 +176,7 @@ export function hydrateConceptMetadata(config: unknown): ConceptMetadata {
     sourceUnit: conceptSourceUnit(config),
     customUnit: conceptStringMetadata(config, "customUnit"),
     dateFormat: conceptDateFormat(config),
+    options: readConfigMetadata(config, readConceptOptions),
     formula: readConfigMetadata(config, (value) => (isRecord(value) ? readStoredFormula(value.formula) : undefined)),
     generatedLabel: conceptStringMetadata(config, "generatedLabel"),
   };
@@ -412,9 +416,16 @@ function readConceptType(value: unknown): ConceptType | undefined {
     type === "currency" ||
     type === "measurement" ||
     type === "longText" ||
-    type === "url"
+    type === "url" ||
+    type === "list"
     ? type
     : undefined;
+}
+
+/** The options of a "list" concept: the short texts kept, in order; absent when there is no list. */
+function readConceptOptions(value: unknown): string[] | undefined {
+  if (!isRecord(value) || !Array.isArray(value.options)) return undefined;
+  return value.options.filter((option): option is string => typeof option === "string");
 }
 
 function readConceptValueFormat(value: unknown): ConceptValueFormat | undefined {

@@ -1,5 +1,6 @@
-import type { Apartado, AppSection, Block, Concept, ConceptType, TableContent } from "@/features/valuations/model";
+import type { Apartado, AppSection, Block, Concept, ConceptCreationKind, TableContent } from "@/features/valuations/model";
 import { createIndependentConcept } from "@/features/valuations/concept-links";
+import { conceptCreationPreset } from "@/features/valuations/services/concept-types";
 import { UNTITLED_CARATULA_CONCEPT } from "@/features/valuations/services/caratula-blocks";
 import { NEW_SECTION_TITLE } from "@/features/valuations/services/section-edit-operations";
 import { CUSTOM_SECTION_ID_PREFIX } from "@/features/valuations/sections/section-registry";
@@ -29,23 +30,27 @@ export function createCustomSection(role: SectionDocumentRole = "chapter"): AppS
   };
 }
 
-function defaultTitleForType(type?: ConceptType): string {
-  switch (type) {
+function defaultTitleForKind(kind?: ConceptCreationKind): string {
+  switch (kind) {
     case "date": return "Fecha";
     case "phone": return "Teléfono";
     case "email": return "Correo";
+    case "percent": return "Porcentaje";
     // A paragraph has no label: its text runs edge to edge.
     case "paragraph": return "";
     default: return "Nuevo concepto";
   }
 }
 
-export function createConcept(label?: string, type?: ConceptType): Concept {
+/** A concept of the kind "+ Concepto" offers: a type, or a number already in % ("percent"). */
+export function createConcept(label?: string, kind?: ConceptCreationKind): Concept {
   const resolvedLabel =
     label && label !== UNTITLED_CARATULA_CONCEPT
       ? label
-      : defaultTitleForType(type);
-  return createIndependentConcept({ id: newId(), label: resolvedLabel, value: "", type });
+      : defaultTitleForKind(kind);
+  const preset = conceptCreationPreset(kind);
+  const concept = createIndependentConcept({ id: newId(), label: resolvedLabel, value: "", type: preset.type, valueFormat: preset.valueFormat });
+  return preset.options ? { ...concept, options: preset.options } : concept;
 }
 
 export function createBlock(conceptLabel?: string): Block {
