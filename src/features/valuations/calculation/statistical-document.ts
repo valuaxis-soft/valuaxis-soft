@@ -214,6 +214,7 @@ function regressionTables(calculation: StatisticalCalculationDto, result: Statis
     ["Error típico", stat(fit.standardError)],
     ["Observaciones", whole(fit.n)],
   ]);
+  const coefficients = coefficientsTable(fit, `${prefix}-coeficientes`, decimals);
   const anova = fit.anova;
   const anovaTable = anova ? generatedTable(`${prefix}-anova`, "Análisis de varianza", [
     textColumn("ANÁLISIS DE VARIANZA"), figureColumn("GRADOS DE LIBERTAD"), figureColumn("SUMA DE CUADRADOS"),
@@ -223,7 +224,30 @@ function regressionTables(calculation: StatisticalCalculationDto, result: Statis
     ["Residuos", whole(anova.residual.df), stat(anova.residual.sumSquares), stat(anova.residual.meanSquare), "", ""],
     ["Total", whole(anova.total.df), stat(anova.total.sumSquares), "", "", ""],
   ], { notes: [{ position: "bottom", text: "Valor crítico de F: probabilidad de obtener una F así de grande si los criterios no explicaran el precio, como lo reporta Excel." }] }) : null;
-  return [...dataTable, statistics, ...(anovaTable ? [anovaTable] : [])];
+  return [...dataTable, statistics, ...(anovaTable ? [anovaTable] : []), coefficients];
+}
+
+/** Under the coefficients table: what the probability and the limits mean, in plain words. */
+export const COEFFICIENTS_NOTE =
+  "Probabilidad: la de obtener un estadístico t así de grande si el coeficiente fuera cero; menor a 0.05, el criterio pesa en el precio. Los límites son el intervalo de confianza al 95 %, como los reporta Excel.";
+
+/**
+ * Excel's coefficients table: a row for the intercept and one per variable
+ * with the coefficient, its standard error, t, the probability and the 95 %
+ * limits. The statistics are blank when the fit is exact.
+ */
+function coefficientsTable(fit: RegressionFit, id: string, decimals: number): TableContent {
+  const stat = (value: number | null) => (value === null ? EMPTY : figure(value, Math.max(decimals, 4)));
+  return generatedTable(id, "Coeficientes de la regresión", [
+    textColumn(""), figureColumn("COEFICIENTES"), figureColumn("ERROR TÍPICO"), figureColumn("ESTADÍSTICO t"),
+    figureColumn("PROBABILIDAD"), figureColumn("INFERIOR 95 %"), figureColumn("SUPERIOR 95 %"),
+  ], fit.coefficientTable.map((row) => [
+    row.name === "Intercepción" ? row.name : `${row.constant} (${row.name})`,
+    significant.format(row.coefficient), stat(row.standardError), stat(row.t), stat(row.p), stat(row.lower95), stat(row.upper95),
+  ]), {
+    rowKeys: fit.coefficientTable.map((row) => row.constant),
+    notes: [{ position: "bottom", text: COEFFICIENTS_NOTE }],
+  });
 }
 
 /** The goal programming's tables: the deviation of each comparable and the part of each criterion in the subject's value. */

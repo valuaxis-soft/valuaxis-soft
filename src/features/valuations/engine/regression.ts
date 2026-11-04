@@ -28,6 +28,25 @@ export const constantLetters = (k: number): string[] =>
 /** The appraiser recommends more than 30 comparables; with fewer the result is a weak reference. */
 export const RECOMMENDED_REGRESSION_COMPARABLES = 30;
 
+/** The appraiser's rule of thumb (video 5.1, Nov 2026): ten to twenty comparables per variable. */
+export const COMPARABLES_PER_VARIABLE = { min: 10, max: 20 } as const;
+
+/**
+ * The recommendation about the size of the sample for a model with k
+ * variables and n comparables, or null when it is within the rule: with n
+ * comparables at most ⌊n / 10⌋ variables, with k variables at least 10·k
+ * comparables. Advice only; nothing is blocked by it.
+ */
+export function sampleSizeRecommendation(n: number, k: number): string | null {
+  if (k <= 0 || n >= k * COMPARABLES_PER_VARIABLE.min) return null;
+  const variables = Math.floor(n / COMPARABLES_PER_VARIABLE.min);
+  const needed = k * COMPARABLES_PER_VARIABLE.min;
+  const fit = variables < 1
+    ? `con ${n} comparables no alcanza ni para un criterio`
+    : `con ${n} comparables conviene usar hasta ${variables} ${variables === 1 ? "criterio" : "criterios"}`;
+  return `Recomendación: de ${COMPARABLES_PER_VARIABLE.min} a ${COMPARABLES_PER_VARIABLE.max} comparables por criterio; ${fit}, y con ${k} ${k === 1 ? "criterio" : "criterios"} convienen al menos ${needed} comparables (hay ${n}). El cálculo se hace de todos modos.`;
+}
+
 export type EstimationInput = {
   /** Name of Y as the appraiser reads it ("$/m²", "precio"). */
   dependent: string;
@@ -60,12 +79,35 @@ export type RegressionAnova = {
   significanceF: number | null;
 };
 
+/**
+ * A row of Excel's coefficients table: the constant, its standard error, the
+ * t statistic (constant / error), the two-tailed probability of a t at least
+ * that large if the true constant were zero, and its 95 % confidence limits.
+ * The statistics are null when the fit is exact (no error to measure against).
+ */
+export type CoefficientStatistics = {
+  /** A, B, C… (b0, b1… beyond six variables). */
+  constant: string;
+  /** "Intercepción" or the name of the variable, as Excel's first column. */
+  name: string;
+  coefficient: number;
+  standardError: number;
+  t: number | null;
+  p: number | null;
+  lower95: number | null;
+  upper95: number | null;
+};
+
 export type RegressionFit = {
   method: "REGRESION_LINEAL";
   n: number;
   k: number;
   /** A (intercept), then B, C… one per variable. */
   coefficients: number[];
+  /** Excel's "Coeficientes / Error típico / Estadístico t / Probabilidad / Inferior 95 % / Superior 95 %", intercept first. */
+  coefficientTable: CoefficientStatistics[];
+  /** The t that leaves 2.5 % in each tail with N − k − 1 degrees of freedom, used for the 95 % limits. */
+  tCritical95: number;
   /** "Y = A + BX + CZ". */
   equation: string;
   /** Y for the subject's variables. */
@@ -219,6 +261,15 @@ export function fitLinearRegression(input: EstimationInput, trace = new Trace(),
     value: Math.sqrt(Math.max(rSquared, 0)),
   });
   const anova = totalSquares > 0 ? analysisOfVariance(totalSquares, residualSquares, n, k, trace, keyPrefix) : null;
+  const inverse = invertMatrix(matrix);
+  if (!inverse) return { ok: false, reason: "Las variables elegidas no dejan una solución única (colinealidad). Quita alguna." };
+  const tCritical95 = studentTQuantile(0.975, n - k - 1);
+  // A fit through every comparable leaves residuals of floating noise only: no error to measure the constants against.
+  const exact = residualSquares <= 1e-20 * Math.max(sum(ys.map((value) => value ** 2)), 1);
+  const coefficientTable = coefficientStatistics({
+    coefficients, inverse, means, n, k, residualSquares: exact ? 0 : residualSquares, tCritical95, constants,
+    names: ["Intercepción", ...input.variables], trace, keyPrefix,
+  });
 
   return {
     ok: true,
@@ -227,6 +278,8 @@ export function fitLinearRegression(input: EstimationInput, trace = new Trace(),
       n,
       k,
       coefficients,
+      coefficientTable,
+      tCritical95,
       equation,
       estimate,
       rSquared,
@@ -273,6 +326,134 @@ function analysisOfVariance(totalSquares: number, residualSquares: number, n: nu
     f,
     significanceF,
   };
+}
+
+/**
+ * Excel's coefficients table. On the data centred on their means the
+ * covariance of the slopes is σ²·(XcᵀXc)⁻¹, with σ² = Σ residuo² / (N − k − 1);
+ * the intercept adds the means: Var(A) = σ²·(1/N + x̄ᵀ(XcᵀXc)⁻¹x̄). The same
+ * numbers as σ²·(XᵀX)⁻¹ on the raw design, better conditioned.
+ */
+function coefficientStatistics(args: {
+  coefficients: number[];
+  inverse: number[][];
+  means: number[];
+  n: number;
+  k: number;
+  residualSquares: number;
+  tCritical95: number;
+  constants: string[];
+  names: string[];
+  trace: Trace;
+  keyPrefix: string;
+}): CoefficientStatistics[] {
+  const { coefficients, inverse, means, n, k, residualSquares, tCritical95, constants, names, trace, keyPrefix } = args;
+  const df = n - k - 1;
+  const sigma2 = residualSquares / df;
+  const quadratic = means.reduce((total, left, i) => total + left * means.reduce((inner, right, j) => inner + inverse[i][j] * right, 0), 0);
+  const variances = [sigma2 * (1 / n + quadratic), ...inverse.map((row, j) => sigma2 * row[j])];
+  trace.record({
+    key: `${keyPrefix}.tCritico`,
+    label: "t crítico al 95 % (dos colas)",
+    formula: "DISTR.T.INV.2C(0.05; N − k − 1)",
+    inputs: { gl: df },
+    value: tCritical95,
+  });
+  return coefficients.map((coefficient, index): CoefficientStatistics => {
+    const constant = constants[index];
+    const name = names[index];
+    const standardError = trace.record({
+      key: `${keyPrefix}.errorTipico.${constant}`,
+      label: `Error típico de ${constant} (${name})`,
+      formula: index === 0 ? "√(σ²·(1/N + x̄ᵀ(XᵀX)⁻¹x̄))" : "√(σ²·(XᵀX)⁻¹ de la variable)",
+      inputs: { sigma2, N: n, gl: df },
+      value: Math.sqrt(Math.max(variances[index], 0)),
+    });
+    if (!(standardError > 0)) return { constant, name, coefficient, standardError, t: null, p: null, lower95: null, upper95: null };
+    const t = trace.record({
+      key: `${keyPrefix}.t.${constant}`,
+      label: `Estadístico t de ${constant} (${name})`,
+      formula: "coeficiente / error típico",
+      inputs: { coeficiente: coefficient, errorTipico: standardError },
+      value: coefficient / standardError,
+    });
+    const p = trace.record({
+      key: `${keyPrefix}.probabilidad.${constant}`,
+      label: `Probabilidad de ${constant} (${name})`,
+      formula: "DISTR.T.2C(|t|; N − k − 1)",
+      inputs: { t, gl: df },
+      value: studentTTwoTailed(t, df),
+    });
+    const lower95 = trace.record({
+      key: `${keyPrefix}.inferior95.${constant}`,
+      label: `Inferior 95 % de ${constant} (${name})`,
+      formula: "coeficiente − t crítico × error típico",
+      inputs: { coeficiente: coefficient, tCritico: tCritical95, errorTipico: standardError },
+      value: coefficient - tCritical95 * standardError,
+    });
+    const upper95 = trace.record({
+      key: `${keyPrefix}.superior95.${constant}`,
+      label: `Superior 95 % de ${constant} (${name})`,
+      formula: "coeficiente + t crítico × error típico",
+      inputs: { coeficiente: coefficient, tCritico: tCritical95, errorTipico: standardError },
+      value: coefficient + tCritical95 * standardError,
+    });
+    return { constant, name, coefficient, standardError, t, p, lower95, upper95 };
+  });
+}
+
+/** Two-tailed probability of Student's t: P(|T| ≥ |t|) with `df` degrees of freedom, Excel's T.DIST.2T. */
+export function studentTTwoTailed(t: number, df: number): number {
+  if (!(df > 0)) return Number.NaN;
+  if (!Number.isFinite(t)) return 0;
+  return regularizedBeta(df / (df + t * t), df / 2, 0.5);
+}
+
+/** P(T ≤ t) for Student's t with `df` degrees of freedom, Excel's T.DIST(t; df; TRUE). */
+export function studentTCdf(t: number, df: number): number {
+  const tail = studentTTwoTailed(t, df) / 2;
+  return t < 0 ? tail : 1 - tail;
+}
+
+/**
+ * The t with P(T ≤ t) = `probability` (Excel's T.INV), by bisection on the
+ * cumulative distribution: it is monotone, and the halvings of the bracket go
+ * on until no digit of a double is left to settle.
+ */
+export function studentTQuantile(probability: number, df: number): number {
+  if (!(df > 0) || !(probability > 0 && probability < 1)) return Number.NaN;
+  if (probability === 0.5) return 0;
+  if (probability < 0.5) return -studentTQuantile(1 - probability, df);
+  let low = 0;
+  let high = 1;
+  while (studentTCdf(high, df) < probability) high *= 2;
+  for (let i = 0; i < 200 && high - low > Number.EPSILON * high; i += 1) {
+    const middle = (low + high) / 2;
+    if (studentTCdf(middle, df) < probability) low = middle;
+    else high = middle;
+  }
+  return (low + high) / 2;
+}
+
+/** The inverse of a square matrix by Gauss–Jordan with partial pivoting; null when singular. */
+function invertMatrix(matrix: number[][]): number[][] | null {
+  const size = matrix.length;
+  const rows = matrix.map((row, index) => [...row, ...Array.from({ length: size }, (_, j) => (j === index ? 1 : 0))]);
+  for (let pivot = 0; pivot < size; pivot += 1) {
+    let best = pivot;
+    for (let row = pivot + 1; row < size; row += 1) if (Math.abs(rows[row][pivot]) > Math.abs(rows[best][pivot])) best = row;
+    if (!rows[best][pivot]) return null;
+    [rows[pivot], rows[best]] = [rows[best], rows[pivot]];
+    const divisor = rows[pivot][pivot];
+    for (let column = 0; column < 2 * size; column += 1) rows[pivot][column] /= divisor;
+    for (let row = 0; row < size; row += 1) {
+      if (row === pivot) continue;
+      const factor = rows[row][pivot];
+      if (!factor) continue;
+      for (let column = 0; column < 2 * size; column += 1) rows[row][column] -= factor * rows[pivot][column];
+    }
+  }
+  return rows.map((row) => row.slice(size));
 }
 
 /** P(F ≥ f) for an F distribution with d1 and d2 degrees of freedom: Excel's F.DIST.RT. */
