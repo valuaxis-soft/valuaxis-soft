@@ -56,8 +56,6 @@ public/uploads/*
 # AI agent artifacts
 /.agents/
 /.atl/
-/AGENTS.md
-/CLAUDE.md
 /skills-lock.json
 
 # temporary / scratchpad
