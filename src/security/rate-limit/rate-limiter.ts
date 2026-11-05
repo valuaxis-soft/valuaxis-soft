@@ -62,6 +62,8 @@ export const rateLimits = {
   upload: createRateLimiter({ limit: 60, windowMs: 10 * MINUTE }),
   /** Searches of comparables: each one asks every source, some of them external services. */
   comparableSearch: createRateLimiter({ limit: 30, windowMs: MINUTE }),
+  /** Radius searches of the map of comparables: each one is a PostGIS query over the firm's base. */
+  comparableRadius: createRateLimiter({ limit: 60, windowMs: MINUTE }),
   /** Address searches of the croquis panel: each one is a billed Geocoding API call. */
   geocode: createRateLimiter({ limit: 30, windowMs: MINUTE }),
   /** Streets around the pin (etapa 2): each miss of the cache is a call to a public OpenStreetMap mirror. */

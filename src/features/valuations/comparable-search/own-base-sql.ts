@@ -62,3 +62,15 @@ export function placeCondition(part: string, value: string | undefined) {
 export const postalCodeCondition = (postalCode: string | undefined) => (postalCode
   ? [Prisma.sql`(c."JDireccionSnapshot"->>'postalCode' = ${postalCode} OR c."JDireccionSnapshot"->>'location' LIKE ${likePattern(postalCode)})`]
   : []);
+
+/** The latitude or longitude kept in JUbicacionSnapshot, as a number; NULL when missing or a text. */
+const coordinate = (name: string) =>
+  Prisma.sql`CASE WHEN jsonb_typeof(c."JUbicacionSnapshot"->${name}) = 'number' THEN (c."JUbicacionSnapshot"->>${name})::float8 END`;
+
+/**
+ * Where the comparable is, as a PostGIS point over its captured coordinates
+ * (there is no column: the snapshot keeps them), or NULL without them or
+ * off the globe. Migration 056 indexes the same expression.
+ */
+export const COMPARABLE_POINT = Prisma.sql`CASE WHEN ${coordinate("latitude")} BETWEEN -90 AND 90 AND ${coordinate("longitude")} BETWEEN -180 AND 180
+  THEN ST_SetSRID(ST_MakePoint(${coordinate("longitude")}, ${coordinate("latitude")}), 4326)::geography END`;

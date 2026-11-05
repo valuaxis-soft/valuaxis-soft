@@ -36,6 +36,7 @@ import type { StreetsAroundDto } from "@/features/maps/streets-osm";
 import type { SubjectLocationInput } from "@/features/maps/subject-location";
 import type { SubjectLocationDto } from "@/features/maps/server/subject-location.service";
 import type { GeocodingResult } from "@/features/maps/server/geocoding.service";
+import type { ComparablePinsDto, RadiusHitDto, ValuationPinDto } from "@/features/maps/base-map/types";
 import type { EditorImageDto } from "@/features/files/services/editor-image";
 import type { ValuationTemplateDetail, ValuationTemplateSummary } from "@/features/valuations/services/valuation-template.service";
 
@@ -257,6 +258,18 @@ export const api = {
     geocode: (query: string) => request<GeocodingResult[]>(`/mapas/geocodificar?q=${encodeURIComponent(query)}`),
     /** The streets around a point, from OpenStreetMap through the server (etapa 2). */
     streets: (point: readonly [number, number]) => request<StreetsAroundDto>(`/mapas/calles?lat=${point[0]}&lon=${point[1]}`),
+    /** The pins of the map of comparables; `query` is the query string of /comparables (its filters). */
+    comparables: (query: string) => request<ComparablePinsDto>(`/mapas/comparables${query ? `?${query}` : ""}`),
+    /** "Buscar alrededor de": the comparables of the filters within the radius, closest first. */
+    comparablesAround: (query: string, center: [number, number], radius: number) => {
+      const search = new URLSearchParams(query);
+      search.set("lat", String(center[0]));
+      search.set("lon", String(center[1]));
+      search.set("radio", String(radius));
+      return request<RadiusHitDto[]>(`/mapas/comparables/alrededor?${search.toString()}`);
+    },
+    /** "Mis avalúos": the subject of each located valuation of the firm. */
+    valuations: () => request<ValuationPinDto[]>("/mapas/avaluos"),
   },
   market: {
     get: (id: ApiId, type: ComparableType) =>

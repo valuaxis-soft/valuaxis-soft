@@ -67,6 +67,7 @@ import { MarketHomologationTable } from "./market-homologation-table";
 import { MarketOfferLevel } from "./market-offer-level";
 import { PasteListingDialog } from "./paste-listing-dialog";
 import { SearchComparablesDialog } from "./search-comparables-dialog";
+import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { useDraftHistory } from "./use-draft-history";
 import { useSerializedSave } from "./use-serialized-save";
 import { useNumberPresentation } from "@/features/valuations/components/number-presentation-context";
@@ -143,6 +144,8 @@ export function MarketCalculationPanel(props: {
   canReview?: boolean;
   /** Suggested subject area (terreno section) while none is captured. */
   suggestedSubjectArea: number | null;
+  /** The browser key of Google Maps, for "Ver en mapa" of the search; no key, no map. */
+  googleMaps?: GoogleMapsPageConfig;
   onCalculation: (calculation: MarketCalculationDto, result: MarketApproachResult | null) => void;
 }) {
   const { valuationId } = props;
@@ -250,6 +253,7 @@ function MarketTypePanel(props: {
   readOnly: boolean;
   canReview?: boolean;
   suggestedSubjectArea: number | null;
+  googleMaps?: GoogleMapsPageConfig;
   onCalculation: (calculation: MarketCalculationDto, result: MarketApproachResult | null) => void;
   /** Takes this market out when it has no comparables; absent for a single market or a reader. */
   onRemoveMarket?: (type: ComparableType, configured: boolean) => void;
@@ -667,7 +671,7 @@ function MarketTypePanel(props: {
               </>
             ) : null}
             {/* Searching only reads: a concluded valuation can still look, but not add. */}
-            <SearchComparablesDialog key={type} valuationId={valuationId} type={type} readOnly={readOnly} onAdded={applyServerState} />
+            <SearchComparablesDialog key={type} valuationId={valuationId} type={type} readOnly={readOnly} onAdded={applyServerState} googleMaps={props.googleMaps} />
             {comparables.length ? (
               <a
                 className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}

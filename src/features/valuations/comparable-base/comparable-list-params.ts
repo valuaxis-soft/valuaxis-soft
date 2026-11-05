@@ -38,7 +38,17 @@ export const COUNT_MODES = ["al_menos", "exacto", "hasta"] as const;
 export type CountMode = (typeof COUNT_MODES)[number];
 export const COUNT_MODE_LABELS: Record<CountMode, string> = { al_menos: "Al menos", exacto: "Exactamente", hasta: "Hasta" };
 
+/** The base as a table, or on the map (etapa 3 of the maps); the filters are the same. */
+export const COMPARABLE_VIEWS = ["lista", "mapa"] as const;
+export type ComparableView = (typeof COMPARABLE_VIEWS)[number];
+
+/** With coordinates (on the map) or without them ("sin ubicar"). */
+export const LOCATED_FILTERS = ["con", "sin"] as const;
+export type LocatedFilter = (typeof LOCATED_FILTERS)[number];
+export const LOCATED_FILTER_LABELS: Record<LocatedFilter, string> = { con: "Con ubicación en el mapa", sin: "Sin ubicar" };
+
 export type ComparableListParams = {
+  view: ComparableView;
   page: number;
   /** Words of the location, use or source, or a comparable's number ("C-00123"). */
   q: string;
@@ -75,6 +85,7 @@ export type ComparableListParams = {
   from: string | null;
   to: string | null;
   validity: ValidityStatus | null;
+  located: LocatedFilter | null;
   sort: ComparableSort;
 };
 
@@ -115,6 +126,7 @@ function oneOf<T extends string>(value: RawParam, allowed: readonly T[], map: (r
 export function parseComparableListParams(searchParams: Record<string, RawParam>): ComparableListParams {
   const postalCode = textOf(searchParams.cp);
   return {
+    view: oneOf(searchParams.vista, COMPARABLE_VIEWS) ?? "lista",
     page: pageOf(searchParams.page),
     q: textOf(searchParams.q),
     client: textOf(searchParams.cliente),
@@ -144,6 +156,7 @@ export function parseComparableListParams(searchParams: Record<string, RawParam>
     from: dayOf(searchParams.desde),
     to: dayOf(searchParams.hasta),
     validity: oneOf(searchParams.vigencia, VALIDITY_STATUSES, (raw) => raw.toUpperCase()),
+    located: oneOf(searchParams.ubicacion, LOCATED_FILTERS),
     sort: oneOf(searchParams.orden, COMPARABLE_SORTS) ?? "reciente",
   };
 }
@@ -154,12 +167,12 @@ export function hasAdvancedFilters(params: ComparableListParams) {
     || params.types.length || params.operation || params.constructionType || params.landUse || params.source || params.attribute || params.attributeValue
     || [params.landAreaMin, params.landAreaMax, params.builtAreaMin, params.builtAreaMax, params.bedrooms, params.bathrooms, params.priceMin, params.priceMax]
       .some((value) => value !== null)
-    || params.from || params.to || params.validity);
+    || params.from || params.to || params.validity || params.located);
 }
 
 export const hasFilters = (params: ComparableListParams) => Boolean(params.q) || hasAdvancedFilters(params);
 
-/** The /comparables href with these filters; page 1, the default order and empty values are left out. */
+/** The /comparables href with these filters; page 1, the list view, the default order and empty values are left out. */
 export function buildComparableListHref(params: Partial<ComparableListParams>) {
   const query = new URLSearchParams();
   const set = (key: string, value: string | number | null | undefined) => {
@@ -192,8 +205,10 @@ export function buildComparableListHref(params: Partial<ComparableListParams>) {
   set("desde", params.from);
   set("hasta", params.to);
   set("vigencia", params.validity?.toLowerCase());
+  set("ubicacion", params.located);
   if (params.sort && params.sort !== "reciente") query.set("orden", params.sort);
   if (params.page && params.page > 1) query.set("page", String(params.page));
+  if (params.view === "mapa") query.set("vista", "mapa");
   const text = query.toString();
   return text ? `/comparables?${text}` : "/comparables";
 }

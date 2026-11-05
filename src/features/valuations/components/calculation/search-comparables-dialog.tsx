@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ExternalLink, Loader2, Search } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ExternalLink, Loader2, Map as MapIcon, Search } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
@@ -24,6 +24,8 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { ComparableCardButton } from "./comparable-card-dialog";
 import { SEARCH_TEXT_MIN, searchText } from "@/features/valuations/comparable-search/normalize";
 import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
+import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
+import { ComparableBaseMap } from "@/features/valuations/comparable-base/components/comparable-base-map";
 
 const number = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
 const money = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" }));
@@ -83,6 +85,8 @@ function filtersFrom(draft: Draft, type: ComparableType): { filters: ComparableS
  * the valuation. Factors are rated afterwards, as with the Excel import.
  * With `onChoose` the chosen results go to the caller instead (the
  * statistical methods take them as rows of their own, not of the market).
+ * With `googleMaps`, "Ver en mapa" shows the firm's base on the map, where
+ * a pin is added with "Usar el existente" (etapa 3 of the maps).
  */
 export function SearchComparablesDialog({
   valuationId,
@@ -90,6 +94,7 @@ export function SearchComparablesDialog({
   readOnly,
   onAdded,
   onChoose,
+  googleMaps,
   label = "Buscar comparables",
   description,
 }: {
@@ -100,6 +105,8 @@ export function SearchComparablesDialog({
   onAdded?: (calculation: MarketCalculationDto) => void;
   /** Takes the chosen results instead of adding them to the market approach. */
   onChoose?: (chosen: ComparableSearchHit[]) => void;
+  /** The browser key of Google Maps: offers "Ver en mapa". Not offered without it, or with `onChoose`. */
+  googleMaps?: GoogleMapsPageConfig;
   /** The button that opens the search, and the dialog's title. */
   label?: string;
   description?: string;
@@ -112,11 +119,14 @@ export function SearchComparablesDialog({
   const [busy, setBusy] = useState<"search" | "add" | null>(null);
   const [found, setFound] = useState<{ text: string; response: ComparableSearchResponse } | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [view, setView] = useState<"buscar" | "mapa">("buscar");
+  const mapOffered = Boolean(googleMaps?.apiKey) && !onChoose;
   // Only the answer to the last search is shown.
   const lastSearch = useRef(0);
 
   const reset = () => {
     lastSearch.current += 1;
+    setView("buscar");
     setDraft(emptyDraft(type));
     setError(null);
     setFound(null);
@@ -190,8 +200,30 @@ export function SearchComparablesDialog({
         <Search data-icon="inline-start" /> {label}
       </Button>
       <Dialog open={open} onOpenChange={(next) => { if (busy !== "add") { setOpen(next); if (!next) reset(); } }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
-          <DialogHeader>
+        <DialogContent className={view === "mapa" ? "max-h-[90vh] overflow-y-auto sm:max-w-6xl" : "max-h-[90vh] overflow-y-auto sm:max-w-4xl"}>
+          {view === "mapa" && googleMaps ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Mi base de comparables en el mapa</DialogTitle>
+                <DialogDescription>
+                  Pasa el cursor por un pin para ver su ficha; tócalo para agregarlo a este avalúo. Enciende las capas que necesites o busca alrededor de una dirección.
+                </DialogDescription>
+              </DialogHeader>
+              <ComparableBaseMap
+                googleMaps={googleMaps}
+                query=""
+                initialLayers={[type]}
+                valuation={{ id: valuationId, type, readOnly, onAdded: (calculation) => onAdded?.(calculation) }}
+              />
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setView("buscar")}>
+                  <ArrowLeft data-icon="inline-start" /> Volver a la búsqueda
+                </Button>
+                <Button type="button" variant="outline" onClick={() => { setOpen(false); reset(); }}>Cerrar</Button>
+              </DialogFooter>
+            </>
+          ) : null}
+          <DialogHeader hidden={view === "mapa"}>
             <DialogTitle>{label}</DialogTitle>
             <DialogDescription>
               {description ?? (
@@ -201,7 +233,7 @@ export function SearchComparablesDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <form className="grid gap-3" onSubmit={(event) => void search(event)} noValidate>
+          <form className="grid gap-3" onSubmit={(event) => void search(event)} noValidate hidden={view === "mapa"}>
             <Field>
               <FieldLabel htmlFor="comparable-search-text">Zona, colonia, municipio o calle</FieldLabel>
               <Input
@@ -279,12 +311,17 @@ export function SearchComparablesDialog({
                 Buscar
               </Button>
             </div>
+            {mapOffered ? (
+              <Button type="button" variant="outline" size="sm" className="justify-self-start" onClick={() => setView("mapa")}>
+                <MapIcon data-icon="inline-start" /> Ver en mapa
+              </Button>
+            ) : null}
             <p id="comparable-search-hint" className={error ? "text-sm text-destructive" : "text-xs text-muted-foreground"} role={error ? "alert" : undefined}>
               {error ?? `Escribe al menos ${SEARCH_TEXT_MIN} letras, o deja el texto vacío y usa los filtros; no importan acentos ni mayúsculas.`}
             </p>
           </form>
 
-          <div className="grid gap-2" aria-live="polite" aria-busy={busy === "search"}>
+          <div className="grid gap-2" aria-live="polite" aria-busy={busy === "search"} hidden={view === "mapa"}>
             {busy === "search" ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Buscando comparables…</p>
             ) : null}
@@ -391,7 +428,7 @@ export function SearchComparablesDialog({
             ) : null}
           </div>
 
-          <DialogFooter>
+          <DialogFooter hidden={view === "mapa"}>
             <Button type="button" variant="ghost" disabled={busy === "add"} onClick={() => { setOpen(false); reset(); }}>
               {readOnly ? "Cerrar" : "Cancelar"}
             </Button>

@@ -373,6 +373,7 @@ export function ValuationWorkspace({
                   readOnly={!canEdit}
                   canReview={canReview}
                   suggestedSubjectArea={calculationSync.suggestedSubjectArea}
+                  googleMaps={googleMaps}
                   onCalculation={calculationSync.onMarketCalculation}
                 />
                 <StatisticalMethodsPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onStatisticalCalculation} />
@@ -389,6 +390,7 @@ export function ValuationWorkspace({
                   readOnly={!canEdit}
                   canReview={canReview}
                   suggestedSubjectArea={null}
+                  googleMaps={googleMaps}
                   onCalculation={calculationSync.onMarketCalculation}
                 />
                 <StatisticalMethodsPanel
