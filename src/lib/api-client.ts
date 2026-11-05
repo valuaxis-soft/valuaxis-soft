@@ -32,6 +32,7 @@ import type { DraftInput } from "@/features/ai/draft-writing";
 import type { ListingProposal } from "@/features/ai/listing-extraction";
 import type { ValuationDetail, ValuationListItem } from "@/features/valuations/repositories/valuation.repository";
 import type { CroquisKind, CroquisSettings } from "@/features/maps/croquis";
+import type { StreetsAroundDto } from "@/features/maps/streets-osm";
 import type { SubjectLocationInput } from "@/features/maps/subject-location";
 import type { SubjectLocationDto } from "@/features/maps/server/subject-location.service";
 import type { GeocodingResult } from "@/features/maps/server/geocoding.service";
@@ -54,7 +55,12 @@ export type CroquisRequest = {
   clean: boolean;
   northArrow: CroquisSettings["northArrow"];
   includeComparables: boolean;
+  /** Etapa 2: the streets to highlight; the server fetches their geometry itself. */
+  streets: CroquisSettings["streets"];
 };
+
+/** What "Aplicar al croquis" returns: the stored image and the streets that did not fit the croquis. */
+export type CroquisResponse = { image: EditorImageDto; omittedStreets: string[] };
 
 export type PrincipalCoverImageResponse = {
   id: string;
@@ -244,11 +250,13 @@ export const api = {
     },
     /** "Aplicar al croquis": one croquis rendered and stored as an image of the valuation. */
     croquis: (id: ApiId, input: CroquisRequest) =>
-      request<EditorImageDto>(`/avaluos/${id}/croquis`, { method: "POST", body: JSON.stringify(input) }),
+      request<CroquisResponse>(`/avaluos/${id}/croquis`, { method: "POST", body: JSON.stringify(input) }),
   },
   maps: {
     /** Address search through the server (Geocoding API); 503 when maps are not configured. */
     geocode: (query: string) => request<GeocodingResult[]>(`/mapas/geocodificar?q=${encodeURIComponent(query)}`),
+    /** The streets around a point, from OpenStreetMap through the server (etapa 2). */
+    streets: (point: readonly [number, number]) => request<StreetsAroundDto>(`/mapas/calles?lat=${point[0]}&lon=${point[1]}`),
   },
   market: {
     get: (id: ApiId, type: ComparableType) =>

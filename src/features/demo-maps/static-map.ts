@@ -7,7 +7,7 @@ import { staticMapUrl as buildStaticMapUrl } from "@/features/maps/static-map";
 import type { LatLon } from "@/features/maps/types";
 
 import { COMPARABLE_TYPES, type DemoComparable } from "./geo";
-import type { HighlightedWay } from "./highlights";
+import type { HighlightedWay } from "@/features/maps/highlights";
 
 export { STATIC_MAP_SIZE, encodePolyline, imagePosition } from "@/features/maps/static-map";
 

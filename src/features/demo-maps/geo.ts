@@ -1,21 +1,18 @@
 /**
- * Pure logic of the maps demonstration: distances, street detection around
- * the subject pin, the sample comparables and their filters. Everything here is
- * example data over real OpenStreetMap streets; nothing reads the database.
+ * Pure logic of the maps demonstration: the sample streets of Loma Bonita,
+ * the search by name, the sample comparables and their filters. Distances and
+ * street detection are the shared ones (src/features/maps/streets.ts).
+ * Everything here is example data over real OpenStreetMap streets; nothing
+ * reads the database.
  */
+import { distanceMeters, type StreetWay } from "@/features/maps/streets";
 import type { LatLon } from "@/features/maps/types";
 
 import streets from "./streets.json";
 
 export type { LatLon } from "@/features/maps/types";
-
-export interface StreetWay {
-  /** Street name; empty for unnamed pieces. */
-  n: string;
-  /** 1–2 main roads, 3 secondary, 4 residential. */
-  r: number;
-  g: LatLon[];
-}
+export { detectStreets, distanceMeters, segmentDistance } from "@/features/maps/streets";
+export type { StreetWay } from "@/features/maps/streets";
 
 interface StreetData {
   w: StreetWay[];
@@ -35,75 +32,9 @@ export const DEMO_BOUNDS: readonly [LatLon, LatLon] = [
   [20.6425, -103.3925],
 ];
 
-// Local flat projection, accurate enough within a few kilometers of Zapopan.
-const M_LAT = 110574;
-const M_LON = 111320 * Math.cos((20.634 * Math.PI) / 180);
-
-/** Distance in meters between two points. */
-export function distanceMeters(a: LatLon, b: LatLon) {
-  return Math.hypot((a[0] - b[0]) * M_LAT, (a[1] - b[1]) * M_LON);
-}
-
-/** Distance in meters from p to the segment a–b. */
-export function segmentDistance(p: LatLon, a: LatLon, b: LatLon) {
-  const ax = a[1] * M_LON, ay = a[0] * M_LAT;
-  const bx = b[1] * M_LON, by = b[0] * M_LAT;
-  const px = p[1] * M_LON, py = p[0] * M_LAT;
-  const dx = bx - ax, dy = by - ay;
-  const length2 = dx * dx + dy * dy || 1;
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / length2));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-
-/** Distance in meters from p to the closest point of a way. */
-export function wayDistance(p: LatLon, way: Pick<StreetWay, "g">) {
-  let min = Infinity;
-  for (let i = 1; i < way.g.length; i++) min = Math.min(min, segmentDistance(p, way.g[i - 1], way.g[i]));
-  return min;
-}
-
 export function isInsideDemoArea(p: LatLon) {
   const [[south, west], [north, east]] = DEMO_BOUNDS;
   return p[0] >= south && p[0] <= north && p[1] >= west && p[1] <= east;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Etapa 2: streets around the subject                                */
-/* ------------------------------------------------------------------ */
-
-export interface StreetDetection {
-  front: string | null;
-  side: ReadonlySet<string>;
-  main: ReadonlySet<string>;
-}
-
-/** Within this distance a street counts as adjoining (colindante). */
-export const SIDE_STREET_METERS = 110;
-/** Main roads (rank 1–2) within this distance are highlighted. */
-export const MAIN_ROAD_METERS = 900;
-
-/**
- * The front street is the closest named street; adjoining streets are the
- * others within 110 m; main roads are rank 1–2 streets within 900 m that are
- * neither. The appraiser then paints streets by category on top of this.
- */
-export function detectStreets(p: LatLon, ways: readonly StreetWay[]): StreetDetection {
-  let front: string | null = null;
-  let best = Infinity;
-  for (const way of ways) {
-    const d = wayDistance(p, way);
-    if (d < best) {
-      best = d;
-      front = way.n;
-    }
-  }
-  const side = new Set<string>();
-  for (const way of ways) if (way.n !== front && wayDistance(p, way) < SIDE_STREET_METERS) side.add(way.n);
-  const main = new Set<string>();
-  for (const way of ways) {
-    if (way.r <= 2 && way.n !== front && !side.has(way.n) && wayDistance(p, way) < MAIN_ROAD_METERS) main.add(way.n);
-  }
-  return { front, side, main };
 }
 
 /** "A, B, C, D y 2 más". */

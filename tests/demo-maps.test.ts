@@ -30,7 +30,7 @@ import {
   seedPaint,
   streetLabels,
   type StreetPaint,
-} from "../src/features/demo-maps/highlights";
+} from "../src/features/maps/highlights";
 import { comparableCardHtml, escapeHtml } from "../src/features/demo-maps/map-content";
 import {
   CLEAN_MAP_STYLES,
@@ -231,7 +231,7 @@ test("the croquis image URL carries the center, zoom, red pin, clean-map styles 
   // Example from Google's encoded polyline documentation.
   assert.equal(encodePolyline([[38.5, -120.2], [40.7, -120.95], [43.252, -126.453]]), "_p~iF~ps|U_ulLnnqC_mqNvxq`@");
   const detection = detectStreets(SUBJECT_START, NAMED_WAYS);
-  const highlights = highlightedWays({ front: detection.front, paint: seedPaint(detection) }, DEFAULT_HIGHLIGHT_STYLES);
+  const highlights = highlightedWays({ front: detection.front, paint: seedPaint(detection, NAMED_WAYS) }, DEFAULT_HIGHLIGHT_STYLES, NAMED_WAYS);
   const center: [number, number] = [20.6354, -103.4034];
   const url = new URL(staticMapUrl({ apiKey: "k", center, zoom: 17, subject: SUBJECT_START, clean: true, highlights }));
   assert.equal(url.origin + url.pathname, "https://maps.googleapis.com/maps/api/staticmap");
@@ -244,7 +244,7 @@ test("the croquis image URL carries the center, zoom, red pin, clean-map styles 
   assert.ok(paths.some((path) => path.startsWith("color:0xc0392be6|weight:8|enc:")));
   assert.ok(url.toString().length <= 16384);
   assert.equal(new URL(staticMapUrl({ apiKey: "k", center, zoom: 15 })).searchParams.has("style"), false);
-  const hidden = highlightedWays({ front: detection.front, paint: seedPaint(detection) }, { ...DEFAULT_HIGHLIGHT_STYLES, front: { ...DEFAULT_HIGHLIGHT_STYLES.front, on: false } });
+  const hidden = highlightedWays({ front: detection.front, paint: seedPaint(detection, NAMED_WAYS) }, { ...DEFAULT_HIGHLIGHT_STYLES, front: { ...DEFAULT_HIGHLIGHT_STYLES.front, on: false } }, NAMED_WAYS);
   assert.ok(hidden.every((item) => item.way.n !== detection.front));
 });
 

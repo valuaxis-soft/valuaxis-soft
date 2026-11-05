@@ -20,9 +20,23 @@ import type { GeocodingResult } from "@/features/maps/server/geocoding.service";
 
 import { COMPARABLE_PIN_COLORS, DEFAULT_CROQUIS_SETTINGS, croquisKind, type ComparablePin, type CroquisKind, type CroquisSettings } from "../croquis";
 import { loadGoogleMaps } from "../google-maps-loader";
+import {
+  HIGHLIGHT_TITLES,
+  highlightedWays,
+  paintFromStreets,
+  paintStreet,
+  seedPaint,
+  streetLabels,
+  streetsFromPaint,
+  type CategoryKey,
+  type StreetHighlights,
+} from "../highlights";
 import { MAP_CORNERS, NORTH_ARROW_STYLES, frameCenter, frameFromView, type MapCorner, type NorthArrowStyle } from "../map-styles";
+import { detectStreets, type StreetWay } from "../streets";
+import { OSM_ATTRIBUTION } from "../streets-osm";
 import type { LatLon } from "../types";
 import { NorthArrow } from "./north-arrow";
+import { StreetHighlightsPanel } from "./street-highlights";
 import type { MapView } from "./subject-map";
 
 const mapLoading = () => <Skeleton className="h-[380px] w-full rounded-none sm:h-[460px]" />;
@@ -31,6 +45,7 @@ const SubjectMap = dynamic(() => import("./subject-map").then((module) => module
 /** Where the map opens before the subject is placed: Mexico as a whole. */
 const MEXICO_VIEW: MapView = { center: [23.6, -102.5], zoom: 5 };
 const PLACED_ZOOM = 17;
+const NO_STREETS: readonly StreetWay[] = [];
 
 type MapMode = "loading" | "google" | "failed";
 
@@ -56,10 +71,13 @@ export interface LocationPanelProps {
 /**
  * "Ubicación y croquis del inmueble": the map to place the subject (address
  * search or dragging the pin), the clean map, the north arrow, whether the
- * comparables show, the frame of each croquis and "Aplicar al croquis",
- * which stores each croquis as an image of the valuation and puts it in the
- * section. The pin and the settings save on every change; the images go
- * into the document and are saved with it.
+ * comparables show, the highlighted streets (etapa 2: the streets around the
+ * pin come from OpenStreetMap through the server, the front street is
+ * detected and the nearby ones suggested when the pin moves, and the
+ * appraiser paints by category), the frame of each croquis and "Aplicar al
+ * croquis", which stores each croquis as an image of the valuation and puts
+ * it in the section. The pin and the settings save on every change; the
+ * images go into the document and are saved with it.
  */
 export function LocationPanel({ valuationId, readOnly, googleMaps, address, captures, onCroquisImage }: LocationPanelProps) {
   const [data, setData] = useState<SubjectLocationDto | null>(null);
@@ -73,6 +91,11 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
   const [view, setView] = useState<MapView & { key: number }>({ ...MEXICO_VIEW, key: 0 });
   const liveView = useRef<MapView>(MEXICO_VIEW);
   const canEdit = !readOnly && !(data?.locked ?? false);
+  /** The streets around the pin, with the cell of the pin they were fetched for; loading while the cell differs. */
+  const [loaded, setLoaded] = useState<{ key: string; ways: readonly StreetWay[]; problem: string | null }>({ key: "", ways: [], problem: null });
+  const [category, setCategory] = useState<CategoryKey>("principal");
+  /** True after the pin moves: the next streets that arrive seed the front street and the suggestion again. */
+  const reseed = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +131,8 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
 
   const subject = data?.location?.point ?? null;
   const settings = data?.croquis ?? DEFAULT_CROQUIS_SETTINGS;
+  const highlights = settings.streets;
+  const withStreets = !captures.includes("comparables");
   const comparables = useMemo<readonly ComparablePin[]>(() => data?.comparables ?? [], [data]);
   const shownPins = useMemo(() => (settings.includeComparables || captures.includes("comparables") ? comparables : []), [settings.includeComparables, captures, comparables]);
 
@@ -130,6 +155,7 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
   const placeSubject = (point: LatLon, source: "busqueda" | "pin", foundAddress: string | null, recenter: boolean) => {
     setData((current) => (current ? { ...current, location: { point, address: foundAddress, source, updatedAt: new Date().toISOString() } } : current));
     if (recenter) setView((v) => ({ center: point, zoom: PLACED_ZOOM, key: v.key + 1 }));
+    reseed.current = true;
     void save({ location: { point: [point[0], point[1]], address: foundAddress, source } });
   };
 
@@ -138,6 +164,59 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
     setData((current) => (current ? { ...current, croquis: next } : current));
     void save({ croquis: next });
   };
+  const updateHighlights = (patch: Partial<StreetHighlights>) => updateSettings({ streets: { ...highlights, ...patch } });
+
+  // The streets around the pin, through the server; cached there by rounded coordinates, so only a move beyond the cell asks again.
+  const subjectKey = subject ? `${subject[0].toFixed(3)},${subject[1].toFixed(3)}` : "";
+  useEffect(() => {
+    if (!subject || !withStreets) return;
+    let cancelled = false;
+    api.maps
+      .streets(subject)
+      .then((dto) => {
+        if (!cancelled) setLoaded({ key: subjectKey, ways: dto.ways, problem: dto.ways.length ? null : "OpenStreetMap no tiene calles con nombre alrededor de este punto." });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setLoaded({ key: subjectKey, ways: [], problem: error instanceof Error && error.message ? error.message : "No se pudieron obtener las calles." });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectKey, withStreets]);
+  const streets = loaded.key === subjectKey ? loaded.ways : NO_STREETS;
+  const streetsStatus = !subject ? null : loaded.key !== subjectKey ? "Buscando las calles alrededor del inmueble…" : loaded.problem;
+
+  // The pin moved (or was never detected): the front street and the suggestion come from the streets that arrived.
+  useEffect(() => {
+    if (!subject || !streets.length || !canEdit) return;
+    if (!reseed.current && highlights.front !== null) return;
+    reseed.current = false;
+    const detection = detectStreets(subject, streets);
+    updateHighlights({ front: detection.front, streets: streetsFromPaint(seedPaint(detection, streets)) });
+    // Runs when the streets arrive or the pin moves within the streets already loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streets, subject]);
+
+  const highlightedItems = useMemo(
+    () => (withStreets ? highlightedWays({ front: highlights.front, paint: paintFromStreets(highlights.streets) }, highlights.styles, streets) : []),
+    [withStreets, highlights, streets],
+  );
+  const labels = useMemo(() => (highlights.names && subject ? streetLabels(highlightedItems, subject) : []), [highlights.names, highlightedItems, subject]);
+
+  const onStreetClick = (name: string) => {
+    if (!canEdit) return;
+    if (name === highlights.front) {
+      toast(`${name} es la calle de frente: siempre se resalta`);
+      return;
+    }
+    const next = paintStreet(paintFromStreets(highlights.streets), name, category, highlights.front);
+    updateHighlights({ streets: streetsFromPaint(next) });
+    const painted = next.get(name);
+    toast(painted ? `${name}: ${HIGHLIGHT_TITLES[painted].toLowerCase()}` : `${name}: ya no se resalta`);
+  };
+
+  const removeStreet = (name: string) => updateHighlights({ streets: highlights.streets.filter((street) => street.name !== name) });
 
   const onSearch = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -177,20 +256,24 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
     try {
       const placed: string[] = [];
       const missing: string[] = [];
+      const omitted: string[] = [];
       for (const kind of captures) {
         const frame = settings[kind];
-        const image = await api.valuations.croquis(valuationId, {
+        const { image, omittedStreets } = await api.valuations.croquis(valuationId, {
           kind,
           center: [...frameCenter(frame, subject)] as [number, number],
           zoom: frame.zoom,
           clean: settings.clean,
           northArrow: settings.northArrow,
           includeComparables: settings.includeComparables,
+          streets: highlights,
         });
         (onCroquisImage(kind, image.url) ? placed : missing).push(croquisKind(kind).title);
+        if (omittedStreets.length) omitted.push(`${croquisKind(kind).title}: ${omittedStreets.join(", ")}`);
       }
       if (placed.length) toast.success(`Croquis actualizado: ${placed.join(" y ")}`, { description: "Guarda el avalúo para conservarlo en el documento." });
       if (missing.length) toast.warning(`${missing.join(" y ")}: la sección no está en el documento, así que la imagen no se colocó.`);
+      if (omitted.length) toast.warning("Algunas calles no cupieron en el croquis; quita las más lejanas o acerca el encuadre.", { description: omitted.join(" · ") });
     } catch (error) {
       report(error, "No se pudo generar el croquis.");
     } finally {
@@ -271,6 +354,10 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
             onSubjectMove={canEdit ? (point) => placeSubject(point, "pin", null, false) : undefined}
             clean={settings.clean}
             pins={shownPins}
+            streets={canEdit && withStreets ? streets : NO_STREETS}
+            highlights={highlightedItems}
+            labels={labels}
+            onStreetClick={onStreetClick}
             view={view}
             onViewChange={(next) => {
               liveView.current = next;
@@ -351,6 +438,19 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
           </div>
         ))}
       </div>
+
+      {withStreets ? (
+        <StreetHighlightsPanel
+          value={highlights}
+          category={category}
+          onCategoryChange={setCategory}
+          onChange={updateHighlights}
+          onRemove={removeStreet}
+          status={streetsStatus}
+          disabled={!canEdit || !subject}
+          attribution={OSM_ATTRIBUTION}
+        />
+      ) : null}
 
       {shownPins.length ? (
         <ul className="grid gap-0.5 text-xs text-muted-foreground" aria-label="Comparables en el mapa">

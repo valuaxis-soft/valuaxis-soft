@@ -1,9 +1,9 @@
 /**
  * The croquis of a valuation (etapa 1 of the maps quote): what the appraiser
  * sets (the frames of the macro and micro croquis and of the map of
- * comparables, the clean map, the north arrow, whether the comparables show),
- * the numbered pins of the comparables and the overlay the server composes
- * over the Maps Static API image. Pure values and functions, tested without
+ * comparables, the clean map, the north arrow, whether the comparables show,
+ * the highlighted streets of etapa 2), the numbered pins of the comparables
+ * and the overlays the server composes over the Maps Static API image. Pure values and functions, tested without
  * a browser; the settings persist with the subject property
  * (subject-location.ts).
  */
@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { COMPARABLE_TYPES, type ComparableType } from "@/features/valuations/calculation/market-types";
 
+import { DEFAULT_STREET_HIGHLIGHTS, streetHighlightsSchema, type StreetLabel } from "./highlights";
 import { DEFAULT_NORTH_ARROW, MACRO_FRAME, MAP_CORNERS, MICRO_FRAME, NORTH_ARROW_STYLES, type CroquisFrame, type NorthArrow } from "./map-styles";
 import { STATIC_MAP_SIZE, imagePosition } from "./static-map";
 import type { LatLon } from "./types";
@@ -61,6 +62,8 @@ export const croquisSettingsSchema = z.object({
   northArrow: northArrowSchema,
   /** The comparables with coordinates, numbered, on the croquis and on the interactive map. */
   includeComparables: z.boolean(),
+  /** Etapa 2: the front street, the painted streets, their palette and whether the names show. */
+  streets: streetHighlightsSchema,
 });
 
 export type CroquisSettings = z.infer<typeof croquisSettingsSchema>;
@@ -72,6 +75,7 @@ export const DEFAULT_CROQUIS_SETTINGS: CroquisSettings = {
   clean: true,
   northArrow: DEFAULT_NORTH_ARROW,
   includeComparables: false,
+  streets: DEFAULT_STREET_HIGHLIGHTS,
 };
 
 /** Settings as stored, completed with the defaults; invalid or missing pieces take the default. */
@@ -90,6 +94,7 @@ export function readCroquisSettings(value: unknown): CroquisSettings {
     clean: pick(z.boolean(), "clean", DEFAULT_CROQUIS_SETTINGS.clean),
     northArrow: pick(northArrowSchema, "northArrow", DEFAULT_CROQUIS_SETTINGS.northArrow),
     includeComparables: pick(z.boolean(), "includeComparables", DEFAULT_CROQUIS_SETTINGS.includeComparables),
+    streets: pick(streetHighlightsSchema, "streets", DEFAULT_CROQUIS_SETTINGS.streets),
   };
 }
 
@@ -179,6 +184,40 @@ export function pinsOverlaySvg(center: LatLon, zoom: number, pins: readonly Comp
         `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}" stroke="#fff" stroke-width="${1.5 * scale}"/>` +
         `<rect x="${(Number(x) + r * 0.6).toFixed(1)}" y="${(Number(y) - r * 0.85).toFixed(1)}" width="${(pin.label.length * 7 + 8) * scale}" height="${r * 1.7}" rx="${2 * scale}" fill="rgba(255,255,255,0.92)" stroke="${color}" stroke-width="${scale}"/>` +
         `<text x="${(Number(x) + r * 0.6 + 4 * scale).toFixed(1)}" y="${(Number(y) + r * 0.4).toFixed(1)}" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="${11 * scale}" fill="#12212f">${escapeXml(pin.label)}</text>` +
+        `</g>`,
+    ];
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${items.join("")}</svg>`;
+}
+
+/** Height of a street name chip on the image, in map pixels; its width follows the text. */
+const LABEL_HEIGHT = 16;
+const LABEL_FONT = 11;
+/** Average width of a character of the label's font, in map pixels. */
+const LABEL_CHAR_WIDTH = 6.2;
+
+/**
+ * The street names as an SVG the size of the image: a white chip with the
+ * name, centered above its point and with the color of its category on the
+ * left edge, like the chips of the interactive map. Names whose point falls
+ * outside the frame are left out.
+ */
+export function streetLabelsOverlaySvg(center: LatLon, zoom: number, labels: readonly StreetLabel[], scale = 2) {
+  const width = STATIC_MAP_SIZE.width * scale;
+  const height = STATIC_MAP_SIZE.height * scale;
+  const items = labels.flatMap((label) => {
+    const at = imagePosition(center, zoom, label.point);
+    if (!at) return [];
+    const chipWidth = (label.name.length * LABEL_CHAR_WIDTH + 10) * scale;
+    const chipHeight = LABEL_HEIGHT * scale;
+    // Centered over the point, 6 px above it, and kept inside the image.
+    const x = Math.min(Math.max(at.x * width - chipWidth / 2, 2 * scale), width - chipWidth - 2 * scale);
+    const y = Math.max(at.y * height - chipHeight - 6 * scale, 2 * scale);
+    return [
+      `<g>` +
+        `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${chipWidth.toFixed(1)}" height="${chipHeight}" rx="${2 * scale}" fill="rgba(255,255,255,0.95)" stroke="rgba(0,0,0,0.18)" stroke-width="${scale}"/>` +
+        `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${3 * scale}" height="${chipHeight}" fill="${escapeXml(label.color)}"/>` +
+        `<text x="${(x + 6 * scale).toFixed(1)}" y="${(y + chipHeight * 0.72).toFixed(1)}" font-family="Arial, Helvetica, sans-serif" font-weight="600" font-size="${LABEL_FONT * scale}" fill="#12212f">${escapeXml(label.name)}</text>` +
         `</g>`,
     ];
   });
