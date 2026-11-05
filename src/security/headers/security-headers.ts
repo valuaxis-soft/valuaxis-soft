@@ -43,12 +43,14 @@ const GOOGLE_MAPS_SOURCES: Record<string, string[]> = {
 };
 
 /**
- * The pages that load Google Maps: the maps demonstration (/demo/…) and the
- * valuation editor (/workspace, where the croquis panel renders the map).
- * Nowhere else: not the editor's preview window, not the dictamen.
+ * The pages that load Google Maps: the maps demonstration (/demo/…), the
+ * valuation editor (/workspace, where the croquis panel and the map of
+ * comparables render) and the Comparables page (/comparables, its map view).
+ * Nowhere else: not the editor's preview window, not the dictamen, not the
+ * card of a comparable (/comparables/<id>, which draws its map with Leaflet).
  */
 export function googleMapsPage(pathname: string) {
-  return pathname.startsWith("/demo/") || pathname === "/workspace";
+  return pathname.startsWith("/demo/") || pathname === "/workspace" || pathname === "/comparables";
 }
 
 export function contentSecurityPolicy(options: { development: boolean; nonce: string; googleMaps?: boolean }) {

@@ -15,7 +15,7 @@ import { comparableValidity, type ComparableValidity } from "../calculation/comp
 import { isRentComparableType, type ComparableType } from "../calculation/market-types";
 import { searchTokens } from "../comparable-search/normalize";
 import {
-  AREA, FIRM_BASE_FROM, HAYSTACK, firmBaseCondition, likePattern, placeCondition, postalCodeCondition, wordsIn,
+  AREA, COMPARABLE_POINT, FIRM_BASE_FROM, HAYSTACK, firmBaseCondition, likePattern, placeCondition, postalCodeCondition, wordsIn,
 } from "../comparable-search/own-base-sql";
 import { COMPARABLE_LIST_PAGE_SIZE, type ComparableListParams, type ComparableSort, type CountMode } from "./comparable-list-params";
 
@@ -122,6 +122,23 @@ const capturesOf = (organizationId: number) => Prisma.sql`
   ${FIRM_BASE_FROM}
   WHERE ${firmBaseCondition(organizationId)}`;
 
+/**
+ * `WITH "captures", "latest"`: every capture of the base, and the most
+ * recent one of each comparable (the row the list and the map show), to
+ * read as `c` joined with its property `p` and its type `t`.
+ */
+export const latestCapturesCte = (organizationId: number) => Prisma.sql`
+  WITH "captures" AS (${capturesOf(organizationId)}),
+  "latest" AS (
+    SELECT DISTINCT ON ("baseKey") * FROM "captures"
+    ORDER BY "baseKey", "DFechaActualizacionDatos" DESC, "DFechaSeleccion" DESC, "IdComparableAvaluo" DESC
+  )`;
+
+/** `FROM "latest" c` with its property and its type, as the conditions expect them. */
+export const LATEST_FROM = Prisma.sql`FROM "latest" c
+    JOIN "devpware_propiedades" p ON p."IdPropiedad" = c."IdPropiedad"
+    JOIN "devpware_tipos_comparables" t ON t."IdTipoComparable" = c."IdTipoComparable"`;
+
 /** Bedrooms or bathrooms: exactly, at least or at most that many (halves of a bathroom count). */
 function countCondition(expression: Prisma.Sql, value: number | null, mode: CountMode): Prisma.Sql[] {
   if (value === null) return [];
@@ -171,7 +188,8 @@ export async function comparableAttributeNames(organizationId: number): Promise<
   return rows.map((row) => row.name);
 }
 
-function conditions(params: ComparableListParams, today: string, firmMonths: number): Prisma.Sql[] {
+/** The filters of the list (and of the map) as conditions over `c`, `p` and `t`; the text is matched word by word. */
+export function comparableBaseConditions(params: ComparableListParams, today: string, firmMonths: number): Prisma.Sql[] {
   const folio = parseComparableId(params.q);
   const range = (expression: Prisma.Sql, min: number | null, max: number | null) => [
     ...(min === null ? [] : [Prisma.sql`${expression} >= ${min}`]),
@@ -206,6 +224,8 @@ function conditions(params: ComparableListParams, today: string, firmMonths: num
     ...(params.to ? [Prisma.sql`${DATA_DAY} <= ${params.to}::date`] : []),
     ...(params.validity === "VIGENTE" ? [Prisma.sql`${VALID_UNTIL(firmMonths)} >= ${today}::date`] : []),
     ...(params.validity === "VENCIDO" ? [Prisma.sql`${VALID_UNTIL(firmMonths)} < ${today}::date`] : []),
+    ...(params.located === "con" ? [Prisma.sql`${COMPARABLE_POINT} IS NOT NULL`] : []),
+    ...(params.located === "sin" ? [Prisma.sql`${COMPARABLE_POINT} IS NULL`] : []),
   ];
 }
 
@@ -231,13 +251,9 @@ export async function listComparableBase(
   const today = options.today ?? todayInMexico();
   const pageSize = options.pageSize ?? COMPARABLE_LIST_PAGE_SIZE;
   const firmMonths = await firmComparableMonths(prisma, organizationId);
-  const where = conditions(params, today, firmMonths);
+  const where = comparableBaseConditions(params, today, firmMonths);
   const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
-    WITH "captures" AS (${capturesOf(organizationId)}),
-    "latest" AS (
-      SELECT DISTINCT ON ("baseKey") * FROM "captures"
-      ORDER BY "baseKey", "DFechaActualizacionDatos" DESC, "DFechaSeleccion" DESC, "IdComparableAvaluo" DESC
-    )
+    ${latestCapturesCte(organizationId)}
     SELECT
       c."UIdentificadorPublico"::text AS "id",
       c."baseKey",
@@ -255,9 +271,7 @@ export async function listComparableBase(
       c."JImagenesSnapshot" AS "photos",
       c."DFechaActualizacionDatos" AS "dataUpdatedAt",
       count(*) OVER () AS "total"
-    FROM "latest" c
-    JOIN "devpware_propiedades" p ON p."IdPropiedad" = c."IdPropiedad"
-    JOIN "devpware_tipos_comparables" t ON t."IdTipoComparable" = c."IdTipoComparable"
+    ${LATEST_FROM}
     ${where.length ? Prisma.sql`WHERE ${Prisma.join(where, " AND ")}` : Prisma.empty}
     ORDER BY ${orderOf(params.sort, firmMonths)}, c."IdComparableAvaluo" DESC
     LIMIT ${pageSize} OFFSET ${(params.page - 1) * pageSize}
@@ -302,15 +316,9 @@ export async function listComparableBase(
 /** The total when the page asked for is past the last one (no row brings the count). */
 async function countComparableBase(organizationId: number, where: Prisma.Sql[]) {
   const [row] = await prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
-    WITH "captures" AS (${capturesOf(organizationId)}),
-    "latest" AS (
-      SELECT DISTINCT ON ("baseKey") * FROM "captures"
-      ORDER BY "baseKey", "DFechaActualizacionDatos" DESC, "DFechaSeleccion" DESC, "IdComparableAvaluo" DESC
-    )
+    ${latestCapturesCte(organizationId)}
     SELECT count(*) AS "total"
-    FROM "latest" c
-    JOIN "devpware_propiedades" p ON p."IdPropiedad" = c."IdPropiedad"
-    JOIN "devpware_tipos_comparables" t ON t."IdTipoComparable" = c."IdTipoComparable"
+    ${LATEST_FROM}
     ${where.length ? Prisma.sql`WHERE ${Prisma.join(where, " AND ")}` : Prisma.empty}
   `);
   return Number(row?.total ?? 0);

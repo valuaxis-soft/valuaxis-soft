@@ -14,6 +14,8 @@ import {
   COMPARABLE_SORT_LABELS,
   COUNT_MODES,
   COUNT_MODE_LABELS,
+  LOCATED_FILTERS,
+  LOCATED_FILTER_LABELS,
   hasAdvancedFilters,
   hasFilters,
   type ComparableListParams,
@@ -43,6 +45,8 @@ export function ComparableBaseFilters({ params, attributeNames = [], sourceNames
 }) {
   return (
     <form action="/comparables" method="get" role="search" className="grid gap-3" aria-label="Buscar comparables">
+      {/* The map view stays through a search; the list needs nothing. */}
+      {params.view === "mapa" ? <input type="hidden" name="vista" value="mapa" /> : null}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative w-full sm:max-w-md">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -62,7 +66,7 @@ export function ComparableBaseFilters({ params, attributeNames = [], sourceNames
         <div className="flex gap-2">
           <Button type="submit" variant="secondary" className="h-9 px-3">Buscar</Button>
           {hasFilters(params) ? (
-            <Link href="/comparables" className={cn(buttonVariants({ variant: "ghost" }), "h-9 px-3")}>Limpiar</Link>
+            <Link href={params.view === "mapa" ? "/comparables?vista=mapa" : "/comparables"} className={cn(buttonVariants({ variant: "ghost" }), "h-9 px-3")}>Limpiar</Link>
           ) : null}
         </div>
       </div>
@@ -179,6 +183,12 @@ export function ComparableBaseFilters({ params, attributeNames = [], sourceNames
             <NativeSelect id="filtro-vigencia" name="vigencia" defaultValue={params.validity?.toLowerCase() ?? ""} className="w-full [&_select]:h-9">
               <NativeSelectOption value="">Vigentes y vencidos</NativeSelectOption>
               {VALIDITY_STATUSES.map((item) => <NativeSelectOption key={item} value={item.toLowerCase()}>{VALIDITY_STATUS_LABELS[item]}s</NativeSelectOption>)}
+            </NativeSelect>
+          </Filter>
+          <Filter label="Ubicación en el mapa" htmlFor="filtro-ubicacion">
+            <NativeSelect id="filtro-ubicacion" name="ubicacion" defaultValue={params.located ?? ""} className="w-full [&_select]:h-9">
+              <NativeSelectOption value="">Con y sin ubicación</NativeSelectOption>
+              {LOCATED_FILTERS.map((item) => <NativeSelectOption key={item} value={item}>{LOCATED_FILTER_LABELS[item]}</NativeSelectOption>)}
             </NativeSelect>
           </Filter>
           <fieldset className="grid gap-1 sm:col-span-2 lg:col-span-4">
