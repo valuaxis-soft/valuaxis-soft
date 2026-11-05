@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import type { DemoComparable, LatLon } from "../geo";
-import { macroHighlights, streetLabels, type HighlightedWay, type StreetLabel } from "../highlights";
+import { macroHighlights, streetLabels, type HighlightedWay, type StreetLabel } from "@/features/maps/highlights";
 import { STREET_LABEL_CLASS } from "../map-content";
 import { frameCenter, type CroquisFrame, type NorthArrow as NorthArrowConfig } from "@/features/maps/map-styles";
 import { imagePosition, staticMapUrl } from "../static-map";

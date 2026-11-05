@@ -25,6 +25,7 @@ import {
   type ComparableForPin,
 } from "../src/features/maps/croquis";
 import { findCroquisImage, withCroquisImage } from "../src/features/maps/croquis-document";
+import { DEFAULT_STREET_HIGHLIGHTS } from "../src/features/maps/highlights";
 import { MACRO_FRAME, MICRO_FRAME } from "../src/features/maps/map-styles";
 import { NORTH_ARROW_BOX, northArrowPlacement, northArrowSvg } from "../src/features/maps/north-arrow-symbols";
 import { STATIC_MAP_SIZE, imagePosition, staticColor, staticMapUrl } from "../src/features/maps/static-map";
@@ -75,7 +76,7 @@ test("the overlay draws each pin where its point falls on the image, with its nu
 });
 
 test("the settings default to the demonstration's frames and read back what is valid, piece by piece", () => {
-  assert.deepEqual(DEFAULT_CROQUIS_SETTINGS, { macro: MACRO_FRAME, micro: MICRO_FRAME, comparables: COMPARABLES_FRAME, clean: true, northArrow: { style: "flecha", corner: "top-right" }, includeComparables: false });
+  assert.deepEqual(DEFAULT_CROQUIS_SETTINGS, { macro: MACRO_FRAME, micro: MICRO_FRAME, comparables: COMPARABLES_FRAME, clean: true, northArrow: { style: "flecha", corner: "top-right" }, includeComparables: false, streets: DEFAULT_STREET_HIGHLIGHTS });
   assert.deepEqual(CROQUIS_KINDS.map((item) => item.kind), ["macro", "micro", "comparables"]);
   assert.equal(CROQUIS_KINDS[0].caption, "Croquis de macrolocalización");
   assert.deepEqual(readCroquisSettings(undefined), DEFAULT_CROQUIS_SETTINGS);

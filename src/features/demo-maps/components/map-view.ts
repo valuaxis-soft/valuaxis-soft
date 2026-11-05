@@ -1,5 +1,5 @@
 import type { DemoComparable, LatLon } from "../geo";
-import type { HighlightedWay, StreetLabel } from "../highlights";
+import type { HighlightedWay, StreetLabel } from "@/features/maps/highlights";
 
 export type Stage = "etapa-1" | "etapa-2" | "etapa-3";
 

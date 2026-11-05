@@ -42,6 +42,7 @@ import {
 import { loadGoogleMaps } from "@/features/maps/google-maps-loader";
 import {
   DEFAULT_HIGHLIGHT_STYLES,
+  HIGHLIGHT_TITLES,
   STREET_CATEGORIES,
   WEIGHT_RANGE,
   highlightedWays,
@@ -54,7 +55,7 @@ import {
   type HighlightStyle,
   type HighlightStyles,
   type StreetPaint,
-} from "../highlights";
+} from "@/features/maps/highlights";
 import {
   DEFAULT_NORTH_ARROW,
   MACRO_FRAME,
@@ -80,15 +81,10 @@ const STAGES: { value: Stage; title: string; subtitle: string }[] = [
   { value: "etapa-3", title: "Etapa 3", subtitle: "Mapa de comparables" },
 ];
 
-const HIGHLIGHT_TITLES: Record<HighlightKey, string> = {
-  front: "Calle de frente",
-  ...Object.fromEntries(STREET_CATEGORIES.map((category) => [category.key, category.title])),
-} as Record<HighlightKey, string>;
-
 /** Same seed, same 34 comparables on every visit. */
 const COMPARABLES = generateComparables();
 const START_DETECTION = detectStreets(SUBJECT_START, NAMED_WAYS);
-const START_PAINT = seedPaint(START_DETECTION);
+const START_PAINT = seedPaint(START_DETECTION, NAMED_WAYS);
 
 type MapMode = "loading" | "google" | "leaflet";
 
@@ -154,12 +150,12 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
   const shown = useMemo(() => COMPARABLES.filter((c) => passesFilters(c, filters)), [filters]);
   const near = useMemo(() => comparablesWithinRadius(shown, subject, radius), [shown, subject, radius]);
 
-  const highlights = useMemo(() => highlightedWays({ front: detection.front, paint }, styles), [detection.front, paint, styles]);
+  const highlights = useMemo(() => highlightedWays({ front: detection.front, paint }, styles, NAMED_WAYS), [detection.front, paint, styles]);
   const labels = useMemo(() => (showNames ? streetLabels(highlights, subject) : []), [showNames, highlights, subject]);
 
   const moveSubject = useCallback((point: LatLon, recenter: boolean) => {
     setSubject(point);
-    setPaint(seedPaint(detectStreets(point, NAMED_WAYS)));
+    setPaint(seedPaint(detectStreets(point, NAMED_WAYS), NAMED_WAYS));
     if (recenter) setView((v) => ({ center: point, zoom: 17, key: v.key + 1 }));
   }, []);
 
@@ -235,7 +231,7 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
       front: START_DETECTION.front,
       macro: MACRO_FRAME,
       micro: MICRO_FRAME,
-      highlights: highlightedWays({ front: START_DETECTION.front, paint: START_PAINT }, DEFAULT_HIGHLIGHT_STYLES),
+      highlights: highlightedWays({ front: START_DETECTION.front, paint: START_PAINT }, DEFAULT_HIGHLIGHT_STYLES, NAMED_WAYS),
       names: true,
       clean: true,
       northArrow: DEFAULT_NORTH_ARROW,

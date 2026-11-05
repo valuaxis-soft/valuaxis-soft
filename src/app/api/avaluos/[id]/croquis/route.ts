@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { CROQUIS_KINDS, latLonSchema, northArrowSchema, pinsForCroquis, type CroquisKind } from "@/features/maps/croquis";
+import { streetHighlightsSchema } from "@/features/maps/highlights";
 import { renderAndStoreCroquis } from "@/features/maps/server/croquis-image.service";
 import { getSubjectLocation } from "@/features/maps/server/subject-location.service";
 import { findValuation } from "@/features/valuations/calculation/access";
@@ -20,13 +21,15 @@ const bodySchema = z.object({
   clean: z.boolean(),
   northArrow: northArrowSchema,
   includeComparables: z.boolean(),
+  streets: streetHighlightsSchema,
 });
 
 /**
  * "Aplicar al croquis": renders one croquis (macro, micro or the map of
  * comparables) with the stored pin of the subject and stores it as an image
- * of the valuation. The editor then puts it in its section and saves the
- * document as usual. Counts against the upload limit, like any image.
+ * of the valuation, with the highlighted streets of etapa 2 drawn on it.
+ * The editor then puts it in its section and saves the document as usual.
+ * Counts against the upload limit, like any image.
  */
 export async function POST(request: Request, { params }: RouteContext<"/api/avaluos/[id]/croquis">) {
   try {
@@ -43,8 +46,8 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     const stored = await getSubjectLocation(id, auth.user.organizationId);
     if (!stored.location) throw new ValuationWorkflowError("Primero ubica el inmueble sujeto en el mapa.", 400);
 
-    const { kind, center, zoom, clean, northArrow, includeComparables } = body.data;
-    const image = await renderAndStoreCroquis(auth.user, {
+    const { kind, center, zoom, clean, northArrow, includeComparables, streets } = body.data;
+    const result = await renderAndStoreCroquis(auth.user, {
       kind,
       center,
       zoom,
@@ -52,8 +55,9 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
       clean,
       northArrow,
       pins: pinsForCroquis(kind, { includeComparables }, stored.comparables),
+      streets,
     });
-    return NextResponse.json({ data: image }, { status: 201 });
+    return NextResponse.json({ data: result }, { status: 201 });
   } catch (error) {
     return valuationErrorResponse("CROQUIS", error, "No se pudo generar el croquis.");
   }

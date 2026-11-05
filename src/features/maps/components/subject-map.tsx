@@ -5,7 +5,9 @@
 import { useEffect, useRef } from "react";
 
 import { COMPARABLE_PIN_COLORS, SUBJECT_PIN_COLOR, type ComparablePin } from "../croquis";
+import { isMacroZoom, isMainRoad, type HighlightedWay, type StreetLabel } from "../highlights";
 import { CLEAN_MAP_STYLES } from "../map-styles";
+import type { StreetWay } from "../streets";
 import type { LatLon } from "../types";
 
 const toLatLng = (p: LatLon): google.maps.LatLngLiteral => ({ lat: p[0], lng: p[1] });
@@ -17,6 +19,11 @@ const SUBJECT_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
 /** The number of a comparable beside its pin: a white chip, readable over any map. */
 const PIN_LABEL_CLASS =
   "rounded-sm! border-0! bg-white/95! px-1! py-px! text-[11px]! leading-4! font-bold! text-[#12212f]! whitespace-nowrap! shadow-[0_0_0_1px_rgba(0,0,0,.18)]!";
+/** Street name next to a highlighted street: the same chip, a little lighter. */
+const STREET_LABEL_CLASS =
+  "rounded-sm! border-0! bg-white/95! px-1! py-px! text-[11px]! leading-4! font-semibold! text-[#12212f]! whitespace-nowrap! shadow-[0_0_0_1px_rgba(0,0,0,.18)]! before:hidden!";
+/** The invisible, wide line that catches the click on a street. */
+const HIT_LINE_COLOR = "#1f7ac2";
 
 /** `styles` is mutable in the API's types; the rules themselves never change. */
 const mapStyles = (clean: boolean) => (clean ? CLEAN_MAP_STYLES.map((rule) => ({ ...rule, stylers: [...rule.stylers] })) : null);
@@ -35,6 +42,13 @@ export interface SubjectMapProps {
   clean: boolean;
   /** Numbered pins of the comparables; empty when they are not included. */
   pins: readonly ComparablePin[];
+  /** Etapa 2: the streets that can be touched to paint them; empty while they load or when the valuation is concluded. */
+  streets: readonly StreetWay[];
+  /** Streets to paint, already in drawing order. */
+  highlights: readonly HighlightedWay[];
+  /** Names next to the highlighted streets; empty when hidden. */
+  labels: readonly StreetLabel[];
+  onStreetClick?: (name: string) => void;
   /** A new key moves the map to this center and zoom. */
   view: MapView & { key: number };
   /** The map reports where the user left it, for "Tomar del mapa". */
@@ -47,7 +61,11 @@ interface Parts {
   hover: google.maps.InfoWindow;
 }
 
-/** The interactive map of the croquis panel: the subject's pin, the comparables numbered, the clean base. Needs the Maps JavaScript API loaded. */
+/**
+ * The interactive map of the croquis panel: the subject's pin, the
+ * comparables numbered, the highlighted streets with their names and the
+ * clean base. Needs the Maps JavaScript API loaded.
+ */
 export function SubjectMap(props: SubjectMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const partsRef = useRef<Parts | null>(null);
@@ -56,7 +74,7 @@ export function SubjectMap(props: SubjectMapProps) {
     latest.current = props;
   });
 
-  const { subject, onSubjectMove, clean, pins, view } = props;
+  const { subject, onSubjectMove, clean, pins, streets, highlights, labels, view } = props;
   const draggable = Boolean(onSubjectMove);
 
   // Created once; the effects below run after this one in the same commit.
@@ -146,6 +164,68 @@ export function SubjectMap(props: SubjectMapProps) {
       }
     };
   }, [pins]);
+
+  // Etapa 2: every named street can be touched to paint it; at macro zoom, only the avenues.
+  useEffect(() => {
+    const parts = partsRef.current;
+    if (!parts || !streets.length) return;
+    const lines = streets
+      .filter((way) => way.n)
+      .map((way) => {
+        const line = new google.maps.Polyline({ map: parts.map, path: way.g.map(toLatLng), strokeOpacity: 0, strokeWeight: 14, strokeColor: HIT_LINE_COLOR, zIndex: 5 });
+        line.addListener("mouseover", (event: google.maps.PolyMouseEvent) => {
+          line.setOptions({ strokeOpacity: 0.25 });
+          parts.hover.setContent(`<strong>${escapeHtml(way.n)}</strong>`);
+          if (event.latLng) parts.hover.setPosition(event.latLng);
+          parts.hover.open({ map: parts.map, shouldFocus: false });
+        });
+        line.addListener("mouseout", () => {
+          line.setOptions({ strokeOpacity: 0 });
+          parts.hover.close();
+        });
+        line.addListener("click", () => latest.current.onStreetClick?.(way.n));
+        return { way, line };
+      });
+    const sync = () => {
+      const macro = isMacroZoom(parts.map.getZoom() ?? 17);
+      for (const { way, line } of lines) line.setVisible(!macro || isMainRoad(way));
+    };
+    const listener = parts.map.addListener("zoom_changed", sync);
+    sync();
+    return () => {
+      listener.remove();
+      parts.hover.close();
+      for (const { line } of lines) {
+        google.maps.event.clearInstanceListeners(line);
+        line.setMap(null);
+      }
+    };
+  }, [streets]);
+
+  useEffect(() => {
+    const parts = partsRef.current;
+    if (!parts) return;
+    const lines = highlights.map(
+      ({ way, style }, index) =>
+        new google.maps.Polyline({ map: parts.map, path: way.g.map(toLatLng), strokeColor: style.color, strokeWeight: style.weight, strokeOpacity: 0.9, clickable: false, zIndex: 2 + index / 1000 }),
+    );
+    // A marker without a symbol carries the name as a label on a white chip.
+    const chips = labels.map(
+      (label) =>
+        new google.maps.Marker({
+          map: parts.map,
+          position: toLatLng(label.point),
+          clickable: false,
+          zIndex: 4,
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0, labelOrigin: new google.maps.Point(0, -14) },
+          label: { text: label.name, className: STREET_LABEL_CLASS, color: "#12212f", fontSize: "11px", fontWeight: "600" },
+        }),
+    );
+    return () => {
+      for (const line of lines) line.setMap(null);
+      for (const chip of chips) chip.setMap(null);
+    };
+  }, [highlights, labels]);
 
   useEffect(() => {
     const map = partsRef.current?.map;

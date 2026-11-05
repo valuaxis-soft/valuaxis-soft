@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 
 import { DEMO_VALUATIONS, NAMED_WAYS, comparableType, type LatLon } from "../geo";
-import { isMacroZoom, isMainRoad } from "../highlights";
+import { isMacroZoom, isMainRoad } from "@/features/maps/highlights";
 import { comparableCardHtml, escapeHtml, STREET_LABEL_CLASS, SUBJECT_COLOR, VALUATION_COLOR } from "../map-content";
 import { CLEAN_MAP_STYLES } from "@/features/maps/map-styles";
 import { RADIUS_COLOR, SUBJECT_TITLE, type MapViewProps } from "./map-view";

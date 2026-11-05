@@ -1,7 +1,7 @@
 import L from "leaflet";
 
 import { STREET_DATA, type DemoComparable, type LatLon } from "../geo";
-import { isMacroZoom, isMainRoad, type HighlightedWay, type StreetLabel } from "../highlights";
+import { isMacroZoom, isMainRoad, type HighlightedWay, type StreetLabel } from "@/features/maps/highlights";
 import { escapeHtml, type BasePalette, STREET_LABEL_CLASS, SUBJECT_COLOR } from "../map-content";
 
 export const latLng = (p: LatLon): L.LatLngTuple => [p[0], p[1]];

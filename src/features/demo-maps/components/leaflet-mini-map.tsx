@@ -6,7 +6,7 @@ import L from "leaflet";
 import { useEffect, useRef } from "react";
 
 import { comparableType, type DemoComparable, type LatLon } from "../geo";
-import type { HighlightedWay, StreetLabel } from "../highlights";
+import type { HighlightedWay, StreetLabel } from "@/features/maps/highlights";
 import { basePalette } from "../map-content";
 import { createPanes, latLng, drawBase, drawHighlights, subjectIcon } from "./leaflet-draw";
 

@@ -64,6 +64,8 @@ export const rateLimits = {
   comparableSearch: createRateLimiter({ limit: 30, windowMs: MINUTE }),
   /** Address searches of the croquis panel: each one is a billed Geocoding API call. */
   geocode: createRateLimiter({ limit: 30, windowMs: MINUTE }),
+  /** Streets around the pin (etapa 2): each miss of the cache is a call to a public OpenStreetMap mirror. */
+  streets: createRateLimiter({ limit: 20, windowMs: MINUTE }),
   /** AI assistance: every call is billed by the provider. One person, and the whole firm in a day. */
   aiByUser: createRateLimiter({ limit: 20, windowMs: 10 * MINUTE }),
   aiByOrganization: createRateLimiter({ limit: 200, windowMs: 24 * 60 * MINUTE }),
