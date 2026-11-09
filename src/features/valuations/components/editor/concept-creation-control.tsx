@@ -10,14 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { UNTITLED_CARATULA_CONCEPT } from "@/features/valuations/services/caratula-blocks";
 import { CONCEPT_CREATION_OPTIONS, conceptTypeLabel } from "@/features/valuations/services/concept-types";
+import { stripTextMarks } from "@/features/valuations/services/text-marks";
 
 type ConceptReference ={
     concept: Concept;
     source: string;
 }
 
-function conceptPreview(value: string) {
-  const compact = value.trim().replace(/\s+/g, " ");
+/** The value as the picker lists it: its text, without the bold, italic or underline tags. */
+export function conceptPreview(value: string) {
+  const compact = stripTextMarks(value).trim().replace(/\s+/g, " ");
   return compact.length > 42 ? `${compact.slice(0, 42)}…` : compact || "Sin dato";
 }
 

@@ -4,7 +4,16 @@ import { useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { activeTextMarks, applyTextMark, hasTextMarks, type TextMark } from "@/features/valuations/services/text-marks";
+import {
+  activeTextMarks,
+  applyTextMark,
+  hasTextMarks,
+  rawSelectionOf,
+  stripTextMarks,
+  textSelectionOf,
+  withMarkedText,
+  type TextMark,
+} from "@/features/valuations/services/text-marks";
 import { markedRuns } from "../document-concept-value";
 
 const MARKS: Array<{ mark: TextMark; letter: string; title: string; className: string }> = [
@@ -16,12 +25,26 @@ const MARKS: Array<{ mark: TextMark; letter: string; title: string; className: s
 type FieldSelection = { start: number; end: number };
 
 /**
+ * The text a field shows for a value with marks, and the value an edit of
+ * that text makes: the tags never show in the field (audit of 2 nov 2026,
+ * «se ven las etiquetas crudas <b>»), they stay in the value.
+ */
+export type MarkedTextField = {
+  text: string;
+  valueOf: (text: string) => string;
+};
+
+/**
  * Bold, italic and underline for the text field it wraps. A button applies
  * the mark to the text selected in the field, or to the whole value when
  * nothing is selected, and removes it when that text already has it; with
  * only the caret in a marked stretch, it removes the mark from that stretch.
  * Each button shows itself pressed while the text it would work on has its
  * mark, and a value with marks shows under the field the way it prints.
+ *
+ * Given as a function, the field shows the text without the tags and writes
+ * back through `valueOf`, which keeps the marks; given as an element, it
+ * shows the value as written.
  */
 export function TextMarksField({
   value,
@@ -35,14 +58,18 @@ export function TextMarksField({
   onChange: (value: string) => void;
   disabled: boolean;
   /** The input or textarea the marks apply to. */
-  children: ReactNode;
+  children: ReactNode | ((field: MarkedTextField) => ReactNode);
   className?: string;
   toolbarClassName?: string;
 }) {
   const fieldRef = useRef<HTMLDivElement>(null);
-  // Where the selection or the caret is while the field has the focus; without it, the buttons work on the whole value.
+  // Where the selection or the caret is while the field has the focus, as the field counts it; without it, the buttons work on the whole value.
   const [selection, setSelection] = useState<FieldSelection | null>(null);
-  const active = activeTextMarks(value, selection?.start, selection?.end);
+  const showsText = typeof children === "function";
+  // The field counts in the text when it shows it; the marks are worked in the value as written.
+  const toRaw = (range: FieldSelection) => (showsText ? rawSelectionOf(value, range.start, range.end) : range);
+  const rawSelection = selection ? toRaw(selection) : null;
+  const active = activeTextMarks(value, rawSelection?.start, rawSelection?.end);
 
   const field = () => fieldRef.current?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea") ?? null;
   const readSelection = () => {
@@ -56,15 +83,18 @@ export function TextMarksField({
 
   const apply = (mark: TextMark) => {
     const element = field();
-    const focused = element !== null && document.activeElement === element;
-    const start = focused ? (element.selectionStart ?? undefined) : undefined;
-    const end = focused ? (element.selectionEnd ?? undefined) : undefined;
-    const next = applyTextMark(value, mark, start, end);
+    const focused = element !== null && document.activeElement === element && element.selectionStart !== null && element.selectionEnd !== null;
+    const fieldRange = focused ? { start: element.selectionStart!, end: element.selectionEnd! } : null;
+    const raw = fieldRange ? toRaw(fieldRange) : null;
+    const next = applyTextMark(value, mark, raw?.start, raw?.end);
     if (next.value === value) return;
     onChange(next.value);
-    if (!element || start === undefined || end === undefined) return;
+    if (!element || !fieldRange) return;
     // The selection follows the text it was on; a lone caret stays a caret on the same text.
-    const range = start === end ? { start: next.selectionEnd, end: next.selectionEnd } : { start: next.selectionStart, end: next.selectionEnd };
+    const rawRange = fieldRange.start === fieldRange.end
+      ? { start: next.selectionEnd, end: next.selectionEnd }
+      : { start: next.selectionStart, end: next.selectionEnd };
+    const range = showsText ? textSelectionOf(next.value, rawRange.start, rawRange.end) : rawRange;
     setSelection(range);
     requestAnimationFrame(() => {
       element.focus();
@@ -82,7 +112,9 @@ export function TextMarksField({
       onFocus={readSelection}
       onBlur={() => setSelection(null)}
     >
-      {children}
+      {typeof children === "function"
+        ? children({ text: stripTextMarks(value), valueOf: (text) => withMarkedText(value, text) })
+        : children}
       <div className="flex min-w-0 items-start gap-2">
         {/* The buttons show while the pointer or the focus is on the field, or while the text has marks. */}
         <div

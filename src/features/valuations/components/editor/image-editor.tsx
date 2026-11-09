@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
 import { UploadButton } from "./image-upload-control";
 import { ImageFramingControl } from "./image-framing-control";
 import { DOCUMENT_IMAGE_ACCEPT } from "@/features/valuations/services/document-image-upload";
@@ -160,6 +161,7 @@ export function ImageEditorItem({
 }) {
   const selectedWidth = image.layoutWidth ?? "normal";
   const hasResource = Boolean(image.src);
+  const confirmDelete = useConfirmDelete();
 
   return (
     <section className="rounded-lg border bg-muted/20 p-3">
@@ -179,6 +181,8 @@ export function ImageEditorItem({
           </div>
         )}
         <Input
+          aria-label="Descripción de la imagen"
+          autoComplete="off"
           disabled={readOnly}
           value={image.title}
           onChange={(event) => onUpdate(image.id, { title: event.target.value })}
@@ -250,7 +254,7 @@ export function ImageEditorItem({
             variant="ghost"
             aria-label={`Quitar ${image.title}`}
             disabled={readOnly}
-            onClick={() => onRemove(image.id)}
+            onClick={() => confirmDelete({ ...deleteConfirmation("image", image.title), onConfirm: () => onRemove(image.id) })}
           >
             <Trash2 />
           </Button>
@@ -359,6 +363,7 @@ function CaptionControls({
             className="h-7 min-w-32 flex-1 text-xs"
             placeholder="Texto de leyenda"
             aria-label={`Leyenda ${index + 1}`}
+            autoComplete="off"
             disabled={readOnly}
             value={caption.text}
             onChange={(e) => change(caption.id, { text: e.target.value })}

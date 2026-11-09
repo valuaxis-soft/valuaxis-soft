@@ -12,7 +12,7 @@ import {
   validateCaratula,
 } from "@/features/valuations/services/caratula-validation";
 import { buildSectionsPayload, valuationMetaPayload } from "../model/save-payload";
-import { AUTOSAVE_DELAY_MS, shouldAutosave, statusAfterSave } from "../model/save-status";
+import { AUTOSAVE_DELAY_MS, isSaveShortcut, shouldAutosave, statusAfterSave } from "../model/save-status";
 import type { EditorState } from "./use-editor-state";
 
 /**
@@ -137,6 +137,18 @@ export function useValuationSave({
       return false;
     }
   };
+
+  // Ctrl+S (⌘S on a Mac) is the "Guardar" button, not the browser's "Guardar página".
+  const saveFromShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!canEdit || !isSaveShortcut(event)) return;
+    event.preventDefault();
+    if (!saving) void handleSave();
+  });
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => saveFromShortcut(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
 
   // Save automatically a few seconds after the last edit.
   const autosave = useEffectEvent(() => {

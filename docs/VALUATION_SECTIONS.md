@@ -20,11 +20,13 @@ Un avalúo nuevo de **maquinaria y equipo** nace con las secciones que su libro 
 ## Ocultar y eliminar
 
 - Secciones, bloques y apartados se ocultan con "Ocultar" y se guardan ocultos: la sección y el bloque en `BVisible`, el apartado en el `enabled` de su `JConfiguracion` (hasta el 23 de octubre de 2026 el apartado se guardaba siempre visible). Lo oculto no se imprime.
+- Todo borrado pide confirmación con el mismo diálogo (`delete-confirm.tsx`): conceptos, bloques, subbloques, imágenes, la imagen y los datos del encabezado de la carátula y los tipos de construcción. Las imágenes guardadas en el servidor (encabezado, Datos generales) solo salen del documento al quitarlas y el archivo se borra después del guardado que ya no las lleva (`storedImagesToDelete`), así «Deshacer» las devuelve completas. Un tipo de construcción se guarda solo: vuelve con Ctrl+Z en su tabla.
 - Una sección que agregó el valuador ("+ Sección") se elimina completa con "Eliminar sección" en su encabezado o con el bote de basura de su pestaña activa; ambos piden confirmación. Las secciones del registro solo se ocultan.
 
 ## Cómo se guarda
 
-- El editor guarda el avalúo completo con `PUT /api/avaluos/:id/full`. No se guardan secciones o bloques por separado.
+- El editor guarda el avalúo completo con `PUT /api/avaluos/:id/full`. No se guardan secciones o bloques por separado. Ctrl+S (⌘S en Mac) guarda igual que el botón «Guardar» y no abre el «Guardar página» del navegador.
+- Negrita, cursiva y subrayado viajan en el valor como `<b>`, `<i>`, `<u>` (`text-marks.ts`), pero el campo del editor muestra solo el texto: lo que se escribe conserva las marcas (`withMarkedText`) y la vista previa bajo el campo las muestra aplicadas.
 - Todo el contenido se guarda en el árbol genérico `SeccionDocumento` → `NodoDocumento` → `ValorNodoDocumento`, con tablas en `TablaDocumento`. La única tabla normalizada que se escribe es `CaratulaAvaluo`.
 - Los campos `kind` (`normalized`, `document`, `hybrid`), `tables` y `permissions` del registro son declarativos: hoy ningún código los consulta.
 

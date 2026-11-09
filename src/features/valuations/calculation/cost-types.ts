@@ -283,6 +283,17 @@ export function remainingUsefulLife(type: Pick<ConstructionTypeDto, "age" | "use
   return type.usefulLife !== null && type.age !== null ? Math.max(type.usefulLife - type.age, 0) : null;
 }
 
+/**
+ * Why «+ Construcción» of the cost approach adds nothing, or null when it
+ * adds a row: it only brings back a type of the construction section that
+ * is not in the calculation.
+ */
+export function addConstructionDisabledReason(typeCount: number, typesOutOfCalculation: number): string | null {
+  if (!typeCount) return "Aún no hay tipos de construcción: captúralos en la sección INF. CONSTRUCCIÓN y entran aquí solos.";
+  if (!typesOutOfCalculation) return "Todos los tipos de construcción ya están en el cálculo. Para agregar otro, dalo de alta en la sección INF. CONSTRUCCIÓN.";
+  return null;
+}
+
 export function emptyConstructionType(index: number): ConstructionTypeDto {
   return { ref: `T-${index + 1}`, description: "", classification: "", quality: "", area: null, age: null, usefulLife: null };
 }

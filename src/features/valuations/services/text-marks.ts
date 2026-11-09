@@ -183,6 +183,44 @@ export function applyTextMark(
   return { value: next, selectionStart: rawOffsetOf(next, start, "start"), selectionEnd: rawOffsetOf(next, end, "end") };
 }
 
+/** A selection of the value as written (tags included) in its text alone, as a field showing the text counts it. */
+export function textSelectionOf(value: string, rawStart: number, rawEnd: number): { start: number; end: number } {
+  return { start: textOffsetOf(value, rawStart), end: textOffsetOf(value, rawEnd) };
+}
+
+/** A selection of the text in the value as written: a caret stays a caret, a range takes the text it covers. */
+export function rawSelectionOf(value: string, textStart: number, textEnd: number): { start: number; end: number } {
+  if (textStart === textEnd) {
+    const caret = rawOffsetOf(value, textStart, "start");
+    return { start: caret, end: caret };
+  }
+  return { start: rawOffsetOf(value, Math.min(textStart, textEnd), "start"), end: rawOffsetOf(value, Math.max(textStart, textEnd), "end") };
+}
+
+/**
+ * The value once its text is edited to `nextText` in a field that shows the
+ * text without tags: what was kept keeps its marks, and what was typed takes
+ * the marks of the character before it (at the start, of the one after), as
+ * in a word processor.
+ */
+export function withMarkedText(value: string, nextText: string): string {
+  if (!hasTextMarks(value)) return nextText;
+  const chars = markedChars(value);
+  const text = chars.map((item) => item.char).join("");
+  if (text === nextText) return value;
+  let prefix = 0;
+  while (prefix < text.length && prefix < nextText.length && text[prefix] === nextText[prefix]) prefix += 1;
+  let suffix = 0;
+  while (
+    suffix < text.length - prefix &&
+    suffix < nextText.length - prefix &&
+    text[text.length - 1 - suffix] === nextText[nextText.length - 1 - suffix]
+  ) suffix += 1;
+  const inherited = (chars[prefix - 1] ?? chars[text.length - suffix])?.marks ?? { bold: false, italic: false, underline: false };
+  const typed = nextText.slice(prefix, nextText.length - suffix).split("").map((char) => ({ char, marks: { ...inherited } }));
+  return writeMarkedChars([...chars.slice(0, prefix), ...typed, ...chars.slice(text.length - suffix)]);
+}
+
 /** `applyTextMark`, the new value alone. */
 export function toggleTextMark(value: string, mark: TextMark, selectionStart?: number, selectionEnd?: number): string {
   return applyTextMark(value, mark, selectionStart, selectionEnd).value;

@@ -1657,6 +1657,25 @@ export const HOMOLOGATION_HEADER_HINTS: Record<string, string> = {
   [HOMOLOGY_COLUMN_IDS.re]: "Factor resultante",
 };
 
+/**
+ * The headers the homologation table was created with before 9 nov 2026,
+ * cut short ("Clas", "Re"), and the names they show now. A table saved with
+ * them reads with the whole names; a header the appraiser renamed stays.
+ */
+const CUT_HOMOLOGATION_HEADERS: Record<string, { cut: string; name: string }> = {
+  [HOMOLOGY_COLUMN_IDS.clas]: { cut: "Clas", name: "Clasificación" },
+  [HOMOLOGY_COLUMN_IDS.re]: { cut: "Re", name: "Factor resultante" },
+};
+
+export function withWholeHomologationHeaders<T extends Pick<TableV2, "columns">>(table: T): T {
+  const cut = (column: TableColumn) => CUT_HOMOLOGATION_HEADERS[column.id]?.cut === column.name.trim();
+  if (!table.columns.some(cut)) return table;
+  return {
+    ...table,
+    columns: table.columns.map((column) => (cut(column) ? { ...column, name: CUT_HOMOLOGATION_HEADERS[column.id].name } : column)),
+  };
+}
+
 /** Create the initial homologation table instance with preset schema. */
 export function createHomologationTable(): TableV2 {
   const zoneFixedStart = "zone-fixed-start";
@@ -1671,9 +1690,9 @@ export function createHomologationTable(): TableV2 {
     { id: HOMOLOGY_COLUMN_IDS.ubic, name: "Ubic." },
     { id: HOMOLOGY_COLUMN_IDS.sup, name: "Sup." },
     { id: HOMOLOGY_COLUMN_IDS.serv, name: "Serv." },
-    { id: HOMOLOGY_COLUMN_IDS.clas, name: "Clas" },
+    { id: HOMOLOGY_COLUMN_IDS.clas, name: "Clasificación" },
     { id: HOMOLOGY_COLUMN_IDS.top, name: "Top." },
-    { id: HOMOLOGY_COLUMN_IDS.re, name: "Re" },
+    { id: HOMOLOGY_COLUMN_IDS.re, name: "Factor resultante" },
     { id: HOMOLOGY_COLUMN_IDS.netUnitValue, name: "Valor Unitario Neto $/m²" },
     { id: HOMOLOGY_COLUMN_IDS.partialValue, name: "Valor Parcial $" },
   ];
@@ -1734,9 +1753,9 @@ export function createHomologationTable(): TableV2 {
       [HOMOLOGY_COLUMN_IDS.ubic]: { width: 55 },
       [HOMOLOGY_COLUMN_IDS.sup]: { width: 55 },
       [HOMOLOGY_COLUMN_IDS.serv]: { width: 55 },
-      [HOMOLOGY_COLUMN_IDS.clas]: { width: 50 },
+      [HOMOLOGY_COLUMN_IDS.clas]: { width: 80 },
       [HOMOLOGY_COLUMN_IDS.top]: { width: 50 },
-      [HOMOLOGY_COLUMN_IDS.re]: { width: 50 },
+      [HOMOLOGY_COLUMN_IDS.re]: { width: 70 },
       [HOMOLOGY_COLUMN_IDS.netUnitValue]: { width: 90 },
       [HOMOLOGY_COLUMN_IDS.partialValue]: { width: 90 },
     },

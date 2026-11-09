@@ -12,16 +12,17 @@ export const construccionSection = defineSection({
       id: "construccion_descripcion_general",
       title: "DESCRIPCIÓN GENERAL DE LAS CONSTRUCCIONES",
       concepts: [
+        // The counts are born as numbers and the completion as a percentage; the descriptions stay texts.
         ["Uso actual"],
         ["Distribución del bien"],
-        ["Número de niveles"],
+        ["Número de niveles", "", "number"],
         ["Estado de conservación"],
         ["Calidad del proyecto"],
         ["Clase general del bien"],
         ["Calidad y clasificación de la construcción"],
         ["Clase de Edificio"],
-        ["Unidades susceptibles a rentarse"],
-        ["Grado de terminación de obra"],
+        ["Unidades susceptibles a rentarse", "", "number"],
+        ["Grado de terminación de obra", "", "percent"],
       ],
       subBlocks: [
         {

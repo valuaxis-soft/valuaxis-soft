@@ -25,6 +25,7 @@ import { useDraftHistory } from "./use-draft-history";
 import { useSerializedSave } from "./use-serialized-save";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
+import { deleteConfirmation, useConfirmDelete } from "../editor/delete-confirm";
 
 const cell = "h-7 min-w-0 px-1.5 text-xs";
 const figure = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
@@ -113,6 +114,7 @@ export function ConstructionTypesPanel(props: {
     },
     cellElement: (cell) => sectionRef.current?.querySelector<HTMLElement>(`[data-type-cell="${CSS.escape(cell)}"]`) ?? null,
   });
+  const confirmDelete = useConfirmDelete();
   const report = useEffectEvent((next: ConstructionTypesDto) => {
     if (!props.readOnly) props.onCalculation(next);
   });
@@ -206,7 +208,13 @@ export function ConstructionTypesPanel(props: {
                   <td className="w-14 px-1.5 whitespace-nowrap tabular-nums">{figure(remainingUsefulLife(types[index]))}</td>
                   <td className="p-1">
                     {!readOnly ? (
-                      <Button type="button" size="icon-sm" variant="ghost" aria-label={`Quitar el tipo ${row.ref}`} onClick={() => remove(index)}>
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={`Quitar el tipo ${row.ref}`}
+                        onClick={() => confirmDelete({ ...deleteConfirmation("constructionType", row.ref), onConfirm: () => remove(index) })}
+                      >
                         <Trash2 />
                       </Button>
                     ) : null}
