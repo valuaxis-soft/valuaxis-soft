@@ -106,6 +106,25 @@ export function moveColumn(layout: ColumnLayout, from: ComparableColumn, to: Com
   return next;
 }
 
+/**
+ * The visible column next to this one on the side asked (-1 left, 1 right),
+ * where "Mover a la izquierda/derecha" takes it; null at either end.
+ */
+function visibleNeighbor(layout: ColumnLayout, key: ComparableColumn, direction: -1 | 1): ComparableColumn | null {
+  const shown = visibleColumns(layout).map((column) => column.key);
+  const index = shown.indexOf(key);
+  if (index < 0) return null;
+  return shown[index + direction] ?? null;
+}
+
+export const canMoveColumnBy = (layout: ColumnLayout, key: ComparableColumn, direction: -1 | 1) => visibleNeighbor(layout, key, direction) !== null;
+
+/** "Mover a la izquierda/derecha" of the header's right click: past the next visible column, the hidden ones keeping their place. */
+export function moveColumnBy(layout: ColumnLayout, key: ComparableColumn, direction: -1 | 1): ColumnLayout {
+  const neighbor = visibleNeighbor(layout, key, direction);
+  return neighbor ? moveColumn(layout, key, neighbor) : layout;
+}
+
 /** The orders a header click applies: ascending first, descending on the second click. */
 const HEADER_SORTS: Partial<Record<ComparableColumn, { asc: ComparableSort; desc: ComparableSort }>> = {
   numero: { asc: "numero", desc: "numero_desc" },

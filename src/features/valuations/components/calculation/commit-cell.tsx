@@ -95,6 +95,8 @@ export function CommitCell(props: {
       disabled={props.disabled}
       placeholder={props.placeholder}
       inputMode={props.numeric ? "decimal" : undefined}
+      // The formula behind the result shown, for the table's menu ("Copiar fórmula a toda la fila").
+      data-formula={isFormulaText(props.value) ? props.value.trim() : undefined}
       className={cn(
         "h-7 w-full min-w-0 rounded-sm border border-transparent bg-transparent px-1.5 text-sm outline-none",
         "hover:border-input focus:border-ring focus:bg-background focus:ring-2 focus:ring-ring/30 disabled:cursor-default disabled:hover:border-transparent",

@@ -4,7 +4,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, Columns3, Copy, Eye, FileSpreadsheet, GripVertical, ImageOff, Loader2, MoreHorizontal, Pencil, Trash2, X,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, Columns3, Copy, Eye, EyeOff, FileSpreadsheet, GripVertical, ImageOff, Loader2, MoreHorizontal, Pencil, Trash2, X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -31,11 +31,13 @@ import type { ComparableBaseItem } from "../comparable-base.service";
 import { buildComparableListHref, type ComparableListParams } from "../comparable-list-params";
 import {
   COMPARABLE_COLUMN_LABELS,
+  canMoveColumnBy,
   columnLayoutStorageKey,
   columnSortDirection,
   defaultColumnLayout,
   isSortableColumn,
   moveColumn,
+  moveColumnBy,
   nextColumnSort,
   parseColumnLayout,
   resizeColumn,
@@ -141,12 +143,17 @@ function cellOf(column: ComparableColumn, item: ComparableBaseItem): ReactNode {
   }
 }
 
-/** A header the user can drag to reorder (its grip), click to sort, and drag on its edge to widen. */
-function SortableHead({ column, sort, onSort, onResize }: {
+/**
+ * A header the user drags to reorder (anywhere on it, or its grip with the
+ * keyboard), clicks to sort, drags on its edge to widen, and right-clicks to
+ * move it left or right or hide it, as the editor's tables.
+ */
+function SortableHead({ column, sort, onSort, onResize, menu }: {
   column: ColumnSetting;
   sort: ComparableListParams["sort"];
   onSort: (key: ComparableColumn) => void;
   onResize: (key: ComparableColumn, width: number) => void;
+  menu: { canMoveLeft: boolean; canMoveRight: boolean; canHide: boolean; onMove: (direction: -1 | 1) => void; onHide: () => void };
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: column.key });
   const direction = columnSortDirection(column.key, sort);
@@ -184,14 +191,17 @@ function SortableHead({ column, sort, onSort, onResize }: {
         isDragging && "z-20 bg-muted opacity-90",
       )}
     >
-      <div className={cn("flex h-full items-center gap-0.5", column.key === "precio" && "flex-row-reverse")}>
+      <ContextMenu>
+      <ContextMenuTrigger
+        render={<div className={cn("flex h-full cursor-grab items-center gap-0.5 active:cursor-grabbing", column.key === "precio" && "flex-row-reverse")} data-column-drag={column.key} {...listeners} />}
+      >
         <button
           ref={setActivatorNodeRef}
           type="button"
-          className="cursor-grab touch-none rounded p-0.5 text-muted-foreground/50 opacity-0 group-hover/head:opacity-100 hover:text-foreground focus-visible:opacity-100 active:cursor-grabbing"
+          className="cursor-grab touch-none rounded p-0.5 text-muted-foreground/40 group-hover/head:text-muted-foreground hover:text-foreground active:cursor-grabbing"
           aria-label={`Mover la columna ${COMPARABLE_COLUMN_LABELS[column.key]}`}
+          title="Arrastra el encabezado para mover la columna; clic derecho para más opciones"
           {...attributes}
-          {...listeners}
         >
           <GripVertical className="size-3.5" />
         </button>
@@ -208,7 +218,26 @@ function SortableHead({ column, sort, onSort, onResize }: {
         ) : (
           <span className="flex-1 truncate px-1 py-1">{COMPARABLE_COLUMN_LABELS[column.key]}</span>
         )}
-      </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-52">
+        <div title={menu.canMoveLeft ? undefined : "La columna ya es la primera."}>
+          <ContextMenuItem disabled={!menu.canMoveLeft} onClick={() => menu.onMove(-1)}>
+            <ArrowLeft /> Mover a la izquierda
+          </ContextMenuItem>
+        </div>
+        <div title={menu.canMoveRight ? undefined : "La columna ya es la última."}>
+          <ContextMenuItem disabled={!menu.canMoveRight} onClick={() => menu.onMove(1)}>
+            <ArrowRight /> Mover a la derecha
+          </ContextMenuItem>
+        </div>
+        <ContextMenuSeparator />
+        <div title={menu.canHide ? undefined : "La lista no puede quedarse sin columnas."}>
+          <ContextMenuItem disabled={!menu.canHide} onClick={menu.onHide}>
+            <EyeOff /> Ocultar columna
+          </ContextMenuItem>
+        </div>
+      </ContextMenuContent>
+      </ContextMenu>
       <span
         role="separator"
         aria-orientation="vertical"
@@ -341,7 +370,7 @@ export function ComparableBaseTable({ items, params, userId, canEdit }: {
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Haz clic en un encabezado para ordenar, arrástralo para moverlo y jala su borde para cambiar el ancho. Clic derecho en un renglón para sus acciones.
+            Haz clic en un encabezado para ordenar, arrástralo para moverlo (o clic derecho: «Mover a la izquierda/derecha») y jala su borde para cambiar el ancho. Clic derecho en un renglón para sus acciones.
           </p>
         )}
         <DropdownMenu>
@@ -390,6 +419,13 @@ export function ComparableBaseTable({ items, params, userId, canEdit }: {
                       sort={params.sort}
                       onSort={sortBy}
                       onResize={(key, width) => setLayout((current) => resizeColumn(current, key, width))}
+                      menu={{
+                        canMoveLeft: canMoveColumnBy(layout, column.key, -1),
+                        canMoveRight: canMoveColumnBy(layout, column.key, 1),
+                        canHide: columns.length > 1,
+                        onMove: (direction) => setLayout((current) => moveColumnBy(current, column.key, direction)),
+                        onHide: () => setLayout((current) => toggleColumn(current, column.key)),
+                      }}
                     />
                   ))}
                 </SortableContext>

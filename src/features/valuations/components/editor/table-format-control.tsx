@@ -24,22 +24,27 @@ import { columnLetter } from "@/features/valuations/services/formula-references"
 /**
  * How the table prints: as wide as the page or as its content, and a double
  * header (one title over several columns, as merging the cells above them).
+ * A table the calculation writes takes the width and the decimals
+ * (`generated`): its header is the calculation's, and its decimals are those
+ * of its figures, not of formulas.
  */
 export function TableFormatControl({
   table,
   readOnly,
   onChange,
+  generated = false,
 }: {
   table: TableV2;
   readOnly: boolean;
   onChange: (updater: (table: TableV2) => TableV2) => void;
+  generated?: boolean;
 }) {
   const columns = getDisplayColumns(table);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [title, setTitle] = useState("");
   const groups = table.schema?.headerGroups ?? [];
-  const groupable = canGroupTableHeaders(table) && columns.length > 1;
+  const groupable = !generated && canGroupTableHeaders(table) && columns.length > 1;
   const fromId = columns.some((column) => column.id === from) ? from : columns[0]?.id ?? "";
   const toId = columns.some((column) => column.id === to) ? to : columns[Math.min(1, columns.length - 1)]?.id ?? "";
   const label = (columnId: string) => {
@@ -78,12 +83,16 @@ export function TableFormatControl({
             value={tableDecimals(table) === undefined ? "auto" : String(tableDecimals(table))}
             onChange={(event) => onChange((current) => setTableDecimals(current, event.target.value === "auto" ? null : Number(event.target.value)))}
           >
-            <NativeSelectOption value="auto">Automático (según la fórmula)</NativeSelectOption>
+            <NativeSelectOption value="auto">{generated ? "Automático (según el cálculo)" : "Automático (según la fórmula)"}</NativeSelectOption>
             {Array.from({ length: TABLE_DECIMALS_MAX + 1 }, (_, decimals) => (
               <NativeSelectOption key={decimals} value={String(decimals)}>{decimals === 0 ? "Sin decimales" : `${decimals} ${decimals === 1 ? "decimal" : "decimales"}`}</NativeSelectOption>
             ))}
           </NativeSelect>
-          <FieldDescription>Con cuántos decimales se muestran los resultados de las fórmulas de esta tabla, aquí y en el dictamen. Una celda con formato propio lo conserva.</FieldDescription>
+          <FieldDescription>
+            {generated
+              ? "Con cuántos decimales se imprimen las cifras con decimales, montos y porcentajes de esta tabla. El cálculo conserva sus valores completos; las claves, edades y conteos quedan como están."
+              : "Con cuántos decimales se muestran los resultados de las fórmulas de esta tabla, aquí y en el dictamen. Una celda con formato propio lo conserva."}
+          </FieldDescription>
         </Field>
 
         {groupable ? (
