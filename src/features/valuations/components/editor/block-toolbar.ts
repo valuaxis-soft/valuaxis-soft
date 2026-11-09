@@ -38,6 +38,7 @@ export type BlockToolbarKind =
   | "generated";
 
 export const GENERATED_BLOCK_REASON = "Lo escribe el cálculo: sus conceptos y tablas se editan en el panel de cálculo.";
+export const GENERATED_BLOCK_TITLE_REASON = "El título lo pone el cálculo.";
 export const GENERATED_BLOCK_DELETE_REASON = "Lo escribe el cálculo: el cálculo lo volvería a crear. Si no debe imprimirse, ocúltalo.";
 export const CARATULA_PAGE_BREAK_REASON = "La carátula se imprime en su propia página: sus bloques no tienen salto de página.";
 export const CARATULA_FIXED_BLOCK_REASON = "Bloque fijo de la carátula: se edita en sus propios campos y no se mueve ni se elimina.";

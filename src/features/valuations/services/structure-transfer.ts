@@ -15,6 +15,7 @@
  * Pure: no side effects, no rendering.
  */
 
+import { isGeneratedBlock } from "../calculation/market-document";
 import { pinFullLinkResolution } from "../concept-links";
 import type {
   Apartado,
@@ -62,7 +63,22 @@ export function blockLockReason(section: AppSection, blockId: string): string | 
 /** Why the Block (or the Apartados inside it) cannot be moved, copied or duplicated, or null. */
 export function structureLockReason(section: AppSection, blockId: string): string | null {
   if (isCaratula(section)) return CARATULA_REASON;
-  return blockLockReason(section, blockId);
+  const lock = blockLockReason(section, blockId);
+  return lock && !isGeneratedBlock({ id: blockId }) ? TEMPLATE_BLOCK_MOVE_REASON : lock;
+}
+
+/** Why a template Block the calculation replaces with its results cannot be moved: its copies can. */
+export const TEMPLATE_BLOCK_MOVE_REASON = "El cálculo reemplaza este bloque con sus resultados: no se mueve, pero sí se copia o se duplica.";
+
+/**
+ * Why the Block cannot be copied or duplicated, or null. A copy gets new ids
+ * and is the appraiser's own, so a template Block the calculation replaces
+ * (Ingresos, Costos, Mercado before calculating) is copied like any other;
+ * what the calculation writes and the carátula's Blocks are not.
+ */
+export function blockCopyLockReason(section: AppSection, blockId: string): string | null {
+  if (isCaratula(section)) return CARATULA_REASON;
+  return isGeneratedBlock({ id: blockId }) ? LOCKED_BLOCK_REASON : null;
 }
 
 function findContainer(sections: AppSection[], address: ContainerAddress) {
@@ -487,7 +503,7 @@ export function duplicateBlock(sections: AppSection[], sectionId: string, blockI
   const section = sections.find((item) => item.id === sectionId);
   const block = section?.blocks.find((item) => item.id === blockId);
   if (!section || !block) return unchanged(sections, MISSING_REASON);
-  const lock = structureLockReason(section, blockId);
+  const lock = blockCopyLockReason(section, blockId);
   if (lock) return unchanged(sections, lock);
   return { changed: true, sections: insertBlock(sections, sectionId, copyBlock(block, sections), blockId) };
 }

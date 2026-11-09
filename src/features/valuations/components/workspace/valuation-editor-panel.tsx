@@ -24,6 +24,7 @@ import {
   ADD_BLOCK_LABEL,
   ADD_SUBBLOCK_LABEL,
   BLOCK_TERM,
+  GENERATED_BLOCK_TITLE_REASON,
   SUBBLOCK_TERM,
   blockToolbarLocks,
   blockToolbarState,
@@ -44,7 +45,8 @@ import { CaratulaEditor, CalculatedValuesEditor } from "../editor/caratula-edito
 import { ValuationSettingsPanel } from "../editor/valuation-settings-panel";
 import { ReportInclusionBadge, SectionDocumentSettings } from "../editor/section-document-settings";
 import { SignaturesEditor } from "../editor/signatures-editor";
-import { GeneratedConceptLabels, GeneratedTableColumns } from "../editor/generated-table-columns";
+import { GeneratedTableColumns } from "../editor/generated-table-columns";
+import { GeneratedConcepts } from "../editor/generated-concepts";
 
 import { Check, Eye, EyeOff, GripVertical, PencilLine, Plus, Trash2, X } from "lucide-react";
 
@@ -684,15 +686,28 @@ function SortableBlockEditor(props: {
           : "Oculto"
         : null}
       dragHandle={dragHandle}
-      extraActions={<BlockTransferMenu section={section} block={block} label="el bloque" lock={toolbar.transfer.enabled ? null : toolbar.transfer.reason} />}
+      extraActions={
+        <BlockTransferMenu
+          section={section}
+          block={block}
+          label="el bloque"
+          visibility={toolbar.visibility.enabled ? { visible: block.enabled, onChange: (enabled) => props.onUpdateBlock(section.id, block.id, { enabled }) } : null}
+          pageBreak={toolbar.pageBreak.enabled ? {
+            before: resolvePageBreak(block) === "new-page",
+            onChange: (before) => props.onUpdateBlock(section.id, block.id, pageBreakPatch(before ? "new-page" : "auto")),
+          } : null}
+        />
+      }
       titleContextMenu={!readOnly ? ({ titleRef }) => (
         // The right-click menu of the title offers what the toolbar does, under the same locks.
         <BlockTitleContextMenu
           section={section}
           block={block}
           label="el bloque"
+          name={stripLeadingRomanNumeral(block.title)}
           titleRef={titleRef}
           canRename={caratulaBlockKind === "intermediate"}
+          hints={{ hide: locks.visibility, pageBreak: locks.pageBreak, delete: locks.delete }}
           visibility={toolbar.visibility.enabled ? { visible: block.enabled, onChange: (enabled) => props.onUpdateBlock(section.id, block.id, { enabled }) } : undefined}
           pageBreak={toolbar.pageBreak.enabled ? {
             before: resolvePageBreak(block) === "new-page",
@@ -1128,6 +1143,11 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
   const rows = tables.reduce((count, { table }) => count + ensureTableV2(table).rows.length, 0);
   const toolbar = blockToolbarState({ kind: "generated", readOnly });
   const locks = blockToolbarLocks(toolbar);
+  const visibility = { visible: block.enabled, onChange: (enabled: boolean) => onUpdateBlock({ enabled }) };
+  const pageBreak = {
+    before: resolvePageBreak(block) === "new-page",
+    onChange: (before: boolean) => onUpdateBlock(pageBreakPatch(before ? "new-page" : "auto")),
+  };
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: block.id, disabled: readOnly });
   return (
     <BlockCard
@@ -1141,7 +1161,31 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
           <GripVertical />
         </Button>
       }
-      extraActions={<BlockTransferMenu section={section} block={block} label="el bloque" lock={toolbar.transfer.reason} />}
+      extraActions={
+        <BlockTransferMenu
+          section={section}
+          block={block}
+          label="el bloque"
+          lock={toolbar.transfer.reason}
+          visibility={visibility}
+          pageBreak={pageBreak}
+        />
+      }
+      titleContextMenu={!readOnly ? ({ titleRef }) => (
+        // The same right-click menu as any block: what the calculation owns stays disabled, with the reason.
+        <BlockTitleContextMenu
+          section={section}
+          block={block}
+          label="el bloque"
+          name={stripLeadingRomanNumeral(block.title)}
+          titleRef={titleRef}
+          canRename={false}
+          lock={toolbar.transfer.reason}
+          hints={{ rename: GENERATED_BLOCK_TITLE_REASON, delete: locks.delete }}
+          visibility={visibility}
+          pageBreak={pageBreak}
+        />
+      ) : undefined}
       title={stripLeadingRomanNumeral(block.title)}
       structuralActions={{
         conceptPresentation: block.conceptPresentation,
@@ -1173,7 +1217,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
       <p className="text-xs text-muted-foreground" data-generated-block-notice>
         Generado por el cálculo{rows ? ` · ${rows} filas` : ""}{block.images.length ? ` · ${block.images.length} fotos` : ""}. Las cifras se editan en el panel de cálculo.
       </p>
-      {block.enabled ? <GeneratedConceptLabels block={block} readOnly={readOnly} onChange={onUpdateBlock} /> : null}
+      {block.enabled ? <GeneratedConcepts block={block} readOnly={readOnly} onChange={onUpdateBlock} /> : null}
       {block.enabled ? tables.map(({ table, apartadoId }) => (
         <GeneratedTableColumns
           key={table.id}

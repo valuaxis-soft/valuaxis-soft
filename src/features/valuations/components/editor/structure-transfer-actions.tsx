@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ClipboardPaste, Copy, CopyPlus, Ellipsis, FolderInput, MoveRight } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ClipboardPaste, Copy, CopyPlus, Ellipsis, Eye, EyeOff, FolderInput, MoveRight, SeparatorHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -9,12 +9,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { Apartado, AppSection, Block } from "@/features/valuations/model";
 import {
   apartadoDestinations,
+  blockCopyLockReason,
   blockDestinationSections,
   conceptDestinations,
   structureLockReason,
@@ -95,11 +97,6 @@ const containerOptions = (destinations: TransferDestination[], onPick: (address:
 export function MoveConceptMenuItem({ source, conceptId, disabled = false }: { source: ContainerAddress; conceptId: string; disabled?: boolean }) {
   const transfer = useStructureTransfer();
   const [open, setOpen] = useState(false);
-  const options = open && transfer
-    ? containerOptions(conceptDestinations(transfer.sections, source), (destination) => {
-        transfer.moveConcepts(source, [conceptId], destination);
-      })
-    : [];
   const lock = !transfer ? "No se puede mover desde aquí." : transfer.readOnly ? "El avalúo es de solo lectura." : null;
   return (
     <>
@@ -116,14 +113,32 @@ export function MoveConceptMenuItem({ source, conceptId, disabled = false }: { s
         <FolderInput data-icon="inline-start" />
         Mover a…
       </Button>
-      <DestinationPicker
-        open={open}
-        onOpenChange={setOpen}
-        title="Mover el concepto"
-        description="Va al final del bloque o subbloque que elijas."
-        options={options}
-      />
+      <MoveConceptPicker source={source} conceptId={conceptId} open={open} onOpenChange={setOpen} />
     </>
+  );
+}
+
+/** The places one concept can go to, for its ⋮ menu and its right-click menu. */
+export function MoveConceptPicker({ source, conceptId, open, onOpenChange }: {
+  source: ContainerAddress;
+  conceptId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const transfer = useStructureTransfer();
+  const options = open && transfer
+    ? containerOptions(conceptDestinations(transfer.sections, source), (destination) => {
+        transfer.moveConcepts(source, [conceptId], destination);
+      })
+    : [];
+  return (
+    <DestinationPicker
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Mover el concepto"
+      description="Va al final del bloque o subbloque que elijas."
+      options={options}
+    />
   );
 }
 
@@ -156,14 +171,21 @@ export function MoveConceptsButton({ source, conceptIds, onMoved }: { source: Co
 
 const READ_ONLY_LOCK = "El avalúo es de solo lectura: no se copia ni se mueve.";
 
-function TransferMenu({ label, lock, onCopy, onDuplicate, onMove, moveLabel }: {
+function TransferMenu({ label, lock, moveLock, onCopy, onDuplicate, onMove, moveLabel, children }: {
   label: string;
+  /** Why it cannot be copied or duplicated (nor moved), or null. */
   lock: string | null;
+  /** Why it cannot be moved when it can be copied; absent, `lock`. */
+  moveLock?: string | null;
   onCopy: () => void;
   onDuplicate: () => void;
   onMove: () => void;
   moveLabel: string;
+  /** More actions of the item, after the transfer ones. */
+  children?: ReactNode;
 }) {
+  const movingLock = lock ?? moveLock ?? null;
+  const reasons = [...new Set([lock, movingLock].filter((reason): reason is string => Boolean(reason)))];
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -174,19 +196,20 @@ function TransferMenu({ label, lock, onCopy, onDuplicate, onMove, moveLabel }: {
         }
       />
       <DropdownMenuContent align="end" className="w-60">
-        <DropdownMenuItem disabled={Boolean(lock)} onClick={onCopy}>
+        <DropdownMenuItem disabled={Boolean(lock)} title={lock ?? undefined} onClick={onCopy}>
           <Copy />
           Copiar
         </DropdownMenuItem>
-        <DropdownMenuItem disabled={Boolean(lock)} onClick={onDuplicate}>
+        <DropdownMenuItem disabled={Boolean(lock)} title={lock ?? undefined} onClick={onDuplicate}>
           <CopyPlus />
           Duplicar
         </DropdownMenuItem>
-        <DropdownMenuItem disabled={Boolean(lock)} onClick={onMove}>
+        <DropdownMenuItem disabled={Boolean(movingLock)} title={movingLock ?? undefined} onClick={onMove}>
           <FolderInput />
           {moveLabel}
         </DropdownMenuItem>
-        {lock ? <p className="px-1.5 py-1 text-xs text-muted-foreground">{lock}</p> : null}
+        {reasons.map((reason) => <p key={reason} className="px-1.5 py-1 text-xs text-muted-foreground">{reason}</p>)}
+        {children}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -197,7 +220,17 @@ function TransferMenu({ label, lock, onCopy, onDuplicate, onMove, moveLabel }: {
  * the menu; one that cannot be copied or moved (the carátula's, the ones the
  * calculation writes, a read-only valuation) shows its items disabled and why.
  */
-export function BlockTransferMenu({ section, block, label, lock }: { section: AppSection; block: Block; label: string; lock?: string | null }) {
+export function BlockTransferMenu({ section, block, label, lock, visibility, pageBreak }: {
+  section: AppSection;
+  block: Block;
+  label: string;
+  /** Why the block can be neither copied nor moved, over what the section says. */
+  lock?: string | null;
+  /** "Ocultar en el dictamen", as the eye of the toolbar; null shows it disabled. */
+  visibility?: { visible: boolean; onChange: (visible: boolean) => void } | null;
+  /** "Salto de página antes", as the toolbar's page break; null shows it disabled. */
+  pageBreak?: { before: boolean; onChange: (before: boolean) => void } | null;
+}) {
   const transfer = useStructureTransfer();
   const [moving, setMoving] = useState(false);
   if (!transfer) return null;
@@ -209,16 +242,43 @@ export function BlockTransferMenu({ section, block, label, lock }: { section: Ap
         onPick: () => transfer.moveBlock(section.id, block.id, destination.id),
       }))
     : [];
+  const copyLock = transfer.readOnly ? READ_ONLY_LOCK : lock ?? blockCopyLockReason(section, block.id);
+  const moveLock = transfer.readOnly ? READ_ONLY_LOCK : lock ?? structureLockReason(section, block.id);
+  const readOnlyHint = transfer.readOnly ? READ_ONLY_LOCK : undefined;
   return (
     <>
       <TransferMenu
         label={label}
-        lock={transfer.readOnly ? READ_ONLY_LOCK : lock ?? structureLockReason(section, block.id)}
+        lock={copyLock}
+        moveLock={moveLock}
         onCopy={() => transfer.copyBlock(block)}
         onDuplicate={() => transfer.duplicateBlock(section.id, block.id)}
         onMove={() => setMoving(true)}
         moveLabel="Mover a otra sección…"
-      />
+      >
+        {/* What else applies to every block, so the menu is never only disabled items. */}
+        {visibility !== undefined || pageBreak !== undefined ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={!visibility || transfer.readOnly}
+              title={readOnlyHint ?? (visibility ? undefined : "Este bloque siempre se imprime.")}
+              onClick={() => visibility?.onChange(!visibility.visible)}
+            >
+              {visibility && !visibility.visible ? <Eye /> : <EyeOff />}
+              {visibility && !visibility.visible ? "Mostrar en el dictamen" : "Ocultar en el dictamen"}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!pageBreak || transfer.readOnly}
+              title={readOnlyHint ?? (pageBreak ? undefined : "Este bloque sigue al anterior.")}
+              onClick={() => pageBreak?.onChange(!pageBreak.before)}
+            >
+              <SeparatorHorizontal />
+              {pageBreak?.before ? "Quitar el salto de página antes" : "Salto de página antes"}
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </TransferMenu>
       <DestinationPicker
         open={moving}
         onOpenChange={setMoving}

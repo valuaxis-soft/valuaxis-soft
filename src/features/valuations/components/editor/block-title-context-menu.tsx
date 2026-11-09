@@ -4,41 +4,56 @@ import { Fragment, useState, type RefObject } from "react";
 
 import { ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
 import type { AppSection, Block } from "@/features/valuations/model";
-import { blockDestinationSections, structureLockReason } from "@/features/valuations/services/structure-transfer";
-import { tableContextMenu, type TableMenuAction } from "@/features/valuations/services/table-context-menu";
+import { blockCopyLockReason, blockDestinationSections, structureLockReason } from "@/features/valuations/services/structure-transfer";
+import { tableContextMenu, type BlockMenuTarget, type TableMenuAction } from "@/features/valuations/services/table-context-menu";
 import { sectionDisplayName } from "../workspace/model/section-numbering";
 import { useStructureTransfer } from "../workspace/structure-transfer-context";
+import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
 import { DestinationPicker, type PickerOption } from "./structure-transfer-actions";
+
+const NO_TRANSFER = "No se puede copiar ni mover.";
 
 /**
  * The right-click menu of a block's title, with the actions its toolbar
  * already offers: rename, copy, duplicate, move to another section, hide in
- * the dictamen, a page break before it and deleting it (asking first).
+ * the dictamen, a page break before it and deleting it (asking first with the
+ * same dialog as the trash can, and undone with "Deshacer").
  */
-export function BlockTitleContextMenu({ section, block, label, titleRef, canRename, visibility, pageBreak, onDelete }: {
+export function BlockTitleContextMenu({ section, block, label, name, titleRef, canRename, visibility, pageBreak, onDelete, lock, hints }: {
   section: AppSection;
   block: Block;
   /** "el bloque" or "la sección", as the toolbar names it. */
   label: string;
+  /** The name the delete dialog gives it; absent, its title. */
+  name?: string;
   /** The title's field, entered to rename it. */
   titleRef: RefObject<HTMLInputElement | null>;
   canRename: boolean;
   visibility?: { visible: boolean; onChange: (visible: boolean) => void };
   pageBreak?: { before: boolean; onChange: (before: boolean) => void };
   onDelete?: () => void;
+  /** Why the block can be neither copied nor moved, over what the section says (a block the calculation writes). */
+  lock?: string | null;
+  /** Why each disabled item is disabled, as the toolbar says it. */
+  hints?: BlockMenuTarget["hints"];
 }) {
   const transfer = useStructureTransfer();
+  const confirmDelete = useConfirmDelete();
   const [moving, setMoving] = useState(false);
-  const lock = transfer && !transfer.readOnly ? structureLockReason(section, block.id) : "No se puede copiar ni mover.";
+  const available = transfer && !transfer.readOnly;
+  const copyLock = available ? lock ?? blockCopyLockReason(section, block.id) : NO_TRANSFER;
+  const moveLock = available ? lock ?? structureLockReason(section, block.id) : NO_TRANSFER;
   const groups = tableContextMenu("editable", {
     kind: "block",
     canRename,
-    canTransfer: !lock,
+    canTransfer: !copyLock,
+    canMove: !copyLock && !moveLock,
     hidden: visibility ? !visibility.visible : false,
     canHide: Boolean(visibility),
     pageBreakBefore: pageBreak?.before ?? false,
     canPageBreak: Boolean(pageBreak),
     canDelete: Boolean(onDelete),
+    hints: { ...hints, transfer: copyLock ?? undefined, move: copyLock ?? moveLock ?? undefined },
   });
   const options: PickerOption[] = moving && transfer
     ? blockDestinationSections(transfer.sections, section.id).map((destination) => ({
@@ -64,7 +79,8 @@ export function BlockTitleContextMenu({ section, block, label, titleRef, canRena
       case "block-show": visibility?.onChange(true); return;
       case "block-page-break": pageBreak?.onChange(!pageBreak.before); return;
       case "block-delete":
-        if (onDelete && window.confirm(`¿Eliminar ${label} «${block.title}» con todo lo que contiene?`)) onDelete();
+        // The same dialog as the trash can of the toolbar; the block comes back with "Deshacer".
+        if (onDelete) confirmDelete({ ...deleteConfirmation("block", name ?? block.title), onConfirm: onDelete });
         return;
       default:
         return;

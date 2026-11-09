@@ -1,6 +1,6 @@
 "use client";
 
-import { Columns3, PencilLine, Plus, Trash2 } from "lucide-react";
+import { Columns3, Plus, Trash2 } from "lucide-react";
 import { Fragment, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -19,12 +19,11 @@ import {
   withColumnHidden,
   withExtraColumn,
   withExtraColumnChange,
-  withConceptLabel,
   withHeaderLabel,
   withoutExtraColumn,
   withTableFormat,
 } from "@/features/valuations/calculation/generated-table-layout";
-import type { Block, Concept, TableContent } from "@/features/valuations/model";
+import type { TableContent } from "@/features/valuations/model";
 import { ensureTableV2, getDisplayColumns, tableDecimals, type GeneratedTableLayout } from "@/features/valuations/services/table";
 import { CommitCell } from "../calculation/commit-cell";
 import { TableFormatControl } from "./table-format-control";
@@ -263,49 +262,5 @@ function GeneratedColumnRow({ column, hidden, readOnly, label, onHidden, onLabel
         ))}
       </ContextMenuContent>
     </ContextMenu>
-  );
-}
-
-/**
- * The labels of the concepts a calculation writes as label and value (the
- * income approach's result, for one): the appraiser prints them under names
- * of their own; the values stay the calculation's and the name stays when the
- * calculation writes the block again.
- */
-export function GeneratedConceptLabels(props: { block: Block; readOnly: boolean; onChange: (patch: Pick<Block, "concepts" | "apartados">) => void }) {
-  const concepts = [...props.block.concepts, ...props.block.apartados.flatMap((apartado) => apartado.concepts)];
-  if (!concepts.length) return null;
-  const renamed = concepts.filter((concept) => concept.generatedLabel !== undefined).length;
-  const rename = (id: string, name: string) => {
-    const relabel = (items: Concept[]) => items.map((concept) => (concept.id === id ? withConceptLabel(concept, name) : concept));
-    props.onChange({
-      concepts: relabel(props.block.concepts),
-      apartados: props.block.apartados.map((apartado) => ({ ...apartado, concepts: relabel(apartado.concepts) })),
-    });
-  };
-  return (
-    <details className="rounded-md border bg-background text-xs" data-generated-concept-labels={props.block.id}>
-      <summary className="flex cursor-pointer items-center gap-1.5 px-2 py-1.5 font-medium">
-        <PencilLine className="size-3.5" aria-hidden /> Etiquetas de «{props.block.title}»
-        {renamed ? <span className="font-normal text-muted-foreground">· {renamed} {renamed === 1 ? "renombrada" : "renombradas"}</span> : null}
-      </summary>
-      <div className="grid gap-1 border-t p-2">
-        <p className="text-muted-foreground">Escribe el nombre con el que se imprime cada dato; la cifra la sigue escribiendo el cálculo. Vacío, vuelve el nombre del cálculo.</p>
-        {concepts.map((concept) => {
-          const original = concept.generatedLabel ?? concept.label;
-          return (
-            <CommitCell
-              key={concept.id}
-              ariaLabel={`Etiqueta ${original}`}
-              disabled={props.readOnly}
-              value={concept.generatedLabel !== undefined ? concept.label : ""}
-              placeholder={original}
-              className="border-input text-xs"
-              onCommit={(text) => rename(concept.id, text)}
-            />
-          );
-        })}
-      </div>
-    </details>
   );
 }
