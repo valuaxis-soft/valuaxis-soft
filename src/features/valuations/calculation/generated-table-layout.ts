@@ -6,7 +6,8 @@
  * it every time, and the table keeps what the calculation wrote, so a column
  * hidden today can be shown again.
  */
-import type { Block, Concept, TableContent } from "../model";
+import type { Apartado, Block, Concept, ContentRowTagStyle, TableContent } from "../model";
+import { resolveContentLayout, setContentRowTagStyle } from "../services/content-layout";
 import {
   TABLE_DECIMALS_MAX,
   ensureTableV2,
@@ -175,10 +176,49 @@ function renamedConcepts(blocks: Block[]) {
   return renamed;
 }
 
+/** The blank lines the appraiser set before and after each concept of the blocks, by id in lower case. */
+function conceptSpacing(blocks: Block[]) {
+  const spacing = new Map<string, Pick<Concept, "spacingBefore" | "spacingAfter">>();
+  for (const block of blocks) {
+    for (const concept of [...block.concepts, ...block.apartados.flatMap((apartado) => apartado.concepts)]) {
+      if (concept.spacingBefore || concept.spacingAfter) {
+        spacing.set(concept.id.toLowerCase(), { spacingBefore: concept.spacingBefore, spacingAfter: concept.spacingAfter });
+      }
+    }
+  }
+  return spacing;
+}
+
+/** The concepts printed as labels ("Renglón"), with the style of their row, by concept id in lower case. */
+function conceptRowStyles(blocks: Block[]) {
+  const styles = new Map<string, ContentRowTagStyle>();
+  for (const container of blocks.flatMap((block): Array<Block | Apartado> => [block, ...block.apartados])) {
+    if (!container.contentLayout) continue;
+    for (const row of resolveContentLayout(container).rows) {
+      if (!row.tagStyle) continue;
+      for (const column of row.columns) {
+        for (const item of column.items) if (item.type === "concept") styles.set(item.id.toLowerCase(), row.tagStyle);
+      }
+    }
+  }
+  return styles;
+}
+
+/** The container with the rows of the concepts the appraiser printed as labels in that style again. */
+function withRowStyles<T extends Block | Apartado>(container: T, styles: Map<string, ContentRowTagStyle>): T {
+  if (!styles.size) return container;
+  const layout = resolveContentLayout(container);
+  const styled = layout.rows.reduce((next, row) => {
+    const concept = row.columns.flatMap((column) => column.items).find((item) => item.type === "concept" && styles.has(item.id.toLowerCase()));
+    return concept ? setContentRowTagStyle(next, row.id, styles.get(concept.id.toLowerCase())) : next;
+  }, layout);
+  return styled === layout ? container : { ...container, contentLayout: styled };
+}
+
 /**
  * The blocks the calculation just wrote, with what the appraiser set on the
  * blocks they replace: the columns and box labels of the same tables, and the
- * labels of the same concepts.
+ * labels, the spacing and the row style ("Renglón") of the same concepts.
  */
 export function withTableLayouts(blocks: Block[], previous: Block[]): Block[] {
   const layouts = new Map([...tablesById(previous)].flatMap(([id, table]) => {
@@ -186,21 +226,25 @@ export function withTableLayouts(blocks: Block[], previous: Block[]): Block[] {
     return isEmptyLayout(layout) ? [] : [[id, layout] as const];
   }));
   const labels = renamedConcepts(previous);
-  if (!layouts.size && !labels.size) return blocks;
+  const spacing = conceptSpacing(previous);
+  const rowStyles = conceptRowStyles(previous);
+  if (!layouts.size && !labels.size && !spacing.size && !rowStyles.size) return blocks;
   const apply = (tables: TableContent[]) => tables.map((table) => {
     const layout = layouts.get(table.id.toLowerCase());
     return layout ? applyTableLayout(table, layout) : table;
   });
   const relabel = (concepts: Concept[]) => concepts.map((concept) => {
     const label = labels.get(concept.id.toLowerCase());
-    return label === undefined ? concept : withConceptLabel(concept, label);
+    const kept = spacing.get(concept.id.toLowerCase());
+    const named = label === undefined ? concept : withConceptLabel(concept, label);
+    return kept ? { ...named, ...kept } : named;
   });
-  return blocks.map((block) => ({
+  return blocks.map((block) => withRowStyles({
     ...block,
     concepts: relabel(block.concepts),
     tables: apply(block.tables),
-    apartados: block.apartados.map((apartado) => ({ ...apartado, concepts: relabel(apartado.concepts), tables: apply(apartado.tables) })),
-  }));
+    apartados: block.apartados.map((apartado) => withRowStyles({ ...apartado, concepts: relabel(apartado.concepts), tables: apply(apartado.tables) }, rowStyles)),
+  }, rowStyles));
 }
 
 /**

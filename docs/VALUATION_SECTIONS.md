@@ -36,7 +36,13 @@ Las operaciones viven en `services/structure-transfer.ts` (puras) y el editor la
 
 - **Conceptos:** "Seleccionar conceptos" (en bloques y apartados) y "Mover a…" llevan los elegidos al final de otro bloque o apartado, de esta u otra sección, en su orden y con los que comparten renglón juntos. Conservan su id: ligas y fórmulas siguen funcionando.
 - **Bloques y apartados:** el menú "…" del encabezado ofrece Copiar, Duplicar y Mover (a otra sección, o a otro bloque para un apartado). "Pegar bloque" aparece en el encabezado de la sección y "Pegar apartado" dentro del bloque mientras haya algo copiado. Mover conserva los ids; copiar, duplicar, pegar e importar dan ids nuevos a todo (bloque, apartados, conceptos, tablas, imágenes y referencias del layout). Las fórmulas y ligas entre lo copiado apuntan a las copias; una liga con un concepto de fuera de la copia se conserva.
-- **Bloqueos:** no se mueven ni copian los bloques del cálculo (`motor-…`), los de plantilla que sus resultados reemplazan, los de la carátula ni los apartados con una tabla fija (medidas y colindancias, capturas de costos). Las imágenes de Datos generales son archivos de su servicio: una copia que va ahí no las lleva y un movimiento con imágenes se rechaza.
+- **Bloqueos:** no se mueven ni copian los bloques del cálculo (`motor-…`), los de la carátula ni los apartados con una tabla fija (medidas y colindancias, capturas de costos). Los bloques de plantilla que los resultados del cálculo reemplazan (Ingresos, Costos, Mercado antes de calcular) no se mueven, pero sí se copian y duplican: la copia tiene ids nuevos y es del valuador (`blockCopyLockReason`). Las imágenes de Datos generales son archivos de su servicio: una copia que va ahí no las lleva y un movimiento con imágenes se rechaza.
+
+## Controles iguales en todos los bloques
+
+- **Clic derecho:** el título de cada bloque, cada concepto y cada tabla tienen su menú de clic derecho con las mismas acciones que su barra o su ⋮ (`block-title-context-menu.tsx`, `concept-context-menu.tsx` con el modelo en `services/concept-context-menu.ts`, `table-context-menu.ts`, `calc-table-context-menu.tsx`). Lo que no aplica se queda en el menú, deshabilitado, con el motivo. El texto seleccionado dentro de un campo conserva el menú del navegador.
+- **Bloques del cálculo** (Costos, Mercado, Ingresos calculado): tienen el mismo menú del título, el ··· con Ocultar y Salto de página, "Seleccionar conceptos" y el ⋮ y el clic derecho por concepto. El valuador cambia el nombre, el espacio y el renglón de sus conceptos, y se conservan cuando el cálculo reescribe el bloque (`withTableLayouts`); el dato, su formato, su lugar y borrarlo son del cálculo.
+- **Borrar** desde cualquier menú pide confirmación con el mismo diálogo de la papelera (`delete-confirm.tsx`) y se deshace con «Deshacer».
 
 ## Plantillas del despacho
 

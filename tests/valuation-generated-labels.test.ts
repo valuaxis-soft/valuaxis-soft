@@ -25,7 +25,8 @@ import { SURFACE_SLOT, type CapturedFactor } from "../src/features/valuations/en
 import { computeIncomeApproach } from "../src/features/valuations/engine/income";
 import { homologate, type ComparableInput } from "../src/features/valuations/engine/market";
 import { Trace } from "../src/features/valuations/engine/trace";
-import type { AppSection, Block, TableContent } from "../src/features/valuations/model";
+import type { AppSection, Block, ContentLayoutRowV2, TableContent } from "../src/features/valuations/model";
+import { resolveContentLayout, setContentRowTagStyle } from "../src/features/valuations/services/content-layout";
 import { ensureTableV2, type TableSummaryBox } from "../src/features/valuations/services/table";
 import { serializeTableForSave } from "../src/features/valuations/services/table-persistence";
 
@@ -177,6 +178,42 @@ test("a concept of the income approach printed under the appraiser's name keeps 
   const { generatedLabel: _renamed, ...plain } = concept;
   assert.deepEqual(withConceptLabel(concept, ""), { ...plain, label: "Valor por capitalización de rentas" });
   assert.equal(withConceptLabel(concept, "Valor por capitalización de rentas").generatedLabel, undefined);
+});
+
+test("the spacing and the row style the appraiser gives a concept of the income approach stay when the value changes", () => {
+  const written = incomeBlocks(income());
+  const result = written.find((block) => block.id === "motor-ingresos-resultado")!;
+  const conceptId = result.concepts[0].id;
+  const spaced: Block = {
+    ...result,
+    concepts: result.concepts.map((concept) => (concept.id === conceptId ? { ...concept, spacingBefore: 2, spacingAfter: 1 } : concept)),
+  };
+  // Labels ("Renglón") go on a row of several concepts: the dispersion of the rent market.
+  const dispersion = written.find((block) => block.id === "motor-ingresos-dispersion")!;
+  const shared = resolveContentLayout(dispersion).rows.find((row) => row.columns.length > 1)!;
+  const labelled = shared.columns[0].items[0].id;
+  const holds = (row: ContentLayoutRowV2) => row.columns.some((column) => column.items.some((entry) => entry.id === labelled));
+  const styled: Block = { ...dispersion, contentLayout: setContentRowTagStyle(resolveContentLayout(dispersion), shared.id, "shaded") };
+
+  const owns = (block: Block) => block.id.startsWith("motor-ingresos");
+  const changed = new Map([[result.id, spaced], [dispersion.id, styled]]);
+  const section: AppSection = {
+    id: "ingresos", label: "", title: "INGRESOS", sourceFile: "", enabled: true, required: false,
+    blocks: written.map((block) => changed.get(block.id) ?? block),
+  };
+  const next = replaceGeneratedBlocks(section, owns, incomeBlocks(income({ appliedRate: 0.09 })));
+  const rewritten = next.blocks.find((block) => block.id === "motor-ingresos-resultado")!;
+  const concept = rewritten.concepts.find((item) => item.id === conceptId)!;
+  assert.notEqual(concept.value, result.concepts[0].value, "the value is the new calculation's");
+  assert.deepEqual([concept.spacingBefore, concept.spacingAfter], [2, 1]);
+  const rewrittenDispersion = next.blocks.find((block) => block.id === dispersion.id)!;
+  assert.equal(resolveContentLayout(rewrittenDispersion).rows.find(holds)!.tagStyle, "shaded");
+
+  // The blocks the appraiser left alone are written as the calculation gives them.
+  for (const block of next.blocks.filter((item) => owns(item) && !changed.has(item.id))) {
+    assert.equal(block.contentLayout, undefined);
+    assert.ok(block.concepts.every((item) => !item.spacingBefore && !item.spacingAfter));
+  }
 });
 
 /* ── Dispersion of the rent market in the income approach ─────────── */

@@ -26,7 +26,7 @@ import { AlignHorizontalDistributeCenter,
          Copy,
          CopyPlus,
          EllipsisVertical, 
-         FilePlus2, FunctionSquare, Hash, Link, Link2, ListPlus, 
+         FilePlus2, FolderInput, FunctionSquare, Hash, Link, Link2, ListPlus, 
          LockKeyhole, Minus, Plus, Trash2, Unlink } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { normalizeConceptTitle } from "@/features/valuations/services/concept-title";
@@ -79,6 +79,8 @@ import { ValueFormatSelect, firmUnitOptionValue } from "./value-format-select";
 
 import { Textarea } from "@/components/ui/textarea";
 import { DraftAssist } from "./draft-assist";
+import { ConceptContextMenu } from "./concept-context-menu";
+import { applyTextMark } from "@/features/valuations/services/text-marks";
 
 import {
   isLongTerrenoConcept,
@@ -762,7 +764,7 @@ function ConceptListOptionsEditor({
  * first), with the controls of its type (date format, list options) and the
  * data type to change it.
  */
-function ConceptOptionsMenu({
+export function ConceptOptionsMenu({
   concept,
   concepts,
   columnId,
@@ -777,6 +779,7 @@ function ConceptOptionsMenu({
   onUpdate,
   readOnly,
   valueFormatReadOnly = false,
+  lockedReason,
 }: {
   concept: Concept;
   concepts: Concept[];
@@ -793,7 +796,13 @@ function ConceptOptionsMenu({
   onUpdate: (conceptId: string, patch: Partial<Concept>) => void;
   readOnly: boolean;
   valueFormatReadOnly?: boolean;
+  /**
+   * Why everything but the spacing is disabled (a concept the calculation
+   * writes): the menu keeps its controls, disabled, with the reason.
+   */
+  lockedReason?: string;
 }) {
+  const locked = readOnly || Boolean(lockedReason);
   const showLineBreakAction = canNormalizeConceptLineBreaks(concept);
   const confirmDelete = useConfirmDelete();
   const conceptName = normalizeConceptTitle(concept.label);
@@ -823,16 +832,16 @@ function ConceptOptionsMenu({
             </>
           ) : null}
           {enableValueFormatControl ? (
-            <ConceptValueFormatControl concept={concept} readOnly={readOnly || valueFormatReadOnly} onUpdate={onUpdate} />
+            <ConceptValueFormatControl concept={concept} readOnly={locked || valueFormatReadOnly} onUpdate={onUpdate} />
           ) : null}
           {concept.type !== "paragraph" ? (
-            <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm">
+            <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm" title={lockedReason}>
               <span>Tipo de dato</span>
               <NativeSelect
                 aria-label="Tipo de dato"
                 className="w-32"
                 size="sm"
-                disabled={readOnly}
+                disabled={locked}
                 value={conceptDataTypeValue(concept)}
                 onChange={(event) => onUpdate(concept.id, conceptDataTypePatch(concept, event.target.value))}
               >
@@ -843,12 +852,12 @@ function ConceptOptionsMenu({
             </div>
           ) : null}
           {concept.type === "list" ? (
-            <ConceptListOptionsEditor concept={concept} readOnly={readOnly} onUpdate={onUpdate} />
+            <ConceptListOptionsEditor concept={concept} readOnly={locked} onUpdate={onUpdate} />
           ) : null}
           {concept.type === "date" ? (
             <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm">
               <span>Formato Fecha</span>
-              <ConceptDateFormatControl concept={concept} readOnly={readOnly} onUpdate={onUpdate} />
+              <ConceptDateFormatControl concept={concept} readOnly={locked} onUpdate={onUpdate} />
             </div>
           ) : null}
           {onMove ? (
@@ -886,8 +895,8 @@ function ConceptOptionsMenu({
               variant="ghost"
               className="justify-start"
               aria-label="Unir líneas"
-              disabled={readOnly}
-              title="Reemplazar saltos de línea por espacios"
+              disabled={locked}
+              title={lockedReason ?? "Reemplazar saltos de línea por espacios"}
               onClick={() => onUpdate(concept.id, { value: normalizeConceptLineBreaks(concept.value) })}
             >
               <ListPlus data-icon="inline-start" />
@@ -909,8 +918,8 @@ function ConceptOptionsMenu({
               variant="ghost"
               className="justify-start"
               aria-label="Duplicar concepto"
-              disabled={readOnly}
-              title="Una copia del concepto, a continuación"
+              disabled={locked}
+              title={lockedReason ?? "Una copia del concepto, a continuación"}
               onClick={() => onDuplicate(concept.id)}
             >
               <CopyPlus data-icon="inline-start" />
@@ -918,14 +927,20 @@ function ConceptOptionsMenu({
             </Button>
           ) : null}
           {moveSource ? <MoveConceptMenuItem source={moveSource} conceptId={concept.id} disabled={readOnly} /> : null}
+          {!moveSource && lockedReason ? (
+            <Button type="button" size="sm" variant="ghost" className="justify-start" aria-label="Mover concepto a otro bloque" disabled title={lockedReason}>
+              <FolderInput data-icon="inline-start" />
+              Mover a…
+            </Button>
+          ) : null}
           <Button
             type="button"
             size="sm"
             variant="ghost"
             className="justify-start text-destructive hover:text-destructive"
             aria-label="Eliminar concepto"
-            disabled={readOnly}
-            title="Eliminar concepto"
+            disabled={locked}
+            title={lockedReason ?? "Eliminar concepto"}
             onClick={() => confirmDelete({ ...deleteConfirmation("concept", conceptName), onConfirm: () => onRemove(concept.id) })}
           >
             <Trash2 data-icon="inline-start" />
@@ -1109,6 +1124,38 @@ export function ConceptEditorRow({
   const onReferenceMouseDown = referenceTarget ? reference.onMouseDownCapture : undefined;
   const setFormula = (formula: Concept["formula"], value?: string) =>
     onUpdate(concept.id, { formula, ...(value === undefined ? {} : { value }) });
+  // The right-click menu of the row: what its ⋮ menu and "Seleccionar conceptos" do, in every section.
+  const withContextMenu = (row: ReactNode, options: { showValueFormat: boolean; writeValue: (value: string) => void; order: boolean }) =>
+    readOnly ? row : (
+      <ConceptContextMenu
+        concept={effectiveConcept}
+        name={cleanConceptLabel}
+        target={{
+          generated: false,
+          readOnly,
+          takesTextMarks: takesTextMarks(effectiveConcept),
+          hasValue: Boolean(effectiveConcept.value.trim()),
+          valueFormat: options.showValueFormat ? (formatIsSourceOwned ? "source-owned" : "enabled") : "unsupported",
+          paragraph: conceptType === "paragraph",
+          date: conceptType === "date",
+          hasLineBreaks: canNormalizeConceptLineBreaks(effectiveConcept),
+          order: options.order && onMove
+            ? { canMoveUp: concepts[0]?.id !== concept.id, canMoveDown: concepts.at(-1)?.id !== concept.id }
+            : undefined,
+          canDuplicate: Boolean(onDuplicate),
+          canDelete: true,
+        }}
+        onPatch={(patch) => onUpdate(concept.id, patch)}
+        onTextMark={(mark) => options.writeValue(applyTextMark(effectiveConcept.value, mark).value)}
+        onJoinLines={() => options.writeValue(normalizeConceptLineBreaks(effectiveConcept.value))}
+        onMove={onMove ? (direction) => onMove(concept.id, direction) : undefined}
+        onDuplicate={onDuplicate ? () => onDuplicate(concept.id) : undefined}
+        moveSource={moveSource}
+        onRemove={() => onRemove(concept.id)}
+      >
+        {row}
+      </ConceptContextMenu>
+    );
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: concept.id,
@@ -1140,7 +1187,7 @@ export function ConceptEditorRow({
       }
       if (cleanConceptLabel !== concept.label) handleLinkedAwareUpdate({ label: cleanConceptLabel });
     };
-    return (
+    return withContextMenu(
       <div
         className={cn(
           "grid w-full min-w-0 grid-cols-[auto_minmax(0,220px)_minmax(0,1fr)_auto] items-start gap-2 overflow-hidden",
@@ -1261,7 +1308,8 @@ export function ConceptEditorRow({
             onColumnPresentationChange={onColumnPresentationChange}
           />
         </div>
-      </div>
+      </div>,
+      { showValueFormat: showValueFormatControl, writeValue: (value) => handleLinkedAwareUpdate({ value }), order: false },
     );
   }
 
@@ -1286,7 +1334,7 @@ export function ConceptEditorRow({
     <DraftAssist concept={effectiveConcept} container={concepts} allConcepts={allConcepts} onInsert={(value) => onUpdate(concept.id, { value })} />
   );
 
-  return (
+  return withContextMenu(
     <div
       className={cn(
         "grid w-full min-w-0 gap-2 overflow-hidden",
@@ -1439,7 +1487,8 @@ export function ConceptEditorRow({
           Texto largo: ocupará el ancho completo en el reporte.
         </p>
       ) : null}
-    </div>
+    </div>,
+    { showValueFormat: showValueFormatControl, writeValue: (value) => onUpdate(concept.id, { value }), order: true },
   );
 }
 

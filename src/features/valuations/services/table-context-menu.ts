@@ -96,12 +96,17 @@ export type RowMenuTarget = {
 export type BlockMenuTarget = {
   kind: "block";
   canRename: boolean;
+  /** Copied and duplicated. */
   canTransfer: boolean;
+  /** Moved to another section; absent, as `canTransfer`. */
+  canMove?: boolean;
   hidden: boolean;
   canHide: boolean;
   pageBreakBefore: boolean;
   canPageBreak: boolean;
   canDelete: boolean;
+  /** Why each disabled item is disabled, over the general reasons. */
+  hints?: Partial<Record<"rename" | "transfer" | "move" | "hide" | "pageBreak" | "delete", string>>;
 };
 
 export type TableMenuTarget = CellMenuTarget | ColumnMenuTarget | RowMenuTarget | BlockMenuTarget;
@@ -195,25 +200,27 @@ function rowMenu(kind: TableMenuKind, target: RowMenuTarget): TableMenuGroup[] {
 }
 
 function blockMenu(target: BlockMenuTarget): TableMenuGroup[] {
-  const transfer = (item: TableMenuItem) => disabledWhen(item, !target.canTransfer, "Este bloque no se copia ni se mueve.");
+  const hints = target.hints ?? {};
+  const transferHint = hints.transfer ?? "Este bloque no se copia ni se mueve.";
+  const transfer = (item: TableMenuItem) => disabledWhen(item, !target.canTransfer, transferHint);
   return [
     [
-      disabledWhen({ action: "block-rename", label: "Renombrar" }, !target.canRename, "El título de este bloque lo pone la plantilla."),
+      disabledWhen({ action: "block-rename", label: "Renombrar" }, !target.canRename, hints.rename ?? "El título de este bloque lo pone la plantilla."),
       transfer({ action: "block-copy", label: "Copiar" }),
       transfer({ action: "block-duplicate", label: "Duplicar" }),
-      transfer({ action: "block-move", label: "Mover a…" }),
+      disabledWhen({ action: "block-move", label: "Mover a…" }, !(target.canMove ?? target.canTransfer), hints.move ?? transferHint),
       disabledWhen(
         target.hidden ? { action: "block-show", label: "Mostrar en el dictamen" } : { action: "block-hide", label: "Ocultar en el dictamen" },
         !target.canHide,
-        "Este bloque siempre se imprime.",
+        hints.hide ?? "Este bloque siempre se imprime.",
       ),
       disabledWhen(
         { action: "block-page-break", label: target.pageBreakBefore ? "Quitar el salto de página antes" : "Salto de página antes" },
         !target.canPageBreak,
-        "Este bloque sigue al anterior.",
+        hints.pageBreak ?? "Este bloque sigue al anterior.",
       ),
     ],
-    [disabledWhen({ action: "block-delete", label: "Eliminar bloque…", destructive: true }, !target.canDelete, "Este bloque no se puede eliminar.")],
+    [disabledWhen({ action: "block-delete", label: "Eliminar bloque…", destructive: true }, !target.canDelete, hints.delete ?? "Este bloque no se puede eliminar.")],
   ];
 }
 

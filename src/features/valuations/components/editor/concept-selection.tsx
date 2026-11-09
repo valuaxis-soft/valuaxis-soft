@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { CopyPlus, Hash, ListChecks, Minus, Plus, Trash2, X } from "lucide-react";
+import { CopyPlus, Hash, ListChecks, Minus, MoveRight, Plus, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,6 +41,26 @@ const ConceptSelectionContext = createContext<ConceptSelection | null>(null);
 export function useConceptSelection() {
   return useContext(ConceptSelectionContext);
 }
+
+/**
+ * What the container of a concept does with its concepts, for the
+ * right-click menu of one of them: its row printed as columns or labels
+ * ("Renglón") and "Seleccionar conceptos" started with it chosen.
+ */
+type ConceptContainerActions = {
+  applyTagStyle?: (conceptIds: string[], tagStyle: ContentRowTagStyle | undefined) => void;
+  startSelection: (conceptId: string) => void;
+};
+
+const ConceptContainerActionsContext = createContext<ConceptContainerActions | null>(null);
+
+/** The actions of the container around this concept; null outside one or in a read-only valuation. */
+export function useConceptContainerActions() {
+  return useContext(ConceptContainerActionsContext);
+}
+
+/** The choices of "Renglón": columns of equal width, or labels on white or shaded. */
+export const TAG_STYLE_CHOICES = TAG_STYLE_OPTIONS;
 
 /** The checkbox a concept row shows while its container is selecting concepts. */
 export function ConceptSelectionCheckbox({ conceptId, label }: { conceptId: string; label: string }) {
@@ -105,6 +125,7 @@ export function ConceptSelectionScope({
   onDuplicate,
   onRemove,
   renderMove,
+  lockedReason,
   actions,
   children,
 }: {
@@ -124,6 +145,12 @@ export function ConceptSelectionScope({
   onRemove?: (conceptIds: string[]) => void;
   /** The control that moves the chosen concepts ("Mover a…"); `done` ends the selection. */
   renderMove?: (conceptIds: string[], done: () => void) => ReactNode;
+  /**
+   * Why what the selection cannot do here is disabled (the concepts the
+   * calculation writes): the controls it is not given show disabled with it,
+   * so the bar has the same controls in every block.
+   */
+  lockedReason?: string;
   /** The creation controls of the container, printed on the same line as the selection. */
   actions?: ReactNode;
   children?: ReactNode;
@@ -147,6 +174,16 @@ export function ConceptSelectionScope({
     setSelecting(false);
     setSelected(new Set());
   };
+  const start = (conceptId: string) => {
+    setSelecting(true);
+    setSelected(new Set([conceptId]));
+  };
+  const lockedButton = (label: string, icon?: ReactNode) => lockedReason ? (
+    <Button type="button" size="xs" variant="outline" disabled title={lockedReason}>
+      {icon}
+      {label}
+    </Button>
+  ) : null;
   const apply = (spacingAfter: number) => {
     if (!chosen.length) return;
     onApplySpacing(chosenIds, Math.max(0, spacingAfter));
@@ -192,7 +229,7 @@ export function ConceptSelectionScope({
           <span className="mx-1 h-4 border-l" aria-hidden="true" />
           <SelectionValueFormat disabled={!chosen.length} onApply={(format, customUnit) => onApplyValueFormat(chosenIds, format, customUnit)} />
         </>
-      ) : null}
+      ) : lockedButton("Formato del valor", <Hash data-icon="inline-start" />)}
       {onApplyTagStyle ? (
         <NativeSelect
           aria-label="Renglón de los seleccionados"
@@ -227,17 +264,30 @@ export function ConceptSelectionScope({
             </Button>
           ))}
         </span>
+      ) : lockedReason ? (
+        <span className="flex items-center gap-0.5" role="toolbar" aria-label="Formato del texto de los seleccionados">
+          {TEXT_MARKS.map((item) => (
+            <Button key={item.mark} type="button" size="icon-xs" variant="ghost" className={item.className} aria-label={`${item.title} a los seleccionados`} title={lockedReason} disabled>
+              {item.letter}
+            </Button>
+          ))}
+        </span>
       ) : null}
       {onDuplicate ? (
         <Button type="button" size="xs" variant="outline" disabled={!chosen.length} title="Una copia de cada seleccionado, a continuación" onClick={() => { onDuplicate(chosenIds); stop(); }}>
           <CopyPlus data-icon="inline-start" />
           Duplicar
         </Button>
-      ) : null}
+      ) : lockedButton("Duplicar", <CopyPlus data-icon="inline-start" />)}
       {renderMove ? (
         <>
           <span className="mx-1 h-4 border-l" aria-hidden="true" />
           {renderMove(chosenIds, stop)}
+        </>
+      ) : lockedReason ? (
+        <>
+          <span className="mx-1 h-4 border-l" aria-hidden="true" />
+          {lockedButton("Mover a…", <MoveRight data-icon="inline-start" />)}
         </>
       ) : null}
       {onRemove ? (
@@ -253,7 +303,7 @@ export function ConceptSelectionScope({
           <Trash2 data-icon="inline-start" />
           Eliminar
         </Button>
-      ) : null}
+      ) : lockedButton("Eliminar", <Trash2 data-icon="inline-start" />)}
       <Button type="button" size="xs" variant="outline" className="ml-1" onClick={stop}>
         <X data-icon="inline-start" />
         Listo
@@ -273,6 +323,7 @@ export function ConceptSelectionScope({
   );
 
   return (
+    <ConceptContainerActionsContext.Provider value={readOnly ? null : { applyTagStyle: onApplyTagStyle, startSelection: start }}>
     <ConceptSelectionContext.Provider value={selecting && !readOnly ? { selected, toggle } : null}>
       {actions || toolbar ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -282,5 +333,6 @@ export function ConceptSelectionScope({
       ) : null}
       {children}
     </ConceptSelectionContext.Provider>
+    </ConceptContainerActionsContext.Provider>
   );
 }
