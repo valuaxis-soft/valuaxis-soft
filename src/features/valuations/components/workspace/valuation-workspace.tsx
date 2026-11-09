@@ -441,6 +441,7 @@ export function ValuationWorkspace({
             onEditConceptOnlyHere={blocks.editConceptOnlyHere}
             onChangeConceptRelation={blocks.changeConceptRelation}
             onUnlinkConcept={blocks.unlinkConceptEverywhere}
+            onSetConceptCalculationLink={blocks.setConceptCalculationLink}
             onUpdateImage={images.updateImage}
             onUpdateApartado={blocks.updateApartado}
             onUpdateSubConcept={blocks.updateSubConcept}

@@ -2,6 +2,12 @@
  * The concluded value in the dictamen: the conclusion section's values and the
  * carátula's value and amount in words. Fills the template concepts by label
  * and leaves the appraiser's own text (observations, declarations) alone.
+ *
+ * Each of those concepts is linked to the calculation until the appraiser
+ * writes its value by hand or unlinks it ("Desvincular"): from then on the
+ * calculation leaves it as he wrote it (`calculationUnlinked`) until he links
+ * it again (auditoría, nov 2026: a "Valor concluido" written by hand came back
+ * as the calculation's on every sync).
  */
 import type { ConclusionResult } from "../engine/conclusion";
 import type { AppSection, Block, Concept, ConceptValueFormat } from "../model";
@@ -31,6 +37,31 @@ const SUMMARY_CONCEPT_PREFIX = "conclusion-resumen-";
 const summaryConceptId = (index: number) => `${SUMMARY_CONCEPT_PREFIX}${index + 1}`;
 const APPROACH_LABELS_IN_DOCUMENT = ["valor por enfoque de costos", "valor por enfoque de mercado", "valor por enfoque de ingresos"];
 const isApproachConcept = (concept: Concept) => APPROACH_LABELS_IN_DOCUMENT.includes(normalize(concept.label)) || concept.id.startsWith(SUMMARY_CONCEPT_PREFIX);
+
+const CONCLUSION_LABELS = new Set([
+  ...APPROACH_LABELS_IN_DOCUMENT,
+  ...CONCLUDED_VALUE_LABELS.map(normalize),
+  "valor concluido con letra",
+]);
+const CARATULA_LABELS = new Set(["valor comercial del bien", "cifra en letras"]);
+
+/** Whether the conclusion writes this concept of the section (by canonical key), linked or not. */
+export function isConclusionCalculatedConcept(sectionKey: string, concept: Pick<Concept, "id" | "label">): boolean {
+  if (sectionKey === "CONCLUSIONES") return CONCLUSION_LABELS.has(normalize(concept.label)) || concept.id.startsWith(SUMMARY_CONCEPT_PREFIX);
+  if (sectionKey === "CARATULA") return CARATULA_LABELS.has(normalize(concept.label));
+  return false;
+}
+
+/**
+ * A change the appraiser makes to a concept: writing by hand the value of one
+ * the calculation fills unlinks it, so the next sync leaves what he wrote.
+ */
+export function withManualConclusionEdit(sectionKey: string, concept: Concept, patch: Partial<Concept>): Partial<Concept> {
+  if (patch.value === undefined || patch.value === concept.value) return patch;
+  if (concept.calculationUnlinked || "calculationUnlinked" in patch) return patch;
+  if (!isConclusionCalculatedConcept(sectionKey, concept)) return patch;
+  return { ...patch, calculationUnlinked: true };
+}
 
 /** Label → value of the conclusion section concepts. */
 export function conclusionValues(calculation: ConclusionCalculationDto, result: ConclusionResult): Record<string, ConclusionConceptValue> {
@@ -94,6 +125,8 @@ export function caratulaConclusionValues(result: ConclusionResult): Record<strin
 const storedAmount = (value: number) => value.toFixed(2);
 
 function fillConcept(concept: Concept, value: ConclusionConceptValue): Concept {
+  // Written by hand or unlinked: the appraiser's value stays until he links it again.
+  if (concept.calculationUnlinked) return concept;
   if (typeof value === "string") return concept.value === value ? concept : { ...concept, value };
   const stored = storedAmount(value.amount);
   const type = concept.type === "currency" || concept.type === "number" ? concept.type : "currency";
@@ -105,7 +138,8 @@ function fillConcept(concept: Concept, value: ConclusionConceptValue): Concept {
 function fillConcepts(concepts: Concept[], values: Record<string, ConclusionConceptValue>) {
   let changed = false;
   const next = concepts.map((concept) => {
-    const value = values[normalize(concept.label)];
+    // The rows of the resumen de valores go by their id: their labels are the appraiser's.
+    const value = values[concept.id] ?? values[normalize(concept.label)];
     if (value === undefined) return concept;
     const filled = fillConcept(concept, value);
     if (filled !== concept) changed = true;

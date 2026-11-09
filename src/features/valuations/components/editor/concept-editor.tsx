@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { closestCenter, DndContext, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/core";
 import { editorCanScroll } from "./editor-dnd-autoscroll";
+import { CalculationLinkBadge } from "../calculation/calculation-link-badge";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -138,6 +139,48 @@ const ConceptValueFormatEverywhereContext = createContext(false);
 export function ConceptValueFormatEverywhere({ children, enabled }: { children: ReactNode; enabled: boolean }) {
   return <ConceptValueFormatEverywhereContext.Provider value={enabled}>{children}</ConceptValueFormatEverywhereContext.Provider>;
 }
+
+type ConceptCalculationLink = {
+  /** Whether the calculation writes this concept of the section (linked or not). */
+  isCalculated: (concept: Concept) => boolean;
+  onSetLinked: (conceptId: string, linked: boolean) => void;
+};
+
+const ConceptCalculationLinkContext = createContext<ConceptCalculationLink | null>(null);
+
+/** The concepts of a section the calculation fills (the conclusion's) offer "Desvincular" as Costos does. */
+export function ConceptCalculationLinkScope({ children, value }: { children: ReactNode; value: ConceptCalculationLink | null }) {
+  return <ConceptCalculationLinkContext.Provider value={value}>{children}</ConceptCalculationLinkContext.Provider>;
+}
+
+function ConceptCalculationLinkBadge({ concept, readOnly }: { concept: Concept; readOnly: boolean }) {
+  const link = useContext(ConceptCalculationLinkContext);
+  if (!link?.isCalculated(concept)) return null;
+  const linked = !concept.calculationUnlinked;
+  const unlink = () => {
+    if (!window.confirm("¿Desvincular este dato del cálculo? Conservará el valor que tiene y el cálculo dejará de cambiarlo hasta que lo vuelvas a vincular.")) return;
+    link.onSetLinked(concept.id, false);
+  };
+  return (
+    <CalculationLinkBadge
+      linked={linked}
+      labels={CONCLUSION_LINK_LABELS}
+      description={linked
+        ? "El cálculo escribe este dato y lo actualiza cada vez que cambia la conclusión. Si lo escribes a mano, se desvincula solo."
+        : "El cálculo ya no cambia este dato: se queda como lo escribiste. Al volver a vincularlo toma otra vez el valor del cálculo."}
+      readOnly={readOnly}
+      onUnlink={unlink}
+      onRelink={() => link.onSetLinked(concept.id, true)}
+    />
+  );
+}
+
+const CONCLUSION_LINK_LABELS = {
+  linked: "Vinculado con el cálculo",
+  unlinked: "Desvinculado del cálculo",
+  title: { linked: "Vinculado con el cálculo de la conclusión", unlinked: "Desvinculado del cálculo de la conclusión" },
+  relink: "Volver a vincular",
+};
 
 export function ConceptEditorList({
   concepts,
@@ -1183,6 +1226,7 @@ export function ConceptEditorRow({
           )
         )}
         <div className="flex shrink-0 items-center justify-end gap-1">
+          <ConceptCalculationLinkBadge concept={concept} readOnly={readOnly} />
           <ConceptLinkStatus
             state={linkState}
             onChangeRelation={onChangeRelation ? (mode) => onChangeRelation(concept.id, mode) : undefined}
@@ -1355,7 +1399,8 @@ export function ConceptEditorRow({
           )}
         </>
       )}
-      <div className="flex shrink-0 items-start justify-end">
+      <div className="flex shrink-0 items-start justify-end gap-1">
+        <ConceptCalculationLinkBadge concept={concept} readOnly={readOnly} />
         <ConceptOptionsMenu
           concept={effectiveConcept}
           concepts={concepts}

@@ -1,13 +1,11 @@
 "use client";
 
-import { Building2, Link2, Loader2, Plus, Trash2 } from "lucide-react";
+import { Building2, Loader2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import {
   constructionTypesLinkedToCosts,
@@ -21,6 +19,7 @@ import {
 } from "@/features/valuations/calculation/cost-types";
 import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
+import { CalculationLinkBadge } from "./calculation-link-badge";
 import { FormulaInput } from "./formula-input";
 import { useDraftHistory } from "./use-draft-history";
 import { useSerializedSave } from "./use-serialized-save";
@@ -275,31 +274,28 @@ function CostLinkBadge({ valuationId, types, readOnly, savedAt }: {
     void setExcluded(named);
   };
   return (
-    <Popover>
-      <PopoverTrigger
-        render={<Badge variant={linked ? "secondary" : "outline"} className="cursor-pointer" data-cost-link={linked ? "linked" : "unlinked"} />}
-      >
-        <Link2 /> {linked ? "Vinculado con Costos" : "Desvinculado de Costos"}
-      </PopoverTrigger>
-      <PopoverContent align="end" className="grid w-80 gap-2 p-3 text-xs">
-        <p className="text-sm font-medium">{linked ? "Vinculado con el enfoque de costos" : "Desvinculado del enfoque de costos"}</p>
-        <p className="text-muted-foreground">
-          {linked
-            ? "Cada tipo entra solo al enfoque de costos con su referencia, descripción, clasificación, calidad, superficie, edad y vida útil; ahí solo se capturan sus columnas de costo. Al cambiar un tipo aquí, el cálculo se rehace."
-            : "Los tipos no entran solos al enfoque de costos. Los que ya tienen renglón ahí lo conservan y siguen leyendo sus datos de esta tabla; los demás vuelven con «+ Construcción» o al sincronizar."}
-        </p>
-        {!costs.configured ? (
-          <p className="text-muted-foreground">El enfoque de costos aún no se ha capturado: el vínculo se podrá soltar cuando exista.</p>
-        ) : !readOnly ? (
-          <Button type="button" size="sm" variant={linked ? "outline" : "default"} className="w-fit" disabled={busy || !named.length} onClick={linked ? unlink : () => void setExcluded([])}>
-            {busy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
-            {linked ? "Desvincular" : "Volver a sincronizar"}
-          </Button>
-        ) : null}
-      </PopoverContent>
-    </Popover>
+    <CalculationLinkBadge
+      linked={linked}
+      labels={COST_LINK_LABELS}
+      description={linked
+        ? "Cada tipo entra solo al enfoque de costos con su referencia, descripción, clasificación, calidad, superficie, edad y vida útil; ahí solo se capturan sus columnas de costo. Al cambiar un tipo aquí, el cálculo se rehace."
+        : "Los tipos no entran solos al enfoque de costos. Los que ya tienen renglón ahí lo conservan y siguen leyendo sus datos de esta tabla; los demás vuelven con «+ Construcción» o al sincronizar."}
+      notice={costs.configured ? undefined : "El enfoque de costos aún no se ha capturado: el vínculo se podrá soltar cuando exista."}
+      readOnly={readOnly}
+      busy={busy}
+      disabled={!named.length}
+      onUnlink={unlink}
+      onRelink={() => void setExcluded([])}
+    />
   );
 }
+
+const COST_LINK_LABELS = {
+  linked: "Vinculado con Costos",
+  unlinked: "Desvinculado de Costos",
+  title: { linked: "Vinculado con el enfoque de costos", unlinked: "Desvinculado del enfoque de costos" },
+  relink: "Volver a sincronizar",
+};
 
 /**
  * The draft with the ids the server gave the new types it saved: a type saved
