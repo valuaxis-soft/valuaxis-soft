@@ -8,6 +8,7 @@
  */
 import type { Block, Concept, TableContent } from "../model";
 import {
+  TABLE_DECIMALS_MAX,
   ensureTableV2,
   getDisplayColumns,
   type GeneratedExtraColumn,
@@ -18,6 +19,7 @@ import {
   type TableSummaryBox,
   type TableSummaryRow,
   type TableV2,
+  type TableWidthMode,
 } from "../services/table";
 
 /** Columns the appraiser may add to one table. */
@@ -37,7 +39,8 @@ export function layoutOf(table: TableContent | TableV2): GeneratedTableLayout {
 const hasText = (labels: Record<string, string> | undefined) => Object.values(labels ?? {}).some((label) => label.trim());
 
 const isEmptyLayout = (layout: GeneratedTableLayout) =>
-  !layout.hidden?.length && !hasText(layout.labels) && !layout.extraColumns?.length && !hasText(layout.boxLabels);
+  !layout.hidden?.length && !hasText(layout.labels) && !layout.extraColumns?.length && !hasText(layout.boxLabels)
+  && layout.widthMode === undefined && layout.decimals === undefined;
 
 /** The key of a row of a box in `boxLabels`: its id, or its place in the box. */
 export const summaryRowKey = (box: Pick<TableSummaryBox, "id">, row: Pick<TableSummaryRow, "id">, index: number) => `${box.id}.${row.id ?? index}`;
@@ -109,14 +112,19 @@ export function applyTableLayout(table: TableContent | TableV2, layout: Generate
     : [];
   const headerGroups: HeaderGroup[] | undefined = schema.headerGroups?.map((group) => ({ ...group, title: label(group.id, group.title) }));
   const summaryBoxes = schema.summaryBoxes ? relabeledBoxes(schema.summaryBoxes, layout.boxLabels ?? {}) : undefined;
-  const { generated: _previous, ...rest } = schema;
+  const { generated: _previous, widthMode: sourceWidth, decimals: sourceDecimals, ...rest } = schema;
   const { schema: _sourceSchema, ...plainSource } = source;
+  // "Formato de la tabla": what was chosen wins over the calculation's; the decimals only change how its figures print.
+  const widthMode = layout.widthMode ?? sourceWidth;
+  const decimals = layout.decimals ?? sourceDecimals;
   return {
     ...source,
     columns,
     rows,
     schema: {
       ...rest,
+      ...(widthMode === "content" ? { widthMode } : {}),
+      ...(decimals !== undefined ? { decimals } : {}),
       zones,
       ...(headerGroups ? { headerGroups } : {}),
       ...(summaryBoxes ? { summaryBoxes } : {}),
@@ -263,6 +271,27 @@ export function withExtraColumnChange(
 export function withBoxLabel(layout: GeneratedTableLayout, key: string, name: string): GeneratedTableLayout {
   const { [key]: _previous, ...labels } = layout.boxLabels ?? {};
   return { ...layout, boxLabels: name.trim() ? { ...labels, [key]: name.trim() } : labels };
+}
+
+/**
+ * "Formato de la tabla" of a table the calculation writes: its width and the
+ * decimals its figures print with. Kept with the rest of the layout, so the
+ * next calculation keeps it; `null` gives back the calculation's.
+ */
+export function withTableFormat(
+  layout: GeneratedTableLayout,
+  format: { widthMode?: TableWidthMode | null; decimals?: number | null },
+): GeneratedTableLayout {
+  const next: GeneratedTableLayout = { ...layout };
+  if (format.widthMode !== undefined) {
+    if (format.widthMode === null) delete next.widthMode;
+    else next.widthMode = format.widthMode;
+  }
+  if (format.decimals !== undefined) {
+    if (format.decimals === null || !Number.isInteger(format.decimals)) delete next.decimals;
+    else next.decimals = Math.max(0, Math.min(TABLE_DECIMALS_MAX, format.decimals));
+  }
+  return next;
 }
 
 /** A column of the appraiser's taken out, with what was written in it. */

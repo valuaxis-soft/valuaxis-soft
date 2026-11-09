@@ -43,8 +43,8 @@ export type TableMenuGroup = TableMenuItem[];
 export const GENERATED_STRUCTURE_HINT = "Las filas y columnas de esta tabla las fija el cálculo.";
 /** Why a formula item of a table the calculation writes is disabled. */
 export const GENERATED_FORMULA_HINT = "Las cifras de esta tabla las escribe el cálculo; cámbialas en su panel.";
-/** Why the format items of a capture table are disabled. */
-export const CAPTURE_FORMAT_HINT = "El formato de esta tabla lo fija el cálculo.";
+/** Why the format items of a capture table are disabled, and where the printed table takes its format. */
+export const CAPTURE_FORMAT_HINT = "Esta tabla es de captura. Su formato al imprimir (ancho y decimales) se elige en «Formato de la tabla» de su bloque en el dictamen.";
 /** Why a cell that is not an input cannot be edited. */
 export const COMPUTED_CELL_HINT = "Esta cifra la calcula el sistema; no se escribe.";
 /** Why a paste item is disabled. */
@@ -137,8 +137,9 @@ function cellMenu(kind: TableMenuKind, target: CellMenuTarget): TableMenuGroup[]
     ],
     [
       typing({ action: "edit-formula", label: target.hasFormula ? "Editar fórmula…" : "Insertar fórmula…" }),
-      typing({ action: "fill-column", label: "Copiar fórmula a toda la columna" }, kind === "editable" && target.hasFormula, kind === "editable" ? NO_FORMULA_HINT : GENERATED_STRUCTURE_HINT),
-      typing({ action: "fill-row", label: "Copiar fórmula a toda la fila" }, kind === "editable" && target.hasFormula, kind === "editable" ? NO_FORMULA_HINT : GENERATED_STRUCTURE_HINT),
+      // A capture table copies the formula as typed to the empty cells of its column or row that take typing.
+      typing({ action: "fill-column", label: "Copiar fórmula a toda la columna" }, target.hasFormula),
+      typing({ action: "fill-row", label: "Copiar fórmula a toda la fila" }, target.hasFormula),
       ...(kind === "editable" ? [typing({ action: "edit-formula", label: "Operaciones", submenu: "operations" })] : []),
       ...(target.hasFormula && kind === "editable" ? [{ action: "remove-formula" as const, label: "Quitar fórmula" }] : []),
     ],
@@ -214,6 +215,20 @@ function blockMenu(target: BlockMenuTarget): TableMenuGroup[] {
     ],
     [disabledWhen({ action: "block-delete", label: "Eliminar bloque…", destructive: true }, !target.canDelete, "Este bloque no se puede eliminar.")],
   ];
+}
+
+/** A cell of a capture table's row or column, as "Copiar fórmula a toda la fila/columna" sees it; null when it has no field. */
+export type CaptureFillCell = { takesTyping: boolean; text: string; hasFormula: boolean } | null;
+
+/**
+ * Where "Copiar fórmula a toda la fila/columna" of a capture table writes the
+ * formula of the cell at `from`: the other cells of the row or column that
+ * take typing and are empty. A capture's formulas are arithmetic without
+ * references (=1345*235), so each copy is the same formula; what is already
+ * captured is never overwritten, as in the editor's own tables.
+ */
+export function captureFillTargets(cells: CaptureFillCell[], from: number): number[] {
+  return cells.flatMap((cell, index) => (index !== from && cell?.takesTyping && !cell.hasFormula && !cell.text.trim() ? [index] : []));
 }
 
 /** The groups of the menu for what was right-clicked, in the order they are shown; a separator goes between groups. */

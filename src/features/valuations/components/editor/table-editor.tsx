@@ -79,6 +79,7 @@ import {
 } from "./formula-editing";
 import { useNumberPresentation } from "../number-presentation-context";
 import { TableFormatControl } from "./table-format-control";
+import { deleteConfirmation, useConfirmDelete, type DeleteConfirmation } from "./delete-confirm";
 
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
@@ -964,6 +965,19 @@ function SortableRow({
   );
 }
 
+/**
+ * "Quitar tabla" asks first with the dialog of every other deletion, naming
+ * the table; the deletion is a step of the editor's history, so «Deshacer»
+ * brings it back.
+ */
+export function requestTableRemoval(
+  confirm: (request: DeleteConfirmation & { onConfirm: () => void }) => void,
+  table: { id: string; title: string },
+  onRemove: (tableId: string) => void,
+) {
+  confirm({ ...deleteConfirmation("table", table.title), onConfirm: () => onRemove(table.id) });
+}
+
 /* ================================================================== */
 /*  TableEditors — renders a list of table editors                      */
 /* ================================================================== */
@@ -1026,6 +1040,7 @@ export function TableEditorItem({
 }) {
   const tableV2 = useMemo(() => ensureTableV2(table), [table]);
   const formulaResults = useMemo(() => evaluateTableFormulas(tableV2), [tableV2]);
+  const confirmDelete = useConfirmDelete();
   const [formulaMode, setFormulaMode] = useState<FormulaSelectionState | null>(null);
 
   /* ---- Column and row DnD state ---- */
@@ -1262,7 +1277,7 @@ export function TableEditorItem({
             <Rows3 />
           </Button>
           <TableFormatControl table={tableV2} readOnly={readOnly} onChange={(updater) => onUpdate(table.id, v2Updater(updater))} />
-          <Button type="button" size="icon" variant="ghost" aria-label={`Quitar ${tableV2.title}`} disabled={readOnly} title="Quitar tabla" onClick={() => onRemove(table.id)}>
+          <Button type="button" size="icon" variant="ghost" aria-label={`Quitar ${tableV2.title}`} disabled={readOnly} title="Quitar tabla" data-remove-table={table.id} onClick={() => requestTableRemoval(confirmDelete, { id: table.id, title: tableV2.title }, onRemove)}>
             <Trash2 />
           </Button>
         </div>

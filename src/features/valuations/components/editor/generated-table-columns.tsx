@@ -22,10 +22,12 @@ import {
   withConceptLabel,
   withHeaderLabel,
   withoutExtraColumn,
+  withTableFormat,
 } from "@/features/valuations/calculation/generated-table-layout";
 import type { Block, Concept, TableContent } from "@/features/valuations/model";
-import { getDisplayColumns, type GeneratedTableLayout } from "@/features/valuations/services/table";
+import { ensureTableV2, getDisplayColumns, tableDecimals, type GeneratedTableLayout } from "@/features/valuations/services/table";
 import { CommitCell } from "../calculation/commit-cell";
+import { TableFormatControl } from "./table-format-control";
 
 const AT_END = "__end";
 
@@ -57,8 +59,23 @@ export function GeneratedTableColumns(props: { table: TableContent; readOnly: bo
     renamedBoxLabels ? `${renamedBoxLabels} ${renamedBoxLabels === 1 ? "etiqueta renombrada" : "etiquetas renombradas"}` : "",
   ].filter(Boolean).join(", ");
 
+  // "Formato de la tabla", as in the other tables: what it sets goes in the layout, so the next calculation keeps it.
+  const printed = ensureTableV2(props.table);
+  const formatControl = (
+    <TableFormatControl
+      generated
+      table={printed}
+      readOnly={props.readOnly}
+      onChange={(updater) => {
+        const next = updater(printed);
+        change(withTableFormat(layout, { widthMode: next.schema?.widthMode === "content" ? "content" : "page", decimals: tableDecimals(next) ?? null }));
+      }}
+    />
+  );
+
   return (
-    <details className="rounded-md border bg-background text-xs" data-generated-table-columns={source.id}>
+    <div className="flex items-start gap-2" data-generated-table={source.id}>
+    <details className="min-w-0 flex-1 rounded-md border bg-background text-xs" data-generated-table-columns={source.id}>
       <summary className="flex cursor-pointer items-center gap-1.5 px-2 py-1.5 font-medium">
         <Columns3 className="size-3.5" aria-hidden /> Columnas{boxes.length ? " y recuadros" : ""} de «{source.title}»{summary ? <span className="font-normal text-muted-foreground">· {summary}</span> : null}
       </summary>
@@ -175,6 +192,8 @@ export function GeneratedTableColumns(props: { table: TableContent; readOnly: bo
         ) : null}
       </div>
     </details>
+    {formatControl}
+    </div>
   );
 }
 

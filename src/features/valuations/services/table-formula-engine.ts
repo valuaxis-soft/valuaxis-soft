@@ -656,6 +656,11 @@ export function getCellDisplayValue(
     // A factor written as a plain number shows two decimals: "0.9" reads "0.90". What it is worth does not change.
     const written = factor ? readSourceNumber(cell.value) : null;
     if (written?.kind === "number" && !written.money && !cell.value.includes("%")) return formatFactor(written.value, presentation, decimals);
+    // A table the calculation writes, given decimals in "Formato de la tabla": its figures print with them.
+    if (decimals !== undefined && table.schema?.generated) {
+      const figure = figureWithDecimals(cell.value, decimals, presentation);
+      if (figure !== null) return figure;
+    }
     return presentation.thousandsSeparator ? cell.value : withoutThousandsSeparator(cell.value);
   }
 
@@ -670,6 +675,28 @@ export function getCellDisplayValue(
     return formatFormulaNumber(result.value, { type: result.money ? "currency" : "number", precision: decimals }, result.money === true, presentation);
   }
   return formatFormulaNumber(result.value, cell.format, result.money === true, presentation);
+}
+
+/**
+ * A figure the calculation wrote ("$ 1,234,567.89", "169.78 m²", "12%",
+ * "0.8523") with `decimals` decimals, its sign and unit as written. Only a
+ * figure with decimals, money or a percentage: a reference, an age or a count
+ * ("1", "10") stays as written, as does any text. Null when it is not one.
+ * The value stored is not touched; this is how it is shown.
+ */
+export function figureWithDecimals(written: string, decimals: number, presentation: NumberPresentation = DEFAULT_NUMBER_PRESENTATION): string | null {
+  const match = /^(\s*-?\s*\$?\s*-?\s*)(\d[\d,]*\.?\d*|\.\d+)([^\n]*)$/.exec(written);
+  if (!match || readTypedNumber(written.trim()) === null) return null;
+  const [, prefix, digits, suffix] = match;
+  if (!digits.includes(".") && !prefix.includes("$") && !suffix.trim().startsWith("%")) return null;
+  const magnitude = Number(digits.replace(/,/g, ""));
+  if (!Number.isFinite(magnitude)) return null;
+  const formatted = new Intl.NumberFormat("es-MX", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    useGrouping: presentation.thousandsSeparator,
+  }).format(roundDecimal(magnitude, decimals));
+  return `${prefix}${formatted}${suffix}`;
 }
 
 /** Decimals a homologation factor is shown with, in the editor and in print; it is computed with all of them. */

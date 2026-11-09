@@ -10,7 +10,9 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
+  captureFillTargets,
   tableContextMenu,
+  type CaptureFillCell,
   type TableMenuAction,
   type TableMenuGroup,
   type TableMenuTarget,
@@ -147,6 +149,10 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
       case "rename":
         if (hit.input) hit.input.focus();
         return;
+      case "fill-column":
+      case "fill-row":
+        fillFormula(hit, action === "fill-row" ? "row" : "column", readOnly);
+        return;
       case "insert-row-above": rows?.insertAbove?.(hit.rowIndex); return;
       case "insert-row-below": rows?.insertBelow?.(hit.rowIndex); return;
       case "duplicate-row": rows?.duplicate?.(hit.rowIndex); return;
@@ -191,6 +197,32 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
 const takesTyping = (input: CalcTableHit["input"], readOnly: boolean): input is HTMLInputElement | HTMLTextAreaElement =>
   !readOnly && (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) && !input.disabled && !input.readOnly;
 
+/** The formula of a cell's field: the one it keeps while it shows the result (`data-formula`), or what it holds. */
+function formulaOf(input: CalcTableHit["input"]): string | null {
+  if (!input) return null;
+  const kept = input.dataset.formula?.trim();
+  if (kept?.startsWith("=")) return kept;
+  return "value" in input && input.value.trim().startsWith("=") ? input.value.trim() : null;
+}
+
+/** The field of a cell that takes typing, if any. */
+const fieldOf = (cell: HTMLTableCellElement | undefined) => cell?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea") ?? null;
+
+/** "Copiar fórmula a toda la fila/columna": the formula of the cell typed in the empty fields of its row or column. */
+function fillFormula(hit: CalcTableHit, along: "row" | "column", readOnly: boolean) {
+  const formula = takesTyping(hit.input, readOnly) ? formulaOf(hit.input) : null;
+  const row = hit.cell.closest("tr");
+  const body = row?.closest("tbody");
+  if (!formula || !row || !body) return;
+  const cells = along === "row" ? Array.from(row.cells) : Array.from(body.rows).map((item) => item.cells[hit.columnIndex]);
+  const from = along === "row" ? hit.columnIndex : hit.rowIndex;
+  const fields = cells.map(fieldOf);
+  const seen: CaptureFillCell[] = fields.map((field) => (field ? { takesTyping: takesTyping(field, readOnly), text: field.value, hasFormula: formulaOf(field) !== null } : null));
+  const targets = captureFillTargets(seen, from);
+  for (const index of targets) typeInto(fields[index]!, formula);
+  if (!targets.length) toast.info(`No hay celdas vacías en la ${along === "row" ? "fila" : "columna"} para copiar la fórmula.`);
+}
+
 /** The menu's target for what was clicked: a header, a row's first cell or a cell. */
 function targetOf(hit: CalcTableHit, readOnly: boolean, rows: CalcTableRowActions | undefined): TableMenuTarget {
   if (hit.header) {
@@ -213,7 +245,7 @@ function targetOf(hit: CalcTableHit, readOnly: boolean, rows: CalcTableRowAction
   return {
     kind: "cell",
     editable,
-    hasFormula: takesTyping(hit.input, readOnly) ? hit.input.value.trim().startsWith("=") : false,
+    hasFormula: editable && formulaOf(hit.input) !== null,
     canPaste: editable,
     canInsertRow: canInsert,
     canInsertColumn: false,

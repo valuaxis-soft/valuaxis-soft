@@ -185,6 +185,10 @@ export type GeneratedTableLayout = {
    * printed as "Valor neto de reposición", keeping the figure.
    */
   boxLabels?: Record<string, string>;
+  /** "Formato de la tabla": how wide it prints, over what the calculation set. */
+  widthMode?: TableWidthMode;
+  /** "Formato de la tabla": decimals its figures print with (0–4); the calculation's values are kept whole. */
+  decimals?: number;
 };
 
 export type GeneratedTableState = { source: TableV2; layout: GeneratedTableLayout };
@@ -971,16 +975,49 @@ export function isNumericCell(table: TableV2, columnId: string, cell: TableCellV
   return isHomologationFactorColumn(table, columnId);
 }
 
+/** Numbers a column without a format needs before its values make it numeric. */
+const INFERRED_NUMERIC_MIN = 2;
+
+/**
+ * Whether a column without a format holds numbers, judged by what is written
+ * in it: at least two numbers (a formula counts as one) and more than twice as
+ * many numbers as texts. A column of names, addresses or dates stays text; a
+ * column of figures with one typo in it is numeric, so the typo is marked.
+ * It only warns: nothing typed is refused or changed.
+ */
+export function isInferredNumericColumn(table: TableV2, columnId: string): boolean {
+  const column = table.columns.find((item) => item.id === columnId);
+  if (!column || column.format) return false;
+  let numbers = 0;
+  let texts = 0;
+  for (const row of table.rows) {
+    const cell = row.cells[columnId];
+    if (!cell) continue;
+    if (cell.format) continue;
+    if (cell.kind === "formula") {
+      numbers += 1;
+      continue;
+    }
+    const written = cell.value.trim();
+    if (!written || written.startsWith("=")) continue;
+    if (readTypedNumber(written) === null) texts += 1;
+    else numbers += 1;
+  }
+  return numbers >= INFERRED_NUMERIC_MIN && numbers > texts * 2;
+}
+
 /** What a numeric cell says when letters are typed in it. */
 export const NUMERIC_CELL_MESSAGE = "Este campo es numérico";
 
 /**
  * The problem of what is typed in a numeric cell, if any: text that is not a
  * number ("abc") is marked and left out of the calculations; a number with a
- * unit or a sign ("$ 9,000", "10 %", "-5") is a number.
+ * unit or a sign ("$ 9,000", "10 %", "-5") is a number. A column without a
+ * format is numeric when its values are (`isInferredNumericColumn`).
  */
 export function numericCellProblem(table: TableV2, columnId: string, cell: TableCellV2 | undefined): string | null {
-  if (!cell || cell.kind !== "value" || !isNumericCell(table, columnId, cell)) return null;
+  if (!cell || cell.kind !== "value") return null;
+  if (!isNumericCell(table, columnId, cell) && (cell.format || !isInferredNumericColumn(table, columnId))) return null;
   const written = cell.value.trim();
   if (!written || written.startsWith("=")) return null;
   return readTypedNumber(written) === null ? NUMERIC_CELL_MESSAGE : null;

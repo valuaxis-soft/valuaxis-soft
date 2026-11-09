@@ -132,8 +132,12 @@ test("letters in a numeric cell are marked and left out of the calculations; num
   const text = setCellResultFormat(money, "r2", "c1", { type: "currency", precision: 2 });
   assert.equal(numericCellProblem(text, "c1", text.rows[1].cells.c1), NUMERIC_CELL_MESSAGE);
   assert.equal(shown(text, "A2"), "x", "what was typed stays in view, marked");
+  // Without the format the column still holds figures (two amounts and a sum), so the letters are still marked;
+  // given the text format, it takes any text.
   const back = setColumnFormat(table, "c2", null);
-  assert.equal(numericCellProblem(back, "c2", back.rows[0].cells.c2), null);
+  assert.equal(numericCellProblem(back, "c2", back.rows[0].cells.c2), NUMERIC_CELL_MESSAGE);
+  const asText = setColumnFormat(table, "c2", { type: "text" });
+  assert.equal(numericCellProblem(asText, "c2", asText.rows[0].cells.c2), null);
 });
 
 /* ------------------------------------------------------------------ */

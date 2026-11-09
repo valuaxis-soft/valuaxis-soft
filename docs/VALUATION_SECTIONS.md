@@ -54,6 +54,11 @@ Las operaciones viven en `services/structure-transfer.ts` (puras) y el editor la
 
 - Los valores capturados se guardan exactamente como se escribieron, en texto. Los valores guardados antes del 23 de septiembre de 2026 pueden estar en forma numérica ("7000" en lugar de "7,000.00") y se muestran así.
 - Las tablas se guardan como TableV2 sin pérdida (`table-persistence.ts`): ids de filas y columnas, texto exacto, fórmulas, formatos y esquema. Las filas, columnas y tablas borradas en el editor se marcan como eliminadas.
+- **Tablas uniformes** (auditoría de noviembre de 2026):
+  - "Quitar tabla" pide confirmación con el mismo diálogo de los demás borrados (`delete-confirm.tsx`) y se deshace con «Deshacer».
+  - Una columna sin formato cuyos valores son cifras (al menos dos y más del doble que los textos; una fórmula cuenta como cifra; `isInferredNumericColumn` en `services/table.ts`) marca en rojo las letras escritas en ella, igual que una columna con formato numérico. Solo avisa: lo escrito se guarda como está. «10%» vale 0.10 en las fórmulas y al ordenar.
+  - Las tablas que escribe el cálculo (Costos, Mercado, Ingresos…) tienen "Formato de la tabla" junto a «Columnas de…»: ancho (página o contenido) y decimales. Se guardan con las columnas ocultas y renombradas (`GeneratedTableLayout.widthMode`/`decimals`), así que el siguiente cálculo los conserva. Los decimales solo cambian cómo se imprimen las cifras con decimales, los montos y los porcentajes (`figureWithDecimals`); el valor que escribió el cálculo no cambia, y las claves, edades y conteos quedan como están. Las tablas de captura de los paneles no se imprimen: su menú indica que el formato se elige en la tabla del dictamen.
+  - En las tablas de captura de los paneles, "Copiar fórmula a toda la columna/fila" copia la fórmula de la celda (aritmética sin referencias, =1345*235) a las celdas vacías que se capturan; nunca sobrescribe lo capturado.
 
 ## Capítulos, anexos y saltos de página
 
