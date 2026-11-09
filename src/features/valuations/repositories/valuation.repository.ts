@@ -142,6 +142,7 @@ export type ValuationConceptDto = {
   customUnit?: string;
   options?: string[];
   generatedLabel?: string;
+  calculationUnlinked?: boolean;
 };
 
 export type ValuationTableDto = {

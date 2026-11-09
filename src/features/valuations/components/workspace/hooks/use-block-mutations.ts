@@ -17,6 +17,8 @@ import {
   unlinkConcept,
   type ExistingConceptRelationMode,
 } from "@/features/valuations/concept-links";
+import { withManualConclusionEdit } from "@/features/valuations/calculation/conclusion-document";
+import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { normalizeBlockFlowV2, isBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { isContentLayout, resolveContentLayout } from "@/features/valuations/services/content-layout";
 import { setItemFullRowPreservingOrder, mergeItemToAdjacentRow } from "@/features/valuations/services/content-layout-v2-operations";
@@ -179,7 +181,7 @@ export function useBlockMutations({
           if (block.id !== blockId) return block;
 
           const updatedConcepts = block.concepts.map((concept) =>
-            concept.id === conceptId ? { ...concept, ...patch } : concept,
+            concept.id === conceptId ? { ...concept, ...withManualConclusionEdit(getCanonicalSectionKey(sectionId), concept, patch) } : concept,
           );
 
           // When layoutSpan toggles, also update ContentLayoutV2 structure
@@ -379,7 +381,7 @@ export function useBlockMutations({
                     ? {
                         ...subBlock,
                         concepts: subBlock.concepts.map((concept) =>
-                          concept.id === conceptId ? { ...concept, ...patch } : concept,
+                          concept.id === conceptId ? { ...concept, ...withManualConclusionEdit(getCanonicalSectionKey(sectionId), concept, patch) } : concept,
                         ),
                       }
                     : subBlock,
@@ -414,6 +416,31 @@ export function useBlockMutations({
             }
           : block,
       ),
+    );
+  };
+
+  /**
+   * "Desvincular" / "Volver a vincular" of a concept the conclusion fills:
+   * unlinked, the calculation leaves its value; linked again, the next sync
+   * writes the calculation's.
+   */
+  const setConceptCalculationLink = (sectionId: string, conceptId: string, linked: boolean) => {
+    const apply = (concepts: Concept[]) =>
+      concepts.map((concept) => {
+        if (concept.id !== conceptId) return concept;
+        if (!linked) return { ...concept, calculationUnlinked: true };
+        const { calculationUnlinked: _unlinked, ...rest } = concept;
+        return rest;
+      });
+    updateSectionBlocks(
+      sectionId,
+      (blocks) =>
+        blocks.map((block) => ({
+          ...block,
+          concepts: apply(block.concepts),
+          apartados: block.apartados.map((subBlock) => ({ ...subBlock, concepts: apply(subBlock.concepts) })),
+        })),
+      { normalize: false },
     );
   };
 
@@ -460,6 +487,7 @@ export function useBlockMutations({
     removeConcept,
     removeConcepts,
     removeSubConcept,
+    setConceptCalculationLink,
     unlinkConceptEverywhere,
     updateApartado,
     updateBlock,

@@ -162,7 +162,10 @@ export function useCalculationDocumentSync({
           : section);
   };
 
+  // The last conclusion, to write it again when the appraiser links a concept to it again.
+  const lastConclusion = useRef<ConclusionCalculationDto | null>(null);
   const applyConclusion = (calculation: ConclusionCalculationDto) => {
+    lastConclusion.current = calculation;
     if (!canEdit || calculation.locked || !canConclude(calculation)) return;
     const result = concludeValue(conclusionInput(calculation), conclusionEngineConfig(calculation));
     const sectionValues = conclusionValues(calculation, result);
@@ -257,6 +260,20 @@ export function useCalculationDocumentSync({
     savedExclusionKeyRef.current = exclusionKey;
     refreshConclusion();
   }, [exclusionKey, saveStatus]);
+
+  // A concept of the conclusion unlinked or linked again: linked, it takes the calculation's value at once.
+  const unlinkedKey = sections
+    .filter((section) => ["CONCLUSIONES", "CARATULA"].includes(getCanonicalSectionKey(section.id)))
+    .flatMap((section) => section.blocks.flatMap((block) => [...block.concepts, ...block.apartados.flatMap((apartado) => apartado.concepts)]))
+    .filter((concept) => concept.calculationUnlinked)
+    .map((concept) => concept.id)
+    .join(",");
+  const reapplyConclusion = useEffectEvent(() => {
+    if (lastConclusion.current) applyConclusion(lastConclusion.current);
+  });
+  useEffect(() => {
+    reapplyConclusion();
+  }, [unlinkedKey]);
 
   return {
     onMarketCalculation,

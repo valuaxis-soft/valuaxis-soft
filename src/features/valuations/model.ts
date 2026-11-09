@@ -127,6 +127,12 @@ export type Concept = {
    * (`label`). The calculation writing the block again keeps their name.
    */
   generatedLabel?: string;
+  /**
+   * Only in a concept the conclusion fills (valor concluido, cifra en letras,
+   * resumen de valores, the carátula's value): the appraiser wrote it by hand
+   * or unlinked it, and the calculation leaves it until he links it again.
+   */
+  calculationUnlinked?: boolean;
 };
 
 export type TableContent = {

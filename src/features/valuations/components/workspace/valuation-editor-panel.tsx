@@ -2,7 +2,9 @@
 
 import { ConceptCreationControl } from "../editor/concept-creation-control";
 import { isGeneratedBlock } from "@/features/valuations/calculation/market-document";
+import { isConclusionCalculatedConcept } from "@/features/valuations/calculation/conclusion-document";
 import {
+  ConceptCalculationLinkScope,
   ConceptValueFormatEverywhere,
   LongTextConceptEditor,
 } from "../editor/concept-editor";
@@ -216,6 +218,8 @@ export function ValuationEditorPanel(props: {
   calculationPanel?: ReactNode;
   allSections: AppSection[];
   readOnly: boolean;
+  /** "Desvincular" / "Volver a vincular" of a concept the conclusion fills. */
+  onSetConceptCalculationLink: (sectionId: string, conceptId: string, linked: boolean) => void;
   onAddBlock: (sectionId: string) => void;
   onAddConcept: (sectionId: string, blockId: string, type?: ConceptCreationKind) => void;
   onAddConceptFromExisting: (sectionId: string, blockId: string, source: Concept, mode: "copy" | "full" | "value", apartadoId?: string) => void;
@@ -290,6 +294,13 @@ export function ValuationEditorPanel(props: {
   const isTerreno = isTerrenoSection(section);
   const sectionCapabilities = getSectionEditorCapabilities(section);
   const [renaming, setRenaming] = useState(false);
+  const sectionKey = getCanonicalSectionKey(section.id);
+  const calculationLink = sectionKey === "CONCLUSIONES" || sectionKey === "CARATULA"
+    ? {
+        isCalculated: (concept: Concept) => isConclusionCalculatedConcept(sectionKey, concept),
+        onSetLinked: (conceptId: string, linked: boolean) => props.onSetConceptCalculationLink(section.id, conceptId, linked),
+      }
+    : null;
   // One word in every tab: a tab is a section, what it holds are blocks ("+ Sección" used to create a block).
   const blocksTerm = `${BLOCK_TERM}s`;
   const subBlocksTerm = `${SUBBLOCK_TERM}s`;
@@ -433,6 +444,7 @@ export function ValuationEditorPanel(props: {
       </CardHeader>
       <CardContent className="space-y-4">
         <ConceptValueFormatEverywhere enabled={!isCaratula}>
+        <ConceptCalculationLinkScope value={calculationLink}>
         {isCaratula ? (
           <ValuationSettingsPanel section={section} readOnly={props.readOnly} valuationId={props.valuationId} onUpdateSection={props.onUpdateSection} />
         ) : (
@@ -534,6 +546,7 @@ export function ValuationEditorPanel(props: {
             </SortableContext>
           </ContentDndScope>
         )}
+        </ConceptCalculationLinkScope>
         </ConceptValueFormatEverywhere>
       </CardContent>
     </Card>

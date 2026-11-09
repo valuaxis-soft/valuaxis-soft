@@ -46,6 +46,8 @@ export type ConceptMetadata = {
   formula?: TableFormula;
   /** The calculation's label of a concept of a generated block the appraiser renamed. */
   generatedLabel?: string;
+  /** A concept of the conclusion the appraiser unlinked from the calculation. */
+  calculationUnlinked?: boolean;
 };
 
 export type ImageMetadata = {
@@ -163,6 +165,7 @@ export function conceptMetadataFromContent(content: ConceptMetadataContent): Con
     valueKey: content.valueKey,
     formula: content.formula,
     generatedLabel: content.generatedLabel,
+    calculationUnlinked: content.calculationUnlinked || undefined,
   };
 }
 
@@ -183,6 +186,7 @@ export function hydrateConceptMetadata(config: unknown): ConceptMetadata {
     options: readConfigMetadata(config, readConceptOptions),
     formula: readConfigMetadata(config, (value) => (isRecord(value) ? readStoredFormula(value.formula) : undefined)),
     generatedLabel: conceptStringMetadata(config, "generatedLabel"),
+    calculationUnlinked: readConfigMetadata(config, (value) => readBooleanMetadata(value, "calculationUnlinked")) || undefined,
   };
 }
 
@@ -534,7 +538,7 @@ function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "cust
   return typeof metadata === "string" ? metadata : undefined;
 }
 
-function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited" | "removed") {
+function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited" | "removed" | "calculationUnlinked") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "boolean" ? metadata : undefined;
