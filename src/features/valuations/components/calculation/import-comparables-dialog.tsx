@@ -65,6 +65,20 @@ export type ImportScope =
 /** The same name everywhere («Importar Excel», decided 29 oct 2026): one template, the master one, wherever it is imported from. */
 const IMPORT_MASTER_LABEL = "Importar Excel";
 
+/**
+ * What the dialog calls the workbooks: «la plantilla» and «Descargar
+ * plantilla», as the Comparables page does (`BASE_ACTION_LABELS`), never «plantilla maestra».
+ */
+export const IMPORT_TEMPLATE_WORDING = {
+  valuationTitle: "La plantilla de comparables (Excel): a este avalúo, a la base del despacho o a los dos",
+  baseTitle: "La plantilla de comparables (Excel): a la base del despacho y a los avalúos de sus folios",
+  howTo: "Usa la plantilla general (cualquier tipo de comparable, a un avalúo, a la base general o a los dos) o la plantilla de un mercado.",
+  download: "Descargar plantilla",
+  general: "Plantilla general",
+  market: "Plantilla de un mercado",
+  typeFromFile: "(la plantilla general trae el tipo)",
+} as const;
+
 export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -148,9 +162,7 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
         type="button"
         size="sm"
         variant="outline"
-        title={scope.kind === "valuation"
-          ? "La plantilla maestra de comparables (Excel): a este avalúo, a la base del despacho o a los dos"
-          : "La plantilla maestra de comparables (Excel): a la base del despacho y a los avalúos de sus folios"}
+        title={scope.kind === "valuation" ? IMPORT_TEMPLATE_WORDING.valuationTitle : IMPORT_TEMPLATE_WORDING.baseTitle}
         onClick={() => setOpen(true)}
       >
         <FileSpreadsheet data-icon="inline-start" /> {IMPORT_MASTER_LABEL}
@@ -163,7 +175,7 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
               {scope.kind === "valuation"
                 ? "Desde este avalúo: los comparables van a este avalúo, a la base del despacho o a los dos, según el destino que confirmes. "
                 : "Desde Comparables: los comparables van a la base del despacho y, con su «Folio avalúo», a esos avalúos. "}
-              Usa la plantilla maestra (cualquier tipo de comparable, a un avalúo, a la base general o a los dos) o la plantilla de un mercado.
+              {IMPORT_TEMPLATE_WORDING.howTo}
               Antes de guardar verás los errores, los avisos, el destino de cada renglón y los posibles duplicados.
               Los factores y las fotos se capturan después, en el avalúo.
             </DialogDescription>
@@ -171,7 +183,7 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
 
           <div className="flex flex-wrap items-center gap-2">
             <a className={cn(buttonVariants({ variant: "outline", size: "sm" }))} href={templateHref} download>
-              <FileDown data-icon="inline-start" /> Plantilla maestra
+              <FileDown data-icon="inline-start" /> {IMPORT_TEMPLATE_WORDING.download}
             </a>
             {scope.kind === "valuation" ? (
               <a className={cn(buttonVariants({ variant: "ghost", size: "sm" }))} href={`/api/comparables/plantilla?tipo=${scope.type}`} download>
@@ -190,7 +202,7 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
                     if (file) void read(file, destination, next);
                   }}
                 >
-                  <NativeSelectOption value="">(la maestra trae el tipo)</NativeSelectOption>
+                  <NativeSelectOption value="">{IMPORT_TEMPLATE_WORDING.typeFromFile}</NativeSelectOption>
                   {COMPARABLE_TYPES.map((type) => <NativeSelectOption key={type} value={type}>{COMPARABLE_TYPE_LABELS[type]}</NativeSelectOption>)}
                 </NativeSelect>
               </label>
@@ -232,7 +244,7 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
                   <span className="text-xs text-muted-foreground">El archivo dice «{IMPORT_DESTINATION_LABELS[preview.fileDestination]}».</span>
                 ) : null}
                 <span className="text-xs text-muted-foreground">
-                  {preview.format === "MAESTRA" ? "Plantilla maestra" : "Plantilla de un mercado"}.
+                  {preview.format === "MAESTRA" ? IMPORT_TEMPLATE_WORDING.general : IMPORT_TEMPLATE_WORDING.market}.
                   {" "}Un comparable de un avalúo ya forma parte de la base general.
                 </span>
               </div>

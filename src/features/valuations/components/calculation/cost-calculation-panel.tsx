@@ -19,6 +19,7 @@ import {
   MAX_EXTRA_DEMERIT_FACTORS,
   constructionCostOf,
   conservationCriterionOf,
+  addConstructionDisabledReason,
   conservationCriterionOfColumns,
   conservationOfRating,
   conservationOfState,
@@ -580,6 +581,7 @@ export function CostCalculationPanel(props: {
   const subjectArea = input.land.subjectArea ?? calculation.market.subjectArea;
   const pickedRefs = new Set(draft.constructions.map((row) => row.ref.trim().toLowerCase()));
   const unpickedTypes = calculation.types.filter((type) => !pickedRefs.has(type.ref.trim().toLowerCase()));
+  const addConstructionReason = addConstructionDisabledReason(calculation.types.length, unpickedTypes.length);
 
   const save = (next = draft) => {
     if (!readOnly) void enqueueSave(payloadOf(next));
@@ -1012,9 +1014,17 @@ export function CostCalculationPanel(props: {
             </p>
           ) : null}
           {!readOnly ? (
-            <Button type="button" size="sm" variant="outline" className="w-fit" disabled={!unpickedTypes.length} onClick={() => addRow("constructions")}>
-              <Plus data-icon="inline-start" /> Construcción
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* A disabled button shows no tooltip of its own: the reason goes on its frame and next to it. */}
+              <span title={addConstructionReason ?? undefined}>
+                <Button type="button" size="sm" variant="outline" className="w-fit" disabled={addConstructionReason !== null} onClick={() => addRow("constructions")}>
+                  <Plus data-icon="inline-start" /> Construcción
+                </Button>
+              </span>
+              {addConstructionReason ? (
+                <p className="text-xs text-muted-foreground" data-testid="cost-add-construction-reason">{addConstructionReason}</p>
+              ) : null}
+            </div>
           ) : null}
         </div>
 

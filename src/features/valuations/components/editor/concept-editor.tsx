@@ -60,7 +60,8 @@ import {
 } from "@/features/valuations/services/caratula-blocks";
 
 import { ValuationDateField } from "../editor/valuation-date-field";
-import { TextMarksField } from "./text-marks-toolbar";
+import { TextMarksField, type MarkedTextField } from "./text-marks-toolbar";
+import { stripTextMarks } from "@/features/valuations/services/text-marks";
 import { ConceptSelectionCheckbox } from "./concept-selection";
 import { compileFormula, conceptReferenceText, formulaToText, isFormulaText } from "@/features/valuations/services/formula-references";
 import { conceptTakesFormula } from "@/features/valuations/services/valuation-formulas";
@@ -109,6 +110,11 @@ function isSingleLineConceptType(type: ConceptType | undefined) {
 function takesTextMarks(concept: Pick<Concept, "type" | "valueFormat">) {
   const type = concept.type ?? "text";
   return (type === "text" || type === "longText" || type === "paragraph") && !isNumericConcept(concept);
+}
+
+/** A value that takes no marks, written as it is typed. */
+function unmarkedField(value: string): MarkedTextField {
+  return { text: value, valueOf: (text) => text };
 }
 
 function canNormalizeConceptLineBreaks(concept: Pick<Concept, "type" | "value">) {
@@ -345,7 +351,7 @@ function ConceptDragOverlay({ concept }: { concept: Concept }) {
   return (
     <div className="grid min-w-40 max-w-sm grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 rounded-md border border-primary/40 bg-background/95 p-2 text-sm shadow-lg">
       <span className="truncate font-medium">{concept.label || "Concepto"}</span>
-      <span className="truncate text-muted-foreground">{concept.value || "Sin dato"}</span>
+      <span className="truncate text-muted-foreground">{stripTextMarks(concept.value) || "Sin dato"}</span>
     </div>
   );
 }
@@ -1120,12 +1126,12 @@ export function ConceptEditorRow({
       onUpdate(concept.id, patch);
     };
     // The format buttons under a text the marks apply to, writing through the links of the concept.
-    const withLinkedTextMarks = (field: ReactNode) =>
+    const withLinkedTextMarks = (field: (marked: MarkedTextField) => ReactNode) =>
       takesTextMarks(effectiveConcept) ? (
         <TextMarksField value={effectiveConcept.value} disabled={readOnly} onChange={(value) => handleLinkedAwareUpdate({ value })}>
           {field}
         </TextMarksField>
-      ) : field;
+      ) : field(unmarkedField(effectiveConcept.value));
     const handleTitleBlur = () => {
       setIsTitleFocused(false);
       if (titleMissing) {
@@ -1190,25 +1196,29 @@ export function ConceptEditorRow({
           />
         ) : conceptType === "paragraph" ? (
           <TextMarksField className="col-span-2" value={effectiveConcept.value} disabled={readOnly} onChange={(value) => handleLinkedAwareUpdate({ value })}>
-            <Textarea aria-label="Párrafo" className="min-w-0" disabled={readOnly} placeholder="Texto del párrafo" value={effectiveConcept.value} onChange={(event) => handleLinkedAwareUpdate({ value: event.target.value })} />
+            {(marked) => (
+              <Textarea aria-label="Párrafo" className="min-w-0" disabled={readOnly} placeholder="Texto del párrafo" value={marked.text} onChange={(event) => handleLinkedAwareUpdate({ value: marked.valueOf(event.target.value) })} />
+            )}
           </TextMarksField>
         ) : conceptType === "longText" ? (
           <div className="grid min-w-0 gap-1">
             <TextMarksField value={effectiveConcept.value} disabled={readOnly} onChange={(value) => handleLinkedAwareUpdate({ value })}>
-              <Textarea
-                className="min-w-0"
-                disabled={readOnly}
-                placeholder="Dato"
-                value={effectiveConcept.value}
-                onChange={(event) => handleLinkedAwareUpdate({ value: event.target.value })}
-              />
+              {(marked) => (
+                <Textarea
+                  className="min-w-0"
+                  disabled={readOnly}
+                  placeholder="Dato"
+                  value={marked.text}
+                  onChange={(event) => handleLinkedAwareUpdate({ value: marked.valueOf(event.target.value) })}
+                />
+              )}
             </TextMarksField>
             {readOnly ? null : (
               <DraftAssist concept={effectiveConcept} container={concepts} allConcepts={allConcepts} onInsert={(value) => handleLinkedAwareUpdate({ value })} />
             )}
           </div>
         ) : (
-          withLinkedTextMarks(
+          withLinkedTextMarks((marked) => (
             <ConceptValueInput
               concept={effectiveConcept}
               className="h-10 min-w-0"
@@ -1216,14 +1226,16 @@ export function ConceptEditorRow({
               inputMode={isNumericConcept(effectiveConcept) ? "decimal" : conceptType === "phone" ? "numeric" : undefined}
               placeholder="Dato"
               type={caratulaInputType(conceptType)}
-              value={isNumericConcept(effectiveConcept) && isValueFocused ? effectiveConcept.value : formatCaratulaConceptValue(effectiveConcept, presentation)}
-              normalize={(text) => normalizeCaratulaConceptValue(conceptType, text, effectiveConcept)}
+              value={isNumericConcept(effectiveConcept) && isValueFocused
+                ? effectiveConcept.value
+                : takesTextMarks(effectiveConcept) ? marked.text : formatCaratulaConceptValue(effectiveConcept, presentation)}
+              normalize={(text) => marked.valueOf(normalizeCaratulaConceptValue(conceptType, text, effectiveConcept))}
               onBlur={() => setIsValueFocused(false)}
-              onValueChange={(text) => handleLinkedAwareUpdate({ value: normalizeCaratulaConceptValue(conceptType, text, effectiveConcept) })}
+              onValueChange={(text) => handleLinkedAwareUpdate({ value: marked.valueOf(normalizeCaratulaConceptValue(conceptType, text, effectiveConcept)) })}
               onFormulaChange={setFormula}
               onFocus={() => setIsValueFocused(true)}
-            />,
-          )
+            />
+          ))
         )}
         <div className="flex shrink-0 items-center justify-end gap-1">
           <ConceptCalculationLinkBadge concept={concept} readOnly={readOnly} />
@@ -1257,16 +1269,18 @@ export function ConceptEditorRow({
   // A paragraph is one text with no title, from edge to edge of the row.
   const paragraphField = conceptType === "paragraph" ? (
     <TextMarksField className="col-span-2" value={effectiveConcept.value} disabled={readOnly} onChange={(value) => onUpdate(concept.id, { value })}>
-      <Textarea aria-label="Párrafo" className="min-w-0" disabled={readOnly} placeholder="Texto del párrafo" value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />
+      {(marked) => (
+        <Textarea aria-label="Párrafo" className="min-w-0" disabled={readOnly} placeholder="Texto del párrafo" value={marked.text} onChange={(event) => onUpdate(concept.id, { value: marked.valueOf(event.target.value) })} />
+      )}
     </TextMarksField>
   ) : null;
   // The format buttons under a text the marks apply to; other values print as they are.
-  const withTextMarks = (field: ReactNode) =>
+  const withTextMarks = (field: (marked: MarkedTextField) => ReactNode) =>
     takesTextMarks(effectiveConcept) ? (
       <TextMarksField value={effectiveConcept.value} disabled={readOnly} onChange={(value) => onUpdate(concept.id, { value })}>
         {field}
       </TextMarksField>
-    ) : field;
+    ) : field(unmarkedField(effectiveConcept.value));
   // Descriptive fields only: a draft written from the data captured next to them.
   const draftAssist = readOnly || usesSingleLineEditor ? null : (
     <DraftAssist concept={effectiveConcept} container={concepts} allConcepts={allConcepts} onInsert={(value) => onUpdate(concept.id, { value })} />
@@ -1325,9 +1339,9 @@ export function ConceptEditorRow({
             />
             {titleMissing ? <FieldError>Escribe un título para este campo.</FieldError> : null}
           </Field>
-          {withTextMarks(
-            <Textarea className="w-full" disabled={readOnly} value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />,
-          )}
+          {withTextMarks((marked) => (
+            <Textarea className="w-full" disabled={readOnly} value={marked.text} onChange={(event) => onUpdate(concept.id, { value: marked.valueOf(event.target.value) })} />
+          ))}
           {draftAssist}
         </div>
       ) : (
@@ -1376,24 +1390,24 @@ export function ConceptEditorRow({
               onFocus={() => setIsValueFocused(true)}
             />
           ) : usesSingleLineEditor ? (
-            withTextMarks(
+            withTextMarks((marked) => (
               <ConceptValueInput
                 concept={effectiveConcept}
                 className="h-10 min-w-0"
                 disabled={readOnly}
                 inputMode={conceptType === "phone" ? "numeric" : undefined}
                 type={caratulaInputType(conceptType)}
-                value={formatCaratulaConceptValue(effectiveConcept, presentation)}
-                normalize={(text) => normalizeCaratulaConceptValue(conceptType, text, effectiveConcept)}
-                onValueChange={(text) => onUpdate(concept.id, { value: normalizeCaratulaConceptValue(conceptType, text, effectiveConcept) })}
+                value={takesTextMarks(effectiveConcept) ? marked.text : formatCaratulaConceptValue(effectiveConcept, presentation)}
+                normalize={(text) => marked.valueOf(normalizeCaratulaConceptValue(conceptType, text, effectiveConcept))}
+                onValueChange={(text) => onUpdate(concept.id, { value: marked.valueOf(normalizeCaratulaConceptValue(conceptType, text, effectiveConcept)) })}
                 onFormulaChange={setFormula}
-              />,
-            )
+              />
+            ))
           ) : (
             <div className="grid min-w-0 gap-1">
-              {withTextMarks(
-                <Textarea disabled={readOnly} value={effectiveConcept.value} onChange={(event) => onUpdate(concept.id, { value: event.target.value })} />,
-              )}
+              {withTextMarks((marked) => (
+                <Textarea disabled={readOnly} value={marked.text} onChange={(event) => onUpdate(concept.id, { value: marked.valueOf(event.target.value) })} />
+              ))}
               {draftAssist}
             </div>
           )}

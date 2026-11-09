@@ -7,7 +7,8 @@ export const costosSection = defineSection({
   blocks: [
     {
       title: "TERRENO",
-      concepts: [["Superficie de terreno"], ["Valor unitario de terreno"], ["Valor de terreno"], ["Observaciones"]],
+      // Surfaces are born as numbers and amounts as money; the remarks stay a text.
+      concepts: [["Superficie de terreno", "", "number"], ["Valor unitario de terreno", "", "currency"], ["Valor de terreno", "", "currency"], ["Observaciones"]],
     },
     {
       title: "CONSTRUCCIONES",
@@ -27,7 +28,13 @@ export const costosSection = defineSection({
     },
     {
       title: "RESUMEN DEL ENFOQUE DE COSTOS",
-      concepts: [["Valor del terreno"], ["Valor de construcciones"], ["Valor de instalaciones especiales"], ["Valor físico o directo"], ["Observaciones"]],
+      concepts: [
+        ["Valor del terreno", "", "currency"],
+        ["Valor de construcciones", "", "currency"],
+        ["Valor de instalaciones especiales", "", "currency"],
+        ["Valor físico o directo", "", "currency"],
+        ["Observaciones"],
+      ],
     },
   ],
 });

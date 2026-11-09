@@ -9,6 +9,7 @@
 import type { TableContent } from "../model";
 import {
   ensureTableV2,
+  withWholeHomologationHeaders,
   type TableCellFormat,
   type TableCellV2,
   type TableColumn,
@@ -131,7 +132,8 @@ export function decodeStoredTable(stored: StoredTableRecord): TableV2 {
     return { id: row.id || `r-${stored.id}-${rowIndex}`, cells };
   });
 
-  return {
+  // The homologation headers saved cut short ("Clas", "Re") read whole.
+  return withWholeHomologationHeaders({
     id: stored.id,
     title: stored.title,
     version: 2,
@@ -139,5 +141,5 @@ export function decodeStoredTable(stored: StoredTableRecord): TableV2 {
     rows,
     enabled: stored.enabled,
     ...(stored.schema ? { schema: stored.schema as TableSchema } : {}),
-  };
+  });
 }

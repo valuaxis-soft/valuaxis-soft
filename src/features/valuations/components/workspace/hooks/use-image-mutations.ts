@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api-client";
@@ -14,8 +14,10 @@ import { textEditGroupKey } from "../model/editor-history";
 import {
   ensureBlockContentIntegrity,
   getDocumentHeaderImage,
+  storedImagesToDelete,
   withAddedApartadoContent,
   withAddedBlockContent,
+  type PendingStoredImageDeletes,
 } from "../model/section-content";
 import type { EditorState } from "./use-editor-state";
 import { useStoredValuationImages } from "./use-stored-images";
@@ -41,13 +43,14 @@ function isSupportedDocumentHeaderImage(file: File) {
  */
 export function useImageMutations({
   canEdit,
+  saveStatus,
+  savedSnapshotRef,
   sections,
   setSections,
-  snapshotRef,
   updateSectionBlocks,
   updateSections,
   valuationId,
-}: Pick<EditorState, "sections" | "setSections" | "snapshotRef" | "updateSectionBlocks" | "updateSections"> & {
+}: Pick<EditorState, "saveStatus" | "savedSnapshotRef" | "sections" | "setSections" | "updateSectionBlocks" | "updateSections"> & {
   canEdit: boolean;
   valuationId: string | null;
 }) {
@@ -55,6 +58,29 @@ export function useImageMutations({
   const [uploadingDocumentHeaderImage, setUploadingDocumentHeaderImage] = useState(false);
   const [uploadingCoverImage, setUploadingCoverImage] = useState(false);
   const documentHeaderImage = getDocumentHeaderImage(sections);
+
+  // Stored images taken out of the document: the server deletes them once a save leaves them out,
+  // so until then «Deshacer» brings them back whole.
+  const pendingDeletes = useRef<PendingStoredImageDeletes>({ headerImage: false, datosImageIds: [] });
+  const deleteStoredImages = useEffectEvent(async () => {
+    const saved = savedSnapshotRef.current;
+    if (!valuationId || !saved) return;
+    const pending = pendingDeletes.current;
+    if (!pending.headerImage && !pending.datosImageIds.length) return;
+    pendingDeletes.current = { headerImage: false, datosImageIds: [] };
+    const doomed = storedImagesToDelete(saved.sections, pending);
+    if (doomed.headerImage) {
+      await api.valuations.documentHeaderImage.delete(valuationId)
+        .catch(() => toast.error("No se pudo eliminar del servidor la imagen del encabezado."));
+    }
+    for (const imageId of doomed.datosImageIds) {
+      await api.valuations.datosImages.delete(valuationId, imageId)
+        .catch((error: unknown) => toast.error(`No se pudo eliminar del servidor la imagen: ${error instanceof Error ? error.message : "Error desconocido"}`));
+    }
+  });
+  useEffect(() => {
+    if (saveStatus === "saved") void deleteStoredImages();
+  }, [saveStatus]);
 
   const handlePrincipalCoverImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -115,17 +141,10 @@ export function useImageMutations({
     }
   };
 
-  const removeDocumentHeaderImage = async () => {
-    const previous = documentHeaderImage;
+  const removeDocumentHeaderImage = () => {
+    if (!documentHeaderImage) return;
+    pendingDeletes.current = { ...pendingDeletes.current, headerImage: true };
     updateDocumentHeaderImage(null);
-    if (!valuationId || !previous) return;
-
-    try {
-      await api.valuations.documentHeaderImage.delete(valuationId);
-    } catch {
-      updateDocumentHeaderImage(previous);
-      toast.error("No se pudo eliminar la imagen del encabezado.");
-    }
   };
 
   /**
@@ -257,80 +276,17 @@ export function useImageMutations({
     );
   };
 
-  const removeImage = async (
+  const removeImage = (
     sectionId: string,
     blockId: string,
     imageId: string,
     apartadoId?: string,
   ) => {
-    const isDatos = sectionId === "datos" || sectionId === "datosGenerales";
-    const latestSections = snapshotRef.current?.sections ?? sections;
-    const targetSection = latestSections.find((section) => section.id === sectionId);
-    const targetBlock = targetSection?.blocks.find((block) => block.id === blockId);
-    const targetSubBlock = targetBlock?.apartados.find((subBlock) => subBlock.id === apartadoId);
-    // Capture the image for surgical rollback before optimistic removal
-    let removedImage: { image: ImageContent; index: number; inSubBlock: boolean } | null = null;
-    if (isDatos && valuationId) {
-      const container = apartadoId ? targetSubBlock : targetBlock;
-      if (container) {
-        const idx = container.images.findIndex((img) => img.id === imageId);
-        if (idx !== -1) {
-          removedImage = { image: container.images[idx], index: idx, inSubBlock: Boolean(apartadoId) };
-        }
-      }
-      // Optimistic: remove from local state immediately so any concurrent
-      // handleSave builds its payload without this image.
-      updateSectionBlocks(sectionId, (blocks) =>
-        blocks.map((block) => {
-          if (block.id !== blockId) return block;
-          if (!apartadoId) return { ...block, images: block.images.filter((image) => image.id !== imageId) };
-          return {
-            ...block,
-            apartados: block.apartados.map((subBlock) => {
-              if (subBlock.id !== apartadoId) return subBlock;
-              const updated = { ...subBlock, images: subBlock.images.filter((image) => image.id !== imageId) };
-              return { ...updated, contentLayout: resolveContentLayout(updated) };
-            }),
-          };
-        }),
-      );
-      try {
-        await api.valuations.datosImages.delete(valuationId, imageId);
-      } catch (error) {
-        // Surgical rollback: re-insert only the removed image at its original position
-        if (removedImage) {
-          updateSectionBlocks(sectionId, (blocks) =>
-            blocks.map((block) => {
-              if (block.id !== blockId) return block;
-              if (removedImage!.inSubBlock) {
-                if (apartadoId === undefined) return block;
-                return {
-                  ...block,
-                  apartados: block.apartados.map((subBlock) => {
-                    if (subBlock.id !== apartadoId) return subBlock;
-                    // Guard against duplicate if image was re-added by other means
-                    if (subBlock.images.some((img) => img.id === imageId)) return subBlock;
-                    const reinserted = [...subBlock.images];
-                    reinserted.splice(removedImage!.index, 0, removedImage!.image);
-                    const updated = { ...subBlock, images: reinserted };
-                    return { ...updated, contentLayout: resolveContentLayout(updated) };
-                  }),
-                };
-              }
-              // Block-level rollback
-              if (block.images.some((img) => img.id === imageId)) return block;
-              const reinserted = [...block.images];
-              reinserted.splice(removedImage!.index, 0, removedImage!.image);
-              return { ...block, images: reinserted };
-            }),
-          );
-        }
-        toast.error(`No se pudo quitar la imagen: ${error instanceof Error ? error.message : "Error desconocido"}`);
-        return;
-      }
-      return;
+    // A Datos generales image is a stored file: it is deleted from the server after the save that leaves it out.
+    if (sectionId === "datos" || sectionId === "datosGenerales") {
+      const pending = pendingDeletes.current;
+      if (!pending.datosImageIds.includes(imageId)) pendingDeletes.current = { ...pending, datosImageIds: [...pending.datosImageIds, imageId] };
     }
-    // Non-DATOS path: local-only removal (no backend delete needed)
     updateSectionBlocks(sectionId, (blocks) =>
       blocks.map((block) => {
         if (block.id !== blockId) return block;

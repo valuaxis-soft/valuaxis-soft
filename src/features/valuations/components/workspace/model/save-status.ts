@@ -11,6 +11,11 @@ export function statusAfterSave(sent: EditorSnapshot, current: EditorSnapshot | 
   return current && !editorSnapshotEquals(sent, current) ? "dirty" : "saved";
 }
 
+/** Ctrl+S, or ⌘S on a Mac: save, as the "Guardar" button does. With Shift or Alt it is another shortcut. */
+export function isSaveShortcut(event: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "altKey">) {
+  return (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s";
+}
+
 /** Autosave only runs for editable, persisted valuations with pending changes. */
 export function shouldAutosave(input: {
   saveStatus: string;

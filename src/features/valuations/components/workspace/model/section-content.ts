@@ -97,6 +97,31 @@ export function getDocumentHeaderImage(sections: AppSection[]) {
   return headerBlock?.images.find((image) => image.enabled !== false) ?? null;
 }
 
+/** Stored images taken out of the document and not yet deleted from the server. */
+export type PendingStoredImageDeletes = { headerImage: boolean; datosImageIds: string[] };
+
+/**
+ * Which of the stored images taken out of the document the server deletes
+ * now that `savedSections` is saved: the ones the saved document no longer
+ * has. Taking an image out only changes the document, so «Deshacer» brings
+ * it back whole; an image put back before saving is kept.
+ */
+export function storedImagesToDelete(savedSections: AppSection[], pending: PendingStoredImageDeletes): PendingStoredImageDeletes {
+  const header = savedSections.find((section) => section.id === "caratula")?.blocks.find((block) => block.id === COMPANY_HEADER_BLOCK_ID);
+  const placed = new Set(
+    savedSections
+      .filter((section) => section.id === "datos" || section.id === "datosGenerales")
+      .flatMap((section) => section.blocks.flatMap((block) => [
+        ...block.images.map((image) => image.id),
+        ...block.apartados.flatMap((subBlock) => subBlock.images.map((image) => image.id)),
+      ])),
+  );
+  return {
+    headerImage: pending.headerImage && !header?.images.length,
+    datosImageIds: pending.datosImageIds.filter((id) => !placed.has(id)),
+  };
+}
+
 export function flattenSectionConcepts(sectionsToRead: AppSection[]) {
   return sectionsToRead.flatMap((section) =>
     section.blocks.flatMap((block) => [

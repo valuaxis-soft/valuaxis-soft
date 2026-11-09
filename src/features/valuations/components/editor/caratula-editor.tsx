@@ -65,6 +65,7 @@ import {
   MAX_HEADER_EXTRA_FIELDS,
 } from "@/features/valuations/services/caratula-company-header";
 import type { HeaderExtraField } from "@/features/valuations/model";
+import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
 import { UploadButton } from "./image-upload-control";
 import { ImageFramingControl } from "./image-framing-control";
 
@@ -419,6 +420,7 @@ function DocumentHeaderImageEditor({
   uploading: boolean;
 }) {
   const uploadDisabled = readOnly || uploading || !onUpload;
+  const confirmDelete = useConfirmDelete();
 
   return (
     <div className="rounded-lg border border-muted-foreground/20 bg-muted/50 p-3">
@@ -452,7 +454,7 @@ function DocumentHeaderImageEditor({
               aria-label="Quitar imagen del encabezado"
               title="Quitar imagen del encabezado"
               disabled={readOnly || !onRemove}
-              onClick={onRemove}
+              onClick={() => onRemove && confirmDelete({ ...deleteConfirmation("image", "Imagen del encabezado"), onConfirm: onRemove })}
             >
               <Trash2 />
             </Button>
@@ -510,6 +512,7 @@ function HeaderExtraFieldsEditor({
   readOnly: boolean;
   onChange: (fields: HeaderExtraField[]) => void;
 }) {
+  const confirmDelete = useConfirmDelete();
   const update = (index: number, patch: Partial<HeaderExtraField>) =>
     onChange(fields.map((field, position) => (position === index ? { ...field, ...patch } : field)));
   return (
@@ -521,6 +524,7 @@ function HeaderExtraFieldsEditor({
         <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-2">
           <Input
             aria-label={`Nombre del dato ${index + 1}`}
+            autoComplete="off"
             maxLength={HEADER_EXTRA_LABEL_MAX}
             placeholder="Nombre (RFC, cédula…)"
             readOnly={readOnly}
@@ -529,6 +533,7 @@ function HeaderExtraFieldsEditor({
           />
           <Input
             aria-label={`Valor del dato ${index + 1}`}
+            autoComplete="off"
             maxLength={HEADER_EXTRA_VALUE_MAX}
             placeholder="Valor"
             readOnly={readOnly}
@@ -541,7 +546,10 @@ function HeaderExtraFieldsEditor({
             size="icon"
             aria-label={`Quitar el dato ${index + 1}`}
             disabled={readOnly}
-            onClick={() => onChange(fields.filter((_, position) => position !== index))}
+            onClick={() => confirmDelete({
+              ...deleteConfirmation("headerField", field.label),
+              onConfirm: () => onChange(fields.filter((_, position) => position !== index)),
+            })}
           >
             <Trash2 />
           </Button>
