@@ -6,6 +6,7 @@
 |---|---|
 | `/` | Landing pública; con sesión redirige a `/dashboard` |
 | `/robots.txt`, `/sitemap.xml`, `/manifest.webmanifest` | SEO y PWA (`src/app/robots.ts`, `sitemap.ts`, `manifest.ts`) |
+| `/opengraph-image`, `/twitter-image` | Imagen para redes sociales (1200 × 630), generada en la compilación (`src/app/opengraph-image.tsx`). Públicas: el proxy las deja pasar sin sesión |
 | `/iniciar-sesion` | Inicio de sesión |
 | `/login` | Redirige a `/iniciar-sesion` |
 | `/registro` | Registro |

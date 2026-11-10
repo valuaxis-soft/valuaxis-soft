@@ -6,82 +6,110 @@
    light tokens and turns off `dark:` utilities for its subtree. */
 @custom-variant dark (&:is(.dark *):not(:is(.light, .light *)));
 
+/* Valuaxis visual system (docs/DISENO.md). Navy ink anchors trust, the brand
+   green means value and "approved", warm paper neutrals keep long sessions
+   calm, and a muted cantera ochre is the sober secondary accent. */
 :root,
 .light {
   color-scheme: light;
-  --background: oklch(0.985 0.004 240);
-  --foreground: oklch(0.18 0.025 250);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.025 250);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.025 250);
-  --primary: oklch(0.36 0.09 245);
-  --primary-foreground: oklch(0.98 0.005 240);
-  --secondary: oklch(0.94 0.012 235);
-  --secondary-foreground: oklch(0.24 0.035 245);
-  --muted: oklch(0.95 0.01 240);
-  --muted-foreground: oklch(0.48 0.025 250);
-  --accent: oklch(0.91 0.035 185);
-  --accent-foreground: oklch(0.22 0.04 210);
+  --background: oklch(0.982 0.006 85);
+  --foreground: oklch(0.215 0.035 250);
+  --card: oklch(0.995 0.003 85);
+  --card-foreground: oklch(0.215 0.035 250);
+  --popover: oklch(0.995 0.003 85);
+  --popover-foreground: oklch(0.215 0.035 250);
+  /* Brand navy #014069. */
+  --primary: oklch(0.36 0.091 245.5);
+  --primary-foreground: oklch(0.985 0.006 85);
+  --secondary: oklch(0.945 0.012 80);
+  --secondary-foreground: oklch(0.27 0.04 250);
+  --muted: oklch(0.952 0.009 80);
+  --muted-foreground: oklch(0.5 0.017 75);
+  --accent: oklch(0.945 0.03 165);
+  --accent-foreground: oklch(0.3 0.07 165);
   --destructive: oklch(0.58 0.22 25);
-  --border: oklch(0.88 0.012 240);
-  --input: oklch(0.88 0.012 240);
-  --ring: oklch(0.57 0.08 230);
-  --chart-1: oklch(0.62 0.13 225);
-  --chart-2: oklch(0.65 0.11 165);
-  --chart-3: oklch(0.58 0.14 35);
+  --border: oklch(0.895 0.012 80);
+  --input: oklch(0.875 0.014 80);
+  --ring: oklch(0.55 0.1 240);
+  /* Brand green #40a47e for fills and icons; `success-strong` is the text-safe shade. */
+  --success: oklch(0.649 0.11 165);
+  --success-strong: oklch(0.47 0.1 165);
+  --success-foreground: oklch(0.985 0.006 85);
+  --highlight: oklch(0.7 0.12 68);
+  --highlight-strong: oklch(0.5 0.1 58);
+  --highlight-foreground: oklch(0.215 0.035 250);
+  --ink: oklch(0.24 0.06 248);
+  --ink-foreground: oklch(0.97 0.008 85);
+  --chart-1: oklch(0.55 0.11 240);
+  --chart-2: oklch(0.649 0.11 165);
+  --chart-3: oklch(0.7 0.12 68);
   --chart-4: oklch(0.56 0.1 285);
-  --chart-5: oklch(0.7 0.11 95);
-  --radius: 0.5rem;
-  --sidebar: oklch(0.98 0.004 240);
-  --sidebar-foreground: oklch(0.18 0.025 250);
-  --sidebar-primary: oklch(0.36 0.09 245);
-  --sidebar-primary-foreground: oklch(0.98 0.005 240);
-  --sidebar-accent: oklch(0.94 0.012 235);
-  --sidebar-accent-foreground: oklch(0.24 0.035 245);
-  --sidebar-border: oklch(0.88 0.012 240);
-  --sidebar-ring: oklch(0.57 0.08 230);
+  --chart-5: oklch(0.6 0.13 40);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.972 0.008 82);
+  --sidebar-foreground: oklch(0.215 0.035 250);
+  --sidebar-primary: oklch(0.36 0.091 245.5);
+  --sidebar-primary-foreground: oklch(0.985 0.006 85);
+  --sidebar-accent: oklch(0.94 0.013 80);
+  --sidebar-accent-foreground: oklch(0.27 0.04 250);
+  --sidebar-border: oklch(0.895 0.012 80);
+  --sidebar-ring: oklch(0.55 0.1 240);
+  /* Shadows tinted with the navy ink instead of plain black. */
+  --shadow-color: 248 40% 18%;
 }
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.255 0.008 255);
-  --foreground: oklch(0.96 0.006 240);
-  --card: oklch(0.295 0.009 255);
-  --card-foreground: oklch(0.96 0.006 240);
-  --popover: oklch(0.31 0.009 255);
-  --popover-foreground: oklch(0.96 0.006 240);
-  --primary: oklch(0.72 0.08 220);
-  --primary-foreground: oklch(0.2 0.012 250);
-  --secondary: oklch(0.35 0.01 255);
-  --secondary-foreground: oklch(0.96 0.006 240);
-  --muted: oklch(0.35 0.01 255);
-  --muted-foreground: oklch(0.78 0.012 250);
-  --accent: oklch(0.4 0.05 185);
-  --accent-foreground: oklch(0.94 0.02 185);
+  --background: oklch(0.215 0.022 250);
+  --foreground: oklch(0.96 0.008 85);
+  --card: oklch(0.255 0.024 250);
+  --card-foreground: oklch(0.96 0.008 85);
+  --popover: oklch(0.27 0.024 250);
+  --popover-foreground: oklch(0.96 0.008 85);
+  --primary: oklch(0.78 0.08 232);
+  --primary-foreground: oklch(0.2 0.03 250);
+  --secondary: oklch(0.31 0.022 250);
+  --secondary-foreground: oklch(0.96 0.008 85);
+  --muted: oklch(0.31 0.022 250);
+  --muted-foreground: oklch(0.78 0.014 80);
+  --accent: oklch(0.34 0.05 165);
+  --accent-foreground: oklch(0.93 0.04 165);
   --destructive: oklch(0.7 0.18 25);
-  --border: oklch(1 0 0 / 16%);
-  --input: oklch(0.62 0.012 250);
-  --ring: oklch(0.65 0.08 220);
-  --chart-1: oklch(0.72 0.11 225);
-  --chart-2: oklch(0.7 0.1 165);
-  --chart-3: oklch(0.7 0.12 35);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(0.6 0.015 250);
+  --ring: oklch(0.7 0.09 232);
+  --success: oklch(0.74 0.12 165);
+  --success-strong: oklch(0.8 0.11 165);
+  --success-foreground: oklch(0.2 0.03 250);
+  --highlight: oklch(0.79 0.11 72);
+  --highlight-strong: oklch(0.83 0.1 72);
+  --highlight-foreground: oklch(0.2 0.03 250);
+  --ink: oklch(0.18 0.03 250);
+  --ink-foreground: oklch(0.96 0.008 85);
+  --chart-1: oklch(0.74 0.1 235);
+  --chart-2: oklch(0.72 0.11 165);
+  --chart-3: oklch(0.79 0.11 72);
   --chart-4: oklch(0.7 0.1 285);
-  --chart-5: oklch(0.74 0.1 95);
-  --sidebar: oklch(0.275 0.009 255);
-  --sidebar-foreground: oklch(0.96 0.006 240);
-  --sidebar-primary: oklch(0.72 0.08 220);
-  --sidebar-primary-foreground: oklch(0.2 0.012 250);
-  --sidebar-accent: oklch(0.35 0.01 255);
-  --sidebar-accent-foreground: oklch(0.96 0.006 240);
-  --sidebar-border: oklch(1 0 0 / 16%);
-  --sidebar-ring: oklch(0.65 0.08 220);
+  --chart-5: oklch(0.72 0.12 40);
+  --sidebar: oklch(0.235 0.023 250);
+  --sidebar-foreground: oklch(0.96 0.008 85);
+  --sidebar-primary: oklch(0.78 0.08 232);
+  --sidebar-primary-foreground: oklch(0.2 0.03 250);
+  --sidebar-accent: oklch(0.31 0.022 250);
+  --sidebar-accent-foreground: oklch(0.96 0.008 85);
+  --sidebar-border: oklch(1 0 0 / 14%);
+  --sidebar-ring: oklch(0.7 0.09 232);
+  --shadow-color: 250 50% 4%;
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-geist-sans);
+  /* IBM Plex Sans for the interface and figures, Fraunces for display titles.
+     The appraisal document keeps Geist (see the document rule below). */
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --font-document: var(--font-geist-sans), Arial, sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -100,6 +128,14 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-strong: var(--success-strong);
+  --color-success-foreground: var(--success-foreground);
+  --color-highlight: var(--highlight);
+  --color-highlight-strong: var(--highlight-strong);
+  --color-highlight-foreground: var(--highlight-foreground);
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -120,6 +156,14 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* Elevation: `soft` for resting surfaces, `lift` for hover and floating
+     panels, `float` for the few hero elements. */
+  --shadow-soft: 0 1px 2px hsl(var(--shadow-color) / 0.06), 0 2px 8px -2px hsl(var(--shadow-color) / 0.08);
+  --shadow-lift: 0 2px 4px hsl(var(--shadow-color) / 0.06), 0 12px 28px -8px hsl(var(--shadow-color) / 0.18);
+  --shadow-float: 0 4px 8px hsl(var(--shadow-color) / 0.06), 0 28px 60px -16px hsl(var(--shadow-color) / 0.28);
+  /* Motion: arrivals decelerate, exits are quicker. */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 @layer base {
@@ -129,6 +173,7 @@
 
   html {
     @apply font-sans;
+    font-optical-sizing: auto;
   }
 
   body {
@@ -138,6 +183,97 @@
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+
+  /* The appraisal document (preview, measurement copy and the dictamen) keeps
+     its own typeface so a change to the interface never moves its pages. */
+  [data-print-document],
+  [data-document-pagination],
+  [data-document-pagination-content],
+  article[data-document-page] {
+    font-family: var(--font-document);
+  }
+}
+
+/* Scroll-linked entrances for marketing pages. Without support for
+   scroll-driven animations, or with reduced motion, content simply shows. */
+@keyframes vx-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes vx-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes vx-draw {
+  from {
+    stroke-dashoffset: var(--vx-draw-length, 400);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes vx-pulse-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .vx-reveal {
+      animation: vx-reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 45%;
+    }
+
+    /* A line that draws itself as it scrolls into view. */
+    .vx-draw {
+      stroke-dasharray: var(--vx-draw-length, 400);
+      animation: vx-draw linear both;
+      animation-timeline: view();
+      animation-range: entry 30% cover 50%;
+    }
+  }
+
+  .vx-float {
+    animation: vx-float 6s var(--ease-in-out-soft) infinite;
+  }
+
+  .vx-float-delayed {
+    animation: vx-float 7s var(--ease-in-out-soft) 1.2s infinite;
+  }
+
+  .vx-pulse::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    animation: vx-pulse-ring 2.4s var(--ease-out-quint) infinite;
+  }
+
+  html:has(.vx-smooth-scroll) {
+    scroll-behavior: smooth;
   }
 }
 

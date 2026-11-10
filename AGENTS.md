@@ -6,7 +6,7 @@ Valuaxis es un SaaS de avalúos inmobiliarios y de maquinaria para despachos de 
 
 1. `docs/CONTRIBUIR.md`: quién hace qué (imSoft y devpware), cómo arrancar y las reglas de ramas, PR y migraciones. Las reglas de ese archivo mandan sobre esta guía.
 2. `docs/ARCHITECTURE.md` y `docs/MODULES.md`: cómo está organizado el código.
-3. Según la tarea: `docs/MOTOR-CALCULO.md` (cálculo), `docs/VALUATION_SECTIONS.md` (editor y dictamen), `docs/COMPARABLES.md`, `docs/COBRO.md`, `docs/ACREDITACION.md`, `docs/SECURITY.md`, `docs/AUTHORIZATION.md`, `docs/ROUTES.md`, `docs/OPERACION.md`, `docs/TESTING.md`.
+3. Según la tarea: `docs/MOTOR-CALCULO.md` (cálculo), `docs/VALUATION_SECTIONS.md` (editor y dictamen), `docs/COMPARABLES.md`, `docs/COBRO.md`, `docs/ACREDITACION.md`, `docs/SECURITY.md`, `docs/AUTHORIZATION.md`, `docs/ROUTES.md`, `docs/OPERACION.md`, `docs/TESTING.md`, `docs/DISENO.md` (sistema visual: colores, tipografía, movimiento y tono).
 
 ## Stack
 
@@ -40,6 +40,7 @@ Las pruebas de integración leen `DATABASE_URL` de `.env` y solo corren contra `
 - **Estilo:** imita el archivo vecino (nombres, idioms, forma de los componentes). No agregues dependencias si el repo ya resuelve lo mismo; si agregas una, licencia MIT/BSD/Apache y justificación en el PR.
 - **Datos nuevos:** antes de una migración, revisa si cabe en una columna JSON existente (`JConfiguracion`, `JCaracteristicas`, `JComparables`…). Si hace falta migración: solo `ADD COLUMN` (con `IF NOT EXISTS` y valor por defecto o `NULL`) o `CREATE TABLE`/`CREATE INDEX IF NOT EXISTS`; nunca `ALTER` de columnas, enums ni constraints existentes. Producción tiene reglas que no están en las migraciones (ver `scripts/diagnostico-produccion.sql`): revísalas antes de tocar una tabla. Una migración a la vez, con el número siguiente.
 - **Seguridad:** toda ruta valida con Zod, exige sesión y permiso (`AUTH_PERMISSIONS`) y respeta el alcance de la organización; las rutas públicas son excepción documentada. La CSP usa nonce; los orígenes externos (Google Maps) se permiten solo en las rutas que los necesitan (`googleMapsPage`). Las llamadas a servicios externos con llave van por el servidor, con rate limit (`rate-limiter.ts`). Nunca escribas secretos ni llaves en el repositorio, en pruebas ni en salidas; en el servidor viven en `production.env`.
+- **Diseño:** colores, sombras y radios salen de los tokens de `globals.css` (nada de hex sueltos fuera del documento impreso); `font-display` solo en títulos; cifras en tablas con `tabular-nums`; movimiento solo con CSS y respetando `prefers-reduced-motion`. Ver `docs/DISENO.md`.
 - **Documentos y PDF:** lo que se imprime no debe depender de recursos externos (las imágenes de mapas se guardan como imágenes del avalúo). La numeración de secciones tiene una sola fuente (`section-numbering.ts`).
 - **Motor de cálculo:** el sistema calcula y avisa, nunca recomienda ni bloquea el criterio del valuador. Las únicas excepciones pedidas por el cliente son explícitas en el código (por ejemplo, el ±30 % del valor adoptado al concluir). Cualquier cambio en una fórmula se valida contra los Excel del despacho en `tests/`.
 - **Editor:** todos los bloques, subbloques, conceptos y tablas ofrecen los mismos controles en todas las secciones (`block-toolbar.ts`, `table-context-menu.ts`). Borrar siempre confirma y es deshacible.
