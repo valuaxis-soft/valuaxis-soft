@@ -111,8 +111,8 @@ export const TEAM_FEATURES = [
     description: "Cada organización ve únicamente sus avalúos y comparables. Bloqueo de intentos, sesiones seguras y conexión cifrada.",
   },
   {
-    title: "Respaldo diario",
-    description: "La base de datos se respalda todos los días fuera del servidor y se prueba que se pueda restaurar.",
+    title: "Bitácora de cada acción",
+    description: "Inicios de sesión, cambios de permisos y cada avalúo creado, concluido, reabierto o exportado quedan registrados.",
   },
 ] as const;
 
@@ -121,14 +121,14 @@ export const PRICE_INCLUDES = [
   "Dictamen en PDF con anexos, croquis y fotografías",
   "Base de comparables de tu despacho con mapa",
   "Equipo con roles y versiones del avalúo",
-  "Asistencia con IA para anuncios y borradores",
+  "Lectura de anuncios de comparables con IA",
 ] as const;
 
 export const FAQS = [
   {
     question: "¿Cuánto cuesta Valuaxis?",
     answer:
-      `Crear tu cuenta no tiene costo. Pagas $${PRICE_PER_VALUATION_MXN} MXN, IVA incluido, por cada avalúo que concluyes. El pago se hace con tarjeta en la página segura de Stripe; Valuaxis no ve ni guarda tus tarjetas.`,
+      `Crear tu cuenta no tiene costo. Pagas $${PRICE_PER_VALUATION_MXN} MXN, IVA incluido, por cada avalúo que concluyes. Capturar y revisar no se cobra.`,
   },
   {
     question: "¿Cuándo se descuenta un avalúo?",
@@ -148,7 +148,7 @@ export const FAQS = [
   {
     question: "¿La inteligencia artificial decide el valor?",
     answer:
-      "No. La IA solo copia los datos que están escritos en el anuncio que pegas, con el fragmento de donde los leyó, y redacta borradores con lo que tú ya capturaste. Nunca estima valores, factores ni conclusiones.",
+      "No. La IA solo copia los datos que están escritos en el anuncio que pegas, con el fragmento de donde los leyó, para que tú los revises. Nunca estima valores, factores ni conclusiones.",
   },
   {
     question: "¿Qué pasa si aún no acredito mi cédula profesional?",

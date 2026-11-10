@@ -6,7 +6,6 @@ import {
   ArrowRight,
   BadgeCheck,
   Check,
-  DatabaseBackup,
   FileSpreadsheet,
   FileText,
   GitBranch,
@@ -14,6 +13,7 @@ import {
   MapPinned,
   Plus,
   QrCode,
+  ScrollText,
   Sparkles,
   Users,
   X,
@@ -49,7 +49,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };
 
-const TEAM_ICONS = [Users, GitBranch, LockKeyhole, DatabaseBackup];
+const TEAM_ICONS = [Users, GitBranch, LockKeyhole, ScrollText];
 
 const container = "mx-auto w-full max-w-6xl px-4 sm:px-6";
 const ctaPrimary = cn(buttonVariants({ size: "lg" }), "h-12 gap-2 px-6 text-base");
@@ -342,7 +342,7 @@ export default async function Home() {
           <div className={cn(container, "grid gap-12 py-20 lg:py-28")}>
             <SectionHeading id="ia-title" eyebrow="Asistencia con IA" title="Pega el anuncio. Revisa. Usa." align="center">
               La IA lee el anuncio que pegaste y te propone los datos del comparable, cada uno con el fragmento literal de donde lo tomó.
-              También redacta borradores de los textos descriptivos con lo que ya capturaste.
+              Tú corriges lo que haga falta y decides si lo usas.
             </SectionHeading>
             <div className="vx-reveal">
               <AiMockup />
@@ -423,7 +423,6 @@ export default async function Home() {
                 Crear cuenta
                 <ArrowRight className="size-4" aria-hidden="true" />
               </Link>
-              <p className="mt-3 text-center text-xs text-muted-foreground">Pago con tarjeta en la página segura de Stripe.</p>
             </div>
           </div>
         </section>

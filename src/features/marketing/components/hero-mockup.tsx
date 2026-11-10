@@ -63,7 +63,7 @@ export function HeroMockup() {
             <table className="w-full text-right text-[11px] tabular-nums">
               <thead className="text-[10px] text-muted-foreground">
                 <tr className="border-b">
-                  <th className="py-1.5 pr-2 text-left font-medium">Ref.</th>
+                  <th className="py-1.5 pr-2 text-left font-medium whitespace-nowrap">Ref.</th>
                   <th className="py-1.5 pr-2 font-medium">$/m²</th>
                   <th className="hidden py-1.5 pr-2 font-medium md:table-cell">F.Sup</th>
                   <th className="hidden py-1.5 pr-2 font-medium md:table-cell">F.Ubic</th>
@@ -75,9 +75,9 @@ export function HeroMockup() {
               <tbody>
                 {comparables.map((row) => (
                   <tr key={row.ref} className="border-b border-dashed last:border-0">
-                    <td className="py-1.5 pr-2 text-left">
+                    <td className="py-1.5 pr-2 text-left whitespace-nowrap">
                       <span className="font-semibold text-primary">{row.ref}</span>
-                      <span className="ml-1.5 hidden text-muted-foreground lg:inline">{row.place}</span>
+                      <span className="ml-1.5 hidden text-muted-foreground xl:inline">{row.place}</span>
                     </td>
                     <td className="py-1.5 pr-2">{row.price}</td>
                     <td className="hidden py-1.5 pr-2 text-muted-foreground md:table-cell">{row.sup}</td>
@@ -134,7 +134,7 @@ export function HeroMockup() {
         </p>
       </div>
 
-      <div className="vx-float-delayed absolute -top-5 right-3 hidden items-center gap-2 rounded-xl bg-card px-3 py-2 text-card-foreground shadow-lift ring-1 ring-border sm:flex lg:-right-5">
+      <div className="vx-float-delayed absolute -top-5 right-3 hidden items-center gap-2 rounded-xl bg-card px-3 py-2 text-card-foreground shadow-lift ring-1 ring-border sm:flex">
         <span className="flex size-7 items-center justify-center rounded-lg bg-highlight/20 text-highlight-strong">
           <ChartScatter className="size-4" aria-hidden="true" />
         </span>
