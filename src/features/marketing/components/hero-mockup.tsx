@@ -98,18 +98,18 @@ export function HeroMockup() {
                       <td className="py-1.5 pr-2">{row.price}</td>
                       {[row.sup, row.ubic, row.neg].map((factor, column) => (
                         <td key={column} className="hidden py-1.5 pr-2 text-muted-foreground md:table-cell">
-                          <span className="vx-seq-fade inline-block" style={delay(220, column)}>
+                          <span className="vx-seq-fade inline-block" style={delay(130, column)}>
                             {factor}
                           </span>
                         </td>
                       ))}
                       <td className="py-1.5 pr-2">
-                        <span className="vx-seq-fade inline-block" style={delay(220, 3)}>
+                        <span className="vx-seq-fade inline-block" style={delay(130, 3)}>
                           {row.fre}
                         </span>
                       </td>
                       <td className="py-1.5 font-semibold">
-                        <Odometer value={row.value} delay={520} />
+                        <Odometer value={row.value} delay={300} />
                       </td>
                     </tr>
                   ))}
@@ -126,14 +126,14 @@ export function HeroMockup() {
                 <div className="rounded-lg bg-muted px-2.5 py-2">
                   <dt className="text-muted-foreground">Mediana</dt>
                   <dd className="text-xs font-semibold tabular-nums">
-                    <Odometer value="$18,450" delay={150} />
+                    <Odometer value="$18,450" delay={90} />
                   </dd>
                 </div>
                 <div className="relative rounded-lg bg-accent px-2.5 py-2">
-                  <span aria-hidden="true" className="vx-seq-fade absolute inset-0 rounded-lg ring-1 ring-success/40" style={delay(600)} />
+                  <span aria-hidden="true" className="vx-seq-fade absolute inset-0 rounded-lg ring-1 ring-success/40" style={delay(350)} />
                   <dt className="text-accent-foreground">Adoptado /m²</dt>
                   <dd className="text-xs font-semibold text-accent-foreground tabular-nums">
-                    <Odometer value="$18,450" delay={320} />
+                    <Odometer value="$18,450" delay={190} />
                   </dd>
                 </div>
               </dl>
@@ -148,7 +148,7 @@ export function HeroMockup() {
                 </div>
                 <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
                   <span>−30 %</span>
-                  <span className="vx-seq-fade" style={delay(800)}>
+                  <span className="vx-seq-fade" style={delay(450)}>
                     Dentro del rango
                   </span>
                   <span>+30 %</span>

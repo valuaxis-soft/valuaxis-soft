@@ -393,8 +393,8 @@
   /* ---------- Counters ---------- */
 
   .vx-motion .vx-odo-strip {
-    transition: transform 1.2s var(--ease-out-quint);
-    transition-delay: calc(var(--vx-delay, 0ms) + var(--vx-order, 0) * 70ms);
+    transition: transform 0.8s var(--ease-out-quint);
+    transition-delay: calc(var(--vx-delay, 0ms) + var(--vx-order, 0) * 45ms);
   }
 
   .vx-motion [data-vx]:not([data-on]) .vx-odo-strip {
@@ -448,13 +448,13 @@
 
   .vx-words > .vx-word {
     display: inline-block;
-    animation: vx-word 0.9s var(--ease-out-quint) both;
-    animation-delay: calc(60ms + var(--vx-i, 0) * 55ms);
+    animation: vx-word 0.7s var(--ease-out-quint) both;
+    animation-delay: calc(40ms + var(--vx-i, 0) * 40ms);
   }
 
   .vx-underline path {
     stroke-dasharray: 1;
-    animation: vx-stroke-in 0.9s var(--ease-out-quint) 1.05s both;
+    animation: vx-stroke-in 0.7s var(--ease-out-quint) 0.75s both;
   }
 
   .vx-hero-letters [data-vx-rest] {
