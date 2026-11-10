@@ -86,6 +86,19 @@ Hover: `transition-[box-shadow,transform] duration-300 ease-(--ease-out-quint)` 
 | Movimiento que explica (una línea que se traza, un pin que late) | Animar todo; animar el H1; carruseles automáticos |
 | Ícono + texto en estados | Comunicar un estado solo con color |
 
+## Imágenes
+
+Las fotos de la página pública y del acceso son de stock con licencia que permite uso comercial sin atribución obligatoria. Aun así se registran aquí. Viven en `public/marketing/`, recortadas al tamaño máximo en que se muestran (2x) y sin metadatos. Se muestran con `next/image` con `sizes` y dimensiones fijas; solo la del panel de acceso lleva `priority`. Al agregar una foto: solo de unsplash.com o pexels.com, sin caras reconocibles, placas ni números de casa legibles, y registrarla en esta tabla.
+
+| Archivo | Dónde se ve | Foto original | Autor | Licencia |
+|---|---|---|---|---|
+| `dictamen-portada.webp` (640 × 373) y `og-fachada.jpg` (520 × 630) | Portada del dictamen de muestra; imagen para redes | https://unsplash.com/photos/a-white-house-with-a-black-door-and-windows-JehgZCrPyuQ (Culiacán, Sin.) | Fotografías inmobiliarias (@fotosinmobiliarias) | Unsplash License |
+| `anuncio-casas.webp` (880 × 495) | Anuncio de la sección de IA | https://unsplash.com/photos/a-white-house-with-a-tree-in-front-of-it-sbIdDNixBog (Culiacán, Sin.) | Fotografías inmobiliarias (@fotosinmobiliarias) | Unsplash License |
+| `comparable-c2.webp` (400 × 200) | Ficha del comparable en el mapa | https://unsplash.com/photos/a-house-with-a-cactus-in-the-front-yard-wM4g_dRAlN0 (Tulum, Q.R.) | Fito García (@fitogarciaa) | Unsplash License |
+| `acceso-fachada.webp` (720 × 1080) | Panel de marca de iniciar sesión, registro y recuperación | https://unsplash.com/photos/a-brick-building-with-potted-plants-and-a-gate-Rf8_KrUfovc (Guadalajara, Jal.) | Jaime García (@arq_jgarcia) | Unsplash License |
+
+Las maquetas siguen usando datos inventados; las fotos solo reemplazan los dibujos.
+
 ## Página pública
 
 `src/app/page.tsx` arma las secciones; los textos están en `src/features/marketing/content.ts` y las maquetas en `src/features/marketing/components/`. Son componentes de servidor: la página no agrega JavaScript propio (las preguntas frecuentes usan `<details>`). El precio vive en `PRICE_PER_VALUATION_MXN` y debe coincidir con el paquete `AVALUO_1` ([COBRO.md](COBRO.md)). El JSON-LD (`SoftwareApplication` con la oferta en MXN, `Organization` y `FAQPage`) sale de `structured-data.ts` y lleva el nonce de la CSP.

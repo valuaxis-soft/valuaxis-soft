@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { ValuaxisLogo, ValuaxisMark } from "@/components/brand/valuaxis-logo";
@@ -21,11 +22,17 @@ export function AuthShell({ children }: { children: ReactNode }) {
         aria-label="Valuaxis"
         className="relative isolate hidden overflow-hidden bg-ink p-10 text-ink-foreground lg:flex lg:flex-col xl:p-14"
       >
-        <ContourLines className="absolute inset-0 -z-10 h-full w-full text-ink-foreground/[0.08]" />
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 -z-10 bg-[radial-gradient(70%_50%_at_90%_10%,oklch(0.649_0.11_165/0.2),transparent_70%)]"
+        {/* Stock photo (docs/DISENO.md, "Imágenes") under an ink veil that keeps the text at AA. */}
+        <Image
+          src="/marketing/acceso-fachada.webp"
+          alt=""
+          fill
+          priority
+          sizes="(min-width: 1024px) 48vw, 1px"
+          className="-z-20 object-cover"
         />
+        <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-b from-ink/85 via-ink/75 to-ink/95" />
+        <ContourLines className="absolute inset-0 -z-10 h-full w-full text-ink-foreground/[0.08]" />
         <Link
           href="/"
           aria-label="Valuaxis, ir al inicio"

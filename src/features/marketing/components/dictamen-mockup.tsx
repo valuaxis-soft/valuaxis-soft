@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 /** Three letter-size pages of an invented dictamen: annex croquis, market table and cover. */
 export function DictamenMockup() {
   return (
@@ -60,23 +62,14 @@ export function DictamenMockup() {
           <p className="text-[6px] tracking-[0.2em] text-[#cfe6d8]">DICTAMEN DE AVALÚO</p>
           <p className="font-display text-[11px] leading-tight font-semibold text-white">Avalúo inmobiliario</p>
         </div>
-        <svg viewBox="0 0 120 70" className="w-full" aria-hidden="true">
-          <defs>
-            <linearGradient id="vx-sky" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0" stopColor="#dce9f2" />
-              <stop offset="1" stopColor="#f4efe6" />
-            </linearGradient>
-          </defs>
-          <rect width="120" height="70" fill="url(#vx-sky)" />
-          <rect y="54" width="120" height="16" fill="#a9c79a" />
-          <path d="M34 54V34l26-16 26 16v20Z" fill="#fbf9f5" stroke="#0c1a29" strokeWidth="0.8" />
-          <path d="M30 36 60 16l30 20" fill="none" stroke="#014069" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          <rect x="54" y="40" width="12" height="14" fill="#8d5321" />
-          <rect x="40" y="38" width="9" height="8" fill="#9cc3dd" />
-          <rect x="71" y="38" width="9" height="8" fill="#9cc3dd" />
-          <circle cx="100" cy="46" r="9" fill="#5f9a6a" />
-          <rect x="99" y="50" width="2" height="6" fill="#6b4f2a" />
-        </svg>
+        <Image
+          src="/marketing/dictamen-portada.webp"
+          alt=""
+          width={640}
+          height={373}
+          sizes="(min-width: 1024px) 270px, 50vw"
+          className="aspect-[120/70] w-full object-cover"
+        />
         <div className="grid gap-1 px-3 py-2">
           <p className="text-[6px] text-neutral-500">Casa habitación · Zapopan, Jal.</p>
           <p className="text-[6px] text-neutral-500">Valor concluido</p>

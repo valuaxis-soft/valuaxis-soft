@@ -1,8 +1,9 @@
+import Image from "next/image";
 import { ArrowRight, Check, ClipboardPaste } from "lucide-react";
 
 const fields = [
-  { label: "Superficie de terreno", value: "210.00 m²", source: "terreno de 210 m2" },
-  { label: "Precio de oferta", value: "$4,040,000", source: "$4.04 mdp" },
+  { label: "Superficie construida", value: "168.00 m²", source: "168 m2 de construcción" },
+  { label: "Precio de oferta", value: "$3,980,000", source: "$3.98 mdp" },
   { label: "Colonia", value: "Real del Valle", source: "en Real del Valle" },
   { label: "Uso de suelo", value: "Habitacional", source: "uso habitacional" },
 ];
@@ -15,17 +16,28 @@ export function AiMockup() {
       aria-label="Maqueta de la extracción con IA: un anuncio pegado y los datos propuestos, cada uno con el fragmento del anuncio de donde se leyó."
       className="grid gap-4 md:grid-cols-[1fr_auto_1.1fr] md:items-center"
     >
-      <div className="rounded-2xl bg-card p-5 text-card-foreground shadow-soft ring-1 ring-border">
-        <p className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-          <ClipboardPaste className="size-4" aria-hidden="true" />
-          Anuncio pegado
-        </p>
-        <p className="mt-3 text-sm leading-relaxed">
-          Se vende <mark className="rounded bg-highlight/25 px-0.5 text-foreground">terreno de 210 m2</mark> plano, esquina,{" "}
-          <mark className="rounded bg-highlight/25 px-0.5 text-foreground">en Real del Valle</mark>, a dos cuadras de la avenida. Todos los
-          servicios, <mark className="rounded bg-highlight/25 px-0.5 text-foreground">uso habitacional</mark>. Precio{" "}
-          <mark className="rounded bg-highlight/25 px-0.5 text-foreground">$4.04 mdp</mark>, acepto crédito. Informes con Laura.
-        </p>
+      <div className="overflow-hidden rounded-2xl bg-card text-card-foreground shadow-soft ring-1 ring-border">
+        <Image
+          src="/marketing/anuncio-casas.webp"
+          alt=""
+          width={880}
+          height={495}
+          sizes="(min-width: 1152px) 500px, (min-width: 768px) 45vw, 100vw"
+          className="aspect-[16/9] w-full object-cover"
+        />
+        <div className="p-5">
+          <p className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+            <ClipboardPaste className="size-4" aria-hidden="true" />
+            Anuncio pegado
+          </p>
+          <p className="mt-3 text-sm leading-relaxed">
+            Se vende casa de dos plantas con{" "}
+            <mark className="rounded bg-highlight/25 px-0.5 text-foreground">168 m2 de construcción</mark>,{" "}
+            <mark className="rounded bg-highlight/25 px-0.5 text-foreground">en Real del Valle</mark>, a dos cuadras de la avenida. Tres
+            recámaras, jardín, <mark className="rounded bg-highlight/25 px-0.5 text-foreground">uso habitacional</mark>. Precio{" "}
+            <mark className="rounded bg-highlight/25 px-0.5 text-foreground">$3.98 mdp</mark>, acepto crédito. Informes con Laura.
+          </p>
+        </div>
       </div>
 
       <ArrowRight className="mx-auto size-6 rotate-90 text-success md:rotate-0" aria-hidden="true" />

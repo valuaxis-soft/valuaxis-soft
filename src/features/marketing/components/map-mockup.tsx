@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 const pins = [
   { ref: "C-1", x: 118, y: 92 },
   { ref: "C-2", x: 352, y: 70 },
@@ -65,13 +67,23 @@ export function MapMockup() {
         <p className="text-muted-foreground">4 comparables en 600 m</p>
       </div>
 
-      <div className="absolute right-3 bottom-3 hidden w-48 rounded-lg bg-card/95 p-3 text-xs shadow-lift ring-1 ring-border sm:block">
-        <p className="flex items-center justify-between font-semibold">
-          C-2 · Terreno
-          <span className="rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-medium text-accent-foreground">Vigente</span>
-        </p>
-        <p className="mt-1 text-muted-foreground tabular-nums">$19,250 /m² · 210.00 m²</p>
-        <p className="text-muted-foreground">Fuente: portal inmobiliario</p>
+      <div className="absolute right-3 bottom-3 hidden w-48 overflow-hidden rounded-lg bg-card/95 text-xs shadow-lift ring-1 ring-border sm:block">
+        <Image
+          src="/marketing/comparable-c2.webp"
+          alt=""
+          width={400}
+          height={200}
+          sizes="192px"
+          className="aspect-[2/1] w-full object-cover"
+        />
+        <div className="p-3">
+          <p className="flex items-center justify-between font-semibold">
+            C-2 · Casa
+            <span className="rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-medium text-accent-foreground">Vigente</span>
+          </p>
+          <p className="mt-1 text-muted-foreground tabular-nums">$3,980,000 · 168.00 m²</p>
+          <p className="text-muted-foreground">Fuente: portal inmobiliario</p>
+        </div>
       </div>
     </div>
   );
