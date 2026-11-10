@@ -128,7 +128,7 @@ export const FAQS = [
   {
     question: "¿Cuánto cuesta Valuaxis?",
     answer:
-      `Crear tu cuenta no tiene costo. Pagas $${PRICE_PER_VALUATION_MXN} MXN, IVA incluido, por cada avalúo que concluyes. Capturar y revisar no se cobra.`,
+      `Crear tu cuenta no tiene costo. Pagas $${PRICE_PER_VALUATION_MXN} MXN, IVA incluido, por cada avalúo que concluyes. El pago se hace con tarjeta en la página segura de Stripe; Valuaxis no ve ni guarda tus tarjetas.`,
   },
   {
     question: "¿Cuándo se descuenta un avalúo?",

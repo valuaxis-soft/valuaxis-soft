@@ -423,6 +423,7 @@ export default async function Home() {
                 Crear cuenta
                 <ArrowRight className="size-4" aria-hidden="true" />
               </Link>
+              <p className="mt-3 text-center text-xs text-muted-foreground">Pago con tarjeta en la página segura de Stripe.</p>
             </div>
           </div>
         </section>
