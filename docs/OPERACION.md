@@ -184,22 +184,24 @@ Google se consulta desde dos lugares distintos, y por eso conviene tener dos lla
 - **Calles resaltadas (etapa 2):** las calles alrededor del pin vienen de OpenStreetMap (API Overpass, espejos públicos `overpass-api.de`, `overpass.kumi.systems` y `overpass.private.coffee`, probados en ese orden), siempre desde el servidor (`GET /api/mapas/calles`), con caché en memoria de 15 minutos por coordenadas redondeadas y un límite de 20 consultas por usuario por minuto. No necesitan llave; los datos son ODbL y el panel acredita a OpenStreetMap. Si ningún espejo responde, el panel avisa y el croquis sale sin calles resaltadas hasta que se vuelva a intentar.
 - La CSP agrega los dominios de Google (`maps.googleapis.com`, `*.googleapis.com`, `*.gstatic.com`, `fonts.googleapis.com`, `fonts.gstatic.com`, `worker-src blob:`) solo en el editor (`/workspace`) y en las rutas `/demo/`; el resto de la app, incluidos el dictamen y la ventana de vista previa, conserva la política de siempre (`googleMapsPage` en `src/security/headers/security-headers.ts`).
 
-## 8. Precio por avalúo ($170 MXN + IVA) y lo que falta para cobrar
+## 8. Precio por avalúo ($170 MXN con IVA) y cobro con Stripe
 
-El precio acordado (28 oct 2026) es $170.00 MXN antes de IVA por avalúo, paquete `AVALUO_1`. Con el contenedor arriba:
+El precio acordado es **$170.00 MXN con IVA incluido** por avalúo (video 5.2 del 2 nov 2026): paquete `AVALUO_1`, guardado como $146.55 antes de IVA + 16 %. Para crearlo o corregirlo, con el contenedor arriba:
 
 ```bash
 docker exec -it valuos-app node --import tsx scripts/billing-set-unit-price.ts           # simulación
 docker exec -it valuos-app node --import tsx scripts/billing-set-unit-price.ts --apply   # escribe
 ```
 
-Es idempotente y no llama a Stripe. **El cobro todavía no está activo en producción.** Falta, en este orden (detalle en [COBRO.md](COBRO.md), "Lista para salir a producción"):
+Es idempotente y no llama a Stripe.
 
-1. El cliente crea la **clave restringida** en vivo de su cuenta de Stripe (compartida con su tienda: no tocar sus llaves ni su configuración) → `STRIPE_SECRET_KEY` en `production.env`.
-2. Crear el **endpoint del webhook** `https://valuaxissoft.com/api/stripe/webhook` con sus eventos → `STRIPE_WEBHOOK_SECRET`.
-3. `pnpm env:check` (paso 2.3) y reiniciar la app.
-4. `docker exec -it valuos-app node --import tsx scripts/stripe-sync.ts`: crea en Stripe el producto y el precio de `AVALUO_1` (etiquetados `app = valuaxis`) y imprime `STRIPE_PORTAL_CONFIGURATION`; ponerla en `production.env` y reiniciar.
-5. Una compra real de prueba y su reembolso; después encender el bloqueo por organización (`scripts/billing-credits.ts enforce <slug> on`) solo cuando el cliente lo decida. Hasta entonces nadie queda bloqueado: concluir sin saldo deja el saldo en negativo.
+**Stripe está conectado en producción desde el 5 nov 2026**: clave restringida en vivo de la cuenta del cliente (compartida con su tienda: no tocar sus llaves ni su configuración), webhook en `https://valuaxissoft.com/api/stripe/webhook`, configuración propia del portal de clientes y el paquete `AVALUO_1` sincronizado. Las variables (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PORTAL_CONFIGURATION`) viven solo en `production.env`. Un administrador ya puede comprar avalúos en `/organizacion/facturacion`. Si cambia el importe del paquete, correr `docker exec -it valuos-app node --import tsx scripts/stripe-sync.ts`: crea el precio nuevo y archiva el anterior (detalle en [COBRO.md](COBRO.md)).
+
+**Lo que sigue apagado por omisión es el bloqueo al concluir sin saldo** (`BCobroPorAvaluo`): concluir sin avalúos disponibles registra el consumo y deja el saldo en negativo, mostrado como pendiente de pago. Se enciende por organización solo cuando el cliente lo decida:
+
+```bash
+docker exec -it valuos-app node --import tsx scripts/billing-credits.ts enforce <slug|uuid> on
+```
 
 ## 9. Acreditación profesional
 

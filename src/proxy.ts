@@ -13,7 +13,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  */
 const STRIPE_WEBHOOK_PATH = "/api/stripe/webhook";
 
-const publicPaths = [...AUTH_PUBLIC_PATHS, "/favicon.ico", "/api"];
+// The generated social images (app/opengraph-image.tsx, app/twitter-image.tsx)
+// have no file extension, so the matcher does not skip them: crawlers fetch them
+// without a session.
+const publicPaths = [...AUTH_PUBLIC_PATHS, "/favicon.ico", "/api", "/opengraph-image", "/twitter-image"];
 
 function isPublicPath(pathname: string) {
   return publicPaths.some((path) => pathname === path || pathname.startsWith(`${path}/`));

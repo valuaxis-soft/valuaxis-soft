@@ -34,7 +34,7 @@ docker exec -it valuos-app node --import tsx scripts/billing-set-unit-price.ts  
 docker exec -it valuos-app node --import tsx scripts/billing-set-unit-price.ts --apply
 ```
 
-El precio de Stripe **no** lo crea este script: lo crea `pnpm stripe:sync` (o la primera compra, que sincroniza el paquete elegido) cuando existan las llaves; si el importe cambia después, la sincronización crea un precio nuevo y archiva el anterior. Lo que falta en producción está en [OPERACION.md](OPERACION.md), sección 8.
+El precio de Stripe **no** lo crea este script: lo crea `pnpm stripe:sync` (o la primera compra, que sincroniza el paquete elegido) cuando existan las llaves; si el importe cambia después, la sincronización crea un precio nuevo y archiva el anterior. El estado en producción está en [OPERACION.md](OPERACION.md), sección 8.
 
 Para probar en local: `pnpm billing:example-packages` inserta los cuatro paquetes tentativos (1 × $150, 10 × $140, 30 × $125, 100 × $110, antes de IVA) marcados como de prueba; solo corre contra una base local.
 

@@ -1,7 +1,9 @@
 export const SITE_NAME = "Valuaxis";
 
+export const SITE_TITLE = `${SITE_NAME} · Software de avalúos inmobiliarios en México`;
+
 export const SITE_DESCRIPTION =
-  "Plataforma web para despachos de avalúos y peritos valuadores en México: captura, organiza y emite tus avalúos inmobiliarios en línea.";
+  "Software de avalúos inmobiliarios y de maquinaria para valuadores en México: enfoques de mercado, costos e ingresos, comparables con mapa y dictamen de avalúo en PDF.";
 
 export const SITE_THEME_COLOR = "#014069";
 
