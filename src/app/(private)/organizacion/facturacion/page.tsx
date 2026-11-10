@@ -9,6 +9,8 @@ import { BillingPanel, type BillingNotice } from "@/features/billing/components/
 import { reconcilePackageCheckout } from "@/features/billing/credit-packages.service";
 import { reconcileCheckoutSession, refreshOrganizationSubscription } from "@/features/billing/subscription-sync.service";
 import { DashboardHeader } from "@/features/dashboard/components/header";
+import { OrganizationTabs } from "@/features/dashboard/components/organization-tabs";
+import { PageContainer, PageHeader } from "@/features/dashboard/components/page-header";
 import { requireSession } from "@/security/guards/require-session";
 
 export const metadata: Metadata = { title: "Plan y facturación" };
@@ -45,17 +47,13 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   else if (compra === "exito") notice = purchaseApplied ? "purchased" : "purchase-confirming";
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <DashboardHeader user={user} active="facturacion" />
-      <main className="mx-auto max-w-3xl px-4 py-8 lg:px-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">Plan y facturación</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Los avalúos disponibles de {user.organizationName}, los paquetes para comprar más y la forma de pago.
-          </p>
-        </div>
+      <PageContainer width="narrow">
+        <OrganizationTabs user={user} active="facturacion" />
+        <PageHeader eyebrow="Despacho" title="Plan y facturación" description={`Los avalúos disponibles de ${user.organizationName}, los paquetes para comprar más y la forma de pago.`} />
         <BillingPanel overview={overview} canManage={canManage} notice={notice} />
-      </main>
+      </PageContainer>
     </div>
   );
 }

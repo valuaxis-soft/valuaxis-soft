@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { DashboardHeader } from "@/features/dashboard/components/header";
+import { OrganizationTabs } from "@/features/dashboard/components/organization-tabs";
+import { PageContainer, PageHeader } from "@/features/dashboard/components/page-header";
 import { FirmSettingsForm } from "@/features/firm/components/firm-settings-form";
 import { requireSession } from "@/security/guards/require-session";
 
@@ -13,17 +15,13 @@ export default async function FirmPage() {
   if (!hasPermission(user, AUTH_PERMISSIONS.manageUsers)) redirect("/dashboard");
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <DashboardHeader user={user} active="despacho" />
-      <main className="mx-auto max-w-3xl px-4 py-8 lg:px-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">Datos del despacho</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            El membrete de los dictámenes de {user.organizationName} y los datos con que nace cada avalúo.
-          </p>
-        </div>
+      <PageContainer width="narrow">
+        <OrganizationTabs user={user} active="despacho" />
+        <PageHeader eyebrow="Despacho" title="Datos del despacho" description={`El membrete de los dictámenes de ${user.organizationName} y los datos con que nace cada avalúo.`} />
         <FirmSettingsForm />
-      </main>
+      </PageContainer>
     </div>
   );
 }

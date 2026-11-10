@@ -1,7 +1,8 @@
-import type { LucideIcon } from "lucide-react";
-import { Ban, CheckCircle2, Clock, Eye, FilePen, FileText, RotateCcw, Sparkles } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { getStatusPresentation } from "@/features/dashboard/valuation-status";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { STATUS_TONE_CLASSES, getStatusPresentation } from "@/features/dashboard/valuation-status";
+import { buildValuationListHref } from "@/features/dashboard/valuation-list-params";
+import { cn } from "@/lib/utils";
 
 type Stats = {
   total: number;
@@ -9,46 +10,57 @@ type Stats = {
   byStatus: Record<string, number>;
 };
 
-const statusStyle: Record<string, { icon: LucideIcon; color: string }> = {
-  nuevo: { icon: Sparkles, color: "from-sky-500/20 to-sky-500/5 text-sky-600 dark:text-sky-400" },
-  en_edicion: { icon: FilePen, color: "from-amber-500/20 to-amber-500/5 text-amber-600 dark:text-amber-400" },
-  en_revision: { icon: Eye, color: "from-blue-500/20 to-blue-500/5 text-blue-600 dark:text-blue-400" },
-  terminado: { icon: CheckCircle2, color: "from-emerald-500/20 to-emerald-500/5 text-emerald-600 dark:text-emerald-400" },
-  reabierto: { icon: RotateCcw, color: "from-violet-500/20 to-violet-500/5 text-violet-600 dark:text-violet-400" },
-  cancelado: { icon: Ban, color: "from-rose-500/20 to-rose-500/5 text-rose-600 dark:text-rose-400" },
-};
-
-const fallbackStyle = { icon: Clock, color: "from-muted-foreground/20 to-muted-foreground/5 text-muted-foreground" };
-
+/**
+ * "Tu cartera": every valuation of the firm by status, as one bar split by
+ * status and a legend whose entries open the list filtered by that status.
+ */
 export function StatsCards({ stats }: { stats: Stats }) {
-  const cards = [
-    { key: "total", label: "Total de avalúos", value: stats.total, icon: FileText, color: "from-primary/20 to-primary/5 text-primary" },
-    ...Object.entries(stats.byStatus).map(([key, value]) => ({
-      key,
-      label: getStatusPresentation(key).pluralLabel,
-      value,
-      ...(statusStyle[key] ?? fallbackStyle),
-    })),
-  ];
+  const entries = Object.entries(stats.byStatus).map(([key, value]) => ({ key, value, ...getStatusPresentation(key) }));
 
   return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-4 2xl:grid-cols-7">
-      {cards.map((card) => {
-        const Icon = card.icon;
-        return (
-          <Card key={card.key} className="overflow-hidden rounded-2xl border-0 bg-card shadow-md shadow-primary/[0.03]">
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${card.color}`}>
-                <Icon className="size-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-xs text-muted-foreground">{card.label}</p>
-                <p className="text-2xl font-bold tracking-tight">{card.value}</p>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })}
-    </div>
+    <section aria-labelledby="cartera-title" className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 id="cartera-title" className="text-base font-semibold">
+          Tu cartera
+        </h2>
+        <Link
+          href="/avaluos"
+          className="group inline-flex min-h-11 items-center gap-1 rounded-md text-sm font-medium text-primary outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8"
+        >
+          Total de avalúos: <span className="tabular-nums">{stats.total}</span>
+          <ArrowRight className="size-3.5 transition-transform duration-150 motion-safe:group-hover:translate-x-0.5" aria-hidden="true" />
+        </Link>
+      </div>
+
+      <div aria-hidden="true" className="mt-4 flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full bg-muted">
+        {stats.total > 0
+          ? entries
+              .filter((entry) => entry.value > 0)
+              .map((entry) => (
+                <span
+                  key={entry.key}
+                  className={cn("h-full first:rounded-l-full last:rounded-r-full", STATUS_TONE_CLASSES[entry.tone].dot)}
+                  style={{ width: `${(entry.value / stats.total) * 100}%` }}
+                />
+              ))
+          : null}
+      </div>
+
+      <ul className="mt-4 grid grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-6">
+        {entries.map((entry) => (
+          <li key={entry.key}>
+            <Link
+              href={buildValuationListHref({ status: entry.key })}
+              title={entry.hint || undefined}
+              className="group flex min-h-11 items-center gap-2.5 rounded-lg px-2 py-2 transition-colors duration-150 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <span aria-hidden="true" className={cn("size-2.5 shrink-0 rounded-full", STATUS_TONE_CLASSES[entry.tone].dot)} />
+              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground group-hover:text-foreground">{entry.pluralLabel}</span>
+              <span className="text-lg font-semibold tabular-nums">{entry.value}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

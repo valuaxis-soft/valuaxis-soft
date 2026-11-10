@@ -19,7 +19,7 @@
 
 | Ruta | Uso |
 |---|---|
-| `/dashboard` | Resumen y avalúos recientes |
+| `/dashboard` | Inicio del valuador: saludo, cartera por estado (cada estado abre la lista filtrada), "Requiere tu atención" (en revisión por concluir, en edición o reabiertos sin comparables, borradores sin cambios en 30 días), los últimos avalúos modificados, avalúos disponibles (solo con `FACTURACION_VER` o `SUSCRIPCION_ADMINISTRAR` y el cobro por avalúo activo), accesos rápidos y los últimos cambios de estado. Atención y actividad requieren `AVALUO_VER` |
 | `/avaluos` | Lista paginada de avalúos de la organización (20 por página). Parámetros: `?q=` busca en folio, título y cliente; `?estado=` filtra por clave del catálogo de estados (`nuevo`, `en_edicion`, …); `?page=`. Requiere `AVALUO_VER`; "Nuevo avalúo" solo con `AVALUO_CREAR` |
 | `/avaluos/<uuid>/dictamen` | Dictamen completo: todas las secciones habilitadas con las mismas páginas de la vista previa, en tamaño carta sin márgenes. Muestra lo guardado; el botón "Generar avalúo" del editor guarda antes de abrirlo. "Descargar PDF" lo genera en el servidor; "Imprimir" usa el navegador. Requiere `AVALUO_EXPORTAR` y registra un evento de exportación |
 | `/avaluos/<uuid>/memoria-calculo` | Memoria de cálculo: anexo técnico, aparte del dictamen, con el encabezado del despacho, folio, fecha, versión del motor y fecha de generación. Imprime cada tabla con fórmulas (letras de columna y números de renglón; valores calculados en azul y capturados en negro, con su fórmula y la fórmula con los valores sustituidos), cada concepto calculado con fórmula y los pasos del motor de cada enfoque (cada mercado, costos, ingresos, maquinaria y conclusión) recalculados de lo guardado y comparados con lo que guardó el servidor. Muestra lo guardado: "Memoria de cálculo" del editor guarda antes de abrirla. Un avalúo concluido muestra su versión final. Requiere `AVALUO_EXPORTAR` y registra un evento de exportación |
@@ -34,6 +34,8 @@
 | `/workspace?action=new` | Crear avalúo. `&plantilla=<uuid>` llega con esa plantilla del despacho elegida en "Plantilla base" |
 | `/workspace?id=<uuid>` | Editor del avalúo |
 | `/workspace/preview-window?id=<uuid>` | Vista previa en segunda ventana |
+
+En toda el área privada, "Buscar o ir a…" (Ctrl/⌘ K) abre las páginas permitidas, "Nuevo avalúo" y una búsqueda en avalúos o comparables; atajos: `/` busca en la página, `N` nuevo avalúo, `G` y una letra para ir a una sección, `?` los muestra.
 
 ## API en uso
 

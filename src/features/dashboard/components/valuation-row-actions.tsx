@@ -44,7 +44,7 @@ export function ValuationRowActions({ id, folio, archived, canCreate, canDelete 
       if (router) router.refresh();
       else window.location.reload();
     } catch (error) {
-      toast.error(errorText(error, "No se pudo completar la acción."));
+      toast.error(errorText(error, "No pudimos completar la acción. Inténtalo de nuevo."));
     } finally {
       setPending(false);
     }
@@ -55,7 +55,7 @@ export function ValuationRowActions({ id, folio, archived, canCreate, canDelete 
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Más acciones del avalúo ${folio}`} disabled={pending}>
+            <Button type="button" variant="ghost" size="icon-sm" className="size-11 md:size-8" aria-label={`Más acciones del avalúo ${folio}`} disabled={pending}>
               {pending ? <Loader2 className="animate-spin" /> : <MoreHorizontal />}
             </Button>
           }
@@ -65,7 +65,7 @@ export function ValuationRowActions({ id, folio, archived, canCreate, canDelete 
             <DropdownMenuItem
               onClick={() => void run(async () => {
                 const copy = await api.valuations.duplicate(id);
-                return `Avalúo duplicado como ${copy.folio}.`;
+                return `Listo, la copia quedó como ${copy.folio}.`;
               })}
             >
               <Copy />
@@ -75,7 +75,7 @@ export function ValuationRowActions({ id, folio, archived, canCreate, canDelete 
           <DropdownMenuItem
             onClick={() => void run(async () => {
               await api.valuations.archive(id, !archived);
-              return archived ? `Avalúo ${folio} devuelto a la lista.` : `Avalúo ${folio} archivado. Lo encuentras con el filtro "Archivados".`;
+              return archived ? `${folio} volvió a la lista principal.` : `${folio} quedó archivado. Lo encuentras en «Archivados».`;
             })}
           >
             {archived ? <ArchiveRestore /> : <Archive />}
@@ -106,7 +106,7 @@ export function ValuationRowActions({ id, folio, archived, canCreate, canDelete 
             <AlertDialogAction
               onClick={() => void run(async () => {
                 await api.valuations.remove(id);
-                return `Avalúo ${folio} eliminado.`;
+                return `${folio} se eliminó.`;
               })}
             >
               Eliminar

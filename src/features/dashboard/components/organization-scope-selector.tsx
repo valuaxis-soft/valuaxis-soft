@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Building2, Check, ChevronsUpDown, Loader2, UserRound, Users } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -39,7 +38,7 @@ export function OrganizationScopeSelector({ activeOrganizationName }: { activeOr
 
     if (window.sessionStorage.getItem(scopeChangedKey)) {
       window.sessionStorage.removeItem(scopeChangedKey);
-      toast.success("Ámbito cambiado correctamente");
+      toast.success("Listo, cambiaste de despacho.");
     }
 
     async function loadOrganizations() {
@@ -54,7 +53,7 @@ export function OrganizationScopeSelector({ activeOrganizationName }: { activeOr
         setOrganizations(Array.isArray(payload.data) ? payload.data : []);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        toast.error("No se pudo cargar la lista de ámbitos.");
+        toast.error("No pudimos cargar tus despachos. Recarga la página para intentarlo de nuevo.");
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -94,10 +93,37 @@ export function OrganizationScopeSelector({ activeOrganizationName }: { activeOr
       window.sessionStorage.setItem(scopeChangedKey, "1");
       window.location.reload();
     } catch {
-      toast.error("No se pudo cambiar el ámbito. Verifica tu acceso.");
+      toast.error("No pudimos cambiarte de despacho. Revisa que sigas teniendo acceso.");
     } finally {
       setChangingId(null);
     }
+  }
+
+  const typeLabel = scopeType === "TEAM" ? "Equipo" : scopeType === "PERSONAL" ? "Personal" : "Despacho";
+  const ScopeIcon = scopeType === "PERSONAL" ? UserRound : Building2;
+  const label = (
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        <ScopeIcon className="size-4" aria-hidden="true" />
+      </span>
+      <span className="hidden min-w-0 text-left xl:block">
+        <span className="block truncate text-sm leading-tight font-medium">{displayName}</span>
+        {loading ? (
+          <Skeleton className="mt-0.5 h-3 w-12" />
+        ) : (
+          <span className="block text-[11px] leading-tight text-muted-foreground">{typeLabel}</span>
+        )}
+      </span>
+    </span>
+  );
+
+  // With a single firm there is nothing to switch: the name is shown, not a disabled-looking button.
+  if (!loading && organizations.length <= 1) {
+    return (
+      <div className="flex h-11 max-w-[220px] items-center rounded-lg px-1.5 lg:h-10 xl:px-2" title={displayName} aria-label={`Despacho activo: ${displayName}`} role="note">
+        {label}
+      </div>
+    );
   }
 
   return (
@@ -105,29 +131,19 @@ export function OrganizationScopeSelector({ activeOrganizationName }: { activeOr
       <DropdownMenuTrigger
         render={
           <Button
-            variant="outline"
-            className="h-10 max-w-[240px] justify-between gap-2 rounded-xl px-3 shadow-none"
-            disabled={loading || organizations.length <= 1 || changingId !== null}
-            aria-label="Cambiar ámbito activo"
+            variant="ghost"
+            className="h-11 max-w-[240px] justify-between gap-2 rounded-lg px-1.5 lg:h-10 xl:px-2"
+            disabled={loading || changingId !== null}
+            aria-label={`Cambiar de despacho. Activo: ${displayName}`}
           />
         }
       >
-        <span className="flex min-w-0 items-center gap-2">
-          {scopeType === "PERSONAL" ? <UserRound /> : <Building2 />}
-          <span className="hidden min-w-0 truncate text-left text-sm font-medium md:block">{displayName}</span>
-          {loading ? (
-            <Skeleton className="hidden h-5 w-14 rounded-full sm:block" />
-          ) : (
-            <Badge variant={scopeType === "TEAM" ? "default" : "secondary"} className="text-[10px]">
-              {scopeType === "TEAM" ? "Equipo" : scopeType === "PERSONAL" ? "Personal" : "Ámbito"}
-            </Badge>
-          )}
-        </span>
-        {changingId !== null ? <Loader2 className="animate-spin" /> : <ChevronsUpDown />}
+        {label}
+        {changingId !== null ? <Loader2 className="animate-spin" /> : <ChevronsUpDown className="text-muted-foreground" />}
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-72 rounded-xl">
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Ámbito activo</div>
+      <DropdownMenuContent align="end" className="w-72 rounded-xl p-1.5">
+        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Cambiar de despacho</div>
         <DropdownMenuSeparator />
         {organizations.map((organization) => {
           const isPersonal = organization.STipoAmbito.toUpperCase() === "PERSONAL";

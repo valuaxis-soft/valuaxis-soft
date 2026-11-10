@@ -7,6 +7,7 @@ import { Suspense } from "react";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { DashboardHeader } from "@/features/dashboard/components/header";
+import { PageContainer } from "@/features/dashboard/components/page-header";
 import { getComparableCard } from "@/features/valuations/calculation/comparable-card.service";
 import { comparableAttributeNames, firmValidityMonths } from "@/features/valuations/comparable-base/comparable-base.service";
 import { ComparableCardPanel } from "@/features/valuations/comparable-base/components/comparable-card-panel";
@@ -30,13 +31,18 @@ export default async function ComparableCardPage({ params }: { params: Promise<{
   if (!card) notFound();
   const [months, attributeNames] = await Promise.all([firmValidityMonths(user.organizationId), comparableAttributeNames(user.organizationId)]);
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <DashboardHeader user={user} active="comparables" />
-      <main className="mx-auto grid w-full max-w-4xl gap-4 p-4 sm:p-6">
-        <Link href="/comparables" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="size-4" /> Comparables
-        </Link>
-        <h1 className="text-lg font-semibold">Ficha del comparable</h1>
+      <PageContainer width="narrow" className="grid gap-4">
+        <nav aria-label="Ruta">
+          <Link
+            href="/comparables"
+            className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8"
+          >
+            <ChevronLeft className="size-4" aria-hidden="true" /> Comparables
+          </Link>
+        </nav>
+        <h1 className="text-2xl font-semibold tracking-tight">Ficha del comparable</h1>
         <Suspense>
           <ComparableCardPanel
             card={card}
@@ -45,7 +51,7 @@ export default async function ComparableCardPage({ params }: { params: Promise<{
             attributeNames={attributeNames}
           />
         </Suspense>
-      </main>
+      </PageContainer>
     </div>
   );
 }

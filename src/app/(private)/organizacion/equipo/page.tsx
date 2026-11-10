@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { DashboardHeader } from "@/features/dashboard/components/header";
+import { OrganizationTabs } from "@/features/dashboard/components/organization-tabs";
+import { PageContainer, PageHeader } from "@/features/dashboard/components/page-header";
 import { TeamManager } from "@/features/team/components/team-manager";
 import { requireSession } from "@/security/guards/require-session";
 
@@ -13,17 +15,13 @@ export default async function TeamPage() {
   if (!hasPermission(user, AUTH_PERMISSIONS.manageUsers)) redirect("/dashboard");
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <DashboardHeader user={user} active="equipo" />
-      <main className="mx-auto max-w-3xl px-4 py-8 lg:px-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">Equipo</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Invita a tu equipo y elige qué puede hacer cada quien. Todos ven los avalúos de {user.organizationName}.
-          </p>
-        </div>
+      <PageContainer width="narrow">
+        <OrganizationTabs user={user} active="equipo" />
+        <PageHeader eyebrow="Despacho" title="Equipo" description={`Invita a tu equipo y elige qué puede hacer cada quien. Todos ven los avalúos de ${user.organizationName}.`} />
         <TeamManager />
-      </main>
+      </PageContainer>
     </div>
   );
 }
