@@ -57,6 +57,7 @@ export function ComparableBaseFilters({ params, attributeNames = [], sourceNames
             maxLength={100}
             placeholder="Ubicación, uso, fuente o número (C-00123)"
             aria-label="Buscar comparables por ubicación, uso, fuente o número"
+            data-page-search
             className="h-9 pl-8"
           />
         </div>

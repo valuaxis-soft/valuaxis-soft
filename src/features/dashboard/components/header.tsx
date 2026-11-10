@@ -1,127 +1,108 @@
 import Link from "next/link";
-import { BadgeCheck, LogOut, UserCircle2, Building2, ChevronDown } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { ChevronDown } from "lucide-react";
+import { ValuaxisLogo } from "@/components/brand/valuaxis-logo";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AUTH_PERMISSIONS, type AuthUser } from "@/features/auth/model";
-import { hasPermission } from "@/features/auth/permissions";
-import { logoutAction } from "@/features/auth/actions/logout.action";
+import type { AuthUser } from "@/features/auth/model";
+import { CommandPalette, CommandPaletteTrigger } from "@/features/dashboard/components/command-palette";
+import { MobileNav } from "@/features/dashboard/components/mobile-nav";
+import { NAV_ICONS } from "@/features/dashboard/components/nav-icons";
 import { OrganizationScopeSelector } from "@/features/dashboard/components/organization-scope-selector";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { UserMenu } from "@/features/dashboard/components/user-menu";
+import { MAIN_CONTENT_ID, buildNavigation, initialsOf, type NavKey } from "@/features/dashboard/navigation";
 import { cn } from "@/lib/utils";
 
-const roleLabel: Record<string, string> = {
-  ADMINISTRADOR: "Administrador",
-  VALUADOR: "Valuador",
-  REVISOR: "Revisor",
-  CONSULTA: "Consulta",
-  USUARIO: "Usuario",
-};
+const navLinkClass = (current: boolean) =>
+  cn(
+    "relative inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+    "after:pointer-events-none after:absolute after:inset-x-3 after:-bottom-[14px] after:h-0.5 after:rounded-full after:transition-colors after:duration-200",
+    current ? "text-foreground after:bg-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground after:bg-transparent",
+  );
 
-type NavKey = "dashboard" | "avaluos" | "plantillas" | "comparables" | "equipo" | "despacho" | "facturacion";
-
+/**
+ * The top bar of the private area: the logo, the destinations the person can
+ * open (with the firm's settings under "Despacho"), "Buscar o ir a…" (Ctrl/⌘ K),
+ * the active firm and the account menu. Below lg the destinations move to the
+ * side menu.
+ */
 export function DashboardHeader({ user, active }: { user: AuthUser; active?: NavKey }) {
-  const navItems: Array<{ key: NavKey; label: string; href: string }> = [
-    { key: "dashboard", label: "Inicio", href: "/dashboard" },
-    ...(hasPermission(user, AUTH_PERMISSIONS.viewValuations)
-      ? [{ key: "avaluos" as const, label: "Avalúos", href: "/avaluos" }]
-      : []),
-    ...(hasPermission(user, AUTH_PERMISSIONS.editValuations)
-      ? [{ key: "plantillas" as const, label: "Plantillas", href: "/organizacion/plantillas" }]
-      : []),
-    // The firm's base of comparables: whoever sees the valuations sees the comparables they used.
-    ...(hasPermission(user, AUTH_PERMISSIONS.viewValuations)
-      ? [{ key: "comparables" as const, label: "Comparables", href: "/comparables" }]
-      : []),
-    ...(hasPermission(user, AUTH_PERMISSIONS.manageUsers)
-      ? [
-          { key: "equipo" as const, label: "Equipo", href: "/organizacion/equipo" },
-          { key: "despacho" as const, label: "Despacho", href: "/organizacion/despacho" },
-        ]
-      : []),
-    ...(hasPermission(user, AUTH_PERMISSIONS.viewBilling) || hasPermission(user, AUTH_PERMISSIONS.manageSubscription)
-      ? [{ key: "facturacion" as const, label: "Plan", href: "/organizacion/facturacion" }]
-      : []),
-  ];
+  const navigation = buildNavigation(user);
+  const initials = initialsOf(user.name);
+  const organizationActive = navigation.organization.some((item) => item.key === active);
+  const OrganizationIcon = NAV_ICONS.despacho;
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-[1760px] items-center justify-between px-4 lg:px-6">
-        <div className="flex min-w-0 items-center gap-3 sm:gap-6">
-          <Link href="/dashboard" aria-label="Valuaxis, ir al inicio" className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-md shadow-primary/20">
-              <Building2 className="size-5 text-primary-foreground" />
-            </div>
-            <div className="hidden sm:block">
-              <p className="text-base font-bold tracking-tight">Valuaxis</p>
-              <p className="-mt-0.5 text-[11px] font-medium text-muted-foreground/60">
-                Sistema de avalúos web
-              </p>
-            </div>
+    <>
+      <a
+        href={`#${MAIN_CONTENT_ID}`}
+        className="sr-only z-[60] rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+      >
+        Saltar al contenido
+      </a>
+      <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-xl supports-backdrop-filter:bg-background/70">
+        <div className="mx-auto flex h-16 max-w-[1760px] items-center gap-1 px-2 sm:px-4 lg:gap-2 lg:px-6">
+          <MobileNav navigation={navigation} active={active} name={user.name} email={user.email} role={user.role} initials={initials} />
+          <Link
+            href="/dashboard"
+            aria-label="Valuaxis, ir al inicio"
+            className="flex h-11 shrink-0 items-center rounded-lg px-1 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <ValuaxisLogo markClassName="size-8" className="text-base" />
           </Link>
-          <nav aria-label="Navegación principal" className="flex min-w-0 items-center gap-1 overflow-x-auto">
-            {navItems.map((item) => (
-              <Link
-                key={item.key}
-                href={item.href}
-                aria-current={active === item.key ? "page" : undefined}
-                className={cn(
-                  buttonVariants({ variant: "ghost", size: "sm" }),
-                  "rounded-lg text-sm",
-                  active === item.key ? "bg-muted text-foreground" : "text-muted-foreground",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <ThemeToggle />
-          <OrganizationScopeSelector key={user.organizationName} activeOrganizationName={user.organizationName} />
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className={cn(buttonVariants({ variant: "ghost" }), "h-9 gap-2 rounded-xl px-3 text-sm font-medium")}
-            >
-              <UserCircle2 className="size-4" />
-              <span className="hidden sm:inline">{user.name}</span>
-              <ChevronDown className="size-3.5 text-muted-foreground/60" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 rounded-xl">
-              <div className="px-3 py-2">
-                <p className="text-sm font-medium">{user.name}</p>
-                <p className="text-xs text-muted-foreground">{user.email}</p>
-                <p className="text-xs text-muted-foreground">{user.organizationName}</p>
-              </div>
-              <div className="px-3 pb-2">
-                <Badge variant="secondary" className="text-[10px] font-medium">
-                  {roleLabel[user.role] ?? user.role}
-                </Badge>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2" render={<Link href="/cuenta" />}>
-                <BadgeCheck className="size-4" />
-                Mi cuenta y acreditación
-              </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive">
-                <form action={logoutAction}>
-                  <button type="submit" className="flex items-center gap-2">
-                    <LogOut className="size-4" />
-                    Cerrar sesión
-                  </button>
-                </form>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <nav aria-label="Navegación principal" className="ml-4 hidden items-center gap-0.5 lg:flex">
+            {navigation.primary.map((item) => {
+              const Icon = NAV_ICONS[item.key];
+              const current = active === item.key;
+              return (
+                <Link key={item.key} href={item.href} aria-current={current ? "page" : undefined} className={navLinkClass(current)}>
+                  <Icon className="size-4" aria-hidden="true" />
+                  {item.label}
+                </Link>
+              );
+            })}
+            {navigation.organization.length ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger className={cn(navLinkClass(organizationActive), "aria-expanded:bg-muted aria-expanded:text-foreground")}>
+                  <OrganizationIcon className="size-4" aria-hidden="true" />
+                  Despacho
+                  <ChevronDown className="size-3.5 opacity-60" aria-hidden="true" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-72 rounded-xl p-1.5">
+                  {navigation.organization.map((item) => {
+                    const Icon = NAV_ICONS[item.key];
+                    const current = active === item.key;
+                    return (
+                      <DropdownMenuItem
+                        key={item.key}
+                        className={cn("items-start gap-3 px-2.5 py-2", current && "bg-muted")}
+                        render={<Link href={item.href} aria-current={current ? "page" : undefined} />}
+                      >
+                        <Icon className="mt-0.5 size-4 text-muted-foreground" aria-hidden="true" />
+                        <span className="min-w-0">
+                          <span className="block font-medium">{item.label}</span>
+                          <span className="block text-xs text-muted-foreground">{item.description}</span>
+                        </span>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </nav>
+
+          <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
+            <CommandPaletteTrigger className="w-11 justify-center px-0 xl:w-64 xl:justify-start xl:px-3" />
+            <OrganizationScopeSelector key={user.organizationName} activeOrganizationName={user.organizationName} />
+            <UserMenu name={user.name} email={user.email} organizationName={user.organizationName} role={user.role} initials={initials} />
+          </div>
         </div>
-      </div>
-    </header>
+        <CommandPalette navigation={navigation} />
+      </header>
+    </>
   );
 }

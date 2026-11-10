@@ -34,6 +34,21 @@ Contraste medido (WCAG 2): tinta sobre papel 16.6:1; `muted-foreground` sobre pa
 
 Las gráficas usan `chart-1` (azul), `chart-2` (verde de marca), `chart-3` (ocre), `chart-4` (violeta) y `chart-5` (terracota).
 
+### Estados del avalúo
+
+Una sola fuente: `STATUS_TONE_CLASSES` en `src/features/dashboard/valuation-status.ts`. La etiqueta es un punto de color más el nombre del estado sobre un tinte del mismo color; el texto siempre va en `foreground`, así que el contraste no depende del tono (14:1 o más en claro, 10:1 o más en oscuro).
+
+| Estado | Token | Por qué |
+|---|---|---|
+| Nuevo | `muted` / `muted-foreground` | Aún no pasa nada |
+| En edición | `highlight` (punto en `highlight-strong`, 5.3:1) | Un dato a observar, sin alarma |
+| En revisión | `primary` | El paso formal del despacho |
+| Terminado | `success` | Aprobado |
+| Reabierto | `chart-4` (violeta) | No hay token semántico; se distingue del ocre, del verde y del rojo |
+| Cancelado | `destructive` | Ya no sigue |
+
+No se agregaron tokens `warning` ni `info`: con estos alcanza. "Requiere tu atención" usa `primary` para "Por concluir" y `highlight` para "Sin comparables".
+
 ## Tipografía
 
 Las tres familias se sirven desde nuestro dominio con `next/font` (se descargan al compilar; la CSP no permite orígenes de fuentes externos).

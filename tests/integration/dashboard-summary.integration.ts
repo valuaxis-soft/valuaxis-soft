@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import type { AuthUser } from "../../src/features/auth/model";
+import { adjustCredits } from "../../src/features/billing/credits.service";
 import { getDashboardSummary } from "../../src/features/dashboard/services/dashboard-summary.service";
 import { createValuationFixture, prisma } from "./support";
 
@@ -132,4 +133,70 @@ test("a cancelled valuation is not counted as active", async () => {
   assert.equal(summary.valuations.total, 2);
   assert.equal(summary.valuations.byStatus.cancelado, 1);
   assert.equal(summary.valuations.active, 1, "only the NUEVO one is active");
+});
+
+test("attention lists the firm's open valuations to conclude, without comparables or idle a month, never another firm's", async () => {
+  const fixture = await createValuationFixture();
+  const user = await joinWithRole(fixture, "ADMINISTRADOR");
+  const longAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+  const inReview = await addValuation(fixture, "EN_REVISION");
+  const editing = await addValuation(fixture, "EN_EDICION");
+  const staleNew = await addValuation(fixture, "NUEVO", { modifiedAt: longAgo });
+  const finished = await addValuation(fixture, "TERMINADO", { modifiedAt: longAgo });
+  const archived = await addValuation(fixture, "EN_REVISION");
+  await prisma.avaluo.update({ where: { UIdentificadorPublico: archived }, data: { DFechaArchivo: new Date() } });
+  // DFechaModificacion is @updatedAt: the backdate goes through raw SQL so Prisma does not overwrite it.
+  await prisma.$executeRaw`UPDATE devpware_avaluos SET "DFechaModificacion" = ${longAgo} WHERE "UIdentificadorPublico" = ${staleNew}::uuid`;
+  const other = await createValuationFixture();
+  const foreign = await addValuation(other, "EN_REVISION");
+
+  const summary = await getDashboardSummary(user);
+  const byId = new Map(summary.attention.map((item) => [item.id, item.reasons]));
+  assert.deepEqual(byId.get(inReview), ["to-conclude", "no-comparables"]);
+  assert.deepEqual(byId.get(editing), ["no-comparables"]);
+  assert.deepEqual(byId.get(staleNew), ["stale-draft"]);
+  assert.ok(!byId.has(fixture.publicId), "a fresh NUEVO one waits for nothing");
+  assert.ok(!byId.has(finished), "closed work never needs attention");
+  assert.ok(!byId.has(archived), "archived ones are out of the way");
+  assert.ok(!byId.has(foreign), "another firm's valuations never show");
+  assert.equal(summary.attention[0].id, inReview, "the ones to conclude come first");
+});
+
+test("recent activity shows the firm's status changes and nothing to a non-member", async () => {
+  const fixture = await createValuationFixture();
+  const user = await joinWithRole(fixture, "CONSULTA");
+  const valuation = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  const [nuevo, edicion] = await Promise.all([
+    prisma.estadoAvaluo.findUniqueOrThrow({ where: { SClave: "NUEVO" } }),
+    prisma.estadoAvaluo.findUniqueOrThrow({ where: { SClave: "EN_EDICION" } }),
+  ]);
+  await prisma.estadoAvaluoHistorial.create({
+    data: { IdAvaluo: valuation.IdAvaluo, IdUsuario: user.id, IdEstadoAnterior: nuevo.IdEstadoAvaluo, IdEstadoNuevo: edicion.IdEstadoAvaluo },
+  });
+  const other = await createValuationFixture();
+  const otherValuation = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: other.publicId } });
+  await prisma.estadoAvaluoHistorial.create({
+    data: { IdAvaluo: otherValuation.IdAvaluo, IdUsuario: other.user.id, IdEstadoAnterior: nuevo.IdEstadoAvaluo, IdEstadoNuevo: edicion.IdEstadoAvaluo },
+  });
+
+  const summary = await getDashboardSummary(user);
+  assert.equal(summary.activity.length, 1, "only this firm's change");
+  assert.equal(summary.activity[0].valuationId, fixture.publicId);
+  assert.equal(summary.activity[0].from, "nuevo");
+  assert.equal(summary.activity[0].to, "en_edicion");
+  assert.equal(summary.credits, null, "Consulta does not see the billing");
+
+  const outsider = await getDashboardSummary({ ...other.user, permissions: ["AVALUO_VER"] });
+  assert.deepEqual(outsider.activity, [], "not a member: the session permissions are not trusted");
+  assert.deepEqual(outsider.attention, []);
+});
+
+test("credits show only while the firm pays per valuation, to who sees the billing", async () => {
+  const fixture = await createValuationFixture();
+  const admin = await joinWithRole(fixture, "ADMINISTRADOR");
+  assert.equal((await getDashboardSummary(admin)).credits, null, "charge off: no balance card");
+
+  await prisma.organizacion.update({ where: { IdOrganizacion: fixture.organizationId }, data: { BCobroPorAvaluo: true } });
+  await adjustCredits({ organizationId: fixture.organizationId, credits: 5, reason: "Prueba" });
+  assert.deepEqual((await getDashboardSummary(admin)).credits, { balance: 5 });
 });

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { DashboardHeader } from "@/features/dashboard/components/header";
+import { PageContainer, PageHeader } from "@/features/dashboard/components/page-header";
 import { getLetterhead } from "@/features/firm/firm.service";
 import { TemplateManager } from "@/features/valuations/components/template-manager";
 import { listValuationTemplates } from "@/features/valuations/services/valuation-template.service";
@@ -18,18 +19,12 @@ export default async function TemplatesPage() {
   const [templates, letterhead] = await Promise.all([listValuationTemplates(user.organizationId), getLetterhead(user.organizationId)]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <DashboardHeader user={user} active="plantillas" />
-      <main className="mx-auto max-w-4xl px-4 py-8 lg:px-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">Plantillas</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Las plantillas de {user.organizationName}: la estructura de un avalúo guardada con un nombre para empezar otros o
-            importar sus bloques. Se guardan, o se reemplazan por una versión nueva, desde el editor con &quot;Guardar como plantilla&quot;.
-          </p>
-        </div>
+      <PageContainer width="narrow">
+        <PageHeader title="Plantillas" description={`Las plantillas de ${user.organizationName}: la estructura de un avalúo guardada con un nombre para empezar otros o importar sus bloques. Se guardan, o se reemplazan por una versión nueva, desde el editor con «Guardar como plantilla».`} />
         <TemplateManager initialTemplates={templates} canCreate={hasPermission(user, AUTH_PERMISSIONS.createValuations)} letterhead={letterhead} />
-      </main>
+      </PageContainer>
     </div>
   );
 }

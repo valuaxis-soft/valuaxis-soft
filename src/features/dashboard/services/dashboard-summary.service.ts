@@ -1,5 +1,9 @@
 import { AUTH_PERMISSIONS, type AuthUser } from "@/features/auth/model";
 import { buildAuthorizationContext } from "@/features/auth/services/authorization-context.service";
+import { getCreditBalance } from "@/features/billing/credits.service";
+import type { AttentionItem } from "@/features/dashboard/attention";
+import { listAttentionValuations, listRecentActivity, type ActivityItem } from "@/features/dashboard/services/dashboard-activity.service";
+import { prisma } from "@/infrastructure/database/prisma-client";
 import {
   countValuationsByStatus,
   listValuationStatuses,
@@ -32,12 +36,14 @@ export type DashboardSummary = {
     recent: Array<{
       id: string;
       folio: string;
+      title: string;
       client: string;
       location: string;
       valuationKind: string;
       propertyKind: string;
       status: string;
       createdAt: Date;
+      updatedAt: Date;
     }>;
     active: number;
     /** Count per lowercase status key: every active catalog status in catalog order, then any other key found. */
@@ -47,9 +53,25 @@ export type DashboardSummary = {
     canCreateValuation: boolean;
     canExport: boolean;
   };
+  /** Open valuations waiting for something; empty without AVALUO_VER. */
+  attention: AttentionItem[];
+  /** The last status changes; empty without AVALUO_VER. */
+  activity: ActivityItem[];
+  /** The credit balance, only for who sees the billing and only while the firm pays per valuation. */
+  credits: { balance: number } | null;
+  /** When the summary was read: the dashboard words its dates against it. */
+  generatedAt: Date;
 };
 
+/** The balance when the per-valuation charge is on (BCobroPorAvaluo); null when it is off. */
+async function enforcedCreditBalance(organizationId: number) {
+  const organization = await prisma.organizacion.findUnique({ where: { IdOrganizacion: organizationId }, select: { BCobroPorAvaluo: true } });
+  if (!organization?.BCobroPorAvaluo) return null;
+  return { balance: await getCreditBalance(organizationId) };
+}
+
 export async function getDashboardSummary(user: AuthUser): Promise<DashboardSummary> {
+  const now = new Date();
   const [authorizationContext, recentPage, counts, statuses] = await Promise.all([
     buildAuthorizationContext(user.id, user.organizationId),
     listValuationsPage({ organizationId: user.organizationId, page: 1, pageSize: RECENT_VALUATIONS }),
@@ -57,6 +79,14 @@ export async function getDashboardSummary(user: AuthUser): Promise<DashboardSumm
     listValuationStatuses(),
   ]);
   const permissions = authorizationContext?.permissions ?? new Set<string>();
+  // Permissions come from the membership, never from the session object.
+  const canView = permissions.has(AUTH_PERMISSIONS.viewValuations);
+  const seesBilling = permissions.has(AUTH_PERMISSIONS.viewBilling) || permissions.has(AUTH_PERMISSIONS.manageSubscription);
+  const [attention, activity, credits] = await Promise.all([
+    canView ? listAttentionValuations(user.organizationId, now) : Promise.resolve([]),
+    canView ? listRecentActivity(user.organizationId) : Promise.resolve([]),
+    seesBilling ? enforcedCreditBalance(user.organizationId) : Promise.resolve(null),
+  ]);
 
   const byStatus: Record<string, number> = {};
   for (const status of statuses) byStatus[status.key] = counts[status.key] ?? 0;
@@ -94,12 +124,14 @@ export async function getDashboardSummary(user: AuthUser): Promise<DashboardSumm
       recent: recentPage.items.map((valuation) => ({
         id: valuation.id,
         folio: valuation.folio,
+        title: valuation.title,
         client: valuation.client,
         location: valuation.location,
         valuationKind: valuation.valuationKind,
         propertyKind: valuation.propertyKind,
         status: valuation.status,
         createdAt: valuation.createdAt,
+        updatedAt: valuation.updatedAt,
       })),
       active,
       byStatus,
@@ -108,5 +140,9 @@ export async function getDashboardSummary(user: AuthUser): Promise<DashboardSumm
       canCreateValuation: permissions.has(AUTH_PERMISSIONS.createValuations),
       canExport: permissions.has(AUTH_PERMISSIONS.exportValuations),
     },
+    attention,
+    activity,
+    credits,
+    generatedAt: now,
   };
 }
