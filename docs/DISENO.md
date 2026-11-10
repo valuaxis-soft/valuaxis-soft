@@ -70,16 +70,62 @@ Escala: cuerpo 16 px (`text-base`), secundario 14 px, etiquetas 12 px con `track
 
 ## Movimiento
 
-Solo CSS, sin librerías. Todo está dentro de `@media (prefers-reduced-motion: no-preference)`: con movimiento reducido, nada se mueve y todo se ve.
+El movimiento cuenta la historia del producto: un cálculo que se arma, un comparable que cae en el mapa, una cifra que llega al dictamen. No decora. Vive en `src/app/motion.css`; la única pieza de JavaScript es `LandingMotion` (`src/features/marketing/landing-motion.ts`, una isla de cliente que no pinta nada).
+
+### Reglas
+
+1. **Movimiento reducido manda.** Todo está dentro de `@media (prefers-reduced-motion: no-preference)`; con movimiento reducido se ve el estado final, quieto. `LandingMotion` tampoco arranca el ciclo del hero.
+2. **Sin JavaScript se ve el estado final.** Los estados de partida («apagado») solo existen cuando `LandingMotion` pone `.vx-motion` en `<html>`, y solo bajo un disparador que aún no se enciende: `[data-vx]:not([data-on])`. `data-vx="in"` se enciende al entrar en pantalla (IntersectionObserver); `data-vx="step"` lo enciende el ciclo del hero en su paso `data-vx-step`. Lo que ya estaba en pantalla al hidratar se queda como está, sin repetir.
+3. **Solo `transform` y `opacity`** (y `stroke-dashoffset` en SVG). Dos excepciones de solo pintura, sin layout: el tachado de «Con Excel y Word» (`text-decoration-color`) y el marcatextos del anuncio (`background-size`). La altura de las preguntas frecuentes se anima con `interpolate-size` porque la abre el usuario (no cuenta para CLS).
+4. **Nada que retrase el LCP.** El H1 entra palabra por palabra desde una opacidad ya pintada (0.14), sin JavaScript; el texto cuenta para el LCP desde el primer cuadro. El hero no usa `vx-reveal`.
+5. **Ciclos acotados (WCAG 2.2.2).** Lo que se repite se detiene antes de 5 s (pulso del pin y del radio: dos vueltas; brillo del botón: dos pasadas) o tiene pausa: el ciclo del hero da dos vueltas y para en el estado final, se pausa fuera de pantalla o con la pestaña oculta, y tiene un botón de pausa / reanudar / repetir. La flotación de las tarjetas y la deriva de las curvas se pausan con él. Nada parpadea.
+6. **Cifras que cuentan sin moverse de lugar.** `Odometer` (`src/features/marketing/components/odometer.tsx`) gira una tira 0–9 por dígito con `transform`; el ancho lo da el dígito final invisible, así que no hay CLS. El valor accesible va una vez en `sr-only`; lo animado es `aria-hidden`.
+
+### Duraciones y curvas
+
+| Uso | Duración | Curva |
+|---|---|---|
+| Hover, presión de botones (`vx-press`, `vx-nudge`) | 0.08–0.3 s | `--ease-out-quint` |
+| Aparecer (`vx-seq-fade`, `vx-seq-slide`, `vx-reveal`) | 0.55–0.7 s | `--ease-out-quint` |
+| Aparecer con rebote corto (`vx-seq-pop`: palomitas, insignias) | 0.7 s | `--ease-out-back` |
+| Cifras (`Odometer`) | 1.2 s + 70 ms por dígito | `--ease-out-quint` |
+| Mover piezas grandes (`vx-seq-move`: abanico del dictamen, marcador del rango) | 1 s | `--ease-out-quint` |
+| Línea de pasos (`vx-steps-fill`) | 2.2 s | `--ease-in-out-soft` |
+| Ciclos lentos (`vx-float`, `vx-drift`) | 6–46 s | `--ease-in-out-soft` |
+| Escalonado entre elementos hermanos | 55–260 ms (`--vx-stagger`) | — |
+
+Retrasos: `--vx-base` (en el contenedor o el elemento) + `--vx-i` × `--vx-stagger`. Al apagarse (reinicio del hero) todo regresa en 0.3 s sin retraso.
+
+### Clases
 
 | Clase | Qué hace |
 |---|---|
-| `vx-reveal` | Entra desde 24 px abajo al aparecer en pantalla (animación ligada al scroll, `animation-timeline: view()`). Navegadores sin soporte muestran el contenido sin animar. No se usa en el hero (afectaría el LCP) |
-| `vx-float`, `vx-float-delayed` | Flotación de 6 px, 6–7 s, para dos tarjetas del hero como máximo |
-| `vx-draw` | Una línea SVG que se dibuja al entrar (regresión) |
-| `vx-pulse` | Pulso suave del pin del inmueble sujeto |
+| `vx-reveal` | Entra desde 24 px abajo. Con `animation-timeline: view()` va ligada al scroll (Chrome, Edge); en Safari y Firefox la dispara `LandingMotion` con una transición |
+| `vx-seq-fade` / `-slide` / `-pop` / `-move` | Pieza de una secuencia: aparece, se desliza, «brota» o viaja desde `--vx-from` |
+| `vx-seq-grow-x` / `-grow-y` | Barras y líneas SVG que crecen desde su base |
+| `vx-seq-draw` | Trazo que se dibuja (íconos Lucide; en otros trazos, `pathLength="1"` y `--vx-len: 1`) |
+| `vx-seq-strike`, `vx-seq-mark` | Tachado y marcatextos (excepciones de pintura) |
+| `vx-seq-drop` | Pin que cae con rebote |
+| `vx-draw` | Línea de regresión que se traza con el scroll |
+| `vx-float`, `vx-float-delayed`, `vx-drift`, `vx-parallax` | Flotación de 6 px de dos tarjetas del hero, deriva lenta y parallax de las curvas de nivel |
+| `vx-pulse`, `vx-breathe` | Pulso del pin sujeto y del radio de búsqueda (dos vueltas) |
+| `vx-press`, `vx-nudge`, `vx-shine` | Botones: se elevan 1 px, se hunden al presionar, la flecha avanza; brillo del botón del precio |
+| `vx-faq` | Apertura y cierre de `<details>` (`::details-content` + `interpolate-size`; sin soporte, solo se desvanece el contenido) |
+| `vx-auth-*` | Acceso: la foto se asienta (zoom de 1.12 a 1.02), las curvas entran a la deriva y el texto del panel y la tarjeta suben a su lugar. Solo CSS, una vez, menos de 5 s |
 
-Hover: `transition-[box-shadow,transform] duration-300 ease-(--ease-out-quint)` y como mucho `-translate-y-1`. Curvas: `--ease-out-quint` para llegar, `--ease-in-out-soft` para ciclos.
+### Qué se mueve en cada sección
+
+- **Encabezado:** al bajar se compacta (fondo a escala 0.81, fila 6 px arriba, logo al 94 %) y toma sombra; todo con `transform`, así que nada debajo se recorre. El enlace de la sección visible queda marcado (`aria-current="location"`, subrayado verde).
+- **Hero:** titular palabra por palabra y subrayado que se dibuja; la maqueta trabaja sola (`src/features/marketing/hero-cycle.ts`): se limpia, entran las cuatro filas con sus factores y el homologado contando, se llenan promedio, mediana y adoptado, el marcador se desliza al rango, aparece «Calculado», el valor concluido cuenta hasta $3,482,000.00 y la cifra en letras se escribe.
+- **Cifras, precio:** conteo al entrar.
+- **Excel vs Valuaxis:** las ✕ se dibujan y tachan cada línea; luego las ✓ se palomean.
+- **Cuatro pasos:** la línea se llena y cada paso se enciende al llegar.
+- **Tres enfoques:** barras que crecen, curva de depreciación que se traza, rentas que alimentan el valor capitalizado; al pasar el cursor la tarjeta se eleva y la gráfica se acerca.
+- **Dictamen:** las páginas se abren en abanico; al pasar el cursor se separan más.
+- **Mapa:** los pines caen con rebote, el radio respira, la ficha del comparable se desliza.
+- **IA:** cada fragmento del anuncio se resalta y su campo se llena y se palomea en el mismo orden.
+
+No hay transiciones entre páginas: la View Transitions API de React (`<ViewTransition>`) sigue en canary y la navegación entre la página pública y el acceso es del lado del cliente, donde `@view-transition` no aplica.
 
 ## Tono de voz
 
@@ -98,7 +144,7 @@ Hover: `transition-[box-shadow,transform] duration-300 ease-(--ease-out-quint)` 
 | Ocre para resaltar un dato | Ocre o verde para errores; para eso está `destructive` |
 | `font-display` en títulos | `font-display` en tablas, formularios o cifras alineadas |
 | Maquetas con datos inventados y verosímiles | Capturas con datos de clientes reales |
-| Movimiento que explica (una línea que se traza, un pin que late) | Animar todo; animar el H1; carruseles automáticos |
+| Movimiento que explica (una línea que se traza, un pin que late, un cálculo que se arma) | Animación de adorno; ocultar el H1 al cargar; carruseles automáticos o ciclos sin pausa |
 | Ícono + texto en estados | Comunicar un estado solo con color |
 
 ## Imágenes
@@ -116,4 +162,4 @@ Las maquetas siguen usando datos inventados; las fotos solo reemplazan los dibuj
 
 ## Página pública
 
-`src/app/page.tsx` arma las secciones; los textos están en `src/features/marketing/content.ts` y las maquetas en `src/features/marketing/components/`. Son componentes de servidor: la página no agrega JavaScript propio (las preguntas frecuentes usan `<details>`). El precio vive en `PRICE_PER_VALUATION_MXN` y debe coincidir con el paquete `AVALUO_1` ([COBRO.md](COBRO.md)). El JSON-LD (`SoftwareApplication` con la oferta en MXN, `Organization` y `FAQPage`) sale de `structured-data.ts` y lleva el nonce de la CSP.
+`src/app/page.tsx` arma las secciones; los textos están en `src/features/marketing/content.ts` y las maquetas en `src/features/marketing/components/`. Son componentes de servidor; el único JavaScript propio es la isla `LandingMotion` (encabezado, disparadores de movimiento y ciclo del hero: 3.4 KB, 1.3 KB con gzip). Las preguntas frecuentes usan `<details>`. El precio vive en `PRICE_PER_VALUATION_MXN` y debe coincidir con el paquete `AVALUO_1` ([COBRO.md](COBRO.md)). El JSON-LD (`SoftwareApplication` con la oferta en MXN, `Organization` y `FAQPage`) sale de `structured-data.ts` y lleva el nonce de la CSP.

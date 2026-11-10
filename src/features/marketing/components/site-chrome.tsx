@@ -4,20 +4,29 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NAV_LINKS } from "../content";
 
-/** Sticky header of the public page. No client JavaScript: anchors and links only. */
+/**
+ * Sticky header of the public page: anchors and links. `LandingMotion` adds
+ * `data-scrolled` (the bar compacts with transforms, so nothing below moves)
+ * and marks the link of the section in view with `aria-current`.
+ */
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/75">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+    <header data-vx-header="" className="pointer-events-none sticky top-0 z-40 isolate">
+      <div aria-hidden="true" className="vx-header-shadow absolute inset-0 -z-20 origin-top shadow-lift" />
+      <div
+        aria-hidden="true"
+        className="vx-header-bg absolute inset-0 -z-10 origin-top border-b border-border/70 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/75"
+      />
+      <div className="vx-header-row mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 [&>*]:pointer-events-auto">
         <Link href="/" aria-label="Valuaxis, inicio" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-          <ValuaxisLogo />
+          <ValuaxisLogo className="vx-header-logo origin-left" />
         </Link>
-        <nav aria-label="Principal" className="hidden items-center gap-1 text-sm lg:flex">
+        <nav data-vx-nav="" aria-label="Principal" className="hidden items-center gap-1 text-sm lg:flex">
           {NAV_LINKS.map((link) => (
             <a
               key={link.href}
               href={link.href}
-              className="rounded-md px-3 py-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              className="vx-nav-link relative rounded-md px-3 py-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none aria-[current]:text-foreground"
             >
               {link.label}
             </a>

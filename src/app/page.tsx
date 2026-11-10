@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+import { Fragment } from "react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
@@ -25,7 +27,9 @@ import { APPROACH_VISUALS, RegressionVisual } from "@/features/marketing/compone
 import { ContourLines } from "@/components/brand/contour-lines";
 import { DictamenMockup } from "@/features/marketing/components/dictamen-mockup";
 import { HeroMockup } from "@/features/marketing/components/hero-mockup";
+import { LandingMotion } from "@/features/marketing/components/landing-motion";
 import { MapMockup } from "@/features/marketing/components/map-mockup";
+import { Odometer } from "@/features/marketing/components/odometer";
 import { SectionHeading } from "@/features/marketing/components/section-heading";
 import { SiteFooter, SiteHeader } from "@/features/marketing/components/site-chrome";
 import {
@@ -51,8 +55,18 @@ export const metadata: Metadata = {
 
 const TEAM_ICONS = [Users, GitBranch, LockKeyhole, ScrollText];
 
+const HEADLINE = ["Avalúos", "inmobiliarios", "del", "comparable", "al", "dictamen,"];
+
 const container = "mx-auto w-full max-w-6xl px-4 sm:px-6";
-const ctaPrimary = cn(buttonVariants({ size: "lg" }), "h-12 gap-2 px-6 text-base");
+const ctaPrimary = cn(buttonVariants({ size: "lg" }), "vx-press h-12 gap-2 px-6 text-base");
+
+/** Index and timing variables for the sequence classes in motion.css. */
+const seq = (index: number, base = 0, stagger?: number): CSSProperties =>
+  ({
+    ["--vx-i" as string]: index,
+    ["--vx-base" as string]: `${base}ms`,
+    ...(stagger === undefined ? {} : { ["--vx-stagger" as string]: `${stagger}ms` }),
+  }) as CSSProperties;
 
 export default async function Home() {
   const user = await getCurrentUser();
@@ -72,11 +86,14 @@ export default async function Home() {
       </a>
 
       <SiteHeader />
+      <LandingMotion />
 
       <main id="contenido" className="flex-1">
         {/* Hero */}
-        <section aria-labelledby="hero-title" className="relative isolate overflow-hidden bg-ink text-ink-foreground">
-          <ContourLines className="absolute inset-0 -z-10 h-full w-full text-ink-foreground/[0.07]" />
+        <section data-vx-hero="" aria-labelledby="hero-title" className="relative isolate overflow-hidden bg-ink text-ink-foreground">
+          <div aria-hidden="true" className="vx-parallax absolute -inset-[8%] -z-10">
+            <ContourLines className="vx-drift h-full w-full text-ink-foreground/[0.07]" />
+          </div>
           <div
             aria-hidden="true"
             className="absolute inset-0 -z-10 bg-[radial-gradient(60%_60%_at_85%_20%,oklch(0.649_0.11_165/0.22),transparent_70%),radial-gradient(50%_60%_at_10%_90%,oklch(0.55_0.11_240/0.35),transparent_70%)]"
@@ -89,21 +106,29 @@ export default async function Home() {
               </p>
               <h1
                 id="hero-title"
-                className="font-display text-[2.6rem] leading-[1.04] font-semibold tracking-tight text-balance sm:text-6xl lg:text-[3.75rem]"
+                className="vx-words font-display text-[2.6rem] leading-[1.04] font-semibold tracking-tight text-balance sm:text-6xl lg:text-[3.75rem]"
               >
-                Avalúos inmobiliarios del comparable al dictamen,{" "}
-                <span className="relative whitespace-nowrap text-success">
-                  sin copiar y pegar
-                  <svg
-                    viewBox="0 0 300 12"
-                    preserveAspectRatio="none"
-                    aria-hidden="true"
-                    className="absolute -bottom-1.5 left-0 h-2.5 w-full text-success/70"
-                  >
-                    <path d="M2 9C60 3 140 2 298 6" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                  </svg>
+                {HEADLINE.map((word, index) => (
+                  <Fragment key={word}>
+                    <span className="vx-word" style={seq(index)}>
+                      {word}
+                    </span>{" "}
+                  </Fragment>
+                ))}
+                <span className="vx-word" style={seq(HEADLINE.length)}>
+                  <span className="relative whitespace-nowrap text-success">
+                    sin copiar y pegar
+                    <svg
+                      viewBox="0 0 300 12"
+                      preserveAspectRatio="none"
+                      aria-hidden="true"
+                      className="vx-underline absolute -bottom-1.5 left-0 h-2.5 w-full text-success/70"
+                    >
+                      <path d="M2 9C60 3 140 2 298 6" pathLength={1} fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                  </span>
+                  .
                 </span>
-                .
               </h1>
               <p className="max-w-xl text-lg leading-relaxed text-pretty text-ink-foreground/80">
                 Valuaxis reúne en el navegador lo que hoy repartes entre Excel y Word: comparables con mapa, los enfoques de
@@ -115,13 +140,13 @@ export default async function Home() {
                   className={cn(ctaPrimary, "bg-success text-ink hover:bg-success/85 focus-visible:ring-success/50")}
                 >
                   Crear cuenta
-                  <ArrowRight className="size-4 transition-transform group-hover/button:translate-x-0.5" aria-hidden="true" />
+                  <ArrowRight className="vx-nudge size-4" aria-hidden="true" />
                 </Link>
                 <a
                   href="#como-funciona"
                   className={cn(
                     buttonVariants({ variant: "outline", size: "lg" }),
-                    "h-12 border-ink-foreground/25 bg-transparent px-6 text-base text-ink-foreground hover:bg-ink-foreground/10 hover:text-ink-foreground dark:bg-transparent",
+                    "vx-press h-12 border-ink-foreground/25 bg-transparent px-6 text-base text-ink-foreground hover:bg-ink-foreground/10 hover:text-ink-foreground dark:bg-transparent",
                   )}
                 >
                   Ver cómo funciona
@@ -147,7 +172,7 @@ export default async function Home() {
 
         {/* Proof points */}
         <section aria-label="Valuaxis en cifras" className="border-b bg-card">
-          <dl className={cn(container, "grid grid-cols-2 gap-x-6 gap-y-8 py-12 lg:grid-cols-4")}>
+          <dl data-vx="in" className={cn(container, "grid grid-cols-2 gap-x-6 gap-y-8 py-12 lg:grid-cols-4")}>
             {PROOF_POINTS.map((point, index) => (
               <div key={point.label} className="vx-reveal grid gap-1 border-l-2 border-success/60 pl-4">
                 <dt className="order-2 text-sm text-muted-foreground">{point.label}</dt>
@@ -157,7 +182,7 @@ export default async function Home() {
                     index % 2 === 0 ? "text-primary" : "text-success-strong",
                   )}
                 >
-                  {point.value}
+                  <Odometer value={point.value} delay={index * 150} />
                 </dd>
               </div>
             ))}
@@ -170,17 +195,17 @@ export default async function Home() {
             <SectionHeading id="antes-title" eyebrow="Ahorra horas en cada avalúo" title="Deja de ser el capturista de tu propio Excel.">
               El valor lo decides tú. Valuaxis se encarga de que cada cifra llegue completa y bien numerada hasta el dictamen.
             </SectionHeading>
-            <div className="grid gap-5 md:grid-cols-2">
+            <div data-vx="in" className="grid gap-5 md:grid-cols-2">
               <div className="vx-reveal rounded-2xl border border-dashed bg-muted/50 p-6 sm:p-8">
                 <h3 className="flex items-center gap-2 font-semibold text-muted-foreground">
                   <FileSpreadsheet className="size-5" aria-hidden="true" />
                   Con Excel y Word
                 </h3>
                 <ul className="mt-5 grid gap-3.5">
-                  {BEFORE_AFTER.before.map((item) => (
-                    <li key={item} className="flex gap-3 text-muted-foreground">
-                      <X className="mt-0.5 size-5 shrink-0 text-destructive/70" aria-hidden="true" />
-                      {item}
+                  {BEFORE_AFTER.before.map((item, index) => (
+                    <li key={item} className="flex gap-3 text-muted-foreground" style={seq(index, 300, 260)}>
+                      <X className="vx-seq-draw mt-0.5 size-5 shrink-0 text-destructive/70" aria-hidden="true" />
+                      <span className="vx-seq-strike">{item}</span>
                     </li>
                   ))}
                 </ul>
@@ -192,9 +217,9 @@ export default async function Home() {
                   Con Valuaxis
                 </h3>
                 <ul className="mt-5 grid gap-3.5">
-                  {BEFORE_AFTER.after.map((item) => (
-                    <li key={item} className="flex gap-3">
-                      <Check className="mt-0.5 size-5 shrink-0 text-success-strong" aria-hidden="true" />
+                  {BEFORE_AFTER.after.map((item, index) => (
+                    <li key={item} className="flex gap-3" style={seq(index, 300 + BEFORE_AFTER.before.length * 260 + 200, 260)}>
+                      <Check className="vx-seq-draw mt-0.5 size-5 shrink-0 text-success-strong" aria-hidden="true" />
                       {item}
                     </li>
                   ))}
@@ -210,11 +235,22 @@ export default async function Home() {
             <SectionHeading id="como-title" eyebrow="Cómo funciona" title="Cuatro pasos, el mismo orden de tu informe.">
               Trabajas por secciones, como en tu formato de siempre, y ves el dictamen armarse mientras capturas.
             </SectionHeading>
-            <ol className="relative grid gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:before:absolute lg:before:top-7 lg:before:right-12 lg:before:left-12 lg:before:h-px lg:before:bg-[repeating-linear-gradient(90deg,var(--input)_0_8px,transparent_8px_14px)] lg:before:content-['']">
+            <ol data-vx="in" className="relative grid gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:before:absolute lg:before:top-7 lg:before:right-12 lg:before:left-12 lg:before:h-px lg:before:bg-[repeating-linear-gradient(90deg,var(--input)_0_8px,transparent_8px_14px)] lg:before:content-['']">
+              <span
+                aria-hidden="true"
+                className="vx-steps-fill absolute top-7 right-12 left-12 hidden h-0.5 -translate-y-1/2 rounded-full bg-primary lg:block"
+              />
               {STEPS.map((step, index) => (
                 <li key={step.title} className="vx-reveal relative grid content-start gap-3">
                   <span className="relative flex size-14 items-center justify-center rounded-2xl bg-card font-display text-2xl font-semibold text-primary shadow-soft ring-1 ring-border">
                     {index + 1}
+                    <span
+                      aria-hidden="true"
+                      className="vx-step-on absolute inset-0 flex items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lift"
+                      style={seq(index)}
+                    >
+                      {index + 1}
+                    </span>
                   </span>
                   <h3 className="mt-2 text-lg font-semibold">{step.title}</h3>
                   <p className="text-muted-foreground">{step.description}</p>
@@ -230,16 +266,18 @@ export default async function Home() {
             <SectionHeading id="enfoques-title" eyebrow="Motor de cálculo" title="Los tres enfoques, con las fórmulas de tus libros.">
               Validado al centavo contra los Excel de un despacho de valuación. El sistema calcula y te avisa; nunca decide por ti.
             </SectionHeading>
-            <ul className="grid gap-5 md:grid-cols-3">
-              {APPROACHES.map((approach) => {
+            <ul data-vx="in" className="grid gap-5 md:grid-cols-3">
+              {APPROACHES.map((approach, index) => {
                 const Visual = APPROACH_VISUALS[approach.id];
                 return (
                   <li
                     key={approach.id}
                     className="vx-reveal group grid content-start overflow-hidden rounded-2xl bg-card shadow-soft ring-1 ring-border transition-[box-shadow,transform] duration-300 ease-(--ease-out-quint) hover:-translate-y-1 hover:shadow-lift"
                   >
-                    <div className="h-28 border-b bg-muted/50 px-6 pt-5 pb-3">
-                      <Visual />
+                    <div className="h-28 overflow-hidden border-b bg-muted/50 px-6 pt-5 pb-3">
+                      <div className="vx-card-visual h-full">
+                        <Visual base={200 + index * 250} />
+                      </div>
                     </div>
                     <div className="grid gap-3 p-6">
                       <h3 className="font-display text-xl font-semibold">{approach.title}</h3>
@@ -271,7 +309,7 @@ export default async function Home() {
                   eliges qué entra al dictamen.
                 </p>
               </div>
-              <div className="rounded-2xl bg-ink-foreground/[0.06] p-4 ring-1 ring-ink-foreground/10">
+              <div data-vx="in" className="rounded-2xl bg-ink-foreground/[0.06] p-4 ring-1 ring-ink-foreground/10">
                 <RegressionVisual />
                 <div className="mt-2 flex flex-wrap gap-2 text-xs">
                   <span className="rounded-full bg-ink-foreground/10 px-2.5 py-1 tabular-nums">R² ajustado 0.91</span>
@@ -286,7 +324,7 @@ export default async function Home() {
         {/* Dictamen */}
         <section id="dictamen" aria-labelledby="dictamen-title" className="group/dictamen scroll-mt-20 border-y bg-secondary/60">
           <div className={cn(container, "grid items-center gap-14 py-20 lg:grid-cols-[1fr_1.05fr] lg:py-28")}>
-            <div className="vx-reveal order-2 lg:order-1">
+            <div data-vx="in" className="vx-reveal order-2 lg:order-1">
               <DictamenMockup />
             </div>
             <div className="order-1 grid gap-10 lg:order-2">
@@ -331,7 +369,7 @@ export default async function Home() {
                 ))}
               </ul>
             </div>
-            <div className="vx-reveal">
+            <div data-vx="in" className="vx-reveal">
               <MapMockup />
             </div>
           </div>
@@ -344,7 +382,7 @@ export default async function Home() {
               La IA lee el anuncio que pegaste y te propone los datos del comparable, cada uno con el fragmento literal de donde lo tomó.
               Tú corriges lo que haga falta y decides si lo usas.
             </SectionHeading>
-            <div className="vx-reveal">
+            <div data-vx="in" className="vx-reveal">
               <AiMockup />
             </div>
             <p className="mx-auto flex max-w-2xl items-start gap-3 rounded-xl bg-muted px-5 py-4 text-sm">
@@ -368,7 +406,10 @@ export default async function Home() {
                 {TEAM_FEATURES.map((feature, index) => {
                   const Icon = TEAM_ICONS[index];
                   return (
-                    <li key={feature.title} className="vx-reveal rounded-2xl bg-card p-6 shadow-soft ring-1 ring-border">
+                    <li
+                      key={feature.title}
+                      className="vx-reveal rounded-2xl bg-card p-6 shadow-soft ring-1 ring-border transition-[box-shadow,transform] duration-300 ease-(--ease-out-quint) hover:-translate-y-1 hover:shadow-lift"
+                    >
                       <Icon className="size-6 text-primary" aria-hidden="true" />
                       <h3 className="mt-4 font-semibold">{feature.title}</h3>
                       <p className="mt-2 text-sm text-muted-foreground">{feature.description}</p>
@@ -402,11 +443,11 @@ export default async function Home() {
               Crear tu cuenta, invitar a tu equipo y capturar no cuesta. El avalúo se descuenta al concluirlo por primera vez; reabrirlo
               para corregir y volver a concluirlo no se cobra de nuevo.
             </SectionHeading>
-            <div className="vx-reveal relative rounded-3xl bg-card p-7 shadow-float ring-1 ring-border sm:p-10">
+            <div data-vx="in" className="vx-reveal relative rounded-3xl bg-card p-7 shadow-float ring-1 ring-border sm:p-10">
               <p className="text-sm font-semibold text-muted-foreground">Por avalúo</p>
               <p className="mt-2 flex items-baseline gap-2">
                 <span className="font-display text-7xl font-semibold tracking-tight text-primary tabular-nums sm:text-8xl">
-                  ${PRICE_PER_VALUATION_MXN}
+                  <Odometer value={`$${PRICE_PER_VALUATION_MXN}`} delay={200} />
                 </span>
                 <span className="text-lg font-medium text-muted-foreground">MXN</span>
               </p>
@@ -419,9 +460,9 @@ export default async function Home() {
                   </li>
                 ))}
               </ul>
-              <Link href="/registro" className={cn(ctaPrimary, "mt-8 w-full")}>
+              <Link href="/registro" className={cn(ctaPrimary, "vx-shine mt-8 w-full")}>
                 Crear cuenta
-                <ArrowRight className="size-4" aria-hidden="true" />
+                <ArrowRight className="vx-nudge size-4" aria-hidden="true" />
               </Link>
               <p className="mt-3 text-center text-xs text-muted-foreground">Pago con tarjeta en la página segura de Stripe.</p>
             </div>
@@ -434,7 +475,7 @@ export default async function Home() {
             <SectionHeading id="preguntas-title" eyebrow="Preguntas frecuentes" title="Lo que nos preguntan los valuadores." />
             <div className="grid gap-3">
               {FAQS.map((faq) => (
-                <details key={faq.question} className="group rounded-xl bg-card ring-1 ring-border transition-shadow open:shadow-soft">
+                <details key={faq.question} className="vx-faq group rounded-xl bg-card ring-1 ring-border transition-shadow open:shadow-soft">
                   <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 rounded-xl px-5 py-3 font-semibold outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
                     <h3>{faq.question}</h3>
                     <Plus
@@ -464,13 +505,13 @@ export default async function Home() {
             <div className="flex flex-wrap gap-3">
               <Link href="/registro" className={cn(ctaPrimary, "bg-success text-ink hover:bg-success/85")}>
                 Crear cuenta
-                <ArrowRight className="size-4" aria-hidden="true" />
+                <ArrowRight className="vx-nudge size-4" aria-hidden="true" />
               </Link>
               <Link
                 href="/iniciar-sesion"
                 className={cn(
                   buttonVariants({ variant: "ghost", size: "lg" }),
-                  "h-12 px-5 text-base text-ink-foreground hover:bg-ink-foreground/10 hover:text-ink-foreground",
+                  "vx-press h-12 px-5 text-base text-ink-foreground hover:bg-ink-foreground/10 hover:text-ink-foreground",
                 )}
               >
                 Iniciar sesión

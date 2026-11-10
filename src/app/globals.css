@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./motion.css";
 
 /* The printed document stays light inside a dark app: `.light` restores the
    light tokens and turns off `dark:` utilities for its subtree. */
@@ -164,6 +165,7 @@
   /* Motion: arrivals decelerate, exits are quicker. */
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @layer base {
@@ -192,88 +194,6 @@
   [data-document-pagination-content],
   article[data-document-page] {
     font-family: var(--font-document);
-  }
-}
-
-/* Scroll-linked entrances for marketing pages. Without support for
-   scroll-driven animations, or with reduced motion, content simply shows. */
-@keyframes vx-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(1.5rem);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes vx-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
-@keyframes vx-draw {
-  from {
-    stroke-dashoffset: var(--vx-draw-length, 400);
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes vx-pulse-ring {
-  0% {
-    transform: scale(0.6);
-    opacity: 0.6;
-  }
-  100% {
-    transform: scale(2.2);
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  @supports (animation-timeline: view()) {
-    .vx-reveal {
-      animation: vx-reveal linear both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 45%;
-    }
-
-    /* A line that draws itself as it scrolls into view. */
-    .vx-draw {
-      stroke-dasharray: var(--vx-draw-length, 400);
-      animation: vx-draw linear both;
-      animation-timeline: view();
-      animation-range: entry 30% cover 50%;
-    }
-  }
-
-  .vx-float {
-    animation: vx-float 6s var(--ease-in-out-soft) infinite;
-  }
-
-  .vx-float-delayed {
-    animation: vx-float 7s var(--ease-in-out-soft) 1.2s infinite;
-  }
-
-  .vx-pulse::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: currentColor;
-    animation: vx-pulse-ring 2.4s var(--ease-out-quint) infinite;
-  }
-
-  html:has(.vx-smooth-scroll) {
-    scroll-behavior: smooth;
   }
 }
 

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Photo } from "@/components/brand/photo";
 import Link from "next/link";
 import { Check } from "lucide-react";
@@ -11,9 +11,13 @@ const highlights = [
   "Dictamen en PDF con numeración, anexos y firmas",
 ];
 
+const order = (index: number): CSSProperties => ({ ["--vx-i" as string]: index }) as CSSProperties;
+
 /**
  * Frame for the sign-in, sign-up and recovery pages: the brand panel on wide
  * screens and the form on paper. Layout only; each page keeps its own logic.
+ * On arrival (CSS only, once, under 5 s) the photo settles, the contours drift
+ * in and the panel text and the card rise into place (motion.css).
  */
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
@@ -28,10 +32,10 @@ export function AuthShell({ children }: { children: ReactNode }) {
           fill
           preload
           sizes="(min-width: 1024px) 48vw, 1px"
-          className="-z-20 object-cover"
+          className="vx-auth-photo -z-20 object-cover"
         />
         <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-b from-ink/85 via-ink/75 to-ink/95" />
-        <ContourLines className="absolute inset-0 -z-10 h-full w-full text-ink-foreground/[0.08]" />
+        <ContourLines className="vx-auth-contours absolute inset-0 -z-10 h-full w-full text-ink-foreground/[0.08]" />
         <Link
           href="/"
           aria-label="Valuaxis, ir al inicio"
@@ -40,11 +44,11 @@ export function AuthShell({ children }: { children: ReactNode }) {
           <ValuaxisMark className="size-9 rounded-lg ring-1 ring-white/25" />
           Valuaxis
         </Link>
-        <div className="my-auto grid max-w-md gap-6 py-12">
-          <p className="font-display text-4xl leading-[1.1] font-semibold text-balance xl:text-5xl">
+        <div className="vx-auth-enter my-auto grid max-w-md gap-6 py-12">
+          <p style={order(0)} className="font-display text-4xl leading-[1.1] font-semibold text-balance xl:text-5xl">
             Del comparable al dictamen, <span className="text-success">en un solo lugar.</span>
           </p>
-          <ul className="grid gap-3 text-ink-foreground/85">
+          <ul style={order(1)} className="grid gap-3 text-ink-foreground/85">
             {highlights.map((item) => (
               <li key={item} className="flex gap-3">
                 <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-success/20 text-success">
@@ -61,7 +65,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
       {/* Touch-sized fields and full-width buttons (44 px) on these pages only. */}
       <main className="flex min-h-dvh items-center justify-center px-4 py-10 sm:px-8 [&_.w-full[data-slot=button]]:h-11 [&_[data-slot=input]]:h-11 [&_[data-slot=input]~[data-slot=button]]:size-10">
 
-        <div className="grid w-full max-w-md gap-6">
+        <div className="vx-auth-card grid w-full max-w-md gap-6">
           <div className="grid justify-items-center gap-2 text-center lg:hidden">
             <Link href="/" aria-label="Valuaxis, ir al inicio" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
               <ValuaxisLogo className="text-2xl" markClassName="size-10" />
