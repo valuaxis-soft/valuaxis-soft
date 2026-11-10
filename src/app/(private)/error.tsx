@@ -25,10 +25,10 @@ export default function PrivateError({ error, reset, unstable_retry }: ErrorBoun
         <svg viewBox="0 0 160 120" aria-hidden="true" focusable="false" className="h-28 w-auto">
           <ellipse cx="80" cy="108" rx="50" ry="6" className="fill-muted" />
           <path d="M36 60l44-36 44 36v44H36z" className="fill-card stroke-border" strokeWidth="2.5" strokeLinejoin="round" />
-          <path d="M80 24l8 18-10 8 8 14-6 10" fill="none" className="stroke-chart-3" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M80 24l8 18-10 8 8 14-6 10" fill="none" className="stroke-highlight" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
           <rect x="66" y="78" width="28" height="26" rx="2" className="fill-primary/10 stroke-primary" strokeWidth="2" />
         </svg>
-        <h1 className="text-2xl font-semibold tracking-tight">Algo no salió como esperábamos</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Algo no salió como esperábamos</h1>
         <p className="text-pretty text-muted-foreground">
           No pudimos mostrar esta página. Tu trabajo guardado está a salvo; intenta de nuevo en un momento y, si sigue pasando, avísanos.
         </p>

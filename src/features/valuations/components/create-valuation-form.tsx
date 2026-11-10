@@ -142,7 +142,7 @@ export function CreateValuationForm({
       </div>
       <main id="contenido" className="mx-auto max-w-3xl px-4 pt-8 pb-16">
         <p className="text-sm font-medium text-primary">Nuevo avalúo</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">¿Qué vas a valuar?</h1>
+        <h1 className="font-display mt-1 text-3xl font-semibold tracking-tight sm:text-3xl">¿Qué vas a valuar?</h1>
         <p className="mt-2 text-sm text-muted-foreground sm:text-base">
           Con estos datos se crea el avalúo y abres el editor. El folio se asigna solo y todo lo puedes cambiar después.
         </p>

@@ -6,8 +6,8 @@ import { EmptyState } from "@/features/dashboard/components/empty-state";
 import { cn } from "@/lib/utils";
 
 const REASON_STYLE: Record<AttentionReason, { icon: LucideIcon; className: string }> = {
-  "to-conclude": { icon: CircleCheckBig, className: "bg-chart-4/12 text-foreground ring-chart-4/30 [&_svg]:text-chart-4" },
-  "no-comparables": { icon: MapPinOff, className: "bg-chart-3/12 text-foreground ring-chart-3/30 [&_svg]:text-chart-3" },
+  "to-conclude": { icon: CircleCheckBig, className: "bg-primary/10 text-foreground ring-primary/30 [&_svg]:text-primary" },
+  "no-comparables": { icon: MapPinOff, className: "bg-highlight/15 text-foreground ring-highlight/45 [&_svg]:text-highlight-strong" },
   "stale-draft": { icon: Hourglass, className: "bg-muted text-foreground ring-border [&_svg]:text-muted-foreground" },
 };
 

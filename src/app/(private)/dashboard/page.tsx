@@ -17,6 +17,7 @@ import { NEW_VALUATION_HREF } from "@/features/dashboard/navigation";
 import { getDashboardSummary } from "@/features/dashboard/services/dashboard-summary.service";
 import { PendingInvitations } from "@/features/team/components/pending-invitations";
 import { listMyInvitations } from "@/features/team/team.service";
+import { ContourLines } from "@/components/brand/contour-lines";
 import { cn } from "@/lib/utils";
 
 const longDate = new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Mexico_City" });
@@ -42,21 +43,18 @@ export default async function DashboardPage() {
       <DashboardHeader user={user} active="dashboard" />
 
       <PageContainer>
-        <section className="relative mb-6 overflow-hidden rounded-2xl border border-border bg-card px-5 py-6 sm:px-8 sm:py-8">
-          <HeroPattern />
-          <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-muted-foreground first-letter:uppercase">
-                {longDate.format(now)} · {user.organizationName}
-              </p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-                {greetingFor(now)}, {firstName}
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm text-pretty text-muted-foreground sm:text-base">
-                {summarySentence(summary.valuations.active, summary.valuations.byStatus.en_revision ?? 0, summary.valuations.total)}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
+        <section className="relative mb-6 grid overflow-hidden rounded-2xl border border-border bg-card shadow-soft lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="min-w-0 px-5 py-6 sm:px-8 sm:py-8">
+            <p className="text-sm font-medium text-muted-foreground first-letter:uppercase">
+              {longDate.format(now)} · {user.organizationName}
+            </p>
+            <h1 className="mt-1 font-display text-3xl leading-[1.08] font-semibold tracking-tight text-balance sm:text-4xl">
+              {greetingFor(now)}, {firstName}
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-pretty text-muted-foreground sm:text-base">
+              {summarySentence(summary.valuations.active, summary.valuations.byStatus.en_revision ?? 0, summary.valuations.total)}
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
               {canCreate ? (
                 <Link href={NEW_VALUATION_HREF} className={cn(buttonVariants(), "h-11 gap-2 px-4 sm:h-10")}>
                   <Plus className="size-4" aria-hidden="true" />
@@ -71,6 +69,7 @@ export default async function DashboardPage() {
               ) : null}
             </div>
           </div>
+          <HeroArt />
         </section>
 
         <PendingInvitations invitations={invitations} />
@@ -99,25 +98,23 @@ export default async function DashboardPage() {
   );
 }
 
-/** A quiet drawing of roofs behind the greeting: decoration only. */
-function HeroPattern() {
+/**
+ * The greeting's own column (lg and up): the brand's contour lines and three
+ * roofs, never under the text or the buttons. Decoration only.
+ */
+function HeroArt() {
   return (
-    <svg aria-hidden="true" focusable="false" className="pointer-events-none absolute -top-6 right-0 h-[140%] w-auto opacity-50 max-md:hidden" viewBox="0 0 360 200">
-      <defs>
-        <linearGradient id="hero-fade" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0" stopColor="currentColor" stopOpacity="0" />
-          <stop offset="1" stopColor="currentColor" stopOpacity="1" />
-        </linearGradient>
-      </defs>
-      <g className="text-primary/10" fill="none" stroke="url(#hero-fade)" strokeWidth="2" strokeLinejoin="round">
-        <path d="M40 150l50-40 50 40v50H40z" />
-        <path d="M130 130l70-56 70 56v70H130z" />
-        <path d="M250 120l55-44 55 44v80H250z" />
-        <path d="M184 200v-38h32v38M280 150h20v20h-20z" />
-      </g>
-      <g className="text-chart-2/25" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M168 128l32 42 32-42" />
-      </g>
-    </svg>
+    <div aria-hidden="true" className="relative hidden border-l border-border bg-muted/50 lg:block">
+      <ContourLines className="absolute inset-0 size-full text-primary opacity-[0.08]" />
+      <svg focusable="false" className="absolute inset-x-6 bottom-0 h-[78%] w-[calc(100%-3rem)]" viewBox="0 0 240 150" preserveAspectRatio="xMidYMax meet">
+        <g className="text-primary/35" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+          <path d="M8 150v-40l36-28 36 28v40" />
+          <path d="M80 150V90l46-36 46 36v60" />
+          <path d="M172 150v-48l32-25 32 25v48" />
+          <path d="M112 150v-30h28v30M196 118h16v14h-16z" />
+        </g>
+        <path d="M108 86l18 24 28-36" fill="none" className="stroke-success" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
   );
 }

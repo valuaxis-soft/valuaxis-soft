@@ -18,7 +18,7 @@ export function CreditsCard({ balance }: { balance: number }) {
           </h2>
           <p className="text-sm text-muted-foreground">Se usa uno al concluir cada avalúo.</p>
         </div>
-        <span className={cn("flex size-10 items-center justify-center rounded-xl", empty ? "bg-destructive/10 text-destructive" : "bg-chart-2/15 text-chart-2")}>
+        <span className={cn("flex size-10 items-center justify-center rounded-xl", empty ? "bg-destructive/10 text-destructive" : "bg-success/15 text-success-strong")}>
           <Coins className="size-5" aria-hidden="true" />
         </span>
       </div>

@@ -42,7 +42,7 @@ export default async function ComparableCardPage({ params }: { params: Promise<{
             <ChevronLeft className="size-4" aria-hidden="true" /> Comparables
           </Link>
         </nav>
-        <h1 className="text-2xl font-semibold tracking-tight">Ficha del comparable</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Ficha del comparable</h1>
         <Suspense>
           <ComparableCardPanel
             card={card}

@@ -5,7 +5,7 @@ type Illustration = "valuations" | "search" | "comparables" | "activity" | "all-
 
 /**
  * Small line drawings for the empty states. Only theme tokens (fill-/stroke-
- * primary, chart-2, muted, border), so they follow the palette and dark mode.
+ * primary, success, highlight, muted, border), so they follow the palette and dark mode.
  */
 function Drawing({ kind }: { kind: Illustration }) {
   const common = { viewBox: "0 0 160 120", "aria-hidden": true, focusable: false, className: "h-28 w-auto" } as const;
@@ -20,8 +20,8 @@ function Drawing({ kind }: { kind: Illustration }) {
           <rect x="54" y="83" width="44" height="5" rx="2.5" className="fill-muted" />
           <path d="M58 58V45l18-14 18 14v13z" className="fill-primary/10 stroke-primary" strokeWidth="2.5" strokeLinejoin="round" />
           <rect x="70" y="48" width="12" height="10" rx="1.5" className="fill-primary/25" />
-          <circle cx="110" cy="34" r="14" className="fill-chart-2/20 stroke-chart-2" strokeWidth="2.5" />
-          <path d="m104 34 4.5 4.5L117 30" fill="none" className="stroke-chart-2" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="110" cy="34" r="14" className="fill-success/20 stroke-success" strokeWidth="2.5" />
+          <path d="m104 34 4.5 4.5L117 30" fill="none" className="stroke-success" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
     case "search":
@@ -50,9 +50,9 @@ function Drawing({ kind }: { kind: Illustration }) {
           <path d="M62 22v70M98 32v70" className="stroke-border" strokeWidth="2" />
           <path d="M40 76c14-8 26 4 40-4s24-14 40-6" fill="none" className="stroke-primary/30" strokeWidth="3" strokeDasharray="2 6" strokeLinecap="round" />
           {[
-            [48, 56, "fill-chart-1"],
+            [48, 56, "fill-highlight"],
             [80, 44, "fill-primary"],
-            [114, 60, "fill-chart-2"],
+            [114, 60, "fill-success"],
           ].map(([x, y, fill]) => (
             <g key={`${x}`}>
               <path d={`M${x} ${Number(y) + 14}c-6-8-10-12-10-18a10 10 0 0 1 20 0c0 6-4 10-10 18z`} className={String(fill)} />
@@ -80,8 +80,8 @@ function Drawing({ kind }: { kind: Illustration }) {
       return (
         <svg {...common} className="h-20 w-auto">
           <ellipse cx="80" cy="108" rx="36" ry="5" className="fill-muted" />
-          <path d="M80 14l34 12v26c0 24-15 40-34 48-19-8-34-24-34-48V26z" className="fill-chart-2/15 stroke-chart-2" strokeWidth="2.5" strokeLinejoin="round" />
-          <path d="m66 56 10 10 20-22" fill="none" className="stroke-chart-2" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M80 14l34 12v26c0 24-15 40-34 48-19-8-34-24-34-48V26z" className="fill-success/15 stroke-success" strokeWidth="2.5" strokeLinejoin="round" />
+          <path d="m66 56 10 10 20-22" fill="none" className="stroke-success" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
   }

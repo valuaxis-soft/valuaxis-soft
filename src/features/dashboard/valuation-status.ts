@@ -4,8 +4,11 @@
  */
 
 /**
- * The color family of a status. Only theme tokens (chart-*, primary,
- * destructive, muted), so a new palette applies without touching this file.
+ * The color family of a status, from the semantic tokens of docs/DISENO.md:
+ * Nuevo neutral (muted), En edición ocre (highlight, "a dato to watch"),
+ * En revisión navy (primary), Terminado green (success, "approved"),
+ * Reabierto violet (chart-4, there is no semantic token for it) and
+ * Cancelado destructive.
  */
 export type StatusTone = "info" | "progress" | "review" | "done" | "reopened" | "cancelled" | "neutral";
 
@@ -35,11 +38,11 @@ const STATUS_PRESENTATION: Record<string, StatusPresentation> = {
  * signal (the label is always shown).
  */
 export const STATUS_TONE_CLASSES: Record<StatusTone, { dot: string; soft: string }> = {
-  info: { dot: "bg-chart-1", soft: "bg-chart-1/12 text-foreground ring-chart-1/30" },
-  progress: { dot: "bg-chart-5", soft: "bg-chart-5/15 text-foreground ring-chart-5/35" },
-  review: { dot: "bg-chart-4", soft: "bg-chart-4/12 text-foreground ring-chart-4/30" },
-  done: { dot: "bg-chart-2", soft: "bg-chart-2/12 text-foreground ring-chart-2/30" },
-  reopened: { dot: "bg-chart-3", soft: "bg-chart-3/12 text-foreground ring-chart-3/30" },
+  info: { dot: "bg-muted-foreground", soft: "bg-muted text-foreground ring-muted-foreground/30" },
+  progress: { dot: "bg-highlight-strong", soft: "bg-highlight/15 text-foreground ring-highlight/45" },
+  review: { dot: "bg-primary", soft: "bg-primary/10 text-foreground ring-primary/30" },
+  done: { dot: "bg-success", soft: "bg-success/15 text-foreground ring-success/45" },
+  reopened: { dot: "bg-chart-4", soft: "bg-chart-4/12 text-foreground ring-chart-4/40" },
   cancelled: { dot: "bg-destructive", soft: "bg-destructive/10 text-foreground ring-destructive/30" },
   neutral: { dot: "bg-muted-foreground", soft: "bg-muted text-foreground ring-border" },
 };
