@@ -1,6 +1,15 @@
+import type { CSSProperties } from "react";
 import { Photo } from "@/components/brand/photo";
 
-/** Three letter-size pages of an invented dictamen: annex croquis, market table and cover. */
+/** Where each page starts when the stack fans out on entry (motion.css, `vx-seq-move`). */
+const fanFrom = (transform: string, base: number): CSSProperties =>
+  ({ ["--vx-from" as string]: transform, ["--vx-base" as string]: `${base}ms` }) as CSSProperties;
+
+/**
+ * Three letter-size pages of an invented dictamen: annex croquis, market table
+ * and cover. They fan out from one stack when the section scrolls into view and
+ * spread a little more on hover.
+ */
 export function DictamenMockup() {
   return (
     <div
@@ -9,7 +18,9 @@ export function DictamenMockup() {
       className="relative mx-auto aspect-[5/4] w-full max-w-lg"
     >
       {/* Annex: location croquis */}
-      <div className="absolute top-0 right-0 aspect-[8.5/11] w-[52%] rotate-6 rounded-md bg-white p-3 shadow-lift ring-1 ring-black/5 transition-transform duration-500 ease-(--ease-out-quint) group-hover/dictamen:translate-x-3 group-hover/dictamen:rotate-[9deg]">
+      <div className="vx-seq-move absolute top-0 right-0 aspect-[8.5/11] w-[52%] rotate-6 rounded-md bg-white p-3 shadow-lift ring-1 ring-black/5 transition-[translate,rotate] duration-500 ease-(--ease-out-quint) group-hover/dictamen:translate-x-5 group-hover/dictamen:rotate-[10deg]"
+        style={fanFrom("translate(-42%, 16%) rotate(-8deg)", 260)}
+      >
         <p className="text-[7px] font-bold tracking-wider text-[#014069]">ANEXO 2 · CROQUIS DE UBICACIÓN</p>
         <svg viewBox="0 0 100 80" className="mt-2 w-full rounded-sm" aria-hidden="true">
           <rect width="100" height="80" fill="#eef1ea" />
@@ -31,7 +42,9 @@ export function DictamenMockup() {
       </div>
 
       {/* Market approach table */}
-      <div className="absolute top-[6%] left-[22%] aspect-[8.5/11] w-[52%] -rotate-2 rounded-md bg-white p-3 shadow-lift ring-1 ring-black/5 transition-transform duration-500 ease-(--ease-out-quint) group-hover/dictamen:-translate-y-2">
+      <div className="vx-seq-move absolute top-[6%] left-[22%] aspect-[8.5/11] w-[52%] -rotate-2 rounded-md bg-white p-3 shadow-lift ring-1 ring-black/5 transition-[translate,rotate] duration-500 ease-(--ease-out-quint) group-hover/dictamen:-translate-y-3"
+        style={fanFrom("translateY(6%) rotate(2deg)", 130)}
+      >
         <p className="text-[7px] font-bold tracking-wider text-[#014069]">V. ENFOQUE DE MERCADO</p>
         {/* Table: a navy header row and seven rows, the homologated column in green. */}
         <svg viewBox="0 0 100 72" className="mt-2 w-full" aria-hidden="true">
@@ -57,7 +70,9 @@ export function DictamenMockup() {
       </div>
 
       {/* Cover */}
-      <div className="absolute bottom-0 left-0 aspect-[8.5/11] w-[52%] -rotate-6 overflow-hidden rounded-md bg-white shadow-float ring-1 ring-black/5 transition-transform duration-500 ease-(--ease-out-quint) group-hover/dictamen:-translate-x-2 group-hover/dictamen:-rotate-[8deg]">
+      <div className="vx-seq-move absolute bottom-0 left-0 aspect-[8.5/11] w-[52%] -rotate-6 overflow-hidden rounded-md bg-white shadow-float ring-1 ring-black/5 transition-[translate,rotate] duration-500 ease-(--ease-out-quint) group-hover/dictamen:-translate-x-4 group-hover/dictamen:-rotate-[9deg]"
+        style={fanFrom("translate(40%, -14%) rotate(6deg)", 0)}
+      >
         <div className="bg-[#014069] px-3 py-2.5">
           <p className="text-[6px] tracking-[0.2em] text-[#cfe6d8]">DICTAMEN DE AVALÚO</p>
           <p className="font-display text-[11px] leading-tight font-semibold text-white">Avalúo inmobiliario</p>

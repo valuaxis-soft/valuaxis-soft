@@ -1,4 +1,8 @@
+import type { CSSProperties } from "react";
 import { Photo } from "@/components/brand/photo";
+
+const at = (base: number, index = 0): CSSProperties =>
+  ({ ["--vx-base" as string]: `${base}ms`, ["--vx-i" as string]: index }) as CSSProperties;
 
 const pins = [
   { ref: "C-1", x: 118, y: 92 },
@@ -7,7 +11,11 @@ const pins = [
   { ref: "C-4", x: 372, y: 236 },
 ];
 
-/** An invented neighborhood with the subject and four comparables, like the croquis the product draws. */
+/**
+ * An invented neighborhood with the subject and four comparables, like the
+ * croquis the product draws. On entry the pins drop in, the search radius
+ * breathes twice and the comparable card slides in.
+ */
 export function MapMockup() {
   return (
     <div
@@ -34,13 +42,24 @@ export function MapMockup() {
         <path d="M0 305 C120 300 200 330 480 140" stroke="oklch(0.86 0.07 80)" strokeWidth="10" fill="none" />
         <path d="M0 305 C120 300 200 330 480 140" stroke="white" strokeWidth="1.2" strokeDasharray="6 6" fill="none" />
         {/* Radius around the subject */}
-        <circle cx="240" cy="178" r="118" fill="oklch(0.649 0.11 165 / 0.07)" stroke="oklch(0.649 0.11 165 / 0.6)" strokeDasharray="4 5" />
-        {pins.map((pin) => (
+        <circle
+          cx="240"
+          cy="178"
+          r="118"
+          fill="oklch(0.649 0.11 165 / 0.07)"
+          stroke="oklch(0.649 0.11 165 / 0.6)"
+          strokeDasharray="4 5"
+          className="vx-breathe"
+          style={at(1100)}
+        />
+        {pins.map((pin, index) => (
           <g key={pin.ref} transform={`translate(${pin.x} ${pin.y})`}>
-            <path d="M0 0c-9-12-14-18-14-25a14 14 0 1 1 28 0c0 7-5 13-14 25Z" fill="#014069" stroke="white" strokeWidth="2" />
-            <text y="-21" textAnchor="middle" fontSize="9" fontWeight="700" fill="white">
-              {pin.ref}
-            </text>
+            <g className="vx-seq-drop" style={at(250, index)}>
+              <path d="M0 0c-9-12-14-18-14-25a14 14 0 1 1 28 0c0 7-5 13-14 25Z" fill="#014069" stroke="white" strokeWidth="2" />
+              <text y="-21" textAnchor="middle" fontSize="9" fontWeight="700" fill="white">
+                {pin.ref}
+              </text>
+            </g>
           </g>
         ))}
         {/* North */}
@@ -57,17 +76,20 @@ export function MapMockup() {
 
       {/* Subject pin, with a soft pulse */}
       <span className="absolute top-[52.5%] left-1/2 flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center">
-        <span className="vx-pulse relative flex size-5 rounded-full text-success">
+        <span className="vx-pulse relative flex size-5 rounded-full text-success" style={at(1100)}>
           <span className="relative z-10 size-5 rounded-full border-[3px] border-white bg-success shadow-soft" />
         </span>
       </span>
 
-      <div className="absolute top-3 left-3 rounded-lg bg-card/95 px-3 py-2 text-xs shadow-soft ring-1 ring-border">
+      <div className="vx-seq-fade absolute top-3 left-3 rounded-lg bg-card/95 px-3 py-2 text-xs shadow-soft ring-1 ring-border" style={at(900)}>
         <p className="font-semibold">Inmueble sujeto</p>
         <p className="text-muted-foreground">4 comparables en 600 m</p>
       </div>
 
-      <div className="absolute right-3 bottom-3 hidden w-48 overflow-hidden rounded-lg bg-card/95 text-xs shadow-lift ring-1 ring-border sm:block">
+      <div
+        className="vx-seq-slide absolute right-3 bottom-3 hidden w-48 overflow-hidden rounded-lg bg-card/95 text-xs shadow-lift ring-1 ring-border sm:block"
+        style={at(1400)}
+      >
         <Photo
           src="/marketing/comparable-c2.webp"
           width={400}

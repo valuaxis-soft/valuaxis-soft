@@ -1,0 +1,664 @@
+/*
+ * Motion for the public page and the sign-in pages (docs/DISENO.md, "Movimiento").
+ *
+ * Three rules hold everything here together:
+ * 1. Every animation sits inside `prefers-reduced-motion: no-preference`; with
+ *    reduced motion the final state shows, still.
+ * 2. What renders without JavaScript is the final state. Starting states
+ *    ("off") only apply once `LandingMotion` adds `.vx-motion` to <html>, and
+ *    only under a trigger that is not on yet: `[data-vx]:not([data-on])`.
+ *    Triggers turn on when they scroll into view (`data-vx="in"`) or when the
+ *    hero cycle reaches their step (`data-vx="step"`).
+ * 3. Only transform and opacity move (plus stroke-dashoffset in SVG, and two
+ *    paint-only exceptions: the strike-through and the highlighter, below).
+ *
+ * Delays: `--vx-base` (set on a container) + `--vx-i` × `--vx-stagger`.
+ */
+
+@keyframes vx-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes vx-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes vx-draw {
+  from {
+    stroke-dashoffset: var(--vx-draw-length, 400);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes vx-pulse-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+/* Hero headline: words rise from an already painted, faint state, so the
+   headline counts for LCP from the first frame. */
+@keyframes vx-word {
+  from {
+    opacity: 0.14;
+    transform: translateY(0.4em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes vx-stroke-in {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes vx-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(-2.5%, 1.5%, 0) rotate(-1.5deg);
+  }
+}
+
+@keyframes vx-parallax {
+  to {
+    transform: translate3d(0, 14%, 0);
+  }
+}
+
+@keyframes vx-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-38px);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  68% {
+    transform: translateY(-8px);
+  }
+  84% {
+    transform: translateY(0);
+  }
+  93% {
+    transform: translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes vx-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.55;
+  }
+}
+
+@keyframes vx-shine {
+  from {
+    transform: translateX(-130%) skewX(-18deg);
+  }
+  to {
+    transform: translateX(330%) skewX(-18deg);
+  }
+}
+
+/* Same frames under another name, so hovering replays the sweep. */
+@keyframes vx-shine-again {
+  from {
+    transform: translateX(-130%) skewX(-18deg);
+  }
+  to {
+    transform: translateX(330%) skewX(-18deg);
+  }
+}
+
+@keyframes vx-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Sign-in pages: panel text arrives, the photo settles, contours drift in. */
+@keyframes vx-enter {
+  from {
+    opacity: 0.06;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes vx-card-in {
+  from {
+    opacity: 0.5;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes vx-settle {
+  from {
+    transform: scale(1.12);
+  }
+  to {
+    transform: scale(1.02);
+  }
+}
+
+@keyframes vx-drift-in {
+  from {
+    opacity: 0;
+    transform: translate3d(4%, -3%, 0) scale(1.06);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.vx-smooth-scroll) {
+    scroll-behavior: smooth;
+  }
+
+  /* ---------- Entrances ---------- */
+
+  @supports (animation-timeline: view()) {
+    .vx-reveal {
+      animation: vx-reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 45%;
+    }
+
+    /* A line that draws itself as it scrolls into view. */
+    .vx-draw {
+      stroke-dasharray: var(--vx-draw-length, 400);
+      animation: vx-draw linear both;
+      animation-timeline: view();
+      animation-range: entry 30% cover 50%;
+    }
+
+    /* Hero contours move a little slower than the page. */
+    .vx-parallax {
+      animation: vx-parallax linear both;
+      animation-timeline: scroll(root);
+      animation-range: 0 100vh;
+    }
+  }
+
+  /* Safari and Firefox (no scroll-driven animations): the same entrances,
+     triggered by an IntersectionObserver in LandingMotion. */
+  @supports not (animation-timeline: view()) {
+    .vx-motion .vx-reveal {
+      transition:
+        opacity 0.7s var(--ease-out-quint),
+        transform 0.7s var(--ease-out-quint);
+    }
+
+    .vx-motion .vx-reveal:not([data-on]) {
+      opacity: 0;
+      transform: translateY(1.5rem);
+    }
+
+    .vx-motion .vx-draw {
+      stroke-dasharray: var(--vx-draw-length, 400);
+      transition: stroke-dashoffset 1.4s var(--ease-out-quint) 0.4s;
+    }
+
+    .vx-motion :is([data-vx], .vx-reveal):not([data-on]) .vx-draw {
+      stroke-dashoffset: var(--vx-draw-length, 400);
+    }
+  }
+
+  /* ---------- Sequences (armed by LandingMotion) ---------- */
+
+  .vx-motion :is(.vx-seq-fade, .vx-seq-pop, .vx-seq-slide, .vx-seq-grow-x, .vx-seq-grow-y, .vx-seq-move) {
+    transition:
+      opacity 0.55s var(--ease-out-quint),
+      transform 0.7s var(--ease-out-quint);
+    transition-delay: calc(var(--vx-base, 0ms) + var(--vx-i, 0) * var(--vx-stagger, 90ms));
+  }
+
+  .vx-motion .vx-seq-pop {
+    transition-timing-function: var(--ease-out-quint), var(--ease-out-back);
+  }
+
+  /* Fans out with `transform`; hover keeps moving the `translate` and
+     `rotate` properties, without the entrance delay. */
+  .vx-motion .vx-seq-move {
+    --vx-wait: calc(var(--vx-base, 0ms) + var(--vx-i, 0) * var(--vx-stagger, 90ms));
+    transition:
+      transform 1.05s var(--ease-out-quint) var(--vx-wait),
+      translate 0.5s var(--ease-out-quint),
+      rotate 0.5s var(--ease-out-quint);
+  }
+
+  svg .vx-seq-pop {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  .vx-motion :is(.vx-seq-grow-x, .vx-seq-grow-y) {
+    transform-box: fill-box;
+  }
+
+  .vx-motion .vx-seq-grow-x {
+    transform-origin: left center;
+  }
+
+  .vx-motion .vx-seq-grow-y {
+    transform-origin: center bottom;
+  }
+
+  /* Lines and icon strokes that draw: give the path `pathLength="1"` and
+     `--vx-len: 1`, or rely on the 24-unit default of Lucide icons. */
+  .vx-motion .vx-seq-draw :is(path, polyline, line) {
+    stroke-dasharray: var(--vx-len, 24);
+    transition: stroke-dashoffset 0.6s var(--ease-out-quint);
+    transition-delay: calc(var(--vx-base, 0ms) + var(--vx-i, 0) * var(--vx-stagger, 90ms));
+  }
+
+  /* Paint-only exception: crossing out a line of text. */
+  .vx-motion .vx-seq-strike {
+    text-decoration-line: line-through;
+    text-decoration-thickness: 1.5px;
+    text-decoration-color: color-mix(in oklch, var(--destructive) 55%, transparent);
+    transition: text-decoration-color 0.5s var(--ease-out-quint);
+    transition-delay: calc(var(--vx-base, 0ms) + var(--vx-i, 0) * var(--vx-stagger, 90ms) + 250ms);
+  }
+
+  /* Paint-only exception: a highlighter swipe over a quoted fragment. */
+  .vx-motion .vx-seq-mark {
+    background-color: transparent;
+    background-image: linear-gradient(
+      color-mix(in oklch, var(--highlight) 25%, transparent),
+      color-mix(in oklch, var(--highlight) 25%, transparent)
+    );
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    transition: background-size 0.6s var(--ease-out-quint);
+    transition-delay: calc(var(--vx-base, 0ms) + var(--vx-i, 0) * var(--vx-stagger, 90ms));
+  }
+
+  .vx-motion [data-vx]:not([data-on]) :is(.vx-seq-fade, .vx-seq-slide, .vx-seq-pop, .vx-seq-grow-x, .vx-seq-grow-y, .vx-seq-move, .vx-seq-draw, .vx-seq-strike, .vx-seq-mark, .vx-seq-drop),
+  .vx-motion [data-vx]:not([data-on]):is(.vx-seq-fade, .vx-seq-slide, .vx-seq-pop) {
+    transition-delay: 0s;
+    transition-duration: 0.3s;
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-seq-fade,
+  .vx-motion [data-vx]:not([data-on]).vx-seq-fade {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-seq-slide {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-seq-pop,
+  .vx-motion [data-vx]:not([data-on]).vx-seq-pop {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-seq-grow-x {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-seq-grow-y {
+    opacity: 0;
+    transform: scaleY(0);
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-seq-move {
+    transform: var(--vx-from, none);
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-seq-draw :is(path, polyline, line) {
+    stroke-dashoffset: var(--vx-len, 24);
+    transition-delay: 0s;
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-seq-strike {
+    text-decoration-color: transparent;
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-seq-mark {
+    background-size: 0% 100%;
+  }
+
+  /* Map pins drop with a bounce once their trigger is on. */
+  .vx-motion .vx-seq-drop {
+    animation: vx-drop 0.9s var(--ease-out-quint) both;
+    animation-delay: calc(var(--vx-base, 0ms) + var(--vx-i, 0) * var(--vx-stagger, 140ms));
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-seq-drop {
+    opacity: 0;
+    animation: none;
+  }
+
+  /* ---------- Counters ---------- */
+
+  .vx-motion .vx-odo-strip {
+    transition: transform 1.2s var(--ease-out-quint);
+    transition-delay: calc(var(--vx-delay, 0ms) + var(--vx-order, 0) * 70ms);
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-odo-strip {
+    transform: translateY(0);
+    transition-duration: 0.4s;
+    transition-delay: 0s;
+  }
+
+  /* ---------- Loops (bounded: they stop before 5 s, WCAG 2.2.2) ---------- */
+
+  .vx-float {
+    animation: vx-float 6s var(--ease-in-out-soft) infinite;
+  }
+
+  .vx-float-delayed {
+    animation: vx-float 7s var(--ease-in-out-soft) 1.2s infinite;
+  }
+
+  .vx-drift {
+    animation: vx-drift 46s var(--ease-in-out-soft) infinite;
+  }
+
+  /* The hero's endless pieces follow its pause button and stop with its cycle. */
+  [data-vx-paused] :is(.vx-float, .vx-float-delayed, .vx-drift) {
+    animation-play-state: paused;
+  }
+
+  .vx-pulse::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    animation: vx-pulse-ring 2.4s var(--ease-out-quint) 2;
+    animation-delay: var(--vx-base, 0ms);
+  }
+
+  .vx-breathe {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: vx-breathe 2.4s var(--ease-in-out-soft) 2;
+    animation-delay: var(--vx-base, 0ms);
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-breathe,
+  .vx-motion [data-vx]:not([data-on]) .vx-pulse::after {
+    animation: none;
+  }
+
+  /* ---------- Hero ---------- */
+
+  .vx-words > .vx-word {
+    display: inline-block;
+    animation: vx-word 0.9s var(--ease-out-quint) both;
+    animation-delay: calc(60ms + var(--vx-i, 0) * 55ms);
+  }
+
+  .vx-underline path {
+    stroke-dasharray: 1;
+    animation: vx-stroke-in 0.9s var(--ease-out-quint) 1.05s both;
+  }
+
+  .vx-hero-letters [data-vx-rest] {
+    color: transparent;
+  }
+
+  /* ---------- How it works: the line fills and each step lights up ---------- */
+
+  .vx-motion .vx-steps-fill {
+    transform-origin: left center;
+    transition: transform 2.2s var(--ease-in-out-soft) 0.2s;
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-steps-fill {
+    transform: scaleX(0);
+  }
+
+  .vx-motion .vx-step-on {
+    transition:
+      opacity 0.45s var(--ease-out-quint),
+      transform 0.6s var(--ease-out-back);
+    transition-delay: calc(0.2s + var(--vx-i, 0) * 0.68s);
+  }
+
+  .vx-motion [data-vx]:not([data-on]) .vx-step-on {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  /* ---------- Price: a short shine on the main button ---------- */
+
+  .vx-shine {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+
+  .vx-shine::after {
+    content: "";
+    position: absolute;
+    inset: -2px auto -2px 0;
+    z-index: -1;
+    width: 35%;
+    background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.28), transparent);
+    transform: translateX(-130%) skewX(-18deg);
+    pointer-events: none;
+  }
+
+  .vx-motion [data-on] .vx-shine::after {
+    animation: vx-shine 1.3s var(--ease-in-out-soft) 1.4s 2;
+  }
+
+  .vx-shine:hover::after {
+    animation: vx-shine-again 0.9s var(--ease-in-out-soft);
+  }
+
+  /* ---------- Buttons and cards ---------- */
+
+  .vx-press {
+    transition:
+      background-color 0.2s,
+      box-shadow 0.3s var(--ease-out-quint),
+      transform 0.25s var(--ease-out-quint);
+  }
+
+  .vx-press:hover {
+    transform: translateY(-1px);
+  }
+
+  .vx-press:active {
+    transform: translateY(1px) scale(0.98);
+    transition-duration: 0.08s;
+  }
+
+  .vx-press:hover .vx-nudge {
+    transform: translateX(3px);
+  }
+
+  .vx-nudge {
+    transition: transform 0.3s var(--ease-out-quint);
+  }
+
+  .vx-card-visual {
+    transition: transform 0.6s var(--ease-out-quint);
+  }
+
+  .group:hover .vx-card-visual {
+    transform: scale(1.04);
+  }
+
+  /* ---------- Header: compacts and takes a shadow once the page scrolls ---------- */
+
+  .vx-header-bg,
+  .vx-header-row,
+  .vx-header-logo,
+  .vx-header-shadow {
+    transition:
+      transform 0.35s var(--ease-out-quint),
+      opacity 0.35s var(--ease-out-quint);
+  }
+
+  [data-scrolled] > .vx-header-bg,
+  [data-scrolled] > .vx-header-shadow {
+    transform: scaleY(0.8125);
+  }
+
+  [data-scrolled] > .vx-header-row {
+    transform: translateY(-6px);
+  }
+
+  [data-scrolled] .vx-header-logo {
+    transform: scale(0.94);
+  }
+
+  .vx-nav-link::after {
+    transition: transform 0.35s var(--ease-out-quint);
+  }
+
+  /* ---------- FAQ: open and close smoothly ---------- */
+
+  @supports (interpolate-size: allow-keywords) {
+    .vx-faq {
+      interpolate-size: allow-keywords;
+    }
+
+    .vx-faq::details-content {
+      height: 0;
+      overflow: clip;
+      transition:
+        height 0.35s var(--ease-out-quint),
+        content-visibility 0.35s allow-discrete;
+    }
+
+    .vx-faq[open]::details-content {
+      height: auto;
+    }
+  }
+
+  .vx-faq[open] > :not(summary) {
+    animation: vx-fade-up 0.4s var(--ease-out-quint) both;
+  }
+
+  /* ---------- Sign-in pages (CSS only, runs once, under 5 s) ---------- */
+
+  .vx-auth-enter > * {
+    animation: vx-enter 0.9s var(--ease-out-quint) both;
+    animation-delay: calc(0.1s + var(--vx-i, 0) * 0.12s);
+  }
+
+  .vx-auth-photo {
+    animation: vx-settle 4.5s var(--ease-out-quint) both;
+  }
+
+  .vx-auth-contours {
+    animation: vx-drift-in 4.5s var(--ease-out-quint) 0.2s both;
+  }
+
+  .vx-auth-card {
+    animation: vx-card-in 0.7s var(--ease-out-quint) both;
+  }
+}
+
+/* Header shadow and the active-link marker exist with or without motion. */
+.vx-header-shadow {
+  opacity: 0;
+}
+
+[data-scrolled] > .vx-header-shadow {
+  opacity: 1;
+}
+
+.vx-nav-link::after {
+  content: "";
+  position: absolute;
+  inset: auto 0.75rem 0.25rem;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--success);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.vx-nav-link[aria-current]::after {
+  transform: none;
+}
+
+/* Odometer layout (also without motion): the invisible digit gives the
+   width and baseline; the strip shows the digit through a clip. */
+.vx-odo-digit {
+  position: relative;
+  display: inline-block;
+  clip-path: inset(0 -0.1em);
+}
+
+.vx-odo-strip {
+  position: absolute;
+  inset: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateY(calc(var(--vx-digit, 0) * -10%));
+}
+
+.vx-odo-strip > span {
+  display: block;
+  height: 1lh;
+}
