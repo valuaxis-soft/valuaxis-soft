@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import Image from "next/image";
+import { Photo } from "@/components/brand/photo";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { ValuaxisLogo, ValuaxisMark } from "@/components/brand/valuaxis-logo";
@@ -23,11 +23,10 @@ export function AuthShell({ children }: { children: ReactNode }) {
         className="relative isolate hidden overflow-hidden bg-ink p-10 text-ink-foreground lg:flex lg:flex-col xl:p-14"
       >
         {/* Stock photo (docs/DISENO.md, "Imágenes") under an ink veil that keeps the text at AA. */}
-        <Image
+        <Photo
           src="/marketing/acceso-fachada.webp"
-          alt=""
           fill
-          priority
+          preload
           sizes="(min-width: 1024px) 48vw, 1px"
           className="-z-20 object-cover"
         />

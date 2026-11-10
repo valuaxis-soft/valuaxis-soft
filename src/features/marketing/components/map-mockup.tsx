@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { Photo } from "@/components/brand/photo";
 
 const pins = [
   { ref: "C-1", x: 118, y: 92 },
@@ -68,9 +68,8 @@ export function MapMockup() {
       </div>
 
       <div className="absolute right-3 bottom-3 hidden w-48 overflow-hidden rounded-lg bg-card/95 text-xs shadow-lift ring-1 ring-border sm:block">
-        <Image
+        <Photo
           src="/marketing/comparable-c2.webp"
-          alt=""
           width={400}
           height={200}
           sizes="192px"

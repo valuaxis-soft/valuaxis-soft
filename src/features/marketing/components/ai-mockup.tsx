@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { Photo } from "@/components/brand/photo";
 import { ArrowRight, Check, ClipboardPaste } from "lucide-react";
 
 const fields = [
@@ -17,9 +17,8 @@ export function AiMockup() {
       className="grid gap-4 md:grid-cols-[1fr_auto_1.1fr] md:items-center"
     >
       <div className="overflow-hidden rounded-2xl bg-card text-card-foreground shadow-soft ring-1 ring-border">
-        <Image
+        <Photo
           src="/marketing/anuncio-casas.webp"
-          alt=""
           width={880}
           height={495}
           sizes="(min-width: 1152px) 500px, (min-width: 768px) 45vw, 100vw"

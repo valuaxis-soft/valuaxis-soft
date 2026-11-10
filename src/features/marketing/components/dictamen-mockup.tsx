@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { Photo } from "@/components/brand/photo";
 
 /** Three letter-size pages of an invented dictamen: annex croquis, market table and cover. */
 export function DictamenMockup() {
@@ -62,9 +62,8 @@ export function DictamenMockup() {
           <p className="text-[6px] tracking-[0.2em] text-[#cfe6d8]">DICTAMEN DE AVALÚO</p>
           <p className="font-display text-[11px] leading-tight font-semibold text-white">Avalúo inmobiliario</p>
         </div>
-        <Image
+        <Photo
           src="/marketing/dictamen-portada.webp"
-          alt=""
           width={640}
           height={373}
           sizes="(min-width: 1024px) 270px, 50vw"

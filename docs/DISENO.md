@@ -88,7 +88,7 @@ Hover: `transition-[box-shadow,transform] duration-300 ease-(--ease-out-quint)` 
 
 ## Imágenes
 
-Las fotos de la página pública y del acceso son de stock con licencia que permite uso comercial sin atribución obligatoria. Aun así se registran aquí. Viven en `public/marketing/`, recortadas al tamaño máximo en que se muestran (2x) y sin metadatos. Se muestran con `next/image` con `sizes` y dimensiones fijas; solo la del panel de acceso lleva `priority`. Al agregar una foto: solo de unsplash.com o pexels.com, sin caras reconocibles, placas ni números de casa legibles, y registrarla en esta tabla.
+Las fotos de la página pública y del acceso son de stock con licencia que permite uso comercial sin atribución obligatoria. Aun así se registran aquí. Viven en `public/marketing/`, recortadas al tamaño máximo en que se muestran (2x) y sin metadatos. Se muestran con `next/image` con `sizes` y dimensiones fijas; solo la del panel de acceso se carga de inmediato (`preload`). Se dibujan con `Photo` (`src/components/brand/photo.tsx`, `getImageProps`): mismo optimizador y `srcset` que `next/image`, pero sin JavaScript de cliente. Al agregar una foto: solo de unsplash.com o pexels.com, sin caras reconocibles, placas ni números de casa legibles, y registrarla en esta tabla.
 
 | Archivo | Dónde se ve | Foto original | Autor | Licencia |
 |---|---|---|---|---|
