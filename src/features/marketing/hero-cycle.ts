@@ -7,25 +7,25 @@
  */
 export const HERO_CYCLE = {
   /** The finished state shows this long before the first replay. */
-  leadIn: 1800,
+  leadIn: 1000,
   /** From clearing the table to the first row. */
-  clear: 700,
+  clear: 350,
   /** `[step, ms after the first row]`; parts carry `data-vx-step`. */
   steps: [
     [1, 0],
-    [2, 380],
-    [3, 760],
-    [4, 1140],
-    [5, 2300],
-    [6, 2900],
-    [7, 3700],
-    [8, 4000],
+    [2, 180],
+    [3, 360],
+    [4, 540],
+    [5, 1150],
+    [6, 1450],
+    [7, 1850],
+    [8, 2000],
   ] as const,
   /** The amount in words starts typing here, one character per `typeEvery` ms. */
-  typeAt: 5300,
-  typeEvery: 22,
+  typeAt: 2600,
+  typeEvery: 12,
   /** One build plus the time the finished state stays on screen. */
-  length: 12500,
+  length: 7000,
   /** It plays twice and stops on the finished state (WCAG 2.2.2). */
   loops: 2,
 } as const;
