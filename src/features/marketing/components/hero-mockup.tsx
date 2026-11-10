@@ -42,7 +42,7 @@ export function HeroMockup() {
                     : "flex items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground"
                 }
               >
-                <span className="w-3 text-center font-display text-[10px] opacity-70">{roman[index]}</span>
+                <span className="w-3 text-center font-display text-[10px]">{roman[index]}</span>
                 <span className="truncate">{name}</span>
               </li>
             ))}

@@ -31,20 +31,18 @@ export function DictamenMockup() {
       {/* Market approach table */}
       <div className="absolute top-[6%] left-[22%] aspect-[8.5/11] w-[52%] -rotate-2 rounded-md bg-white p-3 shadow-lift ring-1 ring-black/5 transition-transform duration-500 ease-(--ease-out-quint) group-hover/dictamen:-translate-y-2">
         <p className="text-[7px] font-bold tracking-wider text-[#014069]">V. ENFOQUE DE MERCADO</p>
-        <div className="mt-2 grid gap-[3px]">
-          <div className="grid grid-cols-5 gap-[3px]">
-            {Array.from({ length: 5 }, (_, i) => (
-              <div key={i} className="h-1.5 rounded-[1px] bg-[#014069]" />
-            ))}
-          </div>
-          {Array.from({ length: 7 }, (_, row) => (
-            <div key={row} className="grid grid-cols-5 gap-[3px]">
-              {Array.from({ length: 5 }, (_, i) => (
-                <div key={i} className={`h-1.5 rounded-[1px] ${i === 4 ? "bg-[#cfe6d8]" : "bg-neutral-200"}`} />
-              ))}
-            </div>
-          ))}
-        </div>
+        {/* Table: a navy header row and seven rows, the homologated column in green. */}
+        <svg viewBox="0 0 100 72" className="mt-2 w-full" aria-hidden="true">
+          <defs>
+            <pattern id="vx-table-row" width="100" height="9" patternUnits="userSpaceOnUse">
+              <rect x="0" width="78" height="6" rx="1" fill="#e5e5e5" />
+              <rect x="80" width="20" height="6" rx="1" fill="#cfe6d8" />
+              <path d="M19 0v6M39 0v6M59 0v6" stroke="#fff" strokeWidth="2" />
+            </pattern>
+          </defs>
+          <rect width="100" height="6" rx="1" fill="#014069" />
+          <rect y="9" width="100" height="63" fill="url(#vx-table-row)" />
+        </svg>
         <div className="mt-3 grid gap-1">
           <div className="h-1 w-full rounded bg-neutral-200" />
           <div className="h-1 w-11/12 rounded bg-neutral-200" />
