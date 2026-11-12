@@ -559,7 +559,8 @@ function ConceptValueFormatControl({
             title="Formato del valor: clic para cambiarlo"
             data-concept-value-format-chip=""
           >
-            {conceptValueFormatLabel(concept)}
+            {/* A number with no unit says what the button is for. */}
+            {valueFormat === "plain" ? "Formato" : conceptValueFormatLabel(concept)}
           </Button>
         ) : (
           // The whole row opens it, not only the # icon.
@@ -697,7 +698,7 @@ function ConceptCellAlignmentControl({
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-56 p-3">
+      <PopoverContent align="end" className="w-64 p-3">
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Sangría en documento</p>
           <Button

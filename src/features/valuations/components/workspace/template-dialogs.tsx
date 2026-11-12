@@ -32,7 +32,10 @@ export function importBlockSummary(block: Pick<Block, "concepts" | "apartados" |
 
 /** The heading of a group of blocks to import: the section (the tab) they come from. */
 export function importSectionHeading(sectionTitle: string) {
-  return `Sección: ${sectionTitle.trim() || "Sin título"}`;
+  const title = sectionTitle.trim();
+  // A title written in capitals ("INFO TERRENO") reads as a heading in sentence case: "Sección: Info terreno".
+  const readable = title && title === title.toUpperCase() ? title.charAt(0) + title.slice(1).toLowerCase() : title;
+  return `Sección: ${readable || "Sin título"}`;
 }
 
 function OptionCheckbox({ id, checked, onChange, label, description }: {

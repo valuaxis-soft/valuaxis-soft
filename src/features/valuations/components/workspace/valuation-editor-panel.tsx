@@ -417,7 +417,8 @@ export function ValuationEditorPanel(props: {
   );
 
   return (
-    <Card className="min-h-[680px] rounded-lg">
+    // Clipped, not hidden: the "Seleccionar conceptos" bar sticks to the top of the editor through it.
+    <Card className="min-h-[680px] overflow-clip rounded-lg">
       <CardHeader>
         <CardTitle>
           {renaming && props.onRenameSection ? (

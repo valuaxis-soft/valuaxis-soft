@@ -212,5 +212,6 @@ test("importing a block speaks of subbloques and groups the blocks under «Secci
   assert.equal(importBlockSummary(sample), "2 conceptos · 1 subbloque · 0 tablas");
   assert.doesNotMatch(importBlockSummary(sample), /apartado/);
   assert.equal(importSectionHeading("Datos"), "Sección: Datos");
+  assert.equal(importSectionHeading("INFO TERRENO"), "Sección: Info terreno");
   assert.equal(importSectionHeading(" "), "Sección: Sin título");
 });

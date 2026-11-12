@@ -297,7 +297,7 @@ function ConceptPresentationControl({
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-56 p-3">
+      <PopoverContent align="end" className="w-64 p-3">
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Alineación de conceptos</p>
           <Button

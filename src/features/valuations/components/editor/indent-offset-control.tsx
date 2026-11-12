@@ -29,7 +29,7 @@ export function IndentOffsetControl({
         <span className="flex items-center gap-1">
           <Input
             aria-label="Sangría en píxeles"
-            className="h-7 w-20 text-right text-xs tabular-nums"
+            className="h-7 w-16 text-right text-xs tabular-nums"
             disabled={disabled}
             inputMode="numeric"
             min={MIN_OFFSET_PX}
