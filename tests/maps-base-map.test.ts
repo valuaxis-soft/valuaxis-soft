@@ -98,6 +98,12 @@ test("the radius is clamped to the slider's steps and the request needs a point 
   assert.equal(clampRadius(10), RADIUS_METERS.min);
   assert.equal(clampRadius(99_999), RADIUS_METERS.max);
   assert.equal(clampRadius(333), 350, "rounded to the step");
+  // WA-02: up to 10 km, in steps of 250 m past the first kilometer.
+  assert.equal(RADIUS_METERS.max, 10_000);
+  assert.equal(clampRadius(10_000), 10_000);
+  assert.equal(clampRadius(7_420), 7_500);
+  assert.equal(clampRadius(1_080), 1_000);
+  assert.deepEqual(parseRadiusQuery(new URLSearchParams("lat=20.6344&lon=-103.4024&radio=10000")), { center: [20.6344, -103.4024], radius: 10_000 });
   assert.equal(clampRadius(Number.NaN), RADIUS_METERS.default);
   const query = parseRadiusQuery(new URLSearchParams("lat=20.6344&lon=-103.4024&radio=800"));
   assert.deepEqual(query, { center: [20.6344, -103.4024], radius: 800 });

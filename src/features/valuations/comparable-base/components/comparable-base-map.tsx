@@ -20,7 +20,7 @@ import {
   BASE_MAP_LAYERS, RADIUS_COLOR, VALUATION_PIN_COLOR, baseMapLayer, countByLayer, layerVisibility, pinStyle, visiblePins, type LayerVisibility,
 } from "@/features/maps/base-map/layers";
 import { comparablePinCardHtml, formatMoney, pinFeatures, pinPriceLine, valuationPinCardHtml } from "@/features/maps/base-map/pin-card";
-import { RADIUS_METERS, RADIUS_MAX_HITS, formatDistance } from "@/features/maps/base-map/radius";
+import { RADIUS_METERS, RADIUS_MAX_HITS, clampRadius, formatDistance } from "@/features/maps/base-map/radius";
 import type { ComparablePinDto, ComparablePinsDto, RadiusHitDto, ValuationPinDto } from "@/features/maps/base-map/types";
 import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { loadGoogleMaps } from "@/features/maps/google-maps-loader";
@@ -29,6 +29,7 @@ import type { LatLon } from "@/features/maps/types";
 import { formatComparableId, formatDay } from "@/features/valuations/calculation/comparable-card";
 import { COMPARABLE_TYPE_LABELS, type ComparableType, type MarketCalculationDto } from "@/features/valuations/calculation/market-types";
 import { ValidityBadge } from "@/features/valuations/components/calculation/comparable-validity-badge";
+import type { ValuationListItem } from "@/features/valuations/repositories/valuation.repository";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +70,8 @@ export interface ComparableBaseMapProps {
   initialLayers?: readonly ComparableType[];
   /** Inside a valuation: a pin can be added to one of its markets with "Usar el existente". */
   valuation?: { id: string; type: ComparableType; readOnly: boolean; onAdded?: (calculation: MarketCalculationDto) => void };
+  /** In /comparables, for who may edit valuations: the card of a pin offers to add it to a valuation the appraiser picks (MAP-09). */
+  canAddToValuations?: boolean;
 }
 
 /**
@@ -78,7 +81,7 @@ export interface ComparableBaseMapProps {
  * the same filters as the list; "Buscar alrededor de" with a radius; and the
  * subject of each valuation of the firm under "Avalúos".
  */
-export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLayers, valuation }: ComparableBaseMapProps) {
+export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLayers, valuation, canAddToValuations = false }: ComparableBaseMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const partsRef = useRef<GoogleParts | null>(null);
   const [mode, setMode] = useState<MapMode>("loading");
@@ -103,6 +106,12 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
   const [searching, setSearching] = useState(false);
   const [destination, setDestination] = useState<ComparableType>(valuation?.type ?? "INMUEBLE_VENTA");
   const [adding, setAdding] = useState(false);
+  /** /comparables: the valuations a pin can go to, loaded the first time a card offers it; and the one picked. */
+  const [targets, setTargets] = useState<ValuationListItem[] | null>(null);
+  const [target, setTarget] = useState("");
+  /** Inside a valuation: its subject's pin, the first center of "Buscar alrededor de" (WA-02). */
+  const [subjectPoint, setSubjectPoint] = useState<LatLon | null>(null);
+  const offerTargets = !valuation && canAddToValuations;
   // The map's listeners read the latest state without being recreated.
   const latest = useRef({ picking, zoom });
   useEffect(() => {
@@ -356,6 +365,51 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
     };
   }, [selected, selectedValuation, popupHost, mode]);
 
+  // Inside a valuation the search starts around its subject, when it is located.
+  const valuationId = valuation?.id;
+  useEffect(() => {
+    if (!valuationId) return;
+    let cancelled = false;
+    api.valuations.location.get(valuationId).then(
+      (dto) => {
+        if (cancelled || !dto.location) return;
+        setSubjectPoint(dto.location.point);
+        setCenter((current) => current ?? dto.location!.point);
+        setFoundAddress((current) => current ?? "Alrededor del inmueble del avalúo");
+      },
+      () => {
+        // Without the subject the search simply starts empty.
+      },
+    );
+    return () => { cancelled = true; };
+  }, [valuationId]);
+
+  // The first center (the subject's pin) also frames the map, once it is ready.
+  const centered = useRef(false);
+  useEffect(() => {
+    const map = partsRef.current?.map;
+    if (!map || !center || centered.current || !subjectPoint || center !== subjectPoint) return;
+    centered.current = true;
+    fitted.current = true;
+    map.panTo(toLatLng(center));
+    map.setZoom(SEARCH_ZOOM);
+  }, [center, subjectPoint, mode]);
+
+  useEffect(() => {
+    if (!offerTargets || !selected || targets) return;
+    let cancelled = false;
+    api.templates.valuations().then(
+      (list) => {
+        if (cancelled) return;
+        const open = list.filter((item) => !/conclu/i.test(item.status));
+        setTargets(open);
+        setTarget((current) => current || open[0]?.id || "");
+      },
+      (error: unknown) => { if (!cancelled) toast.error(errorMessage(error, "No se pudieron cargar los avalúos.")); },
+    );
+    return () => { cancelled = true; };
+  }, [offerTargets, selected, targets]);
+
   const geocode = async () => {
     const text = address.trim();
     if (!text) return;
@@ -382,12 +436,20 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
   };
 
   const addToValuation = async (pin: ComparablePinDto) => {
-    if (!valuation) return;
+    const targetId = valuation?.id ?? target;
+    if (!targetId) return;
     setAdding(true);
     try {
-      const calculation = await api.market.reuseComparable(valuation.id, destination, pin.id);
-      valuation.onAdded?.(calculation);
-      toast.success(`${formatComparableId(pin.folio) ?? "El comparable"} se agregó a ${COMPARABLE_TYPE_LABELS[destination].toLowerCase()}. Califica sus factores.`);
+      const calculation = await api.market.reuseComparable(targetId, destination, pin.id);
+      valuation?.onAdded?.(calculation);
+      const name = formatComparableId(pin.folio) ?? "El comparable";
+      if (valuation) toast.success(`${name} se agregó a ${COMPARABLE_TYPE_LABELS[destination].toLowerCase()}. Califica sus factores.`);
+      else {
+        const folio = targets?.find((item) => item.id === targetId)?.folio ?? "el avalúo";
+        toast.success(`${name} se agregó a ${folio}, en ${COMPARABLE_TYPE_LABELS[destination].toLowerCase()}. Califica sus factores en el avalúo.`, {
+          action: { label: "Abrir avalúo", onClick: () => window.open(`/workspace?id=${targetId}`, "_blank", "noopener") },
+        });
+      }
       setSelected(null);
     } catch (error) {
       toast.error(errorMessage(error, "No se pudo agregar el comparable."));
@@ -484,24 +546,57 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
               <Button type="button" size="sm" variant={picking ? "default" : "outline"} aria-pressed={picking} onClick={() => setPicking((current) => !current)} disabled={mode !== "google"}>
                 <Crosshair data-icon="inline-start" /> {picking ? "Elige un punto en el mapa…" : "Elegir un punto en el mapa"}
               </Button>
+              {subjectPoint && center !== subjectPoint ? (
+                <Button type="button" size="sm" variant="outline" onClick={() => { setCenter(subjectPoint); setFoundAddress("Alrededor del inmueble del avalúo"); partsRef.current?.map.panTo(toLatLng(subjectPoint)); }}>
+                  <Crosshair data-icon="inline-start" /> Alrededor del inmueble del avalúo
+                </Button>
+              ) : null}
               {foundAddress ? <p className="text-xs text-muted-foreground">{foundAddress}</p> : null}
-              {center ? (
-                <>
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Radio: <span className="font-mono">{radius.toLocaleString("es-MX")} m</span>
+              {/* WA-02: the radius shows from the start, so it can be set before choosing the center. */}
+              <div className="grid gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="mapa-radio" className="text-xs font-semibold text-muted-foreground">Radio</Label>
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Input
+                      id="mapa-radio"
+                      type="number"
+                      inputMode="numeric"
+                      min={RADIUS_METERS.min / 1000}
+                      max={RADIUS_METERS.max / 1000}
+                      step={0.05}
+                      value={radius / 1000}
+                      onChange={(event) => {
+                        const km = Number(event.target.value);
+                        if (event.target.value && Number.isFinite(km)) setRadius(clampRadius(km * 1000));
+                      }}
+                      className="h-7 w-20 px-1.5 text-right text-xs tabular-nums"
+                    />
+                    km
                   </span>
-                  <Slider min={RADIUS_METERS.min} max={RADIUS_METERS.max} step={RADIUS_METERS.step} value={[radius]} onValueChange={(value) => setRadius(firstValue(value))} aria-label="Radio de la búsqueda" />
+                </div>
+                <Slider
+                  min={RADIUS_METERS.min}
+                  max={RADIUS_METERS.max}
+                  step={RADIUS_METERS.step}
+                  value={[radius]}
+                  onValueChange={(value) => setRadius(clampRadius(firstValue(value)))}
+                  aria-label="Radio de la búsqueda"
+                />
+                <span className="flex justify-between text-[11px] text-muted-foreground tabular-nums"><span>{formatDistance(RADIUS_METERS.min)}</span><span>{formatDistance(RADIUS_METERS.max)}</span></span>
+                {center ? (
                   <Button type="button" size="sm" variant="ghost" className="justify-self-start" onClick={() => { setCenter(null); setFoundAddress(null); setHits(null); }}>
                     Quitar el radio
                   </Button>
-                </>
-              ) : null}
+                ) : (
+                  <p className="text-xs text-muted-foreground">Busca una dirección o elige un punto en el mapa para ver los comparables dentro del radio.</p>
+                )}
+              </div>
             </div>
 
             {center ? (
               <div className="grid gap-1" aria-live="polite" aria-busy={searching}>
                 <span className="text-xs font-semibold text-muted-foreground">
-                  {hits === null ? "Buscando…" : `${hits.length}${hits.length >= RADIUS_MAX_HITS ? "+" : ""} comparables dentro de ${radius.toLocaleString("es-MX")} m`}
+                  {hits === null ? "Buscando…" : `${hits.length}${hits.length >= RADIUS_MAX_HITS ? "+" : ""} comparables dentro de ${formatDistance(radius)}`}
                 </span>
                 <div className="grid max-h-[260px] gap-1.5 overflow-auto">
                   {hits?.length === 0 ? (
@@ -576,6 +671,11 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
       {popupHost && selected
         ? createPortal(
           <div className="grid min-w-[220px] max-w-[280px] gap-1.5 text-sm text-[#12212f]">
+            {/* MAP-08: the photo also in the card that opens on click, not only on hover. */}
+            {selected.thumbnailUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- a signed URL of the firm's own storage, inside Google's info window
+              <img src={selected.thumbnailUrl} alt={`Foto de ${formatComparableId(selected.folio) ?? "el comparable"}`} className="h-28 w-full rounded-md object-cover" />
+            ) : null}
             <strong className="text-[11px] tracking-wide uppercase" style={{ color: baseMapLayer(selected.type).color }}>
               {formatComparableId(selected.folio) ?? "Sin número"} · {baseMapLayer(selected.type).title}
             </strong>
@@ -593,6 +693,33 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
                 </a>
               ) : null}
             </span>
+            {offerTargets ? (
+              <div className="mt-1 grid gap-1.5 border-t pt-2">
+                <Label htmlFor="mapa-avaluo" className="text-xs text-[#5a6b7b]">Agregar como comparable al avalúo</Label>
+                {targets === null ? (
+                  <span className="flex items-center gap-1 text-xs text-[#5a6b7b]"><Loader2 className="size-3 animate-spin" /> Cargando avalúos…</span>
+                ) : targets.length === 0 ? (
+                  <span className="text-xs text-[#5a6b7b]">No hay avalúos abiertos a los que agregarlo.</span>
+                ) : (
+                  <>
+                    <NativeSelect id="mapa-avaluo" className="w-full" value={target} onChange={(event) => setTarget(event.target.value)}>
+                      {targets.map((item) => (
+                        <NativeSelectOption key={item.id} value={item.id}>{[item.folio, item.client].filter(Boolean).join(" · ")}</NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                    <Label htmlFor="mapa-destino" className="text-xs text-[#5a6b7b]">En el mercado</Label>
+                    <NativeSelect id="mapa-destino" className="w-full" value={destination} onChange={(event) => setDestination(event.target.value as ComparableType)}>
+                      {BASE_MAP_LAYERS.map((layer) => (
+                        <NativeSelectOption key={layer.type} value={layer.type}>{layer.title}</NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                    <Button type="button" size="sm" disabled={adding || !target} onClick={() => void addToValuation(selected)}>
+                      {adding ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null} Agregar como comparable
+                    </Button>
+                  </>
+                )}
+              </div>
+            ) : null}
             {valuation && !valuation.readOnly ? (
               <div className="mt-1 grid gap-1.5 border-t pt-2">
                 <Label htmlFor="mapa-destino" className="text-xs text-[#5a6b7b]">Agregar al avalúo en</Label>

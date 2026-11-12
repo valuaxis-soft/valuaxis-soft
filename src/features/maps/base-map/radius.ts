@@ -6,13 +6,19 @@
  */
 import type { LatLon } from "../types";
 
-export const RADIUS_METERS = { min: 100, max: 5000, step: 50, default: 500 } as const;
+/**
+ * Up to 10 km since 12 nov 2026 (WA-02: 500 m fell short and 5 km was the
+ * ceiling). Steps of 50 m up to 1 km and of 250 m beyond, so the slider stays
+ * fine near the subject.
+ */
+export const RADIUS_METERS = { min: 100, max: 10_000, step: 50, wideStep: 250, wideFrom: 1000, default: 500 } as const;
 /** Hits past this many are noise: the appraiser narrows the radius or the filters. */
 export const RADIUS_MAX_HITS = 200;
 
 export function clampRadius(meters: number) {
   if (!Number.isFinite(meters)) return RADIUS_METERS.default;
-  const stepped = Math.round(meters / RADIUS_METERS.step) * RADIUS_METERS.step;
+  const step = meters > RADIUS_METERS.wideFrom ? RADIUS_METERS.wideStep : RADIUS_METERS.step;
+  const stepped = Math.round(meters / step) * step;
   return Math.max(RADIUS_METERS.min, Math.min(RADIUS_METERS.max, stepped));
 }
 
