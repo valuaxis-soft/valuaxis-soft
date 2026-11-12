@@ -9,12 +9,14 @@ import { after, test } from "node:test";
 import QRCode from "qrcode";
 import {
   AccreditationError,
+  confirmAccreditationLevel,
   getAccreditation,
+  listAccreditedWithoutLevel,
   resolveAccreditation,
   submitAccreditation,
   valuationRequiresUnaccreditedNotice,
 } from "../../src/features/accreditation/accreditation.service";
-import type { SepCheck } from "../../src/features/accreditation/accreditation-rules";
+import type { AcademicGrade, SepCheck } from "../../src/features/accreditation/accreditation-rules";
 import type { SepVerifier } from "../../src/features/accreditation/sep-verifier";
 import { createAuthUserFixture, createValuationFixture, prisma } from "./support";
 
@@ -37,7 +39,10 @@ function simulatedSep(answer: SepCheck) {
   };
   return { verifier, asked };
 }
-const sepConfirms = (name: string) => simulatedSep({ kind: "read", validCedula: true, cedulaNumber: "7654321", name });
+const MASTER: AcademicGrade = { level: "MAESTRIA", valuationProgram: true, program: "Maestría en Valuación Inmobiliaria" };
+const ENGINEER: AcademicGrade = { level: "LICENCIATURA", valuationProgram: false, program: "Ingeniería Civil" };
+const sepConfirms = (name: string, grade: AcademicGrade | null = MASTER) =>
+  simulatedSep({ kind: "read", validCedula: true, cedulaNumber: "7654321", name, grade });
 
 /** An appraiser named "Juan Pérez López" who issues a valuation of his own. */
 async function appraiserWithValuation() {
@@ -71,13 +76,22 @@ test("without the SEP check, an upload goes to review with the link; an administ
   assert.ok(!stored.includes(curp), "outside the review link, the CURP is not stored in clear");
   assert.equal(await valuationRequiresUnaccreditedNotice(publicId, organizationId), true, "in review still prints the notice");
 
-  const dryRun = await resolveAccreditation({ email: user.email, decision: "approve", resolvedBy: "prueba", apply: false });
+  // WA-03: approving needs the grade, and a licenciatura or ingeniería does not approve.
+  await assert.rejects(resolveAccreditation({ email: user.email, decision: "approve", resolvedBy: "prueba", apply: true }), /registra el nivel/);
+  await assert.rejects(
+    resolveAccreditation({ email: user.email, decision: "approve", grade: ENGINEER, resolvedBy: "prueba", apply: true }),
+    (error) => error instanceof AccreditationError && /licenciatura o ingeniería/.test(error.message),
+  );
+  assert.equal((await rowOf(user.id)).SEstado, "EN_REVISION");
+
+  const dryRun = await resolveAccreditation({ email: user.email, decision: "approve", grade: MASTER, resolvedBy: "prueba", apply: false });
   assert.deepEqual([dryRun.before, dryRun.after, dryRun.applied], ["EN_REVISION", "ACREDITADO", false]);
   assert.equal((await rowOf(user.id)).SEstado, "EN_REVISION", "a dry run writes nothing");
 
-  await resolveAccreditation({ email: user.email.toUpperCase(), decision: "approve", resolvedBy: "prueba", apply: true });
+  await resolveAccreditation({ email: user.email.toUpperCase(), decision: "approve", grade: MASTER, resolvedBy: "prueba", apply: true });
   const approved = await rowOf(user.id);
   assert.equal(approved.SEstado, "ACREDITADO");
+  assert.deepEqual([approved.SNivelAcademico, approved.SProgramaAcademico, approved.BProgramaValuacion], ["MAESTRIA", "Maestría en Valuación Inmobiliaria", true]);
   assert.equal(approved.SUrlVerificacion, null, "the link with the CURP is erased once resolved");
   assert.equal(approved.SResueltoPor, "prueba");
   assert.ok(approved.DFechaVerificacion);
@@ -147,7 +161,7 @@ test("a revoked accreditation prints the notice again and never re-accredits on 
   const { user, publicId, organizationId } = await appraiserWithValuation();
   const curp = fakeCurp();
   await submitAccreditation({ user, bytes: await qrOf(sepUrl(curp)), verifier: sepConfirms("JUAN PEREZ LOPEZ").verifier });
-  await assert.rejects(resolveAccreditation({ email: user.email, decision: "approve", resolvedBy: "prueba", apply: true }), AccreditationError);
+  await assert.rejects(resolveAccreditation({ email: user.email, decision: "approve", grade: MASTER, resolvedBy: "prueba", apply: true }), AccreditationError);
 
   await resolveAccreditation({ email: user.email, decision: "revoke", resolvedBy: "prueba", reason: "cédula suspendida", apply: true });
   const revoked = await rowOf(user.id);
@@ -174,4 +188,41 @@ test("the notice follows the valuation's responsible user, and its creator when 
 
   await prisma.avaluo.update({ where: { UIdentificadorPublico: publicId }, data: { IdUsuarioResponsable: null } });
   assert.equal(await valuationRequiresUnaccreditedNotice(publicId, organizationId), false, "without a responsible, the creator issues");
+});
+
+test("WA-03: a SEP that shows only a licenciatura sends the upload to review, and the notice stays", async () => {
+  const { user, publicId, organizationId } = await appraiserWithValuation();
+  const view = await submitAccreditation({ user, bytes: await qrOf(sepUrl(fakeCurp())), verifier: sepConfirms("JUAN PEREZ LOPEZ", ENGINEER).verifier });
+  assert.equal(view.status, "EN_REVISION");
+  assert.match(view.reason ?? "", /licenciatura o ingeniería/);
+  assert.equal(await valuationRequiresUnaccreditedNotice(publicId, organizationId), true);
+});
+
+test("WA-03: an account accredited before the grade was recorded keeps its state and prints as before until its level is confirmed", async () => {
+  const { user, publicId, organizationId } = await appraiserWithValuation();
+  await submitAccreditation({ user, bytes: await qrOf(sepUrl(fakeCurp())), verifier: sepConfirms("JUAN PEREZ LOPEZ").verifier });
+  // As the accounts approved before migration 057: accredited, no level.
+  await prisma.acreditacionUsuario.update({
+    where: { IdUsuario: user.id },
+    data: { SNivelAcademico: null, SProgramaAcademico: null, BProgramaValuacion: null },
+  });
+  assert.equal(await valuationRequiresUnaccreditedNotice(publicId, organizationId), false, "no notice comes back on its own");
+  const view = await getAccreditation(user.id);
+  assert.deepEqual([view.status, view.levelPending, view.grade], ["ACREDITADO", true, null]);
+  assert.ok((await listAccreditedWithoutLevel()).some((item) => item.email === user.email));
+
+  // A licenciatura confirmed by the reviewer changes nothing: revoking is the client's decision.
+  const engineer = await confirmAccreditationLevel({ email: user.email, grade: ENGINEER, resolvedBy: "prueba", apply: true });
+  assert.equal(engineer.applied, false);
+  assert.match(engineer.problem ?? "", /licenciatura/);
+  assert.deepEqual([(await rowOf(user.id)).SEstado, (await rowOf(user.id)).SNivelAcademico], ["ACREDITADO", null]);
+
+  const dryRun = await confirmAccreditationLevel({ email: user.email, grade: MASTER, resolvedBy: "prueba", apply: false });
+  assert.equal(dryRun.applied, false);
+  assert.equal((await rowOf(user.id)).SNivelAcademico, null, "a dry run writes nothing");
+  await confirmAccreditationLevel({ email: user.email, grade: MASTER, resolvedBy: "prueba", apply: true });
+  assert.equal((await rowOf(user.id)).SNivelAcademico, "MAESTRIA");
+  assert.equal((await getAccreditation(user.id)).levelPending, false);
+  assert.ok(!(await listAccreditedWithoutLevel()).some((item) => item.email === user.email));
+  assert.equal(await valuationRequiresUnaccreditedNotice(publicId, organizationId), false);
 });

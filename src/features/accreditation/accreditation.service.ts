@@ -4,9 +4,13 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { env } from "@/lib/env";
 import { requiresUnaccreditedNotice, valuationIssuerUserId } from "./accreditation-notice";
 import {
+  ACADEMIC_LEVEL_LABELS,
   decideAccreditation,
   findSepVerificationLink,
+  gradeProblem,
+  storedGrade,
   toAccreditationStatus,
+  type AcademicGrade,
   type AccreditationStatus,
   type AutomaticResult,
 } from "./accreditation-rules";
@@ -42,6 +46,10 @@ export type AccreditationView = {
   reason: string | null;
   requestedAt: string | null;
   verifiedAt: string | null;
+  /** The grade the reviewer recorded; null when none was (an account accredited before the rule). */
+  grade: AcademicGrade | null;
+  /** Accredited before the grade was recorded: the reviewer still has to confirm it (WA-03). */
+  levelPending: boolean;
 };
 
 const NOT_ACCREDITED: AccreditationView = {
@@ -53,6 +61,8 @@ const NOT_ACCREDITED: AccreditationView = {
   reason: null,
   requestedAt: null,
   verifiedAt: null,
+  grade: null,
+  levelPending: false,
 };
 
 type AccreditationRow = NonNullable<Awaited<ReturnType<typeof prisma.acreditacionUsuario.findUnique>>>;
@@ -68,6 +78,8 @@ function toView(row: AccreditationRow | null): AccreditationView {
     reason: row.SMotivo,
     requestedAt: row.DFechaSolicitud?.toISOString() ?? null,
     verifiedAt: row.DFechaVerificacion?.toISOString() ?? null,
+    grade: storedGrade(row),
+    levelPending: row.SEstado === "ACREDITADO" && !storedGrade(row),
   };
 }
 
@@ -148,6 +160,7 @@ export async function submitAccreditation(input: {
     SResueltoPor: decision.status === "ACREDITADO" ? "AUTOMATICO" : null,
     DFechaSolicitud: now,
     DFechaVerificacion: decision.status === "ACREDITADO" ? now : null,
+    ...(decision.grade ? gradeColumns(decision.grade) : { SNivelAcademico: null, SProgramaAcademico: null, BProgramaValuacion: null }),
   };
   const row = await prisma.acreditacionUsuario.upsert({
     where: { IdUsuario: user.id },
@@ -220,6 +233,8 @@ export async function resolveAccreditation(input: {
   decision: AccreditationDecisionKind;
   resolvedBy: string;
   reason?: string | null;
+  /** Approving records the grade of the constancia: only a specialty, master's or doctorate in valuation approves (WA-03). */
+  grade?: AcademicGrade | null;
   apply: boolean;
 }): Promise<{ before: AccreditationStatus; after: AccreditationStatus; applied: boolean; userName: string }> {
   const user = await prisma.usuario.findFirst({
@@ -231,6 +246,11 @@ export async function resolveAccreditation(input: {
   const before = toAccreditationStatus(user.acreditacion?.SEstado);
   if (!DECISION_FROM[input.decision].includes(before)) {
     throw new AccreditationError(`La acreditación está ${before}: no se puede ${input.decision === "revoke" ? "revocar" : "resolver"}.`, 409);
+  }
+  if (input.decision === "approve") {
+    if (!input.grade) throw new AccreditationError("Para aprobar, registra el nivel de la constancia y su programa (--nivel y --programa).");
+    const problem = gradeProblem(input.grade);
+    if (problem) throw new AccreditationError(`${problem} Recházala con ese motivo.`, 409);
   }
   const after: AccreditationStatus = input.decision === "approve" ? "ACREDITADO" : "RECHAZADO";
   if (!input.apply) return { before, after, applied: false, userName };
@@ -246,6 +266,7 @@ export async function resolveAccreditation(input: {
       SMotivo: input.decision === "approve" ? null : (input.decision === "revoke" ? `Revocada: ${reason ?? "sin motivo"}` : reason)?.slice(0, 500) ?? null,
       DFechaVerificacion: now,
       ...(input.decision === "revoke" ? { DFechaRevocacion: now } : {}),
+      ...(input.decision === "approve" && input.grade ? gradeColumns(input.grade) : {}),
     },
   });
   await recordAuditEvent({
@@ -255,9 +276,76 @@ export async function resolveAccreditation(input: {
     entityId: String(user.IdUsuario),
     action: `ACREDITACION_${input.decision.toUpperCase()}`,
     result: after,
-    metadata: { resueltoPor: input.resolvedBy, motivo: reason },
+    metadata: { resueltoPor: input.resolvedBy, motivo: reason, ...(input.grade ? { nivel: input.grade.level, programa: input.grade.program } : {}) },
   });
   return { before, after, applied: true, userName };
+}
+
+const gradeColumns = (grade: AcademicGrade) => ({
+  SNivelAcademico: grade.level,
+  SProgramaAcademico: grade.program?.trim().slice(0, 300) || null,
+  BProgramaValuacion: grade.valuationProgram,
+});
+
+export type AccreditedWithoutLevel = { email: string; name: string; folio: string | null; cedulaNumber: string | null; verifiedAt: Date | null; resolvedBy: string | null };
+
+/**
+ * Accounts accredited before the grade was recorded: «pendiente de confirmar
+ * nivel». They keep their state and print as they did until the reviewer
+ * confirms their grade; nothing here revokes them.
+ */
+export async function listAccreditedWithoutLevel(): Promise<AccreditedWithoutLevel[]> {
+  const rows = await prisma.acreditacionUsuario.findMany({
+    where: { SEstado: "ACREDITADO", SNivelAcademico: null },
+    orderBy: { DFechaVerificacion: "asc" },
+    include: { usuario: { select: { SCorreo: true, SNombre: true, SApellidoPaterno: true, SApellidoMaterno: true } } },
+  });
+  return rows.map((row) => ({
+    email: row.usuario.SCorreo,
+    name: [row.usuario.SNombre, row.usuario.SApellidoPaterno, row.usuario.SApellidoMaterno].filter(Boolean).join(" "),
+    folio: row.SFolio,
+    cedulaNumber: row.SNumeroCedula,
+    verifiedAt: row.DFechaVerificacion,
+    resolvedBy: row.SResueltoPor,
+  }));
+}
+
+/**
+ * Records the grade of an account accredited before the rule, once the
+ * reviewer checked its constancia. Only a grade that meets the rule is
+ * recorded: one that does not (a licenciatura, a program in another field)
+ * changes nothing and says so, because whether to revoke those accounts is
+ * the client's decision, taken apart with «revocar».
+ */
+export async function confirmAccreditationLevel(input: {
+  email: string;
+  grade: AcademicGrade;
+  resolvedBy: string;
+  apply: boolean;
+}): Promise<{ applied: boolean; userName: string; problem: string | null }> {
+  const user = await prisma.usuario.findFirst({
+    where: { SCorreo: { equals: input.email.trim(), mode: "insensitive" } },
+    select: { IdUsuario: true, SNombre: true, SApellidoPaterno: true, SApellidoMaterno: true, acreditacion: true },
+  });
+  if (!user) throw new AccreditationError(`No existe un usuario con el correo ${input.email}.`, 404);
+  const userName = [user.SNombre, user.SApellidoPaterno, user.SApellidoMaterno].filter(Boolean).join(" ");
+  const row = user.acreditacion;
+  if (row?.SEstado !== "ACREDITADO") throw new AccreditationError(`La cuenta no está acreditada (${toAccreditationStatus(row?.SEstado)}): su nivel se registra al aprobarla.`, 409);
+  if (storedGrade(row)) throw new AccreditationError(`El nivel ya está registrado: ${ACADEMIC_LEVEL_LABELS[storedGrade(row)!.level]}.`, 409);
+  const problem = gradeProblem(input.grade);
+  if (problem || !input.apply) return { applied: false, userName, problem };
+
+  await prisma.acreditacionUsuario.update({ where: { IdUsuario: user.IdUsuario }, data: gradeColumns(input.grade) });
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    userId: user.IdUsuario,
+    entity: "ACREDITACION",
+    entityId: String(user.IdUsuario),
+    action: "ACREDITACION_NIVEL",
+    result: "ACREDITADO",
+    metadata: { resueltoPor: input.resolvedBy, nivel: input.grade.level, programa: input.grade.program },
+  });
+  return { applied: true, userName, problem: null };
 }
 
 /* ------------------------------------------------------------------ */
@@ -286,7 +374,10 @@ export async function valuationIssuerNotice(
   const issuerUserId = valuationIssuerUserId(valuation);
   const accreditation = await prisma.acreditacionUsuario.findUnique({
     where: { IdUsuario: issuerUserId },
-    select: { SEstado: true },
+    select: { SEstado: true, SNivelAcademico: true, SProgramaAcademico: true, BProgramaValuacion: true },
   });
-  return { show: requiresUnaccreditedNotice(accreditation ? toAccreditationStatus(accreditation.SEstado) : null), issuerUserId };
+  return {
+    show: requiresUnaccreditedNotice(accreditation ? toAccreditationStatus(accreditation.SEstado) : null, accreditation ? storedGrade(accreditation) : null),
+    issuerUserId,
+  };
 }

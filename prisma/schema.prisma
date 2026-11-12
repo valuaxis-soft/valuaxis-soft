@@ -406,6 +406,13 @@ model AcreditacionUsuario {
   DFechaSolicitud       DateTime? @map("DFechaSolicitud") @db.Timestamptz(3)
   DFechaVerificacion    DateTime? @map("DFechaVerificacion") @db.Timestamptz(3)
   DFechaRevocacion      DateTime? @map("DFechaRevocacion") @db.Timestamptz(3)
+  /// Level of the constancia as the reviewer recorded it: LICENCIATURA, ESPECIALIDAD, MAESTRIA or DOCTORADO (migration 057).
+  /// NULL on an account accredited before: level pending confirmation.
+  SNivelAcademico       String?   @map("SNivelAcademico") @db.VarChar(20)
+  /// Name of the program as the constancia shows it ("Maestría en Valuación Inmobiliaria").
+  SProgramaAcademico    String?   @map("SProgramaAcademico") @db.VarChar(300)
+  /// The program is in valuation (any kind: real estate, industrial, machinery, agricultural…).
+  BProgramaValuacion    Boolean?  @map("BProgramaValuacion")
   DFechaCreacion        DateTime  @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
   DFechaModificacion    DateTime  @default(now()) @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
 

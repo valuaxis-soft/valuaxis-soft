@@ -13,6 +13,10 @@ import {
 import {
   decideAccreditation,
   findSepVerificationLink,
+  gradeProblem,
+  looksLikeValuationProgram,
+  parseAcademicLevel,
+  type AcademicGrade,
   namesMatch,
   normalizeNameTokens,
   parseSepVerificationUrl,
@@ -135,12 +139,14 @@ test("the CURP is stored as a hash: never in clear, stable, and keyed when there
 /*  Outcome of an upload                                               */
 /* ------------------------------------------------------------------ */
 
-const read = (name: string | null, validCedula = true): SepCheck => ({ kind: "read", validCedula, cedulaNumber: "1234567", name });
+const MASTER_IN_VALUATION: AcademicGrade = { level: "MAESTRIA", valuationProgram: true, program: "Maestría en Valuación" };
+const read = (name: string | null, validCedula = true, grade: AcademicGrade | null = MASTER_IN_VALUATION): SepCheck =>
+  ({ kind: "read", validCedula, cedulaNumber: "1234567", name, grade });
 const decide = (check: SepCheck, extra: Partial<Parameters<typeof decideAccreditation>[0]> = {}) =>
   decideAccreditation({ userName: "Juan Pérez López", check, curpUsedByAnotherUser: false, previouslyRevoked: false, ...extra });
 
 test("only a valid cédula whose name matches accredits on its own", () => {
-  assert.deepEqual(decide(read("JUAN PEREZ LOPEZ")), { status: "ACREDITADO", automatic: "COINCIDE", reason: null });
+  assert.deepEqual(decide(read("JUAN PEREZ LOPEZ")), { status: "ACREDITADO", automatic: "COINCIDE", reason: null, grade: MASTER_IN_VALUATION });
   assert.equal(decide(read("ANA RUIZ")).status, "EN_REVISION");
   assert.equal(decide(read("ANA RUIZ")).automatic, "NO_COINCIDE");
   assert.equal(decide(read(null)).automatic, "NO_COINCIDE");
@@ -149,6 +155,26 @@ test("only a valid cédula whose name matches accredits on its own", () => {
   const unavailable = decide({ kind: "unavailable", reason: "captcha" });
   assert.equal(unavailable.status, "EN_REVISION");
   assert.equal(unavailable.automatic, "NO_DISPONIBLE");
+});
+
+test("WA-03: only a specialty, master's or doctorate in valuation accredits; a licenciatura or another field goes to review", () => {
+  for (const level of ["ESPECIALIDAD", "MAESTRIA", "DOCTORADO"] as const) {
+    for (const program of ["Valuación Inmobiliaria", "Valuación Industrial", "Valuación de Maquinaria y Equipo", "Valuación Agropecuaria"]) {
+      assert.equal(gradeProblem({ level, valuationProgram: looksLikeValuationProgram(program) }), null, `${level} en ${program}`);
+    }
+  }
+  assert.match(gradeProblem({ level: "LICENCIATURA", valuationProgram: true }) ?? "", /licenciatura o ingeniería/);
+  assert.match(gradeProblem({ level: "MAESTRIA", valuationProgram: looksLikeValuationProgram("Maestría en Administración") }) ?? "", /no es en valuación/);
+  assert.equal(parseAcademicLevel("Ingeniería"), "LICENCIATURA");
+  assert.equal(parseAcademicLevel("maestría"), "MAESTRIA");
+  assert.equal(parseAcademicLevel("posgrado"), null);
+
+  const engineer = decide(read("JUAN PEREZ LOPEZ", true, { level: "LICENCIATURA", valuationProgram: false, program: "Ingeniería Civil" }));
+  assert.equal(engineer.status, "EN_REVISION");
+  assert.equal(engineer.grade, null);
+  const withoutGrade = decide(read("JUAN PEREZ LOPEZ", true, null));
+  assert.equal(withoutGrade.status, "EN_REVISION");
+  assert.match(withoutGrade.reason ?? "", /Falta confirmar el grado/);
 });
 
 test("a CURP of another account, or a revoked account, always goes to review", () => {
@@ -163,6 +189,10 @@ test("a CURP of another account, or a revoked account, always goes to review", (
 
 test("the notice prints for every state but ACREDITADO", () => {
   assert.equal(requiresUnaccreditedNotice("ACREDITADO"), false);
+  assert.equal(requiresUnaccreditedNotice("ACREDITADO", MASTER_IN_VALUATION), false);
+  // Accredited before the grade was recorded: unchanged until the reviewer confirms it (the client decides the rest).
+  assert.equal(requiresUnaccreditedNotice("ACREDITADO", null), false);
+  assert.equal(requiresUnaccreditedNotice("ACREDITADO", { level: "LICENCIATURA", valuationProgram: false, program: "Ingeniería" }), true);
   for (const status of ["NO_ACREDITADO", "EN_REVISION", "RECHAZADO", null, undefined] as const) {
     assert.equal(requiresUnaccreditedNotice(status), true, String(status));
   }

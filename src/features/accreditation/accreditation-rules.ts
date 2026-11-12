@@ -130,7 +130,14 @@ export function namesMatch(userName: string, sepName: string): boolean {
 /** What the automatic check against the SEP could read. */
 export type SepCheck =
   | { kind: "unavailable"; reason: string }
-  | { kind: "read"; validCedula: boolean; cedulaNumber: string | null; name: string | null };
+  | {
+      kind: "read";
+      validCedula: boolean;
+      cedulaNumber: string | null;
+      name: string | null;
+      /** The grade the SEP shows, when it can be read; without it the grade is confirmed by hand. */
+      grade?: AcademicGrade | null;
+    };
 
 export type AutomaticResult = "NO_DISPONIBLE" | "COINCIDE" | "NO_COINCIDE" | "CEDULA_NO_VALIDA";
 
@@ -139,6 +146,8 @@ export type AccreditationDecision = {
   automatic: AutomaticResult;
   /** Why it went to review, for the administrator and the user. */
   reason: string | null;
+  /** The grade that accredited it, stored with the accreditation. */
+  grade: AcademicGrade | null;
 };
 
 /**
@@ -163,20 +172,82 @@ export function decideAccreditation(input: {
           ? "COINCIDE"
           : "NO_COINCIDE";
 
-  if (input.curpUsedByAnotherUser) {
-    return { status: "EN_REVISION", automatic, reason: "La misma CURP ya está registrada en otra cuenta." };
-  }
-  if (input.previouslyRevoked) {
-    return { status: "EN_REVISION", automatic, reason: "La acreditación de esta cuenta fue revocada antes; la revisa un administrador." };
-  }
+  const review = (reason: string): AccreditationDecision => ({ status: "EN_REVISION", automatic, reason, grade: null });
+  if (input.curpUsedByAnotherUser) return review("La misma CURP ya está registrada en otra cuenta.");
+  if (input.previouslyRevoked) return review("La acreditación de esta cuenta fue revocada antes; la revisa un administrador.");
   switch (automatic) {
-    case "COINCIDE":
-      return { status: "ACREDITADO", automatic, reason: null };
+    case "COINCIDE": {
+      // The notice is removed only by a specialty, master's or doctorate in valuation (WA-03).
+      const grade = check.kind === "read" ? check.grade ?? null : null;
+      if (!grade) return review("Falta confirmar el grado: solo una especialidad, maestría o doctorado en valuación quitan la leyenda.");
+      const problem = gradeProblem(grade);
+      return problem ? review(problem) : { status: "ACREDITADO", automatic, reason: null, grade };
+    }
     case "NO_DISPONIBLE":
-      return { status: "EN_REVISION", automatic, reason: "La validación automática con la SEP no está disponible." };
+      return review("La validación automática con la SEP no está disponible.");
     case "CEDULA_NO_VALIDA":
-      return { status: "EN_REVISION", automatic, reason: "La SEP no muestra la cédula como válida." };
+      return review("La SEP no muestra la cédula como válida.");
     case "NO_COINCIDE":
-      return { status: "EN_REVISION", automatic, reason: "El nombre que muestra la SEP no coincide con el de la cuenta." };
+      return review("El nombre que muestra la SEP no coincide con el de la cuenta.");
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  The grade of the constancia (WA-03)                                */
+/* ------------------------------------------------------------------ */
+
+/** The level of studies a constancia shows; an engineering degree is a licenciatura. */
+export const ACADEMIC_LEVELS = ["LICENCIATURA", "ESPECIALIDAD", "MAESTRIA", "DOCTORADO"] as const;
+export type AcademicLevel = (typeof ACADEMIC_LEVELS)[number];
+export const ACADEMIC_LEVEL_LABELS: Record<AcademicLevel, string> = {
+  LICENCIATURA: "Licenciatura o ingeniería",
+  ESPECIALIDAD: "Especialidad",
+  MAESTRIA: "Maestría",
+  DOCTORADO: "Doctorado",
+};
+
+/** The levels that, in valuation, take the notice away: a graduate program, never the bachelor's degree. */
+const GRADUATE_LEVELS: ReadonlySet<AcademicLevel> = new Set(["ESPECIALIDAD", "MAESTRIA", "DOCTORADO"]);
+
+const plainText = (text: string) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+
+/** "maestría", "Maestria", "ingeniería" (→ LICENCIATURA)…; null when it is not a level. */
+export function parseAcademicLevel(text: string | null | undefined): AcademicLevel | null {
+  const value = plainText(text ?? "");
+  if (/^(licenciatura|ingenieria|ingeniero|licenciado|lic)$/.test(value)) return "LICENCIATURA";
+  if (/^(especialidad|especializacion)$/.test(value)) return "ESPECIALIDAD";
+  if (/^(maestria|master)$/.test(value)) return "MAESTRIA";
+  if (/^(doctorado|doctor)$/.test(value)) return "DOCTORADO";
+  return null;
+}
+
+/**
+ * A program in valuation of any kind (inmuebles, industrial, maquinaria y
+ * equipo, agropecuaria…) says so in its name: «Maestría en Valuación…»,
+ * «Especialidad en Valuación Inmobiliaria». A suggestion for the reviewer,
+ * who confirms it.
+ */
+export const looksLikeValuationProgram = (program: string | null | undefined) => /valuaci[oó]n|valuador|avaluo|avalúo/.test(plainText(program ?? ""));
+
+export type AcademicGrade = { level: AcademicLevel; valuationProgram: boolean; program: string | null };
+
+/**
+ * Why a grade does not take the notice away, in the words of the rule agreed
+ * with the client (11 nov 2026); null when it does: a specialty, master's or
+ * doctorate in valuation.
+ */
+export function gradeProblem(grade: Pick<AcademicGrade, "level" | "valuationProgram">): string | null {
+  if (!GRADUATE_LEVELS.has(grade.level)) {
+    return `La constancia es de ${ACADEMIC_LEVEL_LABELS[grade.level].toLowerCase()}: la leyenda solo se quita con una especialidad, maestría o doctorado en valuación.`;
+  }
+  if (!grade.valuationProgram) {
+    return `La ${ACADEMIC_LEVEL_LABELS[grade.level].toLowerCase()} no es en valuación: la leyenda solo se quita con una especialidad, maestría o doctorado en valuación.`;
+  }
+  return null;
+}
+
+/** The grade recorded with an accreditation; null on an account accredited before the rule (level pending confirmation). */
+export function storedGrade(row: { SNivelAcademico: string | null; BProgramaValuacion: boolean | null; SProgramaAcademico: string | null }): AcademicGrade | null {
+  const level = (ACADEMIC_LEVELS as readonly string[]).includes(row.SNivelAcademico ?? "") ? (row.SNivelAcademico as AcademicLevel) : null;
+  return level ? { level, valuationProgram: row.BProgramaValuacion === true, program: row.SProgramaAcademico } : null;
 }

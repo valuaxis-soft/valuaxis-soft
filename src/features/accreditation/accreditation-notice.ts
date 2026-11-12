@@ -1,4 +1,4 @@
-import type { AccreditationStatus } from "./accreditation-rules";
+import { gradeProblem, type AcademicGrade, type AccreditationStatus } from "./accreditation-rules";
 
 /**
  * The notice every document of an unaccredited issuer prints, word for word
@@ -18,9 +18,17 @@ export function valuationIssuerUserId(valuation: { IdUsuarioResponsable: number 
   return valuation.IdUsuarioResponsable ?? valuation.IdUsuarioCreador;
 }
 
-/** The notice prints whenever the issuer is not ACREDITADO (no row, in review, rejected or revoked). */
-export function requiresUnaccreditedNotice(issuerStatus: AccreditationStatus | null | undefined) {
-  return issuerStatus !== "ACREDITADO";
+/**
+ * The notice prints whenever the issuer is not ACREDITADO (no row, in review,
+ * rejected or revoked), and for an accredited issuer whose recorded grade is
+ * not a specialty, master's or doctorate in valuation. An account accredited
+ * before the grade was recorded (no grade: «pendiente de confirmar nivel»)
+ * keeps printing as it did until the reviewer confirms it; what to do with
+ * them is the client's decision (WA-03).
+ */
+export function requiresUnaccreditedNotice(issuerStatus: AccreditationStatus | null | undefined, grade: AcademicGrade | null = null) {
+  if (issuerStatus !== "ACREDITADO") return true;
+  return grade !== null && gradeProblem(grade) !== null;
 }
 
 /** The sections, besides the carátula, that always carry the notice. */
