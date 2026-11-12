@@ -21,8 +21,8 @@ export type TableMenuAction =
   | "cut" | "copy" | "paste" | "paste-values"
   | "insert-row-above" | "insert-row-below" | "insert-column-left" | "insert-column-right" | "delete-row" | "delete-column"
   | "edit-formula" | "fill-column" | "fill-row" | "remove-formula"
-  | "format" | "clear"
-  | "rename" | "move-left" | "move-right" | "column-width" | "sort-asc" | "sort-desc" | "hide-column" | "show-column" | "column-format"
+  | "format" | "format-decimals" | "clear"
+  | "rename" | "move-left" | "move-right" | "column-width" | "sort-asc" | "sort-desc" | "hide-column" | "show-column" | "column-format" | "column-decimals"
   | "duplicate-row" | "move-row-up" | "move-row-down" | "hide-row" | "show-row"
   | "block-rename" | "block-copy" | "block-duplicate" | "block-move" | "block-hide" | "block-show" | "block-page-break" | "block-delete";
 
@@ -33,8 +33,11 @@ export type TableMenuItem = {
   /** Why the item is disabled, shown as a tooltip. */
   hint?: string;
   destructive?: boolean;
-  /** The item opens a submenu the component fills (the operations, the formats). */
-  submenu?: "operations" | "formats";
+  /**
+   * The item opens a submenu the component fills: the operations, or the
+   * "Unidades de valor" and "Decimales" of a value, the same as a concept's.
+   */
+  submenu?: "operations" | "units" | "decimals";
 };
 
 export type TableMenuGroup = TableMenuItem[];
@@ -44,7 +47,7 @@ export const GENERATED_STRUCTURE_HINT = "Las filas y columnas de esta tabla las 
 /** Why a formula item of a table the calculation writes is disabled. */
 export const GENERATED_FORMULA_HINT = "Las cifras de esta tabla las escribe el cálculo; cámbialas en su panel.";
 /** Why the format items of a capture table are disabled, and where the printed table takes its format. */
-export const CAPTURE_FORMAT_HINT = "Esta tabla es de captura. Su formato al imprimir (ancho y decimales) se elige en «Formato de la tabla» de su bloque en el dictamen.";
+export const CAPTURE_FORMAT_HINT = "Esta tabla es de captura. Su formato al imprimir (título, ancho, espacio, sangría y decimales) se elige en «Formato de la tabla» de su bloque en el dictamen.";
 /** Why a cell that is not an input cannot be edited. */
 export const COMPUTED_CELL_HINT = "Esta cifra la calcula el sistema; no se escribe.";
 /** Why a paste item is disabled. */
@@ -155,7 +158,9 @@ function cellMenu(kind: TableMenuKind, target: CellMenuTarget): TableMenuGroup[]
       ...(target.hasFormula && kind === "editable" ? [{ action: "remove-formula" as const, label: "Quitar fórmula" }] : []),
     ],
     [
-      disabledWhen({ action: "format", label: "Formato del valor…", submenu: "formats" }, kind !== "editable", formatHint),
+      // "Unidades de valor" and "Decimales", as in the concepts (video 5.7); right there on the value's right click.
+      disabledWhen({ action: "format", label: "Unidades de valor", submenu: "units" }, kind !== "editable", formatHint),
+      disabledWhen({ action: "format-decimals", label: "Decimales", submenu: "decimals" }, kind !== "editable", formatHint),
       typing({ action: "clear", label: "Limpiar contenido" }),
     ],
   ];
@@ -173,7 +178,8 @@ function columnMenu(kind: TableMenuKind, target: ColumnMenuTarget): TableMenuGro
       structure({ action: "move-left", label: "Mover a la izquierda" }, target.canMoveLeft, "La columna ya es la primera."),
       structure({ action: "move-right", label: "Mover a la derecha" }, target.canMoveRight, "La columna ya es la última."),
       own({ action: "column-width", label: "Ancho de columna…" }, true, ""),
-      own({ action: "column-format", label: "Formato de la columna", submenu: "formats" }, true, ""),
+      own({ action: "column-format", label: "Unidades de valor de la columna", submenu: "units" }, true, ""),
+      own({ action: "column-decimals", label: "Decimales de la columna", submenu: "decimals" }, true, ""),
       own({ action: "sort-asc", label: "Ordenar A→Z" }, true, ""),
       own({ action: "sort-desc", label: "Ordenar Z→A" }, true, ""),
       disabledWhen(

@@ -194,7 +194,23 @@ export type GeneratedTableLayout = {
   widthMode?: TableWidthMode;
   /** "Formato de la tabla": decimals its figures print with (0–4); the calculation's values are kept whole. */
   decimals?: number;
+  /** "Formato de la tabla": its title printed above it (false) or not (true); absent, as the calculation set it. */
+  hideCaption?: boolean;
+} & TablePrintLayout;
+
+/**
+ * "Formato de la tabla": room before and after the table in the dictamen (px,
+ * as the concepts' "Espacio antes/después"), its indent from the left (px) and,
+ * when it is narrower than the page, where it sits.
+ */
+export type TablePrintLayout = {
+  spacingBefore?: number;
+  spacingAfter?: number;
+  indent?: number;
+  align?: TableAlign;
 };
+
+export type TableAlign = "left" | "center" | "right";
 
 export type GeneratedTableState = { source: TableV2; layout: GeneratedTableLayout };
 
@@ -232,7 +248,7 @@ export type TableSchema = {
   /** Columns and rows the editor keeps and the dictamen does not print, by id. */
   hiddenColumns?: string[];
   hiddenRows?: string[];
-};
+} & TablePrintLayout;
 
 /** Most decimals the results of a table can be asked to show. */
 export const TABLE_DECIMALS_MAX = 4;
@@ -956,16 +972,67 @@ export function setColumnFormat(table: TableV2, columnId: string, format: TableC
   };
 }
 
-/** The formats a cell or a column can take from the editor's menu. */
-export const CELL_FORMAT_OPTIONS: Array<{ key: string; label: string; format: TableCellFormat | null }> = [
-  { key: "auto", label: "Automático", format: null },
-  { key: "number-0", label: "Número (sin decimales)", format: { type: "number", precision: 0 } },
-  { key: "number-2", label: "Número (2 decimales)", format: { type: "number", precision: 2 } },
-  { key: "number-4", label: "Número (4 decimales)", format: { type: "number", precision: 4 } },
-  { key: "currency", label: "Moneda ($)", format: { type: "currency", precision: 2 } },
-  { key: "percent", label: "Porcentaje (%)", format: { type: "percent", precision: 2 } },
-  { key: "text", label: "Texto", format: { type: "text" } },
-];
+/**
+ * "Unidades de valor" of a cell or a column, the same list as the concepts'
+ * (video 5.7, 16 Nov 2026): "auto" (as typed, or as the formula's sources),
+ * "text", a unit of `ConceptValueFormat` or one of the firm's (`firm`).
+ */
+export type TableValueUnit =
+  | { kind: "auto" }
+  | { kind: "text" }
+  | { kind: "unit"; unit: Exclude<ConceptValueFormat, "custom"> }
+  | { kind: "firm"; unit: string };
+
+const UNIT_FORMAT_TYPES: Partial<Record<ConceptValueFormat, TableCellColumnType>> = {
+  plain: "number",
+  mxn: "currency",
+  "mxn-mn": "currency",
+  percent: "percent",
+};
+
+/** The unit a format shows, as "Unidades de valor" lists it. */
+export function tableValueUnit(format: TableCellFormat | undefined): TableValueUnit {
+  if (!format) return { kind: "auto" };
+  switch (format.type) {
+    case "text":
+      return { kind: "text" };
+    case "number":
+      return { kind: "unit", unit: "plain" };
+    case "currency":
+      return { kind: "unit", unit: format.unit === "mxn-mn" ? "mxn-mn" : "mxn" };
+    case "percent":
+      return { kind: "unit", unit: "percent" };
+    case "measurement":
+      if (format.unit === "custom" || (!format.unit && format.customUnit)) return format.customUnit ? { kind: "firm", unit: format.customUnit } : { kind: "auto" };
+      return { kind: "unit", unit: (format.unit ?? "m") as Exclude<ConceptValueFormat, "custom"> };
+    default:
+      return { kind: "auto" };
+  }
+}
+
+/** The decimals a format asks for; undefined is "Automático". */
+export const tableValueDecimals = (format: TableCellFormat | undefined): number | undefined =>
+  typeof format?.precision === "number" ? format.precision : undefined;
+
+/**
+ * The format of a cell or column with its "Unidades de valor" and "Decimales":
+ * each one changes without touching the other. Automático in both is no format.
+ */
+export function tableValueFormat(unit: TableValueUnit, decimals: number | undefined): TableCellFormat | null {
+  const precision = decimals === undefined ? {} : { precision: Math.max(0, Math.min(TABLE_DECIMALS_MAX, Math.round(decimals))) };
+  switch (unit.kind) {
+    case "auto":
+      return decimals === undefined ? null : { type: "number", ...precision };
+    case "text":
+      return { type: "text" };
+    case "firm":
+      return { type: "measurement", unit: "custom", customUnit: unit.unit, ...precision };
+    case "unit": {
+      const type = UNIT_FORMAT_TYPES[unit.unit] ?? "measurement";
+      return { type, ...(type === "measurement" || unit.unit === "mxn-mn" ? { unit: unit.unit } : {}), ...precision };
+    }
+  }
+}
 
 const NUMERIC_FORMAT_TYPES = new Set<TableCellColumnType>(["number", "currency", "percent", "measurement"]);
 
@@ -1404,6 +1471,51 @@ export function setTableWidthMode(table: TableV2, widthMode: TableWidthMode): Ta
   const schema: TableSchema = { ...(table.schema ?? { zones: [] }) };
   if (widthMode === "content") schema.widthMode = "content";
   else delete schema.widthMode;
+  return { ...table, schema };
+}
+
+/** Most room before or after a table, and most indent, the dictamen takes (px). */
+export const TABLE_SPACING_MAX = 96;
+export const TABLE_INDENT_MAX = 240;
+
+const clampPx = (value: unknown, max: number) =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.min(max, Math.round(value)) : undefined;
+
+/** "Formato de la tabla" as the dictamen prints it: room before and after, indent and alignment; only what was set. */
+export function tablePrintLayout(table: Pick<TableV2, "schema">): TablePrintLayout {
+  const schema = table.schema;
+  const spacingBefore = clampPx(schema?.spacingBefore, TABLE_SPACING_MAX);
+  const spacingAfter = clampPx(schema?.spacingAfter, TABLE_SPACING_MAX);
+  const indent = clampPx(schema?.indent, TABLE_INDENT_MAX);
+  const align = schema?.align === "center" || schema?.align === "right" ? schema.align : undefined;
+  return {
+    ...(spacingBefore ? { spacingBefore } : {}),
+    ...(spacingAfter ? { spacingAfter } : {}),
+    ...(indent ? { indent } : {}),
+    ...(align ? { align } : {}),
+  };
+}
+
+/** What "Formato de la tabla" changes of the layout; `null`, 0 or "left" gives back the default, which is not stored. */
+export type TablePrintLayoutPatch = { [K in keyof TablePrintLayout]?: TablePrintLayout[K] | null };
+
+/** The layout with the patch applied, keeping only what differs from the default. */
+export function mergeTablePrintLayout(layout: TablePrintLayout, patch: TablePrintLayoutPatch): TablePrintLayout {
+  const merged = { ...layout, ...patch };
+  return tablePrintLayout({ schema: { zones: [], ...merged } as TableSchema });
+}
+
+/** The table with "Formato de la tabla" changed: room before and after, indent and alignment. */
+export function setTablePrintLayout(table: TableV2, patch: TablePrintLayoutPatch): TableV2 {
+  const { spacingBefore: _before, spacingAfter: _after, indent: _indent, align: _align, ...schema } = table.schema ?? { zones: [] };
+  return { ...table, schema: { ...schema, ...mergeTablePrintLayout(tablePrintLayout(table), patch) } };
+}
+
+/** "Mostrar el título en el dictamen": the title printed above the table, or only naming it in the editor. */
+export function setTableCaptionShown(table: TableV2, shown: boolean): TableV2 {
+  const schema: TableSchema = { ...(table.schema ?? { zones: [] }) };
+  if (shown) delete schema.hideCaption;
+  else schema.hideCaption = true;
   return { ...table, schema };
 }
 

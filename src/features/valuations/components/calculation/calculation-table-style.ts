@@ -1,8 +1,9 @@
 /**
  * The look of the capture tables of the calculation panels, the same as the
- * tables of the dictamen: the light blue header band with navy bold text,
- * gray and white rows alternating (the first gray), soft blue-gray rules
- * instead of black ones, dark gray text and the resultant factors in bold.
+ * tables of the dictamen: the light blue header band with navy bold text and
+ * white rules as thick as the dictamen's (2px), gray and white rows
+ * alternating (the first gray), soft blue-gray rules instead of black ones,
+ * dark gray text and the resultant factors in bold.
  */
 
 /** Frame of a capture table, scrolling sideways when it does not fit. */
@@ -15,10 +16,13 @@ export const CALC_TABLE = "border-collapse text-xs text-[#333333] dark:text-slat
 export const CALC_HEAD = "bg-[#BDD7EE] text-[#00285A] dark:bg-[#1F3A5F] dark:text-sky-50";
 
 /** A header cell. */
-export const CALC_HEAD_CELL = "border border-white/80 px-1.5 py-1 text-center align-middle font-bold dark:border-slate-700";
+export const CALC_HEAD_CELL = "border-2 border-white px-1.5 py-1 text-center align-middle font-bold dark:border-slate-700";
 
 /** A row: gray and white alternate, the first one gray. */
 export const CALC_ROW = "border-t border-[#DCE4EE] odd:bg-slate-100 dark:border-slate-700 dark:odd:bg-slate-800/40";
+
+/** A body cell with a rule on each side, so the columns read apart (video 5.4). */
+export const CALC_CELL = "border-x border-[#DCE4EE] dark:border-slate-700";
 
 /** A resultant factor (FRe, F. Result.): in bold. */
 export const CALC_RESULT = "font-bold";

@@ -24,7 +24,7 @@ import {
   withTableFormat,
 } from "@/features/valuations/calculation/generated-table-layout";
 import type { TableContent } from "@/features/valuations/model";
-import { ensureTableV2, getDisplayColumns, tableDecimals, type GeneratedTableLayout } from "@/features/valuations/services/table";
+import { ensureTableV2, getDisplayColumns, tableDecimals, tablePrintLayout, type GeneratedTableLayout } from "@/features/valuations/services/table";
 import { CommitCell } from "../calculation/commit-cell";
 import { TableFormatControl } from "./table-format-control";
 
@@ -67,7 +67,14 @@ export function GeneratedTableColumns(props: { table: TableContent; readOnly: bo
       readOnly={props.readOnly}
       onChange={(updater) => {
         const next = updater(printed);
-        change(withTableFormat(layout, { widthMode: next.schema?.widthMode === "content" ? "content" : "page", decimals: tableDecimals(next) ?? null }));
+        const print = tablePrintLayout(next);
+        change(withTableFormat(layout, {
+          widthMode: next.schema?.widthMode === "content" ? "content" : "page",
+          decimals: tableDecimals(next) ?? null,
+          // Kept only when it differs from what the calculation set, so a later calculation can still change it.
+          hideCaption: (next.schema?.hideCaption === true) === (source.schema?.hideCaption === true) ? null : next.schema?.hideCaption === true,
+          print: { spacingBefore: print.spacingBefore ?? null, spacingAfter: print.spacingAfter ?? null, indent: print.indent ?? null, align: print.align ?? null },
+        }));
       }}
     />
   );

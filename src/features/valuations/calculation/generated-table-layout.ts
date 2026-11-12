@@ -11,6 +11,8 @@ import { resolveContentLayout, setContentRowTagStyle } from "../services/content
 import {
   TABLE_DECIMALS_MAX,
   ensureTableV2,
+  mergeTablePrintLayout,
+  tablePrintLayout,
   getDisplayColumns,
   type GeneratedExtraColumn,
   type GeneratedTableLayout,
@@ -19,6 +21,7 @@ import {
   type TableColumn,
   type TableSummaryBox,
   type TableSummaryRow,
+  type TablePrintLayoutPatch,
   type TableV2,
   type TableWidthMode,
 } from "../services/table";
@@ -41,7 +44,11 @@ const hasText = (labels: Record<string, string> | undefined) => Object.values(la
 
 const isEmptyLayout = (layout: GeneratedTableLayout) =>
   !layout.hidden?.length && !hasText(layout.labels) && !layout.extraColumns?.length && !hasText(layout.boxLabels)
-  && layout.widthMode === undefined && layout.decimals === undefined;
+  && layout.widthMode === undefined && layout.decimals === undefined && layout.hideCaption === undefined
+  && !Object.keys(layoutPrint(layout)).length;
+
+/** Room, indent and alignment the appraiser set on the table. */
+const layoutPrint = (layout: GeneratedTableLayout) => tablePrintLayout({ schema: { zones: [], ...layout } });
 
 /** The key of a row of a box in `boxLabels`: its id, or its place in the box. */
 export const summaryRowKey = (box: Pick<TableSummaryBox, "id">, row: Pick<TableSummaryRow, "id">, index: number) => `${box.id}.${row.id ?? index}`;
@@ -113,11 +120,14 @@ export function applyTableLayout(table: TableContent | TableV2, layout: Generate
     : [];
   const headerGroups: HeaderGroup[] | undefined = schema.headerGroups?.map((group) => ({ ...group, title: label(group.id, group.title) }));
   const summaryBoxes = schema.summaryBoxes ? relabeledBoxes(schema.summaryBoxes, layout.boxLabels ?? {}) : undefined;
-  const { generated: _previous, widthMode: sourceWidth, decimals: sourceDecimals, ...rest } = schema;
+  const { generated: _previous, widthMode: sourceWidth, decimals: sourceDecimals, hideCaption: sourceHideCaption, ...rest } = schema;
   const { schema: _sourceSchema, ...plainSource } = source;
   // "Formato de la tabla": what was chosen wins over the calculation's; the decimals only change how its figures print.
   const widthMode = layout.widthMode ?? sourceWidth;
   const decimals = layout.decimals ?? sourceDecimals;
+  // Its title printed or not, room, indent and alignment: what was chosen over the calculation's.
+  const hideCaption = layout.hideCaption ?? sourceHideCaption;
+  const printLayout = { ...tablePrintLayout({ schema }), ...layoutPrint(layout) };
   return {
     ...source,
     columns,
@@ -126,6 +136,8 @@ export function applyTableLayout(table: TableContent | TableV2, layout: Generate
       ...rest,
       ...(widthMode === "content" ? { widthMode } : {}),
       ...(decimals !== undefined ? { decimals } : {}),
+      ...(hideCaption ? { hideCaption } : {}),
+      ...printLayout,
       zones,
       ...(headerGroups ? { headerGroups } : {}),
       ...(summaryBoxes ? { summaryBoxes } : {}),
@@ -318,15 +330,21 @@ export function withBoxLabel(layout: GeneratedTableLayout, key: string, name: st
 }
 
 /**
- * "Formato de la tabla" of a table the calculation writes: its width and the
- * decimals its figures print with. Kept with the rest of the layout, so the
- * next calculation keeps it; `null` gives back the calculation's.
+ * "Formato de la tabla" of a table the calculation writes: its width, the
+ * decimals its figures print with, whether its title prints, the room before
+ * and after it, its indent and alignment. Kept with the rest of the layout, so
+ * the next calculation keeps it; `null` gives back the calculation's.
  */
 export function withTableFormat(
   layout: GeneratedTableLayout,
-  format: { widthMode?: TableWidthMode | null; decimals?: number | null },
+  format: { widthMode?: TableWidthMode | null; decimals?: number | null; hideCaption?: boolean | null; print?: TablePrintLayoutPatch },
 ): GeneratedTableLayout {
-  const next: GeneratedTableLayout = { ...layout };
+  const { spacingBefore: _before, spacingAfter: _after, indent: _indent, align: _align, ...rest } = layout;
+  const next: GeneratedTableLayout = { ...rest, ...mergeTablePrintLayout(layoutPrint(layout), format.print ?? {}) };
+  if (format.hideCaption !== undefined) {
+    if (format.hideCaption === null) delete next.hideCaption;
+    else next.hideCaption = format.hideCaption;
+  }
   if (format.widthMode !== undefined) {
     if (format.widthMode === null) delete next.widthMode;
     else next.widthMode = format.widthMode;

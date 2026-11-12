@@ -155,3 +155,23 @@ test("a table whose title was cleared still saves, and prints without a caption"
     assert.equal(stored.table?.rows.length, 2);
   }
 });
+
+test("a value with units and decimals of its own, and the table's print format, are saved and reloaded (video 5.7)", async () => {
+  const fixture = await createValuationFixture();
+  const original = editedTable();
+  const squareMeters = { type: "measurement" as const, unit: "m2" as const, precision: 2 };
+  original.rows[0].cells["col-area"] = { kind: "value", value: "120.456", format: squareMeters };
+  original.schema = { zones: [], hideCaption: true, spacingBefore: 16, spacingAfter: 24, indent: 40, align: "center" };
+  // Before, the database rejected a value saved with its own format (one value per cell).
+  await save(fixture, [original]);
+
+  const [stored] = await loadTables(fixture);
+  assert.ok(stored.table);
+  assert.deepEqual(stored.table.rows[0].cells["col-area"], { kind: "value", value: "120.456", format: squareMeters });
+  const schema = stored.table.schema;
+  assert.equal(schema?.hideCaption, true);
+  assert.deepEqual(
+    { spacingBefore: schema?.spacingBefore, spacingAfter: schema?.spacingAfter, indent: schema?.indent, align: schema?.align },
+    { spacingBefore: 16, spacingAfter: 24, indent: 40, align: "center" },
+  );
+});

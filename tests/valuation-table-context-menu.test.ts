@@ -250,13 +250,14 @@ test("the cell menu of an editable table offers every item of the model, and cop
     ["Cortar", "Copiar", "Pegar", "Pegar solo valores"],
     ["Insertar fila arriba", "Insertar fila abajo", "Insertar columna a la izquierda", "Insertar columna a la derecha", "Eliminar fila", "Eliminar columna"],
     ["Insertar fórmula…", "Copiar valor a toda la columna", "Copiar valor a toda la fila", "Operaciones"],
-    ["Formato del valor…", "Limpiar contenido"],
+    ["Unidades de valor", "Decimales", "Limpiar contenido"],
   ]);
   assert.equal(item(without, "fill-column").disabled, true);
   assert.equal(item(without, "fill-column").hint, EMPTY_CELL_HINT, "an empty cell has nothing to copy");
   assert.equal(item(without, "fill-row").disabled, true);
   assert.equal(item(without, "edit-formula", "Operaciones").submenu, "operations");
-  assert.equal(item(without, "format").submenu, "formats");
+  assert.equal(item(without, "format").submenu, "units");
+  assert.equal(item(without, "format-decimals").submenu, "decimals");
   assert.equal(item(without, "delete-row").destructive, true);
 
   const withFormula = tableContextMenu("editable", { kind: "cell", editable: true, hasFormula: true, canPaste: true, canInsertRow: true, canInsertColumn: false, canDeleteColumn: false, canDeleteRow: false });
@@ -279,6 +280,7 @@ test("a capture table of the calculation keeps the same menu, with what it canno
   assert.equal(item(cell, "fill-column").disabled, true);
   assert.equal(item(cell, "format").disabled, true);
   assert.equal(item(cell, "format").hint, CAPTURE_FORMAT_HINT);
+  assert.equal(item(cell, "format-decimals").disabled, true);
   assert.ok(!cell.flat().some((entry) => entry.submenu === "operations"), "the operations are for the editor's own tables");
 
   const computed = tableContextMenu("capture", { kind: "cell", editable: false, hasFormula: false, canPaste: false, canInsertRow: false, canInsertColumn: false, canDeleteColumn: false, canDeleteRow: false });
@@ -298,7 +300,7 @@ test("a capture table of the calculation keeps the same menu, with what it canno
 test("the column, row and block menus follow the model and the state of what was clicked", () => {
   const column = tableContextMenu("editable", { kind: "column", canInsertBeside: true, canRename: true, canMoveLeft: false, canMoveRight: true, canDelete: true, hidden: true, canHide: true });
   assert.deepEqual(column.map((group) => group.map((entry) => entry.label)), [
-    ["Insertar columna a la izquierda", "Insertar columna a la derecha", "Renombrar", "Mover a la izquierda", "Mover a la derecha", "Ancho de columna…", "Formato de la columna", "Ordenar A→Z", "Ordenar Z→A", "Mostrar en el dictamen"],
+    ["Insertar columna a la izquierda", "Insertar columna a la derecha", "Renombrar", "Mover a la izquierda", "Mover a la derecha", "Ancho de columna…", "Unidades de valor de la columna", "Decimales de la columna", "Ordenar A→Z", "Ordenar Z→A", "Mostrar en el dictamen"],
     ["Eliminar columna"],
   ]);
   assert.equal(item(column, "move-left").disabled, true);

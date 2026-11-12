@@ -20,6 +20,7 @@ import {
 } from "@/features/valuations/calculation/market-types";
 import { cn } from "@/lib/utils";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
+import { CALC_CELL, CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { CommitCell } from "./commit-cell";
 
 /** A key for a field the appraiser adds: short, and unlike any other in the list. */
@@ -89,16 +90,17 @@ export function MarketCharacteristicsTable(props: {
 
   return (
     <div className="grid gap-1.5">
-      <CalcTableContextMenu className="overflow-x-auto rounded-md border bg-background" readOnly={readOnly}>
-        <table className="w-full min-w-[640px] text-sm" aria-label="Características de los comparables">
-          <thead className="bg-muted/60 text-xs text-muted-foreground">
+      {/* The data centered and a rule between every column, as the appraiser's format (video 5.4). */}
+      <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly}>
+        <table className={cn(CALC_TABLE, "w-full min-w-[640px] text-sm")} aria-label="Características de los comparables">
+          <thead className={CALC_HEAD}>
             <tr>
-              <th className="min-w-40 px-2 py-1.5 text-left font-medium">Característica</th>
-              <th className="min-w-28 px-2 py-1.5 text-left font-medium">Sujeto</th>
+              <th className={cn(CALC_HEAD_CELL, "min-w-40 text-left")}>Característica</th>
+              <th className={cn(CALC_HEAD_CELL, "min-w-28")}>Sujeto</th>
               {comparables.map((comparable) => (
-                <th key={comparable.id} className="min-w-28 px-2 py-1.5 text-left font-medium">Comparable {comparable.reference}</th>
+                <th key={comparable.id} className={cn(CALC_HEAD_CELL, "min-w-28")}>Comparable {comparable.reference}</th>
               ))}
-              <th className="px-2 py-1.5"><span className="sr-only">Acciones</span></th>
+              <th className={CALC_HEAD_CELL}><span className="sr-only">Acciones</span></th>
             </tr>
           </thead>
           <tbody>
@@ -106,8 +108,8 @@ export function MarketCharacteristicsTable(props: {
               const numeric = NUMERIC_CHARACTERISTICS.has(field.key);
               const hidden = field.hidden === true;
               return (
-                <tr key={field.key} className={cn("border-t", hidden && "bg-muted/30 text-muted-foreground")} data-characteristic={field.key} data-hidden={hidden || undefined}>
-                  <td className="px-1 py-1">
+                <tr key={field.key} className={cn(CALC_ROW, hidden && "bg-muted/30 text-muted-foreground")} data-characteristic={field.key} data-hidden={hidden || undefined}>
+                  <td className={cn(CALC_CELL, "px-1 py-1")}>
                     <CommitCell
                       ariaLabel={`Nombre de la característica ${field.label}`}
                       disabled={readOnly}
@@ -117,7 +119,7 @@ export function MarketCharacteristicsTable(props: {
                       title={hidden ? "Oculta: no se imprime; lo capturado se conserva" : undefined}
                     />
                   </td>
-                  <td className="px-1 py-1">
+                  <td className={cn(CALC_CELL, "px-1 py-1")}>
                     <CommitCell
                       ariaLabel={`${field.label} del sujeto`}
                       disabled={readOnly}
@@ -125,12 +127,14 @@ export function MarketCharacteristicsTable(props: {
                       value={props.subject[field.key] ?? ""}
                       display={numeric ? numberText(props.subject[field.key] ?? "") : undefined}
                       onCommit={setSubject(field.key)}
+                      className="text-center"
                     />
                   </td>
                   {comparables.map((comparable) => (
-                    <td key={comparable.id} className="px-1 py-1">
+                    <td key={comparable.id} className={cn(CALC_CELL, "px-1 py-1")}>
                       <CommitCell
                         ariaLabel={`${field.label}, comparable ${comparable.reference}`}
+                        className="text-center"
                         disabled={readOnly}
                         numeric={numeric}
                         formulaKey={numeric ? `comparable:${comparable.id}:${field.key}` : undefined}
@@ -141,7 +145,7 @@ export function MarketCharacteristicsTable(props: {
                       />
                     </td>
                   ))}
-                  <td className="px-1 py-1 whitespace-nowrap">
+                  <td className={cn(CALC_CELL, "px-1 py-1 whitespace-nowrap")}>
                     {!readOnly ? (
                       <>
                         <Button type="button" size="icon-sm" variant="ghost" aria-label={`Subir ${field.label}`} disabled={index === 0} onClick={() => move(index, -1)}>
@@ -177,11 +181,11 @@ export function MarketCharacteristicsTable(props: {
                 </tr>
               );
             })}
-            <tr className="border-t bg-muted/20">
-              <td className="px-2 py-1.5 text-xs font-medium">Texto libre</td>
-              <td className="px-2 py-1.5 text-xs text-muted-foreground">En lugar de la línea de características</td>
+            <tr className={cn(CALC_ROW, "bg-muted/20")}>
+              <td className={cn(CALC_CELL, "px-2 py-1.5 text-xs font-medium")}>Texto libre</td>
+              <td className={cn(CALC_CELL, "px-2 py-1.5 text-center text-xs text-muted-foreground")}>En lugar de la línea de características</td>
               {comparables.map((comparable) => (
-                <td key={comparable.id} className="px-1 py-1">
+                <td key={comparable.id} className={cn(CALC_CELL, "px-1 py-1")}>
                   <CommitCell
                     ariaLabel={`Texto libre de características, comparable ${comparable.reference}`}
                     disabled={readOnly}
@@ -191,7 +195,7 @@ export function MarketCharacteristicsTable(props: {
                   />
                 </td>
               ))}
-              <td />
+              <td className={CALC_CELL} />
             </tr>
           </tbody>
         </table>

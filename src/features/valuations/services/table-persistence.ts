@@ -42,7 +42,8 @@ export function serializeTableForSave(table: TableContent): TableSavePayload {
 
 type StoredCellComplex =
   | { kind: "formula"; formula: TableFormula; format?: TableCellFormat }
-  | { kind: "value"; format: TableCellFormat };
+  /** A value with a format of its own carries its text here (see `encodeTableCell`). */
+  | { kind: "value"; format: TableCellFormat; value?: string };
 
 export type StoredCell = {
   text: string | null;
@@ -60,11 +61,13 @@ export function encodeTableCell(cell: TableCellV2 | undefined): StoredCell {
       calculated: true,
     };
   }
-  return {
-    text: cell.value === "" ? null : cell.value,
-    complex: cell.format ? { kind: "value", format: cell.format } : null,
-    calculated: false,
-  };
+  // The database keeps one value per cell (`devpware_celdas_tablas_documentos_un_valor_check`): a
+  // value with a format of its own goes whole in the complex column, its text with its format.
+  // Before 12 Nov 2026 it went in both and the save was rejected.
+  if (cell.format) {
+    return { text: null, complex: { kind: "value", format: cell.format, ...(cell.value === "" ? {} : { value: cell.value }) }, calculated: false };
+  }
+  return { text: cell.value === "" ? null : cell.value, complex: null, calculated: false };
 }
 
 export type StoredCellRecord = {
@@ -94,6 +97,7 @@ export function decodeTableCell(stored: StoredCellRecord): TableCellV2 {
   }
 
   const value =
+    (complex?.kind === "value" && typeof complex.value === "string" ? complex.value : null) ??
     stored.text ??
     stored.numeric ??
     (stored.boolean === null ? null : stored.boolean ? "Si" : "No") ??

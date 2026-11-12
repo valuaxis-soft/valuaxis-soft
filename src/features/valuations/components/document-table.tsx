@@ -15,6 +15,7 @@ import {
   headerLineChars,
   printableColumns,
   printableRows,
+  tablePrintLayout,
   type TableColumn,
   type TableNote,
   type TableResultGroup,
@@ -23,7 +24,7 @@ import {
 } from "../services/table";
 import { evaluateTableFormulas, getCellDisplayValue } from "../services/table-formula-engine";
 import type { DocumentTableFragment } from "../services/table-pagination";
-import { TABLE_HEADER_BAND } from "./document-theme";
+import { TABLE_HEADER_BAND, TABLE_HEADER_RULE, TABLE_TEXT_SIZE } from "./document-theme";
 import { useNumberPresentation } from "./number-presentation-context";
 
 const EMPTY_VALUE = "No se proporcionó";
@@ -70,14 +71,16 @@ function HeaderText({ name, fixed }: { name: string; fixed: boolean }) {
 function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = false }: { fixed?: boolean } = {}) {
   const layout = getTableHeaderLayout(tableV2);
   const columnMap = new Map(columns.map((c) => [c.id, c]));
-  const cell = "border-r border-white px-1.5 py-1 text-center align-middle text-wrap font-bold break-words last:border-r-0";
+  // White rules between the headers, as thick as the rule under the apartado titles (video 5.4).
+  const cell = cn(TABLE_HEADER_RULE, "px-1.5 py-1 text-center align-middle text-wrap font-bold break-words");
+  const lastOfRow = "last:border-r-0";
 
   if (!layout.hasGroups) {
     return (
       <thead className={TABLE_HEADER_BAND}>
         <tr>
           {columns.map((column) => (
-            <th className={cell} key={column.id}>
+            <th className={cn(cell, lastOfRow)} key={column.id}>
               <HeaderText name={column.name} fixed={fixed} />
             </th>
           ))}
@@ -85,6 +88,13 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
       </thead>
     );
   }
+
+  // The headers under a group end the table only when the group is the last thing of the top row;
+  // otherwise a column spanning both rows follows them and the rule between them must print.
+  const topCells = layout.topRow.filter((item) => (item.kind === "column"
+    ? columnMap.has(item.columnId)
+    : (tableV2.schema?.zones.find((zone) => zone.id === item.group.zoneId)?.columnIds.some((id) => columnMap.has(id)) ?? item.colSpan > 0)));
+  const groupEndsTable = topCells.at(-1)?.kind === "group-title";
 
   return (
     <thead className={TABLE_HEADER_BAND}>
@@ -95,7 +105,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
             const column = columnMap.get(item.columnId);
             if (!column) return null;
             return (
-              <th rowSpan={item.rowSpan} className={cell} key={item.columnId}>
+              <th rowSpan={item.rowSpan} className={cn(cell, lastOfRow)} key={item.columnId}>
                 <HeaderText name={column.name} fixed={fixed} />
               </th>
             );
@@ -104,7 +114,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
           const colSpan = zone ? zone.columnIds.filter((id) => columnMap.has(id)).length : item.colSpan;
           if (!colSpan) return null;
           return (
-            <th colSpan={colSpan} className={cn(cell, "border-b")} key={item.group.id}>
+            <th colSpan={colSpan} className={cn(cell, lastOfRow, "border-b-2")} key={item.group.id}>
               {item.group.title}
             </th>
           );
@@ -116,7 +126,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
             const column = columnMap.get(colId);
             // The same size and weight as the headers above: a header group is one band.
             return (
-              <th className={cell} key={colId}>
+              <th className={cn(cell, groupEndsTable && lastOfRow)} key={colId}>
                 <HeaderText name={column?.name ?? ""} fixed={fixed} />
               </th>
             );
@@ -166,7 +176,7 @@ function SummaryBoxes({ tableV2, position }: { tableV2: TableV2; position: Table
   if (!lines.length) return null;
 
   return (
-    <div className={cn("flex flex-col gap-1.5 text-[10px] leading-snug", TABLE_TEXT, position === "top" ? "mb-1.5" : "mt-1.5")} data-table-summary={position}>
+    <div className={cn("flex flex-col gap-1.5 leading-snug", TABLE_TEXT_SIZE, TABLE_TEXT, position === "top" ? "mb-1.5" : "mt-1.5")} data-table-summary={position}>
       {lines.map((line) => (
         <div className="flex items-start gap-3" key={line[0].id}>
           {line.map((box) => {
@@ -215,7 +225,7 @@ function TableNotes({ tableV2, position }: { tableV2: TableV2; position: TableNo
   const notes = (tableV2.schema?.notes ?? []).filter((note) => note.position === position && note.text.trim());
   if (!notes.length) return null;
   return (
-    <div className={cn("text-[10px] leading-snug", TABLE_TEXT, position === "top" ? "mb-1.5" : "mt-1.5")} data-table-notes={position}>
+    <div className={cn("leading-snug", TABLE_TEXT_SIZE, TABLE_TEXT, position === "top" ? "mb-1.5" : "mt-1.5")} data-table-notes={position}>
       {notes.map((note, index) => (note.heading ? (
         <p className="mt-1 font-bold first:mt-0" key={index}>{note.text}</p>
       ) : (
@@ -255,7 +265,7 @@ function ResultGroups({ groups, tableV2, formulaResults }: { groups: TableResult
 
   return (
     <div className="mt-3 border-t border-slate-200 pt-3">
-      <div className="flex items-start justify-between gap-4 text-[10px]">
+      <div className="flex items-start justify-between gap-4 text-[11px]">
         <div className="flex flex-col gap-1">
           {byAlign.start.map((group) =>
             group.items.map((item) => (
@@ -335,12 +345,12 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
 
   return (
     <figure>
-      <figcaption className="mb-1 text-[10px] font-bold uppercase text-[var(--caratula-blue)]">
+      <figcaption className="mb-1 text-[11px] font-bold uppercase text-[var(--caratula-blue)]">
         {tableV2.title.trim() || EMPTY_VALUE}
       </figcaption>
       <SummaryBoxes tableV2={tableV2} position="top" />
       <div className="overflow-hidden border border-[var(--caratula-blue)]">
-        <table className="w-full border-collapse table-fixed text-left text-[9px] leading-tight">
+        <table className="w-full border-collapse table-fixed text-left text-[11px] leading-tight">
           <colgroup>
             {columns.map((column) => (
               <col key={column.id} />
@@ -396,39 +406,55 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
   const columns = printableColumns(tableV2);
   // Fragments keep the column widths of the whole table, so the columns line up from page to page.
   const columnWidths = fragment?.columnWidths.length === columns.length ? fragment.columnWidths : null;
+  // "Formato de la tabla": room before (with what opens it) and after (with what closes it), indent and alignment.
+  const print = tablePrintLayout(tableV2);
+  const contentWidth = tableV2.schema?.widthMode === "content";
+  const many = columns.length > 7;
 
   return (
-    <div className="w-full overflow-hidden">
+    <div
+      className="w-full overflow-hidden"
+      style={{
+        paddingTop: opens && print.spacingBefore ? print.spacingBefore : undefined,
+        paddingBottom: closes && print.spacingAfter ? print.spacingAfter : undefined,
+        paddingLeft: print.indent || undefined,
+      }}
+      data-table-align={print.align}
+    >
       {opens ? <TableNotes tableV2={tableV2} position="top" /> : null}
       {opens ? <SummaryBoxes tableV2={tableV2} position="top" /> : null}
       {/* One format for every table, the ones the appraiser configures and the
-          ones the calculation writes: the size of the concepts around them, a
-          point less when it has many columns, in dark gray. Column widths follow
-          the content so amounts stay on one line. */}
+          ones the calculation writes: the size of the concepts around them,
+          whatever the number of columns (video 5.4: one size in every table),
+          in dark gray. Column widths follow the content so amounts stay on one
+          line; a table of many columns takes less room around each value. */}
       <table className={cn(
         "border-collapse",
         TABLE_TEXT,
+        TABLE_TEXT_SIZE,
         // "Ajustar al contenido": as wide as its columns need, no wider than the page.
-        plain ? "w-2/3 font-bold" : tableV2.schema?.widthMode === "content" ? "w-auto max-w-full" : "w-full",
+        plain ? "w-2/3 font-bold" : contentWidth ? "w-auto max-w-full" : "w-full",
+        // Narrower than the page, it sits where "Alineación" says.
+        (plain || contentWidth) && print.align === "center" && "mx-auto",
+        (plain || contentWidth) && print.align === "right" && "ml-auto",
         columnWidths && "table-fixed",
-        columns.length > 7 ? "text-[10px]" : "text-[11px]",
       )} data-split-table="" data-table-width={tableV2.schema?.widthMode === "content" ? "content" : undefined}>
         <colgroup>
           {columns.map((column, index) => (
             <col key={column.id} style={columnWidths ? { width: `${columnWidths[index]}px` } : columnWidthOf(tableV2, column.id) ? { width: `${columnWidthOf(tableV2, column.id)}px` } : undefined} />
           ))}
         </colgroup>
-        {caption ? <TableCaption className="mt-0 mb-1 text-[11px]">{caption}{opens ? null : " (continúa)"}</TableCaption> : null}
+        {caption ? <TableCaption className={cn("mt-0 mb-1", TABLE_TEXT_SIZE)}>{caption}{opens ? null : " (continúa)"}</TableCaption> : null}
         {plain ? null : renderSchemaHeader(tableV2, columns)}
         <TableBody>
           {rows.map((row, index) => (
             // Gray and white rows alternate, first one gray, as in the appraiser's own format;
             // by the row's place in the whole table, so a continuation follows on.
-            <TableRow className={cn(plain ? "border-0" : "border-slate-200", !plain && (firstRow + index) % 2 === 0 && "bg-slate-100")} data-split-table-row="" key={row.id}>
+            <TableRow className={cn(plain ? "border-0" : "border-slate-300", !plain && (firstRow + index) % 2 === 0 && "bg-slate-100")} data-split-table-row="" key={row.id}>
               {columns.map((column) => {
                 const value = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
                 return (
-                  <TableCell className={cn("px-2 py-1", cellPresentation(tableV2, column.id), !plain && isMarkedCell(value) && MARKED)} key={column.id}>{value}</TableCell>
+                  <TableCell className={cn(many ? "px-1.5 py-1" : "px-2 py-1", cellPresentation(tableV2, column.id), !plain && isMarkedCell(value) && MARKED)} key={column.id}>{value}</TableCell>
                 );
               })}
             </TableRow>
@@ -452,7 +478,7 @@ function CompactDocumentTable({ table }: { table: TableContent }) {
   const columns = printableColumns(tableV2);
 
   return (
-    <table className="w-full border-collapse table-fixed text-[8.5px]">
+    <table className="w-full border-collapse table-fixed text-[11px]">
       <colgroup>
         {columns.map((column) => (
           <col key={column.id} />
