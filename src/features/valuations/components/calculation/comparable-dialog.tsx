@@ -926,7 +926,7 @@ export function ComparableDialog(props: {
         </form>
       </DialogContent>
       <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}>
-        <AlertDialogContent>
+        <AlertDialogContent className="data-[size=default]:sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>¿Cerrar sin guardar el comparable?</AlertDialogTitle>
             <AlertDialogDescription>Lo que capturaste en este comparable todavía no se guarda. Si cierras, se pierde.</AlertDialogDescription>
