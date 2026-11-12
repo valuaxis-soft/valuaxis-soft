@@ -5,6 +5,7 @@
 import { Maximize2, Minimize2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 import {
@@ -358,7 +359,10 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
   useEffect(() => {
     if (!expanded) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) setExpanded(false);
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        setView((v) => ({ ...liveView.current, key: v.key + 1 }));
+        setExpanded(false);
+      }
     };
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -421,6 +425,13 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
     </form>
   );
 
+  // Expanded, the map and its controls go to the end of <body>, above the editor's bars; the map is drawn again there at the view it had.
+  const wrapExpanded = (content: React.ReactNode) => (expanded && typeof document !== "undefined" ? createPortal(content, document.body) : content);
+  const toggleExpanded = () => {
+    setView((v) => ({ ...liveView.current, key: v.key + 1 }));
+    setExpanded((on) => !on);
+  };
+
   const replaceTitles = pendingReplace
     ? (Object.entries(pendingReplace) as [CroquisKind, ImageContent][]).map(([kind, image]) => `${croquisKind(kind).title} en lugar de «${image.title?.trim() || "la imagen subida"}»`)
     : [];
@@ -442,9 +453,15 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
       ) : null}
 
       {expanded ? null : searchForm}
+      {expanded ? (
+        <p className="rounded-lg border bg-background p-3 text-sm text-muted-foreground" role="status">
+          El mapa está ampliado. Pulsa «Reducir» o Esc para volver aquí.
+        </p>
+      ) : null}
 
+      {wrapExpanded(
       <div
-        className={cn(expanded ? "fixed inset-0 z-50 flex flex-col bg-background lg:flex-row" : "contents")}
+        className={cn(expanded ? "fixed inset-0 z-[60] flex flex-col bg-background lg:flex-row" : "contents")}
         role={expanded ? "dialog" : undefined}
         aria-modal={expanded ? true : undefined}
         aria-label={expanded ? title : undefined}
@@ -478,7 +495,7 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
               size="sm"
               variant="outline"
               className={cn("absolute bottom-3 z-10 gap-1.5 bg-background/95 shadow-sm", settings.northArrow.corner === "bottom-left" ? "right-14" : "left-3")}
-              onClick={() => setExpanded((on) => !on)}
+              onClick={toggleExpanded}
               aria-pressed={expanded}
             >
               {expanded ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
@@ -492,7 +509,7 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
             <>
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold">{title}</h3>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setExpanded(false)}>
+                <Button type="button" size="sm" variant="ghost" onClick={toggleExpanded}>
                   <Minimize2 aria-hidden="true" />
                   Cerrar
                 </Button>
@@ -633,7 +650,8 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
             </Button>
           </div>
         </div>
-      </div>
+      </div>,
+      )}
 
       <AlertDialog open={pendingReplace !== null} onOpenChange={(open) => (open ? null : setPendingReplace(null))}>
         <AlertDialogContent>
