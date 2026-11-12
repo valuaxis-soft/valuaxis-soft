@@ -34,6 +34,7 @@ import {
 } from "../../services/block-flow";
 import {
   findHomeContentRowId,
+  planApartadoBoundarySlots,
   planBlockBoundarySlots,
   planContentDropSlots,
 } from "../../services/content-drop";
@@ -205,6 +206,8 @@ export function BlockFlowRenderer({
   const apartadoActiveColumnId = (apartadoId: string) =>
     scope.acceptsContent({ kind: "apartado", blockId: block.id, apartadoId }) ? scope.activeColumnId : null;
   const activeApartadoId = scope.activeApartado?.blockId === block.id ? scope.activeApartado.apartadoId : null;
+  // An Apartado dragged in this Block, or from another one that may bring it here.
+  const landingApartadoId = scope.activeApartado && scope.acceptsApartado(block.id) ? scope.activeApartado.apartadoId : null;
   const activeTarget = scope.activeTarget;
 
   const columnToRowId = useMemo(
@@ -347,6 +350,12 @@ export function BlockFlowRenderer({
     return new Map(plan.map((rowPlan) => [rowPlan.structuralRowId, rowPlan]));
   }, [activeContent, blockFlowV2, draggedInBlock, resolvedLayout]);
 
+  const apartadoSlotsByRowId = useMemo(() => {
+    if (!landingApartadoId || !blockFlowV2) return null;
+    const plan = planApartadoBoundarySlots(blockFlowV2, activeApartadoId);
+    return new Map(plan.map((rowPlan) => [rowPlan.structuralRowId, rowPlan]));
+  }, [landingApartadoId, activeApartadoId, blockFlowV2]);
+
   /* ---- Render callback ---- */
   const renderItem = useMemo(
     () =>
@@ -416,7 +425,7 @@ export function BlockFlowRenderer({
     // Nothing to show, but an item dragged from another Block can still land here.
     return readOnly || !onContentLayoutChange ? null : (
       <div {...{ [CONTENT_DND_BLOCK_ATTRIBUTE]: block.id }}>
-        <BfBlockInsideDropZone blockId={block.id} activeColumnId={activeColumnId} activeTarget={activeTarget} />
+        <BfBlockInsideDropZone blockId={block.id} activeColumnId={activeColumnId} acceptsApartado={landingApartadoId !== null} activeTarget={activeTarget} />
       </div>
     );
   }
@@ -437,7 +446,9 @@ export function BlockFlowRenderer({
                 key={`row-${structuralRow.id}`}
                 blockId={block.id}
                 rowId={structuralRow.id}
-                activeApartadoId={activeApartadoId}
+                activeApartadoId={landingApartadoId}
+                apartadoBefore={apartadoSlotsByRowId?.get(structuralRow.id)?.before}
+                apartadoAfter={apartadoSlotsByRowId?.get(structuralRow.id)?.after}
                 activeColumnId={activeColumnId}
                 activeTarget={activeTarget}
                 containerRef={{ kind: "block", blockId: block.id }}
@@ -473,7 +484,9 @@ export function BlockFlowRenderer({
                 key={`row-${structuralRow.id}`}
                 blockId={block.id}
                 rowId={structuralRow.id}
-                activeApartadoId={activeApartadoId}
+                activeApartadoId={landingApartadoId}
+                apartadoBefore={apartadoSlotsByRowId?.get(structuralRow.id)?.before}
+                apartadoAfter={apartadoSlotsByRowId?.get(structuralRow.id)?.after}
                 activeColumnId={activeColumnId}
                 activeTarget={activeTarget}
                 containerRef={{ kind: "block", blockId: block.id }}
@@ -524,7 +537,9 @@ export function BlockFlowRenderer({
                 key={`pair-${structuralRow.id}`}
                 blockId={block.id}
                 rowId={structuralRow.id}
-                activeApartadoId={activeApartadoId}
+                activeApartadoId={landingApartadoId}
+                apartadoBefore={apartadoSlotsByRowId?.get(structuralRow.id)?.before}
+                apartadoAfter={apartadoSlotsByRowId?.get(structuralRow.id)?.after}
                 activeColumnId={activeColumnId}
                 activeTarget={activeTarget}
                 containerRef={{ kind: "block", blockId: block.id }}

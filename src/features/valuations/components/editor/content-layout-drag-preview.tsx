@@ -1,6 +1,6 @@
 "use client";
 
-import { GripVertical, ImageIcon, Table2, Text } from "lucide-react";
+import { GripVertical, ImageIcon, Rows3, Table2, Text } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ContentLayoutItemRef, ContentLayoutItemType } from "../../model";
 
@@ -36,15 +36,21 @@ const TYPE_LABELS: Record<ContentLayoutItemType, string> = {
  */
 export function ContentDragPreview({
   item,
+  count,
+  label: labelOverride,
   className,
 }: {
   /** The content layout item being dragged. */
   item: ContentLayoutItemRef;
+  /** How many concepts go with it (the selection it is part of). */
+  count?: number;
+  /** What is dragged, when it is not a content item (a subbloque). */
+  label?: string;
   /** Optional additional CSS class. */
   className?: string;
 }) {
-  const Icon = TYPE_ICONS[item.type];
-  const label = TYPE_LABELS[item.type];
+  const Icon = labelOverride ? Rows3 : TYPE_ICONS[item.type];
+  const label = labelOverride ?? (count && count > 1 ? `${count} conceptos` : TYPE_LABELS[item.type]);
 
   return (
     <div

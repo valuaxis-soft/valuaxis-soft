@@ -30,7 +30,7 @@ import {
   blockToolbarState,
 } from "../editor/block-toolbar";
 import { deleteConfirmation, useConfirmDelete } from "../editor/delete-confirm";
-import { structureLockReason } from "@/features/valuations/services/structure-transfer";
+import { structureLockReason, type TransferPosition } from "@/features/valuations/services/structure-transfer";
 import { BlockFlowRenderer } from "../editor/block-flow-renderer";
 import { AssumptionsDraftAssist, DraftScopeProvider, ApartadoSummaryDraft } from "../editor/draft-assist";
 import type { EditorCapabilities } from "../editor/editor-capabilities";
@@ -54,7 +54,8 @@ import { ChangeEvent, useMemo, useState, type ReactNode } from "react";
 import { ensureTableV2 } from "@/features/valuations/services/table";
 import { sectionDisplayName } from "./model/section-numbering";
 import type { DragEndEvent } from "@dnd-kit/core";
-import { ContentDndScope } from "../editor/content-dnd-scope";
+import { ContentDndScope, type ApartadoBlockMove } from "../editor/content-dnd-scope";
+import { useStructureTransfer } from "./structure-transfer-context";
 import {
   applyContentDropToBlocks,
   type ContentDropSource,
@@ -319,7 +320,13 @@ export function ValuationEditorPanel(props: {
   const sortableBlockIds = editableBlocks.map((block) => block.id);
   // Content moves between the Blocks of the section, except where something else owns it.
   const moveRules = useMemo(() => contentMoveRulesForSection(section), [section]);
+  const transfer = useStructureTransfer();
   const handleContentDrop = (source: ContentDropSource, target: ContentDropTarget) => {
+    // A concept chosen with "Seleccionar conceptos" takes the rest of the selection along.
+    if (source.groupIds && transfer) {
+      transfer.dropConceptGroup(section.id, source, source.groupIds, target, moveRules);
+      return;
+    }
     // A full link reads from its first concept in document order: settle it before the order changes.
     const pinned = source.itemType === "concept"
       ? new Map(
@@ -337,6 +344,24 @@ export function ValuationEditorPanel(props: {
     const result = applyContentDropToBlocks(blocks, source, target, moveRules);
     // One update for the section keeps the move a single undo step.
     if (result.changed) props.onUpdateSection(section.id, { blocks: result.blocks });
+  };
+  // Apartados travel by drag between the Blocks that may give and take them, as with "Mover a…".
+  const apartadoBlockIds = useMemo(
+    () => new Set(isCaratula ? [] : section.blocks.filter((block) => structureLockReason(section, block.id) === null).map((block) => block.id)),
+    [isCaratula, section],
+  );
+  const handleApartadoBlockMove = ({ apartadoId, fromBlockId, toBlockId, boundary }: ApartadoBlockMove) => {
+    if (!transfer) return;
+    const destination = section.blocks.find((block) => block.id === toBlockId);
+    const flowRow = boundary && destination ? resolveBlockFlowV2(destination)?.rows.find((row) => row.id === boundary.structuralRowId) : undefined;
+    const first = flowRow?.items[0];
+    const position: TransferPosition = !boundary || !first
+      ? { placement: "end" }
+      : {
+          placement: boundary.placement,
+          anchor: first.type === "apartado" ? { type: "apartado", apartadoId: first.apartadoId } : { type: "row", rowId: first.rowId },
+        };
+    transfer.moveApartado({ sectionId: section.id, blockId: fromBlockId, apartadoId }, { sectionId: section.id, blockId: toBlockId }, position);
   };
   const renderBlockEditor = (block: Block, blockIndex: number, blockCount: number) => isGeneratedBlock(block) ? (
     <GeneratedBlockEditor
@@ -540,6 +565,8 @@ export function ValuationEditorPanel(props: {
             moveRules={moveRules}
             onBlockDragEnd={(event) => props.onBlockDragEnd(section.id, event)}
             onContentDrop={handleContentDrop}
+            apartadoBlockIds={apartadoBlockIds}
+            onApartadoBlockMove={handleApartadoBlockMove}
           >
             <SortableContext items={sortableBlockIds} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">

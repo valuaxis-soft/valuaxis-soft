@@ -142,7 +142,7 @@ test("concepts do not move into or out of a block the calculation writes", () =>
   const into = moveConceptsTo(sections, { sectionId: "terreno", blockId: "origen" }, ["a"], { sectionId: "mercadoVenta", blockId: "mercadoVenta-block-1-comparables-de-mercado-en-venta" });
   assert.equal(into.changed, false);
   const offered = conceptDestinations(sections, { sectionId: "terreno", blockId: "origen" });
-  assert.deepEqual(offered.map((item) => item.address.blockId), [], "neither locked block is offered");
+  assert.deepEqual(offered.map((item) => item.address.blockId), ["origen"], "neither locked block is offered, only its own to change the place");
 });
 
 /* ------------------------------------------------------------------ */

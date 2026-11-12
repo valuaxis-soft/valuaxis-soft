@@ -420,7 +420,9 @@ export function V2ColumnDropZones({
  * Renders before/after drop zones on a structural row (content or apartado).
  *
  * Two kinds of drag use them:
- *  - An Apartado drag: both zones accept it and only the hovered one shows.
+ *  - An Apartado drag (from this Block or one that may bring it here):
+ *    `apartadoBefore` and `apartadoAfter` say which ones exist; open ones are
+ *    visible throughout the drag, the one it would land on highlighted.
  *  - A content drag: the zones are the Block-level new-row slots. `contentBefore`
  *    and `contentAfter` say which ones exist; open ones are visible throughout
  *    the drag, like every other content slot.
@@ -434,10 +436,13 @@ export function BfRowDropZones({
   containerRef,
   contentBefore,
   contentAfter,
+  apartadoBefore,
+  apartadoAfter,
   children,
 }: {
   blockId: string;
   rowId: string;
+  /** The Apartado being dragged, when it may land in this Block. */
   activeApartadoId: string | null;
   activeColumnId: string | null;
   activeTarget: string | null;
@@ -446,6 +451,10 @@ export function BfRowDropZones({
   contentBefore?: ContentDropSlotState;
   /** Content slot after the row. */
   contentAfter?: ContentDropSlotState;
+  /** Apartado slot before the row (first structural row only). */
+  apartadoBefore?: ContentDropSlotState;
+  /** Apartado slot after the row. */
+  apartadoAfter?: ContentDropSlotState;
   children: React.ReactNode;
 }) {
   const isApartadoDrag = activeApartadoId !== null;
@@ -454,9 +463,9 @@ export function BfRowDropZones({
   const beforeId = buildBfRowDropZoneId({ blockId, rowId, placement: "before" });
   const afterId = buildBfRowDropZoneId({ blockId, rowId, placement: "after" });
 
-  // An Apartado can go on either side of any row; a content item only where the plan says.
-  const beforeState: ContentDropSlotState = isApartadoDrag ? "open" : contentBefore ?? "closed";
-  const afterState: ContentDropSlotState = isApartadoDrag ? "open" : contentAfter ?? "closed";
+  // Each kind of drag lands only where its plan says.
+  const beforeState: ContentDropSlotState = (isApartadoDrag ? apartadoBefore : contentBefore) ?? "closed";
+  const afterState: ContentDropSlotState = (isApartadoDrag ? apartadoAfter : contentAfter) ?? "closed";
 
   const { setNodeRef: setBeforeRef } = useDroppable({
     id: beforeId,
@@ -475,8 +484,9 @@ export function BfRowDropZones({
 
   const isBeforeHovered = activeTarget === beforeId;
   const isAfterHovered = activeTarget === afterId;
-  const showBefore = isBeforeHovered || (isContentDrag && beforeState === "open");
-  const showAfter = isAfterHovered || (isContentDrag && afterState === "open");
+  const isDragging = isApartadoDrag || isContentDrag;
+  const showBefore = isBeforeHovered || (isDragging && beforeState === "open");
+  const showAfter = isAfterHovered || (isDragging && afterState === "open");
 
   return (
     <div className="relative">
@@ -653,18 +663,21 @@ export function BfApartadoInsideDropZone({
 
 /**
  * The one slot of a Block that has no content yet: visible only while an
- * item that may come to this Block is dragged.
+ * item (or an Apartado) that may come to this Block is dragged.
  */
 export function BfBlockInsideDropZone({
   blockId,
   activeColumnId,
+  acceptsApartado = false,
   activeTarget,
 }: {
   blockId: string;
   activeColumnId: string | null;
+  /** An Apartado dragged from another Block may land here. */
+  acceptsApartado?: boolean;
   activeTarget: string | null;
 }) {
-  const isDragging = activeColumnId !== null;
+  const isDragging = activeColumnId !== null || acceptsApartado;
   const zoneId = `bfblock-inside-${blockId}`;
   const { setNodeRef } = useDroppable({
     id: zoneId,
