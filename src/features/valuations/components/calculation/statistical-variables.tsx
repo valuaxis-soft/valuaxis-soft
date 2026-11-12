@@ -137,6 +137,8 @@ function ScaleEditor(props: {
                     <CommitCell
                       ariaLabel={`Calificación de ${level.label}`}
                       disabled={readOnly}
+                      numeric
+                      formulaKey={`variable:${variable.key}:nivel:${index}`}
                       value={formatScaleValue(level.value)}
                       className="text-left"
                       onCommit={(text) => {
@@ -277,6 +279,8 @@ export function StatisticalVariables(props: {
                       <CommitCell
                         ariaLabel={`Base de ${field.label}`}
                         disabled={readOnly}
+                        numeric
+                        formulaKey={`variable:${field.key}:base`}
                         value={String(variable.base ?? DEFAULT_CONTRARY_BASE)}
                         className="text-left"
                         onCommit={(text) => {

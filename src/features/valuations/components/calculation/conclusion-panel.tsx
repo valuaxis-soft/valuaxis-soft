@@ -30,6 +30,7 @@ import { FormulaInput } from "./formula-input";
 import { RoundingSelect } from "./calculation-controls";
 import { useSerializedSave } from "./use-serialized-save";
 import { marketLeftOut } from "@/features/valuations/services/report-approaches";
+import { formatMoneyForDocument } from "@/features/valuations/services/concept-value-format";
 
 const APPROACHES: Approach[] = ["costos", "mercado", "ingresos"];
 const weightPath = (approach: Approach) => `method.weights.${approach}`;
@@ -306,7 +307,8 @@ export function ConclusionPanel(props: {
       {result ? (
         <div className="rounded-md border bg-background p-3">
           <p className="text-xs text-muted-foreground">Valor concluido{summaryRows.length === 1 ? ` · ${summaryRows[0].label}` : ""}</p>
-          <p className="text-lg font-semibold tabular-nums">{money(result.value)}</p>
+          {/* As the dictamen prints it: "$2,200,000.00 M.N.". */}
+          <p className="text-lg font-semibold tabular-nums" data-concluded-value>{formatMoneyForDocument(result.value, { legalTender: true })}</p>
           <p className="text-xs text-muted-foreground">{result.valueInWords}</p>
         </div>
       ) : (

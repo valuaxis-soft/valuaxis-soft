@@ -63,7 +63,7 @@ import { ValuationDateField } from "../editor/valuation-date-field";
 import { TextMarksField, type MarkedTextField } from "./text-marks-toolbar";
 import { stripTextMarks } from "@/features/valuations/services/text-marks";
 import { ConceptSelectionCheckbox } from "./concept-selection";
-import { compileFormula, conceptReferenceText, formulaToText, isFormulaText } from "@/features/valuations/services/formula-references";
+import { compileFormula, conceptReferenceText, formulaToText, isFormulaText, referencedConceptOnly } from "@/features/valuations/services/formula-references";
 import { conceptTakesFormula } from "@/features/valuations/services/valuation-formulas";
 import { useFormulaEditing, useFormulaField, useFormulaReferenceTarget } from "./formula-editing";
 import { useNumberPresentation } from "../number-presentation-context";
@@ -214,7 +214,7 @@ export function ConceptEditorList({
   onRemove: (conceptId: string) => void;
   onUpdate: (conceptId: string, patch: Partial<Concept>) => void;
   onUpdateEverywhere?: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
-  onChangeRelation?: (conceptId: string, mode: ExistingConceptRelationMode) => void;
+  onChangeRelation?: (conceptId: string, mode: ExistingConceptRelationMode, sourceConceptId?: string) => void;
   onUnlink?: (conceptId: string) => void;
   readOnly: boolean;
   requireTitle?: boolean;
@@ -1098,7 +1098,7 @@ export function ConceptEditorRow({
   onRemove: (conceptId: string) => void;
   onUpdate: (conceptId: string, patch: Partial<Concept>) => void;
   onUpdateEverywhere?: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
-  onChangeRelation?: (conceptId: string, mode: ExistingConceptRelationMode) => void;
+  onChangeRelation?: (conceptId: string, mode: ExistingConceptRelationMode, sourceConceptId?: string) => void;
   onUnlink?: (conceptId: string) => void;
   onColumnPresentationChange?: (columnId: string, presentation: ConceptPresentation | undefined) => void;
   readOnly: boolean;
@@ -1122,8 +1122,17 @@ export function ConceptEditorRow({
   const referenceTarget = reference.active && conceptTakesFormula(effectiveConcept);
   const referenceClassName = referenceTarget ? "cursor-cell rounded-md hover:ring-2 hover:ring-blue-300 [&_input]:cursor-cell" : undefined;
   const onReferenceMouseDown = referenceTarget ? reference.onMouseDownCapture : undefined;
-  const setFormula = (formula: Concept["formula"], value?: string) =>
+  const setFormula = (formula: Concept["formula"], value?: string) => {
     onUpdate(concept.id, { formula, ...(value === undefined ? {} : { value }) });
+    // A formula that only brings a value of another concept: linking it is offered, never imposed.
+    const source = referencedConceptOnly(formula);
+    if (!source || source === concept.id || !onChangeRelation || readOnly) return;
+    toast("¿Vincular el dato?", {
+      description: "La fórmula solo trae el valor de otro concepto. Al vincularlo, los dos muestran siempre el mismo dato y aparece el ícono de vinculado.",
+      duration: 15_000,
+      action: { label: "Vincular dato", onClick: () => onChangeRelation(concept.id, "value", source) },
+    });
+  };
   // The right-click menu of the row: what its ⋮ menu and "Seleccionar conceptos" do, in every section.
   const withContextMenu = (row: ReactNode, options: { showValueFormat: boolean; writeValue: (value: string) => void; order: boolean }) =>
     readOnly ? row : (

@@ -51,6 +51,8 @@ export const COMPUTED_CELL_HINT = "Esta cifra la calcula el sistema; no se escri
 export const NO_PASTE_HINT = "No hay nada copiado.";
 /** Why an item that needs a formula is disabled. */
 export const NO_FORMULA_HINT = "La celda no tiene fórmula todavía.";
+/** Why "Copiar a toda la columna/fila" is disabled: there is nothing to copy. */
+export const EMPTY_CELL_HINT = "La celda está vacía: escribe un valor o una fórmula para copiarlo.";
 /** Why a row or a column cannot be deleted. */
 export const LAST_COLUMN_HINT = "La tabla no puede quedarse sin columnas.";
 export const LAST_ROW_HINT = "La tabla no puede quedarse sin filas.";
@@ -63,6 +65,8 @@ export type CellMenuTarget = {
   editable: boolean;
   /** The cell holds a formula: it can be copied to its column and its row. */
   hasFormula: boolean;
+  /** The cell holds a written value (not a formula): it is copied to the empty cells of its column and its row. */
+  hasValue?: boolean;
   /** Something is in the clipboard to paste. */
   canPaste: boolean;
   canInsertRow: boolean;
@@ -124,6 +128,8 @@ function cellMenu(kind: TableMenuKind, target: CellMenuTarget): TableMenuGroup[]
   const editableHint = kind === "generated" ? GENERATED_FORMULA_HINT : COMPUTED_CELL_HINT;
   const typing = (item: TableMenuItem, allowed = true, hint = NO_FORMULA_HINT) =>
     disabledWhen(item, !editable || !allowed, editable ? hint : editableHint);
+  const canFill = target.hasFormula || Boolean(target.hasValue);
+  const fillCopies = target.hasFormula ? "fórmula" : "valor";
   const formatHint = kind === "editable" ? NO_FORMULA_HINT : kind === "capture" ? CAPTURE_FORMAT_HINT : GENERATED_FORMULA_HINT;
   return [
     [
@@ -142,9 +148,9 @@ function cellMenu(kind: TableMenuKind, target: CellMenuTarget): TableMenuGroup[]
     ],
     [
       typing({ action: "edit-formula", label: target.hasFormula ? "Editar fórmula…" : "Insertar fórmula…" }),
-      // A capture table copies the formula as typed to the empty cells of its column or row that take typing.
-      typing({ action: "fill-column", label: "Copiar fórmula a toda la columna" }, target.hasFormula),
-      typing({ action: "fill-row", label: "Copiar fórmula a toda la fila" }, target.hasFormula),
+      // The formula, or the value written, goes to the empty cells of its column or row that take typing.
+      typing({ action: "fill-column", label: `Copiar ${fillCopies} a toda la columna` }, canFill, EMPTY_CELL_HINT),
+      typing({ action: "fill-row", label: `Copiar ${fillCopies} a toda la fila` }, canFill, EMPTY_CELL_HINT),
       ...(kind === "editable" ? [typing({ action: "edit-formula", label: "Operaciones", submenu: "operations" })] : []),
       ...(target.hasFormula && kind === "editable" ? [{ action: "remove-formula" as const, label: "Quitar fórmula" }] : []),
     ],
@@ -224,12 +230,12 @@ function blockMenu(target: BlockMenuTarget): TableMenuGroup[] {
   ];
 }
 
-/** A cell of a capture table's row or column, as "Copiar fórmula a toda la fila/columna" sees it; null when it has no field. */
+/** A cell of a capture table's row or column, as "Copiar fórmula/valor a toda la fila/columna" sees it; null when it has no field. */
 export type CaptureFillCell = { takesTyping: boolean; text: string; hasFormula: boolean } | null;
 
 /**
- * Where "Copiar fórmula a toda la fila/columna" of a capture table writes the
- * formula of the cell at `from`: the other cells of the row or column that
+ * Where "Copiar fórmula/valor a toda la fila/columna" of a capture table writes the
+ * formula (or the value) of the cell at `from`: the other cells of the row or column that
  * take typing and are empty. A capture's formulas are arithmetic without
  * references (=1345*235), so each copy is the same formula; what is already
  * captured is never overwritten, as in the editor's own tables.

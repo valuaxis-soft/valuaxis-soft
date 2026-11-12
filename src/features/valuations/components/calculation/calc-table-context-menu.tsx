@@ -208,9 +208,9 @@ function formulaOf(input: CalcTableHit["input"]): string | null {
 /** The field of a cell that takes typing, if any. */
 const fieldOf = (cell: HTMLTableCellElement | undefined) => cell?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea") ?? null;
 
-/** "Copiar fórmula a toda la fila/columna": the formula of the cell typed in the empty fields of its row or column. */
+/** "Copiar fórmula/valor a toda la fila/columna": the formula of the cell, or its value, typed in the empty fields of its row or column. */
 function fillFormula(hit: CalcTableHit, along: "row" | "column", readOnly: boolean) {
-  const formula = takesTyping(hit.input, readOnly) ? formulaOf(hit.input) : null;
+  const formula = takesTyping(hit.input, readOnly) ? formulaOf(hit.input) ?? (hit.input.value.trim() || null) : null;
   const row = hit.cell.closest("tr");
   const body = row?.closest("tbody");
   if (!formula || !row || !body) return;
@@ -220,7 +220,7 @@ function fillFormula(hit: CalcTableHit, along: "row" | "column", readOnly: boole
   const seen: CaptureFillCell[] = fields.map((field) => (field ? { takesTyping: takesTyping(field, readOnly), text: field.value, hasFormula: formulaOf(field) !== null } : null));
   const targets = captureFillTargets(seen, from);
   for (const index of targets) typeInto(fields[index]!, formula);
-  if (!targets.length) toast.info(`No hay celdas vacías en la ${along === "row" ? "fila" : "columna"} para copiar la fórmula.`);
+  if (!targets.length) toast.info(`No hay celdas vacías en la ${along === "row" ? "fila" : "columna"} para copiarlo.`);
 }
 
 /** The menu's target for what was clicked: a header, a row's first cell or a cell. */
@@ -246,6 +246,7 @@ function targetOf(hit: CalcTableHit, readOnly: boolean, rows: CalcTableRowAction
     kind: "cell",
     editable,
     hasFormula: editable && formulaOf(hit.input) !== null,
+    hasValue: editable && Boolean(hit.input && "value" in hit.input && hit.input.value.trim()),
     canPaste: editable,
     canInsertRow: canInsert,
     canInsertColumn: false,

@@ -397,6 +397,29 @@ export function evaluateFormula(source: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+/** What a numeric field or cell says when what is typed in it is not a number. */
+export const NUMERIC_FIELD_MESSAGE = "Este campo es numérico";
+
+/**
+ * The problem of what is typed in a numeric field, if any: letters that do
+ * not read as a number ("abc", "12 metros") are marked and left out of the
+ * calculation. It only warns: nothing typed is refused or changed. Empty
+ * fields and formulas (which the formula bar checks) have none.
+ */
+export function numericFieldProblem(text: string): string | null {
+  const typed = text.trim();
+  if (!typed || typed.startsWith("=")) return null;
+  return parseDecimal(typed) === null ? NUMERIC_FIELD_MESSAGE : null;
+}
+
+/** "10%" typed in a numeric field, written as the number it counts as ("0.1"), as a spreadsheet does; anything else as typed. */
+export function percentAsNumberText(text: string): string {
+  const typed = text.trim();
+  if (!typed.endsWith("%") || typed.startsWith("=")) return text;
+  const value = parseDecimal(typed);
+  return value === null ? text : String(Number(value.toPrecision(12)));
+}
+
 /** "1,260,000.50", "$ 9000" or "=5*10000" → number; empty or invalid → null. */
 export function parseDecimal(value: string): number | null {
   const trimmed = value.trim();

@@ -272,13 +272,41 @@ function findCurrentConceptSource(concepts: Concept[], target: Concept, mode: Ex
   );
 }
 
+/**
+ * Links the value of a concept to the one of another concept of the
+ * valuation ("Vincular dato" offered after writing =[Superficie total de
+ * terreno]): it takes the source's value, and its formula if it has one, and
+ * from then on both show the same value. Its title stays its own.
+ */
+export function linkConceptValueTo(concepts: Concept[], targetId: string, sourceId: string): Concept[] {
+  const target = concepts.find((concept) => concept.id === targetId);
+  const found = concepts.find((concept) => concept.id === sourceId);
+  if (!target || !found || targetId === sourceId) return concepts;
+  const source = ensureSourceKeysForLink(found, "value");
+  const { formula: _own, ...rest } = target;
+  const linked: Concept = {
+    ...rest,
+    value: source.value,
+    type: source.type ?? target.type ?? "text",
+    valueFormat: source.valueFormat,
+    sourceUnit: source.sourceUnit,
+    customUnit: source.customUnit,
+    valueKey: source.valueKey,
+    ...(source.formula ? { formula: source.formula } : {}),
+  };
+  return concepts.map((concept) => (concept.id === targetId ? linked : concept.id === sourceId ? source : concept));
+}
+
 export function changeExistingConceptRelation(
   concepts: Concept[],
   conceptId: string,
   mode: ExistingConceptRelationMode,
+  /** With "value": the concept whose value this one takes, instead of the one it is already linked to. */
+  sourceConceptId?: string,
 ): Concept[] {
   const target = concepts.find((concept) => concept.id === conceptId);
   if (!target) return concepts;
+  if (mode === "value" && sourceConceptId) return linkConceptValueTo(concepts, conceptId, sourceConceptId);
 
   if (mode === "unlink") {
     return concepts.map((concept) => (concept.id === conceptId ? unlinkConcept(concept, concepts) : concept));

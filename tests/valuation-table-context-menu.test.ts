@@ -27,7 +27,7 @@ import {
 import {
   CAPTURE_FORMAT_HINT,
   GENERATED_STRUCTURE_HINT,
-  NO_FORMULA_HINT,
+  EMPTY_CELL_HINT,
   tableContextMenu,
   type TableMenuItem,
 } from "../src/features/valuations/services/table-context-menu";
@@ -168,9 +168,9 @@ test("copying a formula across the row moves the columns of its references and k
   summed = fillRowWithFormula(typed(summed, "B1", "=SUMA($A1:A1)"), "r1", "c2", { overwrite: true });
   assert.equal(textOf(summed, "r1", "c3"), "SUMA($A1:B1)");
   assert.equal(textOf(summed, "r1", "c4"), "SUMA($A1:C1)");
-  // A cell without a formula copies nothing.
+  // A cell without a formula copies its value, only to the empty cells: a full row stays as it is.
   const plain = tableOf(["A", "B"], [["1", "2"]]);
-  assert.equal(fillRowWithFormula(plain, "r1", "c1"), plain);
+  assert.deepEqual(fillRowWithFormula(plain, "r1", "c1"), plain);
 });
 
 /* ------------------------------------------------------------------ */
@@ -244,16 +244,16 @@ test("a column or a row hidden in the editor is left out of the printed table an
 /*  The menu model                                                     */
 /* ------------------------------------------------------------------ */
 
-test("the cell menu of an editable table offers every item of the model, and the formula copies only once there is a formula", () => {
+test("the cell menu of an editable table offers every item of the model, and copies to the row or column once there is a formula or a value", () => {
   const without = tableContextMenu("editable", { kind: "cell", editable: true, hasFormula: false, canPaste: true, canInsertRow: true, canInsertColumn: true, canDeleteColumn: true, canDeleteRow: true });
   assert.deepEqual(without.map((group) => group.map((entry) => entry.label)), [
     ["Cortar", "Copiar", "Pegar", "Pegar solo valores"],
     ["Insertar fila arriba", "Insertar fila abajo", "Insertar columna a la izquierda", "Insertar columna a la derecha", "Eliminar fila", "Eliminar columna"],
-    ["Insertar fórmula…", "Copiar fórmula a toda la columna", "Copiar fórmula a toda la fila", "Operaciones"],
+    ["Insertar fórmula…", "Copiar valor a toda la columna", "Copiar valor a toda la fila", "Operaciones"],
     ["Formato del valor…", "Limpiar contenido"],
   ]);
   assert.equal(item(without, "fill-column").disabled, true);
-  assert.equal(item(without, "fill-column").hint, NO_FORMULA_HINT);
+  assert.equal(item(without, "fill-column").hint, EMPTY_CELL_HINT, "an empty cell has nothing to copy");
   assert.equal(item(without, "fill-row").disabled, true);
   assert.equal(item(without, "edit-formula", "Operaciones").submenu, "operations");
   assert.equal(item(without, "format").submenu, "formats");
@@ -262,6 +262,7 @@ test("the cell menu of an editable table offers every item of the model, and the
   const withFormula = tableContextMenu("editable", { kind: "cell", editable: true, hasFormula: true, canPaste: true, canInsertRow: true, canInsertColumn: false, canDeleteColumn: false, canDeleteRow: false });
   assert.equal(item(withFormula, "fill-column").disabled, undefined);
   assert.equal(item(withFormula, "fill-row").disabled, undefined);
+  assert.equal(item(withFormula, "fill-column").label, "Copiar fórmula a toda la columna");
   assert.equal(item(withFormula, "edit-formula", "Editar fórmula…").label, "Editar fórmula…");
   assert.ok(item(withFormula, "remove-formula"));
   assert.equal(item(withFormula, "insert-column-left").disabled, true);

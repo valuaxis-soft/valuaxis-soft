@@ -255,7 +255,7 @@ export function ValuationEditorPanel(props: {
   onUpdateConcepts: (sectionId: string, blockId: string, conceptIds: string[], patch: ConceptsPatch, apartadoId?: string) => void;
   onUpdateConceptEverywhere: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
   onEditConceptOnlyHere: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
-  onChangeConceptRelation: (conceptId: string, mode: ExistingConceptRelationMode) => void;
+  onChangeConceptRelation: (conceptId: string, mode: ExistingConceptRelationMode, sourceConceptId?: string) => void;
   onUnlinkConcept: (conceptId: string) => void;
   onUpdateImage: (sectionId: string, blockId: string, imageId: string, patch: Partial<ImageContent>, apartadoId?: string) => void;
   onUpdateApartado: (sectionId: string, blockId: string, apartadoId: string, patch: Partial<Apartado>) => void;
@@ -589,7 +589,7 @@ function SortableBlockEditor(props: {
   onUpdateConcepts: (sectionId: string, blockId: string, conceptIds: string[], patch: ConceptsPatch, apartadoId?: string) => void;
   onUpdateConceptEverywhere: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
   onEditConceptOnlyHere: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
-  onChangeConceptRelation: (conceptId: string, mode: ExistingConceptRelationMode) => void;
+  onChangeConceptRelation: (conceptId: string, mode: ExistingConceptRelationMode, sourceConceptId?: string) => void;
   onUnlinkConcept: (conceptId: string) => void;
   onUpdateImage: (sectionId: string, blockId: string, imageId: string, patch: Partial<ImageContent>, apartadoId?: string) => void;
   onUpdateApartado: (sectionId: string, blockId: string, apartadoId: string, patch: Partial<Apartado>) => void;
