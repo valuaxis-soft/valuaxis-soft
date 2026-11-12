@@ -1101,7 +1101,17 @@ function expressionShifted(expression: FormulaExpression, rowIds: string[], offs
   }
 }
 
+/** A written value "Copiar valor a toda la fila/columna" copies: not a formula, not empty. */
+const isFillableValue = (cell: TableCellV2 | undefined): cell is Extract<TableCellV2, { kind: "value" }> =>
+  cell?.kind === "value" && cell.value.trim() !== "";
+/** A cell a copied value goes into: nothing written in it, and no formula. */
+const isEmptyCell = (cell: TableCellV2 | undefined) => !cell || (cell.kind === "value" && cell.value.trim() === "");
+
 /**
+ * A cell that holds a plain value (not a formula) copies it, with its format,
+ * to the empty cells of its column (`fillColumnWithFormula`) or its row
+ * (`fillRowWithFormula`); what is already written there is kept.
+ *
  * Copies the formula of a cell to the same column of every other row, as
  * dragging it down a spreadsheet does: each reference to a cell of the table
  * moves as many rows as the copy is from the original, so what it reads from
@@ -1113,6 +1123,9 @@ function expressionShifted(expression: FormulaExpression, rowIds: string[], offs
 export function fillColumnWithFormula(table: TableV2, rowId: string, columnId: string, options: { overwrite?: boolean } = {}): TableV2 {
   const sourceIndex = table.rows.findIndex((row) => row.id === rowId);
   const source = table.rows[sourceIndex]?.cells[columnId];
+  if (isFillableValue(source)) {
+    return { ...table, rows: table.rows.map((row) => (row.id !== rowId && isEmptyCell(row.cells[columnId]) ? { ...row, cells: { ...row.cells, [columnId]: { ...source } } } : row)) };
+  }
   if (source?.kind !== "formula") return table;
   const rowIds = table.rows.map((row) => row.id);
   return {
@@ -1170,6 +1183,11 @@ function expressionShiftedColumns(expression: FormulaExpression, columnIds: stri
 export function fillRowWithFormula(table: TableV2, rowId: string, columnId: string, options: { overwrite?: boolean } = {}): TableV2 {
   const row = table.rows.find((item) => item.id === rowId);
   const source = row?.cells[columnId];
+  if (row && isFillableValue(source)) {
+    const cells = { ...row.cells };
+    for (const column of getDisplayColumns(table)) if (column.id !== columnId && isEmptyCell(cells[column.id])) cells[column.id] = { ...source };
+    return { ...table, rows: table.rows.map((item) => (item.id === rowId ? { ...item, cells } : item)) };
+  }
   if (!row || source?.kind !== "formula") return table;
   const columnIds = getDisplayColumns(table).map((column) => column.id);
   const sourceIndex = columnIds.indexOf(columnId);

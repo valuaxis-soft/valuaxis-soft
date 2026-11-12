@@ -111,3 +111,18 @@ export function substituteFormulaReferences(text: string, index: FormulaIndex): 
   if (missing) return { ok: false, message: "Alguna de las celdas o conceptos que nombra la fórmula no tiene un número." };
   return { ok: true, text: `=${written}` };
 }
+
+/**
+ * What a capture field (a cell of a capture table, a numeric field of a
+ * calculation panel) keeps of a formula typed in it: the formula with the
+ * numbers its references read ("=[Superficie total de terreno]*2" kept as
+ * "=1250*2"). Arithmetic the document's formulas do not read may still be
+ * the capture's own (=(1345*235)^(1/6)): it is kept as typed. A formula that
+ * names something without a number answers with the reason.
+ */
+export function capturedFormulaText(text: string, index: FormulaIndex): { ok: true; text: string } | { ok: false; message: string } {
+  const substituted = substituteFormulaReferences(text, index);
+  if (substituted.ok) return substituted;
+  if (!/[A-Za-z]/.test(text.replace(/[A-Za-z]+\(/g, ""))) return { ok: true, text };
+  return substituted;
+}

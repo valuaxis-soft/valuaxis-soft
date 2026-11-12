@@ -155,8 +155,8 @@ export function useBlockMutations({
     );
   };
 
-  const changeConceptRelation = (conceptId: string, mode: ExistingConceptRelationMode) => {
-    applyLinkedConcepts((concepts) => changeExistingConceptRelation(concepts, conceptId, mode));
+  const changeConceptRelation = (conceptId: string, mode: ExistingConceptRelationMode, sourceConceptId?: string) => {
+    applyLinkedConcepts((concepts) => changeExistingConceptRelation(concepts, conceptId, mode, sourceConceptId));
   };
 
   /** A formula belongs to the value: it is set on every concept linked to this one's value. */

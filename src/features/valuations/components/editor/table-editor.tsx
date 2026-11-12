@@ -653,6 +653,7 @@ function EditableTableCell({
     kind: "cell",
     editable: true,
     hasFormula: isFormula,
+    hasValue: cell?.kind === "value" && cell.value.trim() !== "",
     canPaste: true,
     canInsertRow: true,
     canInsertColumn: canInsertBesideColumn(tableV2, column.id),

@@ -342,6 +342,12 @@ export function formulaTextProblem(text: string): string | null {
 /** Whether a written value asks to be computed. */
 export const isFormulaText = (text: string) => text.trimStart().startsWith("=");
 
+/** The concept a formula only reads (=[Superficie total de terreno]), which can be linked instead; null for anything else. */
+export function referencedConceptOnly(formula: TableFormula | undefined): string | null {
+  const expression = formula?.expression;
+  return expression?.type === "operand" && expression.operand.type === "concept" ? String(expression.operand.conceptId) : null;
+}
+
 /**
  * The stored formula for what the appraiser wrote, with or without its "=".
  * When it cannot be one, `message` says why in the appraiser's words.

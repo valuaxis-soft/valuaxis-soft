@@ -5,7 +5,8 @@ import { toast } from "sonner";
 
 import { useFormulaEditing, useFormulaField } from "@/features/valuations/components/editor/formula-editing";
 import { isFormulaText } from "@/features/valuations/services/formula-references";
-import { substituteFormulaReferences } from "@/features/valuations/services/formula-reference-values";
+import { capturedFormulaText } from "@/features/valuations/services/formula-reference-values";
+import { numericFieldProblem, percentAsNumberText } from "@/features/valuations/calculation/free-formula";
 import { cn } from "@/lib/utils";
 
 /**
@@ -47,20 +48,15 @@ export function CommitCell(props: {
     onCommit: (text) => {
       setEditing(null);
       if (!isFormulaText(text)) {
-        props.onCommit(text);
+        props.onCommit(props.numeric ? percentAsNumberText(text) : text);
         return;
       }
-      const substituted = substituteFormulaReferences(text, index);
-      if (substituted.ok) {
-        props.onCommit(substituted.text);
+      const captured = capturedFormulaText(text, index);
+      if (captured.ok) {
+        props.onCommit(captured.text);
         return;
       }
-      // Arithmetic the document's formulas do not read may still be the capture's own (=(1345*235)^(1/6)); it decides.
-      if (!/[A-Za-z]/.test(text.replace(/[A-Za-z]+\(/g, ""))) {
-        props.onCommit(text);
-        return;
-      }
-      toast.error("La fórmula no se aplicó", { description: substituted.message, duration: 12_000 });
+      toast.error("La fórmula no se aplicó", { description: captured.message, duration: 12_000 });
     },
   });
 
@@ -70,7 +66,9 @@ export function CommitCell(props: {
       formula.onBlur();
       return;
     }
-    if (!cancelled.current && editing !== null && editing !== props.value) props.onCommit(editing);
+    // A numeric cell writes "10%" as the 0.1 it counts as.
+    const typed = editing !== null && props.numeric ? percentAsNumberText(editing) : editing;
+    if (!cancelled.current && typed !== null && typed !== props.value) props.onCommit(typed);
     cancelled.current = false;
     setEditing(null);
   };
@@ -86,12 +84,16 @@ export function CommitCell(props: {
     }
   };
 
+  // Letters in a numeric cell: marked in red, and left out of the calculation (a warning only).
+  const problem = props.numeric && editing === null && formula.draftText === null ? numericFieldProblem(props.value) : null;
   const shown = withFormulas && formula.draftText !== null ? formula.draftText : editing ?? props.display ?? props.value;
   return (
     <input
       ref={withFormulas ? formula.inputRef : undefined}
       aria-label={props.ariaLabel}
-      title={props.title}
+      title={problem ? `${problem}: lo escrito no entra en los cálculos.` : props.title}
+      aria-invalid={problem ? true : undefined}
+      data-numeric-problem={problem ?? undefined}
       disabled={props.disabled}
       placeholder={props.placeholder}
       inputMode={props.numeric ? "decimal" : undefined}
@@ -102,6 +104,7 @@ export function CommitCell(props: {
         "hover:border-input focus:border-ring focus:bg-background focus:ring-2 focus:ring-ring/30 disabled:cursor-default disabled:hover:border-transparent",
         props.numeric && "text-right tabular-nums",
         props.computed && editing === null && "text-muted-foreground italic",
+        problem && "border-destructive text-destructive dark:text-red-400",
         withFormulas && formula.writingFormula && "font-mono text-blue-700 ring-2 ring-blue-500 dark:text-blue-300",
         props.className,
       )}

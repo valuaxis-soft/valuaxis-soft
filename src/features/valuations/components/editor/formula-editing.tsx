@@ -56,6 +56,8 @@ type FormulaSession = {
 
 type FormulaSessionHandlers = {
   insert: (text: string) => void;
+  /** Replaces the formula being written with what is typed in the bar. */
+  edit: (text: string) => void;
   /** Writes a text of the valuation as the field's value, in place of the formula being written. */
   setText: (text: string) => void;
   apply: () => void;
@@ -110,12 +112,15 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
   const [draft, setDraft] = useState<{ fieldKey: string; text: string } | null>(null);
   const handlersRef = useRef<FormulaSessionHandlers | null>(null);
   const keepEditingRef = useRef(false);
+  const pickerOpenRef = useRef(false);
 
   const begin = useCallback<FormulaEditing["begin"]>((next, handlers) => {
     handlersRef.current = handlers;
     setSession((current) => (current?.fieldKey === next.fieldKey && current.homeTableId === next.homeTableId ? current : next));
   }, []);
   const end = useCallback<FormulaEditing["end"]>((fieldKey) => {
+    // A formula applied from the bar leaves no field waiting to finish.
+    keepEditingRef.current = false;
     setSession((current) => (current?.fieldKey === fieldKey ? null : current));
   }, []);
   const insertReference = useCallback<FormulaEditing["insertReference"]>((text) => handlersRef.current?.insert(text), []);
@@ -150,8 +155,17 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
 
   const openPicker = (kind: PickerKind) => {
     keepEditingRef.current = true;
+    pickerOpenRef.current = true;
     setPickerKind(kind);
     setPickerOpen(true);
+  };
+  /** The bar's own field: typing in it writes the formula, as typing in the cell does. */
+  const barInputRef = useRef<HTMLInputElement | null>(null);
+  const editInBar = (text: string) => {
+    // The bar writes a formula: its "=" stays.
+    const next = isFormulaText(text) ? text : `=${text.replace(/^\s*/, "")}`;
+    handlersRef.current?.edit(next);
+    if (session) showDraft(session.fieldKey, next);
   };
 
   return (
@@ -159,10 +173,18 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
       {children}
       {session ? (
         <div
-          className="fixed inset-x-0 bottom-4 z-40 mx-auto grid w-[min(56rem,calc(100vw-2rem))] gap-2 rounded-xl border-2 border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-900 shadow-xl dark:border-blue-500/60 dark:bg-blue-950 dark:text-blue-100"
+          // Over a dialog (the comparable's form) too; under "Buscar valor" while it is open.
+          className={cn("fixed inset-x-0 bottom-4 mx-auto grid pointer-events-auto w-[min(56rem,calc(100vw-2rem))] gap-2 rounded-xl border-2 border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-900 shadow-xl dark:border-blue-500/60 dark:bg-blue-950 dark:text-blue-100", pickerOpen ? "z-40" : "z-[60]")}
           data-formula-bar=""
-          // The bar is used while the field keeps the focus and the caret.
-          onMouseDown={(event) => event.preventDefault()}
+          // The bar is used while the field keeps the focus and the caret; only its own text field takes it.
+          onMouseDown={(event) => {
+            if (event.target === barInputRef.current) {
+              // The field being written does not finish when the focus moves to the bar.
+              keepEditingRef.current = true;
+              return;
+            }
+            event.preventDefault();
+          }}
         >
           <div className="flex flex-wrap items-center gap-2">
             <FunctionSquare className="size-5 shrink-0" />
@@ -185,9 +207,30 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
             </div>
           </div>
           {draftText !== null ? (
-            <p className="overflow-x-auto rounded-md border border-blue-200 bg-background px-3 py-2 font-mono text-base whitespace-pre text-foreground dark:border-blue-500/40" data-formula-text="">
-              {draftText}
-            </p>
+            <input
+              ref={barInputRef}
+              aria-label="Fórmula"
+              spellCheck={false}
+              autoComplete="off"
+              className="w-full rounded-md border border-blue-200 bg-background px-3 py-2 font-mono text-base text-foreground outline-none focus:ring-2 focus:ring-blue-500 dark:border-blue-500/40"
+              data-formula-text=""
+              value={draftText}
+              onChange={(event) => editInBar(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== "Escape") return;
+                event.preventDefault();
+                keepEditingRef.current = false;
+                if (event.key === "Enter") handlersRef.current?.apply();
+                else handlersRef.current?.cancel();
+              }}
+              onBlur={(event) => {
+                const field = handlersRef.current?.input() ?? null;
+                // Back to the field, or to "Buscar valor": the formula is still being written.
+                if (event.relatedTarget === field || pickerOpenRef.current) return;
+                keepEditingRef.current = false;
+                handlersRef.current?.apply();
+              }}
+            />
           ) : null}
           {problem ? (
             <p className="rounded-md bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 dark:bg-red-950/60 dark:text-red-300" role="status" data-formula-problem="">
@@ -204,12 +247,17 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
         kind={pickerKind}
         session={session}
         open={pickerOpen && session !== null}
-        onOpenChange={setPickerOpen}
+        onOpenChange={(open) => {
+          pickerOpenRef.current = open;
+          setPickerOpen(open);
+        }}
         onPick={(text) => {
           handlersRef.current?.insert(text);
+          pickerOpenRef.current = false;
           setPickerOpen(false);
         }}
         onPickText={(text) => {
+          pickerOpenRef.current = false;
           setPickerOpen(false);
           handlersRef.current?.setText(text);
         }}
@@ -292,6 +340,14 @@ export function useFormulaField({
         lastReferenceRef.current = next.reference;
         caretRef.current = next.reference.end;
         setDraft({ ...current, text: next.text });
+      },
+      edit: (text) => {
+        const current = latestRef.current.draft;
+        if (!current) return;
+        lastReferenceRef.current = null;
+        const next = { ...current, text };
+        latestRef.current = { ...latestRef.current, draft: next };
+        setDraft(next);
       },
       setText: (text) => {
         const apply = latestRef.current.onCommit;

@@ -79,7 +79,7 @@ export type EditableConceptCallbacks = {
   /** Where the concepts live, for "Mover a…" of their ⋮ menu. */
   moveSource?: import("@/features/valuations/services/structure-transfer").ContainerAddress;
   onUpdateEverywhere?: (conceptId: string, patch: Partial<Pick<Concept, "label" | "value">>) => void;
-  onChangeRelation?: (conceptId: string, mode: ExistingConceptRelationMode) => void;
+  onChangeRelation?: (conceptId: string, mode: ExistingConceptRelationMode, sourceConceptId?: string) => void;
   onUnlink?: (conceptId: string) => void;
   onColumnPresentationChange?: (columnId: string, presentation: import("@/features/valuations/services/concept-presentation").ConceptPresentation | undefined) => void;
 };
