@@ -61,7 +61,7 @@ export function DocumentTechnicalList({
               const concept = conceptsById.get(itemRef.id);
               if (!concept || concept.enabled === false) return null;
               if (concept.type === "paragraph") {
-                return <DocumentParagraph key={itemRef.id} concept={concept} longText={false} style={conceptSpacingStyle(concept)} />;
+                return <DocumentParagraph key={itemRef.id} concept={concept} style={conceptSpacingStyle(concept)} />;
               }
               return (
                 <TechnicalConceptRow

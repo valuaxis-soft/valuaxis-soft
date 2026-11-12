@@ -15,20 +15,17 @@ export function conceptSpacingStyle(concept: Pick<Concept, "spacingBefore" | "sp
 /** A free text with no label, printed edge to edge in the width it was given. */
 export function DocumentParagraph({
   concept,
-  longText,
   className,
   style,
 }: {
   concept: Concept;
-  /** Prints at the size of the long texts around it. */
-  longText: boolean;
   className?: string;
   style?: CSSProperties;
 }) {
   const theme = useDocumentTheme();
   return (
-    <div className={cn(theme.conceptRow, longText && theme.longTextRow, className)} style={style}>
-      <p className={cn(theme.conceptValue, longText && theme.longText)}>
+    <div className={cn(theme.conceptRow, className)} style={style}>
+      <p className={theme.conceptValue}>
         <DocumentConceptValue concept={concept} fallback="—" />
       </p>
     </div>

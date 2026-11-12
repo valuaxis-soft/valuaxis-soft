@@ -9,7 +9,6 @@ import { printedImageCaptions } from "@/features/valuations/services/image-capti
 import { PAIRED_APARTADOS_CLASS_NAME, useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
 import { labelGuideColumns, resolveCellConceptGuide } from "@/features/valuations/services/concept-presentation";
-import { isLongTextList } from "@/features/valuations/services/document-long-text";
 import { apartadoContentHidden, blockContentHidden } from "@/features/valuations/services/hidden-content";
 import { MIN_ROWS_BEFORE_BREAK, MIN_ROWS_WITH_TAIL, type DocumentTableFragment } from "@/features/valuations/services/table-pagination";
 import { cn } from "@/lib/utils";
@@ -82,7 +81,6 @@ export function documentBlockFlowItems(
   const resolvedLayout = resolveContentLayout(block);
   const layoutRowsById = new Map(resolvedLayout.rows.map((r) => [r.id, r]));
   const orderedApartados = getBlockFlowApartadoOrder(block);
-  const blockLongText = isLongTextList(block.concepts);
   const apartadoHead = (subBlock: Apartado) =>
     renderApartadoHead?.(subBlock, apartadoDisplayLabel(block, orderedApartados, subBlock.id)) ?? null;
   const renderPairedApartado = (subBlock: Apartado) => {
@@ -170,7 +168,6 @@ export function documentBlockFlowItems(
             tablesById={tablesById}
             applyConceptLayout={applyConceptLayout}
             containerPresentation={block.conceptPresentation}
-            longText={blockLongText}
             tableFragment={tableFragment}
           />
         );
@@ -346,7 +343,6 @@ function DocumentContentRow({
   tablesById,
   applyConceptLayout,
   containerPresentation,
-  longText,
   tableFragment,
 }: {
   layoutRow: ContentLayoutRowV2;
@@ -356,8 +352,6 @@ function DocumentContentRow({
   tablesById: Map<string, TableContent>;
   applyConceptLayout: boolean;
   containerPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation;
-  /** The container reads as prose: its concepts print a little larger. */
-  longText: boolean;
   /** The rows to print of the row's table, when it breaks across pages. */
   tableFragment?: DocumentTableFragment;
 }) {
@@ -417,7 +411,7 @@ function DocumentContentRow({
                 const concept = conceptsById.get(itemRef.id);
                 if (!concept || concept.enabled === false) return null;
                 if (concept.type === "paragraph") {
-                  return <DocumentParagraph key={itemRef.id} concept={concept} longText={longText} style={conceptSpacingStyle(concept)} />;
+                  return <DocumentParagraph key={itemRef.id} concept={concept} style={conceptSpacingStyle(concept)} />;
                 }
                 return (
                   <DocumentConceptCell
@@ -425,7 +419,6 @@ function DocumentContentRow({
                     concept={concept}
                     applyConceptLayout={applyConceptLayout}
                     labelGuidePx={cellGuidePx}
-                    longText={longText}
                     ruled={!sharedRule}
                   />
                 );
@@ -494,13 +487,11 @@ function DocumentConceptCell({
   concept,
   applyConceptLayout,
   labelGuidePx,
-  longText,
   ruled,
 }: {
   concept: Concept;
   applyConceptLayout: boolean;
   labelGuidePx?: number;
-  longText: boolean;
   /** Carries its own hairline; false when the row draws one for all its concepts. */
   ruled: boolean;
 }) {
@@ -516,13 +507,13 @@ function DocumentConceptCell({
 
   return (
     <div
-      className={cn(theme.conceptRowGrid, theme.conceptRow, ruled && theme.conceptRule, longText && theme.longTextRow, layoutClass)}
+      className={cn(theme.conceptRowGrid, theme.conceptRow, ruled && theme.conceptRule, layoutClass)}
       style={gridStyle ? { ...layoutStyle, ...gridStyle } : layoutStyle}
     >
-      <strong className={cn(theme.conceptLabel, "text-right", longText && theme.longText)}>
+      <strong className={cn(theme.conceptLabel, "text-right")}>
         {formatConceptTitleWithColon(concept.label)}
       </strong>
-      <span className={cn(theme.conceptValue, longText && theme.longText)}>
+      <span className={theme.conceptValue}>
         <DocumentConceptValue concept={concept} fallback="—" />
       </span>
     </div>
@@ -549,7 +540,6 @@ function ApartadoContentRows({
   const conceptsById = new Map(subBlock.concepts.map((c) => [c.id, c]));
   const imagesById = new Map(subBlock.images.map((i) => [i.id, i]));
   const tablesById = new Map(subBlock.tables.map((t) => [t.id, t]));
-  const longText = isLongTextList(subBlock.concepts);
 
   return (
     <>
@@ -563,7 +553,6 @@ function ApartadoContentRows({
           tablesById={tablesById}
           applyConceptLayout={applyConceptLayout}
           containerPresentation={subBlock.conceptPresentation}
-          longText={longText}
           tableFragment={tableFragment}
         />
       ))}

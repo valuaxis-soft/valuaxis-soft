@@ -13,7 +13,6 @@ import { ensureTerrenoSection, terrenoSection } from "../src/features/valuations
 import { figureColumn, generatedTable, moneyColumn, textColumn } from "../src/features/valuations/calculation/generated-content";
 import type { Apartado, Block, Concept, ContentLayout } from "../src/features/valuations/model";
 import { formatConceptValueForDocument } from "../src/features/valuations/services/concept-value-format";
-import { isLongTextList } from "../src/features/valuations/services/document-long-text";
 // Must load after the components so client-only libraries still see no DOM at import time.
 import "./support/ssr-portal-shim";
 
@@ -168,7 +167,7 @@ test("a paragraph prints its text edge to edge, with no label and no label colum
   const technical = renderItems(block({ apartados: [apartado("obs", [data, paragraph], { presentationMode: "technical-list" })] }));
   assert.match(technical, /<p class="[^"]*">Texto corrido/);
   const prose = renderItems(block({ concepts: [concept("a", "Valor comercial", LONG), { ...paragraph, value: LONG }] }));
-  assert.equal(prose.match(/text-\[12px\] leading-\[1\.45\]/g)?.length, 3, "label and value of the concept, and the paragraph");
+  assert.doesNotMatch(prose, /text-\[12px\]/, "a long paragraph prints at the size of the rest of the document");
 
   const empty = renderItems(block({ concepts: [{ ...paragraph, value: "" }] }));
   assert.match(empty, /<p class="[^"]*">—<\/p>/);
@@ -196,27 +195,16 @@ test("the cover's assumptions are justified", () => {
   assert.match(html, /text-justify/);
 });
 
-test("a list reads as long text when its values average a hundred characters", () => {
-  assert.equal(isLongTextList([concept("a", "Valor comercial", LONG), concept("b", "Factor de edad", "Corresponderá a las diferencias en la edad de los inmuebles.")]), true);
-  assert.equal(isLongTextList([concept("a", "Niveles", "4"), concept("b", "Uso", LONG)]), false, "one long value among data does not make a text");
-  assert.equal(isLongTextList([concept("a", "Uso", LONG), concept("b", "Oculto", "4", { enabled: false }), concept("c", "Vacío", "  ")]), true, "hidden and empty concepts do not count");
-  assert.equal(isLongTextList([]), false);
-  assert.equal(isLongTextList([concept("a", "Vacío", "")]), false);
-});
-
-test("definitions and declarations print a little larger; data lists keep their size", () => {
+test("long texts print at the same size and line spacing as the rest of the document (video 5.6, 29:57)", () => {
+  // Definitions and declarations used to print at 12 px with more room: one size for the whole body now.
   const definitions = renderItems(block({ apartados: [apartado("def", [concept("a", "Valor comercial", LONG), concept("b", "Enfoque de costos", LONG)])] }));
-  // Label and value of both concepts.
-  assert.equal(definitions.match(/text-\[12px\] leading-\[1\.45\]/g)?.length, 4);
-  assert.doesNotMatch(definitions, /text-\[11px\] (?:font-semibold )?text-\[#(?:1a1a1a|333333)\]/, "the larger size replaces the standard one");
-  assert.match(definitions, /py-\[3px\]/);
-
   const data = renderItems(block({ apartados: [apartado("datos", [concept("a", "Niveles", "4"), concept("b", "Clase", "C")])] }));
-  assert.doesNotMatch(data, /leading-\[1\.45\]|py-\[3px\]/);
-
-  // Concepts placed directly in the block follow the same rule.
   const declarations = renderItems(block({ concepts: [concept("a", "8", LONG), concept("b", "10", LONG)] }));
-  assert.equal(declarations.match(/text-\[12px\] leading-\[1\.45\]/g)?.length, 4);
+  const classesOf = (html: string) => [...html.matchAll(/<(strong|span) class="([^"]*)"/g)].map((match) => match[2]);
+  for (const html of [definitions, declarations]) {
+    assert.doesNotMatch(html, /text-\[12px\]|leading-\[1\.45\]|py-\[3px\]/);
+    assert.deepEqual(new Set(classesOf(html)), new Set(classesOf(data)), "label and value carry the same classes as a data list");
+  }
 });
 
 /* ------------------------------------------------------------------ */
@@ -242,7 +230,7 @@ test("an apartado is one flow item per row, so a long one continues on the next 
   assert.doesNotMatch(html(first.node), /Enfoque de costos/);
   assert.match(html(second.node), /^<div><div class="mt-\[1px\] grid[\s\S]*Enfoque de costos/, "a further row is flush with the apartado's title");
   assert.doesNotMatch(html(second.node), /Apartado def/, "the title prints once");
-  assert.match(html(third.node), /text-\[12px\] leading-\[1\.45\]/, "every row follows the apartado's text size");
+  assert.match(html(third.node), /text-\[11px\]/, "every row prints at the body's size");
 
   // The page break of the apartado stays on the item that carries its title.
   const broken = documentBlockFlowItems(block({ apartados: [{ ...definitions, startOnNewPage: true }] }));
