@@ -64,7 +64,7 @@ import {
 import { contentMoveRulesForSection } from "@/features/valuations/services/content-move-rules";
 import { flattenSectionConcepts } from "./model/section-content";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
-import { setColumnPresentation, clearColumnPresentation, clearConceptCellPresentations } from "@/features/valuations/services/concept-presentation";
+import { setColumnPresentation, clearColumnPresentation, clearConceptCellPresentations, setConceptCellsPresentation } from "@/features/valuations/services/concept-presentation";
 import {
   SortableContext,
   useSortable,
@@ -114,9 +114,8 @@ import { canRemoveSection, SECTION_TITLE_MAX } from "@/features/valuations/servi
 import { blockContentHidden } from "@/features/valuations/services/hidden-content";
 import { pageBreakPatch, resolvePageBreak, resolvePageOrientation } from "@/features/valuations/services/document-structure";
 import { isNumericConcept, supportsValueFormat } from "@/features/valuations/services/concept-value-format";
-import { setContentRowTagStyle } from "@/features/valuations/services/content-layout";
+import { setConceptRowsTagStyle } from "@/features/valuations/services/content-layout";
 import { applyTextMark, type TextMark } from "@/features/valuations/services/text-marks";
-import type { ContentRowTagStyle } from "@/features/valuations/model";
 
 const PRE_MARKET_EDITOR_SECTION_KEYS = new Set([
   "DATOS_GENERALES",
@@ -700,6 +699,52 @@ function SortableBlockEditor(props: {
     </Button>
   );
 
+  // "Agregar" and "Subbloque": the first line of the block, with "Seleccionar conceptos" on the right.
+  const blockActions = (
+    <>
+      <ActionStrip
+        capabilities={blockCapabilities}
+        locks={{ add: locks.add, subblock: locks.subblock }}
+        readOnly={readOnly}
+        conceptControl={
+          <ConceptCreationControl
+            conceptReferences={conceptReferences}
+            conceptSearch={conceptSearch}
+            readOnly={readOnly}
+            triggerClassName="h-10 w-full justify-start text-sm"
+            triggerVariant="ghost"
+            onAddConcept={(type) =>
+              props.onAddConcept(section.id, block.id, type)
+            }
+            onAddConceptFromExisting={(concept, mode) =>
+              props.onAddConceptFromExisting(
+                section.id,
+                block.id,
+                concept,
+                mode,
+              )
+            }
+            onConceptSearchChange={setConceptSearch}
+          />
+        }
+        onAddImage={(event) =>
+          props.onAddImage(section.id, block.id, event)
+        }
+        onAddApartado={() =>
+          props.onAddApartado(section.id, block.id)
+        }
+        onAddTable={() =>
+          props.onAddTable(section.id, block.id)
+        }
+        onAddHomologationTable={() =>
+          props.onAddHomologationTable(section.id, block.id)
+        }
+        subBlockLabel={subBlockButtonLabel}
+      />
+      {!isCaratula ? <PasteApartadoButton section={section} block={block} /> : null}
+    </>
+  );
+
   return (
     <BlockCard
       cardRef={setNodeRef}
@@ -805,46 +850,10 @@ function SortableBlockEditor(props: {
           </Field>
         </div> : null}
 
-          <ActionStrip
-              capabilities={blockCapabilities}
-              locks={{ add: locks.add, subblock: locks.subblock }}
-              readOnly={readOnly}
-              conceptControl={
-                <ConceptCreationControl
-                  conceptReferences={conceptReferences}
-                  conceptSearch={conceptSearch}
-                  readOnly={readOnly}
-                  triggerClassName="w-full justify-start"
-                  triggerVariant="ghost"
-                  onAddConcept={(type) =>
-                    props.onAddConcept(section.id, block.id, type)
-                  }
-                  onAddConceptFromExisting={(concept, mode) =>
-                    props.onAddConceptFromExisting(
-                      section.id,
-                      block.id,
-                      concept,
-                      mode,
-                    )
-                  }
-                  onConceptSearchChange={setConceptSearch}
-                />
-              }
-              onAddImage={(event) =>
-                props.onAddImage(section.id, block.id, event)
-              }
-              onAddApartado={() =>
-                props.onAddApartado(section.id, block.id)
-              }
-              onAddTable={() =>
-                props.onAddTable(section.id, block.id)
-              }
-              onAddHomologationTable={() =>
-                props.onAddHomologationTable(section.id, block.id)
-              }
-              subBlockLabel={subBlockButtonLabel}
-            />
-          {!isCaratula ? <PasteApartadoButton section={section} block={block} /> : null}
+        {/* The fixed texts of the carátula (supuestos, conclusión) have no concepts to choose: their first line is "Agregar" alone. */}
+        {caratulaBlockKind === "assumptions" || caratulaBlockKind === "conclusion" ? (
+          <div className="flex flex-wrap items-center gap-2 border-b border-dashed border-border pb-2">{blockActions}</div>
+        ) : null}
         {caratulaBlockKind === "assumptions" ? (
           <LongTextConceptEditor
             concepts={block.concepts}
@@ -877,16 +886,20 @@ function SortableBlockEditor(props: {
         ) : (
           // A draft for a descriptive field goes with the title and the tables of its block or apartado.
           <DraftScopeProvider title={block.title} tables={block.tables}>
-          {/* The block's own concepts chosen at once: one "Espacio", or "Mover a…" together. */}
+          {/* The block's own concepts chosen at once; "Agregar" and "Subbloque" on the same first line. */}
           <ConceptSelectionScope
             concepts={block.concepts}
             readOnly={readOnly}
-            onApplySpacing={(conceptIds, spacingAfter) => props.onUpdateConcepts(section.id, block.id, conceptIds, { spacingAfter })}
+            actions={blockActions}
+            onApplySpacing={(conceptIds, field, lines) => props.onUpdateConcepts(section.id, block.id, conceptIds, { [field]: lines })}
+            onApplyIndent={(conceptIds, presentation) =>
+              props.onUpdateBlock(section.id, block.id, { contentLayout: setConceptCellsPresentation(resolveContentLayout(block), new Set(conceptIds), presentation) })
+            }
             onApplyValueFormat={(conceptIds, valueFormat, customUnit) =>
               props.onUpdateConcepts(section.id, block.id, formattableConceptIds(block.concepts, conceptIds), valueFormatPatch(valueFormat, customUnit))
             }
             onApplyTagStyle={(conceptIds, tagStyle) =>
-              props.onUpdateBlock(section.id, block.id, { contentLayout: layoutWithTagStyle(resolveContentLayout(block), conceptIds, tagStyle) })
+              props.onUpdateBlock(section.id, block.id, { contentLayout: setConceptRowsTagStyle(resolveContentLayout(block), conceptIds, tagStyle) })
             }
             onApplyTextMark={(conceptIds, mark) => props.onUpdateConcepts(section.id, block.id, conceptIds, textMarkPatch(mark))}
             onDuplicate={(conceptIds) => props.onDuplicateConcepts(section.id, block.id, conceptIds)}
@@ -981,16 +994,50 @@ function SortableBlockEditor(props: {
                 canMoveDown={blockFlowV2 ? canMoveBlockFlowV2ApartadoOneStep(blockFlowV2, subBlock.id, "down") : false}
                 capabilities={apartadoCapabilities}
               >
-                {/* Several concepts of the apartado chosen at once: one "Espacio", or "Mover a…" together. */}
+                {/* Several concepts of the subbloque chosen at once; its "Agregar" on the same first line, on the left. */}
                 <ConceptSelectionScope
                   concepts={subBlock.concepts}
                   readOnly={readOnly}
-                  onApplySpacing={(conceptIds, spacingAfter) => props.onUpdateConcepts(section.id, block.id, conceptIds, { spacingAfter }, subBlock.id)}
+                  actions={
+                    <ContentCreationControl
+                        capabilities={apartadoCapabilities}
+                        conceptControl={
+                          <ConceptCreationControl
+                            conceptReferences={conceptReferences}
+                            conceptSearch={conceptSearch}
+                            readOnly={readOnly}
+                            triggerClassName="h-10 w-full justify-start text-sm"
+                            triggerVariant="ghost"
+                            onAddConcept={(type) =>
+                              props.onAddSubConcept(section.id, block.id, subBlock.id, type)
+                            }
+                            onAddConceptFromExisting={(concept, mode) =>
+                              props.onAddConceptFromExisting(section.id, block.id, concept, mode, subBlock.id)
+                            }
+                            onConceptSearchChange={setConceptSearch}
+                          />
+                        }
+                        readOnly={readOnly}
+                        onAddImage={(event) =>
+                          props.onAddImage(section.id, block.id, event, subBlock.id)
+                        }
+                        onAddTable={() =>
+                          props.onAddTable(section.id, block.id, subBlock.id)
+                        }
+                        onAddHomologationTable={() =>
+                          props.onAddHomologationTable(section.id, block.id, subBlock.id)
+                        }
+                      />
+                  }
+                  onApplySpacing={(conceptIds, field, lines) => props.onUpdateConcepts(section.id, block.id, conceptIds, { [field]: lines }, subBlock.id)}
+                  onApplyIndent={(conceptIds, presentation) =>
+                    props.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: setConceptCellsPresentation(resolveContentLayout(subBlock), new Set(conceptIds), presentation) })
+                  }
                   onApplyValueFormat={(conceptIds, valueFormat, customUnit) =>
                     props.onUpdateConcepts(section.id, block.id, formattableConceptIds(subBlock.concepts, conceptIds), valueFormatPatch(valueFormat, customUnit), subBlock.id)
                   }
                   onApplyTagStyle={(conceptIds, tagStyle) =>
-                    props.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: layoutWithTagStyle(resolveContentLayout(subBlock), conceptIds, tagStyle) })
+                    props.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: setConceptRowsTagStyle(resolveContentLayout(subBlock), conceptIds, tagStyle) })
                   }
                   onApplyTextMark={(conceptIds, mark) => props.onUpdateConcepts(section.id, block.id, conceptIds, textMarkPatch(mark), subBlock.id)}
                   onDuplicate={(conceptIds) => props.onDuplicateConcepts(section.id, block.id, conceptIds, subBlock.id)}
@@ -1003,36 +1050,6 @@ function SortableBlockEditor(props: {
                     />
                   )}
                 >
-                <ContentCreationControl
-                  capabilities={apartadoCapabilities}
-                  conceptControl={
-                    <ConceptCreationControl
-                      conceptReferences={conceptReferences}
-                      conceptSearch={conceptSearch}
-                      readOnly={readOnly}
-                      triggerClassName="w-full justify-start"
-                      triggerVariant="ghost"
-                      onAddConcept={(type) =>
-                        props.onAddSubConcept(section.id, block.id, subBlock.id, type)
-                      }
-                      onAddConceptFromExisting={(concept, mode) =>
-                        props.onAddConceptFromExisting(section.id, block.id, concept, mode, subBlock.id)
-                      }
-                      onConceptSearchChange={setConceptSearch}
-                    />
-                  }
-                  readOnly={readOnly}
-                  onAddImage={(event) =>
-                    props.onAddImage(section.id, block.id, event, subBlock.id)
-                  }
-                  onAddTable={() =>
-                    props.onAddTable(section.id, block.id, subBlock.id)
-                  }
-                  onAddHomologationTable={() =>
-                    props.onAddHomologationTable(section.id, block.id, subBlock.id)
-                  }
-                />
-
                 <DraftScopeProvider title={subBlock.title} tables={subBlock.tables}>
                 <EditableContentLayout
                   container={subBlock}
@@ -1122,14 +1139,6 @@ function SortableBlockEditor(props: {
 function formattableConceptIds(concepts: Concept[], conceptIds: string[]) {
   const chosen = new Set(conceptIds);
   return concepts.filter((concept) => chosen.has(concept.id) && supportsValueFormat(concept)).map((concept) => concept.id);
-}
-
-/** The layout with the rows that hold any of the concepts printed in the style ("Renglón" of the selection). */
-function layoutWithTagStyle(layout: ReturnType<typeof resolveContentLayout>, conceptIds: string[], tagStyle: ContentRowTagStyle | undefined) {
-  const chosen = new Set(conceptIds);
-  return layout.rows
-    .filter((row) => row.columns.some((column) => column.items[0]?.type === "concept" && chosen.has(column.items[0].id)))
-    .reduce((next, row) => setContentRowTagStyle(next, row.id, tagStyle), layout);
 }
 
 /** N, K or S on the whole value of each chosen text; a date, a number or a phone is left as it is. */

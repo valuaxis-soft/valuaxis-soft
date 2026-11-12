@@ -4,7 +4,7 @@ import type { Apartado, Block, Concept, ContentRowTagStyle } from "@/features/va
 import { withConceptLabel } from "@/features/valuations/calculation/generated-table-layout";
 import { GENERATED_CONCEPT_HINT } from "@/features/valuations/services/concept-context-menu";
 import { supportsValueFormat } from "@/features/valuations/services/concept-value-format";
-import { resolveContentLayout, setContentRowTagStyle } from "@/features/valuations/services/content-layout";
+import { resolveContentLayout, setConceptRowsTagStyle } from "@/features/valuations/services/content-layout";
 import { CommitCell } from "../calculation/commit-cell";
 import { ConceptContextMenu } from "./concept-context-menu";
 import { ConceptOptionsMenu } from "./concept-editor";
@@ -18,12 +18,7 @@ const spacingOf = (patch: Partial<Concept>): Partial<Concept> => ({
 
 /** The layout of a container with the rows that hold any of the concepts printed in the style ("Renglón"). */
 function withTagStyle<T extends Block | Apartado>(container: T, conceptIds: string[], tagStyle: ContentRowTagStyle | undefined): T {
-  const chosen = new Set(conceptIds);
-  const layout = resolveContentLayout(container);
-  const contentLayout = layout.rows
-    .filter((row) => row.columns.some((column) => column.items[0]?.type === "concept" && chosen.has(column.items[0].id)))
-    .reduce((next, row) => setContentRowTagStyle(next, row.id, tagStyle), layout);
-  return { ...container, contentLayout };
+  return { ...container, contentLayout: setConceptRowsTagStyle(resolveContentLayout(container), conceptIds, tagStyle) };
 }
 
 /**
@@ -78,7 +73,7 @@ export function GeneratedConcepts(props: { block: Block; readOnly: boolean; onCh
             concepts={container.concepts}
             readOnly={readOnly}
             lockedReason={GENERATED_CONCEPT_HINT}
-            onApplySpacing={(ids, spacingAfter) => changeConcepts(ids, { spacingAfter })}
+            onApplySpacing={(ids, field, lines) => changeConcepts(ids, { [field]: lines })}
             onApplyTagStyle={(ids, tagStyle) => applyTagStyle(apartado, ids, tagStyle)}
           >
             {container.concepts.map((concept) => {
@@ -120,7 +115,6 @@ export function GeneratedConcepts(props: { block: Block; readOnly: boolean; onCh
                     takesTextMarks: false,
                     hasValue: Boolean(concept.value.trim()),
                     valueFormat: supportsValueFormat(concept) ? "enabled" : "unsupported",
-                    paragraph: concept.type === "paragraph",
                     date: concept.type === "date",
                     hasLineBreaks: false,
                     canDuplicate: false,

@@ -1,12 +1,15 @@
 "use client";
 
 /**
- * Deleting always asks first, the same small dialog for a concept, a
- * subbloque, a bloque or a section, and what was deleted comes back with
- * "Deshacer" (the editor's history keeps it). The workspace mounts one
- * provider; every trash can asks it to confirm before deleting.
+ * Deleting asks first, the same small dialog for a subbloque, a bloque, a
+ * section, a table, an image or more than three concepts at once, and what
+ * was deleted comes back with "Deshacer" (the editor's history keeps it).
+ * One concept, or up to three, goes at once with a notice that offers
+ * "Deshacer": asking every time was tedious (Álvaro, video 5.6, 11 nov 2026).
+ * The workspace mounts one provider; every trash can goes through it.
  */
 import { createContext, useContext, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 
 import {
   AlertDialog,
@@ -63,21 +66,54 @@ type DeleteRequest = DeleteConfirmation & { onConfirm: () => void };
 
 type ConfirmDelete = (request: DeleteRequest) => void;
 
-const DeleteConfirmContext = createContext<ConfirmDelete | null>(null);
+const DeleteConfirmContext = createContext<{ confirm: ConfirmDelete; undo?: () => void } | null>(null);
 
 /**
  * Asks before deleting. Without a provider (a component rendered on its own)
  * the deletion goes through at once, so nothing is blocked.
  */
 export function useConfirmDelete(): ConfirmDelete {
-  const confirm = useContext(DeleteConfirmContext);
-  return confirm ?? ((request) => request.onConfirm());
+  const context = useContext(DeleteConfirmContext);
+  return context?.confirm ?? ((request) => request.onConfirm());
 }
 
-export function DeleteConfirmProvider({ children }: { children: ReactNode }) {
+/** Concepts deleted at once that still ask first: more than three. */
+export const CONCEPTS_DELETED_WITHOUT_ASKING = 3;
+
+/** Whether deleting this many concepts at once asks first. */
+export function conceptDeletionAsksFirst(count: number) {
+  return count > CONCEPTS_DELETED_WITHOUT_ASKING;
+}
+
+type DeleteConcepts = (request: { count: number; name?: string; onDelete: () => void }) => void;
+
+/**
+ * Deletes concepts: up to three go at once, with a notice that offers
+ * "Deshacer"; more ask first with the same dialog as the other deletions.
+ */
+export function useDeleteConcepts(): DeleteConcepts {
+  const context = useContext(DeleteConfirmContext);
+  return ({ count, name, onDelete }) => {
+    if (count < 1) return;
+    if (conceptDeletionAsksFirst(count)) {
+      const confirm = context?.confirm ?? ((request: DeleteRequest) => request.onConfirm());
+      confirm({ ...deleteConfirmation("concepts", undefined, count), onConfirm: onDelete });
+      return;
+    }
+    onDelete();
+    if (!context) return;
+    const label = name?.trim();
+    toast(count === 1 ? (label ? `Concepto «${label}» eliminado` : "Concepto eliminado") : `${count} conceptos eliminados`, {
+      description: "Se puede deshacer con «Deshacer» o Ctrl+Z (⌘Z en Mac).",
+      action: context.undo ? { label: "Deshacer", onClick: context.undo } : undefined,
+    });
+  };
+}
+
+export function DeleteConfirmProvider({ children, onUndo }: { children: ReactNode; /** The editor's "Deshacer", offered by the notice of a concept deleted without asking. */ onUndo?: () => void }) {
   const [request, setRequest] = useState<DeleteRequest | null>(null);
   return (
-    <DeleteConfirmContext.Provider value={setRequest}>
+    <DeleteConfirmContext.Provider value={{ confirm: setRequest, undo: onUndo }}>
       {children}
       <DeleteConfirmDialog
         request={request}

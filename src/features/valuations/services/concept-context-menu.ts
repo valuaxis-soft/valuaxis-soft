@@ -38,7 +38,6 @@ export const NO_TEXT_MARKS_HINT = "Solo los textos llevan negrita, cursiva o sub
 export const EMPTY_VALUE_HINT = "El concepto no tiene dato todavía.";
 export const NO_VALUE_FORMAT_HINT = "Las fechas, los teléfonos y los párrafos no llevan formato del valor.";
 export const SOURCE_FORMAT_HINT = "Lo toma del concepto ligado: cámbialo en el original.";
-export const PARAGRAPH_TYPE_HINT = "Un párrafo no cambia de tipo de dato.";
 export const NOT_A_DATE_HINT = "Solo las fechas tienen formato de fecha.";
 export const NO_LINE_BREAKS_HINT = "El dato no tiene saltos de línea.";
 export const NO_ROW_STYLE_HINT = "El renglón se elige desde el bloque o subbloque.";
@@ -57,7 +56,6 @@ export type ConceptMenuTarget = {
   hasValue: boolean;
   /** "Formato del valor": offered, owned by a linked concept, or not for this type. */
   valueFormat: "enabled" | "source-owned" | "unsupported";
-  paragraph: boolean;
   date: boolean;
   hasLineBreaks: boolean;
   /** The container prints its rows as columns or labels ("Renglón"). */
@@ -94,7 +92,7 @@ export function conceptContextMenu(target: ConceptMenuTarget): ConceptMenuGroup[
     ],
     [
       own({ action: "value-format", label: "Formato del valor", submenu: true }, target.valueFormat === "enabled", valueFormatHint),
-      own({ action: "data-type", label: "Tipo de dato", submenu: true }, !target.paragraph, PARAGRAPH_TYPE_HINT),
+      own({ action: "data-type", label: "Tipo de dato", submenu: true }),
       own({ action: "date-format", label: "Formato de fecha", submenu: true }, target.date, NOT_A_DATE_HINT),
       presentation({ action: "row-style", label: "Renglón", submenu: true }, target.canRowStyle, NO_ROW_STYLE_HINT),
       presentation({ action: "spacing-before", label: "Espacio antes", submenu: true }),

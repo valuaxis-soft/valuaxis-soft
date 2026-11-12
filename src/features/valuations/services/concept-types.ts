@@ -9,7 +9,11 @@ import type { Concept, ConceptCreationKind, ConceptType } from "../model";
 
 export type ConceptTypeOption = { kind: ConceptCreationKind; label: string };
 
-/** What "+ Concepto" offers, in this order. */
+/**
+ * What "+ Concepto" offers, in this order, and what "Tipo de dato" of the ⋮
+ * and right-click menus changes a concept to: every type, the paragraph too
+ * (a paragraph inserted by mistake turns into a text, and back).
+ */
 export const CONCEPT_CREATION_OPTIONS: readonly ConceptTypeOption[] = [
   { kind: "text", label: "Texto" },
   { kind: "longText", label: "Texto largo" },
@@ -25,8 +29,6 @@ export const CONCEPT_CREATION_OPTIONS: readonly ConceptTypeOption[] = [
   { kind: "list", label: "Lista" },
 ];
 
-/** The types a concept can change to from its ⋮ menu: all but the paragraph, which has no label. */
-export const CONCEPT_DATA_TYPE_OPTIONS: readonly ConceptTypeOption[] = CONCEPT_CREATION_OPTIONS.filter((option) => option.kind !== "paragraph");
 
 const TYPE_LABELS: Record<ConceptType, string> = {
   text: "Texto",

@@ -22,7 +22,7 @@ import {
   type ConceptMenuItem,
   type ConceptMenuTarget,
 } from "@/features/valuations/services/concept-context-menu";
-import { CONCEPT_DATA_TYPE_OPTIONS, conceptDataTypePatch, conceptDataTypeValue } from "@/features/valuations/services/concept-types";
+import { CONCEPT_CREATION_OPTIONS, conceptDataTypePatch, conceptDataTypeValue } from "@/features/valuations/services/concept-types";
 import {
   NUMERIC_VALUE_FORMAT_OPTIONS,
   resolveConceptValueFormat,
@@ -33,7 +33,7 @@ import type { TextMark } from "@/features/valuations/services/text-marks";
 import { findCustomUnit } from "@/features/firm/custom-units";
 import { TAG_STYLE_CHOICES, useConceptContainerActions } from "./concept-selection";
 import { useCustomUnits } from "./custom-units-context";
-import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
+import { useDeleteConcepts } from "./delete-confirm";
 import { MoveConceptPicker } from "./structure-transfer-actions";
 import { firmUnitOptionValue } from "./value-format-select";
 
@@ -71,7 +71,7 @@ function keepsBrowserMenu(event: MouseEvent<HTMLDivElement>) {
 /**
  * The right-click menu of a concept, around its row: the actions of its ⋮
  * menu and of "Seleccionar conceptos" (N/K/S, formato del valor, tipo de
- * dato, renglón, espacios, duplicar, mover, eliminar asking first), with what
+ * dato, renglón, espacios, duplicar, mover, eliminar), with what
  * cannot apply disabled and explained, the same in every section and in the
  * blocks the calculation writes.
  */
@@ -104,7 +104,7 @@ export function ConceptContextMenu({
   onRemove?: () => void;
 }) {
   const container = useConceptContainerActions();
-  const confirmDelete = useConfirmDelete();
+  const deleteConcepts = useDeleteConcepts();
   const { units: firmUnits } = useCustomUnits();
   const [moving, setMoving] = useState(false);
   const groups = conceptContextMenu({
@@ -128,8 +128,8 @@ export function ConceptContextMenu({
       case "move-to": setMoving(true); return;
       case "select": container?.startSelection(concept.id); return;
       case "delete":
-        // The same dialog as the trash can of the ⋮ menu; the concept comes back with "Deshacer".
-        if (onRemove) confirmDelete({ ...deleteConfirmation("concept", name), onConfirm: onRemove });
+        // As the trash can of the ⋮ menu: one concept goes at once and comes back with "Deshacer".
+        if (onRemove) deleteConcepts({ count: 1, name, onDelete: onRemove });
         return;
       default:
         return;
@@ -160,7 +160,7 @@ export function ConceptContextMenu({
       case "data-type":
         return (
           <ContextMenuRadioGroup value={conceptDataTypeValue(concept)}>
-            {CONCEPT_DATA_TYPE_OPTIONS.map((option) => (
+            {CONCEPT_CREATION_OPTIONS.map((option) => (
               <ContextMenuRadioItem key={option.kind} value={option.kind} onClick={() => onPatch(conceptDataTypePatch(concept, option.kind))}>
                 {option.label}
               </ContextMenuRadioItem>

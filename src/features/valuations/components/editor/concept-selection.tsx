@@ -1,14 +1,18 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { CopyPlus, Hash, ListChecks, Minus, MoveRight, Plus, Trash2, X } from "lucide-react";
+import { AlignHorizontalDistributeCenter, Check, CopyPlus, Hash, ListChecks, Minus, MoveRight, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Concept, ConceptValueFormat, ContentRowTagStyle } from "@/features/valuations/model";
+import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import type { TextMark } from "@/features/valuations/services/text-marks";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { ValueFormatSelect } from "./value-format-select";
+import { IndentOffsetControl } from "./indent-offset-control";
+import { useDeleteConcepts } from "./delete-confirm";
 
 const TAG_STYLE_OPTIONS: Array<{ value: ContentRowTagStyle | ""; label: string }> = [
   { value: "", label: "Columnas" },
@@ -21,14 +25,20 @@ const TEXT_MARKS: Array<{ mark: TextMark; letter: string; title: string; classNa
   { mark: "italic", letter: "K", title: "Cursiva", className: "italic" },
   { mark: "underline", letter: "S", title: "Subrayado", className: "underline" },
 ];
-import { ValueFormatSelect } from "./value-format-select";
-import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
+
+/** The two spacings of a concept the selection sets: blank lines before and after it. */
+export type SpacingField = "spacingBefore" | "spacingAfter";
+
+/** Why "Seleccionar conceptos" is disabled in a block or subbloque with no concept yet. */
+export const NO_CONCEPTS_TO_SELECT = "Todavía no hay conceptos aquí: agrega uno con «Agregar» para seleccionarlo.";
 
 /**
- * Several concepts of one block or apartado chosen at once, to give them
- * the same "Espacio" or "Formato del valor" in a single step, to duplicate
- * or delete them together, or to move them elsewhere together.
- * The scope owns the choice; the rows read it to show their checkbox.
+ * Several concepts of one block or subbloque chosen at once, to give them
+ * the same spacing, indentation, format or row style in a single step, to
+ * duplicate or delete them together, or to move them elsewhere together.
+ * It is where those settings live: the rows and the concepts do not repeat
+ * them on hover. The scope owns the choice; the rows read it to show their
+ * checkbox.
  */
 type ConceptSelection = {
   selected: ReadonlySet<string>;
@@ -79,9 +89,99 @@ export function ConceptSelectionCheckbox({ conceptId, label }: { conceptId: stri
 }
 
 /** The spacing of the chosen concepts when they all share one; null when they differ. */
-export function commonSpacingAfter(concepts: Array<Pick<Concept, "spacingAfter">>): number | null {
-  const values = new Set(concepts.map((concept) => concept.spacingAfter ?? 0));
+export function commonSpacing(concepts: Array<Pick<Concept, SpacingField>>, field: SpacingField): number | null {
+  const values = new Set(concepts.map((concept) => concept[field] ?? 0));
   return values.size === 1 ? [...values][0] : null;
+}
+
+/** "Espacio antes" or "Espacio después" of the chosen concepts: − the number +. */
+function SelectionSpacing({ label, field, chosen, onApply }: { label: string; field: SpacingField; chosen: Concept[]; onApply: (field: SpacingField, lines: number) => void }) {
+  const spacing = commonSpacing(chosen, field);
+  const lowered = label.toLowerCase();
+  return (
+    <span className="flex items-center gap-0.5" data-selection-spacing={field}>
+      <span className="text-muted-foreground">{label}</span>
+      <Button
+        type="button"
+        size="icon-xs"
+        variant="ghost"
+        aria-label={`Disminuir ${lowered} de los seleccionados`}
+        disabled={!chosen.length || (spacing ?? 0) <= 0}
+        onClick={() => onApply(field, Math.max(0, (spacing ?? 0) - 1))}
+      >
+        <Minus />
+      </Button>
+      <span className="min-w-[1.5rem] text-center tabular-nums" title={spacing === null ? "Los seleccionados tienen espacios distintos" : undefined}>
+        {chosen.length ? spacing ?? "—" : "—"}
+      </span>
+      <Button
+        type="button"
+        size="icon-xs"
+        variant="ghost"
+        aria-label={`Aumentar ${lowered} de los seleccionados`}
+        disabled={!chosen.length}
+        onClick={() => onApply(field, (spacing ?? 0) + 1)}
+      >
+        <Plus />
+      </Button>
+    </span>
+  );
+}
+
+/** "Sangría" of the chosen concepts: the default one, or the same adjustment for all of them. */
+function SelectionIndent({ disabled, onApply }: { disabled: boolean; onApply: (presentation: ConceptPresentation | undefined) => void }) {
+  const [offset, setOffset] = useState<number | null>(null);
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button type="button" size="xs" variant="outline" disabled={disabled} title="Dar la misma sangría a los seleccionados">
+            <AlignHorizontalDistributeCenter data-icon="inline-start" />
+            Sangría
+          </Button>
+        }
+      />
+      <PopoverContent align="start" className="w-64 p-3">
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Sangría de los seleccionados</p>
+          <Button
+            type="button"
+            size="sm"
+            variant={offset === null ? "default" : "outline"}
+            className="w-full justify-start text-xs"
+            onClick={() => {
+              setOffset(null);
+              onApply(undefined);
+            }}
+          >
+            Predeterminada
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={offset === null ? "outline" : "default"}
+            className="w-full justify-start text-xs"
+            onClick={() => {
+              setOffset(0);
+              onApply({ mode: "custom", labelGuideOffsetPx: 0 });
+            }}
+          >
+            Personalizada
+          </Button>
+          {offset !== null ? (
+            <IndentOffsetControl
+              value={offset}
+              disabled={disabled}
+              onChange={(next) => {
+                setOffset(next);
+                onApply({ mode: "custom", labelGuideOffsetPx: next });
+              }}
+            />
+          ) : null}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 /** "Formato del valor" of the chosen concepts, applied to all of them at once. */
@@ -115,10 +215,13 @@ function SelectionValueFormat({ disabled, onApply }: { disabled: boolean; onAppl
   );
 }
 
+const separator = <span className="mx-1 h-4 border-l" aria-hidden="true" />;
+
 export function ConceptSelectionScope({
   concepts,
   readOnly,
   onApplySpacing,
+  onApplyIndent,
   onApplyTagStyle,
   onApplyTextMark,
   onApplyValueFormat,
@@ -131,8 +234,10 @@ export function ConceptSelectionScope({
 }: {
   concepts: Concept[];
   readOnly: boolean;
-  /** Gives every chosen concept the spacing, in one update. */
-  onApplySpacing: (conceptIds: string[], spacingAfter: number) => void;
+  /** Gives every chosen concept the blank lines before or after it, in one update. */
+  onApplySpacing: (conceptIds: string[], field: SpacingField, lines: number) => void;
+  /** Gives the cells of every chosen concept the same "Sangría" (undefined: the default), in one update. */
+  onApplyIndent?: (conceptIds: string[], presentation: ConceptPresentation | undefined) => void;
   /** Prints the rows of the chosen concepts as columns or as labels ("Renglón"), in one update. */
   onApplyTagStyle?: (conceptIds: string[], tagStyle: ContentRowTagStyle | undefined) => void;
   /** Bold, italic or underline on the whole value of every chosen text, in one update. */
@@ -141,7 +246,7 @@ export function ConceptSelectionScope({
   onApplyValueFormat?: (conceptIds: string[], valueFormat: ConceptValueFormat, customUnit?: string) => void;
   /** A copy of each chosen concept after it, in one update. */
   onDuplicate?: (conceptIds: string[]) => void;
-  /** Deletes the chosen concepts, in one update; asked first. */
+  /** Deletes the chosen concepts, in one update; more than three ask first. */
   onRemove?: (conceptIds: string[]) => void;
   /** The control that moves the chosen concepts ("Mover a…"); `done` ends the selection. */
   renderMove?: (conceptIds: string[], done: () => void) => ReactNode;
@@ -151,18 +256,23 @@ export function ConceptSelectionScope({
    * so the bar has the same controls in every block.
    */
   lockedReason?: string;
-  /** The creation controls of the container, printed on the same line as the selection. */
+  /**
+   * The creation controls of the container ("Agregar", "Subbloque"…): the
+   * first line of the block or subbloque, on the left, with "Seleccionar
+   * conceptos" on the right and a line under them that sets them apart from
+   * the content.
+   */
   actions?: ReactNode;
   children?: ReactNode;
 }) {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const confirmDelete = useConfirmDelete();
+  const deleteConcepts = useDeleteConcepts();
   // Concepts removed meanwhile drop out of the choice.
   const conceptIds = new Set(concepts.map((concept) => concept.id));
   const chosen = concepts.filter((concept) => selected.has(concept.id));
   const chosenIds = chosen.map((concept) => concept.id);
-  const spacing = commonSpacingAfter(chosen);
+  const active = selecting && !readOnly && concepts.length > 0;
 
   const toggle = (conceptId: string) => setSelected((current) => {
     const next = new Set(current);
@@ -184,14 +294,39 @@ export function ConceptSelectionScope({
       {label}
     </Button>
   ) : null;
-  const apply = (spacingAfter: number) => {
+  const applySpacing = (field: SpacingField, lines: number) => {
     if (!chosen.length) return;
-    onApplySpacing(chosenIds, Math.max(0, spacingAfter));
+    onApplySpacing(chosenIds, field, Math.max(0, lines));
   };
 
-  // Every container with a concept offers the selection: one concept can be moved, duplicated or deleted from it too.
-  const toolbar = readOnly || concepts.length < 1 ? null : selecting ? (
-    <div className="flex flex-wrap items-center gap-1 rounded-md border border-primary/40 bg-primary/5 px-2 py-1 text-xs" data-concept-selection>
+  // Every block and subbloque offers the selection, also with no concept yet (disabled, saying why).
+  const selectButton = readOnly ? null : (
+    <Button
+      type="button"
+      size="sm"
+      variant={active ? "secondary" : "ghost"}
+      className="ml-auto"
+      aria-pressed={active}
+      disabled={!concepts.length}
+      title={concepts.length
+        ? "Elegir varios conceptos para darles el mismo espacio, sangría, renglón o formato, duplicarlos, moverlos o eliminarlos juntos"
+        : NO_CONCEPTS_TO_SELECT}
+      data-concept-selection-start=""
+      onClick={() => (active ? stop() : setSelecting(true))}
+    >
+      <ListChecks data-icon="inline-start" />
+      Seleccionar conceptos
+    </Button>
+  );
+
+  // While choosing, the bar stays at the top of the editor as it scrolls down the block.
+  const bar = active ? (
+    <div
+      className="sticky top-0 z-20 flex flex-wrap items-center gap-1 rounded-md border border-primary/40 bg-card px-2 py-1 text-xs shadow-sm"
+      role="toolbar"
+      aria-label="Conceptos seleccionados"
+      data-concept-selection=""
+    >
       <span className="tabular-nums">{chosen.length} de {concepts.length} seleccionados</span>
       <Button type="button" size="xs" variant="ghost" onClick={() => setSelected(new Set(conceptIds))}>
         Todos
@@ -199,36 +334,15 @@ export function ConceptSelectionScope({
       <Button type="button" size="xs" variant="ghost" disabled={!chosen.length} onClick={() => setSelected(new Set())}>
         Ninguno
       </Button>
-      <span className="mx-1 h-4 border-l" aria-hidden="true" />
-      <span className="text-muted-foreground">Espacio</span>
-      <Button
-        type="button"
-        size="icon-xs"
-        variant="ghost"
-        aria-label="Disminuir espacio de los seleccionados"
-        disabled={!chosen.length || (spacing ?? 0) <= 0}
-        onClick={() => apply((spacing ?? 0) - 1)}
-      >
-        <Minus />
-      </Button>
-      <span className="min-w-[1.5rem] text-center tabular-nums" title={spacing === null ? "Los seleccionados tienen espacios distintos" : undefined}>
-        {spacing ?? "—"}
-      </span>
-      <Button
-        type="button"
-        size="icon-xs"
-        variant="ghost"
-        aria-label="Aumentar espacio de los seleccionados"
-        disabled={!chosen.length}
-        onClick={() => apply((spacing ?? 0) + 1)}
-      >
-        <Plus />
-      </Button>
+      {separator}
+      <SelectionSpacing label="Espacio antes" field="spacingBefore" chosen={chosen} onApply={applySpacing} />
+      <SelectionSpacing label="Espacio después" field="spacingAfter" chosen={chosen} onApply={applySpacing} />
+      {separator}
+      {onApplyIndent ? (
+        <SelectionIndent disabled={!chosen.length} onApply={(presentation) => onApplyIndent(chosenIds, presentation)} />
+      ) : lockedButton("Sangría", <AlignHorizontalDistributeCenter data-icon="inline-start" />)}
       {onApplyValueFormat ? (
-        <>
-          <span className="mx-1 h-4 border-l" aria-hidden="true" />
-          <SelectionValueFormat disabled={!chosen.length} onApply={(format, customUnit) => onApplyValueFormat(chosenIds, format, customUnit)} />
-        </>
+        <SelectionValueFormat disabled={!chosen.length} onApply={(format, customUnit) => onApplyValueFormat(chosenIds, format, customUnit)} />
       ) : lockedButton("Formato del valor", <Hash data-icon="inline-start" />)}
       {onApplyTagStyle ? (
         <NativeSelect
@@ -246,8 +360,8 @@ export function ConceptSelectionScope({
           ))}
         </NativeSelect>
       ) : null}
-      {onApplyTextMark ? (
-        <span className="flex items-center gap-0.5" role="toolbar" aria-label="Formato del texto de los seleccionados">
+      {onApplyTextMark || lockedReason ? (
+        <span className="flex items-center gap-0.5" role="group" aria-label="Formato del texto de los seleccionados">
           {TEXT_MARKS.map((item) => (
             <Button
               key={item.mark}
@@ -256,40 +370,23 @@ export function ConceptSelectionScope({
               variant="ghost"
               className={item.className}
               aria-label={`${item.title} a los seleccionados`}
-              title={`${item.title} a todo el dato de los seleccionados; si ya la tienen, se quita`}
-              disabled={!chosen.length}
-              onClick={() => onApplyTextMark(chosenIds, item.mark)}
+              title={onApplyTextMark ? `${item.title} a todo el dato de los seleccionados; si ya la tienen, se quita` : lockedReason}
+              disabled={!onApplyTextMark || !chosen.length}
+              onClick={() => onApplyTextMark?.(chosenIds, item.mark)}
             >
               {item.letter}
             </Button>
           ))}
         </span>
-      ) : lockedReason ? (
-        <span className="flex items-center gap-0.5" role="toolbar" aria-label="Formato del texto de los seleccionados">
-          {TEXT_MARKS.map((item) => (
-            <Button key={item.mark} type="button" size="icon-xs" variant="ghost" className={item.className} aria-label={`${item.title} a los seleccionados`} title={lockedReason} disabled>
-              {item.letter}
-            </Button>
-          ))}
-        </span>
       ) : null}
+      {separator}
       {onDuplicate ? (
         <Button type="button" size="xs" variant="outline" disabled={!chosen.length} title="Una copia de cada seleccionado, a continuación" onClick={() => { onDuplicate(chosenIds); stop(); }}>
           <CopyPlus data-icon="inline-start" />
           Duplicar
         </Button>
       ) : lockedButton("Duplicar", <CopyPlus data-icon="inline-start" />)}
-      {renderMove ? (
-        <>
-          <span className="mx-1 h-4 border-l" aria-hidden="true" />
-          {renderMove(chosenIds, stop)}
-        </>
-      ) : lockedReason ? (
-        <>
-          <span className="mx-1 h-4 border-l" aria-hidden="true" />
-          {lockedButton("Mover a…", <MoveRight data-icon="inline-start" />)}
-        </>
-      ) : null}
+      {renderMove ? renderMove(chosenIds, stop) : lockedButton("Mover a…", <MoveRight data-icon="inline-start" />)}
       {onRemove ? (
         <Button
           type="button"
@@ -297,40 +394,43 @@ export function ConceptSelectionScope({
           variant="outline"
           className="text-destructive hover:text-destructive"
           disabled={!chosen.length}
-          title="Eliminar los seleccionados"
-          onClick={() => confirmDelete({ ...deleteConfirmation("concepts", undefined, chosen.length), onConfirm: () => { onRemove(chosenIds); stop(); } })}
+          title="Eliminar los seleccionados (más de tres piden confirmación; se deshace con «Deshacer»)"
+          onClick={() => deleteConcepts({
+            count: chosen.length,
+            name: chosen.length === 1 ? chosen[0].label : undefined,
+            onDelete: () => { onRemove(chosenIds); stop(); },
+          })}
         >
           <Trash2 data-icon="inline-start" />
           Eliminar
         </Button>
       ) : lockedButton("Eliminar", <Trash2 data-icon="inline-start" />)}
-      <Button type="button" size="xs" variant="outline" className="ml-1" onClick={stop}>
-        <X data-icon="inline-start" />
+      {/* A green check in the corner ends the selection. */}
+      <Button
+        type="button"
+        size="xs"
+        className="ml-auto bg-success text-success-foreground hover:bg-success/90"
+        aria-label="Listo: terminar la selección"
+        title="Listo: terminar la selección"
+        data-concept-selection-done=""
+        onClick={stop}
+      >
+        <Check data-icon="inline-start" />
         Listo
       </Button>
     </div>
-  ) : (
-    <Button
-      type="button"
-      size="sm"
-      variant="ghost"
-      title="Elegir varios conceptos para darles el mismo espacio o formato, duplicarlos, moverlos o eliminarlos juntos"
-      onClick={() => setSelecting(true)}
-    >
-      <ListChecks data-icon="inline-start" />
-      Seleccionar conceptos
-    </Button>
-  );
+  ) : null;
 
   return (
     <ConceptContainerActionsContext.Provider value={readOnly ? null : { applyTagStyle: onApplyTagStyle, startSelection: start }}>
-    <ConceptSelectionContext.Provider value={selecting && !readOnly ? { selected, toggle } : null}>
-      {actions || toolbar ? (
-        <div className="flex flex-wrap items-center gap-2">
+    <ConceptSelectionContext.Provider value={active ? { selected, toggle } : null}>
+      {actions || selectButton ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-dashed border-border pb-2" data-container-actions="">
           {actions}
-          {toolbar}
+          {selectButton}
         </div>
       ) : null}
+      {bar}
       {children}
     </ConceptSelectionContext.Provider>
     </ConceptContainerActionsContext.Provider>

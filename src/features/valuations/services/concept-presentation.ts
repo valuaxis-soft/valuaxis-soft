@@ -220,9 +220,43 @@ export function clearColumnPresentation(
  * Preserves Image/Table column metadata, row/column IDs, items, and ordering.
  * Returns a new layout — never mutates input.
  */
+/**
+ * The offset typed in the "Sangría" box, as a whole number of pixels within
+ * the allowed range; null while what is typed is not a number.
+ */
+export function parseIndentOffset(text: string): number | null {
+  const trimmed = text.trim().replace(/\s*px$/i, "");
+  if (!/^[+-]?\d+(?:[.,]\d+)?$/.test(trimmed)) return null;
+  const value = Number(trimmed.replace(",", "."));
+  return Math.min(MAX_OFFSET_PX, Math.max(MIN_OFFSET_PX, Math.round(value)));
+}
+
+/**
+ * The cells of the chosen concepts with the same "Sangría" (from
+ * "Seleccionar conceptos"); undefined puts back the default.
+ */
+export function setConceptCellsPresentation(
+  layout: ContentLayout,
+  conceptIds: ReadonlySet<string>,
+  presentation: ConceptPresentation | undefined,
+): ContentLayout {
+  if (!presentation) return clearConceptCellPresentations(layout, conceptIds);
+  return {
+    ...layout,
+    rows: layout.rows.map((row) => ({
+      ...row,
+      columns: row.columns.map((col) =>
+        col.items.some((ref) => ref.type === "concept" && conceptIds.has(ref.id))
+          ? { ...col, conceptPresentation: presentation }
+          : col,
+      ),
+    })),
+  };
+}
+
 export function clearConceptCellPresentations(
   layout: ContentLayout,
-  conceptIds: Set<string>,
+  conceptIds: ReadonlySet<string>,
 ): ContentLayout {
   return {
     ...layout,
