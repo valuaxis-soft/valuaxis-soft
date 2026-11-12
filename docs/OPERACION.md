@@ -212,10 +212,22 @@ Ver [ACREDITACION.md](ACREDITACION.md). Tras desplegar la migración 054:
 
   ```bash
   docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts pendientes
-  docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts aprobar  <correo> --por "<quién>"            # simulación
-  docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts aprobar  <correo> --por "<quién>" --apply
+  docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts aprobar  <correo> --nivel maestria --programa "<programa>" --por "<quién>"            # simulación
+  docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts aprobar  <correo> --nivel maestria --programa "<programa>" --por "<quién>" --apply
   docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts rechazar <correo> "<motivo>" --por "<quién>" --apply
   docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts revocar  <correo> "<motivo>" --por "<quién>" --apply
+  docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts sin-nivel
+  docker exec -it valuos-app node --import tsx scripts/ops/acreditacion.ts confirmar-nivel <correo> --nivel especialidad --programa "<programa>" --por "<quién>" --apply
   ```
 
-  Antes de aprobar, abrir en un navegador el enlace de la SEP que imprime `pendientes` y comparar nombre y cédula con la cuenta.
+  Antes de aprobar, abrir en un navegador el enlace de la SEP que imprime `pendientes` y comparar nombre, cédula, nivel y programa con la cuenta. Desde la migración 057 solo una especialidad, maestría o doctorado en valuación quitan el aviso; las cuentas acreditadas antes quedan igual hasta confirmar su nivel (`sin-nivel`, `confirmar-nivel`).
+
+## 10. Errores al guardar con código
+
+Cuando el guardado completo de un avalúo falla por algo inesperado, el usuario ve «No se pudo guardar el avalúo…. Código: G-XXXXXX» (con «Copiar código»). El mismo código queda en el log con el id del avalúo y la causa:
+
+```bash
+docker logs valuos-app 2>&1 | grep -A20 "G-XXXXXX"
+```
+
+Si dos elementos de una sección llegan con el mismo id (por ejemplo, imágenes de croquis copiadas con su bloque), el servidor les da uno propio y deja `[VALUATION_SECTIONS] repeated ids renamed` en el log.

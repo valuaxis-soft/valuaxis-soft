@@ -25,3 +25,13 @@ export function shouldAutosave(input: {
 }) {
   return input.saveStatus === "dirty" && input.canEdit && Boolean(input.valuationId) && !input.sessionExpired;
 }
+
+/**
+ * The dictamen and the calculation memory are drawn from what is saved: with
+ * changes pending, or a save still on its way (whose result is not known),
+ * the editor saves first, and only opens the document once that worked (V5.7-21).
+ */
+export const mustSaveBeforeDocument = (input: { saving: boolean; hasUnsavedChanges: boolean }) => input.saving || input.hasUnsavedChanges;
+
+/** «… Código: G-7KX3QF.» → "G-7KX3QF": the reference the server logged a failed save with, to copy it. */
+export const errorCodeOf = (message: string) => /Código: (G-[A-Z0-9]{6})/.exec(message)?.[1] ?? null;

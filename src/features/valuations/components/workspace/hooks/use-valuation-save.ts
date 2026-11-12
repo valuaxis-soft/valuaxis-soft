@@ -12,7 +12,7 @@ import {
   validateCaratula,
 } from "@/features/valuations/services/caratula-validation";
 import { buildSectionsPayload, valuationMetaPayload } from "../model/save-payload";
-import { AUTOSAVE_DELAY_MS, isSaveShortcut, shouldAutosave, statusAfterSave } from "../model/save-status";
+import { AUTOSAVE_DELAY_MS, errorCodeOf, isSaveShortcut, shouldAutosave, statusAfterSave } from "../model/save-status";
 import type { EditorState } from "./use-editor-state";
 
 /**
@@ -133,7 +133,13 @@ export function useValuationSave({
         setSessionExpiredOpen(true);
         return false;
       }
-      toast.error(`Error al guardar: ${err instanceof Error ? err.message : "Error desconocido"}`);
+      const message = err instanceof Error ? err.message : "Error desconocido";
+      // The server's code («Código: G-7KX3QF») stays on screen and can be copied, to send it as is.
+      const code = errorCodeOf(message);
+      toast.error(`Error al guardar: ${message}`, code ? {
+        duration: 30_000,
+        action: { label: "Copiar código", onClick: () => void navigator.clipboard?.writeText(code).catch(() => undefined) },
+      } : undefined);
       return false;
     }
   };
