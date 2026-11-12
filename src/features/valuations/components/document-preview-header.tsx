@@ -100,23 +100,21 @@ export function DocumentPreviewHeader({
           </div>
         </div>
       </div>
-      {/* Unfilled, a blue line sets the header apart from the body and the title is blue on white, close to
-          the title that follows it. Filled, the blue band is framed by a thin line, as in the appraiser's format. */}
+      {/* Video 5.1: filled, the band is just the blue bar, with no frame; unfilled, blue letters on white
+          inside a frame like the folio's box. */}
       {titleBand === "outline" ? (
         <div
-          className="mt-1 -mb-2 border-t-[3px] border-[var(--caratula-dark-blue)] bg-white px-5 pt-px pb-0 text-center text-base font-black leading-tight text-[var(--caratula-dark-blue)]"
+          className="mt-1 border-2 border-[var(--caratula-dark-blue)] bg-white px-5 py-0.5 text-center text-base font-black leading-tight text-[var(--caratula-dark-blue)]"
           data-title-band={titleBand}
         >
           {appraisedGoodWording(propertyKind).documentTitle}
         </div>
       ) : (
-        <div className="mt-1 border-2 border-[var(--caratula-dark-blue)] bg-white p-[2px]" data-title-band-frame="">
-          <div
-            className="bg-[var(--caratula-dark-blue)] px-5 py-0.5 text-center text-base font-black leading-tight text-white [-webkit-print-color-adjust:exact] [print-color-adjust:exact]"
-            data-title-band={titleBand}
-          >
-            {appraisedGoodWording(propertyKind).documentTitle}
-          </div>
+        <div
+          className="mt-1 bg-[var(--caratula-dark-blue)] px-5 py-0.5 text-center text-base font-black leading-tight text-white [-webkit-print-color-adjust:exact] [print-color-adjust:exact]"
+          data-title-band={titleBand}
+        >
+          {appraisedGoodWording(propertyKind).documentTitle}
         </div>
       )}
     </header>

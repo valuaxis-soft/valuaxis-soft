@@ -9,8 +9,8 @@
  *    template Blocks they stand in for are dropped once it has results:
  *    content dragged into either would be lost, so they give and take nothing.
  *  - In the Carátula only Concepts change Block (its Blocks hold nothing
- *    else), and the fixed Blocks (company header, assumptions, conclusion) are
- *    edited through their own fields.
+ *    else), and the company header is edited through its own fields. The
+ *    assumptions and the conclusion give and take concepts like any Block.
  *  - The construction tables filled from the cost capture are found by ID in
  *    their Apartado: they stay in it.
  *  - The table of measures of the "Medidas y colindancias" Apartado of the
@@ -29,7 +29,6 @@ import {
 } from "../calculation/market-document";
 import type { AppSection, Block } from "../model";
 import { findBoundaryTable, getTerrenoElementKind, isTerrenoSection } from "../sections/terreno";
-import { getCaratulaBlockKind } from "./caratula-blocks";
 import { COMPANY_HEADER_BLOCK_ID } from "./caratula-company-header";
 import { contentItemKey, type ContentMoveRules } from "./content-drop";
 import type { TransferableContentType } from "./content-transfer";
@@ -61,8 +60,7 @@ export function contentMoveRulesForSection(section: AppSection): ContentMoveRule
   const pinnedItems = new Set<string>();
 
   for (const block of section.blocks) {
-    const isFixedCaratulaBlock = isCaratula
-      && (block.id === COMPANY_HEADER_BLOCK_ID || getCaratulaBlockKind(block) !== "intermediate");
+    const isFixedCaratulaBlock = isCaratula && block.id === COMPANY_HEADER_BLOCK_ID;
     if (isFixedCaratulaBlock || isCalculationOwnedBlock(block)) lockedBlockIds.add(block.id);
 
     for (const table of block.tables) {

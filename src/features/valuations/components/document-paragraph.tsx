@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 
-import type { Concept } from "@/features/valuations/model";
+import type { Concept, ContentRowTagStyle } from "@/features/valuations/model";
 import { useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { cn } from "@/lib/utils";
 import { DocumentConceptValue } from "./document-concept-value";
@@ -17,14 +17,17 @@ export function DocumentParagraph({
   concept,
   className,
   style,
+  tagStyle,
 }: {
   concept: Concept;
   className?: string;
+  /** Printed as a data label: marks it for the row's "Etiquetas". */
+  tagStyle?: ContentRowTagStyle;
   style?: CSSProperties;
 }) {
   const theme = useDocumentTheme();
   return (
-    <div className={cn(theme.conceptRow, className)} style={style}>
+    <div className={cn(theme.conceptRow, className)} style={style} data-concept-tag={tagStyle}>
       <p className={theme.conceptValue}>
         <DocumentConceptValue concept={concept} fallback="—" />
       </p>

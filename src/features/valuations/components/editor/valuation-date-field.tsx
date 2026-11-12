@@ -33,7 +33,7 @@ const NAV_END_YEAR = 2100;
 /*  Custom Dropdown — shadcn Select replacing native <select>           */
 /* ================================================================== */
 
-function ValuationDateDropdown(props: DropdownProps) {
+export function ValuationDateDropdown(props: DropdownProps) {
   const { options, value, onChange, "aria-label": ariaLabel } = props;
   // The month dropdown's options are the indexes 0–11; the year dropdown's are years.
   const isMonthDropdown = (options ?? []).every((option) => Number(option.value) >= 0 && Number(option.value) <= 11);
@@ -51,7 +51,8 @@ function ValuationDateDropdown(props: DropdownProps) {
 
   return (
     <Select value={String(value ?? "")} onValueChange={handleValueChange}>
-      <SelectTrigger aria-label={ariaLabel} className="h-8 w-auto min-w-0">
+      {/* Over the calendar's arrows: their bar spans the caption and caught the clicks (video 5.6, 10:29). */}
+      <SelectTrigger aria-label={ariaLabel} className="relative z-10 h-8 w-auto min-w-0">
         {/* The trigger shows the option's label, never the raw value (a month index). */}
         <SelectValue>{current ? optionLabel(current) : String(value ?? "")}</SelectValue>
       </SelectTrigger>

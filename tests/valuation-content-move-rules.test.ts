@@ -135,7 +135,7 @@ test("move rules — blocks written by the calculation, and the template blocks 
   }
 });
 
-test("move rules — in the carátula only concepts change block, and the fixed blocks stay out of it", () => {
+test("move rules — in the carátula only concepts change block; the assumptions and the conclusion take and give them, the header stays out (video 5.5)", () => {
   const caratula = section("caratula", [
     block(COMPANY_HEADER_BLOCK_ID),
     block("caratula-block-1", { concepts: [concept("a")] }),
@@ -150,9 +150,11 @@ test("move rules — in the carátula only concepts change block, and the fixed 
   assert.equal(canMoveContent(rules, from("concept"), inApartado("custom", "S")), true);
   assert.equal(canMoveContent(rules, from("image"), inBlock("custom")), false);
   assert.equal(canMoveContent(rules, from("table"), inBlock("custom")), false);
-  for (const fixed of [COMPANY_HEADER_BLOCK_ID, "caratula-supuestos", "caratula-conclusion"]) {
-    assert.equal(canMoveContent(rules, from("concept"), inBlock(fixed)), false, fixed);
-    assert.equal(canMoveContent(rules, drag(inBlock(fixed), "concept", "x"), inBlock("custom")), false, fixed);
+  assert.equal(canMoveContent(rules, from("concept"), inBlock(COMPANY_HEADER_BLOCK_ID)), false);
+  assert.equal(canMoveContent(rules, drag(inBlock(COMPANY_HEADER_BLOCK_ID), "concept", "x"), inBlock("custom")), false);
+  for (const block of ["caratula-supuestos", "caratula-conclusion"]) {
+    assert.equal(canMoveContent(rules, from("concept"), inBlock(block)), true, block);
+    assert.equal(canMoveContent(rules, drag(inBlock(block), "concept", "x"), inBlock("custom")), true, block);
   }
 });
 

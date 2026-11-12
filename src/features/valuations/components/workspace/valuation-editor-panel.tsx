@@ -28,6 +28,7 @@ import {
   SUBBLOCK_TERM,
   blockToolbarLocks,
   blockToolbarState,
+  CARATULA_CONCLUSION_DELETE_REASON,
 } from "../editor/block-toolbar";
 import { deleteConfirmation, useConfirmDelete } from "../editor/delete-confirm";
 import { structureLockReason, type TransferPosition } from "@/features/valuations/services/structure-transfer";
@@ -98,8 +99,8 @@ import type {
 import { COMPANY_HEADER_BLOCK_ID } from "@/features/valuations/services/caratula-company-header";
 import {
   getCaratulaBlockKind,
-  isCaratulaIntermediateBlock,
   isConclusionNarrativeConcept,
+  primaryCaratulaConclusionId,
 } from "@/features/valuations/services/caratula-blocks";
 import { apartadoDisplayLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
 import { resolveBlockFlowV2, moveBlockFlowV2ApartadoOneStep, canMoveBlockFlowV2ApartadoOneStep } from "@/features/valuations/services/block-flow";
@@ -160,18 +161,11 @@ const REQUIRED_SECTION_HINT = "Sección obligatoria del dictamen: no se oculta n
 
 /**
  * What "Agregar" offers in a Block: everything, except in the carátula, whose
- * Blocks hold concepts and subbloques only (its fixed Blocks, nothing). The
+ * Blocks hold concepts and subbloques only. The
  * structural controls are the same in every Block: see block-toolbar.ts.
  */
-function getBlockContentCapabilities({
-  isCaratula,
-  isIntermediateCaratulaBlock,
-}: {
-  isCaratula: boolean;
-  isIntermediateCaratulaBlock: boolean;
-}): EditorCapabilities {
-  if (isIntermediateCaratulaBlock) return { apartados: true, concepts: true };
-  if (isCaratula) return {};
+function getBlockContentCapabilities({ isCaratula }: { isCaratula: boolean }): EditorCapabilities {
+  if (isCaratula) return { apartados: true, concepts: true };
   return { ...GENERIC_CONTENT_CAPABILITIES };
 }
 
@@ -309,13 +303,15 @@ export function ValuationEditorPanel(props: {
   const editableBlocks = section.blocks.filter(
     (block) => !(isCaratula && block.id === COMPANY_HEADER_BLOCK_ID),
   );
-  const intermediateBlocks = editableBlocks.filter(isCaratulaIntermediateBlock);
-  const assumptionsBlocks = editableBlocks.filter(
-    (block) => getCaratulaBlockKind(block) === "assumptions",
-  );
-  const conclusionBlocks = editableBlocks.filter(
-    (block) => getCaratulaBlockKind(block) === "conclusion",
-  );
+  // The conclusion that prints the commercial value carries its fields in the editor too.
+  const valueConclusionId = isCaratula ? primaryCaratulaConclusionId(editableBlocks) : null;
+  const calculatedValuesEditor = isCaratula && props.caratula && props.onUpdateCaratula ? (
+    <CalculatedValuesEditor
+      caratula={props.caratula}
+      readOnly={props.readOnly}
+      onUpdate={props.onUpdateCaratula}
+    />
+  ) : null;
   const sortableBlockIds = editableBlocks.map((block) => block.id);
   // Content moves between the Blocks of the section, except where something else owns it.
   const moveRules = useMemo(() => contentMoveRulesForSection(section), [section]);
@@ -413,6 +409,7 @@ export function ValuationEditorPanel(props: {
       onUpdateSubConcept={props.onUpdateSubConcept}
       onUpdateTable={props.onUpdateTable}
       sectionCapabilities={sectionCapabilities}
+      conclusionExtra={block.id === valueConclusionId ? calculatedValuesEditor : null}
     />
   );
 
@@ -506,44 +503,26 @@ export function ValuationEditorPanel(props: {
           >
             <SortableContext items={sortableBlockIds} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
+                {/* One list, as in every section: the assumptions and the conclusion move like any block (video 5.5). */}
                 <section className="space-y-4">
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <FieldTitle>Bloques de la carátula</FieldTitle>
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={props.readOnly}
-                      title="Agregar un bloque a la carátula"
-                      onClick={() => props.onAddBlock(section.id)}
-                    >
-                      <Plus />
-                      {ADD_BLOCK_LABEL}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <PasteBlockButton section={section} />
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={props.readOnly}
+                        title="Agregar un bloque a la carátula, antes de los supuestos y la conclusión"
+                        onClick={() => props.onAddBlock(section.id)}
+                      >
+                        <Plus />
+                        {ADD_BLOCK_LABEL}
+                      </Button>
+                    </div>
                   </div>
-                  {intermediateBlocks.map((block, index) =>
-                    renderBlockEditor(block, index, intermediateBlocks.length),
-                  )}
-                </section>
-
-                <section className="space-y-4">
-                  <FieldTitle>Supuestos y condiciones</FieldTitle>
-                  {assumptionsBlocks.map((block, index) =>
-                    renderBlockEditor(block, index, assumptionsBlocks.length),
-                  )}
-                </section>
-
-                <section className="space-y-4">
-                  <FieldTitle>Conclusión</FieldTitle>
-                  {conclusionBlocks.map((block, index) =>
-                    renderBlockEditor(block, index, conclusionBlocks.length),
-                  )}
-                  {props.caratula && props.onUpdateCaratula ? (
-                    <CalculatedValuesEditor
-                      caratula={props.caratula}
-                      readOnly={props.readOnly}
-                      onUpdate={props.onUpdateCaratula}
-                    />
-                  ) : null}
+                  {editableBlocks.map((block, index) => renderBlockEditor(block, index, editableBlocks.length))}
+                  {valueConclusionId ? null : calculatedValuesEditor}
                 </section>
 
                 {props.caratula && props.onUpdateCaratula ? (
@@ -634,6 +613,8 @@ function SortableBlockEditor(props: {
     updater: (table: TableContent) => TableContent,
     apartadoId?: string,
   ) => void;
+  /** The commercial value and its words, in the conclusion that prints them. */
+  conclusionExtra?: ReactNode;
 }) {
   const { allSections, block, readOnly, section } = props;
   const isCaratula = section.id === "caratula";
@@ -645,23 +626,29 @@ function SortableBlockEditor(props: {
   const subBlockButtonLabel = ADD_SUBBLOCK_LABEL;
   const caratulaBlockKind = isCaratula ? getCaratulaBlockKind(block) : "intermediate";
   const isIntermediateCaratulaBlock = isCaratula && caratulaBlockKind === "intermediate";
-  const isRemovableCaratulaBlock =
-    isIntermediateCaratulaBlock && !block.id.startsWith("caratula-block-");
-  const blockCapabilities = getBlockContentCapabilities({ isCaratula, isIntermediateCaratulaBlock });
+  // The only conclusion prints the commercial value: it stays, the rest of the carátula's blocks go like any other.
+  const isOnlyConclusion = isCaratula && caratulaBlockKind === "conclusion"
+    && section.blocks.filter((item) => item.id !== COMPANY_HEADER_BLOCK_ID && getCaratulaBlockKind(item) === "conclusion").length === 1;
+  const blockCapabilities = getBlockContentCapabilities({ isCaratula });
   // The same toolbar in every Block; what cannot apply here is disabled and says why.
   const toolbar = blockToolbarState({
-    kind: isIntermediateCaratulaBlock ? "caratula-block" : isCaratula ? "caratula-fixed" : "content",
+    kind: isCaratula ? "caratula-block" : "content",
     readOnly,
     transferLock: structureLockReason(section, block.id),
-    deletable: !isCaratula || isRemovableCaratulaBlock,
+    deleteLock: isOnlyConclusion ? CARATULA_CONCLUSION_DELETE_REASON : null,
   });
   const locks = blockToolbarLocks(toolbar);
   const confirmDelete = useConfirmDelete();
   const apartadoCapabilities = isCaratula
     ? getCaratulaApartadoEditorCapabilities()
     : getApartadoEditorCapabilities();
-  const usesCompactConceptSystem = isIntermediateCaratulaBlock || !isCaratula;
+  const usesCompactConceptSystem = true;
   const conclusionNarrativeConcepts = block.concepts.filter(isConclusionNarrativeConcept);
+  // A text of the assumptions or the conclusion goes like any concept: asking first, back with "Deshacer".
+  const removeLongText = (concept: Concept) => confirmDelete({
+    ...deleteConfirmation("concept", concept.label),
+    onConfirm: () => props.onRemoveConcept(section.id, block.id, concept.id),
+  });
   const [conceptSearch, setConceptSearch] = useState("");
   const allWorkspaceConcepts = allSections.flatMap((item) =>
     item.blocks.flatMap((sectionBlock) => [
@@ -677,10 +664,10 @@ function SortableBlockEditor(props: {
       .toLowerCase()
       .includes(needle);
   });
-  // The carátula's own blocks are dragged among themselves; its fixed ones stay where they print.
+  // Every block of the carátula is dragged like any other, the assumptions and the conclusion too.
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: block.id,
-    disabled: readOnly || (isCaratula && !isIntermediateCaratulaBlock),
+    disabled: readOnly,
   });
   const displayBlockLabel = block.enabled ? block.sectionLabel : "";
   const showStructuralNumbering = !isCaratula;
@@ -691,8 +678,8 @@ function SortableBlockEditor(props: {
       size="icon-sm"
       variant="ghost"
       aria-label={`Mover ${block.title}`}
-      title={isCaratula && !isIntermediateCaratulaBlock ? "Bloque fijo de la carátula: se imprime en su lugar" : "Arrastrar para reordenar"}
-      disabled={readOnly || (isCaratula && !isIntermediateCaratulaBlock)}
+      title="Arrastrar para reordenar"
+      disabled={readOnly}
       {...attributes}
       {...listeners}
     >
@@ -742,7 +729,7 @@ function SortableBlockEditor(props: {
         }
         subBlockLabel={subBlockButtonLabel}
       />
-      {!isCaratula ? <PasteApartadoButton section={section} block={block} /> : null}
+      <PasteApartadoButton section={section} block={block} />
     </>
   );
 
@@ -779,7 +766,7 @@ function SortableBlockEditor(props: {
           label="el bloque"
           name={stripLeadingRomanNumeral(block.title)}
           titleRef={titleRef}
-          canRename={caratulaBlockKind === "intermediate"}
+          canRename
           hints={{ hide: locks.visibility, pageBreak: locks.pageBreak, delete: locks.delete }}
           visibility={toolbar.visibility.enabled ? { visible: block.enabled, onChange: (enabled) => props.onUpdateBlock(section.id, block.id, { enabled }) } : undefined}
           pageBreak={toolbar.pageBreak.enabled ? {
@@ -790,15 +777,11 @@ function SortableBlockEditor(props: {
         />
       ) : undefined}
       title={stripLeadingRomanNumeral(block.title)}
-      titleEdit={
-        caratulaBlockKind === "intermediate"
-          ? {
-              disabled: readOnly,
-              value: block.title,
-              onChange: (title) => props.onUpdateBlock(section.id, block.id, { title: title.toUpperCase() }),
-            }
-          : undefined
-      }
+      titleEdit={{
+        disabled: readOnly,
+        value: block.title,
+        onChange: (title) => props.onUpdateBlock(section.id, block.id, { title: title.toUpperCase() }),
+      }}
       structuralActions={{
         conceptPresentation: block.conceptPresentation,
         disabled: readOnly,
@@ -851,7 +834,7 @@ function SortableBlockEditor(props: {
           </Field>
         </div> : null}
 
-        {/* The fixed texts of the carátula (supuestos, conclusión) have no concepts to choose: their first line is "Agregar" alone. */}
+        {/* The long texts of the carátula (supuestos, conclusión) have no concepts to choose: their first line is "Agregar" alone. */}
         {caratulaBlockKind === "assumptions" || caratulaBlockKind === "conclusion" ? (
           <div className="flex flex-wrap items-center gap-2 border-b border-dashed border-border pb-2">{blockActions}</div>
         ) : null}
@@ -861,6 +844,7 @@ function SortableBlockEditor(props: {
             label="Supuestos y condiciones limitantes"
             readOnly={readOnly}
             onUpdate={(conceptId, patch) => props.onUpdateConcept(section.id, block.id, conceptId, patch)}
+            onRemove={removeLongText}
             renderAssist={(concept) => (
               <AssumptionsDraftAssist
                 concept={concept}
@@ -878,20 +862,27 @@ function SortableBlockEditor(props: {
                 concepts={conclusionNarrativeConcepts}
                 readOnly={readOnly}
                 onUpdate={(conceptId, patch) => props.onUpdateConcept(section.id, block.id, conceptId, patch)}
+                onRemove={removeLongText}
               />
             ) : null}
             <FieldDescription>
-              El valor comercial, el valor con letra y los datos de firma se toman de los campos compartidos de Carátula.
+              {props.conclusionExtra
+                ? "El valor comercial y el valor con letra los escribe el cálculo; los datos de firma, la lista de firmas de la carátula."
+                : "El valor comercial y el valor con letra se imprimen en la primera conclusión de la carátula."}
             </FieldDescription>
+            {props.conclusionExtra}
           </div>
-        ) : (
+        ) : null}
+        {/* The assumptions and the conclusion edit their own texts above; their subbloques go here, as in any block. */}
+        {caratulaBlockKind === "intermediate" || block.apartados.length > 0 ? (
           // A draft for a descriptive field goes with the title and the tables of its block or apartado.
           <DraftScopeProvider title={block.title} tables={block.tables}>
           {/* The block's own concepts chosen at once; "Agregar" and "Subbloque" on the same first line. */}
           <ConceptSelectionScope
-            concepts={block.concepts}
+            // The texts of the assumptions and the conclusion are edited above, with their "Agregar" line.
+            concepts={caratulaBlockKind === "intermediate" ? block.concepts : []}
             readOnly={readOnly}
-            actions={blockActions}
+            actions={caratulaBlockKind === "intermediate" ? blockActions : undefined}
             onApplySpacing={(conceptIds, field, lines) => props.onUpdateConcepts(section.id, block.id, conceptIds, { [field]: lines })}
             onApplyIndent={(conceptIds, presentation) =>
               props.onUpdateBlock(section.id, block.id, { contentLayout: setConceptCellsPresentation(resolveContentLayout(block), new Set(conceptIds), presentation) })
@@ -911,6 +902,7 @@ function SortableBlockEditor(props: {
           >
           <BlockFlowRenderer
             block={block}
+            showContentRows={caratulaBlockKind === "intermediate"}
             allConcepts={allWorkspaceConcepts}
             conceptCallbacks={{
               onRemove: (conceptId) => props.onRemoveConcept(section.id, block.id, conceptId),
@@ -1115,7 +1107,7 @@ function SortableBlockEditor(props: {
           />
           </ConceptSelectionScope>
           </DraftScopeProvider>
-        )}
+        ) : null}
 
         {usesCompactConceptSystem && isCaratula ? (
           <div className="flex justify-start border-t pt-3">

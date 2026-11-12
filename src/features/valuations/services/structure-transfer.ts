@@ -9,8 +9,12 @@
  *    formulas between the copied items follow the copies; a link to a concept
  *    outside the copy stays with that concept.
  *  - What the calculation writes (and the template Blocks its results
- *    replace), the carátula's fixed Blocks and the content pinned to its
+ *    replace), the carátula's company header and the content pinned to its
  *    Apartado are never moved or copied (see content-move-rules.ts).
+ *  - The carátula's Blocks move, copy and duplicate like any other (video
+ *    5.5). It holds concepts and subbloques only, so a Block or Apartado with
+ *    tables or images does not go into it; and its conclusion, which prints
+ *    the commercial value, does not leave it while it is the only one.
  *
  * Pure: no side effects, no rendering.
  */
@@ -42,6 +46,8 @@ import {
 } from "./content-drop";
 import { stripTextMarks } from "./text-marks";
 import { contentMoveRulesForSection } from "./content-move-rules";
+import { getCaratulaBlockKind } from "./caratula-blocks";
+import { COMPANY_HEADER_BLOCK_ID } from "./caratula-company-header";
 import { isRelationManagedImageSection } from "./image-source";
 import type { FormulaExpression, FormulaOperand, TableFormula, TableRow, TableSchema } from "./table";
 
@@ -69,11 +75,11 @@ const AT_END: TransferPosition = { placement: "end" };
 
 const unchanged = (sections: AppSection[], reason: string): TransferResult => ({ changed: false, sections, reason });
 
-/** The carátula keeps its own Blocks: they take no Block or Apartado from elsewhere and give none. */
 const isCaratula = (section: Pick<AppSection, "id">) => section.id === "caratula";
 
 export const LOCKED_BLOCK_REASON = "Este bloque lo escribe el cálculo o tiene un lugar fijo: no se mueve ni se copia.";
-const CARATULA_REASON = "Los bloques de la carátula no se mueven ni se copian a otras secciones.";
+const CARATULA_CONTENT_REASON = "La carátula lleva solo conceptos y subbloques: quita las tablas e imágenes antes de llevarlo ahí.";
+const CARATULA_CONCLUSION_MOVE_REASON = "Este bloque imprime el valor comercial de la carátula: no sale de ella. Puedes copiarlo o duplicarlo.";
 const MISSING_REASON = "El destino ya no existe.";
 
 const newId = () => crypto.randomUUID();
@@ -85,7 +91,7 @@ export function blockLockReason(section: AppSection, blockId: string): string | 
 
 /** Why the Block (or the Apartados inside it) cannot be moved, copied or duplicated, or null. */
 export function structureLockReason(section: AppSection, blockId: string): string | null {
-  if (isCaratula(section)) return CARATULA_REASON;
+  if (isCaratula(section)) return blockLockReason(section, blockId);
   const lock = blockLockReason(section, blockId);
   return lock && !isGeneratedBlock({ id: blockId }) ? TEMPLATE_BLOCK_MOVE_REASON : lock;
 }
@@ -100,8 +106,25 @@ export const TEMPLATE_BLOCK_MOVE_REASON = "El cálculo reemplaza este bloque con
  * what the calculation writes and the carátula's Blocks are not.
  */
 export function blockCopyLockReason(section: AppSection, blockId: string): string | null {
-  if (isCaratula(section)) return CARATULA_REASON;
+  if (isCaratula(section)) return blockLockReason(section, blockId);
   return isGeneratedBlock({ id: blockId }) ? LOCKED_BLOCK_REASON : null;
+}
+
+/** Why the Block cannot go to another section, or null: what locks its structure, or being the carátula's only conclusion. */
+export function blockMoveLockReason(section: AppSection, blockId: string): string | null {
+  const lock = structureLockReason(section, blockId);
+  if (lock || !isCaratula(section)) return lock;
+  const block = section.blocks.find((item) => item.id === blockId);
+  if (!block || getCaratulaBlockKind(block) !== "conclusion") return null;
+  const conclusions = section.blocks.filter((item) => item.id !== COMPANY_HEADER_BLOCK_ID && getCaratulaBlockKind(item) === "conclusion");
+  return conclusions.length === 1 ? CARATULA_CONCLUSION_MOVE_REASON : null;
+}
+
+/** Why the Block or Apartado cannot go into the section, or null: the carátula takes concepts and subbloques only. */
+function destinationContentReason(destination: Pick<AppSection, "id">, item: Block | Apartado): string | null {
+  return isCaratula(destination) && containersOf(item).some((container) => container.images.length > 0 || container.tables.length > 0)
+    ? CARATULA_CONTENT_REASON
+    : null;
 }
 
 function findContainer(sections: AppSection[], address: ContainerAddress) {
@@ -651,7 +674,7 @@ export function moveBlockToSection(sections: AppSection[], sectionId: string, bl
   const destination = sections.find((item) => item.id === destinationSectionId);
   const block = section?.blocks.find((item) => item.id === blockId);
   if (!section || !destination || !block) return unchanged(sections, MISSING_REASON);
-  const lock = structureLockReason(section, blockId) ?? (isCaratula(destination) ? CARATULA_REASON : null);
+  const lock = blockMoveLockReason(section, blockId) ?? destinationContentReason(destination, block);
   if (lock) return unchanged(sections, lock);
   if (isRelationManagedImageSection(destinationSectionId) && hasImages(block)) {
     return unchanged(sections, "Las imágenes de Datos generales se suben en esa sección: quita las imágenes del bloque antes de moverlo ahí.");
@@ -664,7 +687,8 @@ export function moveBlockToSection(sections: AppSection[], sectionId: string, bl
 export function pasteBlock(sections: AppSection[], destinationSectionId: string, block: Block, options: CopyOptions & { afterBlockId?: string } = {}): TransferResult {
   const destination = sections.find((item) => item.id === destinationSectionId);
   if (!destination) return unchanged(sections, MISSING_REASON);
-  if (isCaratula(destination)) return unchanged(sections, CARATULA_REASON);
+  const contentLock = destinationContentReason(destination, block);
+  if (contentLock) return unchanged(sections, contentLock);
   const copy = withoutImagesFor(destinationSectionId, copyBlock(block, sections, options));
   return { changed: true, sections: insertBlock(sections, destinationSectionId, copy, options.afterBlockId) };
 }
@@ -725,6 +749,8 @@ export function moveApartadoTo(
   const lock = structureLockReason(from.section, source.blockId) ?? structureLockReason(to.section, destination.blockId);
   if (lock) return unchanged(sections, lock);
   const apartado = from.container as Apartado;
+  const contentLock = destinationContentReason(to.section, apartado);
+  if (contentLock) return unchanged(sections, contentLock);
   if (!sameBlock && hasPinnedContent(from.section, apartado)) return unchanged(sections, "Este apartado tiene una tabla que se llena desde su lugar: no se mueve.");
   if (isRelationManagedImageSection(destination.sectionId) && apartado.images.length && !sameBlock) {
     return unchanged(sections, "Las imágenes de Datos generales se suben en esa sección: quita las imágenes del apartado antes de moverlo ahí.");
@@ -747,7 +773,7 @@ function placeApartado(block: Block, apartado: Apartado, position: TransferPosit
 export function pasteApartado(sections: AppSection[], destination: Omit<ContainerAddress, "apartadoId">, apartado: Apartado, options: CopyOptions = {}): TransferResult {
   const to = findContainer(sections, destination);
   if (!to) return unchanged(sections, MISSING_REASON);
-  const lock = structureLockReason(to.section, destination.blockId);
+  const lock = structureLockReason(to.section, destination.blockId) ?? destinationContentReason(to.section, apartado);
   if (lock) return unchanged(sections, lock);
   const copy = withoutImagesFor(destination.sectionId, copyApartado(apartado, sections, options));
   return { changed: true, sections: mapBlock(sections, destination.sectionId, destination.blockId, (block) => insertApartado(block, copy)) };
@@ -792,15 +818,16 @@ export function conceptDestinations(sections: AppSection[], source: ContainerAdd
   return destinations;
 }
 
-/** The sections a Block may move to. */
-export function blockDestinationSections(sections: AppSection[], sectionId: string): AppSection[] {
-  return sections.filter((section) => section.id !== sectionId && !isCaratula(section));
+/** The sections a Block may move to: the carátula only for a Block of concepts and subbloques. */
+export function blockDestinationSections(sections: AppSection[], sectionId: string, block?: Block): AppSection[] {
+  return sections.filter((section) => section.id !== sectionId && !(block && destinationContentReason(section, block)));
 }
 
 /** The Blocks an Apartado may move or be pasted to; `current` is the Block it is in, offered to change its place there. */
-export function apartadoDestinations(sections: AppSection[], current?: Omit<ContainerAddress, "apartadoId">): TransferDestination[] {
+export function apartadoDestinations(sections: AppSection[], current?: Omit<ContainerAddress, "apartadoId">, apartado?: Apartado): TransferDestination[] {
   return sections.flatMap((section) => section.blocks
     .filter((block) => structureLockReason(section, block.id) === null)
+    .filter(() => !(apartado && destinationContentReason(section, apartado)))
     .map((block) => ({
       address: { sectionId: section.id, blockId: block.id },
       sectionTitle: sectionName(section),

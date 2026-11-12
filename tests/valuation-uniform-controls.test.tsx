@@ -30,7 +30,7 @@ import "./support/ssr-portal-shim";
 /*  1. One toolbar for every block                                    */
 /* ------------------------------------------------------------------ */
 
-const KINDS: BlockToolbarKind[] = ["content", "caratula-block", "caratula-fixed", "generated"];
+const KINDS: BlockToolbarKind[] = ["content", "caratula-block", "generated"];
 
 test("every kind of block offers the same controls, in the same order", () => {
   for (const kind of KINDS) {

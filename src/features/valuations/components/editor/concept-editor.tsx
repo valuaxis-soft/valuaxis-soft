@@ -143,6 +143,9 @@ function caratulaInputType(type: ConceptType) {
  */
 const ConceptValueFormatEverywhereContext = createContext(false);
 
+/** A concept's title in the editor: bold and a shade softer than its value, as it prints (video 6.1). */
+const CONCEPT_TITLE_CLASS = "font-semibold text-foreground/80";
+
 export function ConceptValueFormatEverywhere({ children, enabled }: { children: ReactNode; enabled: boolean }) {
   return <ConceptValueFormatEverywhereContext.Provider value={enabled}>{children}</ConceptValueFormatEverywhereContext.Provider>;
 }
@@ -1241,7 +1244,8 @@ export function ConceptEditorRow({
         <Field className="min-w-0" data-invalid={titleMissing}>
           <Input
             aria-invalid={titleMissing}
-            className="h-10 min-w-0"
+            className={cn("h-10 min-w-0", CONCEPT_TITLE_CLASS)}
+            data-concept-title
             disabled={readOnly}
             placeholder="Título"
             value={isTitleFocused ? concept.label : cleanConceptLabel}
@@ -1397,7 +1401,8 @@ export function ConceptEditorRow({
           <Field data-invalid={titleMissing}>
             <Input
               aria-invalid={titleMissing}
-              className="w-full"
+              className={cn("w-full", CONCEPT_TITLE_CLASS)}
+              data-concept-title
               disabled={readOnly}
               value={isTitleFocused ? concept.label : cleanConceptLabel}
               onBlur={() => {
@@ -1423,7 +1428,8 @@ export function ConceptEditorRow({
           <Field className="min-w-0" data-invalid={titleMissing}>
             <Input
               aria-invalid={titleMissing}
-              className="h-10 min-w-0"
+              className={cn("h-10 min-w-0", CONCEPT_TITLE_CLASS)}
+              data-concept-title
               disabled={readOnly}
               value={isTitleFocused ? concept.label : cleanConceptLabel}
               onBlur={() => {
@@ -1521,12 +1527,15 @@ export function ConceptEditorRow({
 export function LongTextConceptEditor({
   concepts,
   label,
+  onRemove,
   onUpdate,
   readOnly,
   renderAssist,
 }: {
   concepts: Concept[];
   label?: string;
+  /** Deletes the text; the caller asks first. */
+  onRemove?: (concept: Concept) => void;
   onUpdate: (conceptId: string, patch: Partial<Concept>) => void;
   readOnly: boolean;
   /** The draft assistance of a fixed text that has one, under its field. */
@@ -1536,7 +1545,22 @@ export function LongTextConceptEditor({
     <div className="space-y-3">
       {concepts.map((concept) => (
         <Field key={concept.id}>
-          <FieldLabel>{label ?? concept.label}</FieldLabel>
+          <div className="flex items-center justify-between gap-2">
+            <FieldLabel>{label ?? concept.label}</FieldLabel>
+            {onRemove ? (
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label={`Eliminar ${label ?? concept.label}`}
+                title="Eliminar este texto"
+                disabled={readOnly}
+                onClick={() => onRemove(concept)}
+              >
+                <Trash2 />
+              </Button>
+            ) : null}
+          </div>
           <Textarea
             className="min-h-36"
             disabled={readOnly}

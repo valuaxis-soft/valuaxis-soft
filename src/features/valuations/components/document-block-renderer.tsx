@@ -386,22 +386,15 @@ function DocumentContentRow({
     sharedRule && theme.conceptRule,
   );
 
-  // Concepts as data labels, one alone or several side by side: each as wide as what it says, with room between them.
-  if (layoutRow.tagStyle && rowPrintsAsTags(layoutRow.tagStyle, visibleItems)) {
-    const tagStyle = layoutRow.tagStyle;
-    const concepts = visibleItems.map((itemRef) => conceptsById.get(itemRef.id)).filter((concept): concept is Concept => Boolean(concept));
-    return (
-      <div className={cn(rowSpacing, "flex flex-wrap items-stretch justify-between gap-x-6 gap-y-1")} data-row-tags={tagStyle}>
-        {concepts.map((concept) => <DocumentConceptTag key={concept.id} concept={concept} tagStyle={tagStyle} />)}
-      </div>
-    );
-  }
+  // Data labels, one concept alone or several side by side (rowPrintsAsTags): framed or shaded where
+  // they are, so the labels keep their guide and the data does not move (video 6.1).
+  const tagStyle = rowPrintsAsTags(layoutRow.tagStyle, visibleItems) ? layoutRow.tagStyle : undefined;
 
   // Images side by side keep their frames level: one without a caption keeps the room of its neighbour's.
   const captionSlots = columnCount > 1 ? imageCaptionSlots(visibleItems, imagesById) : undefined;
 
   return (
-    <div className={rowClassName}>
+    <div className={rowClassName} data-row-tags={tagStyle}>
       {layoutRow.columns.map((column) => {
         const cellGuidePx = resolveCellConceptGuide(column.conceptPresentation, containerPresentation);
         return (
@@ -411,7 +404,8 @@ function DocumentContentRow({
                 const concept = conceptsById.get(itemRef.id);
                 if (!concept || concept.enabled === false) return null;
                 if (concept.type === "paragraph") {
-                  return <DocumentParagraph key={itemRef.id} concept={concept} style={conceptSpacingStyle(concept)} />;
+                  // A paragraph has no title: its text alone goes in the label.
+                  return <DocumentParagraph key={itemRef.id} concept={concept} className={conceptTagClassName(tagStyle)} tagStyle={tagStyle} style={conceptSpacingStyle(concept)} />;
                 }
                 return (
                   <DocumentConceptCell
@@ -420,6 +414,7 @@ function DocumentContentRow({
                     applyConceptLayout={applyConceptLayout}
                     labelGuidePx={cellGuidePx}
                     ruled={!sharedRule}
+                    tagStyle={tagStyle}
                   />
                 );
               }
@@ -457,25 +452,12 @@ function imageCaptionSlots(items: Array<{ type: string; id: string }>, imagesByI
   };
 }
 
-/** A concept printed as a data label: label and value in one box, white or shaded. */
-function DocumentConceptTag({ concept, tagStyle }: { concept: Concept; tagStyle: NonNullable<ContentLayoutRowV2["tagStyle"]> }) {
-  const theme = useDocumentTheme();
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 max-w-full items-baseline gap-1.5 border border-[#A9BCD6] px-2 py-0.5",
-        tagStyle === "shaded" ? "bg-[#E7EEF7] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" : "bg-white",
-      )}
-      data-concept-tag={tagStyle}
-    >
-      {/* A paragraph has no title: its text alone goes in the label. */}
-      {concept.label.trim() && concept.type !== "paragraph" ? (
-        <strong className={cn(theme.conceptLabel, "shrink-0 whitespace-nowrap")}>{formatConceptTitleWithColon(concept.label)}</strong>
-      ) : null}
-      <span className={cn(theme.conceptValue, "min-w-0 text-left wrap-break-word")}>
-        <DocumentConceptValue concept={concept} fallback="—" />
-      </span>
-    </div>
+/** The frame of a data label, white or shaded: an inset line, so it adds no room and nothing moves. */
+function conceptTagClassName(tagStyle: ContentLayoutRowV2["tagStyle"]) {
+  if (!tagStyle) return undefined;
+  return cn(
+    "shadow-[inset_0_0_0_1px_#A9BCD6]",
+    tagStyle === "shaded" ? "bg-[#E7EEF7] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" : "bg-white",
   );
 }
 
@@ -488,10 +470,13 @@ function DocumentConceptCell({
   applyConceptLayout,
   labelGuidePx,
   ruled,
+  tagStyle,
 }: {
   concept: Concept;
   applyConceptLayout: boolean;
   labelGuidePx?: number;
+  /** Printed as a data label: framed on white or shaded, in its place, with no room added around it. */
+  tagStyle?: ContentLayoutRowV2["tagStyle"];
   /** Carries its own hairline; false when the row draws one for all its concepts. */
   ruled: boolean;
 }) {
@@ -507,7 +492,14 @@ function DocumentConceptCell({
 
   return (
     <div
-      className={cn(theme.conceptRowGrid, theme.conceptRow, ruled && theme.conceptRule, layoutClass)}
+      className={cn(
+        theme.conceptRowGrid,
+        theme.conceptRow,
+        ruled && !tagStyle && theme.conceptRule,
+        conceptTagClassName(tagStyle),
+        layoutClass,
+      )}
+      data-concept-tag={tagStyle}
       style={gridStyle ? { ...layoutStyle, ...gridStyle } : layoutStyle}
     >
       <strong className={cn(theme.conceptLabel, "text-right")}>

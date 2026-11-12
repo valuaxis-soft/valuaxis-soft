@@ -27,6 +27,7 @@ import { applyValuationFormulas } from "@/features/valuations/services/valuation
 import { initializeCaratulaState } from "@/features/valuations/components/workspace/valuation-caratula-state";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
 import { resequenceSections } from "./section-numbering";
+import { withCaratulaFreeBlockOrder } from "@/features/valuations/services/caratula-blocks";
 
 const emptyCaratula: CaratulaFormData = {
   tituloInmueble: "",
@@ -210,6 +211,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
     ...(section.bindingMargin ? { bindingMargin: section.bindingMargin } : {}),
     ...(section.titleBars ? { titleBars: section.titleBars } : {}),
     ...(section.titleBand ? { titleBand: section.titleBand } : {}),
+    ...(section.freeBlockOrder ? { freeBlockOrder: true } : {}),
     ...(section.documentRole ? { documentRole: section.documentRole } : {}),
     ...(section.annexTitle ? { annexTitle: section.annexTitle } : {}),
     ...(section.pageBreak ? { pageBreak: section.pageBreak } : {}),
@@ -300,7 +302,7 @@ export function initialSectionsFor(initialValuation: ValuationDetail | null | un
     ensureCompanyHeaderFields(
       ensureTerrenoSections(
         initialValuation
-          ? resequenceSections(normalizeInitialSections(initialValuation))
+          ? resequenceSections(normalizeInitialSections(initialValuation).map(withCaratulaFreeBlockOrder))
           : resequenceSections(createInitialSections()),
       ),
     ),

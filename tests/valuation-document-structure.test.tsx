@@ -269,7 +269,7 @@ test("a block starts automatically, on a new page or right where the one before 
 /*  Data labels, photos side by side, tables, band                     */
 /* ------------------------------------------------------------------ */
 
-test("concepts side by side print as data labels, each as wide as its content, white or shaded", () => {
+test("concepts side by side print as data labels in their place, framed or shaded, keeping the guide of their labels (video 6.1)", () => {
   const layout = {
     version: 2 as const,
     rows: [{ id: "r1", tagStyle: "shaded" as const, columns: [{ id: "c1", items: [{ type: "concept" as const, id: "v" }] }, { id: "c2", items: [{ type: "concept" as const, id: "s" }] }] }],
@@ -285,8 +285,12 @@ test("concepts side by side print as data labels, each as wide as its content, w
   const html = printed(<>{documentBlockFlowItems(tagged).map((item) => <div key={item.id}>{item.node}</div>)}</>);
   assert.match(html, /data-row-tags="shaded"/);
   assert.equal(html.match(/data-concept-tag="shaded"/g)?.length, 2);
-  assert.match(html, /justify-between/);
-  assert.doesNotMatch(html, /grid-cols-2/, "not columns of equal width");
+  // The same columns and label guide as the row without labels: the data does not move.
+  const plain = printed(<>{documentBlockFlowItems({ ...tagged, contentLayout: { version: 2, rows: [{ ...layout.rows[0], tagStyle: undefined }] } }).map((item) => <div key={item.id}>{item.node}</div>)}</>);
+  const grid = (markup: string) => /<div class="([^"]*grid-cols-2[^"]*)"/.exec(markup)?.[1];
+  assert.ok(grid(html), "the row keeps its columns");
+  assert.equal(grid(html), grid(plain));
+  assert.doesNotMatch(html, /justify-between/);
 });
 
 test("a photo without a caption keeps the room of its neighbour's, so the pair stays level", () => {
@@ -329,12 +333,14 @@ test("a table prints a double header over the columns the appraiser grouped, as 
   assert.equal(groupTableHeaders(preset, "a", "b", "X"), preset);
 });
 
-test("the DICTAMEN VALUATORIO band is framed when blue and sits close to the title after it when white", () => {
+test("the DICTAMEN VALUATORIO band has no frame when blue and the folio's frame when white (video 5.1)", () => {
   const letterhead: Letterhead = { name: "Valuadores", legalName: null, rfc: null, address: null, phone: null, email: null, logoUrl: null };
   const caratula = { folio: "TCH-001", fechaAvaluo: "", mesesVigencia: null, fechaVigencia: "", camposEncabezado: [] } as unknown as CaratulaFormData;
   const filled = printed(<DocumentPreviewHeader caratula={caratula} letterhead={letterhead} />);
-  assert.match(filled, /<div class="[^"]*border-2 border-\[var\(--caratula-dark-blue\)\][^"]*" data-title-band-frame=""><div class="[^"]*" data-title-band="filled">DICTAMEN VALUATORIO<\/div><\/div>/);
+  assert.match(filled, /<div class="mt-1 bg-\[var\(--caratula-dark-blue\)\][^"]*" data-title-band="filled">DICTAMEN VALUATORIO<\/div>/);
+  assert.doesNotMatch(filled, /data-title-band-frame/);
   const outline = printed(<DocumentPreviewHeader caratula={caratula} letterhead={letterhead} />, { ...DEFAULT_PAGE_PRESENTATION, titleBand: "outline" });
-  assert.match(outline, /class="mt-1 -mb-2 [^"]*" data-title-band="outline"/);
-  assert.doesNotMatch(outline, /data-title-band-frame/);
+  const folioFrame = /<p class="[^"]*(border-2 border-\[var\(--caratula-blue\)\])[^"]*">TCH-001<\/p>/.exec(outline);
+  assert.ok(folioFrame, "the folio keeps its frame");
+  assert.match(outline, /class="mt-1 border-2 border-\[var\(--caratula-dark-blue\)\] bg-white[^"]*" data-title-band="outline"/);
 });

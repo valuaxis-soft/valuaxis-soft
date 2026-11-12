@@ -17,6 +17,7 @@ import type {
 import { COMPANY_HEADER_BLOCK_ID } from "@/features/valuations/services/caratula-company-header";
 import {
   getCaratulaBlockKind,
+  primaryCaratulaConclusionId,
 } from "@/features/valuations/services/caratula-blocks";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { DocumentThemeProvider, useDocumentTheme } from "@/features/valuations/components/document-theme";
@@ -34,6 +35,7 @@ import {
 import {
   CaratulaCoverModule,
   CaratulaAssumptionsModule,
+  CaratulaBlockHeading,
   CaratulaConclusionModule,
   CaratulaSignaturesModule,
 } from "./caratula-preview-modules";
@@ -273,23 +275,32 @@ function CaratulaPreview({
   const visibleBlocks = section.blocks.filter(
     (block) => block.enabled && block.id !== COMPANY_HEADER_BLOCK_ID,
   );
-  const assumptions = visibleBlocks.filter((block) => getCaratulaBlockKind(block) === "assumptions");
-  const conclusions = visibleBlocks.filter((block) => getCaratulaBlockKind(block) === "conclusion");
-  const columnBlocks = visibleBlocks.filter(
-    (block) => getCaratulaBlockKind(block) === "intermediate",
-  );
+  // The first conclusion printed carries the commercial value and its words.
+  const valueConclusionId = primaryCaratulaConclusionId(visibleBlocks);
 
   // Carátula editable blocks show titles WITHOUT numeric section labels.
   const caratulaTitleOptions = {
-    renderBlockTitle: (block: Block) => (
-      <h2 className={theme.sectionTitle}>
-        {block.title || "No se proporcionó"}
-      </h2>
-    ),
+    renderBlockTitle: (block: Block) => <div className="mt-3"><CaratulaBlockHeading title={block.title} /></div>,
     renderApartadoTitle: (_block: Block, subBlock: Apartado) => (
       <h3 className={theme.apartadoTitle}>{subBlock.title}</h3>
     ),
   };
+  // The subbloques of the assumptions and the conclusion print after their texts, as in any block.
+  const apartadoItems = (block: Block) =>
+    reportBlockFlowItems({ ...block, concepts: [], images: [], tables: [] }, true, { renderTitleBar: false, ...caratulaTitleOptions });
+
+  // The blocks print in the editor's order, each with its title, like any section (videos 5.2, 5.5 and 5.6).
+  const blockItems = visibleBlocks.flatMap((block): DocumentFlowItem[] => {
+    const kind = getCaratulaBlockKind(block);
+    if (kind === "assumptions") {
+      return [{ id: `caratula-assumptions-${block.id}`, node: <CaratulaAssumptionsModule blocks={[block]} /> }, ...apartadoItems(block)];
+    }
+    if (kind === "conclusion") {
+      const node = <CaratulaConclusionModule blocks={[block]} caratula={caratula} meta={meta} showValue={block.id === valueConclusionId} />;
+      return [{ id: `caratula-conclusion-${block.id}`, node }, ...apartadoItems(block)];
+    }
+    return reportBlockFlowItems(block, true, caratulaTitleOptions);
+  });
 
   // Build all items: fixed modules + editable blocks, paginated as one flow.
   const items: DocumentFlowItem[] = [
@@ -297,12 +308,9 @@ function CaratulaPreview({
     { id: "caratula-cover", node: <CaratulaCoverModule caratula={caratula} meta={meta} principalImage={principalImage} /> },
     // Fixed, for an unaccredited issuer: on the cover, under the principal image
     ...(unaccreditedNotice ? [{ id: "caratula-unaccredited-notice", node: <UnaccreditedNotice location="caratula" /> }] : []),
-    // Editable blocks — no title bar in carátula document rendering
-    ...columnBlocks.flatMap((block) => reportBlockFlowItems(block, true, { renderTitleBar: false, ...caratulaTitleOptions })),
-    // Fixed: Assumptions
-    { id: "caratula-assumptions", node: <CaratulaAssumptionsModule blocks={assumptions} /> },
-    // Fixed: Conclusion
-    { id: "caratula-conclusion", node: <CaratulaConclusionModule blocks={conclusions} caratula={caratula} meta={meta} /> },
+    ...blockItems,
+    // With its conclusion hidden, the commercial value still prints, as it always did.
+    ...(valueConclusionId ? [] : [{ id: "caratula-conclusion", node: <CaratulaConclusionModule blocks={[]} caratula={caratula} meta={meta} /> }]),
     // Fixed: Signatures, their own item so many of them can move to the next page
     { id: "caratula-signatures", node: <CaratulaSignaturesModule caratula={caratula} /> },
   ];

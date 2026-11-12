@@ -4,7 +4,7 @@ import { Fragment, useState, type RefObject } from "react";
 
 import { ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
 import type { AppSection, Block } from "@/features/valuations/model";
-import { blockCopyLockReason, blockDestinationSections, structureLockReason } from "@/features/valuations/services/structure-transfer";
+import { blockCopyLockReason, blockDestinationSections, blockMoveLockReason } from "@/features/valuations/services/structure-transfer";
 import { tableContextMenu, type BlockMenuTarget, type TableMenuAction } from "@/features/valuations/services/table-context-menu";
 import { sectionDisplayName } from "../workspace/model/section-numbering";
 import { useStructureTransfer } from "../workspace/structure-transfer-context";
@@ -42,7 +42,7 @@ export function BlockTitleContextMenu({ section, block, label, name, titleRef, c
   const [moving, setMoving] = useState(false);
   const available = transfer && !transfer.readOnly;
   const copyLock = available ? lock ?? blockCopyLockReason(section, block.id) : NO_TRANSFER;
-  const moveLock = available ? lock ?? structureLockReason(section, block.id) : NO_TRANSFER;
+  const moveLock = available ? lock ?? blockMoveLockReason(section, block.id) : NO_TRANSFER;
   const groups = tableContextMenu("editable", {
     kind: "block",
     canRename,
@@ -56,7 +56,7 @@ export function BlockTitleContextMenu({ section, block, label, name, titleRef, c
     hints: { ...hints, transfer: copyLock ?? undefined, move: copyLock ?? moveLock ?? undefined },
   });
   const options: PickerOption[] = moving && transfer
-    ? blockDestinationSections(transfer.sections, section.id).map((destination) => ({
+    ? blockDestinationSections(transfer.sections, section.id, block).map((destination) => ({
         key: destination.id,
         group: "Secciones",
         label: sectionDisplayName(destination),

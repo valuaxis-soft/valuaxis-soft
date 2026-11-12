@@ -63,6 +63,23 @@ export function CaratulaCoverModule({
   );
 }
 
+/**
+ * The title of a block of the carátula: its own blocks, the assumptions and the
+ * conclusion print it alike (videos 5.2 and 5.6: "DATOS DEL BIEN" was missing).
+ */
+export function CaratulaBlockHeading({ title }: { title: string }) {
+  return (
+    <h2 className="border-b-2 border-[var(--caratula-blue)] pb-0.5 text-[12px] font-black uppercase leading-tight text-[var(--caratula-blue)]" data-caratula-block-title>
+      {title || "No se proporcionó"}
+    </h2>
+  );
+}
+
+/** "CONCLUSION", as the template names it, prints with its accent. */
+function conclusionTitle(title: string) {
+  return !title.trim() || title.trim().toUpperCase() === "CONCLUSION" ? "CONCLUSIÓN" : title;
+}
+
 // Module 2: Assumptions (long text blocks)
 export function CaratulaAssumptionsModule({
   blocks,
@@ -75,9 +92,7 @@ export function CaratulaAssumptionsModule({
     <>
       {blocks.map((block) => (
         <section className="mt-3" key={block.id}>
-          <h2 className="border-b-2 border-[var(--caratula-blue)] pb-0.5 text-[12px] font-black uppercase leading-tight text-[var(--caratula-blue)]">
-            {block.title}
-          </h2>
+          <CaratulaBlockHeading title={block.title} />
           <div className="min-h-8 space-y-1 pt-1 text-justify text-[10.5px] leading-snug text-slate-700">
             {block.concepts.map((concept) => (
               <p className="whitespace-pre-wrap" key={concept.id}>
@@ -96,10 +111,13 @@ export function CaratulaConclusionModule({
   blocks,
   caratula,
   meta,
+  showValue = true,
 }: {
   blocks: Block[];
   caratula: CaratulaFormData;
   meta: ValuationMeta;
+  /** False on a further conclusion block: the commercial value prints once, in the first. */
+  showValue?: boolean;
 }) {
   const narrativeConcepts = blocks
     .flatMap((block) => block.concepts)
@@ -107,7 +125,7 @@ export function CaratulaConclusionModule({
 
   return (
     <section className="mt-4">
-      <h2 className="border-b-2 border-[var(--caratula-blue)] pb-0.5 text-sm font-black uppercase leading-tight text-[var(--caratula-blue)]">CONCLUSIÓN</h2>
+      <CaratulaBlockHeading title={conclusionTitle(blocks[0]?.title ?? "")} />
       {narrativeConcepts.length ? (
         <div className="space-y-1 pt-1 text-justify text-[11px] leading-snug text-slate-700">
           {narrativeConcepts.map((concept) => (
@@ -117,13 +135,13 @@ export function CaratulaConclusionModule({
           ))}
         </div>
       ) : null}
-      <div className="mt-1 border-2 border-[var(--caratula-blue)] bg-slate-200/80 px-4 py-1.5 text-center">
+      {showValue ? <div className="mt-1 border-2 border-[var(--caratula-blue)] bg-slate-200/80 px-4 py-1.5 text-center">
         <h3 className="text-sm font-black leading-tight text-[var(--caratula-blue)]">{appraisedGoodWording(meta.propertyKind).commercialValueTitle}</h3>
         <p className="pt-1 text-3xl font-medium leading-tight text-[var(--caratula-blue)]">{caratula.valorTotal ? formatNumericValue(caratula.valorTotal, { valueFormat: "mxn-mn" }) : "Sin calcular"}</p>
         <p className="pt-1 text-sm font-medium uppercase leading-tight text-slate-600">
           {caratula.valorConLetra || "Valor con letra pendiente"}
         </p>
-      </div>
+      </div> : null}
     </section>
   );
 }
@@ -143,7 +161,10 @@ export function CaratulaSignaturesModule({ caratula }: { caratula: CaratulaFormD
               a pasted signature has no legal validity. */}
           <div style={{ height: HAND_SIGNATURE_ROOM_PX }} />
           <div className="border-t border-slate-500 pt-1.5">
-          <p className="break-words text-xs font-bold text-slate-700">{signature.name || "Firma pendiente"}</p>
+          {/* The name keeps one line, centred on the line even when it is wider than it (video 6.1). */}
+          <div className="flex justify-center">
+            <p className="whitespace-nowrap text-xs font-bold text-slate-700" data-signature-name>{signature.name || "Firma pendiente"}</p>
+          </div>
           <p className="mt-0.5 break-words text-[10px] leading-tight text-slate-600">
             {signature.cedula ? `Cédula profesional ${signature.cedula}` : "Cédula profesional pendiente"}
           </p>

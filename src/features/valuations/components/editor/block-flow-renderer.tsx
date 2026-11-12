@@ -115,6 +115,11 @@ export type BlockFlowRendererProps = {
    * and the current DnD state for visual indicators.
    */
   renderApartado: (subBlock: Apartado, flowIndex: number, dndState: { activeColumnId: string | null; activeTarget: string | null }) => React.ReactNode;
+  /**
+   * False when the Block's own concepts are edited elsewhere (the carátula's
+   * assumptions and conclusion, as long texts): only its Apartados show here.
+   */
+  showContentRows?: boolean;
 };
 
 /* ------------------------------------------------------------------ */
@@ -136,6 +141,7 @@ export function BlockFlowRenderer({
   onContentLayoutChange,
   onBlockFlowChange,
   renderApartado,
+  showContentRows = true,
 }: BlockFlowRendererProps) {
   /* ---- Resolve layout + V2 flow ---- */
   const resolvedLayout = useMemo(
@@ -439,6 +445,7 @@ export function BlockFlowRenderer({
 
           /* --- Content structural row --- */
           if (firstItem.type === "content-row" && structuralRow.items.length === 1) {
+            if (!showContentRows) return null;
             const row = rowsById.get(firstItem.rowId);
             if (!row) return null;
             return (
@@ -604,7 +611,7 @@ export function BlockFlowRenderer({
       </SortableContext>
 
       {/* Fallback: content rows not referenced in flow (should not happen after normalization) */}
-      {structuralRows.length === 0 && resolvedLayout.rows.map((row, rowIndex) => (
+      {showContentRows && structuralRows.length === 0 && resolvedLayout.rows.map((row, rowIndex) => (
         <V2RowDropTarget
           key={`row-${row.id}`}
           rowId={row.id}

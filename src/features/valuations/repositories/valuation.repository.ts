@@ -85,6 +85,7 @@ export type ValuationSectionDto = {
   bindingMargin?: "normal" | "wide";
   titleBars?: "filled" | "outline";
   titleBand?: "filled" | "outline";
+  freeBlockOrder?: boolean;
   /** Chapter or annex, the label of an annex, where it starts and the approaches left out of the dictamen. */
   documentRole?: SectionMetadata["documentRole"];
   annexTitle?: string;
@@ -761,6 +762,7 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition, 
     ...(sectionMetadata.bindingMargin ? { bindingMargin: sectionMetadata.bindingMargin } : {}),
     ...(sectionMetadata.titleBars ? { titleBars: sectionMetadata.titleBars } : {}),
     ...(sectionMetadata.titleBand ? { titleBand: sectionMetadata.titleBand } : {}),
+    ...(sectionMetadata.freeBlockOrder ? { freeBlockOrder: true } : {}),
     ...sectionStructureDto(sectionMetadata),
     ...(renamed ? { titleEdited: true } : {}),
     ...(removed ? { removed: true } : {}),
