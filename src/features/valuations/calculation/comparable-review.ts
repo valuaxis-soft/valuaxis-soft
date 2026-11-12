@@ -8,14 +8,34 @@ import { formatDay, hasAddress, type ComparableAddress } from "./comparable-card
 import type { ComparableValidity } from "./comparable-validity";
 import { isBuiltComparableType, type ComparableType } from "./market-types";
 
-export const REVIEW_STATUSES = ["POR_REVISAR", "VERIFICADO", "CON_OBSERVACIONES", "RECHAZADO"] as const;
+/**
+ * The states of the review. VERIFICADO, stored before the listing's link was
+ * told apart, reads «Verificado y vigente»: the stored values stay the same,
+ * so no review changes its meaning.
+ */
+export const REVIEW_STATUSES = ["POR_REVISAR", "VERIFICADO", "VERIFICADO_NO_VIGENTE", "CON_OBSERVACIONES", "RECHAZADO"] as const;
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 export const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
-  POR_REVISAR: "Por revisar",
-  VERIFICADO: "Verificado",
+  POR_REVISAR: "Sin revisar",
+  VERIFICADO: "Verificado y vigente",
+  VERIFICADO_NO_VIGENTE: "Verificado y no vigente",
   CON_OBSERVACIONES: "Con observaciones",
   RECHAZADO: "Rechazado",
 };
+
+/** Verified against its listing, whether the listing is still published or not. */
+export const isVerifiedStatus = (status: ReviewStatus | null | undefined) => status === "VERIFICADO" || status === "VERIFICADO_NO_VIGENTE";
+
+/**
+ * The state after the appraiser marks or unmarks «El enlace sigue vigente»:
+ * unmarked, the comparable was verified but its listing is gone («Verificado
+ * y no vigente»); marked, «Verificado y vigente». A comparable with
+ * observations or rejected keeps its state: the link does not undo that.
+ */
+export function statusAfterLinkCheck(status: ReviewStatus, linkValid: boolean): ReviewStatus {
+  if (status === "CON_OBSERVACIONES" || status === "RECHAZADO") return status;
+  return linkValid ? "VERIFICADO" : "VERIFICADO_NO_VIGENTE";
+}
 
 /** What the appraiser checks against the listing, in the order of the competitor's review. */
 export const REVIEW_CHECKS = ["photo", "price", "landArea", "builtArea", "contact", "address", "link"] as const;
@@ -29,6 +49,27 @@ export const REVIEW_CHECK_LABELS: Record<ReviewCheck, string> = {
   address: "Dirección completa",
   link: "El enlace sigue vigente",
 };
+
+/** «Marcar todas»: every check shown, marked; the state follows the link as if it had been marked by hand. */
+export function markAllChecks(
+  checks: readonly ReviewCheck[], status: ReviewStatus,
+): { checks: Partial<Record<ReviewCheck, boolean>>; status: ReviewStatus } {
+  return {
+    checks: Object.fromEntries(checks.map((check) => [check, true])) as Partial<Record<ReviewCheck, boolean>>,
+    status: checks.includes("link") ? statusAfterLinkCheck(status, true) : status,
+  };
+}
+
+/**
+ * The comparables of the review grouped by type, in the order of the types
+ * («Terrenos en venta», then «Inmuebles en venta»…), each group in the order
+ * it came: land and buildings are not mixed in one list.
+ */
+export function groupByComparableType<T extends { type: ComparableType }>(rows: readonly T[], order: readonly ComparableType[]): Array<{ type: ComparableType; rows: T[] }> {
+  return order
+    .map((type) => ({ type, rows: rows.filter((row) => row.type === type) }))
+    .filter((group) => group.rows.length > 0);
+}
 
 export type ComparableReviewDto = {
   status: ReviewStatus;

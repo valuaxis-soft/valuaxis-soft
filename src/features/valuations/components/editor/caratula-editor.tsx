@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/native-select";
 
 import { ImagePlus, Plus, Trash2 } from "lucide-react";
+import { filesAsChangeEvent } from "@/features/files/clipboard-image";
+import { PasteImageButton } from "@/features/files/components/paste-image-button";
 
 import type {
   CaratulaFormData,
@@ -382,6 +384,9 @@ function PrincipalImageEditor({
               onChange={onUpload}
             />
           </label>
+          {onUpload ? (
+            <PasteImageButton baseName="imagen-principal" disabled={disabled} onFiles={(files) => onUpload(filesAsChangeEvent(files))} />
+          ) : null}
         </div>
       </div>
       {image?.url ? (

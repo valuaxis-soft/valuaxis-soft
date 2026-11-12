@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
-  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { OPERATION_TYPE_LABELS, formatComparableId, formatDay } from "@/features/valuations/calculation/comparable-card";
 import { COMPARABLE_TYPE_LABELS, isRentComparableType } from "@/features/valuations/calculation/market-types";
@@ -28,6 +28,7 @@ import { ValidityBadge } from "@/features/valuations/components/calculation/comp
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { ComparableBaseItem } from "../comparable-base.service";
+import { ComparableColumnsMenuItems } from "./comparable-columns-menu";
 import { buildComparableListHref, type ComparableListParams } from "../comparable-list-params";
 import {
   COMPARABLE_COLUMN_LABELS,
@@ -376,19 +377,11 @@ export function ComparableBaseTable({ items, params, userId, canEdit }: {
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button type="button" size="sm" variant="outline" className="h-8"><Columns3 data-icon="inline-start" /> Columnas</Button>} />
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Columnas visibles</DropdownMenuLabel>
-            {layout.map((column) => (
-              <DropdownMenuCheckboxItem
-                key={column.key}
-                checked={column.visible}
-                closeOnClick={false}
-                onCheckedChange={() => setLayout((current) => toggleColumn(current, column.key))}
-              >
-                {COMPARABLE_COLUMN_LABELS[column.key]}
-              </DropdownMenuCheckboxItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setLayout(defaultColumnLayout())}>Restablecer columnas</DropdownMenuItem>
+            <ComparableColumnsMenuItems
+              layout={layout}
+              onToggle={(key) => setLayout((current) => toggleColumn(current, key))}
+              onReset={() => setLayout(defaultColumnLayout())}
+            />
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

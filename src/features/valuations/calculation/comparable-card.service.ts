@@ -59,6 +59,8 @@ export type ComparableCardDto = {
   uses: ComparableUseDto[];
   /** Every capture of the comparable (its number) in the base, most recent data first; the dates come from the captures themselves. */
   history: ComparableCaptureDto[];
+  /** Name of each characteristic the appraiser added to the market, by its key, so the card never shows the internal key. */
+  characteristicLabels?: Record<string, string>;
 };
 
 export type ReviewRowDto = { comparable: ComparableDto; type: ComparableType; warnings: ComparableWarning[] };
@@ -82,6 +84,20 @@ export type DuplicateMatchDto = {
   /** "Fecha de alta / actualización" of its data, YYYY-MM-DD: which of the two is the more recent. */
   updatedOn: string;
 };
+
+/** The name of each characteristic column of the market of a version where the comparable was captured. */
+async function characteristicLabels(versionId: number, type: ComparableType): Promise<Record<string, string>> {
+  const market = await prisma.enfoqueMercado.findFirst({
+    where: { IdVersionAvaluo: versionId, tipoComparable: { SClave: type } },
+    select: { JConfiguracion: true },
+  });
+  const fields = asRecord(market?.JConfiguracion ?? null).characteristicFields;
+  if (!Array.isArray(fields)) return {};
+  return Object.fromEntries(fields.flatMap((field) => {
+    const { key, label } = asRecord(field) as { key?: unknown; label?: unknown };
+    return typeof key === "string" && typeof label === "string" && label.trim() ? [[key, label]] : [];
+  }));
+}
 
 /** The subject's area of each market of a version, for the ±20 % rule of buildings. */
 async function subjectAreas(versionId: number) {
@@ -177,6 +193,7 @@ export async function getComparableCard(comparableId: string, organizationId: nu
       reference: comparable.reference, addedOn: row.DFechaSeleccion.toISOString().slice(0, 10),
     }],
     history,
+    characteristicLabels: row.IdVersionAvaluo ? await characteristicLabels(row.IdVersionAvaluo, type) : {},
   };
 }
 

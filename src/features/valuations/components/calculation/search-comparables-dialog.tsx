@@ -26,6 +26,7 @@ import { SEARCH_TEXT_MIN, searchText } from "@/features/valuations/comparable-se
 import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { ComparableBaseMap } from "@/features/valuations/comparable-base/components/comparable-base-map";
+import { useExpandableDialog } from "./expandable-dialog";
 
 const number = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
 const money = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" }));
@@ -194,13 +195,16 @@ export function SearchComparablesDialog({
     onChange: (event: { target: { value: string } }) => setDraft((current) => ({ ...current, [key]: event.target.value })),
   });
 
+  const expandable = useExpandableDialog();
+
   return (
     <>
       <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
         <Search data-icon="inline-start" /> {label}
       </Button>
       <Dialog open={open} onOpenChange={(next) => { if (busy !== "add") { setOpen(next); if (!next) reset(); } }}>
-        <DialogContent className={view === "mapa" ? "max-h-[90vh] overflow-y-auto sm:max-w-6xl" : "max-h-[90vh] overflow-y-auto sm:max-w-4xl"}>
+        <DialogContent className={expandable.className(view === "mapa" ? "max-h-[90vh] overflow-y-auto sm:max-w-6xl" : "max-h-[90vh] overflow-y-auto sm:max-w-5xl")}>
+          {expandable.button}
           {view === "mapa" && googleMaps ? (
             <>
               <DialogHeader>

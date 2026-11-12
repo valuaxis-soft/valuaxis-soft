@@ -5,16 +5,10 @@ import {
   FileValidationError,
   storageProvider,
 } from "@/infrastructure/storage/storage-provider";
+import { MIME_BY_SHARP_FORMAT, imageContentProblem } from "@/features/files/image-content";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_FILE_SIZE = env.MAX_UPLOAD_SIZE_MB * 1024 * 1024;
-
-const MIME_BY_SHARP_FORMAT: Record<string, string> = {
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-  gif: "image/gif",
-};
 
 export type UploadResult = {
   url: string;
@@ -65,8 +59,10 @@ export async function saveUpload(file: File, options: SaveUploadOptions = {}): P
     throw new UploadError("El contenido del archivo no es una imagen valida.", "INVALID_IMAGE_CONTENT");
   }
   const detectedMimeType = metadata.format ? MIME_BY_SHARP_FORMAT[metadata.format] : undefined;
-  if (!detectedMimeType || !allowedMimeTypes.includes(detectedMimeType) || detectedMimeType !== file.type) {
-    throw new UploadError("El contenido de la imagen no coincide con el tipo declarado.", "INVALID_IMAGE_CONTENT");
+  // What counts is the content, read above, not the name: a PNG renamed .jpg is still a PNG and is
+  // stored (re-encoded) as such. A content of another kind says what it really is (V5.5-05).
+  if (!detectedMimeType || !allowedMimeTypes.includes(detectedMimeType)) {
+    throw new UploadError(imageContentProblem(metadata.format, allowedMimeTypes), "INVALID_IMAGE_CONTENT");
   }
 
   const shouldNormalizeToJpeg = detectedMimeType !== "image/gif";

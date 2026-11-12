@@ -1,23 +1,14 @@
 "use client";
 
-import { AlertTriangle, ClipboardPaste, ImagePlus, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { useEffect, useMemo, type ClipboardEvent } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { CLIPBOARD_IMAGE_TYPES, pastedImages } from "@/features/files/clipboard-image";
+import { PasteImageButton } from "@/features/files/components/paste-image-button";
 
-const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
-
-/** The image of a paste, if it carries one; a screenshot comes as "image.png". */
-function pastedImage(items: DataTransferItemList | null) {
-  for (const item of Array.from(items ?? [])) {
-    if (item.kind === "file" && IMAGE_TYPES.includes(item.type)) {
-      const file = item.getAsFile();
-      if (file) return new File([file], `pantalla-de-referencia.${item.type.split("/")[1]}`, { type: item.type });
-    }
-  }
-  return null;
-}
+const BASE_NAME = "pantalla-de-referencia";
 
 /** A local preview of a file not uploaded yet; released when it changes. */
 function usePreview(file: File | null) {
@@ -46,29 +37,13 @@ export function ScreenshotSlot(props: {
 
   const paste = (event: ClipboardEvent<HTMLDivElement>) => {
     if (props.readOnly) return;
-    const file = pastedImage(event.clipboardData.items);
+    const [file] = pastedImages(event.clipboardData.items, BASE_NAME);
     if (!file) {
       toast.error("El portapapeles no trae una imagen. Toma la captura del anuncio y vuelve a pegar.");
       return;
     }
     event.preventDefault();
     props.onChoose(file);
-  };
-
-  const readClipboard = async () => {
-    try {
-      for (const item of await navigator.clipboard.read()) {
-        const type = item.types.find((candidate) => IMAGE_TYPES.includes(candidate));
-        if (type) {
-          const blob = await item.getType(type);
-          props.onChoose(new File([blob], `pantalla-de-referencia.${type.split("/")[1]}`, { type }));
-          return;
-        }
-      }
-      toast.error("El portapapeles no trae una imagen.");
-    } catch {
-      toast.error("El navegador no dejó leer el portapapeles: haz clic en el recuadro y pega con Ctrl+V.");
-    }
   };
 
   return (
@@ -97,14 +72,12 @@ export function ScreenshotSlot(props: {
       {props.pending ? <p className="text-xs text-muted-foreground">Se guardará con el comparable.</p> : null}
       {!props.readOnly ? (
         <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="outline" onClick={() => void readClipboard()}>
-            <ClipboardPaste data-icon="inline-start" /> Pegar del portapapeles
-          </Button>
+          <PasteImageButton baseName={BASE_NAME} onFiles={([file]) => { if (file) props.onChoose(file); }} />
           <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2.5 text-xs font-medium hover:bg-muted">
             <ImagePlus className="size-3.5" /> Subir imagen
             <input
               type="file"
-              accept={IMAGE_TYPES.join(",")}
+              accept={CLIPBOARD_IMAGE_TYPES.join(",")}
               className="sr-only"
               onChange={(event) => {
                 const file = event.target.files?.[0];

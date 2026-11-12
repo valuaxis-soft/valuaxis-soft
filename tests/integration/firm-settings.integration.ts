@@ -190,10 +190,14 @@ test("only real JPEG, PNG or WebP images are accepted as a logo", async () => {
   await organizationUuid(fixture);
   const gif = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#000" } }).gif().toBuffer();
   await assert.rejects(replaceFirmLogo(fixture.user, new File([new Uint8Array(gif)], "logo.gif", { type: "image/gif" })), /Tipo de archivo no permitido/);
+  // A GIF renamed .png is still a GIF: the message says what it really is.
+  await assert.rejects(replaceFirmLogo(fixture.user, new File([new Uint8Array(gif)], "logo.png", { type: "image/png" })), /La imagen es GIF aunque su nombre diga otra cosa/);
   await assert.rejects(replaceFirmLogo(fixture.user, new File(["no es imagen"], "logo.png", { type: "image/png" })), /no es una imagen valida/);
-  const jpeg = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#000" } }).jpeg().toBuffer();
-  await assert.rejects(replaceFirmLogo(fixture.user, new File([new Uint8Array(jpeg)], "logo.png", { type: "image/png" })), /no coincide con el tipo declarado/);
   assert.equal((await getFirmSettings(fixture.organizationId)).logoUrl, null);
+  // V5.5-05: a real JPEG renamed .png is accepted by its content, not refused by its name.
+  const jpeg = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#000" } }).jpeg().toBuffer();
+  await replaceFirmLogo(fixture.user, new File([new Uint8Array(jpeg)], "logo.png", { type: "image/png" }));
+  assert.ok((await getFirmSettings(fixture.organizationId)).logoUrl);
 });
 
 /* ------------------------------------------------------------------ */

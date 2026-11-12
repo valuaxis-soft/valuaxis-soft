@@ -105,6 +105,60 @@ export function coordinatesError(latitude: number | null | undefined, longitude:
   return null;
 }
 
+const HEMISPHERES: Record<string, 1 | -1> = { N: 1, S: -1, E: 1, O: -1, W: -1 };
+
+/**
+ * One coordinate as the appraiser pastes it: a decimal ("20.7254", "-102,34")
+ * or degrees, minutes and seconds as Google Earth copies them
+ * ("20°43'31.39\"N", "102°20'44.85\"O", "102 20 44.85 W"). South and west (O or
+ * W) are negative. Null when the text is not a coordinate.
+ */
+export function parseCoordinate(text: string): number | null {
+  const value = text.trim().replace(/[′’]/g, "'").replace(/[″”“]|''/g, "\"").toUpperCase();
+  if (!value) return null;
+  if (/^[-+]?\d+(?:[.,]\d+)?$/.test(value)) return Number(value.replace(",", "."));
+  const match = /^([NSEOW])?\s*([-+])?\s*(\d+(?:[.,]\d+)?)\s*(?:°|º|\s)\s*(?:(\d+(?:[.,]\d+)?)\s*(?:'|\s)\s*)?(?:(\d+(?:[.,]\d+)?)\s*"?\s*)?([NSEOW])?$/.exec(value);
+  if (!match) return null;
+  const [, before, sign, degrees, minutes, seconds, after] = match;
+  if (before && after) return null;
+  const number = (part: string | undefined) => (part ? Number(part.replace(",", ".")) : 0);
+  if (number(minutes) >= 60 || number(seconds) >= 60) return null;
+  const magnitude = number(degrees) + number(minutes) / 60 + number(seconds) / 3600;
+  const hemisphere = before ?? after;
+  const direction = (hemisphere ? HEMISPHERES[hemisphere] : 1) * (sign === "-" ? -1 : 1);
+  return Math.round(direction * magnitude * 1e7) / 1e7;
+}
+
+/**
+ * "lat, lon" pasted in one field, decimal or in degrees ("20.72, -102.34",
+ * "20°43'31.39\"N 102°20'44.85\"O"): both coordinates, or null when the text
+ * is not a pair.
+ */
+export function parseCoordinatePair(text: string): { latitude: number; longitude: number } | null {
+  const value = text.trim();
+  const decimal = /^([-+]?\d+(?:\.\d+)?)\s*[,;\s]\s*([-+]?\d+(?:\.\d+)?)$/.exec(value);
+  if (decimal) return { latitude: Number(decimal[1]), longitude: Number(decimal[2]) };
+  const split = /^(.+?[NS])\s*[,;]?\s*(.+?[EOW])$/i.exec(value);
+  if (!split) return null;
+  const latitude = parseCoordinate(split[1]);
+  const longitude = parseCoordinate(split[2]);
+  return latitude === null || longitude === null ? null : { latitude, longitude };
+}
+
+/**
+ * The name of a characteristic added by the appraiser, as the card shows it:
+ * the label of its column in the market ("N° DORMITORIOS" → "N° dormitorios").
+ * Without one (a comparable of the base), the key without its prefix and
+ * generated suffix ("edad-mvqrj8g8" → "Edad"); never the internal key alone.
+ */
+export function characteristicLabelOf(key: string, labels?: Record<string, string> | null): string {
+  const label = labels?.[key]?.trim();
+  const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+  if (label) return sentence(label);
+  const words = key.replace(/^custom:/, "").replace(/(?:^|[-_])[a-z0-9]*\d[a-z0-9]*$/i, "").replace(/[-_]+/g, " ").trim();
+  return words ? sentence(words) : "Característica adicional";
+}
+
 /** A day YYYY-MM-DD as "23 oct 2026". */
 export const formatDay = (day: string) =>
   new Date(`${day}T12:00:00Z`).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });

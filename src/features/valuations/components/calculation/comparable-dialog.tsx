@@ -1,9 +1,12 @@
 "use client";
 
-import { Copy, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
-import { useEffect, useEffectEvent, useState, type ChangeEvent, type FormEvent } from "react";
+import { Copy, ExternalLink, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
+import { useEffect, useEffectEvent, useRef, useState, type ChangeEvent, type ClipboardEvent, type FormEvent } from "react";
 
-import { Button } from "@/components/ui/button";
+import {
+  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -11,6 +14,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea";
 import type { ComparableFormValues } from "@/lib/api-client";
 import type { ComparablePrefill } from "@/features/ai/listing-prefill";
+import { PasteImageButton } from "@/features/files/components/paste-image-button";
 import {
   ADDRESS_LABELS,
   ADDRESS_PARTS,
@@ -26,6 +30,8 @@ import {
   formatComparableId,
   formatDay,
   hasAddress,
+  parseCoordinate,
+  parseCoordinatePair,
   todayInMexico,
   type AddressPart,
   type ComparableAddress,
@@ -39,12 +45,14 @@ import { ComparableCardButton } from "./comparable-card-dialog";
 import { ComparableValidityLine } from "./comparable-validity-badge";
 import { COMPARABLE_VALIDITY_MONTHS, addMonths, validityMonthsOf } from "@/features/valuations/calculation/comparable-validity";
 import { FormulaInput } from "./formula-input";
+import { useExpandableDialog } from "./expandable-dialog";
 import { ScreenshotSlot } from "./screenshot-slot";
 import { SheetFormSection } from "./comparable-sheet";
 import {
   COMPARABLE_TYPES,
   COMPARABLE_TYPE_LABELS,
   MAX_COMPARABLE_ATTRIBUTES,
+  MAX_COMPARABLE_PHOTOS,
   NUMERIC_CHARACTERISTICS,
   cleanAttributes,
   characteristicText,
@@ -140,8 +148,56 @@ const EMPTY_VALUES: ComparableFormValues = {
   sourceName: null, contactName: null, contactPhone: null, url: null, offerDate: null, factors: [],
 };
 
-/** A coordinate typed in the form: empty, a number, or NaN when it is not one. */
-const coordinate = (value: string) => (value.trim() ? Number(value.trim().replace(",", ".")) : null);
+/** A coordinate typed in the form, decimal or as Google Earth copies it: empty, a number, or NaN when it is not one. */
+const coordinate = (value: string) => (value.trim() ? parseCoordinate(value) ?? Number.NaN : null);
+
+/** Degrees, minutes and seconds turned into the decimal the form keeps; anything else stays as typed. */
+const decimalCoordinate = (typed: string) => {
+  const value = parseCoordinate(typed);
+  return value === null ? typed : String(value);
+};
+
+/** A listing's link that can be opened: http or https. */
+export const openableUrl = (value: string) => {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Fields of the form an error points to, so the appraiser sees which one to correct. */
+export type ComparableFormField =
+  | "location" | "postalCode" | "frontCount" | "latitude" | "longitude" | "landArea" | "bedrooms" | "bathrooms" | "area" | "price";
+
+/** «Superficie de terreno (m²) dice «México»»: what was typed, so an autofill by the browser is seen at once. */
+const typedIn = (label: string, typed: string) => `${label} dice «${typed.trim()}»`;
+
+/**
+ * Land area, bedrooms and bathrooms of a built comparable as typed, or the
+ * field to correct and why. NaN when something was typed that is not a number.
+ */
+export function buildingFieldsOf(draft: { landArea: string; bedrooms: string; bathrooms: string }):
+  { landArea: number | null; bedrooms: number | null; bathrooms: number | null } | { error: string; field: ComparableFormField } {
+  const numberOf = (typed: string) => (typed.trim() ? parseDecimal(typed) ?? Number.NaN : null);
+  const landArea = numberOf(draft.landArea);
+  if (landArea !== null && !(landArea > 0)) {
+    return { field: "landArea", error: `${typedIn("Superficie de terreno (m²)", draft.landArea)}: debe ser un número mayor que cero, o quedar vacía.` };
+  }
+  const bedrooms = numberOf(draft.bedrooms);
+  if (bedrooms !== null && !(Number.isInteger(bedrooms) && bedrooms >= 0)) {
+    return { field: "bedrooms", error: `${typedIn("Recámaras", draft.bedrooms)}: es un número entero, o queda vacío.` };
+  }
+  const bathrooms = numberOf(draft.bathrooms);
+  if (bathrooms !== null && !(Number.isInteger(bathrooms * 2) && bathrooms >= 0)) {
+    return { field: "bathrooms", error: `${typedIn("Baños", draft.bathrooms)}: van en enteros o medios (2 o 2.5), o quedan vacíos.` };
+  }
+  return { landArea, bedrooms, bathrooms };
+}
+
+/** What the appraiser captured, to tell whether closing the form would lose something. */
+const snapshotOf = (...parts: unknown[]) => JSON.stringify(parts, (_key, value: unknown) => (value instanceof File ? `${value.name}:${value.size}` : value));
 
 /** Images chosen before the comparable exists: uploaded right after it is saved. */
 export type PendingImages = { screenshot: File | null };
@@ -196,7 +252,11 @@ export function ComparableDialog(props: {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<"photo" | "screenshot" | null>(null);
   const [pendingScreenshot, setPendingScreenshot] = useState<File | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; field?: ComparableFormField } | null>(null);
+  // Closing with unsaved changes (Escape, the X, «Cancelar») asks first instead of losing the capture.
+  const [confirmClose, setConfirmClose] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
+  const expandable = useExpandableDialog();
   // Matches of the firm's base for a new comparable, waiting for the appraiser's answer.
   const [duplicates, setDuplicates] = useState<DuplicateMatchDto[] | null>(null);
   // What the check while typing found, shown above the form without stopping the capture.
@@ -219,34 +279,39 @@ export function ComparableDialog(props: {
   const validUntil = draft.validityMonths ? addMonths(draft.consultedOn || todayInMexico(), Number(draft.validityMonths)) : draft.validUntil;
 
   /** Land area, bedrooms, bathrooms and type of construction of a built comparable, or what to correct. */
-  const buildingValues = (): Pick<ComparableFormValues, "landArea" | "bedrooms" | "bathrooms" | "constructionType"> | { error: string } => {
-    // NaN when something was typed that is not a number.
-    const numberOf = (typed: string) => (typed.trim() ? parseDecimal(typed) ?? Number.NaN : null);
-    const landArea = numberOf(draft.landArea);
-    if (landArea !== null && !(landArea > 0)) return { error: "La superficie de terreno debe ser un número mayor que cero, o quedar vacía." };
-    const bedrooms = numberOf(draft.bedrooms);
-    if (bedrooms !== null && !(Number.isInteger(bedrooms) && bedrooms >= 0)) return { error: "Las recámaras son un número entero, o quedan vacías." };
-    const bathrooms = numberOf(draft.bathrooms);
-    if (bathrooms !== null && !(Number.isInteger(bathrooms * 2) && bathrooms >= 0)) return { error: "Los baños van en enteros o medios (2 o 2.5), o quedan vacíos." };
-    return { landArea, bedrooms, bathrooms, constructionType: draft.constructionType.trim() || null };
+  const buildingValues = (): Pick<ComparableFormValues, "landArea" | "bedrooms" | "bathrooms" | "constructionType"> | { error: string; field: ComparableFormField } => {
+    const parsed = buildingFieldsOf(draft);
+    return "error" in parsed ? parsed : { ...parsed, constructionType: draft.constructionType.trim() || null };
   };
 
   /** The values to save, or what the appraiser has to correct. */
-  const valuesOf = (): { values: ComparableFormValues } | { error: string } => {
-    if (!location) return { error: "Captura la ubicación del comparable: el texto o, al menos, la calle y el municipio." };
-    if (draft.address.postalCode.trim() && !/^\d{5}$/.test(draft.address.postalCode.trim())) return { error: "El código postal lleva 5 dígitos." };
+  const valuesOf = (): { values: ComparableFormValues } | { error: string; field?: ComparableFormField } => {
+    if (!location) return { field: "location", error: "Captura la ubicación del comparable: el texto o, al menos, la calle y el municipio." };
+    if (draft.address.postalCode.trim() && !/^\d{5}$/.test(draft.address.postalCode.trim())) {
+      return { field: "postalCode", error: `${typedIn("Código postal", draft.address.postalCode)}: lleva 5 dígitos.` };
+    }
+    for (const key of ["area", "price"] as const) {
+      if (draft[key].trim() && !draft[key].trim().startsWith("=") && parseDecimal(draft[key]) === null) {
+        return { field: key, error: `${typedIn(key === "area" ? "Superficie (m²)" : props.unitLabel, draft[key])}: debe ser un número o un cálculo que empiece con =.` };
+      }
+    }
     const frontCount = characteristics.frontCount?.trim() ? parseDecimal(characteristics.frontCount) : null;
     if (frontCount !== null && (!Number.isInteger(frontCount) || frontCount < 1)) {
-      return { error: "El número de frentes debe ser un entero de 1 en adelante, o quedar vacío." };
+      return { field: "frontCount", error: "El número de frentes debe ser un entero de 1 en adelante, o quedar vacío." };
     }
     const latitude = coordinate(draft.latitude);
     const longitude = coordinate(draft.longitude);
-    const coordinatesProblem = Number.isNaN(latitude) || Number.isNaN(longitude)
-      ? "La latitud y la longitud son números en grados, como 20.7092 y -102.3467."
-      : coordinatesError(latitude, longitude);
-    if (coordinatesProblem) return { error: coordinatesProblem };
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+      const field = Number.isNaN(latitude) ? "latitude" : "longitude";
+      return {
+        field,
+        error: `${typedIn(field === "latitude" ? "Latitud" : "Longitud", draft[field])}: va en grados, como 20.7092 y -102.3467, o como la copia Google Earth (20°43'31.39"N, 102°20'44.85"O).`,
+      };
+    }
+    const coordinatesProblem = coordinatesError(latitude, longitude);
+    if (coordinatesProblem) return { field: latitude === null ? "latitude" : "longitude", error: coordinatesProblem };
     const building = built ? buildingValues() : null;
-    if (building && "error" in building) return { error: building.error };
+    if (building && "error" in building) return building;
     // What is not in the form (the factors, characteristics out of the list) stays as stored.
     const {
       id: _id, reference: _reference, photos: _photos, folio: _folio, screenshot: _screenshot, review: _review, updatedOn: _updatedOn, ...stored
@@ -285,7 +350,11 @@ export function ComparableDialog(props: {
   const save = async (checkDuplicates: boolean, mergeInto?: string) => {
     const parsed = valuesOf();
     if ("error" in parsed) {
-      setError(parsed.error);
+      setError({ message: parsed.error, field: parsed.field });
+      // The field to correct, in view and focused.
+      const target = parsed.field ? form.current?.querySelector<HTMLElement>(`[data-field="${parsed.field}"]`) : null;
+      target?.scrollIntoView({ block: "center" });
+      target?.focus();
       return;
     }
     setError(null);
@@ -304,6 +373,7 @@ export function ComparableDialog(props: {
     const ok = await props.onSubmit(values, { screenshot: pendingScreenshot }, mergeInto);
     setSaving(false);
     if (ok) props.onOpenChange(false);
+    else setError({ message: "No se pudo guardar el comparable. Lo capturado sigue aquí: revisa el aviso y vuelve a intentarlo." });
   };
 
   const submit = (event: FormEvent) => {
@@ -318,13 +388,21 @@ export function ComparableDialog(props: {
     if (ok) props.onOpenChange(false);
   };
 
-  const uploadPhoto = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
+  const room = MAX_COMPARABLE_PHOTOS - (comparable?.photos.length ?? 0);
+  /** Several photos at once, one after the other so they keep their order; past the six a comparable keeps, it says so. */
+  const uploadPhotos = async (files: File[]) => {
+    if (!files.length) return;
+    if (files.length > room) {
+      setError({ message: `Un comparable lleva hasta ${MAX_COMPARABLE_PHOTOS} fotografías: se agregan ${Math.max(room, 0)} de las ${files.length} que elegiste.` });
+    }
     setUploading("photo");
-    await props.onUploadPhoto(file);
+    for (const file of files.slice(0, Math.max(room, 0))) await props.onUploadPhoto(file);
     setUploading(null);
+  };
+  const uploadPhoto = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    void uploadPhotos(files);
   };
 
   const chooseScreenshot = async (file: File) => {
@@ -362,9 +440,28 @@ export function ComparableDialog(props: {
     return () => { active = false; clearTimeout(timer); };
   }, [checkWhileTyping, probeKey]);
 
+  const current = snapshotOf(draft, characteristics, freeText, attributes, pendingScreenshot);
+  const [initial] = useState(current);
+  // A new comparable from a pasted listing already holds data worth asking about.
+  const dirty = !readOnly && (current !== initial || (!comparable && Boolean(props.prefill)));
+  const requestClose = () => {
+    if (dirty) setConfirmClose(true);
+    else props.onOpenChange(false);
+  };
+  const listingUrl = openableUrl(draft.url);
+  // «lat, lon» pasted at once (Google Maps or Earth) fills both fields.
+  const pasteCoordinates = (event: ClipboardEvent<HTMLInputElement>) => {
+    const pair = parseCoordinatePair(event.clipboardData.getData("text"));
+    if (!pair) return;
+    event.preventDefault();
+    setDraft((current) => ({ ...current, latitude: String(pair.latitude), longitude: String(pair.longitude) }));
+  };
+  const invalid = (field: ComparableFormField) => (error?.field === field ? true : undefined);
+
   return (
-    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
+    <Dialog open={props.open} onOpenChange={(open) => { if (open) props.onOpenChange(true); else requestClose(); }}>
+      <DialogContent className={expandable.className("max-h-[92vh] overflow-y-auto sm:max-w-4xl")}>
+        {expandable.button}
         <DialogHeader>
           <DialogTitle>{comparable ? `Comparable ${comparable.reference}${id ? ` · ${id}` : ""}` : "Nuevo comparable"}</DialogTitle>
           <DialogDescription>
@@ -399,7 +496,8 @@ export function ComparableDialog(props: {
           </section>
         ) : null}
 
-        <form className="grid gap-5" onSubmit={submit} hidden={duplicates !== null}>
+        {/* autoComplete off: Chrome's address autofill wrote «México» in the land area and the comparable would not save. */}
+        <form ref={form} className="grid gap-5" onSubmit={submit} hidden={duplicates !== null} autoComplete="off">
           {checkWhileTyping && liveMatches.length ? (
             <section
               className="grid gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40"
@@ -424,44 +522,56 @@ export function ComparableDialog(props: {
               <FieldGroup className="grid gap-3 sm:grid-cols-6">
                 <Field className="sm:col-span-2">
                   <FieldLabel htmlFor="comparable-state">{ADDRESS_LABELS.state}</FieldLabel>
-                  <Input id="comparable-state" value={draft.address.state} onChange={setAddress("state")} />
+                  <Input id="comparable-state" autoComplete="off" value={draft.address.state} onChange={setAddress("state")} />
                 </Field>
                 <Field className="sm:col-span-2">
                   <FieldLabel htmlFor="comparable-municipality">{ADDRESS_LABELS.municipality}</FieldLabel>
-                  <Input id="comparable-municipality" value={draft.address.municipality} onChange={setAddress("municipality")} />
+                  <Input id="comparable-municipality" autoComplete="off" value={draft.address.municipality} onChange={setAddress("municipality")} />
                 </Field>
                 <Field className="sm:col-span-2">
                   <FieldLabel htmlFor="comparable-postalCode">{ADDRESS_LABELS.postalCode}</FieldLabel>
-                  <Input id="comparable-postalCode" inputMode="numeric" maxLength={5} value={draft.address.postalCode} onChange={setAddress("postalCode")} />
+                  <Input id="comparable-postalCode" data-field="postalCode" aria-invalid={invalid("postalCode")} autoComplete="off" inputMode="numeric" maxLength={5} value={draft.address.postalCode} onChange={setAddress("postalCode")} />
                 </Field>
                 <Field className="sm:col-span-3">
                   <FieldLabel htmlFor="comparable-neighborhood">{ADDRESS_LABELS.neighborhood}</FieldLabel>
-                  <Input id="comparable-neighborhood" value={draft.address.neighborhood} onChange={setAddress("neighborhood")} />
+                  <Input id="comparable-neighborhood" autoComplete="off" value={draft.address.neighborhood} onChange={setAddress("neighborhood")} />
                 </Field>
                 <Field className="sm:col-span-3">
                   <FieldLabel htmlFor="comparable-subdivision">{ADDRESS_LABELS.subdivision} (opcional)</FieldLabel>
-                  <Input id="comparable-subdivision" value={draft.address.subdivision} onChange={setAddress("subdivision")} />
+                  <Input id="comparable-subdivision" autoComplete="off" value={draft.address.subdivision} onChange={setAddress("subdivision")} />
                 </Field>
                 <Field className="sm:col-span-5">
                   <FieldLabel htmlFor="comparable-street">{ADDRESS_LABELS.street}</FieldLabel>
-                  <Input id="comparable-street" value={draft.address.street} onChange={setAddress("street")} />
+                  <Input id="comparable-street" autoComplete="off" value={draft.address.street} onChange={setAddress("street")} />
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="comparable-number">{ADDRESS_LABELS.number}</FieldLabel>
-                  <Input id="comparable-number" value={draft.address.number} onChange={setAddress("number")} />
+                  <Input id="comparable-number" autoComplete="off" value={draft.address.number} onChange={setAddress("number")} />
                 </Field>
                 <Field className="sm:col-span-6">
                   <FieldLabel htmlFor="comparable-location">Ubicación como la imprime el dictamen</FieldLabel>
                   <Input
                     id="comparable-location"
+                    data-field="location"
+                    aria-invalid={invalid("location")}
+                    autoComplete="off"
                     value={draft.location}
-                    placeholder={formatAddress(address) || "Calle, número, colonia y municipio"}
+                    placeholder="Se arma sola con los campos de arriba; escribe aquí solo si quieres otro texto"
                     onChange={set("location")}
                   />
-                  <p className="text-xs text-muted-foreground">Si la dejas vacía, se arma con la calle, el número, la colonia, el C.P., el municipio y el estado.</p>
+                  {/* The line the dictamen prints, shown as text and not as a grey example, so it does not look empty. */}
+                  <p className="rounded-md border bg-muted/40 px-2 py-1.5 text-sm" data-location-preview>
+                    <span className="text-xs text-muted-foreground">El dictamen imprime: </span>
+                    {location ? <span className="font-medium">{location}</span> : <span className="text-muted-foreground">captura la calle, el número, la colonia y el municipio</span>}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {draft.location.trim()
+                      ? "Se imprime el texto que escribiste. Bórralo para que se arme con los campos."
+                      : "Se arma con la calle, el número, la colonia, el C.P., el municipio y el estado."}
+                  </p>
                 </Field>
                 <Field className="sm:col-span-2">
-                  <FieldLabel htmlFor="comparable-proximity">Proximidad urbana (SHF)</FieldLabel>
+                  <FieldLabel htmlFor="comparable-proximity">Proximidad urbana</FieldLabel>
                   <NativeSelect id="comparable-proximity" className="w-full" value={draft.urbanProximity} onChange={set("urbanProximity")}>
                     <NativeSelectOption value="">Sin indicar</NativeSelectOption>
                     {URBAN_PROXIMITIES.map((item) => <NativeSelectOption key={item} value={item}>{URBAN_PROXIMITY_LABELS[item]}</NativeSelectOption>)}
@@ -469,12 +579,35 @@ export function ComparableDialog(props: {
                 </Field>
                 <Field className="sm:col-span-2">
                   <FieldLabel htmlFor="comparable-latitude">Latitud (opcional)</FieldLabel>
-                  <Input id="comparable-latitude" inputMode="decimal" placeholder="20.7092" value={draft.latitude} onChange={set("latitude")} />
+                  <Input
+                    id="comparable-latitude"
+                    data-field="latitude"
+                    aria-invalid={invalid("latitude")}
+                    autoComplete="off"
+                    placeholder={`20.7092 o 20°43'31.39"N`}
+                    value={draft.latitude}
+                    onChange={set("latitude")}
+                    onPaste={pasteCoordinates}
+                    onBlur={() => setDraft((current) => ({ ...current, latitude: decimalCoordinate(current.latitude) }))}
+                  />
                 </Field>
                 <Field className="sm:col-span-2">
                   <FieldLabel htmlFor="comparable-longitude">Longitud (opcional)</FieldLabel>
-                  <Input id="comparable-longitude" inputMode="decimal" placeholder="-102.3467" value={draft.longitude} onChange={set("longitude")} />
+                  <Input
+                    id="comparable-longitude"
+                    data-field="longitude"
+                    aria-invalid={invalid("longitude")}
+                    autoComplete="off"
+                    placeholder={`-102.3467 o 102°20'44.85"O`}
+                    value={draft.longitude}
+                    onChange={set("longitude")}
+                    onPaste={pasteCoordinates}
+                    onBlur={() => setDraft((current) => ({ ...current, longitude: decimalCoordinate(current.longitude) }))}
+                  />
                 </Field>
+                <p className="text-xs text-muted-foreground sm:col-span-6">
+                  Pega las coordenadas en decimales o como las copia Google Earth (20°43&apos;31.39&quot;N); si pegas las dos juntas, se llenan solas.
+                </p>
               </FieldGroup>
             </SheetFormSection>
 
@@ -501,12 +634,15 @@ export function ComparableDialog(props: {
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-area">Superficie (m²)</FieldLabel>
-                <FormulaInput id="comparable-area" grouping value={draft.area} onChange={set("area")} />
+                <FormulaInput id="comparable-area" data-field="area" aria-invalid={invalid("area")} autoComplete="off" grouping value={draft.area} onChange={set("area")} />
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-price">{props.unitLabel}</FieldLabel>
                 <FormulaInput
                   id="comparable-price"
+                  data-field="price"
+                  aria-invalid={invalid("price")}
+                  autoComplete="off"
                   grouping
                   value={draft.price}
                   onChange={(event) => { setAnnualRent(null); set("price")(event); }}
@@ -552,15 +688,15 @@ export function ComparableDialog(props: {
                   </Field>
                   <Field className="sm:col-span-2">
                     <FieldLabel htmlFor="comparable-land-area">Superficie de terreno (m²)</FieldLabel>
-                    <Input id="comparable-land-area" inputMode="decimal" value={draft.landArea} onChange={set("landArea")} />
+                    <Input id="comparable-land-area" data-field="landArea" aria-invalid={invalid("landArea")} autoComplete="off" inputMode="decimal" value={draft.landArea} onChange={set("landArea")} />
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="comparable-bedrooms">Recámaras</FieldLabel>
-                    <Input id="comparable-bedrooms" inputMode="numeric" value={draft.bedrooms} onChange={set("bedrooms")} />
+                    <Input id="comparable-bedrooms" data-field="bedrooms" aria-invalid={invalid("bedrooms")} autoComplete="off" inputMode="numeric" value={draft.bedrooms} onChange={set("bedrooms")} />
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="comparable-bathrooms">Baños</FieldLabel>
-                    <Input id="comparable-bathrooms" inputMode="decimal" placeholder="2.5" value={draft.bathrooms} onChange={set("bathrooms")} />
+                    <Input id="comparable-bathrooms" data-field="bathrooms" aria-invalid={invalid("bathrooms")} autoComplete="off" inputMode="decimal" placeholder="2.5" value={draft.bathrooms} onChange={set("bathrooms")} />
                   </Field>
                   <p className="text-xs text-muted-foreground sm:col-span-6">
                     Sirven para buscarlo en la base del despacho; el cálculo y el dictamen no los usan.
@@ -574,19 +710,31 @@ export function ComparableDialog(props: {
               <FieldGroup className="grid gap-3 sm:grid-cols-4">
                 <Field className="sm:col-span-2">
                   <FieldLabel htmlFor="comparable-source">Fuente</FieldLabel>
-                  <Input id="comparable-source" placeholder="Inmobiliaria, portal o anuncio" value={draft.sourceName} onChange={set("sourceName")} />
+                  <Input id="comparable-source" autoComplete="off" placeholder="Inmobiliaria, portal o anuncio" value={draft.sourceName} onChange={set("sourceName")} />
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="comparable-contact">Contacto (anunciante)</FieldLabel>
-                  <Input id="comparable-contact" value={draft.contactName} onChange={set("contactName")} />
+                  <Input id="comparable-contact" autoComplete="off" value={draft.contactName} onChange={set("contactName")} />
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="comparable-phone">Teléfono</FieldLabel>
-                  <Input id="comparable-phone" inputMode="tel" value={draft.contactPhone} onChange={set("contactPhone")} />
+                  <Input id="comparable-phone" autoComplete="off" inputMode="tel" value={draft.contactPhone} onChange={set("contactPhone")} />
                 </Field>
                 <Field className="sm:col-span-4">
                   <FieldLabel htmlFor="comparable-url">Liga del anuncio</FieldLabel>
-                  <Input id="comparable-url" type="url" placeholder="https://" value={draft.url} onChange={set("url")} />
+                  <div className="flex gap-2">
+                    <Input id="comparable-url" autoComplete="off" type="url" placeholder="https://" value={draft.url} onChange={set("url")} />
+                    {/* «Ver anuncio» right in the form, without going to the card. */}
+                    {listingUrl ? (
+                      <a className={buttonVariants({ variant: "outline", size: "sm", className: "h-8 shrink-0" })} href={listingUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink data-icon="inline-start" /> Ver anuncio
+                      </a>
+                    ) : (
+                      <Button type="button" variant="outline" size="sm" className="h-8 shrink-0" disabled title="Escribe la liga completa, con https://">
+                        <ExternalLink data-icon="inline-start" /> Ver anuncio
+                      </Button>
+                    )}
+                  </div>
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="comparable-consulted">Fecha de consulta</FieldLabel>
@@ -621,7 +769,7 @@ export function ComparableDialog(props: {
               <FieldGroup className="grid gap-3 sm:grid-cols-4">
                 <Field className="sm:col-span-4">
                   <FieldLabel htmlFor="comparable-landUse">Uso de suelo (descripción, columna del dictamen)</FieldLabel>
-                  <Input id="comparable-landUse" value={draft.landUse} onChange={set("landUse")} />
+                  <Input id="comparable-landUse" autoComplete="off" value={draft.landUse} onChange={set("landUse")} />
                 </Field>
                 {fields.map((field) => {
                   const fieldId = `comparable-${field.key.replace(":", "-")}`;
@@ -633,6 +781,8 @@ export function ComparableDialog(props: {
                       <FieldLabel htmlFor={fieldId}>{field.label}</FieldLabel>
                       <Control
                         id={fieldId}
+                        autoComplete="off"
+                        {...(field.key === "frontCount" ? { "data-field": "frontCount", "aria-invalid": invalid("frontCount") } : {})}
                         list={list?.id}
                         placeholder={list ? "Elige o escribe otro" : undefined}
                         value={characteristics[field.key] ?? ""}
@@ -746,18 +896,24 @@ export function ComparableDialog(props: {
                   <label className="flex size-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed text-xs text-muted-foreground hover:bg-muted">
                     {uploading === "photo" ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
                     Agregar
-                    <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={uploadPhoto} disabled={uploading !== null} />
+                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="sr-only" onChange={uploadPhoto} disabled={uploading !== null || room <= 0} />
                   </label>
                 ) : null}
               </div>
+              {!readOnly ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <PasteImageButton baseName="foto-comparable" multiple disabled={uploading !== null || room <= 0} onFiles={(files) => void uploadPhotos(files)} />
+                  <span className="text-xs text-muted-foreground">Elige varias a la vez (hasta {MAX_COMPARABLE_PHOTOS}) o pega una imagen copiada.</span>
+                </div>
+              ) : null}
             </SheetFormSection>
           ) : (
             <p className="text-xs text-muted-foreground">Guarda el comparable para agregar fotografías del inmueble.</p>
           )}
 
-          {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
+          {error ? <p className="text-sm text-destructive" role="alert" data-form-error={error.field}>{error.message}</p> : null}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => props.onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={requestClose}>
               {readOnly ? "Cerrar" : "Cancelar"}
             </Button>
             {!readOnly ? (
@@ -769,6 +925,23 @@ export function ComparableDialog(props: {
           </DialogFooter>
         </form>
       </DialogContent>
+      <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cerrar sin guardar el comparable?</AlertDialogTitle>
+            <AlertDialogDescription>Lo que capturaste en este comparable todavía no se guarda. Si cierras, se pierde.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Seguir capturando</AlertDialogCancel>
+            <Button type="button" variant="outline" className="text-destructive" onClick={() => { setConfirmClose(false); props.onOpenChange(false); }}>
+              Descartar cambios
+            </Button>
+            <Button type="button" disabled={saving} onClick={() => { setConfirmClose(false); form.current?.requestSubmit(); }}>
+              Guardar comparable
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

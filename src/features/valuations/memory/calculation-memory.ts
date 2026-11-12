@@ -734,5 +734,6 @@ export function memoryComparableCards(
       warnings: [],
       uses: [],
       history: [],
+      characteristicLabels: Object.fromEntries((market.settings.characteristicFields ?? []).map((field) => [field.key, field.label])),
     })));
 }

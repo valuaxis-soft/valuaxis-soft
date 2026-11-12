@@ -53,7 +53,7 @@ import { collectFormulas, withFormulaTexts } from "@/features/valuations/calcula
 import { FormulaInput } from "./formula-input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { formatComparableId, todayInMexico } from "@/features/valuations/calculation/comparable-card";
-import { REVIEW_STATUS_LABELS, comparableWarnings } from "@/features/valuations/calculation/comparable-review";
+import { REVIEW_STATUS_LABELS, comparableWarnings, isVerifiedStatus } from "@/features/valuations/calculation/comparable-review";
 import { ComparableCardButton } from "./comparable-card-dialog";
 import { ComparableDialog, type PendingImages } from "./comparable-dialog";
 import { ComparableReviewDialog } from "./comparable-review-dialog";
@@ -601,7 +601,7 @@ function MarketTypePanel(props: {
                     <td className="px-2 py-1.5">{comparable.reference}</td>
                     <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">
                       {formatComparableId(comparable.folio) ?? "—"}
-                      <span className={cn("ml-1 font-sans", status === "VERIFICADO" ? "text-emerald-700 dark:text-emerald-400" : status === "POR_REVISAR" ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400")}>
+                      <span className={cn("ml-1 font-sans", isVerifiedStatus(status) ? "text-emerald-700 dark:text-emerald-400" : status === "POR_REVISAR" ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400")}>
                         · {REVIEW_STATUS_LABELS[status]}
                       </span>
                     </td>

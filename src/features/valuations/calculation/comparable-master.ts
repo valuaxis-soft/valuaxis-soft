@@ -33,6 +33,7 @@ import {
   type UnitBasis,
 } from "./comparable-card";
 import { canonicalUrlKey } from "./comparable-duplicates";
+import { isVerifiedStatus } from "./comparable-review";
 import { cellDate, cellNumber, cellText, friendlyMessage, MAX_IMPORT_ROWS, normalizeHeader, type CellValue } from "./comparable-import";
 import { comparableInputSchema, type ComparableInputPayload } from "./market-schemas";
 import { isLandComparableType, isRentComparableType, type ComparableDto, type ComparableType } from "./market-types";
@@ -190,7 +191,7 @@ export const MASTER_COLUMNS: MasterColumn[] = [
   column("landUse", "Uso de suelo", 1, "uso_suelo", "catalog", "No", "El uso declarado o el del plan; no se confunde con la normativa verificada.", { catalog: "landUse", width: 16, aliases: ["uso"] }),
   column("landUseKey", "Clave de uso de suelo", 1, "clave_uso_suelo", "text", "No", "La clave del plan, por ejemplo AU-I/H-3.", { width: 14, aliases: ["clave"], advanced: true }),
   column("zone", "Tipo de zona", 1, "tipo_zona", "catalog", "No", "Calle tipo, superior, inferior…", { catalog: "zone", width: 15, aliases: ["zona"] }),
-  column("urbanProximity", "Proximidad urbana (SHF)", 1, "proximidad_urbana", "catalog", "No", "1 Céntrica a 5 Rural, como las reglas de la SHF.", { catalog: "urbanProximity", width: 16, aliases: ["proximidadurbana"], advanced: true }),
+  column("urbanProximity", "Proximidad urbana", 1, "proximidad_urbana", "catalog", "No", "1 Céntrica a 5 Rural.", { catalog: "urbanProximity", width: 16, aliases: ["proximidadurbana", "proximidadurbanashf"], advanced: true }),
   column("landArea", "Sup. terreno (m²)", 2, "superficie_terreno_m2", "number", "Cond.", "Requerida cuando el unitario es por terreno; en terrenos es la superficie del cálculo.", { aliases: ["superficiedelterrenom2", "superficiedeterrenom2", "supterreno", "superficieterreno"] }),
   column("frontage", "Frente (m)", 2, "frente_m", "number", "No", "Metros."),
   column("depth", "Fondo (m)", 2, "fondo_m", "number", "No", "Metros."),
@@ -602,8 +603,8 @@ export function masterRowValues(
   const listing = comparable.listingDetails ?? {};
   const address = comparable.address ?? {};
   const review = comparable.review;
-  const verified: DataVerified | null = review?.status === "VERIFICADO" ? "SI" : listing.dataVerified ?? null;
-  const useStatus: UseStatus = review?.status === "RECHAZADO" ? "DESCARTADO" : review?.status === "VERIFICADO" ? "ACEPTADO" : "PENDIENTE";
+  const verified: DataVerified | null = isVerifiedStatus(review?.status) ? "SI" : listing.dataVerified ?? null;
+  const useStatus: UseStatus = review?.status === "RECHAZADO" ? "DESCARTADO" : isVerifiedStatus(review?.status) ? "ACEPTADO" : "PENDIENTE";
   const basis = property.unitBasis ?? (land ? "TERRENO_M2" : "CONSTRUCCION_M2");
   const street = [address.street, address.number].filter(Boolean).join(" ") || null;
   const reviewed = review && review.status !== "POR_REVISAR";
