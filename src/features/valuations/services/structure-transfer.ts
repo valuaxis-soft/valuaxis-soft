@@ -21,6 +21,8 @@ import type {
   Apartado,
   AppSection,
   Block,
+  BlockFlowStructuralRow,
+  BlockFlowV2,
   Concept,
   ContentLayout,
   ContentLayoutColumnV2,
@@ -28,9 +30,17 @@ import type {
   ImageContent,
   TableContent,
 } from "../model";
-import { normalizeBlockFlowV2, resolveBlockFlowV2, isBlockFlowV2 } from "./block-flow";
+import { contentRowStructuralId, normalizeBlockFlowV2, resolveBlockFlowV2, isBlockFlowV2 } from "./block-flow";
 import { resolveContentLayout } from "./content-layout";
-import { contentItemKey } from "./content-drop";
+import {
+  applyContentDropToBlocks,
+  canMoveContent,
+  contentItemKey,
+  type ContentDropSource,
+  type ContentDropTarget,
+  type ContentMoveRules,
+} from "./content-drop";
+import { stripTextMarks } from "./text-marks";
 import { contentMoveRulesForSection } from "./content-move-rules";
 import { isRelationManagedImageSection } from "./image-source";
 import type { FormulaExpression, FormulaOperand, TableFormula, TableRow, TableSchema } from "./table";
@@ -43,6 +53,19 @@ import type { FormulaExpression, FormulaOperand, TableFormula, TableRow, TableSc
 export type ContainerAddress = { sectionId: string; blockId: string; apartadoId?: string };
 
 export type TransferResult = { changed: boolean; sections: AppSection[]; reason?: string };
+
+/** What moved things go before or after, inside a Block or Apartado: one of its rows or (in a Block) one of its Apartados. */
+export type TransferAnchor = { type: "row"; rowId: string } | { type: "apartado"; apartadoId: string };
+
+/**
+ * Where moved things land inside their destination. "end" is after
+ * everything it holds (in a Block, after its Apartados too), as before
+ * there was a choice (video 5.6, 31:58: the concepts went under the
+ * Apartado and could not be put back above it).
+ */
+export type TransferPosition = { placement: "start" | "end" } | { placement: "before" | "after"; anchor: TransferAnchor };
+
+const AT_END: TransferPosition = { placement: "end" };
 
 const unchanged = (sections: AppSection[], reason: string): TransferResult => ({ changed: false, sections, reason });
 
@@ -137,8 +160,10 @@ export function moveConceptsTo(
   source: ContainerAddress,
   conceptIds: readonly string[],
   destination: ContainerAddress,
+  /** Where they land; without one they go to the end, and never to the container they are in. */
+  position?: TransferPosition,
 ): TransferResult {
-  if (sameContainer(source, destination)) return unchanged(sections, "Los conceptos ya están ahí.");
+  if (!position && sameContainer(source, destination)) return unchanged(sections, "Los conceptos ya están ahí.");
   const from = findContainer(sections, source);
   const to = findContainer(sections, destination);
   if (!from || !to) return unchanged(sections, MISSING_REASON);
@@ -187,9 +212,8 @@ export function moveConceptsTo(
   }));
   const moved = moving.map(settle);
   next = mapContainer(next, destination, (container) => ({
-    ...container,
+    ...placeRows(container, freshRows(resolveContentLayout(container), movedRows), position ?? AT_END),
     concepts: [...container.concepts, ...moved],
-    contentLayout: appendRows(resolveContentLayout(container), movedRows),
   }));
   return { changed: true, sections: next };
 }
@@ -199,8 +223,8 @@ function isChosenConcept(column: ContentLayoutColumnV2, chosen: ReadonlySet<stri
   return item?.type === "concept" && chosen.has(item.id);
 }
 
-/** The layout with the rows appended at its end, under ids it does not use yet. */
-function appendRows(layout: ContentLayout, rows: ContentLayoutColumnV2[][]): ContentLayout {
+/** The rows, under row and column ids the layout does not use yet. */
+function freshRows(layout: ContentLayout, rows: ContentLayoutColumnV2[][]): ContentLayoutRowV2[] {
   const usedRows = new Set(layout.rows.map((row) => row.id));
   const usedColumns = new Set(layout.rows.flatMap((row) => row.columns.map((column) => column.id)));
   const fresh = (prefix: string, used: Set<string>) => {
@@ -209,16 +233,128 @@ function appendRows(layout: ContentLayout, rows: ContentLayoutColumnV2[][]): Con
     used.add(id);
     return id;
   };
-  return {
-    version: 2,
-    rows: [
-      ...layout.rows,
-      ...rows.map((columns) => ({
-        id: fresh("r", usedRows),
-        columns: columns.map((column) => ({ ...column, id: usedColumns.has(column.id) ? fresh("c", usedColumns) : (usedColumns.add(column.id), column.id) })),
-      })),
-    ],
-  };
+  return rows.map((columns) => ({
+    id: fresh("r", usedRows),
+    columns: columns.map((column) => ({ ...column, id: usedColumns.has(column.id) ? fresh("c", usedColumns) : (usedColumns.add(column.id), column.id) })),
+  }));
+}
+
+const anchorInRow = (row: BlockFlowStructuralRow, anchor: TransferAnchor) =>
+  row.items.some((item) => anchor.type === "row"
+    ? item.type === "content-row" && item.rowId === anchor.rowId
+    : item.type === "apartado" && item.apartadoId === anchor.apartadoId);
+
+/** Where `position` falls among `count` places, given where its anchor is (-1: gone, so the end). */
+function insertionIndex(position: TransferPosition, count: number, anchorIndex: () => number): number {
+  if (position.placement === "start") return 0;
+  if (position.placement === "end") return count;
+  const index = anchorIndex();
+  if (index < 0) return count;
+  return position.placement === "before" ? index : index + 1;
+}
+
+/** Index in the Block's flow where `position` falls. */
+function flowInsertionIndex(flow: BlockFlowV2, position: TransferPosition): number {
+  return insertionIndex(position, flow.rows.length, () =>
+    position.placement === "before" || position.placement === "after"
+      ? flow.rows.findIndex((row) => anchorInRow(row, position.anchor))
+      : -1);
+}
+
+/**
+ * The container with `rows` (already under fresh ids) placed at `position`.
+ * In a Block the flow decides the order, so the rows take their place there
+ * and in the layout, which keeps the flow's order of content rows.
+ */
+function placeRows<T extends Block | Apartado>(container: T, rows: ContentLayoutRowV2[], position: TransferPosition): T {
+  const layout = resolveContentLayout(container);
+  const flow = "apartados" in container ? resolveBlockFlowV2(container) : undefined;
+  if (!flow) {
+    const at = insertionIndex(position, layout.rows.length, () =>
+      position.placement === "before" || position.placement === "after"
+        ? layout.rows.findIndex((row) => position.anchor.type === "row" && row.id === position.anchor.rowId)
+        : -1);
+    const nextRows = [...layout.rows];
+    nextRows.splice(at, 0, ...rows);
+    return { ...container, contentLayout: { version: 2, rows: nextRows } };
+  }
+  const at = flowInsertionIndex(flow, position);
+  const flowRows = [...flow.rows];
+  flowRows.splice(at, 0, ...rows.map((row) => ({ id: contentRowStructuralId(row.id), items: [{ type: "content-row" as const, rowId: row.id }] })));
+  const rowsBefore = new Set(flowRows.slice(0, at).flatMap((row) => row.items.flatMap((item) => (item.type === "content-row" ? [item.rowId] : []))));
+  let layoutAt = 0;
+  layout.rows.forEach((row, index) => { if (rowsBefore.has(row.id)) layoutAt = index + 1; });
+  const nextRows = [...layout.rows];
+  nextRows.splice(layoutAt, 0, ...rows);
+  return { ...container, contentLayout: { version: 2, rows: nextRows }, blockFlow: { version: 2, rows: flowRows } };
+}
+
+/* ================================================================== */
+/*  CONCEPTS — several dragged at once                                 */
+/* ================================================================== */
+
+/**
+ * Drops the concepts chosen with "Seleccionar conceptos" where one of them
+ * was dragged to (video 5.6, 4:13): the dragged one takes the slot and the
+ * others gather around it in their order, those that came before it above
+ * and the rest below, with the ones that shared a row still together. One
+ * result, so it is a single undo step.
+ *
+ * Only the chosen concepts of the dragged one's container go, and only
+ * those the drop may take (`rules`).
+ */
+export function moveConceptGroupToDrop(
+  sections: AppSection[],
+  sectionId: string,
+  source: ContentDropSource,
+  conceptIds: readonly string[],
+  target: ContentDropTarget,
+  rules: ContentMoveRules,
+): TransferResult {
+  const section = sections.find((item) => item.id === sectionId);
+  if (!section) return unchanged(sections, MISSING_REASON);
+  const sourceAddress: ContainerAddress = { sectionId, blockId: source.container.blockId, ...(source.container.kind === "apartado" ? { apartadoId: source.container.apartadoId } : {}) };
+  const from = findContainer(sections, sourceAddress);
+  if (!from) return unchanged(sections, MISSING_REASON);
+
+  const chosen = new Set(conceptIds);
+  const ordered = resolveContentLayout(from.container).rows
+    .flatMap((row) => row.columns.map((column) => column.items[0]))
+    .flatMap((item) => (item?.type === "concept" && chosen.has(item.id) ? [item.id] : []))
+    .filter((id) => id === source.itemId || canMoveContent(rules, { ...source, itemType: "concept", itemId: id }, target.container));
+  const draggedAt = ordered.indexOf(source.itemId);
+
+  // A full link reads from its first concept in document order: settle it before the order changes.
+  const allConcepts = sections.flatMap((item) => item.blocks.flatMap((block) => [...block.concepts, ...block.apartados.flatMap((apartado) => apartado.concepts)]));
+  const pinned = new Map(pinFullLinkResolution(source.itemId, allConcepts).map((concept) => [concept.id, concept]));
+  const settle = (concept: Concept) => pinned.get(concept.id) ?? concept;
+  const blocks = pinned.size === 0 ? section.blocks : section.blocks.map((block) => ({
+    ...block,
+    concepts: block.concepts.map(settle),
+    apartados: block.apartados.map((apartado) => ({ ...apartado, concepts: apartado.concepts.map(settle) })),
+  }));
+  const dropped = applyContentDropToBlocks(blocks, source, target, rules);
+  if (!dropped.changed) return unchanged(sections, "");
+  let next = sections.map((item) => (item.id === sectionId ? { ...item, blocks: dropped.blocks } : item));
+  if (draggedAt < 0) return { changed: true, sections: next };
+
+  // Where the dragged one landed: the others go around its row.
+  const landed = dropped.blocks.find((block) => block.id === target.container.blockId);
+  const landedIn = target.container.kind === "apartado"
+    ? landed?.apartados.find((apartado) => target.container.kind === "apartado" && apartado.id === target.container.apartadoId)
+    : landed;
+  const anchorRow = landedIn
+    ? resolveContentLayout(landedIn).rows.find((row) => row.columns.some((column) => column.items.some((item) => item.type === "concept" && item.id === source.itemId)))
+    : undefined;
+  if (!anchorRow) return { changed: true, sections: next };
+  const destination: ContainerAddress = { sectionId, blockId: target.container.blockId, ...(target.container.kind === "apartado" ? { apartadoId: target.container.apartadoId } : {}) };
+  const anchor: TransferAnchor = { type: "row", rowId: anchorRow.id };
+
+  const before = ordered.slice(0, draggedAt);
+  const after = ordered.slice(draggedAt + 1);
+  if (before.length) next = moveConceptsTo(next, sourceAddress, before, destination, { placement: "before", anchor }).sections;
+  if (after.length) next = moveConceptsTo(next, sourceAddress, after, destination, { placement: "after", anchor }).sections;
+  return { changed: true, sections: next };
 }
 
 /* ================================================================== */
@@ -571,23 +707,40 @@ function hasPinnedContent(section: AppSection, apartado: Apartado) {
   return apartado.tables.some((table) => pinnedItems.has(contentItemKey("table", table.id)));
 }
 
-/** Moves the Apartado, with its ids, to the end of another Block of this or another section. */
-export function moveApartadoTo(sections: AppSection[], source: Required<ContainerAddress>, destination: Omit<ContainerAddress, "apartadoId">): TransferResult {
-  if (source.sectionId === destination.sectionId && source.blockId === destination.blockId) {
-    return unchanged(sections, "El apartado ya está en ese bloque.");
-  }
+/**
+ * Moves the Apartado, with its ids, to another Block of this or another
+ * section: at its end, or at `position` (also inside its own Block).
+ */
+export function moveApartadoTo(
+  sections: AppSection[],
+  source: Required<ContainerAddress>,
+  destination: Omit<ContainerAddress, "apartadoId">,
+  position?: TransferPosition,
+): TransferResult {
+  const sameBlock = source.sectionId === destination.sectionId && source.blockId === destination.blockId;
+  if (sameBlock && !position) return unchanged(sections, "El apartado ya está en ese bloque.");
   const from = findContainer(sections, source);
   const to = findContainer(sections, destination);
   if (!from || !to) return unchanged(sections, MISSING_REASON);
   const lock = structureLockReason(from.section, source.blockId) ?? structureLockReason(to.section, destination.blockId);
   if (lock) return unchanged(sections, lock);
   const apartado = from.container as Apartado;
-  if (hasPinnedContent(from.section, apartado)) return unchanged(sections, "Este apartado tiene una tabla que se llena desde su lugar: no se mueve.");
-  if (isRelationManagedImageSection(destination.sectionId) && apartado.images.length) {
+  if (!sameBlock && hasPinnedContent(from.section, apartado)) return unchanged(sections, "Este apartado tiene una tabla que se llena desde su lugar: no se mueve.");
+  if (isRelationManagedImageSection(destination.sectionId) && apartado.images.length && !sameBlock) {
     return unchanged(sections, "Las imágenes de Datos generales se suben en esa sección: quita las imágenes del apartado antes de moverlo ahí.");
   }
   const removed = mapBlock(sections, source.sectionId, source.blockId, (block) => removeApartado(block, apartado.id));
-  return { changed: true, sections: mapBlock(removed, destination.sectionId, destination.blockId, (block) => insertApartado(block, apartado)) };
+  return { changed: true, sections: mapBlock(removed, destination.sectionId, destination.blockId, (block) => placeApartado(block, apartado, position ?? AT_END)) };
+}
+
+/** The Block with `apartado` at `position` in its flow. */
+function placeApartado(block: Block, apartado: Apartado, position: TransferPosition): Block {
+  const flow = resolveBlockFlowV2(block);
+  const apartados = [...block.apartados, apartado];
+  if (!flow) return withReconciledBlock({ ...block, apartados });
+  const rows = [...flow.rows];
+  rows.splice(flowInsertionIndex(flow, position), 0, { id: `bf-${newId()}`, items: [{ type: "apartado", apartadoId: apartado.id }] });
+  return withReconciledBlock({ ...block, apartados, blockFlow: { version: 2, rows } });
 }
 
 /** A copy of the Apartado (taken earlier) pasted at the end of a Block. */
@@ -609,12 +762,14 @@ export type TransferDestination = {
   sectionTitle: string;
   blockTitle: string;
   apartadoTitle?: string;
+  /** Where the moved things are now: choosing it only changes their place inside it. */
+  here?: boolean;
 };
 
 const sectionName = (section: AppSection) => section.title || section.label || section.id;
 const blockName = (block: Block, section: AppSection) => block.title || sectionName(section);
 
-/** Every Block and Apartado the chosen concepts may go to, the source excepted. */
+/** Every Block and Apartado the chosen concepts may go to; the source too, to change their place inside it. */
 export function conceptDestinations(sections: AppSection[], source: ContainerAddress): TransferDestination[] {
   const from = findContainer(sections, source);
   if (!from) return [];
@@ -627,10 +782,10 @@ export function conceptDestinations(sections: AppSection[], source: ContainerAdd
       if (!sameBlock && (sourceLocked || lockedBlockIds.has(block.id))) continue;
       const base = { sectionTitle: sectionName(section), blockTitle: blockName(block, section) };
       const blockAddress = { sectionId: section.id, blockId: block.id };
-      if (!sameContainer(blockAddress, source)) destinations.push({ ...base, address: blockAddress });
+      destinations.push({ ...base, address: blockAddress, here: sameContainer(blockAddress, source) });
       for (const apartado of block.apartados) {
         const address = { ...blockAddress, apartadoId: apartado.id };
-        if (!sameContainer(address, source)) destinations.push({ ...base, address, apartadoTitle: apartado.title });
+        destinations.push({ ...base, address, apartadoTitle: apartado.title, here: sameContainer(address, source) });
       }
     }
   }
@@ -642,14 +797,86 @@ export function blockDestinationSections(sections: AppSection[], sectionId: stri
   return sections.filter((section) => section.id !== sectionId && !isCaratula(section));
 }
 
-/** The Blocks an Apartado may move or be pasted to; `exclude` is the Block it is in. */
-export function apartadoDestinations(sections: AppSection[], exclude?: Omit<ContainerAddress, "apartadoId">): TransferDestination[] {
+/** The Blocks an Apartado may move or be pasted to; `current` is the Block it is in, offered to change its place there. */
+export function apartadoDestinations(sections: AppSection[], current?: Omit<ContainerAddress, "apartadoId">): TransferDestination[] {
   return sections.flatMap((section) => section.blocks
-    .filter((block) => !(exclude && section.id === exclude.sectionId && block.id === exclude.blockId))
     .filter((block) => structureLockReason(section, block.id) === null)
     .map((block) => ({
       address: { sectionId: section.id, blockId: block.id },
       sectionTitle: sectionName(section),
       blockTitle: blockName(block, section),
+      here: Boolean(current && section.id === current.sectionId && block.id === current.blockId),
     })));
+}
+
+/** A place inside the chosen Block or Apartado, as the picker offers it. */
+export type TransferPositionOption = { key: string; label: string; position: TransferPosition };
+
+const POSITION_LABEL_LENGTH = 48;
+
+function shortName(text: string | undefined, fallback: string): string {
+  const plain = stripTextMarks(text ?? "").replace(/\s+/g, " ").trim();
+  if (!plain) return fallback;
+  return plain.length > POSITION_LABEL_LENGTH ? `${plain.slice(0, POSITION_LABEL_LENGTH - 1)}…` : plain;
+}
+
+/**
+ * The places inside a Block or Apartado where moved concepts or a moved
+ * Apartado may go: before each of its rows (and, in a Block, before each of
+ * its Apartados), or at the end. What is being moved is not a place.
+ */
+export function transferPositions(
+  sections: AppSection[],
+  destination: ContainerAddress,
+  moving: { conceptIds?: readonly string[]; apartadoId?: string } = {},
+): TransferPositionOption[] {
+  const found = findContainer(sections, destination);
+  if (!found) return [];
+  const { container } = found;
+  const movingConcepts = new Set(moving.conceptIds ?? []);
+  const layout = resolveContentLayout(container);
+  const rowsById = new Map(layout.rows.map((row) => [row.id, row]));
+  const names = new Map<string, string>([
+    ...container.concepts.map((concept) => [concept.id, shortName(concept.label, "concepto sin nombre")] as const),
+    ...container.images.map((image) => [image.id, shortName(image.title, "imagen")] as const),
+    ...container.tables.map((table) => [table.id, shortName(table.title, "tabla")] as const),
+  ]);
+
+  const options: TransferPositionOption[] = [];
+  const contentRow = (rowId: string) => {
+    const row = rowsById.get(rowId);
+    if (!row) return;
+    const items = row.columns.flatMap((column) => column.items.slice(0, 1));
+    const staying = items.filter((item) => !(item.type === "concept" && movingConcepts.has(item.id)));
+    if (!staying.length) return;
+    options.push({
+      key: `row:${rowId}`,
+      label: `Antes de «${staying.map((item) => names.get(item.id) ?? item.type).join(" · ")}»`,
+      position: { placement: "before", anchor: { type: "row", rowId } },
+    });
+  };
+
+  const flow = "apartados" in container ? resolveBlockFlowV2(container) : undefined;
+  if (!flow) {
+    layout.rows.forEach((row) => contentRow(row.id));
+  } else {
+    const apartados = new Map((container as Block).apartados.map((apartado) => [apartado.id, apartado]));
+    for (const row of flow.rows) {
+      const first = row.items[0];
+      if (first?.type === "content-row") {
+        contentRow(first.rowId);
+        continue;
+      }
+      const staying = row.items.flatMap((item) => (item.type === "apartado" && item.apartadoId !== moving.apartadoId ? [item.apartadoId] : []));
+      if (!staying.length) continue;
+      const titles = staying.map((id) => `«${shortName(apartados.get(id)?.title, "sin título")}»`);
+      options.push({
+        key: `apartado:${staying[0]}`,
+        label: titles.length === 1 ? `Antes del subbloque ${titles[0]}` : `Antes de los subbloques ${titles.join(" y ")}`,
+        position: { placement: "before", anchor: { type: "apartado", apartadoId: staying[0] } },
+      });
+    }
+  }
+  options.push({ key: "end", label: "Al final", position: AT_END });
+  return options;
 }

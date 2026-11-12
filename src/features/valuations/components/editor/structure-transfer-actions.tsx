@@ -20,8 +20,10 @@ import {
   blockDestinationSections,
   conceptDestinations,
   structureLockReason,
+  transferPositions,
   type ContainerAddress,
   type TransferDestination,
+  type TransferPosition,
 } from "@/features/valuations/services/structure-transfer";
 import { sectionDisplayName } from "../workspace/model/section-numbering";
 import { useStructureTransfer } from "../workspace/structure-transfer-context";
@@ -84,14 +86,57 @@ export function DestinationPicker({
   );
 }
 
-const containerOptions = (destinations: TransferDestination[], onPick: (address: ContainerAddress) => void): PickerOption[] =>
+const destinationLabel = (destination: TransferDestination) =>
+  destination.apartadoTitle ? `${destination.blockTitle} › ${destination.apartadoTitle}` : destination.blockTitle;
+
+const containerOptions = (destinations: TransferDestination[], onPick: (destination: TransferDestination) => void): PickerOption[] =>
   destinations.map((destination) => ({
     key: destinationKey(destination.address),
     group: destination.sectionTitle,
-    label: destination.apartadoTitle ? `${destination.blockTitle} › ${destination.apartadoTitle}` : destination.blockTitle,
-    detail: destination.apartadoTitle ? "Apartado" : "Bloque",
-    onPick: () => onPick(destination.address),
+    label: destination.here ? `${destinationLabel(destination)} (aquí)` : destinationLabel(destination),
+    detail: destination.here
+      ? "Donde está ahora: elige su nuevo lugar"
+      : destination.apartadoTitle ? "Subbloque" : "Bloque",
+    onPick: () => onPick(destination),
   }));
+
+/**
+ * "Mover a…" in two steps: the Block or Apartado, then the place inside it
+ * (video 5.6, 31:58: everything used to go to the end, under the Apartados).
+ * When the destination holds nothing to choose around, the move happens at once.
+ */
+function useMoveWithPosition({ moving, onMove }: {
+  moving: { conceptIds?: readonly string[]; apartadoId?: string };
+  onMove: (destination: TransferDestination, position: TransferPosition | undefined) => void;
+}) {
+  const transfer = useStructureTransfer();
+  const [chosen, setChosen] = useState<TransferDestination | null>(null);
+  const positions = chosen && transfer ? transferPositions(transfer.sections, chosen.address, moving) : [];
+  const pick = (destination: TransferDestination) => {
+    const options = transfer ? transferPositions(transfer.sections, destination.address, moving) : [];
+    if (options.length <= 1) {
+      onMove(destination, destination.here ? { placement: "end" } : undefined);
+      return;
+    }
+    // The first picker closes as it calls this: open the second one after it.
+    setTimeout(() => setChosen(destination), 0);
+  };
+  const positionPicker = (
+    <DestinationPicker
+      open={chosen !== null}
+      onOpenChange={(open) => { if (!open) setChosen(null); }}
+      title="¿En qué lugar?"
+      description="Elige antes de qué concepto o subbloque va. «Al final» lo pone después de todo lo que tiene."
+      options={chosen ? positions.map((option) => ({
+        key: option.key,
+        group: destinationLabel(chosen),
+        label: option.label,
+        onPick: () => onMove(chosen, option.position),
+      })) : []}
+    />
+  );
+  return { pick, positionPicker };
+}
 
 /** "Mover a…" of one concept, as an item of its ⋮ menu. */
 export function MoveConceptMenuItem({ source, conceptId, disabled = false }: { source: ContainerAddress; conceptId: string; disabled?: boolean }) {
@@ -106,7 +151,7 @@ export function MoveConceptMenuItem({ source, conceptId, disabled = false }: { s
         variant="ghost"
         className="justify-start"
         aria-label="Mover concepto a otro bloque"
-        title={lock ?? "Mover el concepto a otro bloque o subbloque"}
+        title={lock ?? "Mover el concepto a otro bloque o subbloque, o a otro lugar del suyo"}
         disabled={disabled || Boolean(lock)}
         onClick={() => setOpen(true)}
       >
@@ -126,19 +171,22 @@ export function MoveConceptPicker({ source, conceptId, open, onOpenChange }: {
   onOpenChange: (open: boolean) => void;
 }) {
   const transfer = useStructureTransfer();
-  const options = open && transfer
-    ? containerOptions(conceptDestinations(transfer.sections, source), (destination) => {
-        transfer.moveConcepts(source, [conceptId], destination);
-      })
-    : [];
+  const { pick, positionPicker } = useMoveWithPosition({
+    moving: { conceptIds: [conceptId] },
+    onMove: (destination, position) => { transfer?.moveConcepts(source, [conceptId], destination.address, position); },
+  });
+  const options = open && transfer ? containerOptions(conceptDestinations(transfer.sections, source), pick) : [];
   return (
-    <DestinationPicker
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Mover el concepto"
-      description="Va al final del bloque o subbloque que elijas."
-      options={options}
-    />
+    <>
+      <DestinationPicker
+        open={open}
+        onOpenChange={onOpenChange}
+        title="Mover el concepto"
+        description="Elige el bloque o subbloque, de esta sección o de otra; después, el lugar dentro de él."
+        options={options}
+      />
+      {positionPicker}
+    </>
   );
 }
 
@@ -146,12 +194,12 @@ export function MoveConceptPicker({ source, conceptId, open, onOpenChange }: {
 export function MoveConceptsButton({ source, conceptIds, onMoved }: { source: ContainerAddress; conceptIds: string[]; onMoved: () => void }) {
   const transfer = useStructureTransfer();
   const [open, setOpen] = useState(false);
+  const { pick, positionPicker } = useMoveWithPosition({
+    moving: { conceptIds },
+    onMove: (destination, position) => { if (transfer?.moveConcepts(source, conceptIds, destination.address, position)) onMoved(); },
+  });
   if (!transfer) return null;
-  const options = open
-    ? containerOptions(conceptDestinations(transfer.sections, source), (destination) => {
-        if (transfer.moveConcepts(source, conceptIds, destination)) onMoved();
-      })
-    : [];
+  const options = open ? containerOptions(conceptDestinations(transfer.sections, source), pick) : [];
   return (
     <>
       <Button type="button" size="xs" variant="outline" disabled={transfer.readOnly || !conceptIds.length} onClick={() => setOpen(true)}>
@@ -162,9 +210,10 @@ export function MoveConceptsButton({ source, conceptIds, onMoved }: { source: Co
         open={open}
         onOpenChange={setOpen}
         title={conceptIds.length === 1 ? "Mover el concepto" : `Mover ${conceptIds.length} conceptos`}
-        description="Van al final del bloque o apartado que elijas, en el mismo orden y con los que comparten renglón juntos."
+        description="Elige el bloque o subbloque y después el lugar dentro de él. Van en el mismo orden y con los que comparten renglón juntos."
         options={options}
       />
+      {positionPicker}
     </>
   );
 }
@@ -294,11 +343,13 @@ export function BlockTransferMenu({ section, block, label, lock, visibility, pag
 export function ApartadoTransferMenu({ section, block, apartado, label }: { section: AppSection; block: Block; apartado: Apartado; label: string }) {
   const transfer = useStructureTransfer();
   const [moving, setMoving] = useState(false);
-  if (!transfer) return null;
   const source = { sectionId: section.id, blockId: block.id, apartadoId: apartado.id };
-  const options = moving
-    ? containerOptions(apartadoDestinations(transfer.sections, source), (destination) => transfer.moveApartado(source, destination))
-    : [];
+  const { pick, positionPicker } = useMoveWithPosition({
+    moving: { apartadoId: apartado.id },
+    onMove: (destination, position) => transfer?.moveApartado(source, destination.address, position),
+  });
+  if (!transfer) return null;
+  const options = moving ? containerOptions(apartadoDestinations(transfer.sections, source), pick) : [];
   return (
     <>
       <TransferMenu
@@ -313,9 +364,10 @@ export function ApartadoTransferMenu({ section, block, apartado, label }: { sect
         open={moving}
         onOpenChange={setMoving}
         title={`Mover ${label}`}
-        description="Va al final del bloque que elijas, en esta sección o en otra."
+        description="Elige el bloque, en esta sección o en otra, y después el lugar dentro de él."
         options={options}
       />
+      {positionPicker}
     </>
   );
 }

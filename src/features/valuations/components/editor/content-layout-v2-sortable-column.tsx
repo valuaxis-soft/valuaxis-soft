@@ -5,6 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { ContentDragHandle } from "./content-layout-drag-handle";
 import { buildContentColumnDndId, type ContentContainerRef } from "./content-dnd-ids";
+import { useConceptSelection } from "./concept-selection";
 
 /* ------------------------------------------------------------------ */
 /*  Sortable column wrapper                                            */
@@ -47,6 +48,12 @@ export function V2SortableColumn({
     ? buildContentColumnDndId(containerRef, columnId)
     : columnId;
 
+  // A chosen concept takes the rest of the selection along (video 5.6, 4:13).
+  const selection = useConceptSelection();
+  const groupIds = itemType === "concept" && itemId && selection?.selected.has(itemId) && selection.selected.size > 1
+    ? [...selection.selected]
+    : undefined;
+
   const sortableData = containerRef
     ? {
         kind: "content-column" as const,
@@ -54,6 +61,7 @@ export function V2SortableColumn({
         columnId,
         itemType,
         itemId,
+        groupIds,
         ...data,
       }
     : data;

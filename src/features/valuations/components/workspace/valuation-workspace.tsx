@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { ReadOnlyValuationAlert } from "@/features/valuations/components/feedback/valuation-error-alert";
 import { UnaccreditedEditorAlert, UnaccreditedNoticeProvider } from "@/features/accreditation/components/unaccredited-notice";
@@ -78,6 +78,7 @@ import { useTableMutations } from "./hooks/use-table-mutations";
 import { useValuationLifecycle } from "./hooks/use-valuation-lifecycle";
 import { useValuationSave } from "./hooks/use-valuation-save";
 import { useWorkspaceLayout } from "./hooks/use-workspace-layout";
+import { useEditorViewport } from "./hooks/use-editor-viewport";
 import { StructureTransferProvider } from "./structure-transfer-context";
 import { SaveAsTemplateDialog } from "./template-dialogs";
 
@@ -195,6 +196,9 @@ export function ValuationWorkspace({
     () => resolveSectionConceptsForDisplay(rawActiveSection, allConceptsForDisplay),
     [allConceptsForDisplay, rawActiveSection],
   );
+  // The top bar stays put and the editor keeps its place across views.
+  const workspaceRef = useRef<HTMLElement>(null);
+  useEditorViewport(workspaceRef, activeSection.id);
   // What the preview shows: the section browsed to, or the active one.
   const rawPreviewSection =
     (previewSectionId ? enabledSections.find((section) => section.id === previewSectionId) : undefined) ?? rawActiveSection;
@@ -487,7 +491,8 @@ export function ValuationWorkspace({
     <StructureTransferProvider sections={sections} readOnly={!canEdit} updateSections={updateSections} valuationId={valuationId}>
     <DeleteConfirmProvider>
     <Tabs value={activeSection.id} onValueChange={handleActiveSectionChange} className="gap-0 h-full">
-      <main className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-hidden">
+      {/* Clipped, not hidden: a hidden overflow still scrolls when something is brought into view, and took the top bar with it. */}
+      <main ref={workspaceRef} className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-clip">
       <section className="shrink-0 border-b bg-background">
         <div className="mx-auto grid max-w-[1760px] grid-cols-1 gap-3 overflow-hidden px-3 py-3 sm:px-4 lg:gap-4 lg:px-6 lg:py-4">
           <ValuationTopBar

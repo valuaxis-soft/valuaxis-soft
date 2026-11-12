@@ -53,6 +53,11 @@ export type ContentDropSource = {
   container: ContentContainerRef;
   itemType: TransferableContentType;
   itemId: string;
+  /**
+   * The concepts chosen with "Seleccionar conceptos" when the dragged one is
+   * among them (itself included): they all go together.
+   */
+  groupIds?: string[];
 };
 
 export type ContentDropTarget =
@@ -125,7 +130,8 @@ export function contentDropSourceFromData(data: unknown): ContentDropSource | nu
   const { itemType, itemId } = data;
   if (!container || typeof itemId !== "string" || !itemId) return null;
   if (itemType !== "concept" && itemType !== "image" && itemType !== "table") return null;
-  return { container, itemType, itemId };
+  const groupIds = Array.isArray(data.groupIds) ? data.groupIds.filter((id): id is string => typeof id === "string") : [];
+  return groupIds.length > 1 && groupIds.includes(itemId) ? { container, itemType, itemId, groupIds } : { container, itemType, itemId };
 }
 
 /** Read the drop destination from the data a drop slot registers with the drag library. */
@@ -255,6 +261,26 @@ export function planBlockBoundarySlots(
         row.items.some((item) => item.type === "content-row" && item.rowId === homeContentRowId),
       );
 
+  return planBoundarySlots(flow, homeIndex);
+}
+
+/**
+ * The Block-level slots between structural rows while an Apartado is dragged
+ * (video 5.2, 3:43: it had no line to show where it would land). The
+ * boundaries around the row it is alone in are its own place. A Block the
+ * Apartado comes to from another Block passes no `apartadoId`.
+ */
+export function planApartadoBoundarySlots(flow: BlockFlowV2, apartadoId: string | null): BlockBoundarySlotPlan[] {
+  const homeIndex = apartadoId === null
+    ? -1
+    : flow.rows.findIndex((row) =>
+        row.items.length === 1 && row.items[0].type === "apartado" && row.items[0].apartadoId === apartadoId,
+      );
+  return planBoundarySlots(flow, homeIndex);
+}
+
+/** One slot before the first row and one after each row; those around row `homeIndex` change nothing. */
+function planBoundarySlots(flow: BlockFlowV2, homeIndex: number): BlockBoundarySlotPlan[] {
   const boundary = (boundaryIndex: number): ContentDropSlotState =>
     homeIndex >= 0 && (boundaryIndex === homeIndex || boundaryIndex === homeIndex + 1) ? "noop" : "open";
 

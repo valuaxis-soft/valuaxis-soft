@@ -1,6 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 
 import { EDITOR_HISTORY_LIMIT, TEXT_EDIT_GROUP_MS } from "@/features/valuations/components/workspace/model/editor-history";
+import { revealInEditor } from "@/features/valuations/components/workspace/model/editor-focus-reveal";
 
 type Step<T> = { draft: T; cell: string | null };
 
@@ -42,7 +43,7 @@ export function useDraftHistory<T>({
     window.requestAnimationFrame(() => {
       const element = cellElement(cell);
       if (!element) return;
-      element.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+      revealInEditor(element, "nearest");
       element.animate?.(
         [
           { boxShadow: "0 0 0 2px rgb(245 158 11)", backgroundColor: "rgb(254 243 199 / 0.9)" },

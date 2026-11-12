@@ -9,13 +9,16 @@ import {
   duplicateBlock,
   moveApartadoTo,
   moveBlockToSection,
+  moveConceptGroupToDrop,
   moveConceptsTo,
   pasteApartado,
   pasteBlock,
   type ContainerAddress,
   type CopyOptions,
+  type TransferPosition,
   type TransferResult,
 } from "@/features/valuations/services/structure-transfer";
+import type { ContentDropSource, ContentDropTarget, ContentMoveRules } from "@/features/valuations/services/content-drop";
 
 /** What "Copiar" took: pasted as a new copy each time, from the content as it was then. */
 type StructureClipboard =
@@ -35,8 +38,10 @@ type StructureTransfer = {
   duplicateBlock: (sectionId: string, blockId: string) => void;
   duplicateApartado: (sectionId: string, blockId: string, apartadoId: string) => void;
   moveBlock: (sectionId: string, blockId: string, destinationSectionId: string) => void;
-  moveApartado: (source: Required<ContainerAddress>, destination: BlockAddress) => void;
-  moveConcepts: (source: ContainerAddress, conceptIds: string[], destination: ContainerAddress) => boolean;
+  moveApartado: (source: Required<ContainerAddress>, destination: BlockAddress, position?: TransferPosition) => void;
+  moveConcepts: (source: ContainerAddress, conceptIds: string[], destination: ContainerAddress, position?: TransferPosition) => boolean;
+  /** Drops the chosen concepts where one of them was dragged to, together and in their order. */
+  dropConceptGroup: (sectionId: string, source: ContentDropSource, conceptIds: string[], target: ContentDropTarget, rules: ContentMoveRules) => boolean;
   pasteBlock: (sectionId: string) => void;
   pasteApartado: (destination: BlockAddress) => void;
   /** Inserts a copy of a Block brought from a template or another valuation. */
@@ -102,11 +107,13 @@ export function StructureTransferProvider({
     moveBlock: (sectionId, blockId, destinationSectionId) => {
       apply((current) => moveBlockToSection(current, sectionId, blockId, destinationSectionId), "Bloque movido.");
     },
-    moveApartado: (source, destination) => {
-      apply((current) => moveApartadoTo(current, source, destination), "Apartado movido.");
+    moveApartado: (source, destination, position) => {
+      apply((current) => moveApartadoTo(current, source, destination, position), "Apartado movido.");
     },
-    moveConcepts: (source, conceptIds, destination) =>
-      apply((current) => moveConceptsTo(current, source, conceptIds, destination), conceptIds.length === 1 ? "Concepto movido." : "Conceptos movidos."),
+    moveConcepts: (source, conceptIds, destination, position) =>
+      apply((current) => moveConceptsTo(current, source, conceptIds, destination, position), conceptIds.length === 1 ? "Concepto movido." : "Conceptos movidos."),
+    dropConceptGroup: (sectionId, source, conceptIds, target, rules) =>
+      apply((current) => moveConceptGroupToDrop(current, sectionId, source, conceptIds, target, rules)),
     pasteBlock: (sectionId) => {
       if (clipboard?.kind !== "block") return;
       apply((current) => pasteBlock(current, sectionId, clipboard.block), "Bloque pegado.");

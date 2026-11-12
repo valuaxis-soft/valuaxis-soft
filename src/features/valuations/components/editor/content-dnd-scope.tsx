@@ -6,7 +6,8 @@
  * Three kinds of drag share it:
  *  - a content item (Concept/Image/Table), which can land on any drop slot of
  *    any container the item may go to (see ContentMoveRules);
- *  - an Apartado, reordered inside its own Block;
+ *  - an Apartado, reordered inside its own Block or taken to another Block
+ *    of the section (when both may give and take Apartados);
  *  - a Block, reordered among the Blocks of the section.
  *
  * One context for all of them is what lets an item travel from one Block to
@@ -72,6 +73,14 @@ type BlockDragHandlers = {
   onApartadoDragEnd: (event: DragEndEvent) => void;
 };
 
+/** An Apartado dropped in another Block: before or after one of its structural rows, or into it when it is empty. */
+export type ApartadoBlockMove = {
+  apartadoId: string;
+  fromBlockId: string;
+  toBlockId: string;
+  boundary?: { structuralRowId: string; placement: "before" | "after" };
+};
+
 type ContentDndScopeValue = {
   /** Scoped ID of the content column being dragged. */
   activeColumnId: string | null;
@@ -83,6 +92,8 @@ type ContentDndScopeValue = {
   activeTarget: string | null;
   /** Whether the item being dragged may be dropped in `container`. False when nothing is dragged. */
   acceptsContent: (container: ContentContainerRef) => boolean;
+  /** Whether the Apartado being dragged may land in the Block. False when no Apartado is dragged. */
+  acceptsApartado: (blockId: string) => boolean;
   registerBlock: (blockId: string, handlers: BlockDragHandlers) => () => void;
 };
 
@@ -92,6 +103,7 @@ const INERT_SCOPE: ContentDndScopeValue = {
   activeApartado: null,
   activeTarget: null,
   acceptsContent: () => false,
+  acceptsApartado: () => false,
   registerBlock: () => () => undefined,
 };
 
@@ -215,6 +227,43 @@ const detectContentSlotCollision: CollisionDetection = ({
 };
 
 /**
+ * Collision detection for an Apartado dragged with the pointer: the closest
+ * boundary between the structural rows of a Block it may land in, the side
+ * of an Apartado of its own Block (to pair with it), or an empty Block. Like
+ * a content drag, the pointer does not have to be on the thin line. An
+ * Apartado can be taller than the screen, so its own place is not a dead
+ * zone: the lines around it are, and letting go closest to them changes nothing.
+ */
+const detectApartadoSlotCollision = (homeBlockId: string, acceptsBlock: (blockId: string) => boolean): CollisionDetection => ({
+  droppableContainers,
+  droppableRects,
+  pointerCoordinates,
+}) => {
+  if (!pointerCoordinates) return [];
+  type Droppable = (typeof droppableContainers)[number];
+  const candidates: DropSlotCandidate[] = [];
+  const byId = new Map<string, Droppable>();
+  for (const container of droppableContainers) {
+    const rect = droppableRects.get(container.id);
+    if (!rect) continue;
+    const id = String(container.id);
+    const data = container.data.current as DroppableData;
+    const blockId = (data?.container as { blockId?: string } | undefined)?.blockId;
+    let axis: DropSlotCandidate["axis"] | null = null;
+    if (data?.kind === "block-flow-boundary" && blockId && acceptsBlock(blockId)) axis = "row";
+    else if (data?.kind === "block-inside" && blockId && blockId !== homeBlockId && acceptsBlock(blockId)) axis = "area";
+    else if (id.startsWith("bfapartado-") && blockIdOfNode(container.node.current) === homeBlockId) axis = "column";
+    if (!axis) continue;
+    candidates.push({ id, rect, axis });
+    byId.set(id, container);
+  }
+  const slotId = pickContentDropSlot(pointerCoordinates, candidates);
+  const container = slotId ? byId.get(slotId) : undefined;
+  if (!container || (container.data.current as DroppableData)?.noop) return [];
+  return [{ id: container.id, data: { droppableContainer: container, value: 0 } }];
+};
+
+/**
  * Collision detection inside one Block, for an Apartado drag and for a
  * content item moved with the keyboard: what is under the pointer (or the
  * dragged rectangle), specific targets before broad ones.
@@ -252,7 +301,11 @@ const detectInBlockCollision = (isApartadoDrag: boolean): CollisionDetection => 
   return broad.length > 0 ? broad : compatible;
 };
 
-function buildCollisionDetection(drag: DragKind | null, blockIds: ReadonlySet<string>): CollisionDetection {
+function buildCollisionDetection(
+  drag: DragKind | null,
+  blockIds: ReadonlySet<string>,
+  acceptsApartado: (blockId: string) => boolean,
+): CollisionDetection {
   return (args) => {
     if (!drag) return [];
 
@@ -267,7 +320,10 @@ function buildCollisionDetection(drag: DragKind | null, blockIds: ReadonlySet<st
     // A content item dragged with the pointer aims at the drop slots, in any Block.
     if (drag.kind === "content" && args.pointerCoordinates) return detectContentSlotCollision(args);
 
-    // Anything else stays in its own Block.
+    // An Apartado dragged with the pointer aims at the lines between rows, in its Block or another one.
+    if (drag.kind === "apartado" && args.pointerCoordinates) return detectApartadoSlotCollision(drag.blockId, acceptsApartado)(args);
+
+    // Anything else (moved with the keyboard) stays in its own Block.
     return detectInBlockCollision(drag.kind === "apartado")({
       ...args,
       droppableContainers: args.droppableContainers.filter(
@@ -287,6 +343,8 @@ export function ContentDndScope({
   moveRules = SAME_BLOCK_MOVE_RULES,
   onBlockDragEnd,
   onContentDrop,
+  apartadoBlockIds,
+  onApartadoBlockMove,
   children,
 }: {
   /** Identity of the drag context (stable per section). */
@@ -299,6 +357,10 @@ export function ContentDndScope({
   onBlockDragEnd?: (event: DragEndEvent) => void;
   /** Called when a content item is dropped on a slot. */
   onContentDrop: (source: ContentDropSource, target: ContentDropTarget) => void;
+  /** The Blocks that may give their Apartados to, and take them from, the others. Absent: Apartados stay in their Block. */
+  apartadoBlockIds?: ReadonlySet<string>;
+  /** Called when an Apartado is dropped in another Block. */
+  onApartadoBlockMove?: (move: ApartadoBlockMove) => void;
   children: React.ReactNode;
 }) {
   const [drag, setDrag] = useState<DragKind | null>(null);
@@ -321,7 +383,18 @@ export function ContentDndScope({
   );
 
   const blockIdSet = useMemo(() => new Set(blockIds), [blockIds]);
-  const collisionDetection = useMemo(() => buildCollisionDetection(drag, blockIdSet), [drag, blockIdSet]);
+  const acceptsApartado = useCallback(
+    (blockId: string) => {
+      if (drag?.kind !== "apartado") return false;
+      if (blockId === drag.blockId) return true;
+      return Boolean(onApartadoBlockMove && apartadoBlockIds?.has(drag.blockId) && apartadoBlockIds.has(blockId));
+    },
+    [drag, apartadoBlockIds, onApartadoBlockMove],
+  );
+  const collisionDetection = useMemo(
+    () => buildCollisionDetection(drag, blockIdSet, acceptsApartado),
+    [drag, blockIdSet, acceptsApartado],
+  );
 
   const reset = useCallback(() => {
     setDrag(null);
@@ -370,6 +443,16 @@ export function ContentDndScope({
         return;
       }
       if (current.kind === "apartado") {
+        const over = event.over?.data.current as DroppableData;
+        const toBlockId = (over?.container as { blockId?: string } | undefined)?.blockId;
+        if (toBlockId && toBlockId !== current.blockId && (over?.kind === "block-flow-boundary" || over?.kind === "block-inside")) {
+          const move: ApartadoBlockMove = { apartadoId: String(event.active.id), fromBlockId: current.blockId, toBlockId };
+          if (over.kind === "block-flow-boundary" && typeof over.structuralRowId === "string" && (over.placement === "before" || over.placement === "after")) {
+            move.boundary = { structuralRowId: over.structuralRowId, placement: over.placement };
+          }
+          onApartadoBlockMove?.(move);
+          return;
+        }
         blockHandlers.current.get(current.blockId)?.onApartadoDragEnd(event);
         return;
       }
@@ -380,7 +463,7 @@ export function ContentDndScope({
       if (!canMoveContent(moveRules, source, target.container)) return;
       onContentDrop(source, target);
     },
-    [drag, reset, onBlockDragEnd, onContentDrop, moveRules],
+    [drag, reset, onBlockDragEnd, onContentDrop, onApartadoBlockMove, moveRules],
   );
 
   const acceptsContent = useCallback(
@@ -390,8 +473,8 @@ export function ContentDndScope({
   );
 
   const value = useMemo<ContentDndScopeValue>(
-    () => ({ activeColumnId, activeContent, activeApartado, activeTarget, acceptsContent, registerBlock }),
-    [activeColumnId, activeContent, activeApartado, activeTarget, acceptsContent, registerBlock],
+    () => ({ activeColumnId, activeContent, activeApartado, activeTarget, acceptsContent, acceptsApartado, registerBlock }),
+    [activeColumnId, activeContent, activeApartado, activeTarget, acceptsContent, acceptsApartado, registerBlock],
   );
 
   const activeItem: ContentLayoutItemRef | null = activeContent
@@ -411,7 +494,12 @@ export function ContentDndScope({
     >
       <ContentDndScopeContext.Provider value={value}>{children}</ContentDndScopeContext.Provider>
       <DragOverlay dropAnimation={null}>
-        {activeItem ? <ContentDragPreview item={activeItem} /> : null}
+        {activeItem ? (
+          <ContentDragPreview item={activeItem} count={activeContent?.groupIds?.length} />
+        ) : activeApartado ? (
+          // The Apartado can be taller than the screen: a small card follows the pointer instead.
+          <ContentDragPreview item={{ type: "table", id: activeApartado.apartadoId }} label="Subbloque" />
+        ) : null}
       </DragOverlay>
     </DndContext>
   );
