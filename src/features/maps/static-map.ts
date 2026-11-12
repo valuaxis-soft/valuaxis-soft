@@ -4,7 +4,7 @@
  * the server fetches the URL with its key and the demonstration shows it
  * directly.
  */
-import { CLEAN_MAP_STYLES, staticMapStyle } from "./map-styles";
+import { CLEAN_MAP_STYLES, staticMapStyle, type MapType } from "./map-styles";
 import type { LatLon } from "./types";
 
 /** Google's encoded polyline format (5 decimals), which keeps the image URL short. */
@@ -67,23 +67,26 @@ export interface StaticMapOptions {
   subject?: LatLon | null;
   /** Without points of interest, businesses or transit. */
   clean?: boolean;
+  /** The street map unless the appraiser chose the satellite photo. */
+  mapType?: MapType;
   markers?: readonly StaticMapMarkers[];
   /** In drawing order; the ones that would make the URL too long are left out. */
   paths?: readonly StaticMapPath[];
 }
 
-export function staticMapUrl({ apiKey, center, zoom, subject = center, clean = false, markers = [], paths = [] }: StaticMapOptions) {
+export function staticMapUrl({ apiKey, center, zoom, subject = center, clean = false, mapType = "roadmap", markers = [], paths = [] }: StaticMapOptions) {
   const point = (p: LatLon) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`;
   const params: [string, string][] = [
     ["center", point(center)],
     ["zoom", String(zoom)],
     ["size", `${STATIC_MAP_SIZE.width}x${STATIC_MAP_SIZE.height}`],
     ["scale", String(STATIC_MAP_SCALE)],
-    ["maptype", "roadmap"],
+    ["maptype", mapType],
     ["language", "es"],
     ["region", "MX"],
   ];
-  if (clean) for (const rule of CLEAN_MAP_STYLES) params.push(["style", staticMapStyle(rule)]);
+  // The styles hide points of interest on the drawn map; the photo has none to hide.
+  if (clean && mapType === "roadmap") for (const rule of CLEAN_MAP_STYLES) params.push(["style", staticMapStyle(rule)]);
   for (const group of markers) {
     if (!group.points.length) continue;
     params.push(["markers", [`size:${group.size ?? "tiny"}`, `color:${staticColor(group.color, "")}`, ...group.points.map(point)].join("|")]);

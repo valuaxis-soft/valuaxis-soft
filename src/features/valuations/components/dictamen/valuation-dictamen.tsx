@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -82,7 +81,8 @@ export function ValuationDictamen({
     <div className="min-h-dvh bg-muted/40 print:bg-white">
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur print:hidden">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3 px-4 py-3">
-          <Button variant="ghost" size="sm" nativeButton={false} render={<Link href={`/workspace?id=${valuationId}`} />}>
+          {/* A full load: this page keeps the strict CSP of a printed document, and the editor needs Google's for its map. */}
+          <Button variant="ghost" size="sm" nativeButton={false} render={<a href={`/workspace?id=${valuationId}`} />}>
             <ArrowLeft data-icon="inline-start" />
             Volver al editor
           </Button>

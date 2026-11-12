@@ -48,7 +48,7 @@ import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
 import { StatisticalMethodsPanel } from "@/features/valuations/components/calculation/statistical-methods-panel";
 import { LocationPanel, type GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
-import { croquisSectionKey, withCroquisImage } from "@/features/maps/croquis-document";
+import { croquisReplacements, croquisSectionKey, withCroquisImages, type CroquisPlacement } from "@/features/maps/croquis-document";
 import type { CroquisKind } from "@/features/maps/croquis";
 import { RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
@@ -331,16 +331,26 @@ export function ValuationWorkspace({
   const machinery = isMachineryPropertyKind(initialValuation?.propertyKind);
   const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, machinery, valuationId });
 
-  // "Aplicar al croquis": the stored image goes into its section; false when the appraiser removed that section.
-  const placeCroquisImage = (kind: CroquisKind, src: string) => {
-    const key = croquisSectionKey(kind);
-    if (!sections.some((section) => !section.removed && getCanonicalSectionKey(section.id) === key)) return false;
-    updateSections((current) => withCroquisImage(current, kind, src).sections);
-    return true;
+  // "Aplicar al croquis": the stored images go into their sections in one step of the history (one «Deshacer»); the kinds whose section the appraiser removed come back.
+  const placeCroquisImages = (placements: readonly CroquisPlacement[]) => {
+    const missing = placements
+      .map((placement) => placement.kind)
+      .filter((kind) => !sections.some((section) => !section.removed && getCanonicalSectionKey(section.id) === croquisSectionKey(kind)));
+    if (missing.length < placements.length) updateSections((current) => withCroquisImages(current, placements).sections);
+    return missing;
   };
   const locationPanel = (captures: readonly CroquisKind[]) =>
     valuationId ? (
-      <LocationPanel valuationId={valuationId} readOnly={!canEdit} googleMaps={googleMaps} address={meta.location} captures={captures} onCroquisImage={placeCroquisImage} />
+      <LocationPanel
+        valuationId={valuationId}
+        readOnly={!canEdit}
+        googleMaps={googleMaps}
+        address={meta.location}
+        captures={captures}
+        onCroquisImages={placeCroquisImages}
+        croquisReplacements={(kinds) => croquisReplacements(sections, kinds)}
+        onUndo={() => void undo()}
+      />
     ) : undefined;
 
   // A template is made from what is saved, so pending changes are saved first.

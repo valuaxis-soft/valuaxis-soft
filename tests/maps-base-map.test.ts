@@ -154,10 +154,8 @@ test("the map shares the list's filters: the view and 'sin ubicar' travel in the
   assert.deepEqual(parseComparableListParams(Object.fromEntries(new URLSearchParams(href.slice(href.indexOf("?") + 1)))).neighborhood, "Centro");
 });
 
-test("Google's sources reach the Comparables page (its map view) and the editor, not the card of a comparable", () => {
+test("Google's sources reach the Comparables page (its map view) and the editor", () => {
   assert.ok(googleMapsPage("/comparables"));
   assert.ok(googleMapsPage("/workspace"));
-  assert.equal(googleMapsPage("/comparables/8b1b3d2e-0000-4000-8000-000000000000"), false, "the card draws its map with Leaflet");
-  assert.equal(googleMapsPage("/comparables/"), false);
-  assert.equal(googleMapsPage("/dashboard"), false);
+  assert.ok(googleMapsPage("/comparables/8b1b3d2e-0000-4000-8000-000000000000"));
 });

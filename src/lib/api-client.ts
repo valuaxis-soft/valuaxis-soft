@@ -58,6 +58,8 @@ export type CroquisRequest = {
   includeComparables: boolean;
   /** Etapa 2: the streets to highlight; the server fetches their geometry itself. */
   streets: CroquisSettings["streets"];
+  /** Street map or satellite photo. */
+  mapType: CroquisSettings["mapType"];
 };
 
 /** What "Aplicar al croquis" returns: the stored image and the streets that did not fit the croquis. */
@@ -155,6 +157,18 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * What the user reads when the answer is not ours (no JSON with `error`):
+ * the reverse proxy timing out or the server unreachable. Before 12 nov
+ * 2026 this was the English "Request failed".
+ */
+export function failedRequestMessage(status: number) {
+  if (status === 502 || status === 503 || status === 504) return "El servidor tardó demasiado en responder o no está disponible; revisa tu conexión e inténtalo de nuevo.";
+  if (status === 413) return "El archivo o los datos son demasiado grandes.";
+  if (status === 429) return "Demasiadas solicitudes seguidas; espera un momento e inténtalo de nuevo.";
+  return `No se pudo completar la solicitud (error ${status}); inténtalo de nuevo.`;
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -163,8 +177,8 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
   if (res.status === 401) throw new SessionExpiredError();
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: "Request failed" }));
-    throw new ApiError(error.error || `HTTP ${res.status}`, typeof error.link === "string" ? error.link : null, res.status);
+    const error = await res.json().catch(() => ({}));
+    throw new ApiError(typeof error.error === "string" && error.error ? error.error : failedRequestMessage(res.status), typeof error.link === "string" ? error.link : null, res.status);
   }
   if (res.status === 204) return undefined as T;
 
@@ -180,8 +194,8 @@ async function uploadForm<T>(url: string, fields: Record<string, string | Blob |
   const res = await fetch(`${BASE}${url}`, { method: "POST", body: formData });
   if (res.status === 401) throw new SessionExpiredError();
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: "Upload failed" }));
-    throw new Error(error.error || "Upload failed");
+    const error = await res.json().catch(() => ({}));
+    throw new Error(typeof error.error === "string" && error.error ? error.error : failedRequestMessage(res.status));
   }
   const json = await res.json();
   return json.data as T;

@@ -46,6 +46,13 @@ export const HIGHLIGHT_TITLES: Record<HighlightKey, string> = {
 /** Line weights the sliders allow, in pixels. */
 export const WEIGHT_RANGE = { min: 2, max: 14 } as const;
 
+/** What the appraiser typed in «Grosor» as a valid width: a whole number within the range; null while the box is empty or not a number. */
+export function weightFromInput(text: string): number | null {
+  const value = Number(text.trim().replace(",", "."));
+  if (!text.trim() || !Number.isFinite(value)) return null;
+  return Math.min(WEIGHT_RANGE.max, Math.max(WEIGHT_RANGE.min, Math.round(value)));
+}
+
 /** Each category has its own color and width; the front street keeps the red of the pin. */
 export const DEFAULT_HIGHLIGHT_STYLES: HighlightStyles = {
   front: { on: true, color: "#c0392b", weight: 8 },
