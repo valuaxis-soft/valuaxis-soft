@@ -482,6 +482,24 @@ export function marketPhotoBlocks(calculation: MarketCalculationDto): Block[] {
 }
 
 /**
+ * A block the calculation writes again, with what the appraiser chose for it
+ * in its toolbar: hidden, its page break (`pageBreak`, or the older
+ * `startOnNewPage`), its pages lying on their side and how its concepts read.
+ * The calculation writes none of them.
+ */
+function withBlockPresentation(block: Block, previous: Block | undefined): Block {
+  if (!previous) return block;
+  return {
+    ...block,
+    ...(previous.enabled === false ? { enabled: false } : {}),
+    ...(previous.pageBreak ? { pageBreak: previous.pageBreak } : {}),
+    ...(previous.startOnNewPage !== undefined ? { startOnNewPage: previous.startOnNewPage } : {}),
+    ...(previous.pageOrientation ? { pageOrientation: previous.pageOrientation } : {}),
+    ...(previous.conceptPresentation ? { conceptPresentation: previous.conceptPresentation } : {}),
+  };
+}
+
+/**
  * Replaces the generated blocks a calculation owns in a section, where they
  * were or at `position`. Template placeholders they stand in for are dropped
  * once there is generated content. Returns the same section when nothing changes.
@@ -504,9 +522,9 @@ export function replaceGeneratedBlocks(
   // The columns the appraiser hid, renamed or added stay on the tables the calculation writes again.
   const laidOut = withTableLayouts(blocks, current);
   if (sameContent(current, laidOut) && !section.blocks.some(isPlaceholder)) return section;
-  // A block the appraiser hid stays hidden when the calculation writes it again.
-  const hidden = new Set(current.filter((item) => item.enabled === false).map((item) => item.id.toLowerCase()));
-  const written = hidden.size ? laidOut.map((item) => (hidden.has(item.id.toLowerCase()) ? { ...item, enabled: false } : item)) : laidOut;
+  // What the appraiser chose for a block stays when the calculation writes it again: hidden, its page break and orientation.
+  const previous = new Map(current.map((item) => [item.id.toLowerCase(), item]));
+  const written = laidOut.map((item) => withBlockPresentation(item, previous.get(item.id.toLowerCase())));
   const firstIndex = section.blocks.findIndex((item) => owns(item) || isPlaceholder(item));
   const kept = section.blocks.filter((item) => !owns(item) && !isPlaceholder(item));
   const insertAt = firstIndex !== -1
