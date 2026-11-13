@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BadgeCheck, ChevronDown, Keyboard, LogOut, Monitor, Moon, RotateCw, Sun } from "lucide-react";
+import { BadgeCheck, ChevronDown, Keyboard, LogOut, Monitor, Moon, RotateCw, Sun, Timer } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRef } from "react";
 
@@ -43,7 +43,7 @@ export function Avatar({ initials, className }: { initials: string; className?: 
   );
 }
 
-/** The account menu: who is signed in, "Mi cuenta", the shortcuts, "Recargar página", the theme and "Cerrar sesión". */
+/** The account menu: who is signed in, "Mi cuenta", the editor's autosave, the shortcuts, "Recargar página", the theme and "Cerrar sesión". */
 export function UserMenu({
   name,
   email,
@@ -86,6 +86,10 @@ export function UserMenu({
           <DropdownMenuItem className="min-h-9 gap-2 px-2" render={<Link href="/cuenta" />}>
             <BadgeCheck />
             Mi cuenta y acreditación
+          </DropdownMenuItem>
+          <DropdownMenuItem className="min-h-9 gap-2 px-2" render={<Link href="/cuenta#autoguardado" />}>
+            <Timer />
+            Autoguardado del editor
           </DropdownMenuItem>
           <DropdownMenuItem className="min-h-9 gap-2 px-2" onClick={() => openCommandPalette("shortcuts")}>
             <Keyboard />

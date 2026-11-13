@@ -49,14 +49,20 @@ export function SessionExpiredDialog({
   );
 }
 
+/**
+ * Leaving the editor with changes not saved: by its Atrás, the browser's, or
+ * a link of the app. Nothing is lost without the appraiser choosing it.
+ */
 export function UnsavedChangesExitDialog({
   open,
+  description,
   onOpenChange,
   onExitWithoutSaving,
   onSaveAndExit,
   saving,
 }: {
   open: boolean;
+  description: string;
   onOpenChange: (open: boolean) => void;
   onExitWithoutSaving: () => void;
   onSaveAndExit: () => void;
@@ -64,15 +70,14 @@ export function UnsavedChangesExitDialog({
 }) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      {/* Wide enough for its three choices in one row. */}
+      <AlertDialogContent data-unsaved-exit-dialog="" className="data-[size=default]:sm:max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle>Hay cambios pendientes</AlertDialogTitle>
-          <AlertDialogDescription>
-            Puedes guardar antes de volver al dashboard, salir sin guardar o continuar editando.
-          </AlertDialogDescription>
+          <AlertDialogTitle>Hay cambios sin guardar</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel>Seguir editando</AlertDialogCancel>
           <AlertDialogAction type="button" variant="outline" onClick={onExitWithoutSaving}>
             Salir sin guardar
           </AlertDialogAction>

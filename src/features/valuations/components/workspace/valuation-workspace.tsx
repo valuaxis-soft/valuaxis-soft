@@ -79,6 +79,11 @@ import { useSessionHeartbeat } from "./hooks/use-session-heartbeat";
 import { useTableMutations } from "./hooks/use-table-mutations";
 import { useValuationLifecycle } from "./hooks/use-valuation-lifecycle";
 import { useValuationSave } from "./hooks/use-valuation-save";
+import { useMarginWheel } from "./hooks/use-margin-wheel";
+import { usePreviewFollow } from "./hooks/use-preview-follow";
+import { previewGroupIds } from "./model/preview-follow";
+import { exitDialogDescription } from "./model/navigation-guard";
+import { autosaveDelayMs, DEFAULT_AUTOSAVE_SECONDS, describeAutosave, type AutosaveSeconds } from "@/features/account/user-preferences";
 import { mustSaveBeforeDocument } from "./model/save-status";
 import { useWorkspaceLayout } from "./hooks/use-workspace-layout";
 import { useEditorViewport } from "./hooks/use-editor-viewport";
@@ -102,7 +107,10 @@ export function ValuationWorkspace({
   googleMaps = { apiKey: null },
   customUnits = [],
   unaccreditedNotice = null,
+  autosaveSeconds = DEFAULT_AUTOSAVE_SECONDS,
 }: {
+  /** The appraiser's autosave interval (Mi cuenta → Autoguardado); 0: off. */
+  autosaveSeconds?: AutosaveSeconds;
   /** The issuer is not accredited: the preview shows the notice the dictamen prints, and the editor says why. */
   unaccreditedNotice?: { issuerIsCurrentUser: boolean } | null;
   currentUser: AuthUser;
@@ -180,7 +188,8 @@ export function ValuationWorkspace({
     sessionExpiredOpen,
     setExitDialogOpen,
     setSessionExpiredOpen,
-  } = useValuationSave({ canEdit, editor, setActiveSectionId, valuationId });
+    pendingExit,
+  } = useValuationSave({ autosaveDelayMs: autosaveDelayMs(autosaveSeconds), canEdit, editor, setActiveSectionId, valuationId });
   const openSessionExpired = () => setSessionExpiredOpen(true);
   useSessionHeartbeat({ hasUnsavedChanges, onSessionExpired: openSessionExpired });
 
@@ -202,6 +211,7 @@ export function ValuationWorkspace({
   // The top bar stays put and the editor keeps its place across views.
   const workspaceRef = useRef<HTMLElement>(null);
   useEditorViewport(workspaceRef, activeSection.id);
+  useMarginWheel(workspaceRef);
   // What the preview shows: the section browsed to, or the active one.
   const rawPreviewSection =
     (previewSectionId ? enabledSections.find((section) => section.id === previewSectionId) : undefined) ?? rawActiveSection;
@@ -213,6 +223,22 @@ export function ValuationWorkspace({
     ),
     [activeSection, allConceptsForDisplay, excludedApproaches, rawActiveSection, rawPreviewSection],
   );
+  // «Continuar donde terminó»: the sections printed on the same pages show together, as the dictamen prints them (V6.1-09).
+  const previewGroup = useMemo(() => {
+    const ids = previewGroupIds(sections, previewSection.id);
+    if (ids.length < 2) return undefined;
+    return ids.flatMap((id) => {
+      if (id === previewSection.id) return [previewSection];
+      const raw = enabledSections.find((section) => section.id === id);
+      return raw ? [previewSectionForReport(resolveSectionConceptsForDisplay(raw, allConceptsForDisplay), excludedApproaches)] : [];
+    });
+  }, [allConceptsForDisplay, enabledSections, excludedApproaches, previewSection, sections]);
+  const previewStartsAfterAnother = Boolean(previewGroup && previewGroup[0]?.id !== previewSection.id);
+  usePreviewFollow({
+    activeSection,
+    previewSectionId: previewSection.id,
+    sectionStartBlockId: previewStartsAfterAnother ? previewSection.blocks.find((block) => block.enabled)?.id ?? null : null,
+  });
   const browsePreview = (direction: -1 | 1) => {
     const next = adjacentPreviewSectionId(enabledSections, previewSection.id, direction);
     if (next) setPreviewSectionId(next);
@@ -338,7 +364,7 @@ export function ValuationWorkspace({
   const machinery = isMachineryPropertyKind(initialValuation?.propertyKind);
   const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, machinery, valuationId });
 
-  // "Aplicar al croquis": the stored images go into their sections in one step of the history (one «Deshacer»); the kinds whose section the appraiser removed come back.
+  // "Generar croquis de localización": the stored images go into their sections in one step of the history (one «Deshacer»); the kinds whose section the appraiser removed come back.
   const placeCroquisImages = (placements: readonly CroquisPlacement[]) => {
     const missing = placements
       .map((placement) => placement.kind)
@@ -498,6 +524,7 @@ export function ValuationWorkspace({
   const previewPanel = (
     <ValuationPreviewPanel
       activeSection={previewSection}
+      group={previewGroup}
       caratula={caratula}
       letterhead={letterhead}
       meta={meta}
@@ -519,10 +546,11 @@ export function ValuationWorkspace({
     <Tabs value={activeSection.id} onValueChange={handleActiveSectionChange} className="gap-0 h-full">
       {/* Clipped, not hidden: a hidden overflow still scrolls when something is brought into view, and took the top bar with it. */}
       <main ref={workspaceRef} className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-clip">
-      <section className="shrink-0 border-b bg-background">
+      <section className="shrink-0 border-b bg-background" data-workspace-top-bar="">
         <div className="mx-auto grid max-w-[1760px] grid-cols-1 gap-3 overflow-hidden px-3 py-3 sm:px-4 lg:gap-4 lg:px-6 lg:py-4">
           <ValuationTopBar
             activeSectionId={activeSection.id}
+            autosaveNote={`Guardado automático: ${describeAutosave(autosaveSeconds)}. Se cambia en Mi cuenta → Autoguardado.`}
             canEdit={canEdit}
             lifecycleAction={
               canConclude
@@ -657,6 +685,7 @@ export function ValuationWorkspace({
       />
       <UnsavedChangesExitDialog
         open={exitDialogOpen}
+        description={exitDialogDescription(pendingExit)}
         onOpenChange={setExitDialogOpen}
         onExitWithoutSaving={exitWithoutSaving}
         onSaveAndExit={handleSaveAndExit}

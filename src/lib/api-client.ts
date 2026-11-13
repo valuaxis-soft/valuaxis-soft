@@ -26,6 +26,7 @@ import type { FirmSettingsInput } from "@/features/firm/firm-schemas";
 import type { FirmSettingsDto } from "@/features/firm/firm.service";
 import type { BillingOverviewDto } from "@/features/billing/billing.service";
 import type { AccreditationView } from "@/features/accreditation/accreditation.service";
+import type { UserPreferences } from "@/features/account/user-preferences";
 import type { FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 import type { CustomFactor } from "@/features/firm/custom-factors";
 import type { DraftInput } from "@/features/ai/draft-writing";
@@ -48,7 +49,7 @@ const BASE = "/api";
 type JsonRecord = Record<string, unknown>;
 type ApiId = string;
 
-/** What "Aplicar al croquis" sends for one croquis (POST /api/avaluos/[id]/croquis). */
+/** What "Generar croquis de localización" sends for one croquis (POST /api/avaluos/[id]/croquis). */
 export type CroquisRequest = {
   kind: CroquisKind;
   center: [number, number];
@@ -62,7 +63,7 @@ export type CroquisRequest = {
   mapType: CroquisSettings["mapType"];
 };
 
-/** What "Aplicar al croquis" returns: the stored image and the streets that did not fit the croquis. */
+/** What "Generar croquis de localización" returns: the stored image and the streets that did not fit the croquis. */
 export type CroquisResponse = { image: EditorImageDto; omittedStreets: string[] };
 
 export type PrincipalCoverImageResponse = {
@@ -263,7 +264,7 @@ export const api = {
       save: (id: ApiId, input: SubjectLocationInput) =>
         request<SubjectLocationDto>(`/avaluos/${id}/ubicacion`, { method: "PUT", body: JSON.stringify(input) }),
     },
-    /** "Aplicar al croquis": one croquis rendered and stored as an image of the valuation. */
+    /** "Generar croquis de localización": one croquis rendered and stored as an image of the valuation. */
     croquis: (id: ApiId, input: CroquisRequest) =>
       request<CroquisResponse>(`/avaluos/${id}/croquis`, { method: "POST", body: JSON.stringify(input) }),
   },
@@ -477,6 +478,11 @@ export const api = {
   /** The signed-in user's professional accreditation (docs/ACREDITACION.md). */
   accreditation: {
     upload: (file: File) => uploadForm<AccreditationView>(`/cuenta/acreditacion`, { file }),
+  },
+  /** The signed-in user's own preferences, such as the editor's autosave interval. */
+  preferences: {
+    update: (patch: Partial<UserPreferences>) =>
+      request<UserPreferences>(`/cuenta/preferencias`, { method: "PATCH", body: JSON.stringify(patch) }),
   },
   billing: {
     get: () => request<BillingOverviewDto>(`/organizacion/facturacion`),

@@ -382,6 +382,7 @@ export function PreviewViewer({
         >
           <div
             ref={scrollRef}
+            data-preview-scroller=""
             className="h-full overflow-auto"
           >
             <div

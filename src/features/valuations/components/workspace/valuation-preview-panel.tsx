@@ -7,6 +7,7 @@ import type { ValuationMeta } from "@/features/valuations/services/valuation-con
 export function ValuationPreviewPanel({
   activeSection,
   caratula,
+  group,
   letterhead,
   meta,
   navigation,
@@ -15,6 +16,8 @@ export function ValuationPreviewPanel({
 }: {
   activeSection: AppSection;
   caratula: CaratulaFormData;
+  /** The sections printed on the same pages as the shown one, it among them («Continuar donde terminó»). */
+  group?: AppSection[];
   letterhead: Letterhead;
   meta: ValuationMeta;
   /** Browsing to the previous or next section without leaving the editor's active one. */
@@ -33,6 +36,7 @@ export function ValuationPreviewPanel({
           <ReportPreview
             meta={meta}
             navigation={navigation}
+            group={group}
             section={activeSection}
             caratula={caratula}
             letterhead={letterhead}

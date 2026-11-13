@@ -442,7 +442,7 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
       description={
         captures.includes("comparables")
           ? "El mapa de comparables toma el pin del inmueble sujeto y los comparables del avalúo que tienen coordenadas."
-          : "Busca la dirección o arrastra el pin rojo; las coordenadas se guardan solas. Encuadra el mapa como quieras que salga cada croquis y pulsa «Aplicar al croquis»."
+          : "Busca la dirección o arrastra el pin rojo; las coordenadas se guardan solas. Encuadra el mapa como quieras que salga cada croquis y pulsa «Generar croquis de localización»."
       }
     >
       {loadError ? <p className="text-sm text-destructive">{loadError}</p> : null}
@@ -642,11 +642,11 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
               {subject
-                ? "«Aplicar al croquis» guarda cada croquis como imagen del avalúo y la coloca en la sección; después edítala como cualquier imagen."
+                ? "«Generar croquis de localización» guarda cada croquis como imagen del avalúo y la coloca en la sección; después edítala como cualquier imagen."
                 : "Ubica el inmueble para poder generar los croquis."}
             </p>
             <Button type="button" disabled={!canEdit || !subject || applying} onClick={applyToCroquis}>
-              {applying ? "Generando…" : captures.includes("comparables") ? "Generar mapa de comparables" : "Aplicar al croquis"}
+              {applying ? "Generando…" : captures.includes("comparables") ? "Generar mapa de comparables" : "Generar croquis de localización"}
             </Button>
           </div>
         </div>

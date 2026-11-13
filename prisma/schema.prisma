@@ -335,8 +335,10 @@ model Usuario {
   DFechaCambioContrasena   DateTime? @map("DFechaCambioContrasena") @db.Timestamptz(3)
   IReintentosConsecutivos  Int       @default(0) @map("IReintentosConsecutivos")
   DFechaBloqueoTemporal    DateTime? @map("DFechaBloqueoTemporal") @db.Timestamptz(3)
+  /// The person's own preferences, such as the editor's autosave interval (migration 058). NULL: the defaults.
+  JPreferencias            Json?     @map("JPreferencias") @db.JsonB
 
-  estadoUsuario                EstadoUsuario                 @relation(fields: [IdEstadoUsuario], references: [IdEstadoUsuario], onDelete: Restrict, onUpdate: Cascade)
+  estadoUsuario               EstadoUsuario                 @relation(fields: [IdEstadoUsuario], references: [IdEstadoUsuario], onDelete: Restrict, onUpdate: Cascade)
   identidades                  IdentidadUsuario[]
   tokensVerificacionCorreo     TokenVerificacionCorreo[]
   tokensRecuperacionContrasena TokenRecuperacionContrasena[]

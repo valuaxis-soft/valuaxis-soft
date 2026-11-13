@@ -27,7 +27,7 @@ test("a save rebuilt from the same content reads as saved", () => {
 });
 
 test("autosave only runs for editable, persisted documents with pending changes", () => {
-  const base = { saveStatus: "dirty", canEdit: true, valuationId: "1", sessionExpired: false };
+  const base = { saveStatus: "dirty", canEdit: true, valuationId: "1", sessionExpired: false, delayMs: 15_000 };
   assert.equal(shouldAutosave(base), true);
   assert.equal(shouldAutosave({ ...base, saveStatus: "saved" }), false);
   assert.equal(shouldAutosave({ ...base, saveStatus: "saving" }), false);
@@ -35,4 +35,6 @@ test("autosave only runs for editable, persisted documents with pending changes"
   assert.equal(shouldAutosave({ ...base, canEdit: false }), false);
   assert.equal(shouldAutosave({ ...base, valuationId: null }), false);
   assert.equal(shouldAutosave({ ...base, sessionExpired: true }), false);
+  // NP-01: «Desactivado» in Mi cuenta turns it off, whatever the document holds.
+  assert.equal(shouldAutosave({ ...base, delayMs: null }), false);
 });

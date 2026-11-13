@@ -219,7 +219,7 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
     placeOnStreet(query);
   };
 
-  // What the croquis would carry if "Aplicar al croquis" were pressed now; the preview only changes when it is.
+  // What the croquis would carry if "Generar croquis de localización" were pressed now; the preview only changes when it is.
   const liveKey = useMemo(
     () => JSON.stringify({ subject, paint: [...paint], styles, showNames, clean, northArrow, comparables: shown.map((c) => c.ref) }),
     [subject, paint, styles, showNames, clean, northArrow, shown],
@@ -397,12 +397,12 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
                   </p>
                 </div>
                 <Button variant={pending ? "default" : "outline"} size="sm" onClick={applyToCroquis}>
-                  Aplicar al croquis
+                  Generar croquis de localización
                 </Button>
               </div>
               <DictamenPreview apiKey={mode === "leaflet" ? null : googleMapsKey} stage={stage} snapshot={applied.snapshot} />
               <Note>
-                «Aplicar al croquis» fija en el dictamen el encuadre actual del mapa (en el croquis macro hasta zoom 16, en el micro a partir de 17), las
+                «Generar croquis de localización» fija en el dictamen el encuadre actual del mapa (en el croquis macro hasta zoom 16, en el micro a partir de 17), las
                 vialidades resaltadas, sus nombres y el norte. Hasta entonces el croquis no cambia.
               </Note>
             </section>
@@ -461,7 +461,7 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
                   ))}
                 </div>
               </div>
-              <Note>Encuadra el mapa como quieras que salga (mueve y acerca) y pulsa «Aplicar al croquis». Cada encuadre, macro o micro, se guarda por separado.</Note>
+              <Note>Encuadra el mapa como quieras que salga (mueve y acerca) y pulsa «Generar croquis de localización». Cada encuadre, macro o micro, se guarda por separado.</Note>
             </TabsContent>
 
             <TabsContent value="etapa-2" className="grid gap-3.5">
