@@ -12,7 +12,7 @@ import { z } from "zod";
 import { COMPARABLE_TYPES, type ComparableType } from "@/features/valuations/calculation/market-types";
 
 import { DEFAULT_STREET_HIGHLIGHTS, streetHighlightsSchema, type StreetLabel } from "./highlights";
-import { DEFAULT_NORTH_ARROW, MACRO_FRAME, MAP_CORNERS, MICRO_FRAME, NORTH_ARROW_STYLES, type CroquisFrame, type NorthArrow } from "./map-styles";
+import { DEFAULT_NORTH_ARROW, MACRO_FRAME, MAP_CORNERS, MAP_TYPES, MICRO_FRAME, NORTH_ARROW_STYLES, type CroquisFrame, type MapType, type NorthArrow } from "./map-styles";
 import { STATIC_MAP_SIZE, imagePosition } from "./static-map";
 import type { LatLon } from "./types";
 
@@ -53,6 +53,8 @@ export const northArrowSchema = z.object({
   corner: z.enum(MAP_CORNERS.map((item) => item.key) as [NorthArrow["corner"], ...NorthArrow["corner"][]]),
 });
 
+const mapTypeSchema = z.enum(MAP_TYPES.map((item) => item.key) as [MapType, ...MapType[]]);
+
 export const croquisSettingsSchema = z.object({
   macro: frameSchema,
   micro: frameSchema,
@@ -64,6 +66,8 @@ export const croquisSettingsSchema = z.object({
   includeComparables: z.boolean(),
   /** Etapa 2: the front street, the painted streets, their palette and whether the names show. */
   streets: streetHighlightsSchema,
+  /** Settings stored before 12 nov 2026 have none: the street map. */
+  mapType: mapTypeSchema.default("roadmap"),
 });
 
 export type CroquisSettings = z.infer<typeof croquisSettingsSchema>;
@@ -76,6 +80,7 @@ export const DEFAULT_CROQUIS_SETTINGS: CroquisSettings = {
   northArrow: DEFAULT_NORTH_ARROW,
   includeComparables: false,
   streets: DEFAULT_STREET_HIGHLIGHTS,
+  mapType: "roadmap",
 };
 
 /** Settings as stored, completed with the defaults; invalid or missing pieces take the default. */
@@ -95,6 +100,7 @@ export function readCroquisSettings(value: unknown): CroquisSettings {
     northArrow: pick(northArrowSchema, "northArrow", DEFAULT_CROQUIS_SETTINGS.northArrow),
     includeComparables: pick(z.boolean(), "includeComparables", DEFAULT_CROQUIS_SETTINGS.includeComparables),
     streets: pick(streetHighlightsSchema, "streets", DEFAULT_CROQUIS_SETTINGS.streets),
+    mapType: pick(mapTypeSchema, "mapType", DEFAULT_CROQUIS_SETTINGS.mapType),
   };
 }
 

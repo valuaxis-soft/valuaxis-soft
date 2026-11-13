@@ -3,7 +3,7 @@
  * in the subject property's characteristics (subject-location.ts), with
  * the comparables of the valuation that have coordinates, for the map.
  */
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 import type { AuthUser } from "@/features/auth/model";
 import { findValuation } from "@/features/valuations/calculation/access";
@@ -86,11 +86,19 @@ export async function getSubjectLocation(publicId: string, organizationId: numbe
  * Saves the pin and the settings. The subject property is created when the
  * valuation has none yet (a valuation saved before its first full save), as
  * the own-kind names do.
+ *
+ * The valuation's row is locked first: the panel saves the pin and the
+ * croquis settings in two requests that can arrive together, and each one
+ * reads, merges and writes the characteristics. Without the lock the second
+ * write carried the old pin (or none), which showed as "Sin ubicar" or the
+ * geocoded point coming back after a reload, and two first saves could
+ * each create a subject property.
  */
 export async function saveSubjectLocation(publicId: string, user: AuthUser, input: SubjectLocationInput): Promise<SubjectLocationDto> {
   await prisma.$transaction(async (tx) => {
     const valuation = await findValuation(tx, publicId, user.organizationId);
     if (valuation.BBloqueado) throw new ValuationWorkflowError("El avalúo está concluido; reábrelo para editarlo.", 409);
+    await tx.$queryRaw(Prisma.sql`SELECT 1 FROM "devpware_avaluos" WHERE "IdAvaluo" = ${valuation.IdAvaluo} FOR UPDATE`);
     const avaluo = await tx.avaluo.findUniqueOrThrow({
       where: { IdAvaluo: valuation.IdAvaluo },
       select: { IdPropiedadSujeto: true, SFolio: true, STitulo: true },

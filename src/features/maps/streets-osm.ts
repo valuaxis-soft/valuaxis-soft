@@ -39,7 +39,7 @@ export function highwayRank(highway: string): number | null {
 /** The Overpass QL query: named streets of the kinds above, with their geometry, within the radius. */
 export function overpassQuery(point: LatLon, radiusMeters: number) {
   const kinds = Object.keys(HIGHWAY_RANKS).flatMap((kind) => [kind, `${kind}_link`]);
-  return `[out:json][timeout:25];way(around:${Math.round(radiusMeters)},${point[0].toFixed(6)},${point[1].toFixed(6)})["highway"~"^(${kinds.join("|")})$"]["name"];out geom;`;
+  return `[out:json][timeout:15];way(around:${Math.round(radiusMeters)},${point[0].toFixed(6)},${point[1].toFixed(6)})["highway"~"^(${kinds.join("|")})$"]["name"];out geom;`;
 }
 
 export interface OverpassElement {

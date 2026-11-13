@@ -26,9 +26,9 @@ export const TRUSTED_STYLE_HASHES = [
 ];
 
 /**
- * Sources the Maps JavaScript API needs in the browser. Only the pages that
- * render the interactive map get them (googleMapsPage); the rest of the app
- * keeps the base policy. The loader script carries the nonce and
+ * Sources the Maps JavaScript API needs in the browser. Every page but the
+ * printed documents gets them (googleMapsPage), because the policy that
+ * applies is the one of the page the app was opened on. The loader script carries the nonce and
  * 'strict-dynamic' lets it add Google's own scripts; the host is listed for
  * CSP2 browsers. The Static and Geocoding APIs are called from the server,
  * so the dictamen and the PDF need none of this.
@@ -42,15 +42,28 @@ const GOOGLE_MAPS_SOURCES: Record<string, string[]> = {
   "worker-src": ["blob:"],
 };
 
+const PRINTED_DOCUMENT = /^\/(?:avaluos\/[^/]+\/(?:dictamen|memoria-calculo)|workspace\/preview-window)(?:\/|$)/;
+
 /**
- * The pages that load Google Maps: the maps demonstration (/demo/…), the
- * valuation editor (/workspace, where the croquis panel and the map of
- * comparables render) and the Comparables page (/comparables, its map view).
- * Nowhere else: not the editor's preview window, not the dictamen, not the
- * card of a comparable (/comparables/<id>, which draws its map with Leaflet).
+ * The pages whose document gets Google's sources: every page except the
+ * printed documents (the dictamen, the calculation memory and the editor's
+ * preview window), which show the croquis as stored images and must not
+ * depend on anything outside the app.
+ *
+ * Until 12 nov 2026 only /workspace, /comparables and /demo/ got them. But a
+ * CSP belongs to the document, and the app moves between pages without
+ * loading a new one: the appraiser who signed in, or opened the dashboard,
+ * and then clicked a valuation kept the dashboard's policy in the editor,
+ * and Google's tiles, fonts and calls were blocked (a grey map with only the
+ * pin until a reload; the installed app has no reload button). Scripts are
+ * not widened by this: 'strict-dynamic' ignores host sources, so only the
+ * nonce-carrying loader can add Google's scripts, and it runs only where a
+ * map is drawn. What every page gains is images, fonts, styles and requests
+ * to Google's map hosts, which the editor, the page with the most sensitive
+ * data, already allowed.
  */
 export function googleMapsPage(pathname: string) {
-  return pathname.startsWith("/demo/") || pathname === "/workspace" || pathname === "/comparables";
+  return !PRINTED_DOCUMENT.test(pathname);
 }
 
 export function contentSecurityPolicy(options: { development: boolean; nonce: string; googleMaps?: boolean }) {

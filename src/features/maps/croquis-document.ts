@@ -89,20 +89,98 @@ function withImageInBlock(block: Block, kind: CroquisKind, src: string): Block {
 }
 
 /**
+ * A manual image gives way to the croquis: the croquis takes its place in
+ * the layout (same row and column) and the manual image leaves the block.
+ * The editor's «Deshacer» brings it back.
+ */
+function withImageReplacing(block: Block, kind: CroquisKind, src: string, replacedId: string): Block {
+  const fresh = imageOf(kind, src);
+  const layout = block.contentLayout;
+  const contentLayout = layout
+    ? {
+        ...layout,
+        rows: layout.rows.map((row) => ({
+          ...row,
+          columns: row.columns.map((column) => ({
+            ...column,
+            items: column.items.map((item) => (item.type === "image" && item.id === replacedId ? { ...item, id: fresh.id } : item)),
+          })),
+        })),
+      }
+    : layout;
+  return ensureBlockContentIntegrity({ ...block, images: block.images.map((image) => (image.id === replacedId ? fresh : image)), contentLayout });
+}
+
+/** One croquis to put in the document; `replaceImageId` is a manual image of its block it replaces. */
+export interface CroquisPlacement {
+  kind: CroquisKind;
+  src: string;
+  replaceImageId?: string | null;
+}
+
+/**
  * The sections with this croquis image in its place. `placed` is false when
  * the section is not in the document (the appraiser removed it), in which
- * case nothing changes.
+ * case nothing changes. A croquis already in the document replaces itself;
+ * the first time, `replaceImageId` (a manual image of the same block) gives
+ * way to it, otherwise it is added beside what is there.
  */
-export function withCroquisImage(sections: readonly AppSection[], kind: CroquisKind, src: string): { sections: AppSection[]; placed: boolean } {
+export function withCroquisImage(sections: readonly AppSection[], kind: CroquisKind, src: string, replaceImageId?: string | null): { sections: AppSection[]; placed: boolean } {
   const sectionKey = croquisSectionKey(kind);
   const section = sections.find((item) => !item.removed && getCanonicalSectionKey(item.id) === sectionKey);
   if (!section) return { sections: [...sections], placed: false };
   const block = targetBlock(section) ?? emptyBlock(section.title);
-  const updated = withImageInBlock(block, kind, src);
+  const replacing = !findCroquisImage(sections, kind) && replaceImageId && block.images.some((image) => image.id === replaceImageId);
+  const updated = replacing ? withImageReplacing(block, kind, src, replaceImageId) : withImageInBlock(block, kind, src);
   const blocks = section.blocks.some((item) => item.id === block.id)
     ? section.blocks.map((item) => (item.id === block.id ? updated : item))
     : [updated, ...section.blocks];
   return { sections: sections.map((item) => (item.id === section.id ? { ...item, blocks } : item)), placed: true };
+}
+
+/** Several croquis at once (one step of the editor's history); the kinds whose section is not in the document come back. */
+export function withCroquisImages(sections: readonly AppSection[], placements: readonly CroquisPlacement[]) {
+  let current: AppSection[] = [...sections];
+  const missing: CroquisKind[] = [];
+  for (const placement of placements) {
+    const result = withCroquisImage(current, placement.kind, placement.src, placement.replaceImageId);
+    current = result.sections;
+    if (!result.placed) missing.push(placement.kind);
+  }
+  return { sections: current, missing };
+}
+
+/**
+ * MAP-11: the images uploaded by hand where a croquis would go the first
+ * time, each paired with the croquis that would replace it, in the order
+ * they show (the macro takes the first, the micro the next). A croquis
+ * already in the document replaces itself and takes none.
+ */
+export function croquisReplacements(sections: readonly AppSection[], kinds: readonly CroquisKind[]): Partial<Record<CroquisKind, ImageContent>> {
+  const taken = new Set<string>();
+  const pairs: Partial<Record<CroquisKind, ImageContent>> = {};
+  const croquisIds = new Set(Object.values(CROQUIS_IMAGE_IDS));
+  for (const kind of kinds) {
+    if (findCroquisImage(sections, kind)) continue;
+    const section = sections.find((item) => !item.removed && getCanonicalSectionKey(item.id) === croquisSectionKey(kind));
+    const block = section ? targetBlock(section) : null;
+    if (!block) continue;
+    const manual = orderedImages(block).find((image) => !croquisIds.has(image.id) && !taken.has(image.id) && image.src);
+    if (!manual) continue;
+    taken.add(manual.id);
+    pairs[kind] = manual;
+  }
+  return pairs;
+}
+
+/** The block's own images in the order the layout shows them; those not in the layout last. */
+function orderedImages(block: Block) {
+  const order = (block.contentLayout?.rows ?? []).flatMap((row) => row.columns.flatMap((column) => column.items.filter((item) => item.type === "image").map((item) => item.id)));
+  const rank = (id: string) => {
+    const index = order.indexOf(id);
+    return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  return [...block.images].sort((a, b) => rank(a.id) - rank(b.id));
 }
 
 /** The image of this croquis as the document carries it now, if any. */

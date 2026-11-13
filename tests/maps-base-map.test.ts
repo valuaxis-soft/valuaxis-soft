@@ -98,6 +98,12 @@ test("the radius is clamped to the slider's steps and the request needs a point 
   assert.equal(clampRadius(10), RADIUS_METERS.min);
   assert.equal(clampRadius(99_999), RADIUS_METERS.max);
   assert.equal(clampRadius(333), 350, "rounded to the step");
+  // WA-02: up to 10 km, in steps of 250 m past the first kilometer.
+  assert.equal(RADIUS_METERS.max, 10_000);
+  assert.equal(clampRadius(10_000), 10_000);
+  assert.equal(clampRadius(7_420), 7_500);
+  assert.equal(clampRadius(1_080), 1_000);
+  assert.deepEqual(parseRadiusQuery(new URLSearchParams("lat=20.6344&lon=-103.4024&radio=10000")), { center: [20.6344, -103.4024], radius: 10_000 });
   assert.equal(clampRadius(Number.NaN), RADIUS_METERS.default);
   const query = parseRadiusQuery(new URLSearchParams("lat=20.6344&lon=-103.4024&radio=800"));
   assert.deepEqual(query, { center: [20.6344, -103.4024], radius: 800 });
@@ -154,10 +160,8 @@ test("the map shares the list's filters: the view and 'sin ubicar' travel in the
   assert.deepEqual(parseComparableListParams(Object.fromEntries(new URLSearchParams(href.slice(href.indexOf("?") + 1)))).neighborhood, "Centro");
 });
 
-test("Google's sources reach the Comparables page (its map view) and the editor, not the card of a comparable", () => {
+test("Google's sources reach the Comparables page (its map view) and the editor", () => {
   assert.ok(googleMapsPage("/comparables"));
   assert.ok(googleMapsPage("/workspace"));
-  assert.equal(googleMapsPage("/comparables/8b1b3d2e-0000-4000-8000-000000000000"), false, "the card draws its map with Leaflet");
-  assert.equal(googleMapsPage("/comparables/"), false);
-  assert.equal(googleMapsPage("/dashboard"), false);
+  assert.ok(googleMapsPage("/comparables/8b1b3d2e-0000-4000-8000-000000000000"));
 });

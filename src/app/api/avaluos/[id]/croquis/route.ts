@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
-import { CROQUIS_KINDS, latLonSchema, northArrowSchema, pinsForCroquis, type CroquisKind } from "@/features/maps/croquis";
+import { CROQUIS_KINDS, croquisSettingsSchema, latLonSchema, northArrowSchema, pinsForCroquis, type CroquisKind } from "@/features/maps/croquis";
 import { streetHighlightsSchema } from "@/features/maps/highlights";
 import { renderAndStoreCroquis } from "@/features/maps/server/croquis-image.service";
 import { getSubjectLocation } from "@/features/maps/server/subject-location.service";
@@ -22,6 +22,7 @@ const bodySchema = z.object({
   northArrow: northArrowSchema,
   includeComparables: z.boolean(),
   streets: streetHighlightsSchema,
+  mapType: croquisSettingsSchema.shape.mapType,
 });
 
 /**
@@ -46,13 +47,14 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     const stored = await getSubjectLocation(id, auth.user.organizationId);
     if (!stored.location) throw new ValuationWorkflowError("Primero ubica el inmueble sujeto en el mapa.", 400);
 
-    const { kind, center, zoom, clean, northArrow, includeComparables, streets } = body.data;
+    const { kind, center, zoom, clean, mapType, northArrow, includeComparables, streets } = body.data;
     const result = await renderAndStoreCroquis(auth.user, {
       kind,
       center,
       zoom,
       subject: stored.location.point,
       clean,
+      mapType,
       northArrow,
       pins: pinsForCroquis(kind, { includeComparables }, stored.comparables),
       streets,

@@ -89,6 +89,7 @@ test("the radius search answers the comparables within the meters asked, closest
   await add("INMUEBLE_VENTA", comparable("A 480 m", 150, 2_500_000, { latitude: PERLA[0], longitude: PERLA[1] - (480 * METER) / Math.cos((PERLA[0] * Math.PI) / 180) }));
   await add("INMUEBLE_VENTA", comparable("A 1.5 km", 150, 2_500_000, { latitude: PERLA[0] + 1500 * METER, longitude: PERLA[1] }));
   await add("INMUEBLE_VENTA", comparable("Sin coordenadas", 150, 2_500_000));
+  await add("TERRENO_VENTA", comparable("A 8 km", 300, 1_800_000, { latitude: PERLA[0] - 8000 * METER, longitude: PERLA[1] }));
 
   const within500 = await comparablesAround(organizationId, PERLA, 500, params(), { withThumbnails: false });
   assert.deepEqual(within500.map((hit) => hit.location), ["A 90 m", "A 350 m", "A 480 m"]);
@@ -97,6 +98,12 @@ test("the radius search answers the comparables within the meters asked, closest
     assert.ok(Math.abs(hit.distance - expected) < 2, `${hit.location}: PostGIS says ${hit.distance} m, haversine ${expected} m`);
   }
   assert.ok(within500[0].distance > 85 && within500[0].distance < 95);
+
+  // WA-02: the radius reaches 10 km; 5 km, the old ceiling, left the one 8 km away out.
+  const within5km = await comparablesAround(organizationId, PERLA, 5000, params(), { withThumbnails: false });
+  assert.equal(within5km.some((hit) => hit.location === "A 8 km"), false);
+  const within10km = await comparablesAround(organizationId, PERLA, 10_000, params(), { withThumbnails: false });
+  assert.equal(within10km.at(-1)?.location, "A 8 km", "the farthest, last");
 
   const within100 = await comparablesAround(organizationId, PERLA, 100, params(), { withThumbnails: false });
   assert.deepEqual(within100.map((hit) => hit.location), ["A 90 m"]);

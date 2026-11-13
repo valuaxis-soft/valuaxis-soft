@@ -26,7 +26,7 @@ import {
 import { STATIC_MAP_SIZE, imagePosition, staticMapUrl } from "../src/features/maps/static-map";
 import { detectStreets, metersPerPixel, simplifyPolyline, wayInBounds, type StreetWay } from "../src/features/maps/streets";
 import { DEFAULT_STREETS_RADIUS, MAX_STREET_WAYS, highwayRank, overpassQuery, parseOverpassWays, streetsCacheKey, type OverpassElement } from "../src/features/maps/streets-osm";
-import { fetchStreetsFromOverpass } from "../src/features/maps/server/streets.service";
+import { fetchStreetsFromOverpass, getStreetsAround } from "../src/features/maps/server/streets.service";
 import { rateLimits } from "../src/security/rate-limit/rate-limiter";
 
 const PIN: [number, number] = [20.6301, -103.4];
@@ -43,7 +43,7 @@ const GRID: StreetWay[] = [
 
 test("OpenStreetMap: the query asks for named streets around the point, the answer becomes ranked pieces, unnamed ones are left out", () => {
   const query = overpassQuery(PIN, 1000);
-  assert.match(query, /^\[out:json\]\[timeout:25\];way\(around:1000,20\.630100,-103\.400000\)\["highway"~"\^\((motorway|[a-z_|]+)\)\$"\]\["name"\];out geom;$/);
+  assert.match(query, /^\[out:json\]\[timeout:15\];way\(around:1000,20\.630100,-103\.400000\)\["highway"~"\^\((motorway|[a-z_|]+)\)\$"\]\["name"\];out geom;$/);
   assert.ok(query.includes("residential") && query.includes("primary_link"));
   assert.deepEqual([highwayRank("motorway"), highwayRank("primary"), highwayRank("secondary"), highwayRank("tertiary"), highwayRank("residential"), highwayRank("tertiary_link")], [1, 1, 2, 3, 4, 3]);
   assert.equal(highwayRank("footway"), null);
@@ -94,6 +94,77 @@ test("the mirrors are tried in turn: a refusal goes to the next one, and only wh
   } finally {
     console.warn = originalWarn;
   }
+});
+
+const PERLA = { elements: [{ type: "way", id: 1, tags: { highway: "residential", name: "Calle Perla" }, geometry: [{ lat: 20.63, lon: -103.4 }, { lat: 20.631, lon: -103.4 }] }] };
+
+/** A mirror that never answers on its own: it only ends when the request is cancelled. */
+const silent = (init?: RequestInit) =>
+  new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+
+async function quietly<T>(run: () => Promise<T>) {
+  const { warn, error } = console;
+  console.warn = () => {};
+  console.error = () => {};
+  try {
+    return await run();
+  } finally {
+    console.warn = warn;
+    console.error = error;
+  }
+}
+
+test("MAP-04: a silent mirror gets company after a head start, the first answer wins and the rest are cancelled", async () => {
+  const calls: string[] = [];
+  let cancelled = 0;
+  const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push(String(url));
+    if (String(url) === "https://a/api") {
+      return silent(init).catch((error: unknown) => {
+        cancelled += 1;
+        throw error;
+      });
+    }
+    return Response.json(PERLA);
+  }) as typeof fetch;
+  const started = Date.now();
+  const ways = await quietly(() => fetchStreetsFromOverpass(PIN, 1000, fetchImpl, ["https://a/api", "https://b/api", "https://c/api"], { mirrorTimeoutMs: 5_000, hedgeAfterMs: 30, totalBudgetMs: 5_000 }));
+  assert.equal(ways[0].n, "Calle Perla");
+  assert.deepEqual(calls, ["https://a/api", "https://b/api"], "the third mirror is never asked");
+  assert.ok(Date.now() - started < 1_000, "it does not wait for the silent mirror's own timeout");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(cancelled, 1, "the silent mirror is cancelled");
+});
+
+test("MAP-04: when no mirror answers, the error comes within the total budget (the proxy cut at 60 s used to answer instead)", async () => {
+  const started = Date.now();
+  await quietly(() =>
+    assert.rejects(
+      fetchStreetsFromOverpass(PIN, 1000, (async (_url: string | URL | Request, init?: RequestInit) => silent(init)) as typeof fetch, ["https://a/api", "https://b/api", "https://c/api"], {
+        mirrorTimeoutMs: 10_000,
+        hedgeAfterMs: 20,
+        totalBudgetMs: 150,
+      }),
+      (error: Error & { status?: number }) => /Reintentar/.test(error.message),
+    ),
+  );
+  assert.ok(Date.now() - started < 1_000);
+});
+
+test("MAP-05: an answer is reused for the same zone without asking the mirrors again, even when they are down", async () => {
+  let asked = 0;
+  const point: [number, number] = [21.0012, -101.5034];
+  const answer = (async () => {
+    asked += 1;
+    return Response.json(PERLA);
+  }) as typeof fetch;
+  const first = await getStreetsAround(point, 1000, answer);
+  const nearby = await getStreetsAround([21.0014, -101.5031], 1000, answer);
+  assert.equal(asked, 1, "a pin a few meters away shares the answer");
+  assert.deepEqual(nearby, first);
+  const down = (async () => new Response("down", { status: 504 })) as typeof fetch;
+  // Still fresh: the mirrors are not even asked.
+  assert.deepEqual(await getStreetsAround(point, 1000, down), first);
 });
 
 test("the palette and the painted streets persist with the croquis settings and read back piece by piece", () => {

@@ -102,6 +102,7 @@ export default async function ComparablesPage({
               googleMaps={{ apiKey: googleMapsKey, nonce }}
               query={listHref.includes("?") ? listHref.slice(listHref.indexOf("?") + 1) : ""}
               unlocatedHref={buildComparableListHref({ ...params, view: "lista", located: "sin", page: 1 })}
+              canAddToValuations={canEdit}
             />
           ) : items.length === 0 ? (
             hasFilters(params) ? (

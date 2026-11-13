@@ -15,7 +15,7 @@ import { ValuationWorkflowError } from "@/features/valuations/services/valuation
 import { CROQUIS_IMAGE_IDS, pinsOverlaySvg, streetLabelsOverlaySvg, type ComparablePin, type CroquisKind } from "../croquis";
 import { croquisStreets, type CroquisStreets } from "../croquis-streets";
 import { hasHighlights, type StreetHighlights } from "../highlights";
-import type { NorthArrow } from "../map-styles";
+import type { MapType, NorthArrow } from "../map-styles";
 import { northArrowPlacement, northArrowSvg } from "../north-arrow-symbols";
 import { STATIC_MAP_SCALE, STATIC_MAP_SIZE, staticMapUrl } from "../static-map";
 import type { LatLon } from "../types";
@@ -32,6 +32,8 @@ export interface CroquisRenderInput {
   zoom: number;
   subject: LatLon;
   clean: boolean;
+  /** The street map unless the appraiser chose the satellite photo. */
+  mapType?: MapType;
   northArrow: NorthArrow;
   pins: readonly ComparablePin[];
   /** Etapa 2: what to highlight; the geometry comes from OpenStreetMap around the subject. */
@@ -51,10 +53,10 @@ export async function resolveCroquisStreets(input: Pick<CroquisRenderInput, "kin
 }
 
 /** The base image from Google, as PNG bytes, with the highlighted streets drawn by the Static API. */
-export async function fetchStaticMap(input: Pick<CroquisRenderInput, "center" | "zoom" | "subject" | "clean">, streets: CroquisStreets = NO_STREETS, fetchImpl: typeof fetch = fetch) {
+export async function fetchStaticMap(input: Pick<CroquisRenderInput, "center" | "zoom" | "subject" | "clean" | "mapType">, streets: CroquisStreets = NO_STREETS, fetchImpl: typeof fetch = fetch) {
   const apiKey = googleMapsServerKey();
   if (!apiKey) throw new ValuationWorkflowError(MAPS_NOT_CONFIGURED, 503);
-  const response = await fetchImpl(staticMapUrl({ apiKey, center: input.center, zoom: input.zoom, subject: input.subject, clean: input.clean, paths: streets.paths }));
+  const response = await fetchImpl(staticMapUrl({ apiKey, center: input.center, zoom: input.zoom, subject: input.subject, clean: input.clean, mapType: input.mapType, paths: streets.paths }));
   if (!response.ok) {
     // The key is rejected or the API is not enabled: the cause goes to the log, the client gets a generic message.
     console.error(`[CROQUIS] Maps Static API answered ${response.status}: ${(await response.text()).slice(0, 300)}`);

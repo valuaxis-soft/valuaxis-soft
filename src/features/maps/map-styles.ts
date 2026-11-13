@@ -60,6 +60,14 @@ export interface NorthArrow {
   corner: MapCorner;
 }
 
+/** The base of the map and of the croquis (V6.3-08): streets, the satellite photo, or the photo with street names. */
+export const MAP_TYPES = [
+  { key: "roadmap", title: "Mapa" },
+  { key: "satellite", title: "Satélite" },
+  { key: "hybrid", title: "Satélite con nombres" },
+] as const;
+export type MapType = (typeof MAP_TYPES)[number]["key"];
+
 export const DEFAULT_NORTH_ARROW: NorthArrow = { style: "flecha", corner: "top-right" };
 
 /* ------------------------------------------------------------------ */
@@ -83,4 +91,18 @@ export function frameFromView(view: { center: LatLon; zoom: number }, subject: L
 
 export function frameCenter(frame: CroquisFrame, subject: LatLon): LatLon {
   return [subject[0] + frame.offset[0], subject[1] + frame.offset[1]];
+}
+
+/**
+ * V5.7-06: two croquis that would come out the same (same zoom, centers
+ * closer than a tenth of the image apart). The appraiser pressed «Tomar del
+ * mapa» for both from the same view; the panel says so, it does not change it.
+ */
+export function sameFraming(a: CroquisFrame, b: CroquisFrame, subjectLatitude = 20) {
+  if (a.zoom !== b.zoom) return false;
+  // Degrees per pixel at that zoom (Web Mercator, 256 px tiles); the image is 640 px wide.
+  const degreesPerPixel = 360 / (256 * 2 ** a.zoom);
+  const tolerance = 64 * degreesPerPixel;
+  const latitudeScale = Math.cos((subjectLatitude * Math.PI) / 180);
+  return Math.abs(a.offset[0] - b.offset[0]) <= tolerance * latitudeScale && Math.abs(a.offset[1] - b.offset[1]) <= tolerance;
 }

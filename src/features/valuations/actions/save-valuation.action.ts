@@ -355,6 +355,8 @@ async function saveOwnKindNames(
     ...(normalizePropertyKind(input.propertyKind) === OTHER_PROPERTY_KIND && input.propertyKindOther?.trim() ? { tipoBienOtro: input.propertyKindOther.trim() } : {}),
     ...(normalizeValuationKind(input.valuationKind) === OTHER_VALUATION_KIND && input.valuationKindOther?.trim() ? { tipoAvaluoOtro: input.valuationKindOther.trim() } : {}),
   };
+  // The croquis panel merges the pin into the same characteristics; both lock the valuation's row first (subject-location.service.ts).
+  await tx.$queryRaw(Prisma.sql`SELECT 1 FROM "devpware_avaluos" WHERE "IdAvaluo" = ${valuationId} FOR UPDATE`);
   const valuation = await tx.avaluo.findUnique({ where: { IdAvaluo: valuationId }, select: { IdPropiedadSujeto: true, SFolio: true } });
   if (!valuation) return;
   let propertyId = valuation.IdPropiedadSujeto;

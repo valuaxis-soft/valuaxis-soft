@@ -24,9 +24,10 @@ import {
   readCroquisSettings,
   type ComparableForPin,
 } from "../src/features/maps/croquis";
-import { findCroquisImage, withCroquisImage } from "../src/features/maps/croquis-document";
-import { DEFAULT_STREET_HIGHLIGHTS } from "../src/features/maps/highlights";
-import { MACRO_FRAME, MICRO_FRAME } from "../src/features/maps/map-styles";
+import { croquisReplacements, findCroquisImage, withCroquisImage, withCroquisImages } from "../src/features/maps/croquis-document";
+import { withAddedBlockContent } from "../src/features/valuations/components/workspace/model/section-content";
+import { DEFAULT_STREET_HIGHLIGHTS, WEIGHT_RANGE, weightFromInput } from "../src/features/maps/highlights";
+import { MACRO_FRAME, MICRO_FRAME, sameFraming } from "../src/features/maps/map-styles";
 import { NORTH_ARROW_BOX, northArrowPlacement, northArrowSvg } from "../src/features/maps/north-arrow-symbols";
 import { STATIC_MAP_SIZE, imagePosition, staticColor, staticMapUrl } from "../src/features/maps/static-map";
 import { readSubjectCroquisSettings, readSubjectLocation, subjectLocationInputSchema, withSubjectLocation } from "../src/features/maps/subject-location";
@@ -76,7 +77,7 @@ test("the overlay draws each pin where its point falls on the image, with its nu
 });
 
 test("the settings default to the demonstration's frames and read back what is valid, piece by piece", () => {
-  assert.deepEqual(DEFAULT_CROQUIS_SETTINGS, { macro: MACRO_FRAME, micro: MICRO_FRAME, comparables: COMPARABLES_FRAME, clean: true, northArrow: { style: "flecha", corner: "top-right" }, includeComparables: false, streets: DEFAULT_STREET_HIGHLIGHTS });
+  assert.deepEqual(DEFAULT_CROQUIS_SETTINGS, { macro: MACRO_FRAME, micro: MICRO_FRAME, comparables: COMPARABLES_FRAME, clean: true, northArrow: { style: "flecha", corner: "top-right" }, includeComparables: false, streets: DEFAULT_STREET_HIGHLIGHTS, mapType: "roadmap" });
   assert.deepEqual(CROQUIS_KINDS.map((item) => item.kind), ["macro", "micro", "comparables"]);
   assert.equal(CROQUIS_KINDS[0].caption, "Croquis de macrolocalización");
   assert.deepEqual(readCroquisSettings(undefined), DEFAULT_CROQUIS_SETTINGS);
@@ -121,6 +122,13 @@ test("the shared Static API URL: center, zoom, size at scale 2, colored markers,
   assert.equal(staticColor("#C0392B", "e6"), "0xc0392be6");
   // Without a subject there is no red pin (the map of comparables of another feature could use it).
   assert.equal(new URL(staticMapUrl({ apiKey: "k", center: SUBJECT, zoom: 15, subject: null })).searchParams.has("markers"), false);
+  // V6.3-08: the satellite photo, without the clean-map styles (nothing to hide on a photo); the street map stays the default.
+  const satellite = new URL(staticMapUrl({ apiKey: "k", center: SUBJECT, zoom: 17, clean: true, mapType: "satellite" })).searchParams;
+  assert.equal(satellite.get("maptype"), "satellite");
+  assert.equal(satellite.getAll("style").length, 0);
+  assert.equal(new URL(staticMapUrl({ apiKey: "k", center: SUBJECT, zoom: 17 })).searchParams.get("maptype"), "roadmap");
+  assert.equal(readCroquisSettings({ ...DEFAULT_CROQUIS_SETTINGS, mapType: undefined }).mapType, "roadmap", "settings stored before keep the street map");
+  assert.equal(readCroquisSettings({ ...DEFAULT_CROQUIS_SETTINGS, mapType: "hybrid" }).mapType, "hybrid");
 });
 
 test("the north arrow the server composes: a complete SVG of the chosen symbol, placed in the chosen corner", () => {
@@ -191,11 +199,68 @@ test("the map of comparables goes in its annex, and a removed section places not
   assert.equal(withCroquisImage(removed, "micro", "x").placed, false);
 });
 
-test("Google's sources in the CSP: the maps demonstration and the editor, nowhere else", () => {
+/** The sections with an image uploaded by hand at the end of the first block of a section. */
+function withManualImage(all: AppSection[], sectionId: string, id: string): AppSection[] {
+  return all.map((section) =>
+    section.id !== sectionId
+      ? section
+      : { ...section, blocks: section.blocks.map((block, index) => (index ? block : withAddedBlockContent({ ...block, images: [...block.images, { id, title: "Subida", src: `/api/archivos/imagen?key=uploads/${id}.jpg`, enabled: true }] }, { type: "image", id }))) },
+  );
+}
+
+test("MAP-11: the generated map can replace the image uploaded by hand, in its place, and the next capture replaces itself", () => {
+  const manual = withManualImage(sections(), "mapaComparables", "subida-anexo");
+  const pairs = croquisReplacements(manual, ["comparables"]);
+  assert.equal(pairs.comparables?.id, "subida-anexo");
+
+  const replaced = withCroquisImages(manual, [{ kind: "comparables", src: "/api/archivos/imagen?key=uploads/mapa.jpg", replaceImageId: "subida-anexo" }]);
+  assert.deepEqual(replaced.missing, []);
+  const block = replaced.sections.find((section) => section.id === "mapaComparables")!.blocks[0];
+  assert.equal(block.images.some((image) => image.id === "subida-anexo"), false, "the manual image gives way");
+  assert.equal(findCroquisImage(replaced.sections, "comparables")?.src, "/api/archivos/imagen?key=uploads/mapa.jpg");
+  const before = manual.find((section) => section.id === "mapaComparables")!.blocks[0].contentLayout!.rows.findIndex((row) => row.columns.some((column) => column.items.some((item) => item.id === "subida-anexo")));
+  const after = block.contentLayout!.rows.findIndex((row) => row.columns.some((column) => column.items.some((item) => item.id === CROQUIS_IMAGE_IDS.comparables)));
+  assert.equal(after, before, "the map takes the row the manual image had");
+  // Already in the document: nothing else to replace.
+  assert.deepEqual(croquisReplacements(replaced.sections, ["comparables"]), {});
+
+  // Kept beside it: without replaceImageId the manual image stays.
+  const beside = withCroquisImages(manual, [{ kind: "comparables", src: "x" }]).sections.find((section) => section.id === "mapaComparables")!.blocks[0];
+  assert.ok(beside.images.some((image) => image.id === "subida-anexo"));
+
+  // Two uploads in Croquis: the macro takes the first, the micro the next.
+  const two = withManualImage(withManualImage(sections(), "croquisComparables", "subida-1"), "croquisComparables", "subida-2");
+  const croquisPairs = croquisReplacements(two, ["macro", "micro"]);
+  assert.deepEqual([croquisPairs.macro?.id, croquisPairs.micro?.id], ["subida-1", "subida-2"]);
+});
+
+test("WA-01: Google's sources in every page's CSP (the app navigates without reloading), except the printed documents", () => {
   assert.ok(googleMapsPage("/demo/mapas-k7q2vx"));
   assert.ok(googleMapsPage("/workspace"));
+  // The documents the appraiser enters on and then clicks into the editor from.
+  assert.ok(googleMapsPage("/dashboard"));
+  assert.ok(googleMapsPage("/avaluos"));
+  assert.ok(googleMapsPage("/iniciar-sesion"));
+  assert.ok(googleMapsPage("/"));
+  // What prints shows stored images and depends on nothing outside the app.
   assert.equal(googleMapsPage("/workspace/preview-window"), false);
   assert.equal(googleMapsPage("/avaluos/123/dictamen"), false);
-  assert.equal(googleMapsPage("/dashboard"), false);
-  assert.equal(googleMapsPage("/"), false);
+  assert.equal(googleMapsPage("/avaluos/8b1b3d2e-0000-4000-8000-000000000000/memoria-calculo"), false);
+  assert.ok(googleMapsPage("/avaluos/dictamenes"), "only the exact document paths");
+});
+
+test("V5.7-06: macro and micro taken from the same view are flagged as the same framing; the defaults are not", () => {
+  assert.equal(sameFraming(MACRO_FRAME, MICRO_FRAME), false, "zoom 15 and 17");
+  assert.equal(sameFraming({ offset: [0.0001, -0.0002], zoom: 15 }, { offset: [0, 0], zoom: 15 }, 20.6), true, "a few meters apart at the same zoom");
+  assert.equal(sameFraming({ offset: [0.01, 0], zoom: 15 }, { offset: [0, 0], zoom: 15 }, 20.6), false, "a kilometer apart is another croquis");
+  assert.equal(sameFraming({ offset: [0, 0], zoom: 16 }, { offset: [0, 0], zoom: 15 }), false);
+});
+
+test("V5.7-13: the street width is typed as a number, kept whole and within the range", () => {
+  assert.equal(weightFromInput("6"), 6);
+  assert.equal(weightFromInput(" 7,4 "), 7);
+  assert.equal(weightFromInput("40"), WEIGHT_RANGE.max);
+  assert.equal(weightFromInput("0"), WEIGHT_RANGE.min);
+  assert.equal(weightFromInput(""), null, "an empty box changes nothing while the appraiser types");
+  assert.equal(weightFromInput("abc"), null);
 });

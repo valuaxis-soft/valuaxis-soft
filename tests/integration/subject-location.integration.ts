@@ -125,3 +125,32 @@ test("a croquis is composed with the pins and the north arrow, stored as an imag
   assert.ok(image?.src.includes(stored.key.split("/").pop()!), "the stored file is the one the document points to");
   assert.equal(image?.captionText, "Croquis de macrolocalización");
 });
+
+test("the pin and the croquis settings saved at the same time both stay (MAP-01: «Sin ubicar» after a reload)", async () => {
+  const fixture = await createValuationFixture();
+  const user = editor(fixture);
+  const framed = { ...DEFAULT_CROQUIS_SETTINGS, macro: { offset: [0, 0] as [number, number], zoom: 13 } };
+
+  // The very first save: the panel sends the pin and, in the same render, the settings; each one used to create its own subject property.
+  await Promise.all([
+    saveSubjectLocation(fixture.publicId, user, { location: { point: SUBJECT, address: "Calle Ficticia 12, Zapopan", source: "busqueda" } }),
+    saveSubjectLocation(fixture.publicId, user, { croquis: framed }),
+  ]);
+  const first = await getSubjectLocation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual(first.location?.point, SUBJECT, "the pin survives the settings saved alongside it");
+  assert.equal(first.croquis.macro.zoom, 13);
+  const properties = await prisma.propiedad.count({ where: { IdOrganizacion: fixture.organizationId } });
+  assert.equal(properties, 1, "one subject property, not one per request");
+
+  // Moving the pin while the street suggestion saves the settings: neither undoes the other, round after round.
+  for (let round = 0; round < 8; round += 1) {
+    const point: [number, number] = [Number((SUBJECT[0] + round / 10_000).toFixed(6)), SUBJECT[1]];
+    await Promise.all([
+      saveSubjectLocation(fixture.publicId, user, { location: { point, source: "pin" } }),
+      saveSubjectLocation(fixture.publicId, user, { croquis: { ...framed, micro: { offset: [0, 0], zoom: 16 + (round % 3) } } }),
+    ]);
+    const reloaded = await getSubjectLocation(fixture.publicId, fixture.organizationId);
+    assert.deepEqual(reloaded.location?.point, point, `round ${round}: the pin is where it was dropped`);
+    assert.equal(reloaded.croquis.micro.zoom, 16 + (round % 3), `round ${round}: the settings stay`);
+  }
+});

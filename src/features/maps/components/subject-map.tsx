@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 
 import { COMPARABLE_PIN_COLORS, SUBJECT_PIN_COLOR, type ComparablePin } from "../croquis";
 import { isMacroZoom, isMainRoad, type HighlightedWay, type StreetLabel } from "../highlights";
-import { CLEAN_MAP_STYLES } from "../map-styles";
+import { CLEAN_MAP_STYLES, type MapType } from "../map-styles";
 import type { StreetWay } from "../streets";
 import type { LatLon } from "../types";
 
@@ -40,6 +40,8 @@ export interface SubjectMapProps {
   onSubjectMove?: (point: LatLon) => void;
   /** Base map without points of interest or businesses. */
   clean: boolean;
+  /** Street map or satellite photo (V6.3-08). */
+  mapType: MapType;
   /** Numbered pins of the comparables; empty when they are not included. */
   pins: readonly ComparablePin[];
   /** Etapa 2: the streets that can be touched to paint them; empty while they load or when the valuation is concluded. */
@@ -49,10 +51,14 @@ export interface SubjectMapProps {
   /** Names next to the highlighted streets; empty when hidden. */
   labels: readonly StreetLabel[];
   onStreetClick?: (name: string) => void;
+  /** A click on the map that hit no street (nor a pin): the panel says why, when the streets did not load. */
+  onMapClick?: () => void;
   /** A new key moves the map to this center and zoom. */
   view: MapView & { key: number };
   /** The map reports where the user left it, for "Tomar del mapa". */
   onViewChange: (view: MapView) => void;
+  /** Height of the map; the expanded view fills the screen. */
+  className?: string;
 }
 
 interface Parts {
@@ -74,7 +80,7 @@ export function SubjectMap(props: SubjectMapProps) {
     latest.current = props;
   });
 
-  const { subject, onSubjectMove, clean, pins, streets, highlights, labels, view } = props;
+  const { subject, onSubjectMove, clean, mapType, pins, streets, highlights, labels, view } = props;
   const draggable = Boolean(onSubjectMove);
 
   // Created once; the effects below run after this one in the same commit.
@@ -86,11 +92,11 @@ export function SubjectMap(props: SubjectMapProps) {
       zoom: latest.current.view.zoom,
       mapTypeControl: false,
       streetViewControl: false,
-      fullscreenControl: true,
-      // Bottom right, next to the zoom, so the corners stay free for the north arrow.
-      fullscreenControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
+      // The panel's own «Ampliar» keeps the controls beside the map; Google's full screen would hide them.
+      fullscreenControl: false,
       clickableIcons: false,
       styles: mapStyles(latest.current.clean),
+      mapTypeId: latest.current.mapType,
     });
     const marker = new google.maps.Marker({
       map: latest.current.subject ? map : null,
@@ -104,6 +110,7 @@ export function SubjectMap(props: SubjectMapProps) {
       const position = marker.getPosition();
       if (position) latest.current.onSubjectMove?.([position.lat(), position.lng()]);
     });
+    map.addListener("click", () => latest.current.onMapClick?.());
     map.addListener("idle", () => {
       const center = map.getCenter();
       const zoom = map.getZoom();
@@ -121,6 +128,10 @@ export function SubjectMap(props: SubjectMapProps) {
   useEffect(() => {
     partsRef.current?.map.setOptions({ styles: mapStyles(clean) });
   }, [clean]);
+
+  useEffect(() => {
+    partsRef.current?.map.setMapTypeId(mapType);
+  }, [mapType]);
 
   useEffect(() => {
     const parts = partsRef.current;
@@ -234,7 +245,7 @@ export function SubjectMap(props: SubjectMapProps) {
     map.setZoom(view.zoom);
   }, [view]);
 
-  return <div ref={containerRef} role="application" aria-label="Mapa de ubicación del inmueble" className="h-[380px] w-full sm:h-[460px]" />;
+  return <div ref={containerRef} role="application" aria-label="Mapa de ubicación del inmueble" className={props.className ?? "h-[380px] w-full sm:h-[460px]"} />;
 }
 
 function escapeHtml(text: string) {
