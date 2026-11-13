@@ -2,7 +2,7 @@
 
 import type { Block, Concept, ImageContent, Apartado, TableContent, ContentLayoutRowV2 } from "@/features/valuations/model";
 import { resolveBlockFlowV2 } from "@/features/valuations/services/block-flow";
-import { resolveContentLayout } from "@/features/valuations/services/content-layout";
+import { resolveContentLayout, rowPrintsAsTags } from "@/features/valuations/services/content-layout";
 import { apartadoDisplayLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
 import { resolvePageBreak, resolvePageOrientation } from "@/features/valuations/services/document-structure";
 import { printedImageCaptions } from "@/features/valuations/services/image-captions";
@@ -392,8 +392,8 @@ function DocumentContentRow({
     sharedRule && theme.conceptRule,
   );
 
-  // Concepts side by side as data labels: each as wide as what it says, with room between them.
-  if (sharedRule && layoutRow.tagStyle) {
+  // Concepts as data labels, one alone or several side by side: each as wide as what it says, with room between them.
+  if (layoutRow.tagStyle && rowPrintsAsTags(layoutRow.tagStyle, visibleItems)) {
     const tagStyle = layoutRow.tagStyle;
     const concepts = visibleItems.map((itemRef) => conceptsById.get(itemRef.id)).filter((concept): concept is Concept => Boolean(concept));
     return (
@@ -475,8 +475,11 @@ function DocumentConceptTag({ concept, tagStyle }: { concept: Concept; tagStyle:
       )}
       data-concept-tag={tagStyle}
     >
-      <strong className={cn(theme.conceptLabel, "shrink-0 whitespace-nowrap")}>{formatConceptTitleWithColon(concept.label)}</strong>
-      <span className={cn(theme.conceptValue, "text-left")}>
+      {/* A paragraph has no title: its text alone goes in the label. */}
+      {concept.label.trim() && concept.type !== "paragraph" ? (
+        <strong className={cn(theme.conceptLabel, "shrink-0 whitespace-nowrap")}>{formatConceptTitleWithColon(concept.label)}</strong>
+      ) : null}
+      <span className={cn(theme.conceptValue, "min-w-0 text-left wrap-break-word")}>
         <DocumentConceptValue concept={concept} fallback="—" />
       </span>
     </div>

@@ -38,7 +38,6 @@ const textConcept: ConceptMenuTarget = {
   takesTextMarks: true,
   hasValue: true,
   valueFormat: "enabled",
-  paragraph: false,
   date: false,
   hasLineBreaks: false,
   canRowStyle: true,

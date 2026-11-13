@@ -41,7 +41,6 @@ import {
 } from "@/features/valuations/services/concept-value-format";
 
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Slider } from "@/components/ui/slider";
 import type {
   Concept,
   ConceptDateFormat,
@@ -49,7 +48,7 @@ import type {
   ConceptType,
 } from "@/features/valuations/model";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
-import { MIN_OFFSET_PX, MAX_OFFSET_PX } from "@/features/valuations/services/concept-presentation";
+import { IndentOffsetControl } from "./indent-offset-control";
 
 import {
   formatMexicanPhone,
@@ -70,10 +69,10 @@ import { useNumberPresentation } from "../number-presentation-context";
 import type { NumberPresentation } from "@/features/valuations/services/number-presentation";
 import { useCustomUnits } from "./custom-units-context";
 import { MAX_CUSTOM_UNIT_LENGTH, findCustomUnit, normalizeCustomUnit } from "@/features/firm/custom-units";
-import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
+import { useDeleteConcepts } from "./delete-confirm";
 import { MoveConceptMenuItem } from "./structure-transfer-actions";
 import type { ContainerAddress } from "@/features/valuations/services/structure-transfer";
-import { CONCEPT_DATA_TYPE_OPTIONS, conceptDataTypePatch, conceptDataTypeValue } from "@/features/valuations/services/concept-types";
+import { CONCEPT_CREATION_OPTIONS, conceptDataTypePatch, conceptDataTypeValue } from "@/features/valuations/services/concept-types";
 
 import { ValueFormatSelect, firmUnitOptionValue } from "./value-format-select";
 
@@ -506,14 +505,22 @@ function ConceptSpacingInline({
   );
 }
 
+/** The value with its format at its end, when it has one to choose: a click on the format opens "Formato del valor". */
+function withValueFormatChip(field: ReactNode, chip: ReactNode) {
+  return chip ? <div className="relative min-w-0" data-concept-value-with-format="">{field}{chip}</div> : field;
+}
+
 function ConceptValueFormatControl({
   concept,
   onUpdate,
   readOnly,
+  trigger = "menu",
 }: {
   concept: Concept;
   onUpdate: (conceptId: string, patch: Partial<Concept>) => void;
   readOnly: boolean;
+  /** "menu": a row of the ⋮ menu; "value": the format shown inside the value, a click on it opens the choice. */
+  trigger?: "menu" | "value";
 }) {
   const valueFormat = resolveConceptValueFormat(concept);
   const customUnit = concept.customUnit ?? "";
@@ -540,7 +547,22 @@ function ConceptValueFormatControl({
   return (
     <Popover>
       <PopoverTrigger
-        render={
+        render={trigger === "value" ? (
+          // The format the value prints with, at the end of the value: a click on it opens the choice (UNI-04).
+          <Button
+            type="button"
+            size="xs"
+            variant="secondary"
+            className="absolute top-1/2 right-1.5 h-7 max-w-24 -translate-y-1/2 truncate px-2 tabular-nums"
+            aria-label={`Formato del valor: ${conceptValueFormatLabel(concept)}`}
+            disabled={readOnly}
+            title="Formato del valor: clic para cambiarlo"
+            data-concept-value-format-chip=""
+          >
+            {/* A number with no unit says what the button is for. */}
+            {valueFormat === "plain" ? "Formato" : conceptValueFormatLabel(concept)}
+          </Button>
+        ) : (
           // The whole row opens it, not only the # icon.
           <Button
             type="button"
@@ -555,7 +577,7 @@ function ConceptValueFormatControl({
             <span className="flex items-center gap-2"><Hash data-icon="inline-start" />Formato del valor</span>
             <span className="text-xs text-muted-foreground">{conceptValueFormatLabel(concept)}</span>
           </Button>
-        }
+        )}
       />
       <PopoverContent align="end" className="w-56 p-3">
         <div className="space-y-3">
@@ -676,7 +698,7 @@ function ConceptCellAlignmentControl({
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-56 p-3">
+      <PopoverContent align="end" className="w-64 p-3">
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Sangría en documento</p>
           <Button
@@ -700,22 +722,11 @@ function ConceptCellAlignmentControl({
             Personalizada
           </Button>
           {isCustom && (
-            <div className="space-y-1 pt-1">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Ajuste</span>
-                <span>{currentOffset >= 0 ? `+${currentOffset}` : currentOffset} px</span>
-              </div>
-              <Slider
-                min={MIN_OFFSET_PX}
-                max={MAX_OFFSET_PX}
-                step={1}
-                value={[currentOffset]}
-                onValueChange={(v) => {
-                  const val = Array.isArray(v) ? v[0] : v;
-                  onChange(columnId, { mode: "custom", labelGuideOffsetPx: val });
-                }}
-              />
-            </div>
+            <IndentOffsetControl
+              value={currentOffset}
+              disabled={disabled}
+              onChange={(offset) => onChange(columnId, { mode: "custom", labelGuideOffsetPx: offset })}
+            />
           )}
         </div>
       </PopoverContent>
@@ -804,7 +815,7 @@ export function ConceptOptionsMenu({
 }) {
   const locked = readOnly || Boolean(lockedReason);
   const showLineBreakAction = canNormalizeConceptLineBreaks(concept);
-  const confirmDelete = useConfirmDelete();
+  const deleteConcepts = useDeleteConcepts();
   const conceptName = normalizeConceptTitle(concept.label);
 
   return (
@@ -834,8 +845,8 @@ export function ConceptOptionsMenu({
           {enableValueFormatControl ? (
             <ConceptValueFormatControl concept={concept} readOnly={locked || valueFormatReadOnly} onUpdate={onUpdate} />
           ) : null}
-          {concept.type !== "paragraph" ? (
-            <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm" title={lockedReason}>
+          {/* Every type changes to any other, the paragraph too. */}
+          <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm" title={lockedReason}>
               <span>Tipo de dato</span>
               <NativeSelect
                 aria-label="Tipo de dato"
@@ -845,12 +856,11 @@ export function ConceptOptionsMenu({
                 value={conceptDataTypeValue(concept)}
                 onChange={(event) => onUpdate(concept.id, conceptDataTypePatch(concept, event.target.value))}
               >
-                {CONCEPT_DATA_TYPE_OPTIONS.map((option) => (
+                {CONCEPT_CREATION_OPTIONS.map((option) => (
                   <NativeSelectOption key={option.kind} value={option.kind}>{option.label}</NativeSelectOption>
                 ))}
               </NativeSelect>
             </div>
-          ) : null}
           {concept.type === "list" ? (
             <ConceptListOptionsEditor concept={concept} readOnly={locked} onUpdate={onUpdate} />
           ) : null}
@@ -941,7 +951,8 @@ export function ConceptOptionsMenu({
             aria-label="Eliminar concepto"
             disabled={locked}
             title={lockedReason ?? "Eliminar concepto"}
-            onClick={() => confirmDelete({ ...deleteConfirmation("concept", conceptName), onConfirm: () => onRemove(concept.id) })}
+            // One concept goes at once; "Deshacer" brings it back.
+            onClick={() => deleteConcepts({ count: 1, name: conceptName, onDelete: () => onRemove(concept.id) })}
           >
             <Trash2 data-icon="inline-start" />
             Eliminar concepto
@@ -1145,7 +1156,6 @@ export function ConceptEditorRow({
           takesTextMarks: takesTextMarks(effectiveConcept),
           hasValue: Boolean(effectiveConcept.value.trim()),
           valueFormat: options.showValueFormat ? (formatIsSourceOwned ? "source-owned" : "enabled") : "unsupported",
-          paragraph: conceptType === "paragraph",
           date: conceptType === "date",
           hasLineBreaks: canNormalizeConceptLineBreaks(effectiveConcept),
           order: options.order && onMove
@@ -1173,6 +1183,9 @@ export function ConceptEditorRow({
 
   if (layout === "caratulaGrid") {
     const showValueFormatControl = (enableLayoutControls || valueFormatEverywhere) && supportsValueFormat(effectiveConcept);
+    const formatChip = showValueFormatControl && isNumericConcept(effectiveConcept) ? (
+      <ConceptValueFormatControl concept={effectiveConcept} readOnly={readOnly || formatIsSourceOwned} onUpdate={onUpdate} trigger="value" />
+    ) : null;
     const linkState = conceptLinkIndicator(concept, allConcepts);
     const handleLinkedAwareUpdate = (patch: Partial<Pick<Concept, "label" | "value">>) => {
       if (linkState !== "none" && onUpdateEverywhere) {
@@ -1274,10 +1287,10 @@ export function ConceptEditorRow({
             )}
           </div>
         ) : (
-          withLinkedTextMarks((marked) => (
+          withLinkedTextMarks((marked) => withValueFormatChip(
             <ConceptValueInput
               concept={effectiveConcept}
-              className="h-10 min-w-0"
+              className={cn("h-10 min-w-0", formatChip && "pr-28")}
               disabled={readOnly}
               inputMode={isNumericConcept(effectiveConcept) ? "decimal" : conceptType === "phone" ? "numeric" : undefined}
               placeholder="Dato"
@@ -1290,7 +1303,8 @@ export function ConceptEditorRow({
               onValueChange={(text) => handleLinkedAwareUpdate({ value: marked.valueOf(normalizeCaratulaConceptValue(conceptType, text, effectiveConcept)) })}
               onFormulaChange={setFormula}
               onFocus={() => setIsValueFocused(true)}
-            />
+            />,
+            formatChip,
           ))
         )}
         <div className="flex shrink-0 items-center justify-end gap-1">
@@ -1323,6 +1337,9 @@ export function ConceptEditorRow({
   }
 
   const showValueFormatControl = (enableLayoutControls || valueFormatEverywhere) && supportsValueFormat(effectiveConcept);
+  const withFormatChip = (field: ReactNode) => withValueFormatChip(field, showValueFormatControl && isNumericConcept(effectiveConcept) ? (
+    <ConceptValueFormatControl concept={effectiveConcept} readOnly={readOnly || formatIsSourceOwned} onUpdate={onUpdate} trigger="value" />
+  ) : null);
   // A paragraph is one text with no title, from edge to edge of the row.
   const paragraphField = conceptType === "paragraph" ? (
     <TextMarksField className="col-span-2" value={effectiveConcept.value} disabled={readOnly} onChange={(value) => onUpdate(concept.id, { value })}>
@@ -1433,10 +1450,10 @@ export function ConceptEditorRow({
               value={effectiveConcept.value}
               onChange={(value) => onUpdate(concept.id, { value })}
             />
-          ) : isNumericConcept(effectiveConcept) ? (
+          ) : isNumericConcept(effectiveConcept) ? withFormatChip(
             <ConceptValueInput
               concept={effectiveConcept}
-              className="h-10 min-w-0"
+              className={cn("h-10 min-w-0", showValueFormatControl && "pr-28")}
               disabled={readOnly}
               inputMode="decimal"
               value={isValueFocused ? effectiveConcept.value : formatNumericConceptValue(effectiveConcept, presentation)}
@@ -1445,7 +1462,7 @@ export function ConceptEditorRow({
               onValueChange={(text) => onUpdate(concept.id, { value: normalizeNumericConceptInput(text, effectiveConcept) })}
               onFormulaChange={setFormula}
               onFocus={() => setIsValueFocused(true)}
-            />
+            />,
           ) : usesSingleLineEditor ? (
             withTextMarks((marked) => (
               <ConceptValueInput

@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import type { Concept, ConceptCreationKind } from "@/features/valuations/model";
-import { Copy, Link, Link2, ListPlus } from "lucide-react";
+import { Copy, Link, Link2, ListPlus, X } from "lucide-react";
 
 
 import { Badge } from "@/components/ui/badge";
@@ -11,17 +12,30 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { UNTITLED_CARATULA_CONCEPT } from "@/features/valuations/services/caratula-blocks";
 import { CONCEPT_CREATION_OPTIONS, conceptTypeLabel } from "@/features/valuations/services/concept-types";
 import { stripTextMarks } from "@/features/valuations/services/text-marks";
+import { usePopoverDragGuard } from "./popover-drag-guard";
 
 type ConceptReference ={
     concept: Concept;
     source: string;
 }
 
-/** The value as the picker lists it: its text, without the bold, italic or underline tags. */
+/** The value as the picker lists it: its whole text, without the bold, italic or underline tags. */
 export function conceptPreview(value: string) {
-  const compact = stripTextMarks(value).trim().replace(/\s+/g, " ");
-  return compact.length > 42 ? `${compact.slice(0, 42)}…` : compact || "Sin dato";
+  return stripTextMarks(value).trim().replace(/\s+/g, " ") || "Sin dato";
 }
+
+/** How many existing concepts the picker lists at once; the search narrows them. */
+const LISTED_REFERENCES = 30;
+
+/**
+ * The three ways to reuse an existing concept, each with its name on the
+ * button, not only an icon (Álvaro, video 5.6: «no sé qué hace cada uno»).
+ */
+const EXISTING_CONCEPT_MODES: ReadonlyArray<{ mode: "copy" | "full" | "value"; label: string; hint: string; icon: typeof Copy }> = [
+  { mode: "copy", label: "Copiar", hint: "Una copia independiente: no se sincroniza.", icon: Copy },
+  { mode: "full", label: "Vincular todo", hint: "Título y dato se sincronizan con el original.", icon: Link2 },
+  { mode: "value", label: "Vincular dato", hint: "Solo el dato se sincroniza; el título es propio.", icon: Link },
+];
 
 export function ConceptCreationControl({
   conceptReferences,
@@ -45,8 +59,16 @@ export function ConceptCreationControl({
   triggerClassName?: string;
   triggerVariant?: "ghost" | "outline";
 }) {
+  const [open, setOpen] = useState(false);
+  const keepOpen = usePopoverDragGuard();
   return (
-    <Popover>
+    <Popover
+      open={open}
+      onOpenChange={(next, details) => {
+        if (keepOpen(next, details)) return;
+        setOpen(next);
+      }}
+    >
       <PopoverTrigger
         render={
           <Button type="button" size="sm" variant={triggerVariant} className={triggerClassName} disabled={readOnly}>
@@ -55,18 +77,31 @@ export function ConceptCreationControl({
           </Button>
         }
       />
-      <PopoverContent align="start" className="w-80 p-3">
-        <div className="flex flex-col gap-3">
+      <PopoverContent align="start" className="w-[min(30rem,calc(100vw-2rem))] p-4" data-concept-creation="">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <p className="text-xs font-medium text-muted-foreground">Crear concepto</p>
-            <div className="flex flex-wrap gap-1.5" data-concept-types>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold">Crear concepto</p>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Cerrar"
+                title="Cerrar"
+                data-concept-creation-close=""
+                onClick={() => setOpen(false)}
+              >
+                <X />
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2" data-concept-types>
               {CONCEPT_CREATION_OPTIONS.map((option) => (
                 <Button
                   key={option.kind}
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-7 px-2 text-xs"
+                  className="h-8 px-3 text-sm"
                   onClick={() => onAddConcept(option.kind)}
                 >
                   {option.label}
@@ -75,64 +110,50 @@ export function ConceptCreationControl({
             </div>
           </div>
           {onAddConceptFromExisting ? (
-            <div className="flex flex-col gap-2">
-              <p className="text-xs font-medium text-muted-foreground">Usar concepto existente</p>
+            <div className="flex flex-col gap-2 border-t pt-3">
+              <p className="text-sm font-semibold">Usar concepto existente</p>
               <Input
-                className="h-8"
+                className="h-9"
                 value={conceptSearch}
-                placeholder="Buscar concepto"
+                placeholder="Buscar por título, dato o sección"
+                aria-label="Buscar concepto existente"
                 onChange={(event) => onConceptSearchChange(event.target.value)}
               />
-              <div className="flex max-h-56 flex-col gap-1 overflow-auto">
-                {conceptReferences.length ? conceptReferences.slice(0, 8).map(({ concept, source }) => (
-                  <div key={`${source}-${concept.id}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md px-1 py-1">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1">
-                        <span className="truncate text-xs font-medium">{concept.label || UNTITLED_CARATULA_CONCEPT}</span>
-                        <Badge variant="secondary" className="h-5 px-1 text-[10px]">{conceptTypeLabel(concept.type)}</Badge>
-                      </div>
-                      <p className="truncate text-[11px] text-muted-foreground">{conceptPreview(concept.value)} · {source}</p>
+              <div className="flex max-h-[min(24rem,50vh)] flex-col gap-2 overflow-auto pr-1" data-existing-concepts>
+                {conceptReferences.length ? conceptReferences.slice(0, LISTED_REFERENCES).map(({ concept, source }) => (
+                  // Each concept in its own box: its title, its whole value and where it is.
+                  <div key={`${source}-${concept.id}`} className="grid gap-1.5 rounded-md border bg-card p-2.5" data-existing-concept={concept.id}>
+                    <div className="flex items-start gap-2">
+                      <span className="min-w-0 flex-1 text-sm font-medium wrap-break-word">{concept.label || UNTITLED_CARATULA_CONCEPT}</span>
+                      <Badge variant="secondary" className="h-5 shrink-0 px-1.5 text-[11px]">{conceptTypeLabel(concept.type)}</Badge>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="ghost"
-                        className="size-7"
-                        title="Copiar independiente. No se sincroniza."
-                        aria-label="Copiar independiente. No se sincroniza."
-                        onClick={() => onAddConceptFromExisting(concept, "copy")}
-                      >
-                        <Copy />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="ghost"
-                        className="size-7"
-                        title="Vincular completo. Título y dato se sincronizan."
-                        aria-label="Vincular completo. Título y dato se sincronizan."
-                        onClick={() => onAddConceptFromExisting(concept, "full")}
-                      >
-                        <Link2 />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="ghost"
-                        className="size-7"
-                        title="Vincular solo dato. Solo el dato se sincroniza."
-                        aria-label="Vincular solo dato. Solo el dato se sincroniza."
-                        onClick={() => onAddConceptFromExisting(concept, "value")}
-                      >
-                        <Link />
-                      </Button>
+                    {/* Up to four lines of the value, the whole of it on hover: a long text does not bury the list. */}
+                    <p className="line-clamp-4 text-sm wrap-break-word text-foreground/90" title={conceptPreview(concept.value)}>{conceptPreview(concept.value)}</p>
+                    <p className="text-xs text-muted-foreground">{source}</p>
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      {EXISTING_CONCEPT_MODES.map(({ mode, label, hint, icon: Icon }) => (
+                        <Button
+                          key={mode}
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-sm"
+                          title={hint}
+                          onClick={() => onAddConceptFromExisting(concept, mode)}
+                        >
+                          <Icon data-icon="inline-start" />
+                          {label}
+                        </Button>
+                      ))}
                     </div>
                   </div>
                 )) : (
-                  <p className="text-xs text-muted-foreground">No hay conceptos para reutilizar.</p>
+                  <p className="text-sm text-muted-foreground">No hay conceptos para reutilizar.</p>
                 )}
               </div>
+              <p className="text-xs text-muted-foreground">
+                Copiar: independiente. Vincular todo: título y dato iguales al original. Vincular dato: solo el dato.
+              </p>
             </div>
           ) : null}
         </div>

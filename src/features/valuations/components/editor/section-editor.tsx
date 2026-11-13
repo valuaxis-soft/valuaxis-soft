@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 
 export function BlockEditorCard({
@@ -29,7 +30,8 @@ export function BlockEditorCard({
   style?: CSSProperties;
 }) {
   return (
-    <Card ref={cardRef} style={style} className={className} data-block-id={blockId}>
+    // Clipped, not hidden: a hidden overflow would hold the "Seleccionar conceptos" bar instead of letting it stick to the top while scrolling.
+    <Card ref={cardRef} style={style} className={cn("overflow-clip", className)} data-block-id={blockId}>
       {children}
     </Card>
   );

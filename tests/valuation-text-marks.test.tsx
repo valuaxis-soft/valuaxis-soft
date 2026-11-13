@@ -7,7 +7,7 @@ import { activeTextMarks, applyTextMark, hasTextMarks, parseTextMarks, stripText
 import { TextMarksField } from "../src/features/valuations/components/editor/text-marks-toolbar";
 import { draftFactsFor } from "../src/features/valuations/services/draft-facts";
 import { ConceptEditorList } from "../src/features/valuations/components/editor/concept-editor";
-import { commonSpacingAfter, ConceptSelectionScope } from "../src/features/valuations/components/editor/concept-selection";
+import { commonSpacing, ConceptSelectionScope } from "../src/features/valuations/components/editor/concept-selection";
 import { createConcept } from "../src/features/valuations/components/workspace/model/content-factories";
 import { hydrateConceptMetadata } from "../src/features/valuations/metadata";
 import type { Concept } from "../src/features/valuations/model";
@@ -177,11 +177,12 @@ test("a container with concepts offers to select several of them; a read-only on
   // One concept is offered too: it can be duplicated, moved or deleted from the selection.
   const single = renderToStaticMarkup(createElement(ConceptSelectionScope, { concepts: concepts.slice(0, 1), readOnly: false, onApplySpacing: noop }, createElement("p", null, "filas")));
   assert.match(single, /Seleccionar conceptos/);
+  // With no concept yet it is still there, disabled (V5.5-04).
   const none = renderToStaticMarkup(createElement(ConceptSelectionScope, { concepts: [], readOnly: false, onApplySpacing: noop }, createElement("p", null, "filas")));
-  assert.doesNotMatch(none, /Seleccionar conceptos/);
+  assert.match(none, /disabled=""[^>]*>[\s\S]*Seleccionar conceptos/);
 
-  assert.equal(commonSpacingAfter(concepts), 15);
-  assert.equal(commonSpacingAfter([concepts[0], concept("c", "Objeto", "")]), null, "0 and 15 differ");
-  assert.equal(commonSpacingAfter([concept("c", "Objeto", ""), concept("d", "Fin", "", { spacingAfter: 0 })]), 0);
-  assert.equal(commonSpacingAfter([]), null);
+  assert.equal(commonSpacing(concepts, "spacingAfter"), 15);
+  assert.equal(commonSpacing([concepts[0], concept("c", "Objeto", "")], "spacingAfter"), null, "0 and 15 differ");
+  assert.equal(commonSpacing([concept("c", "Objeto", ""), concept("d", "Fin", "", { spacingAfter: 0 })], "spacingAfter"), 0);
+  assert.equal(commonSpacing([], "spacingAfter"), null);
 });

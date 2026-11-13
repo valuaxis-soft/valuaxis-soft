@@ -302,11 +302,32 @@ export function normalizeContentLayout(layout: ContentLayout): ContentLayout {
   return { version: 2, rows: normalizedRows };
 }
 
-/** A row keeps its data-label style while it still holds concepts side by side. */
+/**
+ * A row keeps its data-label style ("Renglón"): whether it prints that way
+ * is decided by `rowPrintsAsTags` with what the row holds when it prints.
+ */
 function rowTagStyle(row: { tagStyle?: unknown }, columns: ContentLayoutColumnV2[]): Pick<ContentLayoutRowV2, "tagStyle"> {
   const style = row.tagStyle;
-  if ((style !== "white" && style !== "shaded") || columns.length < 2) return {};
+  if ((style !== "white" && style !== "shaded") || columns.length < 1) return {};
   return { tagStyle: style };
+}
+
+/**
+ * Whether a row prints its concepts as data labels ("Renglón: Etiquetas"):
+ * it has the style and holds only concepts, one alone or several side by
+ * side, short or long texts alike. The editor and the printed document ask
+ * the same question, so what is chosen in the editor is what prints.
+ */
+export function rowPrintsAsTags(tagStyle: ContentLayoutRowV2["tagStyle"], items: ReadonlyArray<Pick<ContentLayoutItemRef, "type">>): boolean {
+  return Boolean(tagStyle) && items.length > 0 && items.every((item) => item.type === "concept");
+}
+
+/** The layout with the rows that hold any of the concepts printed in the style ("Renglón" of the selection and the right-click menu). */
+export function setConceptRowsTagStyle(layout: ContentLayout, conceptIds: Iterable<string>, tagStyle: ContentLayoutRowV2["tagStyle"]): ContentLayout {
+  const chosen = new Set(conceptIds);
+  return layout.rows
+    .filter((row) => row.columns.some((column) => column.items.some((item) => item.type === "concept" && chosen.has(item.id))))
+    .reduce((next, row) => setContentRowTagStyle(next, row.id, tagStyle), layout);
 }
 
 /** The row with its concepts printed as data labels, white or shaded; undefined prints them as columns again. */

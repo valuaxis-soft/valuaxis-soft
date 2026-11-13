@@ -13,10 +13,30 @@ import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "@/lib/api-client";
 import type { AppSection, Block } from "@/features/valuations/model";
 import { importableBlocks } from "@/features/valuations/services/document-template";
+import { SUBBLOCK_TERM } from "../editor/block-toolbar";
 import { initialSectionsFor } from "./model/initial-hydration";
 import { useStructureTransfer } from "./structure-transfer-context";
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : "Error desconocido");
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** What a block to import holds, in the words of the editor: "3 conceptos · 1 subbloque · 2 tablas". */
+export function importBlockSummary(block: Pick<Block, "concepts" | "apartados" | "tables">) {
+  return [
+    count(block.concepts.length, "concepto", "conceptos"),
+    count(block.apartados.length, SUBBLOCK_TERM, `${SUBBLOCK_TERM}s`),
+    count(block.tables.length, "tabla", "tablas"),
+  ].join(" · ");
+}
+
+/** The heading of a group of blocks to import: the section (the tab) they come from. */
+export function importSectionHeading(sectionTitle: string) {
+  const title = sectionTitle.trim();
+  // A title written in capitals ("INFO TERRENO") reads as a heading in sentence case: "Sección: Info terreno".
+  const readable = title && title === title.toUpperCase() ? title.charAt(0) + title.slice(1).toLowerCase() : title;
+  return `Sección: ${readable || "Sin título"}`;
+}
 
 function OptionCheckbox({ id, checked, onChange, label, description }: {
   id: string;
@@ -100,7 +120,7 @@ export function SaveAsTemplateDialog({
         <DialogHeader>
           <DialogTitle>Guardar como plantilla</DialogTitle>
           <DialogDescription>
-            Guarda las secciones, bloques y apartados de este avalúo, con los títulos, tipos y formatos de sus conceptos, los
+            Guarda las secciones, bloques y subbloques de este avalúo, con los títulos, tipos y formatos de sus conceptos, los
             encabezados y fórmulas de sus tablas y los textos de Consideraciones. Los datos del cliente y del inmueble no se
             guardan; lo que escribe el cálculo tampoco.
           </DialogDescription>
@@ -144,7 +164,10 @@ export function SaveAsTemplateDialog({
               onChange={(event) => setDescription(event.target.value)}
             />
           </Field>
-          <OptionCheckbox id="template-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" description="Las imágenes de los bloques (no las fotografías de Datos generales, que son del avalúo)." />
+          {/* A line sets the options apart from what the template is called. */}
+          <div className="border-t pt-4" data-template-options="">
+            <OptionCheckbox id="template-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" description="Las imágenes de los bloques (no las fotografías de Datos generales, que son del avalúo)." />
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={pending} onClick={() => close(false)}>Cancelar</Button>
             <Button type="submit" variant={nameTaken ? "destructive" : "default"} disabled={pending || !name.trim()}>
@@ -283,8 +306,9 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
               {!sourceId ? <p className="text-sm text-muted-foreground">Elige de dónde importar.</p> : loading && !sourceSections ? (
                 <p className="text-sm text-muted-foreground">Cargando…</p>
               ) : blocks.length === 0 ? <p className="text-sm text-muted-foreground">No tiene bloques que se puedan importar.</p> : groups.map((group) => (
-                <div key={group} className="grid gap-1">
-                  <p className="text-xs text-muted-foreground">{group}</p>
+                <div key={group} className="grid gap-1" data-import-section={group}>
+                  {/* The group is the section (the tab) the blocks belong to; the blocks go indented under it. */}
+                  <p className="text-sm font-semibold text-foreground">{importSectionHeading(group)}</p>
                   {blocks.filter((item) => item.sectionTitle === group).map((item) => {
                     const key = keyOf(item.sectionId, item.block);
                     return (
@@ -292,14 +316,12 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
                         key={key}
                         type="button"
                         variant={key === blockKey ? "default" : "outline"}
-                        className="h-auto justify-start whitespace-normal py-2 text-left"
+                        className="ml-3 h-auto justify-start whitespace-normal py-2 text-left"
                         onClick={() => setBlockKey(key)}
                       >
                         <span className="flex flex-col items-start">
-                          <span>{item.block.title || group}</span>
-                          <span className="text-xs opacity-80">
-                            {item.block.concepts.length} conceptos · {item.block.apartados.length} apartados · {item.block.tables.length} tablas
-                          </span>
+                          <span className="font-semibold">{item.block.title || group}</span>
+                          <span className="text-xs tabular-nums opacity-80">{importBlockSummary(item.block)}</span>
                         </span>
                       </Button>
                     );
@@ -308,7 +330,8 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
               ))}
             </div>
           </div>
-          <div className="grid gap-3">
+          {/* A line sets what is copied apart from the list it is chosen from. */}
+          <div className="grid gap-3 border-t pt-4" data-import-options="">
             <OptionCheckbox id="import-include-data" checked={includeData} onChange={setIncludeData} label="Incluir datos" description="Los valores capturados y el contenido de las tablas." />
             <OptionCheckbox id="import-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" />
           </div>

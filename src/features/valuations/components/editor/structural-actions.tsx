@@ -2,11 +2,10 @@
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Slider } from "@/components/ui/slider";
+import { IndentOffsetControl } from "./indent-offset-control";
 import { cn } from "@/lib/utils";
 import { ArrowDownToLine, ChevronDown, ChevronUp, TextAlignStart , Eye, EyeOff, FilePlus2, LayoutList, RectangleHorizontal, RectangleVertical, SeparatorHorizontal, Trash2 } from "lucide-react";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
-import { MIN_OFFSET_PX, MAX_OFFSET_PX } from "@/features/valuations/services/concept-presentation";
 import type { ApartadoPresentationMode } from "@/features/valuations/model";
 import { PAGE_BREAK_LABELS, PAGE_ORIENTATION_LABELS, type PageBreakMode, type PageOrientation } from "@/features/valuations/services/document-structure";
 
@@ -298,7 +297,7 @@ function ConceptPresentationControl({
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-56 p-3">
+      <PopoverContent align="end" className="w-64 p-3">
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Alineación de conceptos</p>
           <Button
@@ -322,22 +321,11 @@ function ConceptPresentationControl({
             Personalizada
           </Button>
           {isCustom && (
-            <div className="space-y-1 pt-1">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Ajuste</span>
-                <span>{currentOffset >= 0 ? `+${currentOffset}` : currentOffset} px</span>
-              </div>
-              <Slider
-                min={MIN_OFFSET_PX}
-                max={MAX_OFFSET_PX}
-                step={1}
-                value={[currentOffset]}
-                onValueChange={(v) => {
-                  const val = Array.isArray(v) ? v[0] : v;
-                  onChange({ mode: "custom", labelGuideOffsetPx: val });
-                }}
-              />
-            </div>
+            <IndentOffsetControl
+              value={currentOffset}
+              disabled={disabled}
+              onChange={(offset) => onChange({ mode: "custom", labelGuideOffsetPx: offset })}
+            />
           )}
           {onResetAll ? (
             <>

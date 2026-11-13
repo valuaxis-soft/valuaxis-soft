@@ -116,11 +116,15 @@ export function TextMarksField({
         ? children({ text: stripTextMarks(value), valueOf: (text) => withMarkedText(value, text) })
         : children}
       <div className="flex min-w-0 items-start gap-2">
-        {/* The buttons show while the pointer or the focus is on the field, or while the text has marks. */}
+        {/*
+          The buttons show only while the field is being written in, for a
+          word or a stretch of it: passing the pointer over the concepts does
+          not repeat them (V5.2-02). The whole value of several concepts gets
+          N/K/S from "Seleccionar conceptos" or the right-click menu.
+        */}
         <div
           className={cn(
-            "flex items-center gap-0.5 transition-opacity",
-            !hasTextMarks(value) && "opacity-0 group-focus-within/marks:opacity-100 group-hover/marks:opacity-100",
+            "invisible flex items-center gap-0.5 group-focus-within/marks:visible",
             toolbarClassName,
           )}
           role="toolbar"

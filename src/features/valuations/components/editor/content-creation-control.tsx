@@ -1,6 +1,6 @@
 "use client";
 
-import type { ChangeEvent, ReactNode } from "react";
+import { useState, type ChangeEvent, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,7 @@ import { Columns3, Plus, Rows3 } from "lucide-react";
 
 import type { EditorCapabilities } from "./editor-capabilities";
 import { UploadButton } from "./image-upload-control";
+import { usePopoverDragGuard } from "./popover-drag-guard";
 import { DOCUMENT_IMAGE_ACCEPT } from "@/features/valuations/services/document-image-upload";
 
 export function ContentCreationControl({
@@ -37,6 +38,8 @@ export function ContentCreationControl({
   onAddHomologationTable?: () => void;
   readOnly: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const keepOpen = usePopoverDragGuard();
   const canAddConcept = Boolean(capabilities.concepts && conceptControl);
   const canAddImage = Boolean(capabilities.images && onAddImage);
   const canAddTable = Boolean(capabilities.tables && onAddTable);
@@ -51,7 +54,14 @@ export function ContentCreationControl({
   }
 
   return (
-    <Popover>
+    // Its "Concepto" opens inside it: a text selected there and let go outside keeps both open.
+    <Popover
+      open={open}
+      onOpenChange={(next, details) => {
+        if (keepOpen(next, details)) return;
+        setOpen(next);
+      }}
+    >
       <PopoverTrigger
         render={
           <Button type="button" size="sm" variant="outline" disabled={readOnly} data-structural-action="add">
@@ -60,7 +70,8 @@ export function ContentCreationControl({
           </Button>
         }
       />
-      <PopoverContent align="start" className="w-48 p-2">
+      <PopoverContent align="start" className="w-64 p-2" data-content-creation="">
+        {/* Larger than a menu: the options are read at a glance. */}
         <div className="flex flex-col gap-1">
           {canAddConcept ? conceptControl : null}
           {canAddImage && onAddImage ? (
@@ -70,7 +81,7 @@ export function ContentCreationControl({
               multiple
               label="Imágenes"
               variant="ghost"
-              className="w-full justify-start"
+              className="h-10 w-full justify-start text-sm"
               disabled={readOnly}
               onChange={onAddImage}
             />
@@ -81,7 +92,7 @@ export function ContentCreationControl({
                 type="button"
                 size="sm"
                 variant="ghost"
-                className="justify-start"
+                className="h-10 justify-start text-sm"
                 disabled={readOnly}
                 onClick={onAddTable}
               >
@@ -93,7 +104,7 @@ export function ContentCreationControl({
                   type="button"
                   size="sm"
                   variant="ghost"
-                  className="justify-start"
+                  className="h-10 justify-start text-sm"
                   disabled={readOnly}
                   onClick={onAddHomologationTable}
                 >

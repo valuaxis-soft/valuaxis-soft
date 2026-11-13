@@ -489,7 +489,7 @@ export function ValuationWorkspace({
     <PagePresentationProvider presentation={pagePresentation}>
     <CustomUnitsProvider initialUnits={customUnits}>
     <StructureTransferProvider sections={sections} readOnly={!canEdit} updateSections={updateSections} valuationId={valuationId}>
-    <DeleteConfirmProvider>
+    <DeleteConfirmProvider onUndo={canEdit ? () => void undo() : undefined}>
     <Tabs value={activeSection.id} onValueChange={handleActiveSectionChange} className="gap-0 h-full">
       {/* Clipped, not hidden: a hidden overflow still scrolls when something is brought into view, and took the top bar with it. */}
       <main ref={workspaceRef} className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-clip">
