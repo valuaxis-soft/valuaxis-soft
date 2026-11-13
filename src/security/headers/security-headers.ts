@@ -31,12 +31,14 @@ export const TRUSTED_STYLE_HASHES = [
  * applies is the one of the page the app was opened on. The loader script carries the nonce and
  * 'strict-dynamic' lets it add Google's own scripts; the host is listed for
  * CSP2 browsers. The Static and Geocoding APIs are called from the server,
- * so the dictamen and the PDF need none of this.
+ * so the dictamen and the PDF need none of this. The card of a comparable
+ * draws its small map with Leaflet over OpenStreetMap tiles, plain images
+ * from tile.openstreetmap.org.
  */
 const GOOGLE_MAPS_SOURCES: Record<string, string[]> = {
   "script-src": ["https://maps.googleapis.com"],
   "style-src-elem": ["https://fonts.googleapis.com"],
-  "img-src": ["https://maps.gstatic.com", "https://maps.googleapis.com", "https://*.googleapis.com", "https://*.gstatic.com"],
+  "img-src": ["https://maps.gstatic.com", "https://maps.googleapis.com", "https://*.googleapis.com", "https://*.gstatic.com", "https://tile.openstreetmap.org"],
   "font-src": ["https://fonts.gstatic.com"],
   "connect-src": ["https://maps.googleapis.com", "https://*.googleapis.com"],
   "worker-src": ["blob:"],

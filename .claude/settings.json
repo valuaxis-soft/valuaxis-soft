@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "ClaudeInChromeDomain(localhost:3456)",
+      "mcp__claude-in-chrome__tabs_create_mcp",
+      "ClaudeInChromeDomain(localhost:3157)",
+      "ClaudeInChromeDomain(127.0.0.1:3157)",
+      "ClaudeInChromeDomain(127.0.0.1:3158)",
+      "ClaudeInChromeDomain(mapas.localhost:3713)",
+      "ClaudeInChromeDomain(mercado.localhost:3107)",
+      "ClaudeInChromeDomain(comparables.localhost:3471)"
+    ]
+  }
+}
