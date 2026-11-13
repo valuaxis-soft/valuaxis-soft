@@ -15,6 +15,7 @@ import { MAX_PRODUCT_VARIABLES, constantLetters, variableLetters, type Regressio
 import type { AppSection, Block, TableContent } from "../model";
 import type { TableNote, TableSummaryBox } from "../services/table";
 import { factorDecimals } from "./calculation-precision";
+import { parseDecimal } from "./free-formula";
 import {
   EMPTY,
   figure,
@@ -147,13 +148,21 @@ function closedWith(specs: TableSpec[], conclusion: TableSummaryBox): TableSpec[
     : spec));
 }
 
+/** A value as written, or the number its formula gives ("=180*2" prints 360): the dictamen never prints a formula. */
+function writtenValue(text: string): string {
+  if (!text.trim().startsWith("=")) return text;
+  const value = parseDecimal(text);
+  return value === null ? text : formatScaleValue(Number(value.toFixed(6)));
+}
+
 /** A criterion's value as the data table prints it: "Regular (2)", "35 (25)" for a contrary one, as written otherwise. */
 function printedValue(variable: StatisticalVariableDto, text: string): string {
   if (!text.trim()) return EMPTY;
   const coded = codedValue(variable, text);
-  if (!coded.ok) return text;
-  if (variable.coding === "DIRECT") return text;
-  const label = variable.coding === "SCALE" ? scaleValues(variable).find((level) => level.value === coded.value)?.label ?? text : text;
+  const written = writtenValue(text);
+  if (!coded.ok) return written;
+  if (variable.coding === "DIRECT") return written;
+  const label = variable.coding === "SCALE" ? scaleValues(variable).find((level) => level.value === coded.value)?.label ?? text : written;
   return `${label} (${formatScaleValue(Number(coded.value.toFixed(6)))})`;
 }
 
@@ -176,7 +185,7 @@ function dataTables(calculation: StatisticalCalculationDto, prefix: string, unit
   const { settings } = calculation;
   const rent = isRentComparableType(settings.comparableType);
   const included = calculation.comparables.filter((comparable) => !comparable.excluded);
-  const area = (values: Record<string, string>) => Number((values.area ?? "").replace(/,/g, ""));
+  const area = (values: Record<string, string>) => parseDecimal(values.area ?? "") ?? 0;
   const columns: Column[] = [
     { column: figureColumn("REF"), cells: ["SUJETO", ...included.map((comparable) => String(comparable.reference))] },
     { column: moneyColumn(rent ? "RENTA $" : "PRECIO $"), cells: [EMPTY, ...included.map((comparable) => (comparable.price ? money(comparable.price) : EMPTY))] },

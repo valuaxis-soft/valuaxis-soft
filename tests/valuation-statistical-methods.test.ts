@@ -384,6 +384,17 @@ test("the dictamen's comparison lists only the methods it prints (V5.4-17): a hi
   assert.deepEqual(methodComparison(await bothMethods(false, false)).slice(-2).map((row) => row.method), ["Regresión lineal múltiple (RLM)", "Programación por metas (PM)"]);
 });
 
+test("a criterion written as a formula in the grid prints its number in the dictamen, never the formula", () => {
+  const legacy = statisticalFromMarket(legacyMarket());
+  assert.ok(legacy);
+  const withFormula = dto({ ...legacy, settings: { ...legacy.settings, subject: { ...legacy.settings.subject, area: "=100*2" } } });
+  assert.equal(computeStatisticalRegression(withFormula)?.ok, true);
+  const [data] = statisticalDocumentBlocks(withFormula)[0].apartados[0].tables.map((table) => ensureTableV2(table) as TableV2);
+  const subject = cellsOf(data, 0);
+  assert.ok(subject.includes("200"), subject.join(" | "));
+  assert.ok(!subject.some((cell) => cell.startsWith("=")), subject.join(" | "));
+});
+
 test("every table of the alternative methods prints as wide as its content by default (V5.3-22)", async () => {
   const calculation = await bothMethods(true, true);
   calculation.settings.regression = { ...calculation.settings.regression, printedTables: ["products", "statistics", "anova", "coefficients"] };
