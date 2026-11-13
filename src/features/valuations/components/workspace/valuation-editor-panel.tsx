@@ -29,9 +29,15 @@ import {
   blockToolbarLocks,
   blockToolbarState,
   CARATULA_CONCLUSION_DELETE_REASON,
+  CARATULA_LONG_TEXT_SELECTION_REASON,
 } from "../editor/block-toolbar";
 import { deleteConfirmation, useConfirmDelete } from "../editor/delete-confirm";
-import { structureLockReason, type TransferPosition } from "@/features/valuations/services/structure-transfer";
+import {
+  apartadoCrossBlockReason,
+  apartadoDragBlockIds,
+  structureLockReason,
+  type TransferPosition,
+} from "@/features/valuations/services/structure-transfer";
 import { BlockFlowRenderer } from "../editor/block-flow-renderer";
 import { AssumptionsDraftAssist, DraftScopeProvider, ApartadoSummaryDraft } from "../editor/draft-assist";
 import type { EditorCapabilities } from "../editor/editor-capabilities";
@@ -81,7 +87,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Field, FieldDescription, FieldLabel, FieldTitle } from "@/components/ui/field";
+import { FieldDescription, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type {
   AppSection,
@@ -340,11 +346,12 @@ export function ValuationEditorPanel(props: {
     // One update for the section keeps the move a single undo step.
     if (result.changed) props.onUpdateSection(section.id, { blocks: result.blocks });
   };
-  // Apartados travel by drag between the Blocks that may give and take them, as with "Mover a…".
-  const apartadoBlockIds = useMemo(
-    () => new Set(isCaratula ? [] : section.blocks.filter((block) => structureLockReason(section, block.id) === null).map((block) => block.id)),
-    [isCaratula, section],
-  );
+  // Apartados travel by drag between the Blocks that may give and take them, as with "Mover a…", in the carátula too.
+  const apartadoBlockIds = useMemo(() => apartadoDragBlockIds(section), [section]);
+  const apartadoMoveReason = (blockId: string, apartadoId: string) => {
+    const apartado = section.blocks.find((block) => block.id === blockId)?.apartados.find((item) => item.id === apartadoId);
+    return apartado ? apartadoCrossBlockReason(section, apartado) : null;
+  };
   const handleApartadoBlockMove = ({ apartadoId, fromBlockId, toBlockId, boundary }: ApartadoBlockMove) => {
     if (!transfer) return;
     const destination = section.blocks.find((block) => block.id === toBlockId);
@@ -500,6 +507,9 @@ export function ValuationEditorPanel(props: {
             moveRules={moveRules}
             onBlockDragEnd={(event) => props.onBlockDragEnd(section.id, event)}
             onContentDrop={handleContentDrop}
+            apartadoBlockIds={apartadoBlockIds}
+            apartadoMoveReason={apartadoMoveReason}
+            onApartadoBlockMove={handleApartadoBlockMove}
           >
             <SortableContext items={sortableBlockIds} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
@@ -545,6 +555,7 @@ export function ValuationEditorPanel(props: {
             onBlockDragEnd={(event) => props.onBlockDragEnd(section.id, event)}
             onContentDrop={handleContentDrop}
             apartadoBlockIds={apartadoBlockIds}
+            apartadoMoveReason={apartadoMoveReason}
             onApartadoBlockMove={handleApartadoBlockMove}
           >
             <SortableContext items={sortableBlockIds} strategy={verticalListSortingStrategy}>
@@ -625,7 +636,6 @@ function SortableBlockEditor(props: {
   // One word on the buttons of every section (observations of 27 Oct 2026).
   const subBlockButtonLabel = ADD_SUBBLOCK_LABEL;
   const caratulaBlockKind = isCaratula ? getCaratulaBlockKind(block) : "intermediate";
-  const isIntermediateCaratulaBlock = isCaratula && caratulaBlockKind === "intermediate";
   // The only conclusion prints the commercial value: it stays, the rest of the carátula's blocks go like any other.
   const isOnlyConclusion = isCaratula && caratulaBlockKind === "conclusion"
     && section.blocks.filter((item) => item.id !== COMPANY_HEADER_BLOCK_ID && getCaratulaBlockKind(item) === "conclusion").length === 1;
@@ -823,83 +833,68 @@ function SortableBlockEditor(props: {
         },
       }}
     >
-        {isIntermediateCaratulaBlock ? <div className="grid gap-3 md:grid-cols-[120px_1fr]">
-          <Field>
-            <FieldLabel>Clave</FieldLabel>
-            <Input
-              disabled={readOnly}
-              value={block.sectionLabel}
-              onChange={(event) => props.onUpdateBlock(section.id, block.id, { sectionLabel: event.target.value })}
+        {/* The first line of every block: "Agregar" and "Subbloque" on the left, "Seleccionar conceptos" on the right. */}
+        <ConceptSelectionScope
+          // The texts of the assumptions and the conclusion are edited in their own field, not chosen here.
+          concepts={caratulaBlockKind === "intermediate" ? block.concepts : []}
+          emptyReason={caratulaBlockKind === "intermediate" ? undefined : CARATULA_LONG_TEXT_SELECTION_REASON}
+          readOnly={readOnly}
+          actions={blockActions}
+          onApplySpacing={(conceptIds, field, lines) => props.onUpdateConcepts(section.id, block.id, conceptIds, { [field]: lines })}
+          onApplyIndent={(conceptIds, presentation) =>
+            props.onUpdateBlock(section.id, block.id, { contentLayout: setConceptCellsPresentation(resolveContentLayout(block), new Set(conceptIds), presentation) })
+          }
+          onApplyValueFormat={(conceptIds, valueFormat, customUnit) =>
+            props.onUpdateConcepts(section.id, block.id, formattableConceptIds(block.concepts, conceptIds), valueFormatPatch(valueFormat, customUnit))
+          }
+          onApplyTagStyle={(conceptIds, tagStyle) =>
+            props.onUpdateBlock(section.id, block.id, { contentLayout: setConceptRowsTagStyle(resolveContentLayout(block), conceptIds, tagStyle) })
+          }
+          onApplyTextMark={(conceptIds, mark) => props.onUpdateConcepts(section.id, block.id, conceptIds, textMarkPatch(mark))}
+          onDuplicate={(conceptIds) => props.onDuplicateConcepts(section.id, block.id, conceptIds)}
+          onRemove={(conceptIds) => props.onRemoveConcepts(section.id, block.id, conceptIds)}
+          renderMove={(conceptIds, done) => (
+            <MoveConceptsButton source={{ sectionId: section.id, blockId: block.id }} conceptIds={conceptIds} onMoved={done} />
+          )}
+        >
+          {caratulaBlockKind === "assumptions" ? (
+            <LongTextConceptEditor
+              concepts={block.concepts}
+              label="Supuestos y condiciones limitantes"
+              readOnly={readOnly}
+              onUpdate={(conceptId, patch) => props.onUpdateConcept(section.id, block.id, conceptId, patch)}
+              onRemove={removeLongText}
+              renderAssist={(concept) => (
+                <AssumptionsDraftAssist
+                  concept={concept}
+                  title={block.title}
+                  sections={allSections}
+                  onInsert={(value) => props.onUpdateConcept(section.id, block.id, concept.id, { value })}
+                />
+              )}
             />
-          </Field>
-        </div> : null}
-
-        {/* The long texts of the carátula (supuestos, conclusión) have no concepts to choose: their first line is "Agregar" alone. */}
-        {caratulaBlockKind === "assumptions" || caratulaBlockKind === "conclusion" ? (
-          <div className="flex flex-wrap items-center gap-2 border-b border-dashed border-border pb-2">{blockActions}</div>
-        ) : null}
-        {caratulaBlockKind === "assumptions" ? (
-          <LongTextConceptEditor
-            concepts={block.concepts}
-            label="Supuestos y condiciones limitantes"
-            readOnly={readOnly}
-            onUpdate={(conceptId, patch) => props.onUpdateConcept(section.id, block.id, conceptId, patch)}
-            onRemove={removeLongText}
-            renderAssist={(concept) => (
-              <AssumptionsDraftAssist
-                concept={concept}
-                title={block.title}
-                sections={allSections}
-                onInsert={(value) => props.onUpdateConcept(section.id, block.id, concept.id, { value })}
-              />
-            )}
-          />
-        ) : caratulaBlockKind === "conclusion" ? (
-          <div className="space-y-3">
-            {conclusionNarrativeConcepts.length ? (
-              // No draft assistance here: the checks of a draft cannot tell a restated conclusion from an argued one.
-              <LongTextConceptEditor
-                concepts={conclusionNarrativeConcepts}
-                readOnly={readOnly}
-                onUpdate={(conceptId, patch) => props.onUpdateConcept(section.id, block.id, conceptId, patch)}
-                onRemove={removeLongText}
-              />
-            ) : null}
-            <FieldDescription>
-              {props.conclusionExtra
-                ? "El valor comercial y el valor con letra los escribe el cálculo; los datos de firma, la lista de firmas de la carátula."
-                : "El valor comercial y el valor con letra se imprimen en la primera conclusión de la carátula."}
-            </FieldDescription>
-            {props.conclusionExtra}
-          </div>
-        ) : null}
-        {/* The assumptions and the conclusion edit their own texts above; their subbloques go here, as in any block. */}
-        {caratulaBlockKind === "intermediate" || block.apartados.length > 0 ? (
-          // A draft for a descriptive field goes with the title and the tables of its block or apartado.
+          ) : caratulaBlockKind === "conclusion" ? (
+            <div className="space-y-3">
+              {conclusionNarrativeConcepts.length ? (
+                // No draft assistance here: the checks of a draft cannot tell a restated conclusion from an argued one.
+                <LongTextConceptEditor
+                  concepts={conclusionNarrativeConcepts}
+                  readOnly={readOnly}
+                  onUpdate={(conceptId, patch) => props.onUpdateConcept(section.id, block.id, conceptId, patch)}
+                  onRemove={removeLongText}
+                />
+              ) : null}
+              <FieldDescription>
+                {props.conclusionExtra
+                  ? "El valor comercial y el valor con letra los escribe el cálculo; los datos de firma, la lista de firmas de la carátula."
+                  : "El valor comercial y el valor con letra se imprimen en la primera conclusión de la carátula."}
+              </FieldDescription>
+              {props.conclusionExtra}
+            </div>
+          ) : null}
+          {/* Its subbloques go here, as in any block; one dragged from another block lands here too. */}
+          {/* A draft for a descriptive field goes with the title and the tables of its block or apartado. */}
           <DraftScopeProvider title={block.title} tables={block.tables}>
-          {/* The block's own concepts chosen at once; "Agregar" and "Subbloque" on the same first line. */}
-          <ConceptSelectionScope
-            // The texts of the assumptions and the conclusion are edited above, with their "Agregar" line.
-            concepts={caratulaBlockKind === "intermediate" ? block.concepts : []}
-            readOnly={readOnly}
-            actions={caratulaBlockKind === "intermediate" ? blockActions : undefined}
-            onApplySpacing={(conceptIds, field, lines) => props.onUpdateConcepts(section.id, block.id, conceptIds, { [field]: lines })}
-            onApplyIndent={(conceptIds, presentation) =>
-              props.onUpdateBlock(section.id, block.id, { contentLayout: setConceptCellsPresentation(resolveContentLayout(block), new Set(conceptIds), presentation) })
-            }
-            onApplyValueFormat={(conceptIds, valueFormat, customUnit) =>
-              props.onUpdateConcepts(section.id, block.id, formattableConceptIds(block.concepts, conceptIds), valueFormatPatch(valueFormat, customUnit))
-            }
-            onApplyTagStyle={(conceptIds, tagStyle) =>
-              props.onUpdateBlock(section.id, block.id, { contentLayout: setConceptRowsTagStyle(resolveContentLayout(block), conceptIds, tagStyle) })
-            }
-            onApplyTextMark={(conceptIds, mark) => props.onUpdateConcepts(section.id, block.id, conceptIds, textMarkPatch(mark))}
-            onDuplicate={(conceptIds) => props.onDuplicateConcepts(section.id, block.id, conceptIds)}
-            onRemove={(conceptIds) => props.onRemoveConcepts(section.id, block.id, conceptIds)}
-            renderMove={(conceptIds, done) => (
-              <MoveConceptsButton source={{ sectionId: section.id, blockId: block.id }} conceptIds={conceptIds} onMoved={done} />
-            )}
-          >
           <BlockFlowRenderer
             block={block}
             showContentRows={caratulaBlockKind === "intermediate"}
@@ -1105,24 +1100,8 @@ function SortableBlockEditor(props: {
               </ApartadoEditor>
             )}
           />
-          </ConceptSelectionScope>
           </DraftScopeProvider>
-        ) : null}
-
-        {usesCompactConceptSystem && isCaratula ? (
-          <div className="flex justify-start border-t pt-3">
-            <ConceptCreationControl
-              conceptReferences={conceptReferences}
-              conceptSearch={conceptSearch}
-              readOnly={readOnly}
-              onAddConcept={(type) => props.onAddConcept(section.id, block.id, type)}
-              onAddConceptFromExisting={(concept, mode) =>
-                props.onAddConceptFromExisting(section.id, block.id, concept, mode)
-              }
-              onConceptSearchChange={setConceptSearch}
-            />
-          </div>
-        ) : null}
+        </ConceptSelectionScope>
 
     </BlockCard>
   );

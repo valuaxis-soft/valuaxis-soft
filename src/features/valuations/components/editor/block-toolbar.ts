@@ -45,6 +45,13 @@ export const CARATULA_PAGE_BREAK_REASON = "La carátula se imprime en su propia 
 /** The only conclusion of the carátula prints the commercial value the calculation writes, with its words. */
 export const CARATULA_CONCLUSION_DELETE_REASON =
   "Este bloque imprime el valor comercial y la cifra en letras que escribe el cálculo: no se elimina. Puedes moverlo, copiarlo o duplicarlo.";
+/**
+ * Why "Seleccionar conceptos" is disabled in the carátula's assumptions and
+ * conclusion: their texts are written in their own field, and the concepts of
+ * each subbloque are chosen in that subbloque.
+ */
+export const CARATULA_LONG_TEXT_SELECTION_REASON =
+  "El texto de este bloque se escribe en su recuadro. Los conceptos de cada subbloque se eligen con «Seleccionar conceptos» del subbloque.";
 export const READ_ONLY_REASON = "El avalúo es de solo lectura.";
 
 const enabled = (): BlockToolbarControlState => ({ enabled: true });

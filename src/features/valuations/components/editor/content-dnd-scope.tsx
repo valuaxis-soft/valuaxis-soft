@@ -344,6 +344,7 @@ export function ContentDndScope({
   onBlockDragEnd,
   onContentDrop,
   apartadoBlockIds,
+  apartadoMoveReason,
   onApartadoBlockMove,
   children,
 }: {
@@ -359,6 +360,11 @@ export function ContentDndScope({
   onContentDrop: (source: ContentDropSource, target: ContentDropTarget) => void;
   /** The Blocks that may give their Apartados to, and take them from, the others. Absent: Apartados stay in their Block. */
   apartadoBlockIds?: ReadonlySet<string>;
+  /**
+   * Why the Apartado cannot go to another Block, or null: no other Block
+   * offers it a place, and the card that follows the pointer says why.
+   */
+  apartadoMoveReason?: (blockId: string, apartadoId: string) => string | null;
   /** Called when an Apartado is dropped in another Block. */
   onApartadoBlockMove?: (move: ApartadoBlockMove) => void;
   children: React.ReactNode;
@@ -383,13 +389,16 @@ export function ContentDndScope({
   );
 
   const blockIdSet = useMemo(() => new Set(blockIds), [blockIds]);
+  const activeApartadoReason = activeApartado && apartadoMoveReason
+    ? apartadoMoveReason(activeApartado.blockId, activeApartado.apartadoId)
+    : null;
   const acceptsApartado = useCallback(
     (blockId: string) => {
       if (drag?.kind !== "apartado") return false;
       if (blockId === drag.blockId) return true;
-      return Boolean(onApartadoBlockMove && apartadoBlockIds?.has(drag.blockId) && apartadoBlockIds.has(blockId));
+      return Boolean(onApartadoBlockMove && !activeApartadoReason && apartadoBlockIds?.has(drag.blockId) && apartadoBlockIds.has(blockId));
     },
-    [drag, apartadoBlockIds, onApartadoBlockMove],
+    [drag, apartadoBlockIds, onApartadoBlockMove, activeApartadoReason],
   );
   const collisionDetection = useMemo(
     () => buildCollisionDetection(drag, blockIdSet, acceptsApartado),
@@ -498,7 +507,7 @@ export function ContentDndScope({
           <ContentDragPreview item={activeItem} count={activeContent?.groupIds?.length} />
         ) : activeApartado ? (
           // The Apartado can be taller than the screen: a small card follows the pointer instead.
-          <ContentDragPreview item={{ type: "table", id: activeApartado.apartadoId }} label="Subbloque" />
+          <ContentDragPreview item={{ type: "table", id: activeApartado.apartadoId }} label="Subbloque" note={activeApartadoReason ?? undefined} />
         ) : null}
       </DragOverlay>
     </DndContext>

@@ -56,7 +56,8 @@ export function SortableApartado({
         isDragging && "z-50",
       )}
     >
-      <div className="flex items-start gap-1">
+      {/* The same room on the right as the handle takes on the left (video 5.6, 2:00). */}
+      <div className="flex items-start gap-1 pr-8">
         <Button
           type="button"
           size="icon-sm"

@@ -229,6 +229,7 @@ export function ConceptSelectionScope({
   onRemove,
   renderMove,
   lockedReason,
+  emptyReason = NO_CONCEPTS_TO_SELECT,
   actions,
   children,
 }: {
@@ -256,6 +257,8 @@ export function ConceptSelectionScope({
    * so the bar has the same controls in every block.
    */
   lockedReason?: string;
+  /** Why "Seleccionar conceptos" is disabled while there is no concept to choose. */
+  emptyReason?: string;
   /**
    * The creation controls of the container ("Agregar", "Subbloque"…): the
    * first line of the block or subbloque, on the left, with "Seleccionar
@@ -310,7 +313,7 @@ export function ConceptSelectionScope({
       disabled={!concepts.length}
       title={concepts.length
         ? "Elegir varios conceptos para darles el mismo espacio, sangría, renglón o formato, duplicarlos, moverlos o eliminarlos juntos"
-        : NO_CONCEPTS_TO_SELECT}
+        : emptyReason}
       data-concept-selection-start=""
       onClick={() => (active ? stop() : setSelecting(true))}
     >
