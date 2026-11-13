@@ -59,6 +59,8 @@ export function MarketHomologationTable(props: {
   decimals?: number;
   /** Renames a factor from its header (video 5.3, 10:12); the dictamen prints the new name. Absent, the headers are fixed. */
   onRenameSlot?: (slot: FactorSlotConfig, label: string) => void;
+  /** The formula of each surface factor the calculation computes, by reference: shown while its cell is edited. */
+  surfaceFormulas?: ReadonlyMap<string, string>;
 }) {
   const { comparables, slots, catalog, readOnly } = props;
   const twoDecimals = withDecimals(props.decimals ?? 2);
@@ -149,7 +151,10 @@ export function MarketHomologationTable(props: {
                             display={surface?.value ? twoDecimals(surface.value) : row ? twoDecimals(row.surfaceFactor) : ""}
                             computed={!surface?.value}
                             placeholder="fórmula"
-                            title={surface?.value ? "Factor escrito por ti; vacíalo para usar la fórmula" : "Fórmula con la potencia n; escribe otro valor si lo prefieres"}
+                            editText={surface?.value ? undefined : props.surfaceFormulas?.get(String(comparable.reference))}
+                            title={surface?.value
+                              ? "Factor escrito por ti; vacíalo para usar la fórmula"
+                              : `Fórmula con la potencia n${props.surfaceFormulas?.get(String(comparable.reference)) ? `: ${props.surfaceFormulas.get(String(comparable.reference))}` : ""}; escribe otro valor si lo prefieres`}
                             className="text-xs"
                             onCommit={typed(comparable, slot)}
                           />
