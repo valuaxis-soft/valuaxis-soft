@@ -28,8 +28,8 @@ export function CommitCell(props: {
   ariaLabel: string;
   disabled?: boolean;
   placeholder?: string;
-  /** Left out by «Copiar valor a toda la fila/columna» of the table's menu: a cell that is not one more value of its row or column. */
-  noFill?: boolean;
+  /** Left out by «Copiar valor a toda la fila/columna» of the table's menu: "computed" when the system calculates it while empty; true when it is not one more value of its row or column. */
+  noFill?: boolean | "computed";
   className?: string;
   /** Figures align right and keep their width. */
   numeric?: boolean;
@@ -105,7 +105,7 @@ export function CommitCell(props: {
       title={problem ? `${problem}: lo escrito no entra en los cálculos.` : props.title}
       aria-invalid={problem ? true : undefined}
       data-numeric-problem={problem ?? undefined}
-      data-no-fill={props.noFill ? "" : undefined}
+      data-no-fill={props.noFill === "computed" ? "computed" : props.noFill ? "" : undefined}
       disabled={props.disabled}
       placeholder={props.placeholder}
       inputMode={props.numeric ? "decimal" : undefined}

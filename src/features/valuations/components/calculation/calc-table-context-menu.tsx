@@ -11,9 +11,9 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
-  captureFillTargets,
+  captureFillPlan,
+  captureFillSummary,
   tableContextMenu,
-  type CaptureFillCell,
   type TableMenuAction,
   type TableMenuGroup,
   type TableMenuTarget,
@@ -226,13 +226,17 @@ function fillFormula(hit: CalcTableHit, along: "row" | "column", readOnly: boole
   const cells = along === "row" ? Array.from(row.cells) : Array.from(body.rows).map((item) => item.cells[hit.columnIndex]);
   const from = along === "row" ? hit.columnIndex : hit.rowIndex;
   const fields = cells.map(fieldOf);
-  // A cell marked `data-no-fill` (the free text that replaces a comparable's characteristics) is not one more value of the row.
-  const seen: CaptureFillCell[] = fields.map((field) => (field
-    ? { takesTyping: takesTyping(field, readOnly) && field.dataset.noFill === undefined, text: field.value, hasFormula: formulaOf(field) !== null }
+  // A cell marked `data-no-fill` is left alone: "computed" when the system calculates it while empty
+  // (Sup., FRe, the subject's area…), otherwise not one more value of the row (a comparable's free text).
+  const seen = fields.map((field) => (field
+    ? {
+      takesTyping: takesTyping(field, readOnly), text: field.value, hasFormula: formulaOf(field) !== null,
+      noFill: field.dataset.noFill === undefined ? null : field.dataset.noFill === "computed" ? "computed" as const : "other" as const,
+    }
     : null));
-  const targets = captureFillTargets(seen, from);
+  const { targets, computedSkipped } = captureFillPlan(seen, from);
   for (const index of targets) typeInto(fields[index]!, formula);
-  if (!targets.length) toast.info(`No hay celdas vacías en la ${along === "row" ? "fila" : "columna"} para copiarlo.`);
+  toast.info(captureFillSummary(targets.length, computedSkipped, along));
 }
 
 /** The menu's target for what was clicked: a header, a row's first cell or a cell. */

@@ -22,6 +22,9 @@ import { TableEditorItem } from "../src/features/valuations/components/editor/ta
 import { parseComparableSearchQuery } from "../src/features/valuations/comparable-search/schemas";
 import type { Block, Concept, ContentLayout, TableContent } from "../src/features/valuations/model";
 import { DEFAULT_IMAGE_SIZE } from "../src/features/valuations/services/image-framing";
+import { captureFillPlan, captureFillSummary } from "../src/features/valuations/services/table-context-menu";
+import { CommitCell } from "../src/features/valuations/components/calculation/commit-cell";
+import { FormulaInput } from "../src/features/valuations/components/calculation/formula-input";
 import { ensureTableV2, setTablePrintLayout, type TableV2 } from "../src/features/valuations/services/table";
 // Must load after the components so client-only libraries still see no DOM at import time.
 import "./support/ssr-portal-shim";
@@ -91,6 +94,38 @@ test("V5.7-18: copying down a comparable's column leaves its free text alone, wh
   );
   assert.match(html, /<input[^>]*aria-label="Texto libre de características, comparable 1"[^>]*data-no-fill=""/);
   assert.doesNotMatch(html.match(/<input[^>]*aria-label="N. FRENTES, comparable 1"[^>]*>/)?.[0] ?? "", /data-no-fill/);
+});
+
+test("V5.7-18: copying «Ubicación» along the land row of Costos leaves the calculated cells (subject's area, Sup., FRe) alone and says so", () => {
+  // The land row as the panel marks it: what the system calculates while empty is `computed`.
+  const field = (noFill: "computed" | null = null, text = "") => ({ takesTyping: true, text, hasFormula: false, noFill });
+  const row = [
+    null, // Fracción
+    field("computed"), // Superficie de Sujeto (from the market)
+    null, // Valor unitario (read only)
+    field(), // Neg.
+    field(null, "0.95"), // Ubic., the one copied
+    field("computed"), // Sup.
+    field(), // Serv.
+    field(), // Clas.
+    field(), // Top.
+    field("computed"), // FRe
+  ];
+  const plan = captureFillPlan(row, 4);
+  assert.deepEqual(plan.targets, [3, 6, 7, 8], "only the factors the appraiser captures");
+  assert.equal(plan.computedSkipped, 3);
+  assert.equal(captureFillSummary(plan.targets.length, plan.computedSkipped, "row"),
+    "Se llenaron 4 celdas de la fila. Se omitieron 3 celdas que calcula el sistema; para cambiarlas, escribe en ellas.");
+  assert.equal(captureFillSummary(1, 0, "column"), "Se llenó 1 celda de la columna.");
+  assert.equal(captureFillSummary(0, 1, "row"), "No hay celdas vacías en la fila para copiarlo. Se omitió 1 celda que calcula el sistema; para cambiarla, escribe en ella.");
+  // The free text is left out too, but it is not a calculation.
+  assert.deepEqual(captureFillPlan([field(null, "1"), { ...field(), noFill: "other" as const }], 0), { targets: [], computedSkipped: 0 });
+
+  // The panels' fields carry the mark to the page.
+  const html = renderToStaticMarkup(<FormulaInput aria-label="Factor resultante del terreno (FRe)" data-no-fill="computed" value="" onChange={() => {}} />);
+  assert.match(html, /data-no-fill="computed"/);
+  const homologation = renderToStaticMarkup(<CommitCell ariaLabel="Sup." value="" noFill="computed" onCommit={() => {}} />);
+  assert.match(homologation, /data-no-fill="computed"/);
 });
 
 /* ------------------------------------------------------------------ */
