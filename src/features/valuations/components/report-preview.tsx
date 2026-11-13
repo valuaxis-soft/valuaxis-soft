@@ -78,8 +78,21 @@ export type PreviewSectionNavigation = {
   onNext: () => void;
 };
 
-export function ReportPreview({ navigation, ...props }: SectionDocumentProps & { navigation?: PreviewSectionNavigation }) {
+export function ReportPreview({
+  navigation,
+  group,
+  ...props
+}: SectionDocumentProps & {
+  navigation?: PreviewSectionNavigation;
+  /**
+   * The sections printed on the same pages as this one («Continuar donde
+   * terminó la sección anterior»), this one among them: the preview lays them
+   * out together, as the dictamen does. Absent or alone: only this section.
+   */
+  group?: AppSection[];
+}) {
   const isCaratula = props.section.id === "caratula";
+  const sharedWith = group && group.length > 1 ? group.filter((section) => section.id !== props.section.id) : [];
 
   return (
     <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg">
@@ -118,12 +131,28 @@ export function ReportPreview({ navigation, ...props }: SectionDocumentProps & {
             </Button>
           </CardAction>
         ) : null}
+        {sharedWith.length ? (
+          <p className="col-span-full text-xs text-muted-foreground" data-preview-shared-pages="">
+            Comparte páginas con {sharedWith.map((section) => section.title).join(", ")}: se muestra como se imprime, una sección
+            a continuación de la otra.
+          </p>
+        ) : null}
       </CardHeader>
       <CardContent className="min-h-0 flex-1 p-0">
         <PreviewViewer key={props.section.id} className="h-full">
           {/* Carátula: no gray background — page fills the desk naturally */}
           <div className={isCaratula ? "min-h-full p-4 sm:p-6 lg:p-8" : "min-h-full bg-muted/40 p-4 sm:p-6 lg:p-8"}>
-            <SectionDocument {...props} />
+            {sharedWith.length && group ? (
+              <ContinuousSectionsDocument
+                caratula={props.caratula}
+                letterhead={props.letterhead}
+                meta={props.meta}
+                sections={group}
+                documentHeaderImage={props.documentHeaderImage}
+              />
+            ) : (
+              <SectionDocument {...props} />
+            )}
           </div>
         </PreviewViewer>
       </CardContent>

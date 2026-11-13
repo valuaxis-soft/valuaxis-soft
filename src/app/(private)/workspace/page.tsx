@@ -12,6 +12,7 @@ import { getValuationByPublicId } from "@/features/valuations/repositories/valua
 import { getCustomUnits, getLetterhead } from "@/features/firm/firm.service";
 import { isAiEnabled } from "@/features/ai/ai-gateway-provider";
 import { getValuationCreationCatalogs } from "@/features/valuations/services/valuation-catalogs.service";
+import { getUserPreferences } from "@/features/account/user-preferences.service";
 
 export default async function WorkspacePage({
   searchParams,
@@ -31,10 +32,11 @@ export default async function WorkspacePage({
 
   if (!valuationId || !hasPermission(user, AUTH_PERMISSIONS.viewValuations)) redirect("/dashboard");
 
-  const [initialValuation, letterhead, customUnits] = await Promise.all([
+  const [initialValuation, letterhead, customUnits, preferences] = await Promise.all([
     getValuationByPublicId(valuationId, user.organizationId),
     getLetterhead(user.organizationId),
     getCustomUnits(user.organizationId),
+    getUserPreferences(user.id),
   ]);
   if (!initialValuation) redirect("/dashboard");
   const issuerNotice = await valuationIssuerNotice(valuationId, user.organizationId);
@@ -50,6 +52,7 @@ export default async function WorkspacePage({
         currentUser={user}
         letterhead={letterhead}
         customUnits={customUnits}
+        autosaveSeconds={preferences.autosaveSeconds}
         valuationId={valuationId}
         initialValuation={initialValuation}
         aiEnabled={isAiEnabled()}

@@ -222,7 +222,8 @@ export function MarketCalculationPanel(props: {
   };
 
   return (
-    <div className="grid gap-2">
+    // The market shown: the preview follows it to its pages (V6.2-10).
+    <div className="grid gap-2" data-active-market={type}>
       {types.length > 1 ? (
         <div className="flex flex-wrap items-center gap-2">
           <div role="tablist" aria-label="Mercados del avalúo" className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1">

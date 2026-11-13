@@ -93,7 +93,7 @@ export function ValuationNavigation({
 
   return (
     <nav
-      className="mx-auto flex w-full min-w-0 max-w-[44rem] items-center gap-1 xl:flex-[1_1_28rem]"
+      className="flex w-full min-w-0 items-center gap-1 lg:items-start"
       aria-label="Secciones del avalúo"
     >
       {onSelectSection ? (
@@ -113,7 +113,7 @@ export function ValuationNavigation({
         type="button"
         variant="ghost"
         size="icon-sm"
-        className="shrink-0 pointer-coarse:hidden"
+        className="shrink-0 pointer-coarse:hidden lg:hidden"
         aria-label="Desplazar secciones a la izquierda"
         disabled={!overflow.start}
         onClick={() => scrollSections(-1)}
@@ -122,7 +122,8 @@ export function ValuationNavigation({
       </Button>
       <div
         ref={scrollContainerRef}
-        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-color:var(--muted-foreground)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent"
+        data-section-strip=""
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain pb-1 lg:items-start lg:overflow-visible lg:pb-0 [scrollbar-color:var(--muted-foreground)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 [&::-webkit-scrollbar-track]:bg-transparent"
       >
         <SectionDndContainer
           sections={enabledSections}
@@ -174,7 +175,7 @@ export function ValuationNavigation({
         type="button"
         variant="ghost"
         size="icon-sm"
-        className="shrink-0 pointer-coarse:hidden"
+        className="shrink-0 pointer-coarse:hidden lg:hidden"
         aria-label="Desplazar secciones a la derecha"
         disabled={!overflow.end}
         onClick={() => scrollSections(1)}

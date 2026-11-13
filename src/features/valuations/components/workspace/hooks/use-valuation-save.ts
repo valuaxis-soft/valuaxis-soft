@@ -12,20 +12,24 @@ import {
   validateCaratula,
 } from "@/features/valuations/services/caratula-validation";
 import { buildSectionsPayload, valuationMetaPayload } from "../model/save-payload";
-import { AUTOSAVE_DELAY_MS, errorCodeOf, isSaveShortcut, shouldAutosave, statusAfterSave } from "../model/save-status";
+import { leavingLinkHref, type PendingExit } from "../model/navigation-guard";
+import { errorCodeOf, isSaveShortcut, shouldAutosave, statusAfterSave } from "../model/save-status";
 import type { EditorState } from "./use-editor-state";
 
 /**
  * Saving the editor document: validation, the full save request, the save
- * status, the unsaved-changes guards (tab close and exit dialog) and the
- * session-expired dialog.
+ * status, the unsaved-changes guards (tab close, the browser's Atrás, links of
+ * the app and the exit dialog) and the session-expired dialog.
  */
 export function useValuationSave({
+  autosaveDelayMs,
   canEdit,
   editor,
   setActiveSectionId,
   valuationId,
 }: {
+  /** The appraiser's autosave wait (Mi cuenta → Autoguardado); null: off. */
+  autosaveDelayMs: number | null;
   canEdit: boolean;
   editor: Pick<
     EditorState,
@@ -54,7 +58,8 @@ export function useValuationSave({
     setSections,
     snapshotRef,
   } = editor;
-  const [exitDialogOpen, setExitDialogOpen] = useState(false);
+  // Where the appraiser was going when the editor asked about the changes; null: the dialog is closed.
+  const [pendingExit, setPendingExit] = useState<PendingExit | null>(null);
   const [sessionExpiredOpen, setSessionExpiredOpen] = useState(false);
 
   const saving = saveStatus === "saving";
@@ -69,6 +74,50 @@ export function useValuationSave({
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [hasUnsavedChanges]);
+
+  // The browser's (or the installed app's) Atrás is a client navigation that beforeunload does not see: it
+  // went back to the dashboard and the changes were lost (video 6.2, 05:44). With changes pending the editor
+  // puts a copy of its own page on top of the history; Atrás takes that copy off, the page stays, and the
+  // editor asks. The copy stays after a save: Atrás then goes on by itself.
+  const historyGuardRef = useRef(false);
+  const leavingRef = useRef(false);
+  useEffect(() => {
+    if (!hasUnsavedChanges || historyGuardRef.current) return;
+    window.history.pushState(window.history.state, "", window.location.href);
+    historyGuardRef.current = true;
+  }, [hasUnsavedChanges]);
+  const onHistoryBack = useEffectEvent(() => {
+    if (!historyGuardRef.current || leavingRef.current) return;
+    if (!hasUnsavedChanges) {
+      historyGuardRef.current = false;
+      window.history.back();
+      return;
+    }
+    // Back on top, so a second Atrás while the dialog is open asks again instead of leaving.
+    window.history.pushState(window.history.state, "", window.location.href);
+    setPendingExit({ kind: "back" });
+  });
+  useEffect(() => {
+    const listener = () => onHistoryBack();
+    window.addEventListener("popstate", listener);
+    return () => window.removeEventListener("popstate", listener);
+  }, []);
+
+  // A link of the app (a menu, a toast, a page linked from the editor) asks the same, before the router sees the click.
+  const onDocumentClick = useEffectEvent((event: MouseEvent) => {
+    if (!hasUnsavedChanges || leavingRef.current) return;
+    const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+    const href = leavingLinkHref(event, anchor, window.location);
+    if (!href) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setPendingExit({ kind: "push", href });
+  });
+  useEffect(() => {
+    const listener = (event: MouseEvent) => onDocumentClick(event);
+    document.addEventListener("click", listener, true);
+    return () => document.removeEventListener("click", listener, true);
+  }, []);
 
   // Autosave stays quiet about validation problems it already reported once.
   const autosaveWarnedRef = useRef(false);
@@ -160,35 +209,57 @@ export function useValuationSave({
   const autosave = useEffectEvent(() => {
     void handleSave({ automatic: true });
   });
-  const autosaveEnabled = shouldAutosave({ saveStatus, canEdit, valuationId, sessionExpired: sessionExpiredOpen });
+  const autosaveEnabled = shouldAutosave({ saveStatus, canEdit, valuationId, sessionExpired: sessionExpiredOpen, delayMs: autosaveDelayMs });
   useEffect(() => {
-    if (!autosaveEnabled) return;
-    const timer = window.setTimeout(autosave, AUTOSAVE_DELAY_MS);
+    if (!autosaveEnabled || autosaveDelayMs === null) return;
+    const timer = window.setTimeout(autosave, autosaveDelayMs);
     return () => window.clearTimeout(timer);
-  }, [autosaveEnabled, caratula, meta, sections]);
+  }, [autosaveDelayMs, autosaveEnabled, caratula, meta, sections]);
 
-  const handleExit = () => {
-    if (saveStatus === "dirty" || saveStatus === "error") {
-      setExitDialogOpen(true);
+  /** Goes where the appraiser was going, without asking again. */
+  const leave = (exit: PendingExit) => {
+    leavingRef.current = true;
+    setPendingExit(null);
+    if (exit.kind === "back") {
+      // The copy the guard put back on top, the editor's own page, and then the page before it.
+      window.history.go(-2);
       return;
     }
-    router.push("/dashboard");
+    // In place of the guard's copy of this page, so Atrás from there does not land on the editor twice.
+    if (historyGuardRef.current) router.replace(exit.href);
+    else router.push(exit.href);
+  };
+
+  const handleExit = () => {
+    if (hasUnsavedChanges) {
+      setPendingExit({ kind: "push", href: "/dashboard" });
+      return;
+    }
+    leave({ kind: "push", href: "/dashboard" });
   };
 
   const handleSaveAndExit = async () => {
+    const exit = pendingExit;
     const ok = await handleSave();
-    if (ok) router.push("/dashboard");
+    if (ok && exit) leave(exit);
   };
 
-  const exitWithoutSaving = () => router.push("/dashboard");
+  const exitWithoutSaving = () => {
+    if (pendingExit) leave(pendingExit);
+  };
+
+  const setExitDialogOpen = (open: boolean) => {
+    if (!open) setPendingExit(null);
+  };
 
   return {
-    exitDialogOpen,
+    exitDialogOpen: pendingExit !== null,
     exitWithoutSaving,
     handleExit,
     handleSave,
     handleSaveAndExit,
     hasUnsavedChanges,
+    pendingExit,
     saving,
     sessionExpiredOpen,
     setExitDialogOpen,

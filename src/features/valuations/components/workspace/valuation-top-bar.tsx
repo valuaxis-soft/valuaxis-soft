@@ -137,7 +137,10 @@ export function ValuationTopBar({
   undoAvailable,
   valuationId,
   workspaceMode,
+  autosaveNote,
 }: {
+  /** How the editor saves on its own, said on the save button: «Guardado automático: 15 s después…». */
+  autosaveNote?: string;
   activeSectionId: string;
   canEdit: boolean;
   canExport: boolean;
@@ -193,8 +196,11 @@ export function ValuationTopBar({
       : "Guardar cambios";
 
   return (
-    <div className="flex min-w-0 flex-col gap-2 lg:gap-3 xl:flex-row xl:items-center">
-      <div className="flex min-w-0 shrink-0 items-center gap-2 lg:gap-3">
+    // The section tabs go on a row of their own under the actions, wide enough to read every name whole
+    // (video 6.3, 01:08: «los nombrecitos aquí abajo para que se vean todos»).
+    <div className="flex min-w-0 flex-col gap-2 lg:gap-3">
+      <div className="flex min-w-0 items-center gap-2 lg:gap-3">
+      <div className="flex min-w-0 shrink-0 items-center gap-2 lg:gap-3 max-lg:flex-1">
         <Button
           type="button"
           size="icon-lg"
@@ -377,26 +383,13 @@ export function ValuationTopBar({
         </div>
       </div>
 
-      <ValuationNavigation
-        activeSectionId={activeSectionId}
-        enabledSections={enabledSections}
-        iconMap={iconMap}
-        onAddSection={onAddSection}
-        onRemoveSection={onRemoveSection}
-        onRenameSection={onRenameSection}
-        onReorder={onReorderSections}
-        onRestoreSection={onRestoreSection}
-        onSelectSection={onSelectSection}
-        readOnly={readOnly}
-        removedSections={removedSections}
-      />
-
-      <div className="hidden flex-none flex-nowrap items-center justify-end gap-2 lg:flex">
+      <div className="hidden flex-none flex-nowrap items-center justify-end gap-2 lg:ml-auto lg:flex">
         <Button
           type="button"
           variant={hasPendingChanges ? "default" : "outline"}
           disabled={!canEdit || saving}
           onClick={onSave}
+          title={autosaveNote}
           className={cn(
             "flex-none whitespace-nowrap",
             hasPendingChanges &&
@@ -482,6 +475,21 @@ export function ValuationTopBar({
           </div>
         ) : null}
       </div>
+      </div>
+
+      <ValuationNavigation
+        activeSectionId={activeSectionId}
+        enabledSections={enabledSections}
+        iconMap={iconMap}
+        onAddSection={onAddSection}
+        onRemoveSection={onRemoveSection}
+        onRenameSection={onRenameSection}
+        onReorder={onReorderSections}
+        onRestoreSection={onRestoreSection}
+        onSelectSection={onSelectSection}
+        readOnly={readOnly}
+        removedSections={removedSections}
+      />
     </div>
   );
 }
