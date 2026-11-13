@@ -71,12 +71,12 @@ export function DocumentPageFormatControl({
           }}
         >
           <NativeSelectOption value="filled">Barra azul</NativeSelectOption>
-          <NativeSelectOption value="outline">Sin relleno (letras azules y línea)</NativeSelectOption>
+          <NativeSelectOption value="outline">Sin relleno (letras azules con marco)</NativeSelectOption>
         </NativeSelect>
         <FieldDescription>
           {titleBand === "outline"
-            ? "El título del documento va en blanco con letras azules y una línea azul separa el encabezado del cuerpo, como en tu Excel."
-            : "El título del documento, bajo el encabezado de cada página, va en una barra azul."}
+            ? "El título del documento va en blanco con letras azules, dentro de un marco como el del folio."
+            : "El título del documento, bajo el encabezado de cada página, va en una barra azul sin marco."}
         </FieldDescription>
       </Field>
     </section>

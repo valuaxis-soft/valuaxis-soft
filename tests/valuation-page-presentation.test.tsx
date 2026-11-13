@@ -86,7 +86,7 @@ test("title bars print as a blue band without frame, or on white inside a thin b
   assert.equal(cover({ ...DEFAULT_PAGE_PRESENTATION, titleBars: "outline" }), cover(DEFAULT_PAGE_PRESENTATION));
 });
 
-test("the DICTAMEN VALUATORIO band prints blue, or white with blue letters and a blue line under the header, independent of the bars", () => {
+test("the DICTAMEN VALUATORIO band prints blue with no frame, or white with blue letters in a frame like the folio's (video 5.1)", () => {
   const letterhead: Letterhead = { name: "Valuadores", legalName: null, rfc: null, address: null, phone: null, email: null, logoUrl: null };
   const caratula = { folio: "TCH-001", fechaAvaluo: "", mesesVigencia: null, fechaVigencia: "", camposEncabezado: [] } as unknown as CaratulaFormData;
   const band = (presentation: PagePresentation) => {
@@ -96,10 +96,13 @@ test("the DICTAMEN VALUATORIO band prints blue, or white with blue letters and a
   const filled = band(DEFAULT_PAGE_PRESENTATION);
   assert.equal(filled?.[2], "filled");
   assert.match(filled?.[1] ?? "", /bg-\[var\(--caratula-dark-blue\)\][^"]*text-white/, "as always");
+  assert.doesNotMatch(filled?.[1] ?? "", /border/, "the blue band has no frame");
+  const html = printed(DEFAULT_PAGE_PRESENTATION, <DocumentPreviewHeader caratula={caratula} letterhead={letterhead} />);
+  assert.doesNotMatch(html, /data-title-band-frame/, "nor a frame around it");
 
   const outline = band({ ...DEFAULT_PAGE_PRESENTATION, titleBand: "outline" });
   assert.equal(outline?.[2], "outline");
-  assert.match(outline?.[1] ?? "", /border-t-\[3px\] border-\[var\(--caratula-dark-blue\)\] bg-white/);
+  assert.match(outline?.[1] ?? "", /border-2 border-\[var\(--caratula-dark-blue\)\] bg-white/, "framed like the folio");
   assert.match(outline?.[1] ?? "", /text-\[var\(--caratula-dark-blue\)\]/);
   assert.doesNotMatch(outline?.[1] ?? "", /text-white/);
 

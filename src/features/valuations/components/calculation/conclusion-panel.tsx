@@ -41,6 +41,17 @@ const MARKET_SOURCE_LABELS: Record<NonNullable<ConclusionCalculationDto["marketS
 };
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
+/**
+ * Why an approach has no value to conclude with, said where it shows
+ * "No aplica" (UNI-02): the value comes from the approach's own section and
+ * there is none saved yet.
+ */
+const APPROACH_UNAVAILABLE_REASONS: Record<Approach, string> = {
+  costos: "Aún no hay valor físico: calcula el enfoque de costos (terreno y construcciones).",
+  mercado: "Aún no hay valor de mercado: calcula el mercado de inmuebles o de terrenos con sus comparables.",
+  ingresos: "Aún no hay valor por capitalización: calcula el enfoque de ingresos (rentas y tasa), si el bien lo lleva.",
+};
+
 /** Whether the document leaves the approach out of the dictamen ("Agregar al informe valuatorio" off). */
 function leftOut(calculation: ConclusionCalculationDto, approach: Approach) {
   const excluded = new Set(calculation.excluded ?? []);
@@ -126,6 +137,30 @@ function ConclusionSummaryEditor({
 }
 
 /** Concluded value: which approach (or weights) and why, from the values each approach stored. */
+/** The value of each approach, or why it has none. */
+export function ApproachValues({ calculation }: { calculation: ConclusionCalculationDto }) {
+  return (
+    <dl className="grid gap-x-4 gap-y-1 rounded-md border bg-background p-3 text-sm sm:grid-cols-3">
+      {APPROACHES.map((approach) => (
+        <div key={approach}>
+          <dt className="text-xs text-muted-foreground">
+            {APPROACH_LABELS[approach]}
+            {approach === "mercado" && calculation.marketSource ? ` (${MARKET_SOURCE_LABELS[calculation.marketSource]})` : ""}
+          </dt>
+          <dd className="tabular-nums">
+            {leftOut(calculation, approach)
+              ? <span className="text-muted-foreground" data-approach-left-out="">No incluido en el informe</span>
+              : calculation.values[approach] === null ? "No aplica" : money(calculation.values[approach] as number)}
+          </dd>
+          {!leftOut(calculation, approach) && calculation.values[approach] === null ? (
+            <dd className="text-xs text-muted-foreground" data-approach-unavailable={approach}>{APPROACH_UNAVAILABLE_REASONS[approach]}</dd>
+          ) : null}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function ConclusionPanel(props: {
   valuationId: string;
   readOnly: boolean;
@@ -218,21 +253,7 @@ export function ConclusionPanel(props: {
         {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
       </header>
 
-      <dl className="grid gap-x-4 gap-y-1 rounded-md border bg-background p-3 text-sm sm:grid-cols-3">
-        {APPROACHES.map((approach) => (
-          <div key={approach}>
-            <dt className="text-xs text-muted-foreground">
-              {APPROACH_LABELS[approach]}
-              {approach === "mercado" && calculation.marketSource ? ` (${MARKET_SOURCE_LABELS[calculation.marketSource]})` : ""}
-            </dt>
-            <dd className="tabular-nums">
-              {leftOut(calculation, approach)
-                ? <span className="text-muted-foreground" data-approach-left-out="">No incluido en el informe</span>
-                : calculation.values[approach] === null ? "No aplica" : money(calculation.values[approach] as number)}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <ApproachValues calculation={calculation} />
 
       <ConclusionSummaryEditor
         calculation={calculation}

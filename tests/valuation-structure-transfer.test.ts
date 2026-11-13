@@ -16,7 +16,9 @@ import {
   moveConceptsTo,
   pasteApartado,
   pasteBlock,
+  blockMoveLockReason,
 } from "../src/features/valuations/services/structure-transfer";
+import { COMPANY_HEADER_BLOCK_ID } from "../src/features/valuations/services/caratula-company-header";
 import type { TableV2 } from "../src/features/valuations/services/table";
 
 /* ------------------------------------------------------------------ */
@@ -244,20 +246,51 @@ test("a block moves to another section with its ids and leaves its section", () 
   assert.equal(findBlock(result.sections, "custom-x", "uno").concepts[0].id, "a");
 });
 
-test("blocks the calculation writes and the carátula's are neither moved, copied nor duplicated", () => {
+test("blocks the calculation writes are neither moved, copied nor duplicated", () => {
   const generated = block("motor-mercado-terreno_venta-1", [["g"]]);
-  const sections = [
-    section("caratula", [block("caratula-block-1-datos", [["c"]])]),
-    section("mercadoVenta", [generated]),
-    section("custom-x", [block("z")]),
-  ];
+  const sections = [section("mercadoVenta", [generated]), section("custom-x", [block("z")])];
   assert.equal(moveBlockToSection(sections, "mercadoVenta", generated.id, "custom-x").changed, false);
   assert.equal(duplicateBlock(sections, "mercadoVenta", generated.id).changed, false);
-  assert.equal(moveBlockToSection(sections, "caratula", "caratula-block-1-datos", "custom-x").changed, false);
-  assert.equal(moveBlockToSection(sections, "custom-x", "z", "caratula").changed, false);
-  assert.equal(pasteBlock(sections, "caratula", block("z")).changed, false);
-  assert.deepEqual(blockDestinationSections(sections, "custom-x").map((item) => item.id), ["mercadoVenta"]);
   assert.deepEqual(apartadoDestinations(sections).map((item) => item.address.blockId), ["z"]);
+});
+
+test("the carátula's blocks move, copy and duplicate like any other; its only conclusion stays in it (video 5.5)", () => {
+  const conclusion = block("caratula-block-6-conclusion", [["valor"]], { title: "CONCLUSION" });
+  const sections = [
+    section("caratula", [block(COMPANY_HEADER_BLOCK_ID), block("caratula-block-1-datos", [["c"]]), conclusion]),
+    section("custom-x", [block("z", [["q"]]), block("con-tabla", [], { tables: [{ id: "t", title: "T", columns: [], rows: [], enabled: true } as unknown as TableContent] })]),
+  ];
+  // Its template blocks go to another section, are duplicated and pasted like any block.
+  assert.equal(moveBlockToSection(sections, "caratula", "caratula-block-1-datos", "custom-x").changed, true);
+  const duplicated = duplicateBlock(sections, "caratula", "caratula-block-1-datos");
+  assert.equal(duplicated.changed, true);
+  assert.equal(findSection(duplicated.sections, "caratula").blocks.length, 4);
+  assert.equal(pasteBlock(sections, "caratula", findBlock(sections, "custom-x", "z")).changed, true, "a block of concepts is pasted into the carátula");
+  assert.equal(moveBlockToSection(sections, "custom-x", "z", "caratula").changed, true);
+
+  // The carátula holds concepts and subbloques: a block with a table does not go in.
+  assert.equal(moveBlockToSection(sections, "custom-x", "con-tabla", "caratula").changed, false);
+  assert.equal(pasteBlock(sections, "caratula", findBlock(sections, "custom-x", "con-tabla")).changed, false);
+  assert.deepEqual(blockDestinationSections(sections, "custom-x", findBlock(sections, "custom-x", "con-tabla")).map((item) => item.id), []);
+  assert.deepEqual(blockDestinationSections(sections, "custom-x", findBlock(sections, "custom-x", "z")).map((item) => item.id), ["caratula"]);
+
+  // The company header stays where it is.
+  assert.equal(moveBlockToSection(sections, "caratula", COMPANY_HEADER_BLOCK_ID, "custom-x").changed, false);
+  assert.equal(duplicateBlock(sections, "caratula", COMPANY_HEADER_BLOCK_ID).changed, false);
+
+  // The only conclusion prints the commercial value: copied or duplicated, never taken out.
+  const moved = moveBlockToSection(sections, "caratula", conclusion.id, "custom-x");
+  assert.equal(moved.changed, false);
+  assert.match(moved.reason ?? "", /valor comercial/);
+  assert.equal(blockMoveLockReason(findSection(sections, "caratula"), conclusion.id)?.includes("valor comercial"), true);
+  const twice = duplicateBlock(sections, "caratula", conclusion.id);
+  assert.equal(twice.changed, true);
+  assert.equal(blockMoveLockReason(findSection(twice.sections, "caratula"), conclusion.id), null, "with a second one, either can go");
+
+  // Subbloques are pasted into its blocks, the assumptions and the conclusion included.
+  const pasted = pasteApartado(sections, { sectionId: "caratula", blockId: conclusion.id }, apartado("ap", [["n"]]));
+  assert.equal(pasted.changed, true);
+  assert.ok(apartadoDestinations(sections).some((item) => item.address.blockId === conclusion.id));
 });
 
 test("a duplicated block lands right after the original, and a pasted one at the end of the destination", () => {

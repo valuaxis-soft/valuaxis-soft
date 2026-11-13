@@ -4,8 +4,8 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { Apartado, AppSection, Block, Concept, ConceptCreationKind } from "@/features/valuations/model";
 import { COMPANY_HEADER_BLOCK_ID } from "@/features/valuations/services/caratula-company-header";
 import {
-  isCaratulaIntermediateBlock,
   UNTITLED_CARATULA_CONCEPT,
+  withCaratulaBlockAdded,
 } from "@/features/valuations/services/caratula-blocks";
 import {
   applyConceptEditOnlyHere,
@@ -40,10 +40,10 @@ export function useBlockMutations({
   updateSections,
 }: Pick<EditorState, "updateSectionBlocks" | "updateSections">) {
   const addBlock = (sectionId: string) => {
-    updateSectionBlocks(sectionId, (blocks) => [
-      ...blocks,
-      createBlock(sectionId === "caratula" ? UNTITLED_CARATULA_CONCEPT : undefined),
-    ]);
+    updateSectionBlocks(sectionId, (blocks) => {
+      if (sectionId !== "caratula") return [...blocks, createBlock()];
+      return withCaratulaBlockAdded(blocks, createBlock(UNTITLED_CARATULA_CONCEPT));
+    });
   };
 
   const updateBlock = (sectionId: string, blockId: string, patch: Partial<Block>) => {
@@ -456,12 +456,8 @@ export function useBlockMutations({
 
   const moveBlock = (sectionId: string, blockId: string, direction: -1 | 1) => {
     updateSectionBlocks(sectionId, (blocks) => {
-      const isDatos = sectionId === "datos" || sectionId === "datosGenerales";
-      const movableBlocks = isDatos
-        ? blocks
-        : blocks.filter(
-            (block) => block.id !== COMPANY_HEADER_BLOCK_ID && isCaratulaIntermediateBlock(block),
-          );
+      // Every block moves, the carátula's assumptions and conclusion too (video 5.5); the company header stays first.
+      const movableBlocks = blocks.filter((block) => block.id !== COMPANY_HEADER_BLOCK_ID);
       const currentPosition = movableBlocks.findIndex((block) => block.id === blockId);
       const targetBlock = movableBlocks[currentPosition + direction];
       if (currentPosition < 0 || !targetBlock) return blocks;

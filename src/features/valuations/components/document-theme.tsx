@@ -36,10 +36,6 @@ export interface DocumentThemeTokens {
   conceptRow: string;
   /** Hairline that sets one line of concepts apart from the next */
   conceptRule: string;
-  /** Label and value size of a list of long texts (definitions, declarations) */
-  longText: string;
-  /** Room around each concept of a list of long texts */
-  longTextRow: string;
   /** Wrapper for a ContentLayoutV2 row */
   contentRow: string;
   /** Gap between blocks in a page */
@@ -75,8 +71,6 @@ const CARATULA_THEME: DocumentThemeTokens = {
     "grid min-w-0 w-full max-w-full grid-cols-[minmax(130px,0.9fr)_minmax(0,1.1fr)] gap-x-3 gap-y-0 items-start",
   conceptRow: "",
   conceptRule: "",
-  longText: "",
-  longTextRow: "",
   // Tight rows: the cover carries its data, the value and the signatures on one page.
   contentRow: "mt-0.5 grid gap-0.5",
   sectionGap: "space-y-1",
@@ -98,8 +92,6 @@ const STANDARD_THEME: DocumentThemeTokens = {
   // Tight rows with nothing under them: the appraiser asked for the hairlines to go.
   conceptRow: "py-px",
   conceptRule: "",
-  longText: "text-[12px] leading-[1.45]",
-  longTextRow: "py-[3px]",
   contentRow: "mt-1 grid gap-1",
   sectionGap: "space-y-4",
   pagePadding: "px-5 pb-10 pt-3 sm:px-8",

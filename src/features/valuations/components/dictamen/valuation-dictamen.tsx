@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeft, Printer } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DownloadDictamenPdfButton } from "./download-dictamen-pdf-button";
@@ -80,18 +80,7 @@ export function ValuationDictamen({
   return (
     <div className="min-h-dvh bg-muted/40 print:bg-white">
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur print:hidden">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3 px-4 py-3">
-          {/* A full load: this page keeps the strict CSP of a printed document, and the editor needs Google's for its map. */}
-          <Button variant="ghost" size="sm" nativeButton={false} render={<a href={`/workspace?id=${valuationId}`} />}>
-            <ArrowLeft data-icon="inline-start" />
-            Volver al editor
-          </Button>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-sm font-semibold">Dictamen {initial.meta.folio}</h1>
-            <p className="text-xs text-muted-foreground">
-              El PDF se genera en el servidor y queda guardado con el avalúo.
-            </p>
-          </div>
+        <DictamenToolbar backHref={`/workspace?id=${valuationId}`} folio={initial.meta.folio}>
           <Button variant="outline" onClick={() => window.print()}>
             <Printer data-icon="inline-start" />
             Imprimir
@@ -100,7 +89,7 @@ export function ValuationDictamen({
           <DownloadDictamenPdfButton kind="memoria" variant="outline" valuationId={valuationId} />
           <DownloadDictamenPdfButton valuationId={valuationId} />
           <DownloadDictamenPdfButton kind="entregables" variant="outline" valuationId={valuationId} />
-        </div>
+        </DictamenToolbar>
       </header>
 
       <main data-print-document className="overflow-x-auto py-8 print:overflow-visible print:p-0" ref={documentRef}>
@@ -135,6 +124,32 @@ export function ValuationDictamen({
         </UnaccreditedNoticeProvider>
         </DocumentPageFooterProvider>
       </main>
+    </div>
+  );
+}
+
+/**
+ * The bar over the dictamen. The title keeps a readable width and the buttons
+ * wrap as one group below it, so a narrow window or a zoomed-out page never
+ * squeezes the title into a column of single words (video 5.3).
+ */
+export function DictamenToolbar({ backHref, children, folio }: { backHref: string; children: ReactNode; folio: string }) {
+  return (
+    <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+      {/* A full load: this page keeps the strict CSP of a printed document, and the editor needs Google's for its map. */}
+      <Button variant="ghost" size="sm" nativeButton={false} render={<a href={backHref} />}>
+        <ArrowLeft data-icon="inline-start" />
+        Volver al editor
+      </Button>
+      <div className="min-w-64 flex-1" data-dictamen-title>
+        <h1 className="truncate text-sm font-semibold">Dictamen {folio}</h1>
+        <p className="text-xs text-muted-foreground">
+          El PDF se genera en el servidor y queda guardado con el avalúo.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2" data-dictamen-actions>
+        {children}
+      </div>
     </div>
   );
 }

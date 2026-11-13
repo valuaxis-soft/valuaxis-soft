@@ -143,7 +143,8 @@ export type ImportableBlock = { sectionId: string; sectionTitle: string; block: 
  * calculation's Blocks, the carátula's and the fixed ones stay where they are.
  */
 export function importableBlocks(sections: AppSection[]): ImportableBlock[] {
-  return sections.flatMap((section) => section.blocks
+  // The carátula's Blocks fill the carátula the new document already has.
+  return sections.filter((section) => section.id !== "caratula").flatMap((section) => section.blocks
     .filter((block) => !isGeneratedBlock(block) && structureLockReason(section, block.id) === null)
     .map((block) => ({ sectionId: section.id, sectionTitle: section.title || section.label || section.id, block })));
 }

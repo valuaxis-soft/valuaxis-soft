@@ -9,7 +9,6 @@ import { printedImageCaptions } from "@/features/valuations/services/image-capti
 import { PAIRED_APARTADOS_CLASS_NAME, useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
 import { labelGuideColumns, resolveCellConceptGuide } from "@/features/valuations/services/concept-presentation";
-import { isLongTextList } from "@/features/valuations/services/document-long-text";
 import { apartadoContentHidden, blockContentHidden } from "@/features/valuations/services/hidden-content";
 import { MIN_ROWS_BEFORE_BREAK, MIN_ROWS_WITH_TAIL, type DocumentTableFragment } from "@/features/valuations/services/table-pagination";
 import { cn } from "@/lib/utils";
@@ -82,7 +81,6 @@ export function documentBlockFlowItems(
   const resolvedLayout = resolveContentLayout(block);
   const layoutRowsById = new Map(resolvedLayout.rows.map((r) => [r.id, r]));
   const orderedApartados = getBlockFlowApartadoOrder(block);
-  const blockLongText = isLongTextList(block.concepts);
   const apartadoHead = (subBlock: Apartado) =>
     renderApartadoHead?.(subBlock, apartadoDisplayLabel(block, orderedApartados, subBlock.id)) ?? null;
   const renderPairedApartado = (subBlock: Apartado) => {
@@ -170,7 +168,6 @@ export function documentBlockFlowItems(
             tablesById={tablesById}
             applyConceptLayout={applyConceptLayout}
             containerPresentation={block.conceptPresentation}
-            longText={blockLongText}
             tableFragment={tableFragment}
           />
         );
@@ -346,7 +343,6 @@ function DocumentContentRow({
   tablesById,
   applyConceptLayout,
   containerPresentation,
-  longText,
   tableFragment,
 }: {
   layoutRow: ContentLayoutRowV2;
@@ -356,8 +352,6 @@ function DocumentContentRow({
   tablesById: Map<string, TableContent>;
   applyConceptLayout: boolean;
   containerPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation;
-  /** The container reads as prose: its concepts print a little larger. */
-  longText: boolean;
   /** The rows to print of the row's table, when it breaks across pages. */
   tableFragment?: DocumentTableFragment;
 }) {
@@ -392,22 +386,15 @@ function DocumentContentRow({
     sharedRule && theme.conceptRule,
   );
 
-  // Concepts as data labels, one alone or several side by side: each as wide as what it says, with room between them.
-  if (layoutRow.tagStyle && rowPrintsAsTags(layoutRow.tagStyle, visibleItems)) {
-    const tagStyle = layoutRow.tagStyle;
-    const concepts = visibleItems.map((itemRef) => conceptsById.get(itemRef.id)).filter((concept): concept is Concept => Boolean(concept));
-    return (
-      <div className={cn(rowSpacing, "flex flex-wrap items-stretch justify-between gap-x-6 gap-y-1")} data-row-tags={tagStyle}>
-        {concepts.map((concept) => <DocumentConceptTag key={concept.id} concept={concept} tagStyle={tagStyle} />)}
-      </div>
-    );
-  }
+  // Data labels, one concept alone or several side by side (rowPrintsAsTags): framed or shaded where
+  // they are, so the labels keep their guide and the data does not move (video 6.1).
+  const tagStyle = rowPrintsAsTags(layoutRow.tagStyle, visibleItems) ? layoutRow.tagStyle : undefined;
 
   // Images side by side keep their frames level: one without a caption keeps the room of its neighbour's.
   const captionSlots = columnCount > 1 ? imageCaptionSlots(visibleItems, imagesById) : undefined;
 
   return (
-    <div className={rowClassName}>
+    <div className={rowClassName} data-row-tags={tagStyle}>
       {layoutRow.columns.map((column) => {
         const cellGuidePx = resolveCellConceptGuide(column.conceptPresentation, containerPresentation);
         return (
@@ -417,7 +404,8 @@ function DocumentContentRow({
                 const concept = conceptsById.get(itemRef.id);
                 if (!concept || concept.enabled === false) return null;
                 if (concept.type === "paragraph") {
-                  return <DocumentParagraph key={itemRef.id} concept={concept} longText={longText} style={conceptSpacingStyle(concept)} />;
+                  // A paragraph has no title: its text alone goes in the label.
+                  return <DocumentParagraph key={itemRef.id} concept={concept} className={conceptTagClassName(tagStyle)} tagStyle={tagStyle} style={conceptSpacingStyle(concept)} />;
                 }
                 return (
                   <DocumentConceptCell
@@ -425,8 +413,8 @@ function DocumentContentRow({
                     concept={concept}
                     applyConceptLayout={applyConceptLayout}
                     labelGuidePx={cellGuidePx}
-                    longText={longText}
                     ruled={!sharedRule}
+                    tagStyle={tagStyle}
                   />
                 );
               }
@@ -464,25 +452,12 @@ function imageCaptionSlots(items: Array<{ type: string; id: string }>, imagesByI
   };
 }
 
-/** A concept printed as a data label: label and value in one box, white or shaded. */
-function DocumentConceptTag({ concept, tagStyle }: { concept: Concept; tagStyle: NonNullable<ContentLayoutRowV2["tagStyle"]> }) {
-  const theme = useDocumentTheme();
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 max-w-full items-baseline gap-1.5 border border-[#A9BCD6] px-2 py-0.5",
-        tagStyle === "shaded" ? "bg-[#E7EEF7] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" : "bg-white",
-      )}
-      data-concept-tag={tagStyle}
-    >
-      {/* A paragraph has no title: its text alone goes in the label. */}
-      {concept.label.trim() && concept.type !== "paragraph" ? (
-        <strong className={cn(theme.conceptLabel, "shrink-0 whitespace-nowrap")}>{formatConceptTitleWithColon(concept.label)}</strong>
-      ) : null}
-      <span className={cn(theme.conceptValue, "min-w-0 text-left wrap-break-word")}>
-        <DocumentConceptValue concept={concept} fallback="—" />
-      </span>
-    </div>
+/** The frame of a data label, white or shaded: an inset line, so it adds no room and nothing moves. */
+function conceptTagClassName(tagStyle: ContentLayoutRowV2["tagStyle"]) {
+  if (!tagStyle) return undefined;
+  return cn(
+    "shadow-[inset_0_0_0_1px_#A9BCD6]",
+    tagStyle === "shaded" ? "bg-[#E7EEF7] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" : "bg-white",
   );
 }
 
@@ -494,13 +469,14 @@ function DocumentConceptCell({
   concept,
   applyConceptLayout,
   labelGuidePx,
-  longText,
   ruled,
+  tagStyle,
 }: {
   concept: Concept;
   applyConceptLayout: boolean;
   labelGuidePx?: number;
-  longText: boolean;
+  /** Printed as a data label: framed on white or shaded, in its place, with no room added around it. */
+  tagStyle?: ContentLayoutRowV2["tagStyle"];
   /** Carries its own hairline; false when the row draws one for all its concepts. */
   ruled: boolean;
 }) {
@@ -516,13 +492,20 @@ function DocumentConceptCell({
 
   return (
     <div
-      className={cn(theme.conceptRowGrid, theme.conceptRow, ruled && theme.conceptRule, longText && theme.longTextRow, layoutClass)}
+      className={cn(
+        theme.conceptRowGrid,
+        theme.conceptRow,
+        ruled && !tagStyle && theme.conceptRule,
+        conceptTagClassName(tagStyle),
+        layoutClass,
+      )}
+      data-concept-tag={tagStyle}
       style={gridStyle ? { ...layoutStyle, ...gridStyle } : layoutStyle}
     >
-      <strong className={cn(theme.conceptLabel, "text-right", longText && theme.longText)}>
+      <strong className={cn(theme.conceptLabel, "text-right")}>
         {formatConceptTitleWithColon(concept.label)}
       </strong>
-      <span className={cn(theme.conceptValue, longText && theme.longText)}>
+      <span className={theme.conceptValue}>
         <DocumentConceptValue concept={concept} fallback="—" />
       </span>
     </div>
@@ -549,7 +532,6 @@ function ApartadoContentRows({
   const conceptsById = new Map(subBlock.concepts.map((c) => [c.id, c]));
   const imagesById = new Map(subBlock.images.map((i) => [i.id, i]));
   const tablesById = new Map(subBlock.tables.map((t) => [t.id, t]));
-  const longText = isLongTextList(subBlock.concepts);
 
   return (
     <>
@@ -563,7 +545,6 @@ function ApartadoContentRows({
           tablesById={tablesById}
           applyConceptLayout={applyConceptLayout}
           containerPresentation={subBlock.conceptPresentation}
-          longText={longText}
           tableFragment={tableFragment}
         />
       ))}

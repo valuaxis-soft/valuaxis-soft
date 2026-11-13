@@ -18,6 +18,7 @@ import {
   apartadoDestinations,
   blockCopyLockReason,
   blockDestinationSections,
+  blockMoveLockReason,
   conceptDestinations,
   structureLockReason,
   transferPositions,
@@ -284,7 +285,7 @@ export function BlockTransferMenu({ section, block, label, lock, visibility, pag
   const [moving, setMoving] = useState(false);
   if (!transfer) return null;
   const options: PickerOption[] = moving
-    ? blockDestinationSections(transfer.sections, section.id).map((destination) => ({
+    ? blockDestinationSections(transfer.sections, section.id, block).map((destination) => ({
         key: destination.id,
         group: "Secciones",
         label: sectionDisplayName(destination),
@@ -292,7 +293,7 @@ export function BlockTransferMenu({ section, block, label, lock, visibility, pag
       }))
     : [];
   const copyLock = transfer.readOnly ? READ_ONLY_LOCK : lock ?? blockCopyLockReason(section, block.id);
-  const moveLock = transfer.readOnly ? READ_ONLY_LOCK : lock ?? structureLockReason(section, block.id);
+  const moveLock = transfer.readOnly ? READ_ONLY_LOCK : lock ?? blockMoveLockReason(section, block.id);
   const readOnlyHint = transfer.readOnly ? READ_ONLY_LOCK : undefined;
   return (
     <>
@@ -349,7 +350,7 @@ export function ApartadoTransferMenu({ section, block, apartado, label }: { sect
     onMove: (destination, position) => transfer?.moveApartado(source, destination.address, position),
   });
   if (!transfer) return null;
-  const options = moving ? containerOptions(apartadoDestinations(transfer.sections, source), pick) : [];
+  const options = moving ? containerOptions(apartadoDestinations(transfer.sections, source, apartado), pick) : [];
   return (
     <>
       <TransferMenu
@@ -375,7 +376,7 @@ export function ApartadoTransferMenu({ section, block, apartado, label }: { sect
 /** "Pegar bloque" in a section's list of Blocks, once one was copied. */
 export function PasteBlockButton({ section }: { section: AppSection }) {
   const transfer = useStructureTransfer();
-  if (!transfer || transfer.readOnly || transfer.clipboard?.kind !== "block" || section.id === "caratula") return null;
+  if (!transfer || transfer.readOnly || transfer.clipboard?.kind !== "block") return null;
   return (
     <Button type="button" size="sm" variant="outline" title={`Pegar una copia de ${transfer.clipboard.label}`} onClick={() => transfer.pasteBlock(section.id)}>
       <ClipboardPaste data-icon="inline-start" />

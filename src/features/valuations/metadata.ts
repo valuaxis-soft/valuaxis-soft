@@ -76,6 +76,8 @@ export type SectionMetadata = {
   titleBars?: TitleBarStyle;
   /** The document's style of title band, carried by its carátula section. */
   titleBand?: TitleBandStyle;
+  /** The carátula prints its blocks in the editor's order. */
+  freeBlockOrder?: boolean;
   /** Chapter or annex, as the appraiser chose. */
   documentRole?: SectionDocumentRole;
   /** The label the annex prints instead of "ANEXO n". */
@@ -231,6 +233,7 @@ export function sectionMetadataFromContent(content: SectionMetadataContent): Sec
     bindingMargin: content.bindingMargin,
     titleBars: content.titleBars,
     titleBand: content.titleBand,
+    ...(content.freeBlockOrder ? { freeBlockOrder: true } : {}),
     ...(content.documentRole ? { documentRole: content.documentRole } : {}),
     ...(content.annexTitle?.trim() ? { annexTitle: content.annexTitle.trim() } : {}),
     ...(content.pageBreak ? { pageBreak: content.pageBreak } : {}),
@@ -255,6 +258,7 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
     bindingMargin: readConfigMetadata(config, (value) => (isRecord(value) && isBindingMargin(value.bindingMargin) ? value.bindingMargin : undefined)),
     titleBars: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBarStyle(value.titleBars) ? value.titleBars : undefined)),
     titleBand: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBandStyle(value.titleBand) ? value.titleBand : undefined)),
+    freeBlockOrder: sectionBooleanMetadata(config, "freeBlockOrder"),
     documentRole: readConfigMetadata(config, (value) => (isRecord(value) && isSectionDocumentRole(value.documentRole) ? value.documentRole : undefined)),
     annexTitle: readConfigMetadata(config, (value) => (isRecord(value) && typeof value.annexTitle === "string" && value.annexTitle.trim() ? value.annexTitle.trim().slice(0, 60) : undefined)),
     pageBreak: readConfigMetadata(config, (value) => (isRecord(value) && isSectionPageBreak(value.pageBreak) ? value.pageBreak : undefined)),
@@ -406,7 +410,7 @@ function imageCaptionAlign(config: unknown): "left" | "center" | "right" | undef
   });
 }
 
-function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited" | "removed") {
+function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "custom" | "titleEdited" | "removed") {
   return readConfigMetadata(config, (value) => readBooleanMetadata(value, key));
 }
 
@@ -538,7 +542,7 @@ function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "cust
   return typeof metadata === "string" ? metadata : undefined;
 }
 
-function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "custom" | "titleEdited" | "removed" | "calculationUnlinked") {
+function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "custom" | "titleEdited" | "removed" | "calculationUnlinked") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "boolean" ? metadata : undefined;

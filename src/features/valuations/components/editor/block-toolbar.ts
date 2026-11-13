@@ -30,10 +30,11 @@ export type BlockToolbarState = Record<BlockToolbarControl, BlockToolbarControlS
 export type BlockToolbarKind =
   /** A Block of the appraiser's own, in any section but the carátula. */
   | "content"
-  /** A Block of the carátula the appraiser added or the template gave ("Datos del bien"). */
+  /**
+   * A Block of the carátula: the template's ("Datos del bien", the assumptions,
+   * the conclusion) and the appraiser's, all with the same controls (video 5.5).
+   */
   | "caratula-block"
-  /** A fixed Block of the carátula: the assumptions and the conclusion. */
-  | "caratula-fixed"
   /** A Block the calculation writes: its figures are edited in the calculation panel. */
   | "generated";
 
@@ -41,8 +42,9 @@ export const GENERATED_BLOCK_REASON = "Lo escribe el cálculo: sus conceptos y t
 export const GENERATED_BLOCK_TITLE_REASON = "El título lo pone el cálculo.";
 export const GENERATED_BLOCK_DELETE_REASON = "Lo escribe el cálculo: el cálculo lo volvería a crear. Si no debe imprimirse, ocúltalo.";
 export const CARATULA_PAGE_BREAK_REASON = "La carátula se imprime en su propia página: sus bloques no tienen salto de página.";
-export const CARATULA_FIXED_BLOCK_REASON = "Bloque fijo de la carátula: se edita en sus propios campos y no se mueve ni se elimina.";
-export const TEMPLATE_BLOCK_DELETE_REASON = "Bloque de la plantilla de la carátula: si no debe imprimirse, ocúltalo.";
+/** The only conclusion of the carátula prints the commercial value the calculation writes, with its words. */
+export const CARATULA_CONCLUSION_DELETE_REASON =
+  "Este bloque imprime el valor comercial y la cifra en letras que escribe el cálculo: no se elimina. Puedes moverlo, copiarlo o duplicarlo.";
 export const READ_ONLY_REASON = "El avalúo es de solo lectura.";
 
 const enabled = (): BlockToolbarControlState => ({ enabled: true });
@@ -51,16 +53,16 @@ const locked = (reason: string): BlockToolbarControlState => ({ enabled: false, 
 /**
  * The state of every control of a Block's toolbar. `transferLock` is why the
  * Block cannot be copied, duplicated or moved to another section, when it
- * cannot (see structureLockReason); `deletable` says whether the carátula
- * Block was added by the appraiser (the template's are hidden, not deleted).
+ * cannot (see structureLockReason); `deleteLock` is why it cannot be deleted
+ * (the only conclusion of the carátula).
  */
 export function blockToolbarState(input: {
   kind: BlockToolbarKind;
   readOnly?: boolean;
   transferLock?: string | null;
-  deletable?: boolean;
+  deleteLock?: string | null;
 }): BlockToolbarState {
-  const { kind, readOnly = false, transferLock = null, deletable = true } = input;
+  const { kind, readOnly = false, transferLock = null, deleteLock = null } = input;
   const transfer = transferLock ? locked(transferLock) : enabled();
   const state: BlockToolbarState = (() => {
     switch (kind) {
@@ -84,18 +86,7 @@ export function blockToolbarState(input: {
           alignment: enabled(),
           add: enabled(),
           subblock: enabled(),
-          delete: deletable ? enabled() : locked(TEMPLATE_BLOCK_DELETE_REASON),
-        };
-      case "caratula-fixed":
-        return {
-          transfer,
-          move: locked(CARATULA_FIXED_BLOCK_REASON),
-          visibility: enabled(),
-          pageBreak: locked(CARATULA_PAGE_BREAK_REASON),
-          alignment: enabled(),
-          add: locked(CARATULA_FIXED_BLOCK_REASON),
-          subblock: locked(CARATULA_FIXED_BLOCK_REASON),
-          delete: locked(CARATULA_FIXED_BLOCK_REASON),
+          delete: deleteLock ? locked(deleteLock) : enabled(),
         };
       case "generated":
         return {

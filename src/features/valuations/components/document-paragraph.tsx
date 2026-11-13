@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 
-import type { Concept } from "@/features/valuations/model";
+import type { Concept, ContentRowTagStyle } from "@/features/valuations/model";
 import { useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { cn } from "@/lib/utils";
 import { DocumentConceptValue } from "./document-concept-value";
@@ -15,20 +15,20 @@ export function conceptSpacingStyle(concept: Pick<Concept, "spacingBefore" | "sp
 /** A free text with no label, printed edge to edge in the width it was given. */
 export function DocumentParagraph({
   concept,
-  longText,
   className,
   style,
+  tagStyle,
 }: {
   concept: Concept;
-  /** Prints at the size of the long texts around it. */
-  longText: boolean;
   className?: string;
+  /** Printed as a data label: marks it for the row's "Etiquetas". */
+  tagStyle?: ContentRowTagStyle;
   style?: CSSProperties;
 }) {
   const theme = useDocumentTheme();
   return (
-    <div className={cn(theme.conceptRow, longText && theme.longTextRow, className)} style={style}>
-      <p className={cn(theme.conceptValue, longText && theme.longText)}>
+    <div className={cn(theme.conceptRow, className)} style={style} data-concept-tag={tagStyle}>
+      <p className={theme.conceptValue}>
         <DocumentConceptValue concept={concept} fallback="—" />
       </p>
     </div>

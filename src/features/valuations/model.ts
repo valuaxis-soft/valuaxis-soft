@@ -350,6 +350,12 @@ export type AppSection = {
   titleBars?: "filled" | "outline";
   /** The document's title band under the page header, blue or white with a line. Carátula section only; absent means "filled". */
   titleBand?: "filled" | "outline";
+  /**
+   * Carátula section only: its blocks print in the editor's order. Absent on a
+   * carátula saved before they moved freely; reading it puts them in the order
+   * it printed then (withCaratulaFreeBlockOrder).
+   */
+  freeBlockOrder?: boolean;
   /** Chapter or annex, as the appraiser chose; absent, an annex when it comes after the conclusion. */
   documentRole?: SectionDocumentRole;
   /** The label an annex prints instead of "ANEXO n", when the appraiser wrote one. */
