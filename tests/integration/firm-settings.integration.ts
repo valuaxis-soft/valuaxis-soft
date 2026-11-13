@@ -189,10 +189,10 @@ test("only real JPEG, PNG or WebP images are accepted as a logo", async () => {
   const fixture = await createValuationFixture();
   await organizationUuid(fixture);
   const gif = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#000" } }).gif().toBuffer();
-  await assert.rejects(replaceFirmLogo(fixture.user, new File([new Uint8Array(gif)], "logo.gif", { type: "image/gif" })), /Tipo de archivo no permitido/);
+  await assert.rejects(replaceFirmLogo(fixture.user, new File([new Uint8Array(gif)], "logo.gif", { type: "image/gif" })), /El archivo no es una imagen JPG, PNG o WebP\. Si es una foto del iPhone/);
   // A GIF renamed .png is still a GIF: the message says what it really is.
-  await assert.rejects(replaceFirmLogo(fixture.user, new File([new Uint8Array(gif)], "logo.png", { type: "image/png" })), /La imagen es GIF aunque su nombre diga otra cosa/);
-  await assert.rejects(replaceFirmLogo(fixture.user, new File(["no es imagen"], "logo.png", { type: "image/png" })), /no es una imagen valida/);
+  await assert.rejects(replaceFirmLogo(fixture.user, new File([new Uint8Array(gif)], "logo.png", { type: "image/png" })), /El archivo no es una imagen JPG, PNG o WebP: es GIF, y cambiarle la extensión no la convierte/);
+  await assert.rejects(replaceFirmLogo(fixture.user, new File(["no es imagen"], "logo.png", { type: "image/png" })), /El archivo no es una imagen JPG, PNG o WebP\. Si es una foto del iPhone \(HEIC\), ábrela y expórtala como JPG\./);
   assert.equal((await getFirmSettings(fixture.organizationId)).logoUrl, null);
   // V5.5-05: a real JPEG renamed .png is accepted by its content, not refused by its name.
   const jpeg = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#000" } }).jpeg().toBuffer();
