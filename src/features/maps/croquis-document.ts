@@ -1,7 +1,7 @@
 /**
  * Where the croquis images go in the valuation's document: the macro and
  * micro croquis side by side in the Croquis section, the map of comparables
- * in its annex. "Aplicar al croquis" stores each image like any uploaded one
+ * in its annex. "Generar croquis de localización" stores each image like any uploaded one
  * and this puts it in its place, or replaces the one from the last time, so
  * the appraiser keeps editing it (caption, size, turn) like any image block.
  * Pure functions over the editor's sections.

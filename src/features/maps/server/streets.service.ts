@@ -2,7 +2,7 @@
  * The streets around a point, from OpenStreetMap through the Overpass API:
  * public mirrors raced with a short head start each, the answer cached in
  * memory for a day under the rounded coordinates, so dragging the pin a
- * few meters, "Aplicar al croquis" and a reload do not ask again. The
+ * few meters, "Generar croquis de localización" and a reload do not ask again. The
  * browser never calls Overpass itself.
  */
 import { ValuationWorkflowError } from "@/features/valuations/services/valuation-workflow/errors";

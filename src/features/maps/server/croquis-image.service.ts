@@ -1,5 +1,5 @@
 /**
- * "Aplicar al croquis": the croquis as an image stored with the valuation.
+ * "Generar croquis de localización": the croquis as an image stored with the valuation.
  * The server fetches the Maps Static API image with its key (the highlighted
  * streets of etapa 2 as its paths), composes the street names, the numbered
  * pins of the comparables and the north arrow over it with sharp, and stores

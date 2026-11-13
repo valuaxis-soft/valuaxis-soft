@@ -21,7 +21,7 @@ const TITLES: Record<Stage, string> = {
   "etapa-3": "ANEXO 1 · MAPA DE COMPARABLES",
 };
 
-/** Everything "Aplicar al croquis" fixes into the croquis of the dictamen. */
+/** Everything "Generar croquis de localización" fixes into the croquis of the dictamen. */
 export interface CroquisSnapshot {
   subject: LatLon;
   front: string | null;

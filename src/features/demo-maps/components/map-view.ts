@@ -30,7 +30,7 @@ export interface MapViewProps {
   popupHost: HTMLElement | null;
   /** A new key moves the map to this center and zoom. */
   view: MapViewState & { key: number };
-  /** The map reports where the user left it, for "Aplicar al croquis". */
+  /** The map reports where the user left it, for "Generar croquis de localización". */
   onViewChange: (view: MapViewState) => void;
   dark: boolean;
 }

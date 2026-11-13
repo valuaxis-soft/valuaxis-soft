@@ -26,7 +26,7 @@ const bodySchema = z.object({
 });
 
 /**
- * "Aplicar al croquis": renders one croquis (macro, micro or the map of
+ * "Generar croquis de localización": renders one croquis (macro, micro or the map of
  * comparables) with the stored pin of the subject and stores it as an image
  * of the valuation, with the highlighted streets of etapa 2 drawn on it.
  * The editor then puts it in its section and saves the document as usual.
