@@ -38,6 +38,7 @@ export function ContentDragPreview({
   item,
   count,
   label: labelOverride,
+  note,
   className,
 }: {
   /** The content layout item being dragged. */
@@ -46,6 +47,8 @@ export function ContentDragPreview({
   count?: number;
   /** What is dragged, when it is not a content item (a subbloque). */
   label?: string;
+  /** Why it has nowhere else to go, under the label. */
+  note?: string;
   /** Optional additional CSS class. */
   className?: string;
 }) {
@@ -63,7 +66,10 @@ export function ContentDragPreview({
     >
       <GripVertical className="size-3.5 shrink-0 text-muted-foreground" />
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="truncate">{label}</span>
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate">{label}</span>
+        {note ? <span className="whitespace-normal text-muted-foreground" data-drag-note="">{note}</span> : null}
+      </span>
     </div>
   );
 }

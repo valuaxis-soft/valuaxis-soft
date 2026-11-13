@@ -731,6 +731,26 @@ function hasPinnedContent(section: AppSection, apartado: Apartado) {
   return apartado.tables.some((table) => pinnedItems.has(contentItemKey("table", table.id)));
 }
 
+const PINNED_APARTADO_REASON = "Este apartado tiene una tabla que se llena desde su lugar: no se mueve.";
+
+/**
+ * The Blocks of the section an Apartado is dragged between, as with "Mover
+ * a…": every Block whose structure is not locked, in the carátula too (its
+ * assumptions and conclusion as well).
+ */
+export function apartadoDragBlockIds(section: AppSection): Set<string> {
+  return new Set(section.blocks.filter((block) => structureLockReason(section, block.id) === null).map((block) => block.id));
+}
+
+/**
+ * Why the Apartado cannot be dragged to another Block of its section, or
+ * null: in the carátula, one with tables or images (the carátula takes
+ * concepts and subbloques only); anywhere, one with a pinned table.
+ */
+export function apartadoCrossBlockReason(section: AppSection, apartado: Apartado): string | null {
+  return destinationContentReason(section, apartado) ?? (hasPinnedContent(section, apartado) ? PINNED_APARTADO_REASON : null);
+}
+
 /**
  * Moves the Apartado, with its ids, to another Block of this or another
  * section: at its end, or at `position` (also inside its own Block).
@@ -751,7 +771,7 @@ export function moveApartadoTo(
   const apartado = from.container as Apartado;
   const contentLock = destinationContentReason(to.section, apartado);
   if (contentLock) return unchanged(sections, contentLock);
-  if (!sameBlock && hasPinnedContent(from.section, apartado)) return unchanged(sections, "Este apartado tiene una tabla que se llena desde su lugar: no se mueve.");
+  if (!sameBlock && hasPinnedContent(from.section, apartado)) return unchanged(sections, PINNED_APARTADO_REASON);
   if (isRelationManagedImageSection(destination.sectionId) && apartado.images.length && !sameBlock) {
     return unchanged(sections, "Las imágenes de Datos generales se suben en esa sección: quita las imágenes del apartado antes de moverlo ahí.");
   }

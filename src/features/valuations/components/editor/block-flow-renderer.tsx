@@ -154,6 +154,13 @@ export function BlockFlowRenderer({
     () => resolveBlockFlowV2({ ...block, contentLayout: resolvedLayout }),
     [block, resolvedLayout],
   );
+  // The rows shown here: without the Block's own content when it is edited elsewhere.
+  const shownFlow = useMemo(
+    () => blockFlowV2 && !showContentRows
+      ? { ...blockFlowV2, rows: blockFlowV2.rows.filter((row) => row.items.some((item) => item.type === "apartado")) }
+      : blockFlowV2,
+    [blockFlowV2, showContentRows],
+  );
 
   /* ---- Lookups ---- */
   const conceptsById = useMemo(
@@ -351,16 +358,16 @@ export function BlockFlowRenderer({
     return new Map(plan.map((rowPlan) => [rowPlan.rowId, rowPlan.columns]));
   }, [activeContent, draggedInBlock, resolvedLayout]);
   const boundarySlotsByRowId = useMemo(() => {
-    if (!activeContent || !blockFlowV2) return null;
-    const plan = planBlockBoundarySlots(blockFlowV2, findHomeContentRowId(resolvedLayout, draggedInBlock));
+    if (!activeContent || !shownFlow) return null;
+    const plan = planBlockBoundarySlots(shownFlow, findHomeContentRowId(resolvedLayout, draggedInBlock));
     return new Map(plan.map((rowPlan) => [rowPlan.structuralRowId, rowPlan]));
-  }, [activeContent, blockFlowV2, draggedInBlock, resolvedLayout]);
+  }, [activeContent, shownFlow, draggedInBlock, resolvedLayout]);
 
   const apartadoSlotsByRowId = useMemo(() => {
-    if (!landingApartadoId || !blockFlowV2) return null;
-    const plan = planApartadoBoundarySlots(blockFlowV2, activeApartadoId);
+    if (!landingApartadoId || !shownFlow) return null;
+    const plan = planApartadoBoundarySlots(shownFlow, activeApartadoId);
     return new Map(plan.map((rowPlan) => [rowPlan.structuralRowId, rowPlan]));
-  }, [landingApartadoId, activeApartadoId, blockFlowV2]);
+  }, [landingApartadoId, activeApartadoId, shownFlow]);
 
   /* ---- Render callback ---- */
   const renderItem = useMemo(
@@ -424,10 +431,10 @@ export function BlockFlowRenderer({
   }, [blockFlowV2, block.apartados]);
 
   /* ---- Build flow items list ---- */
-  const structuralRows = blockFlowV2?.rows ?? [];
+  const structuralRows = shownFlow?.rows ?? [];
 
   /* ---- Render ---- */
-  if (structuralRows.length === 0 && resolvedLayout.rows.length === 0) {
+  if (structuralRows.length === 0 && (resolvedLayout.rows.length === 0 || !showContentRows)) {
     // Nothing to show, but an item dragged from another Block can still land here.
     return readOnly || !onContentLayoutChange ? null : (
       <div {...{ [CONTENT_DND_BLOCK_ATTRIBUTE]: block.id }}>

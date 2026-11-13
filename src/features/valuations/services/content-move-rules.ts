@@ -11,6 +11,8 @@
  *  - In the Carátula only Concepts change Block (its Blocks hold nothing
  *    else), and the company header is edited through its own fields. The
  *    assumptions and the conclusion give and take concepts like any Block.
+ *    Its subbloques are dragged between its Blocks like in any section (see
+ *    apartadoDragBlockIds in structure-transfer.ts).
  *  - The construction tables filled from the cost capture are found by ID in
  *    their Apartado: they stay in it.
  *  - The table of measures of the "Medidas y colindancias" Apartado of the
