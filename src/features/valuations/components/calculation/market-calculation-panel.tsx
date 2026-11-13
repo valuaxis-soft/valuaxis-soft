@@ -10,7 +10,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError, type ComparableFormValues } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { useAiAssist } from "@/features/ai/ai-assist-context";
 import type { ComparablePrefill } from "@/features/ai/listing-prefill";
@@ -31,6 +31,7 @@ import {
   isLandComparableType,
   isRentComparableType,
   marketEngineConfig,
+  surfaceFactorFormulas,
   offerLabelsOf,
   offerMarkOf,
   printedStatisticsOf,
@@ -276,9 +277,9 @@ function Part(props: { number: number; title: string; aside?: ReactNode; childre
   if (props.collapsible) {
     return (
       <details className="group grid gap-2" open={props.collapsible.open} aria-label={props.title} data-collapsible-part={props.number}>
-        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+        <summary className={cn(CALC_SECTION_HEADING, "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}>
           <span className="inline-flex items-center gap-1">
-            <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden />
+            <ChevronRight className="size-4 transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden />
             {props.number}. {props.title}
           </span>
           {props.aside}
@@ -289,7 +290,7 @@ function Part(props: { number: number; title: string; aside?: ReactNode; childre
   }
   return (
     <section className="grid gap-2" aria-label={props.title}>
-      <h4 className="flex flex-wrap items-baseline justify-between gap-2 text-sm font-semibold">
+      <h4 className={CALC_SECTION_HEADING}>
         <span>{props.number}. {props.title}</span>
         {props.aside}
       </h4>
@@ -920,6 +921,7 @@ function MarketTypePanel(props: {
           onFactors={changeComparable}
           onInvalid={(message) => toast.error(message)}
           decimals={factorDecimals(calculation.precision)}
+          surfaceFormulas={surfaceFactorFormulas({ settings: liveSettings, comparables }, calculation.precision)}
           onRenameSlot={(slot, label) => void saveSettings({
             ...liveSettings,
             factorSlots: liveSettings.factorSlots.map((item) => (factorKey(item) === factorKey(slot) ? { ...item, label } : item)),

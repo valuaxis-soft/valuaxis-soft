@@ -36,6 +36,12 @@ export function CommitCell(props: {
   title?: string;
   /** Unique key of the cell among the fields of the document; set, the cell takes formulas with the formula bar. */
   formulaKey?: string;
+  /**
+   * What the cell shows to edit while it holds nothing typed: the formula the
+   * calculation uses for it ("=(408/360)^(1/3)"). Left as it was, nothing is
+   * sent, so the calculation keeps computing it.
+   */
+  editText?: string;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   // Escape leaves the cell without sending: the blur that follows must know.
@@ -64,11 +70,14 @@ export function CommitCell(props: {
     // A formula being written is the formula field's: it sends it, or keeps it while the value picker is open.
     if (withFormulas && formula.writingFormula) {
       formula.onBlur();
+      // Applied or given up with Escape, the cell shows its value again.
+      setEditing(null);
       return;
     }
     // A numeric cell writes "10%" as the 0.1 it counts as.
     const typed = editing !== null && props.numeric ? percentAsNumberText(editing) : editing;
-    if (!cancelled.current && typed !== null && typed !== props.value) props.onCommit(typed);
+    const untouched = !props.value && props.editText !== undefined && typed === props.editText;
+    if (!cancelled.current && typed !== null && typed !== props.value && !untouched) props.onCommit(typed);
     cancelled.current = false;
     setEditing(null);
   };
@@ -111,7 +120,7 @@ export function CommitCell(props: {
       value={shown}
       onFocus={() => {
         if (withFormulas) formula.onFocus();
-        setEditing(props.value);
+        setEditing(props.value || props.editText || "");
       }}
       onChange={(event) => {
         const text = event.target.value;

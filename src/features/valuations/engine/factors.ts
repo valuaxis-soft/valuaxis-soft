@@ -50,6 +50,16 @@ export function surfaceFactor(
 }
 
 /**
+ * The surface factor written as the formula it computes, with its numbers
+ * ("=(408/360)^(1/3)"): what the homologation cell shows while it is edited,
+ * as any other cell with a formula (video 6.2, 02:36).
+ */
+export function surfaceFactorFormula(referenceArea: number, subjectArea: number, power: number, orientation: SurfaceOrientation): string {
+  const [top, bottom] = orientation === "reference-over-subject" ? [referenceArea, subjectArea] : [subjectArea, referenceArea];
+  return `=(${top}/${bottom})^(1/${power})`;
+}
+
+/**
  * Age demerit: 1 − (age / useful life)^exponent, optionally floored. With
  * `extendUsefulLife`, an age at or past the useful life takes a useful life of
  * age + 1: the asset still stands, so it keeps a small value instead of zero.

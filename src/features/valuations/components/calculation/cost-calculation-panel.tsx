@@ -52,7 +52,8 @@ import { Trace } from "@/features/valuations/engine/trace";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
-import { CALC_HEAD, CALC_HEAD_CELL, CALC_RESULT, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CALC_HEAD, CALC_HEAD_CELL, CALC_RESULT, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { ApproachLeftOutNotice, ApproachRemoval, type ApproachInReport } from "./approach-removal";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
@@ -505,6 +506,8 @@ export function CostCalculationPanel(props: {
   valuationId: string;
   readOnly: boolean;
   onCalculation: (calculation: CostCalculationDto) => void;
+  /** «Quitar este enfoque»: the section's «Agregar al informe valuatorio». */
+  approach?: ApproachInReport;
 }) {
   const { valuationId } = props;
   const [calculation, setCalculation] = useState<CostCalculationDto | null>(null);
@@ -805,8 +808,12 @@ export function CostCalculationPanel(props: {
         <h3 id="cost-calculation-title" className="flex items-center gap-2 text-sm font-semibold">
           <Calculator className="size-4" /> Cálculo del enfoque de costos
         </h3>
-        {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
+        <div className="flex items-center gap-2">
+          {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
+          {props.approach ? <ApproachRemoval name="costos" approach={props.approach} readOnly={readOnly} /> : null}
+        </div>
       </header>
+      {props.approach && !props.approach.included ? <ApproachLeftOutNotice name="costos" /> : null}
       {calculation.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
       <CalculationPrecisionControl
         valuationId={valuationId}
@@ -820,7 +827,7 @@ export function CostCalculationPanel(props: {
 
       <fieldset disabled={readOnly} className="grid gap-4">
         <div className="grid gap-3">
-          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">A) Terreno en estudio</h4>
+          <h4 className={CALC_SECTION_HEADING}>A) Terreno en estudio</h4>
           <div className="grid gap-3 sm:grid-cols-3">
             <Field>
               {/* Without a lote tipo the homologation is against the subject, and the field says so with its measure. */}
@@ -921,7 +928,7 @@ export function CostCalculationPanel(props: {
         </div>
 
         <div className="grid gap-2">
-          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">B) Construcciones</h4>
+          <h4 className={CALC_SECTION_HEADING}>B) Construcciones</h4>
           <p className="text-xs text-muted-foreground">
             Cada tipo dado de alta en la sección de construcciones entra solo, con su referencia, descripción, clasificación, calidad, superficie, edad y vida útil:
             aquí solo capturas sus columnas de costo. Quitar un renglón lo saca del cálculo y del enfoque impreso; el tipo sigue descrito en la sección de construcciones
@@ -1029,7 +1036,7 @@ export function CostCalculationPanel(props: {
         </div>
 
         <div className="grid gap-2">
-          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">C) Instalaciones especiales, elementos accesorios y obras complementarias (IE, EA, OC)</h4>
+          <h4 className={CALC_SECTION_HEADING}>C) Instalaciones especiales, elementos accesorios y obras complementarias (IE, EA, OC)</h4>
           <p className="text-xs text-muted-foreground" data-testid="cost-installations-legend">
             P/C: P = Privativa, C = Común. Las sumas privativa y común son informativas; el subtotal incluye las dos.
             Mantenim. se imprime en la tabla de instalaciones de la sección de construcciones y no entra en el cálculo; si el avalúo no lo lleva, quítalo aquí
@@ -1138,7 +1145,7 @@ export function CostCalculationPanel(props: {
         </div>
 
         <details className="grid gap-2" open={draft.indirects.length > 0}>
-          <summary className="cursor-pointer text-xs font-semibold tracking-wide text-muted-foreground uppercase">D) Costos indirectos (solo si el avalúo los lleva)</summary>
+          <summary className={cn(CALC_SECTION_HEADING, "cursor-pointer")}>D) Costos indirectos (solo si el avalúo los lleva)</summary>
           <p className="text-xs text-muted-foreground">
             Concepto, porcentaje (0.05 = 5 %) y base. Con la base vacía se calculan sobre el valor de construcciones e instalaciones.
           </p>
@@ -1154,7 +1161,7 @@ export function CostCalculationPanel(props: {
         </details>
 
         <div className="grid gap-2">
-          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Redondeos</h4>
+          <h4 className={CALC_SECTION_HEADING}>Redondeos</h4>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {ROUNDING_FIELDS.map((field) => (
               <Field key={field.key}>

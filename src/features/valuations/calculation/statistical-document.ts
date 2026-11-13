@@ -15,6 +15,7 @@ import { MAX_PRODUCT_VARIABLES, constantLetters, variableLetters, type Regressio
 import type { AppSection, Block, TableContent } from "../model";
 import type { TableNote, TableSummaryBox } from "../services/table";
 import { factorDecimals } from "./calculation-precision";
+import { parseDecimal } from "./free-formula";
 import {
   EMPTY,
   figure,
@@ -105,14 +106,18 @@ type TableSpec = {
   summaryBoxes?: TableSummaryBox[];
   notes?: TableNote[];
   rowKeys?: string[];
-  widthMode?: "content";
 };
 
+/**
+ * A table of the block, fitted to its content (video 5.3, 18:27): every table
+ * of the alternative methods is brief. A width the appraiser chose in "Formato
+ * de la tabla" is kept over this one (`GeneratedTableLayout.widthMode`).
+ */
 const written = (spec: TableSpec): TableContent => generatedTable(spec.id, spec.title, spec.columns, spec.rows, {
   ...(spec.summaryBoxes ? { summaryBoxes: spec.summaryBoxes } : {}),
   ...(spec.notes ? { notes: spec.notes } : {}),
   ...(spec.rowKeys ? { rowKeys: spec.rowKeys } : {}),
-  ...(spec.widthMode ? { widthMode: spec.widthMode } : {}),
+  widthMode: "content",
 });
 
 /** One or more tables from a list of columns, REF first, the boxes and notes under the last one. */
@@ -143,13 +148,21 @@ function closedWith(specs: TableSpec[], conclusion: TableSummaryBox): TableSpec[
     : spec));
 }
 
+/** A value as written, or the number its formula gives ("=180*2" prints 360): the dictamen never prints a formula. */
+function writtenValue(text: string): string {
+  if (!text.trim().startsWith("=")) return text;
+  const value = parseDecimal(text);
+  return value === null ? text : formatScaleValue(Number(value.toFixed(6)));
+}
+
 /** A criterion's value as the data table prints it: "Regular (2)", "35 (25)" for a contrary one, as written otherwise. */
 function printedValue(variable: StatisticalVariableDto, text: string): string {
   if (!text.trim()) return EMPTY;
   const coded = codedValue(variable, text);
-  if (!coded.ok) return text;
-  if (variable.coding === "DIRECT") return text;
-  const label = variable.coding === "SCALE" ? scaleValues(variable).find((level) => level.value === coded.value)?.label ?? text : text;
+  const written = writtenValue(text);
+  if (!coded.ok) return written;
+  if (variable.coding === "DIRECT") return written;
+  const label = variable.coding === "SCALE" ? scaleValues(variable).find((level) => level.value === coded.value)?.label ?? text : written;
   return `${label} (${formatScaleValue(Number(coded.value.toFixed(6)))})`;
 }
 
@@ -172,7 +185,7 @@ function dataTables(calculation: StatisticalCalculationDto, prefix: string, unit
   const { settings } = calculation;
   const rent = isRentComparableType(settings.comparableType);
   const included = calculation.comparables.filter((comparable) => !comparable.excluded);
-  const area = (values: Record<string, string>) => Number((values.area ?? "").replace(/,/g, ""));
+  const area = (values: Record<string, string>) => parseDecimal(values.area ?? "") ?? 0;
   const columns: Column[] = [
     { column: figureColumn("REF"), cells: ["SUJETO", ...included.map((comparable) => String(comparable.reference))] },
     { column: moneyColumn(rent ? "RENTA $" : "PRECIO $"), cells: [EMPTY, ...included.map((comparable) => (comparable.price ? money(comparable.price) : EMPTY))] },
@@ -227,7 +240,6 @@ function regressionSpecs(calculation: StatisticalCalculationDto, result: Statist
       return [String(row.reference), cell(row.y), cell(estimate?.fitted ?? Number.NaN), ...(showResidual ? [cell(estimate?.residual ?? Number.NaN)] : [])];
     }),
     rowKeys: references,
-    widthMode: "content",
     summaryBoxes: [
       { id: "constantes", position: "bottom", align: "start", caption: "CONSTANTES", rows: fit.coefficients.map((value, index) => ({ label: `${constants[index]} =`, value: significant.format(value) })) },
       {
@@ -266,7 +278,6 @@ function regressionSpecs(calculation: StatisticalCalculationDto, result: Statist
       ["Error típico", stat(fit.standardError)],
       ["Observaciones", whole(fit.n)],
     ],
-    widthMode: "content",
   };
   const anova = fit.anova;
   const anovaTable: TableSpec | null = anova ? {
@@ -340,7 +351,6 @@ function goalSpecs(calculation: StatisticalCalculationDto, fit: GoalProgrammingF
     title: "Coeficientes de la programación por metas",
     columns: [textColumn("CRITERIO"), figureColumn("COEFICIENTE"), figureColumn("VALOR SUJETO")],
     rows: fit.contributions.map((row) => [row.name, significant.format(row.coefficient), amount(row.subjectValue)]),
-    widthMode: "content",
     notes: [{ position: "table", text: "Valor del sujeto = Σ coeficiente × valor del sujeto en cada criterio." }],
   };
   const deviations: TableSpec = {
@@ -425,9 +435,14 @@ export function statisticalMemoryTables(calculation: StatisticalCalculationDto):
 /** RLM, PM and the market's homologation side by side: a reference, none adopted. */
 export type MethodComparisonRow = { method: string; unitValue: number | null; value: number | null };
 
-export function methodComparison(calculation: StatisticalCalculationDto): MethodComparisonRow[] {
-  const regression = computeStatisticalRegression(calculation);
-  const goal = computeStatisticalGoal(calculation);
+/**
+ * The rows of the comparison: the market's and each method that resolves.
+ * `printed`, the dictamen's: only the methods it prints (a method with
+ * "Mostrar en el dictamen" off does not appear in its comparison either).
+ */
+export function methodComparison(calculation: StatisticalCalculationDto, printed?: { regression: boolean; goal: boolean }): MethodComparisonRow[] {
+  const regression = !printed || printed.regression ? computeStatisticalRegression(calculation) : null;
+  const goal = !printed || printed.goal ? computeStatisticalGoal(calculation) : null;
   const market = calculation.market;
   const area = subjectAreaOf(calculation.settings) ?? market?.subjectArea ?? null;
   const times = (unit: number | null) => (unit !== null && area ? unit * area : null);
@@ -443,8 +458,8 @@ export function methodComparison(calculation: StatisticalCalculationDto): Method
   return rows;
 }
 
-function comparisonTable(calculation: StatisticalCalculationDto, prefix: string): TableContent | null {
-  const rows = methodComparison(calculation);
+function comparisonTable(calculation: StatisticalCalculationDto, prefix: string, printed: { regression: boolean; goal: boolean }): TableContent | null {
+  const rows = methodComparison(calculation, printed);
   if (rows.length < 2) return null;
   const rent = isRentComparableType(calculation.settings.comparableType);
   return generatedTable(`${prefix}-comparacion`, "Comparación de métodos", [
@@ -468,7 +483,7 @@ export function statisticalDocumentBlocks(calculation: StatisticalCalculationDto
   const regressionShown = regression?.ok ? regression.result : null;
   const goalShown = goal?.outcome.ok ? goal.outcome.fit : null;
   if (!regressionShown && !goalShown) return [];
-  const comparison = settings.showComparison ? comparisonTable(calculation, prefix) : null;
+  const comparison = settings.showComparison ? comparisonTable(calculation, prefix, { regression: Boolean(regressionShown), goal: Boolean(goalShown) }) : null;
   const unitColumn = Boolean(regressionShown) && settings.dependent === "UNIT_VALUE";
   const apartados = [
     generatedApartado(`${prefix}-datos`, `CRITERIOS, CODIFICACIÓN Y DATOS ${scope}`, { tables: dataTables(calculation, prefix, unitColumn) }),

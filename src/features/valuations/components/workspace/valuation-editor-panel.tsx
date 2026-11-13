@@ -1209,6 +1209,11 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
         onConceptPresentationChange: (next) => onUpdateBlock({ conceptPresentation: next }),
         visibility: { visible: block.enabled, onChange: (enabled) => onUpdateBlock({ enabled }) },
         pageBreak: { value: resolvePageBreak(block), onChange: (mode) => onUpdateBlock(pageBreakPatch(mode)) },
+        // Its wide tables on pages lying on their side, as any block; kept when the calculation writes it again.
+        pageOrientation: {
+          value: resolvePageOrientation(block),
+          onChange: (orientation) => onUpdateBlock({ pageOrientation: orientation === "landscape" ? "landscape" : undefined }),
+        },
         deleteAction: { size: "icon", onDelete: () => undefined },
       }}
     >

@@ -3,7 +3,7 @@
  * conversion to the engine input. Shared by the browser (live results) and the
  * server (stored results and trace), so both compute the same thing.
  */
-import { SURFACE_SLOT, type CapturedFactor, type FactorSlot } from "../engine/factors";
+import { SURFACE_SLOT, surfaceFactorFormula, type CapturedFactor, type FactorSlot } from "../engine/factors";
 import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig } from "../engine/config";
 import type { ComparableInput, MarketApproachInput } from "../engine/market";
 import { formulaOfText, type CapturedFormulas } from "./captured-formulas";
@@ -497,6 +497,21 @@ export function comparableFormValues(comparable: ComparableDto): Omit<Comparable
 }
 
 /** The engine settings of a market calculation: the defaults with the rounding the appraiser chose and the valuation's precision. */
+/**
+ * The formula of each surface factor the homologation computes, by the
+ * comparable's reference ("=(408/360)^(1/3)"), with the numbers the engine
+ * uses; a factor written by the appraiser has none.
+ */
+export function surfaceFactorFormulas(dto: Pick<MarketCalculationDto, "settings" | "comparables">, precision?: CalculationPrecision | null): Map<string, string> {
+  const input = toMarketEngineInput(dto);
+  if (!input.ok) return new Map();
+  const { subjectArea, baseArea, surfacePower, comparables } = input.input;
+  const orientation = marketEngineConfig(dto.settings, precision).surfaceOrientation.market;
+  return new Map(comparables
+    .filter((comparable) => comparable.surfaceFactor === undefined)
+    .map((comparable) => [comparable.id, surfaceFactorFormula(comparable.area, baseArea ?? subjectArea, surfacePower, orientation)]));
+}
+
 export function marketEngineConfig(settings: Pick<MarketSettingsDto, "rounding">, precision?: CalculationPrecision | null): EngineConfig {
   const config = settings.rounding === undefined ? DEFAULT_ENGINE_CONFIG : withRounding(DEFAULT_ENGINE_CONFIG, { market: settings.rounding });
   return withPrecision(config, precision);

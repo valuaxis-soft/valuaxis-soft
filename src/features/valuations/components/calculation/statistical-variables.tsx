@@ -26,6 +26,7 @@ import {
 } from "@/features/valuations/calculation/statistical-types";
 import { cn } from "@/lib/utils";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { CommitCell } from "./commit-cell";
 
 type Draft = Pick<StatisticalCalculationDto, "settings" | "comparables">;
@@ -106,7 +107,7 @@ function ScaleEditor(props: {
           </label>
         ))}
       </div>
-      <div className={CALC_TABLE_FRAME}>
+      <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly}>
         <table className={cn(CALC_TABLE, "w-full max-w-md")}>
           <thead className={CALC_HEAD}>
             <tr>
@@ -161,7 +162,7 @@ function ScaleEditor(props: {
             ))}
           </tbody>
         </table>
-      </div>
+      </CalcTableContextMenu>
       {!readOnly ? (
         <form
           className="flex flex-wrap items-center gap-2"
@@ -233,7 +234,7 @@ export function StatisticalVariables(props: {
 
   return (
     <div className="grid gap-2">
-      <div className={CALC_TABLE_FRAME}>
+      <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly}>
         <table className={cn(CALC_TABLE, "w-full min-w-140")} aria-label="Criterios de los métodos alternativos">
           <thead className={CALC_HEAD}>
             <tr>
@@ -295,7 +296,7 @@ export function StatisticalVariables(props: {
             })}
           </tbody>
         </table>
-      </div>
+      </CalcTableContextMenu>
       <p className="text-xs text-muted-foreground">
         Hasta {MAX_STATISTICAL_VARIABLES} criterios. Directo: el valor tal cual. Contrario: base − valor (vida útil remanente = {DEFAULT_CONTRARY_BASE} − antigüedad).
         Inverso: 1 / valor. Escala: el número que el valuador da a cada nivel (ordinales y nominales).

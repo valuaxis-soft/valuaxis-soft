@@ -4,6 +4,16 @@ import { AlertTriangle, BarChart3, Download, Loader2, Plus, Trash2 } from "lucid
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -37,7 +47,8 @@ import { ConfigSwitch } from "@/features/valuations/components/editor/editor-con
 import type { ComparableSearchHit } from "@/features/valuations/comparable-search/types";
 import { goalProgrammingWarnings } from "@/features/valuations/engine/goal-programming";
 import { RECOMMENDED_REGRESSION_COMPARABLES, minimumRegressionComparables, sampleSizeRecommendation } from "@/features/valuations/engine/regression";
-import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { SearchComparablesDialog } from "./search-comparables-dialog";
 import { StatisticalDataTable, type SubjectSource } from "./statistical-data-table";
 import { StatisticalVariables } from "./statistical-variables";
@@ -153,7 +164,7 @@ export function StatisticalMethodsPanel(props: {
 function Part(props: { number: number; title: string; aside?: ReactNode; children: ReactNode }) {
   return (
     <section className="grid gap-2" aria-label={props.title}>
-      <h4 className="flex flex-wrap items-baseline justify-between gap-2 text-sm font-semibold">
+      <h4 className={CALC_SECTION_HEADING}>
         <span>{props.number}. {props.title}</span>
         {props.aside}
       </h4>
@@ -258,6 +269,8 @@ function StatisticalTypePanel(props: {
 
   const readOnly = props.readOnly || Boolean(calculation?.locked);
   const confirmDelete = useConfirmDelete();
+  // What «Importar del enfoque de mercado» would add, asked in the app's dialog before it happens.
+  const [importQuestion, setImportQuestion] = useState<string[] | null>(null);
 
   const reportCalculation = useEffectEvent((next: StatisticalCalculationDto) => {
     if (!props.readOnly && !next.locked) props.onCalculation(next);
@@ -362,9 +375,13 @@ function StatisticalTypePanel(props: {
     const lines = [
       `Se agregarán ${preview.imported} comparables del enfoque de mercado (quedarán ${draft.comparables.length + preview.imported}).`,
       newFields.length ? `Se agregarán ${newFields.length} características: ${newFields.join(", ")}.` : "No se agregan características nuevas.",
-      "Los comparables que ya estaban importados no se repiten. ¿Importar?",
+      "Los comparables que ya estaban importados no se repiten.",
     ];
-    if (!window.confirm(lines.join("\n"))) return;
+    setImportQuestion(lines);
+  };
+  const confirmImport = () => {
+    setImportQuestion(null);
+    if (!market) return;
     let imported = 0;
     update((current) => {
       const next = withMarketComparables(current, market, newId);
@@ -387,6 +404,20 @@ function StatisticalTypePanel(props: {
 
   return (
     <div className="grid gap-5" data-comparable-type={type}>
+      <AlertDialog open={importQuestion !== null} onOpenChange={(open) => { if (!open) setImportQuestion(null); }}>
+        <AlertDialogContent size="sm" data-import-confirm="">
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Importar del enfoque de mercado?</AlertDialogTitle>
+            <AlertDialogDescription className="grid gap-1">
+              {(importQuestion ?? []).map((line) => <span key={line}>{line}</span>)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction type="button" onClick={confirmImport}>Importar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border bg-background p-3">
         <h4 className="font-display text-base font-semibold">{COMPARABLE_TYPE_LABELS[type]}</h4>
         <div className="flex flex-wrap items-start gap-3">
@@ -526,7 +557,7 @@ function StatisticalTypePanel(props: {
                   <div><dt className="text-xs text-muted-foreground">Observaciones</dt><dd className="tabular-nums">{regression.result.fit.n}</dd></div>
                 </dl>
                 {regression.result.fit.anova ? (
-                  <div className={CALC_TABLE_FRAME}>
+                  <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={true}>
                     <table className={cn(CALC_TABLE, "w-full")} aria-label="Análisis de varianza">
                       <thead className={CALC_HEAD}>
                         <tr>
@@ -552,9 +583,9 @@ function StatisticalTypePanel(props: {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </CalcTableContextMenu>
                 ) : null}
-                <div className={CALC_TABLE_FRAME}>
+                <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={true}>
                   <table className={cn(CALC_TABLE, "w-full")} aria-label="Coeficientes de la regresión">
                     <thead className={CALC_HEAD}>
                       <tr>
@@ -581,8 +612,8 @@ function StatisticalTypePanel(props: {
                     </tbody>
                   </table>
                   <p className="px-1.5 py-1 text-xs text-muted-foreground">{COEFFICIENTS_NOTE}</p>
-                </div>
-                <div className={CALC_TABLE_FRAME}>
+                </CalcTableContextMenu>
+                <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={true}>
                   <table className={cn(CALC_TABLE, "w-full")} aria-label="Valores estimados por la regresión">
                     <thead className={CALC_HEAD}>
                       <tr>
@@ -606,7 +637,7 @@ function StatisticalTypePanel(props: {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </CalcTableContextMenu>
                 <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-3">
                   <div>
                     <dt className="text-xs text-muted-foreground">Valor unitario estimado ({unit})</dt>
@@ -664,7 +695,7 @@ function StatisticalTypePanel(props: {
                 {goalProgrammingWarnings(goal.outcome.fit.n, goal.outcome.fit.k).map((warning) => (
                   <p key={warning} className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"><AlertTriangle className="size-3.5 shrink-0" /> {warning}</p>
                 ))}
-                <div className={CALC_TABLE_FRAME}>
+                <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={true}>
                   <table className={cn(CALC_TABLE, "w-full")} aria-label="Contribución de cada criterio">
                     <thead className={CALC_HEAD}>
                       <tr>
@@ -683,8 +714,8 @@ function StatisticalTypePanel(props: {
                       ))}
                     </tbody>
                   </table>
-                </div>
-                <div className={CALC_TABLE_FRAME}>
+                </CalcTableContextMenu>
+                <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={true}>
                   <table className={cn(CALC_TABLE, "w-full")} aria-label="Desviaciones de cada comparable">
                     <thead className={CALC_HEAD}>
                       <tr>
@@ -704,7 +735,7 @@ function StatisticalTypePanel(props: {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </CalcTableContextMenu>
                 <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-3">
                   <div><dt className="text-xs text-muted-foreground">Suma de desviaciones</dt><dd className="tabular-nums">{money(goal.outcome.fit.objective)}</dd></div>
                   <div className="sm:col-span-2">
@@ -739,7 +770,7 @@ function StatisticalTypePanel(props: {
         )}
       >
         {comparison.length ? (
-          <div className={CALC_TABLE_FRAME}>
+          <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={true}>
             <table className={cn(CALC_TABLE, "w-full")} aria-label="Comparación de métodos">
               <thead className={CALC_HEAD}>
                 <tr>
@@ -758,7 +789,7 @@ function StatisticalTypePanel(props: {
                 ))}
               </tbody>
             </table>
-          </div>
+          </CalcTableContextMenu>
         ) : <p className="text-xs text-muted-foreground">Calcula algún método para compararlo con la homologación del enfoque de mercado.</p>}
         <p className="text-xs text-muted-foreground">Ningún método se adopta automáticamente: el valor lo concluye el valuador.</p>
       </Part>
