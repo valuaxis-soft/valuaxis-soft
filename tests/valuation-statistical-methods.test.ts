@@ -19,6 +19,8 @@ import {
   statisticalMemoryTables,
   withStatisticalBlocks,
 } from "../src/features/valuations/calculation/statistical-document";
+import { applyTableLayout } from "../src/features/valuations/calculation/generated-table-layout";
+import { solveGoalProgram } from "../src/features/valuations/calculation/goal-programming-solver";
 import { statisticalInputSchema } from "../src/features/valuations/calculation/statistical-schemas";
 import {
   codedText,
@@ -337,6 +339,62 @@ test("the comparison sets the market's homologation beside RLM and PM, none adop
   ]);
   assert.equal(rows[1].value, 20000 * 146.52);
   assert.ok(Math.abs((rows[3].unitValue as number) - 2874584.35 / 146.52) < 0.01);
+});
+
+/** The regression of REG.LIN.3 and the goal programming of the same data, both solved, with the market beside them. */
+async function bothMethods(regressionShown: boolean, goalShown: boolean): Promise<StatisticalCalculationDto> {
+  const legacy = statisticalFromMarket(legacyMarket());
+  assert.ok(legacy);
+  const draft = dto({
+    ...legacy,
+    settings: {
+      ...legacy.settings,
+      showComparison: true,
+      regression: { ...legacy.settings.regression, showInDictamen: regressionShown },
+      goal: { enabled: true, showInDictamen: goalShown, title: null },
+    },
+  }, { market: { mean: 34, median: 35, adoptedUnitValue: 35, value: 7000, subjectArea: 200 } });
+  const stated = statisticalGoalProblem(draft);
+  assert.ok(stated?.ok);
+  return { ...draft, goal: { problem: stated.problem, solution: await solveGoalProgram(stated.problem) } };
+}
+
+const comparisonMethods = (calculation: StatisticalCalculationDto) => {
+  const apartado = statisticalDocumentBlocks(calculation)[0]?.apartados.find((item) => item.id.endsWith("-comparacion"));
+  if (!apartado) return null;
+  const [table] = apartado.tables.map((item) => ensureTableV2(item) as TableV2);
+  return table.rows.map((_, row) => cellsOf(table, row)[0]);
+};
+
+test("the dictamen's comparison lists only the methods it prints (V5.4-17): a hidden regression or goal programming is not in it", async () => {
+  const both = await bothMethods(true, true);
+  assert.ok(computeStatisticalRegression(both)?.ok, "the regression resolves");
+  assert.ok(computeStatisticalGoal(both)?.outcome.ok, "the goal programming resolves");
+  assert.deepEqual(comparisonMethods(both)?.slice(-2), ["Regresión lineal múltiple (RLM)", "Programación por metas (PM)"]);
+  // «Mostrar en el dictamen» off in the regression: its row leaves the comparison too.
+  const withoutRegression = comparisonMethods(await bothMethods(false, true));
+  assert.ok(withoutRegression);
+  assert.ok(!withoutRegression.includes("Regresión lineal múltiple (RLM)"), withoutRegression.join(" | "));
+  assert.ok(withoutRegression.includes("Programación por metas (PM)"));
+  const withoutGoal = comparisonMethods(await bothMethods(true, false));
+  assert.ok(withoutGoal);
+  assert.ok(!withoutGoal.includes("Programación por metas (PM)"), withoutGoal.join(" | "));
+  assert.ok(withoutGoal.includes("Regresión lineal múltiple (RLM)"));
+  // The panel's comparison, a reference for the appraiser, still sets every method that resolves.
+  assert.deepEqual(methodComparison(await bothMethods(false, false)).slice(-2).map((row) => row.method), ["Regresión lineal múltiple (RLM)", "Programación por metas (PM)"]);
+});
+
+test("every table of the alternative methods prints as wide as its content by default (V5.3-22)", async () => {
+  const calculation = await bothMethods(true, true);
+  calculation.settings.regression = { ...calculation.settings.regression, printedTables: ["products", "statistics", "anova", "coefficients"] };
+  calculation.settings.goal = { ...calculation.settings.goal, printedTables: ["deviations", "contributions"] };
+  const tables = statisticalDocumentBlocks(calculation)[0].apartados.flatMap((apartado) => apartado.tables.map((table) => ensureTableV2(table) as TableV2));
+  assert.ok(tables.some((table) => table.title === "Datos de los métodos alternativos"));
+  assert.ok(tables.length >= 8);
+  for (const table of tables) assert.equal(table.schema?.widthMode, "content", table.title);
+  // A table the appraiser set to the page's width keeps it on the next calculation.
+  const data = statisticalDocumentBlocks(calculation)[0].apartados[0].tables[0];
+  assert.equal((ensureTableV2(applyTableLayout(data, { widthMode: "page" })) as TableV2).schema?.widthMode, undefined);
 });
 
 test("importing the market brings its comparables once, numbered after the own ones, with its fields and subject", () => {
