@@ -34,7 +34,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import type { AuthUser } from "@/features/auth/model";
-import type { Letterhead } from "@/features/valuations/model";
+import type { AppSection, Letterhead } from "@/features/valuations/model";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
 import { canEditProject, canExportProject, canReviewComparables, hasPermission } from "@/features/auth/permissions";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
@@ -54,7 +54,7 @@ import { croquisReplacements, croquisSectionKey, withCroquisImages, type Croquis
 import type { CroquisKind } from "@/features/maps/croquis";
 import { RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
-import { excludedReportApproaches, previewSectionForReport } from "@/features/valuations/services/report-approaches";
+import { approachIncluded, excludedReportApproaches, previewSectionForReport, withApproachIncluded, type ReportApproach } from "@/features/valuations/services/report-approaches";
 import {
   canRemoveSection,
   listedSections,
@@ -406,6 +406,12 @@ export function ValuationWorkspace({
   const handleExportPdf = () => openSavedDocument(`/avaluos/${valuationId}/dictamen`, "el avalúo");
   const handleCalculationMemory = () => openSavedDocument(`/avaluos/${valuationId}/memoria-calculo`, "la memoria de cálculo");
 
+  // «Quitar este enfoque» of the cost and income panels: the same switch as the section's «Agregar al informe valuatorio».
+  const approachInReport = (section: AppSection, approach: ReportApproach) => ({
+    included: approachIncluded(section, approach),
+    onIncludedChange: (included: boolean) => updateSection(section.id, { excludedFromReport: withApproachIncluded(section, approach, included) }),
+  });
+
   const editorPanel = (
     <>
       {enabledSections.map((section) => (
@@ -431,7 +437,7 @@ export function ValuationWorkspace({
                 methods={<StatisticalMethodsPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onStatisticalCalculation} />}
               />
             ) : getCanonicalSectionKey(section.id) === "COSTOS" ? (
-              <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} />
+              <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} approach={approachInReport(section, "costos")} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CONSTRUCCION" ? (
               <ConstructionTypesPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConstructionTypes} />
             ) : getCanonicalSectionKey(section.id) === "MERCADO_RENTAS" ? (
@@ -457,7 +463,7 @@ export function ValuationWorkspace({
                 )}
               />
             ) : getCanonicalSectionKey(section.id) === "INGRESOS" ? (
-              <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} />
+              <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} approach={approachInReport(section, "ingresos")} />
             ) : getCanonicalSectionKey(section.id) === "CONCLUSIONES" ? (
               <ConclusionPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConclusionCalculation} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CROQUIS_COMPARABLES" ? (

@@ -6,6 +6,14 @@
  * dark gray text and the resultant factors in bold.
  */
 
+/**
+ * The heading of an apartado of a calculation panel («A) Terreno en estudio»,
+ * «1. Especificaciones»…), the same in every panel (video 5.3, 16:51: «me
+ * pierdo»): a band of the brand's navy with a bar on its left, so each part
+ * reads apart from the fields under it. Tokens of the theme, light and dark.
+ */
+export const CALC_SECTION_HEADING = "flex flex-wrap items-center justify-between gap-2 rounded-md border-l-4 border-primary bg-primary/8 px-3 py-1.5 text-sm font-semibold text-primary dark:bg-primary/15";
+
 /** Frame of a capture table, scrolling sideways when it does not fit. */
 export const CALC_TABLE_FRAME = "overflow-x-auto rounded-md border border-[#C9D6E6] bg-background dark:border-slate-700";
 

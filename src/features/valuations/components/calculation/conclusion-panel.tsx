@@ -28,6 +28,7 @@ import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { formulaOr, formulasOfFields, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import { FormulaInput } from "./formula-input";
 import { RoundingSelect } from "./calculation-controls";
+import { CALC_SECTION_HEADING } from "./calculation-table-style";
 import { useSerializedSave } from "./use-serialized-save";
 import { marketLeftOut } from "@/features/valuations/services/report-approaches";
 import { formatMoneyForDocument } from "@/features/valuations/services/concept-value-format";
@@ -83,7 +84,7 @@ function ConclusionSummaryEditor({
   return (
     <fieldset disabled={readOnly} className="grid gap-2 rounded-md border bg-background p-3" data-conclusion-summary>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">Resumen de valores</p>
+        <h4 className={`${CALC_SECTION_HEADING} min-w-48 flex-1`}>Resumen de valores</h4>
         {unused.length ? (
           <NativeSelect
             aria-label="Agregar un valor al resumen"
@@ -253,7 +254,10 @@ export function ConclusionPanel(props: {
         {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
       </header>
 
-      <ApproachValues calculation={calculation} />
+      <div className="grid gap-2">
+        <h4 className={CALC_SECTION_HEADING}>Valores de los enfoques</h4>
+        <ApproachValues calculation={calculation} />
+      </div>
 
       <ConclusionSummaryEditor
         calculation={calculation}
@@ -264,6 +268,7 @@ export function ConclusionPanel(props: {
         }}
       />
 
+      <h4 className={CALC_SECTION_HEADING}>Cómo se concluye</h4>
       <fieldset disabled={readOnly || summaryRows.length === 1} className="grid gap-3 sm:grid-cols-2">
         <Field>
           <FieldLabel htmlFor="conclusion-method">Se concluye con</FieldLabel>

@@ -25,9 +25,10 @@ import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, computeIncomeApproach, type Inco
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts } from "@/features/valuations/calculation/captured-formulas";
 import { FormulaInput } from "./formula-input";
+import { ApproachLeftOutNotice, ApproachRemoval, type ApproachInReport } from "./approach-removal";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { rowActionsOf } from "./calc-table-rows";
-import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { useSerializedSave } from "./use-serialized-save";
 import { cn } from "@/lib/utils";
 
@@ -142,6 +143,8 @@ export function IncomeCalculationPanel(props: {
   valuationId: string;
   readOnly: boolean;
   onCalculation: (calculation: IncomeCalculationDto) => void;
+  /** «Quitar este enfoque»: the section's «Agregar al informe valuatorio». */
+  approach?: ApproachInReport;
 }) {
   const { valuationId } = props;
   const [calculation, setCalculation] = useState<IncomeCalculationDto | null>(null);
@@ -232,8 +235,12 @@ export function IncomeCalculationPanel(props: {
         <h3 id="income-calculation-title" className="flex items-center gap-2 text-sm font-semibold">
           <Calculator className="size-4" /> Cálculo del enfoque de ingresos
         </h3>
-        {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
+        <div className="flex items-center gap-2">
+          {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
+          {props.approach ? <ApproachRemoval name="ingresos" approach={props.approach} readOnly={readOnly} /> : null}
+        </div>
       </header>
+      {props.approach && !props.approach.included ? <ApproachLeftOutNotice name="ingresos" /> : null}
       {calculation.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
       <Field className="max-w-md">
         <FieldLabel htmlFor="income-method">Método</FieldLabel>
@@ -254,7 +261,7 @@ export function IncomeCalculationPanel(props: {
       <fieldset disabled={readOnly} className="grid gap-4">
         {method !== "mercado" ? (
         <div className="grid gap-2">
-          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Superficie rentable</h4>
+          <h4 className={CALC_SECTION_HEADING}>Superficie rentable</h4>
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={unitRows}>
             <table className={cn(CALC_TABLE, "w-full min-w-[560px]")} aria-label="Superficie rentable">
               <thead className={CALC_HEAD}>
@@ -305,7 +312,7 @@ export function IncomeCalculationPanel(props: {
         </div>
         ) : (
         <div className="grid gap-2">
-          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Precio de venta de cada comparable de renta</h4>
+          <h4 className={CALC_SECTION_HEADING}>Precio de venta de cada comparable de renta</h4>
           <p className="text-xs text-muted-foreground">
             La tasa sale de comparar la renta de cada comparable con su precio de venta. Se usa la superficie del sujeto del mercado de rentas.
           </p>
@@ -350,7 +357,7 @@ export function IncomeCalculationPanel(props: {
         )}
 
         <div className="grid gap-2">
-          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          <h4 className={CALC_SECTION_HEADING}>
             {method === "mercado" ? "Gastos de operación (%)" : method === "anualidad" ? "Deducciones (%, sin vacíos)" : "Deducciones (% de la renta bruta)"}
           </h4>
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={deductionRows}>
@@ -384,7 +391,7 @@ export function IncomeCalculationPanel(props: {
 
         {method === "anualidad" ? (
         <div className="grid gap-2">
-          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Vacíos y capitalización</h4>
+          <h4 className={CALC_SECTION_HEADING}>Vacíos y capitalización</h4>
           <div className="grid gap-2 sm:grid-cols-3">
             <Field><FieldLabel htmlFor="income-vacancy-days" className="text-xs">Días de vacío</FieldLabel><FormulaInput id="income-vacancy-days" value={draft.annuity.vacancyDays} onChange={setAnnuity("vacancyDays")} /></Field>
             <Field><FieldLabel htmlFor="income-contract-years" className="text-xs">Años de contrato</FieldLabel><FormulaInput id="income-contract-years" value={draft.annuity.contractYears} onChange={setAnnuity("contractYears")} /></Field>
@@ -405,7 +412,7 @@ export function IncomeCalculationPanel(props: {
 
         {method === "tabla" ? (
         <div className="grid gap-2">
-          <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Tasa de capitalización</h4>
+          <h4 className={CALC_SECTION_HEADING}>Tasa de capitalización</h4>
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly}>
             <table className={cn(CALC_TABLE, "w-full min-w-[420px]")} aria-label="Tasa de capitalización">
               <thead className={CALC_HEAD}>

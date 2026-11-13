@@ -37,6 +37,7 @@ import { collectFormulas, renumberFormulas, withFormulaTexts } from "@/features/
 import { effectiveUsefulLife } from "@/features/valuations/engine/factors";
 import { MACHINERY_CONSERVATION, computeMachineryCost, computeMachineryMarket } from "@/features/valuations/engine/machinery";
 import { RoundingSelect } from "./calculation-controls";
+import { CALC_SECTION_HEADING } from "./calculation-table-style";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
 import { FormulaInput } from "./formula-input";
 import { useSerializedSave } from "./use-serialized-save";
@@ -45,7 +46,7 @@ const money = (value: number) => value.toLocaleString("es-MX", { style: "currenc
 const factor = (value: number | undefined) => (value === undefined ? "—" : value.toFixed(4));
 const amount = (value: number | undefined) => (value === undefined ? "—" : money(value));
 const cell = "h-7 min-w-0 px-1.5 text-xs";
-const heading = "text-xs font-semibold tracking-wide text-muted-foreground uppercase";
+const heading = CALC_SECTION_HEADING;
 
 /** Loads the machinery calculation and reports what the server holds, so the dictamen follows it. */
 function useMachineryCalculation(valuationId: string, readOnly: boolean, onCalculation: (calculation: MachineryCalculationDto) => void) {
