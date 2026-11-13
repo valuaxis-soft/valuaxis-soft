@@ -16,6 +16,7 @@ import { ENGINE_VERSION } from "../engine/config";
 import { computeMarketApproach } from "../engine/market";
 import { Trace } from "../engine/trace";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
+import { readStoredImageFraming, type ImageFraming } from "../services/image-framing";
 import {
   asRecord, catalogId, decimal, findValuation, firmComparableMonths, formulasOrThrow, inFirmBase, versionPrecision, writableVersion, type Tx,
 } from "./access";
@@ -68,9 +69,10 @@ import {
 const MAX_PHOTOS_PER_COMPARABLE = MAX_COMPARABLE_PHOTOS;
 const COMPARABLE_ENTITY = "ComparableAvaluo";
 
-type PhotoSnapshot = { id: string; key: string; title: string };
+/** A stored photo; `framing` is its place and zoom in its frame of the dictamen (absent: whole and centered). */
+type PhotoSnapshot = { id: string; key: string; title: string; framing?: unknown };
 /** A stored photo of a comparable, as another comparable may take it. */
-export type StoredComparablePhoto = Omit<PhotoSnapshot, "id">;
+export type StoredComparablePhoto = Omit<PhotoSnapshot, "id" | "framing">;
 type PropertySnapshot = {
   /** Formulas typed in the comparable's numeric fields and factors, by path. */
   formulas?: CapturedFormulas;
@@ -251,11 +253,15 @@ export async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean
     propertyDetails: detailsOf(property.details),
     listingDetails: detailsOf(publication.details),
     updatedOn: todayInMexico(row.DFechaActualizacionDatos),
-    photos: await Promise.all(photos.map(async (photo) => ({
-      id: photo.id,
-      title: photo.title,
-      url: await imageUrl(photo.key, withPhotoUrls),
-    }))),
+    photos: await Promise.all(photos.map(async (photo) => {
+      const framing = readStoredImageFraming(photo.framing);
+      return {
+        id: photo.id,
+        title: photo.title,
+        url: await imageUrl(photo.key, withPhotoUrls),
+        ...(framing ? { framing } : {}),
+      };
+    })),
     folio: row.propiedad.IFolioComparable ?? null,
     screenshot: screenshot ? { id: screenshot.id, title: screenshot.title, url: await imageUrl(screenshot.key, withPhotoUrls) } : null,
     review: reviewOf(row.JRevision),
@@ -732,7 +738,12 @@ export function snapshots(payload: ComparableInputPayload, formulas: CapturedFor
   };
   const coordinatesProblem = coordinatesError(coordinates.latitude, coordinates.longitude);
   if (coordinatesProblem) throw new ValuationWorkflowError(coordinatesProblem, 400);
-  const address = unlessOmitted(payload.address, storedRows.address ? addressOf(storedRows.address) : null);
+  const storedAddress = storedRows.address ? addressOf(storedRows.address) : null;
+  const sentAddress = unlessOmitted(payload.address, storedAddress);
+  // «Tipo de vialidad» left out (the master workbook has no column for it) keeps the stored one.
+  const address = sentAddress && payload.address && payload.address.streetType === undefined && storedAddress?.streetType
+    ? { ...sentAddress, streetType: storedAddress.streetType }
+    : sentAddress;
   const property: PropertySnapshot = {
     formulas,
     landUse: payload.landUse,
@@ -1413,6 +1424,32 @@ export async function removeComparablePhoto(publicId: string, user: AuthUser, co
     await tx.comparableAvaluo.update({
       where: { IdComparableAvaluo: current.IdComparableAvaluo },
       data: { JImagenesSnapshot: photos.filter((photo) => photo.id !== photoId) as Prisma.InputJsonValue },
+    });
+  });
+}
+
+/**
+ * The place and zoom of a photo in its frame of the dictamen, as every image
+ * of the document has them («Encuadre» and «Zoom»). Kept in the photo's entry
+ * of the comparable's snapshot (no migration); the default framing is not
+ * stored. Nothing of the calculation reads it.
+ */
+export async function setComparablePhotoFraming(publicId: string, user: AuthUser, comparableId: string, photoId: string, framing: ImageFraming | null) {
+  return prisma.$transaction(async (tx) => {
+    const { versionId } = await writableVersion(tx, publicId, user);
+    const current = await findComparable(tx, versionId, comparableId);
+    const photos = Array.isArray(current.JImagenesSnapshot) ? (current.JImagenesSnapshot as PhotoSnapshot[]) : [];
+    if (!photos.some((photo) => photo.id === photoId)) throw new ValuationWorkflowError("Fotografía no encontrada", 404);
+    const stored = framing ? readStoredImageFraming(framing) : undefined;
+    await tx.comparableAvaluo.update({
+      where: { IdComparableAvaluo: current.IdComparableAvaluo },
+      data: {
+        JImagenesSnapshot: photos.map((photo) => {
+          if (photo.id !== photoId) return photo;
+          const { framing: _previous, ...rest } = photo;
+          return stored ? { ...rest, framing: stored } : rest;
+        }) as Prisma.InputJsonValue,
+      },
     });
   });
 }

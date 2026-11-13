@@ -11,6 +11,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { characteristicLabelOf, parseCoordinate, parseCoordinatePair } from "../src/features/valuations/calculation/comparable-card";
 import type { ComparableCardDto } from "../src/features/valuations/calculation/comparable-card.service";
 import {
+  REVIEW_CHECK_HINTS,
+  REVIEW_CHECK_LABELS,
   REVIEW_STATUSES,
   REVIEW_STATUS_LABELS,
   groupByComparableType,
@@ -24,7 +26,7 @@ import { COMPARABLE_TYPES, type ComparableDto, type ComparableType } from "../sr
 import { ComparableCardView } from "../src/features/valuations/components/calculation/comparable-card-view";
 import { buildingFieldsOf, openableUrl } from "../src/features/valuations/components/calculation/comparable-dialog";
 import { filesAsChangeEvent, pastedImages } from "../src/features/files/clipboard-image";
-import { imageContentProblem } from "../src/features/files/image-content";
+import { NOT_AN_IMAGE_MESSAGE, imageContentProblem } from "../src/features/files/image-content";
 
 test("V6.2-01: coordinates pasted as Google Earth copies them become decimals; O and W are west", () => {
   assert.equal(parseCoordinate(`20°43'31.39"N`), 20.7253861);
@@ -91,6 +93,31 @@ test("V5.4-06: the review states, the old VERIFICADO read as «vigente», and th
   assert.equal(statusAfterLinkCheck("CON_OBSERVACIONES", false), "CON_OBSERVACIONES");
 });
 
+test("V5.4-06 (13 nov): with every check marked, unmarking the link gives «no vigente» and marking it again «vigente», in any order", () => {
+  // All marked: the appraiser verified the comparable.
+  const marked = markAllChecks(["photo", "price", "link"], "POR_REVISAR");
+  let status = marked.status;
+  assert.equal(status, "VERIFICADO");
+  for (let round = 0; round < 3; round++) {
+    status = statusAfterLinkCheck(status, false);
+    assert.equal(REVIEW_STATUS_LABELS[status], "Verificado y no vigente", `unmarked, round ${round}`);
+    status = statusAfterLinkCheck(status, true);
+    assert.equal(REVIEW_STATUS_LABELS[status], "Verificado y vigente", `marked again, round ${round}`);
+  }
+  assert.equal(marked.checks.link, true);
+  // Marking the link alone does not verify a comparable nobody reviewed.
+  assert.equal(statusAfterLinkCheck("POR_REVISAR", true), "POR_REVISAR");
+  // Observations and rejections never move.
+  for (const kept of ["CON_OBSERVACIONES", "RECHAZADO"] as const) {
+    assert.equal(statusAfterLinkCheck(kept, false), kept);
+    assert.equal(statusAfterLinkCheck(kept, true), kept);
+    assert.equal(markAllChecks(["link"], kept).status, kept);
+  }
+  // The box says what unmarking it means.
+  assert.match(`${REVIEW_CHECK_LABELS.link} (${REVIEW_CHECK_HINTS.link})`, /^El enlace sigue vigente \(desmárcalo si el anuncio ya caducó\)$/);
+  assert.equal(markAllChecks(["link"], "VERIFICADO_NO_VIGENTE").status, "VERIFICADO");
+});
+
 test("V6.1-17 and V5.4-13: «Marcar todas» marks every check shown, and the review is grouped by market", () => {
   assert.deepEqual(markAllChecks(["photo", "price", "link"], "POR_REVISAR"), { checks: { photo: true, price: true, link: true }, status: "VERIFICADO" });
   assert.deepEqual(markAllChecks(["photo"], "POR_REVISAR").status, "POR_REVISAR");
@@ -130,7 +157,24 @@ test("V5.4-05: a pasted screenshot is taken as an image file, and handed to the 
   event.target.value = "";
 });
 
-test("V5.5-05: an image of another kind says what it really is", () => {
-  assert.match(imageContentProblem("heif", ["image/jpeg", "image/png", "image/webp"]), /La imagen es HEIC\/HEIF \(el formato de las fotos de iPhone\).*se aceptan JPG, PNG, WebP/);
-  assert.match(imageContentProblem(undefined, ["image/jpeg"]), /no es una imagen JPG/);
+test("V5.5-05: a file that is not an image gets one clear message, with accents and what to do", () => {
+  assert.equal(NOT_AN_IMAGE_MESSAGE, "El archivo no es una imagen JPG, PNG o WebP. Si es una foto del iPhone (HEIC), ábrela y expórtala como JPG.");
+  assert.equal(imageContentProblem(undefined), NOT_AN_IMAGE_MESSAGE, "unreadable content: the message of every upload");
+  // A real image of another kind says what it is, within the same message.
+  assert.equal(
+    imageContentProblem("heif"),
+    "El archivo no es una imagen JPG, PNG o WebP: es HEIC/HEIF, y cambiarle la extensión no la convierte. Si es una foto del iPhone (HEIC), ábrela y expórtala como JPG.",
+  );
+  assert.doesNotMatch(NOT_AN_IMAGE_MESSAGE, /valida/);
+});
+
+test("V5.4-10: the card shows «Tipo de vialidad» and «Vialidad»; a comparable of before reads «Calle»", () => {
+  const avenue = renderToStaticMarkup(
+    <ComparableCardView card={card("TERRENO_VENTA", comparable({ address: { streetType: "AVENIDA", street: "Inventada", number: "488" } }))} />,
+  );
+  assert.match(sectionText(avenue, "Ubicación"), /Tipo de vialidad\s+Avenida\s+Vialidad\s+Inventada/);
+  const before = renderToStaticMarkup(<ComparableCardView card={card("TERRENO_VENTA", comparable({ address: { street: "Roble", number: "12" } }))} />);
+  assert.match(sectionText(before, "Ubicación"), /Tipo de vialidad\s+Calle\s+Vialidad\s+Roble/);
+  // Its printed line stays as it was stored.
+  assert.match(sectionText(before, "Ubicación"), /Calle Inventada 12, Arandas, Jalisco/);
 });

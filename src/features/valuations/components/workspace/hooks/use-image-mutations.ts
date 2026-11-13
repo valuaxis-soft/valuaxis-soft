@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 
+import { NOT_AN_IMAGE_MESSAGE } from "@/features/files/image-content";
 import { api } from "@/lib/api-client";
 import type { ImageContent } from "@/features/valuations/model";
 import {
@@ -29,7 +30,8 @@ import {
 
 const DOCUMENT_HEADER_IMAGE_ACCEPT = new Set(["image/png", "image/jpeg", "image/webp"]);
 const DOCUMENT_HEADER_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp"]);
-const DOCUMENT_HEADER_IMAGE_FORMAT_ERROR = "Formato no compatible. Usa PNG, JPG, JPEG o WebP.";
+// The same message as every image upload.
+const DOCUMENT_HEADER_IMAGE_FORMAT_ERROR = NOT_AN_IMAGE_MESSAGE;
 
 function isSupportedDocumentHeaderImage(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";

@@ -282,6 +282,7 @@ export function IncomeCalculationPanel(props: {
                         className={cellInput}
                         value={unit.area}
                         placeholder={draft.units.length === 1 && calculation.rentMarket.subjectArea ? String(calculation.rentMarket.subjectArea) : undefined}
+                        data-no-fill={draft.units.length === 1 && calculation.rentMarket.subjectArea ? "computed" : undefined}
                         onChange={(event) => update({ units: draft.units.map((item, i) => i === index ? { ...item, area: event.target.value } : item) })}
                       />
                     </td>
@@ -291,6 +292,7 @@ export function IncomeCalculationPanel(props: {
                         className={cellInput}
                         value={unit.unitRent}
                         placeholder={adopted ? `Mercado: ${adopted}` : undefined}
+                        data-no-fill={adopted ? "computed" : undefined}
                         onChange={(event) => update({ units: draft.units.map((item, i) => i === index ? { ...item, unitRent: event.target.value } : item) })}
                       />
                     </td>

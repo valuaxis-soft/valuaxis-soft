@@ -37,6 +37,11 @@ import {
   type ComparableAddress,
   type OperationType,
   type UrbanProximity,
+  type StreetType,
+  STREET_TYPES,
+  STREET_TYPE_LABEL,
+  STREET_TYPE_LABELS,
+  streetTypeOf,
 } from "@/features/valuations/calculation/comparable-card";
 import type { DuplicateMatchDto } from "@/features/valuations/calculation/comparable-card.service";
 import { DUPLICATE_REASON_LABELS, duplicateProbeOf, type DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
@@ -47,6 +52,8 @@ import { COMPARABLE_VALIDITY_MONTHS, addMonths, validityMonthsOf } from "@/featu
 import { FormulaInput } from "./formula-input";
 import { useExpandableDialog } from "./expandable-dialog";
 import { ScreenshotSlot } from "./screenshot-slot";
+import { ComparablePhotoFraming } from "./comparable-photo-framing";
+import type { ImageFraming } from "@/features/valuations/services/image-framing";
 import { SheetFormSection } from "./comparable-sheet";
 import {
   COMPARABLE_TYPES,
@@ -72,7 +79,7 @@ type DraftKey =
   | "location" | "area" | "price" | "sourceName" | "contactName" | "contactPhone" | "url" | "offerDate" | "landUse"
   | "consultedOn" | "validUntil" | "validityMonths" | "urbanProximity" | "operationType" | "latitude" | "longitude" | "listingText"
   | "landArea" | "bedrooms" | "bathrooms" | "constructionType";
-type Draft = Record<DraftKey, string> & { address: Record<AddressPart, string> };
+type Draft = Record<DraftKey, string> & { address: Record<AddressPart, string>; streetType: StreetType };
 
 /** Area and price are captured at the top of the form; the list of characteristics shows the rest. */
 const TOP_FIELDS = new Set(["area", "price"]);
@@ -123,6 +130,8 @@ function initialDraft(
     bathrooms: text(comparable?.bathrooms),
     constructionType: comparable?.constructionType ?? "",
     address,
+    // A comparable of before has no type of road: it reads as «Calle».
+    streetType: streetTypeOf(comparable?.address),
     // A new comparable may start from the data read from a pasted listing.
     ...(comparable ? {} : pick(prefill, ["location", "area", "price", "sourceName", "contactName", "contactPhone", "url", "offerDate", "landUse"])),
   };
@@ -225,6 +234,8 @@ export function ComparableDialog(props: {
   onSubmit: (values: ComparableFormValues, pending: PendingImages, mergeInto?: string) => Promise<boolean>;
   onUploadPhoto: (file: File) => Promise<void>;
   onRemovePhoto: (photoId: string) => Promise<void>;
+  /** «Encuadre» and «Zoom» of a photo as it prints; without it the photos have no framing control. */
+  onFramePhoto?: (photoId: string, framing: ImageFraming | null) => Promise<void>;
   onUploadScreenshot: (file: File) => Promise<void>;
   onRemoveScreenshot: () => Promise<void>;
   /** Comparables of the firm's base that look like the same property. */
@@ -267,7 +278,7 @@ export function ComparableDialog(props: {
   const setAddress = (part: AddressPart) => (event: ChangeEvent<HTMLInputElement>) =>
     setDraft((current) => ({ ...current, address: { ...current.address, [part]: event.target.value } }));
 
-  const address: ComparableAddress = Object.fromEntries(ADDRESS_PARTS.map((part) => [part, draft.address[part].trim() || null]));
+  const address: ComparableAddress = { ...Object.fromEntries(ADDRESS_PARTS.map((part) => [part, draft.address[part].trim() || null])), streetType: draft.streetType };
   // The single line the dictamen prints: as typed, or composed from the parts.
   const location = draft.location.trim() || formatAddress(address);
 
@@ -535,7 +546,18 @@ export function ComparableDialog(props: {
                   <FieldLabel htmlFor="comparable-subdivision">{ADDRESS_LABELS.subdivision} (opcional)</FieldLabel>
                   <Input id="comparable-subdivision" autoComplete="off" value={draft.address.subdivision} onChange={setAddress("subdivision")} />
                 </Field>
-                <Field className="sm:col-span-5">
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="comparable-street-type">{STREET_TYPE_LABEL}</FieldLabel>
+                  <NativeSelect
+                    id="comparable-street-type"
+                    className="w-full"
+                    value={draft.streetType}
+                    onChange={(event) => setDraft((current) => ({ ...current, streetType: event.target.value as StreetType }))}
+                  >
+                    {STREET_TYPES.map((item) => <NativeSelectOption key={item} value={item}>{STREET_TYPE_LABELS[item]}</NativeSelectOption>)}
+                  </NativeSelect>
+                </Field>
+                <Field className="sm:col-span-3">
                   <FieldLabel htmlFor="comparable-street">{ADDRESS_LABELS.street}</FieldLabel>
                   <Input id="comparable-street" autoComplete="off" value={draft.address.street} onChange={setAddress("street")} />
                 </Field>
@@ -557,7 +579,7 @@ export function ComparableDialog(props: {
                   {/* The line the dictamen prints, shown as text and not as a grey example, so it does not look empty. */}
                   <p className="rounded-md border bg-muted/40 px-2 py-1.5 text-sm" data-location-preview>
                     <span className="text-xs text-muted-foreground">El dictamen imprime: </span>
-                    {location ? <span className="font-medium">{location}</span> : <span className="text-muted-foreground">captura la calle, el número, la colonia y el municipio</span>}
+                    {location ? <span className="font-medium">{location}</span> : <span className="text-muted-foreground">captura la vialidad, el número, la colonia y el municipio</span>}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {draft.location.trim()
@@ -871,6 +893,11 @@ export function ComparableDialog(props: {
                   <figure key={photo.id} className="relative size-24 overflow-hidden rounded-md border bg-muted">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={photo.url} alt={photo.title} className="size-full object-cover" />
+                    {props.onFramePhoto ? (
+                      <span className="absolute bottom-1 left-1">
+                        <ComparablePhotoFraming photo={photo} readOnly={readOnly} onSave={props.onFramePhoto} />
+                      </span>
+                    ) : null}
                     {!readOnly ? (
                       <Button
                         type="button"

@@ -10,7 +10,7 @@ import { asRecord, decimal, inFirmBase } from "../../calculation/access";
 import { addressFromRecord, parseComparableId, type ComparableAddress, type OperationType, type UrbanProximity } from "../../calculation/comparable-card";
 import { reusedEvidenceOf, type ReusedComparableEvidence } from "../../calculation/market.service";
 import { searchTokens } from "../normalize";
-import { AREA, CONSULTED, FIRM_BASE_FROM, HAYSTACK, firmBaseCondition, likePattern, placeCondition, postalCodeCondition } from "../own-base-sql";
+import { AREA, CONSULTED, FIRM_BASE_FROM, HAYSTACK, firmBaseCondition, likePattern, placeCondition, postalCodeCondition, streetTypeCondition } from "../own-base-sql";
 import type { ComparableSearchContext, ComparableSearchQuery, ComparableSearchResult, ComparableSearchSource } from "../types";
 
 /** Rows read before ranking: the same offer repeats across valuations, and the most relevant may not be the newest. */
@@ -119,6 +119,7 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
     ...placeCondition("municipality", filters.municipality),
     ...placeCondition("neighborhood", filters.neighborhood),
     ...postalCodeCondition(filters.postalCode),
+    ...streetTypeCondition(filters.streetType),
     ...(filters.consultedFrom ? [Prisma.sql`${CONSULTED} >= ${filters.consultedFrom}`] : []),
     ...(filters.consultedTo ? [Prisma.sql`${CONSULTED} <= ${filters.consultedTo}`] : []),
     ...(query.areaMin === null ? [] : [Prisma.sql`${AREA} >= ${query.areaMin}`]),

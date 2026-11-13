@@ -270,22 +270,27 @@ export function ImageEditorItem({
 /**
  * The framing of one image, as the cover image has it: fill its frame or show
  * it whole, zoom, and move it left, right, up or down. A small frame of the
- * annex's shape shows the result next to the controls.
+ * annex's shape shows the result next to the controls. The comparables'
+ * photos use it too (`onOpenChange` saves them when it closes).
  */
-function ImageFramingPopover({
+export function ImageFramingPopover({
   image,
   readOnly,
   onUpdate,
+  onOpenChange,
+  triggerClassName,
 }: {
-  image: ImageContent;
+  image: Pick<ImageContent, "id" | "title" | "src" | "framing">;
   readOnly: boolean;
-  onUpdate: (imageId: string, patch: Partial<ImageContent>) => void;
+  onUpdate: (imageId: string, patch: Pick<ImageContent, "framing">) => void;
+  onOpenChange?: (open: boolean) => void;
+  triggerClassName?: string;
 }) {
   const framing = resolveImageFraming(image.framing);
   const framed = !isDefaultImageFraming(image.framing);
   const save = (next: ImageFraming) => onUpdate(image.id, { framing: isDefaultImageFraming(next) ? undefined : next });
   return (
-    <Popover>
+    <Popover onOpenChange={onOpenChange}>
       <PopoverTrigger
         render={
           <Button
@@ -293,8 +298,8 @@ function ImageFramingPopover({
             size="icon-sm"
             variant="ghost"
             aria-label="Encuadre de la imagen"
-            title="Encuadre: acercar y mover la imagen en su marco"
-            className={cn(framed && "text-primary")}
+            title="Encuadre y zoom: acercar, alejar y mover la imagen en su marco"
+            className={cn(framed && "text-primary", triggerClassName)}
             disabled={!image.src}
           >
             <Crop />

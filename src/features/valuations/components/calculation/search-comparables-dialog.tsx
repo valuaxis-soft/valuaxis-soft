@@ -12,7 +12,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api, SessionExpiredError, type ComparableSearchFilters } from "@/lib/api-client";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
-import { formatComparableId } from "@/features/valuations/calculation/comparable-card";
+import { STREET_TYPES, STREET_TYPE_LABEL, STREET_TYPE_LABELS, formatComparableId } from "@/features/valuations/calculation/comparable-card";
 import {
   MARKET_LABELS,
   isLandComparableType,
@@ -35,14 +35,14 @@ const day = (value: string | null) => (value ? value.split("-").reverse().join("
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudo buscar.";
 
-const PLACE_KEYS = ["state", "municipality", "neighborhood", "postalCode", "kind", "operation", "consultedFrom", "consultedTo"] as const;
+const PLACE_KEYS = ["state", "municipality", "neighborhood", "postalCode", "kind", "operation", "consultedFrom", "consultedTo", "streetType"] as const;
 type PlaceKey = (typeof PLACE_KEYS)[number];
 type RangeKey = "areaMin" | "areaMax" | "priceMin" | "priceMax";
 type Draft = Record<"text" | RangeKey | PlaceKey, string>;
 /** The kind and operation start as those of the market searched for; "TODOS"/"TODAS" widen them. */
 const emptyDraft = (type: ComparableType): Draft => ({
   text: "", areaMin: "", areaMax: "", priceMin: "", priceMax: "",
-  state: "", municipality: "", neighborhood: "", postalCode: "", consultedFrom: "", consultedTo: "",
+  state: "", municipality: "", neighborhood: "", postalCode: "", consultedFrom: "", consultedTo: "", streetType: "",
   kind: isLandComparableType(type) ? "TERRENO" : "CONSTRUIDO",
   operation: isRentComparableType(type) ? "RENTA" : "VENTA",
 });
@@ -53,7 +53,7 @@ const RANGE_LABELS: Record<RangeKey, string> = {
 /** The filters the form holds, or what the appraiser has to correct. */
 function filtersFrom(draft: Draft, type: ComparableType): { filters: ComparableSearchFilters } | { error: string } {
   const defaults = emptyDraft(type);
-  const filtered = (["areaMin", "areaMax", "priceMin", "priceMax", "state", "municipality", "neighborhood", "postalCode", "consultedFrom", "consultedTo"] as const)
+  const filtered = (["areaMin", "areaMax", "priceMin", "priceMax", "state", "municipality", "neighborhood", "postalCode", "consultedFrom", "consultedTo", "streetType"] as const)
     .some((key) => draft[key].trim()) || draft.kind !== defaults.kind || draft.operation !== defaults.operation;
   if (draft.text.trim() ? searchText(draft.text).length < SEARCH_TEXT_MIN : !filtered) {
     return { error: `Escribe al menos ${SEARCH_TEXT_MIN} letras de la zona, colonia, municipio o calle, o usa un filtro.` };
@@ -267,6 +267,13 @@ export function SearchComparablesDialog({
               <Field>
                 <FieldLabel htmlFor="comparable-search-postal">Código postal</FieldLabel>
                 <Input id="comparable-search-postal" inputMode="numeric" maxLength={5} placeholder="Opcional" {...field("postalCode")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-street-type">{STREET_TYPE_LABEL}</FieldLabel>
+                <NativeSelect id="comparable-search-street-type" className="w-full" {...field("streetType")}>
+                  <NativeSelectOption value="">Cualquiera</NativeSelectOption>
+                  {STREET_TYPES.map((item) => <NativeSelectOption key={item} value={item}>{STREET_TYPE_LABELS[item]}</NativeSelectOption>)}
+                </NativeSelect>
               </Field>
               <Field>
                 <FieldLabel htmlFor="comparable-search-kind">Tipo de inmueble</FieldLabel>

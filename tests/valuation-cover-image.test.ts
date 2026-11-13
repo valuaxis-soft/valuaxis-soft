@@ -118,12 +118,12 @@ test("usuario de otra organizacion no puede acceder al avaluo", () => {
 
 test("rechaza archivos que no son imagen y archivos demasiado grandes", async () => {
   const invalid = new File(["pdf"], "document.pdf", { type: "application/pdf" });
-  await assert.rejects(() => saveUpload(invalid, { allowedMimeTypes: ["image/jpeg"] }), /Tipo de archivo/);
+  await assert.rejects(() => saveUpload(invalid, { allowedMimeTypes: ["image/jpeg"] }), /: El archivo no es una imagen JPG, PNG o WebP\. Si es una foto del iPhone \(HEIC\), ábrela y expórtala como JPG\.$/);
 
   const disguised = new File(["not-an-image"], "fake.jpg", { type: "image/jpeg" });
   await assert.rejects(
     () => saveUpload(disguised, { allowedMimeTypes: ["image/jpeg"] }),
-    /contenido del archivo no es una imagen valida/,
+    /: El archivo no es una imagen JPG, PNG o WebP\. Si es una foto del iPhone \(HEIC\), ábrela y expórtala como JPG\.$/,
   );
 
   const oversized = {
@@ -132,7 +132,7 @@ test("rechaza archivos que no son imagen y archivos demasiado grandes", async ()
     size: 1024 * 1024 * 1024,
     arrayBuffer: async () => new ArrayBuffer(0),
   } as File;
-  await assert.rejects(() => saveUpload(oversized, { allowedMimeTypes: ["image/jpeg"] }), /tamano maximo/);
+  await assert.rejects(() => saveUpload(oversized, { allowedMimeTypes: ["image/jpeg"] }), /La imagen pesa más de \d+ MB, el máximo permitido/);
 });
 
 test("imagen valida usa key versionada y persiste Archivo/Relacion mediante una sola operacion", async () => {

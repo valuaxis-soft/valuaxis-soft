@@ -151,6 +151,8 @@ export function MarketHomologationTable(props: {
                             display={surface?.value ? twoDecimals(surface.value) : row ? twoDecimals(row.surfaceFactor) : ""}
                             computed={!surface?.value}
                             placeholder="fórmula"
+                            // Empty, the formula with the power n gives it: copying a factor along the row leaves it alone.
+                            noFill="computed"
                             editText={surface?.value ? undefined : props.surfaceFormulas?.get(String(comparable.reference))}
                             title={surface?.value
                               ? "Factor escrito por ti; vacíalo para usar la fórmula"

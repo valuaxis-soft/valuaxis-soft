@@ -250,6 +250,36 @@ export function captureFillTargets(cells: CaptureFillCell[], from: number): numb
   return cells.flatMap((cell, index) => (index !== from && cell?.takesTyping && !cell.hasFormula && !cell.text.trim() ? [index] : []));
 }
 
+/**
+ * Why a cell of a capture table is left out of "Copiar valor/fórmula a toda
+ * la fila/columna": `computed`, its empty value means the system calculates
+ * it (a resultant factor, the subject's area from the market, a derived
+ * value) and typing there would replace the calculation; `other`, it is not
+ * one more value of its row or column (the free text of a comparable).
+ */
+export type CaptureNoFill = "computed" | "other";
+
+/** The cells to write and how many empty ones were left out because the system calculates them. */
+export function captureFillPlan(
+  cells: Array<(NonNullable<CaptureFillCell> & { noFill?: CaptureNoFill | null }) | null>, from: number,
+): { targets: number[]; computedSkipped: number } {
+  const empty = captureFillTargets(cells, from);
+  return {
+    targets: empty.filter((index) => !cells[index]?.noFill),
+    computedSkipped: empty.filter((index) => cells[index]?.noFill === "computed").length,
+  };
+}
+
+/** What the menu tells after copying: how many cells it filled and how many calculated ones it left alone. */
+export function captureFillSummary(filled: number, computedSkipped: number, along: "row" | "column") {
+  const place = along === "row" ? "fila" : "columna";
+  const skipped = computedSkipped
+    ? ` Se ${computedSkipped === 1 ? "omitió 1 celda" : `omitieron ${computedSkipped} celdas`} que calcula el sistema; para cambiarla${computedSkipped === 1 ? "" : "s"}, escribe en ella${computedSkipped === 1 ? "" : "s"}.`
+    : "";
+  if (!filled) return `No hay celdas vacías en la ${place} para copiarlo.${skipped}`;
+  return `Se ${filled === 1 ? "llenó 1 celda" : `llenaron ${filled} celdas`} de la ${place}.${skipped}`;
+}
+
 /** The groups of the menu for what was right-clicked, in the order they are shown; a separator goes between groups. */
 export function tableContextMenu(kind: TableMenuKind, target: TableMenuTarget): TableMenuGroup[] {
   switch (target.kind) {

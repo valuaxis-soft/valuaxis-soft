@@ -63,6 +63,11 @@ export const postalCodeCondition = (postalCode: string | undefined) => (postalCo
   ? [Prisma.sql`(c."JDireccionSnapshot"->>'postalCode' = ${postalCode} OR c."JDireccionSnapshot"->>'location' LIKE ${likePattern(postalCode)})`]
   : []);
 
+/** «Tipo de vialidad»: the type captured; a comparable of before, without one, is a «Calle». */
+export const streetTypeCondition = (streetType: string | undefined) => (streetType
+  ? [Prisma.sql`COALESCE(c."JDireccionSnapshot"->>'streetType', 'CALLE') = ${streetType}`]
+  : []);
+
 /** The latitude or longitude kept in JUbicacionSnapshot, as a number; NULL when missing or a text. */
 const coordinate = (name: string) =>
   Prisma.sql`CASE WHEN jsonb_typeof(c."JUbicacionSnapshot"->${name}) = 'number' THEN (c."JUbicacionSnapshot"->>${name})::float8 END`;

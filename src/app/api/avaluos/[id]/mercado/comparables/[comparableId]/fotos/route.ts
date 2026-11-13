@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { UploadError } from "@/features/files/services/upload";
-import { comparableTypeSchema } from "@/features/valuations/calculation/market-schemas";
-import { addComparablePhoto, getMarketCalculation, removeComparablePhoto } from "@/features/valuations/calculation/market.service";
+import { comparablePhotoFramingSchema, comparableTypeSchema } from "@/features/valuations/calculation/market-schemas";
+import { addComparablePhoto, getMarketCalculation, removeComparablePhoto, setComparablePhotoFraming } from "@/features/valuations/calculation/market.service";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
+import { readJsonBody } from "@/lib/api-response";
 import { requireApiUser } from "@/security/guards/api-guard";
 import { uploadRateLimitResponse } from "@/security/rate-limit/upload-limit";
 
@@ -26,6 +27,23 @@ export async function POST(request: Request, { params }: Context) {
   } catch (error) {
     if (error instanceof UploadError) return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     return valuationErrorResponse("COMPARABLE_PHOTO", error, "No se pudo subir la fotografía.");
+  }
+}
+
+/** «Encuadre» and «Zoom» of one photo, as it prints in the dictamen's annex. */
+export async function PATCH(request: Request, { params }: Context) {
+  try {
+    const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
+    if (!auth.ok) return auth.response;
+    const type = comparableTypeSchema.safeParse(new URL(request.url).searchParams.get("tipo"));
+    if (!type.success) return NextResponse.json({ error: "Tipo de comparable inválido" }, { status: 400 });
+    const body = await readJsonBody(request, comparablePhotoFramingSchema);
+    if (!body.ok) return body.response;
+    const { id, comparableId } = await params;
+    await setComparablePhotoFraming(id, auth.user, comparableId, body.data.photoId, body.data.framing);
+    return NextResponse.json({ data: await getMarketCalculation(id, auth.user.organizationId, type.data) });
+  } catch (error) {
+    return valuationErrorResponse("COMPARABLE_PHOTO_FRAMING", error, "No se pudo guardar el encuadre de la fotografía.");
   }
 }
 

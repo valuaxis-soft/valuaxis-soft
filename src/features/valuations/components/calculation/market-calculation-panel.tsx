@@ -1064,6 +1064,9 @@ function MarketTypePanel(props: {
           onRemovePhoto={async (photoId) => {
             if (editingComparable) await run(() => api.market.deletePhoto(valuationId, type, editingComparable.id, photoId));
           }}
+          onFramePhoto={async (photoId, framing) => {
+            if (editingComparable) await run(() => api.market.framePhoto(valuationId, type, editingComparable.id, photoId, framing), "Encuadre de la fotografía guardado");
+          }}
           onUploadScreenshot={async (file) => {
             if (editingComparable) await run(() => api.market.uploadScreenshot(valuationId, type, editingComparable.id, file), "Pantalla de referencia guardada");
           }}

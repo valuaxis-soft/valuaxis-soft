@@ -719,6 +719,8 @@ export function CostCalculationPanel(props: {
         value={current}
         placeholder={placeholder}
         title={placeholder === undefined ? undefined : `${label}. ${FORMULA_HINT}`}
+        // The age factor, the base of an indirect and a conservation from its rating are calculated while empty.
+        data-no-fill={key === "ageFactor" || key === "base" || (key === "conservation" && placeholder !== undefined) ? "computed" : undefined}
         onChange={(event) => setRow(list, index, key, event.target.value)}
       />
     );
@@ -784,6 +786,7 @@ export function CostCalculationPanel(props: {
         <td className="w-16 p-1">
           <FormulaInput
             aria-label="Factor resultante FRe = Cons. × Edad × Otro"
+            data-no-fill="computed"
             className={resultCell}
             value={row.resultantFactor}
             placeholder={hint(formulaValue(`${key}.factorResultante`))}
@@ -870,6 +873,7 @@ export function CostCalculationPanel(props: {
                       id="cost-land-area"
                       grouping
                       aria-label="Superficie de Sujeto (m²)"
+                      data-no-fill={calculation.market.subjectArea ? "computed" : undefined}
                       className={cell}
                       value={draft.land.subjectArea}
                       placeholder={calculation.market.subjectArea ? `De mercado: ${calculation.market.subjectArea}` : undefined}
@@ -883,6 +887,7 @@ export function CostCalculationPanel(props: {
                         <FormulaInput
                           id="cost-factor-surface"
                           aria-label="Factor de superficie (Sup.)"
+                          data-no-fill="computed"
                           className={cell}
                           value={draft.land.surfaceFactor}
                           placeholder={hint(formulaValue("costos.terreno.factorSuperficie"))}
@@ -898,6 +903,7 @@ export function CostCalculationPanel(props: {
                     <FormulaInput
                       id="cost-factor-resultant"
                       aria-label="Factor resultante del terreno (FRe)"
+                      data-no-fill="computed"
                       className={resultCell}
                       value={draft.land.resultantFactor}
                       placeholder={hint(formulaValue("costos.terreno.factorResultante"))}

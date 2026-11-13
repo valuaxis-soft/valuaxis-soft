@@ -29,12 +29,16 @@ export const isVerifiedStatus = (status: ReviewStatus | null | undefined) => sta
 /**
  * The state after the appraiser marks or unmarks «El enlace sigue vigente»:
  * unmarked, the comparable was verified but its listing is gone («Verificado
- * y no vigente»); marked, «Verificado y vigente». A comparable with
- * observations or rejected keeps its state: the link does not undo that.
+ * y no vigente»); marked again, a verified comparable is «Verificado y
+ * vigente». Marking the link alone does not verify a comparable nobody
+ * reviewed yet (video 5.4: it jumped from «Sin revisar» to «vigente»). A
+ * comparable with observations or rejected keeps its state: the link does
+ * not undo that.
  */
 export function statusAfterLinkCheck(status: ReviewStatus, linkValid: boolean): ReviewStatus {
   if (status === "CON_OBSERVACIONES" || status === "RECHAZADO") return status;
-  return linkValid ? "VERIFICADO" : "VERIFICADO_NO_VIGENTE";
+  if (!linkValid) return "VERIFICADO_NO_VIGENTE";
+  return isVerifiedStatus(status) ? "VERIFICADO" : status;
 }
 
 /** What the appraiser checks against the listing, in the order of the competitor's review. */
@@ -49,14 +53,23 @@ export const REVIEW_CHECK_LABELS: Record<ReviewCheck, string> = {
   address: "Dirección completa",
   link: "El enlace sigue vigente",
 };
+/** What a check means when its label alone is ambiguous, shown beside it in the review. */
+export const REVIEW_CHECK_HINTS: Partial<Record<ReviewCheck, string>> = {
+  link: "desmárcalo si el anuncio ya caducó",
+};
 
-/** «Marcar todas»: every check shown, marked; the state follows the link as if it had been marked by hand. */
+/**
+ * «Marcar todas»: every check shown, marked. With the link among them the
+ * comparable is verified and its listing alive («Verificado y vigente»),
+ * also when it was «Sin revisar»; observations and rejections stay.
+ */
 export function markAllChecks(
   checks: readonly ReviewCheck[], status: ReviewStatus,
 ): { checks: Partial<Record<ReviewCheck, boolean>>; status: ReviewStatus } {
+  const linkMarked = checks.includes("link") && status !== "CON_OBSERVACIONES" && status !== "RECHAZADO";
   return {
     checks: Object.fromEntries(checks.map((check) => [check, true])) as Partial<Record<ReviewCheck, boolean>>,
-    status: checks.includes("link") ? statusAfterLinkCheck(status, true) : status,
+    status: linkMarked ? "VERIFICADO" : status,
   };
 }
 

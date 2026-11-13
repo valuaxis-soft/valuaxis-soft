@@ -53,6 +53,7 @@ import {
   resolveColumnCapability,
   getTableHeaderLayout,
   getDisplayColumns,
+  tablePrintLayout,
   updateHeaderGroupTitle,
 } from "../../services/table";
 import {
@@ -1316,8 +1317,17 @@ export function TableEditorItem({
     onColumnAction: handleColumnAction,
   });
 
+  // "Espacio antes/después" of "Formato de la tabla" shows here too, as the dictamen prints it.
+  const print = tablePrintLayout(tableV2);
+
   return (
-    <section className="rounded-lg border bg-muted/20 p-4" onKeyDown={handleKeyDown} tabIndex={-1} data-table-editor={table.id}>
+    <section
+      className="rounded-lg border bg-muted/20 p-4"
+      style={{ marginTop: print.spacingBefore, marginBottom: print.spacingAfter }}
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
+      data-table-editor={table.id}
+    >
       {/* Table title + toolbar */}
       <div className="mb-3 flex items-center justify-between gap-3">
         <Input

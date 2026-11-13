@@ -17,6 +17,7 @@ import type { ReviewRowDto } from "@/features/valuations/calculation/comparable-
 import {
   PENDING_REVIEW,
   REVIEW_CHECKS,
+  REVIEW_CHECK_HINTS,
   REVIEW_CHECK_LABELS,
   REVIEW_STATUSES,
   REVIEW_STATUS_LABELS,
@@ -95,7 +96,7 @@ function ReviewRow(props: { row: ReviewRowDto; readOnly: boolean; onSaved: (revi
   const unitValue = comparable.area && comparable.price ? comparable.price / comparable.area : null;
   const checksShown = REVIEW_CHECKS.filter((check) => check !== "builtArea" || !isLandComparableType(type));
   const allChecked = checksShown.every((check) => checks[check] === true);
-  // «El enlace sigue vigente» sets the state: unmarked, «Verificado y no vigente»; marked, «Verificado y vigente».
+  // «El enlace sigue vigente» sets the state: unmarked, «Verificado y no vigente»; marked again, «Verificado y vigente».
   const toggleCheck = (check: ReviewCheck, checked: boolean) => {
     setChecks((current) => ({ ...current, [check]: checked }));
     if (check === "link") setStatus((current) => statusAfterLinkCheck(current, checked));
@@ -178,7 +179,10 @@ function ReviewRow(props: { row: ReviewRowDto; readOnly: boolean; onSaved: (revi
                     checked={checks[check] === true}
                     onCheckedChange={(checked) => toggleCheck(check, checked === true)}
                   />
-                  {REVIEW_CHECK_LABELS[check]}
+                  <span>
+                    {REVIEW_CHECK_LABELS[check]}
+                    {REVIEW_CHECK_HINTS[check] ? <span className="text-muted-foreground"> ({REVIEW_CHECK_HINTS[check]})</span> : null}
+                  </span>
                 </label>
               </li>
             ))}

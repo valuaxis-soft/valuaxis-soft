@@ -15,9 +15,9 @@ import {
 } from "@/features/valuations/services/cover-image-focus";
 
 /**
- * Moves an image inside its frame, one slider per axis, and sets its size:
- * filling the frame or whole, smaller or larger. The principal cover image and
- * every document image (photo annexes, plans) use it, so they behave alike.
+ * Moves an image inside its frame, one slider per axis, and sets its zoom
+ * ("Zoom", 50–200 %): filling the frame or whole, farther or closer. The cover image,
+ * every document image (photo annexes, plans) and the comparables' photos use it, so they behave alike.
  * The preview follows as the controls move.
  *
  * With `pannableFor` the sliders that would move nothing for this image are
@@ -37,7 +37,7 @@ export function ImageFramingControl({
   size,
   title,
 }: {
-  /** The size "Tamaño original" goes back to. */
+  /** The size "Zoom original" goes back to. */
   defaultSize: CoverImageSize;
   description: string;
   fitHint?: string;
@@ -55,7 +55,7 @@ export function ImageFramingControl({
   const imageRatio = useImageRatio(pannableFor ? imageUrl : null);
   const pannable = pannableFor ? pannableFor(imageRatio, size) : { x: true, y: true };
   const atDefaultSize = size.fit === defaultSize.fit && size.scale === defaultSize.scale;
-  const wholeNote = "La imagen completa ya se ve entera; auméntale el tamaño para acercarla y moverla.";
+  const wholeNote = "La imagen completa ya se ve entera; súbele el zoom para acercarla y moverla.";
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -106,7 +106,7 @@ export function ImageFramingControl({
         </Field>
         <Field>
           <div className="flex items-center justify-between gap-2">
-            <FieldLabel htmlFor={`${idPrefix}-tamano`}>Tamaño</FieldLabel>
+            <FieldLabel htmlFor={`${idPrefix}-tamano`}>Zoom</FieldLabel>
             <span className="text-xs tabular-nums text-muted-foreground">{size.scale}%</span>
           </div>
           <input
@@ -122,8 +122,8 @@ export function ImageFramingControl({
             onChange={(event) => onSizeChange({ ...size, scale: Number(event.target.value) })}
           />
           <div className="flex justify-between text-xs text-muted-foreground" aria-hidden="true">
-            <span>Más chica</span>
-            <span>Más grande</span>
+            <span>Alejar</span>
+            <span>Acercar</span>
           </div>
           <div className="flex justify-end">
             <Button
@@ -133,7 +133,7 @@ export function ImageFramingControl({
               disabled={readOnly || atDefaultSize}
               onClick={() => onSizeChange(defaultSize)}
             >
-              Tamaño original
+              Zoom original
             </Button>
           </div>
         </Field>
