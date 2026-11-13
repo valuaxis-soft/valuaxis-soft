@@ -108,6 +108,8 @@ function GridCell(props: {
     // A formula being written is the formula field's: it applies it, or keeps it while "Buscar valor" is open.
     if (writingFormula) {
       formula.onBlur();
+      // Applied or given up, the cell shows its value again.
+      setEditing(null);
       return;
     }
     const text = editing;
