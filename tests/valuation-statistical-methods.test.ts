@@ -16,6 +16,7 @@ import {
   methodComparison,
   splitColumns,
   statisticalDocumentBlocks,
+  statisticalMemoryTables,
   withStatisticalBlocks,
 } from "../src/features/valuations/calculation/statistical-document";
 import { statisticalInputSchema } from "../src/features/valuations/calculation/statistical-schemas";
@@ -33,6 +34,7 @@ import {
   unscaledValues,
   withMarketComparables,
   writtenValues,
+  type RegressionExtraTable,
   type StatisticalCalculationDto,
   type StatisticalComparableDto,
   type StatisticalVariableDto,
@@ -203,20 +205,31 @@ const cellsOf = (table: TableV2, row: number) => table.columns.map((column) => {
   return cell?.kind === "value" ? cell.value : "";
 });
 
-test("the dictamen prints the goal programming: deviations to look at, criteria that do not contribute, the value", () => {
+test("the dictamen prints the goal programming briefly, the conclusion last; deviations and contributions only if marked", () => {
   const [block] = statisticalDocumentBlocks(solvedGoal());
   assert.equal(block.id, "motor-estadistico-inmueble_venta");
   assert.equal(block.title, "MÉTODOS ALTERNATIVOS PARA ESTIMACIÓN DE VALOR");
   assert.deepEqual(block.apartados.map((apartado) => apartado.title), [
     "CRITERIOS, CODIFICACIÓN Y DATOS (INMUEBLES)", "CÁLCULO POR EL MÉTODO DE PROGRAMACIÓN POR METAS (INMUEBLES)",
   ]);
-  const [deviations, contributions] = block.apartados[1].tables.map((table) => ensureTableV2(table) as TableV2);
+  // Video 5.3, 20:56: a small table, as wide as its content, and the conclusion at the end.
+  const [brief, ...rest] = block.apartados[1].tables.map((table) => ensureTableV2(table) as TableV2);
+  assert.equal(rest.length, 0, "deviations and contributions go to the calculation memory");
+  assert.deepEqual(brief.columns.map((column) => column.name), ["CRITERIO", "COEFICIENTE", "VALOR SUJETO"]);
+  assert.equal(brief.schema?.widthMode, "content");
+  assert.deepEqual(brief.schema?.summaryBoxes?.find((box) => box.id === "conclusiones")?.rows.map((row) => row.value), ["$ 2,874,584.35"]);
+  assert.equal(brief.schema?.notes?.at(-1)?.text, STATISTICAL_VALUE_NOTE, "the note closes the conclusion");
+  const marked = solvedGoal();
+  marked.settings.goal = { ...marked.settings.goal, printedTables: ["deviations", "contributions"] };
+  const tables = statisticalDocumentBlocks(marked)[0].apartados[1].tables.map((table) => ensureTableV2(table) as TableV2);
+  assert.deepEqual(tables.map((table) => table.title), ["Coeficientes de la programación por metas", "Desviaciones de la programación por metas", "Contribución de cada criterio"]);
+  const [, deviations, contributions] = tables;
   assert.deepEqual(cellsOf(deviations, 0).slice(-1), ["A observar"]);
   assert.deepEqual(cellsOf(deviations, 1).slice(-1), ["—"]);
   assert.equal(cellsOf(contributions, 0)[4], NO_CONTRIBUTION_NOTE, "M2T has a coefficient of 0");
   assert.equal(cellsOf(contributions, 1)[4], "");
-  const conclusions = contributions.schema?.summaryBoxes?.find((box) => box.id === "conclusiones");
-  assert.deepEqual(conclusions?.rows.map((row) => row.value), ["$ 1,149,695.65", "$ 2,874,584.35"]);
+  assert.equal(tables[0].schema?.summaryBoxes, undefined, "the conclusion moves to the last table printed");
+  assert.deepEqual(contributions.schema?.summaryBoxes?.find((box) => box.id === "conclusiones")?.rows.map((row) => row.value), ["$ 2,874,584.35"]);
   // The data: the coded criteria with their numbers, in two tables with REF repeated (seven criteria + REF + price > 8).
   const data = block.apartados[0].tables.map((table) => ensureTableV2(table) as TableV2);
   assert.equal(data.length, 2);
@@ -229,39 +242,70 @@ test("the dictamen prints the goal programming: deviations to look at, criteria 
   assert.ok((data[1].schema?.notes ?? []).some((note) => note.label === "Escala de EdoCon:" && note.text.startsWith("Malo = 1, Regular = 2")));
 });
 
-test("the regression prints as Excel: equation, statistics, analysis of variance; residual hidden unless asked", () => {
+test("the regression prints briefly: Y and Y estimated, then the equation, constants and variables, the conclusion last", () => {
   const legacy = statisticalFromMarket(legacyMarket());
   assert.ok(legacy);
   const [block] = statisticalDocumentBlocks(dto(legacy));
   const apartado = block.apartados[1];
   assert.equal(apartado.title, "CÁLCULO POR EL MÉTODO DE REGRESIÓN LINEAL MÚLTIPLE (INMUEBLES)");
-  const [first, data, statistics, anova, coefficients] = apartado.tables.map((table) => ensureTableV2(table) as TableV2);
-  // Excel's coefficients table, after the analysis of variance: intercept and one row per variable.
-  assert.equal(coefficients.title, "Coeficientes de la regresión");
-  assert.deepEqual(coefficients.columns.map((column) => column.name), ["", "COEFICIENTES", "ERROR TÍPICO", "ESTADÍSTICO t", "PROBABILIDAD", "INFERIOR 95 %", "SUPERIOR 95 %"]);
-  assert.deepEqual(coefficients.rows.map((row, index) => cellsOf(coefficients, index)[0]), ["Intercepción", "B (SUP. CONST.)", "C (EDAD)"]);
-  assert.deepEqual(cellsOf(coefficients, 0).slice(1, 4), ["37.242817", "6.2382", "5.9701"]);
-  assert.equal(cellsOf(coefficients, 0)[4], "0.0006");
-  assert.ok((coefficients.schema?.notes ?? []).some((note) => note.text === COEFFICIENTS_NOTE));
-  // Ten columns do not fit: the table goes on under, with N (the comparable's number) again.
+  const tables = apartado.tables.map((table) => ensureTableV2(table) as TableV2);
+  assert.equal(tables.length, 1, "the table of products, the statistics, the ANOVA and the coefficients go to the memory (video 5.3, 18:03)");
+  const [brief] = tables;
+  assert.deepEqual(brief.columns.map((column) => column.name), ["REF", "Y ($/M²)", "Y ESTIMADO"]);
+  assert.equal(brief.schema?.widthMode, "content");
+  const notes = brief.schema?.notes ?? [];
+  // The equation right under the table, so it prints before its constants and variables (19:03).
+  assert.ok(notes.some((note) => note.position === "table" && note.label === "Ecuación de regresión lineal:" && note.text.startsWith("Y = 37.242817 + 0.0034702172·X − 0.35639358·Z")));
+  assert.deepEqual(notes.at(-1), { position: "bottom", text: STATISTICAL_VALUE_NOTE }, "the note goes last, with the conclusion (19:28)");
+  assert.deepEqual(brief.schema?.summaryBoxes?.map((box) => box.id), ["constantes", "variables", "conclusiones"]);
+  assert.deepEqual(brief.schema?.summaryBoxes?.at(-1)?.rows.map((row) => row.value), ["$ 33.66", "$ 6,732.03"]);
+
+  // Marked, the technical tables print too, in Excel's order, and the conclusion still closes the last one.
+  const printedTables: RegressionExtraTable[] = ["coefficients", "products", "anova", "statistics"];
+  const marked = { ...legacy, settings: { ...legacy.settings, regression: { ...legacy.settings.regression, printedTables } } };
+  const all = statisticalDocumentBlocks(dto(marked))[0].apartados[1].tables.map((table) => ensureTableV2(table) as TableV2);
+  assert.deepEqual(all.map((table) => table.title), [
+    "Regresión lineal", "Tabla de sumas y productos (1 de 2)", "Tabla de sumas y productos (2 de 2)", "Estadísticas de la regresión", "Análisis de varianza", "Coeficientes de la regresión",
+  ]);
+  const [, first, rest, statistics, anova, coefficients] = all;
   assert.deepEqual(first.columns.map((column) => column.name), ["N", "X (SUP. CONST.)", "Y ($/M²)", "Z (EDAD)", "X²", "Z²", "XY", "XZ"]);
-  assert.deepEqual(data.columns.map((column) => column.name), ["N", "YZ", "Y ESTIMADO"]);
+  assert.deepEqual(rest.columns.map((column) => column.name), ["N", "YZ"]);
   assert.deepEqual(cellsOf(first, 10).slice(0, 4), ["N = 10", "2,455", "356", "70"]);
-  assert.deepEqual(cellsOf(data, 10).slice(0, 2), ["N = 10", "2,475"]);
-  const notes = data.schema?.notes ?? [];
-  assert.ok(notes.some((note) => note.label === "Ecuación de regresión lineal:" && note.text.startsWith("Y = 37.242817 + 0.0034702172·X − 0.35639358·Z")));
-  assert.ok(notes.some((note) => note.text === STATISTICAL_VALUE_NOTE));
-  assert.deepEqual(data.schema?.summaryBoxes?.find((box) => box.id === "conclusiones")?.rows.map((row) => row.value), ["$ 33.66", "$ 6,732.03"]);
   assert.deepEqual(statistics.rows.map((row, index) => cellsOf(statistics, index)[0]), [
     "Coeficiente de correlación múltiple (R)", "Coeficiente de determinación R²", "R² ajustado", "Error típico", "Observaciones",
   ]);
   assert.deepEqual(anova.columns.map((column) => column.name), ["ANÁLISIS DE VARIANZA", "GRADOS DE LIBERTAD", "SUMA DE CUADRADOS", "PROMEDIO DE LOS CUADRADOS", "F", "VALOR CRÍTICO DE F"]);
   assert.deepEqual(cellsOf(anova, 0).slice(0, 2), ["Regresión", "2"]);
-  assert.deepEqual(cellsOf(anova, 1).slice(0, 2), ["Residuos", "7"]);
+  assert.deepEqual(coefficients.rows.map((row, index) => cellsOf(coefficients, index)[0]), ["Intercepción", "B (SUP. CONST.)", "C (EDAD)"]);
+  assert.deepEqual(cellsOf(coefficients, 0).slice(1, 4), ["37.242817", "6.2382", "5.9701"]);
+  assert.ok((coefficients.schema?.notes ?? []).some((note) => note.text === COEFFICIENTS_NOTE && note.position === "table"));
+  assert.deepEqual(coefficients.schema?.summaryBoxes?.map((box) => box.id), ["conclusiones"]);
+  assert.equal(coefficients.schema?.notes?.at(-1)?.text, STATISTICAL_VALUE_NOTE);
+
   const withResidual = statisticalDocumentBlocks(dto({ ...legacy, settings: { ...legacy.settings, regression: { ...legacy.settings.regression, showResidual: true, title: "Mi regresión" } } }));
   const shown = withResidual[0].apartados[1];
   assert.equal(shown.title, "MI REGRESIÓN (INMUEBLES)");
-  assert.equal((ensureTableV2(shown.tables[1]) as TableV2).columns.at(-1)?.name, "RESIDUO");
+  assert.equal((ensureTableV2(shown.tables[0]) as TableV2).columns.at(-1)?.name, "RESIDUO");
+});
+
+test("the calculation memory keeps the technical tables of both methods, whatever the dictamen prints", () => {
+  const legacy = statisticalFromMarket(legacyMarket());
+  assert.ok(legacy);
+  const regression = statisticalMemoryTables(dto(legacy));
+  assert.deepEqual(regression.map((table) => table.title), [
+    "Regresión lineal: tabla de sumas y productos", "Estadísticas de la regresión", "Análisis de varianza", "Coeficientes de la regresión",
+  ]);
+  assert.deepEqual(regression[0].columns, ["N", "X (SUP. CONST.)", "Y ($/M²)", "Z (EDAD)", "X²", "Z²", "XY", "XZ", "YZ"], "one table: the memory has room");
+  assert.equal(regression[0].rows[10][0], "N = 10");
+  assert.deepEqual(statisticalMemoryTables(solvedGoal()).map((table) => table.title), ["Desviaciones de la programación por metas", "Contribución de cada criterio"]);
+});
+
+test("«Agregar al informe valuatorio» off or «Quitar este cálculo» leaves the type's methods out of the dictamen", () => {
+  const calculation = solvedGoal();
+  assert.equal(statisticalDocumentBlocks(calculation).length, 1);
+  assert.deepEqual(statisticalDocumentBlocks({ ...calculation, settings: { ...calculation.settings, excludedFromReport: true } }), []);
+  assert.deepEqual(statisticalDocumentBlocks({ ...calculation, settings: { ...calculation.settings, removed: true } }), []);
+  assert.equal(statisticalInputSchema.safeParse({ settings: { ...calculation.settings, excludedFromReport: true, removed: true }, comparables: calculation.comparables }).success, true);
 });
 
 test("nothing prints until a method is marked and solved; the market no longer prints the regression", () => {

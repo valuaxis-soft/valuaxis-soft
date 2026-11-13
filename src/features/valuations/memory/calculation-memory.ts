@@ -42,7 +42,7 @@ import {
   type MarketCalculationDto,
 } from "../calculation/market-types";
 import { APPROACH_LABELS, concludeValue, type Approach } from "../engine/conclusion";
-import { ENGINE_VERSION } from "../engine/config";
+import { ENGINE_VERSION, ROUNDING_OPTIONS } from "../engine/config";
 import { computeCostApproach } from "../engine/costs";
 import { computeIncomeApproach } from "../engine/income";
 import { computeMachineryCost, computeMachineryMarket } from "../engine/machinery";
@@ -115,6 +115,19 @@ export type MemoryStep = {
 /** A value the appraiser typed as a formula in a calculation panel (a factor "=1/0.8", a price "=1345*235"). */
 export type MemoryCapturedFormula = { label: string; formula: string; value: string };
 
+/**
+ * "A decenas de miles (REDONDEAR −4)": the rounding of a step in words, with
+ * Excel's digit in parentheses (video 5.4, 14:10), instead of "−4 dígitos".
+ */
+export function roundingText(digits: number): string {
+  const option = ROUNDING_OPTIONS.find((item) => item.digits === digits);
+  const digit = digits < 0 ? `−${Math.abs(digits)}` : String(digits);
+  return option ? `Redondeo ${option.label.toLowerCase()} (REDONDEAR de Excel, ${digit})` : `Redondeo a ${digit} dígitos (REDONDEAR de Excel)`;
+}
+
+/** A table printed as written: headers, rows and the notes under it. */
+export type MemoryDataTable = { title: string; columns: string[]; rows: string[][]; notes: string[] };
+
 export type MemoryApproach = {
   /** The engine run it reproduces: MOTOR.MERCADO.TERRENO_VENTA, MOTOR.COSTOS… */
   key: string;
@@ -128,6 +141,8 @@ export type MemoryApproach = {
   storedVersion: string | null;
   /** Some step differs from what the server stored. */
   differs: boolean;
+  /** Tables of the run besides its steps: the technical tables of the alternative methods. */
+  tables?: MemoryDataTable[];
 };
 
 export type CalculationMemory = {
@@ -325,6 +340,7 @@ type EngineRun = {
   captured?: MemoryCapturedFormula[];
   /** A market's factors by their column label, for the steps that multiply them (the resultant factor). */
   labels?: Record<string, string>;
+  tables?: MemoryDataTable[];
 };
 
 /** "custom:vista-al-mar" reads "Vista al mar" when the firm's factor has no label of its own. */
@@ -652,6 +668,7 @@ export function buildCalculationMemory(input: CalculationMemoryInput): Calculati
       ...(engine.pending ? { pending: engine.pending } : {}),
       storedVersion: stored?.version ?? null,
       differs: steps.some((step) => step.storedValue !== undefined),
+      ...(engine.tables?.length ? { tables: engine.tables } : {}),
     };
   });
   const sectionHeadings = input.sections.filter((section) => section.enabled !== false).map(sectionHeading);

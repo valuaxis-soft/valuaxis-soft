@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { BUILTIN_CHARACTERISTICS, COMPARABLE_TYPES, CUSTOM_CHARACTERISTIC_KEY } from "./market-types";
 import {
+  GOAL_EXTRA_TABLES,
   MAX_SCALE_LEVELS,
   MAX_STATISTICAL_COMPARABLES,
   MAX_STATISTICAL_FIELDS,
@@ -9,6 +10,7 @@ import {
   SCALE_MODES,
   STATISTICAL_CODINGS,
   STATISTICAL_DEPENDENTS,
+  REGRESSION_EXTRA_TABLES,
   normalizedLevel,
 } from "./statistical-types";
 
@@ -55,9 +57,14 @@ export const statisticalInputSchema = z.object({
     }))
       .max(MAX_STATISTICAL_VARIABLES, `Se usan hasta ${MAX_STATISTICAL_VARIABLES} criterios.`)
       .refine((variables) => new Set(variables.map((variable) => variable.key)).size === variables.length, "Cada criterio va una sola vez."),
-    regression: methodSchema.extend({ showResidual: z.boolean().optional() }),
-    goal: methodSchema,
+    regression: methodSchema.extend({
+      showResidual: z.boolean().optional(),
+      printedTables: z.array(z.enum(REGRESSION_EXTRA_TABLES)).max(REGRESSION_EXTRA_TABLES.length).optional(),
+    }),
+    goal: methodSchema.extend({ printedTables: z.array(z.enum(GOAL_EXTRA_TABLES)).max(GOAL_EXTRA_TABLES.length).optional() }),
     showComparison: z.boolean(),
+    excludedFromReport: z.boolean().optional(),
+    removed: z.boolean().optional(),
   }),
   comparables: z.array(z.object({
     id: z.string().trim().min(1).max(80),

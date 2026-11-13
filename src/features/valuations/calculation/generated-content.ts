@@ -78,6 +78,8 @@ export function generatedTable(
      * id stays when rows are added or removed before it; by position when missing.
      */
     rowKeys?: string[];
+    /** "content": printed as wide as its columns need (a brief table), not the width of the page. */
+    widthMode?: "content";
   } = {},
 ): TableContent {
   const columnIds = columns.map((_, index) => `col-${index + 1}`);
@@ -132,6 +134,7 @@ export function generatedTable(
       ...(boxes.length ? { summaryBoxes: boxes } : {}),
       ...(options.notes?.length ? { notes: options.notes } : {}),
       ...(options.plain ? { plain: true } : {}),
+      ...(options.widthMode ? { widthMode: options.widthMode } : {}),
     },
   };
   return table as unknown as TableContent;

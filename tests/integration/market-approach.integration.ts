@@ -6,6 +6,7 @@ import {
   deleteComparable,
   deleteMarket,
   getMarketCalculation,
+  restoreMarket,
   saveMarketSettings,
   updateComparable,
 } from "../../src/features/valuations/calculation/market.service";
@@ -298,7 +299,7 @@ test("the conclusion follows the approaches: Arandas concludes 8,580,000 with th
   assert.equal(weighted.SJustificacion, "Ponderación de prueba.");
 });
 
-test("«Homologar» off is stored and the stored value follows the offers; an empty market can be removed, one with comparables cannot", async () => {
+test("«Homologar» off is stored and the stored value follows the offers; an empty market can be removed", async () => {
   const fixture = await createValuationFixture();
   const user = await loadArandas(fixture);
   const before = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
@@ -312,7 +313,6 @@ test("«Homologar» off is stored and the stored value follows the offers; an em
   // The factors captured stay with the comparables.
   assert.ok(off.comparables.every((item) => item.factors.length > 0));
 
-  await assert.rejects(deleteMarket(fixture.publicId, user, "TERRENO_VENTA"), /tiene \d+ comparables/);
   await saveMarketSettings(fixture.publicId, user, {
     comparableType: "INMUEBLE_VENTA", subjectArea: 120, baseArea: null, surfacePower: 6, adoptedUnitValue: null,
     justification: null, additionalAmount: 0, factorSlots: DEFAULT_FACTOR_SLOTS,
@@ -325,3 +325,27 @@ test("«Homologar» off is stored and the stored value follows the offers; an em
   // The land market is untouched.
   assert.equal((await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA")).comparables.length, before.comparables.length);
 });
+
+test("«Quitar este mercado» with comparables sets them aside, and «Deshacer» brings the market back as it was (video 6.3)", async () => {
+  const fixture = await createValuationFixture();
+  const user = await loadArandas(fixture);
+  const before = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
+  assert.ok(before.comparables.length > 0);
+  const { comparableIds } = await deleteMarket(fixture.publicId, user, "TERRENO_VENTA");
+  assert.deepEqual(comparableIds.toSorted(), before.comparables.map((item) => item.id).toSorted());
+  const removed = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
+  assert.equal(removed.configured, false);
+  assert.equal(removed.comparables.length, 0);
+  // A comparable captured meanwhile is number 1; the ones brought back follow it.
+  await createComparable(fixture.publicId, user, "TERRENO_VENTA", comparable("Comparable nuevo inventado", 150, 1400000, []));
+  await restoreMarket(fixture.publicId, user, "TERRENO_VENTA", comparableIds);
+  await saveMarketSettings(fixture.publicId, user, before.settings);
+  const restored = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
+  assert.equal(restored.configured, true);
+  assert.deepEqual(restored.comparables.map((item) => item.reference), Array.from({ length: before.comparables.length + 1 }, (_, index) => index + 1));
+  assert.equal(restored.comparables[0].location, "Comparable nuevo inventado");
+  assert.deepEqual(restored.comparables.slice(1).map((item) => item.price), before.comparables.map((item) => item.price));
+  assert.deepEqual(restored.comparables.slice(1).map((item) => item.factors.length), before.comparables.map((item) => item.factors.length), "with their factors");
+  assert.equal(restored.settings.subjectArea, before.settings.subjectArea);
+});
+

@@ -445,6 +445,12 @@ export type MarketSettingsDto = {
   homologate?: boolean;
   /** The appraiser's own note under the homologation table; empty, the one of the format. */
   homologationNote?: string | null;
+  /**
+   * Which statistics of the homologation print in the dictamen and in what
+   * order (video 5.3, 11:50); missing, the format's: the six of the dispersion
+   * and the mean, without the median.
+   */
+  printedStatistics?: PrintedStatistics | null;
   /** Formulas typed in the numeric fields ("subjectArea", "adoptedUnitValue"); absent keeps the stored ones whose value did not change. */
   formulas?: CapturedFormulas;
 };
@@ -492,6 +498,33 @@ export function comparableFormValues(comparable: ComparableDto): Omit<Comparable
 export function marketEngineConfig(settings: Pick<MarketSettingsDto, "rounding">, precision?: CalculationPrecision | null): EngineConfig {
   const config = settings.rounding === undefined ? DEFAULT_ENGINE_CONFIG : withRounding(DEFAULT_ENGINE_CONFIG, { market: settings.rounding });
   return withPrecision(config, precision);
+}
+
+/** The statistics of a homologation that may print, in the format's order. */
+export const MARKET_STATISTICS = ["offerMin", "offerMax", "initialDispersion", "min", "max", "dispersion", "mean", "median"] as const;
+export type MarketStatistic = (typeof MARKET_STATISTICS)[number];
+
+/** The appraiser's choice of statistics: all of them in the order chosen, and the ones left out of the dictamen. */
+export type PrintedStatistics = { order: MarketStatistic[]; hidden: MarketStatistic[] };
+
+/** The mean and the median print beside the adopted value; the rest in the box of the dispersion. */
+export const STATISTICS_BESIDE_ADOPTED: ReadonlySet<MarketStatistic> = new Set(["mean", "median"]);
+
+const DEFAULT_PRINTED_STATISTICS: PrintedStatistics = { order: [...MARKET_STATISTICS], hidden: ["median"] };
+
+/** The choice of statistics with every statistic once, in the order chosen; missing, the format's. */
+export function printedStatisticsOf(settings: Pick<MarketSettingsDto, "printedStatistics">): PrintedStatistics {
+  const chosen = settings.printedStatistics;
+  if (!chosen) return DEFAULT_PRINTED_STATISTICS;
+  const known = new Set<string>(MARKET_STATISTICS);
+  const order = [...new Set(chosen.order.filter((key) => known.has(key)))];
+  return { order: [...order, ...MARKET_STATISTICS.filter((key) => !order.includes(key))], hidden: chosen.hidden.filter((key) => known.has(key)) };
+}
+
+/** The statistics that print, in their order. */
+export function shownStatistics(settings: Pick<MarketSettingsDto, "printedStatistics">): MarketStatistic[] {
+  const { order, hidden } = printedStatisticsOf(settings);
+  return order.filter((key) => !hidden.includes(key));
 }
 
 /** Whether the market homologates its comparables: it does unless "Homologar" was turned off. */

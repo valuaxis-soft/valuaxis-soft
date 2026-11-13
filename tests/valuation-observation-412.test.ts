@@ -80,7 +80,7 @@ test("the homologation table can be left out of the dictamen; the data, statisti
   const rows = offers?.summaryBoxes?.flatMap((box) => box.rows) ?? [];
   assert.ok(rows.some((row) => row.label.startsWith("Valor homologado a utilizar")), "the adopted value");
   assert.ok(rows.some((row) => row.label.startsWith("VALOR COMPARATIVO DE MERCADO")), "the value of the approach");
-  assert.deepEqual(offers?.notes?.map((note) => note.text), ["Zona similar."], "the justification follows its own box");
+  assert.deepEqual(offers?.notes?.map((note) => note.text), ["Justificación de los factores utilizados", "Zona similar."], "the justification follows its own box, under its title");
 });
 
 test("comparables of the appraiser's base become rows of the alternative methods only", () => {

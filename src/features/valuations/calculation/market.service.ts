@@ -41,7 +41,6 @@ import { PENDING_REVIEW, REVIEW_STATUSES, type ComparableReviewDto } from "./com
 import type { ComparableInputPayload, ComparableReviewPayload, MarketSettingsPayload } from "./market-schemas";
 import {
   COMPARABLE_TYPES,
-  COMPARABLE_TYPE_LABELS,
   CUSTOM_FACTOR_KEY,
   OFFER_LEVELS,
   cleanAttributes,
@@ -111,7 +110,7 @@ type StoredConfiguration = Partial<Pick<MarketSettingsDto,
   | "factorSlots" | "adoptedUnitValue" | "rounding" | "offerLevel" | "offerLabels" | "offerMark" | "offerIntro" | "homologationBasis"
   | "typicalFrontage" | "typicalDepth" | "characteristicFields" | "subjectCharacteristics" | "showFactorJustification"
   | "regression" | "showHomologationTable" | "showHomologationNote" | "homologationNote" | "homologate" | "additionalAmountInCalculation"
-  | "showAdditionalAmount">> & {
+  | "showAdditionalAmount" | "printedStatistics">> & {
   /**
    * The lote tipo captured, kept while the homologation is against the
    * subject: NSuperficieBase holds it only against the lote tipo, so the cost
@@ -306,6 +305,7 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
         showHomologationTable: configuration.showHomologationTable ?? true,
         showHomologationNote: configuration.showHomologationNote ?? true,
         homologationNote: configuration.homologationNote ?? null,
+        printedStatistics: configuration.printedStatistics ?? null,
         ...(configuration.homologate === undefined ? {} : { homologate: configuration.homologate }),
         ...(configuration.additionalAmountInCalculation === undefined ? {} : { additionalAmountInCalculation: configuration.additionalAmountInCalculation }),
         ...(configuration.showAdditionalAmount === undefined ? {} : { showAdditionalAmount: configuration.showAdditionalAmount }),
@@ -486,6 +486,7 @@ function storedConfiguration(settings: StoredConfiguration) {
     ...(settings.showHomologationTable === undefined ? {} : { showHomologationTable: settings.showHomologationTable }),
     ...(settings.showHomologationNote === undefined ? {} : { showHomologationNote: settings.showHomologationNote }),
     homologationNote: settings.homologationNote ?? null,
+    printedStatistics: settings.printedStatistics ?? null,
     ...(settings.homologate === undefined ? {} : { homologate: settings.homologate }),
     ...(settings.additionalAmountInCalculation === undefined ? {} : { additionalAmountInCalculation: settings.additionalAmountInCalculation }),
     // Out of the calculation, the additional amount does not print either.
@@ -602,6 +603,7 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
         showHomologationTable: payload.showHomologationTable ?? stored.showHomologationTable,
         showHomologationNote: payload.showHomologationNote ?? stored.showHomologationNote,
         homologationNote: unlessOmitted(payload.homologationNote, stored.homologationNote),
+        printedStatistics: unlessOmitted(payload.printedStatistics, stored.printedStatistics),
         homologate: payload.homologate ?? stored.homologate,
         additionalAmountInCalculation: payload.additionalAmountInCalculation ?? stored.additionalAmountInCalculation,
         showAdditionalAmount: payload.showAdditionalAmount ?? stored.showAdditionalAmount,
@@ -622,17 +624,56 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
  * Only an empty one (no comparables), so nothing captured is lost; one with
  * comparables is emptied first, comparable by comparable.
  */
+/** Why the comparables of a market taken out wait aside (the table asks for a date and a reason when one is not included). */
+const MARKET_REMOVED_REASON = "Mercado quitado del avalúo («Quitar este mercado»); se puede deshacer.";
+
+/**
+ * "Quitar este mercado": the market leaves the valuation with its settings,
+ * also when it has comparables (video 6.3, 06:35). Its comparables are only
+ * set aside (`BIncluido` false), so `restoreMarket` brings them back with
+ * their factors, photos and review: the removal is undone, as every deletion.
+ * Returns the comparables set aside.
+ */
 export async function deleteMarket(publicId: string, user: AuthUser, type: ComparableType) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
     const typeId = await comparableTypeId(tx, type);
-    const comparables = await tx.comparableAvaluo.count({ where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, BIncluido: true } });
-    if (comparables) {
-      throw new ValuationWorkflowError(`El mercado de ${COMPARABLE_TYPE_LABELS[type].toLowerCase()} tiene ${comparables} comparables: elimínalos antes de quitarlo.`, 409);
+    const comparables = await tx.comparableAvaluo.findMany({
+      where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, BIncluido: true },
+      select: { UIdentificadorPublico: true },
+    });
+    if (comparables.length) {
+      await tx.comparableAvaluo.updateMany({ where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, BIncluido: true }, data: { BIncluido: false, DFechaExclusion: new Date(), SMotivoExclusion: MARKET_REMOVED_REASON } });
     }
     await tx.enfoqueMercado.deleteMany({ where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId } });
     await tx.ejecucionCalculo.deleteMany({ where: { IdVersionAvaluo: versionId, SClaveCalculo: `MOTOR.MERCADO.${type}` } });
     await recomputeDependents(tx, versionId, type);
+    return { comparableIds: comparables.map((row) => row.UIdentificadorPublico) };
+  });
+}
+
+/**
+ * Undoes "Quitar este mercado": the comparables set aside come back after the
+ * ones captured since, in their order. The settings come back with
+ * `saveMarketSettings`, as the panel had them.
+ */
+export async function restoreMarket(publicId: string, user: AuthUser, type: ComparableType, comparableIds: string[]) {
+  await prisma.$transaction(async (tx) => {
+    const { versionId } = await writableVersion(tx, publicId, user);
+    const typeId = await comparableTypeId(tx, type);
+    const aside = await tx.comparableAvaluo.findMany({
+      where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, BIncluido: false, UIdentificadorPublico: { in: comparableIds } },
+      orderBy: [{ IOrden: "asc" }, { IdComparableAvaluo: "asc" }],
+      select: { IdComparableAvaluo: true },
+    });
+    const included = await tx.comparableAvaluo.count({ where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, BIncluido: true } });
+    for (const [index, row] of aside.entries()) {
+      await tx.comparableAvaluo.update({
+        where: { IdComparableAvaluo: row.IdComparableAvaluo },
+        data: { BIncluido: true, DFechaExclusion: null, SMotivoExclusion: null, IReferencia: included + index + 1, IOrden: included + index },
+      });
+    }
+    await recompute(tx, versionId, type);
   });
 }
 
@@ -896,7 +937,8 @@ export async function insertComparable(
   const captured = snapshots(payload, comparableFormulas(payload, null), screenshot ? { publication: { screenshot } } : {});
   const last = target.kind === "valuation"
     ? await tx.comparableAvaluo.aggregate({
-      where: { IdVersionAvaluo: target.versionId, IdTipoComparable: target.typeId },
+      // Among the comparables in the market: the ones of a market taken out wait aside for an undo.
+      where: { IdVersionAvaluo: target.versionId, IdTipoComparable: target.typeId, BIncluido: true },
       _max: { IReferencia: true, IOrden: true },
     })
     : null;
@@ -1236,7 +1278,7 @@ export async function deleteComparable(publicId: string, user: AuthUser, compara
     await tx.comparableAvaluo.delete({ where: { IdComparableAvaluo: current.IdComparableAvaluo } });
     // Keep references 1..n in capture order, as the dictamen numbers them.
     const remaining = await tx.comparableAvaluo.findMany({
-      where: { IdVersionAvaluo: versionId, IdTipoComparable: current.IdTipoComparable },
+      where: { IdVersionAvaluo: versionId, IdTipoComparable: current.IdTipoComparable, BIncluido: true },
       orderBy: [{ IOrden: "asc" }, { IdComparableAvaluo: "asc" }],
       select: { IdComparableAvaluo: true },
     });

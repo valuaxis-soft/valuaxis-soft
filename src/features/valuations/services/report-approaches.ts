@@ -29,11 +29,15 @@ const SECTION_APPROACHES: Record<string, readonly ReportApproach[]> = {
   INGRESOS: ["ingresos"],
 };
 
-/** The pages the calculation writes for each market, wherever they are (its photos go to the annex). */
+/**
+ * The pages the calculation writes for each market, wherever they are (its
+ * photos go to the annex), and the alternative methods of the same comparable
+ * type: a market left out takes its regression and goal programming with it.
+ */
 const GENERATED_BLOCK_PREFIXES: Partial<Record<ReportApproach, readonly string[]>> = {
-  "mercado-inmuebles": ["motor-mercado-inmueble_venta"],
-  "mercado-terrenos": ["motor-mercado-terreno_venta"],
-  "mercado-rentas": ["motor-mercado-inmueble_renta", "motor-mercado-terreno_renta"],
+  "mercado-inmuebles": ["motor-mercado-inmueble_venta", "motor-estadistico-inmueble_venta"],
+  "mercado-terrenos": ["motor-mercado-terreno_venta", "motor-estadistico-terreno_venta"],
+  "mercado-rentas": ["motor-mercado-inmueble_renta", "motor-mercado-terreno_renta", "motor-estadistico-inmueble_renta", "motor-estadistico-terreno_renta"],
 };
 
 export function isReportApproach(value: unknown): value is ReportApproach {
@@ -95,6 +99,15 @@ export function sectionForReport<T extends SectionWithExclusions & { blocks: Arr
   if (!excluded.size) return section;
   const blocks = section.blocks.filter((block) => !blockLeftOutOfReport(block, excluded));
   return blocks.length === section.blocks.length ? section : { ...section, blocks };
+}
+
+/**
+ * The section as the editor's preview shows it: what the dictamen prints. A
+ * section left out entirely shows as hidden, so the preview never shows a
+ * market that "Agregar al informe valuatorio" took out.
+ */
+export function previewSectionForReport<T extends SectionWithExclusions & { blocks: Array<{ id: string }>; enabled?: boolean }>(section: T, excluded: ReadonlySet<ReportApproach>): T {
+  return sectionForReport(section, excluded) ?? { ...section, enabled: false };
 }
 
 type ApproachValues = Record<Approach, number | null>;

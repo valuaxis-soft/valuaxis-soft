@@ -16,6 +16,7 @@ import {
   scaleValues,
   type StatisticalCalculationDto,
 } from "../calculation/statistical-types";
+import { statisticalMemoryTables, type StatisticalMemoryTable } from "../calculation/statistical-document";
 import { Trace } from "../engine/trace";
 
 type StatisticalRun = {
@@ -25,6 +26,8 @@ type StatisticalRun = {
   trace: Trace | null;
   pending?: string;
   captured: Array<{ label: string; formula: string; value: string }>;
+  /** The technical tables of the methods: they print here whatever the dictamen shows. */
+  tables: StatisticalMemoryTable[];
 };
 
 /** "Escala de CALIDAD: Regular" = 2, "VUR": 60 − valor: how each criterion became a number. */
@@ -49,7 +52,7 @@ function codings(calculation: StatisticalCalculationDto) {
 export function statisticalRuns(calculations: StatisticalCalculationDto[] | undefined): StatisticalRun[] {
   return (calculations ?? []).flatMap((calculation): StatisticalRun[] => {
     const { settings } = calculation;
-    if (!settings.regression.enabled && !settings.goal.enabled) return [];
+    if (settings.removed || (!settings.regression.enabled && !settings.goal.enabled)) return [];
     const trace = new Trace();
     const regression = computeStatisticalRegression(calculation, trace);
     const goal = computeStatisticalGoal(calculation, trace);
@@ -64,6 +67,7 @@ export function statisticalRuns(calculations: StatisticalCalculationDto[] | unde
       trace: trace.steps.length ? trace : null,
       ...(pending ? { pending } : {}),
       captured: codings(calculation),
+      tables: statisticalMemoryTables(calculation),
     }];
   });
 }

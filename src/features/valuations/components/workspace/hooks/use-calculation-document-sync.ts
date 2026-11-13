@@ -14,6 +14,7 @@ import {
   GENERATED_BLOCK_PREFIX,
   MARKET_TEMPLATE_BLOCK_IDS,
   RENT_TEMPLATE_BLOCK_IDS,
+  findSubjectBuiltArea,
   findSubjectLandArea,
   marketDocumentBlocks,
   marketPhotoBlocks,
@@ -283,6 +284,6 @@ export function useCalculationDocumentSync({
     onMachineryCalculation,
     onStatisticalCalculation: applyStatistical,
     onConclusionCalculation: applyConclusion,
-    suggestedSubjectArea: findSubjectLandArea(sections),
+    suggestedSubjectAreas: { land: findSubjectLandArea(sections), built: findSubjectBuiltArea(sections) },
   };
 }

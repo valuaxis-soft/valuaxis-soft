@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, BarChart3, Download, Loader2, Plus } from "lucide-react";
+import { AlertTriangle, BarChart3, Download, Loader2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -28,9 +28,12 @@ import {
   withFoundComparables,
   withMarketComparables,
   type StatisticalCalculationDto,
+  type GoalExtraTable,
+  type RegressionExtraTable,
   type StatisticalDependent,
   type StatisticalMethodSettings,
 } from "@/features/valuations/calculation/statistical-types";
+import { ConfigSwitch } from "@/features/valuations/components/editor/editor-config-panel";
 import type { ComparableSearchHit } from "@/features/valuations/comparable-search/types";
 import { goalProgrammingWarnings } from "@/features/valuations/engine/goal-programming";
 import { RECOMMENDED_REGRESSION_COMPARABLES, minimumRegressionComparables, sampleSizeRecommendation } from "@/features/valuations/engine/regression";
@@ -39,6 +42,7 @@ import { SearchComparablesDialog } from "./search-comparables-dialog";
 import { StatisticalDataTable, type SubjectSource } from "./statistical-data-table";
 import { StatisticalVariables } from "./statistical-variables";
 import { useSerializedSave } from "./use-serialized-save";
+import { useConfirmDelete } from "@/features/valuations/components/editor/delete-confirm";
 
 type Draft = Pick<StatisticalCalculationDto, "settings" | "comparables">;
 
@@ -71,7 +75,7 @@ export function StatisticalMethodsPanel(props: {
     let active = true;
     const all = typesKey.split(",") as ComparableType[];
     void Promise.all(all.map((item) => api.statistical.get(valuationId, item)
-      .then((calculation) => (calculation.configured || calculation.fromMarket ? item : null))
+      .then((calculation) => ((calculation.configured || calculation.fromMarket) && !calculation.settings.removed ? item : null))
       .catch(() => null)))
       .then((found) => {
         if (!active) return;
@@ -84,19 +88,28 @@ export function StatisticalMethodsPanel(props: {
 
   const visible = types.filter((item) => shown.has(item));
   const missing = types.filter((item) => !shown.has(item));
+  // "Quitar este cálculo": the tab goes, the capture is kept (undo, or adding the type again, brings it back).
+  const removed = (item: ComparableType) => {
+    setShown((current) => new Set([...current].filter((kept) => kept !== item)));
+    setType((current) => (current === item ? visible.find((other) => other !== item) ?? null : current));
+  };
+  const restored = (item: ComparableType) => {
+    setShown((current) => new Set([...current, item]));
+    setType(item);
+  };
 
   return (
     <section
       className="grid gap-3 rounded-lg border-2 border-dashed border-violet-400/40 bg-muted/20 p-3 sm:p-4"
       aria-labelledby="statistical-methods-title"
     >
-      <header className="grid gap-0.5">
-        <h3 id="statistical-methods-title" className="flex items-center gap-2 text-base font-semibold">
-          <BarChart3 className="size-4" /> Métodos alternativos para estimación de valor
+      <header className="grid gap-1">
+        <h3 id="statistical-methods-title" className="flex items-center gap-2 font-display text-lg font-semibold">
+          <BarChart3 className="size-5" /> Métodos alternativos para estimación de valor
         </h3>
         <p className="text-xs text-muted-foreground">
           Regresión lineal múltiple y programación por metas, con comparables propios. Son una referencia: no cambian el valor del enfoque de mercado
-          ni la conclusión. Se imprimen en el dictamen, después del mercado, solo si marcas «Mostrar en el dictamen».
+          ni la conclusión. Se imprimen en el dictamen, después del mercado, con «Agregar al informe valuatorio» y «Mostrar en el dictamen» de cada método.
         </p>
       </header>
       <div className="flex flex-wrap items-center gap-2">
@@ -132,7 +145,7 @@ export function StatisticalMethodsPanel(props: {
         )) : null}
         {!visible.length && props.readOnly ? <span className="text-xs text-muted-foreground">Sin métodos alternativos capturados.</span> : null}
       </div>
-      {type ? <StatisticalTypePanel key={type} {...props} type={type} /> : null}
+      {type ? <StatisticalTypePanel key={type} {...props} type={type} onRemoved={removed} onRestored={restored} /> : null}
     </section>
   );
 }
@@ -209,6 +222,9 @@ function StatisticalTypePanel(props: {
   type: ComparableType;
   readOnly: boolean;
   onCalculation: (calculation: StatisticalCalculationDto) => void;
+  /** "Quitar este cálculo" took the type away; «Deshacer» brought it back. */
+  onRemoved: (type: ComparableType) => void;
+  onRestored: (type: ComparableType) => void;
 }) {
   const { valuationId, type } = props;
   const rent = isRentComparableType(type);
@@ -220,6 +236,8 @@ function StatisticalTypePanel(props: {
   const [saving, setSaving] = useState(false);
   // The last draft sent: a server answer to an older one does not replace what was typed after it.
   const latestDraft = useRef<Draft | null>(null);
+  // Set once the save is defined; a reader never restores (the save checks it too).
+  const restoreRemoved = useRef<(next: StatisticalCalculationDto) => void>(() => undefined);
 
   useEffect(() => {
     let active = true;
@@ -229,6 +247,8 @@ function StatisticalTypePanel(props: {
         setCalculation(next);
         setDraft(draftOf(next));
         latestDraft.current = draftOf(next);
+        // A type taken away and added again (or brought back with «Deshacer») comes back with its capture.
+        if (next.settings.removed && !next.locked) restoreRemoved.current(next);
       })
       .catch((error: unknown) => { if (active) setLoadError(error instanceof Error ? error.message : "No se pudieron cargar los métodos alternativos."); });
     // The market of the same type: the subject's data for "=", and its comparables to import.
@@ -237,6 +257,7 @@ function StatisticalTypePanel(props: {
   }, [type, valuationId]);
 
   const readOnly = props.readOnly || Boolean(calculation?.locked);
+  const confirmDelete = useConfirmDelete();
 
   const reportCalculation = useEffectEvent((next: StatisticalCalculationDto) => {
     if (!props.readOnly && !next.locked) props.onCalculation(next);
@@ -266,6 +287,39 @@ function StatisticalTypePanel(props: {
     setDraft(next);
     void enqueue(next);
   };
+  useEffect(() => {
+    restoreRemoved.current = (next) => {
+      if (props.readOnly) return;
+      const sent = { settings: { ...next.settings, removed: false }, comparables: next.comparables };
+      latestDraft.current = sent;
+      setDraft(sent);
+      void enqueue(sent);
+    };
+  });
+  // Saved before the tab goes, so «Deshacer» reads it back from the server.
+  const removeCalculation = () => confirmDelete({
+    title: `¿Quitar los métodos alternativos de ${COMPARABLE_TYPE_LABELS[type].toLowerCase()}?`,
+    description: "Se quita la pestaña y sus páginas del dictamen; lo capturado se conserva. Puedes deshacerlo con «Deshacer» en el aviso que aparece, "
+      + "o volver a agregar el tipo con su botón.",
+    confirmLabel: "Quitar este cálculo",
+    onConfirm: () => {
+      const current = latestDraft.current;
+      if (!current || readOnly) return;
+      void (async () => {
+        try {
+          const next = await api.statistical.save(valuationId, { ...current, settings: { ...current.settings, removed: true } });
+          props.onCalculation(next);
+          props.onRemoved(type);
+          toast.success("Métodos alternativos quitados.", {
+            duration: 15000,
+            action: { label: "Deshacer", onClick: () => props.onRestored(type) },
+          });
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "No se pudo quitar el cálculo.");
+        }
+      })();
+    },
+  });
 
   if (loadError) return <p className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">{loadError}</p>;
   if (!calculation || !draft) {
@@ -333,6 +387,25 @@ function StatisticalTypePanel(props: {
 
   return (
     <div className="grid gap-5" data-comparable-type={type}>
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border bg-background p-3">
+        <h4 className="font-display text-base font-semibold">{COMPARABLE_TYPE_LABELS[type]}</h4>
+        <div className="flex flex-wrap items-start gap-3">
+          <ConfigSwitch
+            checked={!settings.excludedFromReport}
+            disabled={readOnly}
+            label="Agregar al informe valuatorio"
+            description={settings.excludedFromReport
+              ? "No se imprime nada de este tipo de comparable; lo capturado se conserva."
+              : "Se imprimen los métodos marcados con «Mostrar en el dictamen»."}
+            onCheckedChange={(included) => update((current) => ({ ...current, settings: { ...current.settings, excludedFromReport: !included } }))}
+          />
+          {!readOnly ? (
+            <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={removeCalculation}>
+              <Trash2 data-icon="inline-start" /> Quitar este cálculo
+            </Button>
+          ) : null}
+        </div>
+      </div>
       {calculation.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
       {calculation.fromMarket ? (
         <p className="rounded-md border border-sky-500/40 bg-sky-50 p-2 text-xs text-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
@@ -403,6 +476,13 @@ function StatisticalTypePanel(props: {
 
       <Part number={3} title="Regresión lineal múltiple (RLM)">
         <MethodControls label="Calcular por regresión lineal múltiple" method={settings.regression} defaultTitle={DEFAULT_REGRESSION_TITLE} readOnly={readOnly} onChange={(patch) => setMethod("regression", patch)} />
+        {/* Video 5.4, 14:54: «Mostrar en el dictamen» of the regression is only the regression's; the goal programming has its own. */}
+        {!settings.regression.showInDictamen && settings.goal.enabled && settings.goal.showInDictamen && !settings.excludedFromReport ? (
+          <p className="rounded-md border border-sky-500/40 bg-sky-50 p-2 text-xs text-sky-900 dark:bg-sky-950/30 dark:text-sky-200" data-goal-still-printed="">
+            La regresión no se imprime, pero el bloque de métodos alternativos sigue en el dictamen por la programación por metas (su «Mostrar en el
+            dictamen» está marcado, abajo). Para quitar todo el bloque, apaga «Agregar al informe valuatorio» arriba.
+          </p>
+        ) : null}
         {settings.regression.enabled ? (
           <div className="grid gap-3">
             <div className="flex flex-wrap items-center gap-4 text-xs">
@@ -428,6 +508,13 @@ function StatisticalTypePanel(props: {
               </label>
               <span className="text-muted-foreground">Necesita al menos {minimumRegressionComparables(Math.max(k, 1))} comparables (criterios + 2).</span>
             </div>
+            <ExtraTablesControl
+              label="Imprimir también en el dictamen"
+              options={REGRESSION_TABLE_LABELS}
+              value={settings.regression.printedTables}
+              disabled={readOnly || !settings.regression.showInDictamen}
+              onChange={(printedTables) => setMethod("regression", { printedTables } as Partial<StatisticalMethodSettings>)}
+            />
             {regression?.ok ? (
               <div className="grid gap-3 rounded-md border bg-background p-3 text-sm" aria-label="Resultado de la regresión lineal">
                 <p className="text-xs"><span className="font-medium">Ecuación de regresión lineal:</span> <span className="font-mono">{regressionEquation(regression.result.fit)}</span></p>
@@ -564,6 +651,13 @@ function StatisticalTypePanel(props: {
               Mismos comparables y criterios; Y es el precio total de oferta. Mínimo de Σ (p + n) con Σ criterio × coeficiente + p − n = precio, coeficientes y
               desviaciones ≥ 0, sin ordenada al origen, como LINGO. Se resuelve en el servidor (HiGHS) al guardar.
             </p>
+            <ExtraTablesControl
+              label="Imprimir también en el dictamen"
+              options={GOAL_TABLE_LABELS}
+              value={settings.goal.printedTables}
+              disabled={readOnly || !settings.goal.showInDictamen}
+              onChange={(printedTables) => setMethod("goal", { printedTables } as Partial<StatisticalMethodSettings>)}
+            />
             <SampleSizeAdvice n={goal?.outcome.ok ? goal.outcome.fit.n : included} k={goal?.outcome.ok ? goal.outcome.fit.k : k} />
             {goal?.outcome.ok ? (
               <div className="grid gap-3 rounded-md border bg-background p-3 text-sm" aria-label="Resultado de la programación por metas">
@@ -668,6 +762,46 @@ function StatisticalTypePanel(props: {
         ) : <p className="text-xs text-muted-foreground">Calcula algún método para compararlo con la homologación del enfoque de mercado.</p>}
         <p className="text-xs text-muted-foreground">Ningún método se adopta automáticamente: el valor lo concluye el valuador.</p>
       </Part>
+    </div>
+  );
+}
+
+const REGRESSION_TABLE_LABELS: Record<RegressionExtraTable, string> = {
+  products: "Tabla de sumas y productos",
+  statistics: "Estadísticas de la regresión",
+  anova: "Análisis de varianza",
+  coefficients: "Coeficientes",
+};
+const GOAL_TABLE_LABELS: Record<GoalExtraTable, string> = { deviations: "Desviaciones", contributions: "Contribución de cada criterio" };
+
+/**
+ * The technical tables of a method (video 5.3, 21:48): they are always in the
+ * calculation memory; marked, they print in the dictamen too, before the
+ * conclusion.
+ */
+function ExtraTablesControl<K extends string>(props: {
+  label: string;
+  options: Record<K, string>;
+  value: K[] | undefined;
+  disabled: boolean;
+  onChange: (value: K[]) => void;
+}) {
+  const chosen = new Set(props.value ?? []);
+  const keys = Object.keys(props.options) as K[];
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" data-extra-tables="">
+      <span className="font-medium">{props.label}:</span>
+      {keys.map((key) => (
+        <label key={key} className="flex items-center gap-1.5">
+          <Checkbox
+            checked={chosen.has(key)}
+            disabled={props.disabled}
+            onCheckedChange={(checked) => props.onChange(keys.filter((item) => (item === key ? checked === true : chosen.has(item))))}
+          />
+          {props.options[key]}
+        </label>
+      ))}
+      <span className="text-muted-foreground">Sin marcar, van solo a la memoria de cálculo; el dictamen lleva una tabla breve y la conclusión.</span>
     </div>
   );
 }

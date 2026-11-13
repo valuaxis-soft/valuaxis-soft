@@ -216,12 +216,14 @@ function TableNotes({ tableV2, position }: { tableV2: TableV2; position: TableNo
   if (!notes.length) return null;
   return (
     <div className={cn("text-[10px] leading-snug", TABLE_TEXT, position === "top" ? "mb-1.5" : "mt-1.5")} data-table-notes={position}>
-      {notes.map((note, index) => (
+      {notes.map((note, index) => (note.heading ? (
+        <p className="mt-1 font-bold first:mt-0" key={index}>{note.text}</p>
+      ) : (
         <p className="text-justify" key={index}>
           {note.label ? <strong>{note.label} </strong> : null}
           {note.text}
         </p>
-      ))}
+      )))}
     </div>
   );
 }
@@ -426,7 +428,7 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
               {columns.map((column) => {
                 const value = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
                 return (
-                  <TableCell className={cn("px-2 py-1", cellPresentation(tableV2, column.id), isMarkedCell(value) && MARKED)} key={column.id}>{value}</TableCell>
+                  <TableCell className={cn("px-2 py-1", cellPresentation(tableV2, column.id), !plain && isMarkedCell(value) && MARKED)} key={column.id}>{value}</TableCell>
                 );
               })}
             </TableRow>
@@ -436,6 +438,7 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
       {closes && tableV2.schema?.resultGroups && (
         <ResultGroups groups={tableV2.schema.resultGroups} tableV2={tableV2} formulaResults={formulaResults} />
       )}
+      {closes ? <TableNotes tableV2={tableV2} position="table" /> : null}
       {closes ? <SummaryBoxes tableV2={tableV2} position="bottom" /> : null}
       {closes ? <TableNotes tableV2={tableV2} position="bottom" /> : null}
     </div>

@@ -57,6 +57,8 @@ export function MarketHomologationTable(props: {
   onInvalid: (message: string) => void;
   /** Decimals the factors are shown with; two by default. */
   decimals?: number;
+  /** Renames a factor from its header (video 5.3, 10:12); the dictamen prints the new name. Absent, the headers are fixed. */
+  onRenameSlot?: (slot: FactorSlotConfig, label: string) => void;
 }) {
   const { comparables, slots, catalog, readOnly } = props;
   const twoDecimals = withDecimals(props.decimals ?? 2);
@@ -109,7 +111,11 @@ export function MarketHomologationTable(props: {
             </tr>
             <tr>
               {slots.map((slot) => (
-                <th key={factorKey(slot)} className={cn(CALC_HEAD_CELL, "min-w-20")}>{slot.label}</th>
+                <th key={factorKey(slot)} className={cn(CALC_HEAD_CELL, "min-w-20")}>
+                  {props.onRenameSlot && !readOnly ? (
+                    <FactorHeader slot={slot} onRename={props.onRenameSlot} />
+                  ) : slot.label}
+                </th>
               ))}
               <th className={CALC_HEAD_CELL}>FRe</th>
             </tr>
@@ -118,11 +124,16 @@ export function MarketHomologationTable(props: {
             {comparables.map((comparable) => {
               const row = byReference.get(String(comparable.reference));
               const warnings = row ? warningsOf(comparable, row.surfaceFactor, row.resultantFactor) : [];
+              // Without a result yet (no subject area) the unit value and the product of the captured factors still show.
+              const offerUnit = comparable.area && comparable.price ? comparable.price / comparable.area : null;
+              const partialFactor = row ? null : slots.reduce((product, slot) => product * (slot.type === "SUPERFICIE"
+                ? comparable.factors.find((factor) => factor.type === "SUPERFICIE")?.value || 1
+                : factorValue(findFactor(comparable, slot))), 1);
               const detail = warnings.map((warning) => `${warning.label}: ${twoDecimals(warning.value)}`).join(" · ");
               return (
                 <tr key={comparable.id} className={cn(CALC_ROW, "align-top")}>
                   <td className="px-2 py-1.5">{comparable.reference}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{row ? money(row.unitValue) : "—"}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{row ? money(row.unitValue) : offerUnit ? money(offerUnit) : "—"}</td>
                   {slots.map((slot) => {
                     const label = `${slot.label}, comparable ${comparable.reference}`;
                     if (slot.type === "SUPERFICIE") {
@@ -191,6 +202,10 @@ export function MarketHomologationTable(props: {
                         ) : null}
                         {twoDecimals(row.resultantFactor)}
                       </span>
+                    ) : partialFactor !== null ? (
+                      <span className="text-muted-foreground" title="Producto de los factores capturados; el de superficie entra al capturar la superficie del sujeto" data-partial-resultant="">
+                        {twoDecimals(partialFactor)}
+                      </span>
                     ) : "—"}
                   </td>
                   <td className="px-2 py-1.5 text-right font-medium tabular-nums">{row ? money(row.homologatedUnitValue) : "—"}</td>
@@ -236,5 +251,31 @@ function HomologationNote({ note, readOnly, onChange }: {
         className={cn("min-w-60 flex-1 border-input text-xs", !note.show && "text-muted-foreground line-through")}
       />
     </div>
+  );
+}
+
+/** A factor's name in the header, renamed in place: Enter or leaving the field keeps it; an empty name goes back. */
+function FactorHeader({ slot, onRename }: { slot: FactorSlotConfig; onRename: (slot: FactorSlotConfig, label: string) => void }) {
+  return (
+    <input
+      key={slot.label}
+      aria-label={`Nombre del factor ${slot.label}`}
+      title="Escribe para renombrar el factor; el dictamen imprime este nombre"
+      className="w-full min-w-16 rounded-sm border border-transparent bg-transparent px-1 text-center font-semibold hover:border-border focus:border-ring focus:bg-background focus:outline-none"
+      defaultValue={slot.label}
+      maxLength={60}
+      onBlur={(event) => {
+        const label = event.target.value.trim();
+        if (!label) event.target.value = slot.label;
+        else if (label !== slot.label) onRename(slot, label);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          event.currentTarget.value = slot.label;
+          event.currentTarget.blur();
+        }
+      }}
+    />
   );
 }

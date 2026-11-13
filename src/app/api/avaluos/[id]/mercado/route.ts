@@ -34,7 +34,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/avalu
   }
 }
 
-/** Takes an empty market (no comparables) out of the valuation, with its settings. */
+/** Takes a market out of the valuation with its settings; its comparables wait aside for an undo (`mercado/restaurar`). */
 export async function DELETE(request: Request, { params }: RouteContext<"/api/avaluos/[id]/mercado">) {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
@@ -42,8 +42,8 @@ export async function DELETE(request: Request, { params }: RouteContext<"/api/av
     const type = comparableTypeSchema.safeParse(new URL(request.url).searchParams.get("tipo"));
     if (!type.success) return NextResponse.json({ error: "Tipo de comparable inválido" }, { status: 400 });
     const { id } = await params;
-    await deleteMarket(id, auth.user, type.data);
-    return NextResponse.json({ data: { deleted: true } });
+    const { comparableIds } = await deleteMarket(id, auth.user, type.data);
+    return NextResponse.json({ data: { deleted: true, comparableIds } });
   } catch (error) {
     return valuationErrorResponse("MARKET_DELETE", error, "No se pudo quitar el mercado.");
   }
