@@ -84,6 +84,13 @@ export type StatisticalMethodSettings = {
   title?: string | null;
 };
 
+/** The regression's tables that go to the calculation memory and, if the appraiser marks them, to the dictamen too. */
+export const REGRESSION_EXTRA_TABLES = ["products", "statistics", "anova", "coefficients"] as const;
+export type RegressionExtraTable = (typeof REGRESSION_EXTRA_TABLES)[number];
+/** The goal programming's tables that go to the calculation memory and, if marked, to the dictamen too. */
+export const GOAL_EXTRA_TABLES = ["deviations", "contributions"] as const;
+export type GoalExtraTable = (typeof GOAL_EXTRA_TABLES)[number];
+
 export type StatisticalSettingsDto = {
   comparableType: ComparableType;
   /** The characteristics captured for each comparable; "area" is always there (the unit value needs it). */
@@ -95,10 +102,19 @@ export type StatisticalSettingsDto = {
   regression: StatisticalMethodSettings & {
     /** The residual column of the data table; hidden unless the appraiser shows it. */
     showResidual?: boolean;
+    /**
+     * Technical tables that print in the dictamen besides the brief one
+     * (video 5.3, 18:03–23:20); missing, none: they are in the calculation memory.
+     */
+    printedTables?: RegressionExtraTable[];
   };
-  goal: StatisticalMethodSettings;
+  goal: StatisticalMethodSettings & { printedTables?: GoalExtraTable[] };
   /** The table that sets RLM, PM and the market's homologation side by side, in the dictamen. */
   showComparison: boolean;
+  /** "Agregar al informe valuatorio": off, nothing of this comparable type prints, whatever its methods say. */
+  excludedFromReport?: boolean;
+  /** "Quitar este cálculo": its tab is gone, its capture kept, so it comes back as it was (undo, or adding the type again). */
+  removed?: boolean;
 };
 
 export type StatisticalComparableDto = {

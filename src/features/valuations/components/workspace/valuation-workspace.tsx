@@ -46,13 +46,14 @@ import { CostCalculationPanel } from "@/features/valuations/components/calculati
 import { IncomeCalculationPanel } from "@/features/valuations/components/calculation/income-calculation-panel";
 import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/components/calculation/machinery-calculation-panel";
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
+import { MarketSectionTabs } from "@/features/valuations/components/calculation/market-section-tabs";
 import { StatisticalMethodsPanel } from "@/features/valuations/components/calculation/statistical-methods-panel";
 import { LocationPanel, type GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { croquisSectionKey, withCroquisImage } from "@/features/maps/croquis-document";
 import type { CroquisKind } from "@/features/maps/croquis";
 import { RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
-import { excludedReportApproaches } from "@/features/valuations/services/report-approaches";
+import { excludedReportApproaches, previewSectionForReport } from "@/features/valuations/services/report-approaches";
 import {
   canRemoveSection,
   listedSections,
@@ -202,9 +203,13 @@ export function ValuationWorkspace({
   // What the preview shows: the section browsed to, or the active one.
   const rawPreviewSection =
     (previewSectionId ? enabledSections.find((section) => section.id === previewSectionId) : undefined) ?? rawActiveSection;
+  // As the dictamen prints it: an approach left out of the report ("Agregar al informe valuatorio") is not in the preview either.
   const previewSection = useMemo(
-    () => (rawPreviewSection === rawActiveSection ? activeSection : resolveSectionConceptsForDisplay(rawPreviewSection, allConceptsForDisplay)),
-    [activeSection, allConceptsForDisplay, rawActiveSection, rawPreviewSection],
+    () => previewSectionForReport(
+      rawPreviewSection === rawActiveSection ? activeSection : resolveSectionConceptsForDisplay(rawPreviewSection, allConceptsForDisplay),
+      excludedApproaches,
+    ),
+    [activeSection, allConceptsForDisplay, excludedApproaches, rawActiveSection, rawPreviewSection],
   );
   const browsePreview = (direction: -1 | 1) => {
     const next = adjacentPreviewSectionId(enabledSections, previewSection.id, direction);
@@ -371,39 +376,45 @@ export function ValuationWorkspace({
             ) : machinery && getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
               <MachineryMarketPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} />
             ) : getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
-              <div className="grid gap-4">
-                <MarketCalculationPanel
-                  valuationId={valuationId}
-                  readOnly={!canEdit}
-                  canReview={canReview}
-                  suggestedSubjectArea={calculationSync.suggestedSubjectArea}
-                  googleMaps={googleMaps}
-                  onCalculation={calculationSync.onMarketCalculation}
-                />
-                <StatisticalMethodsPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onStatisticalCalculation} />
-              </div>
+              <MarketSectionTabs
+                market={(
+                  <MarketCalculationPanel
+                    valuationId={valuationId}
+                    readOnly={!canEdit}
+                    canReview={canReview}
+                    suggestedSubjectAreas={calculationSync.suggestedSubjectAreas}
+                    googleMaps={googleMaps}
+                    onCalculation={calculationSync.onMarketCalculation}
+                  />
+                )}
+                methods={<StatisticalMethodsPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onStatisticalCalculation} />}
+              />
             ) : getCanonicalSectionKey(section.id) === "COSTOS" ? (
               <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CONSTRUCCION" ? (
               <ConstructionTypesPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConstructionTypes} />
             ) : getCanonicalSectionKey(section.id) === "MERCADO_RENTAS" ? (
-              <div className="grid gap-4">
-                <MarketCalculationPanel
-                  valuationId={valuationId}
-                  types={RENT_COMPARABLE_TYPES}
-                  readOnly={!canEdit}
-                  canReview={canReview}
-                  suggestedSubjectArea={null}
-                  googleMaps={googleMaps}
-                  onCalculation={calculationSync.onMarketCalculation}
-                />
-                <StatisticalMethodsPanel
-                  valuationId={valuationId}
-                  types={RENT_COMPARABLE_TYPES}
-                  readOnly={!canEdit}
-                  onCalculation={calculationSync.onStatisticalCalculation}
-                />
-              </div>
+              <MarketSectionTabs
+                market={(
+                  <MarketCalculationPanel
+                    valuationId={valuationId}
+                    types={RENT_COMPARABLE_TYPES}
+                    readOnly={!canEdit}
+                    canReview={canReview}
+                    suggestedSubjectAreas={calculationSync.suggestedSubjectAreas}
+                    googleMaps={googleMaps}
+                    onCalculation={calculationSync.onMarketCalculation}
+                  />
+                )}
+                methods={(
+                  <StatisticalMethodsPanel
+                    valuationId={valuationId}
+                    types={RENT_COMPARABLE_TYPES}
+                    readOnly={!canEdit}
+                    onCalculation={calculationSync.onStatisticalCalculation}
+                  />
+                )}
+              />
             ) : getCanonicalSectionKey(section.id) === "INGRESOS" ? (
               <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} />
             ) : getCanonicalSectionKey(section.id) === "CONCLUSIONES" ? (

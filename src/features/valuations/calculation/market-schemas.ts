@@ -14,6 +14,7 @@ import {
   HOMOLOGATION_BASES,
   MAX_CHARACTERISTIC_FIELDS,
   MAX_COMPARABLE_ATTRIBUTES,
+  MARKET_STATISTICS,
   MAX_FACTOR_SLOTS,
   MAX_OFFER_OPTIONS,
   OFFER_LEVELS,
@@ -204,6 +205,10 @@ export const marketSettingsSchema = z.object({
   showHomologationNote: z.boolean().optional(),
   homologationNote: text(500).optional(),
   homologate: z.boolean().optional(),
+  printedStatistics: z.object({
+    order: z.array(z.enum(MARKET_STATISTICS)).max(MARKET_STATISTICS.length),
+    hidden: z.array(z.enum(MARKET_STATISTICS)).max(MARKET_STATISTICS.length),
+  }).nullable().optional(),
   factorSlots: z.array(z.object({
     type: z.enum(FACTOR_TYPES),
     label: z.string().trim().min(1).max(60),
@@ -222,6 +227,12 @@ export const marketSettingsSchema = z.object({
 export type MarketSettingsPayload = z.infer<typeof marketSettingsSchema>;
 
 export const comparableTypeSchema = z.enum(COMPARABLE_TYPES);
+
+/** "Deshacer" of "Quitar este mercado": the comparables it set aside. */
+export const restoreMarketSchema = z.object({
+  comparableType: z.enum(COMPARABLE_TYPES),
+  comparableIds: z.array(z.string().trim().min(1).max(80)).max(500),
+});
 
 /** The review of a comparable in a valuation: it changes no calculation. */
 export const comparableReviewSchema = z.object({

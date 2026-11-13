@@ -8,7 +8,7 @@
  */
 import type { MarketApproachResult } from "../engine/market";
 import type { AppSection, Block, TableContent } from "../model";
-import type { TableNote, TableSummaryBox } from "../services/table";
+import type { TableNote, TableSummaryBox, TableSummaryRow } from "../services/table";
 import { factorDecimals } from "./calculation-precision";
 import {
   EMPTY,
@@ -41,12 +41,15 @@ import {
   printedCharacteristicFields,
   printsAdditionalAmount,
   printsHomologationTable,
+  shownStatistics,
+  STATISTICS_BESIDE_ADOPTED,
   type CharacteristicField,
   type ComparableDto,
   type ComparableType,
   type FactorSlotConfig,
   type FactorType,
   type MarketCalculationDto,
+  type MarketStatistic,
 } from "./market-types";
 
 export const GENERATED_BLOCK_PREFIX = "motor-";
@@ -64,19 +67,41 @@ export const RENT_TEMPLATE_BLOCK_IDS = [
 ];
 
 const SUBJECT_LAND_AREA_LABELS = ["superficie total de terreno", "superficie total terreno", "superficie de terreno"];
+const SUBJECT_BUILT_AREA_LABELS = [
+  "superficie total de construccion", "superficie total construida", "superficie de construccion", "superficie construida", "superficie total de construcciones",
+];
 
-/** Land area captured in the terreno, datos or carátula sections ("169.78 m²"), to suggest as the subject area. */
-export function findSubjectLandArea(sections: AppSection[]): number | null {
+/** The first area captured under one of the labels in the document ("169.78 m²"), as a number. */
+function findSubjectArea(sections: AppSection[], labels: readonly string[]): number | null {
   const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z ]/gi, "").trim().toLowerCase();
   for (const section of sections) {
     for (const concept of section.blocks.flatMap((item) => [...item.concepts, ...item.apartados.flatMap((apartado) => apartado.concepts)])) {
-      if (!SUBJECT_LAND_AREA_LABELS.includes(normalize(concept.label))) continue;
+      if (!labels.includes(normalize(concept.label))) continue;
       const match = concept.value.replace(/,/g, "").match(/\d+(\.\d+)?/);
       const area = match ? Number(match[0]) : NaN;
       if (area > 0) return area;
     }
   }
   return null;
+}
+
+/** Land area captured in the terreno, datos or carátula sections ("169.78 m²"), to suggest as the subject area. */
+export function findSubjectLandArea(sections: AppSection[]): number | null {
+  return findSubjectArea(sections, SUBJECT_LAND_AREA_LABELS);
+}
+
+/** Built area captured in the document (the carátula's "Superficie total de construcción"), for the markets of buildings. */
+export function findSubjectBuiltArea(sections: AppSection[]): number | null {
+  return findSubjectArea(sections, SUBJECT_BUILT_AREA_LABELS);
+}
+
+/**
+ * The subject's area a market starts from: the land area for the markets of
+ * land, the built area for the markets of buildings (video 6.3: the land's 360
+ * showed as a hint in the buildings' field).
+ */
+export function suggestedSubjectAreaFor(type: ComparableType, areas: { land: number | null; built: number | null }): number | null {
+  return isLandComparableType(type) ? areas.land : areas.built;
 }
 
 export function isGeneratedBlock(block: Pick<Block, "id">) {
@@ -102,6 +127,7 @@ const PAGE: Record<ComparableType, {
   homologation: string;
   homologated: string;
   mean: string;
+  median: string;
   adopted: string;
   baseArea: string;
   subject: string;
@@ -114,7 +140,7 @@ const PAGE: Record<ComparableType, {
     intro: "Comparables de terrenos en venta semejantes en uso al sujeto que se valúa.",
     area: "SUPERFICIE DE TERRENO (m²)", shortArea: "SUP. TERRENO (m²)",
     price: "OFERTA $ (TERRENO)", unit: "$/m²", homologation: "HOMOLOGACIÓN (TERRENOS)",
-    homologated: "Valor Unitario Homologado", mean: "Valor Prom. Homologado", adopted: "Valor homologado a utilizar",
+    homologated: "Valor Unitario Homologado", mean: "Valor Prom. Homologado", median: "Valor Mediana Homologado", adopted: "Valor homologado a utilizar",
     baseArea: "Lote Tipo", subject: "Lote Sujeto", value: "VALOR COMPARATIVO DE MERCADO (TERRENOS)",
   },
   INMUEBLE_VENTA: {
@@ -124,7 +150,7 @@ const PAGE: Record<ComparableType, {
     intro: "Comparables de inmuebles en venta semejantes en uso al sujeto que se valúa.",
     area: "SUP. CONSTRUIDA (m²)", shortArea: "SUP. CONSTR. (m²)",
     price: "OFERTA $ (INMUEBLE)", unit: "$/m²", homologation: "HOMOLOGACIÓN (INMUEBLES)",
-    homologated: "Valor Unitario Homologado", mean: "Valor Prom. Homologado", adopted: "Valor homologado a utilizar",
+    homologated: "Valor Unitario Homologado", mean: "Valor Prom. Homologado", median: "Valor Mediana Homologado", adopted: "Valor homologado a utilizar",
     baseArea: "Superficie Tipo", subject: "Superficie del Sujeto", value: "VALOR COMPARATIVO DE MERCADO (INMUEBLES)",
   },
   INMUEBLE_RENTA: {
@@ -134,7 +160,7 @@ const PAGE: Record<ComparableType, {
     intro: "Comparables de inmuebles en renta semejantes en uso al sujeto que se valúa.",
     area: "SUP. RENTABLE (m²)", shortArea: "SUP. RENTABLE (m²)",
     price: "RENTA MENSUAL $", unit: "$/m²/mes", homologation: "HOMOLOGACIÓN (RENTAS)",
-    homologated: "Renta Unitaria Homologada", mean: "Renta Prom. Homologada", adopted: "Renta homologada a utilizar",
+    homologated: "Renta Unitaria Homologada", mean: "Renta Prom. Homologada", median: "Renta Mediana Homologada", adopted: "Renta homologada a utilizar",
     baseArea: "Superficie Tipo", subject: "Superficie del Sujeto", value: "RENTA MENSUAL ESTIMADA DEL SUJETO",
   },
   TERRENO_RENTA: {
@@ -144,7 +170,7 @@ const PAGE: Record<ComparableType, {
     intro: "Comparables de terrenos en renta semejantes en uso al sujeto que se valúa.",
     area: "SUPERFICIE DE TERRENO (m²)", shortArea: "SUP. TERRENO (m²)",
     price: "RENTA MENSUAL $", unit: "$/m²/mes", homologation: "HOMOLOGACIÓN (RENTAS DE TERRENOS)",
-    homologated: "Renta Unitaria Homologada", mean: "Renta Prom. Homologada", adopted: "Renta homologada a utilizar",
+    homologated: "Renta Unitaria Homologada", mean: "Renta Prom. Homologada", median: "Renta Mediana Homologada", adopted: "Renta homologada a utilizar",
     baseArea: "Lote Tipo", subject: "Lote Sujeto", value: "RENTA MENSUAL ESTIMADA DEL TERRENO",
   },
 };
@@ -318,7 +344,8 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
         summaryBoxes: homologationBoxes(calculation, result),
         notes: [
           ...(settings.comparableType === "TERRENO_RENTA" ? [{ position: "top" as const, text: SAME_FACTORS_AS_LAND_SALE }] : []),
-          ...(homologationNote ? [{ position: "bottom" as const, text: homologationNote }] : []),
+          // Right under the table, before the values (video 5.3, 13:50): under the value goes only the justification.
+          ...(homologationNote ? [{ position: "table" as const, text: homologationNote }] : []),
           ...justificationNotes(calculation),
         ],
       })],
@@ -329,21 +356,32 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
   ];
 }
 
+export const FACTOR_JUSTIFICATION_TITLE = "Justificación de los factores utilizados";
+
+/** The general text without a title the appraiser typed at its start, so the title never prints twice. */
+function withoutJustificationTitle(text: string) {
+  const plain = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const title = plain(FACTOR_JUSTIFICATION_TITLE);
+  return plain(text).startsWith(title) ? text.slice(title.length).replace(/^[\s:.\-–]+/, "").trim() : text;
+}
+
 /**
- * "Justificación de los factores utilizados", after the tables: the general
- * text, then each comparable's with its number in bold. The appraiser may
- * leave it out of the dictamen.
+ * "Justificación de los factores utilizados", after the tables: its title,
+ * always on a line of its own when there is any text (video 5.3, 12:42), then
+ * the general text and each comparable's with its number in bold. The
+ * appraiser may leave it out of the dictamen.
  */
 function justificationNotes({ settings, comparables }: MarketCalculationDto): TableNote[] {
   if (settings.showFactorJustification === false) return [];
-  const general = settings.justification?.trim();
-  return [
-    ...(general ? [{ position: "bottom" as const, label: "Justificación de los factores utilizados:", text: general }] : []),
+  const general = withoutJustificationTitle(settings.justification?.trim() ?? "");
+  const notes: TableNote[] = [
+    ...(general ? [{ position: "bottom" as const, text: general }] : []),
     ...comparables.flatMap((comparable) => {
       const text = comparable.factorJustification?.trim();
       return text ? [{ position: "bottom" as const, label: `Comparable ${comparable.reference}:`, text }] : [];
     }),
   ];
+  return notes.length ? [{ position: "bottom", heading: true, text: FACTOR_JUSTIFICATION_TITLE }, ...notes] : [];
 }
 
 /** Above the homologation, what it is made against; below, the steps from the homologated values to the value. */
@@ -384,29 +422,33 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
   // The engine's own subtotal: area × adopted value, as the books, with or without a lote tipo.
   const subtotal = subjectArea * result.adoptedUnitValue;
   const stats = result.homologation.stats;
+  // The statistics the appraiser marked, in the order chosen; the rows carry their key once the choice is the appraiser's.
+  const chosen = Boolean(settings.printedStatistics);
+  const statisticRow = (key: MarketStatistic): TableSummaryRow => {
+    const rows: Record<MarketStatistic, Omit<TableSummaryRow, "id">> = {
+      offerMin: { label: `Mínimo de oferta (${page.unit}):`, value: money(stats.offerMin) },
+      offerMax: { label: `Máximo de oferta (${page.unit}):`, value: money(stats.offerMax) },
+      initialDispersion: { label: "Dispersión inicial:", value: figure(stats.initialDispersion, 2) },
+      min: { label: `Mínimo homologado (${page.unit}):`, value: money(stats.min) },
+      max: { label: `Máximo homologado (${page.unit}):`, value: money(stats.max) },
+      dispersion: { label: "Dispersión final:", value: figure(stats.dispersion, 2) },
+      mean: { label: `${page.mean} (${page.unit}):`, value: money(stats.mean) },
+      median: { label: `${page.median} (${page.unit}):`, value: money(stats.median) },
+    };
+    return chosen ? { id: key, ...rows[key] } : rows[key];
+  };
+  const shown = shownStatistics(settings);
   boxes.push(
     { id: "sujeto", position: "bottom", align: "start", rows: [{ label: `${subjectLabel} (m²):`, value: squareMetres(subjectArea) }] },
     // Before and after homologating: the lowest and highest unit values and their dispersion (max / min).
-    {
-      id: "dispersion",
-      position: "bottom",
-      align: "start",
-      rows: [
-        { label: `Mínimo de oferta (${page.unit}):`, value: money(stats.offerMin) },
-        { label: `Máximo de oferta (${page.unit}):`, value: money(stats.offerMax) },
-        { label: "Dispersión inicial:", value: figure(stats.initialDispersion, 2) },
-        { label: `Mínimo homologado (${page.unit}):`, value: money(stats.min) },
-        { label: `Máximo homologado (${page.unit}):`, value: money(stats.max) },
-        { label: "Dispersión final:", value: figure(stats.dispersion, 2) },
-      ],
-    },
+    { id: "dispersion", position: "bottom", align: "start", rows: shown.filter((key) => !STATISTICS_BESIDE_ADOPTED.has(key)).map(statisticRow) },
     {
       id: "valores",
       position: "bottom",
       align: "end",
       rows: [
-        { label: `${page.mean} (${page.unit}):`, value: money(result.homologation.stats.mean) },
-        { label: `${page.adopted} (${page.unit}):`, value: money(result.adoptedUnitValue), emphasis: "strong" },
+        ...shown.filter((key) => STATISTICS_BESIDE_ADOPTED.has(key)).map(statisticRow),
+        { ...(chosen ? { id: "adoptado" } : {}), label: `${page.adopted} (${page.unit}):`, value: money(result.adoptedUnitValue), emphasis: "strong" },
       ],
     },
     {

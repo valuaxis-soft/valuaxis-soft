@@ -158,7 +158,12 @@ export type TableSummaryBox = {
   rows: TableSummaryRow[];
 };
 
-export type TableNote = { position: "top" | "bottom"; label?: string; text: string };
+/**
+ * A note printed as written: above the table and its boxes ("top"), right
+ * under the table, before its boxes ("table"), or under the boxes ("bottom").
+ * A heading prints as a small bold title of its own, before the notes after it.
+ */
+export type TableNote = { position: "top" | "table" | "bottom"; label?: string; text: string; heading?: boolean };
 
 /**
  * A column the appraiser adds to a table the calculation writes: text that

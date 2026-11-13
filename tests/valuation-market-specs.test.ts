@@ -271,24 +271,37 @@ test("the justification of the factors prints after the tables, one per comparab
   };
   const notes = (calculation: MarketCalculationDto) => printed(marketDocumentBlocks(calculation, compute(calculation))[0].apartados[1].tables[0]).schema?.notes;
   assert.deepEqual(notes(target), [
-    { position: "bottom", text: "Cuando el factor de homologación es menor a la unidad denota que la oferta es mejor que el bien valuado." },
-    { position: "bottom", label: "Justificación de los factores utilizados:", text: "Criterio del perito." },
+    // The legend right under the table (video 5.3, 13:50); the justification's title always on a line of its own (12:42).
+    { position: "table", text: "Cuando el factor de homologación es menor a la unidad denota que la oferta es mejor que el bien valuado." },
+    { position: "bottom", heading: true, text: "Justificación de los factores utilizados" },
+    { position: "bottom", text: "Criterio del perito." },
     { position: "bottom", label: "Comparable 1:", text: "Texto 1" },
     { position: "bottom", label: "Comparable 3:", text: "Texto 3" },
     { position: "bottom", label: "Comparable 4:", text: "Texto 4" },
   ]);
   assert.deepEqual(notes({ ...target, settings: { ...target.settings, showFactorJustification: false } }), [
-    { position: "bottom", text: DEFAULT_HOMOLOGATION_NOTE },
+    { position: "table", text: DEFAULT_HOMOLOGATION_NOTE },
   ], "off: only the legend");
+  // Only the comparables' texts: the title still opens them; a general text that starts with the title does not repeat it.
+  const onlyComparables = notes({ ...target, settings: { ...target.settings, justification: null } });
+  assert.deepEqual(onlyComparables?.slice(1, 3), [
+    { position: "bottom", heading: true, text: "Justificación de los factores utilizados" },
+    { position: "bottom", label: "Comparable 1:", text: "Texto 1" },
+  ]);
+  const typedTitle = notes({ ...target, settings: { ...target.settings, justification: "JUSTIFICACIÓN DE LOS FACTORES UTILIZADOS: Criterio del perito." } });
+  assert.deepEqual(typedTitle?.slice(1, 3), [
+    { position: "bottom", heading: true, text: "Justificación de los factores utilizados" },
+    { position: "bottom", text: "Criterio del perito." },
+  ]);
   assert.match(DEFAULT_HOMOLOGATION_NOTE, /mejor que el bien valuado\.$/, "«bien» for any kind of good");
 });
 
 test("the note under the homologation prints the appraiser's text, or none when turned off", () => {
   const notes = (settings: Partial<MarketCalculationDto["settings"]>) =>
     printed(marketDocumentBlocks({ ...land, settings: { ...land.settings, ...settings } }, compute(land))[0].apartados[1].tables[0]).schema?.notes ?? [];
-  assert.deepEqual(notes({}), [{ position: "bottom", text: DEFAULT_HOMOLOGATION_NOTE }], "default: on, the format's sentence");
-  assert.deepEqual(notes({ homologationNote: "  Factores según criterio del perito.  " }), [{ position: "bottom", text: "Factores según criterio del perito." }]);
-  assert.deepEqual(notes({ homologationNote: "   " }), [{ position: "bottom", text: DEFAULT_HOMOLOGATION_NOTE }], "blank: the format's");
+  assert.deepEqual(notes({}), [{ position: "table", text: DEFAULT_HOMOLOGATION_NOTE }], "default: on, the format's sentence");
+  assert.deepEqual(notes({ homologationNote: "  Factores según criterio del perito.  " }), [{ position: "table", text: "Factores según criterio del perito." }]);
+  assert.deepEqual(notes({ homologationNote: "   " }), [{ position: "table", text: DEFAULT_HOMOLOGATION_NOTE }], "blank: the format's");
   assert.deepEqual(notes({ showHomologationNote: false, homologationNote: "Otra." }), [], "off: no note");
 });
 

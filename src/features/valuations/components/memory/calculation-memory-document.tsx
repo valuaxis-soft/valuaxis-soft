@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import type { CaratulaFormData, ImageContent, Letterhead } from "../../model";
 import type { ComparableCardDto } from "../../calculation/comparable-card.service";
-import { memoryChapters, type CalculationMemory, type MemoryApproach, type MemoryChapter, type MemoryConcept, type MemoryTable } from "../../memory/calculation-memory";
+import { memoryChapters, roundingText, type CalculationMemory, type MemoryApproach, type MemoryChapter, type MemoryConcept, type MemoryDataTable, type MemoryTable } from "../../memory/calculation-memory";
 import { formatDateValue } from "../../services/concept-value-format";
 import { ComparableCardView } from "../calculation/comparable-card-view";
 import { DocumentPreviewHeader } from "../document-preview-header";
@@ -245,7 +245,7 @@ function Approach({ approach, engineVersion }: { approach: MemoryApproach; engin
                 <td className="border border-slate-300 px-1.5 py-0.5 align-top">{step.label}</td>
                 <td className="border border-slate-300 px-1.5 py-0.5 align-top">
                   <Formula>{step.formula}</Formula>
-                  {step.rounding !== undefined ? <span className="block text-[8px] text-slate-500">Redondeo a {step.rounding} dígitos (REDONDEAR de Excel)</span> : null}
+                  {step.rounding !== undefined ? <span className="block text-[8px] text-slate-500">{roundingText(step.rounding)}</span> : null}
                 </td>
                 <td className="border border-slate-300 px-1.5 py-0.5 align-top">
                   {step.inputs.map((item) => (
@@ -264,7 +264,36 @@ function Approach({ approach, engineVersion }: { approach: MemoryApproach; engin
         </table>
         </>
       ) : null}
+      {approach.tables?.map((table) => <DataTable key={table.title} table={table} />)}
     </section>
+  );
+}
+
+/** A technical table of a method (sums and products, analysis of variance…), as written. */
+function DataTable({ table }: { table: MemoryDataTable }) {
+  return (
+    <div className="mt-3" data-memory-table={table.title}>
+      <TableCaption>Tabla: {table.title}</TableCaption>
+      <table className="w-full border-collapse text-[9px] leading-tight">
+        <thead>
+          <tr className="bg-slate-100 text-slate-700">
+            {table.columns.map((column, index) => (
+              <th key={`${column}-${index}`} className="border border-slate-300 px-1 py-0.5 text-center font-bold">{column}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, rowIndex) => (
+            <tr key={rowIndex} className="break-inside-avoid">
+              {row.map((cell, index) => (
+                <td key={index} className={`border border-slate-300 px-1 py-0.5 tabular-nums ${index ? "text-right" : "text-left"}`}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {table.notes.map((note) => <p key={note} className="mt-0.5 text-[8.5px] text-slate-600">{note}</p>)}
+    </div>
   );
 }
 

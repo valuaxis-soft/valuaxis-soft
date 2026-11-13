@@ -123,7 +123,7 @@ test("the boxes of the homologation lead from the homologated values to the valu
     ["VALOR COMPARATIVO DE MERCADO (TERRENOS):", "$ 1,528,000.00"],
   ]);
   assert.equal(boxes[4].rows.at(-1)?.emphasis, "total", "the value of the approach is the dark bar");
-  assert.deepEqual(printed(table).schema?.notes, [{ position: "bottom", text: DEFAULT_HOMOLOGATION_NOTE }], "no justification: only the legend");
+  assert.deepEqual(printed(table).schema?.notes, [{ position: "table", text: DEFAULT_HOMOLOGATION_NOTE }], "no justification: only the legend, right under the table");
 });
 
 test("a lote tipo, an additional amount and the justification show only when captured", () => {
@@ -145,8 +145,9 @@ test("a lote tipo, an additional amount and the justification show only when cap
   assert.equal(rows[1][1], money(169.78 * computed.adoptedUnitValue));
   assert.equal(rows[2][1], "$ 25,000.00");
   assert.deepEqual(printed(table).schema?.notes, [
-    { position: "bottom", text: DEFAULT_HOMOLOGATION_NOTE },
-    { position: "bottom", label: "Justificación de los factores utilizados:", text: "Dentro del rango." },
+    { position: "table", text: DEFAULT_HOMOLOGATION_NOTE },
+    { position: "bottom", heading: true, text: "Justificación de los factores utilizados" },
+    { position: "bottom", text: "Dentro del rango." },
   ]);
 });
 

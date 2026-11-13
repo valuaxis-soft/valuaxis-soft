@@ -321,9 +321,11 @@ test("a calculation table prints like a configurable one: same size, rows, dark 
   assert.match(wide, /<table class="[^"]*text-\[10px\]/, "a wide one a point less, as a configurable one; never 9px");
 });
 
-test("a box or a cell marked with an X is shaded, and the rules of the boxes are not black", () => {
+test("a box marked with an x is shaded, the offer level's ( X ) is not, and the rules of the boxes are not black", () => {
   const offer = render(offerOptionsTable("oferta", "Nivel de oferta", ["MUY ALTA", "ALTA", "MEDIA", "MEDIA BAJA", "BAJA", "NULA"], 2));
-  assert.equal(offer.match(/<td[^>]*bg-\[#BDD7EE\][^>]*>\( X \)<\/td>/g)?.length, 1, "the observed level");
+  // Video 5.3, 14:52: «no me gusta» the blue cell of the offer level; the box of «Homologación de acuerdo a» keeps it.
+  assert.equal(offer.match(/\( X \)/g)?.length, 1, "the observed level");
+  assert.doesNotMatch(offer, /BDD7EE/);
   const boxed = render(generatedTable("h", "H", [figureColumn("REF")], [["1"]], {
     summaryBoxes: [{ id: "base", position: "top", rows: [{ label: "Lote Tipo:", value: "140 m²", mark: false }, { label: "Lote Sujeto:", value: "169 m²", mark: true }] }],
   }));
