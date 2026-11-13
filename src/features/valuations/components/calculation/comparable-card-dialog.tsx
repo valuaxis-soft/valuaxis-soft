@@ -9,6 +9,7 @@ import type { ComparableCardDto } from "@/features/valuations/calculation/compar
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { ComparableCardView } from "./comparable-card-view";
+import { useExpandableDialog } from "./expandable-dialog";
 
 /** The card of a comparable of the firm's base, read when it opens. */
 function ComparableCardDialog({ comparableId, onClose }: { comparableId: string; onClose: () => void }) {
@@ -22,9 +23,12 @@ function ComparableCardDialog({ comparableId, onClose }: { comparableId: string;
     return () => { active = false; };
   }, [comparableId]);
 
+  const expandable = useExpandableDialog();
+
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className={expandable.className("max-h-[90vh] overflow-y-auto sm:max-w-5xl")}>
+        {expandable.button}
         <DialogHeader>
           <DialogTitle>Ficha del comparable</DialogTitle>
           <DialogDescription>Revisa que la foto, el precio, las superficies, el contacto y la dirección coincidan con el anuncio.</DialogDescription>

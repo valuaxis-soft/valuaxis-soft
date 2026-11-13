@@ -21,16 +21,20 @@ import {
   REVIEW_STATUSES,
   REVIEW_STATUS_LABELS,
   WARNING_HELP,
+  groupByComparableType,
+  markAllChecks,
+  statusAfterLinkCheck,
   type ComparableReviewDto,
   type ComparableWarning,
   type ReviewCheck,
   type ReviewStatus,
 } from "@/features/valuations/calculation/comparable-review";
-import { COMPARABLE_TYPE_LABELS, isLandComparableType, isRentComparableType } from "@/features/valuations/calculation/market-types";
+import { COMPARABLE_TYPES, COMPARABLE_TYPE_LABELS, isLandComparableType, isRentComparableType } from "@/features/valuations/calculation/market-types";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { ComparableCardButton } from "./comparable-card-dialog";
 import { REVIEW_STATUS_STYLES } from "./review-status-style";
+import { useExpandableDialog } from "./expandable-dialog";
 
 const money = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" }));
 const errorMessage = (error: unknown) =>
@@ -90,6 +94,17 @@ function ReviewRow(props: { row: ReviewRowDto; readOnly: boolean; onSaved: (revi
   const id = formatComparableId(comparable.folio);
   const unitValue = comparable.area && comparable.price ? comparable.price / comparable.area : null;
   const checksShown = REVIEW_CHECKS.filter((check) => check !== "builtArea" || !isLandComparableType(type));
+  const allChecked = checksShown.every((check) => checks[check] === true);
+  // «El enlace sigue vigente» sets the state: unmarked, «Verificado y no vigente»; marked, «Verificado y vigente».
+  const toggleCheck = (check: ReviewCheck, checked: boolean) => {
+    setChecks((current) => ({ ...current, [check]: checked }));
+    if (check === "link") setStatus((current) => statusAfterLinkCheck(current, checked));
+  };
+  const markAll = () => {
+    const next = markAllChecks(checksShown, status);
+    setChecks((current) => ({ ...current, ...next.checks }));
+    setStatus(next.status);
+  };
   const changed = status !== stored.status || notes.trim() !== (stored.notes ?? "") || JSON.stringify(checks) !== JSON.stringify(stored.checks);
 
   const save = async () => {
@@ -150,12 +165,18 @@ function ReviewRow(props: { row: ReviewRowDto; readOnly: boolean; onSaved: (revi
             </NativeSelect>
           </label>
           <ul className="grid gap-1 text-xs">
+            <li>
+              <label className="flex items-center gap-1.5 font-medium">
+                <Checkbox checked={allChecked} disabled={allChecked} onCheckedChange={(checked) => { if (checked === true) markAll(); }} />
+                Marcar todas
+              </label>
+            </li>
             {checksShown.map((check) => (
               <li key={check}>
                 <label className="flex items-center gap-1.5">
                   <Checkbox
                     checked={checks[check] === true}
-                    onCheckedChange={(checked) => setChecks((current) => ({ ...current, [check]: checked === true }))}
+                    onCheckedChange={(checked) => toggleCheck(check, checked === true)}
                   />
                   {REVIEW_CHECK_LABELS[check]}
                 </label>
@@ -229,6 +250,7 @@ export function ComparableReviewDialog(props: {
     props.onReviewed(comparableId, review);
   };
 
+  const expandable = useExpandableDialog();
   const counts = REVIEW_STATUSES.map((status) => [status, rows?.filter((row) => statusOf(row) === status).length ?? 0] as const);
 
   return (
@@ -237,7 +259,8 @@ export function ComparableReviewDialog(props: {
         <ClipboardCheck data-icon="inline-start" /> Revisión de comparables
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl">
+        <DialogContent className={expandable.className("max-h-[92vh] overflow-y-auto sm:max-w-6xl")}>
+          {expandable.button}
           <DialogHeader>
             <DialogTitle>Revisión de comparables</DialogTitle>
             <DialogDescription>
@@ -289,19 +312,29 @@ export function ComparableReviewDialog(props: {
             <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Cargando los comparables…</p>
           ) : null}
           {shown ? (
-            <ul className="grid gap-3">
-              {shown.map((row) => (
-                <ReviewRow
-                  key={row.comparable.id}
-                  row={row}
-                  readOnly={props.readOnly}
-                  valuationId={props.valuationId}
-                  onSaved={(review) => saved(row.comparable.id, review)}
-                />
+            <div className="grid gap-4">
+              {/* One list per market, under its title: land and buildings are not mixed. */}
+              {groupByComparableType(shown, COMPARABLE_TYPES).map((group) => (
+                <section key={group.type} className="grid gap-2" aria-labelledby={`review-group-${group.type}`} data-review-group={group.type}>
+                  <h3 id={`review-group-${group.type}`} className="border-b pb-1 font-display text-base font-semibold">
+                    {COMPARABLE_TYPE_LABELS[group.type]} <span className="text-sm font-normal text-muted-foreground tabular-nums">· {group.rows.length}</span>
+                  </h3>
+                  <ul className="grid gap-3">
+                    {group.rows.map((row) => (
+                      <ReviewRow
+                        key={row.comparable.id}
+                        row={row}
+                        readOnly={props.readOnly}
+                        valuationId={props.valuationId}
+                        onSaved={(review) => saved(row.comparable.id, review)}
+                      />
+                    ))}
+                  </ul>
+                </section>
               ))}
-              {!rows?.length ? <li className="text-sm text-muted-foreground">El avalúo no tiene comparables.</li> : null}
-              {rows?.length && !shown.length ? <li className="text-sm text-muted-foreground">Ningún comparable coincide con el filtro.</li> : null}
-            </ul>
+              {!rows?.length ? <p className="text-sm text-muted-foreground">El avalúo no tiene comparables.</p> : null}
+              {rows?.length && !shown.length ? <p className="text-sm text-muted-foreground">Ningún comparable coincide con el filtro.</p> : null}
+            </div>
           ) : null}
           <DialogFooter>
             <Button type="button" onClick={() => setOpen(false)}>Cerrar</Button>

@@ -2,16 +2,22 @@
 
 Cualquier persona se registra y hace avalúos. Quien no ha acreditado su cédula profesional es **no acreditado**: sus dictámenes y memorias de cálculo imprimen el aviso «DOCUMENTO SIN VALIDEZ OFICIAL». Requisito del cliente acordado con su abogado (28 oct 2026).
 
+**Acreditación por grado (11 nov 2026, WA-03).** El aviso solo se quita si la constancia acredita una **especialidad, maestría o doctorado en valuación**, de cualquier tipo (inmobiliaria, industrial, maquinaria y equipo, agropecuaria…). Con licenciatura o ingeniería, o con un posgrado de otra área, el aviso sigue. La SEP no se puede consultar (captcha), así que el revisor registra el nivel y el programa al aprobar.
+
 ## Estados
 
 | Estado | Significa | ¿Imprime el aviso? |
 |---|---|---|
 | `NO_ACREDITADO` | No ha subido nada (no tiene fila) | Sí |
 | `EN_REVISION` | Subió una constancia válida de la SEP y falta que un administrador la coteje | Sí |
-| `ACREDITADO` | Cotejada. Es permanente: no se puede volver a subir | No |
+| `ACREDITADO` | Cotejada, con especialidad, maestría o doctorado en valuación. Es permanente: no se puede volver a subir | No |
 | `RECHAZADO` | Un administrador la rechazó o revocó; puede volver a subirla | Sí |
 
-Todo vive en `devpware_acreditaciones_usuarios` (migración 054), una fila por usuario. `devpware_usuarios` no cambia.
+Todo vive en `devpware_acreditaciones_usuarios` (migración 054), una fila por usuario. `devpware_usuarios` no cambia. La migración 057 agrega, nulas, `SNivelAcademico` (`LICENCIATURA`, `ESPECIALIDAD`, `MAESTRIA` o `DOCTORADO`), `SProgramaAcademico` (el nombre como lo dice la constancia) y `BProgramaValuacion`.
+
+### Cuentas acreditadas antes de la regla
+
+Las cuentas que ya estaban `ACREDITADO` no tienen nivel registrado: quedan **«pendiente de confirmar nivel»** (`levelPending` en `estado`). **No cambian de estado y no vuelven a imprimir el aviso**: siguen como estaban hasta que el revisor confirme su nivel. Qué hacer con las que resulten de licenciatura o ingeniería lo decide el cliente (está pendiente); mientras, `confirmar-nivel` no las toca y solo lo dice, y revocarlas es una decisión aparte con `revocar`.
 
 ## Cómo se acredita
 
@@ -19,7 +25,7 @@ Todo vive en `devpware_acreditaciones_usuarios` (migración 054), una fila por u
 2. El servidor lee el QR sin servicios externos: una imagen con `sharp` y `jsqr` (Apache-2.0); un PDF no se dibuja, se buscan en su primera página las imágenes que incrusta (ahí va el QR) y los enlaces. Si el PDF trae el QR dibujado con vectores, se le pide la imagen del QR.
 3. Solo se acepta `https://cedulaprofesional.sep.gob.mx/cedula-profesional/validar-folio?curp=<CURP>&id=<folio>`: https, ese host exacto (no `cedulaprofesional.sep.gob.mx.evil.com` ni subdominios), sin puerto ni usuario, esa ruta exacta, una CURP con formato válido y un folio numérico. Lo demás se rechaza con un mensaje y no cambia el estado.
 4. Validación automática con la SEP: **no disponible** (ver abajo). La solicitud queda `EN_REVISION`.
-5. Si algún día se puede leer la SEP: cédula válida + nombre que coincide (sin acentos ni mayúsculas, en cualquier orden, ignorando "de", "la", "del"…, con una palabra de más o de menos) → `ACREDITADO` al instante. Si no coincide → `EN_REVISION`. Además siempre van a revisión: una CURP que ya usa otra cuenta y una cuenta a la que se le revocó la acreditación.
+5. Si algún día se puede leer la SEP: cédula válida + nombre que coincide (sin acentos ni mayúsculas, en cualquier orden, ignorando "de", "la", "del"…, con una palabra de más o de menos) + grado de especialidad, maestría o doctorado en valuación → `ACREDITADO` al instante. Sin el grado, o con otro, → `EN_REVISION`. Si no coincide → `EN_REVISION`. Además siempre van a revisión: una CURP que ya usa otra cuenta y una cuenta a la que se le revocó la acreditación.
 
 ### La página de la SEP
 
@@ -29,7 +35,7 @@ Revisada el 28 oct 2026 solo con datos inventados (CURP `XEXX010101HNEXXXA4`), n
 
 - **El archivo no se guarda.** Se lee en memoria y se descarta: es un documento personal y para cotejar basta el enlace de la SEP.
 - **La CURP no se guarda en claro**, solo su hash (`SCurpHash`): HMAC-SHA256 con `ACCREDITATION_HASH_SECRET` (prefijo `hmac:`) o, si falta, SHA-256 con prefijo fijo (`sha256:`, más débil). Sirve para notar dos cuentas con la misma CURP. **No cambiar el secreto una vez puesto.**
-- Se guardan: estado, folio, fecha de solicitud y de verificación, número de cédula y nombre tal como los muestre la SEP (si se pudieran leer), resultado automático, motivo y quién resolvió.
+- Se guardan: estado, folio, fecha de solicitud y de verificación, número de cédula y nombre tal como los muestre la SEP (si se pudieran leer), resultado automático, motivo, quién resolvió y el nivel y programa de la constancia.
 - **La URL de verificación** (lleva la CURP) se guarda solo mientras está `EN_REVISION`; aprobar o rechazar la borra.
 
 ## Revisión manual
@@ -39,20 +45,26 @@ No existe un rol de administrador de plataforma, así que se resuelve con un scr
 ```bash
 pnpm accreditation:review pendientes                       # correo, nombre, folio y enlace de la SEP de cada solicitud
 pnpm accreditation:review estado   <correo>
-pnpm accreditation:review aprobar  <correo>             --por "Brandon" --apply
+pnpm accreditation:review aprobar  <correo> --nivel maestria --programa "Maestría en Valuación Inmobiliaria" --por "Brandon" --apply
 pnpm accreditation:review rechazar <correo> "<motivo>"  --por "Brandon" --apply
 pnpm accreditation:review revocar  <correo> "<motivo>"  --por "Brandon" --apply
+pnpm accreditation:review sin-nivel                        # cuentas acreditadas con el nivel pendiente de confirmar
+pnpm accreditation:review confirmar-nivel <correo> --nivel especialidad --programa "Especialidad en Valuación Industrial" --por "Brandon" --apply
 ```
+
+`--nivel` es `licenciatura` (también `ingenieria`), `especialidad`, `maestria` o `doctorado`. `--valuacion si|no` dice si el programa es de valuación; si se omite, se toma de su nombre (que diga «valuación») y la simulación lo muestra para revisarlo. `aprobar` exige nivel y programa y **se niega** con licenciatura o con un programa de otra área: esa solicitud se rechaza con ese motivo. `confirmar-nivel` solo registra un grado que cumple; con uno que no cumple no escribe nada y lo informa.
 
 En el contenedor de producción: `node --import tsx scripts/ops/acreditacion.ts <comando> …`.
 
-Para aprobar: abrir el enlace en un navegador (la SEP muestra el resultado tras su captcha) y comparar nombre y cédula con la cuenta. **Revocar** deja la fila en `RECHAZADO` con `DFechaRevocacion` y el motivo "Revocada: …"; cualquier subida posterior va a revisión. Sin el script, por SQL: `update devpware_acreditaciones_usuarios set "SEstado"='RECHAZADO', "DFechaRevocacion"=now(), "SUrlVerificacion"=null, "SMotivo"='Revocada: …' where "IdUsuario"=…`.
+Para aprobar: abrir el enlace en un navegador (la SEP muestra el resultado tras su captcha), comparar nombre y cédula con la cuenta y leer el **nivel y el programa** de la cédula. **Revocar** deja la fila en `RECHAZADO` con `DFechaRevocacion` y el motivo "Revocada: …"; cualquier subida posterior va a revisión. Sin el script, por SQL: `update devpware_acreditaciones_usuarios set "SEstado"='RECHAZADO', "DFechaRevocacion"=now(), "SUrlVerificacion"=null, "SMotivo"='Revocada: …' where "IdUsuario"=…`.
 
 ## Quién debe estar acreditado
 
 El **emisor** del avalúo: su usuario responsable (`devpware_avaluos.IdUsuarioResponsable`) o, si no tiene, quien lo creó (`IdUsuarioCreador`). Las firmas de la carátula son texto libre, no cuentas, así que no cuentan. Se consulta al dibujar cada documento: si el emisor se acredita después, los documentos que se vuelvan a generar ya salen sin aviso.
 
 ## El aviso
+
+Se imprime si el emisor no está `ACREDITADO`, o si lo está con un grado registrado que no es especialidad, maestría o doctorado en valuación. Una cuenta `ACREDITADO` sin grado registrado (anterior a la regla) no lo imprime, como antes.
 
 Texto exacto, en negritas, negro y enmarcado (`src/features/accreditation/accreditation-notice.ts`):
 

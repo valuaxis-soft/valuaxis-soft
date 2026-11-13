@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { ReadOnlyValuationAlert } from "@/features/valuations/components/feedback/valuation-error-alert";
 import { UnaccreditedEditorAlert, UnaccreditedNoticeProvider } from "@/features/accreditation/components/unaccredited-notice";
@@ -78,6 +79,7 @@ import { useSessionHeartbeat } from "./hooks/use-session-heartbeat";
 import { useTableMutations } from "./hooks/use-table-mutations";
 import { useValuationLifecycle } from "./hooks/use-valuation-lifecycle";
 import { useValuationSave } from "./hooks/use-valuation-save";
+import { mustSaveBeforeDocument } from "./model/save-status";
 import { useWorkspaceLayout } from "./hooks/use-workspace-layout";
 import { useEditorViewport } from "./hooks/use-editor-viewport";
 import { StructureTransferProvider } from "./structure-transfer-context";
@@ -362,18 +364,21 @@ export function ValuationWorkspace({
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const saveBeforeTemplate = async () => !hasUnsavedChanges || (await handleSave());
 
-  // The dictamen renders what is saved, so pending changes are saved first.
-  const handleExportPdf = async () => {
+  // The dictamen and the calculation memory render what is saved, so pending changes are saved first.
+  // When that save fails, nothing opens without saying so: the document would leave the changes out.
+  const openSavedDocument = async (path: string, name: string) => {
     if (!valuationId) return;
-    if (hasUnsavedChanges && !(await handleSave())) return;
-    router.push(`/avaluos/${valuationId}/dictamen`);
+    if (mustSaveBeforeDocument({ saving, hasUnsavedChanges }) && !(await handleSave())) {
+      toast.warning(`No se abrió ${name}: los últimos cambios no se guardaron y no aparecerían. Vuelve a guardar o ábrelo con lo último guardado.`, {
+        duration: 20_000,
+        action: { label: "Abrir con lo guardado", onClick: () => router.push(path) },
+      });
+      return;
+    }
+    router.push(path);
   };
-  // So is the calculation memory, which reads the saved valuation too.
-  const handleCalculationMemory = async () => {
-    if (!valuationId) return;
-    if (hasUnsavedChanges && !(await handleSave())) return;
-    router.push(`/avaluos/${valuationId}/memoria-calculo`);
-  };
+  const handleExportPdf = () => openSavedDocument(`/avaluos/${valuationId}/dictamen`, "el avalúo");
+  const handleCalculationMemory = () => openSavedDocument(`/avaluos/${valuationId}/memoria-calculo`, "la memoria de cálculo");
 
   const editorPanel = (
     <>

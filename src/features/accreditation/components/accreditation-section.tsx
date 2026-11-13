@@ -8,19 +8,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, SessionExpiredError } from "@/lib/api-client";
-import type { AccreditationStatus } from "../accreditation-rules";
+import { ACADEMIC_LEVEL_LABELS, type AccreditationStatus } from "../accreditation-rules";
 import type { AccreditationView } from "../accreditation.service";
 
 const STATUS_COPY: Record<AccreditationStatus, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; text: string }> = {
   NO_ACREDITADO: {
     label: "No acreditado",
     variant: "outline",
-    text: "Puedes hacer avalúos, pero tus dictámenes y memorias de cálculo imprimen el aviso «DOCUMENTO SIN VALIDEZ OFICIAL» hasta que acredites tu cédula.",
+    text: "Puedes hacer avalúos, pero tus dictámenes y memorias de cálculo imprimen el aviso «DOCUMENTO SIN VALIDEZ OFICIAL» hasta que acredites una cédula de especialidad, maestría o doctorado en valuación.",
   },
   EN_REVISION: {
     label: "En revisión",
     variant: "secondary",
-    text: "Leímos tu constancia y un administrador la está cotejando con la SEP. Mientras tanto tus documentos siguen imprimiendo el aviso. Te avisaremos al resolverla.",
+    text: "Leímos tu constancia y un administrador la está cotejando con la SEP, incluido el grado. Mientras tanto tus documentos siguen imprimiendo el aviso. Te avisaremos al resolverla.",
   },
   ACREDITADO: {
     label: "Acreditado",
@@ -30,7 +30,7 @@ const STATUS_COPY: Record<AccreditationStatus, { label: string; variant: "defaul
   RECHAZADO: {
     label: "Rechazado",
     variant: "destructive",
-    text: "No pudimos acreditar tu constancia. Revisa que sea tuya y esté vigente y vuelve a subirla; tus documentos siguen imprimiendo el aviso.",
+    text: "No pudimos acreditar tu constancia. Revisa que sea tuya, esté vigente y sea de una especialidad, maestría o doctorado en valuación, y vuelve a subirla; tus documentos siguen imprimiendo el aviso.",
   },
 };
 
@@ -78,7 +78,11 @@ export function AccreditationSection({ initial }: { initial: AccreditationView }
         </CardTitle>
         <CardDescription>
           Acredita tu cédula profesional subiendo tu <strong>Constancia de Situación Profesional</strong> de la SEP (PDF) o una
-          imagen de su código QR. Lo hace una sola vez cada persona.
+          imagen de su código QR. Lo hace una sola vez cada persona.{" "}
+          <span data-accreditation-requirement>
+            El aviso solo se quita con una cédula de <strong>especialidad, maestría o doctorado en valuación</strong> (inmobiliaria,
+            industrial, de maquinaria y equipo, agropecuaria u otra); con licenciatura o ingeniería el aviso sigue.
+          </span>
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
@@ -97,6 +101,14 @@ export function AccreditationSection({ initial }: { initial: AccreditationView }
             <div>
               <dt className="inline">Cédula: </dt>
               <dd className="inline font-medium text-foreground">{accreditation.cedulaNumber}</dd>
+            </div>
+          ) : null}
+          {accreditation.status === "ACREDITADO" && accreditation.grade ? (
+            <div>
+              <dt className="inline">Grado: </dt>
+              <dd className="inline font-medium text-foreground">
+                {ACADEMIC_LEVEL_LABELS[accreditation.grade.level]}{accreditation.grade.program ? ` · ${accreditation.grade.program}` : ""}
+              </dd>
             </div>
           ) : null}
           {accreditation.status === "ACREDITADO" && accreditation.verifiedAt ? (

@@ -264,6 +264,8 @@ export type ComparablePhotoDto = { id: string; title: string; url: string };
 /** A characteristic added to one comparable: its name and its value, as written. */
 export type ComparableAttribute = { name: string; value: string };
 export const MAX_COMPARABLE_ATTRIBUTES = 20;
+/** Photos of the property a comparable keeps, apart from its screenshot of the listing. */
+export const MAX_COMPARABLE_PHOTOS = 6;
 
 /** The attributes with a name and a value, trimmed, each name once (the last value wins), in their order. */
 export function cleanAttributes(attributes: ReadonlyArray<{ name?: unknown; value?: unknown }> | null | undefined): ComparableAttribute[] {

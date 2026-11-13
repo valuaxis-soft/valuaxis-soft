@@ -20,7 +20,7 @@ export function UnaccreditedEditorAlert({ issuerIsCurrentUser }: { issuerIsCurre
       <AlertDescription>
         {issuerIsCurrentUser ? (
           <p>
-            Mientras no acredites tu cédula profesional, la portada, las consideraciones previas, la conclusión de valor y la
+            Mientras no acredites una cédula de especialidad, maestría o doctorado en valuación, la portada, las consideraciones previas, la conclusión de valor y la
             memoria de cálculo llevan ese aviso; no se puede quitar ni editar.{" "}
             <Link href="/cuenta#acreditacion" className="font-medium underline underline-offset-4">
               Acreditar mi cédula
@@ -28,7 +28,7 @@ export function UnaccreditedEditorAlert({ issuerIsCurrentUser }: { issuerIsCurre
           </p>
         ) : (
           <p>
-            El responsable de este avalúo no ha acreditado su cédula profesional: la portada, las consideraciones previas, la
+            El responsable de este avalúo no ha acreditado una cédula de especialidad, maestría o doctorado en valuación: la portada, las consideraciones previas, la
             conclusión de valor y la memoria de cálculo llevan ese aviso hasta que lo haga desde{" "}
             <Link href="/cuenta#acreditacion" className="font-medium underline underline-offset-4">
               Mi cuenta

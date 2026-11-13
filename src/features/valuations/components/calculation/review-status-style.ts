@@ -15,6 +15,11 @@ export const REVIEW_STATUS_STYLES: Record<ReviewStatus, { solid: string; row: st
     row: "border-l-4 border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/30",
     text: "text-emerald-700 dark:text-emerald-400",
   },
+  VERIFICADO_NO_VIGENTE: {
+    solid: "bg-teal-700 text-white",
+    row: "border-l-4 border-l-teal-600 bg-teal-50 dark:bg-teal-950/30",
+    text: "text-teal-700 dark:text-teal-400",
+  },
   CON_OBSERVACIONES: {
     solid: "bg-amber-500 text-black",
     row: "border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-950/30",

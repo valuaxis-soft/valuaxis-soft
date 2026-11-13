@@ -51,6 +51,7 @@ import {
   homologationBasisOf,
   isLandComparableType,
   isRentComparableType,
+  MAX_COMPARABLE_PHOTOS,
   marketEngineConfig,
   offerMarkOf,
   toMarketEngineInput,
@@ -64,7 +65,7 @@ import {
 } from "./market-types";
 
 
-const MAX_PHOTOS_PER_COMPARABLE = 6;
+const MAX_PHOTOS_PER_COMPARABLE = MAX_COMPARABLE_PHOTOS;
 const COMPARABLE_ENTITY = "ComparableAvaluo";
 
 type PhotoSnapshot = { id: string; key: string; title: string };

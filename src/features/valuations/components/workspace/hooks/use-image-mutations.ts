@@ -91,8 +91,9 @@ export function useImageMutations({
       const image = await api.valuations.coverImage.upload(valuationId, file);
       setPrincipalCoverImage(image);
       toast.success("Imagen principal actualizada.");
-    } catch {
-      toast.error("No se pudo subir la imagen. Verifica el archivo.");
+    } catch (error) {
+      // The server says why (a HEIC renamed .jpg, a file too large…): shown as is.
+      toast.error(error instanceof Error && error.message ? error.message : "No se pudo subir la imagen. Verifica el archivo.");
     } finally {
       setUploadingCoverImage(false);
     }

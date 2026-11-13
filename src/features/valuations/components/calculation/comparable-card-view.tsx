@@ -8,6 +8,7 @@ import {
   OPERATION_TYPE_LABELS,
   UNIT_BASIS_LABELS,
   URBAN_PROXIMITY_LABELS,
+  characteristicLabelOf,
   formatComparableId,
 } from "@/features/valuations/calculation/comparable-card";
 import type { ComparableCardDto } from "@/features/valuations/calculation/comparable-card.service";
@@ -98,7 +99,10 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
     { label: "ID de publicación", value: orDash(comparable.listingDetails?.publicationId) },
     { label: "Liga del anuncio", value: comparable.url ? <ListingLink href={comparable.url} printable={printable} /> : "—", wide: true },
   ];
+  // The land's area also in "Terreno" (V5.4-12): the area of a land comparable, the land of a built one.
+  const landArea = built ? comparable.landArea : comparable.area;
   const land: SheetItem[] = [
+    { label: "Superficie de terreno (m²)", value: <span className="tabular-nums">{number(landArea)}</span> },
     { label: "Uso de suelo", value: orDash(comparable.landUse) },
     ...builtins.filter((field) => !["area", "price", "notes", "conservation", "quality"].includes(field.key)).map((field) => {
       const value = comparable[field.key as keyof typeof comparable];
@@ -111,7 +115,6 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
   ];
   const construction: SheetItem[] = built ? [
     { label: "Tipo de construcción", value: orDash(comparable.constructionType) },
-    { label: "Superficie de terreno (m²)", value: <span className="tabular-nums">{number(comparable.landArea)}</span> },
     { label: "Calidad", value: orDash(comparable.quality) },
     { label: "Conservación", value: orDash(comparable.conservation) },
     { label: "Edad (años)", value: number(comparable.propertyDetails?.age) },
@@ -121,7 +124,7 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
     { label: "Estacionamientos", value: number(comparable.propertyDetails?.parking) },
   ] : [];
   const characteristics: SheetItem[] = [
-    ...extra.map(([key, value]) => ({ label: key.replace(/^custom:/, ""), value })),
+    ...extra.map(([key, value]) => ({ label: characteristicLabelOf(key, card.characteristicLabels), value })),
     ...(comparable.attributes ?? []).map((attribute) => ({ label: attribute.name, value: attribute.value })),
     ...(comparable.characteristicsText ? [{ label: "Texto de características", value: comparable.characteristicsText, wide: true }] : []),
     { label: "Observaciones", value: orDash(comparable.notes), wide: true },

@@ -17,6 +17,7 @@ import {
   upsertDocumentNode,
 } from "./document-nodes";
 import { syncTablesForNode } from "./document-tables";
+import { withUniqueNodeKeys } from "./node-keys";
 import { ValuationWorkflowError } from "./errors";
 import {
   createPersistenceStats,
@@ -103,7 +104,10 @@ export async function writeVersionSections(
 ) {
   const debug = process.env.VALUATION_SAVE_DEBUG === "1";
   const catalogs = await getDocumentPersistenceCatalogs(tx);
-  for (const [index, section] of sections.entries()) {
+  for (const [index, sent] of sections.entries()) {
+    // Repeated ids (a croquis image copied with its block) would share one node: each gets its own.
+    const { section, renamed } = withUniqueNodeKeys(sent);
+    if (renamed.length) console.warn("[VALUATION_SECTIONS] repeated ids renamed", { versionId, section: section.id, renamed });
     // A section the appraiser added keeps its own id as key; the registry's aliases do not apply to it.
     const custom = Boolean(section.id && isCustomSectionId(section.id));
     const canonical = custom ? section.id! : getCanonicalSectionKey(section.id ?? section.label ?? `section-${index + 1}`);

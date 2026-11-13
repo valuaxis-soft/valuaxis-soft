@@ -16,6 +16,8 @@ const MAX_FULL_SAVE_BYTES = 5_000_000;
 
 export async function PUT(request: Request, { params }: RouteContext<"/api/avaluos/[id]/full">) {
   const debug = process.env.VALUATION_SAVE_DEBUG === "1";
+  // Known before anything can fail, so a failure is logged with the valuation it was saving.
+  let valuationId: string | undefined;
 
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
@@ -27,6 +29,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/avalu
     const { sections = [], caratula, ...meta } = body.data;
 
     const { id } = await params;
+    valuationId = id;
     if (debug) {
       console.log("[VALUATION_FULL] PUT received", {
         id,
@@ -55,6 +58,6 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/avalu
       message: "Avaluo guardado correctamente.",
     });
   } catch (error) {
-    return valuationErrorResponse("VALUATION_FULL", error, "No se pudo guardar el avalúo.");
+    return valuationErrorResponse("VALUATION_FULL", error, "No se pudo guardar el avalúo.", { valuationId });
   }
 }
