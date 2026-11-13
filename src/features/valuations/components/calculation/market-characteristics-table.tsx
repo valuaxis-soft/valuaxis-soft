@@ -190,6 +190,8 @@ export function MarketCharacteristicsTable(props: {
                     ariaLabel={`Texto libre de características, comparable ${comparable.reference}`}
                     disabled={readOnly}
                     placeholder="Opcional"
+                    // It replaces the whole line of characteristics: «Copiar valor a toda la columna» leaves it alone.
+                    noFill
                     value={comparable.characteristicsText ?? ""}
                     onCommit={(text) => props.onComparable(comparable, (current) => ({ ...current, characteristicsText: text.trim() || null }))}
                   />

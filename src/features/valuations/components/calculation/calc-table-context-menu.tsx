@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState, type MouseEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { toast } from "sonner";
 
 import {
@@ -41,14 +42,22 @@ export type CalcTableRowActions = {
   count: number;
 };
 
-/** Writes `text` in an input as typing does, so React sees the change. */
-function typeInto(input: HTMLInputElement | HTMLTextAreaElement, text: string) {
+/**
+ * Writes `text` in an input as typing does, so React sees the change. Each
+ * step is rendered before the next one: a cell that sends what was typed when
+ * it is left (CommitCell, the panels' fields that save on blur) reads it from
+ * its state, and without the render in between it found nothing typed and
+ * sent nothing ("Copiar valor a toda la fila" filled no cell, video 5.7).
+ */
+export function typeInto(input: HTMLInputElement | HTMLTextAreaElement, text: string, flush: (step: () => void) => void = flushSync) {
   const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
-  input.focus();
-  setter?.call(input, text);
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  input.blur();
+  flush(() => input.focus());
+  flush(() => {
+    setter?.call(input, text);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  flush(() => input.blur());
 }
 
 /** What the system clipboard holds; the last text copied here when it cannot be read. */
@@ -217,7 +226,10 @@ function fillFormula(hit: CalcTableHit, along: "row" | "column", readOnly: boole
   const cells = along === "row" ? Array.from(row.cells) : Array.from(body.rows).map((item) => item.cells[hit.columnIndex]);
   const from = along === "row" ? hit.columnIndex : hit.rowIndex;
   const fields = cells.map(fieldOf);
-  const seen: CaptureFillCell[] = fields.map((field) => (field ? { takesTyping: takesTyping(field, readOnly), text: field.value, hasFormula: formulaOf(field) !== null } : null));
+  // A cell marked `data-no-fill` (the free text that replaces a comparable's characteristics) is not one more value of the row.
+  const seen: CaptureFillCell[] = fields.map((field) => (field
+    ? { takesTyping: takesTyping(field, readOnly) && field.dataset.noFill === undefined, text: field.value, hasFormula: formulaOf(field) !== null }
+    : null));
   const targets = captureFillTargets(seen, from);
   for (const index of targets) typeInto(fields[index]!, formula);
   if (!targets.length) toast.info(`No hay celdas vacías en la ${along === "row" ? "fila" : "columna"} para copiarlo.`);

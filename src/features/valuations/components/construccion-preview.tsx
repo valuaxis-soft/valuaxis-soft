@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import type { AppSection, TableContent } from "../model";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { TABLE_TEXT_SIZE, useDocumentTheme } from "@/features/valuations/components/document-theme";
-import { ensureTableV2, printableColumns, printableRows } from "../services/table";
+import { ensureTableV2, printableColumns, printableRows, tablePrintLayout } from "../services/table";
 import type { DocumentTableFragment } from "../services/table-pagination";
 import {
   AutoPaginatedDocumentFlow,
@@ -91,9 +91,15 @@ function ConstructionContentRow({
       ? "grid-cols-2"
       : "grid-cols-3";
 
+  // A table with "Espacio antes" takes exactly that room above it, as in every section.
+  const tableSetsRoom = layoutRow.columns.some((column) => column.items.some((itemRef) => {
+    const table = itemRef.type === "table" ? tablesById.get(itemRef.id) : undefined;
+    return table !== undefined && table.enabled !== false && tablePrintLayout(ensureTableV2(table)).spacingBefore !== undefined;
+  }));
+
   return (
     // The continuation of a table opens its page: no room above it.
-    <div className={`${tableFragment?.continuation ? "grid" : theme.contentRow} ${gridClass}`}>
+    <div className={`${tableFragment?.continuation || tableSetsRoom ? "grid" : theme.contentRow} ${gridClass}`}>
       {layoutRow.columns.map((column) => (
         <div key={column.id} className="min-w-0">
           {column.items.map((itemRef) => {
@@ -124,9 +130,20 @@ function ConstructionTable({ table, fragment }: { table: TableContent; fragment?
   // The rows this page prints when the table breaks across pages; the header repeats on each. Rows hidden in the editor stay out.
   const printable = printableRows(t2);
   const rows = fragment ? printable.slice(fragment.from, fragment.to) : printable;
+  // "Formato de la tabla": room before (with what opens it) and after (with what closes it) and indent, as every table prints them.
+  const print = tablePrintLayout(t2);
+  const opens = !fragment?.continuation;
+  const closes = fragment?.last ?? true;
 
   return (
-    <div className={fragment?.continuation ? "overflow-hidden" : "mt-1 overflow-hidden"}>
+    <div
+      className={!opens || print.spacingBefore ? "overflow-hidden" : "mt-1 overflow-hidden"}
+      style={{
+        paddingTop: opens && print.spacingBefore ? print.spacingBefore : undefined,
+        paddingBottom: closes && print.spacingAfter ? print.spacingAfter : undefined,
+        paddingLeft: print.indent || undefined,
+      }}
+    >
       <table className={`w-full border-collapse table-fixed ${TABLE_TEXT_SIZE} leading-tight text-[#222]`} data-split-table="">
         <colgroup>
           {columns.map((column) => (

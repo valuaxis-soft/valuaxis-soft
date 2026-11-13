@@ -11,6 +11,7 @@ import { formatConceptTitleWithColon } from "@/features/valuations/services/conc
 import { labelGuideColumns, resolveCellConceptGuide } from "@/features/valuations/services/concept-presentation";
 import { apartadoContentHidden, blockContentHidden } from "@/features/valuations/services/hidden-content";
 import { MIN_ROWS_BEFORE_BREAK, MIN_ROWS_WITH_TAIL, type DocumentTableFragment } from "@/features/valuations/services/table-pagination";
+import { ensureTableV2, tablePrintLayout } from "@/features/valuations/services/table";
 import { cn } from "@/lib/utils";
 import { DocumentConceptValue } from "./document-concept-value";
 import { DocumentParagraph, conceptSpacingStyle } from "./document-paragraph";
@@ -109,6 +110,8 @@ export function documentBlockFlowItems(
   // another, sit as close as the rows of an apartado do.
   let previous: "title" | "content" | "apartado" | null = null;
   let directRowIndex = 0;
+  // The row before is a table with "Espacio después": that room is the whole gap, the next row adds none.
+  let previousTableRoom = false;
 
   // Title bar as first item — carries the block's page-break flag and never
   // stays alone at the foot of a page.
@@ -142,8 +145,10 @@ export function documentBlockFlowItems(
       if (!layoutRow || !hasVisibleItems(layoutRow, block)) continue;
       const rowIndex = previous === "content" ? directRowIndex + 1 : 0;
       const continuesPrevious = previous === "title" || previous === "content" ? true : undefined;
+      const afterTableRoom = previous === "content" && previousTableRoom;
       directRowIndex = rowIndex;
       previous = "content";
+      previousTableRoom = tableRoom(layoutRow, block, "after");
       const crId = `cr-${block.id}-${structuralRow.id}`;
       const splits = holdsOnlyATable(layoutRow, block);
       const renderRow = renderContentRow
@@ -169,6 +174,7 @@ export function documentBlockFlowItems(
             applyConceptLayout={applyConceptLayout}
             containerPresentation={block.conceptPresentation}
             tableFragment={tableFragment}
+            afterTableRoom={afterTableRoom}
           />
         );
       items.push({ id: crId, continuesPrevious, node: renderRow(), renderTableFragment: splits ? renderRow : undefined });
@@ -186,7 +192,10 @@ export function documentBlockFlowItems(
       // The first apartado sits right under the block's title bar.
       const underTitle = previous === "title" ? true : undefined;
       previous = "apartado";
+      previousTableRoom = false;
       const head = apartadoHead(subBlock);
+      // Whether the row before this one of the apartado is a table with "Espacio después".
+      const afterRoomOf = (rows: ContentLayoutRowV2[], index: number) => index > 0 && tableRoom(rows[index - 1], subBlock, "after");
       if (head) {
         const renderHeadRow = (layoutRow: ContentLayoutRowV2, rowIndex: number, tableFragment?: DocumentTableFragment) => (
           <ApartadoContentRows
@@ -195,6 +204,7 @@ export function documentBlockFlowItems(
             firstRowIndex={rowIndex}
             applyConceptLayout={applyConceptLayout}
             tableFragment={tableFragment}
+            afterTableRoom={afterRoomOf(head.rows, rowIndex - 1)}
           />
         );
         const headBreak = resolvePageBreak(subBlock);
@@ -227,6 +237,7 @@ export function documentBlockFlowItems(
           firstRowIndex={rowIndex}
           applyConceptLayout={applyConceptLayout}
           tableFragment={tableFragment}
+          afterTableRoom={afterRoomOf(apartadoRows, rowIndex)}
         />
       );
       // The title stays with the first rows of a table that breaks; its continuations print without it.
@@ -277,6 +288,7 @@ export function documentBlockFlowItems(
       if (!sb1 && !sb2) continue;
       const underTitle = previous === "title" ? true : undefined;
       previous = "apartado";
+      previousTableRoom = false;
       // For paired apartados, if EITHER requests a page break, the pair starts on a new page
       const pairedStartOnNewPage = [sb1, sb2].some((subBlock) => subBlock && resolvePageBreak(subBlock) === "new-page");
       const pairId = `pair-${block.id}-${structuralRow.id}`;
@@ -320,6 +332,19 @@ function hasVisibleItems(layoutRow: ContentLayoutRowV2, container: ContentContai
 }
 
 /**
+ * The row holds a table with "Espacio antes" (or "después") of "Formato de la
+ * tabla": that room is the whole gap on that side, not added to the row's own.
+ */
+function tableRoom(layoutRow: ContentLayoutRowV2, container: ContentContainer, side: "before" | "after"): boolean {
+  return visibleRowItems(layoutRow, container).some((itemRef) => {
+    const table = itemRef.type === "table" ? container.tables.find((entry) => entry.id === itemRef.id) : undefined;
+    if (!table) return false;
+    const print = tablePrintLayout(ensureTableV2(table));
+    return (side === "before" ? print.spacingBefore : print.spacingAfter) !== undefined;
+  });
+}
+
+/**
  * An apartado that holds tables and nothing else, every one of them hidden:
  * its title belongs to the tables, so it does not print either.
  */
@@ -344,6 +369,7 @@ function DocumentContentRow({
   applyConceptLayout,
   containerPresentation,
   tableFragment,
+  afterTableRoom = false,
 }: {
   layoutRow: ContentLayoutRowV2;
   rowIndex: number;
@@ -354,6 +380,8 @@ function DocumentContentRow({
   containerPresentation?: import("@/features/valuations/services/concept-presentation").ConceptPresentation;
   /** The rows to print of the row's table, when it breaks across pages. */
   tableFragment?: DocumentTableFragment;
+  /** The row before is a table with "Espacio después": that room is the whole gap. */
+  afterTableRoom?: boolean;
 }) {
   const theme = useDocumentTheme();
   const columnCount = layoutRow.columns.length;
@@ -377,7 +405,14 @@ function DocumentContentRow({
   // First row: current spacing; subsequent rows: tighter 1px margin, or room
   // above a table so it does not touch the table or the concepts before it.
   const holdsTable = visibleItems.some((itemRef) => itemRef.type === "table");
-  const rowSpacing = tableFragment?.continuation ? "grid" : rowIndex === 0 ? theme.contentRow : holdsTable ? "mt-2.5 grid" : "mt-[1px] grid";
+  // A table with "Espacio antes" takes exactly that room above it, instead of the row's own (video 5.7: 20 px printed 30).
+  const tableSetsRoom = visibleItems.some((itemRef) => {
+    const table = itemRef.type === "table" ? tablesById.get(itemRef.id) : undefined;
+    return table !== undefined && tablePrintLayout(ensureTableV2(table)).spacingBefore !== undefined;
+  });
+  const rowSpacing = tableFragment?.continuation || tableSetsRoom || afterTableRoom
+    ? "grid"
+    : rowIndex === 0 ? theme.contentRow : holdsTable ? "mt-2.5 grid" : "mt-[1px] grid";
   const rowClassName = cn(
     // The continuation of a table opens its page: no room above it.
     rowSpacing,
@@ -522,12 +557,15 @@ function ApartadoContentRows({
   firstRowIndex,
   applyConceptLayout,
   tableFragment,
+  afterTableRoom = false,
 }: {
   subBlock: Apartado;
   rows: ContentLayoutRowV2[];
   firstRowIndex: number;
   applyConceptLayout: boolean;
   tableFragment?: DocumentTableFragment;
+  /** The row before the first one is a table with "Espacio después". */
+  afterTableRoom?: boolean;
 }) {
   const conceptsById = new Map(subBlock.concepts.map((c) => [c.id, c]));
   const imagesById = new Map(subBlock.images.map((i) => [i.id, i]));
@@ -546,6 +584,7 @@ function ApartadoContentRows({
           applyConceptLayout={applyConceptLayout}
           containerPresentation={subBlock.conceptPresentation}
           tableFragment={tableFragment}
+          afterTableRoom={index === 0 ? afterTableRoom : tableRoom(rows[index - 1], subBlock, "after")}
         />
       ))}
     </>
@@ -559,6 +598,7 @@ function DocumentApartadoRows(props: {
   firstRowIndex: number;
   applyConceptLayout: boolean;
   tableFragment?: DocumentTableFragment;
+  afterTableRoom?: boolean;
 }) {
   return (
     <div>
