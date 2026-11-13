@@ -5,7 +5,7 @@ import { createRateLimiter, clientIp } from "../src/security/rate-limit/rate-lim
 import { isSameOriginRequest } from "../src/security/validation/origin";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { TRUSTED_STYLE_HASHES, contentSecurityPolicy, createNonce, securityHeaders } from "../src/security/headers/security-headers";
+import { TRUSTED_STYLE_HASHES, contentSecurityPolicy, createNonce, googleMapsPage, securityHeaders } from "../src/security/headers/security-headers";
 import {
   createValuationSchema,
   reopenValuationSchema,
@@ -237,4 +237,13 @@ test("failed logins lock out the attacking IP, not the account owner", () => {
   for (let i = 0; i < 5; i += 1) limiter.consume("login-fail:perito@example.com:203.0.113.9", 0);
   assert.equal(limiter.isBlocked("login-fail:perito@example.com:203.0.113.9", 1_000), true);
   assert.equal(limiter.isBlocked("login-fail:perito@example.com:198.51.100.4", 1_000), false);
+});
+
+test("the card of a comparable can load its OpenStreetMap tiles, the printed documents cannot", () => {
+  const imgSrc = (pathname: string) =>
+    contentSecurityPolicy({ development: false, nonce: "abc123", googleMaps: googleMapsPage(pathname) })
+      .split("; ")
+      .find((directive) => directive.startsWith("img-src")) ?? "";
+  assert.match(imgSrc("/comparables/0b3d6a1e-6d0c-4a54-9d5b-0f1f2a3b4c5d"), /https:\/\/tile\.openstreetmap\.org/);
+  assert.doesNotMatch(imgSrc("/avaluos/0b3d6a1e-6d0c-4a54-9d5b-0f1f2a3b4c5d/dictamen"), /openstreetmap/);
 });
