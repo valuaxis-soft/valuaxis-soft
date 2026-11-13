@@ -86,8 +86,9 @@ test("several images can be chosen at once, of the formats the server reads", ()
   for (const ok of [file("a.jpg", "image/jpeg"), file("b.JPEG", "image/jpeg"), file("c.png", "image/png"), file("d.webp", "image/webp")]) {
     assert.equal(documentImageUploadProblem(ok), null, ok.name);
   }
-  assert.match(documentImageUploadProblem(file("IMG_0001.HEIC", "image/heic")) ?? "", /HEIC/);
-  assert.match(documentImageUploadProblem(file("plano.pdf", "application/pdf")) ?? "", /JPG, JPEG, PNG, WebP o GIF/);
+  // V5.5-05: the same message as every image upload, with what to do with a photo of the iPhone.
+  assert.equal(documentImageUploadProblem(file("IMG_0001.HEIC", "image/heic")), "el archivo no es una imagen JPG, PNG o WebP. Si es una foto del iPhone (HEIC), ábrela y expórtala como JPG.");
+  assert.equal(documentImageUploadProblem(file("plano.pdf", "application/pdf")), documentImageUploadProblem(file("IMG_0001.HEIC", "image/heic")));
   assert.match(documentImageUploadProblem(file("vacía.jpg", "image/jpeg", 0)) ?? "", /vacío/);
   assert.equal(documentImageUploadError("plano.pdf", "formato no compatible."), "No se pudo subir «plano.pdf»: formato no compatible.");
 

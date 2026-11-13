@@ -14,6 +14,7 @@ import type { DuplicateProbe } from "@/features/valuations/calculation/comparabl
 import type { CalculationPrecision } from "@/features/valuations/calculation/calculation-precision";
 import type { CalculationPrecisionDto } from "@/features/valuations/calculation/calculation-precision.service";
 import type { ComparableReviewDto } from "@/features/valuations/calculation/comparable-review";
+import type { ImageFraming } from "@/features/valuations/services/image-framing";
 import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 import type { ConstructionTypeDto, ConstructionTypesDto, CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
 import type { ConclusionCalculationDto, ConclusionSettingsDto } from "@/features/valuations/calculation/conclusion-types";
@@ -131,11 +132,13 @@ export type ComparableSearchFilters = {
   operation?: string;
   consultedFrom?: string;
   consultedTo?: string;
+  /** «Tipo de vialidad» (STREET_TYPES); empty, any. */
+  streetType?: string;
 };
 
 const SEARCH_FILTER_PARAMS = {
   state: "estado", municipality: "municipio", neighborhood: "colonia", postalCode: "cp", kind: "inmueble", operation: "operacion",
-  consultedFrom: "consultaDesde", consultedTo: "consultaHasta",
+  consultedFrom: "consultaDesde", consultedTo: "consultaHasta", streetType: "vialidad",
 } as const;
 
 /** The server answered 401: the session expired or was revoked. */
@@ -357,6 +360,12 @@ export const api = {
       request<MarketCalculationDto>(
         `/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}&fotoId=${encodeURIComponent(photoId)}`,
         { method: "DELETE" },
+      ),
+    /** «Encuadre» and «Zoom» of a photo; null gives back the default. */
+    framePhoto: (id: ApiId, type: ComparableType, comparableId: string, photoId: string, framing: ImageFraming | null) =>
+      request<MarketCalculationDto>(
+        `/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}`,
+        { method: "PATCH", body: JSON.stringify({ photoId, framing }) },
       ),
   },
   /** AI assistance: both answer a draft to review; neither saves anything. */

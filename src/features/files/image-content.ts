@@ -16,17 +16,20 @@ const FORMAT_NAMES: Record<string, string> = {
 };
 
 /**
- * Why an image whose content is not of the accepted kinds is rejected, in
- * words the appraiser can act on: renaming the file does not convert it.
+ * The one message of every upload of an image (cover, comparables, editor,
+ * logo…) whose file is not an image the server takes: what it must be and
+ * what to do with a photo of the iPhone, the usual case (video 5.5).
  */
-export function imageContentProblem(format: string | undefined, allowedMimeTypes: string[]): string {
-  const accepted = allowedMimeTypes
-    .map((type) => FORMAT_NAMES[Object.keys(MIME_BY_SHARP_FORMAT).find((key) => MIME_BY_SHARP_FORMAT[key] === type) ?? ""])
-    .filter(Boolean)
-    .join(", ");
+export const NOT_AN_IMAGE_MESSAGE = "El archivo no es una imagen JPG, PNG o WebP. Si es una foto del iPhone (HEIC), ábrela y expórtala como JPG.";
+
+/**
+ * Why an image whose content is not of the accepted kinds is rejected, in
+ * words the appraiser can act on: the same message as every upload, and,
+ * when its real kind is known, that renaming the file does not convert it.
+ */
+export function imageContentProblem(format: string | undefined): string {
   const actual = format ? FORMAT_NAMES[format] ?? format.toUpperCase() : null;
-  const iphone = format === "heif" ? " (el formato de las fotos de iPhone)" : "";
-  return actual
-    ? `La imagen es ${actual}${iphone} aunque su nombre diga otra cosa; se aceptan ${accepted}. Cambiar la extensión no la convierte: ábrela y guárdala o expórtala como JPG o PNG.`
-    : `El archivo no es una imagen ${accepted}. Ábrelo y guárdalo como JPG o PNG.`;
+  if (!actual) return NOT_AN_IMAGE_MESSAGE;
+  const [first, ...rest] = NOT_AN_IMAGE_MESSAGE.split(". ");
+  return `${first}: es ${actual}, y cambiarle la extensión no la convierte. ${rest.join(". ")}`;
 }

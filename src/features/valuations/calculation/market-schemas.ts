@@ -2,9 +2,10 @@ import { z } from "zod";
 import { SURFACE_POWERS } from "../engine/config";
 import { MAX_REGRESSION_VARIABLES } from "../engine/regression";
 import { capturedFormulasSchema } from "./captured-formulas";
-import { CURRENCIES, DATA_VERIFIED, OPERATION_TYPES, UNIT_BASES, URBAN_PROXIMITIES } from "./comparable-card";
+import { CURRENCIES, DATA_VERIFIED, OPERATION_TYPES, STREET_TYPES, UNIT_BASES, URBAN_PROXIMITIES } from "./comparable-card";
 import { REVIEW_CHECKS, REVIEW_STATUSES } from "./comparable-review";
 import { MAX_SCALE_LEVELS, REGRESSION_DEPENDENTS } from "./market-regression";
+import { COVER_IMAGE_SCALE } from "../services/cover-image-focus";
 import {
   BUILTIN_CHARACTERISTICS,
   COMPARABLE_TYPES,
@@ -61,6 +62,8 @@ const addressSchema = z.object({
   postalCode: z.string().trim().regex(/^(\d{5})?$/, "El código postal lleva 5 dígitos.").nullable().transform((value) => value || null).optional(),
   neighborhood: text(120).optional(),
   subdivision: text(120).optional(),
+  // «Tipo de vialidad»; left out by a client that does not know it (the master workbook), the stored one stays.
+  streetType: z.enum(STREET_TYPES, "Tipo de vialidad inválido.").nullable().optional(),
   street: text(180).optional(),
   number: text(40).optional(),
 });
@@ -242,6 +245,15 @@ export const comparableReviewSchema = z.object({
 });
 
 export type ComparableReviewPayload = z.infer<typeof comparableReviewSchema>;
+
+/** «Encuadre» and «Zoom» of a comparable's photo; null gives back the default (whole and centered). */
+export const comparablePhotoFramingSchema = z.object({
+  photoId: z.string().trim().min(1).max(80),
+  framing: z.object({
+    focus: z.object({ x: z.number().finite().min(0).max(100), y: z.number().finite().min(0).max(100) }),
+    size: z.object({ fit: z.enum(["cover", "contain"]), scale: z.number().finite().min(COVER_IMAGE_SCALE.min).max(COVER_IMAGE_SCALE.max) }),
+  }).nullable(),
+});
 
 /** What the duplicate check reads of a comparable being captured. */
 export const duplicateProbeSchema = z.object({

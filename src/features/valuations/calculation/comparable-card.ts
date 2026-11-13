@@ -19,8 +19,60 @@ export function parseComparableId(text: string) {
 
 export const ADDRESS_PARTS = ["state", "municipality", "postalCode", "neighborhood", "subdivision", "street", "number"] as const;
 export type AddressPart = (typeof ADDRESS_PARTS)[number];
+
+/**
+ * «Tipo de vialidad» (video 5.4): what kind of road the «Vialidad» is. It
+ * prints before its name in the location line and filters the search. A
+ * comparable captured before it existed has none and reads as «Calle».
+ */
+export const STREET_TYPES = [
+  "TERRACERIA", "CALLE", "CERRADA", "PRIVADA", "ANDADOR", "AVENIDA", "BOULEVARD", "CALZADA", "CIRCUITO", "PROLONGACION",
+  "PERIFERICO", "LIBRAMIENTO", "CARRETERA", "CAMINO", "OTRO",
+] as const;
+export type StreetType = (typeof STREET_TYPES)[number];
+export const DEFAULT_STREET_TYPE: StreetType = "CALLE";
+export const STREET_TYPE_LABELS: Record<StreetType, string> = {
+  TERRACERIA: "Terracería",
+  CALLE: "Calle",
+  CERRADA: "Cerrada",
+  PRIVADA: "Privada",
+  ANDADOR: "Andador",
+  AVENIDA: "Avenida",
+  BOULEVARD: "Boulevard",
+  CALZADA: "Calzada",
+  CIRCUITO: "Circuito",
+  PROLONGACION: "Prolongación",
+  PERIFERICO: "Periférico",
+  LIBRAMIENTO: "Libramiento",
+  CARRETERA: "Carretera",
+  CAMINO: "Camino",
+  OTRO: "Otro",
+};
+/**
+ * How the type prints before the name: the abbreviations usual in Mexico
+ * («Av.», «Blvd.», «Calz.», «Cda.», «Priv.»…), or the whole word when there
+ * is none in common use. «Otro» prints the name alone.
+ */
+const STREET_TYPE_PRINTED: Record<StreetType, string> = {
+  TERRACERIA: "Terracería",
+  CALLE: "Calle",
+  CERRADA: "Cda.",
+  PRIVADA: "Priv.",
+  ANDADOR: "And.",
+  AVENIDA: "Av.",
+  BOULEVARD: "Blvd.",
+  CALZADA: "Calz.",
+  CIRCUITO: "Cto.",
+  PROLONGACION: "Prol.",
+  PERIFERICO: "Periférico",
+  LIBRAMIENTO: "Lib.",
+  CARRETERA: "Carr.",
+  CAMINO: "Camino",
+  OTRO: "",
+};
+
 /** The location in parts, as the competitor's and the SHF formats ask for it; every part is optional. */
-export type ComparableAddress = Partial<Record<AddressPart, string | null>>;
+export type ComparableAddress = Partial<Record<AddressPart, string | null>> & { streetType?: StreetType | null };
 
 export const ADDRESS_LABELS: Record<AddressPart, string> = {
   state: "Estado",
@@ -28,16 +80,37 @@ export const ADDRESS_LABELS: Record<AddressPart, string> = {
   postalCode: "Código postal",
   neighborhood: "Colonia",
   subdivision: "Fraccionamiento",
-  street: "Calle",
+  street: "Vialidad",
   number: "Número",
 };
+export const STREET_TYPE_LABEL = "Tipo de vialidad";
+
+/** The type of road of an address; one captured before the type existed is a «Calle». */
+export const streetTypeOf = (address: Pick<ComparableAddress, "streetType"> | null | undefined): StreetType =>
+  address?.streetType ?? DEFAULT_STREET_TYPE;
 
 const part = (value: string | null | undefined) => value?.trim() ?? "";
 
-/** "Juárez 12, col. Centro, fracc. Valle Real, C.P. 47180, Arandas, Jalisco": the parts as one line, the way the dictamen prints a location. */
+const plainWord = (value: string) => value.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/**
+ * "Av. Juárez 12": the road with its type, when one was chosen. A name that
+ * already starts with it ("Avenida Juárez", "Av. Juárez") is not given it
+ * twice; an address of before, without a type, prints as it always did.
+ */
+function streetWithType(address: ComparableAddress) {
+  const name = part(address.street);
+  const printed = address.streetType ? STREET_TYPE_PRINTED[address.streetType] : "";
+  if (!name || !printed || !address.streetType) return name;
+  const first = plainWord(name.split(/\s+/)[0] ?? "");
+  const already = [printed, STREET_TYPE_LABELS[address.streetType]].some((word) => plainWord(word) === first || plainWord(word).replace(/\.$/, "") === first.replace(/\.$/, ""));
+  return already ? name : `${printed} ${name}`;
+}
+
+/** "Av. Juárez 12, col. Centro, fracc. Valle Real, C.P. 47180, Arandas, Jalisco": the parts as one line, the way the dictamen prints a location. */
 export function formatAddress(address: ComparableAddress | null | undefined) {
   if (!address) return "";
-  const street = [part(address.street), part(address.number)].filter(Boolean).join(" ");
+  const street = [streetWithType(address), part(address.number)].filter(Boolean).join(" ");
   const neighborhood = part(address.neighborhood) ? `col. ${part(address.neighborhood)}` : "";
   const subdivision = part(address.subdivision) ? `fracc. ${part(address.subdivision)}` : "";
   const postalCode = part(address.postalCode) ? `C.P. ${part(address.postalCode)}` : "";
@@ -50,7 +123,9 @@ export function addressFromRecord(record: Record<string, unknown>): ComparableAd
     const value = record[key];
     return [key, typeof value === "string" && value.trim() ? value.trim() : null];
   })) as ComparableAddress;
-  return Object.values(parts).some(Boolean) ? parts : null;
+  if (!Object.values(parts).some(Boolean)) return null;
+  const streetType = STREET_TYPES.find((type) => type === record.streetType);
+  return streetType ? { ...parts, streetType } : parts;
 }
 
 /** True when the address has at least one part captured. */

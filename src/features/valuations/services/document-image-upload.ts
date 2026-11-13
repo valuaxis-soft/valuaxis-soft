@@ -4,24 +4,23 @@
  * once; each one that cannot be used says why, by its name.
  */
 
+import { NOT_AN_IMAGE_MESSAGE } from "@/features/files/image-content";
+
 const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const ACCEPTED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
 
 /** For the file picker: by type and by extension, so every system offers the same files. */
 export const DOCUMENT_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif";
 
-export const DOCUMENT_IMAGE_FORMATS_LABEL = "JPG, JPEG, PNG, WebP o GIF";
+/** The message of every image upload, after "No se pudo subir «…»:". */
+const NOT_AN_IMAGE_REASON = NOT_AN_IMAGE_MESSAGE.charAt(0).toLowerCase() + NOT_AN_IMAGE_MESSAGE.slice(1);
 
 /** Why this file cannot be uploaded as a document image; null when it can. */
 export function documentImageUploadProblem(file: Pick<File, "name" | "type" | "size">): string | null {
   const extension = file.name.includes(".") ? file.name.split(".").pop()?.toLowerCase() ?? "" : "";
-  if (extension === "heic" || extension === "heif" || file.type === "image/heic" || file.type === "image/heif") {
-    return "las fotos HEIC del iPhone no se pueden usar; guárdala como JPG (en el iPhone: Ajustes › Cámara › Formatos › Más compatible) y súbela de nuevo.";
-  }
   if (!file.size) return "el archivo está vacío.";
-  if (!ACCEPTED_TYPES.has(file.type) || (extension && !ACCEPTED_EXTENSIONS.has(extension))) {
-    return `formato no compatible. Usa ${DOCUMENT_IMAGE_FORMATS_LABEL}.`;
-  }
+  // A photo of the iPhone (HEIC) or any other file: the same message as every image upload.
+  if (!ACCEPTED_TYPES.has(file.type) || (extension && !ACCEPTED_EXTENSIONS.has(extension))) return NOT_AN_IMAGE_REASON;
   return null;
 }
 

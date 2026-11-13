@@ -474,6 +474,8 @@ export function marketPhotoBlocks(calculation: MarketCalculationDto): Block[] {
       id: `${GENERATED_BLOCK_PREFIX}foto-${photo.id}`,
       title: `Comparable ${comparable.reference}: ${comparable.location}`,
       src: photo.url,
+      // «Encuadre» and «Zoom» set on the comparable's photo (video 5.5).
+      ...(photo.framing ? { framing: photo.framing } : {}),
       enabled: true,
     })));
   if (!images.length) return [];
@@ -574,7 +576,7 @@ function sameContent(left: Block[], right: Block[]) {
     concepts: item.concepts.map((concept) => [concept.label, concept.value, concept.generatedLabel ?? null]),
     // What prints, and what the calculation wrote under the appraiser's columns (a hidden column may be shown again).
     tables: item.tables.map((table) => [printedTable(table), printedTable(sourceOf(table) as unknown as TableContent), layoutOf(table)]),
-    images: item.images.map((image) => [image.id, image.title]),
+    images: item.images.map((image) => [image.id, image.title, image.framing ?? null]),
   });
   const shape = (blocks: Block[]) => JSON.stringify(blocks.map((item) => ({
     id: item.id,

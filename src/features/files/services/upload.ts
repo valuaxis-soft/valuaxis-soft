@@ -5,7 +5,7 @@ import {
   FileValidationError,
   storageProvider,
 } from "@/infrastructure/storage/storage-provider";
-import { MIME_BY_SHARP_FORMAT, imageContentProblem } from "@/features/files/image-content";
+import { MIME_BY_SHARP_FORMAT, NOT_AN_IMAGE_MESSAGE, imageContentProblem } from "@/features/files/image-content";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_FILE_SIZE = env.MAX_UPLOAD_SIZE_MB * 1024 * 1024;
@@ -37,6 +37,18 @@ export class UploadError extends Error {
   }
 }
 
+/**
+ * What the appraiser reads when the storage refuses the file before reading
+ * it: every upload here is an image, so a file of another type gets the one
+ * message of every image upload, and each message says what to do.
+ */
+function validationMessage(code: string): string | null {
+  if (code === "INVALID_TYPE") return NOT_AN_IMAGE_MESSAGE;
+  if (code === "FILE_TOO_LARGE") return `La imagen pesa más de ${env.MAX_UPLOAD_SIZE_MB} MB, el máximo permitido. Guárdala o expórtala más ligera (por ejemplo, como JPG) y vuelve a subirla.`;
+  if (code === "INVALID_EXTENSION") return "El archivo no tiene extensión (.jpg, .png o .webp). Guárdalo como JPG, PNG o WebP y vuelve a subirlo.";
+  return null;
+}
+
 export async function saveUpload(file: File, options: SaveUploadOptions = {}): Promise<UploadResult> {
   const allowedMimeTypes = options.allowedMimeTypes ?? ALLOWED_TYPES;
   try {
@@ -46,7 +58,7 @@ export async function saveUpload(file: File, options: SaveUploadOptions = {}): P
     });
   } catch (error) {
     if (error instanceof FileValidationError) {
-      throw new UploadError(error.message, error.code);
+      throw new UploadError(validationMessage(error.code) ?? error.message, error.code);
     }
     throw error;
   }
@@ -56,13 +68,13 @@ export async function saveUpload(file: File, options: SaveUploadOptions = {}): P
   try {
     metadata = await sharp(buffer, { animated: false }).metadata();
   } catch {
-    throw new UploadError("El contenido del archivo no es una imagen valida.", "INVALID_IMAGE_CONTENT");
+    throw new UploadError(NOT_AN_IMAGE_MESSAGE, "INVALID_IMAGE_CONTENT");
   }
   const detectedMimeType = metadata.format ? MIME_BY_SHARP_FORMAT[metadata.format] : undefined;
   // What counts is the content, read above, not the name: a PNG renamed .jpg is still a PNG and is
   // stored (re-encoded) as such. A content of another kind says what it really is (V5.5-05).
   if (!detectedMimeType || !allowedMimeTypes.includes(detectedMimeType)) {
-    throw new UploadError(imageContentProblem(metadata.format, allowedMimeTypes), "INVALID_IMAGE_CONTENT");
+    throw new UploadError(imageContentProblem(metadata.format), "INVALID_IMAGE_CONTENT");
   }
 
   const shouldNormalizeToJpeg = detectedMimeType !== "image/gif";

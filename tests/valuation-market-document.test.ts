@@ -253,6 +253,20 @@ test("photos go to the annex after the appraiser's own blocks", () => {
   assert.ok(withCalculation.blocks.some((block) => block.id === "motor-mercado-terreno_venta-fotos"));
 });
 
+test("V5.5-06: the «Encuadre» and «Zoom» of a comparable's photo print in the annex, and changing them rewrites it", () => {
+  const annex = section([templateBlock("croquis")]);
+  const plain = withGeneratedBlocks(annex, "TERRENO_VENTA", marketPhotoBlocks(calculation), { kind: "fotos", position: "end" });
+  assert.equal(plain.blocks[1].images[0].framing, undefined, "without framing, whole and centered as before");
+  const framing = { focus: { x: 50, y: 20 }, size: { fit: "cover" as const, scale: 140 } };
+  const framed: MarketCalculationDto = {
+    ...calculation,
+    comparables: calculation.comparables.map((item) => (item.reference === 1 ? { ...item, photos: item.photos.map((photo) => ({ ...photo, framing })) } : item)),
+  };
+  const updated = withGeneratedBlocks(plain, "TERRENO_VENTA", marketPhotoBlocks(framed), { kind: "fotos", position: "end" });
+  assert.notEqual(updated, plain, "a new framing rewrites the photo block");
+  assert.deepEqual(updated.blocks[1].images[0].framing, framing);
+});
+
 test("the engine input skips incomplete comparables and explains what is missing", () => {
   assert.deepEqual(toMarketEngineInput({ ...calculation, settings: { ...calculation.settings, subjectArea: null } }), {
     ok: false,

@@ -11,6 +11,7 @@ import type { MarketRegressionDto } from "./market-regression";
 import type { ComparableAddress, ComparableListingDetails, ComparablePropertyDetails, OperationType, UrbanProximity } from "./comparable-card";
 import type { ComparableReviewDto } from "./comparable-review";
 import { withPrecision, type CalculationPrecision } from "./calculation-precision";
+import type { ImageFraming } from "../services/image-framing";
 
 export const COMPARABLE_TYPES = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"] as const;
 export type ComparableType = (typeof COMPARABLE_TYPES)[number];
@@ -259,7 +260,8 @@ export type ComparableFactorDto = {
   justification: string | null;
 };
 
-export type ComparablePhotoDto = { id: string; title: string; url: string };
+/** A photo of a comparable; `framing`, its place and zoom in its frame of the dictamen, when the appraiser set one. */
+export type ComparablePhotoDto = { id: string; title: string; url: string; framing?: ImageFraming };
 
 /** A characteristic added to one comparable: its name and its value, as written. */
 export type ComparableAttribute = { name: string; value: string };

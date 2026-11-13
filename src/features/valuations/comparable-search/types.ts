@@ -6,6 +6,7 @@
  */
 import type { ComparableInputPayload } from "../calculation/market-schemas";
 import type { ComparableType } from "../calculation/market-types";
+import type { StreetType } from "../calculation/comparable-card";
 import type { ReusedComparableEvidence } from "../calculation/market.service";
 
 /** Filters of the search form beside the text; each one left out does not filter. */
@@ -19,6 +20,8 @@ export type ComparableSearchFilters = {
   /** "Fecha de consulta" from and to, YYYY-MM-DD, both inclusive. */
   consultedFrom?: string;
   consultedTo?: string;
+  /** «Tipo de vialidad»: a comparable captured before it existed counts as «Calle». */
+  streetType?: StreetType;
 };
 
 export type ComparableSearchQuery = {

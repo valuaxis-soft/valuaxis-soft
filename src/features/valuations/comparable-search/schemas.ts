@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { STREET_TYPES } from "../calculation/comparable-card";
 import { comparableInputSchema } from "../calculation/market-schemas";
 import { COMPARABLE_TYPES, isLandComparableType, isRentComparableType, type ComparableType } from "../calculation/market-types";
 import { SEARCH_TEXT_MIN, searchText } from "./normalize";
@@ -52,6 +53,7 @@ export const comparableSearchQuerySchema = z.object({
   cp: z.preprocess((value) => (empty(value) ? undefined : value), z.string().trim().regex(/^\d{5}$/, "El código postal lleva 5 dígitos.").optional()),
   inmueble: z.preprocess((value) => (empty(value) ? undefined : value), z.enum(SEARCH_KINDS, "Tipo de inmueble inválido.").optional()),
   operacion: z.preprocess((value) => (empty(value) ? undefined : value), z.enum(SEARCH_OPERATIONS, "Tipo de operación inválido.").optional()),
+  vialidad: z.preprocess((value) => (empty(value) ? undefined : value), z.enum(STREET_TYPES, "Tipo de vialidad inválido.").optional()),
   consultaDesde: searchDay,
   consultaHasta: searchDay,
   limite: z.preprocess(
@@ -61,7 +63,7 @@ export const comparableSearchQuerySchema = z.object({
 })
   .superRefine((value, context) => {
     const filtered = [value.supMin, value.supMax, value.precioMin, value.precioMax].some((item) => item !== null)
-      || [value.estado, value.municipio, value.colonia, value.cp, value.inmueble, value.operacion, value.consultaDesde, value.consultaHasta]
+      || [value.estado, value.municipio, value.colonia, value.cp, value.inmueble, value.operacion, value.consultaDesde, value.consultaHasta, value.vialidad]
         .some((item) => item !== undefined);
     if (value.q === undefined || !value.q) {
       if (!filtered) context.addIssue({ code: "custom", path: ["q"], message: NO_TEXT });
@@ -85,6 +87,7 @@ export const comparableSearchQuerySchema = z.object({
       ...(value.cp ? { postalCode: value.cp } : {}),
       ...(value.consultaDesde ? { consultedFrom: value.consultaDesde } : {}),
       ...(value.consultaHasta ? { consultedTo: value.consultaHasta } : {}),
+      ...(value.vialidad ? { streetType: value.vialidad } : {}),
     };
     return {
       text: value.q ?? "",
@@ -98,7 +101,7 @@ export const comparableSearchQuerySchema = z.object({
     };
   });
 
-const FILTER_PARAMS = ["estado", "municipio", "colonia", "cp", "inmueble", "operacion", "consultaDesde", "consultaHasta"] as const;
+const FILTER_PARAMS = ["estado", "municipio", "colonia", "cp", "inmueble", "operacion", "consultaDesde", "consultaHasta", "vialidad"] as const;
 
 /** Reads the query from a URL; the first problem comes back in words. */
 export function parseComparableSearchQuery(params: URLSearchParams):
