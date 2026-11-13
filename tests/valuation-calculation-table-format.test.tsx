@@ -318,7 +318,7 @@ test("a calculation table prints like a configurable one: same size, rows, dark 
   assert.match(calculated, /<td[^>]*font-bold[^>]*>0\.95<\/td><\/tr>/, "the FRe, last column");
   assert.equal(calculated.match(/<td[^>]*font-bold[^>]*>/g)?.length, 1, "only the FRe");
   const wide = render(generatedTable("w", "W", Array.from({ length: 14 }, (_, index) => textColumn(`C${index}`)), [Array.from({ length: 14 }, () => "1")]));
-  assert.match(wide, /<table class="[^"]*text-\[10px\]/, "a wide one a point less, as a configurable one; never 9px");
+  assert.match(wide, /<table class="[^"]*text-\[11px\]/, "a wide one the same size (video 5.4: one size in every table)");
 });
 
 test("a box marked with an x is shaded, the offer level's ( X ) is not, and the rules of the boxes are not black", () => {

@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import type { AppSection, TableContent } from "../model";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
-import { useDocumentTheme } from "@/features/valuations/components/document-theme";
+import { TABLE_TEXT_SIZE, useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { ensureTableV2, printableColumns, printableRows } from "../services/table";
 import type { DocumentTableFragment } from "../services/table-pagination";
 import {
@@ -127,7 +127,7 @@ function ConstructionTable({ table, fragment }: { table: TableContent; fragment?
 
   return (
     <div className={fragment?.continuation ? "overflow-hidden" : "mt-1 overflow-hidden"}>
-      <table className="w-full border-collapse table-fixed text-[9.5px] leading-tight text-[#222]" data-split-table="">
+      <table className={`w-full border-collapse table-fixed ${TABLE_TEXT_SIZE} leading-tight text-[#222]`} data-split-table="">
         <colgroup>
           {columns.map((column) => (
             <col key={`${table.id}-col-${column.id}`} />

@@ -14,8 +14,12 @@ import {
   type FormulaResult,
   type FormulaSelectionOperation,
   type ColumnCapability,
-  CELL_FORMAT_OPTIONS,
   HOMOLOGATION_HEADER_HINTS,
+  TABLE_DECIMALS_MAX,
+  tableValueDecimals,
+  tableValueFormat,
+  tableValueUnit,
+  type TableValueUnit,
   moveTableColumnBy,
   moveTableColumnTo,
   canMoveTableColumn,
@@ -79,6 +83,8 @@ import {
 } from "./formula-editing";
 import { useNumberPresentation } from "../number-presentation-context";
 import { TableFormatControl } from "./table-format-control";
+import { useCustomUnits } from "./custom-units-context";
+import { NUMERIC_VALUE_FORMAT_OPTIONS } from "../../services/concept-value-format";
 import { deleteConfirmation, useConfirmDelete, type DeleteConfirmation } from "./delete-confirm";
 
 import { Button } from "@/components/ui/button";
@@ -262,11 +268,58 @@ const DROPDOWN_PARTS: MenuParts = { Item: DropdownMenuItem, Separator: DropdownM
 
 type MenuHandlers = {
   onAction: (action: TableMenuAction) => void;
-  /** The formats of "Formato del valor…" and "Formato de la columna". */
+  /** The format "Unidades de valor" or "Decimales" leaves on the cell or the column. */
   onFormat?: (format: TableCellFormat | null) => void;
+  /** The format the cell or the column has now: one submenu changes its unit, the other its decimals. */
+  currentFormat?: TableCellFormat;
   /** The operations of "Operaciones", and writing a formula by hand. */
   onOperation?: (operation: FormulaSelectionOperation | null) => void;
 };
+
+/** The units of "Unidades de valor": the concepts' own, less "Otra unidad" (the firm's are listed apart). */
+const TABLE_UNIT_OPTIONS = NUMERIC_VALUE_FORMAT_OPTIONS.filter((option) => option.value !== "custom");
+
+const sameUnit = (a: TableValueUnit, b: TableValueUnit) =>
+  a.kind === b.kind && (a.kind === "unit" || a.kind === "firm" ? a.unit === (b as typeof a).unit : true);
+
+/**
+ * "Unidades de valor" and "Decimales" of a cell or a column, the same lists
+ * as the concepts' (video 5.7): the unit keeps the decimals chosen, and the
+ * other way round. "Automático" is the default of both.
+ */
+function ValueFormatItems({ kind, parts, handlers }: { kind: "units" | "decimals"; parts: MenuParts; handlers: MenuHandlers }) {
+  const { Item, Separator } = parts;
+  const { units: firmUnits } = useCustomUnits();
+  const current = handlers.currentFormat;
+  const unit = tableValueUnit(current);
+  const decimals = tableValueDecimals(current);
+  const mark = (chosen: boolean) => <Check aria-hidden className={cn("size-3.5", !chosen && "invisible")} />;
+  if (kind === "decimals") {
+    const options: Array<number | undefined> = [undefined, ...Array.from({ length: TABLE_DECIMALS_MAX + 1 }, (_, index) => index)];
+    return options.map((option) => (
+      <Item key={option ?? "auto"} onClick={() => handlers.onFormat?.(tableValueFormat(unit, option))}>
+        {mark(option === decimals)}
+        {option === undefined ? "Automático" : option === 0 ? "Sin decimales" : `${option} ${option === 1 ? "decimal" : "decimales"}`}
+      </Item>
+    ));
+  }
+  const choose = (next: TableValueUnit) => handlers.onFormat?.(tableValueFormat(next, decimals));
+  return (
+    <>
+      <Item onClick={() => choose({ kind: "auto" })}>{mark(unit.kind === "auto")}Automático</Item>
+      {TABLE_UNIT_OPTIONS.map((option) => {
+        const next: TableValueUnit = { kind: "unit", unit: option.value as Exclude<typeof option.value, "custom"> };
+        return <Item key={option.value} onClick={() => choose(next)}>{mark(sameUnit(unit, next))}{option.label}</Item>;
+      })}
+      {firmUnits.length ? <Separator /> : null}
+      {firmUnits.map((name) => (
+        <Item key={`firm:${name}`} onClick={() => choose({ kind: "firm", unit: name })}>{mark(sameUnit(unit, { kind: "firm", unit: name }))}{name} · del despacho</Item>
+      ))}
+      <Separator />
+      <Item onClick={() => choose({ kind: "text" })}>{mark(unit.kind === "text")}Texto</Item>
+    </>
+  );
+}
 
 /** The items of the menu, as the model gives them: a disabled item keeps its reason as a tooltip. */
 function MenuGroups({ groups, parts, handlers }: { groups: TableMenuGroup[]; parts: MenuParts; handlers: MenuHandlers }) {
@@ -276,10 +329,10 @@ function MenuGroups({ groups, parts, handlers }: { groups: TableMenuGroup[]; par
       return (
         <Sub key={`${item.action}:${item.label}`}>
           <SubTrigger>{item.label}</SubTrigger>
-          <SubContent className="w-52">
-            {item.submenu === "formats" ? CELL_FORMAT_OPTIONS.map((option) => (
-              <Item key={option.key} onClick={() => handlers.onFormat?.(option.format)}>{option.label}</Item>
-            )) : (
+          <SubContent className={item.submenu === "operations" ? "w-52" : "max-h-80 w-52 overflow-y-auto"}>
+            {item.submenu === "units" || item.submenu === "decimals" ? (
+              <ValueFormatItems kind={item.submenu} parts={parts} handlers={handlers} />
+            ) : (
               <>
                 {SELECTION_OPERATIONS.map((operation) => (
                   <Item key={operation.operation} onClick={() => handlers.onOperation?.(operation.operation)}>{operation.label}</Item>
@@ -406,6 +459,7 @@ function SortableColumnHeader({
   const handlers: MenuHandlers = {
     onAction: (action) => onColumnAction(column.id, action),
     onFormat: (format) => onColumnAction(column.id, "column-format", format),
+    currentFormat: column.format,
   };
 
   return (
@@ -704,6 +758,8 @@ function EditableTableCell({
   const handlers: MenuHandlers = {
     onAction: (action) => void runAction(action),
     onFormat: (format) => onUpdate(tableId, v2Updater((v2) => setCellResultFormat(v2, row.id, column.id, format))),
+    // A cell without a format of its own starts from its column's.
+    currentFormat: cell?.format ?? column.format,
     onOperation: (operation) => (operation ? onStartSelection(row.id, column.id, operation) : enterCell()),
   };
 

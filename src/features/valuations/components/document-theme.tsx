@@ -128,6 +128,20 @@ const OUTLINE_STANDARD_THEME: DocumentThemeTokens = { ...STANDARD_THEME, section
 export const TABLE_HEADER_BAND =
   "bg-[#BDD7EE] text-[var(--caratula-dark-blue)] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]";
 
+/**
+ * The rules between the headers of a table: white and as thick as the rule
+ * under the apartado titles (2px), so they read on the blue band (video 5.4).
+ * A group title adds its rule underneath (`border-b-2`).
+ */
+export const TABLE_HEADER_RULE = "border-white border-r-2";
+
+/**
+ * One size of letter for every table of the document, the same as the
+ * concepts around them (11px): before it went from 8.5 to 11px with the kind
+ * of table and its number of columns (video 5.4).
+ */
+export const TABLE_TEXT_SIZE = "text-[11px]";
+
 /* ── React context ─────────────────────────────────────────────── */
 const DocumentThemeContext = createContext<DocumentThemeTokens>(STANDARD_THEME);
 

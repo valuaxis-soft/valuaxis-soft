@@ -10,6 +10,7 @@
  */
 
 import { FORMULA_FUNCTIONS, roundDecimal } from "../calculation/free-formula";
+import { NUMERIC_VALUE_FORMAT_OPTIONS } from "./concept-value-format";
 import { DEFAULT_NUMBER_PRESENTATION, withoutThousandsSeparator, type NumberPresentation } from "./number-presentation";
 import {
   getDisplayColumns,
@@ -709,6 +710,8 @@ function formatFactor(value: number, presentation: NumberPresentation, decimals 
 /** Longest tail of decimals a result shows when nothing says how many; REDONDEAR asks for fewer. */
 export const FORMULA_RESULT_MAX_DECIMALS = 4;
 
+const UNIT_SYMBOLS = new Map<string, string>(NUMERIC_VALUE_FORMAT_OPTIONS.flatMap((option) => (option.symbol ? [[option.value, option.symbol] as const] : [])));
+
 const currencyFormat = (precision: number) => new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
@@ -731,8 +734,10 @@ export function formatFormulaNumber(value: number, format: TableCellFormat | und
     return new Intl.NumberFormat("es-MX", { maximumFractionDigits: FORMULA_RESULT_MAX_DECIMALS, useGrouping }).format(rounded(FORMULA_RESULT_MAX_DECIMALS));
   }
   switch (format.type) {
-    case "currency":
-      return currencyFormat(format.precision ?? 2).format(rounded(format.precision ?? 2));
+    case "currency": {
+      const money = currencyFormat(format.precision ?? 2).format(rounded(format.precision ?? 2));
+      return format.unit === "mxn-mn" ? `${money} M.N.` : money;
+    }
     case "percent":
       return `${roundDecimal(value * 100, format.precision ?? 0).toFixed(format.precision ?? 0)}%`;
     case "number":
@@ -742,8 +747,9 @@ export function formatFormulaNumber(value: number, format: TableCellFormat | und
         useGrouping,
       }).format(rounded(format.precision ?? 6));
     case "measurement": {
-      const unitSymbol = format.unit || "m";
-      const unitLabel = format.customUnit || unitSymbol;
+      // The symbol the concepts print ("m²", not "m2"); a firm's unit as it was typed.
+      const unitSymbol = UNIT_SYMBOLS.get(format.unit ?? "m") ?? format.unit ?? "m";
+      const unitLabel = format.unit === "custom" || !format.unit ? format.customUnit?.trim() || unitSymbol : unitSymbol;
       const precision = format.precision ?? 2;
       return `${new Intl.NumberFormat("es-MX", { minimumFractionDigits: precision, maximumFractionDigits: precision, useGrouping }).format(rounded(precision))} ${unitLabel}`;
     }
