@@ -72,3 +72,5 @@ public/uploads/*
 
 # Claude Code agent worktrees
 /.claude/worktrees/
+/.claude/settings.json
+/.claude/settings.local.json
