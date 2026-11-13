@@ -218,6 +218,26 @@ export function isNumericField(calculation: Pick<StatisticalCalculationDto, "set
   return values.length > 0 && values.every((value) => parseDecimal(value) !== null);
 }
 
+/**
+ * Whether a column of the grid holds figures, as the editor's tables infer
+ * it: the area always; a scaled field never; any other when nothing is
+ * written yet or its figures (formulas count) are at least two and more than
+ * double its texts, so one typo in a column of figures is marked in red.
+ */
+export function isFigureColumn(calculation: Pick<StatisticalCalculationDto, "settings" | "comparables">, key: string, coding?: StatisticalVariableDto["coding"]) {
+  if (key === "area") return true;
+  if (coding === "SCALE") return false;
+  let numbers = 0;
+  let texts = 0;
+  for (const text of [calculation.settings.subject[key] ?? "", ...calculation.comparables.map((comparable) => comparable.values[key] ?? "")]) {
+    const written = text.trim();
+    if (!written) continue;
+    if (written.startsWith("=") || parseDecimal(written) !== null) numbers += 1;
+    else texts += 1;
+  }
+  return texts === 0 || (numbers >= 2 && numbers > texts * 2);
+}
+
 /** "Regular (2)": a written level with the number its scale gives it. */
 export function codedText(variable: StatisticalVariableDto | undefined, text: string): string {
   if (!variable || variable.coding !== "SCALE" || !text.trim()) return text;

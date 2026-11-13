@@ -435,6 +435,13 @@ export function useFormulaField({
         discard();
       }
     },
+    /** Ends the writing with `text` in its place (a value picked from a list), applied as typed, and leaves the field. */
+    put: (text: string) => {
+      const apply = latestRef.current.onCommit;
+      takeDraft();
+      apply(text);
+      inputRef.current?.blur();
+    },
     /** Starts writing a formula in the field, as typing "=" in it does. */
     start: () => {
       setDraft((current) => current ?? { text: storedFormulaText() ?? "=", initial: storedFormulaText() ?? "" });
