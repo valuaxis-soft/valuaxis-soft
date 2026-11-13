@@ -169,7 +169,7 @@ export const openableUrl = (value: string) => {
 
 /** Fields of the form an error points to, so the appraiser sees which one to correct. */
 export type ComparableFormField =
-  | "location" | "postalCode" | "frontCount" | "latitude" | "longitude" | "landArea" | "bedrooms" | "bathrooms" | "area" | "price";
+  | "location" | "postalCode" | "frontCount" | "latitude" | "longitude" | "landArea" | "bedrooms" | "bathrooms";
 
 /** «Superficie de terreno (m²) dice «México»»: what was typed, so an autofill by the browser is seen at once. */
 const typedIn = (label: string, typed: string) => `${label} dice «${typed.trim()}»`;
@@ -289,11 +289,6 @@ export function ComparableDialog(props: {
     if (!location) return { field: "location", error: "Captura la ubicación del comparable: el texto o, al menos, la calle y el municipio." };
     if (draft.address.postalCode.trim() && !/^\d{5}$/.test(draft.address.postalCode.trim())) {
       return { field: "postalCode", error: `${typedIn("Código postal", draft.address.postalCode)}: lleva 5 dígitos.` };
-    }
-    for (const key of ["area", "price"] as const) {
-      if (draft[key].trim() && !draft[key].trim().startsWith("=") && parseDecimal(draft[key]) === null) {
-        return { field: key, error: `${typedIn(key === "area" ? "Superficie (m²)" : props.unitLabel, draft[key])}: debe ser un número o un cálculo que empiece con =.` };
-      }
     }
     const frontCount = characteristics.frontCount?.trim() ? parseDecimal(characteristics.frontCount) : null;
     if (frontCount !== null && (!Number.isInteger(frontCount) || frontCount < 1)) {
@@ -634,14 +629,12 @@ export function ComparableDialog(props: {
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-area">Superficie (m²)</FieldLabel>
-                <FormulaInput id="comparable-area" data-field="area" aria-invalid={invalid("area")} autoComplete="off" grouping value={draft.area} onChange={set("area")} />
+                <FormulaInput id="comparable-area" autoComplete="off" grouping value={draft.area} onChange={set("area")} />
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="comparable-price">{props.unitLabel}</FieldLabel>
                 <FormulaInput
                   id="comparable-price"
-                  data-field="price"
-                  aria-invalid={invalid("price")}
                   autoComplete="off"
                   grouping
                   value={draft.price}
