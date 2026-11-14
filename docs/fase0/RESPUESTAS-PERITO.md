@@ -15,7 +15,7 @@ Ing. Álvaro Gutiérrez, 30 de septiembre de 2026 (PDF y audios por WhatsApp). C
 | 7 | No recomendar ni limitar factores: es el criterio del valuador | Catálogo vacío por omisión, sin rangos; justificación por factor |
 | 8 | Potencia n: 3, 6, 9 o 12, a elección | `SURFACE_POWERS` |
 | 9 | Vidas útiles libres; las tablas son de paga | Sin cambio |
-| 10 | No entendió la pregunta. Aclarado el 9 oct 2026: superficie, edad y vida útil de cada tipo de construcción se capturan UNA vez, en la sección de construcciones; el enfoque de costos elige el tipo de una lista y nunca los vuelve a teclear | Tipos de construcción capturados en la sección de construcciones (`ConstructionTypesPanel`); el panel de costos los elige con un select y muestra sus datos de solo lectura |
+| 10 | No entendió la pregunta. Aclarado el 9 oct 2026: superficie, edad y vida útil de cada tipo de construcción se capturan UNA vez, en la sección de construcciones; el enfoque de costos elige el tipo de una lista y nunca los vuelve a teclear | Tipos de construcción capturados en la sección de construcciones (desde el video 5.3, en su tabla de la sección: `construction-capture.ts`); el panel de costos los elige con un select y muestra sus datos de solo lectura |
 | 11 | Indirectos casi nunca; sobre el valor total de construcciones | Base por omisión: construcciones + instalaciones; no aparecen si no se usan |
 | 12 | m² o hectáreas, decide el valuador | Sin cambio |
 | 13 | Cifra en letras tal cual, con centavos | Sin cambio |
