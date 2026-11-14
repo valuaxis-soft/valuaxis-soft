@@ -55,6 +55,8 @@ test("templates are the system's and the organization's own, never another firm'
     appraisalTypeId: type.IdTipoAvaluo,
     system: false,
     document: false,
+    // Without a document it is meant for no kind of property in particular.
+    propertyTypeId: null,
   });
 
   const otherCatalogs = await getValuationCreationCatalogs(other.organizationId);
