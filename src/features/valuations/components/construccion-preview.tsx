@@ -1,8 +1,9 @@
 import { useMemo, type ReactNode } from "react";
 import type { AppSection, TableContent } from "../model";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
-import { TABLE_TEXT_SIZE, useDocumentTheme } from "@/features/valuations/components/document-theme";
-import { ensureTableV2, printableColumns, printableRows, tablePrintLayout } from "../services/table";
+import { useDocumentTheme } from "@/features/valuations/components/document-theme";
+import { captureKindOf, isCaptureMarked } from "../calculation/construction-capture";
+import { ensureTableV2, tablePrintLayout } from "../services/table";
 import type { DocumentTableFragment } from "../services/table-pagination";
 import {
   AutoPaginatedDocumentFlow,
@@ -10,9 +11,7 @@ import {
   type DocumentFlowItem,
 } from "./document-preview-page";
 import { documentBlockFlowItems } from "./document-block-renderer";
-
-const CONSTRUCTION_TABLE_HEADER = "#BDD7EE";
-const CONSTRUCTION_EMPTY_ROW = "#D9D9D9";
+import { DocumentTable } from "./document-table";
 
 export function isConstruccionSection(section: AppSection) {
   return section.id === "construccion" || getCanonicalSectionKey(section.id) === "CONSTRUCCION";
@@ -118,80 +117,24 @@ function ConstructionContentRow({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Construction table (retains custom styling)                        */
+/*  Construction table                                                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * A table of the construction section prints as every table of the
+ * dictamen (video 5.3: «tal como se ve»): its headers renamed and combined,
+ * its hidden columns and rows left out, the columns of the appraiser and
+ * the results of its formulas. The construction types and installations
+ * tables saved before they were the capture never printed their title (the
+ * subbloque already says it): they still do not.
+ */
 function ConstructionTable({ table, fragment }: { table: TableContent; fragment?: DocumentTableFragment }) {
   if (table.enabled === false) return null;
+  const legacyCapture = captureKindOf(table) !== null && !isCaptureMarked(table);
+  return <DocumentTable table={legacyCapture ? withoutCaption(table) : table} variant="report" fragment={fragment} />;
+}
 
-  const t2 = ensureTableV2(table);
-  const shown = printableColumns(t2);
-  const columns = shown.length ? shown : [{ id: "__empty", name: "" }];
-  // The rows this page prints when the table breaks across pages; the header repeats on each. Rows hidden in the editor stay out.
-  const printable = printableRows(t2);
-  const rows = fragment ? printable.slice(fragment.from, fragment.to) : printable;
-  // "Formato de la tabla": room before (with what opens it) and after (with what closes it) and indent, as every table prints them.
-  const print = tablePrintLayout(t2);
-  const opens = !fragment?.continuation;
-  const closes = fragment?.last ?? true;
-
-  return (
-    <div
-      className={!opens || print.spacingBefore ? "overflow-hidden" : "mt-1 overflow-hidden"}
-      style={{
-        paddingTop: opens && print.spacingBefore ? print.spacingBefore : undefined,
-        paddingBottom: closes && print.spacingAfter ? print.spacingAfter : undefined,
-        paddingLeft: print.indent || undefined,
-      }}
-    >
-      <table className={`w-full border-collapse table-fixed ${TABLE_TEXT_SIZE} leading-tight text-[#222]`} data-split-table="">
-        <colgroup>
-          {columns.map((column) => (
-            <col key={`${table.id}-col-${column.id}`} />
-          ))}
-        </colgroup>
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th
-                className="border border-[#7F7F7F] px-1 py-1 text-center font-black text-wrap break-words whitespace-normal"
-                key={`${table.id}-head-${column.id}`}
-                style={{ backgroundColor: CONSTRUCTION_TABLE_HEADER }}
-              >
-                {column.name}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const emptyVisualRow = columns.every((col) => {
-              const cell = row.cells[col.id];
-              return !cell || (cell.kind === "value" && !String(cell.value ?? "").trim());
-            });
-            return (
-              <tr
-                data-split-table-row=""
-                key={`${table.id}-row-${row.id}`}
-                style={{ backgroundColor: emptyVisualRow ? CONSTRUCTION_EMPTY_ROW : "white" }}
-              >
-                {columns.map((column) => {
-                  const cell = row.cells[column.id];
-                  const value = cell?.kind === "value" ? cell.value : "";
-                  return (
-                    <td
-                      className="border border-[#7F7F7F] px-1 py-0.5 align-top text-wrap break-words whitespace-normal"
-                      key={`${table.id}-cell-${row.id}-${column.id}`}
-                    >
-                      {value}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+function withoutCaption(table: TableContent): TableContent {
+  const v2 = ensureTableV2(table);
+  return { ...v2, schema: { ...(v2.schema ?? { zones: [] }), hideCaption: true } } as unknown as TableContent;
 }

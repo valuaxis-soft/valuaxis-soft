@@ -108,6 +108,7 @@ import {
 import {
   CALCULATED_CELL_HINT,
   CALCULATED_TABLE_REMOVE_HINT,
+  CAPTURE_CELL_HINT,
   calculatedCellReasons,
   calculatedColumnReasons,
   calculatedRowReasons,
@@ -924,7 +925,7 @@ function EditableTableCell({
                   numericProblem && draftText === null && "border border-destructive ring-1 ring-destructive/40 text-destructive dark:text-red-400",
                   locked && "cursor-default rounded-sm bg-muted/70 tabular-nums",
                 )}
-                title={locked ? CALCULATED_CELL_HINT : title}
+                title={locked ? (calculatedTable?.capture ? CAPTURE_CELL_HINT : CALCULATED_CELL_HINT) : title}
                 // Bold, italic, underline and alignment chosen on a selection, as the dictamen prints them.
                 style={cellStyleCss(cellStyle)}
               />
@@ -1029,7 +1030,7 @@ function SortableRow({
     setActivatorNodeRef,
     transform,
     transition,
-  } = useSortable({ id: row.id, disabled: readOnly || !!formulaMode || Boolean(calculated?.row(row.id)) });
+  } = useSortable({ id: row.id, disabled: readOnly || !!formulaMode || Boolean(calculated?.row(row.id) && !calculated.capture) });
 
   const style: React.CSSProperties = {
     transform: CSS.Translate.toString(transform),
@@ -1182,6 +1183,7 @@ export function TableEditorItem({
   onUpdate,
   readOnly,
   footer,
+  actions,
 }: {
   table: TableContent;
   onAddColumn: (tableId: string) => void;
@@ -1191,6 +1193,8 @@ export function TableEditorItem({
   readOnly: boolean;
   /** What is printed with the table and edited with it, under the grid. */
   footer?: ReactNode;
+  /** Beside the title, before the table's buttons: the link of a capture table with the cost approach. */
+  actions?: ReactNode;
 }) {
   const tableV2 = useMemo(() => ensureTableV2(table), [table]);
   const formulaResults = useMemo(() => evaluateTableFormulas(tableV2), [tableV2]);
@@ -1350,11 +1354,18 @@ export function TableEditorItem({
       case "move-row-down": onUpdate(table.id, v2Updater((v2) => moveTableRow(v2, idx, idx + 1))); return;
       case "hide-row": onUpdate(table.id, v2Updater((v2) => setRowHidden(v2, rowId, true))); return;
       case "show-row": onUpdate(table.id, v2Updater((v2) => setRowHidden(v2, rowId, false))); return;
-      case "delete-row": onUpdate(table.id, v2Updater((v2) => removeTableRow(v2, idx))); return;
+      case "delete-row": {
+        const remove = () => onUpdate(table.id, v2Updater((v2) => removeTableRow(v2, v2.rows.findIndex((r) => r.id === rowId))));
+        // A row of a capture table that is a construction type takes it out of the cost approach: it asks first.
+        const confirmation = calculated?.capture?.rowRemoval(rowId);
+        if (confirmation) confirmDelete({ ...confirmation, onConfirm: remove });
+        else remove();
+        return;
+      }
       default:
         return;
     }
-  }, [rowIndexOf, table.id, onUpdate]);
+  }, [rowIndexOf, table.id, onUpdate, calculated, confirmDelete]);
 
   const structure = useMemo<CellStructureActions>(() => ({
     insertRowAbove: (rowId) => handleRowAction(rowId, "insert-row-above"),
@@ -1535,17 +1546,18 @@ export function TableEditorItem({
             data-table-title={table.id}
           />
         </div>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1">
+          {actions}
           <Button type="button" size="icon" variant="outline" aria-label="Agregar columna" disabled={readOnly} title="Agregar columna" onClick={() => onAddColumn(table.id)}>
             <Columns3 />
           </Button>
           <Button type="button" size="icon" variant="outline" aria-label="Agregar fila" disabled={readOnly} title="Agregar fila" onClick={() => onAddRow(table.id)}>
             <Rows3 />
           </Button>
-          <TableFormatControl table={tableV2} readOnly={readOnly} generated={Boolean(calculated)} onChange={(updater) => onUpdate(table.id, v2Updater(updater))} />
+          <TableFormatControl table={tableV2} readOnly={readOnly} generated={Boolean(calculated) && !calculated?.capture} onChange={(updater) => onUpdate(table.id, v2Updater(updater))} />
           {/* A disabled button takes no pointer events: the reason hangs from what wraps it. */}
-          <span title={calculated ? CALCULATED_TABLE_REMOVE_HINT : "Quitar tabla"} className="inline-flex">
-            <Button type="button" size="icon" variant="ghost" aria-label={`Quitar ${tableV2.title}`} disabled={readOnly || Boolean(calculated)} aria-description={calculated ? CALCULATED_TABLE_REMOVE_HINT : undefined} data-remove-table={table.id} onClick={() => requestTableRemoval(confirmDelete, { id: table.id, title: tableV2.title }, onRemove)}>
+          <span title={calculated ? (calculated.capture?.removeHint ?? CALCULATED_TABLE_REMOVE_HINT) : "Quitar tabla"} className="inline-flex">
+            <Button type="button" size="icon" variant="ghost" aria-label={`Quitar ${tableV2.title}`} disabled={readOnly || Boolean(calculated)} aria-description={calculated ? (calculated.capture?.removeHint ?? CALCULATED_TABLE_REMOVE_HINT) : undefined} data-remove-table={table.id} onClick={() => requestTableRemoval(confirmDelete, { id: table.id, title: tableV2.title }, onRemove)}>
               <Trash2 />
             </Button>
           </span>
@@ -1587,7 +1599,7 @@ export function TableEditorItem({
           count={selection.count}
           label={selectionLabel(selection.points.length, selection.titleSelected)}
           readOnly={readOnly}
-          hint={`Para calcular, escribe = en una celda, por ejemplo =B2*C2 o =SUMA(A1:A5); «10%» vale 0.10.${calculated ? " Las cifras en gris las escribe el cálculo y se cambian en su panel; los encabezados, el formato y las columnas y filas que agregues son tuyos y se conservan al recalcular." : ""}`}
+          hint={`Para calcular, escribe = en una celda, por ejemplo =B2*C2 o =SUMA(A1:A5); «10%» vale 0.10.${calculated?.capture ? " Las cifras en gris las calcula el sistema; lo demás que escribas en las columnas del tipo entra al enfoque de costos." : calculated ? " Las cifras en gris las escribe el cálculo y se cambian en su panel; los encabezados, el formato y las columnas y filas que agregues son tuyos y se conservan al recalcular." : ""}`}
           marks={selectionActions.marks}
           align={selectionActions.align}
           current={firstSelectedCell?.format ?? firstSelectedColumn?.format}

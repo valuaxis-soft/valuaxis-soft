@@ -4,7 +4,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { DocumentTable } from "../src/features/valuations/components/document-table";
-import { costDocumentBlocks, withConstructionTables } from "../src/features/valuations/calculation/cost-document";
+import { costDocumentBlocks } from "../src/features/valuations/calculation/cost-document";
+import { withConstructionTables } from "../src/features/valuations/calculation/construction-capture";
 import { costInputSchema } from "../src/features/valuations/calculation/cost-schemas";
 import {
   DEFAULT_LAND,
@@ -281,7 +282,9 @@ const constructionSection = (table: TableContent): AppSection => ({
 test("the installations table of the construction section without Mantenimiento keeps every figure in its column, and a column added keeps its text", () => {
   const template = { id: "instalaciones_especiales", title: "IE", columns: ["#", "Tipo", "Edad", "VUT", "VUR", "Conservación", "Mantenimiento", "Descripción"], columnKeys: ["numero", "tipo", "edad", "vut", "vur", "conservacion", "mantenimiento", "descripcion"], rows: [], enabled: true };
   const filled = withConstructionTables(constructionSection(template), base).blocks[0].apartados[0].tables[0];
-  assert.deepEqual(cellsOf(filled), [["1", "Privativa", "10", "30", "20", "1.000", "—", "Cisterna (1.00)"]]);
+  // It becomes the capture: unit and quantity, once inside the description, get their own columns after it.
+  assert.deepEqual(namesOf(filled), ["#", "Tipo", "Edad", "VUT", "VUR", "Conservación", "Mantenimiento", "Descripción", "Unidad", "Cant."]);
+  assert.deepEqual(cellsOf(filled), [["1", "Privativa", "10", "30", "20", "1.000", "", "Cisterna", "", "1.00"]]);
 
   // The appraiser deletes Mantenimiento and adds a column of his own.
   const v2 = ensureTableV2(filled);
@@ -294,15 +297,15 @@ test("the installations table of the construction section without Mantenimiento 
     ...base,
     installations: [{ ...base.installations[0], age: 12 }],
   }).blocks[0].apartados[0].tables[0];
-  assert.deepEqual(namesOf(recalculated), ["#", "Tipo", "Edad", "VUT", "VUR", "Conservación", "Descripción", "Notas"]);
-  assert.deepEqual(cellsOf(recalculated), [["1", "Privativa", "12", "30", "18", "1.000", "Cisterna (1.00)", "Nueva"]]);
+  assert.deepEqual(namesOf(recalculated), ["#", "Tipo", "Edad", "VUT", "VUR", "Conservación", "Descripción", "Unidad", "Cant.", "Notas"]);
+  assert.deepEqual(cellsOf(recalculated), [["1", "Privativa", "12", "30", "18", "1.000", "Cisterna", "", "1.00", "Nueva"]]);
 });
 
 test("a table saved before by position (columns column-1…) is read by its headers", () => {
   const saved = ensureTableV2({ id: "instalaciones_especiales", title: "IE", columns: ["#", "Tipo", "Edad", "VUT", "VUR", "Conservación", "Descripción"], rows: [], enabled: true });
   assert.equal(saved.columns[0].id, "column-1");
   const filled = withConstructionTables(constructionSection(saved as unknown as TableContent), base).blocks[0].apartados[0].tables[0];
-  assert.deepEqual(cellsOf(filled), [["1", "Privativa", "10", "30", "20", "1.000", "Cisterna (1.00)"]]);
+  assert.deepEqual(cellsOf(filled), [["1", "Privativa", "10", "30", "20", "1.000", "Cisterna", "", "1.00"]]);
 });
 
 /* ── Print ─────────────────────────────────────────────────────── */

@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-export type DeleteSubject = "concept" | "concepts" | "subblock" | "block" | "image" | "table" | "headerField" | "constructionType";
+export type DeleteSubject = "concept" | "concepts" | "subblock" | "block" | "image" | "table" | "headerField" | "constructionType" | "installation";
 
 export type DeleteConfirmation = {
   title: string;
@@ -41,12 +41,18 @@ const SUBJECT_WORDING: Record<DeleteSubject, { what: string; holds: string; conf
   image: { what: "la imagen", holds: "Se quita del documento", confirm: "Eliminar imagen" },
   table: { what: "la tabla", holds: "Se quita con sus filas y fórmulas", confirm: "Eliminar tabla" },
   headerField: { what: "el dato del encabezado", holds: "Se quita del encabezado de cada página", confirm: "Eliminar dato" },
-  // The construction types save on their own: the table's own Ctrl+Z brings the row back and saves it again.
+  // A row of the capture tables of the construction section is saved on its own; «Deshacer» brings it back with its cost columns.
   constructionType: {
     what: "el tipo de construcción",
     holds: "Se quita con su descripción, superficie, edad y vida útil, también del enfoque de costos,",
     confirm: "Eliminar tipo",
-    undo: "Puedes deshacerlo con Ctrl+Z (⌘Z en Mac) en la tabla de tipos.",
+    undo: "Puedes deshacerlo con «Deshacer» o Ctrl+Z (⌘Z en Mac): vuelve con lo que el enfoque de costos tenía capturado.",
+  },
+  installation: {
+    what: "la instalación especial",
+    holds: "Se quita con su descripción, cantidad, edad y vida útil, también del enfoque de costos,",
+    confirm: "Eliminar instalación",
+    undo: "Puedes deshacerlo con «Deshacer» o Ctrl+Z (⌘Z en Mac): vuelve con lo que el enfoque de costos tenía capturado.",
   },
 };
 

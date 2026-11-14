@@ -273,6 +273,9 @@ export type TableAlign = "left" | "center" | "right";
 
 export type GeneratedTableState = { source: TableV2; layout: GeneratedTableLayout };
 
+/** What a capture table of the construction section captures; `unlinked`, the appraiser took it off the cost approach. */
+export type TableCaptureMarker = { kind: "types" | "installations"; unlinked?: boolean };
+
 export type TableSchema = {
   presetId?: string;
   zones: StructuralZone[];
@@ -289,6 +292,12 @@ export type TableSchema = {
    * (see calculation/generated-table-layout.ts). The table itself is what prints.
    */
   generated?: GeneratedTableState;
+  /**
+   * A table of the construction section that is the capture of the cost
+   * approach (video 5.3): each row a construction type or a special
+   * installation (see calculation/construction-capture.ts).
+   */
+  capture?: TableCaptureMarker;
   /** Notes printed as written: above the table and its boxes, or under them. */
   notes?: TableNote[];
   /**

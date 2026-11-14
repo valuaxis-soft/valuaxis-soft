@@ -965,10 +965,10 @@ export function CostCalculationPanel(props: {
         <div className="grid gap-2">
           <h4 className={CALC_SECTION_HEADING}>B) Construcciones</h4>
           <p className="text-xs text-muted-foreground">
-            Cada tipo dado de alta en la sección de construcciones entra solo, con su referencia, descripción, clasificación, calidad, superficie, edad y vida útil:
-            aquí solo capturas sus columnas de costo. Quitar un renglón lo saca del cálculo y del enfoque impreso; el tipo sigue descrito en la sección de construcciones
-            y vuelve con «+ Construcción». Para quitarlo de todo el avalúo, bórralo allá.
-            {calculation.types.length ? "" : " Aún no hay tipos: captúralos en la sección INF. CONSTRUCCIÓN."}
+            Cada tipo escrito en la tabla de tipos de construcción de la sección INF. CONSTRUCCIÓN entra solo, con su referencia, descripción, clasificación, calidad, superficie, edad y vida útil:
+            aquí solo capturas sus columnas de costo. Quitar un renglón lo saca del cálculo y del enfoque impreso; el tipo sigue en esa tabla
+            y vuelve con «+ Construcción». Para quitarlo de todo el avalúo, borra su fila allá.
+            {calculation.types.length ? "" : " Aún no hay tipos: escríbelos en la tabla de tipos de construcción de la sección INF. CONSTRUCCIÓN."}
           </p>
           <ConservationCriterionEditor
             id="cost-constructions"
@@ -1072,6 +1072,8 @@ export function CostCalculationPanel(props: {
           <h4 className={CALC_SECTION_HEADING}>C) Instalaciones especiales, elementos accesorios y obras complementarias (IE, EA, OC)</h4>
           <p className="text-xs text-muted-foreground" data-testid="cost-installations-legend">
             P/C: P = Privativa, C = Común. Las sumas privativa y común son informativas; el subtotal incluye las dos.
+            Están vinculadas con la tabla de instalaciones de la sección INF. CONSTRUCCIÓN: lo que agregues o cambies allá (descripción, unidad, cantidad,
+            edad, vida útil, mantenimiento) llega aquí, y lo de aquí se escribe allá.
             Mantenim. se imprime en la tabla de instalaciones de la sección de construcciones y no entra en el cálculo; si el avalúo no lo lleva, quítalo aquí
             y borra la columna de esa tabla.
           </p>

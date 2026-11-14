@@ -2,14 +2,14 @@
  * Turns the cost calculation into the dictamen: one generated block in the
  * cost section, laid out as the appraiser's own format (A land, B
  * constructions, C special installations, D indirect costs, each with its
- * boxed value, and the physical value at the end), and the construction types and
- * special installations tables of the construction section: the types as the
- * section captures them, the installations as the cost panel does.
+ * boxed value, and the physical value at the end). The tables of the
+ * construction section are the capture of the types and the installations
+ * (construction-capture.ts).
  */
 import type { CostApproachResult } from "../engine/costs";
 import type { Trace } from "../engine/trace";
-import type { Apartado, AppSection, Block, TableContent } from "../model";
-import { ensureTableV2, getDisplayColumns, type TableCellV2, type TableColumn, type TableRow, type TableSummaryBox } from "../services/table";
+import type { Apartado, Block, TableContent } from "../model";
+import { ensureTableV2, type TableSummaryBox } from "../services/table";
 import {
   LAND_FACTORS,
   LAND_FACTOR_SHORT_LABELS,
@@ -18,7 +18,6 @@ import {
   extraFactorLabel,
   extraFactorsOf,
   landReferenceArea,
-  remainingUsefulLife,
   type CostCalculationDto,
   type DemeritColumnsDto,
 } from "./cost-types";
@@ -49,9 +48,6 @@ export const COST_TEMPLATE_BLOCK_IDS = [
   "costos-block-3-instalaciones-especiales-elementos-accesorios-y-obras-complementarias",
   "costos-block-4-resumen-del-enfoque-de-costos",
 ];
-
-const number = (digits: number) => new Intl.NumberFormat("es-MX", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-const text = (value: number | null | undefined, digits = 2) => (value === null || value === undefined ? "—" : number(digits).format(value));
 
 const DEMERIT = "Factores de Demérito";
 const NEW_VALUE = "Valor de Reposición Nuevo (VRN)";
@@ -264,165 +260,4 @@ export function withSummaryBox(tableItem: TableContent, box: TableSummaryBox): T
   const normalized = ensureTableV2(tableItem);
   const schema = normalized.schema ?? { zones: [] };
   return { ...normalized, schema: { ...schema, summaryBoxes: [...(schema.summaryBoxes ?? []), box] } } as unknown as TableContent;
-}
-
-const CONSTRUCTION_TYPES_TABLE = "construccion_tipos";
-const SPECIAL_INSTALLATIONS_TABLE = "instalaciones_especiales";
-
-/**
- * Whether a table of the construction section is filled from the cost capture
- * (see withConstructionTables). It is found by ID in the Apartado it was
- * created in, so it stays there.
- */
-export function isCostCaptureTable(tableId: string) {
-  const id = tableId.toLowerCase();
-  return id.endsWith(CONSTRUCTION_TYPES_TABLE) || id.endsWith(SPECIAL_INSTALLATIONS_TABLE);
-}
-
-/**
- * What each column of the construction section tables shows, in the order of
- * the template (sections/construccion): the key of the column and the headers
- * it is known by. The template has two "Tipo" columns in the types table: the
- * first is the reference, the second the type's description.
- */
-const TYPES_COLUMNS = [
-  { key: "tipo", names: ["tipo"] },
-  { key: "tipo_construccion", names: ["tipo", "tipo de construccion"] },
-  { key: "clasificacion", names: ["clasificacion"] },
-  { key: "calidad", names: ["calidad"] },
-  { key: "conservacion", names: ["conservacion"] },
-  { key: "edad", names: ["edad"] },
-  { key: "vut", names: ["vut", "vida util", "vida util total"] },
-  { key: "vur", names: ["vur", "vida remanente", "vida util remanente"] },
-  { key: "sup_m2", names: ["sup m2", "superficie", "superficie m2", "sup"] },
-  { key: "descripcion", names: ["descripcion"] },
-] as const;
-
-const INSTALLATIONS_COLUMNS = [
-  { key: "numero", names: ["", "no", "num", "numero", "ref"] },
-  { key: "tipo", names: ["tipo"] },
-  { key: "edad", names: ["edad"] },
-  { key: "vut", names: ["vut", "vida util", "vida util total"] },
-  { key: "vur", names: ["vur", "vida remanente", "vida util remanente"] },
-  { key: "conservacion", names: ["conservacion"] },
-  { key: "mantenimiento", names: ["mantenimiento", "mantenim"] },
-  { key: "descripcion", names: ["descripcion"] },
-] as const;
-
-type CaptureColumns = typeof TYPES_COLUMNS | typeof INSTALLATIONS_COLUMNS;
-
-const headerName = (name: string) =>
-  name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-
-/**
- * The key of each column of the table, or null for a column the appraiser
- * added (it keeps what was written in it). A column is known by its id (the
- * template's key) or by its header; a header two columns share ("Tipo") goes
- * to them in order. A table whose headers were all renamed is read by
- * position, as before.
- */
-function captureKeys(columns: TableColumn[], known: CaptureColumns): (string | null)[] {
-  const taken = new Set<string>();
-  const keys = columns.map((column): string | null => {
-    const id = column.id.toLowerCase();
-    const byId = known.find((item) => item.key === id && !taken.has(item.key));
-    const name = headerName(column.name);
-    const found = byId ?? known.find((item) => !taken.has(item.key) && (item.names as readonly string[]).includes(name));
-    if (!found) return null;
-    taken.add(found.key);
-    return found.key;
-  });
-  if (keys.filter(Boolean).length >= Math.min(2, known.length)) return keys;
-  return columns.map((_, index) => known[index]?.key ?? null);
-}
-
-/**
- * Rows of the construction section tables, from the capture, by column key.
- * Once the types (or the cost approach, for the installations) are captured
- * the table follows them, so a type deleted in the section leaves the printed
- * table too, even the last one; before that the table stays as the appraiser wrote it.
- */
-function constructionRows(calculation: CostCalculationDto, tableId: string): { known: CaptureColumns; rows: Record<string, string>[] } | null {
-  const id = tableId.toLowerCase();
-  // Rows added in the panel but still empty stay out of the dictamen.
-  const types = calculation.types.filter((row) => row.description.trim() || row.area !== null);
-  const installations = calculation.installations.filter((row) => row.description.trim());
-  if (id.endsWith(CONSTRUCTION_TYPES_TABLE) && (types.length || calculation.typesCaptured)) {
-    // The conservation column is the cost approach's factor for the type, when it picked it.
-    const conservationOf = (ref: string) => {
-      const row = calculation.constructions.find((item) => item.ref.trim().toLowerCase() === ref.trim().toLowerCase());
-      return row ? effectiveConservation(row) : null;
-    };
-    return {
-      known: TYPES_COLUMNS,
-      rows: types.map((row) => ({
-        tipo: row.ref, tipo_construccion: row.description, clasificacion: row.classification, calidad: row.quality,
-        conservacion: text(conservationOf(row.ref), 2), edad: text(row.age, 0), vut: text(row.usefulLife, 0), vur: text(remainingUsefulLife(row), 0),
-        sup_m2: text(row.area), descripcion: "",
-      })),
-    };
-  }
-  if (id.endsWith(SPECIAL_INSTALLATIONS_TABLE) && (installations.length || calculation.configured)) {
-    return {
-      known: INSTALLATIONS_COLUMNS,
-      rows: installations.map((row) => ({
-        numero: row.ref, tipo: row.share === "C" ? "Común" : "Privativa", edad: text(row.age, 0), vut: text(row.usefulLife, 0),
-        vur: row.usefulLife !== null && row.age !== null ? text(Math.max(row.usefulLife - row.age, 0), 0) : "—",
-        conservacion: text(effectiveConservation(row), 3), mantenimiento: row.maintenance || "—",
-        descripcion: `${row.description}${row.quantity ? ` (${text(row.quantity)}${row.unit ? ` ${row.unit}` : ""})` : ""}`,
-      })),
-    };
-  }
-  return null;
-}
-
-/**
- * The table with the rows of the capture. It keeps its columns as the
- * appraiser left them: one deleted (Mantenimiento, in an appraisal of a
- * building) stays deleted, one renamed or moved keeps its data, and one added
- * keeps what was written in it, row by row.
- */
-function filledTable(tableItem: TableContent, filled: { known: CaptureColumns; rows: Record<string, string>[] }): TableContent {
-  const table = ensureTableV2(tableItem);
-  const keys = new Map(captureKeys(getDisplayColumns(table), filled.known).map((key, index) => [getDisplayColumns(table)[index].id, key]));
-  const ids = new Set(table.rows.map((row) => row.id));
-  const rows = filled.rows.map((values, index): TableRow => {
-    const current = table.rows[index];
-    let id = current?.id ?? `r-${table.id}-${index}`;
-    if (!current) {
-      while (ids.has(id)) id = `${id}-n`;
-      ids.add(id);
-    }
-    const cells = Object.fromEntries(table.columns.map((column): [string, TableCellV2] => {
-      const key = keys.get(column.id);
-      if (key) return [column.id, { kind: "value", value: values[key] ?? "" }];
-      return [column.id, current?.cells[column.id] ?? { kind: "value", value: "" }];
-    }));
-    return { id, cells };
-  });
-  if (JSON.stringify(rows) === JSON.stringify(table.rows)) return tableItem;
-  return { ...table, title: tableItem.title, rows } as unknown as TableContent;
-}
-
-/**
- * Fills the construction types and special installations tables of the
- * construction section with the capture. Returns the same section when they
- * already show it, or when nothing is captured yet.
- */
-export function withConstructionTables(section: AppSection, calculation: CostCalculationDto): AppSection {
-  let changed = false;
-  const blocks = section.blocks.map((item) => {
-    const apartados = item.apartados.map((apartado) => {
-      const tables = apartado.tables.map((tableItem) => {
-        const filled = constructionRows(calculation, tableItem.id);
-        if (!filled) return tableItem;
-        const next = filledTable(tableItem, filled);
-        if (next !== tableItem) changed = true;
-        return next;
-      });
-      return tables.some((tableItem, index) => tableItem !== apartado.tables[index]) ? { ...apartado, tables } : apartado;
-    });
-    return apartados.some((apartado, index) => apartado !== item.apartados[index]) ? { ...item, apartados } : item;
-  });
-  return changed ? { ...section, blocks } : section;
 }

@@ -149,7 +149,9 @@ export async function initializeWorkingVersionStructure(input: {
       await persistInitialSectionBlocks({
         tx: client,
         sectionId: section.IdSeccionDocumento,
-        blocks: initialTemplate.blocks,
+        // The template keeps its subbloques as `apartados` (the editor's shape): without this, a new
+        // valuation lost them, and with them the construction types and installations tables.
+        blocks: initialTemplate.blocks.map((block): BlockPayload => ({ ...block, subBlocks: block.apartados })),
       });
     } else if (existingRoots.length === 0) {
       await client.nodoDocumento.create({
