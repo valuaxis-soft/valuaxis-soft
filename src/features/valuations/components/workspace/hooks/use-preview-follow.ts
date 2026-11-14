@@ -8,7 +8,8 @@ import { followedBlockId, revealBlockInPreview } from "../model/preview-follow";
  * Keeps the preview on what the appraiser is editing: the block he clicks or
  * types in, or the market he chooses in the calculation panel (V6.2-10). When
  * the preview shows a section with the ones it shares pages with, it opens
- * where that section starts (V6.1-09).
+ * where that section starts (V6.1-09). Returns the block followed, so the
+ * preview window follows it too.
  */
 export function usePreviewFollow({
   activeSection,
@@ -55,4 +56,7 @@ export function usePreviewFollow({
     if (!sectionStartBlockId) return;
     return revealBlockInPreview(sectionStartBlockId, { behavior: "auto" });
   }, [previewSectionId, sectionStartBlockId]);
+
+  // The preview window («2 pantallas») follows the same block.
+  return followedBlock;
 }

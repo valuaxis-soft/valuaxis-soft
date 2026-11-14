@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   PREVIEW_HEARTBEAT_MS,
+  externalPreviewReveal,
   externalPreviewWindowAction,
   livePreviewWindows,
   previewDirectoryAction,
@@ -33,6 +34,50 @@ test("anything else on the channel is ignored", () => {
   for (const message of [null, "hola", 3, {}, { type: "preview-ready" }, { type: "otro" }]) {
     assert.deepEqual(externalPreviewWindowAction(message, "a"), { kind: "ignore" });
   }
+});
+
+/* ── The window follows the editor (#98 for the preview beside it) ── */
+
+const state = (sectionId: string, follow?: ExternalPreviewPayload["follow"]) =>
+  ({ activeSection: { id: sectionId }, follow }) as Pick<ExternalPreviewPayload, "activeSection" | "follow">;
+
+test("the preview window moves to the block the appraiser clicks or types in, as the preview beside the editor", () => {
+  const before = state("costos", { blockId: "bloque-terreno", startBlockId: null });
+  const now = state("costos", { blockId: "bloque-resumen", startBlockId: null });
+  assert.deepEqual(externalPreviewReveal(before, now), { blockId: "bloque-resumen", behavior: "smooth" });
+  // Typing in the same block does not move it again (the appraiser may have scrolled the window).
+  assert.equal(externalPreviewReveal(now, state("costos", { blockId: "bloque-resumen", startBlockId: null })), null);
+  // A market chosen in the calculation panel is a block of the dictamen too.
+  assert.deepEqual(
+    externalPreviewReveal(now, state("costos", { blockId: "motor-mercado-terreno_venta-enfoque", startBlockId: null })),
+    { blockId: "motor-mercado-terreno_venta-enfoque", behavior: "smooth" },
+  );
+});
+
+test("a section that continues the one before («Continuar donde terminó») opens in the window where it starts", () => {
+  const costos = state("costos", { blockId: "bloque-resumen", startBlockId: null });
+  const mercado = state("mercadoVenta", { blockId: null, startBlockId: "bloque-mercado-intro" });
+  assert.deepEqual(externalPreviewReveal(costos, mercado), { blockId: "bloque-mercado-intro", behavior: "auto" });
+  // A block clicked in it then wins, and another section's block opens at once.
+  assert.deepEqual(
+    externalPreviewReveal(mercado, state("mercadoVenta", { blockId: "bloque-mercado-final", startBlockId: "bloque-mercado-intro" })),
+    { blockId: "bloque-mercado-final", behavior: "smooth" },
+  );
+  assert.deepEqual(
+    externalPreviewReveal(mercado, state("terreno", { blockId: "bloque-medidas", startBlockId: null })),
+    { blockId: "bloque-medidas", behavior: "auto" },
+  );
+});
+
+test("a window that opens (or reopens) goes straight to where the editor is; an older editor sends nothing to follow", () => {
+  assert.deepEqual(externalPreviewReveal(null, state("costos", { blockId: "bloque-resumen", startBlockId: null })), { blockId: "bloque-resumen", behavior: "auto" });
+  assert.equal(externalPreviewReveal(null, state("costos", { blockId: null, startBlockId: null })), null);
+  assert.equal(externalPreviewReveal(null, state("costos")), null);
+});
+
+test("the editor's state reaches the window with the sections it shares pages with and the block followed", () => {
+  const withFollow = { ...payload, group: [{ id: "datos" }, { id: "mercadoVenta" }], follow: { blockId: "b", startBlockId: "a" } } as ExternalPreviewPayload;
+  assert.deepEqual(externalPreviewWindowAction({ type: "preview-state", payload: withFollow }, "a"), { kind: "show", payload: withFollow });
 });
 
 /* ── Other preview windows open ─────────────────────────────────── */

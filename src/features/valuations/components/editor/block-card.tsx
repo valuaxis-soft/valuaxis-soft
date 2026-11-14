@@ -7,6 +7,7 @@ import {
   BlockEditorHeader,
 } from "./section-editor";
 import { StructuralActions, type StructuralActionLocks } from "./structural-actions";
+import { BlockPageOrientationProvider } from "./table-page-fit-notice";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import type { PageBreakMode, PageOrientation } from "@/features/valuations/services/document-structure";
 
@@ -114,7 +115,10 @@ export function BlockCard({
         ) : null}
       </BlockEditorHeader>
       <BlockEditorContent>
-        {children}
+        {/* A table too wide for the page offers to lay this block on its side. */}
+        <BlockPageOrientationProvider value={structuralActions?.pageOrientation}>
+          {children}
+        </BlockPageOrientationProvider>
       </BlockEditorContent>
     </BlockEditorCard>
   );

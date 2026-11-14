@@ -22,7 +22,49 @@ export type ExternalPreviewPayload = {
   pagePresentation?: PagePresentation;
   /** Where the section shown is in the document, so the window browses it too; absent from an older main tab. */
   navigation?: ExternalPreviewNavigation;
+  /**
+   * The sections printed on the same pages as the one shown («Continuar donde
+   * terminó la sección anterior»), it among them, so the window lays them out
+   * together as the preview beside the editor does; absent when it starts its own pages.
+   */
+  group?: AppSection[];
+  /** Where the editor is, so the window moves there as the preview beside the editor does; absent from an older main tab. */
+  follow?: ExternalPreviewFollow;
 };
+
+/** What the window follows of the editor (use-preview-follow.ts). */
+export type ExternalPreviewFollow = {
+  /** The block the appraiser clicked or typed in, or the market chosen in the calculation; null before any. */
+  blockId: string | null;
+  /** The first block of the section shown when it prints after another on the same pages; null: the top. */
+  startBlockId: string | null;
+};
+
+/** Where the window moves when new state arrives, and how; null to stay. */
+export type ExternalPreviewReveal = { blockId: string; behavior: "auto" | "smooth" };
+
+/**
+ * Where the window goes with each state of the editor, as the preview beside
+ * the editor does: to a block the appraiser just moved to (smoothly within
+ * the section, at once in another), else to where the section starts when it
+ * shares pages with the one before. A window that opens goes straight to
+ * where the editor is. Pure.
+ */
+export function externalPreviewReveal(
+  previous: Pick<ExternalPreviewPayload, "activeSection" | "follow"> | null,
+  next: Pick<ExternalPreviewPayload, "activeSection" | "follow">,
+): ExternalPreviewReveal | null {
+  const follow = next.follow;
+  if (!follow) return null;
+  const sectionChanged = !previous || previous.activeSection.id !== next.activeSection.id;
+  if (follow.blockId && (sectionChanged || previous?.follow?.blockId !== follow.blockId)) {
+    return { blockId: follow.blockId, behavior: sectionChanged ? "auto" : "smooth" };
+  }
+  if (follow.startBlockId && (sectionChanged || previous?.follow?.startBlockId !== follow.startBlockId)) {
+    return { blockId: follow.startBlockId, behavior: "auto" };
+  }
+  return null;
+}
 
 /** The section the window shows among the ones it can browse. */
 export type ExternalPreviewNavigation = {

@@ -9,11 +9,13 @@ import { DEFAULT_NUMBER_PRESENTATION } from "@/features/valuations/services/numb
 import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
 import { DEFAULT_PAGE_PRESENTATION } from "@/features/valuations/services/page-presentation";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { revealBlockInPreview } from "@/features/valuations/components/workspace/model/preview-follow";
 import {
   MAIN_CLOSED_GRACE_MS,
   PREVIEW_DIRECTORY_CHANNEL,
   PREVIEW_HEARTBEAT_MS,
   PREVIEW_WINDOW_FEATURES,
+  externalPreviewReveal,
   externalPreviewWindowAction,
   getExternalPreviewChannelName,
   livePreviewWindows,
@@ -125,8 +127,29 @@ function OtherPreviewWindows({ others, onPick }: { others: OpenPreviewWindow[]; 
   );
 }
 
+/**
+ * The window moves to where the editor is, as the preview beside the editor
+ * does (use-preview-follow.ts): the block clicked or typed in, the market
+ * chosen, or where a section that continues another starts.
+ */
+function useFollowEditor(payload: ExternalPreviewPayload | null) {
+  const previousRef = useRef<ExternalPreviewPayload | null>(null);
+  // A move waits for the pages to be laid out; only a newer move (or closing) cancels it, not every keystroke.
+  const cancelRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (!payload) return;
+    const reveal = externalPreviewReveal(previousRef.current, payload);
+    previousRef.current = payload;
+    if (!reveal) return;
+    cancelRef.current?.();
+    cancelRef.current = revealBlockInPreview(reveal.blockId, { behavior: reveal.behavior });
+  }, [payload]);
+  useEffect(() => () => cancelRef.current?.(), []);
+}
+
 export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: string | null }) {
   const [payload, setPayload] = useState<ExternalPreviewPayload | null>(null);
+  useFollowEditor(payload);
   const folio = payload?.meta.folio || payload?.caratula.folio || "";
   const title = payload?.caratula.tituloInmueble || payload?.meta.location || "";
   const { others, focusWindow } = useOtherPreviewWindows(valuationId, folio, title);
@@ -216,7 +239,8 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
   return (
     <main className="flex h-screen min-h-0 flex-col gap-2 bg-muted/40 p-4 text-foreground">
       <OtherPreviewWindows others={others} onPick={focusWindow} />
-      <div className="min-h-0 flex-1">
+      {/* Named as the preview beside the editor: it moves to the block followed the same way. */}
+      <div id="valuation-preview" className="min-h-0 flex-1">
       {payload.activeSection.enabled === false ? (
         <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border bg-card p-6 text-center text-sm text-muted-foreground">
           Esta sección está oculta en el documento.
@@ -238,6 +262,7 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
             meta={payload.meta}
             principalCoverImage={payload.principalCoverImage}
             section={payload.activeSection}
+            group={payload.group}
           />
         </PagePresentationProvider>
         </NumberPresentationProvider>

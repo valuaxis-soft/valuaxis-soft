@@ -26,6 +26,8 @@ export type DocumentTableFragment = {
   last: boolean;
   /** Widths in px of the columns of the whole table, so every fragment keeps them. Empty: left to the browser. */
   columnWidths: number[];
+  /** The step of letter and room the whole table took to fit the page (table-print-fit.ts); absent when it fit as always. */
+  fitStep?: number;
   /** Taller than a page even alone: its end is cut. */
   clipped?: boolean;
 };
@@ -41,6 +43,8 @@ export type MeasuredTable = {
   /** keepWithNext[i]: rows i and i + 1 share a vertically merged cell and never part. */
   keepWithNext?: boolean[];
   columnWidths?: number[];
+  /** The step the measured table took to fit the page's width, so its fragments print with the same letter. */
+  fitStep?: number;
 };
 
 export type TableRowsFragment = {
