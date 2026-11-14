@@ -34,6 +34,7 @@ import { findCustomUnit } from "@/features/firm/custom-units";
 import { TAG_STYLE_CHOICES, useConceptContainerActions } from "./concept-selection";
 import { useCustomUnits } from "./custom-units-context";
 import { useDeleteConcepts } from "./delete-confirm";
+import { LinkConceptDialog } from "./concept-link-actions";
 import { MoveConceptPicker } from "./structure-transfer-actions";
 import { firmUnitOptionValue } from "./value-format-select";
 
@@ -71,7 +72,8 @@ function keepsBrowserMenu(event: MouseEvent<HTMLDivElement>) {
 /**
  * The right-click menu of a concept, around its row: the actions of its ⋮
  * menu and of "Seleccionar conceptos" (N/K/S, formato del valor, tipo de
- * dato, renglón, espacios, duplicar, mover, eliminar), with what
+ * dato, renglón, espacios, duplicar, mover, vincular con…, desvincular,
+ * eliminar), with what
  * cannot apply disabled and explained, the same in every section and in the
  * blocks the calculation writes.
  */
@@ -86,6 +88,8 @@ export function ConceptContextMenu({
   onMove,
   onDuplicate,
   moveSource,
+  onLinkTo,
+  onUnlink,
   onRemove,
 }: {
   children: ReactNode;
@@ -93,7 +97,7 @@ export function ConceptContextMenu({
   concept: Concept;
   /** Its name in the delete dialog. */
   name: string;
-  target: Omit<ConceptMenuTarget, "canRowStyle" | "canSelect" | "canMoveTo">;
+  target: Omit<ConceptMenuTarget, "canRowStyle" | "canSelect" | "canMoveTo" | "canLink">;
   /** Format, type, date format and spacing of the concept. */
   onPatch: (patch: Partial<Concept>) => void;
   onTextMark?: (mark: TextMark) => void;
@@ -101,17 +105,22 @@ export function ConceptContextMenu({
   onMove?: (direction: -1 | 1) => void;
   onDuplicate?: () => void;
   moveSource?: ContainerAddress;
+  /** «Vincular con…»: the concept takes the datum of `sourceId` and stays linked to it. */
+  onLinkTo?: (sourceId: string) => void;
+  onUnlink?: () => void;
   onRemove?: () => void;
 }) {
   const container = useConceptContainerActions();
   const deleteConcepts = useDeleteConcepts();
   const { units: firmUnits } = useCustomUnits();
   const [moving, setMoving] = useState(false);
+  const [linking, setLinking] = useState(false);
   const groups = conceptContextMenu({
     ...target,
     canRowStyle: Boolean(container?.applyTagStyle),
     canSelect: Boolean(container),
     canMoveTo: Boolean(moveSource),
+    canLink: Boolean(onLinkTo),
   });
 
   const run = (action: ConceptMenuAction) => {
@@ -127,6 +136,8 @@ export function ConceptContextMenu({
       case "duplicate": onDuplicate?.(); return;
       case "move-to": setMoving(true); return;
       case "select": container?.startSelection(concept.id); return;
+      case "link-to": setLinking(true); return;
+      case "unlink": onUnlink?.(); return;
       case "delete":
         // As the trash can of the ⋮ menu: one concept goes at once and comes back with "Deshacer".
         if (onRemove) deleteConcepts({ count: 1, name, onDelete: onRemove });
@@ -237,6 +248,7 @@ export function ConceptContextMenu({
         </ContextMenuContent>
       </ContextMenu>
       {moveSource ? <MoveConceptPicker source={moveSource} conceptId={concept.id} open={moving} onOpenChange={setMoving} /> : null}
+      {onLinkTo ? <LinkConceptDialog conceptId={concept.id} open={linking} onOpenChange={setLinking} onLink={onLinkTo} /> : null}
     </>
   );
 }

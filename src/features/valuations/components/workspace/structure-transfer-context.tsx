@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import type { Apartado, AppSection, Block } from "@/features/valuations/model";
@@ -14,10 +14,15 @@ import {
   pasteApartado,
   pasteBlock,
   type ContainerAddress,
-  type CopyOptions,
   type TransferPosition,
   type TransferResult,
 } from "@/features/valuations/services/structure-transfer";
+import {
+  importStructure,
+  importSummaryText,
+  type ImportOptions,
+  type ImportPlan,
+} from "@/features/valuations/services/structure-import";
 import type { ContentDropSource, ContentDropTarget, ContentMoveRules } from "@/features/valuations/services/content-drop";
 
 /** What "Copiar" took: pasted as a new copy each time, from the content as it was then. */
@@ -44,8 +49,13 @@ type StructureTransfer = {
   dropConceptGroup: (sectionId: string, source: ContentDropSource, conceptIds: string[], target: ContentDropTarget, rules: ContentMoveRules) => boolean;
   pasteBlock: (sectionId: string) => void;
   pasteApartado: (destination: BlockAddress) => void;
-  /** Inserts a copy of a Block brought from a template or another valuation. */
-  importBlock: (sectionId: string, block: Block, options: CopyOptions) => boolean;
+  /**
+   * Brings the Blocks, subbloques and whole sections of a template or another
+   * valuation in one step, and says what came and how many concepts were linked.
+   */
+  importStructure: (sectionId: string, plan: ImportPlan, options: ImportOptions) => boolean;
+  /** The document as it is now, also from a callback that runs after a field commits. */
+  latestSections: () => AppSection[];
 };
 
 const StructureTransferContext = createContext<StructureTransfer | null>(null);
@@ -63,14 +73,24 @@ export function StructureTransferProvider({
   sections,
   updateSections,
   valuationId,
+  onUndo,
+  onShowSection,
 }: {
   children: ReactNode;
   readOnly: boolean;
   sections: AppSection[];
   valuationId: string | null;
   updateSections: (updater: (current: AppSection[]) => AppSection[]) => void;
+  /** The editor's «Deshacer», offered in the notice of an import. */
+  onUndo?: () => void;
+  /** Opens a section: the one a whole section was imported to. */
+  onShowSection?: (sectionId: string) => void;
 }) {
   const [clipboard, setClipboard] = useState<StructureClipboard | null>(null);
+  const sectionsRef = useRef(sections);
+  useLayoutEffect(() => {
+    sectionsRef.current = sections;
+  }, [sections]);
 
   /** One update per operation keeps it a single undo step; a refusal says why. */
   const apply = (operation: (current: AppSection[]) => TransferResult, done?: string) => {
@@ -122,7 +142,22 @@ export function StructureTransferProvider({
       if (clipboard?.kind !== "apartado") return;
       apply((current) => pasteApartado(current, destination, clipboard.apartado), "Apartado pegado.");
     },
-    importBlock: (sectionId, block, options) => apply((current) => pasteBlock(current, sectionId, block, options), "Bloque importado."),
+    importStructure: (sectionId, plan, options) => {
+      if (readOnly) return false;
+      const result = importStructure(sections, sectionId, plan, options);
+      if (!result.changed || !result.summary) {
+        if (result.reason) toast.error(result.reason);
+        return false;
+      }
+      updateSections(() => result.sections);
+      if (result.summary.focusSectionId) onShowSection?.(result.summary.focusSectionId);
+      toast.success(importSummaryText(result.summary, Boolean(options.autoLink)), {
+        duration: 10_000,
+        ...(onUndo ? { action: { label: "Deshacer", onClick: onUndo } } : {}),
+      });
+      return true;
+    },
+    latestSections: () => sectionsRef.current,
   };
 
   return <StructureTransferContext.Provider value={value}>{children}</StructureTransferContext.Provider>;

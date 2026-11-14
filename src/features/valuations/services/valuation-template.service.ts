@@ -5,7 +5,7 @@
  * A template is a PlantillaAvaluo of the organization (never a system one)
  * with published VersionPlantilla rows whose JConfiguracionGeneral holds the
  * document (document-template.ts). Saving again under its name ("Reemplazar")
- * adds a version; the latest one is what new valuations and "Importar bloque"
+ * adds a version; the latest one is what new valuations and "Importar"
  * read. Every read and write is scoped to the organization: another firm's
  * template is not found.
  */

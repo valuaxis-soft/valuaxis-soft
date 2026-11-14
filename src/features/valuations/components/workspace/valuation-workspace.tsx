@@ -524,7 +524,14 @@ export function ValuationWorkspace({
     <NumberPresentationProvider presentation={numberPresentation}>
     <PagePresentationProvider presentation={pagePresentation}>
     <CustomUnitsProvider initialUnits={customUnits}>
-    <StructureTransferProvider sections={sections} readOnly={!canEdit} updateSections={updateSections} valuationId={valuationId}>
+    <StructureTransferProvider
+      sections={sections}
+      readOnly={!canEdit}
+      updateSections={updateSections}
+      valuationId={valuationId}
+      onUndo={canEdit ? () => void undo() : undefined}
+      onShowSection={handleActiveSectionChange}
+    >
     <DeleteConfirmProvider onUndo={canEdit ? () => void undo() : undefined}>
     <CroquisGeneratorProvider
       valuationId={valuationId}

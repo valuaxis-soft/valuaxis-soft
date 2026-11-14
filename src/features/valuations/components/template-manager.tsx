@@ -215,7 +215,7 @@ export function TemplateManager({ initialTemplates, canCreate, letterhead }: {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar la plantilla {removing?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Deja de aparecer en &quot;Plantilla base&quot; y en &quot;Importar bloque&quot;. Los avalúos que ya se crearon con ella no
+              Deja de aparecer en &quot;Plantilla base&quot; y en &quot;Importar&quot;. Los avalúos que ya se crearon con ella no
               cambian.
             </AlertDialogDescription>
           </AlertDialogHeader>

@@ -7,7 +7,7 @@ import {
   moveConceptIntoRows,
   type ConceptDropPosition,
 } from "@/features/valuations/services/concept-layout";
-import { createContext, useContext, useState, type ComponentProps, type ReactNode } from "react";
+import { createContext, useContext, useState, type ComponentProps, type FocusEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { closestCenter, DndContext, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/core";
@@ -79,6 +79,7 @@ import { ValueFormatSelect, firmUnitOptionValue } from "./value-format-select";
 import { Textarea } from "@/components/ui/textarea";
 import { DraftAssist } from "./draft-assist";
 import { ConceptContextMenu } from "./concept-context-menu";
+import { LinkConceptDialog, useLinkSuggestion } from "./concept-link-actions";
 import { applyTextMark } from "@/features/valuations/services/text-marks";
 
 import {
@@ -794,6 +795,9 @@ export function ConceptOptionsMenu({
   readOnly,
   valueFormatReadOnly = false,
   lockedReason,
+  linked = false,
+  onLinkTo,
+  onUnlink,
 }: {
   concept: Concept;
   concepts: Concept[];
@@ -815,8 +819,14 @@ export function ConceptOptionsMenu({
    * writes): the menu keeps its controls, disabled, with the reason.
    */
   lockedReason?: string;
+  /** The concept shares its title or datum with another one. */
+  linked?: boolean;
+  /** «Vincular con…»: the concept takes the datum of `sourceId` and stays linked to it. */
+  onLinkTo?: (sourceId: string) => void;
+  onUnlink?: () => void;
 }) {
   const locked = readOnly || Boolean(lockedReason);
+  const [linking, setLinking] = useState(false);
   const showLineBreakAction = canNormalizeConceptLineBreaks(concept);
   const deleteConcepts = useDeleteConcepts();
   const conceptName = normalizeConceptTitle(concept.label);
@@ -940,6 +950,35 @@ export function ConceptOptionsMenu({
             </Button>
           ) : null}
           {moveSource ? <MoveConceptMenuItem source={moveSource} conceptId={concept.id} disabled={readOnly} /> : null}
+          {/* The same «Vincular con…» and «Desvincular» as the right-click menu. */}
+          {onLinkTo || lockedReason ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="justify-start"
+                disabled={locked || !onLinkTo}
+                title={lockedReason ?? "Tomar el dato de otro concepto del avalúo y quedar vinculado"}
+                onClick={() => setLinking(true)}
+              >
+                <Link data-icon="inline-start" />
+                Vincular con…
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="justify-start"
+                disabled={locked || !linked || !onUnlink}
+                title={lockedReason ?? (linked ? "Dejar de compartir el dato; conserva el que tiene ahora" : "No está vinculado con otro concepto.")}
+                onClick={onUnlink}
+              >
+                <Unlink data-icon="inline-start" />
+                Desvincular
+              </Button>
+            </>
+          ) : null}
           {!moveSource && lockedReason ? (
             <Button type="button" size="sm" variant="ghost" className="justify-start" aria-label="Mover concepto a otro bloque" disabled title={lockedReason}>
               <FolderInput data-icon="inline-start" />
@@ -962,6 +1001,7 @@ export function ConceptOptionsMenu({
           </Button>
         </div>
       </PopoverContent>
+      {onLinkTo ? <LinkConceptDialog conceptId={concept.id} open={linking} onOpenChange={setLinking} onLink={onLinkTo} /> : null}
     </Popover>
   );
 }
@@ -1147,6 +1187,16 @@ export function ConceptEditorRow({
       action: { label: "Vincular dato", onClick: () => onChangeRelation(concept.id, "value", source) },
     });
   };
+  // «Vincular con…» and «Desvincular», in the ⋮ and the right-click menus; the notice «Este dato ya existe…» when a field is left.
+  const linkState = conceptLinkIndicator(concept, allConcepts);
+  const linkTo = onChangeRelation && !readOnly ? (sourceId: string) => onChangeRelation(concept.id, "value", sourceId) : undefined;
+  const unlink = onUnlink && !readOnly ? () => onUnlink(concept.id) : undefined;
+  const suggestLinkAfter = useLinkSuggestion(concept.id, linkTo);
+  const onFieldBlur = (event: FocusEvent<HTMLDivElement>) => {
+    const field = event.target;
+    if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return;
+    suggestLinkAfter(field.hasAttribute("data-concept-title") ? "title" : "value");
+  };
   // The right-click menu of the row: what its ⋮ menu and "Seleccionar conceptos" do, in every section.
   const withContextMenu = (row: ReactNode, options: { showValueFormat: boolean; writeValue: (value: string) => void; order: boolean }) =>
     readOnly ? row : (
@@ -1165,6 +1215,7 @@ export function ConceptEditorRow({
             ? { canMoveUp: concepts[0]?.id !== concept.id, canMoveDown: concepts.at(-1)?.id !== concept.id }
             : undefined,
           canDuplicate: Boolean(onDuplicate),
+          linked: linkState !== "none",
           canDelete: true,
         }}
         onPatch={(patch) => onUpdate(concept.id, patch)}
@@ -1173,6 +1224,8 @@ export function ConceptEditorRow({
         onMove={onMove ? (direction) => onMove(concept.id, direction) : undefined}
         onDuplicate={onDuplicate ? () => onDuplicate(concept.id) : undefined}
         moveSource={moveSource}
+        onLinkTo={linkTo}
+        onUnlink={unlink}
         onRemove={() => onRemove(concept.id)}
       >
         {row}
@@ -1189,7 +1242,6 @@ export function ConceptEditorRow({
     const formatChip = showValueFormatControl && isNumericConcept(effectiveConcept) ? (
       <ConceptValueFormatControl concept={effectiveConcept} readOnly={readOnly || formatIsSourceOwned} onUpdate={onUpdate} trigger="value" />
     ) : null;
-    const linkState = conceptLinkIndicator(concept, allConcepts);
     const handleLinkedAwareUpdate = (patch: Partial<Pick<Concept, "label" | "value">>) => {
       if (linkState !== "none" && onUpdateEverywhere) {
         onUpdateEverywhere(concept.id, patch);
@@ -1223,6 +1275,7 @@ export function ConceptEditorRow({
         ref={setNodeRef}
         style={{ opacity: isDragging ? 0.35 : undefined }}
         onMouseDownCapture={onReferenceMouseDown}
+        onBlur={onFieldBlur}
       >
         <div className="flex items-start">
           <ConceptSelectionCheckbox conceptId={concept.id} label={cleanConceptLabel} />
@@ -1329,6 +1382,9 @@ export function ConceptEditorRow({
             moveSource={moveSource}
             readOnly={readOnly}
             valueFormatReadOnly={formatIsSourceOwned}
+            linked={linkState !== "none"}
+            onLinkTo={linkTo}
+            onUnlink={unlink}
             onDuplicate={onDuplicate}
             onRemove={onRemove}
             onUpdate={onUpdate}
@@ -1379,6 +1435,7 @@ export function ConceptEditorRow({
       ref={setNodeRef}
       style={{ opacity: isDragging ? 0.35 : undefined }}
       onMouseDownCapture={onReferenceMouseDown}
+      onBlur={onFieldBlur}
     >
       <div className="flex items-start">
         <ConceptSelectionCheckbox conceptId={concept.id} label={cleanConceptLabel} />
@@ -1506,6 +1563,9 @@ export function ConceptEditorRow({
           moveSource={moveSource}
           readOnly={readOnly}
           valueFormatReadOnly={formatIsSourceOwned}
+          linked={linkState !== "none"}
+          onLinkTo={linkTo}
+          onUnlink={unlink}
           onDuplicate={onDuplicate}
           onMove={onMove}
           onRemove={onRemove}

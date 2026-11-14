@@ -14,6 +14,7 @@ export type ConceptMenuAction =
   | "bold" | "italic" | "underline"
   | "value-format" | "data-type" | "date-format" | "row-style" | "spacing-before" | "spacing-after" | "join-lines"
   | "move-up" | "move-down" | "duplicate" | "move-to" | "select"
+  | "link-to" | "unlink"
   | "delete";
 
 export type ConceptMenuItem = {
@@ -46,6 +47,8 @@ export const LAST_CONCEPT_HINT = "Ya es el último.";
 export const DRAG_TO_ORDER_HINT = "Arrástralo con la flecha para cambiarlo de lugar.";
 export const NO_TRANSFER_HINT = "Este concepto no se mueve a otro bloque desde aquí.";
 export const NO_SELECTION_HINT = "Este bloque no elige varios conceptos a la vez.";
+export const NO_LINK_HINT = "Este concepto no se vincula desde aquí.";
+export const NOT_LINKED_HINT = "No está vinculado con otro concepto.";
 
 export type ConceptMenuTarget = {
   /** The calculation writes the concept: only its presentation is the appraiser's. */
@@ -66,6 +69,10 @@ export type ConceptMenuTarget = {
   canMoveTo: boolean;
   /** The container chooses several concepts at once ("Seleccionar conceptos"). */
   canSelect: boolean;
+  /** «Vincular con…» is offered: the concept takes the datum of another of the valuation. */
+  canLink?: boolean;
+  /** The concept shares its title or its datum with another: «Desvincular» applies. */
+  linked?: boolean;
   canDelete: boolean;
 };
 
@@ -105,6 +112,10 @@ export function conceptContextMenu(target: ConceptMenuTarget): ConceptMenuGroup[
       own({ action: "duplicate", label: "Duplicar" }, target.canDuplicate, NO_TRANSFER_HINT),
       own({ action: "move-to", label: "Mover a…" }, target.canMoveTo, NO_TRANSFER_HINT),
       presentation({ action: "select", label: "Seleccionar varios…" }, target.canSelect, NO_SELECTION_HINT),
+    ],
+    [
+      own({ action: "link-to", label: "Vincular con…" }, Boolean(target.canLink), NO_LINK_HINT),
+      own({ action: "unlink", label: "Desvincular" }, Boolean(target.canLink && target.linked), target.canLink ? NOT_LINKED_HINT : NO_LINK_HINT),
     ],
     [own({ action: "delete", label: "Eliminar concepto…", destructive: true }, target.canDelete, "", GENERATED_CONCEPT_DELETE_HINT)],
   ];
