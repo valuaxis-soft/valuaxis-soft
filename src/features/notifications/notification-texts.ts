@@ -5,12 +5,8 @@
 
 /**
  * What happened to a valuation. «enviado_revision», «aprobado» and
- * «regresado» are the hook of the «Revisión» state: the route that sends a
- * valuation to review, approves it or returns it to editing calls, once
- * committed,
- *
- *   after(() => notifyValuationEvent("enviado_revision", publicId, auth.user));
- *   after(() => notifyValuationEvent("regresado", publicId, auth.user, { reason }));
+ * «regresado» come from the «Revisión» state (`POST /api/avaluos/[id]/revision`),
+ * with the note as the reason.
  */
 export type ValuationEvent = "asignado" | "concluido" | "reabierto" | "enviado_revision" | "aprobado" | "regresado";
 
