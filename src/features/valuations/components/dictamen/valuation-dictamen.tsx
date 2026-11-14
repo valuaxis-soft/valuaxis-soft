@@ -39,7 +39,10 @@ export function ValuationDictamen({
   initialValuation,
   valuationId,
   unaccreditedNotice,
+  readOnlyVersion = null,
 }: {
+  /** An earlier version opened from «Historial»: shown as saved, to read and print; no PDF or email of it. */
+  readOnlyVersion?: number | null;
   canShare: boolean;
   letterhead: Letterhead;
   initialValuation: ValuationDetail;
@@ -80,16 +83,29 @@ export function ValuationDictamen({
   return (
     <div className="min-h-dvh bg-muted/40 print:bg-white">
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur print:hidden">
-        <DictamenToolbar backHref={`/workspace?id=${valuationId}`} folio={initial.meta.folio}>
+        <DictamenToolbar
+          backHref={`/workspace?id=${valuationId}`}
+          folio={readOnlyVersion ? `${initial.meta.folio} · versión V${readOnlyVersion}` : initial.meta.folio}
+          note={readOnlyVersion ? "Solo lectura: así quedó guardada esta versión. Para cambiar algo, trabaja en la versión actual." : undefined}
+        >
           <Button variant="outline" onClick={() => window.print()}>
             <Printer data-icon="inline-start" />
             Imprimir
           </Button>
-          {canShare ? <SendDictamenEmailDialog valuationId={valuationId} folio={initial.meta.folio} firmName={letterhead.name} /> : null}
-          <DownloadDictamenPdfButton kind="memoria" variant="outline" valuationId={valuationId} />
-          <DownloadDictamenPdfButton valuationId={valuationId} />
-          <DownloadDictamenPdfButton kind="entregables" variant="outline" valuationId={valuationId} />
+          {readOnlyVersion ? null : (
+            <>
+              {canShare ? <SendDictamenEmailDialog valuationId={valuationId} folio={initial.meta.folio} firmName={letterhead.name} /> : null}
+              <DownloadDictamenPdfButton kind="memoria" variant="outline" valuationId={valuationId} />
+              <DownloadDictamenPdfButton valuationId={valuationId} />
+              <DownloadDictamenPdfButton kind="entregables" variant="outline" valuationId={valuationId} />
+            </>
+          )}
         </DictamenToolbar>
+        {readOnlyVersion ? (
+          <p role="status" className="border-t bg-highlight/15 px-4 py-2 text-center text-sm" data-readonly-version={readOnlyVersion}>
+            Estás viendo la <strong>versión V{readOnlyVersion}</strong> en solo lectura. Su PDF guardado, si se generó, está en «Historial».
+          </p>
+        ) : null}
       </header>
 
       <main data-print-document className="overflow-x-auto py-8 print:overflow-visible print:p-0" ref={documentRef}>
@@ -145,7 +161,7 @@ export function DictamenPages({ children }: { children: ReactNode }) {
  * wrap as one group below it, so a narrow window or a zoomed-out page never
  * squeezes the title into a column of single words (video 5.3).
  */
-export function DictamenToolbar({ backHref, children, folio }: { backHref: string; children: ReactNode; folio: string }) {
+export function DictamenToolbar({ backHref, children, folio, note }: { backHref: string; children: ReactNode; folio: string; note?: string }) {
   return (
     <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
       {/* A full load: this page keeps the strict CSP of a printed document, and the editor needs Google's for its map. */}
@@ -156,7 +172,7 @@ export function DictamenToolbar({ backHref, children, folio }: { backHref: strin
       <div className="min-w-64 flex-1" data-dictamen-title>
         <h1 className="truncate text-sm font-semibold">Dictamen {folio}</h1>
         <p className="text-xs text-muted-foreground">
-          El PDF se genera en el servidor y queda guardado con el avalúo.
+          {note ?? "El PDF se genera en el servidor y queda guardado con el avalúo."}
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2" data-dictamen-actions>

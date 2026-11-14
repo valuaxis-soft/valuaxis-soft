@@ -29,7 +29,8 @@
     "billing:credits": "tsx --env-file-if-exists=.env scripts/billing-credits.ts",
     "billing:set-unit-price": "tsx --env-file-if-exists=.env scripts/billing-set-unit-price.ts",
     "accreditation:review": "tsx --env-file-if-exists=.env scripts/ops/acreditacion.ts",
-    "templates:clean": "tsx --env-file-if-exists=.env scripts/ops/limpiar-plantillas.ts"
+    "templates:clean": "tsx --env-file-if-exists=.env scripts/ops/limpiar-plantillas.ts",
+    "valuations:fix-status": "tsx --env-file-if-exists=.env scripts/ops/corregir-estado-nuevo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.131.0",

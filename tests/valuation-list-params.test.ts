@@ -52,6 +52,8 @@ test("estado only accepts keys from the catalog, case-insensitive", () => {
   assert.equal(parseStatus("nuevo", []), null);
 });
 
+const noExtraFilters = { trash: false, propertyKind: null, appraisalKind: null, appraiserId: null, dateField: "creacion", from: null, to: null } as const;
+
 test("parseValuationListParams combines the params, with the default order", () => {
   assert.deepEqual(parseValuationListParams({ page: "2", q: " VAL-01 ", estado: "NUEVO" }, statusKeys), {
     page: 2,
@@ -60,8 +62,36 @@ test("parseValuationListParams combines the params, with the default order", () 
     sort: "modificacion",
     direction: "desc",
     archived: false,
+    ...noExtraFilters,
   });
-  assert.deepEqual(parseValuationListParams({}, statusKeys), { page: 1, q: "", status: null, sort: "modificacion", direction: "desc", archived: false });
+  assert.deepEqual(parseValuationListParams({}, statusKeys), { page: 1, q: "", status: null, sort: "modificacion", direction: "desc", archived: false, ...noExtraFilters });
+});
+
+test("the type, appraiser and date filters only accept safe values, and a backwards range is turned around", () => {
+  const params = parseValuationListParams(
+    { tipo: "CASA_HABITACION", tipoAvaluo: "comercial", valuador: "12", fecha: "conclusion", desde: "2026-11-30", hasta: "2026-11-01" },
+    statusKeys,
+  );
+  assert.equal(params.propertyKind, "casa_habitacion");
+  assert.equal(params.appraisalKind, "comercial");
+  assert.equal(params.appraiserId, 12);
+  assert.equal(params.dateField, "conclusion");
+  assert.deepEqual([params.from, params.to], ["2026-11-01", "2026-11-30"]);
+  assert.equal(
+    buildValuationListHref(params),
+    "/avaluos?tipo=casa_habitacion&tipoAvaluo=comercial&valuador=12&fecha=conclusion&desde=2026-11-01&hasta=2026-11-30",
+  );
+
+  const unsafe = parseValuationListParams({ tipo: "'; drop", valuador: "-3", desde: "2026-02-30", hasta: "ayer", fecha: "otra" }, statusKeys);
+  assert.deepEqual([unsafe.propertyKind, unsafe.appraiserId, unsafe.from, unsafe.to, unsafe.dateField], [null, null, null, null, "creacion"]);
+});
+
+test("the trash is a list of its own: it wins over the archive and keeps its own default order", () => {
+  const params = parseValuationListParams({ papelera: "1", archivados: "1" }, statusKeys);
+  assert.deepEqual([params.trash, params.archived], [true, false]);
+  assert.equal(buildValuationListHref(params), "/avaluos?papelera=1");
+  assert.equal(parseDirection(undefined, "eliminacion"), "desc", "the most recently deleted first");
+  assert.equal(parseDirection(undefined, "cliente"), "asc");
 });
 
 test("totalPages never returns less than one page", () => {

@@ -35,6 +35,7 @@ import type { DraftInput } from "@/features/ai/draft-writing";
 import type { ListingProposal } from "@/features/ai/listing-extraction";
 import type { ValuationDetail, ValuationListItem } from "@/features/valuations/repositories/valuation.repository";
 import type { AppSection } from "@/features/valuations/model";
+import type { ValuationHistory } from "@/features/valuations/services/valuation-history";
 import type { CroquisKind, CroquisSettings } from "@/features/maps/croquis";
 import type { CroquisLabelPlacement } from "@/features/maps/croquis-marker";
 import type { StreetsAroundDto } from "@/features/maps/streets-osm";
@@ -223,7 +224,17 @@ export const api = {
     /** Out of the main list (or back, with false). */
     archive: (id: ApiId, archived: boolean) =>
       request<{ id: string; archived: boolean }>(`/avaluos/${id}/archivar`, { method: "POST", body: JSON.stringify({ archived }) }),
-    remove: (id: ApiId) => request<JsonRecord>(`/avaluos/${id}`, { method: "DELETE" }),
+    /** To the trash: restorable for 30 days. */
+    remove: (id: ApiId) => request<{ id: string; folio: string }>(`/avaluos/${id}`, { method: "DELETE" }),
+    /** Back from the trash, as it was. */
+    restore: (id: ApiId) => request<{ id: string; folio: string }>(`/avaluos/${id}/restaurar`, { method: "POST" }),
+    /** Out of the trash for good; `folio` is the confirmation typed by the person. */
+    purge: (id: ApiId, folio: string) =>
+      request<{ id: string; folio: string }>(`/avaluos/${id}/definitivo`, { method: "DELETE", body: JSON.stringify({ folio }) }),
+    /** «Enviar a revisión», «Aprobar» or «Regresar a edición». */
+    review: (id: ApiId, action: "enviar" | "aprobar" | "regresar", note?: string) =>
+      request<{ id: string; status: string; approvedAt: string | null }>(`/avaluos/${id}/revision`, { method: "POST", body: JSON.stringify({ action, note: note ?? null }) }),
+    history: (id: ApiId) => request<ValuationHistory>(`/avaluos/${id}/historial`),
     reopen: (id: ApiId, input: { reason: string; acceptedText: string }) =>
       request<JsonRecord>(`/avaluos/${id}/reopen`, { method: "POST", body: JSON.stringify(input) }),
     saveFull: (id: ApiId, data: JsonRecord) =>
@@ -499,7 +510,7 @@ export const api = {
   },
   /** The signed-in user's own preferences, such as the editor's autosave interval. */
   preferences: {
-    update: (patch: Partial<UserPreferences>) =>
+    update: (patch: { autosaveSeconds?: UserPreferences["autosaveSeconds"]; valuationListColumns?: { columns: UserPreferences["valuationListColumns"] } }) =>
       request<UserPreferences>(`/cuenta/preferencias`, { method: "PATCH", body: JSON.stringify(patch) }),
   },
   billing: {

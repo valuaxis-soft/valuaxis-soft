@@ -18,6 +18,7 @@ import type { SplitLayout, WorkspaceMode } from "@/features/valuations/component
 import type { ExternalPreviewPayload } from "@/features/valuations/components/workspace/external-preview-sync";
 import { ValuationPreviewPanel } from "@/features/valuations/components/workspace/valuation-preview-panel";
 import { ValuationTopBar } from "@/features/valuations/components/workspace/valuation-top-bar";
+import { ValuationReviewBar } from "@/features/valuations/components/workspace/valuation-review-bar";
 import {
   ConcludeValuationDialog,
   ReopenValuationDialog,
@@ -634,6 +635,22 @@ export function ValuationWorkspace({
             valuationId={valuationId}
             workspaceMode={workspaceMode}
           />
+
+          {valuationId && initialValuation ? (
+            <ValuationReviewBar
+              valuationId={valuationId}
+              folio={meta.folio}
+              initialStatus={initialValuation.status}
+              initialApprovedAt={initialValuation.reviewApprovedAt ?? null}
+              locked={locked}
+              canSend={canEditProject(currentUser)}
+              canReview={hasPermission(currentUser, AUTH_PERMISSIONS.reviewValuations)}
+              canExport={canExport}
+              saveStatus={saveStatus}
+              hasUnsavedChanges={hasUnsavedChanges}
+              onSave={handleSave}
+            />
+          ) : null}
 
           {!canEdit ? (
             <ReadOnlyValuationAlert

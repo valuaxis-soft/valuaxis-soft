@@ -19,7 +19,7 @@ export async function GET() {
   }
 }
 
-/** Changes the user's own preferences: `{ autosaveSeconds: 0 | 10 | 15 | 30 | 60 | 300 }`. */
+/** Changes the user's own preferences: `{ autosaveSeconds?: 0 | 10 | 15 | 30 | 60 | 300, valuationListColumns?: { columns } }`. */
 export async function PATCH(request: Request) {
   try {
     const auth = await requireApiUser();

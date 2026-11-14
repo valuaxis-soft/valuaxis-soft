@@ -14,6 +14,8 @@ export const AUTH_PERMISSIONS = {
   reopenValuations: "AVALUO_REABRIR",
   duplicateValuations: "AVALUO_DUPLICAR",
   exportValuations: "AVALUO_EXPORTAR",
+  /** «Eliminar definitivamente» from the trash (migration 059: ADMINISTRADOR only). */
+  purgeValuations: "AVALUO_ELIMINAR_DEFINITIVO",
   printValuations: "AVALUO_IMPRIMIR",
   shareValuations: "AVALUO_COMPARTIR",
   manageCatalogs: "CATALOGO_ADMINISTRAR",

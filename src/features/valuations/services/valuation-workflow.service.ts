@@ -8,6 +8,7 @@
  * - document-nodes / document-tables: node, value and table persistence
  * - caratula: saveCaratula
  * - lifecycle: concludeValuation, reopenValuation
+ * - review: changeReviewState (enviar a revisión, aprobar, regresar a edición)
  * - db-values: database key, text and value-column helpers
  */
 export { ValuationWorkflowError } from "./valuation-workflow/errors";
@@ -16,6 +17,7 @@ export { initializeWorkingVersionStructure } from "./valuation-workflow/working-
 export { saveCaratula } from "./valuation-workflow/caratula";
 export { saveValuationSections } from "./valuation-workflow/save-sections";
 export { concludeValuation, reopenValuation } from "./valuation-workflow/lifecycle";
+export { changeReviewState, type ReviewAction } from "./valuation-workflow/review";
 export {
   normalizeDocumentTableColumnForPersistence,
   normalizeDocumentTableRowForPersistence,

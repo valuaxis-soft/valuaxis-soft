@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
+import { getUserPreferences } from "@/features/account/user-preferences.service";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { currentTime } from "@/features/dashboard/attention";
@@ -15,14 +16,17 @@ import { NEW_VALUATION_HREF } from "@/features/dashboard/navigation";
 import {
   VALUATION_LIST_PAGE_SIZE,
   buildValuationListHref,
+  hasValuationFilters,
   parseValuationListParams,
   totalPages,
 } from "@/features/dashboard/valuation-list-params";
-import { getStatusPresentation } from "@/features/dashboard/valuation-status";
+import { listValuationStatuses } from "@/features/valuations/repositories/valuation.repository";
 import {
-  listValuationStatuses,
+  TRASH_RETENTION_DAYS,
+  listValuationAppraisers,
+  listValuationKinds,
   listValuationsPage,
-} from "@/features/valuations/repositories/valuation.repository";
+} from "@/features/valuations/repositories/valuation-list.repository";
 import { cn } from "@/lib/utils";
 import { requireSession } from "@/security/guards/require-session";
 
@@ -39,32 +43,42 @@ export default async function ValuationsPage({
   const user = await requireSession("/avaluos");
   if (!hasPermission(user, AUTH_PERMISSIONS.viewValuations)) redirect("/dashboard");
 
-  const statuses = await listValuationStatuses();
+  const [statuses, kinds, appraisers, preferences] = await Promise.all([
+    listValuationStatuses(),
+    listValuationKinds(),
+    listValuationAppraisers(user.organizationId),
+    getUserPreferences(user.id),
+  ]);
   const params = parseValuationListParams(
     await searchParams,
     statuses.map((status) => status.key),
   );
   const { items, total } = await listValuationsPage({
+    ...params,
     organizationId: user.organizationId,
-    page: params.page,
     pageSize: VALUATION_LIST_PAGE_SIZE,
-    q: params.q,
-    status: params.status,
-    archived: params.archived,
-    sort: params.sort,
-    direction: params.direction,
   });
 
   const pages = totalPages(total);
   if (total > 0 && params.page > pages) redirect(buildValuationListHref({ ...params, page: pages }));
 
   const canCreate = hasPermission(user, AUTH_PERMISSIONS.createValuations);
-  const canEdit = hasPermission(user, AUTH_PERMISSIONS.editValuations);
-  const hasFilters = Boolean(params.q || params.status || params.archived);
+  const permissions = {
+    canCreate,
+    canEdit: hasPermission(user, AUTH_PERMISSIONS.editValuations),
+    canPurge: hasPermission(user, AUTH_PERMISSIONS.purgeValuations),
+    canExport: hasPermission(user, AUTH_PERMISSIONS.exportValuations),
+  };
+  const hasFilters = hasValuationFilters(params);
   const firstItem = total === 0 ? 0 : (params.page - 1) * VALUATION_LIST_PAGE_SIZE + 1;
   const lastItem = Math.min(params.page * VALUATION_LIST_PAGE_SIZE, total);
-  const onlyArchived = params.archived && !params.q && !params.status;
-  const statusLabel = params.status ? getStatusPresentation(params.status).label.toLowerCase() : null;
+
+  const title = params.trash ? "Papelera de avalúos" : params.archived ? "Avalúos archivados" : "Avalúos";
+  const description = params.trash
+    ? `Los avalúos eliminados esperan aquí ${TRASH_RETENTION_DAYS} días: desde el menú ··· los restauras tal como estaban. Después se eliminan definitivamente.`
+    : params.archived
+      ? "Los que apartaste de la lista principal. Desde el menú ··· los devuelves."
+      : `Todos los avalúos de ${user.organizationName}. Abre uno para continuar o usa el menú ··· para ver su historial, duplicarlo o archivarlo.`;
 
   return (
     <div className="min-h-dvh bg-background">
@@ -72,14 +86,10 @@ export default async function ValuationsPage({
 
       <PageContainer>
         <PageHeader
-          title={params.archived ? "Avalúos archivados" : "Avalúos"}
-          description={
-            params.archived
-              ? "Los que apartaste de la lista principal. Desde el menú ··· los devuelves."
-              : `Todos los avalúos de ${user.organizationName}. Abre uno para continuar o usa el menú ··· para duplicarlo o archivarlo.`
-          }
+          title={title}
+          description={description}
           actions={
-            canCreate ? (
+            canCreate && !params.trash ? (
               <Link href={NEW_VALUATION_HREF} className={cn(buttonVariants(), "h-11 gap-2 px-4 sm:h-10")}>
                 <Plus className="size-4" aria-hidden="true" />
                 Nuevo avalúo
@@ -90,27 +100,32 @@ export default async function ValuationsPage({
 
         <section aria-label="Lista de avalúos" className="grid gap-4 rounded-2xl border border-border bg-card p-3 sm:p-5">
           <ValuationsFilters
-            q={params.q}
-            status={params.status}
+            params={params}
             statuses={statuses}
-            archived={params.archived}
-            sort={params.sort}
-            direction={params.direction}
+            propertyKinds={kinds.propertyKinds}
+            appraisalKinds={kinds.appraisalKinds}
+            appraisers={appraisers}
           />
 
           {items.length === 0 ? (
-            hasFilters ? (
+            hasFilters || params.archived || params.trash ? (
               <EmptyState
                 illustration="search"
-                title={onlyArchived ? "No hay avalúos archivados" : "Ningún avalúo coincide con la búsqueda"}
+                title={
+                  hasFilters
+                    ? "Ningún avalúo coincide con los filtros"
+                    : params.trash ? "La papelera está vacía" : "No hay avalúos archivados"
+                }
                 description={
-                  onlyArchived
-                    ? "Cuando archives uno desde el menú ··· de su renglón, lo encontrarás aquí."
-                    : `Prueba con otro folio, título o cliente${statusLabel ? `, o quita el filtro «${statusLabel}»` : ""}.`
+                  hasFilters
+                    ? "Prueba con otro folio, título o cliente, o quita algún filtro."
+                    : params.trash
+                      ? `Cuando elimines un avalúo, lo encontrarás aquí durante ${TRASH_RETENTION_DAYS} días.`
+                      : "Cuando archives uno desde el menú ··· de su renglón, lo encontrarás aquí."
                 }
                 action={
                   <Link href="/avaluos" className={cn(buttonVariants({ variant: "outline" }), "h-11 px-4 sm:h-9")}>
-                    Limpiar filtros
+                    {hasFilters ? "Limpiar filtros" : "Volver a la lista"}
                   </Link>
                 }
               />
@@ -135,13 +150,19 @@ export default async function ValuationsPage({
             )
           ) : (
             <>
-              <ValuationsTable items={items} params={params} canCreate={canCreate} canDelete={canEdit} now={currentTime()} />
+              <ValuationsTable
+                items={items}
+                params={params}
+                permissions={permissions}
+                initialLayout={preferences.valuationListColumns}
+                now={currentTime()}
+              />
               <nav
                 aria-label="Paginación"
                 className="flex flex-col gap-3 border-t border-border pt-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
               >
                 <p aria-live="polite">
-                  <span className="font-medium text-foreground">
+                  <span className="font-medium text-foreground tabular-nums">
                     {firstItem}–{lastItem}
                   </span>{" "}
                   de {total} {total === 1 ? "avalúo" : "avalúos"}

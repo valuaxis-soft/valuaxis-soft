@@ -49,6 +49,8 @@ export type ValuationListItem = {
 export type ValuationDetail = ValuationListItem & {
   /** Concluded valuations are locked until they are reopened. */
   locked: boolean;
+  /** The reviewer approved it «En revisión» (migration 059); null otherwise. */
+  reviewApprovedAt?: Date | null;
   sections: ValuationSectionDto[];
   comparables: ComparableDto[];
   caratula: CaratulaDto | null;
@@ -300,140 +302,6 @@ export async function listValuations(organizationId: number): Promise<ValuationL
   }));
 }
 
-export type ValuationPageItem = {
-  id: string;
-  folio: string;
-  title: string;
-  client: string;
-  location: string;
-  /** Lowercase SClave of the operation type. */
-  valuationKind: string;
-  /** Lowercase SClave of the property type. */
-  propertyKind: string;
-  propertyKindName: string;
-  appraisalKindName: string;
-  /** Lowercase SClave of the status. */
-  status: string;
-  statusName: string;
-  createdAt: Date;
-  updatedAt: Date;
-  /** When the firm archived it; null while it is in the main list. */
-  archivedAt: Date | null;
-};
-
-/** The columns of the list the firm can sort by. */
-export const VALUATION_SORT_KEYS = ["modificacion", "folio", "titulo", "tipo", "estado", "creacion"] as const;
-export type ValuationSortKey = (typeof VALUATION_SORT_KEYS)[number];
-export type ValuationSortDirection = "asc" | "desc";
-
-type ValuationPageQuery = {
-  organizationId: number;
-  page: number;
-  pageSize: number;
-  q?: string | null;
-  /** Status key from the catalog (case-insensitive). */
-  status?: string | null;
-  /** The archived valuations instead of the ones in the main list. */
-  archived?: boolean;
-  sort?: ValuationSortKey;
-  direction?: ValuationSortDirection;
-};
-
-const valuationPageSelect = Prisma.validator<Prisma.AvaluoSelect>()({
-  UIdentificadorPublico: true,
-  SFolio: true,
-  STitulo: true,
-  SNombreCliente: true,
-  DFechaCreacion: true,
-  DFechaModificacion: true,
-  DFechaArchivo: true,
-  estadoAvaluo: { select: { SClave: true, SNombre: true } },
-  tipoAvaluo: { select: { SNombre: true } },
-  tipoInmueble: { select: { SClave: true, SNombre: true } },
-  tipoOperacion: { select: { SClave: true } },
-  propiedadSujeto: {
-    select: {
-      direccionesPropiedad: {
-        where: { BEsDireccionActual: true },
-        select: { SDireccionCompleta: true, BEsDireccionActual: true },
-        take: 1,
-      },
-    },
-  },
-});
-
-function valuationPageWhere(query: ValuationPageQuery): Prisma.AvaluoWhereInput {
-  const search = query.q?.trim();
-  const status = query.status?.trim();
-  return {
-    IdOrganizacion: query.organizationId,
-    BActivo: true,
-    DFechaEliminacion: null,
-    DFechaArchivo: query.archived ? { not: null } : null,
-    ...(status ? { estadoAvaluo: { SClave: status.toUpperCase() } } : {}),
-    ...(search
-      ? {
-          OR: [
-            { SFolio: { contains: search, mode: "insensitive" } },
-            { STitulo: { contains: search, mode: "insensitive" } },
-            { SNombreCliente: { contains: search, mode: "insensitive" } },
-          ],
-        }
-      : {}),
-  };
-}
-
-/** The order of the page, by the column chosen; the id breaks ties so the pages never repeat a row. */
-function valuationPageOrder(sort: ValuationSortKey = "modificacion", direction: ValuationSortDirection = "desc"): Prisma.AvaluoOrderByWithRelationInput[] {
-  const first: Prisma.AvaluoOrderByWithRelationInput = sort === "folio" ? { SFolio: direction }
-    : sort === "titulo" ? { STitulo: direction }
-    : sort === "tipo" ? { tipoInmueble: { SNombre: direction } }
-    : sort === "estado" ? { estadoAvaluo: { IOrden: direction } }
-    : sort === "creacion" ? { DFechaCreacion: direction }
-    : { DFechaModificacion: direction };
-  return [first, { IdAvaluo: direction }];
-}
-
-/** One page of the organization's valuations, most recently modified first unless sorted otherwise, filtered in the database. */
-export async function listValuationsPage(
-  query: ValuationPageQuery,
-): Promise<{ items: ValuationPageItem[]; total: number }> {
-  const pageSize = Math.max(1, Math.min(Math.trunc(query.pageSize), 100));
-  const page = Math.max(1, Math.trunc(query.page));
-  const where = valuationPageWhere(query);
-
-  const [rows, total] = await prisma.$transaction([
-    prisma.avaluo.findMany({
-      where,
-      select: valuationPageSelect,
-      orderBy: valuationPageOrder(query.sort, query.direction),
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.avaluo.count({ where }),
-  ]);
-
-  return {
-    total,
-    items: rows.map((row) => ({
-      id: row.UIdentificadorPublico,
-      folio: row.SFolio,
-      title: row.STitulo,
-      client: row.SNombreCliente ?? "",
-      location: currentAddress(row.propiedadSujeto?.direccionesPropiedad),
-      valuationKind: row.tipoOperacion.SClave.toLowerCase(),
-      propertyKind: row.tipoInmueble.SClave.toLowerCase(),
-      propertyKindName: row.tipoInmueble.SNombre,
-      appraisalKindName: row.tipoAvaluo.SNombre,
-      status: row.estadoAvaluo.SClave.toLowerCase(),
-      statusName: row.estadoAvaluo.SNombre,
-      createdAt: row.DFechaCreacion,
-      updatedAt: row.DFechaModificacion,
-      archivedAt: row.DFechaArchivo,
-    })),
-  };
-}
-
 /** Archives the valuation (out of the main list, still the firm's) or brings it back. */
 export async function setValuationArchived(id: string, organizationId: number, archived: boolean) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
@@ -510,6 +378,31 @@ export async function getValuationByPublicId(
   return mapValuationDetail(valuation, content);
 }
 
+/**
+ * One version of the valuation (V1, V2…) as it was saved, to read it in the
+ * history: the same detail as the editor's, with that version's document.
+ * Null when the valuation or the version does not exist.
+ */
+export async function getValuationVersionByPublicId(
+  id: string,
+  organizationId: number,
+  versionNumber: number,
+): Promise<ValuationDetail | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) || !Number.isSafeInteger(versionNumber) || versionNumber < 1) return null;
+  const valuation = await prisma.avaluo.findFirst({
+    where: { UIdentificadorPublico: id, IdOrganizacion: organizationId, BActivo: true, DFechaEliminacion: null },
+    include: valuationDetailInclude,
+  });
+  if (!valuation) return null;
+  const version = await prisma.versionAvaluo.findFirst({
+    where: { IdAvaluo: valuation.IdAvaluo, INumeroVersion: versionNumber },
+    orderBy: { IdVersionAvaluo: "desc" },
+    include: versionContentInclude,
+  });
+  if (!version) return null;
+  return { ...(await mapValuationDetail(valuation, version)), locked: true };
+}
+
 /** The names of the appraiser's own kinds, as the meta carries them. */
 function ownKindNamesOf(characteristics: unknown): Pick<ValuationListItem, "propertyKindOther" | "valuationKindOther"> {
   const names = readOwnKindNames(characteristics);
@@ -519,20 +412,6 @@ function ownKindNamesOf(characteristics: unknown): Pick<ValuationListItem, "prop
   };
 }
 
-export async function softDeleteValuation(id: string, organizationId: number) {
-  const existing = await prisma.avaluo.findFirst({
-    where: { UIdentificadorPublico: id, IdOrganizacion: organizationId, DFechaEliminacion: null },
-    select: { IdAvaluo: true },
-  });
-  if (!existing) return null;
-
-  await prisma.avaluo.update({
-    where: { IdAvaluo: existing.IdAvaluo },
-    data: { BActivo: false, DFechaEliminacion: new Date() },
-  });
-
-  return { id };
-}
 
 async function mapValuationDetail(
   valuation: AvaluoWithRelations,
@@ -555,6 +434,7 @@ async function mapValuationDetail(
     ...ownKindNamesOf(valuation.propiedadSujeto?.JCaracteristicas),
     status: valuation.estadoAvaluo.SClave.toLowerCase(),
     locked: valuation.BBloqueado,
+    reviewApprovedAt: valuation.DFechaRevisionAprobada,
     createdAt: valuation.DFechaCreacion,
     updatedAt: valuation.DFechaModificacion,
     user: {

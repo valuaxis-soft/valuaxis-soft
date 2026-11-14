@@ -3,11 +3,11 @@ import { buildAuthorizationContext } from "@/features/auth/services/authorizatio
 import { getCreditBalance } from "@/features/billing/credits.service";
 import type { AttentionItem } from "@/features/dashboard/attention";
 import { listAttentionValuations, listRecentActivity, type ActivityItem } from "@/features/dashboard/services/dashboard-activity.service";
+import { listValuationsPage } from "@/features/valuations/repositories/valuation-list.repository";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import {
   countValuationsByStatus,
   listValuationStatuses,
-  listValuationsPage,
 } from "@/features/valuations/repositories/valuation.repository";
 
 const RECENT_VALUATIONS = 5;

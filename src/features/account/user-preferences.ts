@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { resolveValuationColumns, valuationColumnsSchema, type ValuationColumnLayout } from "@/features/dashboard/valuation-columns";
 
 /**
- * The person's own preferences, kept in `devpware_usuarios.JPreferencias`.
- * For now the editor's autosave interval (NP-01): the appraiser chooses how
- * long after the last edit the editor saves on its own, or turns it off.
+ * The person's own preferences, kept in `devpware_usuarios.JPreferencias`:
+ * the editor's autosave interval (NP-01) and the columns of the list of
+ * valuations (which, in what order and how wide).
  */
 
 /** Seconds after the last edit; 0 turns autosave off. */
@@ -27,16 +28,28 @@ const autosaveSecondsSchema = z.custom<AutosaveSeconds>(
   { message: "Elige un intervalo de guardado automático de la lista." },
 );
 
-export type UserPreferences = { autosaveSeconds: AutosaveSeconds };
+export type UserPreferences = {
+  autosaveSeconds: AutosaveSeconds;
+  /** The columns of /avaluos; the default layout while the person has not changed it. */
+  valuationListColumns: ValuationColumnLayout;
+};
 
-/** What `PATCH /api/cuenta/preferencias` accepts. */
-export const userPreferencesPatchSchema = z.object({ autosaveSeconds: autosaveSecondsSchema }).strict();
+/** What `PATCH /api/cuenta/preferencias` accepts: one preference or more. */
+export const userPreferencesPatchSchema = z.object({
+  autosaveSeconds: autosaveSecondsSchema.optional(),
+  valuationListColumns: valuationColumnsSchema.optional(),
+}).strict().refine((patch) => patch.autosaveSeconds !== undefined || patch.valuationListColumns !== undefined, {
+  message: "Indica la preferencia que cambia.",
+});
 
 /** The stored JSON as preferences: anything missing or unknown is the default. Pure. */
 export function resolveUserPreferences(stored: unknown): UserPreferences {
   const record = stored && typeof stored === "object" ? (stored as Record<string, unknown>) : {};
   const autosave = autosaveSecondsSchema.safeParse(record.autosaveSeconds);
-  return { autosaveSeconds: autosave.success ? autosave.data : DEFAULT_AUTOSAVE_SECONDS };
+  return {
+    autosaveSeconds: autosave.success ? autosave.data : DEFAULT_AUTOSAVE_SECONDS,
+    valuationListColumns: resolveValuationColumns(record.valuationListColumns),
+  };
 }
 
 /** The wait the editor uses, in milliseconds; null when autosave is off. Pure. */

@@ -4,8 +4,8 @@ import { after, before, test } from "node:test";
 import {
   countValuationsByStatus,
   listValuationStatuses,
-  listValuationsPage,
 } from "../../src/features/valuations/repositories/valuation.repository";
+import { listValuationsPage } from "../../src/features/valuations/repositories/valuation-list.repository";
 import { createValuationFixture, prisma } from "./support";
 
 after(() => prisma.$disconnect());
