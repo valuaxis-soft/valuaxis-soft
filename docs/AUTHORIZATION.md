@@ -65,6 +65,7 @@ Una organización es `PERSONAL` (la que recibe cada usuario al registrarse, como
 |---|---|
 | `GET` y `PATCH /api/organizacion/equipo`, `POST /api/organizacion/equipo/invitaciones`, `POST` y `DELETE /api/organizacion/equipo/invitaciones/[id]`, `PATCH` y `DELETE /api/organizacion/equipo/miembros/[id]` | `USUARIO_ADMINISTRAR` |
 | `GET` y `POST /api/organizacion/invitaciones` | Sesión; solo invitaciones al correo del usuario |
+| `GET /api/notificaciones`, `POST /api/notificaciones/leidas`, `GET` y `PATCH /api/cuenta/preferencias` | Sesión; solo las notificaciones y preferencias de la propia persona, en el despacho abierto o personales |
 
 ## Pendiente
 

@@ -14,6 +14,7 @@ import {
   type AccreditationStatus,
   type AutomaticResult,
 } from "./accreditation-rules";
+import { notifyAccreditationResolved } from "@/features/notifications/notification-events";
 import { hashCurp } from "./curp-hash";
 import { detectUploadKind, readQrTexts, UnreadableUploadError } from "./qr-reader";
 import { unavailableSepVerifier, type SepVerifier } from "./sep-verifier";
@@ -278,6 +279,8 @@ export async function resolveAccreditation(input: {
     result: after,
     metadata: { resueltoPor: input.resolvedBy, motivo: reason, ...(input.grade ? { nivel: input.grade.level, programa: input.grade.program } : {}) },
   });
+  // The person sees the decision in the app's bell, whatever firm they have open.
+  await notifyAccreditationResolved(user.IdUsuario, input.decision, reason);
   return { before, after, applied: true, userName };
 }
 

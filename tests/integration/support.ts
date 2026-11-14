@@ -153,7 +153,9 @@ export function withCookies<T>(jar: TestCookieJar, fn: () => Promise<T>, options
   backWithRealAsyncLocalStorage(workAsyncStorage);
   backWithRealAsyncLocalStorage(workUnitAsyncStorage);
   // `request: true` stands in for a route handler's request, where revalidatePath() is allowed (the full save calls it).
-  const workStore = (options.request ? { route: "/integration-test", incrementalCache: {} } : { route: "/integration-test" }) as unknown as WorkStore;
+  // after() (the notifications a route leaves once it answered) runs its task right away; a failure there never fails the test's route.
+  const afterContext = { after: (task: unknown) => void Promise.resolve(typeof task === "function" ? task() : task).catch(() => undefined) };
+  const workStore = (options.request ? { route: "/integration-test", incrementalCache: {}, afterContext } : { route: "/integration-test", afterContext }) as unknown as WorkStore;
   const unitStore = (options.request
     ? { type: "request", phase: "action", cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar }
     : { type: "private-cache", cookies: jar }) as unknown as WorkUnitStore;

@@ -461,6 +461,7 @@ export async function acceptInvitation(
   if (!row || !row.organizacion.BActivo || row.organizacion.DFechaEliminacion) {
     throw new TeamError("La invitación no existe.", 404);
   }
+  let joined = false;
   if (row.SCorreo !== normalizeEmail(user.email)) {
     throw new TeamError(`Esta invitación es para ${row.SCorreo}. Entra con una cuenta de ese correo.`, 403);
   }
@@ -503,6 +504,7 @@ export async function acceptInvitation(
       action: "TEAM_INVITE_ACCEPT",
       result: "EXITOSO",
     });
+    joined = true;
   } else if (row.IdUsuarioAceptante !== user.id) {
     throw new TeamError("La invitación ya fue usada.", 409);
   }
@@ -514,5 +516,6 @@ export async function acceptInvitation(
   });
   if (!membership) throw new TeamError("Ya no formas parte de este equipo.", 410);
   await updateSessionOrganization(sessionId, user.id, row.IdOrganizacion);
-  return { organizationName: row.organizacion.SNombre };
+  // `joined`: accepted just now, not a second click on an invitation already used.
+  return { organizationName: row.organizacion.SNombre, organizationId: row.IdOrganizacion, joined };
 }

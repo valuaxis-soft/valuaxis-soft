@@ -21,6 +21,9 @@ const MOVEMENT_LABELS: Record<CreditMovementType, string> = {
 
 export const creditMovementLabel = (type: string) => MOVEMENT_LABELS[type as CreditMovementType] ?? type;
 
+/** At this many credits or fewer, the dashboard card and a notification say it is time to buy more. */
+export const LOW_CREDIT_BALANCE = 3;
+
 /** The sign each movement type must have, as the database also checks. */
 export function isValidMovement(type: CreditMovementType, credits: number): boolean {
   if (!Number.isInteger(credits)) return false;

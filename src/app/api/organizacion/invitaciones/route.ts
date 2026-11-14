@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { notifyMemberJoined } from "@/features/notifications/notification-events";
 import { getCurrentSession, renewCurrentSession } from "@/features/auth/services/session.service";
 import { teamErrorResponse } from "@/features/team/team-error-response";
 import { acceptInvitationSchema } from "@/features/team/team-schemas";
@@ -27,7 +28,9 @@ export async function POST(request: Request) {
     if (!body.ok) return body.response;
     const result = await acceptInvitation(session.user, session.sessionId, body.data);
     await renewCurrentSession(session);
-    return NextResponse.json({ data: result });
+    // The team's administrators see in the app that someone joined.
+    if (result.joined) after(() => notifyMemberJoined(result.organizationId, session.user.id));
+    return NextResponse.json({ data: { organizationName: result.organizationName } });
   } catch (error) {
     return teamErrorResponse("TEAM_INVITE_ACCEPT", error, "No se pudo aceptar la invitación.");
   }

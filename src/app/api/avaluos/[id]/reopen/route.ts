@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { notifyValuationEvent } from "@/features/notifications/notification-events";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
@@ -30,6 +31,8 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
       request,
       metadata: { reason: body.data.reason },
     });
+    // The responsible and the creator see in the app that it was reopened, and why.
+    if (!("alreadyOpen" in result)) after(() => notifyValuationEvent("reabierto", id, auth.user, { reason: body.data.reason }));
     return NextResponse.json({ data: result });
   } catch (error) {
     return valuationErrorResponse("VALUATION_REOPEN", error, "No se pudo reabrir el avalúo.");

@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { resolveValuationColumns, valuationColumnsSchema, type ValuationColumnLayout } from "@/features/dashboard/valuation-columns";
+import { notificationPreferencesPatchSchema, type NotificationPreferences } from "@/features/notifications/notification-types";
 
 /**
  * The person's own preferences, kept in `devpware_usuarios.JPreferencias`:
  * the editor's autosave interval (NP-01) and the columns of the list of
- * valuations (which, in what order and how wide).
+ * valuations (which, in what order and how wide). Which in-app notifications
+ * they get is kept beside them (`notifications`, see notification-types.ts).
  */
 
 /** Seconds after the last edit; 0 turns autosave off. */
@@ -34,11 +36,15 @@ export type UserPreferences = {
   valuationListColumns: ValuationColumnLayout;
 };
 
+/** Everything «Mi cuenta» shows: the preferences and the notifications on or off. */
+export type AccountPreferences = UserPreferences & { notifications: NotificationPreferences };
+
 /** What `PATCH /api/cuenta/preferencias` accepts: one preference or more. */
 export const userPreferencesPatchSchema = z.object({
   autosaveSeconds: autosaveSecondsSchema.optional(),
   valuationListColumns: valuationColumnsSchema.optional(),
-}).strict().refine((patch) => patch.autosaveSeconds !== undefined || patch.valuationListColumns !== undefined, {
+  notifications: notificationPreferencesPatchSchema.optional(),
+}).strict().refine((patch) => patch.autosaveSeconds !== undefined || patch.valuationListColumns !== undefined || patch.notifications !== undefined, {
   message: "Indica la preferencia que cambia.",
 });
 
