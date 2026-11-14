@@ -97,7 +97,7 @@ export function ValuationDictamen({
         <UnaccreditedNoticeProvider show={unaccreditedNotice}>
         <NumberPresentationProvider presentation={documentNumberPresentation(sections)}>
         <PagePresentationProvider presentation={documentPagePresentation(sections)}>
-          <div className="flex w-fit min-w-full flex-col gap-6 px-4 print:gap-0 print:p-0">
+          <DictamenPages>
             {printableGroups.map((group) => group.length === 1 ? (
               <SectionDocument
                 caratula={initial.caratula}
@@ -118,7 +118,7 @@ export function ValuationDictamen({
                 sections={group}
               />
             ))}
-          </div>
+          </DictamenPages>
         </PagePresentationProvider>
         </NumberPresentationProvider>
         </UnaccreditedNoticeProvider>
@@ -126,6 +126,18 @@ export function ValuationDictamen({
       </main>
     </div>
   );
+}
+
+/**
+ * The column of pages. On screen it is as wide as its widest page, so a
+ * landscape page scrolls sideways with the others centered. In print it is
+ * the width of an upright page: Chromium shrinks the whole document until
+ * its widest box fits the page, so a column as wide as a landscape page made
+ * every page of the PDF print at 77 %. A landscape page still prints whole,
+ * on its own sheet lying on its side (`@page landscape` in globals.css).
+ */
+export function DictamenPages({ children }: { children: ReactNode }) {
+  return <div className="flex w-fit min-w-full flex-col gap-6 px-4 print:w-full print:gap-0 print:p-0">{children}</div>;
 }
 
 /**
