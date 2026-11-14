@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { formulaOfText } from "@/features/valuations/calculation/captured-formulas";
 import { numericFieldProblem, parseDecimal, percentAsNumberText } from "@/features/valuations/calculation/free-formula";
 import type { CharacteristicField } from "@/features/valuations/calculation/market-types";
 import {
@@ -21,11 +22,12 @@ import {
   type StatisticalVariableDto,
 } from "@/features/valuations/calculation/statistical-types";
 import { useFormulaEditing, useFormulaField } from "@/features/valuations/components/editor/formula-editing";
-import { capturedFormulaText } from "@/features/valuations/services/formula-reference-values";
 import { isFormulaText } from "@/features/valuations/services/formula-references";
+import { liveFormulaText, readableFormulaText } from "@/features/valuations/services/live-formulas";
 import { cn } from "@/lib/utils";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
+import { LIVE_WARNING_CLASS, LiveCellMark, useLiveCell } from "./live-cell";
 
 /** A datum of the subject the appraiser may bring with "=": the market's capture of the subject. */
 export type SubjectSource = { label: string; value: string };
@@ -52,8 +54,9 @@ const resultText = (value: number) => Number(value.toPrecision(12)).toLocaleStri
  *
  * It writes formulas as every other table of the valuation (`useFormulaField`):
  * "=" shows the formula bar with its operations and "Buscar valor", a click on
- * a cell or a concept writes its reference, and the formula is kept with the
- * numbers its references read. Out of the cell a formula shows its result in
+ * a cell or a concept writes its reference, and the references stay live
+ * (live-cell.tsx): the cell follows the datum it reads and says when it
+ * cannot. Out of the cell a formula shows its result in
  * blue; "10%" in a figure column is written 0.1 and letters there are marked
  * in red. In the subject's row "=" also lists the subject's data of the market.
  */
@@ -82,14 +85,14 @@ function GridCell(props: {
   // Destructured so the compiler does not treat the field's handlers as refs.
   const { inputRef, draftText, writingFormula, change, onMouseDown, put, ...formula } = useFormulaField({
     fieldKey: `statistical-cell:${fieldId}`,
-    storedFormulaText: () => (isFormulaText(props.value) ? props.value.trim() : null),
+    storedFormulaText: () => (isFormulaText(props.value) ? readableFormulaText(props.value.trim(), index) : null),
     onCommit: (text) => {
       setEditing(null);
       if (!isFormulaText(text)) {
         commit(props.numeric ? percentAsNumberText(text) : text);
         return;
       }
-      const captured = capturedFormulaText(text, index);
+      const captured = liveFormulaText(text, index);
       if (captured.ok) {
         commit(captured.text);
         return;
@@ -114,7 +117,8 @@ function GridCell(props: {
     }
     const text = editing;
     setEditing(null);
-    if (cancelled.current || text === null) {
+    // A live formula read back as written is the one kept.
+    if (cancelled.current || text === null || text === live.readable) {
       cancelled.current = false;
       return;
     }
@@ -172,6 +176,7 @@ function GridCell(props: {
   };
 
   const idle = editing === null && draftText === null;
+  const live = useLiveCell({ value: props.value, enabled: true, fixed: props.disabled, busy: !idle, onFollow: props.onCommit });
   const stored = idle && isFormulaText(props.value) ? props.value.trim() : null;
   const result = stored === null ? null : parseDecimal(stored);
   // Letters in a figure column: marked in red, and left out of the calculation (a warning only).
@@ -188,9 +193,11 @@ function GridCell(props: {
         disabled={props.disabled}
         inputMode={props.numeric ? "decimal" : undefined}
         autoComplete="off"
-        title={problem ? `${problem}: lo escrito no entra en los cálculos.` : stored ? `Fórmula: ${stored}` : undefined}
+        title={problem ? `${problem}: lo escrito no entra en los cálculos.` : live.title ?? (stored ? `Fórmula: ${stored}` : undefined)}
+        aria-describedby={live.warning ? `${fieldId}-aviso` : undefined}
+        data-formula-warning={live.warning ?? undefined}
         aria-invalid={problem ? true : undefined}
-        data-formula={stored ?? undefined}
+        data-formula={live.readable ?? stored ?? undefined}
         data-numeric-problem={problem ?? undefined}
         className={cn(
           "h-7 w-full min-w-0 rounded-sm border border-transparent bg-transparent px-1.5 text-left text-xs outline-none",
@@ -199,17 +206,19 @@ function GridCell(props: {
           stored && "text-blue-700 dark:text-blue-300",
           problem && "border-destructive text-destructive dark:text-red-400",
           writingFormula && "font-mono text-blue-700 ring-2 ring-blue-500 dark:text-blue-300",
+          live.warning && cn(LIVE_WARNING_CLASS, "pl-4"),
         )}
         value={shown}
         onFocus={(event) => {
           formula.onFocus(event);
-          setEditing(props.value);
+          setEditing(live.readable ?? props.value);
         }}
         onChange={(event) => onChange(event.target.value, (event.nativeEvent as InputEvent).inputType === "insertText")}
         onMouseDown={onMouseDown}
         onBlur={finish}
         onKeyDown={onKeyDown}
       />
+      {live.warning ? <LiveCellMark id={`${fieldId}-aviso`} warning={live.warning} /> : null}
       {choosing ? (
         <ul
           role="listbox"
@@ -365,11 +374,14 @@ export function StatisticalDataTable(props: {
                     ariaLabel={`${props.priceLabel}, comparable ${comparable.reference}`}
                     disabled={readOnly}
                     numeric
-                    value={comparable.price === null ? "" : String(comparable.price)}
+                    value={comparable.priceFormula ?? (comparable.price === null ? "" : String(comparable.price))}
                     display={comparable.price === null ? "" : comparable.price.toLocaleString("es-MX", { maximumFractionDigits: 2 })}
                     onCommit={(text) => {
                       const price = parseDecimal(text);
-                      props.onComparable(comparable.id, (current) => ({ ...current, price: price !== null && price > 0 ? price : null }));
+                      const kept = price !== null && price > 0 ? price : null;
+                      // A price typed as a formula keeps it, so it reads back and follows its references.
+                      const priceFormula = kept !== null ? formulaOfText(text) : null;
+                      props.onComparable(comparable.id, (current) => ({ ...current, price: kept, priceFormula }));
                     }}
                   />
                 </td>

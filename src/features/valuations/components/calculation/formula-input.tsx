@@ -40,6 +40,9 @@ export function LiveFormulaOwnerProvider({ owner, children }: { owner: LiveFormu
   return <LiveFormulaOwnerContext value={owner}>{children}</LiveFormulaOwnerContext>;
 }
 
+/** The calculation the field being rendered belongs to (a cell of a capture table takes it as the panel's fields do). */
+export const useLiveFormulaOwner = () => useContext(LiveFormulaOwnerContext);
+
 /** Why a formula left in a field does not compute. */
 const UNREAD_FORMULA_MESSAGE = "Esta fórmula no se pudo calcular: corrígela o bórrala";
 

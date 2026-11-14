@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { FORMULA_MAX_LENGTH } from "./free-formula";
 import { BUILTIN_CHARACTERISTICS, COMPARABLE_TYPES, CUSTOM_CHARACTERISTIC_KEY } from "./market-types";
 import {
   GOAL_EXTRA_TABLES,
@@ -19,13 +20,17 @@ const fieldKey = z.string().refine(
   (key) => key !== "price" && key !== "notes" && ((BUILTIN_CHARACTERISTICS as readonly string[]).includes(key) || CUSTOM_CHARACTERISTIC_KEY.test(key)),
   "Característica inválida.",
 );
-const values = z.record(fieldKey, z.string().trim().max(120))
+/** A value as written: a text or a number up to 120 characters, a formula (with its live references) up to the formulas' length. */
+const written = z.string().trim().max(FORMULA_MAX_LENGTH).refine((value) => value.startsWith("=") || value.length <= 120, "Un dato lleva hasta 120 caracteres.");
+const formula = z.string().trim().min(2).max(FORMULA_MAX_LENGTH).startsWith("=", "Una fórmula empieza con «=».").nullable().optional();
+const values = z.record(fieldKey, written)
   .transform((record) => Object.fromEntries(Object.entries(record).filter(([, value]) => value)));
 const amount = z.number().finite().positive().max(1e12).nullable();
 
 const scaleSchema = z.array(z.object({
   label: z.string().trim().min(1, "Cada nivel de la escala necesita su nombre.").max(80),
   value: z.number().finite().min(-1e6).max(1e6),
+  formula,
 }))
   .max(MAX_SCALE_LEVELS, `Una escala lleva hasta ${MAX_SCALE_LEVELS} niveles.`)
   .refine((levels) => new Set(levels.map((level) => normalizedLevel(level.label))).size === levels.length, "Cada nivel de la escala va una sola vez (sin importar mayúsculas ni espacios).")
@@ -52,6 +57,7 @@ export const statisticalInputSchema = z.object({
       key: fieldKey,
       coding: z.enum(STATISTICAL_CODINGS),
       base: z.number().finite().min(-1e9).max(1e9).nullable().optional(),
+      baseFormula: formula,
       scaleMode: z.enum(SCALE_MODES).nullable().optional(),
       scale: scaleSchema,
     }))
@@ -70,6 +76,7 @@ export const statisticalInputSchema = z.object({
     id: z.string().trim().min(1).max(80),
     reference: z.number().int().min(1).max(MAX_STATISTICAL_COMPARABLES),
     price: amount,
+    priceFormula: formula,
     values,
     excluded: z.boolean().optional(),
     marketComparableId: z.string().max(80).nullable().optional(),

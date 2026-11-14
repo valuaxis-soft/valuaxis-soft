@@ -10,10 +10,14 @@ import test from "node:test";
 
 import { formulaOfText, reconcileFormulas } from "../src/features/valuations/calculation/captured-formulas";
 import { parseDecimal } from "../src/features/valuations/calculation/free-formula";
+import { comparableFormulaValues, type ComparableDto } from "../src/features/valuations/calculation/market-types";
+import type { StatisticalComparableDto, StatisticalSettingsDto } from "../src/features/valuations/calculation/statistical-types";
 import type { AppSection, Block, Concept, TableContent } from "../src/features/valuations/model";
 import { buildFormulaIndex } from "../src/features/valuations/services/formula-references";
 import {
   downstreamOf,
+  followComparableFormulas,
+  followStatisticalFormulas,
   formulaWithLastValues,
   hasLiveReferences,
   liveFormulaText,
@@ -212,4 +216,86 @@ test("a reference without a number is refused when typed, with the reason", () =
   const result = liveFormulaText("=[Colonia]*2", buildFormulaIndex(sections));
   assert.equal(result.ok, false);
   assert.equal(liveFormulaText("=[No existe]*2", buildFormulaIndex(sections)).ok, false);
+});
+
+/* ------------------------------------------------------------------ */
+/*  The cells of the capture tables and the comparable's card          */
+/* ------------------------------------------------------------------ */
+
+type CardComparable = Pick<ComparableDto, "factors" | "formulas" | "area" | "price" | "frontage" | "depth">;
+
+const comparable = (formulas: Record<string, string>): CardComparable => ({
+  area: 40, price: 1_000_000, frontage: 10, depth: null,
+  factors: [
+    { type: "NEGOCIACION", value: 0.9 / 1.05, subjectRating: null, comparableRating: null, justification: "Oferta" },
+    { type: "UBICACION", value: 1.2, subjectRating: 1.2, comparableRating: 1, justification: null },
+  ],
+  formulas,
+});
+
+test("a comparable's card and homologation cells follow the concepts they read; numbers of before stay", () => {
+  const formulas = {
+    area: tagged("=[Superficie total de terreno]*2"),
+    "factors.UBICACION": tagged("=[Superficie total de terreno]/20"),
+    "factors.NEGOCIACION": "=0.9/1.05",
+  };
+  // Nothing changed: nothing to save.
+  assert.equal(followComparableFormulas(comparable(formulas), buildFormulaIndex(valuation()), "MERCADO:TERRENO_VENTA"), null);
+  // The concept goes from 20 to 30: the area 60, the location factor 1.5, the negotiation as it was.
+  const next = followComparableFormulas(comparable(formulas), buildFormulaIndex(valuation({ area: "30" })), "MERCADO:TERRENO_VENTA");
+  assert.ok(next);
+  assert.equal(next.area, 60);
+  assert.equal(next.formulas?.area, "={c:c-superficie|30}*2");
+  assert.deepEqual(next.factors.find((factor) => factor.type === "UBICACION"), { type: "UBICACION", value: 1.5, subjectRating: null, comparableRating: null, justification: null });
+  assert.equal(next.factors.find((factor) => factor.type === "NEGOCIACION")?.value, 0.9 / 1.05);
+  assert.equal(next.formulas?.["factors.NEGOCIACION"], "=0.9/1.05");
+  // The server's check of the comparable takes the new formulas with the new values.
+  const checked = reconcileFormulas({ next: comparableFormulaValues(next as ComparableDto), sent: next.formulas, previous: {}, previousFormulas: {} });
+  assert.equal(checked.ok, true);
+});
+
+test("a comparable whose reference was deleted or is circular keeps its last values", () => {
+  const formulas = { "factors.UBICACION": tagged("=[Superficie total de terreno]/20"), price: tagged("=[Valor físico total]/2") };
+  // The concept is gone; the cost pages are produced with the land market: nothing follows.
+  assert.equal(followComparableFormulas(comparable(formulas), buildFormulaIndex(valuation({ withArea: false, costValue: "4" })), "MERCADO:TERRENO_VENTA"), null);
+  const resolved = resolveLiveFormula(formulas.price, buildFormulaIndex(valuation({ costValue: "4" })), "MERCADO:TERRENO_VENTA");
+  assert.match(liveFormulaWarning(resolved.problems) ?? "", /Referencia circular/);
+  // The buildings market does not feed the cost approach: its comparable follows the cost pages.
+  assert.equal(followComparableFormulas(comparable(formulas), buildFormulaIndex(valuation({ costValue: "4" })), "MERCADO:INMUEBLE_VENTA")?.price, 2);
+});
+
+test("the alternative methods' cells follow: values, prices, bases and ratings", () => {
+  const index = buildFormulaIndex(valuation({ area: "30" }));
+  const calculation: { settings: Pick<StatisticalSettingsDto, "subject" | "variables">; comparables: Array<Pick<StatisticalComparableDto, "price" | "priceFormula" | "values">> } = {
+    settings: {
+      subject: { area: tagged("=[Superficie total de terreno]"), age: "12" },
+      variables: [
+        { key: "age", coding: "CONTRARY", base: 20, baseFormula: tagged("=[Superficie total de terreno]") },
+        { key: "custom:zona", coding: "SCALE", scaleMode: "FREE", scale: [{ label: "Buena", value: 20, formula: tagged("=[Superficie total de terreno]") }, { label: "Mala", value: 1 }] },
+      ],
+    },
+    comparables: [
+      { price: 2000, priceFormula: tagged("=[Superficie total de terreno]*100"), values: { area: "=20*2", age: tagged("=[Superficie total de terreno]/2") } },
+      { price: 900, values: { area: "45" } },
+    ],
+  };
+  const next = followStatisticalFormulas(calculation, index, "ESTADISTICO:TERRENO_VENTA");
+  assert.ok(next);
+  assert.equal(parseDecimal(next.settings.subject.area), 30);
+  assert.equal(next.settings.subject.age, "12");
+  assert.equal(next.settings.variables[0].base, 30);
+  assert.equal(next.settings.variables[1].scale?.[0].value, 30);
+  assert.deepEqual(next.settings.variables[1].scale?.[1], { label: "Mala", value: 1 });
+  assert.equal(next.comparables[0].price, 3000);
+  assert.equal(next.comparables[0].values.area, "=20*2", "a formula with numbers stays as typed");
+  assert.equal(parseDecimal(next.comparables[0].values.age), 15);
+  assert.deepEqual(next.comparables[1], calculation.comparables[1]);
+  // The same document as when they were typed: nothing to save.
+  assert.equal(followStatisticalFormulas(calculation, buildFormulaIndex(valuation()), "ESTADISTICO:TERRENO_VENTA"), null);
+});
+
+test("a stored live formula copied along a row reads as the appraiser writes it", () => {
+  const index = buildFormulaIndex(valuation());
+  const stored = tagged("=[Superficie total de terreno]*2");
+  assert.deepEqual(liveFormulaText(stored, index), { ok: true, text: stored });
 });

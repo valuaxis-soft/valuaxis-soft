@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { LiveFormulaOwnerProvider } from "./formula-input";
 import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
 import {
   COMPARABLE_TYPE_LABELS,
@@ -156,7 +157,12 @@ export function StatisticalMethodsPanel(props: {
         )) : null}
         {!visible.length && props.readOnly ? <span className="text-xs text-muted-foreground">Sin métodos alternativos capturados.</span> : null}
       </div>
-      {type ? <StatisticalTypePanel key={type} {...props} type={type} onRemoved={removed} onRestored={restored} /> : null}
+      {/* Its cells belong to this apartado: what is circular for them depends on it (live-formulas.ts). */}
+      {type ? (
+        <LiveFormulaOwnerProvider owner={`ESTADISTICO:${type}`}>
+          <StatisticalTypePanel key={type} {...props} type={type} onRemoved={removed} onRestored={restored} />
+        </LiveFormulaOwnerProvider>
+      ) : null}
     </section>
   );
 }

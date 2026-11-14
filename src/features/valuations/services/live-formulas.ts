@@ -24,7 +24,8 @@
  */
 import { isConclusionCalculatedConcept } from "../calculation/conclusion-document";
 import { LIVE_REFERENCE_TAG, parseDecimal, withLastReadValues } from "../calculation/free-formula";
-import { COMPARABLE_TYPES, type ComparableType } from "../calculation/market-types";
+import { COMPARABLE_TYPES, factorKey, NUMERIC_CHARACTERISTICS, type ComparableDto, type ComparableType } from "../calculation/market-types";
+import type { StatisticalComparableDto, StatisticalSettingsDto } from "../calculation/statistical-types";
 import { getCanonicalSectionKey } from "../sections/section-registry";
 import { capturedFormulaText, cellNumber, formulaNumber, spanCells } from "./formula-reference-values";
 import { cellReferenceText, compileFormula, conceptReferenceText, formulaToText, MISSING_REFERENCE_TEXT, type FormulaIndex } from "./formula-references";
@@ -264,7 +265,9 @@ export type LiveFormulaText = { ok: true; text: string } | { ok: false; message:
  * "={c:…|1250}*2"); without them, as before (capturedFormulaText): plain
  * arithmetic as typed. A reference without a number answers with the reason.
  */
-export function liveFormulaText(text: string, index: FormulaIndex): LiveFormulaText {
+export function liveFormulaText(typed: string, index: FormulaIndex): LiveFormulaText {
+  // A stored live formula pasted or copied along a row reads as the appraiser writes it.
+  const text = hasLiveReferences(typed) ? readableFormulaText(typed, index) : typed;
   const compiled = compileFormula(text, { index });
   if (!compiled.ok) return capturedFormulaText(text, index);
   let missing: string | null = null;
@@ -428,4 +431,90 @@ export function withValueAtPath<T>(source: T, path: string, value: number): T {
   if (current === null || typeof current !== "object" || !Object.hasOwn(current, last)) return source;
   (current as Record<string, unknown>)[last] = value;
   return copy;
+}
+
+/* ================================================================== */
+/*  THE CELLS OF THE CAPTURE TABLES                                    */
+/* ================================================================== */
+
+/** A formula of a cell read again: the formula and its value when the value changed; null otherwise. */
+function followedText(text: string | null | undefined, index: FormulaIndex, owner: LiveFormulaOwners): { text: string; value: number } | null {
+  if (!text || !hasLiveReferences(text)) return null;
+  const resolved = resolveLiveFormula(text.trim(), index, owner);
+  if (!resolved.changed) return null;
+  const value = parseDecimal(resolved.text);
+  return value === null ? null : { text: resolved.text, value };
+}
+
+type FollowedComparable = Pick<ComparableDto, "factors" | "formulas">;
+
+/**
+ * A comparable of a market with the live formulas of its card, of its
+ * characteristics and of its homologation factors read again (the paths of
+ * `comparable.formulas`: "area", "price", "frontage", "depth", "frontCount",
+ * "factors.<key>"); null when no value changed. A factor that follows its
+ * formula drops the ratings it was typed with, as typing it does.
+ */
+export function followComparableFormulas<T extends FollowedComparable>(comparable: T, index: FormulaIndex, owner: LiveFormulaOwners): T | null {
+  let next = comparable;
+  let changed = false;
+  for (const [path, formula] of Object.entries(comparable.formulas ?? {})) {
+    const followed = followedText(formula, index, owner);
+    if (!followed) continue;
+    if (path.startsWith("factors.")) {
+      const key = path.slice("factors.".length);
+      if (!next.factors.some((factor) => factorKey(factor) === key)) continue;
+      next = {
+        ...next,
+        factors: next.factors.map((factor) => (factorKey(factor) === key ? { ...factor, value: followed.value, subjectRating: null, comparableRating: null } : factor)),
+      };
+    } else if (NUMERIC_CHARACTERISTICS.has(path)) {
+      next = { ...next, [path]: followed.value };
+    } else {
+      continue;
+    }
+    next = { ...next, formulas: { ...next.formulas, [path]: followed.text } };
+    changed = true;
+  }
+  return changed ? next : null;
+}
+
+type FollowedStatistical = {
+  settings: Pick<StatisticalSettingsDto, "subject" | "variables">;
+  comparables: Array<Pick<StatisticalComparableDto, "price" | "priceFormula" | "values">>;
+};
+
+/**
+ * The apartado of the alternative methods with its live formulas read again:
+ * the subject's and the comparables' values (kept as typed: the formula is
+ * the value), the prices, the bases of the contrary criteria and the ratings
+ * of the scales; null when no value changed.
+ */
+export function followStatisticalFormulas<T extends FollowedStatistical>(calculation: T, index: FormulaIndex, owner: LiveFormulaOwners): T | null {
+  let changed = false;
+  const values = (record: Record<string, string>) => Object.fromEntries(Object.entries(record).map(([key, value]) => {
+    const followed = followedText(value, index, owner);
+    if (!followed) return [key, value];
+    changed = true;
+    return [key, followed.text];
+  }));
+  const subject = values(calculation.settings.subject);
+  const comparables = calculation.comparables.map((comparable) => {
+    const price = followedText(comparable.priceFormula, index, owner);
+    if (price) changed = true;
+    return { ...comparable, values: values(comparable.values), ...(price ? { price: price.value, priceFormula: price.text } : {}) };
+  });
+  const variables = calculation.settings.variables.map((variable) => {
+    const base = followedText(variable.baseFormula, index, owner);
+    if (base) changed = true;
+    const scale = variable.scale?.map((level) => {
+      const rating = followedText(level.formula, index, owner);
+      if (!rating) return level;
+      changed = true;
+      return { ...level, value: rating.value, formula: rating.text };
+    });
+    return { ...variable, ...(base ? { base: base.value, baseFormula: base.text } : {}), ...(scale ? { scale } : {}) };
+  });
+  if (!changed) return null;
+  return { ...calculation, settings: { ...calculation.settings, subject, variables }, comparables };
 }

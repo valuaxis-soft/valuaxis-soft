@@ -59,7 +59,8 @@ export const DEFAULT_CONTRARY_BASE = 60;
 export const SCALE_MODES = ["ORDERED", "FREE"] as const;
 export type ScaleMode = (typeof SCALE_MODES)[number];
 
-export type ScaleLevel = { label: string; value: number };
+/** `formula`: the rating typed as a formula, with its live references (services/live-formulas.ts). */
+export type ScaleLevel = { label: string; value: number; formula?: string | null };
 
 export type StatisticalVariableDto = {
   /** Key of a field of the capture ("area", "custom:…"). */
@@ -67,6 +68,8 @@ export type StatisticalVariableDto = {
   coding: StatisticalCoding;
   /** Base of a contrary criterion; missing, 60. */
   base?: number | null;
+  /** The base typed as a formula (live references kept as tags, services/live-formulas.ts). */
+  baseFormula?: string | null;
   scaleMode?: ScaleMode | null;
   /** The levels in their order; with ORDERED their value is their place. */
   scale?: ScaleLevel[] | null;
@@ -122,7 +125,9 @@ export type StatisticalComparableDto = {
   /** 1, 2, 3… in the order of capture. */
   reference: number;
   price: number | null;
-  /** The value of each field as written, by key ("area" included). */
+  /** The price typed as a formula, with its live references (services/live-formulas.ts); the price stays the number. */
+  priceFormula?: string | null;
+  /** The value of each field as written, by key ("area" included); a formula is kept as typed. */
   values: Record<string, string>;
   /** Left out of both models by the appraiser. */
   excluded?: boolean;

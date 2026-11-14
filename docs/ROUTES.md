@@ -63,7 +63,7 @@ En toda el área privada, "Buscar o ir a…" (Ctrl/⌘ K) abre las páginas perm
 | GET, POST | `/api/organizacion/invitaciones` | Invitaciones pendientes para el correo del usuario; `POST` acepta por `token` o `id` y abre el equipo |
 | GET, POST | `/api/avaluos` | Lista (máximo 200, los más recientes) y crea avalúos |
 | GET, PUT, DELETE | `/api/avaluos/[id]` | Detalle, metadatos (tipo de bien y de avalúo, nombre libre de «Otro…») y borrado lógico. La primera edición pasa el avalúo de «Nuevo» a «En edición» con su historial |
-| PUT | `/api/avaluos/[id]/full` | Guarda el avalúo completo. Después vuelve a leer las fórmulas vivas de los paneles contra el documento guardado y responde en `liveFormulas` los cálculos que guardó otra vez (`live-formulas.service.ts`) |
+| PUT | `/api/avaluos/[id]/full` | Guarda el avalúo completo. Después vuelve a leer las fórmulas vivas de los paneles, de las tablas de captura (homologación, características, métodos alternativos) y de la ficha de cada comparable contra el documento guardado y responde en `liveFormulas` los cálculos que guardó otra vez (`live-formulas.service.ts`) |
 | POST | `/api/avaluos/[id]/conclude` | Concluye (botón "Concluir" en el editor) |
 | POST | `/api/avaluos/[id]/reopen` | Reabre con motivo y aceptación (botón "Reabrir" en el editor) |
 | POST | `/api/avaluos/[id]/duplicar` | Un avalúo nuevo del despacho (folio propio, «Nuevo», `IdAvaluoOrigen`) con copia del documento, tablas, carátula, comparables y propiedad del original (`valuation-duplicate.service.ts`). `AVALUO_CREAR` |
