@@ -1061,6 +1061,8 @@ function SortableBlockEditor(props: {
                     onDuplicate: (conceptId) => props.onDuplicateConcepts(section.id, block.id, [conceptId], subBlock.id),
                     moveSource: { sectionId: section.id, blockId: block.id, apartadoId: subBlock.id },
                     onUpdateEverywhere: props.onUpdateConceptEverywhere,
+                    // A subbloque links its concepts like its block: «Vincular con…», the suggestion, the relation buttons.
+                    onChangeRelation: props.onChangeConceptRelation,
                     onUnlink: props.onUnlinkConcept,
                     onColumnPresentationChange: (columnId, presentation) => {
                       const layout = resolveContentLayout(subBlock);

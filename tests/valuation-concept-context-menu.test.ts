@@ -12,7 +12,9 @@ import {
   EMPTY_VALUE_HINT,
   GENERATED_CONCEPT_DELETE_HINT,
   GENERATED_CONCEPT_HINT,
+  NO_LINK_HINT,
   NO_TEXT_MARKS_HINT,
+  NOT_LINKED_HINT,
   READ_ONLY_CONCEPT_HINT,
   SOURCE_FORMAT_HINT,
   conceptContextMenu,
@@ -44,6 +46,7 @@ const textConcept: ConceptMenuTarget = {
   canDuplicate: true,
   canMoveTo: true,
   canSelect: true,
+  canLink: true,
   canDelete: true,
 };
 
@@ -55,14 +58,25 @@ test("a concept's right-click menu offers what its ⋮ menu and the selection do
     ["Negrita (N)", "Cursiva (K)", "Subrayado (S)"],
     ["Formato del valor", "Tipo de dato", "Formato de fecha", "Renglón", "Espacio antes", "Espacio después", "Unir líneas"],
     ["Subir concepto", "Bajar concepto", "Duplicar", "Mover a…", "Seleccionar varios…"],
+    ["Vincular con…", "Desvincular"],
     ["Eliminar concepto…"],
   ]);
   const enabled = groups.flat().filter((item) => !item.disabled).map((item) => item.action);
-  assert.deepEqual(enabled, ["bold", "italic", "underline", "value-format", "data-type", "row-style", "spacing-before", "spacing-after", "duplicate", "move-to", "select", "delete"]);
+  assert.deepEqual(enabled, ["bold", "italic", "underline", "value-format", "data-type", "row-style", "spacing-before", "spacing-after", "duplicate", "move-to", "select", "link-to", "delete"]);
   assert.equal(entry(groups, "delete").destructive, true);
   // What does not apply stays, disabled, with the reason.
   assert.equal(entry(groups, "move-up").hint, DRAG_TO_ORDER_HINT);
   assert.equal(entry(groups, "date-format").disabled, true);
+});
+
+test("«Vincular con…» and «Desvincular» (video 5.6, 17:22): unlinking only a linked concept; neither where linking is not offered", () => {
+  assert.equal(entry(conceptContextMenu({ ...textConcept, linked: true }), "unlink").disabled, undefined);
+  assert.equal(entry(conceptContextMenu(textConcept), "unlink").hint, NOT_LINKED_HINT);
+  const noLink = conceptContextMenu({ ...textConcept, canLink: false, linked: true });
+  assert.equal(entry(noLink, "link-to").hint, NO_LINK_HINT);
+  assert.equal(entry(noLink, "unlink").hint, NO_LINK_HINT);
+  const generated = conceptContextMenu({ ...textConcept, generated: true });
+  assert.equal(entry(generated, "link-to").hint, GENERATED_CONCEPT_HINT);
 });
 
 test("the concept menu follows the concept: its type, its value, a linked format, its order", () => {
