@@ -52,7 +52,7 @@ export function GeneratedTableEditor(props: {
 
   return (
     <CalculatedTableProvider value={lock}>
-      <div data-generated-table={source.id}>
+      <div className="min-w-0" data-generated-table={source.id}>
         <TableEditorItem
           table={props.table}
           readOnly={props.readOnly}

@@ -1241,7 +1241,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
       </p>
       {block.enabled ? <GeneratedConcepts block={block} readOnly={readOnly} onChange={onUpdateBlock} /> : null}
       {block.enabled ? tables.map(({ table, apartadoId, apartadoTitle }, index) => (
-        <div key={table.id} className="grid gap-1.5">
+        <div key={table.id} className="grid min-w-0 gap-1.5">
           {/* The apartado's title over its first table, as the dictamen prints it. */}
           {apartadoTitle && tables[index - 1]?.apartadoId !== apartadoId ? <h4 className="text-xs font-semibold uppercase text-muted-foreground">{apartadoTitle}</h4> : null}
           <GeneratedTableEditor
