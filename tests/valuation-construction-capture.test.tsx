@@ -14,6 +14,7 @@ import {
   asCaptureTable,
   captureColumnIds,
   computedColumnIds,
+  findCaptureTable,
   mergeCapture,
   normalizeCapture,
   readCapture,
@@ -21,13 +22,14 @@ import {
   syncedFromTable,
   withConstructionTables,
   withNewCaptureRow,
+  withTemplateCaptureTable,
   type SyncedItem,
   type TypeItem,
 } from "../src/features/valuations/calculation/construction-capture";
 import { DEFAULT_LAND, emptyInstallation, toCostEngineInput, type CostCalculationDto } from "../src/features/valuations/calculation/cost-types";
 import { construccionFlowItems } from "../src/features/valuations/components/construccion-preview";
 import { calculatedCellReasons, calculatedColumnReasons, calculatedRowReasons, type CalculatedTableLock } from "../src/features/valuations/components/editor/calculated-table-context";
-import { ConstructionCaptureProvider, EditorTable, type ConstructionCaptureContextValue } from "../src/features/valuations/components/editor/construction-capture-table";
+import { ConstructionCaptureAccess, ConstructionCaptureProvider, EditorTable, type ConstructionCaptureContextValue } from "../src/features/valuations/components/editor/construction-capture-table";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeCostApproach } from "../src/features/valuations/engine/costs";
 import type { AppSection, TableContent } from "../src/features/valuations/model";
@@ -346,4 +348,21 @@ test("the dictamen prints the capture table as the editor shows it: headers rena
   const header = html.match(/<thead[\s\S]*?<\/thead>/g)?.[0] ?? "";
   assert.doesNotMatch(header, /Descripción/);
   assert.doesNotMatch(html, /<caption[^>]*>TIPOS DE CONSTRUCCIONES/);
+});
+
+/* ── 7. A section without its capture table offers to put it back ─────────────────── */
+
+test("a construction section without a capture table offers to put it back, in the template's place, and nothing else", () => {
+  const section = templateSection();
+  const withoutInstallations: AppSection = { ...section, blocks: section.blocks.map((block) => (block.id === "instalaciones_especiales" ? { ...block, apartados: [] } : block)) };
+  const html = renderToStaticMarkup(createElement(ConstructionCaptureAccess, { section: withoutInstallations, readOnly: false, onAdd: () => {} }));
+  assert.match(html, /no tiene la tabla de instalaciones especiales/);
+  assert.match(html, /Tabla de instalaciones especiales/);
+  assert.doesNotMatch(html, /Tabla de tipos de construcción/);
+  assert.equal(renderToStaticMarkup(createElement(ConstructionCaptureAccess, { section, readOnly: false, onAdd: () => {} })), "", "with both tables, nothing");
+
+  const restored = withTemplateCaptureTable(withoutInstallations, "installations");
+  assert.ok(findCaptureTable(restored, "installations"));
+  assert.equal(restored.blocks.find((block) => block.id === "instalaciones_especiales")?.apartados[0].id, "instalaciones_especiales_detalle");
+  assert.equal(withTemplateCaptureTable(restored, "installations"), restored, "never a second one");
 });

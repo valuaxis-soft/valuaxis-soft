@@ -24,7 +24,7 @@ import type { AppSection, TableContent } from "../../src/features/valuations/mod
 import { getValuationByPublicId } from "../../src/features/valuations/repositories/valuation.repository";
 import { construccionSection } from "../../src/features/valuations/sections/construccion";
 import { ensureTableV2 } from "../../src/features/valuations/services/table";
-import { saveValuationSections } from "../../src/features/valuations/services/valuation-workflow.service";
+import { initializeWorkingVersionStructure, saveValuationSections } from "../../src/features/valuations/services/valuation-workflow.service";
 import { createValuationFixture, prisma } from "./support";
 
 after(() => prisma.$disconnect());
@@ -113,6 +113,18 @@ test("an old valuation opens with its types and installations as the rows of the
   assert.deepEqual(savedTypes.schema?.capture, { kind: "types" });
   assert.deepEqual(readCapture(savedTypes as unknown as TableContent, "types", typesSynced).map(({ item }) => item.ref), ["T-1", "T-2"]);
   assert.equal(ensureTableV2(tableIn(saved, "instalaciones_especiales")).schema?.capture?.kind, "installations");
+});
+
+test("a new valuation's construction section comes with its subbloques and both capture tables", async () => {
+  const fixture = await createValuationFixture();
+  const avaluo = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  await initializeWorkingVersionStructure({ avaluoId: avaluo.IdAvaluo, userId: fixture.user.id });
+  const detail = await getValuationByPublicId(fixture.publicId, fixture.organizationId);
+  const section = detail?.sections.find((item) => item.id === "construccion") as unknown as AppSection | undefined;
+  assert.ok(section);
+  // Before, the template's subbloques (kept as `apartados`) were lost when the valuation was created.
+  assert.deepEqual(readCapture(tableIn(section, "construccion_tipos"), "types", []), [], "the types table, with its empty rows");
+  assert.equal(ensureTableV2(tableIn(section, "instalaciones_especiales")).columns.length, 10);
 });
 
 test("a type renamed in the table keeps its row and its cost columns; one taken out takes its cost row", async () => {

@@ -18,6 +18,7 @@
  * never overwritten by an older one.
  */
 import type { AppSection, TableContent } from "../model";
+import { construccionSection } from "../sections/construccion";
 import {
   ensureTableV2,
   getDisplayColumns,
@@ -645,6 +646,28 @@ export function withCaptureTables(section: AppSection, change: (table: TableCont
     return tables === block.tables && apartados.every((apartado, index) => apartado === block.apartados[index]) ? block : { ...block, tables, apartados };
   });
   return changed ? { ...section, blocks } : section;
+}
+
+/**
+ * The section with the template's capture table of a kind, in its subbloque,
+ * for a construction section that has none (its table was deleted, or the
+ * valuation was created without it): it goes in the template's block if the
+ * section has it, else in the first block (types) or the last one
+ * (installations). The next reading of the cost approach fills it.
+ */
+export function withTemplateCaptureTable(section: AppSection, kind: CaptureKind): AppSection {
+  if (findCaptureTable(section, kind)) return section;
+  const templateBlock = construccionSection.blocks.find((block) => block.apartados.some((apartado) => apartado.tables.some((table) => captureKindOf(table) === kind)));
+  const templateApartado = templateBlock?.apartados.find((apartado) => apartado.tables.some((table) => captureKindOf(table) === kind));
+  if (!templateBlock || !templateApartado) return section;
+  if (!section.blocks.length) return { ...section, blocks: [structuredClone({ ...templateBlock, apartados: [templateApartado] })] };
+  const index = Math.max(0, section.blocks.findIndex((block) => block.id === templateBlock.id));
+  const at = section.blocks.some((block) => block.id === templateBlock.id) ? index : kind === "types" ? 0 : section.blocks.length - 1;
+  const taken = new Set(section.blocks.flatMap((block) => block.apartados.map((apartado) => apartado.id)));
+  let id = templateApartado.id;
+  while (taken.has(id)) id = `${id}-captura`;
+  const apartado = { ...structuredClone(templateApartado), id };
+  return { ...section, blocks: section.blocks.map((block, position) => (position === at ? { ...block, apartados: [...block.apartados, apartado] } : block)) };
 }
 
 /** The capture table of a kind in the section, if it has one. */

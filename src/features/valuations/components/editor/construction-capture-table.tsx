@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   captureColumnIds,
   computedColumnIds,
+  findCaptureTable,
   isCaptureUnlinked,
   normalizeCapture,
   readCapture,
@@ -14,7 +15,7 @@ import {
   type CaptureKind,
 } from "@/features/valuations/calculation/construction-capture";
 import { constructionTypesLinkedToCosts, costColumnsOf, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
-import type { TableContent } from "@/features/valuations/model";
+import type { AppSection, TableContent } from "@/features/valuations/model";
 import { ensureTableV2 } from "@/features/valuations/services/table";
 import { CalculationLinkBadge } from "../calculation/calculation-link-badge";
 import { CalculatedTableProvider, type CalculatedTableLock } from "./calculated-table-context";
@@ -59,6 +60,37 @@ const COST_LINK_LABELS = {
   title: { linked: "Vinculado con el enfoque de costos", unlinked: "Desvinculado del enfoque de costos" },
   relink: "Volver a sincronizar",
 };
+
+/**
+ * Above a construction section that has no capture table (its subbloque was
+ * deleted, or the valuation was created without it): the way to put it back,
+ * since the types and the installations are captured there. Nothing is
+ * captured here.
+ */
+export function ConstructionCaptureAccess({ section, readOnly, onAdd }: {
+  section: AppSection;
+  readOnly: boolean;
+  onAdd: (kind: CaptureKind) => void;
+}) {
+  const missing = (["types", "installations"] as const).filter((kind) => !findCaptureTable(section, kind));
+  if (!missing.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground" data-capture-access="">
+      <p className="min-w-0 flex-1">
+        {missing.length === 2
+          ? "Esta sección no tiene la tabla de tipos de construcción ni la de instalaciones especiales: son la captura del enfoque de costos."
+          : missing[0] === "types"
+            ? "Esta sección no tiene la tabla de tipos de construcción: es la captura de los tipos del enfoque de costos."
+            : "Esta sección no tiene la tabla de instalaciones especiales: es la captura de las instalaciones del enfoque de costos."}
+      </p>
+      {!readOnly ? missing.map((kind) => (
+        <Button key={kind} type="button" size="sm" variant="outline" onClick={() => onAdd(kind)}>
+          <Plus data-icon="inline-start" /> {kind === "types" ? "Tabla de tipos de construcción" : "Tabla de instalaciones especiales"}
+        </Button>
+      )) : null}
+    </div>
+  );
+}
 
 /**
  * A table of the editor: a capture table of the construction section (video
