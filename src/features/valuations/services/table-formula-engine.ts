@@ -657,9 +657,11 @@ export function getCellDisplayValue(
     // A factor written as a plain number shows two decimals: "0.9" reads "0.90". What it is worth does not change.
     const written = factor ? readSourceNumber(cell.value) : null;
     if (written?.kind === "number" && !written.money && !cell.value.includes("%")) return formatFactor(written.value, presentation, decimals);
-    // A table the calculation writes, given decimals in "Formato de la tabla": its figures print with them.
-    if (decimals !== undefined && table.schema?.generated) {
-      const figure = figureWithDecimals(cell.value, decimals, presentation);
+    // A table the calculation writes, given decimals in "Formato de la tabla" or on a selection of
+    // its cells (video 5.7): its figures print with them, the cell's own first.
+    const figureDecimals = table.schema?.generated ? table.schema.cellStyles?.[formulaCellKey(rowId, columnId)]?.decimals ?? decimals : undefined;
+    if (figureDecimals !== undefined) {
+      const figure = figureWithDecimals(cell.value, figureDecimals, presentation);
       if (figure !== null) return figure;
     }
     return presentation.thousandsSeparator ? cell.value : withoutThousandsSeparator(cell.value);

@@ -110,6 +110,42 @@ export function useDeleteConcepts(): DeleteConcepts {
   };
 }
 
+/**
+ * What is written in a selection of table cells, cleared with Supr (video
+ * 5.7), under the same rule as the concepts: up to three cells with something
+ * written go at once, with a notice that offers "Deshacer"; more ask first.
+ * `undo` takes it back where the editor's «Deshacer» does not reach (the
+ * capture tables of the panels, which save on their own).
+ */
+export function useClearCells(): (request: { count: number; onClear: () => void; undo?: () => void }) => void {
+  const context = useContext(DeleteConfirmContext);
+  return ({ count, onClear, undo }) => {
+    if (count < 1) return;
+    const notice = () => {
+      const action = undo ?? context?.undo;
+      toast(count === 1 ? "Se borró el contenido de 1 celda" : `Se borró el contenido de ${count} celdas`, {
+        description: undo ? "Se puede deshacer con «Deshacer»." : "Se puede deshacer con «Deshacer» o Ctrl+Z (⌘Z en Mac).",
+        action: action ? { label: "Deshacer", onClick: action } : undefined,
+      });
+    };
+    if (conceptDeletionAsksFirst(count)) {
+      const confirm = context?.confirm ?? ((request: DeleteRequest) => request.onConfirm());
+      confirm({
+        title: `¿Borrar el contenido de ${count} celdas?`,
+        description: `Se borra lo escrito y sus fórmulas; el formato de las celdas se queda. ${undo ? "Puedes deshacerlo con «Deshacer» en el aviso." : UNDO_BEFORE_SAVE}`,
+        confirmLabel: "Borrar contenido",
+        onConfirm: () => {
+          onClear();
+          if (undo) notice();
+        },
+      });
+      return;
+    }
+    onClear();
+    notice();
+  };
+}
+
 export function DeleteConfirmProvider({ children, onUndo }: { children: ReactNode; /** The editor's "Deshacer", offered by the notice of a concept deleted without asking. */ onUndo?: () => void }) {
   const [request, setRequest] = useState<DeleteRequest | null>(null);
   return (

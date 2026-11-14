@@ -22,6 +22,7 @@ export type TableMenuAction =
   | "insert-row-above" | "insert-row-below" | "insert-column-left" | "insert-column-right" | "delete-row" | "delete-column"
   | "edit-formula" | "fill-column" | "fill-row" | "remove-formula"
   | "format" | "format-decimals" | "clear"
+  | "bold" | "italic" | "underline" | "align" | "clear-format"
   | "rename" | "move-left" | "move-right" | "column-width" | "sort-asc" | "sort-desc" | "hide-column" | "show-column" | "column-format" | "column-decimals"
   | "duplicate-row" | "move-row-up" | "move-row-down" | "hide-row" | "show-row"
   | "block-rename" | "block-copy" | "block-duplicate" | "block-move" | "block-hide" | "block-show" | "block-page-break" | "block-delete";
@@ -37,7 +38,7 @@ export type TableMenuItem = {
    * The item opens a submenu the component fills: the operations, or the
    * "Unidades de valor" and "Decimales" of a value, the same as a concept's.
    */
-  submenu?: "operations" | "units" | "decimals";
+  submenu?: "operations" | "units" | "decimals" | "align";
 };
 
 export type TableMenuGroup = TableMenuItem[];
@@ -48,6 +49,8 @@ export const GENERATED_STRUCTURE_HINT = "Las filas y columnas de esta tabla las 
 export const GENERATED_FORMULA_HINT = "Las cifras de esta tabla las escribe el cálculo; cámbialas en su panel.";
 /** Why the format items of a capture table are disabled, and where the printed table takes its format. */
 export const CAPTURE_FORMAT_HINT = "Esta tabla es de captura. Su formato al imprimir (título, ancho, espacio, sangría y decimales) se elige en «Formato de la tabla» de su bloque en el dictamen.";
+/** Why "Unidades de valor" is disabled in a table the calculation writes: its figures carry their unit. */
+export const GENERATED_UNITS_HINT = "Las cifras de esta tabla llevan la unidad que escribe el cálculo; aquí se eligen negrita, alineación y decimales.";
 /** Why a cell that is not an input cannot be edited. */
 export const COMPUTED_CELL_HINT = "Esta cifra la calcula el sistema; no se escribe.";
 /** Why a paste item is disabled. */
@@ -76,6 +79,11 @@ export type CellMenuTarget = {
   canInsertColumn: boolean;
   canDeleteColumn: boolean;
   canDeleteRow: boolean;
+  /**
+   * Cells selected with the one clicked (video 5.7); more than one, the
+   * items say so and act on all of them: copy, cut, paste, clear and format.
+   */
+  selected?: number;
 };
 
 export type ColumnMenuTarget = {
@@ -134,10 +142,14 @@ function cellMenu(kind: TableMenuKind, target: CellMenuTarget): TableMenuGroup[]
   const canFill = target.hasFormula || Boolean(target.hasValue);
   const fillCopies = target.hasFormula ? "fórmula" : "valor";
   const formatHint = kind === "editable" ? NO_FORMULA_HINT : kind === "capture" ? CAPTURE_FORMAT_HINT : GENERATED_FORMULA_HINT;
+  // A capture table does not print: its format is chosen where the dictamen prints it.
+  const style = (item: TableMenuItem) => disabledWhen(item, kind === "capture", CAPTURE_FORMAT_HINT);
+  const several = (target.selected ?? 0) > 1;
+  const onSelection = (label: string) => (several ? `${label} (${target.selected} celdas)` : label);
   return [
     [
-      typing({ action: "cut", label: "Cortar" }),
-      { action: "copy", label: "Copiar" },
+      typing({ action: "cut", label: onSelection("Cortar") }),
+      { action: "copy", label: onSelection("Copiar") },
       typing({ action: "paste", label: "Pegar" }, target.canPaste, NO_PASTE_HINT),
       typing({ action: "paste-values", label: "Pegar solo valores" }, target.canPaste, NO_PASTE_HINT),
     ],
@@ -159,9 +171,19 @@ function cellMenu(kind: TableMenuKind, target: CellMenuTarget): TableMenuGroup[]
     ],
     [
       // "Unidades de valor" and "Decimales", as in the concepts (video 5.7); right there on the value's right click.
-      disabledWhen({ action: "format", label: "Unidades de valor", submenu: "units" }, kind !== "editable", formatHint),
-      disabledWhen({ action: "format-decimals", label: "Decimales", submenu: "decimals" }, kind !== "editable", formatHint),
-      typing({ action: "clear", label: "Limpiar contenido" }),
+      disabledWhen({ action: "format", label: "Unidades de valor", submenu: "units" }, kind !== "editable", kind === "generated" ? GENERATED_UNITS_HINT : formatHint),
+      // The decimals of a figure the calculation writes are only how it prints: its value stays.
+      disabledWhen({ action: "format-decimals", label: "Decimales", submenu: "decimals" }, kind === "capture", formatHint),
+      // On several cells, Supr clears them too.
+      typing({ action: "clear", label: onSelection("Limpiar contenido") }),
+    ],
+    [
+      // Bold, italic, underline and alignment of the cell or of the cells selected with it (video 5.7).
+      style({ action: "bold", label: "Negrita" }),
+      style({ action: "italic", label: "Cursiva" }),
+      style({ action: "underline", label: "Subrayado" }),
+      style({ action: "align", label: "Alineación", submenu: "align" }),
+      style({ action: "clear-format", label: "Limpiar formato" }),
     ],
   ];
 }

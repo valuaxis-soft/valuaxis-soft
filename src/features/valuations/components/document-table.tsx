@@ -23,6 +23,7 @@ import {
   type TableV2,
 } from "../services/table";
 import { evaluateTableFormulas, getCellDisplayValue } from "../services/table-formula-engine";
+import { TITLE_STYLE_KEY, cellStyleCss, cellStyleKey, headerStyleKey, tableCellStyle } from "../services/table-cell-style";
 import type { DocumentTableFragment } from "../services/table-pagination";
 import { TABLE_HEADER_BAND, TABLE_HEADER_RULE, TABLE_TEXT_SIZE } from "./document-theme";
 import { useNumberPresentation } from "./number-presentation-context";
@@ -74,13 +75,15 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
   // White rules between the headers, as thick as the rule under the apartado titles (video 5.4).
   const cell = cn(TABLE_HEADER_RULE, "px-1.5 py-1 text-center align-middle text-wrap font-bold break-words");
   const lastOfRow = "last:border-r-0";
+  // Bold, italic, underline and alignment chosen on a selection of the headers.
+  const headerCss = (columnId: string) => cellStyleCss(tableCellStyle(tableV2, headerStyleKey(columnId)));
 
   if (!layout.hasGroups) {
     return (
       <thead className={TABLE_HEADER_BAND}>
         <tr>
           {columns.map((column) => (
-            <th className={cn(cell, lastOfRow)} key={column.id}>
+            <th className={cn(cell, lastOfRow)} style={headerCss(column.id)} key={column.id}>
               <HeaderText name={column.name} fixed={fixed} />
             </th>
           ))}
@@ -105,7 +108,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
             const column = columnMap.get(item.columnId);
             if (!column) return null;
             return (
-              <th rowSpan={item.rowSpan} className={cn(cell, lastOfRow)} key={item.columnId}>
+              <th rowSpan={item.rowSpan} className={cn(cell, lastOfRow)} style={headerCss(item.columnId)} key={item.columnId}>
                 <HeaderText name={column.name} fixed={fixed} />
               </th>
             );
@@ -126,7 +129,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
             const column = columnMap.get(colId);
             // The same size and weight as the headers above: a header group is one band.
             return (
-              <th className={cn(cell, groupEndsTable && lastOfRow)} key={colId}>
+              <th className={cn(cell, groupEndsTable && lastOfRow)} style={headerCss(colId)} key={colId}>
                 <HeaderText name={column?.name ?? ""} fixed={fixed} />
               </th>
             );
@@ -345,7 +348,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
 
   return (
     <figure>
-      <figcaption className="mb-1 text-[11px] font-bold uppercase text-[var(--caratula-blue)]">
+      <figcaption className="mb-1 text-[11px] font-bold uppercase text-[var(--caratula-blue)]" style={cellStyleCss(tableCellStyle(tableV2, TITLE_STYLE_KEY))}>
         {tableV2.title.trim() || EMPTY_VALUE}
       </figcaption>
       <SummaryBoxes tableV2={tableV2} position="top" />
@@ -363,7 +366,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
                 {columns.map((column) => {
                   const displayValue = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
                   return (
-                    <td className="border-r border-slate-300 px-1.5 py-1 align-top text-wrap break-words last:border-r-0" key={column.id}>
+                    <td className="border-r border-slate-300 px-1.5 py-1 align-top text-wrap break-words last:border-r-0" style={cellStyleCss(tableCellStyle(tableV2, cellStyleKey(row.id, column.id)))} key={column.id}>
                       {displayValue || EMPTY_VALUE}
                     </td>
                   );
@@ -444,7 +447,7 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
             <col key={column.id} style={columnWidths ? { width: `${columnWidths[index]}px` } : columnWidthOf(tableV2, column.id) ? { width: `${columnWidthOf(tableV2, column.id)}px` } : undefined} />
           ))}
         </colgroup>
-        {caption ? <TableCaption className={cn("mt-0 mb-1", TABLE_TEXT_SIZE)}>{caption}{opens ? null : " (continúa)"}</TableCaption> : null}
+        {caption ? <TableCaption className={cn("mt-0 mb-1", TABLE_TEXT_SIZE)} style={cellStyleCss(tableCellStyle(tableV2, TITLE_STYLE_KEY))}>{caption}{opens ? null : " (continúa)"}</TableCaption> : null}
         {plain ? null : renderSchemaHeader(tableV2, columns)}
         <TableBody>
           {rows.map((row, index) => (
@@ -454,7 +457,14 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
               {columns.map((column) => {
                 const value = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
                 return (
-                  <TableCell className={cn(many ? "px-1.5 py-1" : "px-2 py-1", cellPresentation(tableV2, column.id), !plain && isMarkedCell(value) && MARKED)} key={column.id}>{value}</TableCell>
+                  <TableCell
+                    className={cn(many ? "px-1.5 py-1" : "px-2 py-1", cellPresentation(tableV2, column.id), !plain && isMarkedCell(value) && MARKED)}
+                    // Bold, italic, underline and alignment chosen on a selection of cells (video 5.7).
+                    style={cellStyleCss(tableCellStyle(tableV2, cellStyleKey(row.id, column.id)))}
+                    key={column.id}
+                  >
+                    {value}
+                  </TableCell>
                 );
               })}
             </TableRow>
