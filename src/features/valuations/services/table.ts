@@ -196,7 +196,25 @@ export type GeneratedTableLayout = {
   decimals?: number;
   /** "Formato de la tabla": its title printed above it (false) or not (true); absent, as the calculation set it. */
   hideCaption?: boolean;
+  /** Bold, italic, underline, alignment and decimals of cells, headers and the title, chosen with a selection of cells (see `table-cell-style.ts`). */
+  cellStyles?: Record<string, TableCellStyle>;
 } & TablePrintLayout;
+
+/**
+ * How a cell, a column's header or the table's title is printed, chosen on a
+ * selection of cells (video 5.7): bold, italic, underline and alignment. Only
+ * what was chosen is kept; `false` takes off a weight the cell has by default
+ * (a header is bold). `decimals` is for the figures of a table the
+ * calculation writes, whose values never change: a configurable table keeps
+ * its decimals in the cell's format.
+ */
+export type TableCellStyle = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  align?: TableAlign;
+  decimals?: number;
+};
 
 /**
  * "Formato de la tabla": room before and after the table in the dictamen (px,
@@ -248,6 +266,8 @@ export type TableSchema = {
   /** Columns and rows the editor keeps and the dictamen does not print, by id. */
   hiddenColumns?: string[];
   hiddenRows?: string[];
+  /** Bold, italic, underline, alignment (and decimals, in a table the calculation writes) of cells, headers and the title, by `table-cell-style.ts` key. */
+  cellStyles?: Record<string, TableCellStyle>;
 } & TablePrintLayout;
 
 /** Most decimals the results of a table can be asked to show. */

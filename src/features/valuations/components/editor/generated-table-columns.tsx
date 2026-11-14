@@ -27,6 +27,7 @@ import type { TableContent } from "@/features/valuations/model";
 import { ensureTableV2, getDisplayColumns, tableDecimals, tablePrintLayout, type GeneratedTableLayout } from "@/features/valuations/services/table";
 import { CommitCell } from "../calculation/commit-cell";
 import { TableFormatControl } from "./table-format-control";
+import { GeneratedTableCells } from "./generated-table-cells";
 
 const AT_END = "__end";
 
@@ -80,6 +81,7 @@ export function GeneratedTableColumns(props: { table: TableContent; readOnly: bo
   );
 
   return (
+    <>
     <div className="flex items-start gap-2" data-generated-table={source.id}>
     <details className="min-w-0 flex-1 rounded-md border bg-background text-xs" data-generated-table-columns={source.id}>
       <summary className="flex cursor-pointer items-center gap-1.5 px-2 py-1.5 font-medium">
@@ -200,6 +202,9 @@ export function GeneratedTableColumns(props: { table: TableContent; readOnly: bo
     </details>
     {formatControl}
     </div>
+    {/* Bold, alignment and decimals of its cells, headers and title, chosen on a selection (video 5.7). */}
+    <GeneratedTableCells table={props.table} readOnly={props.readOnly} onChange={props.onChange} />
+    </>
   );
 }
 

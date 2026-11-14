@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
 
@@ -10,7 +10,13 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { CellSelectionBar, selectionLabel } from "@/features/valuations/components/editor/cell-selection-bar";
+import { useClearCells } from "@/features/valuations/components/editor/delete-confirm";
+import { useCellSelection, type GridTarget } from "@/features/valuations/components/editor/use-cell-selection";
+import { parseTabularText, pastePlan, type GridPoint, type GridShape } from "@/features/valuations/services/cell-selection";
+import { cn } from "@/lib/utils";
 import {
+  CAPTURE_FORMAT_HINT,
   captureFillPlan,
   captureFillSummary,
   tableContextMenu,
@@ -103,27 +109,42 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
   className?: string;
 }) {
   const [menu, setMenu] = useState<{ anchor: ReturnType<typeof pointAnchor>; hit: CalcTableHit; groups: TableMenuGroup[] } | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const selection = useCaptureSelection(frameRef, readOnly);
 
   const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     const element = event.target as HTMLElement;
     const cell = element.closest<HTMLTableCellElement>("td, th");
     const row = cell?.closest("tr");
     if (!cell || !row || !event.currentTarget.contains(cell)) return;
-    // The text selected inside an input keeps the browser's own menu, as in a spreadsheet's formula bar.
-    const input = element.closest<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select");
-    if (input instanceof HTMLInputElement && input.selectionStart !== input.selectionEnd && document.activeElement === input) return;
-    event.preventDefault();
     const header = Boolean(cell.closest("thead")) || cell.tagName === "TH";
     const body = row.closest("tbody");
     const rowIndex = header || !body ? -1 : Array.from(body.rows).indexOf(row);
+    const several = selection.count > 1 && selection.isSelected({ row: rowIndex, col: cell.cellIndex });
+    // The text selected inside an input keeps the browser's own menu, as in a spreadsheet's formula bar;
+    // on a selection of several cells the menu is the table's, for all of them.
+    const input = element.closest<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select");
+    if (!several && input instanceof HTMLInputElement && input.selectionStart !== input.selectionEnd && document.activeElement === input) return;
+    event.preventDefault();
     const hit: CalcTableHit = { cell, input, rowIndex, columnIndex: cell.cellIndex, header };
     const target = targetOf(hit, readOnly, rows);
-    setMenu({ anchor: pointAnchor(event.clientX, event.clientY), hit, groups: tableContextMenu("capture", target) });
+    setMenu({
+      anchor: pointAnchor(event.clientX, event.clientY),
+      hit,
+      groups: tableContextMenu("capture", target.kind === "cell" && several ? { ...target, selected: selection.count } : target),
+    });
   };
 
   const run = async (action: TableMenuAction) => {
     if (!menu) return;
     const { hit } = menu;
+    // On a selection of several cells, copying, cutting, pasting and clearing take all of them, as Excel.
+    if (selection.count > 1 && selection.isSelected({ row: hit.rowIndex, col: hit.columnIndex })) {
+      if (action === "copy") return selection.copy();
+      if (action === "cut") return selection.cut();
+      if (action === "paste" || action === "paste-values") return selection.pasteFromClipboard();
+      if (action === "clear") return selection.clearSelected();
+    }
     const input = takesTyping(hit.input, readOnly) ? hit.input : null;
     switch (action) {
       case "copy":
@@ -174,7 +195,43 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
   };
 
   return (
-    <div className={className} onContextMenu={onContextMenu} data-calc-table-menu="">
+    // The bar of a selection floats over what is above the table: selecting never moves the table under the mouse.
+    <div className="relative">
+      {selection.count > 1 ? (
+        <div className="absolute bottom-full left-0 z-30 mb-1 max-w-full">
+          <CellSelectionBar
+            count={selection.count}
+            label={selectionLabel(selection.points.length, false)}
+            readOnly={false}
+            marks={{ bold: false, italic: false, underline: false }}
+            formatLocked={CAPTURE_FORMAT_HINT}
+            onMark={() => undefined}
+            onAlign={() => undefined}
+            onUnit={() => undefined}
+            onDecimals={() => undefined}
+            onClearFormat={() => undefined}
+            onCopy={() => void selection.copy()}
+            onClearContents={readOnly ? undefined : selection.clearSelected}
+            onDone={selection.clear}
+          />
+        </div>
+      ) : null}
+    <div
+      ref={frameRef}
+      className={cn(
+        className,
+        "outline-none",
+        selection.dragging && "select-none",
+        // Several cells selected are shaded, the active one framed, as in the editor's tables.
+        "[&_[data-cell-selected]]:bg-primary/10 dark:[&_[data-cell-selected]]:bg-primary/20 [&_[data-cell-active]]:outline-2 [&_[data-cell-active]]:-outline-offset-2 [&_[data-cell-active]]:outline-primary",
+      )}
+      onContextMenu={onContextMenu}
+      onMouseDown={selection.containerProps.onMouseDown}
+      onMouseOver={selection.containerProps.onMouseOver}
+      onKeyDown={selection.containerProps.onKeyDown}
+      tabIndex={-1}
+      data-calc-table-menu=""
+    >
       {children}
       <DropdownMenu open={menu !== null} onOpenChange={(open) => { if (!open) setMenu(null); }} modal={false}>
         {menu ? (
@@ -199,7 +256,161 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
         ) : null}
       </DropdownMenu>
     </div>
+    </div>
   );
+}
+
+/** The table of a frame and its body. */
+const tableOf = (frame: HTMLElement | null) => frame?.querySelector("table") ?? null;
+
+/** Rows of the body, columns of the widest row and whether the header takes a selection, as the frame shows them now. */
+function captureShape(frame: HTMLElement | null): GridShape {
+  const table = tableOf(frame);
+  const body = table?.tBodies[0];
+  const head = table?.tHead;
+  const rows = body ? Array.from(body.rows) : [];
+  const cols = Math.max(0, ...rows.map((row) => row.cells.length), ...(head ? Array.from(head.rows).map((row) => row.cells.length) : []));
+  return { rows: rows.length, cols, header: Boolean(head?.rows.length) };
+}
+
+/** The cell of the frame at a point of the selection: the header's last row is row -1. */
+function captureCell(frame: HTMLElement | null, point: GridPoint): HTMLTableCellElement | null {
+  const table = tableOf(frame);
+  const row = point.row < 0 ? table?.tHead?.rows[(table.tHead?.rows.length ?? 1) - 1] : table?.tBodies[0]?.rows[point.row];
+  return row?.cells[point.col] ?? null;
+}
+
+/** Where a click falls in a capture table: its cell, by row of the body (the header is -1) and place in the row. */
+function locateCapture(frame: HTMLElement | null) {
+  return (element: Element): GridTarget => {
+    const cell = element.closest<HTMLTableCellElement>("td, th");
+    const table = tableOf(frame);
+    if (!cell || !table || !table.contains(cell)) return null;
+    const row = cell.parentElement as HTMLTableRowElement;
+    if (row.parentElement === table.tHead) return { row: -1, col: cell.cellIndex };
+    const index = table.tBodies[0] ? Array.from(table.tBodies[0].rows).indexOf(row) : -1;
+    return index < 0 ? null : { row: index, col: cell.cellIndex };
+  };
+}
+
+/** The text of a capture cell: what its field holds, or what is written in it. */
+function captureText(cell: HTMLTableCellElement | null) {
+  if (!cell) return "";
+  const field = cell.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select");
+  if (field instanceof HTMLSelectElement) return field.selectedOptions[0]?.textContent?.trim() ?? "";
+  return field ? field.value : cell.textContent?.trim() ?? "";
+}
+
+/**
+ * The selection of cells of a capture table (video 5.7), the same as the
+ * editor's tables: drag, Shift+click, Ctrl/⌘+click, Ctrl/⌘+A, copy and paste
+ * with Excel and Supr. Its cells are the panel's fields: a paste or a clear
+ * types in each one that takes typing, as a person would, and the notice
+ * offers «Deshacer», which types back what each one held. These tables do not
+ * print: their format is chosen in the dictamen's block.
+ */
+function useCaptureSelection(frameRef: RefObject<HTMLDivElement | null>, readOnly: boolean) {
+  const clearCells = useClearCells();
+  // Rows and columns as the frame shows them, read again whenever the panel adds or takes out rows.
+  const [shape, setShape] = useState<GridShape>({ rows: 0, cols: 0, header: false });
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const update = () => setShape((current) => {
+      const next = captureShape(frame);
+      return next.rows === current.rows && next.cols === current.cols && next.header === current.header ? current : next;
+    });
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(frame, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [frameRef]);
+  const fieldAt = (point: GridPoint) => fieldOf(captureCell(frameRef.current, point) ?? undefined);
+  /** Types each text in its field when it takes typing; gives back what each one held, to undo it. */
+  const typeAll = (writes: Array<{ point: GridPoint; text: string }>) => {
+    const previous: Array<{ point: GridPoint; text: string }> = [];
+    for (const { point, text } of writes) {
+      const field = fieldAt(point);
+      if (!field || !takesTyping(field, readOnly) || field.value === text) continue;
+      previous.push({ point, text: field.value });
+      typeInto(field, text);
+    }
+    return previous;
+  };
+  const paste = (plan: Array<{ point: GridPoint; text: string }>) => {
+    const previous = typeAll(plan.filter((item) => item.point.row >= 0));
+    if (!previous.length) {
+      toast.info("Ninguna de esas celdas se captura aquí: las calcula el sistema o son de solo lectura.");
+      return;
+    }
+    toast.success(previous.length === 1 ? "Se pegó 1 celda" : `Se pegaron ${previous.length} celdas`, {
+      description: "Se puede deshacer con «Deshacer».",
+      action: { label: "Deshacer", onClick: () => void typeAll(previous) },
+    });
+  };
+  const clear = (points: GridPoint[]) => {
+    const filled = points.filter((point) => {
+      const field = fieldAt(point);
+      return field !== null && takesTyping(field, readOnly) && field.value !== "";
+    });
+    if (!filled.length) return;
+    let previous: Array<{ point: GridPoint; text: string }> = [];
+    clearCells({
+      count: filled.length,
+      onClear: () => {
+        previous = typeAll(filled.map((point) => ({ point, text: "" })));
+      },
+      undo: () => void typeAll(previous),
+    });
+  };
+  const api = useCellSelection({
+    containerRef: frameRef,
+    shape,
+    locate: (element) => locateCapture(frameRef.current)(element),
+    readCell: (point) => (point ? captureText(captureCell(frameRef.current, point)) : ""),
+    onPaste: readOnly ? undefined : paste,
+    onClear: readOnly ? undefined : clear,
+  });
+
+  // The cells selected are marked on the table itself: its rows are the panel's.
+  const markKey = api.count > 1 ? api.points.map((point) => `${point.row}:${point.col}`).join(",") : "";
+  const anchor = api.selection.ranges.at(-1)?.anchor;
+  const activeKey = api.count > 1 && anchor ? `${anchor.row}:${anchor.col}` : "";
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    frame.querySelectorAll("[data-cell-selected], [data-cell-active]").forEach((cell) => {
+      cell.removeAttribute("data-cell-selected");
+      cell.removeAttribute("data-cell-active");
+    });
+    if (!markKey) return;
+    for (const key of markKey.split(",")) {
+      const [row, col] = key.split(":").map(Number);
+      const cell = captureCell(frame, { row, col });
+      cell?.setAttribute("data-cell-selected", "");
+      if (key === activeKey) cell?.setAttribute("data-cell-active", "");
+    }
+  }, [frameRef, markKey, activeKey]);
+
+  return {
+    ...api,
+    clearSelected: () => clear(api.points),
+    cut: async () => {
+      await api.copy();
+      if (!readOnly) clear(api.points);
+    },
+    pasteFromClipboard: async () => {
+      if (readOnly) return;
+      let text = "";
+      try {
+        text = await navigator.clipboard.readText();
+      } catch {
+        toast.info("El navegador no dejó leer lo copiado: pega con Ctrl+V (⌘V en Mac).");
+        return;
+      }
+      paste(pastePlan(api.selection, shape, parseTabularText(text)));
+    },
+  };
 }
 
 /** Whether the cell's control takes typing. */

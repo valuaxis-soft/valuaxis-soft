@@ -45,6 +45,7 @@ const hasText = (labels: Record<string, string> | undefined) => Object.values(la
 const isEmptyLayout = (layout: GeneratedTableLayout) =>
   !layout.hidden?.length && !hasText(layout.labels) && !layout.extraColumns?.length && !hasText(layout.boxLabels)
   && layout.widthMode === undefined && layout.decimals === undefined && layout.hideCaption === undefined
+  && !Object.keys(layout.cellStyles ?? {}).length
   && !Object.keys(layoutPrint(layout)).length;
 
 /** Room, indent and alignment the appraiser set on the table. */
@@ -137,6 +138,8 @@ export function applyTableLayout(table: TableContent | TableV2, layout: Generate
       ...(widthMode === "content" ? { widthMode } : {}),
       ...(decimals !== undefined ? { decimals } : {}),
       ...(hideCaption ? { hideCaption } : {}),
+      // Bold, alignment and decimals chosen on a selection of its cells; the figures stay the calculation's.
+      ...(layout.cellStyles && Object.keys(layout.cellStyles).length ? { cellStyles: layout.cellStyles } : {}),
       ...printLayout,
       zones,
       ...(headerGroups ? { headerGroups } : {}),
@@ -354,6 +357,12 @@ export function withTableFormat(
     else next.decimals = Math.max(0, Math.min(TABLE_DECIMALS_MAX, format.decimals));
   }
   return next;
+}
+
+/** The style of the cells, headers and title chosen on a selection of the table's cells; undefined takes them all out. */
+export function withCellStyles(layout: GeneratedTableLayout, cellStyles: GeneratedTableLayout["cellStyles"]): GeneratedTableLayout {
+  const { cellStyles: _previous, ...rest } = layout;
+  return cellStyles && Object.keys(cellStyles).length ? { ...rest, cellStyles } : rest;
 }
 
 /** A column of the appraiser's taken out, with what was written in it. */

@@ -251,7 +251,9 @@ test("the cell menu of an editable table offers every item of the model, and cop
     ["Insertar fila arriba", "Insertar fila abajo", "Insertar columna a la izquierda", "Insertar columna a la derecha", "Eliminar fila", "Eliminar columna"],
     ["Insertar fórmula…", "Copiar valor a toda la columna", "Copiar valor a toda la fila", "Operaciones"],
     ["Unidades de valor", "Decimales", "Limpiar contenido"],
+    ["Negrita", "Cursiva", "Subrayado", "Alineación", "Limpiar formato"],
   ]);
+  assert.equal(item(without, "align").submenu, "align");
   assert.equal(item(without, "fill-column").disabled, true);
   assert.equal(item(without, "fill-column").hint, EMPTY_CELL_HINT, "an empty cell has nothing to copy");
   assert.equal(item(without, "fill-row").disabled, true);

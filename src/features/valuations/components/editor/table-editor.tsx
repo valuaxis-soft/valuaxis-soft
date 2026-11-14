@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { Fragment, createContext, useCallback, useContext, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import type { TableContent } from "@/features/valuations/model";
@@ -15,11 +15,12 @@ import {
   type FormulaSelectionOperation,
   type ColumnCapability,
   HOMOLOGATION_HEADER_HINTS,
-  TABLE_DECIMALS_MAX,
   tableValueDecimals,
   tableValueFormat,
   tableValueUnit,
   type TableValueUnit,
+  type TableAlign,
+  type TableFormula,
   moveTableColumnBy,
   moveTableColumnTo,
   canMoveTableColumn,
@@ -84,9 +85,26 @@ import {
 } from "./formula-editing";
 import { useNumberPresentation } from "../number-presentation-context";
 import { TableFormatControl } from "./table-format-control";
-import { useCustomUnits } from "./custom-units-context";
-import { NUMERIC_VALUE_FORMAT_OPTIONS } from "../../services/concept-value-format";
-import { deleteConfirmation, useConfirmDelete, type DeleteConfirmation } from "./delete-confirm";
+import { deleteConfirmation, useClearCells, useConfirmDelete, type DeleteConfirmation } from "./delete-confirm";
+import { AlignItems, CONTEXT_PARTS, DROPDOWN_PARTS, ValueFormatItems, type MenuParts } from "./table-value-format-items";
+import { CellSelectionBar, selectionLabel } from "./cell-selection-bar";
+import { useCellSelection, type CellSelectionApi } from "./use-cell-selection";
+import { parseTabularText, pastePlan, type GridPoint } from "../../services/cell-selection";
+import {
+  TITLE_STYLE_KEY,
+  bodyCellsOf,
+  cellStyleCss,
+  cellStyleKey,
+  clearTableFormat,
+  headerStyleKey,
+  markIsOn,
+  setCellsValueFormat,
+  setTableCellStyles,
+  tableCellStyle,
+  toggleTableMark,
+  writeCellTexts,
+  type StyleMark,
+} from "../../services/table-cell-style";
 
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
@@ -104,20 +122,11 @@ import {
   ContextMenuTrigger,
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuSub,
-  ContextMenuSubTrigger,
-  ContextMenuSubContent,
-  ContextMenuSeparator,
 } from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 
 import {
@@ -256,83 +265,41 @@ async function readCellClipboard(): Promise<{ text: string; formulaText: string 
 /*  Menu rendering — the same groups in a right click and in a button  */
 /* ================================================================== */
 
-type MenuParts = {
-  Item: typeof ContextMenuItem | typeof DropdownMenuItem;
-  Separator: typeof ContextMenuSeparator | typeof DropdownMenuSeparator;
-  Sub: typeof ContextMenuSub | typeof DropdownMenuSub;
-  SubTrigger: typeof ContextMenuSubTrigger | typeof DropdownMenuSubTrigger;
-  SubContent: typeof ContextMenuSubContent | typeof DropdownMenuSubContent;
-};
-
-const CONTEXT_PARTS: MenuParts = { Item: ContextMenuItem, Separator: ContextMenuSeparator, Sub: ContextMenuSub, SubTrigger: ContextMenuSubTrigger, SubContent: ContextMenuSubContent };
-const DROPDOWN_PARTS: MenuParts = { Item: DropdownMenuItem, Separator: DropdownMenuSeparator, Sub: DropdownMenuSub, SubTrigger: DropdownMenuSubTrigger, SubContent: DropdownMenuSubContent };
-
-type MenuHandlers = {
+export type MenuHandlers = {
   onAction: (action: TableMenuAction) => void;
   /** The format "Unidades de valor" or "Decimales" leaves on the cell or the column. */
   onFormat?: (format: TableCellFormat | null) => void;
   /** The format the cell or the column has now: one submenu changes its unit, the other its decimals. */
   currentFormat?: TableCellFormat;
+  /** On a selection of cells, each one changes its own unit or decimals; set, these win over `onFormat`. */
+  onUnit?: (unit: TableValueUnit) => void;
+  onDecimals?: (decimals: number | undefined) => void;
+  /** "Alineación" of the cell or the selection, and the one it has. */
+  onAlign?: (align: TableAlign) => void;
+  currentAlign?: TableAlign;
   /** The operations of "Operaciones", and writing a formula by hand. */
   onOperation?: (operation: FormulaSelectionOperation | null) => void;
 };
 
-/** The units of "Unidades de valor": the concepts' own, less "Otra unidad" (the firm's are listed apart). */
-const TABLE_UNIT_OPTIONS = NUMERIC_VALUE_FORMAT_OPTIONS.filter((option) => option.value !== "custom");
-
-const sameUnit = (a: TableValueUnit, b: TableValueUnit) =>
-  a.kind === b.kind && (a.kind === "unit" || a.kind === "firm" ? a.unit === (b as typeof a).unit : true);
-
-/**
- * "Unidades de valor" and "Decimales" of a cell or a column, the same lists
- * as the concepts' (video 5.7): the unit keeps the decimals chosen, and the
- * other way round. "Automático" is the default of both.
- */
-function ValueFormatItems({ kind, parts, handlers }: { kind: "units" | "decimals"; parts: MenuParts; handlers: MenuHandlers }) {
-  const { Item, Separator } = parts;
-  const { units: firmUnits } = useCustomUnits();
-  const current = handlers.currentFormat;
-  const unit = tableValueUnit(current);
-  const decimals = tableValueDecimals(current);
-  const mark = (chosen: boolean) => <Check aria-hidden className={cn("size-3.5", !chosen && "invisible")} />;
-  if (kind === "decimals") {
-    const options: Array<number | undefined> = [undefined, ...Array.from({ length: TABLE_DECIMALS_MAX + 1 }, (_, index) => index)];
-    return options.map((option) => (
-      <Item key={option ?? "auto"} onClick={() => handlers.onFormat?.(tableValueFormat(unit, option))}>
-        {mark(option === decimals)}
-        {option === undefined ? "Automático" : option === 0 ? "Sin decimales" : `${option} ${option === 1 ? "decimal" : "decimales"}`}
-      </Item>
-    ));
-  }
-  const choose = (next: TableValueUnit) => handlers.onFormat?.(tableValueFormat(next, decimals));
-  return (
-    <>
-      <Item onClick={() => choose({ kind: "auto" })}>{mark(unit.kind === "auto")}Automático</Item>
-      {TABLE_UNIT_OPTIONS.map((option) => {
-        const next: TableValueUnit = { kind: "unit", unit: option.value as Exclude<typeof option.value, "custom"> };
-        return <Item key={option.value} onClick={() => choose(next)}>{mark(sameUnit(unit, next))}{option.label}</Item>;
-      })}
-      {firmUnits.length ? <Separator /> : null}
-      {firmUnits.map((name) => (
-        <Item key={`firm:${name}`} onClick={() => choose({ kind: "firm", unit: name })}>{mark(sameUnit(unit, { kind: "firm", unit: name }))}{name} · del despacho</Item>
-      ))}
-      <Separator />
-      <Item onClick={() => choose({ kind: "text" })}>{mark(unit.kind === "text")}Texto</Item>
-    </>
-  );
-}
-
 /** The items of the menu, as the model gives them: a disabled item keeps its reason as a tooltip. */
-function MenuGroups({ groups, parts, handlers }: { groups: TableMenuGroup[]; parts: MenuParts; handlers: MenuHandlers }) {
+export function MenuGroups({ groups, parts, handlers }: { groups: TableMenuGroup[]; parts: MenuParts; handlers: MenuHandlers }) {
   const { Item, Separator, Sub, SubTrigger, SubContent } = parts;
   const renderItem = (item: TableMenuItem) => {
     if (item.submenu && !item.disabled) {
       return (
         <Sub key={`${item.action}:${item.label}`}>
           <SubTrigger>{item.label}</SubTrigger>
-          <SubContent className={item.submenu === "operations" ? "w-52" : "max-h-80 w-52 overflow-y-auto"}>
+          <SubContent className={item.submenu === "operations" || item.submenu === "align" ? "w-52" : "max-h-80 w-52 overflow-y-auto"}>
             {item.submenu === "units" || item.submenu === "decimals" ? (
-              <ValueFormatItems kind={item.submenu} parts={parts} handlers={handlers} />
+              <ValueFormatItems
+                kind={item.submenu}
+                parts={parts}
+                current={handlers.currentFormat}
+                onUnit={handlers.onUnit ?? ((unit) => handlers.onFormat?.(tableValueFormat(unit, tableValueDecimals(handlers.currentFormat))))}
+                onDecimals={handlers.onDecimals ?? ((decimals) => handlers.onFormat?.(tableValueFormat(tableValueUnit(handlers.currentFormat), decimals)))}
+              />
+            ) : item.submenu === "align" ? (
+              <AlignItems parts={parts} current={handlers.currentAlign} onAlign={(align) => handlers.onAlign?.(align)} />
             ) : (
               <>
                 {SELECTION_OPERATIONS.map((operation) => (
@@ -373,6 +340,42 @@ function MenuGroups({ groups, parts, handlers }: { groups: TableMenuGroup[]; par
 }
 
 /* ================================================================== */
+/*  Selection of cells (video 5.7)                                     */
+/* ================================================================== */
+
+/** What a selection of cells does, from its bar and from the right click on a selected cell. */
+type SelectionActions = {
+  marks: Record<StyleMark, boolean>;
+  align?: TableAlign;
+  mark: (mark: StyleMark) => void;
+  alignTo: (align: TableAlign) => void;
+  unit: (unit: TableValueUnit) => void;
+  decimals: (decimals: number | undefined) => void;
+  clearFormat: () => void;
+  copy: () => void;
+  cut: () => void;
+  paste: () => void;
+  clearContents: () => void;
+};
+
+/** The selection of the table, for its cells, headers and row numbers. */
+const TableSelectionContext = createContext<{
+  api: CellSelectionApi;
+  actions: SelectionActions;
+  /** The same actions on other keys: the right click on a cell outside a selection acts on that cell alone. */
+  actionsFor: (keys: string[]) => SelectionActions;
+} | null>(null);
+
+/** Why units and decimals wait for a cell with data: headers and the title take only the style. */
+const ONLY_BODY_FORMAT_HINT = "Las unidades y los decimales son de las celdas con datos, no de los encabezados ni del título.";
+
+/** How a selected cell shows: shaded, and the active one framed. */
+const selectedCellClass = (selected: boolean, active: boolean) => cn(
+  selected && "bg-primary/10 dark:bg-primary/20",
+  active && "outline-2 outline-primary -outline-offset-2",
+);
+
+/* ================================================================== */
 /*  Sortable column header                                             */
 /* ================================================================== */
 
@@ -381,6 +384,7 @@ type ColumnActionHandler = (columnId: string, action: TableMenuAction, format?: 
 
 function SortableColumnHeader({
   column,
+  columnIndex,
   letter,
   tableV2,
   tableId,
@@ -396,6 +400,8 @@ function SortableColumnHeader({
   onColumnAction,
 }: {
   column: TableColumn;
+  /** Place of the column as shown, in the selection of cells. */
+  columnIndex: number;
   /** The column's letter in formulas (A, B, C…). */
   letter: string;
   tableV2: TableV2;
@@ -415,6 +421,9 @@ function SortableColumnHeader({
   const columnName = column.name.trim() || `columna ${letter}`;
   const hidden = isColumnHidden(tableV2, column.id);
   const hint = HOMOLOGATION_HEADER_HINTS[column.id];
+  const selection = useContext(TableSelectionContext);
+  const selected = selection?.api.isSelected({ row: -1, col: columnIndex }) ?? false;
+  const active = selection?.api.isActive({ row: -1, col: columnIndex }) ?? false;
 
   // Local draft state — typing is free, normalization happens only on commit
   const [draftName, setDraftName] = useState(column.name);
@@ -464,7 +473,17 @@ function SortableColumnHeader({
   };
 
   return (
-    <TableHead ref={setNodeRef} style={{ ...style, ...cellStyle }} className="h-auto p-0 align-top" rowSpan={rowSpan} colSpan={colSpan} data-column-hidden={hidden ? "" : undefined}>
+    <TableHead
+      ref={setNodeRef}
+      style={{ ...style, ...cellStyle }}
+      className="h-auto p-0 align-top"
+      rowSpan={rowSpan}
+      colSpan={colSpan}
+      data-column-hidden={hidden ? "" : undefined}
+      data-grid-row={-1}
+      data-grid-col={columnIndex}
+      data-cell-selected={selected ? "" : undefined}
+    >
       <ContextMenu>
         <ContextMenuTrigger>
           <div
@@ -473,6 +492,8 @@ function SortableColumnHeader({
               isOver && !isDragging && "border-blue-400 bg-blue-50 dark:bg-blue-500/15",
               formulaMode && "opacity-60",
               hidden && "opacity-50",
+              selected && "border-primary/50 bg-primary/15 dark:bg-primary/25",
+              active && "outline-2 outline-primary -outline-offset-2",
             )}
             title={hidden ? `${hint ?? columnName}: oculta en el dictamen` : hint}
           >
@@ -489,7 +510,15 @@ function SortableColumnHeader({
                 <GripVertical className="h-3 w-3 text-muted-foreground/70" />
               </div>
             )}
-            <span className="mt-1 shrink-0 select-none font-mono text-[10px] text-muted-foreground/70" title={`Columna ${letter} en las fórmulas`}>{letter}</span>
+            {/* The letter selects the whole column, as a spreadsheet's (Shift and Ctrl/⌘ join it to the selection). */}
+            <span
+              className={cn("mt-1 shrink-0 cursor-pointer select-none rounded-sm px-0.5 font-mono text-[10px] text-muted-foreground/70 hover:bg-primary/15 hover:text-foreground", selected && "text-primary")}
+              title={`Columna ${letter} en las fórmulas. Clic: seleccionar la columna`}
+              data-select-column={columnIndex}
+              onMouseDown={(event) => selection?.api.onColumnPointer(columnIndex, event)}
+            >
+              {letter}
+            </span>
             {/* A long header takes a second line instead of widening the column; Alt+Enter breaks it where wanted. */}
             <textarea
               aria-label={`Encabezado de la columna ${columnName}`}
@@ -498,6 +527,8 @@ function SortableColumnHeader({
               disabled={readOnly || capability.headerEditable === false}
               value={draftName}
               data-column-header={column.id}
+              // Bold, italic, underline and alignment chosen on a selection, as the dictamen prints them.
+              style={cellStyleCss(tableCellStyle(tableV2, headerStyleKey(column.id)))}
               onChange={(event) => setDraftName(event.target.value)}
               onBlur={commitDraft}
               onKeyDown={(event) => {
@@ -620,6 +651,14 @@ function EditableTableCell({
   // Letters in a numeric cell: marked, and left out of the calculations.
   const numericProblem = numericCellProblem(tableV2, column.id, cell);
   const [focused, setFocused] = useState(false);
+  // In a selection of several cells, the right click acts on all of them (video 5.7).
+  const selection = useContext(TableSelectionContext);
+  const point: GridPoint = { row: rowIndex, col: columnIndex };
+  const selected = selection?.api.isSelected(point) ?? false;
+  const several = selected && (selection?.api.count ?? 0) > 1;
+  const styleKey = cellStyleKey(row.id, column.id);
+  const cellStyle = tableCellStyle(tableV2, styleKey);
+  const styleActions = selection ? (several ? selection.actions : selection.actionsFor([styleKey])) : null;
 
   /* ---- What was already written in the column, offered while typing ---- */
   const [typed, setTyped] = useState<string | null>(null);
@@ -714,10 +753,27 @@ function EditableTableCell({
     canInsertColumn: canInsertBesideColumn(tableV2, column.id),
     canDeleteColumn: canRemoveTableColumn(tableV2, column.id),
     canDeleteRow: tableV2.rows.length > 1,
+    selected: several ? selection?.api.count : undefined,
   });
   // The menu gives the focus back when it closes; the cell is entered after that.
   const enterCell = () => window.setTimeout(start, 80);
   const runAction = async (action: TableMenuAction) => {
+    // Bold, italic, underline and "Limpiar formato": on the cell, or on all the cells selected with it.
+    if (styleActions && (action === "bold" || action === "italic" || action === "underline")) {
+      styleActions.mark(action);
+      return;
+    }
+    if (styleActions && action === "clear-format") {
+      styleActions.clearFormat();
+      return;
+    }
+    // Copying, cutting, pasting and clearing a selection of several cells: all of them, as Excel.
+    if (several && selection) {
+      if (action === "copy") return selection.actions.copy();
+      if (action === "cut") return selection.actions.cut();
+      if (action === "paste" || action === "paste-values") return selection.actions.paste();
+      if (action === "clear") return selection.actions.clearContents();
+    }
     switch (action) {
       case "copy":
         await copyCellToClipboard(displayValue, formulaText);
@@ -761,6 +817,9 @@ function EditableTableCell({
     onFormat: (format) => onUpdate(tableId, v2Updater((v2) => setCellResultFormat(v2, row.id, column.id, format))),
     // A cell without a format of its own starts from its column's.
     currentFormat: cell?.format ?? column.format,
+    ...(several && selection ? { onUnit: selection.actions.unit, onDecimals: selection.actions.decimals } : {}),
+    onAlign: (align) => styleActions?.alignTo(align),
+    currentAlign: cellStyle.align,
     onOperation: (operation) => (operation ? onStartSelection(row.id, column.id, operation) : enterCell()),
   };
 
@@ -775,8 +834,12 @@ function EditableTableCell({
         writingFormula && "ring-2 ring-blue-500 ring-inset",
         reference.active && "cursor-cell hover:ring-2 hover:ring-blue-300 hover:ring-inset [&_input]:cursor-cell",
         hidden && "opacity-50",
+        selectedCellClass(selected && !formulaMode, Boolean(selection?.api.isActive(point))),
       )}
       style={formulaReferenceCellStyle(referenceColor)}
+      data-grid-row={rowIndex}
+      data-grid-col={columnIndex}
+      data-cell-selected={selected ? "" : undefined}
       data-cell={`${cellReferenceText(index, tableId, tableV2, row.id, column.id, tableId) ?? ""}`}
       data-reference-color={referenceColor}
       data-numeric-problem={numericProblem ?? undefined}
@@ -843,6 +906,8 @@ function EditableTableCell({
                   numericProblem && draftText === null && "border border-destructive ring-1 ring-destructive/40 text-destructive dark:text-red-400",
                 )}
                 title={title}
+                // Bold, italic, underline and alignment chosen on a selection, as the dictamen prints them.
+                style={cellStyleCss(cellStyle)}
               />
               {writingFormula && draftText !== null && references.length > 0 ? (
                 <span aria-hidden className="pointer-events-none absolute inset-0 flex items-center overflow-hidden px-1 font-mono text-xs whitespace-pre text-blue-600 md:text-sm dark:text-blue-400">
@@ -964,6 +1029,7 @@ function SortableRow({
     canDelete: rowCount > 1,
   });
   const handlers: MenuHandlers = { onAction: (action) => onRowAction(row.id, action) };
+  const selection = useContext(TableSelectionContext);
   const menu = !readOnly ? (
     <ContextMenuContent className="w-56">
       <MenuGroups groups={groups} parts={CONTEXT_PARTS} handlers={handlers} />
@@ -978,7 +1044,15 @@ function SortableRow({
       <TableCell className={cn("w-6 select-none p-0 text-center font-mono text-[10px] text-muted-foreground/70", hidden && "line-through")} title={hidden ? `Fila ${rowIndex + 1}: oculta en el dictamen` : `Fila ${rowIndex + 1} en las fórmulas`}>
         <ContextMenu>
           <ContextMenuTrigger>
-            <div className="flex h-7 items-center justify-center" data-row-number={rowIndex + 1}>{rowIndex + 1}</div>
+            {/* The number selects the whole row, as a spreadsheet's (Shift and Ctrl/⌘ join it to the selection). */}
+            <div
+              className="flex h-7 cursor-pointer items-center justify-center rounded-sm hover:bg-primary/15 hover:text-foreground"
+              data-row-number={rowIndex + 1}
+              title={`Fila ${rowIndex + 1}. Clic: seleccionar la fila`}
+              onMouseDown={(event) => selection?.api.onRowPointer(rowIndex, event)}
+            >
+              {rowIndex + 1}
+            </div>
           </ContextMenuTrigger>
           {menu}
         </ContextMenu>
@@ -1304,6 +1378,7 @@ export function TableEditorItem({
 
   const headerProps = (columnId: string) => ({
     column: tableV2.columns.find((c) => c.id === columnId)!,
+    columnIndex: displayColumns.findIndex((c) => c.id === columnId),
     letter: letterOf(columnId),
     tableV2,
     tableId: table.id,
@@ -1320,22 +1395,123 @@ export function TableEditorItem({
   // "Espacio antes/después" of "Formato de la tabla" shows here too, as the dictamen prints it.
   const print = tablePrintLayout(tableV2);
 
+  /* ---- Selection of cells, headers and the title (video 5.7) ---- */
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const { index: formulaIndex, session: formulaSession } = useFormulaEditing();
+  const clearCells = useClearCells();
+  const shape = { rows: tableV2.rows.length, cols: displayColumns.length, header: true };
+  const cellAt = (point: GridPoint) => ({ rowId: tableV2.rows[point.row]?.id ?? "", columnId: displayColumns[point.col]?.id ?? "" });
+  const keyOf = (point: GridPoint) => (point.row < 0 ? headerStyleKey(displayColumns[point.col]?.id ?? "") : cellStyleKey(cellAt(point).rowId, cellAt(point).columnId));
+  const compile = (text: string): TableFormula | null => {
+    const compiled = compileFormula(text, { index: formulaIndex, table: tableV2 });
+    return compiled.ok ? compiled.formula : null;
+  };
+  const pasteCells = (plan: Array<{ point: GridPoint; text: string }>) => {
+    const writes = plan.filter((item) => item.point.row >= 0 && displayColumns[item.point.col]).map((item) => ({ ...cellAt(item.point), text: item.text }));
+    if (!writes.length) return;
+    // One change of the table: one «Deshacer» takes the whole paste back.
+    onUpdate(table.id, v2Updater((v2) => writeCellTexts(v2, writes, compile)));
+    toast.success(writes.length === 1 ? "Se pegó 1 celda" : `Se pegaron ${writes.length} celdas`);
+  };
+  const hasContent = (point: GridPoint) => {
+    const cell = tableV2.rows[point.row]?.cells[displayColumns[point.col]?.id ?? ""];
+    return cell?.kind === "formula" || (cell?.kind === "value" && cell.value !== "");
+  };
+  const clearPoints = (points: GridPoint[]) => {
+    const filled = points.filter((point) => point.row >= 0 && hasContent(point));
+    if (!filled.length) return;
+    const cells = filled.map(cellAt);
+    clearCells({ count: filled.length, onClear: () => onUpdate(table.id, v2Updater((v2) => writeCellTexts(v2, cells.map((cell) => ({ ...cell, text: "" }))))) });
+  };
+  const selection = useCellSelection({
+    containerRef: sectionRef,
+    shape,
+    paused: readOnly || Boolean(formulaMode) || formulaSession !== null,
+    withTitle: true,
+    readCell: (point) => {
+      if (!point) return tableV2.title;
+      if (point.row < 0) return displayColumns[point.col]?.name ?? "";
+      const { rowId, columnId } = cellAt(point);
+      return getCellDisplayValue(tableV2, rowId, columnId, formulaResults, presentation);
+    },
+    onPaste: pasteCells,
+    onClear: clearPoints,
+  });
+  const selectedKeys = [...(selection.titleSelected ? [TITLE_STYLE_KEY] : []), ...selection.points.map(keyOf)];
+  // A header prints bold; a column the schema prints bold, too: N takes it off on them.
+  const boldByDefault = (key: string) => key.startsWith("header:") || Boolean(bodyCellsOf(tableV2, [key])[0] && tableV2.schema?.columnPresentation?.[bodyCellsOf(tableV2, [key])[0].columnId]?.bold);
+  const actionsFor = (keys: string[]): SelectionActions => {
+    const cells = bodyCellsOf(tableV2, keys);
+    const update = (change: (v2: TableV2) => TableV2) => {
+      if (keys.length) onUpdate(table.id, v2Updater(change));
+    };
+    const aligns = new Set(keys.map((key) => tableCellStyle(tableV2, key).align));
+    return {
+      marks: {
+        bold: markIsOn(tableV2, keys, "bold", boldByDefault),
+        italic: markIsOn(tableV2, keys, "italic"),
+        underline: markIsOn(tableV2, keys, "underline"),
+      },
+      align: aligns.size === 1 ? [...aligns][0] : undefined,
+      mark: (mark) => update((v2) => toggleTableMark(v2, keys, mark, mark === "bold" ? boldByDefault : undefined)),
+      alignTo: (align) => update((v2) => setTableCellStyles(v2, keys, { align })),
+      unit: (unit) => {
+        if (cells.length) update((v2) => setCellsValueFormat(v2, cells, { unit }));
+      },
+      decimals: (decimals) => {
+        if (cells.length) update((v2) => setCellsValueFormat(v2, cells, { decimals }));
+      },
+      clearFormat: () => update((v2) => clearTableFormat(v2, keys)),
+      copy: () => void selection.copy(),
+      cut: () => {
+        void selection.copy();
+        clearPoints(selection.points);
+      },
+      paste: () => {
+        void navigator.clipboard.readText().then(
+          (text) => pasteCells(pastePlan(selection.selection, shape, parseTabularText(text))),
+          () => toast.info("El navegador no dejó leer lo copiado: pega con Ctrl+V (⌘V en Mac)."),
+        );
+      },
+      clearContents: () => clearPoints(selection.points),
+    };
+  };
+  const selectionActions = actionsFor(selectedKeys);
+  const selectedBodyCells = bodyCellsOf(tableV2, selectedKeys);
+  const firstSelectedCell = selectedBodyCells[0] ? tableV2.rows.find((row) => row.id === selectedBodyCells[0].rowId)?.cells[selectedBodyCells[0].columnId] : undefined;
+  const firstSelectedColumn = selectedBodyCells[0] ? tableV2.columns.find((column) => column.id === selectedBodyCells[0].columnId) : undefined;
+  const selectionContext = { api: selection, actions: selectionActions, actionsFor };
+  const titleStyle = tableCellStyle(tableV2, TITLE_STYLE_KEY);
+
   return (
+    <TableSelectionContext.Provider value={selectionContext}>
     <section
-      className="rounded-lg border bg-muted/20 p-4"
+      ref={sectionRef}
+      className={cn("rounded-lg border bg-muted/20 p-4 outline-none", selection.dragging && "select-none")}
       style={{ marginTop: print.spacingBefore, marginBottom: print.spacingAfter }}
-      onKeyDown={handleKeyDown}
+      onKeyDown={(event) => {
+        handleKeyDown(event);
+        selection.containerProps.onKeyDown(event);
+      }}
+      onMouseDown={selection.containerProps.onMouseDown}
+      onMouseOver={selection.containerProps.onMouseOver}
       tabIndex={-1}
       data-table-editor={table.id}
     >
       {/* Table title + toolbar */}
       <div className="mb-3 flex items-center justify-between gap-3">
-        <Input
-          disabled={readOnly}
-          value={tableV2.title}
-          onChange={(event) => onUpdate(table.id, (current) => ({ ...current, title: event.target.value }))}
-          className="font-semibold"
-        />
+        {/* The title is selected with the cells too (Ctrl/⌘+clic or Shift+clic, or Ctrl/⌘+A): bold, italic, alignment. */}
+        <div className="min-w-0 flex-1" data-grid-title="">
+          <Input
+            disabled={readOnly}
+            value={tableV2.title}
+            onChange={(event) => onUpdate(table.id, (current) => ({ ...current, title: event.target.value }))}
+            className={cn("font-semibold", selection.titleSelected && "bg-primary/10 ring-2 ring-primary/60 dark:bg-primary/20")}
+            style={cellStyleCss(titleStyle)}
+            aria-label="Título de la tabla"
+            data-table-title={table.id}
+          />
+        </div>
         <div className="flex gap-1">
           <Button type="button" size="icon" variant="outline" aria-label="Agregar columna" disabled={readOnly} title="Agregar columna" onClick={() => onAddColumn(table.id)}>
             <Columns3 />
@@ -1379,11 +1555,27 @@ export function TableEditorItem({
         </div>
       )}
 
-      {/* Hint */}
-      {!readOnly && !formulaMode && (
-        <p className="mb-2 text-[10px] text-muted-foreground">
-          Clic derecho en una celda, en un encabezado o en el número de fila para más opciones. Para calcular, escribe = en una celda, por ejemplo =B2*C2 o =SUMA(A1:A5); «10%» vale 0.10.
-        </p>
+      {/* How to select and what to do with the cells selected, in one place (video 5.7). */}
+      {!formulaMode && (
+        <CellSelectionBar
+          count={selection.count}
+          label={selectionLabel(selection.points.length, selection.titleSelected)}
+          readOnly={readOnly}
+          hint="Para calcular, escribe = en una celda, por ejemplo =B2*C2 o =SUMA(A1:A5); «10%» vale 0.10."
+          marks={selectionActions.marks}
+          align={selectionActions.align}
+          current={firstSelectedCell?.format ?? firstSelectedColumn?.format}
+          unitsLocked={selectedBodyCells.length ? undefined : ONLY_BODY_FORMAT_HINT}
+          decimalsLocked={selectedBodyCells.length ? undefined : ONLY_BODY_FORMAT_HINT}
+          onMark={selectionActions.mark}
+          onAlign={selectionActions.alignTo}
+          onUnit={selectionActions.unit}
+          onDecimals={selectionActions.decimals}
+          onClearFormat={selectionActions.clearFormat}
+          onCopy={selectionActions.copy}
+          onClearContents={selection.points.some((point) => point.row >= 0 && hasContent(point)) ? selectionActions.clearContents : undefined}
+          onDone={selection.clear}
+        />
       )}
 
       {/* Table grid */}
@@ -1540,5 +1732,6 @@ export function TableEditorItem({
         </div>
       )}
     </section>
+    </TableSelectionContext.Provider>
   );
 }
