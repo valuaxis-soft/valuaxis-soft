@@ -242,10 +242,11 @@ export function ValuationWorkspace({
     });
   }, [allConceptsForDisplay, enabledSections, excludedApproaches, previewSection, sections]);
   const previewStartsAfterAnother = Boolean(previewGroup && previewGroup[0]?.id !== previewSection.id);
-  usePreviewFollow({
+  const previewStartBlockId = previewStartsAfterAnother ? previewSection.blocks.find((block) => block.enabled)?.id ?? null : null;
+  const followedBlockId = usePreviewFollow({
     activeSection,
     previewSectionId: previewSection.id,
-    sectionStartBlockId: previewStartsAfterAnother ? previewSection.blocks.find((block) => block.enabled)?.id ?? null : null,
+    sectionStartBlockId: previewStartBlockId,
   });
   const browsePreview = (direction: -1 | 1) => {
     const next = adjacentPreviewSectionId(enabledSections, previewSection.id, direction);
@@ -289,7 +290,13 @@ export function ValuationWorkspace({
       canPrevious: navigationCanPrevious,
       canNext: navigationCanNext,
     },
+    // «Continuar donde terminó» and the block followed: the window shows and moves as the preview beside the editor.
+    group: previewGroup,
+    follow: { blockId: followedBlockId, startBlockId: previewStartBlockId },
   }), [
+    followedBlockId,
+    previewGroup,
+    previewStartBlockId,
     navigationLabel,
     navigationIndex,
     navigationTotal,
