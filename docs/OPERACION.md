@@ -231,3 +231,16 @@ docker logs valuos-app 2>&1 | grep -A20 "G-XXXXXX"
 ```
 
 Si dos elementos de una sección llegan con el mismo id (por ejemplo, imágenes de croquis copiadas con su bloque), el servidor les da uno propio y deja `[VALUATION_SECTIONS] repeated ids renamed` en el log.
+
+## 11. Avalúos que se quedaron en «Nuevo» (una vez, al desplegar la migración 059)
+
+Antes del 2 de noviembre de 2026 el primer guardado no pasaba el avalúo a «En edición», y la reprueba del 5 de noviembre vio avalúos con captura que seguían en «Nuevo». Después de desplegar, revisar y corregir con `scripts/ops/corregir-estado-nuevo.ts` (`pnpm valuations:fix-status`). Sin `--apply` solo lista lo que cambiaría:
+
+```bash
+docker exec valuos-app node --import tsx scripts/ops/corregir-estado-nuevo.ts
+docker exec valuos-app node --import tsx scripts/ops/corregir-estado-nuevo.ts --apply
+```
+
+Cuenta como capturado el avalúo guardado más de 2 minutos después de crearse o que ya tiene comparables. Cada uno pasa a «En edición» con un renglón en su historial («corrección: ya tenía captura») y conserva su fecha de última modificación. Se puede correr otra vez: no cambia los ya corregidos.
+
+La papelera no necesita tarea programada: al abrir «Papelera» en `/avaluos` se eliminan definitivamente los avalúos de ese despacho que llevan más de 30 días en ella (el renglón se conserva por los créditos y la auditoría; solo deja de aparecer y de poder restaurarse).

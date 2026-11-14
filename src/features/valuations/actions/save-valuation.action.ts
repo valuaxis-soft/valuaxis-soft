@@ -76,7 +76,11 @@ export async function saveValuation(input: SaveValuationInput) {
           BActivo: true,
           DFechaEliminacion: null,
         },
-        select: { IdAvaluo: true, IdPropiedadSujeto: true, IdTipoInmueble: true, IdTipoOperacion: true, SFolio: true, BBloqueado: true, IdEstadoAvaluo: true, IdVersionTrabajo: true, estadoAvaluo: { select: { BEsInicial: true } } },
+        select: {
+          IdAvaluo: true, IdPropiedadSujeto: true, IdTipoInmueble: true, IdTipoOperacion: true, SFolio: true, STitulo: true, SNombreCliente: true,
+          BBloqueado: true, IdEstadoAvaluo: true, IdVersionTrabajo: true, estadoAvaluo: { select: { BEsInicial: true } },
+          tipoInmueble: { select: { SNombre: true } }, tipoOperacion: { select: { SNombre: true } },
+        },
       });
 
       if (!existing) {
@@ -86,6 +90,7 @@ export async function saveValuation(input: SaveValuationInput) {
         return { ok: false, error: "El avaluo concluido no permite edicion", status: 409 };
       }
 
+      const changes: ValuationDataChange[] = [];
       await prisma.$transaction(async (tx) => {
         // The kinds the carátula chose, by their catalog keys; an unknown key keeps the current kind.
         const [propertyType, operationType] = await Promise.all([
@@ -93,11 +98,17 @@ export async function saveValuation(input: SaveValuationInput) {
           input.valuationKind ? tx.tipoOperacion.findFirst({ where: { BActivo: true, SClave: { equals: normalizeValuationKind(input.valuationKind), mode: "insensitive" } }, select: { IdTipoOperacion: true } }) : null,
         ]);
         const propertyTypeId = input.propertyTypeId ?? propertyType?.IdTipoInmueble ?? existing.IdTipoInmueble;
+        // Only what the appraiser edits changes the title and the client: a save that does not send them keeps them
+        // (the editor never sends the title, and the first save used to write the address over it).
+        const title = input.title?.trim() || existing.STitulo;
+        const sentClient = input.clientName ?? input.client;
+        const clientName = sentClient === undefined ? existing.SNombreCliente : sentClient.trim() || null;
+        changes.push(...await dataChanges(tx, existing, { title, clientName, propertyTypeId, operationTypeId: operationType?.IdTipoOperacion ?? existing.IdTipoOperacion }));
         await tx.avaluo.update({
           where: { IdAvaluo: existing.IdAvaluo },
           data: {
-            STitulo: input.title || input.location || existing.SFolio,
-            SNombreCliente: input.clientName ?? input.client ?? null,
+            STitulo: title,
+            SNombreCliente: clientName,
             IdTipoInmueble: propertyTypeId,
             ...(operationType ? { IdTipoOperacion: operationType.IdTipoOperacion } : {}),
           },
@@ -122,6 +133,8 @@ export async function saveValuation(input: SaveValuationInput) {
       return {
         ok: true,
         data: await getValuationByPublicId(input.id, user.organizationId),
+        /** What changed of the valuation's own data, for its history. */
+        changes,
       };
     }
 
@@ -316,6 +329,29 @@ function templateDocumentPayload(sections: AppSection[], defaults: GeneralCaratu
   const clean = stripClientDataFromSections(sections, { includeImages: true });
   const hydrated = clean.map((section) => (section.id === "caratula" ? hydrateGeneralCaratulaTemplate(section, defaults) : section));
   return buildSectionsPayload(hydrated) as SectionPayload[];
+}
+
+/** A field of the valuation's own data that a save changed: «Cliente: «A» → «B»» in its history. */
+export type ValuationDataChange = { field: string; from: string; to: string };
+
+/** The title, client and kinds a save changes, by name, to record them in the valuation's history. */
+async function dataChanges(
+  tx: Prisma.TransactionClient,
+  existing: { STitulo: string; SNombreCliente: string | null; IdTipoInmueble: number; IdTipoOperacion: number; tipoInmueble: { SNombre: string }; tipoOperacion: { SNombre: string } },
+  next: { title: string; clientName: string | null; propertyTypeId: number; operationTypeId: number },
+): Promise<ValuationDataChange[]> {
+  const changes: ValuationDataChange[] = [];
+  if (next.title !== existing.STitulo) changes.push({ field: "Título", from: existing.STitulo, to: next.title });
+  if ((next.clientName ?? "") !== (existing.SNombreCliente ?? "")) changes.push({ field: "Cliente", from: existing.SNombreCliente ?? "", to: next.clientName ?? "" });
+  if (next.propertyTypeId !== existing.IdTipoInmueble) {
+    const kind = await tx.tipoInmueble.findUnique({ where: { IdTipoInmueble: next.propertyTypeId }, select: { SNombre: true } });
+    changes.push({ field: "Tipo de bien", from: existing.tipoInmueble.SNombre, to: kind?.SNombre ?? "" });
+  }
+  if (next.operationTypeId !== existing.IdTipoOperacion) {
+    const kind = await tx.tipoOperacion.findUnique({ where: { IdTipoOperacion: next.operationTypeId }, select: { SNombre: true } });
+    changes.push({ field: "Tipo de avalúo", from: existing.tipoOperacion.SNombre, to: kind?.SNombre ?? "" });
+  }
+  return changes;
 }
 
 /** The valuation leaves "Nuevo" for "En edición" once somebody edits it; its history records the change. */

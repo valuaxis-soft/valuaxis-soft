@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { auditValuation } from "@/features/valuations/services/valuation-audit";
+import { auditValuation, auditValuationDataChanges } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { saveValuation } from "@/features/valuations/actions/save-valuation.action";
-import {
-  getValuationByPublicId,
-  softDeleteValuation,
-} from "@/features/valuations/repositories/valuation.repository";
+import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
+import { moveValuationToTrash } from "@/features/valuations/repositories/valuation-list.repository";
 import { updateValuationMetaSchema } from "@/features/valuations/validations/valuation-api.schemas";
 import { internalError, readJsonBody } from "@/lib/api-response";
 import { requireApiUser } from "@/security/guards/api-guard";
@@ -36,6 +34,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/avalu
     const { id } = await params;
     const result = await saveValuation({ id, ...body.data });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: "status" in result && result.status ? result.status : 400 });
+    if ("changes" in result && result.changes?.length) await auditValuationDataChanges({ user: auth.user, valuationPublicId: id, request, changes: result.changes });
 
     return NextResponse.json({ data: result.data });
   } catch (error) {
@@ -43,17 +42,18 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/avalu
   }
 }
 
+/** «Eliminar»: to the trash, restorable for 30 days (POST …/restaurar); not deleted for good. */
 export async function DELETE(request: Request, { params }: RouteContext<"/api/avaluos/[id]">) {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
     if (!auth.ok) return auth.response;
 
     const { id } = await params;
-    const deleted = await softDeleteValuation(id, auth.user.organizationId);
+    const deleted = await moveValuationToTrash(id, auth.user.organizationId);
     if (!deleted) return NextResponse.json({ error: "Avaluo no encontrado" }, { status: 404 });
-    await auditValuation({ action: "DELETE", user: auth.user, valuationPublicId: id, request });
+    await auditValuation({ action: "DELETE", user: auth.user, valuationPublicId: id, request, metadata: { folio: deleted.folio } });
 
-    return NextResponse.json({ data: { id }, message: "Avaluo eliminado correctamente" });
+    return NextResponse.json({ data: { id, folio: deleted.folio }, message: "El avalúo se fue a la papelera." });
   } catch (error) {
     return internalError("VALUATION_DELETE", error, "No se pudo eliminar el avalúo.");
   }

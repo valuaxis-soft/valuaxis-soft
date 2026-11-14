@@ -22,12 +22,12 @@ test("Mi cuenta offers Desactivado, 10 s, 15 s (the default), 30 s, 1 min and 5 
 });
 
 test("nothing stored, or something not offered, is the 15 s it always was", () => {
-  assert.deepEqual(resolveUserPreferences(null), { autosaveSeconds: 15 });
-  assert.deepEqual(resolveUserPreferences({}), { autosaveSeconds: 15 });
-  assert.deepEqual(resolveUserPreferences({ autosaveSeconds: 7 }), { autosaveSeconds: 15 });
-  assert.deepEqual(resolveUserPreferences({ autosaveSeconds: "30" }), { autosaveSeconds: 15 });
-  assert.deepEqual(resolveUserPreferences({ autosaveSeconds: 300 }), { autosaveSeconds: 300 });
-  assert.deepEqual(resolveUserPreferences({ autosaveSeconds: 0 }), { autosaveSeconds: 0 });
+  assert.equal(resolveUserPreferences(null).autosaveSeconds, 15);
+  assert.equal(resolveUserPreferences({}).autosaveSeconds, 15);
+  assert.equal(resolveUserPreferences({ autosaveSeconds: 7 }).autosaveSeconds, 15);
+  assert.equal(resolveUserPreferences({ autosaveSeconds: "30" }).autosaveSeconds, 15);
+  assert.equal(resolveUserPreferences({ autosaveSeconds: 300 }).autosaveSeconds, 300);
+  assert.equal(resolveUserPreferences({ autosaveSeconds: 0 }).autosaveSeconds, 0);
 });
 
 test("the editor waits the chosen seconds, and «Desactivado» does not save on its own", () => {

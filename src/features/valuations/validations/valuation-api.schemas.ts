@@ -23,6 +23,8 @@ export const createValuationSchema = z.object({
 
 const valuationMetaShape = {
   folio: z.string().max(80).optional(),
+  /** The valuation's title; absent, it stays as it is. */
+  title: z.string().trim().min(1).max(220).optional(),
   client: shortText.optional(),
   location: z.string().max(500).optional(),
   postalCode: z.string().max(10).optional(),

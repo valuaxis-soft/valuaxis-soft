@@ -17,6 +17,7 @@ Las claves están en `AUTH_PERMISSIONS` (`src/features/auth/model.ts`):
 | `concludeValuations` | `AVALUO_CONCLUIR` |
 | `reopenValuations` | `AVALUO_REABRIR` |
 | `exportValuations` | `AVALUO_EXPORTAR` |
+| `purgeValuations` | `AVALUO_ELIMINAR_DEFINITIVO` (migración 059; solo `ADMINISTRADOR`) |
 | `manageUsers` | `USUARIO_ADMINISTRAR` |
 
 ## Cómo se aplica
@@ -36,6 +37,17 @@ Las claves están en `AUTH_PERMISSIONS` (`src/features/auth/model.ts`):
 | `POST /api/avaluos/[id]/conclude` | `AVALUO_CONCLUIR` |
 | `POST /api/avaluos/[id]/reopen` | `AVALUO_REABRIR` |
 | `GET /api/avaluos/[id]/export` | `AVALUO_EXPORTAR` |
+| `GET /api/exportar/avaluos` («Exportar a Excel» de la lista), `GET /api/avaluos/[id]/historial` | `AVALUO_VER` |
+| `GET /api/avaluos/[id]/historial/pdf/[fileId]` y `/avaluos/<uuid>/dictamen?version=<n>` (versión anterior en solo lectura) | `AVALUO_EXPORTAR` |
+| `POST /api/avaluos/[id]/restaurar` (papelera) | `AVALUO_EDITAR` |
+| `DELETE /api/avaluos/[id]/definitivo` («Eliminar definitivamente») | `AVALUO_ELIMINAR_DEFINITIVO` |
+| `POST /api/avaluos/[id]/revision`: `enviar` | `AVALUO_EDITAR` |
+| `POST /api/avaluos/[id]/revision`: `aprobar` y `regresar` | `AVALUO_REVISAR` |
+
+### Papelera y revisión (AUD-14, 13 nov 2026)
+
+- **Eliminar** (`AVALUO_EDITAR`) manda el avalúo a la papelera: sale de toda lista, búsqueda, mapa, conteo y de la base de comparables, y ninguna ruta lo abre ni lo edita (todas filtran `BActivo` y `DFechaEliminacion`). Se restaura durante 30 días con el mismo permiso. **Eliminar definitivamente** exige `AVALUO_ELIMINAR_DEFINITIVO`, que la migración 059 da solo a `ADMINISTRADOR`, y que la persona escriba el folio. Abrir la papelera elimina definitivamente los que pasaron sus 30 días.
+- **Revisión:** quien edita (`VALUADOR`, `ADMINISTRADOR`) envía a revisión; quien revisa (`REVISOR`, `ADMINISTRADOR`) aprueba o regresa a edición con motivo. El sistema avisa y no impide: el valuador puede seguir editando un avalúo en revisión, y concluir sigue dependiendo solo de `AVALUO_CONCLUIR` (aprobado o no). Reabrir borra la aprobación: la versión nueva se revisa otra vez.
 
 El aislamiento entre organizaciones sigue dependiendo de que cada consulta filtre por `IdOrganizacion`.
 
@@ -56,5 +68,5 @@ Una organización es `PERSONAL` (la que recibe cada usuario al registrarse, como
 
 ## Pendiente
 
-- **No existe un permiso de borrado.** Borrar un avalúo exige `AVALUO_EDITAR`. Si el despacho quiere restringirlo, se agrega `AVALUO_ELIMINAR` con una migración.
+- **Mandar a la papelera** exige `AVALUO_EDITAR`, igual que antes; solo eliminar definitivamente tiene permiso propio (`AVALUO_ELIMINAR_DEFINITIVO`). Si el despacho quiere restringir también la papelera, se usa ese mismo permiso con otra migración.
 - **Planes y límites de uso** (`Plan`, `FuncionalidadPlan`, `Suscripcion`) no se aplican. Se implementan con el cobro en Stripe.

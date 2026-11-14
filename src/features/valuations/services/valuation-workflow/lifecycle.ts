@@ -222,6 +222,8 @@ export async function reopenValuation(input: {
         INumeroVersionActual: nextVersionNumber,
         BBloqueado: false,
         DFechaBloqueo: null,
+        // The new version is reviewed again, if the firm reviews.
+        DFechaRevisionAprobada: null,
       },
     });
 

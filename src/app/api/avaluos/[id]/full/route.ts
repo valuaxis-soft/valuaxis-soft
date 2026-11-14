@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { saveValuation } from "@/features/valuations/actions/save-valuation.action";
 import { refreshLiveFormulas } from "@/features/valuations/calculation/live-formulas.service";
+import { auditValuationDataChanges, auditValuationSave } from "@/features/valuations/services/valuation-audit";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
 import {
   saveValuationSections,
@@ -55,6 +56,9 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/avalu
       : null;
     // The fields of the calculation panels that read the document follow it (live-formulas.service.ts).
     const liveFormulas = sectionResult ? await refreshLiveFormulas(id, user) : [];
+    // The history: one «Guardó cambios» per person every few minutes, and what changed of the valuation's data.
+    await auditValuationSave({ user, valuationPublicId: id, request });
+    if ("changes" in result && result.changes?.length) await auditValuationDataChanges({ user, valuationPublicId: id, request, changes: result.changes });
 
     return NextResponse.json({
       data: { valuation: result.data, sections: sectionResult, liveFormulas },
