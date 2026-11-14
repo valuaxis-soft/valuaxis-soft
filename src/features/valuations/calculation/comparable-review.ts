@@ -41,7 +41,12 @@ export function statusAfterLinkCheck(status: ReviewStatus, linkValid: boolean): 
   return isVerifiedStatus(status) ? "VERIFICADO" : status;
 }
 
-/** What the appraiser checks against the listing, in the order of the competitor's review. */
+/**
+ * What the appraiser checks against the listing, in the order of the
+ * competitor's review: the firm's checklist until its administrator changes it
+ * in Despacho (comparable-review-checklist.ts). These keys keep their meaning:
+ * «link» moves the state and «builtArea» is not shown for land.
+ */
 export const REVIEW_CHECKS = ["photo", "price", "landArea", "builtArea", "contact", "address", "link"] as const;
 export type ReviewCheck = (typeof REVIEW_CHECKS)[number];
 export const REVIEW_CHECK_LABELS: Record<ReviewCheck, string> = {
@@ -64,11 +69,11 @@ export const REVIEW_CHECK_HINTS: Partial<Record<ReviewCheck, string>> = {
  * also when it was «Sin revisar»; observations and rejections stay.
  */
 export function markAllChecks(
-  checks: readonly ReviewCheck[], status: ReviewStatus,
-): { checks: Partial<Record<ReviewCheck, boolean>>; status: ReviewStatus } {
+  checks: readonly string[], status: ReviewStatus,
+): { checks: ReviewChecks; status: ReviewStatus } {
   const linkMarked = checks.includes("link") && status !== "CON_OBSERVACIONES" && status !== "RECHAZADO";
   return {
-    checks: Object.fromEntries(checks.map((check) => [check, true])) as Partial<Record<ReviewCheck, boolean>>,
+    checks: Object.fromEntries(checks.map((check) => [check, true])),
     status: linkMarked ? "VERIFICADO" : status,
   };
 }
@@ -84,10 +89,19 @@ export function groupByComparableType<T extends { type: ComparableType }>(rows: 
     .filter((group) => group.rows.length > 0);
 }
 
+/** Each check of the firm's checklist by its key (a built-in one or one the firm added), marked or not. */
+export type ReviewChecks = Partial<Record<string, boolean>>;
+
 export type ComparableReviewDto = {
   status: ReviewStatus;
   /** Each check marked; a check left out is not reviewed yet. */
-  checks: Partial<Record<ReviewCheck, boolean>>;
+  checks: ReviewChecks;
+  /**
+   * The name each check had when the review was saved, so a review stays
+   * readable after the firm renames or removes a check. Reviews saved before
+   * the checklist was the firm's have none: their keys are the built-in ones.
+   */
+  labels?: Record<string, string>;
   notes: string | null;
   reviewedBy: string | null;
   /** ISO timestamp of the last change of the review. */
@@ -98,11 +112,12 @@ export const PENDING_REVIEW: ComparableReviewDto = { status: "POR_REVISAR", chec
 
 /**
  * ±20 %: a building comparable whose built surface differs more than this
- * from the subject's is usually not comparable (the competitor's rule of thumb).
- * TODO: make it a setting of the firm, beside the factor ranges, if the appraiser asks for it.
+ * from the subject's is usually not comparable (the competitor's rule of
+ * thumb). The default: each firm sets its own in Despacho → Revisión de
+ * comparables (comparable-review-checklist.ts).
  */
 export const BUILT_AREA_TOLERANCE = 0.2;
-/** An offer older than this many months is flagged as possibly stale. */
+/** An offer older than this many months is flagged as possibly stale, unless the firm or the comparable sets its own validity. */
 export const OFFER_MAX_AGE_MONTHS = 6;
 
 /** Names of listing portals: a contact that is only one of them is not the advertiser. */
@@ -125,7 +140,7 @@ export type ComparableWarning = { key: ComparableWarningKey; message: string };
 
 /** What each warning means and what to do about it, for the help next to it. None blocks anything. */
 export const WARNING_HELP: Record<ComparableWarningKey, string> = {
-  BUILT_AREA: `La superficie construida difiere más de ±${Math.round(BUILT_AREA_TOLERANCE * 100)} % de la del sujeto. Un inmueble mucho más grande o más chico suele no ser comparable; consérvalo solo si lo justificas.`,
+  BUILT_AREA: `La superficie construida difiere de la del sujeto más del porcentaje que fijó el despacho en «Revisión de comparables» (±${Math.round(BUILT_AREA_TOLERANCE * 100)} % si no lo cambió). Un inmueble mucho más grande o más chico suele no ser comparable; consérvalo solo si lo justificas.`,
   NO_NUMBER: "La dirección no trae número exterior: sin él no se puede ubicar ni verificar el inmueble. Captura el número o anota en las notas por qué falta.",
   PORTAL_CONTACT: "El contacto es sólo por portal: el anunciante quedó como el nombre del portal (Inmuebles24, Lamudi…) o igual que la fuente, y no hay teléfono. Anota el nombre de la persona o inmobiliaria que anuncia, o su teléfono, para poder confirmar la oferta.",
   NO_SCREENSHOT: "Falta pantalla de referencia: es la captura del anuncio como estaba el día de la consulta, la evidencia si el anuncio cambia o se borra. Pégala con Ctrl+V o súbela en la ficha del comparable.",
@@ -169,14 +184,23 @@ const percent = (value: number) => `${Math.round(Math.abs(value) * 100)} %`;
  */
 export function comparableWarnings(
   comparable: WarningInput,
-  context: { type: ComparableType; subjectArea: number | null; today: string; /** The firm's or the comparable's months of validity; six by default. */ offerMaxAgeMonths?: number },
+  context: {
+    type: ComparableType;
+    subjectArea: number | null;
+    today: string;
+    /** The firm's or the comparable's months of validity; six by default. */
+    offerMaxAgeMonths?: number;
+    /** The firm's tolerance of the built area, as a fraction (0.2 = ±20 %); ±20 % by default. */
+    builtAreaTolerance?: number;
+  },
 ): ComparableWarning[] {
   const warnings: ComparableWarning[] = [];
+  const tolerance = context.builtAreaTolerance ?? BUILT_AREA_TOLERANCE;
   const difference = isBuiltComparableType(context.type) ? builtAreaDifference(comparable.area, context.subjectArea) : null;
-  if (difference !== null && Math.abs(difference) > BUILT_AREA_TOLERANCE + 1e-9) {
+  if (difference !== null && Math.abs(difference) > tolerance + 1e-9) {
     warnings.push({
       key: "BUILT_AREA",
-      message: `La superficie construida es ${percent(difference)} ${difference > 0 ? "mayor" : "menor"} que la del sujeto (más de ±${percent(BUILT_AREA_TOLERANCE)}): puede no ser comparable.`,
+      message: `La superficie construida es ${percent(difference)} ${difference > 0 ? "mayor" : "menor"} que la del sujeto (más de ±${percent(tolerance)}): puede no ser comparable.`,
     });
   }
   // A structured address needs its number; a single text, a digit somewhere in it.

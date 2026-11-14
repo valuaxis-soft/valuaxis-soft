@@ -39,6 +39,8 @@ import {
 } from "./comparable-card";
 import { addMonths, comparableDataChanged } from "./comparable-validity";
 import { PENDING_REVIEW, REVIEW_STATUSES, type ComparableReviewDto } from "./comparable-review";
+import { labelsForReview } from "./comparable-review-checklist";
+import { getComparableReviewSettings } from "@/features/firm/comparable-review-settings.service";
 import type { ComparableInputPayload, ComparableReviewPayload, MarketSettingsPayload } from "./market-schemas";
 import {
   COMPARABLE_TYPES,
@@ -181,6 +183,7 @@ function reviewOf(stored: Prisma.JsonValue | null): ComparableReviewDto {
   return {
     status: review.status,
     checks: review.checks ?? {},
+    ...(review.labels && typeof review.labels === "object" ? { labels: review.labels } : {}),
     notes: review.notes ?? null,
     reviewedBy: review.reviewedBy ?? null,
     reviewedAt: review.reviewedAt ?? null,
@@ -1479,9 +1482,12 @@ export async function saveComparableReview(publicId: string, user: AuthUser, com
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
     const current = await findComparable(tx, versionId, comparableId);
+    const checklist = await getComparableReviewSettings(user.organizationId, tx);
     const review: ReviewSnapshot = {
       status: payload.status,
       checks: payload.checks,
+      // The name of each check as the firm calls it today: the review reads the same after the list changes.
+      labels: labelsForReview(payload.checks, checklist),
       notes: payload.notes,
       reviewedBy: user.name,
       reviewedById: user.id,

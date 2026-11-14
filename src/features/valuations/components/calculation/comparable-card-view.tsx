@@ -15,7 +15,8 @@ import {
   formatComparableId,
 } from "@/features/valuations/calculation/comparable-card";
 import type { ComparableCardDto } from "@/features/valuations/calculation/comparable-card.service";
-import { REVIEW_CHECKS, REVIEW_CHECK_LABELS, REVIEW_STATUS_LABELS } from "@/features/valuations/calculation/comparable-review";
+import { REVIEW_STATUS_LABELS } from "@/features/valuations/calculation/comparable-review";
+import { reviewCheckLabel } from "@/features/valuations/calculation/comparable-review-checklist";
 import {
   COMPARABLE_TYPE_LABELS,
   defaultCharacteristicFields,
@@ -225,8 +226,9 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
               {review.reviewedAt ? ` el ${new Date(review.reviewedAt).toLocaleString("es-MX")}` : ""}
             </p>
             <ul className="flex flex-wrap gap-1">
-              {REVIEW_CHECKS.filter((check) => review.checks[check] !== undefined).map((check) => (
-                <li key={check}><Badge variant={review.checks[check] ? "secondary" : "destructive"}>{review.checks[check] ? "✓" : "✗"} {REVIEW_CHECK_LABELS[check]}</Badge></li>
+              {/* Every check the review saved, under the name it had then (the firm's list may have changed since). */}
+              {Object.entries(review.checks).filter(([, marked]) => marked !== undefined).map(([check, marked]) => (
+                <li key={check}><Badge variant={marked ? "secondary" : "destructive"}>{marked ? "✓" : "✗"} {reviewCheckLabel(check, review.labels)}</Badge></li>
               ))}
             </ul>
             {review.notes ? <p className="whitespace-pre-wrap">{review.notes}</p> : null}

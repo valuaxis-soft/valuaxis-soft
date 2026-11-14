@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { SignaturesEditor } from "@/features/valuations/components/editor/signatures-editor";
 import {
@@ -21,7 +20,6 @@ import { api, SessionExpiredError } from "@/lib/api-client";
 import { formatValuationFolio, normalizeFolioPrefix } from "../firm-rules";
 import { CustomUnitsCard } from "./custom-units-card";
 import type { FirmSettingsDto } from "../firm.service";
-import { COMPARABLE_VALIDITY_MONTHS } from "@/features/valuations/calculation/comparable-validity";
 
 type FormState = {
   legalName: string;
@@ -32,7 +30,6 @@ type FormState = {
   signers: ValuationSignature[];
   validityMonths: string;
   folioPrefix: string;
-  comparableValidityMonths: string;
 };
 
 const toForm = (settings: FirmSettingsDto): FormState => ({
@@ -44,7 +41,6 @@ const toForm = (settings: FirmSettingsDto): FormState => ({
   signers: settings.signers,
   validityMonths: String(settings.validityMonths),
   folioPrefix: settings.folioPrefix,
-  comparableValidityMonths: String(settings.comparableValidityMonths ?? 6),
 });
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -95,8 +91,8 @@ export function FirmSettingsForm() {
         email: form.email,
         signers: form.signers,
         validityMonths: Number(form.validityMonths),
+        // The comparables' validity is saved with the review checklist (Revisión de comparables, below).
         folioPrefix: form.folioPrefix,
-        comparableValidityMonths: Number(form.comparableValidityMonths),
       });
       setSettings(next);
       setForm(toForm(next));
@@ -225,13 +221,6 @@ export function FirmSettingsForm() {
             <FieldLabel htmlFor="firm-validity">Vigencia (meses)</FieldLabel>
             <Input id="firm-validity" type="number" min={MIN_VALIDITY_MONTHS} max={MAX_VALIDITY_MONTHS} step={1} value={form.validityMonths} onChange={set("validityMonths")} />
             <FieldDescription>De 1 a 12 meses completos, contados desde la fecha del avalúo. En cada avalúo se puede cambiar.</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="firm-comparable-validity">Vigencia de los comparables (meses)</FieldLabel>
-            <NativeSelect id="firm-comparable-validity" className="w-full" value={form.comparableValidityMonths} onChange={set("comparableValidityMonths")}>
-              {COMPARABLE_VALIDITY_MONTHS.map((months) => <NativeSelectOption key={months} value={String(months)}>{months} {months === 1 ? "mes" : "meses"}</NativeSelectOption>)}
-            </NativeSelect>
-            <FieldDescription>Los meses con que nace cada comparable nuevo, desde su fecha de consulta; en cada comparable se puede cambiar.</FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="firm-prefix">Prefijo del folio</FieldLabel>

@@ -3,7 +3,8 @@ import { SURFACE_POWERS } from "../engine/config";
 import { MAX_REGRESSION_VARIABLES } from "../engine/regression";
 import { capturedFormulasSchema } from "./captured-formulas";
 import { CURRENCIES, DATA_VERIFIED, OPERATION_TYPES, STREET_TYPES, UNIT_BASES, URBAN_PROXIMITIES } from "./comparable-card";
-import { REVIEW_CHECKS, REVIEW_STATUSES } from "./comparable-review";
+import { REVIEW_STATUSES } from "./comparable-review";
+import { MAX_REVIEW_CHECKS, reviewCheckKeySchema } from "./comparable-review-checklist";
 import { MAX_SCALE_LEVELS, REGRESSION_DEPENDENTS } from "./market-regression";
 import { COVER_IMAGE_SCALE } from "../services/cover-image-focus";
 import {
@@ -240,7 +241,10 @@ export const restoreMarketSchema = z.object({
 /** The review of a comparable in a valuation: it changes no calculation. */
 export const comparableReviewSchema = z.object({
   status: z.enum(REVIEW_STATUSES, "Estado de revisión inválido."),
-  checks: z.partialRecord(z.enum(REVIEW_CHECKS), z.boolean()).default({}),
+  // The firm's checklist (built-in keys and the ones it added); the server keeps their names with the review.
+  checks: z.record(reviewCheckKeySchema, z.boolean())
+    .refine((checks) => Object.keys(checks).length <= MAX_REVIEW_CHECKS * 2, "Demasiadas verificaciones.")
+    .default({}),
   notes: text(2000).default(null),
 });
 

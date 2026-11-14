@@ -16,21 +16,25 @@ import { formatComparableId } from "@/features/valuations/calculation/comparable
 import type { ReviewRowDto } from "@/features/valuations/calculation/comparable-card.service";
 import {
   PENDING_REVIEW,
-  REVIEW_CHECKS,
-  REVIEW_CHECK_HINTS,
-  REVIEW_CHECK_LABELS,
   REVIEW_STATUSES,
   REVIEW_STATUS_LABELS,
   WARNING_HELP,
   groupByComparableType,
+  isVerifiedStatus,
   markAllChecks,
   statusAfterLinkCheck,
   type ComparableReviewDto,
   type ComparableWarning,
-  type ReviewCheck,
+  type ReviewChecks,
   type ReviewStatus,
 } from "@/features/valuations/calculation/comparable-review";
-import { COMPARABLE_TYPES, COMPARABLE_TYPE_LABELS, isLandComparableType, isRentComparableType } from "@/features/valuations/calculation/market-types";
+import {
+  DEFAULT_REVIEW_CHECKLIST,
+  checklistFor,
+  missingRequiredChecks,
+  type ComparableReviewChecklist,
+} from "@/features/valuations/calculation/comparable-review-checklist";
+import { COMPARABLE_TYPES, COMPARABLE_TYPE_LABELS, isRentComparableType } from "@/features/valuations/calculation/market-types";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { ComparableCardButton } from "./comparable-card-dialog";
@@ -84,25 +88,34 @@ function WarningLine({ warning }: { warning: ComparableWarning }) {
   );
 }
 
-/** One comparable under review: its listing and screenshot to open, the checklist and the notes. */
-function ReviewRow(props: { row: ReviewRowDto; readOnly: boolean; onSaved: (review: ComparableReviewDto) => void; valuationId: string }) {
+/** One comparable under review: its listing and screenshot to open, the firm's checklist and the notes. */
+function ReviewRow(props: {
+  row: ReviewRowDto;
+  readOnly: boolean;
+  onSaved: (review: ComparableReviewDto) => void;
+  valuationId: string;
+  checklist: ComparableReviewChecklist;
+}) {
   const { comparable, type, warnings } = props.row;
   const stored = comparable.review ?? PENDING_REVIEW;
   const [status, setStatus] = useState<ReviewStatus>(stored.status);
-  const [checks, setChecks] = useState<Partial<Record<ReviewCheck, boolean>>>(stored.checks);
+  const [checks, setChecks] = useState<ReviewChecks>(stored.checks);
   const [notes, setNotes] = useState(stored.notes ?? "");
   const [saving, setSaving] = useState(false);
   const id = formatComparableId(comparable.folio);
   const unitValue = comparable.area && comparable.price ? comparable.price / comparable.area : null;
-  const checksShown = REVIEW_CHECKS.filter((check) => check !== "builtArea" || !isLandComparableType(type));
-  const allChecked = checksShown.every((check) => checks[check] === true);
+  // The firm's points (Despacho → Revisión de comparables); the built area is not one of a land comparable.
+  const checksShown = checklistFor(props.checklist, type);
+  const allChecked = checksShown.every((check) => checks[check.key] === true);
+  // Required points only warn: verified without them, the row says which are missing.
+  const missingRequired = isVerifiedStatus(status) ? missingRequiredChecks(checksShown, checks) : [];
   // «El enlace sigue vigente» sets the state: unmarked, «Verificado y no vigente»; marked again, «Verificado y vigente».
-  const toggleCheck = (check: ReviewCheck, checked: boolean) => {
+  const toggleCheck = (check: string, checked: boolean) => {
     setChecks((current) => ({ ...current, [check]: checked }));
     if (check === "link") setStatus((current) => statusAfterLinkCheck(current, checked));
   };
   const markAll = () => {
-    const next = markAllChecks(checksShown, status);
+    const next = markAllChecks(checksShown.map((check) => check.key), status);
     setChecks((current) => ({ ...current, ...next.checks }));
     setStatus(next.status);
   };
@@ -173,20 +186,27 @@ function ReviewRow(props: { row: ReviewRowDto; readOnly: boolean; onSaved: (revi
               </label>
             </li>
             {checksShown.map((check) => (
-              <li key={check}>
+              <li key={check.key} data-review-check={check.key}>
                 <label className="flex items-center gap-1.5">
                   <Checkbox
-                    checked={checks[check] === true}
-                    onCheckedChange={(checked) => toggleCheck(check, checked === true)}
+                    checked={checks[check.key] === true}
+                    onCheckedChange={(checked) => toggleCheck(check.key, checked === true)}
                   />
                   <span>
-                    {REVIEW_CHECK_LABELS[check]}
-                    {REVIEW_CHECK_HINTS[check] ? <span className="text-muted-foreground"> ({REVIEW_CHECK_HINTS[check]})</span> : null}
+                    {check.label}
+                    {check.required ? <span className="font-medium text-amber-700 dark:text-amber-400"> · obligatoria</span> : null}
+                    {check.hint ? <span className="text-muted-foreground"> ({check.hint})</span> : null}
                   </span>
                 </label>
               </li>
             ))}
           </ul>
+          {missingRequired.length ? (
+            <p className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400" data-review-missing-required>
+              <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+              <span>Faltan verificaciones obligatorias del despacho: {missingRequired.map((check) => check.label).join(", ")}. Puedes guardar así; anota en las notas por qué.</span>
+            </p>
+          ) : null}
         </div>
         <div className="grid content-start gap-2">
           <label className="grid gap-1 text-xs">
@@ -222,6 +242,7 @@ export function ComparableReviewDialog(props: {
 }) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<ReviewRowDto[] | null>(null);
+  const [checklist, setChecklist] = useState<ComparableReviewChecklist>(DEFAULT_REVIEW_CHECKLIST);
   const [error, setError] = useState<string | null>(null);
   // Which states to show (none chosen: all) and the words to find a comparable by.
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | null>(null);
@@ -243,8 +264,10 @@ export function ComparableReviewDialog(props: {
     const timer = window.setTimeout(() => {
       if (current()) setError(`La revisión tardó más de ${REVIEW_LOAD_TIMEOUT_MS / 1000} segundos en cargar. Revisa tu conexión e inténtalo de nuevo.`);
     }, REVIEW_LOAD_TIMEOUT_MS);
-    api.market.review(props.valuationId)
-      .then((next) => { if (current()) { setError(null); setRows(next); } })
+    // The firm's checklist; without it (an older server, a network hiccup) the built-in list.
+    const checklistLoad = api.firm.reviewChecklist().catch(() => DEFAULT_REVIEW_CHECKLIST);
+    Promise.all([api.market.review(props.valuationId), checklistLoad])
+      .then(([next, firmChecklist]) => { if (current()) { setError(null); setChecklist(firmChecklist); setRows(next); } })
       .catch((failure: unknown) => { if (current()) setError(failure instanceof Error ? failure.message : "No se pudo cargar la revisión."); })
       .finally(() => window.clearTimeout(timer));
   };
@@ -268,8 +291,8 @@ export function ComparableReviewDialog(props: {
           <DialogHeader>
             <DialogTitle>Revisión de comparables</DialogTitle>
             <DialogDescription>
-              Abre cada anuncio en otra pestaña y compara la foto, el precio, las superficies, el contacto y la dirección. El estado es tu registro
-              de la revisión: no cambia ningún cálculo ni impide concluir.
+              Abre cada anuncio en otra pestaña y revisa los puntos de la lista del despacho (el administrador la cambia en Despacho → Datos del
+              despacho → Revisión de comparables). El estado es tu registro de la revisión: no cambia ningún cálculo ni impide concluir.
             </DialogDescription>
           </DialogHeader>
           {rows ? (
@@ -330,6 +353,7 @@ export function ComparableReviewDialog(props: {
                         row={row}
                         readOnly={props.readOnly}
                         valuationId={props.valuationId}
+                        checklist={checklist}
                         onSaved={(review) => saved(row.comparable.id, review)}
                       />
                     ))}
