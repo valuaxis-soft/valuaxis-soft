@@ -13,7 +13,7 @@ import { COMPARABLE_TYPES, type ComparableType } from "@/features/valuations/cal
 
 import { DEFAULT_STREET_HIGHLIGHTS, streetHighlightsSchema, type StreetLabel } from "./highlights";
 import { DEFAULT_NORTH_ARROW, MACRO_FRAME, MAP_CORNERS, MAP_TYPES, MICRO_FRAME, NORTH_ARROW_STYLES, type CroquisFrame, type MapType, type NorthArrow } from "./map-styles";
-import { STATIC_MAP_SIZE, imagePosition } from "./static-map";
+import { STATIC_MAP_SIZE, imagePixel, imagePosition } from "./static-map";
 import type { LatLon } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -33,7 +33,12 @@ export function croquisKind(kind: CroquisKind) {
   return CROQUIS_KINDS.find((item) => item.kind === kind)!;
 }
 
-/** Ids of the images in the document, stable so a new capture replaces the previous one (croquis-document.ts). */
+/**
+ * The fixed ids the croquis had until 13 nov 2026, one macro, one micro and
+ * one map of comparables per valuation. A croquis is now known by its marker
+ * (croquis-marker.ts) and has an id of its own; an image read with one of
+ * these ids becomes a croquis of that kind.
+ */
 export const CROQUIS_IMAGE_IDS: Record<CroquisKind, string> = {
   macro: "croquis-macrolocalizacion",
   micro: "croquis-microlocalizacion",
@@ -196,34 +201,59 @@ export function pinsOverlaySvg(center: LatLon, zoom: number, pins: readonly Comp
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${items.join("")}</svg>`;
 }
 
-/** Height of a street name chip on the image, in map pixels; its width follows the text. */
-const LABEL_HEIGHT = 16;
-const LABEL_FONT = 11;
-/** Average width of a character of the label's font, in map pixels. */
-const LABEL_CHAR_WIDTH = 6.2;
+/** Height of a street name on the image, in map pixels; its width follows the text. */
+const LABEL_HEIGHT = 20;
+const LABEL_FONT = 13;
+/** Average width of a character of the label's bold font, in map pixels. */
+const LABEL_CHAR_WIDTH = 7.8;
+/** The font of the names: the document's, then the ones a server without it has. */
+export const STREET_LABEL_FONT_FAMILY = "'Open Sans', 'DejaVu Sans', Arial, Helvetica, sans-serif";
 
 /**
- * The street names as an SVG the size of the image: a white chip with the
- * name, centered above its point and with the color of its category on the
- * left edge, like the chips of the interactive map. Names whose point falls
- * outside the frame are left out.
+ * Where a street name sits on the image, in map pixels: centered on its
+ * point, along its street (`angle`), kept whole inside the image. The
+ * generator's «Letreros» and the server's image use the same box, so what
+ * the appraiser arranges is what prints.
+ */
+export function streetLabelBox(center: LatLon, zoom: number, label: Pick<StreetLabel, "name" | "point" | "angle">) {
+  const at = imagePixel(center, zoom, label.point);
+  const width = label.name.length * LABEL_CHAR_WIDTH + 14;
+  const height = LABEL_HEIGHT;
+  const radians = (label.angle * Math.PI) / 180;
+  const halfX = Math.abs((width / 2) * Math.cos(radians)) + Math.abs((height / 2) * Math.sin(radians));
+  const halfY = Math.abs((width / 2) * Math.sin(radians)) + Math.abs((height / 2) * Math.cos(radians));
+  const inside = at.x >= 0 && at.x <= STATIC_MAP_SIZE.width && at.y >= 0 && at.y <= STATIC_MAP_SIZE.height;
+  const clamp = (value: number, half: number, max: number) => Math.min(Math.max(value, Math.min(half + 2, max / 2)), Math.max(max - half - 2, max / 2));
+  return {
+    inside,
+    x: clamp(at.x, halfX, STATIC_MAP_SIZE.width),
+    y: clamp(at.y, halfY, STATIC_MAP_SIZE.height),
+    width,
+    height,
+    angle: label.angle,
+    fontSize: LABEL_FONT,
+  };
+}
+
+/**
+ * The street names as an SVG the size of the image (V5.7-14): each name on
+ * its street and turned along it (or where and how the appraiser placed it),
+ * in bold dark letters on a white rounded band edged with the color of its
+ * category, readable over the map or the satellite photo. Names whose point
+ * falls outside the frame are left out.
  */
 export function streetLabelsOverlaySvg(center: LatLon, zoom: number, labels: readonly StreetLabel[], scale = 2) {
   const width = STATIC_MAP_SIZE.width * scale;
   const height = STATIC_MAP_SIZE.height * scale;
   const items = labels.flatMap((label) => {
-    const at = imagePosition(center, zoom, label.point);
-    if (!at) return [];
-    const chipWidth = (label.name.length * LABEL_CHAR_WIDTH + 10) * scale;
-    const chipHeight = LABEL_HEIGHT * scale;
-    // Centered over the point, 6 px above it, and kept inside the image.
-    const x = Math.min(Math.max(at.x * width - chipWidth / 2, 2 * scale), width - chipWidth - 2 * scale);
-    const y = Math.max(at.y * height - chipHeight - 6 * scale, 2 * scale);
+    const box = streetLabelBox(center, zoom, label);
+    if (!box.inside) return [];
+    const w = box.width * scale;
+    const h = box.height * scale;
     return [
-      `<g>` +
-        `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${chipWidth.toFixed(1)}" height="${chipHeight}" rx="${2 * scale}" fill="rgba(255,255,255,0.95)" stroke="rgba(0,0,0,0.18)" stroke-width="${scale}"/>` +
-        `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${3 * scale}" height="${chipHeight}" fill="${escapeXml(label.color)}"/>` +
-        `<text x="${(x + 6 * scale).toFixed(1)}" y="${(y + chipHeight * 0.72).toFixed(1)}" font-family="Arial, Helvetica, sans-serif" font-weight="600" font-size="${LABEL_FONT * scale}" fill="#12212f">${escapeXml(label.name)}</text>` +
+      `<g transform="translate(${(box.x * scale).toFixed(1)} ${(box.y * scale).toFixed(1)}) rotate(${box.angle.toFixed(1)})">` +
+        `<rect x="${(-w / 2).toFixed(1)}" y="${(-h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(h / 2).toFixed(1)}" fill="#ffffff" fill-opacity="0.93" stroke="${escapeXml(label.color)}" stroke-width="${(1.4 * scale).toFixed(1)}"/>` +
+        `<text x="0" y="${(box.fontSize * 0.36 * scale).toFixed(1)}" text-anchor="middle" font-family="${STREET_LABEL_FONT_FAMILY}" font-weight="700" font-size="${box.fontSize * scale}" letter-spacing="${(0.2 * scale).toFixed(1)}" fill="#1b2733">${escapeXml(label.name)}</text>` +
         `</g>`,
     ];
   });

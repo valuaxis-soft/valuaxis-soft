@@ -23,6 +23,7 @@ import {
 import { isBoundaryDistanceValueFormat } from "@/features/valuations/services/concept-value-format";
 import { COVER_IMAGE_FOCUS_CENTER } from "@/features/valuations/services/cover-image-focus";
 import { imageMetadataFromContent } from "@/features/valuations/metadata";
+import { withLegacyCroquisMarker } from "@/features/maps/croquis-marker";
 import { applyValuationFormulas } from "@/features/valuations/services/valuation-formulas";
 import { initializeCaratulaState } from "@/features/valuations/components/workspace/valuation-caratula-state";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
@@ -246,7 +247,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
         concepts: subBlock.concepts,
         flowSpacingBeforePx: subBlock.flowSpacingBeforePx,
         tables: subBlock.tables.map((table) => hydrateTable(table, true)),
-        images: subBlock.images.map((image) => ({
+        images: subBlock.images.map((image) => withLegacyCroquisMarker({
           id: image.id,
           title: image.title,
           src: image.url,
@@ -254,7 +255,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
         })),
       })),
       tables: block.tables.map((table) => hydrateTable(table, table.enabled)),
-      images: block.images.map((image) => ({
+      images: block.images.map((image) => withLegacyCroquisMarker({
         id: image.id,
         title: image.title,
         src: image.url,

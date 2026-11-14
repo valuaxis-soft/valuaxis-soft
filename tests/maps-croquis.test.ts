@@ -23,6 +23,7 @@ import {
   pinsOverlaySvg,
   readCroquisSettings,
   type ComparableForPin,
+  type CroquisKind,
 } from "../src/features/maps/croquis";
 import { croquisReplacements, findCroquisImage, withCroquisImage, withCroquisImages } from "../src/features/maps/croquis-document";
 import { withAddedBlockContent } from "../src/features/valuations/components/workspace/model/section-content";
@@ -150,14 +151,19 @@ function sections(): AppSection[] {
   return normalizeEditorSections(createInitialSections());
 }
 
+const marker = (kind: CroquisKind) => ({ kind });
+const placement = (kind: CroquisKind, src: string, replaceImageId?: string) => ({ kind, src, marker: marker(kind), replaceImageId });
+
 test("the macro and micro croquis go side by side in the Croquis section; a new capture replaces the image and keeps the appraiser's caption", () => {
-  const first = withCroquisImage(sections(), "macro", "/api/archivos/imagen?key=uploads/macro-1.jpg");
+  const first = withCroquisImage(sections(), placement("macro", "/api/archivos/imagen?key=uploads/macro-1.jpg"));
   assert.ok(first.placed);
-  const both = withCroquisImage(first.sections, "micro", "/api/archivos/imagen?key=uploads/micro-1.jpg");
+  const both = withCroquisImage(first.sections, placement("micro", "/api/archivos/imagen?key=uploads/micro-1.jpg"));
   const croquis = both.sections.find((section) => section.id === "croquisComparables")!;
   const block = croquis.blocks[0];
-  const macro = block.images.find((image) => image.id === CROQUIS_IMAGE_IDS.macro)!;
-  const micro = block.images.find((image) => image.id === CROQUIS_IMAGE_IDS.micro)!;
+  const macro = block.images.find((image) => image.croquis?.kind === "macro")!;
+  const micro = block.images.find((image) => image.croquis?.kind === "micro")!;
+  // Ids of their own, not the old fixed ones.
+  assert.ok(!Object.values(CROQUIS_IMAGE_IDS).includes(macro.id) && macro.id !== micro.id);
   assert.equal(macro.captionText, "Croquis de macrolocalización");
   assert.equal(macro.captionEnabled, true);
   assert.deepEqual(micro.captions?.map((caption) => caption.text), ["Croquis de microlocalización"]);
@@ -173,30 +179,33 @@ test("the macro and micro croquis go side by side in the Croquis section; a new 
   const renamed = both.sections.map((section) =>
     section.id !== "croquisComparables" ? section : { ...section, blocks: section.blocks.map((item) => ({ ...item, images: item.images.map((image) => (image.id === macro.id ? { ...image, captionText: "Macro de la zona", rotation: 90 as const } : image)) })) },
   );
-  const again = withCroquisImage(renamed, "macro", "/api/archivos/imagen?key=uploads/macro-2.jpg");
+  const again = withCroquisImage(renamed, { ...placement("macro", "/api/archivos/imagen?key=uploads/macro-2.jpg"), marker: { kind: "macro" as const, frame: { offset: [0, 0] as [number, number], zoom: 14 } } });
   const replaced = findCroquisImage(again.sections, "macro")!;
+  assert.equal(replaced.id, macro.id);
   assert.equal(replaced.src, "/api/archivos/imagen?key=uploads/macro-2.jpg");
   assert.equal(replaced.captionText, "Macro de la zona");
   assert.equal(replaced.rotation, 90);
-  assert.equal(again.sections.find((section) => section.id === "croquisComparables")!.blocks[0].images.filter((image) => image.id === macro.id).length, 1);
+  assert.equal(replaced.croquis?.frame?.zoom, 14, "the frame it was made with travels with it");
+  assert.equal(again.sections.find((section) => section.id === "croquisComparables")!.blocks[0].images.filter((image) => image.croquis?.kind === "macro").length, 1);
   assert.equal(findCroquisImage(sections(), "macro"), null);
 });
 
 test("the map of comparables goes in its annex, and a removed section places nothing", () => {
-  const placed = withCroquisImage(sections(), "comparables", "/api/archivos/imagen?key=uploads/comparables.jpg");
+  const placed = withCroquisImage(sections(), placement("comparables", "/api/archivos/imagen?key=uploads/comparables.jpg"));
   assert.ok(placed.placed);
   const annex = placed.sections.find((section) => section.id === "mapaComparables")!;
-  assert.equal(findCroquisImage(placed.sections, "comparables")?.title, "Mapa de comparables");
-  assert.ok(annex.blocks[0].contentLayout!.rows.at(-1)!.columns[0].items.some((ref) => ref.id === CROQUIS_IMAGE_IDS.comparables));
+  const map = findCroquisImage(placed.sections, "comparables")!;
+  assert.equal(map.title, "Mapa de comparables");
+  assert.ok(annex.blocks[0].contentLayout!.rows.at(-1)!.columns[0].items.some((ref) => ref.id === map.id));
   // The Croquis section was not touched.
   assert.equal(findCroquisImage(placed.sections, "macro"), null);
 
   const without = sections().filter((section) => section.id !== "mapaComparables");
-  const missing = withCroquisImage(without, "comparables", "x");
+  const missing = withCroquisImage(without, placement("comparables", "x"));
   assert.equal(missing.placed, false);
   assert.deepEqual(missing.sections, without);
   const removed = sections().map((section) => (section.id === "croquisComparables" ? { ...section, removed: true } : section));
-  assert.equal(withCroquisImage(removed, "micro", "x").placed, false);
+  assert.equal(withCroquisImage(removed, placement("micro", "x")).placed, false);
 });
 
 /** The sections with an image uploaded by hand at the end of the first block of a section. */
@@ -213,19 +222,20 @@ test("MAP-11: the generated map can replace the image uploaded by hand, in its p
   const pairs = croquisReplacements(manual, ["comparables"]);
   assert.equal(pairs.comparables?.id, "subida-anexo");
 
-  const replaced = withCroquisImages(manual, [{ kind: "comparables", src: "/api/archivos/imagen?key=uploads/mapa.jpg", replaceImageId: "subida-anexo" }]);
+  const replaced = withCroquisImages(manual, [placement("comparables", "/api/archivos/imagen?key=uploads/mapa.jpg", "subida-anexo")]);
   assert.deepEqual(replaced.missing, []);
   const block = replaced.sections.find((section) => section.id === "mapaComparables")!.blocks[0];
   assert.equal(block.images.some((image) => image.id === "subida-anexo"), false, "the manual image gives way");
-  assert.equal(findCroquisImage(replaced.sections, "comparables")?.src, "/api/archivos/imagen?key=uploads/mapa.jpg");
+  const map = findCroquisImage(replaced.sections, "comparables")!;
+  assert.equal(map.src, "/api/archivos/imagen?key=uploads/mapa.jpg");
   const before = manual.find((section) => section.id === "mapaComparables")!.blocks[0].contentLayout!.rows.findIndex((row) => row.columns.some((column) => column.items.some((item) => item.id === "subida-anexo")));
-  const after = block.contentLayout!.rows.findIndex((row) => row.columns.some((column) => column.items.some((item) => item.id === CROQUIS_IMAGE_IDS.comparables)));
+  const after = block.contentLayout!.rows.findIndex((row) => row.columns.some((column) => column.items.some((item) => item.id === map.id)));
   assert.equal(after, before, "the map takes the row the manual image had");
   // Already in the document: nothing else to replace.
   assert.deepEqual(croquisReplacements(replaced.sections, ["comparables"]), {});
 
   // Kept beside it: without replaceImageId the manual image stays.
-  const beside = withCroquisImages(manual, [{ kind: "comparables", src: "x" }]).sections.find((section) => section.id === "mapaComparables")!.blocks[0];
+  const beside = withCroquisImages(manual, [placement("comparables", "x")]).sections.find((section) => section.id === "mapaComparables")!.blocks[0];
   assert.ok(beside.images.some((image) => image.id === "subida-anexo"));
 
   // Two uploads in Croquis: the macro takes the first, the micro the next.

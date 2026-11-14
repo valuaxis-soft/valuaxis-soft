@@ -32,6 +32,7 @@ import {
   Crop,
   EllipsisVertical,
   ImageIcon,
+  MapPinned,
   Maximize2,
   Minimize2,
   Minus,
@@ -42,6 +43,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useCroquisGenerator } from "@/features/maps/components/croquis-generator";
 import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
 import { UploadButton } from "./image-upload-control";
 import { ImageFramingControl } from "./image-framing-control";
@@ -162,6 +164,8 @@ export function ImageEditorItem({
   const selectedWidth = image.layoutWidth ?? "normal";
   const hasResource = Boolean(image.src);
   const confirmDelete = useConfirmDelete();
+  // A croquis opens its generator again: a new capture replaces only its picture (V5.7-03).
+  const croquisGenerator = useCroquisGenerator();
 
   return (
     <section className="rounded-lg border bg-muted/20 p-3">
@@ -188,6 +192,20 @@ export function ImageEditorItem({
           onChange={(event) => onUpdate(image.id, { title: event.target.value })}
         />
         <div className="flex items-center gap-1">
+          {image.croquis && croquisGenerator ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              title="Abrir el generador de este croquis: encuadre, calles, letreros y «Generar croquis de localización»"
+              disabled={readOnly}
+              data-croquis-open={image.id}
+              onClick={() => croquisGenerator.openImage(image.id)}
+            >
+              <MapPinned data-icon="inline-start" />
+              Croquis
+            </Button>
+          ) : null}
           <Button
             type="button"
             size="icon-sm"

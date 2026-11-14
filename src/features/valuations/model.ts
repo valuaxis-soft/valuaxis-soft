@@ -192,6 +192,8 @@ export type ImageContent = {
   rotation?: ImageRotation;
   /** Its place and zoom inside its frame, as the cover image's. Absent: whole and centered. */
   framing?: import("./services/image-framing").ImageFraming;
+  /** A croquis of the maps: its kind, frame and street names (`src/features/maps/croquis-marker.ts`). Absent: an ordinary image. */
+  croquis?: import("@/features/maps/croquis-marker").CroquisImageMarker;
 };
 
 export type ImageLayoutWidth = "normal" | "wide" | "full";

@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DEFAULT_CROQUIS_SETTINGS, croquisSettingsSchema, readCroquisSettings, streetLabelsOverlaySvg } from "../src/features/maps/croquis";
+import { DEFAULT_CROQUIS_SETTINGS, croquisSettingsSchema, readCroquisSettings, streetLabelBox, streetLabelsOverlaySvg } from "../src/features/maps/croquis";
 import { MAX_CROQUIS_WAYS, STREET_PATHS_BUDGET, croquisStreets, frameBounds } from "../src/features/maps/croquis-streets";
 import {
   DEFAULT_HIGHLIGHT_STYLES,
@@ -284,21 +284,29 @@ test("the URL budget: a long street is simplified, the pieces farthest from the 
   assert.ok(drawn.has("Serpentina"));
 });
 
-test("the name labels the server composes: a white chip above the point, the category color on its edge, nothing outside the frame", () => {
+test("V5.7-14: the name labels the server composes: on their street and turned along it, readable, nothing outside the frame", () => {
   const svg = streetLabelsOverlaySvg(PIN, 17, [
-    { name: "Calle Perla <3>", point: [20.6303, -103.4005], color: "#c0392b" },
-    { name: "Periférico", point: [20.65, -103.4], color: "#1f7ac2" },
+    { name: "Calle Perla <3>", point: [20.6303, -103.4005], color: "#c0392b", angle: -30 },
+    { name: "Periférico", point: [20.65, -103.4], color: "#1f7ac2", angle: 0 },
   ]);
   assert.match(svg, new RegExp(`^<svg xmlns="http://www.w3.org/2000/svg" width="${STATIC_MAP_SIZE.width * 2}" height="${STATIC_MAP_SIZE.height * 2}"`));
   assert.equal((svg.match(/<text/g) ?? []).length, 1, "the ring road outside the frame has no label");
   assert.match(svg, /Calle Perla &lt;3&gt;/);
-  assert.match(svg, /fill="#c0392b"/);
+  // A white band edged with the street's color, bold dark letters, centered.
+  assert.match(svg, /stroke="#c0392b"/);
+  assert.match(svg, /fill="#ffffff"/);
+  assert.match(svg, /font-weight="700"[^>]*fill="#1b2733"/);
+  assert.match(svg, /text-anchor="middle"/);
+  // Centered on its point and turned along its street.
   const at = imagePosition(PIN, 17, [20.6303, -103.4005])!;
-  const [, x, y] = svg.match(/<rect x="([\d.]+)" y="([\d.]+)"/)!.map(Number);
-  assert.ok(y < at.y * STATIC_MAP_SIZE.height * 2, "the chip sits above the point");
-  assert.ok(Math.abs(x - at.x * STATIC_MAP_SIZE.width * 2) < 120, "and centered on it");
-  // At the edge of the image the chip is pulled inside.
-  const edge = streetLabelsOverlaySvg(PIN, 17, [{ name: "Orilla", point: [20.6301 + 0.0005, -103.4 - 0.0019], color: "#000000" }]);
-  const [, ex] = edge.match(/<rect x="([\d.]+)"/)!.map(Number);
-  assert.ok(ex >= 4);
+  const [, x, y, angle] = svg.match(/translate\(([\d.]+) ([\d.]+)\) rotate\((-?[\d.]+)\)/)!.map(Number);
+  assert.ok(Math.abs(x - at.x * STATIC_MAP_SIZE.width * 2) < 1 && Math.abs(y - at.y * STATIC_MAP_SIZE.height * 2) < 1);
+  assert.equal(angle, -30);
+  // At the edge of the image the label is pulled inside, whole.
+  const edgePoint: [number, number] = [20.6301 + 0.0005, -103.4 - 0.0019];
+  const edge = streetLabelsOverlaySvg(PIN, 17, [{ name: "Orilla", point: edgePoint, color: "#000000", angle: 0 }]);
+  const [, ex] = edge.match(/translate\(([\d.]+) /)!.map(Number);
+  const box = streetLabelBox(PIN, 17, { name: "Orilla", point: edgePoint, angle: 0 });
+  assert.ok(ex / 2 - box.width / 2 >= 2, "the whole band stays inside the image");
 });
+

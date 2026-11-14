@@ -2,10 +2,8 @@
 
 /// <reference types="google.maps" />
 
-import { Maximize2, Minimize2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 import {
@@ -24,16 +22,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EditorConfigPanel } from "@/features/valuations/components/editor/editor-config-panel";
 import { COMPARABLE_TYPE_LABELS } from "@/features/valuations/calculation/market-types";
 import type { ImageContent } from "@/features/valuations/model";
 import { api, SessionExpiredError } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
 import type { SubjectLocationDto } from "@/features/maps/server/subject-location.service";
 import type { GeocodingResult } from "@/features/maps/server/geocoding.service";
 
 import { COMPARABLE_PIN_COLORS, DEFAULT_CROQUIS_SETTINGS, croquisKind, type ComparablePin, type CroquisKind, type CroquisSettings } from "../croquis";
-import type { CroquisPlacement } from "../croquis-document";
+import type { GeneratedCroquis } from "../croquis-document";
+import type { CroquisImageMarker, CroquisLabelPlacement } from "../croquis-marker";
+import { croquisStreets } from "../croquis-streets";
 import { loadGoogleMaps } from "../google-maps-loader";
 import {
   HIGHLIGHT_TITLES,
@@ -46,15 +44,27 @@ import {
   type CategoryKey,
   type StreetHighlights,
 } from "../highlights";
-import { MAP_CORNERS, MAP_TYPES, NORTH_ARROW_STYLES, frameCenter, frameFromView, sameFraming, type MapCorner, type MapType, type NorthArrowStyle } from "../map-styles";
+import {
+  MAP_CORNERS,
+  MAP_TYPES,
+  NORTH_ARROW_STYLES,
+  frameCenter,
+  frameFromView,
+  sameFraming,
+  type CroquisFrame,
+  type MapCorner,
+  type MapType,
+  type NorthArrowStyle,
+} from "../map-styles";
 import { detectStreets, type StreetWay } from "../streets";
 import { OSM_ATTRIBUTION } from "../streets-osm";
 import type { LatLon } from "../types";
+import { CroquisLabelEditor } from "./croquis-label-editor";
 import { NorthArrow } from "./north-arrow";
 import { StreetHighlightsPanel } from "./street-highlights";
 import type { MapView } from "./subject-map";
 
-const mapLoading = () => <Skeleton className="h-[380px] w-full rounded-none sm:h-[460px]" />;
+const mapLoading = () => <Skeleton className="h-full min-h-[45vh] w-full rounded-none" />;
 const SubjectMap = dynamic(() => import("./subject-map").then((module) => module.SubjectMap), { ssr: false, loading: mapLoading });
 
 /** Where the map opens before the subject is placed: Mexico as a whole. */
@@ -71,34 +81,66 @@ export interface GoogleMapsPageConfig {
   nonce?: string;
 }
 
-export interface LocationPanelProps {
+/** What «Agregar → Croquis de localización» lets the appraiser choose. */
+export const CROQUIS_CHOICES: readonly { key: string; title: string; kinds: readonly CroquisKind[] }[] = [
+  { key: "macro-micro", title: "Macro y microlocalización (lado a lado)", kinds: ["macro", "micro"] },
+  { key: "macro", title: "Macrolocalización", kinds: ["macro"] },
+  { key: "micro", title: "Microlocalización", kinds: ["micro"] },
+  { key: "comparables", title: "Mapa de comparables", kinds: ["comparables"] },
+];
+
+export interface CroquisGeneratorBodyProps {
   valuationId: string;
   readOnly: boolean;
   googleMaps: GoogleMapsPageConfig;
   /** The carátula's address, the default search. */
   address: string;
-  /** The croquis this section produces: macro and micro in Croquis, the map of comparables in its annex. */
+  /** The croquis this opening generates. */
   captures: readonly CroquisKind[];
-  /** Puts the stored images in the document in one step of its history; returns the kinds whose section is not in it. */
-  onCroquisImages: (placements: readonly CroquisPlacement[]) => CroquisKind[];
-  /** MAP-11: the images uploaded by hand that each croquis would replace the first time. */
-  croquisReplacements: (kinds: readonly CroquisKind[]) => Partial<Record<CroquisKind, ImageContent>>;
+  /** «Agregar → Croquis»: the appraiser chooses which croquis go in. */
+  onCapturesChange?: (kinds: readonly CroquisKind[]) => void;
+  /** The markers of the croquis being generated again: their frame and street names. */
+  markers: Partial<Record<CroquisKind, CroquisImageMarker>>;
+  /** Where the images go, as the appraiser reads it ("Terreno › Información del terreno"). */
+  destination: string;
+  /** Puts the stored images in the document in one step of its history; returns the kinds that could not be placed. */
+  onGenerated: (generated: readonly GeneratedCroquis[], replacements: Partial<Record<CroquisKind, ImageContent>>) => CroquisKind[];
+  /** MAP-11, the section's own access: the images uploaded by hand that each croquis would replace the first time. */
+  replacementsFor?: (kinds: readonly CroquisKind[]) => Partial<Record<CroquisKind, ImageContent>>;
   /** The editor's «Deshacer». */
   onUndo: () => void;
+  /** Called once the croquis are in the document. */
+  onDone: () => void;
 }
 
 /**
- * "Ubicación y croquis del inmueble": the map to place the subject (address
- * search or dragging the pin), the clean map, the north arrow, whether the
+ * The croquis generator, inside its window (V5.7-03, nov 2026): the map to
+ * place the subject (address search or dragging the pin), the street map or
+ * the satellite photo, the clean map, the north arrow, whether the
  * comparables show, the highlighted streets (etapa 2: the streets around the
  * pin come from OpenStreetMap through the server, the front street is
  * detected and the nearby ones suggested when the pin moves, and the
- * appraiser paints by category), the frame of each croquis and "Aplicar al
- * croquis", which stores each croquis as an image of the valuation and puts
- * it in the section. The pin and the settings save on every change; the
- * images go into the document and are saved with it.
+ * appraiser paints by category), the frame of each croquis, its street
+ * names («Letreros»: they follow their street and can be moved and turned)
+ * and «Generar croquis de localización», which stores each croquis as an
+ * image of the valuation and puts it where it was asked for. The pin and the
+ * settings save on every change; the frame and the names of each croquis go
+ * with its image, saved with the document.
  */
-export function LocationPanel({ valuationId, readOnly, googleMaps, address, captures, onCroquisImages, croquisReplacements, onUndo }: LocationPanelProps) {
+export function CroquisGeneratorBody({
+  valuationId,
+  readOnly,
+  googleMaps,
+  address,
+  captures,
+  onCapturesChange,
+  markers,
+  destination,
+  onGenerated,
+  replacementsFor,
+  onUndo,
+  onDone,
+}: CroquisGeneratorBodyProps) {
   const [data, setData] = useState<SubjectLocationDto | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mode, setMode] = useState<MapMode>("loading");
@@ -114,13 +156,18 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
   const [loaded, setLoaded] = useState<{ key: string; ways: readonly StreetWay[]; problem: string | null; failed: boolean }>({ key: "", ways: [], problem: null, failed: false });
   /** «Reintentar» bumps it to ask for the same streets again. */
   const [streetsAttempt, setStreetsAttempt] = useState(0);
-  /** «Ampliar»: the map fills the screen with the controls beside it (V6.3-07). */
-  const [expanded, setExpanded] = useState(false);
   /** MAP-11: the croquis about to be generated would replace images uploaded by hand; the appraiser decides. */
   const [pendingReplace, setPendingReplace] = useState<Partial<Record<CroquisKind, ImageContent>> | null>(null);
   const [category, setCategory] = useState<CategoryKey>("principal");
   /** True after the pin moves: the next streets that arrive seed the front street and the suggestion again. */
   const reseed = useRef(false);
+  /** The frame and the names of each croquis of this opening, as the appraiser leaves them; they go with its image. */
+  const [frames, setFrames] = useState<Partial<Record<CroquisKind, CroquisFrame>>>(() =>
+    Object.fromEntries(Object.entries(markers).flatMap(([kind, marker]) => (marker?.frame ? [[kind, marker.frame]] : []))),
+  );
+  const [placements, setPlacements] = useState<Partial<Record<CroquisKind, CroquisLabelPlacement[]>>>(() =>
+    Object.fromEntries(Object.entries(markers).map(([kind, marker]) => [kind, marker?.labels ?? []])),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -157,9 +204,10 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
   const subject = data?.location?.point ?? null;
   const settings = data?.croquis ?? DEFAULT_CROQUIS_SETTINGS;
   const highlights = settings.streets;
-  const withStreets = !captures.includes("comparables");
+  const withStreets = captures.some((kind) => kind !== "comparables");
   const comparables = useMemo<readonly ComparablePin[]>(() => data?.comparables ?? [], [data]);
   const shownPins = useMemo(() => (settings.includeComparables || captures.includes("comparables") ? comparables : []), [settings.includeComparables, captures, comparables]);
+  const frameOf = (kind: CroquisKind) => frames[kind] ?? settings[kind];
 
   const report = (error: unknown, fallback: string) => {
     if (error instanceof SessionExpiredError) toast.error("Tu sesión expiró. Inicia sesión en otra pestaña y vuelve a intentarlo.");
@@ -290,26 +338,28 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
 
   const showFrame = (kind: CroquisKind) => {
     if (!subject) return;
-    const frame = settings[kind];
+    const frame = frameOf(kind);
     setView((v) => ({ center: frameCenter(frame, subject), zoom: frame.zoom, key: v.key + 1 }));
   };
 
   const takeFrame = (kind: CroquisKind) => {
     if (!subject) return;
     const frame = frameFromView(liveView.current, subject);
+    setFrames((current) => ({ ...current, [kind]: frame }));
+    // The valuation's frame for the kind too: the next croquis of this kind starts from it.
     updateSettings({ [kind]: frame });
     const other = kind === "macro" ? "micro" : kind === "micro" ? "macro" : null;
-    if (other && captures.includes(other) && sameFraming(frame, settings[other], subject[0])) {
+    if (other && captures.includes(other) && sameFraming(frame, frameOf(other), subject[0])) {
       toast.warning(`Encuadre de ${croquisKind(kind).title.toLowerCase()} tomado del mapa, igual al de ${croquisKind(other).title.toLowerCase()}`, {
         description: "Los dos croquis saldrán iguales. Acerca o aleja el mapa antes de «Tomar del mapa» si quieres que sean distintos.",
       });
     } else toast(`Encuadre de ${croquisKind(kind).title.toLowerCase()} tomado del mapa`);
   };
-  const framesAlike = captures.includes("macro") && captures.includes("micro") && subject !== null && sameFraming(settings.macro, settings.micro, subject[0]);
+  const framesAlike = captures.includes("macro") && captures.includes("micro") && subject !== null && sameFraming(frameOf("macro"), frameOf("micro"), subject[0]);
 
   const applyToCroquis = () => {
     if (!subject || applying) return;
-    const replacements = croquisReplacements(captures);
+    const replacements = replacementsFor?.(captures) ?? {};
     if (Object.keys(replacements).length) setPendingReplace(replacements);
     else void generateCroquis({});
   };
@@ -318,10 +368,11 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
     if (!subject || applying) return;
     setApplying(true);
     try {
-      const placements: CroquisPlacement[] = [];
+      const generated: GeneratedCroquis[] = [];
       const omitted: string[] = [];
       for (const kind of captures) {
-        const frame = settings[kind];
+        const frame = frameOf(kind);
+        const labelPlacements = kind === "comparables" ? [] : (placements[kind] ?? []);
         const { image, omittedStreets } = await api.valuations.croquis(valuationId, {
           kind,
           center: [...frameCenter(frame, subject)] as [number, number],
@@ -331,13 +382,14 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
           includeComparables: settings.includeComparables,
           streets: highlights,
           mapType: settings.mapType,
+          labels: labelPlacements,
         });
-        placements.push({ kind, src: image.url, replaceImageId: replacements[kind]?.id ?? null });
+        generated.push({ kind, src: image.url, marker: { kind, frame, ...(labelPlacements.length ? { labels: labelPlacements } : {}) } });
         if (omittedStreets.length) omitted.push(`${croquisKind(kind).title}: ${omittedStreets.join(", ")}`);
       }
-      const missing = onCroquisImages(placements);
-      const placed = placements.filter((item) => !missing.includes(item.kind));
-      const replaced = placed.filter((item) => item.replaceImageId);
+      const missing = onGenerated(generated, replacements);
+      const placed = generated.filter((item) => !missing.includes(item.kind));
+      const replaced = placed.filter((item) => replacements[item.kind]);
       const titles = (items: readonly { kind: CroquisKind }[]) => items.map((item) => croquisKind(item.kind).title).join(" y ");
       if (replaced.length) {
         toast.success(`${titles(replaced)}: reemplazó la imagen que estaba en la sección`, {
@@ -345,9 +397,10 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
           action: { label: "Deshacer", onClick: onUndo },
           duration: 12_000,
         });
-      } else if (placed.length) toast.success(`Croquis actualizado: ${titles(placed)}`, { description: "Guarda el avalúo para conservarlo en el documento." });
-      if (missing.length) toast.warning(`${titles(missing.map((kind) => ({ kind })))}: la sección no está en el documento, así que la imagen no se colocó.`);
+      } else if (placed.length) toast.success(`Croquis listo en ${destination}: ${titles(placed)}`, { description: "Guarda el avalúo para conservarlo en el documento." });
+      if (missing.length) toast.warning(`${titles(missing.map((kind) => ({ kind })))}: su lugar ya no está en el documento, así que la imagen no se colocó.`);
       if (omitted.length) toast.warning("Algunas calles no cupieron en el croquis; quita las más lejanas o acerca el encuadre.", { description: omitted.join(" · ") });
+      if (placed.length) onDone();
     } catch (error) {
       report(error, "No se pudo generar el croquis.");
     } finally {
@@ -355,303 +408,269 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
     }
   };
 
-  // The expanded map closes with Escape, and the page behind it does not scroll.
-  useEffect(() => {
-    if (!expanded) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) {
-        setView((v) => ({ ...liveView.current, key: v.key + 1 }));
-        setExpanded(false);
-      }
-    };
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = overflow;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [expanded]);
-
-  const title = captures.includes("comparables") ? "Mapa de comparables" : "Ubicación y croquis del inmueble";
+  const generatesComparables = captures.length === 1 && captures[0] === "comparables";
 
   if (!googleMaps.apiKey) {
     return (
-      <EditorConfigPanel title={title}>
+      <div className="grid gap-2 p-6">
         <p className="text-sm text-muted-foreground">
           Los mapas no están configurados en este servidor (falta la llave de Google Maps). Mientras tanto, los croquis se agregan como imágenes, como
           cualquier otra.
         </p>
-      </EditorConfigPanel>
+      </div>
     );
   }
-
-  const searchForm = (
-    <form className="grid gap-1" onSubmit={onSearch}>
-      <Label htmlFor={`${valuationId}-address-search`} className="text-xs text-muted-foreground">
-        Buscar dirección
-      </Label>
-      <div className="flex gap-2">
-        <Input
-          id={`${valuationId}-address-search`}
-          placeholder="Calle y número, colonia, municipio"
-          value={search}
-          disabled={!canEdit}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-        <Button type="submit" variant="outline" disabled={!canEdit || searching || !search.trim()}>
-          {searching ? "Buscando…" : "Buscar"}
-        </Button>
-      </div>
-      {results.length ? (
-        <ul className="grid gap-1 rounded-md border bg-background p-1 text-sm" aria-label="Direcciones encontradas">
-          {results.map((result) => (
-            <li key={`${result.point[0]},${result.point[1]}`}>
-              <button
-                type="button"
-                className="w-full rounded px-2 py-1 text-left hover:bg-muted"
-                onClick={() => {
-                  setResults([]);
-                  placeSubject(result.point, "busqueda", result.address, true);
-                  toast.success(`Pin colocado en ${result.address}`);
-                }}
-              >
-                {result.address}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </form>
-  );
-
-  // Expanded, the map and its controls go to the end of <body>, above the editor's bars; the map is drawn again there at the view it had.
-  const wrapExpanded = (content: React.ReactNode) => (expanded && typeof document !== "undefined" ? createPortal(content, document.body) : content);
-  const toggleExpanded = () => {
-    setView((v) => ({ ...liveView.current, key: v.key + 1 }));
-    setExpanded((on) => !on);
-  };
 
   const replaceTitles = pendingReplace
     ? (Object.entries(pendingReplace) as [CroquisKind, ImageContent][]).map(([kind, image]) => `${croquisKind(kind).title} en lugar de «${image.title?.trim() || "la imagen subida"}»`)
     : [];
+  const choice = CROQUIS_CHOICES.find((item) => item.kinds.join() === captures.join())?.key ?? CROQUIS_CHOICES[0].key;
 
   return (
-    <EditorConfigPanel
-      title={title}
-      description={
-        captures.includes("comparables")
-          ? "El mapa de comparables toma el pin del inmueble sujeto y los comparables del avalúo que tienen coordenadas."
-          : "Busca la dirección o arrastra el pin rojo; las coordenadas se guardan solas. Encuadra el mapa como quieras que salga cada croquis y pulsa «Generar croquis de localización»."
-      }
-    >
-      {loadError ? <p className="text-sm text-destructive">{loadError}</p> : null}
-      {mode === "failed" ? (
-        <p className="text-sm text-muted-foreground" role="status">
-          El mapa no se pudo mostrar ({mapProblem}). Revisa la llave y sus restricciones en Google Cloud (docs/OPERACION.md, sección 7).
+    <div className="flex min-h-0 flex-1 flex-col lg:flex-row" data-croquis-generator="">
+      <div className="relative isolate min-h-[45vh] flex-1 overflow-hidden bg-muted lg:min-h-0">
+        {mode === "google" ? (
+          <SubjectMap
+            subject={subject}
+            onSubjectMove={canEdit ? (point) => placeSubject(point, "pin", null, false) : undefined}
+            clean={settings.clean}
+            mapType={settings.mapType}
+            pins={shownPins}
+            streets={canEdit && withStreets ? streets : NO_STREETS}
+            highlights={highlightedItems}
+            labels={labels}
+            onStreetClick={onStreetClick}
+            onMapClick={onMapClick}
+            view={view}
+            onViewChange={(next) => {
+              liveView.current = next;
+            }}
+            className="absolute inset-0 h-full w-full"
+          />
+        ) : mode === "loading" ? (
+          mapLoading()
+        ) : (
+          <div className="flex h-full min-h-[45vh] items-center justify-center p-6 text-center" role="status">
+            <p className="max-w-md text-sm text-muted-foreground">
+              El mapa no se pudo mostrar ({mapProblem}). Revisa la llave y sus restricciones en Google Cloud (docs/OPERACION.md, sección 7). Los letreros y la
+              configuración de la derecha siguen disponibles.
+            </p>
+          </div>
+        )}
+        {mode === "google" ? <NorthArrow {...settings.northArrow} size={56} /> : null}
+      </div>
+
+      <div className="grid min-h-0 content-start gap-3 overflow-y-auto border-t bg-muted/60 p-4 pb-0 lg:w-[480px] lg:shrink-0 lg:border-t-0 lg:border-l dark:bg-muted/40">
+        <p className="text-xs text-muted-foreground">
+          Se coloca en <span className="font-medium text-foreground">{destination}</span>.
         </p>
-      ) : null}
+        {loadError ? <p className="text-sm text-destructive">{loadError}</p> : null}
 
-      {expanded ? null : searchForm}
-      {expanded ? (
-        <p className="rounded-lg border bg-background p-3 text-sm text-muted-foreground" role="status">
-          El mapa está ampliado. Pulsa «Reducir» o Esc para volver aquí.
-        </p>
-      ) : null}
-
-      {wrapExpanded(
-      <div
-        className={cn(expanded ? "fixed inset-0 z-[60] flex flex-col bg-background lg:flex-row" : "contents")}
-        role={expanded ? "dialog" : undefined}
-        aria-modal={expanded ? true : undefined}
-        aria-label={expanded ? title : undefined}
-      >
-        <div className={cn("relative isolate overflow-hidden bg-background", expanded ? "min-h-[45vh] flex-1" : "rounded-lg border")}>
-          {mode === "google" ? (
-            <SubjectMap
-              subject={subject}
-              onSubjectMove={canEdit ? (point) => placeSubject(point, "pin", null, false) : undefined}
-              clean={settings.clean}
-              mapType={settings.mapType}
-              pins={shownPins}
-              streets={canEdit && withStreets ? streets : NO_STREETS}
-              highlights={highlightedItems}
-              labels={labels}
-              onStreetClick={onStreetClick}
-              onMapClick={onMapClick}
-              view={view}
-              onViewChange={(next) => {
-                liveView.current = next;
-              }}
-              className={expanded ? "absolute inset-0 h-full w-full" : undefined}
-            />
-          ) : mode === "loading" ? (
-            mapLoading()
-          ) : null}
-          {mode === "google" ? <NorthArrow {...settings.northArrow} size={56} /> : null}
-          {mode === "google" ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className={cn("absolute bottom-3 z-10 gap-1.5 bg-background/95 shadow-sm", settings.northArrow.corner === "bottom-left" ? "right-14" : "left-3")}
-              onClick={toggleExpanded}
-              aria-pressed={expanded}
-            >
-              {expanded ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
-              {expanded ? "Reducir" : "Ampliar"}
-            </Button>
-          ) : null}
-        </div>
-
-        <div className={cn(expanded ? "grid content-start gap-3 overflow-y-auto border-t bg-muted/60 p-4 lg:w-[460px] lg:shrink-0 lg:border-t-0 lg:border-l dark:bg-muted/40" : "contents")}>
-          {expanded ? (
-            <>
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">{title}</h3>
-                <Button type="button" size="sm" variant="ghost" onClick={toggleExpanded}>
-                  <Minimize2 aria-hidden="true" />
-                  Cerrar
-                </Button>
-              </div>
-              {searchForm}
-            </>
-          ) : null}
-
-          <dl className="grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5 text-[13px]">
-            <dt className="text-muted-foreground">Coordenadas</dt>
-            <dd className="font-mono text-xs">{subject ? `${subject[0].toFixed(6)}, ${subject[1].toFixed(6)}` : data ? "Sin ubicar" : "Cargando…"}</dd>
-            {data?.location?.address ? (
-              <>
-                <dt className="text-muted-foreground">Encontrado en</dt>
-                <dd className="text-xs [overflow-wrap:anywhere]">{data.location.address}</dd>
-              </>
-            ) : null}
-          </dl>
-
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
-            <span className="inline-flex items-center gap-1.5">
-              <Label htmlFor={`${valuationId}-map-type`} className="text-xs text-muted-foreground">
-                Vista
-              </Label>
-              <NativeSelect
-                id={`${valuationId}-map-type`}
-                size="sm"
-                value={settings.mapType}
-                disabled={!canEdit}
-                onChange={(event) => updateSettings({ mapType: event.target.value as MapType })}
-              >
-                {MAP_TYPES.map((type) => (
-                  <NativeSelectOption key={type.key} value={type.key}>
-                    {type.title}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </span>
-            <Label className="font-normal">
-              <Checkbox checked={settings.clean} disabled={!canEdit || settings.mapType !== "roadmap"} onCheckedChange={(on) => updateSettings({ clean: on === true })} /> Mapa limpio
+        {onCapturesChange ? (
+          <div className="grid gap-1">
+            <Label htmlFor={`${valuationId}-croquis-choice`} className="text-xs text-muted-foreground">
+              Qué croquis
             </Label>
-            {captures.includes("comparables") ? null : (
-              <Label className="font-normal">
-                <Checkbox checked={settings.includeComparables} disabled={!canEdit} onCheckedChange={(on) => updateSettings({ includeComparables: on === true })} />{" "}
-                Incluir comparables
-              </Label>
-            )}
-            <span className="inline-flex items-center gap-1.5">
-              <Label htmlFor={`${valuationId}-north-style`} className="text-xs text-muted-foreground">
-                Norte
-              </Label>
-              <NativeSelect
-                id={`${valuationId}-north-style`}
-                size="sm"
-                value={settings.northArrow.style}
-                disabled={!canEdit}
-                onChange={(event) => updateSettings({ northArrow: { ...settings.northArrow, style: event.target.value as NorthArrowStyle } })}
-              >
-                {NORTH_ARROW_STYLES.map((style) => (
-                  <NativeSelectOption key={style.key} value={style.key}>
-                    {style.title}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              <NativeSelect
-                aria-label="Esquina del norte"
-                size="sm"
-                value={settings.northArrow.corner}
-                disabled={!canEdit}
-                onChange={(event) => updateSettings({ northArrow: { ...settings.northArrow, corner: event.target.value as MapCorner } })}
-              >
-                {MAP_CORNERS.map((corner) => (
-                  <NativeSelectOption key={corner.key} value={corner.key}>
-                    {corner.title}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </span>
+            <NativeSelect
+              id={`${valuationId}-croquis-choice`}
+              value={choice}
+              disabled={applying}
+              onChange={(event) => onCapturesChange(CROQUIS_CHOICES.find((item) => item.key === event.target.value)?.kinds ?? ["macro", "micro"])}
+            >
+              {CROQUIS_CHOICES.map((item) => (
+                <NativeSelectOption key={item.key} value={item.key}>
+                  {item.title}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
           </div>
+        ) : null}
 
-          <div className="grid gap-2">
-            <span className="text-xs font-semibold text-muted-foreground">Encuadres</span>
-            {captures.map((kind) => (
-              <div key={kind} className="flex flex-wrap items-center gap-2 text-[13px]">
-                <span className="min-w-36 font-medium">{croquisKind(kind).title}</span>
-                <span className="text-xs text-muted-foreground tabular-nums">zoom {settings[kind].zoom}</span>
-                <Button type="button" size="sm" variant="outline" disabled={!subject || mode !== "google"} onClick={() => showFrame(kind)}>
-                  Ver encuadre
-                </Button>
-                <Button type="button" size="sm" variant="outline" disabled={!canEdit || !subject || mode !== "google"} onClick={() => takeFrame(kind)}>
-                  Tomar del mapa
-                </Button>
-              </div>
-            ))}
-            {framesAlike ? (
-              <p className="rounded-md border border-highlight/45 bg-highlight/15 px-2 py-1.5 text-xs text-foreground" role="status">
-                Macrolocalización y microlocalización tienen el mismo encuadre (zoom {settings.macro.zoom}), así que los dos croquis saldrán iguales. Acerca el mapa y
-                pulsa «Tomar del mapa» en microlocalización si quieres que sean distintos.
-              </p>
-            ) : null}
-          </div>
-
-          {withStreets ? (
-            <StreetHighlightsPanel
-              value={highlights}
-              category={category}
-              onCategoryChange={setCategory}
-              onChange={updateHighlights}
-              onRemove={removeStreet}
-              status={streetsStatus}
-              onRetry={streetsFailed ? retryStreets : undefined}
-              disabled={!canEdit || !subject}
-              attribution={OSM_ATTRIBUTION}
+        <form className="grid gap-1" onSubmit={onSearch}>
+          <Label htmlFor={`${valuationId}-address-search`} className="text-xs text-muted-foreground">
+            Buscar dirección
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              id={`${valuationId}-address-search`}
+              placeholder="Calle y número, colonia, municipio"
+              value={search}
+              disabled={!canEdit}
+              onChange={(event) => setSearch(event.target.value)}
             />
-          ) : null}
-
-          {shownPins.length ? (
-            <ul className="grid gap-0.5 text-xs text-muted-foreground" aria-label="Comparables en el mapa">
-              {shownPins.map((pin) => (
-                <li key={pin.id} className="inline-flex items-center gap-1.5">
-                  <span className="inline-block size-2.5 rounded-full" style={{ background: COMPARABLE_PIN_COLORS[pin.type] }} />
-                  <span className="font-semibold text-foreground">{pin.label}</span> {COMPARABLE_TYPE_LABELS[pin.type]} · {pin.location}
+            <Button type="submit" variant="outline" disabled={!canEdit || searching || !search.trim()}>
+              {searching ? "Buscando…" : "Buscar"}
+            </Button>
+          </div>
+          {results.length ? (
+            <ul className="grid gap-1 rounded-md border bg-background p-1 text-sm" aria-label="Direcciones encontradas">
+              {results.map((result) => (
+                <li key={`${result.point[0]},${result.point[1]}`}>
+                  <button
+                    type="button"
+                    className="w-full rounded px-2 py-1 text-left hover:bg-muted"
+                    onClick={() => {
+                      setResults([]);
+                      placeSubject(result.point, "busqueda", result.address, true);
+                      toast.success(`Pin colocado en ${result.address}`);
+                    }}
+                  >
+                    {result.address}
+                  </button>
                 </li>
               ))}
             </ul>
-          ) : comparables.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Ningún comparable del avalúo tiene coordenadas todavía; captúralas en su ficha para verlos en el mapa.</p>
           ) : null}
+        </form>
 
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">
-              {subject
-                ? "«Generar croquis de localización» guarda cada croquis como imagen del avalúo y la coloca en la sección; después edítala como cualquier imagen."
-                : "Ubica el inmueble para poder generar los croquis."}
-            </p>
-            <Button type="button" disabled={!canEdit || !subject || applying} onClick={applyToCroquis}>
-              {applying ? "Generando…" : captures.includes("comparables") ? "Generar mapa de comparables" : "Generar croquis de localización"}
-            </Button>
-          </div>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-0.5 text-[13px]">
+          <dt className="text-muted-foreground">Coordenadas</dt>
+          <dd className="font-mono text-xs tabular-nums">{subject ? `${subject[0].toFixed(6)}, ${subject[1].toFixed(6)}` : data ? "Sin ubicar" : "Cargando…"}</dd>
+          {data?.location?.address ? (
+            <>
+              <dt className="text-muted-foreground">Encontrado en</dt>
+              <dd className="text-xs [overflow-wrap:anywhere]">{data.location.address}</dd>
+            </>
+          ) : null}
+        </dl>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+          <span className="inline-flex items-center gap-1.5">
+            <Label htmlFor={`${valuationId}-map-type`} className="text-xs text-muted-foreground">
+              Vista
+            </Label>
+            <NativeSelect id={`${valuationId}-map-type`} size="sm" value={settings.mapType} disabled={!canEdit} onChange={(event) => updateSettings({ mapType: event.target.value as MapType })}>
+              {MAP_TYPES.map((type) => (
+                <NativeSelectOption key={type.key} value={type.key}>
+                  {type.title}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </span>
+          <Label className="font-normal">
+            <Checkbox checked={settings.clean} disabled={!canEdit || settings.mapType !== "roadmap"} onCheckedChange={(on) => updateSettings({ clean: on === true })} /> Mapa limpio
+          </Label>
+          {generatesComparables ? null : (
+            <Label className="font-normal">
+              <Checkbox checked={settings.includeComparables} disabled={!canEdit} onCheckedChange={(on) => updateSettings({ includeComparables: on === true })} /> Incluir
+              comparables
+            </Label>
+          )}
+          <span className="inline-flex items-center gap-1.5">
+            <Label htmlFor={`${valuationId}-north-style`} className="text-xs text-muted-foreground">
+              Norte
+            </Label>
+            <NativeSelect
+              id={`${valuationId}-north-style`}
+              size="sm"
+              value={settings.northArrow.style}
+              disabled={!canEdit}
+              onChange={(event) => updateSettings({ northArrow: { ...settings.northArrow, style: event.target.value as NorthArrowStyle } })}
+            >
+              {NORTH_ARROW_STYLES.map((style) => (
+                <NativeSelectOption key={style.key} value={style.key}>
+                  {style.title}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+            <NativeSelect
+              aria-label="Esquina del norte"
+              size="sm"
+              value={settings.northArrow.corner}
+              disabled={!canEdit}
+              onChange={(event) => updateSettings({ northArrow: { ...settings.northArrow, corner: event.target.value as MapCorner } })}
+            >
+              {MAP_CORNERS.map((corner) => (
+                <NativeSelectOption key={corner.key} value={corner.key}>
+                  {corner.title}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </span>
         </div>
-      </div>,
-      )}
+
+        <div className="grid gap-2">
+          <span className="text-xs font-semibold text-muted-foreground">Encuadres</span>
+          {captures.map((kind) => (
+            <div key={kind} className="flex flex-wrap items-center gap-2 text-[13px]">
+              <span className="min-w-36 font-medium">{croquisKind(kind).title}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">zoom {frameOf(kind).zoom}</span>
+              <Button type="button" size="sm" variant="outline" disabled={!subject || mode !== "google"} onClick={() => showFrame(kind)}>
+                Ver encuadre
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={!canEdit || !subject || mode !== "google"} onClick={() => takeFrame(kind)}>
+                Tomar del mapa
+              </Button>
+            </div>
+          ))}
+          {framesAlike ? (
+            <p className="rounded-md border border-highlight/45 bg-highlight/15 px-2 py-1.5 text-xs text-foreground" role="status">
+              Macrolocalización y microlocalización tienen el mismo encuadre (zoom {frameOf("macro").zoom}), así que los dos croquis saldrán iguales. Acerca el mapa y
+              pulsa «Tomar del mapa» en microlocalización si quieres que sean distintos.
+            </p>
+          ) : null}
+        </div>
+
+        {withStreets ? (
+          <StreetHighlightsPanel
+            value={highlights}
+            category={category}
+            onCategoryChange={setCategory}
+            onChange={updateHighlights}
+            onRemove={removeStreet}
+            status={streetsStatus}
+            onRetry={streetsFailed ? retryStreets : undefined}
+            disabled={!canEdit || !subject}
+            attribution={OSM_ATTRIBUTION}
+          />
+        ) : null}
+
+        {subject && withStreets
+          ? captures
+              .filter((kind) => kind !== "comparables")
+              .map((kind) => {
+                const frame = frameOf(kind);
+                const center = frameCenter(frame, subject);
+                return (
+                  <CroquisLabelEditor
+                    key={kind}
+                    title={croquisKind(kind).title}
+                    center={center}
+                    zoom={frame.zoom}
+                    subject={subject}
+                    streets={croquisStreets(kind, center, frame.zoom, highlights, streets, subject)}
+                    placements={placements[kind] ?? []}
+                    disabled={!canEdit}
+                    onChange={(next) => setPlacements((current) => ({ ...current, [kind]: next }))}
+                  />
+                );
+              })
+          : null}
+
+        {shownPins.length ? (
+          <ul className="grid gap-0.5 text-xs text-muted-foreground" aria-label="Comparables en el mapa">
+            {shownPins.map((pin) => (
+              <li key={pin.id} className="inline-flex items-center gap-1.5">
+                <span className="inline-block size-2.5 rounded-full" style={{ background: COMPARABLE_PIN_COLORS[pin.type] }} />
+                <span className="font-semibold text-foreground">{pin.label}</span> {COMPARABLE_TYPE_LABELS[pin.type]} · {pin.location}
+              </li>
+            ))}
+          </ul>
+        ) : comparables.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Ningún comparable del avalúo tiene coordenadas todavía; captúralas en su ficha para verlos en el mapa.</p>
+        ) : null}
+
+        <div className="sticky bottom-0 -mx-4 grid gap-2 border-t bg-background p-4">
+          <p className="text-xs text-muted-foreground">
+            {subject
+              ? "Cada croquis se guarda como imagen del avalúo y se coloca en su lugar; después edítalo como cualquier imagen o vuelve a abrir este generador desde ella."
+              : "Ubica el inmueble (busca la dirección o arrastra el pin) para poder generar los croquis."}
+          </p>
+          <Button type="button" disabled={!canEdit || !subject || applying} onClick={applyToCroquis}>
+            {applying ? "Generando…" : generatesComparables ? "Generar mapa de comparables" : "Generar croquis de localización"}
+          </Button>
+        </div>
+      </div>
 
       <AlertDialog open={pendingReplace !== null} onOpenChange={(open) => (open ? null : setPendingReplace(null))}>
         <AlertDialogContent>
@@ -686,6 +705,6 @@ export function LocationPanel({ valuationId, readOnly, googleMaps, address, capt
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </EditorConfigPanel>
+    </div>
   );
 }

@@ -17,6 +17,8 @@ import {
   PasteBlockButton,
 } from "../editor/structure-transfer-actions";
 import { ImportBlockButton } from "./template-dialogs";
+import { useCroquisGenerator } from "@/features/maps/components/croquis-generator";
+import { croquisInsertLock } from "@/features/maps/croquis-document";
 import { BlockCard } from "../editor/block-card";
 import { BlockTitleContextMenu } from "../editor/block-title-context-menu";
 import { ApartadoEditor } from "../editor/apartado-editor";
@@ -649,6 +651,8 @@ function SortableBlockEditor(props: {
   });
   const locks = blockToolbarLocks(toolbar);
   const confirmDelete = useConfirmDelete();
+  // «Agregar → Croquis de localización» (V5.7-01): the croquis generator for this block or one of its subbloques.
+  const croquisGenerator = useCroquisGenerator();
   const apartadoCapabilities = isCaratula
     ? getCaratulaApartadoEditorCapabilities()
     : getApartadoEditorCapabilities();
@@ -728,6 +732,8 @@ function SortableBlockEditor(props: {
         onAddImage={(event) =>
           props.onAddImage(section.id, block.id, event)
         }
+        onAddCroquis={croquisGenerator ? () => croquisGenerator.openInsert({ sectionId: section.id, blockId: block.id }) : undefined}
+        croquisLock={croquisInsertLock(section.id)}
         onAddApartado={() =>
           props.onAddApartado(section.id, block.id)
         }
@@ -1009,6 +1015,8 @@ function SortableBlockEditor(props: {
                         onAddImage={(event) =>
                           props.onAddImage(section.id, block.id, event, subBlock.id)
                         }
+                        onAddCroquis={croquisGenerator ? () => croquisGenerator.openInsert({ sectionId: section.id, blockId: block.id, apartadoId: subBlock.id }) : undefined}
+                        croquisLock={croquisInsertLock(section.id)}
                         onAddTable={() =>
                           props.onAddTable(section.id, block.id, subBlock.id)
                         }

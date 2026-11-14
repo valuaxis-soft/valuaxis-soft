@@ -8,8 +8,9 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import sharp from "sharp";
 
-import { CROQUIS_IMAGE_IDS, DEFAULT_CROQUIS_SETTINGS, comparablePins } from "../../src/features/maps/croquis";
-import { findCroquisImage, withCroquisImage } from "../../src/features/maps/croquis-document";
+import { CROQUIS_IMAGE_IDS, DEFAULT_CROQUIS_SETTINGS, comparablePins, streetLabelBox } from "../../src/features/maps/croquis";
+import { findCroquisById, findCroquisImage, withCroquisImage, withInsertedCroquis } from "../../src/features/maps/croquis-document";
+import { withAddedBlockContent } from "../../src/features/valuations/components/workspace/model/section-content";
 import { composeCroquisImage, storeCroquisImage } from "../../src/features/maps/server/croquis-image.service";
 import { getSubjectLocation, saveSubjectLocation } from "../../src/features/maps/server/subject-location.service";
 import { readSubjectLocation } from "../../src/features/maps/subject-location";
@@ -116,14 +117,64 @@ test("a croquis is composed with the pins and the north arrow, stored as an imag
 
   // Placed in the Croquis section and saved with the document, it reads back as any image of the valuation.
   const sections = initialSectionsFor((await getValuationByPublicId(fixture.publicId, fixture.organizationId))!);
-  const placed = withCroquisImage(sections, "macro", stored.url);
+  const placed = withCroquisImage(sections, { kind: "macro", src: stored.url, marker: { kind: "macro" } });
   assert.ok(placed.placed);
-  await saveValuationSections({ publicId: fixture.publicId, organizationId: fixture.organizationId, user, sections: buildSectionsPayload(placed.sections) });
+  // V5.7-01: another croquis in Terreno, with its frame and a name placed by hand.
+  // The fixture's Terreno may come without blocks: one of the appraiser's own.
+  const ownBlock = { id: "bloque-terreno-croquis", title: "Ubicación del terreno", sectionLabel: "", enabled: true, required: false, concepts: [], apartados: [], tables: [], images: [] };
+  const withBlock = placed.sections.map((section) => (section.id === "terreno" ? { ...section, blocks: [...section.blocks, ownBlock] } : section));
+  const marker = { kind: "micro" as const, frame: { offset: [0.0001, 0] as [number, number], zoom: 18 }, labels: [{ name: "Calle Ficticia", point: [20.6345, -103.4021] as [number, number], angle: -35 }] };
+  const inserted = withInsertedCroquis(withBlock, { sectionId: "terreno", blockId: ownBlock.id }, [{ kind: "micro", src: stored.url, marker }]);
+  assert.equal(inserted.imageIds.length, 1);
+  await saveValuationSections({ publicId: fixture.publicId, organizationId: fixture.organizationId, user, sections: buildSectionsPayload(inserted.sections) });
   const reloaded = initialSectionsFor((await getValuationByPublicId(fixture.publicId, fixture.organizationId))!);
   const image = findCroquisImage(reloaded, "macro");
-  assert.equal(image?.id, CROQUIS_IMAGE_IDS.macro);
+  assert.equal(image?.croquis?.kind, "macro");
   assert.ok(image?.src.includes(stored.key.split("/").pop()!), "the stored file is the one the document points to");
   assert.equal(image?.captionText, "Croquis de macrolocalización");
+  const inTerreno = findCroquisById(reloaded, inserted.imageIds[0]);
+  assert.equal(inTerreno?.sectionId, "terreno");
+  assert.deepEqual(inTerreno?.image.croquis, marker, "its frame and names come back with the document");
+});
+
+test("a croquis saved with the old fixed id reads back as a croquis (migration on read, nothing lost)", async () => {
+  const fixture = await createValuationFixture();
+  const user = editor(fixture);
+  const sections = initialSectionsFor((await getValuationByPublicId(fixture.publicId, fixture.organizationId))!);
+  // As the editor wrote it until 13 nov 2026: the fixed id and no marker.
+  const legacy = sections.map((section) =>
+    section.id !== "croquisComparables"
+      ? section
+      : { ...section, blocks: section.blocks.map((block, index) => (index ? block : withAddedBlockContent({ ...block, images: [...block.images, { id: CROQUIS_IMAGE_IDS.micro, title: "Croquis de microlocalización", src: "/api/archivos/imagen?key=uploads/viejo.jpg", enabled: true, captionText: "Mi micro", captionEnabled: true }] }, { type: "image", id: CROQUIS_IMAGE_IDS.micro }))) },
+  );
+  await saveValuationSections({ publicId: fixture.publicId, organizationId: fixture.organizationId, user, sections: buildSectionsPayload(legacy) });
+  const reloaded = initialSectionsFor((await getValuationByPublicId(fixture.publicId, fixture.organizationId))!);
+  const image = findCroquisImage(reloaded, "micro");
+  assert.equal(image?.id, CROQUIS_IMAGE_IDS.micro);
+  assert.equal(image?.croquis?.kind, "micro");
+  assert.equal(image?.captionText, "Mi micro");
+});
+
+test("V5.7-14: the street names the server composes sit on the image where the generator placed them, turned", async () => {
+  const width = STATIC_MAP_SIZE.width * STATIC_MAP_SCALE;
+  const height = STATIC_MAP_SIZE.height * STATIC_MAP_SCALE;
+  const base = await sharp({ create: { width, height, channels: 3, background: "#eef1ea" } }).png().toBuffer();
+  const point: [number, number] = [SUBJECT[0] - 0.0004, SUBJECT[1] + 0.0006];
+  const labels = [{ name: "Avenida de Prueba", point, color: "#1f7ac2", angle: -40 }];
+  const jpeg = await composeCroquisImage(base, { center: SUBJECT, zoom: 17, northArrow: { style: "flecha", corner: "top-right" }, pins: [] }, { paths: [], labels, omitted: [] });
+  const box = streetLabelBox(SUBJECT, 17, labels[0]);
+  const sample = async (x: number, y: number) => {
+    const { data } = await sharp(jpeg).extract({ left: Math.round(x * STATIC_MAP_SCALE) - 6, top: Math.round(y * STATIC_MAP_SCALE) - 6, width: 12, height: 12 }).raw().toBuffer({ resolveWithObject: true });
+    const distinct = new Set<string>();
+    for (let i = 0; i < data.length; i += 3) distinct.add(`${data[i] >> 4},${data[i + 1] >> 4},${data[i + 2] >> 4}`);
+    return distinct.size;
+  };
+  // Along the turned band there is drawing; across it, as far away, the plain map.
+  const along = (distance: number) => [box.x + distance * Math.cos((box.angle * Math.PI) / 180), box.y + distance * Math.sin((box.angle * Math.PI) / 180)] as const;
+  const across = (distance: number) => [box.x - distance * Math.sin((box.angle * Math.PI) / 180), box.y + distance * Math.cos((box.angle * Math.PI) / 180)] as const;
+  assert.ok((await sample(...along(box.width / 2 - 14))) > 1, "the band runs along the street");
+  assert.ok((await sample(...along(-(box.width / 2 - 14)))) > 1);
+  assert.equal(await sample(...across(box.width / 2 - 14)), 1, "and not across it");
 });
 
 test("the pin and the croquis settings saved at the same time both stay (MAP-01: «Sin ubicar» after a reload)", async () => {

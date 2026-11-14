@@ -49,9 +49,8 @@ import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
 import { MarketSectionTabs } from "@/features/valuations/components/calculation/market-section-tabs";
 import { StatisticalMethodsPanel } from "@/features/valuations/components/calculation/statistical-methods-panel";
-import { LocationPanel, type GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
-import { croquisReplacements, croquisSectionKey, withCroquisImages, type CroquisPlacement } from "@/features/maps/croquis-document";
-import type { CroquisKind } from "@/features/maps/croquis";
+import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
+import { CroquisGeneratorProvider, CroquisSectionAccess } from "@/features/maps/components/croquis-generator";
 import { RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { approachIncluded, excludedReportApproaches, previewSectionForReport, withApproachIncluded, type ReportApproach } from "@/features/valuations/services/report-approaches";
@@ -364,28 +363,6 @@ export function ValuationWorkspace({
   const machinery = isMachineryPropertyKind(initialValuation?.propertyKind);
   const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, machinery, valuationId });
 
-  // "Generar croquis de localización": the stored images go into their sections in one step of the history (one «Deshacer»); the kinds whose section the appraiser removed come back.
-  const placeCroquisImages = (placements: readonly CroquisPlacement[]) => {
-    const missing = placements
-      .map((placement) => placement.kind)
-      .filter((kind) => !sections.some((section) => !section.removed && getCanonicalSectionKey(section.id) === croquisSectionKey(kind)));
-    if (missing.length < placements.length) updateSections((current) => withCroquisImages(current, placements).sections);
-    return missing;
-  };
-  const locationPanel = (captures: readonly CroquisKind[]) =>
-    valuationId ? (
-      <LocationPanel
-        valuationId={valuationId}
-        readOnly={!canEdit}
-        googleMaps={googleMaps}
-        address={meta.location}
-        captures={captures}
-        onCroquisImages={placeCroquisImages}
-        croquisReplacements={(kinds) => croquisReplacements(sections, kinds)}
-        onUndo={() => void undo()}
-      />
-    ) : undefined;
-
   // A template is made from what is saved, so pending changes are saved first.
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const saveBeforeTemplate = async () => !hasUnsavedChanges || (await handleSave());
@@ -467,9 +444,9 @@ export function ValuationWorkspace({
             ) : getCanonicalSectionKey(section.id) === "CONCLUSIONES" ? (
               <ConclusionPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConclusionCalculation} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CROQUIS_COMPARABLES" ? (
-              locationPanel(["macro", "micro"])
+              <CroquisSectionAccess captures={["macro", "micro"]} sections={sections} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "MAPA_COMPARABLES" ? (
-              locationPanel(["comparables"])
+              <CroquisSectionAccess captures={["comparables"]} sections={sections} />
             ) : undefined}
             allSections={enabledSections}
             readOnly={!canEdit}
@@ -549,6 +526,15 @@ export function ValuationWorkspace({
     <CustomUnitsProvider initialUnits={customUnits}>
     <StructureTransferProvider sections={sections} readOnly={!canEdit} updateSections={updateSections} valuationId={valuationId}>
     <DeleteConfirmProvider onUndo={canEdit ? () => void undo() : undefined}>
+    <CroquisGeneratorProvider
+      valuationId={valuationId}
+      readOnly={!canEdit}
+      googleMaps={googleMaps}
+      address={meta.location}
+      sections={sections}
+      updateSections={updateSections}
+      onUndo={() => void undo()}
+    >
     <Tabs value={activeSection.id} onValueChange={handleActiveSectionChange} className="gap-0 h-full">
       {/* Clipped, not hidden: a hidden overflow still scrolls when something is brought into view, and took the top bar with it. */}
       <main ref={workspaceRef} className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-clip">
@@ -707,6 +693,7 @@ export function ValuationWorkspace({
       ) : null}
       </main>
     </Tabs>
+    </CroquisGeneratorProvider>
     </DeleteConfirmProvider>
     </StructureTransferProvider>
     </CustomUnitsProvider>

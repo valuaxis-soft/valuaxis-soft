@@ -138,18 +138,57 @@ export interface StreetLabel {
   name: string;
   point: LatLon;
   color: string;
+  /**
+   * V5.7-14: the angle the name is written at, in degrees clockwise on the
+   * image (0 = horizontal), the direction of its street there; never upside
+   * down (-90 to 90).
+   */
+  angle: number;
 }
 
-/** One label per highlighted street, on the middle of the piece closest to the center (the one most likely in frame). */
+/** A text angle readable from below: -90° to 90°. */
+export function uprightAngle(degrees: number) {
+  let angle = ((degrees % 360) + 360) % 360;
+  if (angle > 180) angle -= 360;
+  if (angle > 90) angle -= 180;
+  else if (angle <= -90) angle += 180;
+  return Math.round(angle * 10) / 10 + 0;
+}
+
+/** The direction from one point to the next as the north-up map shows it, in degrees clockwise from the horizontal. */
+export function streetAngle(from: LatLon, to: LatLon) {
+  const dx = (to[1] - from[1]) * Math.cos((((from[0] + to[0]) / 2) * Math.PI) / 180);
+  const dy = to[0] - from[0];
+  if (dx === 0 && dy === 0) return 0;
+  // The image's y grows downward, so north (dy > 0) is a negative angle.
+  return uprightAngle((Math.atan2(-dy, dx) * 180) / Math.PI);
+}
+
+/** One label per highlighted street, on the middle of the piece closest to the center (the one most likely in frame), turned along the street. */
 export function streetLabels(items: readonly HighlightedWay[], center: LatLon): StreetLabel[] {
   const best = new Map<string, { distance: number; label: StreetLabel }>();
   for (const { way, style } of items) {
-    const point = way.g[Math.floor(way.g.length / 2)];
+    const index = Math.floor(way.g.length / 2);
+    const point = way.g[index];
     const distance = distanceMeters(point, center);
     const current = best.get(way.n);
-    if (!current || distance < current.distance) best.set(way.n, { distance, label: { name: way.n, point, color: style.color } });
+    if (current && distance >= current.distance) continue;
+    // The segment the point sits on: the one after it, or before it at the end of the piece.
+    const from = way.g[Math.max(0, index === way.g.length - 1 ? index - 1 : index)];
+    const to = way.g[Math.min(way.g.length - 1, index === way.g.length - 1 ? index : index + 1)];
+    best.set(way.n, { distance, label: { name: way.n, point, color: style.color, angle: streetAngle(from, to) } });
   }
   return [...best.values()].map((entry) => entry.label);
+}
+
+/** The names with the place and angle the appraiser gave them by hand; a placement of a street no longer highlighted is ignored. */
+export function placedStreetLabels(labels: readonly StreetLabel[], placements: readonly { name: string; point: LatLon; angle: number }[] | undefined): StreetLabel[] {
+  if (!placements?.length) return [...labels];
+  const byName = new Map(placements.map((placement) => [placement.name, placement]));
+  return labels.map((label) => {
+    const placed = byName.get(label.name);
+    return placed ? { ...label, point: placed.point, angle: uprightAngle(placed.angle) } : label;
+  });
 }
 
 /* ------------------------------------------------------------------ */
