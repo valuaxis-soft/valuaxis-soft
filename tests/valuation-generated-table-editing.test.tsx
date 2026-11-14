@@ -51,6 +51,7 @@ import {
 } from "../src/features/valuations/services/table";
 import { tableContextMenu } from "../src/features/valuations/services/table-context-menu";
 import { decodeStoredTable, encodeTableCell, serializeTableForSave } from "../src/features/valuations/services/table-persistence";
+import { cellStyleKey, headerStyleKey, setTableCellStyles } from "../src/features/valuations/services/table-cell-style";
 import { evaluateTableFormulas, getCellDisplayValue } from "../src/features/valuations/services/table-formula-engine";
 import { calculatedCellReasons, calculatedColumnReasons, calculatedRowReasons, type CalculatedTableLock } from "../src/features/valuations/components/editor/calculated-table-context";
 
@@ -302,4 +303,16 @@ test("what the appraiser set travels in the saved table and comes back the same"
   assert.deepEqual(layoutOf(reloaded), layoutOf(table));
   assert.deepEqual(printedNames(reloaded), printedNames(table));
   assert.deepEqual(printedCells(reloaded), printedCells(table));
+});
+
+test("bold and alignment chosen on a selection of cells of a calculated table stay when it is written again", () => {
+  const table = written();
+  const first = ensureTableV2(table).rows[0].id;
+  const keys = [cellStyleKey(first, "col-4"), headerStyleKey("col-4")];
+  const styled = edit(table, (v2) => setTableCellStyles(v2, keys, { bold: true, align: "right" }));
+  assert.deepEqual(layoutOf(styled).cellStyles?.[keys[0]], { bold: true, align: "right" });
+  const [again] = withTableLayouts([block(written())], [block(styled)]);
+  const rewritten = ensureTableV2(again.apartados[0].tables[0]);
+  assert.deepEqual(rewritten.schema?.cellStyles?.[keys[1]], { bold: true, align: "right" });
+  assert.equal((rewritten.rows[0].cells["col-4"] as { value: string }).value, "0.72", "the figure stays the calculation's");
 });
