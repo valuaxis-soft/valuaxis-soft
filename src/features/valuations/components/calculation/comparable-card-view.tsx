@@ -162,7 +162,7 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
       {printable ? null : <ComparableValidityLine validity={card.validity} />}
 
       {!printable && card.warnings.length ? (
-        <ul className="grid gap-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300" aria-label="Avisos">
+        <ul className="grid gap-1 rounded-md border border-highlight/50 bg-highlight/10 p-2 text-xs text-foreground" aria-label="Avisos">
           {card.warnings.map((warning) => (
             <li key={warning.key} className="flex items-start gap-1"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> {warning.message}</li>
           ))}
@@ -191,7 +191,7 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
               <img src={comparable.screenshot.url} alt="Pantalla de referencia del anuncio" className="max-h-64 w-full object-contain" />
             </a>
           ) : (
-            <p className="flex items-center gap-1 p-2 text-xs text-amber-700 dark:text-amber-400"><AlertTriangle className="size-4" /> Sin pantalla de referencia.</p>
+            <p className="flex items-center gap-1 p-2 text-xs text-highlight-strong"><AlertTriangle className="size-4" /> Sin pantalla de referencia.</p>
           )}
         </SheetSection>
       </div>

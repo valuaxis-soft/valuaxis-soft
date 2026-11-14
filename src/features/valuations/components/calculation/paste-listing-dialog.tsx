@@ -136,7 +136,7 @@ export function PasteListingDialog({
                 ) : null}
               </p>
               {review.notices.map((notice) => (
-                <p key={notice} className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                <p key={notice} className="flex items-start gap-1.5 text-xs text-highlight-strong">
                   <Info className="mt-0.5 size-3.5 shrink-0" /> {notice}
                 </p>
               ))}
@@ -152,7 +152,7 @@ export function PasteListingDialog({
                     />
                     <div className="pt-1.5 text-xs text-muted-foreground">
                       {row.evidence ? <q className="break-words" data-evidence>{row.evidence}</q> : <span>El anuncio no lo dice.</span>}
-                      {row.note ? <p className="mt-0.5 text-amber-700 dark:text-amber-400">{row.note}</p> : null}
+                      {row.note ? <p className="mt-0.5 text-highlight-strong">{row.note}</p> : null}
                     </div>
                   </div>
                 ))}

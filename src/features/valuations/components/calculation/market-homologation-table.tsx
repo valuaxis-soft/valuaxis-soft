@@ -203,7 +203,7 @@ export function MarketHomologationTable(props: {
                     {row ? (
                       <span className="inline-flex items-center gap-1">
                         {warnings.length ? (
-                          <AlertTriangle className="size-3.5 text-amber-600" aria-label={`Fuera del rango del despacho: ${detail}`}>
+                          <AlertTriangle className="size-3.5 text-highlight-strong" aria-label={`Fuera del rango del despacho: ${detail}`}>
                             <title>{`Fuera del rango que fijó el despacho: ${detail}`}</title>
                           </AlertTriangle>
                         ) : null}

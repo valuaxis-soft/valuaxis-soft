@@ -64,7 +64,7 @@ export function ScreenshotSlot(props: {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={shown} alt="Pantalla de referencia del anuncio" className="max-h-64 w-full object-contain" />
         ) : (
-          <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
+          <span className="flex items-center gap-1 text-highlight-strong">
             <AlertTriangle className="size-3.5" /> Sin pantalla de referencia. Pega aquí la captura del anuncio.
           </span>
         )}

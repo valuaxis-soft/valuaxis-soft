@@ -185,7 +185,7 @@ function ScaleEditor(props: {
         </form>
       ) : null}
       {missing.length ? (
-        <p className="flex flex-wrap items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
+        <p className="flex flex-wrap items-center gap-2 text-xs text-highlight-strong">
           Sin calificación: {missing.map((text) => `«${text}»`).join(", ")}.
           {!readOnly && !full ? (
             <Button type="button" size="sm" variant="link" className="h-auto px-0" onClick={() => add(missing)}>Agregarlos a la escala</Button>

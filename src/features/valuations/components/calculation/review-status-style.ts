@@ -2,32 +2,35 @@ import type { ReviewStatus } from "@/features/valuations/calculation/comparable-
 
 /**
  * The colour of each review state, so it reads at a glance: a filled badge
- * (`solid`), the tint and left border of its row (`row`), and its text.
+ * (`solid`), the tint and left border of its row (`row`), and its text. Theme
+ * tokens, as the valuation states (docs/DISENO.md): grey for still to review,
+ * green for verified, navy for verified but no longer current, ochre for a
+ * comparable to observe and red for rejected. The label always says the state.
  */
 export const REVIEW_STATUS_STYLES: Record<ReviewStatus, { solid: string; row: string; text: string }> = {
   POR_REVISAR: {
-    solid: "bg-slate-500 text-white",
-    row: "border-l-4 border-l-slate-400 bg-slate-50 dark:bg-slate-900/40",
-    text: "text-slate-600 dark:text-slate-300",
+    solid: "bg-muted-foreground text-background",
+    row: "border-l-4 border-l-muted-foreground/50 bg-muted/60",
+    text: "text-muted-foreground",
   },
   VERIFICADO: {
-    solid: "bg-emerald-600 text-white",
-    row: "border-l-4 border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/30",
-    text: "text-emerald-700 dark:text-emerald-400",
+    solid: "bg-success-strong text-background",
+    row: "border-l-4 border-l-success bg-success/10",
+    text: "text-success-strong",
   },
   VERIFICADO_NO_VIGENTE: {
-    solid: "bg-teal-700 text-white",
-    row: "border-l-4 border-l-teal-600 bg-teal-50 dark:bg-teal-950/30",
-    text: "text-teal-700 dark:text-teal-400",
+    solid: "bg-primary text-primary-foreground",
+    row: "border-l-4 border-l-primary/60 bg-primary/5",
+    text: "text-primary",
   },
   CON_OBSERVACIONES: {
-    solid: "bg-amber-500 text-black",
-    row: "border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-950/30",
-    text: "text-amber-700 dark:text-amber-400",
+    solid: "bg-highlight text-highlight-foreground",
+    row: "border-l-4 border-l-highlight bg-highlight/10",
+    text: "text-highlight-strong",
   },
   RECHAZADO: {
-    solid: "bg-red-600 text-white",
-    row: "border-l-4 border-l-red-500 bg-red-50 dark:bg-red-950/30",
-    text: "text-red-700 dark:text-red-400",
+    solid: "bg-destructive text-white",
+    row: "border-l-4 border-l-destructive/70 bg-destructive/5",
+    text: "text-destructive",
   },
 };
