@@ -3,9 +3,9 @@ import { useEffect, useEffectEvent, useRef } from "react";
 import { api } from "@/lib/api-client";
 import { caratulaConclusionValues, conclusionValues, withConceptValues, withSummaryRowConcepts } from "@/features/valuations/calculation/conclusion-document";
 import { canConclude, conclusionEngineConfig, conclusionInput, type ConclusionCalculationDto } from "@/features/valuations/calculation/conclusion-types";
-import { COST_TEMPLATE_BLOCK_IDS, costDocumentBlocks, withConstructionTables } from "@/features/valuations/calculation/cost-document";
+import { COST_TEMPLATE_BLOCK_IDS, costDocumentBlocks } from "@/features/valuations/calculation/cost-document";
 import { FACTOR_ANNEX_PREFIX, FACTOR_ANNEX_TEMPLATE_BLOCK_IDS, factorJustificationBlocks, marketsInReport } from "@/features/valuations/calculation/factor-justification-document";
-import { costEngineConfig, toCostEngineInput, type ConstructionTypesDto, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
+import { costEngineConfig, toCostEngineInput, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
 import { INCOME_BLOCK_PREFIX, INCOME_TEMPLATE_BLOCK_IDS, incomeDocumentBlocks } from "@/features/valuations/calculation/income-document";
 import { incomeEngineConfig, toIncomeEngineInput, type IncomeCalculationDto } from "@/features/valuations/calculation/income-types";
 import { isMachineryCostBlock, isMachineryMarketBlock, machineryCostBlocks, machineryMarketBlocks } from "@/features/valuations/calculation/machinery-document";
@@ -40,6 +40,7 @@ import { Trace } from "@/features/valuations/engine/trace";
 import type { AppSection } from "@/features/valuations/model";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { REPORT_APPROACHES, excludedReportApproaches } from "@/features/valuations/services/report-approaches";
+import { useConstructionCapture } from "./use-construction-capture";
 import type { EditorState } from "./use-editor-state";
 
 const COST_PREFIX = `${GENERATED_BLOCK_PREFIX}costos`;
@@ -79,6 +80,16 @@ export function useCalculationDocumentSync({
       return changed ? next : current;
     }, { groupKey });
   };
+
+  // The construction types and the installations are captured in their tables of the construction section.
+  const constructionCapture = useConstructionCapture({
+    canEdit,
+    machinery,
+    sections,
+    valuationId,
+    onCostsSaved: (calculation) => onCostCalculation(calculation),
+    refreshCosts: () => refresh({ costs: true, conclusion: true }),
+  });
 
   // The last calculation of each market, for the annex that sums up their justifications.
   const marketsByType = useRef(new Map<ComparableType, MarketCalculationDto>());
@@ -130,7 +141,7 @@ export function useCalculationDocumentSync({
       key === "COSTOS" && calculation.configured
         ? replaceGeneratedBlocks(section, (block) => block.id.startsWith(COST_PREFIX), blocks, { placeholderIds: COST_TEMPLATE_BLOCK_IDS })
         : key === "CONSTRUCCION"
-          ? withConstructionTables(section, calculation)
+          ? constructionCapture.withCostCapture(section, calculation)
           : section);
   };
 
@@ -204,11 +215,6 @@ export function useCalculationDocumentSync({
   const onCostCalculation = (calculation: CostCalculationDto) => {
     applyCosts(calculation);
     void refresh({ conclusion: true });
-  };
-  // The server recomputed the cost approach with the new types; its calculation carries them.
-  const onConstructionTypes = (types: ConstructionTypesDto) => {
-    if (types.locked) return;
-    void refresh({ costs: true, conclusion: true });
   };
   const onIncomeCalculation = (calculation: IncomeCalculationDto) => {
     applyIncome(calculation);
@@ -298,7 +304,7 @@ export function useCalculationDocumentSync({
     onLiveFormulas: (owners: string[]) => void onLiveFormulas(owners),
     onMarketCalculation,
     onCostCalculation,
-    onConstructionTypes,
+    constructionCapture: constructionCapture.context,
     onIncomeCalculation,
     onMachineryCalculation,
     onStatisticalCalculation: applyStatistical,

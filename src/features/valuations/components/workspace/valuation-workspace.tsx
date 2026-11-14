@@ -44,7 +44,7 @@ import { isMachineryPropertyKind } from "@/features/valuations/calculation/machi
 import { ConclusionPanel } from "@/features/valuations/components/calculation/conclusion-panel";
 import { LiveFormulaOwnerProvider } from "@/features/valuations/components/calculation/formula-input";
 import { sectionLiveFormulaOwner } from "@/features/valuations/services/live-formulas";
-import { ConstructionTypesPanel } from "@/features/valuations/components/calculation/construction-types-panel";
+import { ConstructionCaptureProvider } from "@/features/valuations/components/editor/construction-capture-table";
 import { CostCalculationPanel } from "@/features/valuations/components/calculation/cost-calculation-panel";
 import { IncomeCalculationPanel } from "@/features/valuations/components/calculation/income-calculation-panel";
 import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/components/calculation/machinery-calculation-panel";
@@ -435,8 +435,6 @@ export function ValuationWorkspace({
               />
             ) : getCanonicalSectionKey(section.id) === "COSTOS" ? (
               <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} approach={approachInReport(section, "costos")} {...captureHeadersOf(section)} />
-            ) : !machinery && getCanonicalSectionKey(section.id) === "CONSTRUCCION" ? (
-              <ConstructionTypesPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConstructionTypes} />
             ) : getCanonicalSectionKey(section.id) === "MERCADO_RENTAS" ? (
               <MarketSectionTabs
                 market={(
@@ -553,6 +551,7 @@ export function ValuationWorkspace({
       onShowSection={handleActiveSectionChange}
     >
     <DeleteConfirmProvider onUndo={canEdit ? () => void undo() : undefined}>
+    <ConstructionCaptureProvider value={calculationSync.constructionCapture}>
     <CroquisGeneratorProvider
       valuationId={valuationId}
       readOnly={!canEdit}
@@ -721,6 +720,7 @@ export function ValuationWorkspace({
       </main>
     </Tabs>
     </CroquisGeneratorProvider>
+    </ConstructionCaptureProvider>
     </DeleteConfirmProvider>
     </StructureTransferProvider>
     </CustomUnitsProvider>

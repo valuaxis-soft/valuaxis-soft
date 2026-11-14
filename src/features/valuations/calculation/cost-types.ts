@@ -289,8 +289,8 @@ export function remainingUsefulLife(type: Pick<ConstructionTypeDto, "age" | "use
  * is not in the calculation.
  */
 export function addConstructionDisabledReason(typeCount: number, typesOutOfCalculation: number): string | null {
-  if (!typeCount) return "Aún no hay tipos de construcción: captúralos en la sección INF. CONSTRUCCIÓN y entran aquí solos.";
-  if (!typesOutOfCalculation) return "Todos los tipos de construcción ya están en el cálculo. Para agregar otro, dalo de alta en la sección INF. CONSTRUCCIÓN.";
+  if (!typeCount) return "Aún no hay tipos de construcción: escríbelos en su tabla de la sección INF. CONSTRUCCIÓN y entran aquí solos.";
+  if (!typesOutOfCalculation) return "Todos los tipos de construcción ya están en el cálculo. Para agregar otro, agrega su fila en la tabla de tipos de la sección INF. CONSTRUCCIÓN.";
   return null;
 }
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { costDocumentBlocks, withConstructionTables } from "../src/features/valuations/calculation/cost-document";
+import { costDocumentBlocks } from "../src/features/valuations/calculation/cost-document";
+import { serverItems, syncedFromTable, withConstructionTables } from "../src/features/valuations/calculation/construction-capture";
 import {
   CONSERVATION_RATINGS,
   DEFAULT_LAND,
@@ -232,9 +233,15 @@ test("the capture fills the construction section tables once, and a reload leave
   assert.equal(withConstructionTables(reloaded, arandas), reloaded);
 });
 
-test("without a capture the construction tables the appraiser wrote stay untouched", () => {
+test("without a capture the construction tables the appraiser wrote keep their rows, and become the capture", () => {
   const section = constructionSection([templateTable("construccion_tipos", ["Tipo", "Descripción"])]);
-  assert.equal(withConstructionTables(section, { ...arandas, types: [], constructions: [], installations: [], typesCaptured: false }), section);
+  const nothing = { ...arandas, types: [], constructions: [], installations: [], typesCaptured: false };
+  const marked = withConstructionTables(section, nothing);
+  const table = ensureTableV2(marked.blocks[0].apartados[0].tables[0]);
+  assert.deepEqual(table.rows, ensureTableV2(section.blocks[0].apartados[0].tables[0]).rows);
+  assert.deepEqual(table.schema?.capture, { kind: "types" });
+  assert.equal(table.schema?.hideCaption, true, "its title never printed in this section");
+  assert.equal(withConstructionTables(marked, nothing), marked);
 });
 
 test("the construction types table follows the types of the construction section, picked by the cost approach or not", () => {
@@ -266,9 +273,15 @@ test("a type deleted in the construction section leaves its table, the cost page
   const rowsOf = (current: AppSection, index: number) => (ensureTableV2(current.blocks[0].apartados[0].tables[index]).rows.length);
   assert.equal(rowsOf(withBoth, 0), 2);
 
-  // The server drops the cost row of a deleted type: T-2 leaves the section table and the cost page.
+  // What both held, as the workspace keeps it after each reading.
+  const syncedOf = (current: AppSection, calculation: CostCalculationDto) => ({
+    types: syncedFromTable(current.blocks[0].apartados[0].tables[0], serverItems("types", calculation)),
+    installations: syncedFromTable(current.blocks[0].apartados[0].tables[1], serverItems("installations", calculation)),
+  });
+
+  // The server drops a type (and its cost row): T-2 leaves the section table and the cost page.
   const withoutBodega: CostCalculationDto = { ...both, types: [arandasType], constructions: arandas.constructions };
-  const afterDelete = withConstructionTables(withBoth, withoutBodega);
+  const afterDelete = withConstructionTables(withBoth, withoutBodega, syncedOf(withBoth, both));
   assert.deepEqual(printed(afterDelete.blocks[0].apartados[0].tables[0]).rows.map((row) => row[0]), ["T-1"]);
   const computed = compute(withoutBodega);
   const constructions = costDocumentBlocks(withoutBodega, computed.result, computed.trace)[0].apartados[1];
@@ -276,7 +289,7 @@ test("a type deleted in the construction section leaves its table, the cost page
 
   // The last type deleted and the installations removed: the tables are emptied, not left as they were.
   const nothing: CostCalculationDto = { ...arandas, types: [], constructions: [], installations: [] };
-  const emptied = withConstructionTables(afterDelete, nothing);
+  const emptied = withConstructionTables(afterDelete, nothing, syncedOf(afterDelete, withoutBodega));
   assert.equal(rowsOf(emptied, 0), 0);
   assert.equal(rowsOf(emptied, 1), 0);
 });

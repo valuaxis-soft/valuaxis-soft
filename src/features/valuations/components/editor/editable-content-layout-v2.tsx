@@ -20,7 +20,7 @@ import {
 } from "../../services/content-layout-v2-operations";
 import { ConceptEditorRow } from "./concept-editor";
 import { ImageEditorItem } from "./image-editor";
-import { TableEditorItem } from "./table-editor";
+import { EditorTable } from "./construction-capture-table";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { findBoundarySource, findBoundaryTable, getTerrenoElementKind } from "../../sections/terreno";
@@ -751,7 +751,7 @@ export function renderLayoutItem({
     const table = tablesById.get(itemRef.id);
     if (!table) return null;
     return (
-      <TableEditorItem
+      <EditorTable
         table={table}
         onAddColumn={tableCallbacks.onAddColumn}
         onAddRow={tableCallbacks.onAddRow}

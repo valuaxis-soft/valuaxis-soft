@@ -22,7 +22,8 @@
  * Pure: no side effects, no rendering.
  */
 
-import { COST_TEMPLATE_BLOCK_IDS, isCostCaptureTable } from "../calculation/cost-document";
+import { COST_TEMPLATE_BLOCK_IDS } from "../calculation/cost-document";
+import { isCostCaptureTable } from "../calculation/construction-capture";
 import { INCOME_TEMPLATE_BLOCK_IDS } from "../calculation/income-document";
 import {
   MARKET_TEMPLATE_BLOCK_IDS,

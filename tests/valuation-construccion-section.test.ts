@@ -90,7 +90,7 @@ test("Elementos de construcción contiene franja introductoria y siete subbloque
   );
 });
 
-test("Instalaciones especiales contiene tabla real con cinco filas y primera fila precargada", () => {
+test("Instalaciones especiales nace como la captura de costos: unidad y cantidad en su columna y sin ejemplo que entre a costos", () => {
   const block = construccionSection.blocks[2];
   assert.equal(block.apartados.length, 1);
   assert.equal(block.apartados[0].id, "instalaciones_especiales_detalle");
@@ -100,32 +100,13 @@ test("Instalaciones especiales contiene tabla real con cinco filas y primera fil
   );
   const table = block.apartados[0].tables[0];
   assert.equal(table.id, "instalaciones_especiales");
-  assert.deepEqual(table.columns, [
-    "#",
-    "Tipo",
-    "Edad",
-    "VUT",
-    "VUR",
-    "Conservación",
-    "Mantenimiento",
-    "Descripción",
-  ]);
-  assert.deepEqual(table.columnKeys, [
-    "numero",
-    "tipo",
-    "edad",
-    "vut",
-    "vur",
-    "conservacion",
-    "mantenimiento",
-    "descripcion",
-  ]);
+  assert.deepEqual(table.columns, ["#", "Tipo", "Descripción", "Unidad", "Cant.", "Edad", "VUT", "VUR", "Conservación", "Mantenimiento"]);
+  assert.deepEqual(table.columnKeys, ["numero", "tipo", "descripcion", "unidad", "cantidad", "edad", "vut", "vur", "conservacion", "mantenimiento"]);
+  // Rows with only their number are not installations yet: nothing enters the cost approach until it is written.
   assert.deepEqual(table.rows, [
-    ["1", "I.E.", "3", "7", "4", "bueno", "regular", "Aire acondicionado de 1 tonelada, con accesorios incluidos e instalado en sala principal."],
-    ["2", "", "", "", "", "", "", ""],
-    ["3", "", "", "", "", "", "", ""],
-    ["4", "", "", "", "", "", "", ""],
-    ["5", "", "", "", "", "", "", ""],
+    ["1", "", "", "", "", "", "", "", "", ""],
+    ["2", "", "", "", "", "", "", "", "", ""],
+    ["3", "", "", "", "", "", "", "", "", ""],
   ]);
 });
 
