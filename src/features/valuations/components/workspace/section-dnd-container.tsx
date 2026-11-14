@@ -224,7 +224,7 @@ export function SectionDndContainer({
       {/* Rect strategy: from lg the tabs wrap into rows, and a tab can be dragged to another row. */}
       <SortableContext items={sortableIds} strategy={rectSortingStrategy}>
         <TabsList
-          className="h-9 min-w-max justify-start rounded-full bg-muted/70 p-1 pointer-coarse:h-12 lg:h-auto! lg:min-w-0 lg:flex-1 lg:flex-wrap lg:gap-y-1 lg:rounded-2xl"
+          className="h-9 min-w-max justify-start rounded-full bg-secondary/80 p-1 ring-1 ring-border/70 pointer-coarse:h-12 lg:h-auto! lg:min-w-0 lg:flex-1 lg:flex-wrap lg:gap-y-1 lg:rounded-2xl"
           // While a tab is being moved with the keyboard the arrows belong to
           // the drag, not to the tab list's roving focus; while one is being
           // renamed they belong to its text box.

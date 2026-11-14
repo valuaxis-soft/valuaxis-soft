@@ -480,12 +480,12 @@ export function ComparableDialog(props: {
         {comparable?.updatedOn ? <ComparableValidityLine updatedOn={comparable.updatedOn} months={comparable.validityMonths ?? props.defaultValidityMonths} /> : null}
 
         {duplicates ? (
-          <section className="grid gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40" aria-label="Posibles duplicados" data-duplicates>
-            <p className="flex items-start gap-1.5 text-sm font-medium text-amber-900 dark:text-amber-200">
+          <section className="grid gap-3 rounded-md border border-highlight/50 bg-highlight/10 p-3" aria-label="Posibles duplicados" data-duplicates>
+            <p className="flex items-start gap-1.5 text-sm font-medium text-foreground">
               <Copy className="mt-0.5 size-4 shrink-0" />
               Posible duplicado: este inmueble parece estar ya en la base del despacho.
             </p>
-            <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
+            <p className="text-xs text-muted-foreground">
               Si es el mismo, se conserva su número y se queda la información más reciente (la que capturas ahora), con sus fotos.
               Si son diferentes, se guardan los dos, cada uno con su número.
             </p>
@@ -506,12 +506,12 @@ export function ComparableDialog(props: {
         <form ref={form} className="grid gap-5" onSubmit={submit} hidden={duplicates !== null} autoComplete="off">
           {checkWhileTyping && liveMatches.length ? (
             <section
-              className="grid gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40"
+              className="grid gap-2 rounded-md border border-highlight/50 bg-highlight/10 p-3"
               aria-label="Ya está en la base"
               aria-live="polite"
               data-duplicates-live
             >
-              <p className="flex items-start gap-1.5 text-sm font-medium text-amber-900 dark:text-amber-200">
+              <p className="flex items-start gap-1.5 text-sm font-medium text-foreground">
                 <Copy className="mt-0.5 size-4 shrink-0" />
                 Este inmueble parece estar ya en la base del despacho. Puedes usar el existente en lugar de capturarlo otra vez.
               </p>
@@ -991,7 +991,7 @@ function DuplicateMatchList(props: {
               {match.contactPhone ? ` · tel. ${match.contactPhone}` : ""} · {match.valuation ? `avalúo ${match.valuation.folio}` : "base general"}
               {match.sameValuation ? " (este avalúo)" : ""} · datos del {formatDay(match.updatedOn)}
             </p>
-            <p className="text-xs font-medium text-amber-900 dark:text-amber-200">
+            <p className="text-xs font-medium text-foreground">
               Coinciden: {match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")}
             </p>
           </div>

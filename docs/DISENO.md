@@ -160,6 +160,16 @@ Las fotos de la página pública y del acceso son de stock con licencia que perm
 
 Las maquetas siguen usando datos inventados; las fotos solo reemplazan los dibujos.
 
+## Editor del avalúo
+
+Herramienta de trabajo de horas: densa, sin adornos, con la misma paleta que el área privada. El documento (vista previa, dictamen, PDF) no toma nada de esto.
+
+- **Jerarquía** sección › bloque › subbloque › concepto: el nombre de la sección en `font-display` (24 px) sobre una línea; el bloque con su banda de tinta al 5 % (`bg-primary/[0.05]`) y título en `text-primary`; el subbloque con una regla izquierda `border-l-primary/45` y, uno sí y uno no, un tinte `bg-primary/[0.06]`; el nombre del concepto sobre arena (`bg-muted/60`) para leerse aparte de su dato.
+- **Pestañas de secciones:** franja `bg-secondary`; la activa en `bg-card`, texto `text-primary` y `shadow-soft`. Sin cambiar el peso de la letra al activarse, para que la franja no se reacomode.
+- **Avisos:** ocre (`text-highlight-strong`, recuadros `bg-highlight/10`) para un dato a observar; verde texto `text-success-strong`; información en tinta (`bg-primary/5`). «Cambios pendientes» en `bg-highlight`. El azul de las fórmulas y sus colores de referencia imitan a Excel y se conservan.
+- **Tablas de captura del cálculo:** en claro conservan los colores del dictamen a propósito (el valuador las compara con lo impreso); en oscuro usan tokens.
+- **Foco:** dentro de `[data-valuation-workspace]` botones, pestañas y menús muestran un contorno de 2 px `--ring` (3:1 o más). El bloque que se edita marca su borde en tinta (`focus-within`), con transición solo si no hay movimiento reducido.
+
 ## Página pública
 
 `src/app/page.tsx` arma las secciones; los textos están en `src/features/marketing/content.ts` y las maquetas en `src/features/marketing/components/`. Son componentes de servidor; el único JavaScript propio es la isla `LandingMotion` (encabezado, disparadores de movimiento y ciclo del hero: 3.4 KB, 1.3 KB con gzip). Las preguntas frecuentes usan `<details>`. El precio vive en `PRICE_PER_VALUATION_MXN` y debe coincidir con el paquete `AVALUO_1` ([COBRO.md](COBRO.md)). El JSON-LD (`SoftwareApplication` con la oferta en MXN, `Organization` y `FAQPage`) sale de `structured-data.ts` y lleva el nonce de la CSP.

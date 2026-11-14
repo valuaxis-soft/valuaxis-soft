@@ -111,7 +111,7 @@ export function StatisticalMethodsPanel(props: {
 
   return (
     <section
-      className="grid gap-3 rounded-lg border-2 border-dashed border-violet-400/40 bg-muted/20 p-3 sm:p-4"
+      className="grid gap-3 rounded-lg border-2 border-dashed border-chart-4/40 bg-muted/20 p-3 sm:p-4"
       aria-labelledby="statistical-methods-title"
     >
       <header className="grid gap-1">
@@ -221,7 +221,7 @@ function MethodControls(props: {
 /** Item 6 of 27 Oct: marked to print but not computable, the appraiser is told, never silently left out. */
 function NotPrintedWarning({ reason }: { reason: string }) {
   return (
-    <p role="alert" className="flex items-start gap-1.5 rounded-md border border-amber-500/50 bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+    <p role="alert" className="flex items-start gap-1.5 rounded-md border border-highlight/50 bg-highlight/10 p-2 text-xs text-foreground">
       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
       <span>Marcaste «Mostrar en el dictamen», pero no se imprimirá hasta que se resuelva: {reason}</span>
     </p>
@@ -439,7 +439,7 @@ function StatisticalTypePanel(props: {
       </div>
       {calculation.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
       {calculation.fromMarket ? (
-        <p className="rounded-md border border-sky-500/40 bg-sky-50 p-2 text-xs text-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
+        <p className="rounded-md border border-primary/25 bg-primary/5 p-2 text-xs text-foreground dark:bg-primary/10">
           Esta regresión se capturó dentro del enfoque de mercado, antes de que los métodos alternativos fueran un apartado propio. Se lee de ahí con los
           comparables del mercado; al primer cambio que hagas aquí se guarda una copia propia y el mercado queda como estaba.
         </p>
@@ -509,7 +509,7 @@ function StatisticalTypePanel(props: {
         <MethodControls label="Calcular por regresión lineal múltiple" method={settings.regression} defaultTitle={DEFAULT_REGRESSION_TITLE} readOnly={readOnly} onChange={(patch) => setMethod("regression", patch)} />
         {/* Video 5.4, 14:54: «Mostrar en el dictamen» of the regression is only the regression's; the goal programming has its own. */}
         {!settings.regression.showInDictamen && settings.goal.enabled && settings.goal.showInDictamen && !settings.excludedFromReport ? (
-          <p className="rounded-md border border-sky-500/40 bg-sky-50 p-2 text-xs text-sky-900 dark:bg-sky-950/30 dark:text-sky-200" data-goal-still-printed="">
+          <p className="rounded-md border border-primary/25 bg-primary/5 p-2 text-xs text-foreground dark:bg-primary/10" data-goal-still-printed="">
             La regresión no se imprime, pero el bloque de métodos alternativos sigue en el dictamen por la programación por metas (su «Mostrar en el
             dictamen» está marcado, abajo). Para quitar todo el bloque, apaga «Agregar al informe valuatorio» arriba.
           </p>
@@ -656,7 +656,7 @@ function StatisticalTypePanel(props: {
                 </dl>
                 <p className="text-xs text-muted-foreground">{STATISTICAL_VALUE_NOTE}</p>
                 {!regression.result.fit.reliable ? (
-                  <p className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+                  <p className="flex items-center gap-1 text-xs text-highlight-strong">
                     <AlertTriangle className="size-3.5 shrink-0" /> Con {regression.result.fit.n} comparables (se recomiendan más de {RECOMMENDED_REGRESSION_COMPARABLES}) la
                     regresión es poco confiable y muy sensible a errores de captura.
                   </p>
@@ -693,7 +693,7 @@ function StatisticalTypePanel(props: {
             {goal?.outcome.ok ? (
               <div className="grid gap-3 rounded-md border bg-background p-3 text-sm" aria-label="Resultado de la programación por metas">
                 {goalProgrammingWarnings(goal.outcome.fit.n, goal.outcome.fit.k).map((warning) => (
-                  <p key={warning} className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"><AlertTriangle className="size-3.5 shrink-0" /> {warning}</p>
+                  <p key={warning} className="flex items-center gap-1 text-xs text-highlight-strong"><AlertTriangle className="size-3.5 shrink-0" /> {warning}</p>
                 ))}
                 <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={true}>
                   <table className={cn(CALC_TABLE, "w-full")} aria-label="Contribución de cada criterio">
@@ -730,7 +730,7 @@ function StatisticalTypePanel(props: {
                           <td className="px-1.5 py-1 tabular-nums">{money(row.fitted)}</td>
                           <td className="px-1.5 py-1 tabular-nums">{money(row.positive)}</td>
                           <td className="px-1.5 py-1 tabular-nums">{money(row.negative)}</td>
-                          <td className="px-1.5 py-1 text-xs">{row.observe ? <span className="text-amber-700 dark:text-amber-400">A observar</span> : ""}</td>
+                          <td className="px-1.5 py-1 text-xs">{row.observe ? <span className="text-highlight-strong">A observar</span> : ""}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -842,7 +842,7 @@ function SampleSizeAdvice({ n, k }: { n: number; k: number }) {
   const advice = sampleSizeRecommendation(n, k);
   if (!advice) return null;
   return (
-    <p className="rounded-md border border-sky-500/40 bg-sky-50 p-2 text-xs text-sky-900 dark:bg-sky-950/30 dark:text-sky-200" data-sample-size-advice="">
+    <p className="rounded-md border border-primary/25 bg-primary/5 p-2 text-xs text-foreground dark:bg-primary/10" data-sample-size-advice="">
       {advice}
     </p>
   );

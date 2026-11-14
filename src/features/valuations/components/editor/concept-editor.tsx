@@ -145,7 +145,8 @@ function caratulaInputType(type: ConceptType) {
 const ConceptValueFormatEverywhereContext = createContext(false);
 
 /** A concept's title in the editor: bold and a shade softer than its value, as it prints (video 6.1). */
-const CONCEPT_TITLE_CLASS = "font-semibold text-foreground/80";
+// The concept's name sits on a sand fill so it reads apart from its value at a glance.
+const CONCEPT_TITLE_CLASS = "bg-muted/60 font-semibold text-foreground/85 dark:bg-muted/40";
 
 export function ConceptValueFormatEverywhere({ children, enabled }: { children: ReactNode; enabled: boolean }) {
   return <ConceptValueFormatEverywhereContext.Provider value={enabled}>{children}</ConceptValueFormatEverywhereContext.Provider>;

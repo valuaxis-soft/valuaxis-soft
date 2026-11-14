@@ -249,10 +249,10 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
                 </span>
               </div>
               <p className="text-sm">
-                <span className="font-medium text-emerald-700 dark:text-emerald-400">{preview.valid} listos para importar</span>
+                <span className="font-medium text-success-strong">{preview.valid} listos para importar</span>
                 {preview.invalid ? <span className="text-destructive"> · {preview.invalid} con errores (se omiten)</span> : null}
                 {preview.skipped ? <span className="text-muted-foreground"> · {preview.skipped} no se importan (descartados o fuera del destino)</span> : null}
-                {preview.tooManyRows ? <span className="text-amber-700"> · solo se leen los primeros 100</span> : null}
+                {preview.tooManyRows ? <span className="text-highlight-strong"> · solo se leen los primeros 100</span> : null}
               </p>
               <div className="max-h-[26rem] overflow-auto rounded-md border">
                 <table className="w-full text-xs">
@@ -273,7 +273,7 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
                         <td className="px-2 py-1.5 tabular-nums">{row.row}</td>
                         <td className="px-2 py-1.5">
                           {targetLabel(row.target)}
-                          {row.review === "VERIFICADO" ? <span className="block text-emerald-700 dark:text-emerald-400">Verificado</span> : null}
+                          {row.review === "VERIFICADO" ? <span className="block text-success-strong">Verificado</span> : null}
                         </td>
                         <td className="px-2 py-1.5">{row.location || <span className="text-muted-foreground">(vacía)</span>}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{number(row.area)}</td>
@@ -284,13 +284,13 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
                             <span className="flex items-start gap-1 text-destructive"><XCircle className="mt-0.5 size-3.5 shrink-0" />{row.errors.join(" ")}</span>
                           ) : null}
                           {row.warnings?.length ? (
-                            <span className="flex items-start gap-1 text-amber-700 dark:text-amber-400" data-import-warning={row.row}>
+                            <span className="flex items-start gap-1 text-highlight-strong" data-import-warning={row.row}>
                               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />{row.warnings.join(" ")}
                             </span>
                           ) : null}
                           {!row.errors.length && row.duplicates?.length ? (
                             <span className="grid gap-1" data-import-duplicate={row.row}>
-                              <span className="flex items-start gap-1 text-amber-700 dark:text-amber-400">
+                              <span className="flex items-start gap-1 text-highlight-strong">
                                 <Copy className="mt-0.5 size-3.5 shrink-0" />
                                 Posible duplicado: {row.duplicates.map((match) =>
                                   `${formatComparableId(match.folio) ?? "sin número"} (${match.valuationFolio ? `avalúo ${match.valuationFolio}` : "base general"}; ${match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")}; datos del ${formatDay(match.updatedOn)})`).join("; ")}
@@ -320,7 +320,7 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
                             </span>
                           ) : null}
                           {!row.errors.length && !row.warnings?.length && !row.duplicates?.length && row.target?.kind !== "skip" ? (
-                            <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="size-3.5" />Listo</span>
+                            <span className="flex items-center gap-1 text-success-strong"><CheckCircle2 className="size-3.5" />Listo</span>
                           ) : null}
                         </td>
                       </tr>

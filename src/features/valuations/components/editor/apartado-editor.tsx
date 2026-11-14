@@ -67,21 +67,22 @@ export function ApartadoEditor({
   return (
     <section
       className={cn(
-        "rounded-lg border p-4",
-        useBlueTone ? "border-[#00285A]/25 bg-[#00285A]/[0.12] dark:bg-[#00285A]/35" : "bg-background",
+        // A subbloque hangs from its block: a navy rule on its left, and every other one tinted so neighbours read apart.
+        "rounded-lg border border-l-[3px] border-l-primary/45 p-4",
+        useBlueTone ? "border-primary/20 bg-primary/[0.06] dark:bg-primary/10" : "bg-background",
         !subBlock.enabled && "border-dashed border-muted-foreground/40 opacity-80",
       )}
     >
-      <div className="mb-4 flex items-start justify-between gap-3 border-b border-[#00285A]/20 dark:border-sky-200/20 pb-3">
+      <div className="mb-4 flex items-center justify-between gap-3 border-b border-primary/15 pb-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {displayLabel ? (
-            <span className="shrink-0 text-sm font-black uppercase leading-tight text-[#00285A] dark:text-sky-200">
+            <span className="shrink-0 text-sm font-bold uppercase leading-tight tracking-wide text-primary">
               {displayLabel}
             </span>
           ) : null}
           <Input
             aria-label="Título del apartado"
-            className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-black uppercase leading-tight text-[#00285A] dark:text-sky-200 shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background"
+            className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-bold uppercase leading-tight tracking-wide text-primary shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background"
             disabled={readOnly}
             value={subBlock.title}
             onChange={(event) =>

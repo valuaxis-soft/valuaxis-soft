@@ -424,9 +424,10 @@ export function ValuationEditorPanel(props: {
 
   return (
     // Clipped, not hidden: the "Seleccionar conceptos" bar sticks to the top of the editor through it.
-    <Card className="min-h-[680px] overflow-clip rounded-lg">
-      <CardHeader>
-        <CardTitle>
+    <Card className="min-h-[680px] overflow-clip rounded-2xl shadow-soft">
+      {/* The section is the top of the hierarchy: its name in the display face, ruled off from its blocks. */}
+      <CardHeader className="border-b">
+        <CardTitle className="font-display text-2xl leading-tight font-semibold tracking-tight text-balance">
           {renaming && props.onRenameSection ? (
             <SectionTitleField
               title={section.title}
@@ -443,7 +444,7 @@ export function ValuationEditorPanel(props: {
             : isTerreno
               ? `${section.label} ${section.title}`
             : sectionDisplayName(section)}
-          <span className="ml-2 inline-flex align-middle"><ReportInclusionBadge section={section} /></span>
+          <span className="ml-2 inline-flex align-middle font-sans tracking-normal"><ReportInclusionBadge section={section} /></span>
         </CardTitle>
         <CardDescription>
           {isCaratula
@@ -753,7 +754,7 @@ function SortableBlockEditor(props: {
     <BlockCard
       cardRef={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("rounded-lg", hasSectionBoundary && "border bg-muted/20", !block.enabled && "border-dashed opacity-65")}
+      className={cn("rounded-xl", hasSectionBoundary && "border bg-muted/20", !block.enabled && "border-dashed opacity-65")}
       badge={showStructuralNumbering
         ? block.enabled && !blockContentHidden(block)
           ? displayBlockLabel
@@ -1171,7 +1172,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
       blockId={block.id}
       cardRef={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("rounded-lg border border-dashed bg-muted/20", !block.enabled && "opacity-65")}
+      className={cn("rounded-xl border border-dashed bg-muted/20", !block.enabled && "opacity-65")}
       badge={block.enabled ? (block.sectionLabel ? `${block.sectionLabel.replace(/\.+$/, "")}.` : "Fijo") : "Oculto"}
       dragHandle={
         <Button type="button" size="icon-sm" variant="ghost" aria-label={`Mover ${block.title}`} title="Arrastrar para reordenar" disabled={readOnly} {...attributes} {...listeners}>
@@ -1335,7 +1336,7 @@ function SectionTitleField({ title, onCommit, onCancel }: { title: string; onCom
       <Input
         autoFocus
         aria-label="Título de la sección"
-        className="h-8 max-w-80 font-semibold uppercase"
+        className="h-8 max-w-80 font-sans font-semibold tracking-normal uppercase"
         maxLength={SECTION_TITLE_MAX}
         value={value}
         onChange={(event) => setValue(event.target.value)}

@@ -620,7 +620,7 @@ function MarketTypePanel(props: {
             <Field>
               <FieldLabel htmlFor="market-base-area">Lote tipo (m²)</FieldLabel>
               <FormulaInput id="market-base-area" grouping value={draft.baseArea} onChange={setDraftField("baseArea")} />
-              {!draft.baseArea ? <p className="text-xs text-amber-700 dark:text-amber-400">Sin lote tipo, el factor de superficie usa el sujeto.</p> : null}
+              {!draft.baseArea ? <p className="text-xs text-highlight-strong">Sin lote tipo, el factor de superficie usa el sujeto.</p> : null}
             </Field>
           ) : null}
           <Field>
@@ -682,7 +682,7 @@ function MarketTypePanel(props: {
                     <td className="px-2 py-1.5">{comparable.reference}</td>
                     <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">
                       {formatComparableId(comparable.folio) ?? "—"}
-                      <span className={cn("ml-1 font-sans", isVerifiedStatus(status) ? "text-emerald-700 dark:text-emerald-400" : status === "POR_REVISAR" ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400")}>
+                      <span className={cn("ml-1 font-sans", isVerifiedStatus(status) ? "text-success-strong" : status === "POR_REVISAR" ? "text-muted-foreground" : "text-highlight-strong")}>
                         · {REVIEW_STATUS_LABELS[status]}
                       </span>
                     </td>
@@ -692,7 +692,7 @@ function MarketTypePanel(props: {
                         {comparable.photos.length ? <span className="ml-1 text-xs text-muted-foreground">({comparable.photos.length} fotos)</span> : null}
                       </span>
                       {warnings.length ? (
-                        <span className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400" data-comparable-warnings title={warnings.map((warning) => warning.message).join("\n")}>
+                        <span className="flex items-start gap-1 text-xs text-highlight-strong" data-comparable-warnings title={warnings.map((warning) => warning.message).join("\n")}>
                           <AlertTriangle className="mt-0.5 size-3 shrink-0" />
                           <span className="truncate">{warnings.map((warning) => warning.message).join(" ")}</span>
                         </span>
@@ -780,7 +780,7 @@ function MarketTypePanel(props: {
             ) : null}
           </div>
           {complete < MIN_COMPARABLES ? (
-            <span className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+            <span className="flex items-center gap-1 text-xs text-highlight-strong">
               <AlertTriangle className="size-3.5" /> El dictamen lleva al menos {MIN_COMPARABLES} comparables completos ({complete} de {MIN_COMPARABLES}).
             </span>
           ) : null}
@@ -860,7 +860,7 @@ function MarketTypePanel(props: {
         )}
       >
         {!homologatesOf(liveSettings) ? (
-          <p className="rounded-md border border-amber-500/40 bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200" data-homologation-off="">
+          <p className="rounded-md border border-highlight/50 bg-highlight/10 p-2 text-xs text-foreground" data-homologation-off="">
             Sin homologación: ningún factor se aplica. El promedio, la mediana y el rango del ±30 % salen de los valores unitarios de las ofertas tal como
             se capturaron, y el dictamen no imprime la tabla de homologación. Los factores capturados se conservan por si vuelves a homologar.
           </p>
@@ -978,7 +978,7 @@ function MarketTypePanel(props: {
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">Dispersión final (máx. ÷ mín. homologados)</dt>
-                <dd className={cn("tabular-nums", stats.dispersion > 1.25 && "text-amber-700 dark:text-amber-400")} data-dispersion="final">
+                <dd className={cn("tabular-nums", stats.dispersion > 1.25 && "text-highlight-strong")} data-dispersion="final">
                   {stats.dispersion.toFixed(2)}
                 </dd>
               </div>

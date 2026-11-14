@@ -69,7 +69,7 @@ export function CellSelectionBar(props: CellSelectionBarProps) {
   // The bar takes the place of the hint, the same height: selecting never moves the table under the mouse.
   if (!count) {
     return (
-      <p className="mb-2 flex min-h-8 items-start gap-1.5 text-[10px] text-muted-foreground" data-cell-selection-hint="">
+      <p className="mb-2 flex min-h-8 items-start gap-1.5 text-xs text-muted-foreground" data-cell-selection-hint="">
         <MousePointerSquareDashed aria-hidden className="mt-px size-3 shrink-0" />
         <span>{CELL_SELECTION_HINT} Clic derecho en una celda, en un encabezado o en el número de fila para más opciones.{props.hint ? ` ${props.hint}` : ""}</span>
       </p>
@@ -78,7 +78,7 @@ export function CellSelectionBar(props: CellSelectionBarProps) {
   const styleDisabled = Boolean(props.formatLocked);
   return (
     <div
-      className="mb-2 flex min-h-8 items-center gap-1 overflow-x-auto rounded-md border border-primary/40 bg-card px-2 py-0.5 text-xs whitespace-nowrap shadow-sm"
+      className="mb-2 flex min-h-8 items-center gap-1 overflow-x-auto rounded-lg border border-primary/40 bg-card px-2 py-0.5 text-xs whitespace-nowrap shadow-soft"
       role="toolbar"
       aria-label="Celdas seleccionadas"
       data-cell-selection=""

@@ -338,7 +338,7 @@ export function SearchComparablesDialog({
             ) : null}
 
             {failedSources.map((source) => (
-              <p key={source.id} className="flex items-center gap-1 text-sm text-amber-700 dark:text-amber-400">
+              <p key={source.id} className="flex items-center gap-1 text-sm text-highlight-strong">
                 <AlertTriangle className="size-3.5 shrink-0" /> {source.label}: {source.error} Los demás resultados sí se muestran.
               </p>
             ))}

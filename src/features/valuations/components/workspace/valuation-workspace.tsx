@@ -571,7 +571,7 @@ export function ValuationWorkspace({
     >
     <Tabs value={activeSection.id} onValueChange={handleActiveSectionChange} className="gap-0 h-full">
       {/* Clipped, not hidden: a hidden overflow still scrolls when something is brought into view, and took the top bar with it. */}
-      <main ref={workspaceRef} className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-clip">
+      <main ref={workspaceRef} className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-clip" data-valuation-workspace="">
       <section className="shrink-0 border-b bg-background" data-workspace-top-bar="">
         <div className="mx-auto grid max-w-[1760px] grid-cols-1 gap-3 overflow-hidden px-3 py-3 sm:px-4 lg:gap-4 lg:px-6 lg:py-4">
           <ValuationTopBar

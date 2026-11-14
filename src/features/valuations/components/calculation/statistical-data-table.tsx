@@ -326,7 +326,7 @@ export function StatisticalDataTable(props: {
             </tr>
           </thead>
           <tbody>
-            <tr className={cn(CALC_ROW, "bg-sky-50 dark:bg-sky-950/30")}>
+            <tr className={cn(CALC_ROW, "bg-primary/5 dark:bg-primary/10")}>
               <td className="px-1.5 py-1 font-bold" colSpan={2}>Sujeto</td>
               <td className="px-1.5 py-1 text-muted-foreground">—</td>
               {settings.fields.map((field) => (

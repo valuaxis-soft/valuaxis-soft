@@ -67,7 +67,7 @@ function WarningLine({ warning }: { warning: ComparableWarning }) {
       <AlertTriangle className="mt-0.5 size-3 shrink-0" /> <span>{warning.message}</span>
       <TooltipPrimitive.Root>
         <TooltipPrimitive.Trigger
-          className="inline-flex shrink-0 rounded-full text-amber-800/80 hover:text-amber-900 focus-visible:outline-2 dark:text-amber-300/80"
+          className="inline-flex shrink-0 rounded-full text-highlight-strong hover:text-foreground focus-visible:outline-2"
           aria-label={`Qué significa: ${WARNING_HELP[warning.key]}`}
         >
           <CircleHelp className="size-3.5" />
@@ -152,7 +152,7 @@ function ReviewRow(props: { row: ReviewRowDto; readOnly: boolean; onSaved: (revi
       </div>
 
       {warnings.length ? (
-        <ul className="grid gap-0.5 text-xs text-amber-700 dark:text-amber-400" data-review-warnings>
+        <ul className="grid gap-0.5 text-xs text-highlight-strong" data-review-warnings>
           {warnings.map((warning, index) => <WarningLine key={`${warning.key}-${index}`} warning={warning} />)}
         </ul>
       ) : null}
