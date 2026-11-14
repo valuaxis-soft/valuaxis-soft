@@ -91,6 +91,7 @@ export type ValuationSectionDto = {
   annexTitle?: string;
   pageBreak?: SectionMetadata["pageBreak"];
   excludedFromReport?: SectionMetadata["excludedFromReport"];
+  captureHeaders?: SectionMetadata["captureHeaders"];
   /** A section the appraiser added. */
   custom?: boolean;
   /** The appraiser renamed the tab. */
@@ -674,6 +675,7 @@ function sectionStructureDto(metadata: SectionMetadata) {
     ...(metadata.annexTitle ? { annexTitle: metadata.annexTitle } : {}),
     ...(metadata.pageBreak ? { pageBreak: metadata.pageBreak } : {}),
     ...(metadata.excludedFromReport?.length ? { excludedFromReport: metadata.excludedFromReport } : {}),
+    ...(metadata.captureHeaders ? { captureHeaders: metadata.captureHeaders } : {}),
   };
 }
 

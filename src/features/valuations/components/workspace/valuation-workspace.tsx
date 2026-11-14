@@ -56,6 +56,7 @@ import { CroquisGeneratorProvider, CroquisSectionAccess } from "@/features/maps/
 import { RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { approachIncluded, excludedReportApproaches, previewSectionForReport, withApproachIncluded, type ReportApproach } from "@/features/valuations/services/report-approaches";
+import type { SectionCaptureHeaders } from "@/features/valuations/services/capture-headers";
 import {
   canRemoveSection,
   listedSections,
@@ -398,6 +399,11 @@ export function ValuationWorkspace({
     included: approachIncluded(section, approach),
     onIncludedChange: (included: boolean) => updateSection(section.id, { excludedFromReport: withApproachIncluded(section, approach, included) }),
   });
+  // The headers of the panel's capture tables, kept with the section and saved with the document.
+  const captureHeadersOf = (section: AppSection) => ({
+    captureHeaders: section.captureHeaders,
+    onCaptureHeaders: (captureHeaders: SectionCaptureHeaders) => updateSection(section.id, { captureHeaders }),
+  });
 
   // A field of a panel that reads a figure its own calculation produces is circular (live-formulas.ts).
   const withLiveFormulaOwner = (section: AppSection, panel: ReactNode) => (panel ? (
@@ -428,7 +434,7 @@ export function ValuationWorkspace({
                 methods={<StatisticalMethodsPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onStatisticalCalculation} />}
               />
             ) : getCanonicalSectionKey(section.id) === "COSTOS" ? (
-              <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} approach={approachInReport(section, "costos")} />
+              <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} approach={approachInReport(section, "costos")} {...captureHeadersOf(section)} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CONSTRUCCION" ? (
               <ConstructionTypesPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConstructionTypes} />
             ) : getCanonicalSectionKey(section.id) === "MERCADO_RENTAS" ? (
@@ -454,7 +460,7 @@ export function ValuationWorkspace({
                 )}
               />
             ) : getCanonicalSectionKey(section.id) === "INGRESOS" ? (
-              <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} approach={approachInReport(section, "ingresos")} />
+              <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} approach={approachInReport(section, "ingresos")} {...captureHeadersOf(section)} />
             ) : getCanonicalSectionKey(section.id) === "CONCLUSIONES" ? (
               <ConclusionPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConclusionCalculation} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CROQUIS_COMPARABLES" ? (

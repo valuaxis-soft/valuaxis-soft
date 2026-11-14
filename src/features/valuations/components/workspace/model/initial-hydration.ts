@@ -217,6 +217,7 @@ function normalizeInitialSections(initialValuation: ValuationDetail): AppSection
     ...(section.annexTitle ? { annexTitle: section.annexTitle } : {}),
     ...(section.pageBreak ? { pageBreak: section.pageBreak } : {}),
     ...(section.excludedFromReport?.length ? { excludedFromReport: section.excludedFromReport } : {}),
+    ...(section.captureHeaders ? { captureHeaders: section.captureHeaders } : {}),
     ...(section.custom ? { custom: true } : {}),
     ...(section.titleEdited ? { titleEdited: true } : {}),
     ...(section.removed ? { removed: true } : {}),

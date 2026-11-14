@@ -15,6 +15,7 @@ import {
   type TitleBarStyle,
 } from "@/features/valuations/services/page-presentation";
 import { isContentLayout, normalizeContentLayout } from "@/features/valuations/services/content-layout";
+import { readCaptureHeaders, type SectionCaptureHeaders } from "@/features/valuations/services/capture-headers";
 import {
   isPageBreakMode,
   isPageOrientation,
@@ -89,6 +90,8 @@ export type SectionMetadata = {
   pageBreak?: SectionPageBreak;
   /** The approaches of the section left out of the dictamen. */
   excludedFromReport?: ReportApproach[];
+  /** The headers of the capture tables of its calculation panel, as the appraiser named and grouped them. */
+  captureHeaders?: SectionCaptureHeaders;
   /** A section the appraiser added. */
   custom?: boolean;
   /** The appraiser renamed the section's tab. */
@@ -243,6 +246,7 @@ export function sectionMetadataFromContent(content: SectionMetadataContent): Sec
     ...(content.annexTitle?.trim() ? { annexTitle: content.annexTitle.trim() } : {}),
     ...(content.pageBreak ? { pageBreak: content.pageBreak } : {}),
     ...(content.excludedFromReport?.length ? { excludedFromReport: content.excludedFromReport } : {}),
+    ...(content.captureHeaders && Object.keys(content.captureHeaders).length ? { captureHeaders: content.captureHeaders } : {}),
     custom: content.custom,
     titleEdited: content.titleEdited,
     ...(content.removed ? { removed: true } : {}),
@@ -272,6 +276,7 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
       const approaches = value.excludedFromReport.filter(isReportApproach);
       return approaches.length ? approaches : undefined;
     }),
+    captureHeaders: readConfigMetadata(config, (value) => (isRecord(value) ? readCaptureHeaders(value.captureHeaders) : undefined)),
     custom: sectionBooleanMetadata(config, "custom"),
     titleEdited: sectionBooleanMetadata(config, "titleEdited"),
     removed: sectionBooleanMetadata(config, "removed"),

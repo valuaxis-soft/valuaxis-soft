@@ -27,8 +27,10 @@ import { collectFormulas, withFormulaTexts } from "@/features/valuations/calcula
 import { FormulaInput } from "./formula-input";
 import { ApproachLeftOutNotice, ApproachRemoval, type ApproachInReport } from "./approach-removal";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
+import { CaptureHeaderControl, CaptureTableHead, type CaptureHeadColumn } from "./capture-table-head";
+import { withTableHeaders, type CaptureHeaders, type SectionCaptureHeaders } from "@/features/valuations/services/capture-headers";
 import { rowActionsOf } from "./calc-table-rows";
-import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { useSerializedSave } from "./use-serialized-save";
 import { cn } from "@/lib/utils";
 
@@ -139,12 +141,27 @@ const savedInputOf = (calculation: IncomeCalculationDto): IncomeInputDto => ({
  * Income approach: rentable area and rent (adopted in the rent market),
  * deductions and the capitalization rate from the books' table or captured.
  */
+/** The columns of the capture tables of the panel, by key, as the panel names them; # and the actions keep theirs. */
+const UNIT_COLUMNS: CaptureHeadColumn[] = [
+  { key: "numero", label: "#", fixed: true },
+  { key: "concepto", label: "Concepto" },
+  { key: "superficie", label: "Superficie (m²)" },
+  { key: "renta", label: "Renta ($/m²/mes)" },
+  { key: "acciones", label: "", fixed: true },
+];
+const SALE_PRICE_COLUMNS: CaptureHeadColumn[] = [{ key: "comparable", label: "Comparable" }, { key: "precio", label: "Precio de venta ($)" }];
+const DEDUCTION_COLUMNS: CaptureHeadColumn[] = [{ key: "numero", label: "#", fixed: true }, { key: "concepto", label: "Concepto" }, { key: "porcentaje", label: "Porcentaje (%)" }];
+const RATE_COLUMNS: CaptureHeadColumn[] = [{ key: "criterio", label: "Criterio" }, { key: "calificacion", label: "Calificación" }];
+
 export function IncomeCalculationPanel(props: {
   valuationId: string;
   readOnly: boolean;
   onCalculation: (calculation: IncomeCalculationDto) => void;
   /** «Quitar este enfoque»: the section's «Agregar al informe valuatorio». */
   approach?: ApproachInReport;
+  /** The headers of its capture tables as the appraiser named and grouped them, kept with the section. */
+  captureHeaders?: SectionCaptureHeaders;
+  onCaptureHeaders?: (headers: SectionCaptureHeaders) => void;
 }) {
   const { valuationId } = props;
   const [calculation, setCalculation] = useState<IncomeCalculationDto | null>(null);
@@ -152,6 +169,12 @@ export function IncomeCalculationPanel(props: {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const readOnly = props.readOnly || Boolean(calculation?.locked);
+  // The headers of each capture table as the appraiser named and grouped them; the data and the calculation do not change.
+  const headOf = (table: string) => ({
+    headers: props.captureHeaders?.[table],
+    readOnly: readOnly || !props.onCaptureHeaders,
+    onChange: (headers: CaptureHeaders) => props.onCaptureHeaders?.(withTableHeaders(props.captureHeaders, table, headers)),
+  });
   const lastSaved = useRef<string | null>(null);
 
   const applyServerState = (next: IncomeCalculationDto) => {
@@ -261,14 +284,10 @@ export function IncomeCalculationPanel(props: {
       <fieldset disabled={readOnly} className="grid gap-4">
         {method !== "mercado" ? (
         <div className="grid gap-2">
-          <h4 className={CALC_SECTION_HEADING}>Superficie rentable</h4>
+          <h4 className={CALC_SECTION_HEADING}>Superficie rentable<CaptureHeaderControl label="Superficie rentable" columns={UNIT_COLUMNS} {...headOf("ingresos.superficie")} /></h4>
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={unitRows}>
             <table className={cn(CALC_TABLE, "w-full min-w-[560px]")} aria-label="Superficie rentable">
-              <thead className={CALC_HEAD}>
-                <tr>
-                  {["#", "Concepto", "Superficie (m²)", "Renta ($/m²/mes)", ""].map((label, index) => <th key={index} className={CALC_HEAD_CELL}>{label}</th>)}
-                </tr>
-              </thead>
+              <CaptureTableHead columns={UNIT_COLUMNS} {...headOf("ingresos.superficie")} />
               <tbody>
                 {draft.units.map((unit, index) => (
                   <tr key={index} className={CALC_ROW}>
@@ -314,18 +333,17 @@ export function IncomeCalculationPanel(props: {
         </div>
         ) : (
         <div className="grid gap-2">
-          <h4 className={CALC_SECTION_HEADING}>Precio de venta de cada comparable de renta</h4>
+          <h4 className={CALC_SECTION_HEADING}>
+            Precio de venta de cada comparable de renta
+            <CaptureHeaderControl label="Precio de venta de cada comparable" columns={SALE_PRICE_COLUMNS} {...headOf("ingresos.precios")} />
+          </h4>
           <p className="text-xs text-muted-foreground">
             La tasa sale de comparar la renta de cada comparable con su precio de venta. Se usa la superficie del sujeto del mercado de rentas.
           </p>
           {calculation.rentMarket.comparables.length ? (
             <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly}>
               <table className={cn(CALC_TABLE, "w-full min-w-[480px]")} aria-label="Precio de venta de cada comparable de renta">
-                <thead className={CALC_HEAD}>
-                  <tr>
-                    {["Comparable", "Precio de venta ($)"].map((label) => <th key={label} className={CALC_HEAD_CELL}>{label}</th>)}
-                  </tr>
-                </thead>
+<CaptureTableHead columns={SALE_PRICE_COLUMNS} {...headOf("ingresos.precios")} />
                 <tbody>
                   {calculation.rentMarket.comparables.map((comparable) => (
                     <tr key={comparable.reference} className={CALC_ROW}>
@@ -361,14 +379,11 @@ export function IncomeCalculationPanel(props: {
         <div className="grid gap-2">
           <h4 className={CALC_SECTION_HEADING}>
             {method === "mercado" ? "Gastos de operación (%)" : method === "anualidad" ? "Deducciones (%, sin vacíos)" : "Deducciones (% de la renta bruta)"}
+            <CaptureHeaderControl label="Deducciones" columns={DEDUCTION_COLUMNS} {...headOf("ingresos.deducciones")} />
           </h4>
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={deductionRows}>
             <table className={cn(CALC_TABLE, "w-full min-w-[420px]")} aria-label="Deducciones">
-              <thead className={CALC_HEAD}>
-                <tr>
-                  {["#", "Concepto", "Porcentaje (%)"].map((label) => <th key={label} className={CALC_HEAD_CELL}>{label}</th>)}
-                </tr>
-              </thead>
+              <CaptureTableHead columns={DEDUCTION_COLUMNS} {...headOf("ingresos.deducciones")} />
               <tbody>
                 {draft.deductions.map((deduction, index) => (
                   <tr key={index} className={CALC_ROW}>
@@ -414,14 +429,10 @@ export function IncomeCalculationPanel(props: {
 
         {method === "tabla" ? (
         <div className="grid gap-2">
-          <h4 className={CALC_SECTION_HEADING}>Tasa de capitalización</h4>
+          <h4 className={CALC_SECTION_HEADING}>Tasa de capitalización<CaptureHeaderControl label="Tasa de capitalización" columns={RATE_COLUMNS} {...headOf("ingresos.tasa")} /></h4>
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly}>
             <table className={cn(CALC_TABLE, "w-full min-w-[420px]")} aria-label="Tasa de capitalización">
-              <thead className={CALC_HEAD}>
-                <tr>
-                  {["Criterio", "Calificación"].map((label) => <th key={label} className={CALC_HEAD_CELL}>{label}</th>)}
-                </tr>
-              </thead>
+              <CaptureTableHead columns={RATE_COLUMNS} {...headOf("ingresos.tasa")} />
               <tbody>
                 {RATE_TABLE_CRITERIA.map((criterion, index) => (
                   <tr key={criterion} className={CALC_ROW}>
