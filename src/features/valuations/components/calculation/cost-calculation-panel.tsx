@@ -255,9 +255,9 @@ const plainColumns = (labels: string[]): CaptureHeadColumn[] => labels.map((labe
 const DEMERIT_GROUP = "Factores de Demérito";
 
 /** The columns of a demerit block, as the books group Cons., Edad, Otro and FRe under "Factores de Demérito". */
-function demeritHeadColumns(props: { leading: string[]; remaining: string; factors: DemeritColumnsDto; trailing?: string[] }): CaptureHeadColumn[] {
+export function demeritHeadColumns(props: { leading: string[]; remaining: string; factors: DemeritColumnsDto; trailing?: string[] }): CaptureHeadColumn[] {
   const labels = demeritLabels(props.factors);
-  const keys = ["cons", "edad", "otro", ...props.factors.extra.map((_, index) => `factor-${index + 1}`), "fre"];
+  const keys = ["demerito-cons", "demerito-edad", "demerito-otro", ...props.factors.extra.map((_, index) => `demerito-factor-${index + 1}`), "demerito-fre"];
   return [
     ...plainColumns(props.leading),
     { key: "vida-remanente", label: props.remaining },

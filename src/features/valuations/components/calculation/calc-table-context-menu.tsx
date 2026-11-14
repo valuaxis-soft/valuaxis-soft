@@ -89,6 +89,20 @@ async function readClipboard(): Promise<string> {
 /** The text a cell shows: what its input holds, or what is written in it. */
 const cellText = (hit: CalcTableHit) => (hit.input ? hit.input.value : hit.cell.textContent?.trim() ?? "");
 
+/**
+ * Whether a field holds a selection of part of its text, which the browser's
+ * own menu serves (as a spreadsheet's formula bar): not a caret, and not the
+ * whole text a field entered with Tab is given.
+ */
+export const isPartOfText = (field: { selectionStart: number | null; selectionEnd: number | null; value: string }) =>
+  field.selectionStart !== field.selectionEnd && !(field.selectionStart === 0 && field.selectionEnd === field.value.length);
+
+/**
+ * A close the menu does not take: it opens at the pointer, with no trigger, so the menu's
+ * "pointer left the trigger" closed it as soon as it opened on a cell being edited.
+ */
+export const ignoredClose = (details: unknown) => (details as { reason?: string } | undefined)?.reason === "trigger-hover";
+
 /** A point of the screen as an anchor for the menu, where the right click was. */
 const pointAnchor = (x: number, y: number) => ({
   getBoundingClientRect: () => ({ x, y, top: y, left: x, right: x, bottom: y, width: 0, height: 0, toJSON: () => ({}) }),
@@ -111,6 +125,15 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
   const [menu, setMenu] = useState<{ anchor: ReturnType<typeof pointAnchor>; hit: CalcTableHit; groups: TableMenuGroup[] } | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const selection = useCaptureSelection(frameRef, readOnly);
+  // Part of a text the appraiser had selected in a field before the right click. Chrome for Mac
+  // selects the word under the pointer on the right press itself, and a field entered with Tab has
+  // all its text selected: neither is a selection of his, and the menu is the table's.
+  const selectedBeforeRef = useRef(false);
+  const onMouseDownCapture = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 2) return;
+    const active = document.activeElement;
+    selectedBeforeRef.current = active instanceof HTMLInputElement && active === (event.target as HTMLElement).closest("input") && isPartOfText(active);
+  };
 
   const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     const element = event.target as HTMLElement;
@@ -124,7 +147,7 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
     // The text selected inside an input keeps the browser's own menu, as in a spreadsheet's formula bar;
     // on a selection of several cells the menu is the table's, for all of them.
     const input = element.closest<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select");
-    if (!several && input instanceof HTMLInputElement && input.selectionStart !== input.selectionEnd && document.activeElement === input) return;
+    if (!several && input instanceof HTMLInputElement && selectedBeforeRef.current && input.selectionStart !== input.selectionEnd && document.activeElement === input) return;
     event.preventDefault();
     const hit: CalcTableHit = { cell, input, rowIndex, columnIndex: cell.cellIndex, header };
     const target = targetOf(hit, readOnly, rows);
@@ -226,6 +249,7 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
         "[&_[data-cell-selected]]:bg-primary/10 dark:[&_[data-cell-selected]]:bg-primary/20 [&_[data-cell-active]]:outline-2 [&_[data-cell-active]]:-outline-offset-2 [&_[data-cell-active]]:outline-primary",
       )}
       onContextMenu={onContextMenu}
+      onMouseDownCapture={onMouseDownCapture}
       onMouseDown={selection.containerProps.onMouseDown}
       onMouseOver={selection.containerProps.onMouseOver}
       onKeyDown={selection.containerProps.onKeyDown}
@@ -233,7 +257,7 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
       data-calc-table-menu=""
     >
       {children}
-      <DropdownMenu open={menu !== null} onOpenChange={(open) => { if (!open) setMenu(null); }} modal={false}>
+      <DropdownMenu open={menu !== null} onOpenChange={(open, details) => { if (!open && !ignoredClose(details)) setMenu(null); }} modal={false}>
         {menu ? (
           <DropdownMenuContent anchor={menu.anchor} align="start" side="bottom" sideOffset={2} className="w-64" aria-label="Menú de la tabla">
             {menu.groups.map((group, index) => (
