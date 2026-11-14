@@ -11,6 +11,8 @@ import { workUnitAsyncStorage, type WorkUnitStore } from "next/dist/server/app-r
 import { POST as postValuation } from "../../src/app/api/avaluos/route";
 import { GET as listTemplates, POST as postTemplate } from "../../src/app/api/plantillas/route";
 import { DELETE as deleteTemplate, GET as getTemplate, PATCH as patchTemplate } from "../../src/app/api/plantillas/[id]/route";
+import { PUT as putTemplateDocument } from "../../src/app/api/plantillas/[id]/documento/route";
+import { POST as duplicateTemplate } from "../../src/app/api/plantillas/[id]/duplicar/route";
 import { AUTH_SESSION_COOKIE } from "../../src/features/auth/constants/auth.constants";
 import { createCustomSection } from "../../src/features/valuations/components/workspace/model/content-factories";
 import { initialSectionsFor } from "../../src/features/valuations/components/workspace/model/initial-hydration";
@@ -394,4 +396,124 @@ test("a block imported from a template is saved as a copy of its own, and a bloc
   assert.deepEqual(afterBack.find((section) => section.id === customId)!.blocks.map((block) => block.id), [blocks[0].id, blocks[1].id]);
   assert.equal(afterBack.find((section) => section.id === "consideraciones")!.blocks.some((block) => block.id === blocks[1].id), false);
   assert.equal(afterBack.find((section) => section.id === customId)!.blocks[1].concepts[0].label, "Plano");
+});
+
+type Detail = ValuationTemplateSummary & { content: DocumentTemplateContent };
+
+test("«Nueva plantilla» starts as a new valuation does, the editor saves it without the client's data, and valuations, «Importar», «Duplicar» and «Datos» read it", async () => {
+  const fixture = await createValuationFixture();
+  const jar = await signIn(fixture);
+  const catalogs = await getValuationCreationCatalogs(fixture.organizationId);
+  const house = catalogs.propertyTypes.find((type) => type.key === "CASA_HABITACION")!;
+  const appraisalType = catalogs.appraisalTypes[0];
+
+  const created = await call(jar, postTemplate, "POST", "/api/plantillas", { name: "Desde cero", description: "Casas", appraisalTypeId: appraisalType.id, propertyTypeId: house.id });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const summary = created.body!.data as ValuationTemplateSummary;
+  assert.equal(summary.version, 1);
+  assert.deepEqual(summary.appraisalType, { id: appraisalType.id, name: appraisalType.label });
+  assert.equal(summary.propertyType?.key, "CASA_HABITACION");
+  assert.equal(summary.includeImages, false, "a new template has no pictures");
+  assert.equal((await call(jar, postTemplate, "POST", "/api/plantillas", { name: "desde CERO", appraisalTypeId: appraisalType.id })).status, 409);
+  assert.equal((await call(jar, postTemplate, "POST", "/api/plantillas", { name: "Tipo raro", appraisalTypeId: 999_999 })).status, 400);
+
+  // It starts with the sections a new valuation has, each with a block to add to.
+  const opened = (await call(jar, getTemplate, "GET", `/api/plantillas/${summary.id}`, undefined, summary.id)).body!.data as Detail;
+  const ids = opened.content.sections.map((section) => section.id);
+  for (const id of ["caratula", "datosGenerales", "consideraciones", "costos", "mercadoVenta", "conclusiones"]) assert.ok(ids.includes(id), id);
+  assert.ok(opened.content.sections.every((section) => section.blocks.length > 0));
+  assert.equal(opened.content.propertyTypeKey, "CASA_HABITACION");
+
+  // The editor adds a block of the appraiser's own and types a datum of a client.
+  const edited = opened.content.sections.map((section): AppSection => {
+    if (section.id === "consideraciones") {
+      const block: Block = {
+        id: "plantilla-bloque-fracc", title: "CONDICIONES DEL FRACCIONAMIENTO", sectionLabel: "", enabled: true, required: false,
+        concepts: [{ id: "plantilla-c-barda", label: "Barda", value: "Barda perimetral y caseta de vigilancia.", type: "longText", enabled: true }],
+        apartados: [], tables: [], images: [],
+      };
+      return { ...section, blocks: [...section.blocks, block] };
+    }
+    if (section.id === "datosGenerales") {
+      return { ...section, blocks: [{ ...section.blocks[0], concepts: [{ id: "plantilla-c-solicitante", label: "Solicitante", value: "Cliente Inventado S.A.", type: "text", enabled: true }] }] };
+    }
+    return section;
+  });
+  const put = (body: unknown) => call(jar, putTemplateDocument, "PUT", `/api/plantillas/${summary.id}/documento`, body, summary.id);
+  // A template just created completes its version 1; another session adds one.
+  const first = await put({ sections: edited, version: 1, sameSession: true });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal((first.body!.data as ValuationTemplateSummary).version, 1);
+  const second = await put({ sections: edited, version: 1, sameSession: false });
+  assert.equal((second.body!.data as ValuationTemplateSummary).version, 2);
+  const again = await put({ sections: edited, version: 2, sameSession: true });
+  assert.equal((again.body!.data as ValuationTemplateSummary).version, 2, "autosave does not pile up versions");
+  assert.equal(await prisma.versionPlantilla.count({ where: { plantillaAvaluo: { UIdentificadorPublico: summary.id } } }), 2);
+  // Someone else saved meanwhile: refused, not undone.
+  const stale = await put({ sections: edited, version: 1, sameSession: true });
+  assert.equal(stale.status, 409);
+  assert.match(stale.body!.error ?? "", /versión 2/);
+  assert.equal((await put({ sections: [], version: 2 })).status, 400);
+
+  const stored = (await call(jar, getTemplate, "GET", `/api/plantillas/${summary.id}`, undefined, summary.id)).body!.data as Detail;
+  const considerations = stored.content.sections.find((section) => section.id === "consideraciones")!;
+  assert.equal(considerations.blocks.at(-1)!.concepts[0].value, "Barda perimetral y caseta de vigilancia.", "the appraiser's texts stay");
+  assert.equal(stored.content.sections.find((section) => section.id === "datosGenerales")!.blocks[0].concepts[0].value, "", "the client's data never");
+  assert.equal(stored.containsData, false);
+  assert.equal(stored.content.propertyTypeKey, "CASA_HABITACION", "a save keeps what it is meant for");
+
+  // A new valuation created from it comes with the edited structure; «Importar» offers its block.
+  const option = (await getValuationCreationCatalogs(fixture.organizationId)).templates.find((template) => template.publicId === summary.id)!;
+  assert.equal(option.propertyTypeId, house.id, "creating from it proposes its kind of property");
+  const valuation = await call(jar, postValuation as Handler, "POST", "/api/avaluos", {
+    title: "Casa desde plantilla", clientName: "Otra persona", appraisalTypeId: appraisalType.id, propertyTypeId: house.id,
+    operationTypeId: catalogs.operationTypes[0].id, templateId: option.id,
+  });
+  assert.equal(valuation.status, 201, JSON.stringify(valuation.body));
+  const sections = await load((valuation.body!.data as { publicId: string }).publicId, fixture.organizationId);
+  const block = sections.find((section) => section.id === "consideraciones")!.blocks.find((item) => item.title === "CONDICIONES DEL FRACCIONAMIENTO");
+  assert.ok(block, "the block added in the template editor");
+  assert.equal(block.concepts[0].value, "Barda perimetral y caseta de vigilancia.");
+  assert.ok(importableBlocks(stored.content.sections).some((item) => item.block.title === "CONDICIONES DEL FRACCIONAMIENTO"));
+
+  // «Duplicar»: a template of its own, version 1, with the same document and type.
+  const copy = await call(jar, duplicateTemplate, "POST", `/api/plantillas/${summary.id}/duplicar`, { name: "Desde cero (copia)" }, summary.id);
+  assert.equal(copy.status, 201, JSON.stringify(copy.body));
+  const copied = copy.body!.data as ValuationTemplateSummary;
+  assert.equal(copied.version, 1);
+  assert.equal(copied.propertyType?.key, "CASA_HABITACION");
+  const copyDetail = (await call(jar, getTemplate, "GET", `/api/plantillas/${copied.id}`, undefined, copied.id)).body!.data as Detail;
+  assert.deepEqual(copyDetail.content.sections, stored.content.sections);
+  assert.equal((await call(jar, duplicateTemplate, "POST", `/api/plantillas/${summary.id}/duplicar`, { name: "DESDE CERO" }, summary.id)).status, 409);
+
+  // «Datos»: another kind of valuation, any kind of property; the version stays.
+  const otherType = catalogs.appraisalTypes.find((type) => type.id !== appraisalType.id) ?? appraisalType;
+  const patched = await call(jar, patchTemplate, "PATCH", `/api/plantillas/${copied.id}`, { name: "Copia hipotecaria", appraisalTypeId: otherType.id, propertyTypeId: null }, copied.id);
+  assert.equal(patched.status, 200, JSON.stringify(patched.body));
+  const renamed = patched.body!.data as ValuationTemplateSummary;
+  assert.deepEqual([renamed.name, renamed.appraisalType.id, renamed.propertyType, renamed.version], ["Copia hipotecaria", otherType.id, null, 1]);
+
+  // Another firm cannot edit or duplicate it.
+  const other = await createValuationFixture();
+  const otherJar = await signIn(other);
+  assert.equal((await call(otherJar, putTemplateDocument, "PUT", `/api/plantillas/${summary.id}/documento`, { sections: edited, version: 2 }, summary.id)).status, 404);
+  assert.equal((await call(otherJar, duplicateTemplate, "POST", `/api/plantillas/${summary.id}/duplicar`, { name: "Ajena" }, summary.id)).status, 404);
+  // A role that does not edit valuations is refused.
+  const viewer = await createValuationFixture();
+  const viewerJar = await signIn(viewer, "CONSULTA");
+  assert.equal((await call(viewerJar, postTemplate, "POST", "/api/plantillas", { name: "No", appraisalTypeId: appraisalType.id })).status, 403);
+});
+
+test("a machinery template starts with the real estate sections hidden, as a machinery valuation does", async () => {
+  const fixture = await createValuationFixture();
+  const jar = await signIn(fixture);
+  const catalogs = await getValuationCreationCatalogs(fixture.organizationId);
+  const machinery = catalogs.propertyTypes.find((type) => type.key === "MAQUINARIA_EQUIPO")!;
+  const created = await call(jar, postTemplate, "POST", "/api/plantillas", { name: "Maquinaria", appraisalTypeId: catalogs.appraisalTypes[0].id, propertyTypeId: machinery.id });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const id = (created.body!.data as ValuationTemplateSummary).id;
+  const detail = (await call(jar, getTemplate, "GET", `/api/plantillas/${id}`, undefined, id)).body!.data as Detail;
+  const enabled = (sectionId: string) => detail.content.sections.find((section) => section.id === sectionId)?.enabled;
+  assert.equal(enabled("terreno"), false);
+  assert.equal(enabled("costos"), true);
 });

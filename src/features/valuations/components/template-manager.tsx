@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
-import { FilePlus2, LayoutTemplate, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Copy, FilePlus2, LayoutTemplate, Loader2, PencilLine, Plus, Settings2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -21,11 +21,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { Letterhead } from "../model";
+import type { CatalogOption } from "../services/valuation-catalogs.service";
 import type { ValuationTemplateSummary } from "../services/valuation-template.service";
+import { appliesToLabel, TemplateDetailsDialog, type TemplateDetails } from "./template-details-dialog";
 import { TemplatePreviewButton } from "./template-preview-dialog";
 
 const formatDate = (iso: string) =>
@@ -40,23 +41,42 @@ const errorMessage = (error: unknown, fallback: string) =>
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
+/** Where «Editar» opens a template: the valuation editor on it. */
+export const templateEditorHref = (templateId: string) => `/organizacion/plantillas/${templateId}/editar`;
+
+/** «Casa habitación (copia)», «(copia 2)»… a name no template of the firm has yet. */
+export function duplicateName(name: string, taken: readonly string[]) {
+  const key = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const used = new Set(taken.map(key));
+  for (let copy = 1; ; copy += 1) {
+    const candidate = `${name} (copia${copy === 1 ? "" : ` ${copy}`})`.slice(0, 120);
+    if (!used.has(key(candidate))) return candidate;
+  }
+}
+
 /**
- * The firm's templates, numbered: what each one brings, who saved it and
- * when, its notes, "Vista previa" of its sections, "Editar nombre y notas",
- * "Eliminar" and "Crear avalúo con esta plantilla". A template is saved, or
- * replaced by a new version, from the editor ("Guardar como plantilla").
+ * The firm's templates, numbered: what each one brings and is meant for, who
+ * saved it and when, its notes, and its actions: «Vista previa», «Editar»
+ * (the valuation editor on it), «Datos» (name, notes and type), «Duplicar»,
+ * «Eliminar» and «Crear avalúo con esta plantilla». «Nueva plantilla» starts
+ * one from the system's sections; «Guardar como plantilla» in the editor
+ * still saves one from a valuation.
  */
-export function TemplateManager({ initialTemplates, canCreate, letterhead }: {
+export function TemplateManager({ initialTemplates, canCreate, letterhead, appraisalTypes = [], propertyTypes = [] }: {
   initialTemplates: ValuationTemplateSummary[];
   /** The user creates valuations (AVALUO_CREAR). */
   canCreate: boolean;
   /** The firm's letterhead, for the header of the preview. */
   letterhead: Letterhead;
+  /** The kinds of valuation and of property a template can be meant for. */
+  appraisalTypes?: CatalogOption[];
+  propertyTypes?: CatalogOption[];
 }) {
   const [templates, setTemplates] = useState(initialTemplates);
+  const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ValuationTemplateSummary | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [duplicating, setDuplicating] = useState<ValuationTemplateSummary | null>(null);
+  const [copyName, setCopyName] = useState("");
   const [removing, setRemoving] = useState<ValuationTemplateSummary | null>(null);
   // Apart from `removing`, so the dialog keeps the name while it closes.
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -76,134 +96,189 @@ export function TemplateManager({ initialTemplates, canCreate, letterhead }: {
     }
   };
 
-  const startEditing = (template: ValuationTemplateSummary) => {
-    setEditing(template);
-    setName(template.name);
-    setDescription(template.description ?? "");
+  const createTemplate = async (details: TemplateDetails) => {
+    try {
+      const created = await api.templates.createBlank(details);
+      toast.success(`Plantilla «${created.name}» creada. Dale forma en el editor.`);
+      // «nueva»: its first save completes version 1 instead of adding a second one.
+      window.location.assign(`${templateEditorHref(created.id)}?nueva=1`);
+      return true;
+    } catch (error) {
+      toast.error(errorMessage(error, "No se pudo crear la plantilla."));
+      return false;
+    }
   };
 
-  const saveEdit = (event: FormEvent) => {
-    event.preventDefault();
-    const template = editing;
-    if (!template || !name.trim()) return;
-    void run(async () => {
-      await api.templates.update(template.id, { name: name.trim(), description: description.trim() || null });
+  const saveDetails = (template: ValuationTemplateSummary) => (details: TemplateDetails) =>
+    run(async () => {
+      await api.templates.update(template.id, details);
       toast.success("Plantilla actualizada.");
-    }, "No se pudo guardar la plantilla.").then((ok) => { if (ok) setEditing(null); });
+    }, "No se pudo guardar la plantilla.");
+
+  const startDuplicate = (template: ValuationTemplateSummary) => {
+    setDuplicating(template);
+    setCopyName(duplicateName(template.name, templates.map((item) => item.name)));
   };
 
-  if (templates.length === 0) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-2 py-10 text-center text-sm text-muted-foreground">
-          <LayoutTemplate className="size-8 text-muted-foreground/60" />
-          <p className="font-medium text-foreground">El despacho aún no tiene plantillas.</p>
-          <p>Abre un avalúo y usa &quot;Guardar como plantilla&quot; para guardar su estructura con un nombre.</p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const saveDuplicate = (event: FormEvent) => {
+    event.preventDefault();
+    const template = duplicating;
+    if (!template || !copyName.trim()) return;
+    void run(async () => {
+      const copy = await api.templates.duplicate(template.id, copyName.trim());
+      toast.success(`Se duplicó «${template.name}» como «${copy.name}».`);
+    }, "No se pudo duplicar la plantilla.").then((ok) => { if (ok) setDuplicating(null); });
+  };
+
+  const firstType = appraisalTypes[0]?.id ?? 0;
+  const newButton = (
+    <Button type="button" onClick={() => setCreating(true)} disabled={!firstType} data-new-template>
+      <Plus data-icon="inline-start" />
+      Nueva plantilla
+    </Button>
+  );
 
   return (
     <>
-      <ul className="grid gap-3" data-template-list>
-        {templates.map((template, index) => (
-          <li key={template.id} data-template-row={template.name} data-template-number={index + 1}>
-            <Card>
-              <CardContent className="grid gap-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <span
-                      className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#003B73] text-base font-bold text-white tabular-nums"
-                      aria-label={`Plantilla ${index + 1}`}
-                    >
-                      {index + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-lg font-semibold wrap-break-word">{template.name}</p>
-                      {template.description ? (
-                        <p className="mt-0.5 text-base wrap-break-word whitespace-pre-line text-muted-foreground">{template.description}</p>
-                      ) : (
-                        <p className="mt-0.5 text-sm text-muted-foreground italic">Sin notas. Agrégalas con «Editar nombre y notas».</p>
-                      )}
+      <div className="mb-4 flex justify-end">{newButton}</div>
+
+      {templates.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-2 py-10 text-center text-sm text-muted-foreground">
+            <LayoutTemplate className="size-8 text-muted-foreground/60" />
+            <p className="font-medium text-foreground">El despacho aún no tiene plantillas.</p>
+            <p>Crea una con «Nueva plantilla», o abre un avalúo y usa &quot;Guardar como plantilla&quot; para guardar su estructura con un nombre.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <ul className="grid gap-3" data-template-list>
+          {templates.map((template, index) => (
+            <li key={template.id} data-template-row={template.name} data-template-number={index + 1}>
+              <Card>
+                <CardContent className="grid gap-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <span
+                        className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-base font-bold text-primary-foreground tabular-nums"
+                        aria-label={`Plantilla ${index + 1}`}
+                      >
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-lg font-semibold wrap-break-word">{template.name}</p>
+                        <p className="text-sm text-muted-foreground" data-template-applies-to>
+                          Para: {appliesToLabel(template.appraisalType.name, template.propertyType?.name)}
+                        </p>
+                        {template.description ? (
+                          <p className="mt-0.5 text-base wrap-break-word whitespace-pre-line text-muted-foreground">{template.description}</p>
+                        ) : (
+                          <p className="mt-0.5 text-sm text-muted-foreground italic">Sin notas. Agrégalas con «Datos».</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge variant="secondary">{plural(template.sections, "sección", "secciones")}</Badge>
+                      <Badge variant="secondary">{plural(template.blocks, "bloque", "bloques")}</Badge>
+                      {template.containsData ? <Badge variant="destructive" title="Guardada con datos de un cliente; límpiala con scripts/ops/limpiar-plantillas.ts o reemplázala">Contiene datos</Badge> : null}
+                      {template.includeImages ? <Badge variant="outline">Con imágenes</Badge> : null}
+                      {template.version > 1 ? <Badge variant="outline">Versión {template.version}</Badge> : null}
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <Badge variant="secondary">{plural(template.sections, "sección", "secciones")}</Badge>
-                    <Badge variant="secondary">{plural(template.blocks, "bloque", "bloques")}</Badge>
-                    {template.containsData ? <Badge variant="destructive" title="Guardada con datos de un cliente; límpiala con scripts/ops/limpiar-plantillas.ts o reemplázala">Contiene datos</Badge> : null}
-                    {template.includeImages ? <Badge variant="outline">Con imágenes</Badge> : null}
-                    {template.version > 1 ? <Badge variant="outline">Versión {template.version}</Badge> : null}
-                  </div>
-                </div>
-                <dl className="grid gap-x-6 gap-y-0.5 text-sm text-muted-foreground sm:grid-cols-2">
-                  <div>
-                    <dt className="inline">Creada: </dt>
-                    <dd className="inline">{formatDate(template.createdAt)}{template.createdBy ? ` por ${template.createdBy}` : ""}</dd>
-                  </div>
-                  <div>
-                    <dt className="inline">Actualizada: </dt>
-                    <dd className="inline">
-                      {formatDate(template.updatedAt)}
-                      {template.version > 1 && template.versionBy ? ` · versión ${template.version} de ${template.versionBy}` : ""}
-                    </dd>
-                  </div>
-                </dl>
-                <div className="flex flex-wrap gap-2">
-                  <TemplatePreviewButton templateId={template.id} name={template.name} letterhead={letterhead} canCreate={canCreate} number={index + 1} />
-                  {canCreate ? (
-                    <Link
-                      href={`/workspace?action=new&plantilla=${template.id}`}
-                      className={cn(buttonVariants({ size: "sm" }))}
-                    >
-                      <FilePlus2 data-icon="inline-start" />
-                      Crear avalúo con esta plantilla
+                  <dl className="grid gap-x-6 gap-y-0.5 text-sm text-muted-foreground sm:grid-cols-2">
+                    <div>
+                      <dt className="inline">Creada: </dt>
+                      <dd className="inline">{formatDate(template.createdAt)}{template.createdBy ? ` por ${template.createdBy}` : ""}</dd>
+                    </div>
+                    <div>
+                      <dt className="inline">Actualizada: </dt>
+                      <dd className="inline">
+                        {formatDate(template.updatedAt)}
+                        {template.version > 1 && template.versionBy ? ` · versión ${template.version} de ${template.versionBy}` : ""}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="flex flex-wrap gap-2">
+                    <TemplatePreviewButton templateId={template.id} name={template.name} letterhead={letterhead} canCreate={canCreate} number={index + 1} />
+                    {canCreate ? (
+                      <Link
+                        href={`/workspace?action=new&plantilla=${template.id}`}
+                        className={cn(buttonVariants({ size: "sm" }))}
+                      >
+                        <FilePlus2 data-icon="inline-start" />
+                        Crear avalúo con esta plantilla
+                      </Link>
+                    ) : null}
+                    <Link href={templateEditorHref(template.id)} className={cn(buttonVariants({ size: "sm", variant: "outline" }))} data-edit-template>
+                      <PencilLine data-icon="inline-start" />
+                      Editar
                     </Link>
-                  ) : null}
-                  <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => startEditing(template)}>
-                    <Pencil data-icon="inline-start" />
-                    Editar nombre y notas
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { setRemoving(template); setRemoveOpen(true); }}>
-                    <Trash2 data-icon="inline-start" />
-                    Eliminar
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </li>
-        ))}
-      </ul>
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setEditing(template)}>
+                      <Settings2 data-icon="inline-start" />
+                      Datos
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => startDuplicate(template)}>
+                      <Copy data-icon="inline-start" />
+                      Duplicar
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { setRemoving(template); setRemoveOpen(true); }}>
+                      <Trash2 data-icon="inline-start" />
+                      Eliminar
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
 
-      <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
+      <TemplateDetailsDialog
+        open={creating}
+        onOpenChange={setCreating}
+        title="Nueva plantilla"
+        intro="Empieza con las secciones de un avalúo nuevo, sin datos de ningún cliente. Después se abre el editor del avalúo para agregar, quitar y acomodar bloques, subbloques, conceptos, tablas, fórmulas y formato."
+        submitLabel="Crear y abrir el editor"
+        initial={{ name: "", description: null, appraisalTypeId: firstType, propertyTypeId: null }}
+        appraisalTypes={appraisalTypes}
+        propertyTypes={propertyTypes}
+        onSubmit={createTemplate}
+      />
+
+      <TemplateDetailsDialog
+        open={editing !== null}
+        onOpenChange={(open) => { if (!open) setEditing(null); }}
+        title="Datos de la plantilla"
+        intro="El nombre con que aparece en «Plantilla base» e «Importar», para qué avalúos es y sus notas. La estructura se cambia con «Editar»."
+        submitLabel="Guardar"
+        initial={{
+          name: editing?.name ?? "",
+          description: editing?.description ?? null,
+          appraisalTypeId: editing?.appraisalType.id ?? firstType,
+          propertyTypeId: editing?.propertyType?.id ?? null,
+        }}
+        appraisalTypes={appraisalTypes}
+        propertyTypes={propertyTypes}
+        onSubmit={(details) => (editing ? saveDetails(editing)(details) : Promise.resolve(false))}
+      />
+
+      <Dialog open={duplicating !== null} onOpenChange={(open) => { if (!open) setDuplicating(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Editar nombre y notas</DialogTitle>
+            <DialogTitle>Duplicar {duplicating?.name}</DialogTitle>
             <DialogDescription>
-              El nombre no se repite en el despacho, sin importar mayúsculas ni acentos. Las notas dicen para qué sirve la plantilla y se ven en su tarjeta.
+              La copia lleva la misma estructura, notas y tipo, como una plantilla aparte: cambiar una no cambia la otra.
             </DialogDescription>
           </DialogHeader>
-          <form className="grid gap-4" onSubmit={saveEdit}>
+          <form className="grid gap-4" onSubmit={saveDuplicate}>
             <Field>
-              <FieldLabel htmlFor="rename-template-name">Nombre</FieldLabel>
-              <Input id="rename-template-name" value={name} maxLength={120} autoFocus onChange={(event) => setName(event.target.value)} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="rename-template-description">Notas o descripción (opcional)</FieldLabel>
-              <Textarea
-                id="rename-template-description"
-                value={description}
-                maxLength={500}
-                rows={4}
-                placeholder="Para qué tipo de avalúo es, qué secciones trae, qué falta completar…"
-                onChange={(event) => setDescription(event.target.value)}
-              />
+              <FieldLabel htmlFor="duplicate-template-name">Nombre de la copia</FieldLabel>
+              <Input id="duplicate-template-name" value={copyName} maxLength={120} autoFocus onChange={(event) => setCopyName(event.target.value)} />
             </Field>
             <DialogFooter>
-              <Button type="button" variant="outline" disabled={busy} onClick={() => setEditing(null)}>Cancelar</Button>
-              <Button type="submit" disabled={busy || !name.trim()}>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => setDuplicating(null)}>Cancelar</Button>
+              <Button type="submit" disabled={busy || !copyName.trim()}>
                 {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-                Guardar
+                Duplicar
               </Button>
             </DialogFooter>
           </form>

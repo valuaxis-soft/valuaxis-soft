@@ -36,6 +36,16 @@ function preselectedTemplateId(templates: TemplateOption[], publicId: string | n
   return templates.find((template) => template.document && template.publicId === publicId)?.id.toString() ?? null;
 }
 
+/** The kind of valuation and, when it says, of property a firm's template is meant for, as the form's values. */
+export function typesOfTemplate(templates: TemplateOption[], templateId: string): { appraisalTypeId?: string; propertyTypeId?: string } {
+  const template = templates.find((item) => item.document && item.id.toString() === templateId);
+  if (!template) return {};
+  return {
+    ...(template.appraisalTypeId ? { appraisalTypeId: String(template.appraisalTypeId) } : {}),
+    ...(template.propertyTypeId ? { propertyTypeId: String(template.propertyTypeId) } : {}),
+  };
+}
+
 export function CreateValuationForm({
   catalogs,
   preselectedTemplate = null,
@@ -48,15 +58,18 @@ export function CreateValuationForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [missingCatalog, setMissingCatalog] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    title: "",
-    clientName: "",
-    appraisalTypeId: catalogs.appraisalTypes[0]?.id?.toString() ?? "",
-    propertyTypeId: catalogs.propertyTypes[0]?.id?.toString() ?? "",
-    operationTypeId: catalogs.operationTypes[0]?.id?.toString() ?? "",
-    templateId: preselectedTemplateId(catalogs.templates, preselectedTemplate)
-      ?? defaultTemplateId(catalogs.templates, catalogs.appraisalTypes[0]?.id?.toString() ?? ""),
-    responsibleUserId: catalogs.responsibleUsers[0]?.id?.toString() ?? "",
+  const [form, setForm] = useState(() => {
+    const preselected = preselectedTemplateId(catalogs.templates, preselectedTemplate);
+    return {
+      title: "",
+      clientName: "",
+      appraisalTypeId: catalogs.appraisalTypes[0]?.id?.toString() ?? "",
+      propertyTypeId: catalogs.propertyTypes[0]?.id?.toString() ?? "",
+      operationTypeId: catalogs.operationTypes[0]?.id?.toString() ?? "",
+      templateId: preselected ?? defaultTemplateId(catalogs.templates, catalogs.appraisalTypes[0]?.id?.toString() ?? ""),
+      responsibleUserId: catalogs.responsibleUsers[0]?.id?.toString() ?? "",
+      ...(preselected ? typesOfTemplate(catalogs.templates, preselected) : null),
+    };
   });
 
   const missing = useMemo<CatalogMissing | null>(() => {
@@ -80,6 +93,8 @@ export function CreateValuationForm({
         ...current,
         [key]: value,
         ...(key === "appraisalTypeId" && !keepsTemplate ? { templateId: defaultTemplateId(catalogs.templates, value) } : null),
+        // Choosing a firm's template sets the kinds of valuation and property it is meant for; they still change.
+        ...(key === "templateId" ? typesOfTemplate(catalogs.templates, value) : null),
       };
     });
   };

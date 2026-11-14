@@ -22,6 +22,8 @@ export type ValuationCreationCatalogs = {
     appraisalTypeId: number | null;
     system: boolean;
     document: boolean;
+    /** The kind of property a firm's template is meant for («Nueva plantilla»); null: any. */
+    propertyTypeId: number | null;
   })[];
   responsibleUsers: CatalogOption[];
 };
@@ -101,15 +103,19 @@ export async function getValuationCreationCatalogs(organizationId: number) {
       label: item.SNombre,
       key: item.SClave,
     })),
-    templates: templates.map((item) => ({
-      id: item.IdPlantillaAvaluo,
-      label: item.SNombre,
-      publicId: item.UIdentificadorPublico,
-      description: item.SDescripcion,
-      appraisalTypeId: item.IdTipoAvaluo,
-      system: item.BEsSistema,
-      document: !item.BEsSistema && readDocumentTemplate(item.versiones[0]?.JConfiguracionGeneral) !== null,
-    })),
+    templates: templates.map((item) => {
+      const document = item.BEsSistema ? null : readDocumentTemplate(item.versiones[0]?.JConfiguracionGeneral);
+      return {
+        id: item.IdPlantillaAvaluo,
+        label: item.SNombre,
+        publicId: item.UIdentificadorPublico,
+        description: item.SDescripcion,
+        appraisalTypeId: item.IdTipoAvaluo,
+        system: item.BEsSistema,
+        document: document !== null,
+        propertyTypeId: propertyTypes.find((type) => type.SClave === document?.propertyTypeKey)?.IdTipoInmueble ?? null,
+      };
+    }),
     responsibleUsers: responsibleUsers.map((item) => ({
       id: item.usuario.IdUsuario,
       label: fullName(item.usuario) || item.usuario.SCorreo,

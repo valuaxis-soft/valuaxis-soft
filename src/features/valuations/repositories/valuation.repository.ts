@@ -719,6 +719,15 @@ function countSectionValues(section: DbSection) {
   }, 0);
 }
 
+/**
+ * The sections a valuation with nothing saved yet reads back: every section of
+ * the registry with its default blocks. «Nueva plantilla» starts from them, so
+ * a template begins as a new valuation does.
+ */
+export function newValuationSections(propertyKind?: string | null): ValuationSectionDto[] {
+  return getOrderedValuationSections().map((definition) => createEmptySection(definition, propertyKind));
+}
+
 function createEmptySection(definition: ValuationSectionDefinition, propertyKind?: string | null): ValuationSectionDto {
   const blocks = DEFAULT_DOCUMENT_TEMPLATE_KEYS.has(definition.key)
     ? templateBlocks(definition.key, propertyKind)

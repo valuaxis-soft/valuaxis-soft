@@ -138,7 +138,10 @@ export function ValuationTopBar({
   valuationId,
   workspaceMode,
   autosaveNote,
+  template,
 }: {
+  /** Editing a template of the firm: its name instead of the folio, «Datos de la plantilla», and no dictamen, memory or template of its own. */
+  template?: { name: string; appliesTo: string; onEditDetails: () => void };
   /** How the editor saves on its own, said on the save button: «Guardado automático: 15 s después…». */
   autosaveNote?: string;
   activeSectionId: string;
@@ -204,21 +207,35 @@ export function ValuationTopBar({
         <Button
           type="button"
           size="icon-lg"
-          aria-label="Volver al dashboard"
-          title="Volver al dashboard"
+          aria-label={template ? "Volver a Plantillas" : "Volver al dashboard"}
+          title={template ? "Volver a Plantillas" : "Volver al dashboard"}
           onClick={onExit}
           className="max-lg:size-10"
         >
           <ArrowLeft />
         </Button>
 
-        <Badge
-          variant="secondary"
-          title={meta.folio}
-          className="h-9 min-w-0 shrink rounded-full px-4 text-sm font-semibold max-lg:h-10 max-lg:px-3"
-        >
-          <span className="truncate">{meta.folio}</span>
-        </Badge>
+        {template ? (
+          <button
+            type="button"
+            onClick={template.onEditDetails}
+            title={`Plantilla «${template.name}» · ${template.appliesTo}. Clic para cambiar su nombre, notas y tipo.`}
+            className="flex h-9 min-w-0 shrink items-center gap-2 rounded-full bg-secondary px-4 text-sm font-semibold text-secondary-foreground hover:bg-secondary/80 max-lg:h-10 max-lg:px-3"
+            data-template-name={template.name}
+          >
+            <LayoutTemplate className="size-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">Plantilla: {template.name}</span>
+            <span className="hidden truncate font-normal text-muted-foreground xl:inline">· {template.appliesTo}</span>
+          </button>
+        ) : (
+          <Badge
+            variant="secondary"
+            title={meta.folio}
+            className="h-9 min-w-0 shrink rounded-full px-4 text-sm font-semibold max-lg:h-10 max-lg:px-3"
+          >
+            <span className="truncate">{meta.folio}</span>
+          </Badge>
+        )}
 
         {/* Desktop: view mode and split layout, always visible. */}
         <div className="hidden flex-none items-center gap-2 pl-1 lg:flex">
@@ -336,22 +353,31 @@ export function ValuationTopBar({
                 Rehacer
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="min-h-10"
-                disabled={!canExport || !valuationId}
-                onClick={onExport}
-              >
-                <FileDown />
-                Generar avalúo
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="min-h-10"
-                disabled={!canExport || !valuationId}
-                onClick={onCalculationMemory}
-              >
-                <Calculator />
-                Memoria de cálculo
-              </DropdownMenuItem>
+              {template ? (
+                <DropdownMenuItem className="min-h-10" onClick={template.onEditDetails}>
+                  <PencilLine />
+                  Datos de la plantilla
+                </DropdownMenuItem>
+              ) : (
+                <>
+                  <DropdownMenuItem
+                    className="min-h-10"
+                    disabled={!canExport || !valuationId}
+                    onClick={onExport}
+                  >
+                    <FileDown />
+                    Generar avalúo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="min-h-10"
+                    disabled={!canExport || !valuationId}
+                    onClick={onCalculationMemory}
+                  >
+                    <Calculator />
+                    Memoria de cálculo
+                  </DropdownMenuItem>
+                </>
+              )}
               {onSaveAsTemplate ? (
                 <DropdownMenuItem className="min-h-10" onClick={onSaveAsTemplate}>
                   <LayoutTemplate />
@@ -428,26 +454,35 @@ export function ValuationTopBar({
           </Button>
         ) : null}
 
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!canExport || !valuationId}
-          onClick={onCalculationMemory}
-          className="flex-none whitespace-nowrap"
-        >
-          <Calculator data-icon="inline-start" />
-          Memoria de cálculo
-        </Button>
+        {template ? (
+          <Button type="button" variant="outline" onClick={template.onEditDetails} className="flex-none whitespace-nowrap">
+            <PencilLine data-icon="inline-start" />
+            Datos de la plantilla
+          </Button>
+        ) : (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!canExport || !valuationId}
+              onClick={onCalculationMemory}
+              className="flex-none whitespace-nowrap"
+            >
+              <Calculator data-icon="inline-start" />
+              Memoria de cálculo
+            </Button>
 
-        <Button
-          type="button"
-          disabled={!canExport || !valuationId}
-          onClick={onExport}
-          className="flex-none whitespace-nowrap"
-        >
-          <FileDown data-icon="inline-start" />
-          Generar avalúo
-        </Button>
+            <Button
+              type="button"
+              disabled={!canExport || !valuationId}
+              onClick={onExport}
+              className="flex-none whitespace-nowrap"
+            >
+              <FileDown data-icon="inline-start" />
+              Generar avalúo
+            </Button>
+          </>
+        )}
 
         {/* Concluir closes the valuation: at the far end, set apart from the strip's arrow and the
             other actions, so it is not pressed by mistake. It still asks before concluding. */}

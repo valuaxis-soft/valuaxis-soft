@@ -13,9 +13,17 @@ import { Prisma } from "@prisma/client";
 import type { AuthUser } from "@/features/auth/model";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { initialSectionsFor } from "@/features/valuations/components/workspace/model/initial-hydration";
-import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
+import { getValuationByPublicId, newValuationSections } from "@/features/valuations/repositories/valuation.repository";
 import type { AppSection } from "@/features/valuations/model";
-import { buildDocumentTemplate, readDocumentTemplate, templateContainsData, type DocumentTemplateContent } from "./document-template";
+import { initiallyHiddenSections } from "@/features/valuations/sections/section-registry";
+import {
+  blankTemplateSections,
+  documentHasImages,
+  buildDocumentTemplate,
+  readDocumentTemplate,
+  templateContainsData,
+  type DocumentTemplateContent,
+} from "./document-template";
 import { ValuationWorkflowError } from "./valuation-workflow/errors";
 import type { Tx } from "./valuation-workflow/types";
 
@@ -38,6 +46,10 @@ export type ValuationTemplateSummary = {
   updatedAt: string;
   /** Who saved the version in use. */
   versionBy: string | null;
+  /** The kind of valuation it is meant for (the template's IdTipoAvaluo). */
+  appraisalType: { id: number; name: string };
+  /** The kind of property it is meant for; null: any. */
+  propertyType: { id: number; key: string; name: string } | null;
 };
 
 export type ValuationTemplateDetail = ValuationTemplateSummary & { content: DocumentTemplateContent };
@@ -60,7 +72,19 @@ const latestVersion = {
   select: { INumeroVersion: true, JConfiguracionGeneral: true, usuarioCreador: author },
 } satisfies Prisma.PlantillaAvaluo$versionesArgs;
 
-type TemplateRow = Prisma.PlantillaAvaluoGetPayload<{ include: { versiones: typeof latestVersion } }>;
+const templateInclude = {
+  versiones: latestVersion,
+  tipoAvaluo: { select: { IdTipoAvaluo: true, SNombre: true } },
+} satisfies Prisma.PlantillaAvaluoInclude;
+
+type TemplateRow = Prisma.PlantillaAvaluoGetPayload<{ include: typeof templateInclude }>;
+type PropertyType = { id: number; key: string; name: string };
+
+/** The kinds of property, by key: a template keeps the key of the one it is meant for. */
+async function propertyTypesByKey(client: Tx) {
+  const rows = await client.tipoInmueble.findMany({ select: { IdTipoInmueble: true, SClave: true, SNombre: true } });
+  return new Map(rows.map((row) => [row.SClave, { id: row.IdTipoInmueble, key: row.SClave, name: row.SNombre }]));
+}
 type Author = Prisma.UsuarioGetPayload<typeof author>;
 
 const authorName = (user: Author | null | undefined) =>
@@ -79,7 +103,9 @@ async function firstAuthors(client: Tx, templateIds: number[]) {
   return new Map(versions.map((version) => [version.IdPlantillaAvaluo, authorName(version.usuarioCreador)]));
 }
 
-function toSummary(row: TemplateRow, content: DocumentTemplateContent, createdBy: string | null): ValuationTemplateSummary {
+function toSummary(
+  row: TemplateRow, content: DocumentTemplateContent, createdBy: string | null, propertyTypes: Map<string, PropertyType>,
+): ValuationTemplateSummary {
   const visible = content.sections.filter((section) => section.blocks.length > 0);
   const version = row.versiones[0];
   return {
@@ -96,11 +122,14 @@ function toSummary(row: TemplateRow, content: DocumentTemplateContent, createdBy
     createdBy,
     updatedAt: row.DFechaModificacion.toISOString(),
     versionBy: authorName(version?.usuarioCreador),
+    appraisalType: { id: row.tipoAvaluo.IdTipoAvaluo, name: row.tipoAvaluo.SNombre },
+    propertyType: (content.propertyTypeKey && propertyTypes.get(content.propertyTypeKey)) || null,
   };
 }
 
 async function summaryOf(client: Tx, row: TemplateRow, content: DocumentTemplateContent) {
-  return toSummary(row, content, (await firstAuthors(client, [row.IdPlantillaAvaluo])).get(row.IdPlantillaAvaluo) ?? null);
+  const [authors, propertyTypes] = await Promise.all([firstAuthors(client, [row.IdPlantillaAvaluo]), propertyTypesByKey(client)]);
+  return toSummary(row, content, authors.get(row.IdPlantillaAvaluo) ?? null, propertyTypes);
 }
 
 /** The firm's templates that hold a document, by name. */
@@ -108,12 +137,12 @@ export async function listValuationTemplates(organizationId: number): Promise<Va
   const rows = await prisma.plantillaAvaluo.findMany({
     where: activeTemplateWhere(organizationId),
     orderBy: [{ SNombre: "asc" }],
-    include: { versiones: latestVersion },
+    include: templateInclude,
   });
-  const authors = await firstAuthors(prisma, rows.map((row) => row.IdPlantillaAvaluo));
+  const [authors, propertyTypes] = await Promise.all([firstAuthors(prisma, rows.map((row) => row.IdPlantillaAvaluo)), propertyTypesByKey(prisma)]);
   return rows.flatMap((row) => {
     const content = readDocumentTemplate(row.versiones[0]?.JConfiguracionGeneral);
-    return content ? [toSummary(row, content, authors.get(row.IdPlantillaAvaluo) ?? null)] : [];
+    return content ? [toSummary(row, content, authors.get(row.IdPlantillaAvaluo) ?? null, propertyTypes)] : [];
   });
 }
 
@@ -121,7 +150,7 @@ async function findTemplate(organizationId: number, publicId: string) {
   if (!UUID.test(publicId)) return null;
   return prisma.plantillaAvaluo.findFirst({
     where: { ...activeTemplateWhere(organizationId), UIdentificadorPublico: publicId },
-    include: { versiones: latestVersion },
+    include: templateInclude,
   });
 }
 
@@ -181,26 +210,7 @@ export async function createValuationTemplate(input: {
     const replaced = await replaceTemplateDocument(existing.IdPlantillaAvaluo, valuation.IdTipoAvaluo, content, input);
     return { ...replaced, replaced: true };
   }
-  const row = await prisma.plantillaAvaluo.create({
-    data: {
-      IdOrganizacion: organizationId,
-      IdTipoAvaluo: valuation.IdTipoAvaluo,
-      SNombre: input.name,
-      SDescripcion: input.description?.trim() || null,
-      BEsSistema: false,
-      versiones: {
-        create: {
-          IdUsuarioCreador: input.user.id,
-          INumeroVersion: 1,
-          JConfiguracionGeneral: content as unknown as Prisma.InputJsonObject,
-          BPublicada: true,
-          DFechaPublicacion: new Date(),
-        },
-      },
-    },
-    include: { versiones: latestVersion },
-  });
-  return { ...toSummary(row, content, authorName(row.versiones[0]?.usuarioCreador)), replaced: false };
+  return { ...(await insertTemplate({ ...input, appraisalTypeId: valuation.IdTipoAvaluo, content })), replaced: false };
 }
 
 /**
@@ -217,6 +227,14 @@ async function replaceTemplateDocument(
   return prisma.$transaction(async (tx) => {
     const last = await tx.versionPlantilla.aggregate({ where: { IdPlantillaAvaluo: templateId }, _max: { INumeroVersion: true } });
     const number = (last._max.INumeroVersion ?? 0) + 1;
+    // A replacement keeps what the template is meant for.
+    const active = await tx.versionPlantilla.findFirst({
+      where: { IdPlantillaAvaluo: templateId, BActiva: true },
+      orderBy: { INumeroVersion: "desc" },
+      select: { JConfiguracionGeneral: true },
+    });
+    const kept = readDocumentTemplate(active?.JConfiguracionGeneral)?.propertyTypeKey;
+    const document = kept && !content.propertyTypeKey ? { ...content, propertyTypeKey: kept } : content;
     await tx.versionPlantilla.updateMany({ where: { IdPlantillaAvaluo: templateId, BActiva: true }, data: { BActiva: false } });
     const row = await tx.plantillaAvaluo.update({
       where: { IdPlantillaAvaluo: templateId },
@@ -228,34 +246,189 @@ async function replaceTemplateDocument(
           create: {
             IdUsuarioCreador: input.user.id,
             INumeroVersion: number,
-            JConfiguracionGeneral: content as unknown as Prisma.InputJsonObject,
+            JConfiguracionGeneral: document as unknown as Prisma.InputJsonObject,
             BPublicada: true,
             DFechaPublicacion: new Date(),
           },
         },
       },
-      include: { versiones: latestVersion },
+      include: templateInclude,
     });
-    return summaryOf(tx, row, content);
+    return summaryOf(tx, row, document);
   });
 }
 
-/** Changes the name and, when sent, the description; the name stays unique in the firm. */
+/** The kind of valuation and of property a template is meant for; an unknown id is refused (400). */
+async function appliesTo(client: Tx, appraisalTypeId: number, propertyTypeId: number | null) {
+  const [appraisalType, propertyType] = await Promise.all([
+    client.tipoAvaluo.findFirst({ where: { IdTipoAvaluo: appraisalTypeId, BActivo: true }, select: { IdTipoAvaluo: true } }),
+    propertyTypeId === null
+      ? null
+      : client.tipoInmueble.findFirst({ where: { IdTipoInmueble: propertyTypeId, BActivo: true }, select: { SClave: true } }),
+  ]);
+  if (!appraisalType) throw new ValuationWorkflowError("El tipo de avalúo no existe.", 400);
+  if (propertyTypeId !== null && !propertyType) throw new ValuationWorkflowError("El tipo de bien no existe.", 400);
+  return { appraisalTypeId: appraisalType.IdTipoAvaluo, propertyTypeKey: propertyType?.SClave ?? null };
+}
+
+/** A new template of the firm with its first version. */
+async function insertTemplate(input: {
+  user: AuthUser;
+  name: string;
+  description?: string | null;
+  appraisalTypeId: number;
+  content: DocumentTemplateContent;
+}) {
+  const row = await prisma.plantillaAvaluo.create({
+    data: {
+      IdOrganizacion: input.user.organizationId,
+      IdTipoAvaluo: input.appraisalTypeId,
+      SNombre: input.name,
+      SDescripcion: input.description?.trim() || null,
+      BEsSistema: false,
+      versiones: {
+        create: {
+          IdUsuarioCreador: input.user.id,
+          INumeroVersion: 1,
+          JConfiguracionGeneral: input.content as unknown as Prisma.InputJsonObject,
+          BPublicada: true,
+          DFechaPublicacion: new Date(),
+        },
+      },
+    },
+    include: templateInclude,
+  });
+  return summaryOf(prisma, row, input.content);
+}
+
+/**
+ * A document shaped in the template editor, without the client's data (the
+ * same cleaning as «Guardar como plantilla»). The images put there are the
+ * template's own and stay; «Con imágenes» says whether it has any.
+ */
+function editedTemplate(sections: AppSection[]): DocumentTemplateContent {
+  const content = buildDocumentTemplate(sections, { includeImages: true });
+  return { ...content, includeImages: documentHasImages(content.sections) };
+}
+
+/**
+ * «Nueva plantilla»: a template of the firm that starts from the sections of
+ * a new valuation of the system (the machinery ones hidden for machinery),
+ * to shape in the editor. Its name is unique in the firm.
+ */
+export async function createBlankValuationTemplate(input: {
+  user: AuthUser;
+  name: string;
+  description?: string | null;
+  appraisalTypeId: number;
+  propertyTypeId: number | null;
+}): Promise<ValuationTemplateSummary> {
+  if (await templateNamed(input.user.organizationId, input.name)) throw nameTaken();
+  const target = await appliesTo(prisma, input.appraisalTypeId, input.propertyTypeId);
+  const sections = blankTemplateSections(
+    initialSectionsFor({ sections: newValuationSections(target.propertyTypeKey?.toLowerCase()) }),
+    initiallyHiddenSections(target.propertyTypeKey ?? ""),
+  );
+  const content: DocumentTemplateContent = {
+    ...editedTemplate(sections),
+    ...(target.propertyTypeKey ? { propertyTypeKey: target.propertyTypeKey } : {}),
+  };
+  return insertTemplate({ ...input, appraisalTypeId: target.appraisalTypeId, content });
+}
+
+/** «Duplicar»: the same document and type under another name, as a template of its own (version 1). */
+export async function duplicateValuationTemplate(user: AuthUser, publicId: string, name: string): Promise<ValuationTemplateSummary | null> {
+  const row = await findTemplate(user.organizationId, publicId);
+  const content = readDocumentTemplate(row?.versiones[0]?.JConfiguracionGeneral);
+  if (!row || !content) return null;
+  if (await templateNamed(user.organizationId, name)) throw nameTaken();
+  return insertTemplate({ user, name, description: row.SDescripcion, appraisalTypeId: row.IdTipoAvaluo, content });
+}
+
+/**
+ * «Editar plantilla» saves the editor's document as the template's, without
+ * the client's data (the same cleaning as «Guardar como plantilla»; the
+ * images the appraiser put in the template stay). The first save of an
+ * editing session adds a version; the next ones of that session (`sameSession`)
+ * change it in place, so autosave does not pile up versions. `version` is the
+ * one the editor opened (or last saved): when someone else saved another one
+ * meanwhile, the save is refused (409) instead of undoing their changes.
+ */
+export async function saveValuationTemplateDocument(input: {
+  user: AuthUser;
+  publicId: string;
+  sections: AppSection[];
+  version: number;
+  sameSession: boolean;
+}): Promise<ValuationTemplateSummary | null> {
+  const row = await findTemplate(input.user.organizationId, input.publicId);
+  const current = row?.versiones[0];
+  const stored = readDocumentTemplate(current?.JConfiguracionGeneral);
+  if (!row || !current || !stored) return null;
+  if (current.INumeroVersion !== input.version) {
+    throw new ValuationWorkflowError(
+      `Mientras editabas, ${authorName(current.usuarioCreador) ?? "otra persona"} guardó la versión ${current.INumeroVersion} de la plantilla. Sal sin guardar y vuelve a abrirla para no deshacer sus cambios.`,
+      409,
+    );
+  }
+  const content: DocumentTemplateContent = {
+    ...editedTemplate(input.sections),
+    ...(stored.propertyTypeKey ? { propertyTypeKey: stored.propertyTypeKey } : {}),
+  };
+  if (!input.sameSession) return replaceTemplateDocument(row.IdPlantillaAvaluo, row.IdTipoAvaluo, content, { user: input.user });
+  return prisma.$transaction(async (tx) => {
+    await tx.versionPlantilla.updateMany({
+      where: { IdPlantillaAvaluo: row.IdPlantillaAvaluo, INumeroVersion: current.INumeroVersion, BActiva: true },
+      data: { JConfiguracionGeneral: content as unknown as Prisma.InputJsonObject, IdUsuarioCreador: input.user.id, DFechaPublicacion: new Date() },
+    });
+    // Touched, so «Actualizada» says when.
+    const updated = await tx.plantillaAvaluo.update({
+      where: { IdPlantillaAvaluo: row.IdPlantillaAvaluo },
+      data: { DFechaModificacion: new Date() },
+      include: templateInclude,
+    });
+    return summaryOf(tx, updated, content);
+  });
+}
+
+/**
+ * Changes the name and, when sent, the description and the kind of valuation
+ * and of property it is meant for; the name stays unique in the firm.
+ */
 export async function updateValuationTemplate(
   organizationId: number,
   publicId: string,
-  changes: { name: string; description?: string | null },
+  changes: { name: string; description?: string | null; appraisalTypeId?: number; propertyTypeId?: number | null },
 ) {
   const row = await findTemplate(organizationId, publicId);
   const content = readDocumentTemplate(row?.versiones[0]?.JConfiguracionGeneral);
   if (!row || !content) return null;
   if (await templateNamed(organizationId, changes.name, row.IdPlantillaAvaluo)) throw nameTaken();
-  const updated = await prisma.plantillaAvaluo.update({
-    where: { IdPlantillaAvaluo: row.IdPlantillaAvaluo },
-    data: { SNombre: changes.name, ...descriptionData(changes.description) },
-    include: { versiones: latestVersion },
+  const target = changes.appraisalTypeId === undefined
+    ? null
+    : await appliesTo(prisma, changes.appraisalTypeId, changes.propertyTypeId ?? null);
+  return prisma.$transaction(async (tx) => {
+    let next = content;
+    if (target && changes.propertyTypeId !== undefined && (content.propertyTypeKey ?? null) !== target.propertyTypeKey) {
+      // What it is meant for is not a new version of its document: the version in use keeps its number.
+      const { propertyTypeKey: _previous, ...rest } = content;
+      next = target.propertyTypeKey ? { ...rest, propertyTypeKey: target.propertyTypeKey } : rest;
+      await tx.versionPlantilla.updateMany({
+        where: { IdPlantillaAvaluo: row.IdPlantillaAvaluo, BActiva: true, INumeroVersion: row.versiones[0]?.INumeroVersion },
+        data: { JConfiguracionGeneral: next as unknown as Prisma.InputJsonObject },
+      });
+    }
+    const updated = await tx.plantillaAvaluo.update({
+      where: { IdPlantillaAvaluo: row.IdPlantillaAvaluo },
+      data: {
+        SNombre: changes.name,
+        ...descriptionData(changes.description),
+        ...(target ? { IdTipoAvaluo: target.appraisalTypeId } : {}),
+      },
+      include: templateInclude,
+    });
+    return summaryOf(tx, updated, next);
   });
-  return summaryOf(prisma, updated, content);
 }
 
 /** Removes the template from the firm's list; valuations created from it keep their content. */

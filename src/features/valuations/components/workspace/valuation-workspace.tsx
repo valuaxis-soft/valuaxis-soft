@@ -92,6 +92,7 @@ import { useWorkspaceLayout } from "./hooks/use-workspace-layout";
 import { useEditorViewport } from "./hooks/use-editor-viewport";
 import { StructureTransferProvider } from "./structure-transfer-context";
 import { SaveAsTemplateDialog } from "./template-dialogs";
+import { TemplateCalculationNote, TemplateEditingNotice, type TemplateEditing } from "./template-editing";
 
 // Kept for existing imports of the section numbering helper.
 export { resequenceSections } from "./model/section-numbering";
@@ -111,7 +112,14 @@ export function ValuationWorkspace({
   customUnits = [],
   unaccreditedNotice = null,
   autosaveSeconds = DEFAULT_AUTOSAVE_SECONDS,
+  template = null,
 }: {
+  /**
+   * «Nueva plantilla» / «Editar plantilla»: the same editor on a template of
+   * the firm instead of a valuation. It saves the template's document; with no
+   * valuation there is no calculation, carátula data, dictamen or memory.
+   */
+  template?: TemplateEditing | null;
   /** The appraiser's autosave interval (Mi cuenta → Autoguardado); 0: off. */
   autosaveSeconds?: AutosaveSeconds;
   /** The issuer is not accredited: the preview shows the notice the dictamen prints, and the editor says why. */
@@ -152,7 +160,7 @@ export function ValuationWorkspace({
   const canConclude = !locked && Boolean(valuationId) && hasPermission(currentUser, AUTH_PERMISSIONS.concludeValuations);
   const canReopen = locked && Boolean(valuationId) && hasPermission(currentUser, AUTH_PERMISSIONS.reopenValuations);
 
-  const editor = useEditorState({ canEdit, initialValuation, valuationId });
+  const editor = useEditorState({ canEdit, initialValuation, initialDocument: template?.sections, valuationId });
   const {
     canRedo,
     canUndo,
@@ -195,6 +203,10 @@ export function ValuationWorkspace({
     pendingExit,
   } = useValuationSave({
     autosaveDelayMs: autosaveDelayMs(autosaveSeconds), canEdit, editor, setActiveSectionId, valuationId,
+    ...(template ? {
+      saveDocument: { save: template.save, savedMessage: "Plantilla guardada. Los avalúos nuevos y «Importar» ya la usan así." },
+      exitHref: "/organizacion/plantillas",
+    } : {}),
     // The calculation sync comes later in this component; the save reaches it through this ref.
     onLiveFormulas: (owners) => liveFormulasRef.current(owners),
   });
@@ -423,7 +435,7 @@ export function ValuationWorkspace({
         <TabsContent value={section.id} key={section.id}>
           <ValuationEditorPanel
             section={section}
-            calculationPanel={withLiveFormulaOwner(section, !valuationId ? undefined : machinery && getCanonicalSectionKey(section.id) === "COSTOS" ? (
+            calculationPanel={withLiveFormulaOwner(section, !valuationId ? (template ? <TemplateCalculationNote section={section} /> : undefined) : machinery && getCanonicalSectionKey(section.id) === "COSTOS" ? (
               <MachineryCostPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} />
             ) : machinery && getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
               <MachineryMarketPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} />
@@ -611,6 +623,7 @@ export function ValuationWorkspace({
             onSplitLayoutChange={handleSplitLayoutChange}
             onUndo={() => void undo()}
             onWorkspaceModeChange={handleWorkspaceModeChange}
+            template={template ? { name: template.name, appliesTo: template.appliesTo, onEditDetails: template.onEditDetails } : undefined}
             readOnly={!canEdit}
             redoAvailable={canRedo}
             removedSections={removedSections}
@@ -628,6 +641,7 @@ export function ValuationWorkspace({
               deliverablesOf={valuationId && hasPermission(currentUser, AUTH_PERMISSIONS.exportValuations) ? valuationId : null}
             />
           ) : null}
+          {template ? <TemplateEditingNotice /> : null}
           {unaccreditedNotice ? <UnaccreditedEditorAlert issuerIsCurrentUser={unaccreditedNotice.issuerIsCurrentUser} /> : null}
         </div>
       </section>
