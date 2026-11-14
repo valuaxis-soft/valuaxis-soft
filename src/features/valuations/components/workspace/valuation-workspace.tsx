@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { ReadOnlyValuationAlert } from "@/features/valuations/components/feedback/valuation-error-alert";
@@ -42,6 +42,8 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { isMachineryPropertyKind } from "@/features/valuations/calculation/machinery-types";
 import { ConclusionPanel } from "@/features/valuations/components/calculation/conclusion-panel";
+import { LiveFormulaOwnerProvider } from "@/features/valuations/components/calculation/formula-input";
+import { sectionLiveFormulaOwner } from "@/features/valuations/services/live-formulas";
 import { ConstructionTypesPanel } from "@/features/valuations/components/calculation/construction-types-panel";
 import { CostCalculationPanel } from "@/features/valuations/components/calculation/cost-calculation-panel";
 import { IncomeCalculationPanel } from "@/features/valuations/components/calculation/income-calculation-panel";
@@ -176,6 +178,7 @@ export function ValuationWorkspace({
     setPreviewSectionId(null);
   };
 
+  const liveFormulasRef = useRef<(owners: string[]) => void>(() => undefined);
   const {
     exitDialogOpen,
     exitWithoutSaving,
@@ -188,7 +191,11 @@ export function ValuationWorkspace({
     setExitDialogOpen,
     setSessionExpiredOpen,
     pendingExit,
-  } = useValuationSave({ autosaveDelayMs: autosaveDelayMs(autosaveSeconds), canEdit, editor, setActiveSectionId, valuationId });
+  } = useValuationSave({
+    autosaveDelayMs: autosaveDelayMs(autosaveSeconds), canEdit, editor, setActiveSectionId, valuationId,
+    // The calculation sync comes later in this component; the save reaches it through this ref.
+    onLiveFormulas: (owners) => liveFormulasRef.current(owners),
+  });
   const openSessionExpired = () => setSessionExpiredOpen(true);
   useSessionHeartbeat({ hasUnsavedChanges, onSessionExpired: openSessionExpired });
 
@@ -362,6 +369,9 @@ export function ValuationWorkspace({
   // A machinery valuation captures its cost and market approaches with the panels of the MEH format.
   const machinery = isMachineryPropertyKind(initialValuation?.propertyKind);
   const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, machinery, valuationId });
+  useEffect(() => {
+    liveFormulasRef.current = calculationSync.onLiveFormulas;
+  });
 
   // A template is made from what is saved, so pending changes are saved first.
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -389,13 +399,17 @@ export function ValuationWorkspace({
     onIncludedChange: (included: boolean) => updateSection(section.id, { excludedFromReport: withApproachIncluded(section, approach, included) }),
   });
 
+  // A field of a panel that reads a figure its own calculation produces is circular (live-formulas.ts).
+  const withLiveFormulaOwner = (section: AppSection, panel: ReactNode) => (panel ? (
+    <LiveFormulaOwnerProvider owner={sectionLiveFormulaOwner(getCanonicalSectionKey(section.id), machinery)}>{panel}</LiveFormulaOwnerProvider>
+  ) : undefined);
   const editorPanel = (
     <>
       {enabledSections.map((section) => (
         <TabsContent value={section.id} key={section.id}>
           <ValuationEditorPanel
             section={section}
-            calculationPanel={!valuationId ? undefined : machinery && getCanonicalSectionKey(section.id) === "COSTOS" ? (
+            calculationPanel={withLiveFormulaOwner(section, !valuationId ? undefined : machinery && getCanonicalSectionKey(section.id) === "COSTOS" ? (
               <MachineryCostPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} />
             ) : machinery && getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
               <MachineryMarketPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} />
@@ -447,7 +461,7 @@ export function ValuationWorkspace({
               <CroquisSectionAccess captures={["macro", "micro"]} sections={sections} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "MAPA_COMPARABLES" ? (
               <CroquisSectionAccess captures={["comparables"]} sections={sections} />
-            ) : undefined}
+            ) : undefined)}
             allSections={enabledSections}
             readOnly={!canEdit}
             onAddBlock={blocks.addBlock}

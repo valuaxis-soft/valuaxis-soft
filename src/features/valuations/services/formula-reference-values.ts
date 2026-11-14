@@ -25,7 +25,7 @@ export function formulaNumber(value: number) {
 }
 
 /** The number a cell holds for a formula: its result, or what was typed when it reads as one. */
-function cellNumber(table: TableV2, rowId: string, columnId: string): number | null {
+export function cellNumber(table: TableV2, rowId: string, columnId: string): number | null {
   const cell = table.rows.find((row) => row.id === rowId)?.cells[columnId];
   if (!cell) return null;
   if (cell.kind === "formula") {
@@ -37,7 +37,7 @@ function cellNumber(table: TableV2, rowId: string, columnId: string): number | n
 }
 
 /** The cells between two corners as the table shows them, by rows. */
-function spanCells(table: TableV2, from: { rowId: string; columnId: string }, to: { rowId: string; columnId: string }) {
+export function spanCells(table: TableV2, from: { rowId: string; columnId: string }, to: { rowId: string; columnId: string }) {
   const columns = getDisplayColumns(table);
   const rowIndex = (id: string) => table.rows.findIndex((row) => row.id === id);
   const columnIndex = (id: string) => columns.findIndex((column) => column.id === id);

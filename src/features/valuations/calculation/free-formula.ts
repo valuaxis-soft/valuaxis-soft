@@ -389,9 +389,22 @@ function computePlain(node: FormulaSyntax): number {
   }
 }
 
+/**
+ * A reference of a live formula (services/live-formulas.ts) as it is stored:
+ * what it reads, by id, and the number it read last, "{c:concept-7|20}". The
+ * capture reads it as that number, so a stored live formula computes here as
+ * the formula with values it stands for ("=20*2").
+ */
+export const LIVE_REFERENCE_TAG = /\{([a-z]):([^{}|]*)\|([^{}]*)\}/g;
+
+/** The formula with each live reference written as the number it read last: "={c:concept-7|20}*2" as "=20*2". */
+export function withLastReadValues(text: string): string {
+  return text.includes("{") ? text.replace(LIVE_REFERENCE_TAG, (_tag, _kind, _ref, value: string) => value.trim() || "#") : text;
+}
+
 /** The value of a formula without its "=", or null when it is not a valid one. */
 export function evaluateFormula(source: string): number | null {
-  const parsed = parseFormula(source);
+  const parsed = parseFormula(withLastReadValues(source));
   if (!parsed) return null;
   const value = computePlain(parsed);
   return Number.isFinite(value) ? value : null;

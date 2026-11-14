@@ -25,6 +25,7 @@ export function useValuationSave({
   autosaveDelayMs,
   canEdit,
   editor,
+  onLiveFormulas,
   setActiveSectionId,
   valuationId,
 }: {
@@ -44,6 +45,8 @@ export function useValuationSave({
     | "snapshotRef"
   >;
   setActiveSectionId: (sectionId: string) => void;
+  /** The calculations the server saved again because their fields read the document (live-formulas.service.ts). */
+  onLiveFormulas?: (owners: string[]) => void;
   valuationId: string | null;
 }) {
   const router = useRouter();
@@ -164,11 +167,13 @@ export function useValuationSave({
 
       if (valuationId) {
         // One request: the full save updates the metadata and the sections together.
-        await api.valuations.saveFull(valuationId, {
+        const saved = await api.valuations.saveFull(valuationId, {
           ...valuationMetaPayload(meta),
           sections: sectionsPayload,
           caratula: caratulaForSave,
         });
+        const liveFormulas = saved?.liveFormulas;
+        if (Array.isArray(liveFormulas) && liveFormulas.length) onLiveFormulas?.(liveFormulas.map(String));
       } else {
         throw new Error("Primero crea el avaluo desde el formulario de alta.");
       }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { saveValuation } from "@/features/valuations/actions/save-valuation.action";
+import { refreshLiveFormulas } from "@/features/valuations/calculation/live-formulas.service";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
 import {
   saveValuationSections,
@@ -52,9 +53,11 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/avalu
           user,
         })
       : null;
+    // The fields of the calculation panels that read the document follow it (live-formulas.service.ts).
+    const liveFormulas = sectionResult ? await refreshLiveFormulas(id, user) : [];
 
     return NextResponse.json({
-      data: { valuation: result.data, sections: sectionResult },
+      data: { valuation: result.data, sections: sectionResult, liveFormulas },
       message: "Avaluo guardado correctamente.",
     });
   } catch (error) {
