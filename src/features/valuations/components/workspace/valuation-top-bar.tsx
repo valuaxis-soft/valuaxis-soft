@@ -292,7 +292,7 @@ export function ValuationTopBar({
             className={cn(
               "h-10 min-w-10 flex-none px-0 sm:px-3",
               hasPendingChanges &&
-                "border-amber-600 bg-amber-600 text-white hover:bg-amber-700",
+                "border-highlight bg-highlight text-highlight-foreground hover:bg-highlight/85",
             )}
           >
             <Save />
@@ -393,7 +393,7 @@ export function ValuationTopBar({
           className={cn(
             "flex-none whitespace-nowrap",
             hasPendingChanges &&
-              "group/save min-w-38 border-amber-600 bg-amber-600 text-white hover:bg-amber-700",
+              "group/save min-w-38 border-highlight bg-highlight text-highlight-foreground hover:bg-highlight/85",
           )}
         >
           <Save data-icon="inline-start" />
@@ -424,7 +424,8 @@ export function ValuationTopBar({
             className="flex-none whitespace-nowrap"
           >
             <LayoutTemplate data-icon="inline-start" />
-            Plantilla
+            {/* Between lg and xl the bar is too narrow for every label and «Concluir» was cut off: the icon alone, named. */}
+            <span className="max-xl:sr-only">Plantilla</span>
           </Button>
         ) : null}
 
@@ -433,10 +434,12 @@ export function ValuationTopBar({
           variant="outline"
           disabled={!canExport || !valuationId}
           onClick={onCalculationMemory}
+          aria-label="Memoria de cálculo"
+          title="Memoria de cálculo"
           className="flex-none whitespace-nowrap"
         >
           <Calculator data-icon="inline-start" />
-          Memoria de cálculo
+          <span className="max-xl:sr-only">Memoria de cálculo</span>
         </Button>
 
         <Button
@@ -452,7 +455,7 @@ export function ValuationTopBar({
         {/* Concluir closes the valuation: at the far end, set apart from the strip's arrow and the
             other actions, so it is not pressed by mistake. It still asks before concluding. */}
         {lifecycleAction ? (
-          <div className="ml-4 flex flex-none items-center border-l pl-4" data-lifecycle-action="">
+          <div className="ml-2 flex flex-none items-center border-l pl-2 xl:ml-4 xl:pl-4" data-lifecycle-action="">
             <Button
               type="button"
               variant="outline"

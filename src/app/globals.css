@@ -197,6 +197,22 @@
   }
 }
 
+/* The valuation editor is worked with the keyboard all day: its controls show
+   a solid focus outline (ring token, 3:1 or more over paper and card) instead of
+   the faint half-ring alone. Fields keep their own ring. The document inside
+   the preview is left as printed. */
+@layer base {
+  [data-valuation-workspace] :is(button, a[href], [role="tab"], [role="menuitem"], [role="checkbox"], [role="switch"]):focus-visible,
+  [data-valuation-workspace] label:has(> input[type="radio"]:focus-visible) {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  [data-valuation-workspace] [data-print-document] :focus-visible {
+    outline: none;
+  }
+}
+
 /* Document pages are 816 × 1056 px: US Letter at 96 dpi, printed edge to edge. */
 @page {
   size: letter;
