@@ -19,7 +19,14 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { initialSectionsFor } from "../components/workspace/model/initial-hydration";
 import { getValuationByPublicId } from "../repositories/valuation.repository";
 import { buildFormulaIndex, type FormulaIndex } from "../services/formula-references";
-import { hasLiveReferences, resolveCaptureFormulas, withValueAtPath, type LiveFormulaOwner } from "../services/live-formulas";
+import {
+  followComparableFormulas,
+  followStatisticalFormulas,
+  hasLiveReferences,
+  resolveCaptureFormulas,
+  withValueAtPath,
+  type LiveFormulaOwner,
+} from "../services/live-formulas";
 import { asRecord } from "./access";
 import { storedFormulas, type CapturedFormulas, type PercentFields } from "./captured-formulas";
 import { getConclusionCalculation, saveConclusionSettings } from "./conclusion.service";
@@ -34,27 +41,41 @@ import { incomeInputSchema } from "./income-schemas";
 import { INCOME_PERCENT_FIELDS } from "./income-types";
 import { getMachineryCalculation, saveMachineryCalculation } from "./machinery.service";
 import { machineryInputSchema } from "./machinery-schemas";
-import { getMarketCalculation, saveMarketSettings } from "./market.service";
-import { marketSettingsSchema } from "./market-schemas";
-import { COMPARABLE_TYPES, type ComparableType } from "./market-types";
+import { getMarketCalculation, saveMarketSettings, updateComparable } from "./market.service";
+import { comparableInputSchema, marketSettingsSchema } from "./market-schemas";
+import { COMPARABLE_TYPES, comparableFormValues, type ComparableType } from "./market-types";
+import { getStatisticalCalculation, saveStatisticalCalculation } from "./statistical.service";
+import { statisticalInputSchema } from "./statistical-schemas";
 
 const liveIn = (formulas: unknown) => Object.values(storedFormulas(formulas)).some(hasLiveReferences);
 
 /** The captures of the version that hold a live formula, by the calculation they belong to. */
 async function capturesWithLiveFormulas(versionId: number): Promise<Set<LiveFormulaOwner>> {
-  const [cost, constructions, income, conclusion, markets, machinery] = await Promise.all([
+  const [cost, constructions, income, conclusion, markets, machinery, comparables, statistical] = await Promise.all([
     prisma.enfoqueCosto.findUnique({ where: { IdVersionAvaluo: versionId }, select: { JConfiguracion: true } }),
     prisma.construccionAvaluo.findMany({ where: { IdVersionAvaluo: versionId }, select: { JDatosAdicionales: true } }),
     prisma.enfoqueIngreso.findUnique({ where: { IdVersionAvaluo: versionId }, select: { JConfiguracion: true } }),
     prisma.resumenValor.findUnique({ where: { IdVersionAvaluo: versionId }, select: { JConfiguracion: true } }),
     prisma.enfoqueMercado.findMany({ where: { IdVersionAvaluo: versionId }, select: { JConfiguracion: true, tipoComparable: { select: { SClave: true } } } }),
     prisma.enfoqueMaquinaria.findUnique({ where: { IdVersionAvaluo: versionId }, select: { JCostos: true, JMercado: true } }),
+    prisma.comparableAvaluo.findMany({ where: { IdVersionAvaluo: versionId, BIncluido: true }, select: { JPropiedadSnapshot: true, tipoComparable: { select: { SClave: true } } } }),
+    prisma.metodoEstadistico.findMany({ where: { IdVersionAvaluo: versionId }, select: { STipoComparable: true, JConfiguracion: true, JComparables: true } }),
   ]);
   const formulasOf = (json: Prisma.JsonValue | null | undefined, key = "formulas") => asRecord(json ?? null)[key];
   const owners = new Set<LiveFormulaOwner>();
   for (const market of markets) {
     const type = market.tipoComparable.SClave as ComparableType;
     if (COMPARABLE_TYPES.includes(type) && liveIn(formulasOf(market.JConfiguracion))) owners.add(`MERCADO:${type}`);
+  }
+  // The comparables' cards, characteristics and homologation factors keep theirs with the property.
+  for (const comparable of comparables) {
+    const type = comparable.tipoComparable.SClave as ComparableType;
+    if (COMPARABLE_TYPES.includes(type) && liveIn(formulasOf(comparable.JPropiedadSnapshot))) owners.add(`MERCADO:${type}`);
+  }
+  // The alternative methods keep each formula as the value typed: any tag in the apartado is one.
+  for (const row of statistical) {
+    const type = row.STipoComparable as ComparableType;
+    if (COMPARABLE_TYPES.includes(type) && hasLiveReferences(JSON.stringify([row.JConfiguracion, row.JComparables]))) owners.add(`ESTADISTICO:${type}`);
   }
   if (constructions.some((row) => liveIn(formulasOf(row.JDatosAdicionales, "typeFormulas")))) owners.add("CONSTRUCCIONES");
   if (liveIn(formulasOf(cost?.JConfiguracion))) owners.add("COSTOS");
@@ -116,8 +137,26 @@ async function followLiveFormulas(publicId: string, user: AuthUser): Promise<Liv
     if (!owners.has(`MERCADO:${type}`)) continue;
     await attempt(`MERCADO:${type}`, async () => {
       const market = await getMarketCalculation(publicId, organizationId, type);
+      // Each comparable whose card, characteristics or factors read the document is saved as its card does (it recomputes the market).
+      let comparables = 0;
+      for (const comparable of market.comparables) {
+        const next = followComparableFormulas(comparable, index, `MERCADO:${type}`);
+        if (!next) continue;
+        await updateComparable(publicId, user, comparable.id, comparableInputSchema.parse(comparableFormValues(next)));
+        comparables += 1;
+      }
       const next = market.configured ? followed(market.settings, market.settings.formulas, index, `MERCADO:${type}`) : null;
       if (next) await saveMarketSettings(publicId, user, marketSettingsSchema.parse(next));
+      return Boolean(next) || comparables > 0;
+    });
+  }
+  // After the markets, which they compare with.
+  for (const type of COMPARABLE_TYPES) {
+    if (!owners.has(`ESTADISTICO:${type}`)) continue;
+    await attempt(`ESTADISTICO:${type}`, async () => {
+      const statistical = await getStatisticalCalculation(publicId, organizationId, type);
+      const next = statistical.configured ? followStatisticalFormulas({ settings: statistical.settings, comparables: statistical.comparables }, index, `ESTADISTICO:${type}`) : null;
+      if (next) await saveStatisticalCalculation(publicId, user, statisticalInputSchema.parse(next));
       return Boolean(next);
     });
   }

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { formulaOfText } from "@/features/valuations/calculation/captured-formulas";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { variableLetters } from "@/features/valuations/engine/regression";
 import {
@@ -140,11 +141,14 @@ function ScaleEditor(props: {
                       disabled={readOnly}
                       numeric
                       formulaKey={`variable:${variable.key}:nivel:${index}`}
-                      value={formatScaleValue(level.value)}
+                      value={level.formula ?? formatScaleValue(level.value)}
+                      display={formatScaleValue(level.value)}
                       className="text-left"
                       onCommit={(text) => {
                         const value = parseDecimal(text);
-                        if (value !== null) setScale((scale) => scale.map((item, at) => (at === index ? { ...item, value } : item)));
+                        // A rating typed as a formula keeps it, so it reads back and follows its references.
+                        const formula = formulaOfText(text);
+                        if (value !== null) setScale((scale) => scale.map((item, at) => (at === index ? { ...item, value, formula } : item)));
                       }}
                     />
                   )}
@@ -282,11 +286,13 @@ export function StatisticalVariables(props: {
                         disabled={readOnly}
                         numeric
                         formulaKey={`variable:${field.key}:base`}
-                        value={String(variable.base ?? DEFAULT_CONTRARY_BASE)}
+                        value={variable.baseFormula ?? String(variable.base ?? DEFAULT_CONTRARY_BASE)}
+                        display={formatScaleValue(variable.base ?? DEFAULT_CONTRARY_BASE)}
                         className="text-left"
                         onCommit={(text) => {
                           const base = parseDecimal(text);
-                          if (base !== null) props.onUpdate((current) => withVariable(current, field.key, (item) => ({ ...item, base })));
+                          const baseFormula = formulaOfText(text);
+                          if (base !== null) props.onUpdate((current) => withVariable(current, field.key, (item) => ({ ...item, base, baseFormula })));
                         }}
                       />
                     ) : null}

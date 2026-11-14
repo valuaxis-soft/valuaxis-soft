@@ -236,6 +236,10 @@ export function useCalculationDocumentSync({
       const input = toMarketEngineInput(calculation);
       applyMarket(calculation, input.ok ? computeMarketApproach(input.input, marketEngineConfig(calculation.settings, calculation.precision)) : null);
     }
+    // The alternative methods of a market saved again, or whose comparables did: their block follows.
+    const statisticalTypes = COMPARABLE_TYPES.filter((type) => owners.includes(`ESTADISTICO:${type}`) || owners.includes(`MERCADO:${type}`));
+    const statistical = await Promise.all(statisticalTypes.map((type) => api.statistical.get(valuationId, type).catch(() => null)));
+    for (const calculation of statistical) if (calculation) applyStatistical(calculation);
     if (machinery && owners.includes("MAQUINARIA")) {
       const calculation = await api.machinery.get(valuationId).catch(() => null);
       if (calculation) applyMachinery(calculation);
