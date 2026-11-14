@@ -37,7 +37,7 @@ import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config"
 import { computeCostApproach } from "../src/features/valuations/engine/costs";
 import { Trace } from "../src/features/valuations/engine/trace";
 import type { AppSection, Block, TableContent } from "../src/features/valuations/model";
-import { ensureTableV2, getTableHeaderLayout } from "../src/features/valuations/services/table";
+import { ensureTableV2, getTableHeaderLayout, printableColumns, printableRows } from "../src/features/valuations/services/table";
 import { decodeStoredTable, serializeTableForSave } from "../src/features/valuations/services/table-persistence";
 
 const casa = { ref: "T-1", description: "Casa", classification: "Moderno", quality: "Media", area: 120, age: 10, usefulLife: 60 };
@@ -62,12 +62,12 @@ function compute(calculation: CostCalculationDto) {
 
 const cellsOf = (table: TableContent) => {
   const v2 = ensureTableV2(table);
-  return v2.rows.map((row) => v2.columns.map((column) => {
+  return printableRows(v2).map((row) => printableColumns(v2).map((column) => {
     const cell = row.cells[column.id];
     return cell?.kind === "value" ? cell.value : "";
   }));
 };
-const namesOf = (table: TableContent) => ensureTableV2(table).columns.map((column) => column.name);
+const namesOf = (table: TableContent) => printableColumns(ensureTableV2(table)).map((column) => column.name);
 
 /* ── Added demerit factors ─────────────────────────────────────── */
 
@@ -178,9 +178,9 @@ test("a hidden column leaves the printed table, a renamed header prints renamed,
   assert.deepEqual(namesOf(table), ["REF", "Observaciones", "F. Res."]);
   assert.deepEqual(cellsOf(table), [["1", "", "0.95"], ["2", "Esquina", "1.00"]]);
   const v2 = ensureTableV2(table);
-  // The added column follows REF (no group); the group keeps only FRe, with its new title.
+  // The added column follows REF (no group); the group keeps Neg. (hidden: the editor shows it faded, the dictamen leaves it out) and FRe, with its new title.
   assert.deepEqual(getTableHeaderLayout(v2).topRow.map((cell) => (cell.kind === "group-title" ? [cell.group.title, cell.colSpan] : cell.columnId)), [
-    ref.id, extra.id, ["FACTORES DE HOMOLOGACIÓN", 1],
+    ref.id, extra.id, ["FACTORES DE HOMOLOGACIÓN", 2],
   ]);
   assert.equal(v2.schema?.columnPresentation?.[resultant.id]?.bold, true, "the FRe keeps its bold");
   // What the calculation wrote stays with the table: the hidden column can be shown again with its figures.
@@ -200,7 +200,7 @@ test("the hidden columns, names and added columns travel in the saved table and 
   );
   const payload = serializeTableForSave(applyTableLayout(written, layout));
   assert.deepEqual(payload.schema?.generated?.layout.hidden, [source.columns[1].id], "the hidden column is in the payload");
-  assert.deepEqual(payload.columns.map((column) => column.name), ["REF", "FRe", "Notas"], "and out of the printed columns");
+  assert.deepEqual(printableColumns(payload).map((column) => column.name), ["REF", "FRe", "Notas"], "and out of the printed columns");
 
   // As the database gives it back: the schema whole, and the cells as text.
   const reloaded = decodeStoredTable({
@@ -256,16 +256,16 @@ test("a generated block the appraiser hid stays hidden and keeps its columns whe
   assert.deepEqual(cellsOf(next.blocks[0].apartados[0].tables[0]), [["1", "0.90"]]);
 });
 
-test("an added column is placed, renamed and removed; at most four per table", () => {
+test("an added column is placed, renamed and removed; at most twelve per table", () => {
   let layout = withExtraColumn({}, " ", null);
   assert.equal(layout.extraColumns?.[0].name, "Nueva columna");
   layout = withExtraColumnChange(layout, "extra-1", { name: "Notas", after: "col-1" });
   assert.deepEqual(layout.extraColumns?.[0], { id: "extra-1", name: "Notas", after: "col-1", values: {} });
   layout = withHeaderLabel(withHeaderLabel(layout, "col-2", "Factor"), "col-2", " ");
   assert.deepEqual(layout.labels, {}, "an empty name gives back the calculation's");
-  for (let index = 0; index < 6; index += 1) layout = withExtraColumn(layout, `C${index}`, null);
+  for (let index = 0; index < 14; index += 1) layout = withExtraColumn(layout, `C${index}`, null);
   assert.equal(layout.extraColumns?.length, MAX_EXTRA_COLUMNS);
-  assert.deepEqual(withoutExtraColumn(layout, "extra-1").extraColumns?.map((column) => column.id), ["extra-2", "extra-3", "extra-4"]);
+  assert.deepEqual(withoutExtraColumn(layout, "extra-1").extraColumns?.map((column) => column.id), Array.from({ length: MAX_EXTRA_COLUMNS - 1 }, (_, index) => `extra-${index + 2}`));
 });
 
 /* ── Construction section tables: their columns as the appraiser left them ─────────────────────── */

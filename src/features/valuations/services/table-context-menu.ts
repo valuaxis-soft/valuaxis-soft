@@ -84,7 +84,12 @@ export type CellMenuTarget = {
    * items say so and act on all of them: copy, cut, paste, clear and format.
    */
   selected?: number;
+  /** Items disabled for a reason of their own (a row or a column the calculation writes), by action. */
+  reasons?: MenuReasons;
 };
+
+/** Items of the menu disabled for a reason of their own, by action, over what the table allows. */
+export type MenuReasons = Partial<Record<TableMenuAction, string>>;
 
 export type ColumnMenuTarget = {
   kind: "column";
@@ -96,6 +101,7 @@ export type ColumnMenuTarget = {
   hidden: boolean;
   /** The column can be hidden in the dictamen (a generated table hides it with its layout). */
   canHide: boolean;
+  reasons?: MenuReasons;
 };
 
 export type RowMenuTarget = {
@@ -106,6 +112,7 @@ export type RowMenuTarget = {
   hidden: boolean;
   canHide: boolean;
   canDelete: boolean;
+  reasons?: MenuReasons;
 };
 
 export type BlockMenuTarget = {
@@ -306,12 +313,21 @@ export function captureFillSummary(filled: number, computedSkipped: number, alon
 export function tableContextMenu(kind: TableMenuKind, target: TableMenuTarget): TableMenuGroup[] {
   switch (target.kind) {
     case "cell":
-      return cellMenu(kind, target);
+      return withReasons(cellMenu(kind, target), target.reasons);
     case "column":
-      return columnMenu(kind, target);
+      return withReasons(columnMenu(kind, target), target.reasons);
     case "row":
-      return rowMenu(kind, target);
+      return withReasons(rowMenu(kind, target), target.reasons);
     case "block":
       return blockMenu(target);
   }
+}
+
+/** The items with a reason of their own disabled, saying it. */
+function withReasons(groups: TableMenuGroup[], reasons: MenuReasons | undefined): TableMenuGroup[] {
+  if (!reasons) return groups;
+  return groups.map((group) => group.map((item) => {
+    const reason = reasons[item.action];
+    return reason ? { ...item, disabled: true, hint: reason } : item;
+  }));
 }

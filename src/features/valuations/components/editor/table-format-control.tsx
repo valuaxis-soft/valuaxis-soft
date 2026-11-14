@@ -33,9 +33,9 @@ import { columnLetter } from "@/features/valuations/services/formula-references"
  * How the table prints: as wide as the page or as its content, its decimals,
  * its title shown or not, the room before and after it, its indent and where
  * it sits (video 5.3 and 5.7), and a double header (one title over several
- * columns, as merging the cells above them). The same for every table: a
- * table the calculation writes (`generated`) takes all but the double header,
- * which is the calculation's, and its decimals are those of its figures.
+ * columns, as merging the cells above them). The same for every table, the
+ * ones the calculation writes (`generated`) too: their double headers are kept
+ * in their layout, and their decimals are those of their figures.
  */
 export function TableFormatControl({
   table,
@@ -56,7 +56,7 @@ export function TableFormatControl({
   const print = tablePrintLayout(table);
   // A table still named as the editor created it prints no title whatever this says.
   const untitled = !table.title.trim() || table.title.trim() === DEFAULT_TABLE_TITLE;
-  const groupable = !generated && canGroupTableHeaders(table) && columns.length > 1;
+  const groupable = canGroupTableHeaders(table) && columns.length > 1;
   const fromId = columns.some((column) => column.id === from) ? from : columns[0]?.id ?? "";
   const toId = columns.some((column) => column.id === to) ? to : columns[Math.min(1, columns.length - 1)]?.id ?? "";
   const label = (columnId: string) => {

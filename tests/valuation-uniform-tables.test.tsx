@@ -21,13 +21,14 @@ import {
 } from "../src/features/valuations/comparable-base/column-layout";
 import { figureColumn, generatedTable, moneyColumn, textColumn } from "../src/features/valuations/calculation/generated-content";
 import { applyTableLayout, layoutOf, sourceOf, withColumnHidden, withTableFormat, withTableLayouts } from "../src/features/valuations/calculation/generated-table-layout";
-import { GeneratedTableColumns } from "../src/features/valuations/components/editor/generated-table-columns";
+import { GeneratedTableEditor } from "../src/features/valuations/components/editor/generated-table-editor";
 import { requestTableRemoval, TableEditorItem } from "../src/features/valuations/components/editor/table-editor";
 import type { Block, TableContent } from "../src/features/valuations/model";
 import {
   NUMERIC_CELL_MESSAGE,
   ensureTableV2,
   isInferredNumericColumn,
+  printableColumns,
   numericCellProblem,
   setCellFormula,
   setColumnFormat,
@@ -170,14 +171,15 @@ test("the width and decimals of a calculated table stay when the calculation wri
   const table = ensureTableV2(again.tables[0]);
   assert.equal(table.schema?.widthMode, "content");
   assert.equal(table.schema?.decimals, 2);
-  assert.ok(!table.columns.some((column) => column.id === "col-2"), "the hidden column stays hidden");
+  assert.deepEqual(table.schema?.hiddenColumns, ["col-2"], "the hidden column stays hidden");
+  assert.ok(!printableColumns(table).some((column) => column.id === "col-2"), "and out of the printed table");
   // "Ajustar a la página" over a table the calculation printed as wide as its content.
   const page = applyTableLayout(again.tables[0], withTableFormat(layoutOf(again.tables[0]), { widthMode: "page" }));
   assert.equal(ensureTableV2(page).schema?.widthMode, undefined);
 });
 
 test("a calculated block offers «Formato de la tabla» beside its columns", () => {
-  const html = renderToStaticMarkup(createElement(GeneratedTableColumns, { table: costTable(), readOnly: false, onChange: () => {} }));
+  const html = renderToStaticMarkup(createElement(GeneratedTableEditor, { table: costTable(), readOnly: false, onUpdate: () => {} }));
   assert.match(html, /aria-label="Formato de la tabla"/);
 });
 
