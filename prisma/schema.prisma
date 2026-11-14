@@ -287,6 +287,7 @@ model Organizacion {
   clientesPago               ClientePago[]
   movimientosCreditos        MovimientoCreditos[]
   comparablesBase            ComparableAvaluo[]       @relation("ComparableBaseOrganizacion")
+  notificaciones             Notificacion[]
 
   @@index([IdEstadoOrganizacion])
   @@index([IdUsuarioPropietario])
@@ -375,6 +376,7 @@ model Usuario {
   exportacionesAvaluos         ExportacionAvaluo[]
   bloqueosVersiones            BloqueoVersionAvaluo[]
   trabajosSolicitados          Trabajo[]                     @relation("TrabajoUsuarioSolicitud")
+  notificaciones               Notificacion[]
   eventosTrabajos              EventoTrabajo[]
   importaciones                Importacion[]
   eventosImportaciones         EventoImportacion[]
@@ -391,6 +393,31 @@ model Usuario {
 
 /// Professional accreditation of a user (migration 054, docs/ACREDITACION.md). No CURP in clear,
 /// only its hash; the SEP verification URL is kept only while the request is EN_REVISION.
+/// An in-app notice for one person (migration 060): the header's bell and the «Notificaciones» page.
+model Notificacion {
+  IdNotificacion        Int       @id @default(autoincrement()) @map("IdNotificacion")
+  UIdentificadorPublico String    @unique(map: "devpware_notificaciones_UIdentificadorPublico_key") @default(dbgenerated("gen_random_uuid()")) @map("UIdentificadorPublico") @db.Uuid
+  IdUsuario             Int       @map("IdUsuario")
+  /// The firm where it happened; NULL is about the person (their accreditation) and shows in any firm.
+  IdOrganizacion        Int?      @map("IdOrganizacion")
+  /// One of NOTIFICATION_TYPES (src/features/notifications/notification-types.ts).
+  STipo                 String    @map("STipo") @db.VarChar(40)
+  STitulo               String    @map("STitulo") @db.VarChar(200)
+  STexto                String?   @map("STexto") @db.VarChar(1000)
+  /// An internal path to open on click ("/workspace?id=...").
+  SEnlace               String?   @map("SEnlace") @db.VarChar(500)
+  /// NULL: unread.
+  DFechaLectura         DateTime? @map("DFechaLectura") @db.Timestamptz(3)
+  DFechaCreacion        DateTime  @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+
+  usuario      Usuario       @relation(fields: [IdUsuario], references: [IdUsuario], onDelete: Cascade, onUpdate: Cascade)
+  organizacion Organizacion? @relation(fields: [IdOrganizacion], references: [IdOrganizacion], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([IdUsuario, DFechaCreacion(sort: Desc)], map: "devpware_notificaciones_IdUsuario_DFechaCreacion_idx")
+  @@index([IdOrganizacion], map: "devpware_notificaciones_IdOrganizacion_idx")
+  @@map("devpware_notificaciones")
+}
+
 model AcreditacionUsuario {
   IdAcreditacionUsuario Int       @id @default(autoincrement()) @map("IdAcreditacionUsuario")
   IdUsuario             Int       @unique(map: "devpware_acreditaciones_usuarios_IdUsuario_key") @map("IdUsuario")
