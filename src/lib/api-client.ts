@@ -34,6 +34,7 @@ import type { DraftInput } from "@/features/ai/draft-writing";
 import type { ListingProposal } from "@/features/ai/listing-extraction";
 import type { ValuationDetail, ValuationListItem } from "@/features/valuations/repositories/valuation.repository";
 import type { CroquisKind, CroquisSettings } from "@/features/maps/croquis";
+import type { CroquisLabelPlacement } from "@/features/maps/croquis-marker";
 import type { StreetsAroundDto } from "@/features/maps/streets-osm";
 import type { SubjectLocationInput } from "@/features/maps/subject-location";
 import type { SubjectLocationDto } from "@/features/maps/server/subject-location.service";
@@ -62,6 +63,8 @@ export type CroquisRequest = {
   streets: CroquisSettings["streets"];
   /** Street map or satellite photo. */
   mapType: CroquisSettings["mapType"];
+  /** The street names placed by hand in the generator. */
+  labels?: CroquisLabelPlacement[];
 };
 
 /** What "Generar croquis de localización" returns: the stored image and the streets that did not fit the croquis. */

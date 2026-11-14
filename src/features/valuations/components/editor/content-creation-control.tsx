@@ -9,7 +9,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
-import { Columns3, Plus, Rows3 } from "lucide-react";
+import { Columns3, MapPinned, Plus, Rows3 } from "lucide-react";
 
 import type { EditorCapabilities } from "./editor-capabilities";
 import { UploadButton } from "./image-upload-control";
@@ -21,7 +21,9 @@ import { PasteImageButton } from "@/features/files/components/paste-image-button
 export function ContentCreationControl({
   capabilities,
   conceptControl,
+  croquisLock,
   lock,
+  onAddCroquis,
   onAddImage,
   onAddTable,
   onAddHomologationTable,
@@ -33,8 +35,12 @@ export function ContentCreationControl({
     tables?: boolean;
   };
   conceptControl?: ReactNode;
+  /** Why a croquis cannot go here (Datos generales): the option stays, disabled, and says so. */
+  croquisLock?: string | null;
   /** Why nothing can be added here: the button stays, disabled, and says so. */
   lock?: string;
+  /** «Croquis de localización»: opens the croquis generator for this block or subbloque (V5.7-01). */
+  onAddCroquis?: () => void;
   onAddImage?: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddTable?: () => void;
   onAddHomologationTable?: () => void;
@@ -100,6 +106,24 @@ export function ContentCreationControl({
               onFiles={(files) => onAddImage(filesAsChangeEvent(files))}
             />
           ) : null}
+          {canAddImage && onAddCroquis ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-10 justify-start text-sm"
+              disabled={readOnly || Boolean(croquisLock)}
+              title={croquisLock ?? "Abre el generador de croquis y coloca el croquis aquí"}
+              data-content-creation-croquis=""
+              onClick={() => {
+                setOpen(false);
+                onAddCroquis();
+              }}
+            >
+              <MapPinned data-icon="inline-start" />
+              Croquis de localización
+            </Button>
+          ) : null}
           {canAddTable && onAddTable ? (
             <>
               <Button
@@ -138,7 +162,9 @@ export function ContentCreationControl({
 export function ActionStrip({
   capabilities,
   conceptControl,
+  croquisLock,
   locks = {},
+  onAddCroquis,
   onAddImage,
   onAddApartado,
   onAddTable,
@@ -148,7 +174,9 @@ export function ActionStrip({
 }: {
   capabilities: Pick<EditorCapabilities, "apartados" | "concepts" | "images" | "tables">;
   conceptControl: ReactNode;
+  croquisLock?: string | null;
   locks?: { add?: string; subblock?: string };
+  onAddCroquis?: () => void;
   onAddImage: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddApartado: () => void;
   onAddTable: () => void;
@@ -163,6 +191,8 @@ export function ActionStrip({
         capabilities={capabilities}
         conceptControl={conceptControl}
         lock={locks.add}
+        croquisLock={croquisLock}
+        onAddCroquis={onAddCroquis}
         readOnly={readOnly}
         onAddImage={onAddImage}
         onAddTable={onAddTable}

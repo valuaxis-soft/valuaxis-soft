@@ -14,7 +14,8 @@ import { ValuationWorkflowError } from "@/features/valuations/services/valuation
 
 import { CROQUIS_IMAGE_IDS, pinsOverlaySvg, streetLabelsOverlaySvg, type ComparablePin, type CroquisKind } from "../croquis";
 import { croquisStreets, type CroquisStreets } from "../croquis-streets";
-import { hasHighlights, type StreetHighlights } from "../highlights";
+import { hasHighlights, placedStreetLabels, type StreetHighlights } from "../highlights";
+import type { CroquisLabelPlacement } from "../croquis-marker";
 import type { MapType, NorthArrow } from "../map-styles";
 import { northArrowPlacement, northArrowSvg } from "../north-arrow-symbols";
 import { STATIC_MAP_SCALE, STATIC_MAP_SIZE, staticMapUrl } from "../static-map";
@@ -38,6 +39,8 @@ export interface CroquisRenderInput {
   pins: readonly ComparablePin[];
   /** Etapa 2: what to highlight; the geometry comes from OpenStreetMap around the subject. */
   streets: StreetHighlights;
+  /** V5.7-14: the street names the appraiser moved or turned in the generator. */
+  labels?: readonly CroquisLabelPlacement[];
 }
 
 const NO_STREETS: CroquisStreets = { paths: [], labels: [], omitted: [] };
@@ -46,10 +49,11 @@ const NO_STREETS: CroquisStreets = { paths: [], labels: [], omitted: [] };
  * The highlighted streets as the image draws them. The map of comparables
  * and a croquis with nothing highlighted ask OpenStreetMap for nothing.
  */
-export async function resolveCroquisStreets(input: Pick<CroquisRenderInput, "kind" | "center" | "zoom" | "subject" | "streets">): Promise<CroquisStreets> {
+export async function resolveCroquisStreets(input: Pick<CroquisRenderInput, "kind" | "center" | "zoom" | "subject" | "streets" | "labels">): Promise<CroquisStreets> {
   if (input.kind === "comparables" || !hasHighlights(input.streets)) return NO_STREETS;
   const { ways } = await getStreetsAround(input.subject);
-  return croquisStreets(input.kind, input.center, input.zoom, input.streets, ways);
+  const streets = croquisStreets(input.kind, input.center, input.zoom, input.streets, ways, input.subject);
+  return { ...streets, labels: placedStreetLabels(streets.labels, input.labels) };
 }
 
 /** The base image from Google, as PNG bytes, with the highlighted streets drawn by the Static API. */

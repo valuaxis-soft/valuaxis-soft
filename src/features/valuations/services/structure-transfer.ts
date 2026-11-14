@@ -50,6 +50,7 @@ import { getCaratulaBlockKind } from "./caratula-blocks";
 import { COMPANY_HEADER_BLOCK_ID } from "./caratula-company-header";
 import { isRelationManagedImageSection } from "./image-source";
 import type { FormulaExpression, FormulaOperand, TableFormula, TableRow, TableSchema } from "./table";
+import { withLegacyCroquisMarker } from "@/features/maps/croquis-marker";
 
 /* ================================================================== */
 /*  ADDRESSES AND LOCKS                                                */
@@ -541,7 +542,8 @@ function copyContent<T extends Block | Apartado>(container: T, context: CopyCont
     ? container.images.map((image) => {
         const id = context.keepIds ? image.id : newId();
         images.set(image.id, id);
-        return { ...image, id };
+        // A croquis known by its old fixed id stays a croquis under its new id.
+        return { ...withLegacyCroquisMarker(image), id };
       })
     : [];
   const refId = (type: "concept" | "image" | "table", id: string) =>

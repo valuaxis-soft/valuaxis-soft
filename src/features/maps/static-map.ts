@@ -104,21 +104,37 @@ export function staticMapUrl({ apiKey, center, zoom, subject = center, clean = f
   return base();
 }
 
+const project = ([lat, lon]: LatLon, world: number) => {
+  const sin = Math.sin((lat * Math.PI) / 180);
+  return [((lon + 180) / 360) * world, (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * world] as const;
+};
+
+/** Where a point falls on the Static API image, in map pixels from its top left corner; outside the image too. */
+export function imagePixel(center: LatLon, zoom: number, point: LatLon) {
+  const world = 256 * 2 ** zoom;
+  const [cx, cy] = project(center, world);
+  const [px, py] = project(point, world);
+  return { x: STATIC_MAP_SIZE.width / 2 + px - cx, y: STATIC_MAP_SIZE.height / 2 + py - cy };
+}
+
+/** The point of the map at a pixel of the image: the inverse of `imagePixel`. */
+export function pointAtPixel(center: LatLon, zoom: number, x: number, y: number): LatLon {
+  const world = 256 * 2 ** zoom;
+  const [cx, cy] = project(center, world);
+  const px = cx + x - STATIC_MAP_SIZE.width / 2;
+  const py = cy + y - STATIC_MAP_SIZE.height / 2;
+  const lon = (px / world) * 360 - 180;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * py) / world))) * 180) / Math.PI;
+  return [lat, lon];
+}
+
 /**
  * Where a point falls inside the Static API image (Web Mercator, 256 px
  * tiles), as a fraction of its width and height; null when it is outside.
  * Used to lay street names and numbered pins over the image.
  */
 export function imagePosition(center: LatLon, zoom: number, point: LatLon) {
-  const world = 256 * 2 ** zoom;
-  const project = ([lat, lon]: LatLon) => {
-    const sin = Math.sin((lat * Math.PI) / 180);
-    return [((lon + 180) / 360) * world, (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * world];
-  };
-  const [cx, cy] = project(center);
-  const [px, py] = project(point);
-  const x = STATIC_MAP_SIZE.width / 2 + px - cx;
-  const y = STATIC_MAP_SIZE.height / 2 + py - cy;
+  const { x, y } = imagePixel(center, zoom, point);
   if (x < 0 || x > STATIC_MAP_SIZE.width || y < 0 || y > STATIC_MAP_SIZE.height) return null;
   return { x: x / STATIC_MAP_SIZE.width, y: y / STATIC_MAP_SIZE.height };
 }

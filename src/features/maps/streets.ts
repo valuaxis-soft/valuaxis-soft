@@ -126,8 +126,38 @@ export function simplifyPolyline(points: readonly LatLon[], toleranceMeters: num
   return points.filter((_, i) => keep[i]);
 }
 
-/** Whether any vertex of the way falls inside the box [south, west]–[north, east]. */
+/**
+ * Whether the way shows inside the box [south, west]–[north, east]: a vertex
+ * inside it, or a segment crossing it (a long straight piece of avenue can
+ * have both ends outside a micro frame and still run through it).
+ */
 export function wayInBounds(way: Pick<StreetWay, "g">, bounds: readonly [LatLon, LatLon]) {
   const [[south, west], [north, east]] = bounds;
-  return way.g.some(([lat, lon]) => lat >= south && lat <= north && lon >= west && lon <= east);
+  const inside = ([lat, lon]: LatLon) => lat >= south && lat <= north && lon >= west && lon <= east;
+  if (way.g.some(inside)) return true;
+  // Liang–Barsky: the part of each segment within the box.
+  return way.g.some((from, i) => {
+    const to = way.g[i + 1];
+    if (!to) return false;
+    const d = [to[0] - from[0], to[1] - from[1]];
+    let enter = 0;
+    let leave = 1;
+    const edges: [number, number][] = [
+      [-d[0], from[0] - south],
+      [d[0], north - from[0]],
+      [-d[1], from[1] - west],
+      [d[1], east - from[1]],
+    ];
+    for (const [p, q] of edges) {
+      if (p === 0) {
+        if (q < 0) return false;
+        continue;
+      }
+      const t = q / p;
+      if (p < 0) enter = Math.max(enter, t);
+      else leave = Math.min(leave, t);
+      if (enter > leave) return false;
+    }
+    return true;
+  });
 }
