@@ -60,6 +60,7 @@ import { FormulaInput, LiveFormulaOwnerProvider } from "./formula-input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { formatComparableId, todayInMexico } from "@/features/valuations/calculation/comparable-card";
 import { REVIEW_STATUS_LABELS, comparableWarnings, isVerifiedStatus } from "@/features/valuations/calculation/comparable-review";
+import { builtAreaToleranceOf } from "@/features/valuations/calculation/comparable-review-checklist";
 import { ComparableCardButton } from "./comparable-card-dialog";
 import { ComparableDialog, type PendingImages } from "./comparable-dialog";
 import { ComparableReviewDialog } from "./comparable-review-dialog";
@@ -336,6 +337,7 @@ function MarketTypePanel(props: {
   const ai = useAiAssist();
   const [catalog, setCatalog] = useState<FactorCatalog>(EMPTY_FACTOR_CATALOG);
   const [customFactors, setCustomFactors] = useState<CustomFactor[]>([]);
+  const [reviewThresholds, setReviewThresholds] = useState<{ builtAreaTolerance?: number; offerMaxAgeMonths?: number }>({});
   // What the server last answered, for the changes of a comparable made one after another.
   const latest = useRef<MarketCalculationDto | null>(null);
   const comparableQueue = useRef<Promise<unknown>>(Promise.resolve());
@@ -355,6 +357,10 @@ function MarketTypePanel(props: {
       .catch(() => undefined);
     api.firm.customFactors()
       .then((next) => { if (active) setCustomFactors(next.factors); })
+      .catch(() => undefined);
+    // The warnings of the list use the firm's thresholds, as the review does (Despacho → Revisión de comparables).
+    api.firm.reviewChecklist()
+      .then((next) => { if (active) setReviewThresholds({ builtAreaTolerance: builtAreaToleranceOf(next), offerMaxAgeMonths: next.validityMonths }); })
       .catch(() => undefined);
     return () => { active = false; };
   }, []);
@@ -674,7 +680,11 @@ function MarketTypePanel(props: {
                 // Warnings only: the appraiser's judgement decides whether the comparable stays.
                 const warnings = comparableWarnings(
                   { ...comparable, hasScreenshot: Boolean(comparable.screenshot) },
-                  { type, subjectArea: liveSettings.subjectArea, today },
+                  {
+                    type, subjectArea: liveSettings.subjectArea, today,
+                    builtAreaTolerance: reviewThresholds.builtAreaTolerance,
+                    offerMaxAgeMonths: comparable.validityMonths ?? reviewThresholds.offerMaxAgeMonths,
+                  },
                 );
                 const status = comparable.review?.status ?? "POR_REVISAR";
                 return (

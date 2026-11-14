@@ -5,6 +5,7 @@ import { hasPermission } from "@/features/auth/permissions";
 import { DashboardHeader } from "@/features/dashboard/components/header";
 import { OrganizationTabs } from "@/features/dashboard/components/organization-tabs";
 import { PageContainer, PageHeader } from "@/features/dashboard/components/page-header";
+import { ComparableReviewChecklistCard } from "@/features/firm/components/comparable-review-checklist-card";
 import { FirmSettingsForm } from "@/features/firm/components/firm-settings-form";
 import { requireSession } from "@/security/guards/require-session";
 
@@ -20,7 +21,10 @@ export default async function FirmPage() {
       <PageContainer width="narrow">
         <OrganizationTabs user={user} active="despacho" />
         <PageHeader eyebrow="Despacho" title="Datos del despacho" description={`El membrete de los dictámenes de ${user.organizationName} y los datos con que nace cada avalúo.`} />
-        <FirmSettingsForm />
+        <div className="grid gap-6">
+          <FirmSettingsForm />
+          <ComparableReviewChecklistCard />
+        </div>
       </PageContainer>
     </div>
   );

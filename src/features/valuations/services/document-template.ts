@@ -21,6 +21,7 @@
 import { isGeneratedBlock } from "../calculation/market-document";
 import type { Apartado, AppSection, Block, Concept } from "../model";
 import { getCanonicalSectionKey } from "../sections/section-registry";
+import { createBlock } from "../components/workspace/model/content-factories";
 import { storedImageUrl } from "@/features/files/services/stored-image-url";
 import { extractStorageKey, isRelationManagedImageSection, isS3Source } from "./image-source";
 import { blockWithoutData, structureLockReason, type CopyOptions } from "./structure-transfer";
@@ -33,6 +34,12 @@ export type DocumentTemplateContent = {
   includeData: boolean;
   includeImages: boolean;
   sections: AppSection[];
+  /**
+   * The kind of property it is meant for (TipoInmueble.SClave: CASA,
+   * MAQUINARIA…), chosen in «Nueva plantilla» or «Datos de la plantilla»; the
+   * kind of valuation is the template's own column. Absent: any kind.
+   */
+  propertyTypeKey?: string | null;
 };
 
 /** `includeData` is accepted for the API's sake but no longer keeps the client's data: see `stripClientData`. */
@@ -124,6 +131,13 @@ const isSection = (value: unknown): value is AppSection =>
   && value.blocks.every((block) => isRecord(block) && typeof block.id === "string" && Array.isArray(block.concepts)
     && Array.isArray(block.apartados) && Array.isArray(block.tables) && Array.isArray(block.images));
 
+/** Whether a document holds any image, in a block or an apartado: a template edited in the editor keeps the ones put there. */
+export function documentHasImages(sections: ReadonlyArray<Pick<AppSection, "blocks">>): boolean {
+  // An image place without a picture (the sections' defaults) is not an image.
+  const pictured = (images: Block["images"]) => images.some((image) => Boolean(image.src?.trim()));
+  return sections.some((section) => section.blocks.some((block) => pictured(block.images) || block.apartados.some((apartado) => pictured(apartado.images))));
+}
+
 /** The template stored in the database, or null when it is not one this code reads. */
 export function readDocumentTemplate(value: unknown): DocumentTemplateContent | null {
   if (!isRecord(value) || value.format !== DOCUMENT_TEMPLATE_FORMAT || !Array.isArray(value.sections)) return null;
@@ -133,7 +147,23 @@ export function readDocumentTemplate(value: unknown): DocumentTemplateContent | 
     includeData: value.includeData === true,
     includeImages: value.includeImages === true,
     sections: value.sections as AppSection[],
+    ...(typeof value.propertyTypeKey === "string" && value.propertyTypeKey ? { propertyTypeKey: value.propertyTypeKey } : {}),
   };
+}
+
+/**
+ * The document «Nueva plantilla» starts from: the sections of a new valuation
+ * of the system, with the ones a valuation of that kind of property starts
+ * hidden (machinery) hidden too. A section without default blocks gets the
+ * empty block with its name that a new valuation stores for it, so it is
+ * numbered and has a place to add to, as in a valuation.
+ */
+export function blankTemplateSections(newSections: AppSection[], hiddenSectionKeys: ReadonlySet<string>): AppSection[] {
+  return newSections.map((section) => ({
+    ...section,
+    ...(hiddenSectionKeys.has(getCanonicalSectionKey(section.id)) ? { enabled: false } : {}),
+    blocks: section.blocks.length ? section.blocks : [{ ...createBlock(), title: section.title.toUpperCase(), concepts: [] }],
+  }));
 }
 
 export type ImportableBlock = { sectionId: string; sectionTitle: string; block: Block };

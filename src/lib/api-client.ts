@@ -23,8 +23,9 @@ import type { MachineryCalculationDto, MachineryInputDto } from "@/features/valu
 import type { StatisticalCalculationDto } from "@/features/valuations/calculation/statistical-types";
 import type { TeamRole } from "@/features/team/team-rules";
 import type { MyInvitationDto, SentInvitationDto, TeamDto } from "@/features/team/team.service";
-import type { FirmSettingsInput } from "@/features/firm/firm-schemas";
+import type { ComparableReviewSettingsInput, FirmSettingsInput } from "@/features/firm/firm-schemas";
 import type { FirmSettingsDto } from "@/features/firm/firm.service";
+import type { ComparableReviewSettingsDto } from "@/features/firm/comparable-review-settings.service";
 import type { BillingOverviewDto } from "@/features/billing/billing.service";
 import type { AccreditationView } from "@/features/accreditation/accreditation.service";
 import type { UserPreferences } from "@/features/account/user-preferences";
@@ -33,6 +34,7 @@ import type { CustomFactor } from "@/features/firm/custom-factors";
 import type { DraftInput } from "@/features/ai/draft-writing";
 import type { ListingProposal } from "@/features/ai/listing-extraction";
 import type { ValuationDetail, ValuationListItem } from "@/features/valuations/repositories/valuation.repository";
+import type { AppSection } from "@/features/valuations/model";
 import type { CroquisKind, CroquisSettings } from "@/features/maps/croquis";
 import type { CroquisLabelPlacement } from "@/features/maps/croquis-marker";
 import type { StreetsAroundDto } from "@/features/maps/streets-osm";
@@ -473,6 +475,10 @@ export const api = {
     uploadLogo: (file: File) => uploadForm<{ logoUrl: string | null }>(`/organizacion/despacho/logo`, { file }),
     deleteLogo: () => request<void>(`/organizacion/despacho/logo`, { method: "DELETE" }),
     factors: () => request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`),
+    /** Despacho → Revisión de comparables: the checklist and thresholds of the review. */
+    reviewChecklist: () => request<ComparableReviewSettingsDto>(`/organizacion/despacho/revision-comparables`),
+    saveReviewChecklist: (input: ComparableReviewSettingsInput) =>
+      request<ComparableReviewSettingsDto>(`/organizacion/despacho/revision-comparables`, { method: "PUT", body: JSON.stringify(input) }),
     customUnits: () => request<{ units: string[] }>(`/organizacion/despacho/unidades`),
     addCustomUnit: (unit: string) =>
       request<{ units: string[] }>(`/organizacion/despacho/unidades`, { method: "POST", body: JSON.stringify({ unit }) }),
@@ -513,8 +519,16 @@ export const api = {
     /** Answers 409 (ApiError.status) under a name already in use, unless `replace`. */
     create: (input: { name: string; description?: string | null; valuationId: ApiId; includeData: boolean; includeImages: boolean; replace?: boolean }) =>
       request<ValuationTemplateSummary>(`/plantillas`, { method: "POST", body: JSON.stringify(input) }),
-    update: (id: ApiId, input: { name: string; description?: string | null }) =>
+    /** «Nueva plantilla»: answers the template, to open it in the editor. */
+    createBlank: (input: { name: string; description?: string | null; appraisalTypeId: number; propertyTypeId: number | null }) =>
+      request<ValuationTemplateSummary>(`/plantillas`, { method: "POST", body: JSON.stringify(input) }),
+    update: (id: ApiId, input: { name: string; description?: string | null; appraisalTypeId?: number; propertyTypeId?: number | null }) =>
       request<ValuationTemplateSummary>(`/plantillas/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    duplicate: (id: ApiId, name: string) =>
+      request<ValuationTemplateSummary>(`/plantillas/${id}/duplicar`, { method: "POST", body: JSON.stringify({ name }) }),
+    /** «Editar plantilla»: answers 409 when someone else saved another version meanwhile. */
+    saveDocument: (id: ApiId, input: { sections: AppSection[]; version: number; sameSession: boolean }) =>
+      request<ValuationTemplateSummary>(`/plantillas/${id}/documento`, { method: "PUT", body: JSON.stringify(input) }),
     remove: (id: ApiId) => request<void>(`/plantillas/${id}`, { method: "DELETE" }),
     valuations: () => request<ValuationListItem[]>(`/avaluos`),
     valuation: (id: ApiId) => request<ValuationDetail>(`/avaluos/${id}`),

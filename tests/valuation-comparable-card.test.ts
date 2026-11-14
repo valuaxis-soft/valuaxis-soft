@@ -167,7 +167,9 @@ test("the capture takes the new fields, optional, and checks them", () => {
   assert.deepEqual(comparableReviewSchema.parse({ status: "CON_OBSERVACIONES", checks: { photo: true, price: false } }),
     { status: "CON_OBSERVACIONES", checks: { photo: true, price: false }, notes: null });
   assert.equal(comparableReviewSchema.safeParse({ status: "APROBADO" }).success, false);
-  assert.equal(comparableReviewSchema.safeParse({ status: "VERIFICADO", checks: { color: true } }).success, false);
+  // The firm adds its own checks (Despacho → Revisión de comparables): any key of letters, digits and dashes.
+  assert.equal(comparableReviewSchema.safeParse({ status: "VERIFICADO", checks: { "custom-color": true } }).success, true);
+  assert.equal(comparableReviewSchema.safeParse({ status: "VERIFICADO", checks: { "no válida": true } }).success, false);
 });
 
 test("the search takes filters, and the text may be left out when one is used", () => {

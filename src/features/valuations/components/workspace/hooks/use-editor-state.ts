@@ -24,7 +24,9 @@ import {
   caratulaFromValuation,
   initialMetaFor,
   initialSectionsFor,
+  initialSectionsFromDocument,
 } from "../model/initial-hydration";
+import { withCaratulaFreeBlockOrder } from "@/features/valuations/services/caratula-blocks";
 import { normalizeEditorSections } from "../model/section-numbering";
 
 /**
@@ -34,14 +36,19 @@ import { normalizeEditorSections } from "../model/section-numbering";
 export function useEditorState({
   canEdit,
   initialValuation,
+  initialDocument,
   valuationId,
 }: {
   canEdit: boolean;
   initialValuation?: ValuationDetail | null;
+  /** A template's document («Editar plantilla»): the editor starts from it instead of a valuation. */
+  initialDocument?: AppSection[] | null;
   valuationId: string | null;
 }) {
   const [meta, setMeta] = useState<ValuationMeta>(initialMetaFor(initialValuation));
-  const [sections, setSections] = useState<AppSection[]>(() => initialSectionsFor(initialValuation));
+  const [sections, setSections] = useState<AppSection[]>(() => (initialDocument
+    ? initialSectionsFromDocument(initialDocument.map(withCaratulaFreeBlockOrder))
+    : initialSectionsFor(initialValuation)));
   const [caratula, setCaratula] = useState<CaratulaFormData>(() =>
     caratulaFromValuation(
       initialValuation,

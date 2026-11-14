@@ -15,6 +15,7 @@ import { buildSectionsPayload, valuationMetaPayload } from "../model/save-payloa
 import { leavingLinkHref, type PendingExit } from "../model/navigation-guard";
 import { errorCodeOf, isSaveShortcut, shouldAutosave, statusAfterSave } from "../model/save-status";
 import type { EditorState } from "./use-editor-state";
+import type { AppSection } from "@/features/valuations/model";
 
 /**
  * Saving the editor document: validation, the full save request, the save
@@ -26,9 +27,19 @@ export function useValuationSave({
   canEdit,
   editor,
   onLiveFormulas,
+  saveDocument,
+  exitHref = "/dashboard",
   setActiveSectionId,
   valuationId,
 }: {
+  /**
+   * Saves the sections somewhere else than a valuation: «Editar plantilla»
+   * saves the template's document. The carátula's form (client, folio,
+   * signatures) is not part of a template, so it is not checked.
+   */
+  saveDocument?: { save: (sections: AppSection[]) => Promise<void>; savedMessage: string };
+  /** Where «Atrás» and «Guardar y salir» go. */
+  exitHref?: string;
   /** The appraiser's autosave wait (Mi cuenta → Autoguardado); null: off. */
   autosaveDelayMs: number | null;
   canEdit: boolean;
@@ -137,7 +148,7 @@ export function useValuationSave({
     const caratulaErrors = validateCaratula(caratula, meta);
     const validationError = hasUntitledConcepts(caratulaSection?.blocks ?? [])
       ? "No se guardó: en la carátula hay campos sin título."
-      : hasCaratulaValidationErrors(caratulaErrors)
+      : !saveDocument && hasCaratulaValidationErrors(caratulaErrors)
         ? `No se guardó. Corrige en la carátula: ${describeCaratulaErrors(caratulaErrors)}`
         : null;
     if (validationError) {
@@ -163,9 +174,10 @@ export function useValuationSave({
     setSections(sectionsForSave);
     setSaveStatus("saving");
     try {
-      const sectionsPayload = buildSectionsPayload(sectionsForSave);
-
-      if (valuationId) {
+      if (saveDocument) {
+        await saveDocument.save(sectionsForSave);
+      } else if (valuationId) {
+        const sectionsPayload = buildSectionsPayload(sectionsForSave);
         // One request: the full save updates the metadata and the sections together.
         const saved = await api.valuations.saveFull(valuationId, {
           ...valuationMetaPayload(meta),
@@ -177,7 +189,7 @@ export function useValuationSave({
       } else {
         throw new Error("Primero crea el avaluo desde el formulario de alta.");
       }
-      if (!automatic) toast.success("Avalúo guardado correctamente");
+      if (!automatic) toast.success(saveDocument?.savedMessage ?? "Avalúo guardado correctamente");
       savedSnapshotRef.current = sentSnapshot;
       setSaveStatus(statusAfterSave(sentSnapshot, snapshotRef.current));
       return true;
@@ -214,7 +226,9 @@ export function useValuationSave({
   const autosave = useEffectEvent(() => {
     void handleSave({ automatic: true });
   });
-  const autosaveEnabled = shouldAutosave({ saveStatus, canEdit, valuationId, sessionExpired: sessionExpiredOpen, delayMs: autosaveDelayMs });
+  const autosaveEnabled = shouldAutosave({
+    saveStatus, canEdit, valuationId: valuationId ?? (saveDocument ? "documento" : null), sessionExpired: sessionExpiredOpen, delayMs: autosaveDelayMs,
+  });
   useEffect(() => {
     if (!autosaveEnabled || autosaveDelayMs === null) return;
     const timer = window.setTimeout(autosave, autosaveDelayMs);
@@ -237,10 +251,10 @@ export function useValuationSave({
 
   const handleExit = () => {
     if (hasUnsavedChanges) {
-      setPendingExit({ kind: "push", href: "/dashboard" });
+      setPendingExit({ kind: "push", href: exitHref });
       return;
     }
-    leave({ kind: "push", href: "/dashboard" });
+    leave({ kind: "push", href: exitHref });
   };
 
   const handleSaveAndExit = async () => {

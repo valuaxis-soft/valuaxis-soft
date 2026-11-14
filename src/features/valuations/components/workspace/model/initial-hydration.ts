@@ -198,7 +198,7 @@ function hydrateTable(table: StoredTableDto, enabled: boolean): TableContent {
   };
 }
 
-function normalizeInitialSections(initialValuation: ValuationDetail): AppSection[] {
+function normalizeInitialSections(initialValuation: Pick<ValuationDetail, "sections">): AppSection[] {
   return initialValuation.sections.map((section) => ({
     id: section.id,
     label: section.label,
@@ -299,14 +299,16 @@ export function initialMetaFor(initialValuation: ValuationDetail | null | undefi
  * Sections the editor and the dictamen start from: the stored valuation, or the
  * code templates for a draft, with their formulas computed.
  */
-export function initialSectionsFor(initialValuation: ValuationDetail | null | undefined): AppSection[] {
-  return applyValuationFormulas(
-    ensureCompanyHeaderFields(
-      ensureTerrenoSections(
-        initialValuation
-          ? resequenceSections(normalizeInitialSections(initialValuation).map(withCaratulaFreeBlockOrder))
-          : resequenceSections(createInitialSections()),
-      ),
-    ),
+export function initialSectionsFor(initialValuation: Pick<ValuationDetail, "sections"> | null | undefined): AppSection[] {
+  return initialSectionsFromDocument(
+    initialValuation ? normalizeInitialSections(initialValuation).map(withCaratulaFreeBlockOrder) : createInitialSections(),
   );
+}
+
+/**
+ * The editor's sections from a document kept as sections (a template of the
+ * firm, edited in «Editar plantilla»), normalized as a valuation's are.
+ */
+export function initialSectionsFromDocument(sections: AppSection[]): AppSection[] {
+  return applyValuationFormulas(ensureCompanyHeaderFields(ensureTerrenoSections(resequenceSections(sections))));
 }

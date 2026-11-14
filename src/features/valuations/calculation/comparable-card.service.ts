@@ -9,7 +9,9 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
-import { asRecord, decimal, findValuation, firmComparableMonths, inFirmBase } from "./access";
+import { getComparableReviewSettings } from "@/features/firm/comparable-review-settings.service";
+import { asRecord, decimal, findValuation, inFirmBase } from "./access";
+import { builtAreaToleranceOf } from "./comparable-review-checklist";
 import { addressFromRecord, formatAddress, formatComparableId, todayInMexico } from "./comparable-card";
 import {
   DUPLICATE_REASON_LABELS, PRICE_TOLERANCE, addressKey, canonicalUrlKey, duplicateProbeOf, duplicateReasons, phoneKey, type DuplicateProbe,
@@ -108,14 +110,21 @@ async function subjectAreas(versionId: number) {
   return new Map(markets.map((market) => [market.tipoComparable.SClave as ComparableType, decimal(market.NSuperficieSujeto)]));
 }
 
+/** The firm's months of validity and its tolerance of the built area (Despacho → Revisión de comparables). */
+async function firmReviewThresholds(organizationId: number) {
+  const settings = await getComparableReviewSettings(organizationId);
+  return { months: settings.validityMonths, builtAreaTolerance: builtAreaToleranceOf(settings) };
+}
+
 const warningsOf = (
-  comparable: ComparableDto, type: ComparableType, subjectArea: number | null, today: string, months: number, validity?: ComparableValidity,
+  comparable: ComparableDto, type: ComparableType, subjectArea: number | null, today: string,
+  firm: { months: number; builtAreaTolerance: number }, validity?: ComparableValidity,
 ) =>
   comparableWarnings({
     ...comparable,
     hasScreenshot: Boolean(comparable.screenshot),
-    validity: validity ?? (comparable.updatedOn ? comparableValidity(comparable.updatedOn, today, comparable.validityMonths ?? months) : null),
-  }, { type, subjectArea, today, offerMaxAgeMonths: comparable.validityMonths ?? months });
+    validity: validity ?? (comparable.updatedOn ? comparableValidity(comparable.updatedOn, today, comparable.validityMonths ?? firm.months) : null),
+  }, { type, subjectArea, today, offerMaxAgeMonths: comparable.validityMonths ?? firm.months, builtAreaTolerance: firm.builtAreaTolerance });
 
 /** The card of a comparable of the firm's base, by the id of one of its captures. */
 export async function getComparableCard(comparableId: string, organizationId: number): Promise<ComparableCardDto> {
@@ -166,8 +175,8 @@ export async function getComparableCard(comparableId: string, organizationId: nu
   const dataUpdatedAt = current.reduce((latest, capture) => (capture.DFechaActualizacionDatos > latest ? capture.DFechaActualizacionDatos : latest),
     row.DFechaActualizacionDatos);
   const today = todayInMexico();
-  const months = await firmComparableMonths(prisma, organizationId);
-  const validity = comparableValidity(dataUpdatedAt, today, comparable.validityMonths ?? months);
+  const firm = await firmReviewThresholds(organizationId);
+  const validity = comparableValidity(dataUpdatedAt, today, comparable.validityMonths ?? firm.months);
   const areas = row.IdVersionAvaluo ? await subjectAreas(row.IdVersionAvaluo) : new Map<ComparableType, number | null>();
   const avaluo = row.avaluo;
   // The "Historial": every current capture of the number, the most recent data first, with who captured it.
@@ -187,7 +196,7 @@ export async function getComparableCard(comparableId: string, organizationId: nu
     type,
     valuation: avaluo ? { id: avaluo.UIdentificadorPublico, folio: avaluo.SFolio, title: avaluo.STitulo } : null,
     validity,
-    warnings: warningsOf(comparable, type, areas.get(type) ?? null, today, months, validity),
+    warnings: warningsOf(comparable, type, areas.get(type) ?? null, today, firm, validity),
     uses: uses.length || !avaluo ? uses : [{
       valuationId: avaluo.UIdentificadorPublico, folio: avaluo.SFolio, title: avaluo.STitulo, client: avaluo.SNombreCliente, type,
       reference: comparable.reference, addedOn: row.DFechaSeleccion.toISOString().slice(0, 10),
@@ -224,7 +233,7 @@ export async function getValuationReview(publicId: string, organizationId: numbe
     subjectAreas(versionId),
   ]);
   const today = todayInMexico();
-  const months = await firmComparableMonths(prisma, organizationId);
+  const firm = await firmReviewThresholds(organizationId);
   // One comparable after another: a valuation with many of them does not open as many searches of the base at once,
   // and a search that fails leaves that comparable without its duplicate warning instead of taking the review down.
   const reviewed: ReviewRowDto[] = [];
@@ -241,7 +250,7 @@ export async function getValuationReview(publicId: string, organizationId: numbe
     reviewed.push({
       comparable,
       type,
-      warnings: [...warningsOf(comparable, type, areas.get(type) ?? null, today, months), ...duplicates.slice(0, 3).map(duplicateWarning)],
+      warnings: [...warningsOf(comparable, type, areas.get(type) ?? null, today, firm),...duplicates.slice(0, 3).map(duplicateWarning)],
     });
   }
   return reviewed.sort((a, b) => COMPARABLE_TYPES.indexOf(a.type) - COMPARABLE_TYPES.indexOf(b.type) || a.comparable.reference - b.comparable.reference);

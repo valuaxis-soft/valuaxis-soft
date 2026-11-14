@@ -6,6 +6,7 @@ import {
   VALIDITY_MONTHS_ERROR,
   type ValuationSignature,
 } from "@/features/valuations/services/valuation-signatures";
+import { comparableReviewChecklistSchema } from "@/features/valuations/calculation/comparable-review-checklist";
 import { normalizeFolioPrefix } from "./firm-rules";
 
 const COMPARABLE_MONTHS_ERROR = "La vigencia de los comparables va de 1 a 12 meses.";
@@ -38,3 +39,11 @@ export const firmSettingsSchema = z.object({
 });
 
 export type FirmSettingsInput = z.infer<typeof firmSettingsSchema>;
+
+/** Despacho → Revisión de comparables: the checklist (null: back to the built-in one) and the months of validity. */
+export const comparableReviewSettingsSchema = z.object({
+  checklist: comparableReviewChecklistSchema.nullable(),
+  validityMonths: z.number().int(COMPARABLE_MONTHS_ERROR).min(1, COMPARABLE_MONTHS_ERROR).max(12, COMPARABLE_MONTHS_ERROR),
+});
+
+export type ComparableReviewSettingsInput = z.infer<typeof comparableReviewSettingsSchema>;
