@@ -36,6 +36,8 @@ import { referenceKey } from "./table-formula-engine";
 type FormulaEntryPlace = {
   sectionId: string;
   sectionTitle: string;
+  /** The block that holds it: a generated block's id says which calculation wrote it. */
+  blockId: string;
   blockTitle: string;
   /** Written by a calculation of the engine: a source of references, never a place for formulas. */
   generated: boolean;
@@ -112,6 +114,7 @@ export function buildFormulaIndex(sections: AppSection[]): FormulaIndex {
       const place: FormulaEntryPlace = {
         sectionId: section.id,
         sectionTitle: section.title || section.label,
+        blockId: block.id,
         blockTitle: block.title,
         generated: isGeneratedBlock(block),
       };

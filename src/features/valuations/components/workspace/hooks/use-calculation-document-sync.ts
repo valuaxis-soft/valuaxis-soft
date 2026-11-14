@@ -219,6 +219,24 @@ export function useCalculationDocumentSync({
     void refresh({ conclusion: true });
   };
 
+  // The server saved again the captures whose fields read the document (live-formulas.service.ts):
+  // their pages, and those of what depends on them, follow.
+  const onLiveFormulas = async (owners: string[]) => {
+    if (!valuationId) return;
+    const types = COMPARABLE_TYPES.filter((type) => owners.includes(`MERCADO:${type}`));
+    const markets = await Promise.all(types.map((type) => api.market.get(valuationId, type).catch(() => null)));
+    for (const calculation of markets) {
+      if (!calculation) continue;
+      const input = toMarketEngineInput(calculation);
+      applyMarket(calculation, input.ok ? computeMarketApproach(input.input, marketEngineConfig(calculation.settings, calculation.precision)) : null);
+    }
+    if (machinery && owners.includes("MAQUINARIA")) {
+      const calculation = await api.machinery.get(valuationId).catch(() => null);
+      if (calculation) applyMachinery(calculation);
+    }
+    await refresh({ costs: true, income: true, conclusion: true });
+  };
+
   const syncOnOpen = useEffectEvent(async (id: string) => {
     const markets = await Promise.all(COMPARABLE_TYPES.map((type) => api.market.get(id, type).catch(() => null)));
     for (const calculation of markets) {
@@ -277,6 +295,7 @@ export function useCalculationDocumentSync({
   }, [unlinkedKey]);
 
   return {
+    onLiveFormulas: (owners: string[]) => void onLiveFormulas(owners),
     onMarketCalculation,
     onCostCalculation,
     onConstructionTypes,

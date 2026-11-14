@@ -52,6 +52,7 @@ import type { Apartado, AppSection, Block, Concept, TableContent } from "../mode
 import { getCanonicalSectionKey } from "../sections/section-registry";
 import { formatConceptValueForDocument } from "../services/concept-value-format";
 import { buildFormulaIndex, canonicalTable, cellAddress, columnLetter, formulaToText, type FormulaIndex } from "../services/formula-references";
+import { formulaWithLastValues, hasLiveReferences, readableFormulaText } from "../services/live-formulas";
 import { DEFAULT_NUMBER_PRESENTATION, documentNumberPresentation, type NumberPresentation } from "../services/number-presentation";
 import { formulaNumber, formulaWithValues } from "../services/formula-reference-values";
 import { getDisplayColumns, type TableFormula, type TableV2 } from "../services/table";
@@ -113,7 +114,12 @@ export type MemoryStep = {
 };
 
 /** A value the appraiser typed as a formula in a calculation panel (a factor "=1/0.8", a price "=1345*235"). */
-export type MemoryCapturedFormula = { label: string; formula: string; value: string };
+/**
+ * A value typed as a formula in a panel. A formula that reads the valuation
+ * prints with its references ("=[Superficie total de terreno]*2") and, in
+ * `withValues`, with the numbers it used ("=1250*2").
+ */
+export type MemoryCapturedFormula = { label: string; formula: string; value: string; withValues?: string };
 
 /**
  * "A decenas de miles (REDONDEAR −4)": the rounding of a step in words, with
@@ -672,6 +678,7 @@ export function buildCalculationMemory(input: CalculationMemoryInput): Calculati
     };
   });
   const sectionHeadings = input.sections.filter((section) => section.enabled !== false).map(sectionHeading);
+  const liveIndex = buildFormulaIndex(input.sections);
   // As the dictamen prints them: an approach whose section is not in the document goes last, in the engine's order.
   const rank = (approach: MemoryApproach) => {
     const index = approach.location.length > 1 ? sectionHeadings.indexOf(approach.location[0]) : -1;
@@ -687,8 +694,19 @@ export function buildCalculationMemory(input: CalculationMemoryInput): Calculati
     document: documentFormulas(input.sections),
     approaches: approaches.map((approach, index) => ({ approach, index: engineOrder(approaches, approach, index) }))
       .sort((a, b) => rank(a.approach) - rank(b.approach) || a.index - b.index)
-      .map(({ approach }) => approach),
+      .map(({ approach }) => withLiveCaptured(approach, liveIndex)),
     sectionHeadings,
+  };
+}
+
+/** The live formulas of an approach's captured values, with their references and the numbers they used. */
+function withLiveCaptured(approach: MemoryApproach, index: FormulaIndex): MemoryApproach {
+  if (!approach.captured.some((item) => hasLiveReferences(item.formula))) return approach;
+  return {
+    ...approach,
+    captured: approach.captured.map((item) => (hasLiveReferences(item.formula)
+      ? { ...item, formula: readableFormulaText(item.formula, index), withValues: formulaWithLastValues(item.formula) }
+      : item)),
   };
 }
 
