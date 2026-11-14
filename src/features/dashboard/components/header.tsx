@@ -11,6 +11,7 @@ import type { AuthUser } from "@/features/auth/model";
 import { CommandPalette, CommandPaletteTrigger } from "@/features/dashboard/components/command-palette";
 import { MobileNav } from "@/features/dashboard/components/mobile-nav";
 import { NAV_ICONS } from "@/features/dashboard/components/nav-icons";
+import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { OrganizationScopeSelector } from "@/features/dashboard/components/organization-scope-selector";
 import { UserMenu } from "@/features/dashboard/components/user-menu";
 import { MAIN_CONTENT_ID, buildNavigation, initialsOf, type NavKey } from "@/features/dashboard/navigation";
@@ -26,7 +27,7 @@ const navLinkClass = (current: boolean) =>
 /**
  * The top bar of the private area: the logo, the destinations the person can
  * open (with the firm's settings under "Despacho"), "Buscar o ir a…" (Ctrl/⌘ K),
- * the active firm and the account menu. Below lg the destinations move to the
+ * the active firm, the notifications bell and the account menu. Below lg the destinations move to the
  * side menu.
  */
 export function DashboardHeader({ user, active }: { user: AuthUser; active?: NavKey }) {
@@ -98,6 +99,7 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
           <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
             <CommandPaletteTrigger className="w-11 justify-center px-0 xl:w-64 xl:justify-start xl:px-3" />
             <OrganizationScopeSelector key={user.organizationName} activeOrganizationName={user.organizationName} />
+            <NotificationBell />
             <UserMenu name={user.name} email={user.email} organizationName={user.organizationName} role={user.role} initials={initials} />
           </div>
         </div>

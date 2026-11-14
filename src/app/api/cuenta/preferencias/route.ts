@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { userPreferencesPatchSchema } from "@/features/account/user-preferences";
-import { getUserPreferences, updateUserPreferences } from "@/features/account/user-preferences.service";
+import { getAccountPreferences, updateNotificationPreferences, updateUserPreferences } from "@/features/account/user-preferences.service";
 import { internalError, readJsonBody, tooManyRequests } from "@/lib/api-response";
 import { requireApiUser } from "@/security/guards/api-guard";
 import { createRateLimiter } from "@/security/rate-limit/rate-limiter";
@@ -13,13 +13,16 @@ export async function GET() {
   try {
     const auth = await requireApiUser();
     if (!auth.ok) return auth.response;
-    return NextResponse.json({ data: await getUserPreferences(auth.user.id) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ data: await getAccountPreferences(auth.user.id) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return internalError("PREFERENCES_GET", error, "No se pudieron consultar tus preferencias.");
   }
 }
 
-/** Changes the user's own preferences: `{ autosaveSeconds?: 0 | 10 | 15 | 30 | 60 | 300, valuationListColumns?: { columns } }`. */
+/**
+ * Changes the user's own preferences: `{ autosaveSeconds?: 0 | 10 | 15 | 30 | 60 | 300, valuationListColumns?: { columns },
+ * notifications?: { equipo?: boolean, … } }`. What is not sent stays as it was.
+ */
 export async function PATCH(request: Request) {
   try {
     const auth = await requireApiUser();
@@ -28,8 +31,10 @@ export async function PATCH(request: Request) {
     if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
     const body = await readJsonBody(request, userPreferencesPatchSchema);
     if (!body.ok) return body.response;
-    const preferences = await updateUserPreferences(auth.user.id, body.data);
-    return NextResponse.json({ data: preferences }, { headers: { "Cache-Control": "no-store" } });
+    const { notifications, ...preferences } = body.data;
+    if (preferences.autosaveSeconds !== undefined || preferences.valuationListColumns !== undefined) await updateUserPreferences(auth.user.id, preferences);
+    if (notifications) await updateNotificationPreferences(auth.user.id, notifications);
+    return NextResponse.json({ data: await getAccountPreferences(auth.user.id) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return internalError("PREFERENCES_UPDATE", error, "No se pudieron guardar tus preferencias.");
   }

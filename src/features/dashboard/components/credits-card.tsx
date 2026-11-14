@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Coins } from "lucide-react";
+import { LOW_CREDIT_BALANCE as LOW_CREDITS } from "@/features/billing/credit-rules";
 import { cn } from "@/lib/utils";
-
-/** Below this many, the card says it is time to buy more. */
-const LOW_CREDITS = 3;
 
 /** "Avalúos disponibles": the credit balance while the firm pays per concluded valuation. */
 export function CreditsCard({ balance }: { balance: number }) {

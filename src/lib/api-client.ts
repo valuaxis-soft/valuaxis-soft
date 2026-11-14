@@ -28,7 +28,8 @@ import type { FirmSettingsDto } from "@/features/firm/firm.service";
 import type { ComparableReviewSettingsDto } from "@/features/firm/comparable-review-settings.service";
 import type { BillingOverviewDto } from "@/features/billing/billing.service";
 import type { AccreditationView } from "@/features/accreditation/accreditation.service";
-import type { UserPreferences } from "@/features/account/user-preferences";
+import type { AccountPreferences, UserPreferences } from "@/features/account/user-preferences";
+import type { NotificationListDto, NotificationPreferences } from "@/features/notifications/notification-types";
 import type { FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 import type { CustomFactor } from "@/features/firm/custom-factors";
 import type { DraftInput } from "@/features/ai/draft-writing";
@@ -510,8 +511,17 @@ export const api = {
   },
   /** The signed-in user's own preferences, such as the editor's autosave interval. */
   preferences: {
-    update: (patch: { autosaveSeconds?: UserPreferences["autosaveSeconds"]; valuationListColumns?: { columns: UserPreferences["valuationListColumns"] } }) =>
-      request<UserPreferences>(`/cuenta/preferencias`, { method: "PATCH", body: JSON.stringify(patch) }),
+    update: (patch: {
+      autosaveSeconds?: UserPreferences["autosaveSeconds"];
+      valuationListColumns?: { columns: UserPreferences["valuationListColumns"] };
+      notifications?: Partial<NotificationPreferences>;
+    }) => request<AccountPreferences>(`/cuenta/preferencias`, { method: "PATCH", body: JSON.stringify(patch) }),
+  },
+  /** The bell: the person's latest notices in the open firm, and marking them read. */
+  notifications: {
+    list: () => request<NotificationListDto>(`/notificaciones`),
+    markRead: (selector: { ids: string[] } | { all: true }) =>
+      request<{ unreadCount: number }>(`/notificaciones/leidas`, { method: "POST", body: JSON.stringify(selector) }),
   },
   billing: {
     get: () => request<BillingOverviewDto>(`/organizacion/facturacion`),
