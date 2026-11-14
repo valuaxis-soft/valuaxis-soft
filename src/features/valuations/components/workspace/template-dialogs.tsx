@@ -206,6 +206,25 @@ export function SaveAsTemplateDialog({
 type SourceKind = "template" | "valuation";
 type SourceOption = { id: string; label: string; detail: string };
 
+/**
+ * What «Incluir datos» and «Incluir datos y autovincular» bring, by source.
+ * A template keeps no data of the client or the property (`stripClientData`),
+ * only the appraiser's texts: the dialog does not promise values it lacks.
+ */
+export function importDataOptionTexts(kind: SourceKind): { includeData: string; autoLink: string } {
+  const link = "Cada concepto que se llame igual que uno de este avalúo que ya tiene dato (por ejemplo «Solicitante» de la carátula) queda vinculado a él y muestra ese dato.";
+  if (kind === "template") {
+    return {
+      includeData: "Las plantillas no guardan datos del cliente ni del inmueble: solo traen los textos del valuador (Consideraciones, textos largos y párrafos). Sin esta opción llegan vacíos.",
+      autoLink: `${link} Como la plantilla no trae datos del cliente, los demás conceptos llegan vacíos para capturarlos. Al terminar te decimos cuántos se vincularon.`,
+    };
+  }
+  return {
+    includeData: "Los valores capturados y el contenido de las tablas, como están en el avalúo de origen.",
+    autoLink: `${link} Los demás traen el valor del avalúo de origen. Al terminar te decimos cuántos se vincularon.`,
+  };
+}
+
 /** What the boxes chose, in the editor's words: «2 bloques y 1 subbloque», «1 sección completa». */
 export function importChoiceSummary(tree: ImportTreeSection[], selection: ImportSelection): string {
   let blocks = 0;
@@ -503,7 +522,7 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
                 if (!next) setAutoLink(false);
               }}
               label="Incluir datos"
-              description="Los valores capturados y el contenido de las tablas, como están en el origen."
+              description={importDataOptionTexts(kind).includeData}
             />
             <OptionCheckbox
               id="import-auto-link"
@@ -513,7 +532,7 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
                 if (next) setIncludeData(true);
               }}
               label="Incluir datos y autovincular"
-              description="Cada concepto que se llame igual que uno de este avalúo (por ejemplo «Solicitante» de la carátula) queda vinculado a él y muestra su dato, en lugar del dato del origen. Los demás traen su valor. Al terminar te decimos cuántos se vincularon."
+              description={importDataOptionTexts(kind).autoLink}
             />
             <OptionCheckbox id="import-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" />
           </div>

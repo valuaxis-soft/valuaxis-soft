@@ -30,6 +30,8 @@ import {
   toggleLeaves,
   type ImportSelection,
 } from "../src/features/valuations/services/structure-import";
+import { stripClientDataFromSections } from "../src/features/valuations/services/document-template";
+import { importDataOptionTexts } from "../src/features/valuations/components/workspace/template-dialogs";
 
 /* ------------------------------------------------------------------ */
 /*  Fixtures (invented data)                                           */
@@ -349,6 +351,30 @@ test("«Vincular con…» links the datum of a concept to the one chosen; «Desv
   const free = unlinked.find((item) => item.id === "n-sol")!;
   assert.equal(conceptLinkIndicator(free, unlinked), "none");
   assert.equal(free.value, "Persona Inventada Dos");
+});
+
+/* ------------------------------------------------------------------ */
+/*  From a template (as in the video): no client data                  */
+/* ------------------------------------------------------------------ */
+
+test("from a template, «autovincular» fills the concepts called like the valuation's with its data; the rest come blank", () => {
+  // A template keeps no client data: the source as a template stores it.
+  const template = stripClientDataFromSections(sourceDocument(), { includeImages: false });
+  const tree = importTree(template);
+  const destination = destinationDocument();
+  const result = importStructure(destination, "datos", planImport(tree, select(tree, blockLeaves(tree[0].blocks[0])), destination), { includeData: true, autoLink: true });
+  assert.equal(result.summary?.linked, 1);
+  assert.equal(byLabel(result.sections, "Solicitante", "datos")[0].value, "Persona Inventada Dos");
+  assert.equal(byLabel(result.sections, "Propietario", "datos")[0].value, "");
+  assert.ok(!allConcepts(result.sections).some((item) => item.value.includes("Cliente Inventado Uno")));
+});
+
+test("the dialog does not promise a template's data: it says templates keep only the appraiser's texts", () => {
+  const template = importDataOptionTexts("template");
+  assert.match(template.includeData, /no guardan datos del cliente/);
+  assert.match(template.autoLink, /llegan vacíos/);
+  assert.doesNotMatch(template.autoLink, /traen el valor/);
+  assert.match(importDataOptionTexts("valuation").autoLink, /traen el valor del avalúo de origen/);
 });
 
 test("the calculation's Blocks are not offered to link to", () => {
