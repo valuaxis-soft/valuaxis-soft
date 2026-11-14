@@ -31,7 +31,14 @@ export function BlockEditorCard({
 }) {
   return (
     // Clipped, not hidden: a hidden overflow would hold the "Seleccionar conceptos" bar instead of letting it stick to the top while scrolling.
-    <Card ref={cardRef} style={style} className={cn("overflow-clip", className)} data-block-id={blockId}>
+    // The header band starts at the card's top edge (pt-0); while a field inside is being edited, the card's
+    // rule turns navy so the block being worked on reads apart from the rest.
+    <Card
+      ref={cardRef}
+      style={style}
+      className={cn("overflow-clip pt-0 focus-within:ring-primary/35 motion-safe:transition-shadow", className)}
+      data-block-id={blockId}
+    >
       {children}
     </Card>
   );
@@ -62,18 +69,18 @@ export function BlockEditorHeader({
     <Input
       ref={titleRef}
       aria-label="Título de la sección"
-      className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-black uppercase leading-tight text-[#00285A] dark:text-sky-200 shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background"
+      className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-bold uppercase leading-tight tracking-wide text-primary shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background"
       disabled={titleEdit.disabled}
       value={titleEdit.value}
       onChange={(event) => titleEdit.onChange(event.target.value)}
     />
   ) : (
-    <span className="min-w-0 flex-1 text-sm font-black uppercase leading-tight text-[#00285A] dark:text-sky-200">
+    <span className="min-w-0 flex-1 text-sm font-bold uppercase leading-tight tracking-wide text-primary">
       {title}
     </span>
   );
   return (
-    <CardHeader className="border-b border-[#00285A]/20 dark:border-sky-200/20 bg-[#00285A]/[0.05] dark:bg-sky-200/5">
+    <CardHeader className="items-center border-b border-primary/15 bg-primary/[0.05] py-2 [.border-b]:pb-2 dark:bg-primary/10">
       <CardTitle className="flex min-w-0 items-center gap-2">
         {dragHandle}
         {badge ? <Badge>{badge}</Badge> : null}
@@ -84,7 +91,7 @@ export function BlockEditorHeader({
           </ContextMenu>
         ) : heading}
       </CardTitle>
-      <CardAction className="flex shrink-0 items-center gap-2">
+      <CardAction className="flex shrink-0 items-center gap-1.5 self-center">
         {children}
       </CardAction>
     </CardHeader>

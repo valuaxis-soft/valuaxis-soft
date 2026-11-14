@@ -102,8 +102,10 @@ export function SortableSectionTab({
           value={sectionId}
           className={cn(
             "touch-manipulation select-none [-webkit-touch-callout:none] pointer-coarse:min-h-10 pointer-coarse:px-3",
+            // Inactive names stay readable (AA over the strip); the active one reads as a raised navy tab.
+            "text-foreground/75 hover:bg-background/60 motion-reduce:transition-none",
             !disabled && !pinned && "cursor-grab active:cursor-grabbing",
-            isActive && "data-active:bg-background data-active:shadow-sm",
+            isActive && "data-active:bg-card data-active:text-primary data-active:shadow-soft data-active:ring-1 data-active:ring-primary/20",
           )}
           {...sortableAttributes}
           {...(pinned ? {} : listeners)}
