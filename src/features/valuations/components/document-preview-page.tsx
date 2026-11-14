@@ -718,6 +718,7 @@ function sameFragment(left?: DocumentTableFragment, right?: DocumentTableFragmen
     left.to === right.to &&
     left.last === right.last &&
     left.clipped === right.clipped &&
+    left.fitStep === right.fitStep &&
     left.columnWidths.length === right.columnWidths.length &&
     left.columnWidths.every((width, index) => width === right.columnWidths[index])
   );
@@ -762,6 +763,8 @@ function measureSplittableTable(itemElement: HTMLElement, itemRect: DOMRect): Me
   const columnWidths = firstCells.some((cell) => cell.colSpan > 1)
     ? []
     : firstCells.map((cell) => Math.round(cell.getBoundingClientRect().width * 100) / 100);
+  // A table narrowed to fit the page (smaller letter) says how much, so its fragments print the same.
+  const fitStep = Number.parseInt(grid.getAttribute("data-table-fit-step") ?? "", 10);
 
   return {
     leadHeight: rects[0].top - itemRect.top,
@@ -770,6 +773,7 @@ function measureSplittableTable(itemElement: HTMLElement, itemRect: DOMRect): Me
     tailHeight: itemRect.bottom - lastRect.bottom,
     keepWithNext,
     columnWidths,
+    ...(Number.isFinite(fitStep) ? { fitStep } : {}),
   };
 }
 
@@ -932,6 +936,7 @@ export function splitMeasuredDocumentFlowItems(
             continuation: index > 0,
             last: index === split.fragments.length - 1,
             columnWidths: table.columnWidths ?? [],
+            ...(table.fitStep !== undefined ? { fitStep: table.fitStep } : {}),
             ...(fragment.clipped ? { clipped: true } : {}),
           },
         });

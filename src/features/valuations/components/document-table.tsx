@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import {
   TableBody,
   TableCaption,
@@ -20,12 +20,16 @@ import {
   type TableNote,
   type TableResultGroup,
   type TableSummaryBox,
+  type FormulaResult,
   type TableV2,
 } from "../services/table";
 import { evaluateTableFormulas, getCellDisplayValue } from "../services/table-formula-engine";
 import { TITLE_STYLE_KEY, cellStyleCss, cellStyleKey, headerStyleKey, tableCellStyle } from "../services/table-cell-style";
 import type { DocumentTableFragment } from "../services/table-pagination";
+import { TABLE_FIT_STEPS, canvasTextMeasure, planTablePrintFit, printFitColumns, type TablePrintFit } from "../services/table-print-fit";
+import { useLayoutInvalidation } from "./document-preview-page";
 import { TABLE_HEADER_BAND, TABLE_HEADER_RULE, TABLE_TEXT_SIZE } from "./document-theme";
+import type { NumberPresentation } from "../services/number-presentation";
 import { useNumberPresentation } from "./number-presentation-context";
 
 const EMPTY_VALUE = "No se proporcionó";
@@ -69,14 +73,20 @@ function HeaderText({ name, fixed }: { name: string; fixed: boolean }) {
   );
 }
 
-function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = false }: { fixed?: boolean } = {}) {
+function renderSchemaHeader(
+  tableV2: TableV2,
+  columns: TableColumn[],
+  { fixed = false, fit }: { fixed?: boolean; fit?: Extract<TablePrintFit, { kind: "fit" }> } = {},
+) {
   const layout = getTableHeaderLayout(tableV2);
   const columnMap = new Map(columns.map((c) => [c.id, c]));
   // White rules between the headers, as thick as the rule under the apartado titles (video 5.4).
-  const cell = cn(TABLE_HEADER_RULE, "px-1.5 py-1 text-center align-middle text-wrap font-bold break-words");
+  // A table narrowed to the page breaks a word only when it cannot fit whole.
+  const cell = cn(TABLE_HEADER_RULE, "px-1.5 py-1 text-center align-middle text-wrap font-bold break-words", fit && !fit.fits && "[overflow-wrap:anywhere]");
   const lastOfRow = "last:border-r-0";
+  const padding = fit ? { paddingLeft: fit.paddingPx, paddingRight: fit.paddingPx } : undefined;
   // Bold, italic, underline and alignment chosen on a selection of the headers.
-  const headerCss = (columnId: string) => cellStyleCss(tableCellStyle(tableV2, headerStyleKey(columnId)));
+  const headerCss = (columnId: string) => ({ ...cellStyleCss(tableCellStyle(tableV2, headerStyleKey(columnId))), ...padding });
 
   if (!layout.hasGroups) {
     return (
@@ -84,7 +94,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
         <tr>
           {columns.map((column) => (
             <th className={cn(cell, lastOfRow)} style={headerCss(column.id)} key={column.id}>
-              <HeaderText name={column.name} fixed={fixed} />
+              <HeaderText name={column.name} fixed={fixed || Boolean(fit)} />
             </th>
           ))}
         </tr>
@@ -109,7 +119,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
             if (!column) return null;
             return (
               <th rowSpan={item.rowSpan} className={cn(cell, lastOfRow)} style={headerCss(item.columnId)} key={item.columnId}>
-                <HeaderText name={column.name} fixed={fixed} />
+                <HeaderText name={column.name} fixed={fixed || Boolean(fit)} />
               </th>
             );
           }
@@ -117,7 +127,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
           const colSpan = zone ? zone.columnIds.filter((id) => columnMap.has(id)).length : item.colSpan;
           if (!colSpan) return null;
           return (
-            <th colSpan={colSpan} className={cn(cell, lastOfRow, "border-b-2")} key={item.group.id}>
+            <th colSpan={colSpan} className={cn(cell, lastOfRow, "border-b-2")} style={padding} key={item.group.id}>
               {item.group.title}
             </th>
           );
@@ -130,7 +140,7 @@ function renderSchemaHeader(tableV2: TableV2, columns: TableColumn[], { fixed = 
             // The same size and weight as the headers above: a header group is one band.
             return (
               <th className={cn(cell, groupEndsTable && lastOfRow)} style={headerCss(colId)} key={colId}>
-                <HeaderText name={column?.name ?? ""} fixed={fixed} />
+                <HeaderText name={column?.name ?? ""} fixed={fixed || Boolean(fit)} />
               </th>
             );
           })}
@@ -248,12 +258,14 @@ const CELL_ALIGN = { left: "text-left", center: "text-center", right: "text-righ
  * appraiser added to a table the calculation writes (a note, a total) wraps
  * its text even in a column of figures kept on one line.
  */
-function cellPresentation(tableV2: TableV2, columnId: string, rowId?: string) {
+function cellPresentation(tableV2: TableV2, columnId: string, rowId?: string, squeezed = false) {
   const presentation = tableV2.schema?.columnPresentation?.[columnId];
   const ownRow = rowId !== undefined && Boolean(tableV2.schema?.generated?.layout.extraRows?.some((row) => row.id === rowId));
   return cn(
     presentation?.align && CELL_ALIGN[presentation.align],
-    presentation?.noWrap && !ownRow ? "whitespace-nowrap tabular-nums" : "whitespace-normal text-wrap break-words",
+    // Squeezed into a page too narrow even at the smallest letter, a figure wraps too rather than leave its cell.
+    squeezed ? "whitespace-normal text-wrap tabular-nums [overflow-wrap:anywhere]"
+      : presentation?.noWrap && !ownRow ? "whitespace-nowrap tabular-nums" : "whitespace-normal text-wrap break-words",
     presentation?.bold && "font-bold",
   );
 }
@@ -418,9 +430,17 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
   const print = tablePrintLayout(tableV2);
   const contentWidth = tableV2.schema?.widthMode === "content";
   const many = columns.length > 7;
+  // Never wider than the page: a table that does not fit takes its columns by content, then a smaller letter.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const fit = usePrintFit({ tableV2, formulaResults, presentation, plain, fragment, wrapperRef, tableRef });
+  const fitted = fit.kind === "fit" ? fit : undefined;
+  const cellPadding: CSSProperties | undefined = fitted ? { paddingLeft: fitted.paddingPx, paddingRight: fitted.paddingPx } : undefined;
+  const fittedWidths = !columnWidths && fitted ? fitted.widths : null;
 
   return (
     <div
+      ref={wrapperRef}
       className="w-full overflow-hidden"
       style={{
         paddingTop: opens && print.spacingBefore ? print.spacingBefore : undefined,
@@ -436,24 +456,34 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
           whatever the number of columns (video 5.4: one size in every table),
           in dark gray. Column widths follow the content so amounts stay on one
           line; a table of many columns takes less room around each value. */}
-      <table className={cn(
-        "border-collapse",
-        TABLE_TEXT,
-        TABLE_TEXT_SIZE,
-        // "Ajustar al contenido": as wide as its columns need, no wider than the page.
-        plain ? "w-2/3 font-bold" : contentWidth ? "w-auto max-w-full" : "w-full",
-        // Narrower than the page, it sits where "Alineación" says.
-        (plain || contentWidth) && print.align === "center" && "mx-auto",
-        (plain || contentWidth) && print.align === "right" && "ml-auto",
-        columnWidths && "table-fixed",
-      )} data-split-table="" data-table-width={tableV2.schema?.widthMode === "content" ? "content" : undefined}>
+      <table
+        ref={tableRef}
+        className={cn(
+          "border-collapse",
+          TABLE_TEXT,
+          TABLE_TEXT_SIZE,
+          // "Ajustar al contenido": as wide as its columns need, no wider than the page.
+          plain ? "w-2/3 font-bold" : contentWidth && !fitted ? "w-auto max-w-full" : "w-full",
+          // Narrower than the page, it sits where "Alineación" says.
+          (plain || (contentWidth && !fitted)) && print.align === "center" && "mx-auto",
+          (plain || (contentWidth && !fitted)) && print.align === "right" && "ml-auto",
+          (columnWidths || fitted) && "table-fixed",
+        )}
+        // Only this table takes the smaller letter it needs to fit the page.
+        style={fitted ? { fontSize: `${fitted.fontPx}px` } : undefined}
+        data-split-table=""
+        data-table-width={tableV2.schema?.widthMode === "content" ? "content" : undefined}
+        data-table-fit-step={fitted ? fitted.step : undefined}
+        data-table-fits={fitted ? String(fitted.fits) : undefined}
+      >
         <colgroup>
-          {columns.map((column, index) => (
-            <col key={column.id} style={columnWidths ? { width: `${columnWidths[index]}px` } : columnWidthOf(tableV2, column.id) ? { width: `${columnWidthOf(tableV2, column.id)}px` } : undefined} />
-          ))}
+          {columns.map((column, index) => {
+            const width = columnWidths?.[index] ?? fittedWidths?.[index] ?? columnWidthOf(tableV2, column.id);
+            return <col key={column.id} style={width ? { width: `${width}px` } : undefined} />;
+          })}
         </colgroup>
         {caption ? <TableCaption className={cn("mt-0 mb-1", TABLE_TEXT_SIZE)} style={cellStyleCss(tableCellStyle(tableV2, TITLE_STYLE_KEY))}>{caption}{opens ? null : " (continúa)"}</TableCaption> : null}
-        {plain ? null : renderSchemaHeader(tableV2, columns)}
+        {plain ? null : renderSchemaHeader(tableV2, columns, { fit: fitted })}
         <TableBody>
           {rows.map((row, index) => (
             // Gray and white rows alternate, first one gray, as in the appraiser's own format;
@@ -463,9 +493,9 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
                 const value = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
                 return (
                   <TableCell
-                    className={cn(many ? "px-1.5 py-1" : "px-2 py-1", cellPresentation(tableV2, column.id, row.id), !plain && isMarkedCell(value) && MARKED)}
+                    className={cn(many ? "px-1.5 py-1" : "px-2 py-1", cellPresentation(tableV2, column.id, row.id, fitted?.fits === false), !plain && isMarkedCell(value) && MARKED)}
                     // Bold, italic, underline and alignment chosen on a selection of cells (video 5.7).
-                    style={cellStyleCss(tableCellStyle(tableV2, cellStyleKey(row.id, column.id)))}
+                    style={{ ...cellStyleCss(tableCellStyle(tableV2, cellStyleKey(row.id, column.id))), ...cellPadding }}
                     key={column.id}
                   >
                     {value}
@@ -484,6 +514,85 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
       {closes ? <TableNotes tableV2={tableV2} position="bottom" /> : null}
     </div>
   );
+}
+
+/** Width of an element's content box in px and its letter, kept up to date; null until laid out. */
+function useContentBox(ref: RefObject<HTMLElement | null>): { width: number; fontFamily: string } | null {
+  const [box, setBox] = useState<{ width: number; fontFamily: string } | null>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const read = () => {
+      const style = window.getComputedStyle(element);
+      const width = element.clientWidth - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0);
+      setBox((current) => (width > 0 && (current?.width !== width || current.fontFamily !== style.fontFamily) ? { width, fontFamily: style.fontFamily } : current));
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return box;
+}
+
+/**
+ * How a printed table fits its page (table-print-fit.ts). Estimated from its
+ * text; after layout, a table still wider than the page or a value still out
+ * of its cell takes the next step. A fragment of a table split across pages
+ * prints with the step the whole table took when measured.
+ */
+function usePrintFit({
+  tableV2,
+  formulaResults,
+  presentation,
+  plain,
+  fragment,
+  wrapperRef,
+  tableRef,
+}: {
+  tableV2: TableV2;
+  formulaResults: Map<string, FormulaResult>;
+  presentation: NumberPresentation;
+  plain: boolean;
+  fragment?: DocumentTableFragment;
+  wrapperRef: RefObject<HTMLDivElement | null>;
+  tableRef: RefObject<HTMLTableElement | null>;
+}): TablePrintFit {
+  const box = useContentBox(wrapperRef);
+  const width = box?.width ?? null;
+  // Measured with the document's own letter.
+  const fontFamily = box?.fontFamily ?? "";
+  const measure = useMemo(() => canvasTextMeasure(fontFamily), [fontFamily]);
+  const columns = useMemo(() => printFitColumns(tableV2, formulaResults, presentation), [tableV2, formulaResults, presentation]);
+  const key = `${width}|${columns.map((column) => `${column.width ?? ""}:${column.header}:${column.cells.join("|")}`).join("||")}`;
+  // Steps taken after layout, for this content and width only.
+  const [overflow, setOverflow] = useState<{ key: string; fromStep: number }>({ key: "", fromStep: 0 });
+  const measured = fragment?.fitStep;
+  const fromStep = measured !== undefined ? measured + 1 : overflow.key === key ? overflow.fromStep : 0;
+  const fit = useMemo<TablePrintFit>(
+    () => (plain || width === null ? { kind: "natural" } : planTablePrintFit(columns, width, { fromStep, measure })),
+    [columns, fromStep, measure, plain, width],
+  );
+  const step = fit.kind === "fit" ? fit.step : -1;
+  const squeezed = fit.kind === "fit" && !fit.fits;
+  const layoutInvalidation = useLayoutInvalidation();
+
+  useLayoutEffect(() => {
+    const grid = tableRef.current;
+    if (!grid || width === null || plain || measured !== undefined) return;
+    if (squeezed || step >= TABLE_FIT_STEPS.length - 1) return;
+    const cells = Array.from(grid.querySelectorAll<HTMLElement>("th, td"));
+    const overflows = grid.offsetWidth > width + 1 || cells.some((cell) => cell.scrollWidth > cell.clientWidth + 1);
+    if (overflows) setOverflow({ key, fromStep: step + 2 });
+  }, [key, measured, plain, squeezed, step, tableRef, width]);
+
+  // The pages are measured again once the table changed its letter.
+  useLayoutEffect(() => {
+    if (step >= 0) layoutInvalidation?.requestPagination();
+  }, [step, layoutInvalidation]);
+
+  return fit;
 }
 
 function CompactDocumentTable({ table }: { table: TableContent }) {

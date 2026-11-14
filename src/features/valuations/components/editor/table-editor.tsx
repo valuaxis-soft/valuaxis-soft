@@ -84,6 +84,7 @@ import {
   useFormulaReferenceTarget,
 } from "./formula-editing";
 import { useNumberPresentation } from "../number-presentation-context";
+import { TablePageFitNotice } from "./table-page-fit-notice";
 import { TableFormatControl } from "./table-format-control";
 import { deleteConfirmation, useClearCells, useConfirmDelete, type DeleteConfirmation } from "./delete-confirm";
 import { AlignItems, CONTEXT_PARTS, DROPDOWN_PARTS, ValueFormatItems, type MenuParts } from "./table-value-format-items";
@@ -1563,6 +1564,9 @@ export function TableEditorItem({
           </span>
         </div>
       </div>
+
+      {/* Too wide for the page even at the smallest letter: it suggests the page on its side. */}
+      <TablePageFitNotice table={tableV2} formulaResults={formulaResults} readOnly={readOnly} />
 
       {/* Formula selection mode indicator */}
       {formulaMode && (
