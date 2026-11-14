@@ -21,6 +21,7 @@ import {
   readableFormulaText,
   resolveCaptureFormulas,
   resolveLiveFormula,
+  sectionLiveFormulaOwner,
   withValueAtPath,
 } from "../src/features/valuations/services/live-formulas";
 import type { TableV2 } from "../src/features/valuations/services/table";
@@ -152,6 +153,22 @@ test("a field that reads what its own calculation produces is circular: it keeps
   const income = resolveLiveFormula(own, buildFormulaIndex(valuation({ costValue: "5" })), "INGRESOS");
   assert.deepEqual(income.problems, []);
   assert.equal(parseDecimal(income.text), 2.5);
+});
+
+test("circularity follows the field's own market, not the section: the buildings market may read the cost pages", () => {
+  const own = tagged("=[Valor físico total]/2");
+  const index = buildFormulaIndex(valuation({ costValue: "8" }));
+  // The buildings for sale market does not feed the cost approach: no warning, and it follows.
+  const buildings = resolveLiveFormula(own, index, "MERCADO:INMUEBLE_VENTA");
+  assert.deepEqual(buildings.problems, []);
+  assert.equal(parseDecimal(buildings.text), 4);
+  // The land for sale market does (the land of the cost approach is valued with it): circular.
+  assert.deepEqual(resolveLiveFormula(own, index, "MERCADO:TERRENO_VENTA").problems.map((problem) => problem.kind), ["circular"]);
+  // A market section names no calculation of its own: each market's panel names its own.
+  assert.equal(sectionLiveFormulaOwner("MERCADO_VENTA", false), null);
+  assert.equal(sectionLiveFormulaOwner("MERCADO_RENTAS", false), null);
+  assert.equal(sectionLiveFormulaOwner("COSTOS", false), "COSTOS");
+  assert.equal(sectionLiveFormulaOwner("COSTOS", true), "MAQUINARIA");
 });
 
 test("circularity also goes through the document's own formulas", () => {

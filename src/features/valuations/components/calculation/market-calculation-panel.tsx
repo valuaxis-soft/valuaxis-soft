@@ -56,7 +56,7 @@ import {
 } from "@/features/valuations/calculation/factor-catalog";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts } from "@/features/valuations/calculation/captured-formulas";
-import { FormulaInput } from "./formula-input";
+import { FormulaInput, LiveFormulaOwnerProvider } from "./formula-input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { formatComparableId, todayInMexico } from "@/features/valuations/calculation/comparable-card";
 import { REVIEW_STATUS_LABELS, comparableWarnings, isVerifiedStatus } from "@/features/valuations/calculation/comparable-review";
@@ -263,7 +263,10 @@ export function MarketCalculationPanel(props: {
           </span>
         </div>
       ) : null}
-      <MarketTypePanel key={type} {...props} type={type} onRemoveMarket={visible.length > 1 && !props.readOnly ? removeMarket : undefined} />
+      {/* Its fields belong to this market: what is circular for them depends on it, not on the section. */}
+      <LiveFormulaOwnerProvider owner={`MERCADO:${type}`}>
+        <MarketTypePanel key={type} {...props} type={type} onRemoveMarket={visible.length > 1 && !props.readOnly ? removeMarket : undefined} />
+      </LiveFormulaOwnerProvider>
     </div>
   );
 }

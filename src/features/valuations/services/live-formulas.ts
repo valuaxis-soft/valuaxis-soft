@@ -61,14 +61,16 @@ const FEEDS: Partial<Record<LiveFormulaOwner, LiveFormulaOwner[]>> = {
   MAQUINARIA: ["CONCLUSION"],
 };
 
-/** The calculation of the panel of a section (by canonical key); a market section may be any of its markets. */
+/**
+ * The calculation of the panel of a section (by canonical key). A market
+ * section holds several markets: each market's panel names its own
+ * (`MERCADO:<tipo>`, market-calculation-panel.tsx), so the section names
+ * none and a field of the buildings market that reads the cost pages is not
+ * taken for circular.
+ */
 export function sectionLiveFormulaOwner(sectionKey: string, machinery: boolean): LiveFormulaOwners {
   if (machinery && (sectionKey === "COSTOS" || sectionKey === "MERCADO_VENTA")) return "MAQUINARIA";
   switch (sectionKey) {
-    case "MERCADO_VENTA":
-      return ["MERCADO:TERRENO_VENTA", "MERCADO:INMUEBLE_VENTA"];
-    case "MERCADO_RENTAS":
-      return ["MERCADO:INMUEBLE_RENTA", "MERCADO:TERRENO_RENTA"];
     case "COSTOS":
       return "COSTOS";
     case "CONSTRUCCION":

@@ -127,10 +127,12 @@ export function FormulaInput({
     ? `${problem}: lo escrito no entra en los cálculos.`
     : stored ? `${title ? `${title}. ` : ""}Fórmula: ${formulaText}${warning ? `. ${warning}` : ""}` : title;
 
-  return (
+  const warningId = `${fieldId}-aviso`;
+  const input = (
     <Input
       {...props}
       ref={inputRef}
+      aria-describedby={warning ? warningId : props["aria-describedby"]}
       inputMode="decimal"
       value={grouping && !editing && !writing ? groupedNumberText(shown) : shown}
       title={tooltip}
@@ -169,5 +171,15 @@ export function FormulaInput({
         onBlur?.(event);
       }}
     />
+  );
+  if (!warning) return input;
+  // The reason is read under the field, without hovering it.
+  return (
+    <>
+      {input}
+      <p id={warningId} data-formula-warning-text className="mt-1 text-[11px] leading-snug text-amber-800 dark:text-amber-300">
+        {warning}
+      </p>
+    </>
   );
 }
