@@ -1,4 +1,5 @@
 import { after, NextResponse } from "next/server";
+import { notifyLowCredits, notifyValuationEvent } from "@/features/notifications/notification-events";
 import { notifyResponsible } from "@/features/notifications/valuation-notices";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
@@ -16,6 +17,13 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     await auditValuation({ action: "CONCLUDE", user: auth.user, valuationPublicId: id, request });
     // Tell the responsible appraiser when someone else concluded their valuation.
     after(() => notifyResponsible("concluido", id, auth.user));
+    // In the app: the responsible and the creator, and whoever sees the billing when few credits are left.
+    if (!("alreadyConcluded" in result)) {
+      after(async () => {
+        await notifyValuationEvent("concluido", id, auth.user);
+        await notifyLowCredits(auth.user.organizationId);
+      });
+    }
     return NextResponse.json({ data: result });
   } catch (error) {
     return valuationErrorResponse("VALUATION_CONCLUDE", error, "No se pudo concluir el avalúo.");
