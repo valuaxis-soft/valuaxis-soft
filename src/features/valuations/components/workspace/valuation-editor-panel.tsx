@@ -54,7 +54,7 @@ import { CaratulaEditor, CalculatedValuesEditor } from "../editor/caratula-edito
 import { ValuationSettingsPanel } from "../editor/valuation-settings-panel";
 import { ReportInclusionBadge, SectionDocumentSettings } from "../editor/section-document-settings";
 import { SignaturesEditor } from "../editor/signatures-editor";
-import { GeneratedTableColumns } from "../editor/generated-table-columns";
+import { GeneratedTableEditor } from "../editor/generated-table-editor";
 import { GeneratedConcepts } from "../editor/generated-concepts";
 
 import { Check, Eye, EyeOff, GripVertical, PencilLine, Plus, Trash2, X } from "lucide-react";
@@ -377,7 +377,7 @@ export function ValuationEditorPanel(props: {
       section={section}
       onMoveBlock={props.onMoveBlock}
       onUpdateBlock={(patch) => props.onUpdateBlock(section.id, block.id, patch)}
-      onUpdateTable={(tableId, table, apartadoId) => props.onUpdateTable(section.id, block.id, tableId, () => table, apartadoId)}
+      onUpdateTable={(tableId, updater, apartadoId) => props.onUpdateTable(section.id, block.id, tableId, updater, apartadoId)}
     />
   ) : (
     <SortableBlockEditor
@@ -1141,8 +1141,8 @@ function valueFormatPatch(valueFormat: ConceptValueFormat, customUnit?: string):
  * A block the calculation writes: its figures are edited in the calculation
  * panel. It has the same toolbar as any other block: it is hidden, moved,
  * aligned or given a page break here; what the calculation owns (its
- * content, copying it, deleting it) is disabled and says why. The columns
- * of its tables are hidden, renamed or added.
+ * content, copying it, deleting it) is disabled and says why. Its tables
+ * show as any table of the editor (video 5.3), its figures locked.
  */
 function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section, onMoveBlock, onUpdateBlock, onUpdateTable }: {
   block: Block;
@@ -1152,13 +1152,12 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
   section: AppSection;
   onMoveBlock: (sectionId: string, blockId: string, direction: -1 | 1) => void;
   onUpdateBlock: (patch: Partial<Block>) => void;
-  onUpdateTable: (tableId: string, table: TableContent, apartadoId?: string) => void;
+  onUpdateTable: (tableId: string, updater: (table: TableContent) => TableContent, apartadoId?: string) => void;
 }) {
   const tables = [
-    ...block.tables.map((table) => ({ table, apartadoId: undefined as string | undefined })),
-    ...block.apartados.flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id }))),
+    ...block.tables.map((table) => ({ table, apartadoId: undefined as string | undefined, apartadoTitle: undefined as string | undefined })),
+    ...block.apartados.flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id, apartadoTitle: apartado.title }))),
   ].filter(({ table }) => !ensureTableV2(table).schema?.plain);
-  const rows = tables.reduce((count, { table }) => count + ensureTableV2(table).rows.length, 0);
   const toolbar = blockToolbarState({ kind: "generated", readOnly });
   const locks = blockToolbarLocks(toolbar);
   const visibility = { visible: block.enabled, onChange: (enabled: boolean) => onUpdateBlock({ enabled }) };
@@ -1238,16 +1237,19 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
         subBlockLabel={ADD_SUBBLOCK_LABEL}
       />
       <p className="text-xs text-muted-foreground" data-generated-block-notice>
-        Generado por el cálculo{rows ? ` · ${rows} filas` : ""}{block.images.length ? ` · ${block.images.length} fotos` : ""}. Las cifras se editan en el panel de cálculo.
+        Las cifras de este bloque las escribe el cálculo y se cambian en su panel{block.images.length ? ` · ${block.images.length} fotos` : ""}. Sus tablas se editan como cualquier tabla: encabezados, columnas y filas propias, y formato; todo se conserva al recalcular.
       </p>
       {block.enabled ? <GeneratedConcepts block={block} readOnly={readOnly} onChange={onUpdateBlock} /> : null}
-      {block.enabled ? tables.map(({ table, apartadoId }) => (
-        <GeneratedTableColumns
-          key={table.id}
-          table={table}
-          readOnly={readOnly}
-          onChange={(next) => onUpdateTable(table.id, next, apartadoId)}
-        />
+      {block.enabled ? tables.map(({ table, apartadoId, apartadoTitle }, index) => (
+        <div key={table.id} className="grid min-w-0 gap-1.5">
+          {/* The apartado's title over its first table, as the dictamen prints it. */}
+          {apartadoTitle && tables[index - 1]?.apartadoId !== apartadoId ? <h4 className="text-xs font-semibold uppercase text-muted-foreground">{apartadoTitle}</h4> : null}
+          <GeneratedTableEditor
+            table={table}
+            readOnly={readOnly}
+            onUpdate={(updater) => onUpdateTable(table.id, updater, apartadoId)}
+          />
+        </div>
       )) : null}
     </BlockCard>
   );

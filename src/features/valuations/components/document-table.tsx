@@ -243,12 +243,17 @@ function TableNotes({ tableV2, position }: { tableV2: TableV2; position: TableNo
 
 const CELL_ALIGN = { left: "text-left", center: "text-center", right: "text-right" } as const;
 
-/** Alignment and wrapping the schema gives the cells of a column. */
-function cellPresentation(tableV2: TableV2, columnId: string) {
+/**
+ * Alignment and wrapping the schema gives the cells of a column. A row the
+ * appraiser added to a table the calculation writes (a note, a total) wraps
+ * its text even in a column of figures kept on one line.
+ */
+function cellPresentation(tableV2: TableV2, columnId: string, rowId?: string) {
   const presentation = tableV2.schema?.columnPresentation?.[columnId];
+  const ownRow = rowId !== undefined && Boolean(tableV2.schema?.generated?.layout.extraRows?.some((row) => row.id === rowId));
   return cn(
     presentation?.align && CELL_ALIGN[presentation.align],
-    presentation?.noWrap ? "whitespace-nowrap tabular-nums" : "whitespace-normal text-wrap break-words",
+    presentation?.noWrap && !ownRow ? "whitespace-nowrap tabular-nums" : "whitespace-normal text-wrap break-words",
     presentation?.bold && "font-bold",
   );
 }
@@ -458,7 +463,7 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
                 const value = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
                 return (
                   <TableCell
-                    className={cn(many ? "px-1.5 py-1" : "px-2 py-1", cellPresentation(tableV2, column.id), !plain && isMarkedCell(value) && MARKED)}
+                    className={cn(many ? "px-1.5 py-1" : "px-2 py-1", cellPresentation(tableV2, column.id, row.id), !plain && isMarkedCell(value) && MARKED)}
                     // Bold, italic, underline and alignment chosen on a selection of cells (video 5.7).
                     style={cellStyleCss(tableCellStyle(tableV2, cellStyleKey(row.id, column.id)))}
                     key={column.id}

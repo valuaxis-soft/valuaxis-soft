@@ -105,6 +105,14 @@ import {
   writeCellTexts,
   type StyleMark,
 } from "../../services/table-cell-style";
+import {
+  CALCULATED_CELL_HINT,
+  CALCULATED_TABLE_REMOVE_HINT,
+  calculatedCellReasons,
+  calculatedColumnReasons,
+  calculatedRowReasons,
+  useCalculatedTable,
+} from "./calculated-table-context";
 
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
@@ -418,6 +426,7 @@ function SortableColumnHeader({
   onColumnAction: ColumnActionHandler;
 }) {
   const isMovable = capability.movable !== false;
+  const calculated = useCalculatedTable();
   const columnName = column.name.trim() || `columna ${letter}`;
   const hidden = isColumnHidden(tableV2, column.id);
   const hint = HOMOLOGATION_HEADER_HINTS[column.id];
@@ -465,6 +474,8 @@ function SortableColumnHeader({
     canDelete: capability.removable !== false && canRemoveTableColumn(tableV2, column.id),
     hidden,
     canHide: true,
+    // A table the calculation writes: its columns are hidden, not deleted, and its rows keep the calculation's order.
+    reasons: calculatedColumnReasons(calculated, column.id),
   });
   const handlers: MenuHandlers = {
     onAction: (action) => onColumnAction(column.id, action),
@@ -659,6 +670,9 @@ function EditableTableCell({
   const styleKey = cellStyleKey(row.id, column.id);
   const cellStyle = tableCellStyle(tableV2, styleKey);
   const styleActions = selection ? (several ? selection.actions : selection.actionsFor([styleKey])) : null;
+  // A figure of a table the calculation writes: shown, copied and named in formulas, never typed.
+  const calculatedTable = useCalculatedTable();
+  const locked = Boolean(calculatedTable?.row(row.id) && calculatedTable.column(column.id));
 
   /* ---- What was already written in the column, offered while typing ---- */
   const [typed, setTyped] = useState<string | null>(null);
@@ -745,7 +759,7 @@ function EditableTableCell({
   /* ---- The right-click menu ---- */
   const groups = tableContextMenu("editable", {
     kind: "cell",
-    editable: true,
+    editable: !locked,
     hasFormula: isFormula,
     hasValue: cell?.kind === "value" && cell.value.trim() !== "",
     canPaste: true,
@@ -754,6 +768,7 @@ function EditableTableCell({
     canDeleteColumn: canRemoveTableColumn(tableV2, column.id),
     canDeleteRow: tableV2.rows.length > 1,
     selected: several ? selection?.api.count : undefined,
+    reasons: calculatedCellReasons(calculatedTable, row.id, column.id),
   });
   // The menu gives the focus back when it closes; the cell is entered after that.
   const enterCell = () => window.setTimeout(start, 80);
@@ -862,15 +877,18 @@ function EditableTableCell({
                 ref={inputRef}
                 disabled={readOnly}
                 // In selection mode a click picks the cell; it does not edit it.
-                readOnly={Boolean(formulaMode)}
+                readOnly={Boolean(formulaMode) || locked}
+                aria-readonly={locked || undefined}
                 value={shownValue}
                 data-table-cell={tableId}
                 data-row-id={row.id}
                 data-column-id={column.id}
                 data-row={rowIndex}
                 data-col={columnIndex}
+                data-calculated={locked ? "" : undefined}
                 aria-invalid={numericProblem ? true : undefined}
                 onChange={(event) => {
+                  if (locked) return;
                   if (change(event.target.value)) {
                     closeSuggestions();
                     return;
@@ -881,17 +899,17 @@ function EditableTableCell({
                   setTyped(event.target.value);
                   setSuggestionIndex(0);
                 }}
-                onFocus={formulaMode ? () => setFocused(true) : (event) => {
+                onFocus={formulaMode || locked ? () => setFocused(true) : (event) => {
                   setFocused(true);
                   onFocus(event);
                 }}
                 onBlur={(event) => {
                   setFocused(false);
                   closeSuggestions();
-                  onBlur(event);
+                  if (!locked) onBlur(event);
                 }}
-                onKeyDown={handleKeyDown}
-                onMouseDown={onMouseDown}
+                onKeyDown={locked ? undefined : handleKeyDown}
+                onMouseDown={locked ? undefined : onMouseDown}
                 onScroll={(event) => {
                   // The colored text follows the field when a long formula scrolls in it.
                   if (overlayRef.current) overlayRef.current.style.transform = `translateX(${-event.currentTarget.scrollLeft}px)`;
@@ -904,8 +922,9 @@ function EditableTableCell({
                   (factor || formatted) && "tabular-nums",
                   // A numeric cell with letters: a red border, and the reason when hovered.
                   numericProblem && draftText === null && "border border-destructive ring-1 ring-destructive/40 text-destructive dark:text-red-400",
+                  locked && "cursor-default rounded-sm bg-muted/70 tabular-nums",
                 )}
-                title={title}
+                title={locked ? CALCULATED_CELL_HINT : title}
                 // Bold, italic, underline and alignment chosen on a selection, as the dictamen prints them.
                 style={cellStyleCss(cellStyle)}
               />
@@ -1002,6 +1021,7 @@ function SortableRow({
   onStartSelection: (rowId: string, columnId: string, operation: FormulaSelectionOperation) => void;
   structure: CellStructureActions;
 }) {
+  const calculated = useCalculatedTable();
   const {
     attributes,
     listeners,
@@ -1009,7 +1029,7 @@ function SortableRow({
     setActivatorNodeRef,
     transform,
     transition,
-  } = useSortable({ id: row.id, disabled: readOnly || !!formulaMode });
+  } = useSortable({ id: row.id, disabled: readOnly || !!formulaMode || Boolean(calculated?.row(row.id)) });
 
   const style: React.CSSProperties = {
     transform: CSS.Translate.toString(transform),
@@ -1027,6 +1047,8 @@ function SortableRow({
     hidden,
     canHide: true,
     canDelete: rowCount > 1,
+    // A row the calculation writes keeps its place: it is hidden, not deleted, duplicated or moved.
+    reasons: calculatedRowReasons(calculated, row.id),
   });
   const handlers: MenuHandlers = { onAction: (action) => onRowAction(row.id, action) };
   const selection = useContext(TableSelectionContext);
@@ -1173,6 +1195,7 @@ export function TableEditorItem({
   const tableV2 = useMemo(() => ensureTableV2(table), [table]);
   const formulaResults = useMemo(() => evaluateTableFormulas(tableV2), [tableV2]);
   const confirmDelete = useConfirmDelete();
+  const calculated = useCalculatedTable();
   const [formulaMode, setFormulaMode] = useState<FormulaSelectionState | null>(null);
 
   /* ---- Column and row DnD state ---- */
@@ -1519,10 +1542,13 @@ export function TableEditorItem({
           <Button type="button" size="icon" variant="outline" aria-label="Agregar fila" disabled={readOnly} title="Agregar fila" onClick={() => onAddRow(table.id)}>
             <Rows3 />
           </Button>
-          <TableFormatControl table={tableV2} readOnly={readOnly} onChange={(updater) => onUpdate(table.id, v2Updater(updater))} />
-          <Button type="button" size="icon" variant="ghost" aria-label={`Quitar ${tableV2.title}`} disabled={readOnly} title="Quitar tabla" data-remove-table={table.id} onClick={() => requestTableRemoval(confirmDelete, { id: table.id, title: tableV2.title }, onRemove)}>
-            <Trash2 />
-          </Button>
+          <TableFormatControl table={tableV2} readOnly={readOnly} generated={Boolean(calculated)} onChange={(updater) => onUpdate(table.id, v2Updater(updater))} />
+          {/* A disabled button takes no pointer events: the reason hangs from what wraps it. */}
+          <span title={calculated ? CALCULATED_TABLE_REMOVE_HINT : "Quitar tabla"} className="inline-flex">
+            <Button type="button" size="icon" variant="ghost" aria-label={`Quitar ${tableV2.title}`} disabled={readOnly || Boolean(calculated)} aria-description={calculated ? CALCULATED_TABLE_REMOVE_HINT : undefined} data-remove-table={table.id} onClick={() => requestTableRemoval(confirmDelete, { id: table.id, title: tableV2.title }, onRemove)}>
+              <Trash2 />
+            </Button>
+          </span>
         </div>
       </div>
 
@@ -1561,7 +1587,7 @@ export function TableEditorItem({
           count={selection.count}
           label={selectionLabel(selection.points.length, selection.titleSelected)}
           readOnly={readOnly}
-          hint="Para calcular, escribe = en una celda, por ejemplo =B2*C2 o =SUMA(A1:A5); «10%» vale 0.10."
+          hint={`Para calcular, escribe = en una celda, por ejemplo =B2*C2 o =SUMA(A1:A5); «10%» vale 0.10.${calculated ? " Las cifras en gris las escribe el cálculo y se cambian en su panel; los encabezados, el formato y las columnas y filas que agregues son tuyos y se conservan al recalcular." : ""}`}
           marks={selectionActions.marks}
           align={selectionActions.align}
           current={firstSelectedCell?.format ?? firstSelectedColumn?.format}

@@ -166,24 +166,65 @@ export type TableSummaryBox = {
 export type TableNote = { position: "top" | "table" | "bottom"; label?: string; text: string; heading?: boolean };
 
 /**
- * A column the appraiser adds to a table the calculation writes: text that
- * prints and does not enter the calculation, by row id.
+ * A column the appraiser adds to a table the calculation writes: text or
+ * formulas that print and do not enter the calculation, by row id.
  */
 export type GeneratedExtraColumn = {
   id: string;
   name: string;
-  /** The column it prints after; null, at the end. */
+  /** The column it prints after; null, at the end (when the layout has no `order`). */
   after: string | null;
+  /** Plain text written in each row, by row id. */
   values: Record<string, string>;
+  /** Cells with a formula or a format of their own, by row id; over `values`. */
+  cells?: Record<string, TableCellV2>;
+  /** "Unidades de valor" and "Decimales" of the column. */
+  format?: TableCellFormat;
 };
 
-/** How the appraiser set the columns of a table the calculation writes. */
+/**
+ * A row the appraiser adds to a table the calculation writes (a total, a
+ * note): its cells, text or formulas, by column id; they print and do not
+ * enter the calculation.
+ */
+export type GeneratedExtraRow = {
+  id: string;
+  /** The row of the calculation it prints after; null, before the first one. */
+  after: string | null;
+  /** It was after every row of the calculation (a total, a note): it stays last when the calculation writes more rows. */
+  last?: boolean;
+  cells: Record<string, TableCellV2>;
+};
+
+/** A double header the appraiser set on a table the calculation writes: one title over these columns. */
+export type GeneratedHeaderGroup = { id: string; title: string; columnIds: string[] };
+
+/**
+ * How the appraiser set a table the calculation writes, as he edits it in
+ * the editor like any configurable table: what the calculation writes stays
+ * its own, and this is applied over it every time it writes the table again.
+ */
 export type GeneratedTableLayout = {
-  /** Columns of the calculation left out of the printed table, by id. */
+  /** Columns left out of the printed table, by id; the editor keeps showing them, faded. */
   hidden?: string[];
+  /** Rows left out of the printed table, by id. */
+  hiddenRows?: string[];
   /** Headers renamed, by column id or header group id. */
   labels?: Record<string, string>;
+  /** The title the table goes by in the editor (and prints with, when its title prints). */
+  title?: string;
+  /** The columns as shown, the calculation's and the appraiser's; absent, the calculation's order. */
+  order?: string[];
+  /** The double headers as the appraiser left them; absent, the calculation's. */
+  groups?: GeneratedHeaderGroup[];
   extraColumns?: GeneratedExtraColumn[];
+  extraRows?: GeneratedExtraRow[];
+  /** "Unidades de valor" and "Decimales" of the calculation's columns, by column id. */
+  formats?: Record<string, TableCellFormat>;
+  /** "Unidades de valor" and "Decimales" of a cell of the calculation, by "rowId:columnId". */
+  cellFormats?: Record<string, TableCellFormat>;
+  /** Widths given by hand (px), by column id. */
+  widths?: Record<string, number>;
   /**
    * Labels of the boxes under or above the table renamed, by `boxId.rowKey`
    * (see `summaryRowKey`) or `boxId.caption`: "Valor físico de reposición"
@@ -1429,12 +1470,13 @@ export function columnValueSuggestions(table: TableV2, columnId: string, rowId: 
 /* ================================================================== */
 
 /**
- * Whether the appraiser may group the headers of the table: his own tables;
- * not the homologation preset nor a table the calculation writes, whose
- * groups follow their own structure.
+ * Whether the appraiser may group the headers of the table: his own tables
+ * and the ones the calculation writes (the groups are kept in its layout and
+ * stay when it writes the table again); not the homologation preset, whose
+ * groups follow its own structure, nor a plain grid.
  */
 export function canGroupTableHeaders(table: Pick<TableV2, "schema">): boolean {
-  return !table.schema?.presetId && !table.schema?.generated && !table.schema?.plain;
+  return !table.schema?.presetId && !table.schema?.plain;
 }
 
 let groupSequence = 0;

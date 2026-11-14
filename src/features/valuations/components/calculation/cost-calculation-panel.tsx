@@ -52,9 +52,11 @@ import { Trace } from "@/features/valuations/engine/trace";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
-import { CALC_HEAD, CALC_HEAD_CELL, CALC_RESULT, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
+import { CALC_RESULT, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { ApproachLeftOutNotice, ApproachRemoval, type ApproachInReport } from "./approach-removal";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
+import { CaptureHeaderControl, CaptureTableHead, type CaptureHeadColumn } from "./capture-table-head";
+import { withTableHeaders, type CaptureHeaders, type SectionCaptureHeaders } from "@/features/valuations/services/capture-headers";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
@@ -229,7 +231,6 @@ const cell = "h-7 min-w-0 px-1.5 text-xs";
 const resultCell = cn(cell, CALC_RESULT);
 const figure = (value: number | null | undefined, digits = 2) =>
   (value === null || value === undefined ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: digits }));
-const head = CALC_HEAD_CELL;
 // What the calculation gives, in the gray of the table, not lighter.
 const readOnlyCell = "px-1.5 whitespace-nowrap tabular-nums";
 const FORMULA_HINT = "Vacío: se calcula con la fórmula del Excel. Escribe un valor para sustituirla; bórralo para volver a la fórmula.";
@@ -245,24 +246,32 @@ const demeritLabels = (factors: DemeritColumnsDto) => [
   "Cons.", "Edad", factors.other.trim() || "Otro", ...factors.extra.map((name, index) => name.trim() || `Factor ${index + 1}`), "FRe",
 ];
 
-/** Header of a demerit block, as the books group Cons., Edad, Otro and FRe under "Factores de Demérito". */
-function DemeritHeader(props: { leading: string[]; remaining: string; factors: DemeritColumnsDto; trailing?: string[] }) {
+/** What a capture header needs: the appraiser's headers of its table and where to keep them. */
+type HeadBinding = { headers: CaptureHeaders | undefined; readOnly: boolean; onChange: (headers: CaptureHeaders) => void };
+
+/** A key for a header of the panel, from its name: «Superficie Construida (m²)» is «superficie-construida-m». */
+const headerKey = (label: string) => label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const plainColumns = (labels: string[]): CaptureHeadColumn[] => labels.map((label) => ({ key: headerKey(label), label }));
+const DEMERIT_GROUP = "Factores de Demérito";
+
+/** The columns of a demerit block, as the books group Cons., Edad, Otro and FRe under "Factores de Demérito". */
+export function demeritHeadColumns(props: { leading: string[]; remaining: string; factors: DemeritColumnsDto; trailing?: string[] }): CaptureHeadColumn[] {
   const labels = demeritLabels(props.factors);
-  return (
-    <thead className={CALC_HEAD}>
-      <tr>
-        {props.leading.map((label) => <th key={label} rowSpan={2} className={head}>{label}</th>)}
-        <th rowSpan={2} className={head}>{props.remaining}</th>
-        <th rowSpan={2} className={head} title={`Estado de conservación (${CONSERVATION_CRITERION_LABELS[props.factors.conservation?.kind ?? "ROSS_HEIDECKE"]}): propone el factor Cons.`}>Estado de conservación</th>
-        <th colSpan={labels.length} className={head}>Factores de Demérito</th>
-        <th rowSpan={2} className={head}>Grado de terminación (%)</th>
-        <th rowSpan={2} className={head}>Indiviso (%)</th>
-        {(props.trailing ?? []).map((label) => <th key={label} rowSpan={2} className={head}>{label}</th>)}
-        <th rowSpan={2} className={head}><span className="sr-only">Acciones</span></th>
-      </tr>
-      <tr>{labels.map((label, index) => <th key={index} className={head}>{label}</th>)}</tr>
-    </thead>
-  );
+  const keys = ["demerito-cons", "demerito-edad", "demerito-otro", ...props.factors.extra.map((_, index) => `demerito-factor-${index + 1}`), "demerito-fre"];
+  return [
+    ...plainColumns(props.leading),
+    { key: "vida-remanente", label: props.remaining },
+    {
+      key: "estado-conservacion",
+      label: "Estado de conservación",
+      hint: `Estado de conservación (${CONSERVATION_CRITERION_LABELS[props.factors.conservation?.kind ?? "ROSS_HEIDECKE"]}): propone el factor Cons.`,
+    },
+    ...labels.map((label, index) => ({ key: keys[index], label, group: DEMERIT_GROUP })),
+    { key: "terminacion", label: "Grado de terminación (%)" },
+    { key: "indiviso", label: "Indiviso (%)" },
+    ...plainColumns(props.trailing ?? []),
+    { key: "acciones", label: "", fixed: true },
+  ];
 }
 
 /**
@@ -318,20 +327,29 @@ function DemeritColumnsEditor(props: {
   );
 }
 
-/** Header of a valuation block: VRN and VNR, each with its unit and partial value, around the resultant factor. */
-function ValuationHeader(props: { leading: string[]; resultant: string; netValue: string }) {
-  return (
-    <thead className={CALC_HEAD}>
-      <tr>
-        {props.leading.map((label) => <th key={label} rowSpan={2} className={head}>{label}</th>)}
-        <th colSpan={2} className={head}>Valor de Reposición Nuevo (VRN)</th>
-        <th rowSpan={2} className={head}>{props.resultant}</th>
-        <th colSpan={2} className={head}>{props.netValue}</th>
-      </tr>
-      <tr>{["Valor Unit. $", "Valor Parcial VRN $", "Valor Unit. $", "Valor Parcial VNR $"].map((label, index) => <th key={index} className={head}>{label}</th>)}</tr>
-    </thead>
-  );
+/** The columns of a valuation block: VRN and VNR, each with its unit and partial value, around the resultant factor. */
+function valuationHeadColumns(props: { leading: string[]; resultant: string; netValue: string }): CaptureHeadColumn[] {
+  const replacement = "Valor de Reposición Nuevo (VRN)";
+  return [
+    ...plainColumns(props.leading),
+    { key: "vrn-unitario", label: "Valor Unit. $", group: replacement },
+    { key: "vrn-parcial", label: "Valor Parcial VRN $", group: replacement },
+    { key: "factor-resultante", label: props.resultant },
+    { key: "vnr-unitario", label: "Valor Unit. $", group: props.netValue },
+    { key: "vnr-parcial", label: "Valor Parcial VNR $", group: props.netValue },
+  ];
 }
+
+/** The columns of the land table: the factors under "Factores de Homologación". */
+const CONSTRUCTION_VALUE_COLUMNS = valuationHeadColumns({ leading: ["Ref.", "Tipo de Construcción", "Superficie Construida (m²)"], resultant: "Factor Resultante", netValue: "Valor Neto de Reposición (VNR)" });
+const INSTALLATION_VALUE_COLUMNS = valuationHeadColumns({ leading: ["P/C", "Ref.", "Descripción", "Unidad", "Cant."], resultant: "F. Result", netValue: "Valor Neto Reposición (VNR)" });
+
+const LAND_HEAD_COLUMNS: CaptureHeadColumn[] = [
+  ...plainColumns(["Fracción", "Superficie de Sujeto (m²)", "Valor Unitario ($/m²)"]),
+  ...LAND_FACTORS.map((factor) => ({ key: factor.key, label: LAND_FACTOR_SHORT_LABELS[factor.key], hint: factor.label, group: "Factores de Homologación" })),
+  { key: "fre", label: "FRe", group: "Factores de Homologación" },
+  ...plainColumns(["Valor Unitario Neto $/m²", "Valor Parcial $"]),
+];
 
 /** The states of the sheet «ROSS HEIDECKE», each with its calificaciones, in the table's order. */
 const CONSERVATION_STATES = [...new Set(CONSERVATION_RATINGS.map((row) => row.state))];
@@ -508,6 +526,9 @@ export function CostCalculationPanel(props: {
   onCalculation: (calculation: CostCalculationDto) => void;
   /** «Quitar este enfoque»: the section's «Agregar al informe valuatorio». */
   approach?: ApproachInReport;
+  /** The headers of its capture tables as the appraiser named and grouped them, kept with the section. */
+  captureHeaders?: SectionCaptureHeaders;
+  onCaptureHeaders?: (headers: SectionCaptureHeaders) => void;
 }) {
   const { valuationId } = props;
   const [calculation, setCalculation] = useState<CostCalculationDto | null>(null);
@@ -803,6 +824,23 @@ export function CostCalculationPanel(props: {
   };
   const constructionRows = draft.constructions.map((row) => ({ row, type: findConstructionType(calculation.types, row.ref), key: `costos.construcciones.${row.ref}` }));
   const installationKey = (ref: string) => `costos.instalaciones.${ref}`;
+  // The headers of each capture table as the appraiser named and grouped them; the data and the calculation do not change.
+  const headOf = (table: string): HeadBinding => ({
+    headers: props.captureHeaders?.[table],
+    readOnly: readOnly || !props.onCaptureHeaders,
+    onChange: (headers) => props.onCaptureHeaders?.(withTableHeaders(props.captureHeaders, table, headers)),
+  });
+  const constructionDemeritColumns = demeritHeadColumns({
+    leading: ["Ref.", "Tipo de Construcción", "Clasificación", "Calidad", "Superficie Construida (m²)", "Edad", "Vida útil"],
+    remaining: "Vida remanente",
+    factors: draft.columns.constructions,
+  });
+  const installationDemeritColumns = demeritHeadColumns({
+    leading: ["P/C", "Ref.", "Descripción", "Unidad", "Cant.", "Edad", "Vida útil"],
+    remaining: "Vida Remanente",
+    factors: draft.columns.installations,
+    trailing: showMaintenance ? ["Mantenim."] : [],
+  });
   const surfaceFormula = step("costos.terreno.factorSuperficie")?.formula;
 
   return (
@@ -852,19 +890,10 @@ export function CostCalculationPanel(props: {
               <SurfacePowerSelect id="cost-land-power" value={input.land.surfacePower} onChange={(surfacePower) => change({ surfacePower })} />
             </Field>
           </div>
+          <CaptureHeaderControl label="Terreno en estudio" columns={LAND_HEAD_COLUMNS} {...headOf("costos.terreno")} />
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly}>
             <table className={cn(CALC_TABLE, "w-auto min-w-[900px]")} aria-label="Terreno en estudio">
-              <thead className={CALC_HEAD}>
-                <tr>
-                  {["Fracción", "Superficie de Sujeto (m²)", "Valor Unitario ($/m²)"].map((label) => <th key={label} rowSpan={2} className={head}>{label}</th>)}
-                  <th colSpan={LAND_FACTORS.length + 1} className={head}>Factores de Homologación</th>
-                  {["Valor Unitario Neto $/m²", "Valor Parcial $"].map((label) => <th key={label} rowSpan={2} className={head}>{label}</th>)}
-                </tr>
-                <tr>
-                  {LAND_FACTORS.map((factor) => <th key={factor.key} className={head} title={factor.label}>{LAND_FACTOR_SHORT_LABELS[factor.key]}</th>)}
-                  <th className={head}>FRe</th>
-                </tr>
-              </thead>
+              <CaptureTableHead columns={LAND_HEAD_COLUMNS} {...headOf("costos.terreno")} />
               <tbody>
                 <tr className={CALC_ROW}>
                   <td className="px-1.5 text-center">I</td>
@@ -955,13 +984,10 @@ export function CostCalculationPanel(props: {
             onAdd={() => addDemerit("constructions")}
             onRemove={(position) => removeDemerit("constructions", position)}
           />
+          <CaptureHeaderControl label="Construcciones: factores de demérito" columns={constructionDemeritColumns} {...headOf("costos.construcciones")} />
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={constructionRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[1000px]")} aria-label="Construcciones: factores de demérito">
-              <DemeritHeader
-                leading={["Ref.", "Tipo de Construcción", "Clasificación", "Calidad", "Superficie Construida (m²)", "Edad", "Vida útil"]}
-                remaining="Vida remanente"
-                factors={draft.columns.constructions}
-              />
+              <CaptureTableHead columns={constructionDemeritColumns} {...headOf("costos.construcciones")} />
               <tbody>
                 {constructionRows.map(({ row, type, key }, index) => (
                   <tr key={index} className={CALC_ROW}>
@@ -994,9 +1020,10 @@ export function CostCalculationPanel(props: {
               </tbody>
             </table>
           </CalcTableContextMenu>
+          <CaptureHeaderControl label="Construcciones: valor de reposición" columns={CONSTRUCTION_VALUE_COLUMNS} {...headOf("costos.construcciones.valores")} />
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={constructionRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[900px]")} aria-label="Construcciones: valor de reposición">
-              <ValuationHeader leading={["Ref.", "Tipo de Construcción", "Superficie Construida (m²)"]} resultant="Factor Resultante" netValue="Valor Neto de Reposición (VNR)" />
+              <CaptureTableHead columns={CONSTRUCTION_VALUE_COLUMNS} {...headOf("costos.construcciones.valores")} />
               <tbody>
                 {constructionRows.map(({ row, type, key }, index) => (
                   <tr key={index} className={CALC_ROW}>
@@ -1068,14 +1095,10 @@ export function CostCalculationPanel(props: {
               Capturar Mantenim.
             </label>
           </div>
+          <CaptureHeaderControl label="Instalaciones especiales: factores de demérito" columns={installationDemeritColumns} {...headOf("costos.instalaciones")} />
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={installationRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[1200px]")} aria-label="Instalaciones especiales: factores de demérito">
-              <DemeritHeader
-                leading={["P/C", "Ref.", "Descripción", "Unidad", "Cant.", "Edad", "Vida útil"]}
-                remaining="Vida Remanente"
-                factors={draft.columns.installations}
-                trailing={showMaintenance ? ["Mantenim."] : []}
-              />
+              <CaptureTableHead columns={installationDemeritColumns} {...headOf("costos.instalaciones")} />
               <tbody>
                 {draft.installations.map((row, index) => {
                   const numbers = input.installations[index];
@@ -1115,9 +1138,10 @@ export function CostCalculationPanel(props: {
               </tbody>
             </table>
           </CalcTableContextMenu>
+          <CaptureHeaderControl label="Instalaciones especiales: valor de reposición" columns={INSTALLATION_VALUE_COLUMNS} {...headOf("costos.instalaciones.valores")} />
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={installationRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[1000px]")} aria-label="Instalaciones especiales: valor de reposición">
-              <ValuationHeader leading={["P/C", "Ref.", "Descripción", "Unidad", "Cant."]} resultant="F. Result" netValue="Valor Neto Reposición (VNR)" />
+              <CaptureTableHead columns={INSTALLATION_VALUE_COLUMNS} {...headOf("costos.instalaciones.valores")} />
               <tbody>
                 {draft.installations.map((row, index) => {
                   const key = installationKey(row.ref);

@@ -2,6 +2,7 @@ import type { CoverImageFocus, CoverImageSize } from "./services/cover-image-foc
 import type { ValuationSignature } from "./services/valuation-signatures";
 import type { PageBreakMode, PageOrientation, SectionDocumentRole, SectionPageBreak } from "./services/document-structure";
 import type { ReportApproach } from "./services/report-approaches";
+import type { SectionCaptureHeaders } from "./services/capture-headers";
 
 /** Lowercase key of devpware_tipos_operaciones ("venta", "renta", "otra"…): see services/property-kinds.ts. */
 export type ValuationKind = string;
@@ -366,6 +367,8 @@ export type AppSection = {
   pageBreak?: SectionPageBreak;
   /** The approaches of this section left out of the dictamen ("Agregar al informe valuatorio" off). */
   excludedFromReport?: ReportApproach[];
+  /** The headers of the capture tables of its calculation panel (Costos, Ingresos) as the appraiser named and grouped them. */
+  captureHeaders?: SectionCaptureHeaders;
   /** Added by the appraiser; not in the section registry. */
   custom?: boolean;
   /** The appraiser renamed the tab: the stored title wins over the registry label. */
