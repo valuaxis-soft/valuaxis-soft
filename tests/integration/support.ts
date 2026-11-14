@@ -149,11 +149,14 @@ function backWithRealAsyncLocalStorage(storage: object) {
 }
 
 /** Runs `fn` with `jar` as the request's cookies (see TestCookieJar). */
-export function withCookies<T>(jar: TestCookieJar, fn: () => Promise<T>): Promise<T> {
+export function withCookies<T>(jar: TestCookieJar, fn: () => Promise<T>, options: { request?: boolean } = {}): Promise<T> {
   backWithRealAsyncLocalStorage(workAsyncStorage);
   backWithRealAsyncLocalStorage(workUnitAsyncStorage);
-  const workStore = { route: "/integration-test" } as unknown as WorkStore;
-  const unitStore = { type: "private-cache", cookies: jar } as unknown as WorkUnitStore;
+  // `request: true` stands in for a route handler's request, where revalidatePath() is allowed (the full save calls it).
+  const workStore = (options.request ? { route: "/integration-test", incrementalCache: {} } : { route: "/integration-test" }) as unknown as WorkStore;
+  const unitStore = (options.request
+    ? { type: "request", phase: "action", cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar }
+    : { type: "private-cache", cookies: jar }) as unknown as WorkUnitStore;
   return workAsyncStorage.run(workStore, () => workUnitAsyncStorage.run(unitStore, fn));
 }
 

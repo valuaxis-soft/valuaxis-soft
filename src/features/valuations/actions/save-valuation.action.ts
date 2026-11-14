@@ -98,8 +98,11 @@ export async function saveValuation(input: SaveValuationInput) {
           input.valuationKind ? tx.tipoOperacion.findFirst({ where: { BActivo: true, SClave: { equals: normalizeValuationKind(input.valuationKind), mode: "insensitive" } }, select: { IdTipoOperacion: true } }) : null,
         ]);
         const propertyTypeId = input.propertyTypeId ?? propertyType?.IdTipoInmueble ?? existing.IdTipoInmueble;
-        const title = input.title || input.location || existing.SFolio;
-        const clientName = input.clientName ?? input.client ?? null;
+        // Only what the appraiser edits changes the title and the client: a save that does not send them keeps them
+        // (the editor never sends the title, and the first save used to write the address over it).
+        const title = input.title?.trim() || existing.STitulo;
+        const sentClient = input.clientName ?? input.client;
+        const clientName = sentClient === undefined ? existing.SNombreCliente : sentClient.trim() || null;
         changes.push(...await dataChanges(tx, existing, { title, clientName, propertyTypeId, operationTypeId: operationType?.IdTipoOperacion ?? existing.IdTipoOperacion }));
         await tx.avaluo.update({
           where: { IdAvaluo: existing.IdAvaluo },

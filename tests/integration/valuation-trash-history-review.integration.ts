@@ -10,7 +10,10 @@ import ExcelJS from "exceljs";
 import { DELETE as purgeRoute } from "../../src/app/api/avaluos/[id]/definitivo/route";
 import { POST as restoreRoute } from "../../src/app/api/avaluos/[id]/restaurar/route";
 import { POST as reviewRoute } from "../../src/app/api/avaluos/[id]/revision/route";
-import { DELETE as deleteRoute } from "../../src/app/api/avaluos/[id]/route";
+import { DELETE as deleteRoute, PUT as metaRoute } from "../../src/app/api/avaluos/[id]/route";
+import { PUT as fullRoute } from "../../src/app/api/avaluos/[id]/full/route";
+import { initialMetaFor } from "../../src/features/valuations/components/workspace/model/initial-hydration";
+import { valuationMetaPayload } from "../../src/features/valuations/components/workspace/model/save-payload";
 import { GET as exportRoute } from "../../src/app/api/exportar/avaluos/route";
 import { AUTH_SESSION_COOKIE } from "../../src/features/auth/constants/auth.constants";
 import { listValuationPins } from "../../src/features/maps/base-map/base-map.service";
@@ -285,4 +288,35 @@ test("«Exportar a Excel» carries the visible columns in their order and the fi
 
   const trash = await download("papelera=1&columnas=folio");
   assert.deepEqual(trash.slice(1), [[trashed.SFolio]], "the trash exports from the trash");
+});
+
+test("saving from the editor never writes the address over the title, nor drops the client; only an edited title changes", async () => {
+  const fixture = await createValuationFixture();
+  const appraiser = await signInAs(fixture, "VALUADOR");
+  await prisma.avaluo.update({ where: { UIdentificadorPublico: fixture.publicId }, data: { STitulo: "Casa del Cliente Inventado", SNombreCliente: "Cliente Inventado" } });
+
+  // What the editor sends: its meta as it hydrated it, with the address the appraiser typed.
+  const detail = await getValuationByPublicId(fixture.publicId, fixture.organizationId);
+  const meta = { ...initialMetaFor(detail), location: "Av. Inventada 99, Zapopan, Jal." };
+  const save = (body: unknown) =>
+    withCookies(appraiser.jar, () => fullRoute(jsonRequest(`/api/avaluos/${fixture.publicId}/full`, "PUT", body), context({ id: fixture.publicId })), { request: true });
+  const first = await save({ ...valuationMetaPayload(meta), sections: [] });
+  assert.equal(first.status, 200, JSON.stringify(await first.clone().json()));
+  let row = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  assert.equal(row.STitulo, "Casa del Cliente Inventado", "the title is not replaced by the address");
+  assert.equal(row.SNombreCliente, "Cliente Inventado");
+
+  // A save that does not carry the client keeps it.
+  const { client: _client, ...withoutClient } = valuationMetaPayload(meta);
+  assert.equal((await save({ ...withoutClient, sections: [] })).status, 200);
+  row = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  assert.equal(row.SNombreCliente, "Cliente Inventado");
+
+  // PUT /api/avaluos/[id] accepts the title the appraiser edits, and only then it changes.
+  const update = await withCookies(appraiser.jar, () =>
+    metaRoute(jsonRequest(`/api/avaluos/${fixture.publicId}`, "PUT", { title: "Casa Jardín Inventada", location: "Otra dirección inventada" }), context({ id: fixture.publicId })), { request: true });
+  assert.equal(update.status, 200);
+  row = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  assert.equal(row.STitulo, "Casa Jardín Inventada");
+  assert.equal(row.SNombreCliente, "Cliente Inventado");
 });
