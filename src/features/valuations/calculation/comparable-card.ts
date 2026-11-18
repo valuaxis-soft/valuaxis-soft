@@ -17,16 +17,19 @@ export function parseComparableId(text: string) {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
-export const ADDRESS_PARTS = ["state", "municipality", "postalCode", "neighborhood", "subdivision", "street", "number"] as const;
+/** `crossStreet`: «Esquina con» (video 7.3), the street the property is on the corner of. */
+export const ADDRESS_PARTS = ["state", "municipality", "postalCode", "neighborhood", "subdivision", "street", "number", "crossStreet"] as const;
 export type AddressPart = (typeof ADDRESS_PARTS)[number];
 
 /**
  * «Tipo de vialidad» (video 5.4): what kind of road the «Vialidad» is. It
  * prints before its name in the location line and filters the search. A
  * comparable captured before it existed has none and reads as «Calle».
+ * «Otro» asks which (`streetTypeOther`, video 7.2): it prints before the name
+ * and the firm's other comparables offer it afterwards.
  */
 export const STREET_TYPES = [
-  "TERRACERIA", "CALLE", "CERRADA", "PRIVADA", "ANDADOR", "AVENIDA", "BOULEVARD", "CALZADA", "CIRCUITO", "PROLONGACION",
+  "TERRACERIA", "CALLE", "CALLEJON", "CERRADA", "PRIVADA", "ANDADOR", "AVENIDA", "BOULEVARD", "CALZADA", "CIRCUITO", "PROLONGACION",
   "PERIFERICO", "LIBRAMIENTO", "CARRETERA", "CAMINO", "OTRO",
 ] as const;
 export type StreetType = (typeof STREET_TYPES)[number];
@@ -34,6 +37,7 @@ export const DEFAULT_STREET_TYPE: StreetType = "CALLE";
 export const STREET_TYPE_LABELS: Record<StreetType, string> = {
   TERRACERIA: "Terracería",
   CALLE: "Calle",
+  CALLEJON: "Callejón",
   CERRADA: "Cerrada",
   PRIVADA: "Privada",
   ANDADOR: "Andador",
@@ -51,11 +55,13 @@ export const STREET_TYPE_LABELS: Record<StreetType, string> = {
 /**
  * How the type prints before the name: the abbreviations usual in Mexico
  * («Av.», «Blvd.», «Calz.», «Cda.», «Priv.»…), or the whole word when there
- * is none in common use. «Otro» prints the name alone.
+ * is none in common use. «Otro» prints the type the appraiser wrote, or the
+ * name alone.
  */
 const STREET_TYPE_PRINTED: Record<StreetType, string> = {
   TERRACERIA: "Terracería",
   CALLE: "Calle",
+  CALLEJON: "Callejón",
   CERRADA: "Cda.",
   PRIVADA: "Priv.",
   ANDADOR: "And.",
@@ -72,7 +78,11 @@ const STREET_TYPE_PRINTED: Record<StreetType, string> = {
 };
 
 /** The location in parts, as the competitor's and the SHF formats ask for it; every part is optional. */
-export type ComparableAddress = Partial<Record<AddressPart, string | null>> & { streetType?: StreetType | null };
+export type ComparableAddress = Partial<Record<AddressPart, string | null>> & {
+  streetType?: StreetType | null;
+  /** With «Otro»: which type it is («Callejuela»), as written. */
+  streetTypeOther?: string | null;
+};
 
 export const ADDRESS_LABELS: Record<AddressPart, string> = {
   state: "Estado",
@@ -82,6 +92,7 @@ export const ADDRESS_LABELS: Record<AddressPart, string> = {
   subdivision: "Fraccionamiento",
   street: "Vialidad",
   number: "Número",
+  crossStreet: "Esquina con",
 };
 export const STREET_TYPE_LABEL = "Tipo de vialidad";
 
@@ -99,18 +110,46 @@ const plainWord = (value: string) => value.normalize("NFKD").replace(/[̀-ͯ]/g,
  * twice; an address of before, without a type, prints as it always did.
  */
 function streetWithType(address: ComparableAddress) {
-  const name = part(address.street);
-  const printed = address.streetType ? STREET_TYPE_PRINTED[address.streetType] : "";
+  const name = normalizeCrossing(part(address.street));
+  const other = address.streetType === "OTRO";
+  const printed = other ? part(address.streetTypeOther) : address.streetType ? STREET_TYPE_PRINTED[address.streetType] : "";
   if (!name || !printed || !address.streetType) return name;
   const first = plainWord(name.split(/\s+/)[0] ?? "");
-  const already = [printed, STREET_TYPE_LABELS[address.streetType]].some((word) => plainWord(word) === first || plainWord(word).replace(/\.$/, "") === first.replace(/\.$/, ""));
+  const already = [printed, other ? printed : STREET_TYPE_LABELS[address.streetType]].some((word) => plainWord(word) === first || plainWord(word).replace(/\.$/, "") === first.replace(/\.$/, ""));
   return already ? name : `${printed} ${name}`;
 }
 
-/** "Av. Juárez 12, col. Centro, fracc. Valle Real, C.P. 47180, Arandas, Jalisco": the parts as one line, the way the dictamen prints a location. */
+/** The type of road as the card shows it: «Avenida», or «Otro: Callejuela». */
+export function streetTypeText(address: Pick<ComparableAddress, "streetType" | "streetTypeOther"> | null | undefined) {
+  const type = streetTypeOf(address);
+  const other = part(address?.streetTypeOther);
+  return type === "OTRO" && other ? `${STREET_TYPE_LABELS.OTRO}: ${other}` : STREET_TYPE_LABELS[type];
+}
+
+/**
+ * A crossing as the dictamen prints it (video 7.3): «&», «cruce con», «esq.»
+ * or «esquina» between two streets read «esquina con». Anything else stays as
+ * written.
+ */
+export function normalizeCrossing(text: string) {
+  return text
+    .replace(/\s*&\s*/g, " esquina con ")
+    // «La Esquina» is a name, not a crossing.
+    .replace(/(^|\s)(?<!(?:^|\s)(?:la|las|el|los)\s)(?:cruce\s+con|esq\.?\s*con|esq\.|esq|esquina\s+con|esquina)(?=\s)/giu, "$1esquina con")
+    .replace(/(esquina con)(?:\s+con)+(?=\s)/giu, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * "Av. Juárez 12 esquina con Calle Hidalgo, col. Centro, fracc. Valle Real,
+ * C.P. 47180, Arandas, Jalisco": the parts as one line, the way the dictamen
+ * prints a location.
+ */
 export function formatAddress(address: ComparableAddress | null | undefined) {
   if (!address) return "";
-  const street = [streetWithType(address), part(address.number)].filter(Boolean).join(" ");
+  const corner = normalizeCrossing(part(address.crossStreet)).replace(/^esquina con\s+/i, "");
+  const street = [streetWithType(address), part(address.number), corner ? `esquina con ${corner}` : ""].filter(Boolean).join(" ");
   const neighborhood = part(address.neighborhood) ? `col. ${part(address.neighborhood)}` : "";
   const subdivision = part(address.subdivision) ? `fracc. ${part(address.subdivision)}` : "";
   const postalCode = part(address.postalCode) ? `C.P. ${part(address.postalCode)}` : "";
@@ -125,7 +164,12 @@ export function addressFromRecord(record: Record<string, unknown>): ComparableAd
   })) as ComparableAddress;
   if (!Object.values(parts).some(Boolean)) return null;
   const streetType = STREET_TYPES.find((type) => type === record.streetType);
-  return streetType ? { ...parts, streetType } : parts;
+  const other = typeof record.streetTypeOther === "string" && record.streetTypeOther.trim() ? record.streetTypeOther.trim() : null;
+  return {
+    ...parts,
+    ...(streetType ? { streetType } : {}),
+    ...(streetType === "OTRO" && other ? { streetTypeOther: other } : {}),
+  };
 }
 
 /** True when the address has at least one part captured. */
@@ -202,6 +246,22 @@ export function parseCoordinate(text: string): number | null {
   const hemisphere = before ?? after;
   const direction = (hemisphere ? HEMISPHERES[hemisphere] : 1) * (sign === "-" ? -1 : 1);
   return Math.round(direction * magnitude * 1e7) / 1e7;
+}
+
+/**
+ * A decimal coordinate in degrees, minutes and seconds, as Google Earth shows
+ * it: 20.6153444 → «20°36'55.24" N», -103.47377 → «103°28'25.57" O». Shown
+ * beside the decimal the form keeps, so the change of format is not read as a
+ * change of the number (video 7.2, 12:33).
+ */
+export function formatCoordinateDms(value: number, axis: "latitude" | "longitude") {
+  const hemisphere = axis === "latitude" ? (value < 0 ? "S" : "N") : value < 0 ? "O" : "E";
+  let hundredths = Math.round(Math.abs(value) * 360_000);
+  const degrees = Math.floor(hundredths / 360_000);
+  hundredths -= degrees * 360_000;
+  const minutes = Math.floor(hundredths / 6000);
+  const seconds = (hundredths - minutes * 6000) / 100;
+  return `${degrees}°${String(minutes).padStart(2, "0")}'${seconds.toFixed(2).padStart(5, "0")}" ${hemisphere}`;
 }
 
 /**

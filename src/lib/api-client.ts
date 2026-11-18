@@ -10,6 +10,7 @@ import type { ImportDestination } from "@/features/valuations/calculation/compar
 import type { ComparableCardDto, DuplicateMatchDto, ReviewRowDto } from "@/features/valuations/calculation/comparable-card.service";
 import type { BaseImportResult } from "@/features/valuations/calculation/market.service";
 import type { DeleteBaseOutcome } from "@/features/valuations/comparable-base/comparable-base-write.service";
+import type { ComparableSuggestions } from "@/features/valuations/comparable-base/comparable-suggestions";
 import type { DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
 import type { CalculationPrecision } from "@/features/valuations/calculation/calculation-precision";
 import type { CalculationPrecisionDto } from "@/features/valuations/calculation/calculation-precision.service";
@@ -425,6 +426,8 @@ export const api = {
     locate: (comparableId: string, coordinates: { latitude: number; longitude: number }) =>
       request<{ latitude: number; longitude: number }>(`/comparables/${comparableId}/ubicacion`, { method: "PUT", body: JSON.stringify(coordinates) }),
     duplicates: (probe: DuplicateProbe) => request<DuplicateMatchDto[]>("/comparables/duplicados", { method: "POST", body: JSON.stringify(probe) }),
+    /** What the comparable form offers while typing: places and characteristics of the firm's comparables (of `type`). */
+    suggestions: (type: ComparableType) => request<ComparableSuggestions>(`/comparables/sugerencias?tipo=${type}`),
     uploadPhoto: (comparableId: string, file: File) => uploadForm<ComparableCardDto>(`/comparables/${comparableId}/fotos`, { file }),
     deletePhoto: (comparableId: string, photoId: string) =>
       request<ComparableCardDto>(`/comparables/${comparableId}/fotos?fotoId=${encodeURIComponent(photoId)}`, { method: "DELETE" }),

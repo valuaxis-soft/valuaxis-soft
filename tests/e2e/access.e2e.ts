@@ -89,6 +89,7 @@ describe("without a session", () => {
     ["GET", "/api/comparables/00000000-0000-4000-8000-000000000000"],
     ["GET", "/api/avaluos/{id}/datos/imagenes"],
     ["GET", "/api/comparables/plantilla?tipo=TERRENO_VENTA"],
+    ["GET", "/api/comparables/sugerencias?tipo=INMUEBLE_VENTA"],
     ["GET", "/api/organizacion/equipo"],
     ["POST", "/api/organizacion/equipo/invitaciones"],
     ["GET", "/api/organizacion/invitaciones"],

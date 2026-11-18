@@ -18,6 +18,7 @@ import {
   AREA, BUILT_AREA, COMPARABLE_POINT, CONSULTED, FIRM_BASE_FROM, HAYSTACK, LAND_AREA, constructionTypeCondition, firmBaseCondition, jsonNumber,
   landUseCondition, likePattern, placeCondition, postalCodeCondition, rangeCondition, streetTypeCondition, wordsIn,
 } from "../comparable-search/own-base-sql";
+import { suggestionsFrom, type ComparableSuggestions } from "./comparable-suggestions";
 import { COMPARABLE_LIST_PAGE_SIZE, type ComparableListParams, type ComparableSort, type CountMode } from "./comparable-list-params";
 
 /** A valuation that used a comparable of the base. */
@@ -182,6 +183,25 @@ export async function comparableAttributeNames(organizationId: number): Promise<
     LIMIT 200
   `);
   return rows.map((row) => row.name);
+}
+
+/** The comparables the suggestions of the form read: the firm's most recent ones. */
+const SUGGESTION_ROWS = 2000;
+
+/**
+ * Places and characteristics of the firm's comparables, offered while a
+ * comparable is captured (comparable-suggestions.ts). Characteristics only
+ * of comparables of `type`. Only the organization's base is read.
+ */
+export async function comparableSuggestions(organizationId: number, type: ComparableType): Promise<ComparableSuggestions> {
+  const rows = await prisma.$queryRaw<Array<{ address: Prisma.JsonValue; property: Prisma.JsonValue; type: string }>>(Prisma.sql`
+    SELECT c."JDireccionSnapshot" AS "address", c."JPropiedadSnapshot" AS "property", t."SClave" AS "type"
+    ${FIRM_BASE_FROM}
+    WHERE ${firmBaseCondition(organizationId)}
+    ORDER BY c."DFechaSeleccion" DESC, c."IdComparableAvaluo" DESC
+    LIMIT ${SUGGESTION_ROWS}
+  `);
+  return suggestionsFrom(rows.map((row) => ({ address: asRecord(row.address), property: asRecord(row.property), sameType: row.type === type })));
 }
 
 /** The filters of the list (and of the map) as conditions over `c`, `p` and `t`; the text is matched word by word. */

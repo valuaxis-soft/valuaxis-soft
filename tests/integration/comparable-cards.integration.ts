@@ -104,7 +104,7 @@ test("the new fields are saved and read back; a client that leaves them out keep
   }));
   const [stored] = (await market(owner.publicId, owner.organizationId)).comparables;
   assert.equal(stored.location, "Juárez 12, col. Centro, Arandas", "the single line stays what the dictamen prints");
-  assert.deepEqual(stored.address, { state: "Jalisco", municipality: "Arandas", postalCode: "47180", neighborhood: "Centro", subdivision: null, street: "Juárez", number: "12" });
+  assert.deepEqual(stored.address, { state: "Jalisco", municipality: "Arandas", postalCode: "47180", neighborhood: "Centro", subdivision: null, street: "Juárez", number: "12", crossStreet: null });
   assert.equal(stored.urbanProximity, "INTERMEDIA");
   assert.equal(stored.operationType, "VENTA");
   assert.equal(stored.latitude, 20.7092);

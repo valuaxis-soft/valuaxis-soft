@@ -152,6 +152,7 @@ const comparableCardCases: Case[] = [
   { name: "check a comparable for duplicates", method: "POST", path: (id) => `/api/avaluos/${id}/mercado/comparables/duplicados`,
     body: () => ({ url: "https://portal.example/duplicado", location: "Calle 1 2, Arandas", contactPhone: null, price: null }), expected: all(200) },
   { name: "read the review of the comparables", method: "GET", path: (id) => `/api/avaluos/${id}/mercado/revision`, expected: all(200) },
+  { name: "read the suggestions of the comparable form", method: "GET", path: () => "/api/comparables/sugerencias?tipo=INMUEBLE_VENTA", expected: all(200) },
   { name: "read a comparable's card", method: "GET", path: (id) => `/api/comparables/${comparablesByValuation.get(id)}`,
     fresh: true, prepare: withComparable, expected: all(200) },
   { name: "review a comparable", method: "PUT", path: (id) => `/api/avaluos/${id}/mercado/comparables/${comparablesByValuation.get(id)}/revision`,

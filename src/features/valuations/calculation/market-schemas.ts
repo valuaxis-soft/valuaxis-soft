@@ -65,8 +65,12 @@ const addressSchema = z.object({
   subdivision: text(120).optional(),
   // «Tipo de vialidad»; left out by a client that does not know it (the master workbook), the stored one stays.
   streetType: z.enum(STREET_TYPES, "Tipo de vialidad inválido.").nullable().optional(),
+  // With «Otro»: which type of road it is, as written (video 7.2).
+  streetTypeOther: text(60).optional(),
   street: text(180).optional(),
   number: text(40).optional(),
+  // «Esquina con» (video 7.3).
+  crossStreet: text(180).optional(),
 });
 
 const count = (label: string) => z.number(`${label} es un número.`).int(`${label} es un número entero.`).min(0, `${label} no puede ser negativo.`).max(10_000).nullable().optional();

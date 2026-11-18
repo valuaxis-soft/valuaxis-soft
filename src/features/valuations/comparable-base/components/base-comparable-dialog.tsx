@@ -59,6 +59,8 @@ export function BaseComparableDialog(props: {
     const created = await run(() => api.comparableBase.create(type, values, mergeInto));
     if (!created) return false;
     if (pending.screenshot) await run(() => api.comparableBase.uploadScreenshot(created.id, pending.screenshot as File));
+    // The photos chosen before saving, in their order.
+    for (const photo of pending.photos) await run(() => api.comparableBase.uploadPhoto(created.id, photo));
     const folio = await api.market.card(created.id).then((loaded) => formatComparableId(loaded.comparable.folio)).catch(() => null);
     toast.success(created.outcome === "CREATED" ? `Comparable ${folio ?? "nuevo"} guardado en la base.`
       : created.outcome === "UPDATED" ? "El comparable de la base quedó con los datos capturados." : "La base ya tenía ese comparable con datos más recientes.");

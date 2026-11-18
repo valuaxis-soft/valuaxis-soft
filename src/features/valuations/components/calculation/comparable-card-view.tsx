@@ -9,8 +9,7 @@ import {
   UNIT_BASIS_LABELS,
   URBAN_PROXIMITY_LABELS,
   STREET_TYPE_LABEL,
-  STREET_TYPE_LABELS,
-  streetTypeOf,
+  streetTypeText,
   characteristicLabelOf,
   formatComparableId,
 } from "@/features/valuations/calculation/comparable-card";
@@ -87,8 +86,8 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
   const location: SheetItem[] = [
     { label: "Ubicación", value: orDash(comparable.location), wide: true },
     ...ADDRESS_PARTS.flatMap((part) => [
-      // The type of road beside the road; one captured before it existed reads «Calle».
-      ...(part === "street" ? [{ label: STREET_TYPE_LABEL, value: STREET_TYPE_LABELS[streetTypeOf(comparable.address)] }] : []),
+      // The type of road beside the road (with «Otro», which one); one captured before it existed reads «Calle».
+      ...(part === "street" ? [{ label: STREET_TYPE_LABEL, value: streetTypeText(comparable.address) }] : []),
       { label: ADDRESS_LABELS[part], value: orDash(comparable.address?.[part]) },
     ]),
     { label: "Proximidad urbana", value: comparable.urbanProximity ? URBAN_PROXIMITY_LABELS[comparable.urbanProximity] : "—" },
@@ -173,7 +172,8 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
       <div className={cn("grid gap-3", printable ? "grid-cols-2" : "sm:grid-cols-2")}>
         <SheetSection title="Fotografías" printable={printable}>
           {comparable.photos.length ? (
-            <div className="grid grid-cols-3 gap-1.5 p-1.5">
+            // Up to ten photos: four a row past six, so the card stays the height it had.
+            <div className={cn("grid gap-1.5 p-1.5", comparable.photos.length > 6 ? "grid-cols-4" : "grid-cols-3")} data-card-photos>
               {comparable.photos.map((photo) => (
                 <a key={photo.id} href={photo.url} target="_blank" rel="noopener noreferrer" className="block aspect-square overflow-hidden rounded-sm border bg-muted">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
