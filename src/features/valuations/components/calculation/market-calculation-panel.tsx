@@ -72,7 +72,7 @@ import { MarketCharacteristicsTable, characteristicNumberText, newFieldKey, type
 import { MARKET_ACCENT } from "./market-accent";
 import { MarketEditSession, rebaseDraft } from "./market-edit-session";
 import { SortableRows, useSortableRow } from "./sortable-rows";
-import { sharedCharacteristics } from "@/features/valuations/calculation/market-characteristic-sharing";
+import { mirroredAttributes, sharedCharacteristics, unsharedAttributes } from "@/features/valuations/calculation/market-characteristic-sharing";
 import type { SubjectFacts } from "@/features/valuations/calculation/market-subject-facts";
 import { MarketFactorSlots } from "./market-factor-slots";
 import { MarketHomologationTable } from "./market-homologation-table";
@@ -462,9 +462,13 @@ function MarketTypePanel(props: {
     api.market.get(valuationId, type)
       .then((next) => {
         if (!active) return;
-        const created = new MarketEditSession(next, {
+        const created: MarketEditSession = new MarketEditSession(next, {
           saveSettings: (settings) => api.market.saveSettings(valuationId, settings),
-          saveComparable: (comparable) => api.market.updateComparable(valuationId, type, comparable.id, comparableFormValues(comparable)),
+          // The market's added characteristics stay attributes of the comparable in the firm's base, to filter by them.
+          saveComparable: (comparable): Promise<MarketCalculationDto> => api.market.updateComparable(valuationId, type, comparable.id, comparableFormValues({
+            ...comparable,
+            attributes: mirroredAttributes(characteristicFieldsOf(created.view.settings), comparable),
+          })),
         }, failed);
         session.current = created;
         unsubscribe = created.subscribe(() => show(created));
@@ -569,11 +573,32 @@ function MarketTypePanel(props: {
     const ok = await run(() => api.market.reorderComparables(valuationId, type, ids));
     if (ok) {
       toast.success(message, {
-        description: "El dictamen los numera en este orden. Las columnas propias que agregaste en sus tablas siguen el número de renglón: revísalas.",
+        description: "El dictamen los numera en este orden; lo que escribiste en sus renglones de las tablas del dictamen se mueve con cada comparable.",
         duration: 12000,
         action: { label: "Deshacer", onClick: () => void reorderComparables(before, "Orden anterior restaurado.") },
       });
     }
+  };
+
+  /**
+   * "Eliminar comparable": the server sets it aside, so «Deshacer» brings it
+   * back in its place, with its factors, photos and what was written in its
+   * rows of the dictamen (they follow its id).
+   */
+  const removeComparable = async (comparable: ComparableDto) => {
+    const before = session.current?.view.comparables.map((item) => item.id) ?? [];
+    const ok = await run(() => api.market.deleteComparable(valuationId, type, comparable.id));
+    if (!ok) return;
+    toast.success(`Comparable ${comparable.reference} eliminado.`, {
+      duration: 15000,
+      action: {
+        label: "Deshacer",
+        onClick: () => void (async () => {
+          if (!(await run(() => api.market.restoreMarket(valuationId, type, [comparable.id])))) return;
+          await reorderComparables(before, `Comparable ${comparable.reference} restaurado.`);
+        })(),
+      },
+    });
   };
 
   /**
@@ -590,7 +615,8 @@ function MarketTypePanel(props: {
         description: "Se ven en todas las fichas de este mercado y en la tabla 2.1, y se imprimen en la línea de características.",
       });
     }
-    return shared.comparable;
+    // In the firm's base they stay attributes of the comparable, to filter by them in Comparables.
+    return { ...shared.comparable, attributes: mirroredAttributes(shared.fields, shared.comparable) };
   };
 
   const submitComparable = async (current: ComparableDto | null, typed: ComparableFormValues, pending: PendingImages, mergeInto?: string) => {
@@ -672,14 +698,16 @@ function MarketTypePanel(props: {
     void reorderComparables(sorted.map((item) => item.id), `Comparables ordenados por $${perUnit} de ${direction === 1 ? "menor a mayor" : "mayor a menor"}.`);
   };
   // Characteristics added in the cards before they were shared with the market: the appraiser brings them into the table.
-  const unsharedAttributes = comparables.reduce((sum, comparable) => sum + (comparable.attributes?.length ?? 0), 0);
+  const notShared = comparables.reduce((sum, comparable) => sum + unsharedAttributes(fields, comparable.attributes).length, 0);
+  // The card shows under «Características agregadas» only what is not a characteristic of the market: the rest is in its list.
+  const cardOf = (comparable: ComparableDto): ComparableDto => ({ ...comparable, attributes: unsharedAttributes(fields, comparable.attributes) });
   const shareAttributes = () => {
     const current = session.current;
     if (!current) return;
     let list = characteristicFieldsOf(current.view.settings);
     let count = 0;
     const changed: ComparableDto[] = [];
-    for (const comparable of current.view.comparables.filter((item) => item.attributes?.length)) {
+    for (const comparable of current.view.comparables.filter((item) => unsharedAttributes(list, item.attributes).length)) {
       const shared = sharedCharacteristics(list, comparable, () => newFieldKey(++count));
       list = shared.fields;
       changed.push(shared.comparable);
@@ -878,9 +906,7 @@ function MarketTypePanel(props: {
                           variant="ghost"
                           aria-label={`Eliminar comparable ${comparable.reference}`}
                           onClick={() => {
-                            if (window.confirm(`¿Eliminar el comparable ${comparable.reference}?`)) {
-                              void run(() => api.market.deleteComparable(valuationId, type, comparable.id), "Comparable eliminado");
-                            }
+                            if (window.confirm(`¿Eliminar el comparable ${comparable.reference}?`)) void removeComparable(comparable);
                           }}
                         >
                           <Trash2 />
@@ -954,9 +980,9 @@ function MarketTypePanel(props: {
         {comparables.length ? (
           <h5 className="mt-2 border-t pt-3 text-sm font-semibold" data-characteristics-title="">2.1 Tabla de características de comparables</h5>
         ) : null}
-        {comparables.length && unsharedAttributes && !readOnly ? (
+        {comparables.length && notShared && !readOnly ? (
           <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-unshared-attributes="">
-            Hay {unsharedAttributes} {unsharedAttributes === 1 ? "característica agregada" : "características agregadas"} solo en las fichas.
+            Hay {notShared} {notShared === 1 ? "característica agregada" : "características agregadas"} solo en las fichas.
             <Button type="button" size="sm" variant="outline" onClick={shareAttributes}>Pasarlas a esta tabla</Button>
           </p>
         ) : null}
@@ -1224,7 +1250,7 @@ function MarketTypePanel(props: {
           onOpenChange={(open) => { if (!open) { setEditing(null); setPrefill(null); } }}
           prefill={prefill?.values}
           listingText={prefill?.listingText}
-          comparable={editingComparable ? comparables.find((item) => item.id === editingComparable.id) ?? editingComparable : null}
+          comparable={editingComparable ? cardOf(comparables.find((item) => item.id === editingComparable.id) ?? editingComparable) : null}
           characteristicFields={fields}
           comparableType={type}
           unitLabel={priceLabel}

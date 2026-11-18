@@ -122,7 +122,7 @@ export function useCalculationDocumentSync({
       : ["MERCADO_VENTA", MARKET_TEMPLATE_BLOCK_IDS];
     updateBySection(`motor-mercado-${type}`, (key, section) =>
       key === sectionKey
-        ? withGeneratedBlocks(section, type, mainBlocks, { placeholderIds: placeholders })
+        ? withGeneratedBlocks(section, type, mainBlocks, { placeholderIds: placeholders, comparables: calculation.comparables })
         : key === "CROQUIS_COMPARABLES"
           ? withGeneratedBlocks(section, type, photoBlocks, { kind: "fotos", position: "end" })
           : section);

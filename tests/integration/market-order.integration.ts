@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import type { ComparableInputPayload } from "../../src/features/valuations/calculation/market-schemas";
-import { createComparable, getMarketCalculation, reorderComparables, saveMarketSettings } from "../../src/features/valuations/calculation/market.service";
+import { createComparable, deleteComparable, getMarketCalculation, reorderComparables, restoreMarket, saveMarketSettings } from "../../src/features/valuations/calculation/market.service";
 import { DEFAULT_FACTOR_SLOTS } from "../../src/features/valuations/calculation/market-types";
 import { ValuationWorkflowError } from "../../src/features/valuations/services/valuation-workflow/errors";
 import { createValuationFixture, prisma } from "./support";
@@ -40,6 +40,15 @@ test("V7.2-14: the comparables take the order given; references 1..n follow it a
   );
   const same = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
   assert.deepEqual(same.comparables.map((item) => item.location), ["Calle B", "Calle C", "Calle A"]);
+  // Deleting is undone: the comparable comes back with its id (its rows of the dictamen follow it) and goes back to its place.
+  const removed = same.comparables[0];
+  await deleteComparable(fixture.publicId, user, removed.id);
+  const without = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
+  assert.deepEqual(without.comparables.map((item) => [item.location, item.reference]), [["Calle C", 1], ["Calle A", 2]]);
+  await restoreMarket(fixture.publicId, user, "TERRENO_VENTA", [removed.id]);
+  await reorderComparables(fixture.publicId, user, "TERRENO_VENTA", same.comparables.map((item) => item.id));
+  const back = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
+  assert.deepEqual(back.comparables.map((item) => item.id), same.comparables.map((item) => item.id));
 });
 
 test("V7.2-18: an added area of the market keeps its kind when the settings are stored", async () => {

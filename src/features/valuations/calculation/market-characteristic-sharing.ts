@@ -1,6 +1,8 @@
 import { parseDecimal } from "./free-formula";
 import {
   MAX_CHARACTERISTIC_FIELDS,
+  cleanAttributes,
+  isBuiltinCharacteristic,
   isNumericCharacteristic,
   withCharacteristic,
   type BuiltinCharacteristic,
@@ -63,4 +65,27 @@ export function sharedCharacteristics<T extends Shared>(
     next = withCharacteristic(next, field.key, text, numeric ? parseDecimal(text) : null);
   }
   return { fields: list, comparable: { ...next, attributes: kept }, added };
+}
+
+/**
+ * The attributes a comparable keeps in the firm's base, to filter it in
+ * Comparables: those the card did not share, and every characteristic the
+ * appraiser added to the market with the value of this comparable. They
+ * follow what is captured in the market (a value changed in the table 2.1
+ * changes the attribute too).
+ */
+export function mirroredAttributes(fields: ReadonlyArray<CharacteristicField>, comparable: Pick<ComparableDto, "attributes" | "extra">) {
+  const added = fields.filter((field) => !isBuiltinCharacteristic(field.key));
+  const named = new Set(added.map((field) => normalized(field.label)));
+  const own = (comparable.attributes ?? []).filter((attribute) => !named.has(normalized(attribute.name)));
+  const shared = added
+    .map((field) => ({ name: field.label, value: comparable.extra?.[field.key] ?? "" }))
+    .filter((attribute) => attribute.value.trim());
+  return cleanAttributes([...own, ...shared]);
+}
+
+/** What the card shows under «Características agregadas» inside a valuation: only what is not a characteristic of the market yet. */
+export function unsharedAttributes(fields: ReadonlyArray<CharacteristicField>, attributes: ComparableDto["attributes"]) {
+  const named = new Set(fields.map((field) => normalized(field.label)));
+  return (attributes ?? []).filter((attribute) => !named.has(normalized(attribute.name)));
 }

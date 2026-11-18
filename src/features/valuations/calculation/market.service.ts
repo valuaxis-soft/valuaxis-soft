@@ -1292,11 +1292,22 @@ export async function updateComparable(publicId: string, user: AuthUser, compara
   });
 }
 
+const COMPARABLE_REMOVED_REASON = "Comparable quitado del mercado; se puede deshacer.";
+
+/**
+ * "Eliminar comparable" of a market: it is set aside (`BIncluido` false, with
+ * its factors, photos and what the appraiser wrote in its rows of the
+ * dictamen), so «Deshacer» brings it back with `restoreMarket`, as every
+ * deletion; the rest are numbered 1..n again.
+ */
 export async function deleteComparable(publicId: string, user: AuthUser, comparableId: string) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
     const current = await findComparable(tx, versionId, comparableId);
-    await tx.comparableAvaluo.delete({ where: { IdComparableAvaluo: current.IdComparableAvaluo } });
+    await tx.comparableAvaluo.update({
+      where: { IdComparableAvaluo: current.IdComparableAvaluo },
+      data: { BIncluido: false, DFechaExclusion: new Date(), SMotivoExclusion: COMPARABLE_REMOVED_REASON },
+    });
     // Keep references 1..n in capture order, as the dictamen numbers them.
     const remaining = await tx.comparableAvaluo.findMany({
       where: { IdVersionAvaluo: versionId, IdTipoComparable: current.IdTipoComparable, BIncluido: true },

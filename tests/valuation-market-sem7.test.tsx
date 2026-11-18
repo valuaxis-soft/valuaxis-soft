@@ -9,8 +9,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { addedCharacteristicText, marketDocumentBlocks } from "../src/features/valuations/calculation/market-document";
-import { characteristicKindOf, sharedCharacteristics } from "../src/features/valuations/calculation/market-characteristic-sharing";
+import { addedCharacteristicText, marketDocumentBlocks, withGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
+import { characteristicKindOf, mirroredAttributes, sharedCharacteristics, unsharedAttributes } from "../src/features/valuations/calculation/market-characteristic-sharing";
+import { applyTableLayout, layoutOf, withExtraColumn, withExtraColumnChange } from "../src/features/valuations/calculation/generated-table-layout";
+import { ensureTableV2 } from "../src/features/valuations/services/table";
 import { reorderComparablesSchema, marketSettingsSchema } from "../src/features/valuations/calculation/market-schemas";
 import { findSubjectFacts } from "../src/features/valuations/calculation/market-subject-facts";
 import {
@@ -26,7 +28,7 @@ import { MarketEditSession, rebaseDraft, withPendingChanges } from "../src/featu
 import { movedIds } from "../src/features/valuations/components/calculation/sortable-rows";
 import { DraftHistory } from "../src/features/valuations/components/calculation/use-draft-history";
 import { generatedMarketOf, hiddenMarketBlocks, shownForActiveMarket, withMarketBlocksShown } from "../src/features/valuations/components/workspace/model/active-market";
-import type { AppSection, Block, Concept } from "../src/features/valuations/model";
+import type { AppSection, Block, Concept, TableContent } from "../src/features/valuations/model";
 
 function comparable(reference: number, area: number, price: number): ComparableDto {
   return {
@@ -326,4 +328,67 @@ test("V7.2-12 / -14: dragging moves one row to the place of another; the order s
   assert.equal(reorderComparablesSchema.safeParse({ comparableType: "TERRENO_VENTA", comparableIds: ["c-2", "c-1"] }).success, true);
   assert.equal(reorderComparablesSchema.safeParse({ comparableType: "TERRENO_VENTA", comparableIds: [] }).success, false);
   assert.equal(reorderComparablesSchema.safeParse({ comparableType: "OTRO", comparableIds: ["c-1"] }).success, false);
+});
+
+const tableIn = (section: Pick<AppSection, "blocks">, suffix: string) => {
+  const table = section.blocks.flatMap((item) => [...item.tables, ...item.apartados.flatMap((apartado) => apartado.tables)]).find((item) => item.id.endsWith(suffix));
+  assert.ok(table, suffix);
+  return ensureTableV2(table);
+};
+/** Each printed row's location and what the appraiser wrote in his own column. */
+const ownColumn = (section: Pick<AppSection, "blocks">) => tableIn(section, "tabla-caracteristicas").rows.map((row) => {
+  const cell = (id: string) => { const value = row.cells[id]; return value && "value" in value ? String(value.value) : ""; };
+  return [cell("col-2"), cell("extra-1")];
+});
+const withOwnValue = (section: AppSection, rowId: (table: ReturnType<typeof ensureTableV2>) => string, text: string): AppSection => {
+  const table = tableIn(section, "tabla-caracteristicas");
+  const layout = withExtraColumnChange(withExtraColumn(layoutOf(table), "SUP. COMÚN", null), "extra-1", { value: { rowId: rowId(table), text } });
+  const laid = applyTableLayout(table as unknown as TableContent, layout);
+  return { ...section, blocks: section.blocks.map((item) => ({ ...item, apartados: item.apartados.map((apartado) => ({ ...apartado, tables: apartado.tables.map((own) => (own.id === laid.id ? laid : own)) })) })) };
+};
+const threeComparables = (): MarketCalculationDto => ({ ...market(), comparables: [...market().comparables, comparable(3, 280, 1_000_000)] });
+const sortedByUnitValue = (calculation: MarketCalculationDto): MarketCalculationDto => ({
+  ...calculation,
+  comparables: [...calculation.comparables].sort((a, b) => a.price! / a.area! - b.price! / b.area!).map((item, index) => ({ ...item, reference: index + 1 })),
+});
+const emptySection = (): AppSection => ({ id: "mercadoVenta", label: "IX", title: "MERCADO", sourceFile: "", enabled: true, required: false, blocks: [] } as AppSection);
+
+test("V7.2-14: what the appraiser wrote in his own column of a dictamen table follows its comparable when they are sorted by $/m²", () => {
+  const calculation = threeComparables();
+  const first = withGeneratedBlocks(emptySection(), "TERRENO_VENTA", marketDocumentBlocks(calculation, null), { comparables: calculation.comparables });
+  // «Sup. común» 12 written for comparable 3 (Calle Inventada 3), the cheapest per m².
+  const written = withOwnValue(first, (table) => table.rows[2].id, "12");
+  assert.deepEqual(ownColumn(written).map(([, own]) => own), ["", "", "12"]);
+  const sorted = sortedByUnitValue(calculation);
+  assert.deepEqual(sorted.comparables.map((item) => item.location), ["Calle Inventada 3", "Calle Inventada 1", "Calle Inventada 2"]);
+  const after = withGeneratedBlocks(written, "TERRENO_VENTA", marketDocumentBlocks(sorted, null), { comparables: sorted.comparables });
+  assert.deepEqual(ownColumn(after), [["Calle Inventada 3", "12"], ["Calle Inventada 1", ""], ["Calle Inventada 2", ""]], "the 12 moved with Calle Inventada 3");
+  // Deleted, its row leaves the dictamen; brought back with «Deshacer», its value is there again.
+  const without = { ...sorted, comparables: sorted.comparables.slice(1).map((item, index) => ({ ...item, reference: index + 1 })) };
+  const deleted = withGeneratedBlocks(after, "TERRENO_VENTA", marketDocumentBlocks(without, null), { comparables: without.comparables });
+  assert.deepEqual(ownColumn(deleted), [["Calle Inventada 1", ""], ["Calle Inventada 2", ""]]);
+  const restored = withGeneratedBlocks(deleted, "TERRENO_VENTA", marketDocumentBlocks(sorted, null), { comparables: sorted.comparables });
+  assert.deepEqual(ownColumn(restored)[0], ["Calle Inventada 3", "12"]);
+});
+
+test("V7.2-14: a table written before, keyed by the reference, takes the comparable in each row, then follows it", () => {
+  const calculation = threeComparables();
+  const first = withGeneratedBlocks(emptySection(), "TERRENO_VENTA", marketDocumentBlocks(calculation, null), { comparables: calculation.comparables });
+  // As the tables were keyed until now: "…-k-3" is the row of reference 3.
+  const old = withOwnValue(first, (table) => `r-${table.id}-k-3`, "12");
+  const opened = withGeneratedBlocks(old, "TERRENO_VENTA", marketDocumentBlocks(calculation, null), { comparables: calculation.comparables });
+  assert.deepEqual(ownColumn(opened)[2], ["Calle Inventada 3", "12"], "read by the comparable now in row 3");
+  assert.doesNotMatch(JSON.stringify(tableIn(opened, "tabla-caracteristicas").schema?.generated?.layout), /-k-3"/);
+  const sorted = sortedByUnitValue(calculation);
+  const after = withGeneratedBlocks(opened, "TERRENO_VENTA", marketDocumentBlocks(sorted, null), { comparables: sorted.comparables });
+  assert.deepEqual(ownColumn(after)[0], ["Calle Inventada 3", "12"]);
+  // Nothing keyed by reference: the same section, the document is not touched.
+  assert.equal(withGeneratedBlocks(after, "TERRENO_VENTA", marketDocumentBlocks(sorted, null), { comparables: sorted.comparables }), after);
+});
+
+test("V7.2-10: the market's added characteristics stay attributes of the comparable in the firm's base, to filter by them", () => {
+  const fields: CharacteristicField[] = [{ key: "zone", label: "ZONA" }, { key: "custom:sup", label: "Sup. común", kind: "area" }, { key: "custom:p", label: "Proyecto" }];
+  const attributes = mirroredAttributes(fields, { extra: { "custom:sup": "12", "custom:p": "" }, attributes: [{ name: "Alberca", value: "Sí" }, { name: "sup. común", value: "10" }] });
+  assert.deepEqual(attributes, [{ name: "Alberca", value: "Sí" }, { name: "Sup. común", value: "12" }], "the market's value wins; an empty one is not an attribute");
+  assert.deepEqual(unsharedAttributes(fields, [{ name: "Alberca", value: "Sí" }, { name: "SUP. COMÚN", value: "12" }]), [{ name: "Alberca", value: "Sí" }], "the card lists only what the market lacks");
 });
