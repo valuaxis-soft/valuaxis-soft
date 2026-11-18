@@ -184,7 +184,11 @@ test("indirects print only when there are any, and the physical value adds only 
     ["A) Valor del Terreno:", "$ 1,528,000.00"],
     ["VALOR FÍSICO DE REPOSICIÓN (A):", "$ 1,530,000.00"],
   ]);
-  assert.deepEqual(costDocumentBlocks(arandas, null, null), [], "nothing computed, no page");
+  assert.deepEqual(costDocumentBlocks({ ...arandas, installations: [] }, null, null), [], "nothing computed, no page");
+  // Installations captured print without a result too (video 7.4, 24:21), with no physical value yet.
+  const [captured] = costDocumentBlocks(arandas, null, null);
+  assert.deepEqual(captured.apartados.map((apartado) => apartado.title), ["C) INSTALACIONES ESPECIALES, ELEMENTOS ACCESORIOS Y OBRAS COMPLEMENTARIAS (IE, EA, OC)"]);
+  assert.equal(printed(captured.apartados[0].tables[1]).boxes["bottom:valor-fisico"], undefined);
 });
 
 test("a valuation saved with the former cost blocks gets the page in their place, and a reload leaves it as it is", () => {

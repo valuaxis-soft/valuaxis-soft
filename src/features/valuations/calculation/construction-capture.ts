@@ -142,7 +142,7 @@ const headerName = (name: string) =>
  * header; a header two columns share ("Tipo") goes to them in order. A table
  * whose headers were all renamed is read by position, as before.
  */
-function captureColumns(columns: TableColumn[], kind: CaptureKind): (CaptureColumn | null)[] {
+function captureColumns(columns: TableColumn[], kind: CaptureKind, byPosition = true): (CaptureColumn | null)[] {
   const known = columnsOf(kind);
   const taken = new Set<string>();
   const found = columns.map((column): CaptureColumn | null => {
@@ -154,7 +154,7 @@ function captureColumns(columns: TableColumn[], kind: CaptureKind): (CaptureColu
     return match;
   });
   const positional = known.filter((item) => item.positional);
-  if (found.filter(Boolean).length >= Math.min(2, positional.length)) return found;
+  if (!byPosition || found.filter(Boolean).length >= Math.min(2, positional.length)) return found;
   return columns.map((_, index) => positional[index] ?? null);
 }
 
@@ -442,6 +442,9 @@ export function mergeCapture(
   const refColumn = map.byKey.get(columnsOf(kind)[0].key);
   if (!refColumn) return tableContent;
   if (synced && sameItems(server, synced)) return normalizeCapture(tableContent, costs);
+  // Renumbered in the cost approach: each row takes its new reference first, then the rest as always.
+  const renumbered = synced ? followRenumbering(table, refColumn, server, synced) : null;
+  if (renumbered) return mergeCapture(asContent(renumbered.table, tableContent.title), server, renumbered.synced, costs);
 
   const serverRefs = new Set(server.map(({ item }) => refKey(item.ref)));
   const syncedByRef = new Map((synced ?? []).map((entry) => [refKey(entry.item.ref), entry]));
@@ -484,6 +487,47 @@ export function mergeCapture(
   }
   const unchanged = rows.length === table.rows.length && rows.every((row, index) => row === table.rows[index]);
   return normalizeCapture(unchanged ? tableContent : asContent({ ...table, rows }, tableContent.title), costs);
+}
+
+/**
+ * An installation taken out in the cost approach renumbers the others (video
+ * 7.4, 20:30), and «Deshacer» numbers them back: the server holds the same
+ * items, one fewer or one more, with new references. Each row keeps what it
+ * shows, its columns of the appraiser's included, and takes its new
+ * reference; the row of one taken out leaves (one brought back is added by
+ * the merge). Null when the items are not the same ones, in order, or no
+ * reference changed.
+ */
+function followRenumbering(
+  table: TableV2, refColumn: string, server: Array<{ item: CaptureItem }>, synced: SyncedItem[],
+): { table: TableV2; synced: SyncedItem[] } | null {
+  const data = (item: CaptureItem) => JSON.stringify({ ...item, ref: "" });
+  const fewer = server.length <= synced.length;
+  const [small, large] = fewer ? [server.map(({ item }) => item), synced.map((entry) => entry.item)] : [synced.map((entry) => entry.item), server.map(({ item }) => item)];
+  // Each item of the shorter list, in order, is one of the longer list.
+  const matched: number[] = [];
+  let at = 0;
+  for (const item of small) {
+    while (at < large.length && data(large[at]) !== data(item)) at += 1;
+    if (at >= large.length) return null;
+    matched.push(at);
+    at += 1;
+  }
+  const pairs = small.map((item, index) => (fewer
+    ? { ref: item.ref, entry: synced[matched[index]] }
+    : { ref: server[matched[index]].item.ref, entry: synced[index] }));
+  if (!pairs.some(({ ref, entry }) => refKey(ref) !== refKey(entry.item.ref))) return null;
+  const rowIds = new Set(table.rows.map((row) => row.id));
+  if (pairs.some(({ entry }) => !entry.rowId || !rowIds.has(entry.rowId))) return null;
+  const refOf = new Map(pairs.map(({ ref, entry }) => [entry.rowId as string, ref]));
+  const gone = new Set(synced.flatMap((entry) => (entry.rowId && !pairs.some((pair) => pair.entry === entry) ? [entry.rowId] : [])));
+  const rows = table.rows
+    .filter((row) => !gone.has(row.id))
+    .map((row) => (refOf.has(row.id) ? withCell(row, refColumn, refOf.get(row.id) as string) : row));
+  return {
+    table: { ...table, rows },
+    synced: pairs.map(({ ref, entry }) => ({ ...entry, item: { ...entry.item, ref } })),
+  };
 }
 
 /**
@@ -605,21 +649,119 @@ export function asCaptureTable(tableContent: TableContent, calculation: CostCalc
   return normalizeCapture(asContent({ ...table, rows, schema }, tableContent.title), calculation);
 }
 
-/** The capture tables of a section: the first table of each kind (another one of the same kind is a table of the appraiser's). */
+/** Every table of a section, in its order. */
+const tablesIn = (section: AppSection) => section.blocks.flatMap((block) => [block, ...block.apartados].flatMap((container) => container.tables));
+
+/**
+ * The capture tables of a section: of each kind, the table marked and linked
+ * (one the appraiser linked with «Vincular con Costos»), else the first one
+ * (another one of the same kind is a table of the appraiser's).
+ */
 export function captureTablesOf(section: AppSection): Map<string, CaptureKind> {
   const found = new Map<string, CaptureKind>();
-  const kinds = new Set<CaptureKind>();
-  for (const block of section.blocks) {
-    for (const container of [block, ...block.apartados]) {
-      for (const table of container.tables) {
-        const kind = captureKindOf(table);
-        if (!kind || kinds.has(kind)) continue;
-        kinds.add(kind);
-        found.set(table.id, kind);
-      }
-    }
+  const tables = tablesIn(section);
+  for (const kind of ["types", "installations"] as const) {
+    const ofKind = tables.filter((table) => captureKindOf(table) === kind);
+    const chosen = ofKind.find((table) => isCaptureMarked(table) && !isCaptureUnlinked(table)) ?? ofKind[0];
+    if (chosen) found.set(chosen.id, kind);
   }
   return found;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Linking a table of the appraiser's                                 */
+/* ------------------------------------------------------------------ */
+
+const FIELD_NAMES: Record<string, string> = {
+  ref: "Ref.", description: "Descripción", unit: "Unidad", quantity: "Cantidad", age: "Edad", usefulLife: "Vida útil", maintenance: "Mantenimiento",
+  classification: "Clasificación", quality: "Calidad", area: "Superficie",
+};
+
+/** What «Vincular con Costos» takes from a table, read by the names of its headers. */
+export type CaptureLinkPlan =
+  | {
+    ok: true;
+    /** Each header taken and the datum it fills. */
+    taken: Array<{ header: string; field: string }>;
+    /** Headers the system writes (VUR, conservation, unit value): what they hold is replaced. */
+    computed: string[];
+    /** The table has no reference column (#, No., Ref.): one is added, numbered. */
+    addsRef: boolean;
+    /** Rows that become installations. */
+    rows: number;
+  }
+  | { ok: false; reason: string };
+
+/**
+ * How a table of the appraiser's in the construction section (video 7.4,
+ * 21:53: a «Tabla configurable» with his installations) would be the
+ * capture of the installations: its columns are known by their headers (#,
+ * Descripción, Unidad, Cant., Edad, VUT, Mantenim.…). It needs at least its
+ * description.
+ */
+export function captureLinkPlan(tableContent: TableContent | TableV2, kind: CaptureKind): CaptureLinkPlan {
+  const table = ensureTableV2(tableContent);
+  const display = getDisplayColumns(table);
+  const known = captureColumns(display, kind, false);
+  const taken = display.flatMap((column, index) => {
+    const capture = known[index];
+    return capture?.field ? [{ header: column.name.trim() || "(sin nombre)", field: FIELD_NAMES[capture.field] ?? capture.field }] : [];
+  });
+  const computed = display.flatMap((column, index) => (known[index]?.role === "computed" ? [column.name.trim()] : []));
+  const fields = new Set(known.flatMap((capture) => (capture?.field ? [capture.field] : [])));
+  if (!fields.has("description")) {
+    return { ok: false, reason: "Para vincularla con Costos la tabla necesita una columna «Descripción» (y de preferencia #, Unidad, Cant., Edad y VUT)." };
+  }
+  const addsRef = !fields.has("ref");
+  const linked = asLinkedCaptureTable(table as unknown as TableContent, kind, null);
+  return { ok: true, taken, computed, addsRef, rows: readCapture(linked, kind, null).length };
+}
+
+/**
+ * The table as the capture of a kind: marked, with a numbered reference
+ * column first if it had none, and the figures of the system written.
+ */
+export function asLinkedCaptureTable(tableContent: TableContent, kind: CaptureKind, costs: Pick<CostCalculationDto, "constructions" | "installations"> | null): TableContent {
+  let table = ensureTableV2(tableContent);
+  const known = captureColumns(getDisplayColumns(table), kind, false);
+  if (!known.some((capture) => capture?.role === "ref")) {
+    let id = "numero";
+    while (table.columns.some((column) => column.id === id)) id = `${id}-ref`;
+    const columns = [{ id, name: "#" }, ...table.columns];
+    const rows = table.rows.map((row) => ({ ...row, cells: { [id]: { kind: "value", value: "" } as TableCellV2, ...row.cells } }));
+    table = { ...table, columns, rows };
+  }
+  const schema = { ...(table.schema ?? { zones: [] }), capture: { kind } as TableCaptureMarker };
+  return normalizeCapture(asContent({ ...table, schema }, tableContent.title), costs);
+}
+
+/**
+ * The construction section with a table of the appraiser's as the capture of
+ * a kind: the capture table it had of that kind stays as the appraiser's,
+ * unlinked (it keeps what it shows).
+ */
+export function withLinkedCaptureTable(section: AppSection, tableId: string, kind: CaptureKind, costs: Pick<CostCalculationDto, "constructions" | "installations"> | null): AppSection {
+  const previous = [...captureTablesOf(section)].find(([, found]) => found === kind)?.[0];
+  const change = (table: TableContent): TableContent => {
+    if (table.id === tableId) return asLinkedCaptureTable(table, kind, costs);
+    if (table.id !== previous) return table;
+    const v2 = ensureTableV2(table);
+    return { ...v2, schema: { ...(v2.schema ?? { zones: [] }), capture: { kind, unlinked: true } } } as unknown as TableContent;
+  };
+  return {
+    ...section,
+    blocks: section.blocks.map((block) => ({
+      ...block,
+      tables: block.tables.map(change),
+      apartados: block.apartados.map((apartado) => ({ ...apartado, tables: apartado.tables.map(change) })),
+    })),
+  };
+}
+
+/** The tables of the construction section that can be linked with the cost approach: those that are not its capture. */
+export function linkableTablesOf(section: AppSection): Set<string> {
+  const captures = captureTablesOf(section);
+  return new Set(tablesIn(section).flatMap((table) => (captures.has(table.id) ? [] : [table.id])));
 }
 
 /** The section with each of its capture tables changed by `change`; the same section when none changes. */

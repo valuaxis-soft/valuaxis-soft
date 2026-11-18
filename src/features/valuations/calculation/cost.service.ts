@@ -61,6 +61,8 @@ type CapturedFactors = {
   conservationState: string | null;
   /** The factors added after "Otro" (CostColumnsDto), in the order of their columns. */
   extraFactors: number[];
+  /** An installation's own name in the cost approach, unlinked from its description. */
+  costName?: string | null;
 };
 type StoredFactors = {
   /** By construction type id, as the cost rows themselves. */
@@ -77,6 +79,7 @@ const capturedOf = (stored: Partial<CapturedFactors> | undefined): CapturedFacto
   extraFactors: Array.isArray(stored?.extraFactors)
     ? stored.extraFactors.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
     : [],
+  ...(typeof stored?.costName === "string" && stored.costName.trim() ? { costName: stored.costName.trim() } : {}),
 });
 const refKey = (ref: string) => ref.trim().toLowerCase();
 
@@ -143,6 +146,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
         conservationRating: captured.conservationRating,
         ...(captured.conservationState ? { conservationState: captured.conservationState } : {}),
         maintenance: row.SMantenimiento ?? "",
+        ...(captured.costName ? { costName: captured.costName } : {}),
         ageFactor: captured.ageFactor,
         otherFactor: decimal(cost?.NFactorOtro) ?? 1,
         extraFactors: captured.extraFactors,
@@ -195,7 +199,7 @@ const capturedFactors = (row: Partial<CapturedFactors>): CapturedFactors => capt
 const hasCaptured = (row: Partial<CapturedFactors>) => {
   const factors = capturedOf(row);
   return factors.ageFactor !== null || factors.resultantFactor !== null || factors.conservationRating !== null || factors.conservationState !== null
-    || factors.extraFactors.length > 0;
+    || factors.extraFactors.length > 0 || Boolean(factors.costName);
 };
 
 /** Replaces the whole capture of the version and recomputes the approach. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { Merge, RotateCcw, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -114,10 +114,59 @@ export function CaptureTableHead(props: {
   );
 }
 
+/** Where the title of a capture table is kept among its headers: renamed, it is one more label. */
+const CAPTURE_TITLE_KEY = "titulo-tabla";
+
 /**
- * «Encabezados» of a capture table, as the double header of «Formato de la
- * tabla»: one title over several columns, separating a group, and the
- * panel's headers back.
+ * The title line of a capture table, as a configurable table's (video 7.4,
+ * 20:40): its name, written over as the table's title, and at its right the
+ * same buttons (add a row, «Formato de la tabla» with the double header)
+ * instead of a button apart above the table.
+ */
+export function CaptureTableBar(props: {
+  title: string;
+  headers: CaptureHeaders | undefined;
+  readOnly: boolean;
+  onChange: (headers: CaptureHeaders) => void;
+  children?: ReactNode;
+}) {
+  const named = props.headers?.labels?.[CAPTURE_TITLE_KEY] ?? "";
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    if (draft.trim() !== named) props.onChange(withCaptureLabel(props.headers, CAPTURE_TITLE_KEY, draft));
+    setDraft(null);
+  };
+  return (
+    <div className="flex items-center justify-between gap-3" data-capture-bar="">
+      <div className="min-w-0 flex-1">
+        <Input
+          aria-label={`Título de la tabla ${props.title}`}
+          title="Título de la tabla en el panel; vacío, vuelve el del panel."
+          className="h-8 font-semibold"
+          autoComplete="off"
+          disabled={props.readOnly}
+          value={draft ?? named}
+          placeholder={props.title}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      </div>
+      <div className="flex items-center gap-1">{props.children}</div>
+    </div>
+  );
+}
+
+/**
+ * «Formato de la tabla» of a capture table, as the configurable table's
+ * button: the double header (one title over several columns, separating a
+ * group) and the panel's headers back.
  */
 export function CaptureHeaderControl(props: {
   columns: CaptureHeadColumn[];
@@ -140,13 +189,13 @@ export function CaptureHeaderControl(props: {
     <Popover>
       <PopoverTrigger
         render={
-          <Button type="button" size="sm" variant="outline" className="justify-self-end" disabled={props.readOnly} title="Combinar encabezados (encabezado doble) o volver a los del panel" aria-label={`Encabezados de ${props.label}`}>
-            <Merge data-icon="inline-start" /> Encabezados
+          <Button type="button" size="icon" variant="outline" disabled={props.readOnly} title="Formato de la tabla: encabezado doble (combinar encabezados) o volver a los del panel" aria-label={`Formato de la tabla ${props.label}`}>
+            <Merge />
           </Button>
         }
       />
       <PopoverContent align="end" className="grid w-80 gap-3 p-3">
-        <p className="text-sm font-medium">Encabezados de {props.label}</p>
+        <p className="text-sm font-medium">Encabezado doble</p>
         <FieldDescription>
           Escribe sobre cualquier encabezado de la tabla para cambiarle el nombre. Aquí combinas varios bajo un título (encabezado doble). Solo cambia cómo se ven en el panel: lo capturado y el cálculo quedan igual.
         </FieldDescription>

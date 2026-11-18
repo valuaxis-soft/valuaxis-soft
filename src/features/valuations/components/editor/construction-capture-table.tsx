@@ -1,11 +1,12 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Link2, Plus } from "lucide-react";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
   captureColumnIds,
+  captureLinkPlan,
   computedColumnIds,
   findCaptureTable,
   isCaptureUnlinked,
@@ -30,6 +31,10 @@ import { TableEditorItem } from "./table-editor";
  */
 export type ConstructionCaptureContextValue = {
   tables: ReadonlyMap<string, CaptureKind>;
+  /** The other tables of the construction section: any of them can be linked with the cost approach. */
+  linkable: ReadonlySet<string>;
+  /** «Vincular con Costos»: the table becomes the capture of the installations. */
+  linkInstallations: (tableId: string) => void;
   costs: CostCalculationDto | null;
   /** The references of the types left out of the cost approach («Desvincular»), or none («Volver a sincronizar»). */
   setExcludedTypes: (refs: string[]) => Promise<void>;
@@ -107,9 +112,48 @@ export function EditorTable(props: {
 }) {
   const context = useContext(ConstructionCaptureContext);
   const kind = context?.tables.get(props.table.id);
+  if (context && !kind && context.linkable.has(props.table.id)) {
+    return <TableEditorItem {...props} actions={<LinkWithCosts table={props.table} context={context} readOnly={props.readOnly} />} />;
+  }
   if (!context || !kind) return <TableEditorItem {...props} />;
   return <CaptureTableEditor {...props} kind={kind} context={context} />;
 }
+
+/**
+ * «Vincular con Costos» on any table of the construction section (video 7.4,
+ * 21:53: his installations were in a «Tabla configurable» of his own and the
+ * cost approach did not take them). It says which columns it takes by their
+ * headers, which ones the system writes and what the cost approach had, and
+ * asks before linking.
+ */
+function LinkWithCosts({ table, context, readOnly }: { table: TableContent; context: ConstructionCaptureContextValue; readOnly: boolean }) {
+  const link = () => {
+    const plan = captureLinkPlan(table, "installations");
+    if (!plan.ok) {
+      window.alert(plan.reason);
+      return;
+    }
+    const before = context.costs?.installations.length ?? 0;
+    const current = findCaptureTableId(context);
+    const lines = [
+      `¿Vincular «${table.title.trim() || "esta tabla"}» con Costos como la tabla de instalaciones especiales?`,
+      "",
+      `Columnas que se toman: ${plan.taken.map((item) => (item.header === item.field ? item.header : `${item.header} → ${item.field}`)).join(", ")}.`,
+      ...(plan.addsRef ? ["Se agrega una columna # con el número de cada instalación."] : []),
+      ...(plan.computed.length ? [`Columnas que escribe el sistema (se reemplaza lo que tengan): ${plan.computed.join(", ")}.`] : []),
+      `Sus ${plan.rows === 1 ? "1 instalación" : `${plan.rows} instalaciones`} reemplazan ${before === 1 ? "la 1 que tiene" : `las ${before} que tiene`} Costos; las de igual número conservan su valor unitario y sus factores.`,
+      ...(current ? ["La tabla de instalaciones que estaba vinculada queda como tabla tuya, desvinculada."] : []),
+    ];
+    if (window.confirm(lines.join("\n"))) context.linkInstallations(table.id);
+  };
+  return (
+    <Button type="button" size="sm" variant="outline" disabled={readOnly || !context.costs} title="Usar esta tabla como la captura de las instalaciones especiales del enfoque de costos" onClick={link} data-capture-link={table.id}>
+      <Link2 data-icon="inline-start" /> Vincular con Costos
+    </Button>
+  );
+}
+
+const findCaptureTableId = (context: ConstructionCaptureContextValue) => [...context.tables].find(([, kind]) => kind === "installations")?.[0] ?? null;
 
 /**
  * The construction types (or the special installations) as one table of
