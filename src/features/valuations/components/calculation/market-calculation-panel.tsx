@@ -498,15 +498,22 @@ function MarketTypePanel(props: {
     const before = new Set(calculation?.comparables.map((item) => item.id) ?? []);
     return run(async () => {
       const created = await api.market.createComparable(valuationId, type, values, mergeInto);
-      // The screenshot pasted before saving goes up once the comparable exists.
+      // The screenshot and the photos chosen before saving go up once the comparable exists, the photos in their order.
       const added = created.comparables.find((item) => !before.has(item.id));
-      if (!pending.screenshot || !added) return created;
-      try {
-        return await api.market.uploadScreenshot(valuationId, type, added.id, pending.screenshot);
-      } catch (error) {
-        failed(error);
-        return created;
+      if (!added) return created;
+      let latestCalculation = created;
+      const uploads = [
+        ...(pending.screenshot ? [() => api.market.uploadScreenshot(valuationId, type, added.id, pending.screenshot as File)] : []),
+        ...pending.photos.map((photo) => () => api.market.uploadPhoto(valuationId, type, added.id, photo)),
+      ];
+      for (const upload of uploads) {
+        try {
+          latestCalculation = await upload();
+        } catch (error) {
+          failed(error);
+        }
       }
+      return latestCalculation;
     }, mergeInto ? "Comparable unificado con el de la base: conserva su número." : "Comparable agregado");
   };
 

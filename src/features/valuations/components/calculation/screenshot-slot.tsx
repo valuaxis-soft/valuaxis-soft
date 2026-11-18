@@ -74,7 +74,7 @@ export function ScreenshotSlot(props: {
         <div className="flex flex-wrap gap-2">
           <PasteImageButton baseName={BASE_NAME} onFiles={([file]) => { if (file) props.onChoose(file); }} />
           <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2.5 text-xs font-medium hover:bg-muted">
-            <ImagePlus className="size-3.5" /> Subir imagen
+            <ImagePlus className="size-3.5" /> Subir captura del anuncio
             <input
               type="file"
               accept={CLIPBOARD_IMAGE_TYPES.join(",")}

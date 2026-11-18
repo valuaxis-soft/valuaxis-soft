@@ -743,9 +743,15 @@ export function snapshots(payload: ComparableInputPayload, formulas: CapturedFor
   if (coordinatesProblem) throw new ValuationWorkflowError(coordinatesProblem, 400);
   const storedAddress = storedRows.address ? addressOf(storedRows.address) : null;
   const sentAddress = unlessOmitted(payload.address, storedAddress);
-  // «Tipo de vialidad» left out (the master workbook has no column for it) keeps the stored one.
-  const address = sentAddress && payload.address && payload.address.streetType === undefined && storedAddress?.streetType
-    ? { ...sentAddress, streetType: storedAddress.streetType }
+  // «Tipo de vialidad» (with which «Otro») and «Esquina con» left out (the master workbook has no column for them) keep the stored ones.
+  const keepType = Boolean(payload.address && payload.address.streetType === undefined && storedAddress?.streetType);
+  const keepCorner = Boolean(payload.address && payload.address.crossStreet === undefined && storedAddress?.crossStreet);
+  const address = sentAddress && (keepType || keepCorner)
+    ? {
+      ...sentAddress,
+      ...(keepType ? { streetType: storedAddress?.streetType, streetTypeOther: storedAddress?.streetTypeOther ?? null } : {}),
+      ...(keepCorner ? { crossStreet: storedAddress?.crossStreet } : {}),
+    }
     : sentAddress;
   const property: PropertySnapshot = {
     formulas,

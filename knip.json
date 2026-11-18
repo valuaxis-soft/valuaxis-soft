@@ -21,6 +21,9 @@
     "shadcn",
     "tailwindcss"
   ],
+  "ignoreBinaries": [
+    "sqlite3"
+  ],
   "ignoreIssues": {
     "src/components/ui/**": [
       "exports",
