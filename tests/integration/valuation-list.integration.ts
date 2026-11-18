@@ -14,7 +14,7 @@ type Fixture = Awaited<ReturnType<typeof createValuationFixture>>;
 
 let orgA: Fixture;
 let orgB: Fixture;
-const marker = randomUUID().slice(0, 6);
+const marker = `m${randomUUID().slice(0, 6)}`; // a letter first: an all-digit marker would be read as a folio number
 
 /** Adds valuations to the fixture's organization reusing its creator and catalogs. */
 async function addValuation(
