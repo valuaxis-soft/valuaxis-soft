@@ -16,7 +16,7 @@ export type ErrorBoundaryProps = {
 export function ErrorFallback({ error, reset, unstable_retry }: ErrorBoundaryProps) {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-background px-4 py-12 text-center">
-      <ValuaxisLogo className="text-2xl" markClassName="size-10" />
+      <ValuaxisLogo className="h-12" />
       <div className="grid max-w-md gap-3">
         <h1 className="text-3xl font-bold tracking-tight">Algo salió mal</h1>
         <p className="text-muted-foreground">

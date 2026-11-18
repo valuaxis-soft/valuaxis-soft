@@ -146,8 +146,8 @@ export function CreateValuationForm({
     <div className="min-h-dvh bg-background">
       <div className="border-b border-border">
         <div className="mx-auto flex h-16 max-w-3xl items-center justify-between gap-3 px-4">
-          <Link href="/dashboard" aria-label="Valuaxis, ir al inicio" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-            <ValuaxisLogo markClassName="size-8" className="text-base" />
+          <Link href="/dashboard" aria-label="Valuaxis Soft, ir al inicio" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            <ValuaxisLogo />
           </Link>
           <Link href="/avaluos" className={cn(buttonVariants({ variant: "ghost" }), "h-11 gap-1.5 px-3 sm:h-9")}>
             <ArrowLeft aria-hidden="true" />

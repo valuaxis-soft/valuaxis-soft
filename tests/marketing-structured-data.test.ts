@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { FAQS, PRICE_PER_VALUATION_MXN } from "../src/features/marketing/content";
 import { landingStructuredData } from "../src/features/marketing/structured-data";
 
-const site = { name: "Valuaxis", description: "Software de avalúos", url: "https://valuaxissoft.com" };
+const site = { name: "Valuaxis Soft", description: "Software de avalúos", url: "https://valuaxissoft.com" };
 
 type Node = Record<string, unknown> & { "@type": string };
 
@@ -30,6 +32,14 @@ test("landing JSON-LD carries the organization and every question of the page", 
   );
   const faq = nodes.find((node) => node["@type"] === "FAQPage");
   assert.equal((faq?.mainEntity as unknown[]).length, FAQS.length);
+});
+
+test("landing JSON-LD names Valuaxis Soft and points to its raster logo", () => {
+  const organization = graph(landingStructuredData(site)).find((node) => node["@type"] === "Organization");
+  assert.equal(organization?.name, "Valuaxis Soft");
+  // Search engines want a raster logo; the full lockup lives in public/brand/.
+  assert.equal(organization?.logo, "https://valuaxissoft.com/brand/valuaxis-soft.png");
+  assert.ok(existsSync(join(process.cwd(), "public/brand/valuaxis-soft.png")));
 });
 
 test("landing JSON-LD can never close its script element", () => {
