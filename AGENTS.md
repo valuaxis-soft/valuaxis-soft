@@ -1,6 +1,6 @@
 # Guía para agentes y asistentes de código
 
-Valuaxis es un SaaS de avalúos inmobiliarios y de maquinaria para despachos de valuación en México. Este archivo da el contexto mínimo para trabajar en el repositorio sin romper lo que ya funciona. Lee primero lo que aplique a tu tarea en `docs/`; aquí solo están las reglas y los atajos.
+Valuaxis Soft es un SaaS de avalúos inmobiliarios y de maquinaria para despachos de valuación en México. Este archivo da el contexto mínimo para trabajar en el repositorio sin romper lo que ya funciona. Lee primero lo que aplique a tu tarea en `docs/`; aquí solo están las reglas y los atajos.
 
 ## Antes de empezar
 

@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Photo } from "@/components/brand/photo";
 import Link from "next/link";
 import { Check } from "lucide-react";
-import { ValuaxisLogo, ValuaxisMark } from "@/components/brand/valuaxis-logo";
+import { ValuaxisLogo } from "@/components/brand/valuaxis-logo";
 import { ContourLines } from "@/components/brand/contour-lines";
 
 const highlights = [
@@ -23,7 +23,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
   return (
     <div className="grid min-h-dvh bg-background lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <aside
-        aria-label="Valuaxis"
+        aria-label="Valuaxis Soft"
         className="relative isolate hidden overflow-hidden bg-ink p-10 text-ink-foreground lg:flex lg:flex-col xl:p-14"
       >
         {/* Stock photo (docs/DISENO.md, "Imágenes") under an ink veil that keeps the text at AA. */}
@@ -38,20 +38,19 @@ export function AuthShell({ children }: { children: ReactNode }) {
         <ContourLines className="vx-auth-contours absolute inset-0 -z-10 h-full w-full text-ink-foreground/[0.08]" />
         <Link
           href="/"
-          aria-label="Valuaxis, ir al inicio"
-          className="flex w-fit items-center gap-2.5 rounded-lg text-xl font-semibold tracking-tight outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          aria-label="Valuaxis Soft, ir al inicio"
+          className="w-fit rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          <ValuaxisMark className="size-9 rounded-lg ring-1 ring-white/25" />
-          Valuaxis
+          <ValuaxisLogo tone="dark" className="h-12" />
         </Link>
         <div className="vx-auth-enter my-auto grid max-w-md gap-6 py-12">
           <p style={order(0)} className="font-display text-4xl leading-[1.1] font-semibold text-balance xl:text-5xl">
-            Del comparable al dictamen, <span className="text-success">en un solo lugar.</span>
+            Del comparable al dictamen, <span className="text-brand-sky">en un solo lugar.</span>
           </p>
           <ul style={order(1)} className="grid gap-3 text-ink-foreground/85">
             {highlights.map((item) => (
               <li key={item} className="flex gap-3">
-                <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-success/20 text-success">
+                <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-brand-sky/20 text-brand-sky">
                   <Check className="size-3.5" aria-hidden="true" />
                 </span>
                 {item}
@@ -67,8 +66,8 @@ export function AuthShell({ children }: { children: ReactNode }) {
 
         <div className="vx-auth-card grid w-full max-w-md gap-6">
           <div className="grid justify-items-center gap-2 text-center lg:hidden">
-            <Link href="/" aria-label="Valuaxis, ir al inicio" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-              <ValuaxisLogo className="text-2xl" markClassName="size-10" />
+            <Link href="/" aria-label="Valuaxis Soft, ir al inicio" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+              <ValuaxisLogo className="h-12" />
             </Link>
             <p className="text-sm text-muted-foreground">Software de avalúos inmobiliarios en línea</p>
           </div>

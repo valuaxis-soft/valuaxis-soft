@@ -21,7 +21,7 @@ const navLinkClass = (current: boolean) =>
   cn(
     "relative inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
     "after:pointer-events-none after:absolute after:inset-x-3 after:-bottom-[14px] after:h-0.5 after:rounded-full after:transition-colors after:duration-200",
-    current ? "text-foreground after:bg-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground after:bg-transparent",
+    current ? "text-foreground after:bg-brand" : "text-muted-foreground hover:bg-muted hover:text-foreground after:bg-transparent",
   );
 
 /**
@@ -49,10 +49,10 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
           <MobileNav navigation={navigation} active={active} name={user.name} email={user.email} role={user.role} initials={initials} />
           <Link
             href="/dashboard"
-            aria-label="Valuaxis, ir al inicio"
+            aria-label="Valuaxis Soft, ir al inicio"
             className="flex h-11 shrink-0 items-center rounded-lg px-1 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <ValuaxisLogo markClassName="size-8" className="text-base" />
+            <ValuaxisLogo />
           </Link>
 
           <nav aria-label="Navegación principal" className="ml-4 hidden items-center gap-0.5 lg:flex">

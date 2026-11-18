@@ -59,6 +59,8 @@ const HEADLINE = ["Avalúos", "inmobiliarios", "del", "comparable", "al", "dicta
 
 const container = "mx-auto w-full max-w-6xl px-4 sm:px-6";
 const ctaPrimary = cn(buttonVariants({ size: "lg" }), "vx-press h-12 gap-2 px-6 text-base");
+/** The logo blue: the main call to action on paper and on the ink bands. */
+const ctaBrand = "bg-brand text-brand-foreground hover:bg-brand/90 focus-visible:ring-brand/50";
 
 /** Index and timing variables for the sequence classes in motion.css. */
 const seq = (index: number, base = 0, stagger?: number): CSSProperties =>
@@ -101,7 +103,7 @@ export default async function Home() {
           <div className={cn(container, "grid items-center gap-14 pt-14 pb-20 lg:grid-cols-[1fr_1.08fr] lg:gap-12 lg:pt-20 lg:pb-28")}>
             <div className="grid gap-7">
               <p className="inline-flex w-fit items-center gap-2 rounded-full bg-ink-foreground/10 px-3 py-1.5 text-xs font-medium text-ink-foreground ring-1 ring-ink-foreground/15">
-                <span className="size-1.5 rounded-full bg-success" aria-hidden="true" />
+                <span className="size-1.5 rounded-full bg-brand-sky" aria-hidden="true" />
                 Software de avalúos para valuadores en México
               </p>
               <h1
@@ -116,13 +118,13 @@ export default async function Home() {
                   </Fragment>
                 ))}
                 <span className="vx-word" style={seq(HEADLINE.length)}>
-                  <span className="relative whitespace-nowrap text-success">
+                  <span className="relative whitespace-nowrap text-brand-sky">
                     sin copiar y pegar
                     <svg
                       viewBox="0 0 300 12"
                       preserveAspectRatio="none"
                       aria-hidden="true"
-                      className="vx-underline absolute -bottom-1.5 left-0 h-2.5 w-full text-success/70"
+                      className="vx-underline absolute -bottom-1.5 left-0 h-2.5 w-full text-brand-sky/70"
                     >
                       <path d="M2 9C60 3 140 2 298 6" pathLength={1} fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                     </svg>
@@ -131,13 +133,13 @@ export default async function Home() {
                 </span>
               </h1>
               <p className="max-w-xl text-lg leading-relaxed text-pretty text-ink-foreground/80">
-                Valuaxis reúne en el navegador lo que hoy repartes entre Excel y Word: comparables con mapa, los enfoques de
+                Valuaxis Soft reúne en el navegador lo que hoy repartes entre Excel y Word: comparables con mapa, los enfoques de
                 mercado, costos e ingresos, y un dictamen de avalúo en PDF listo para firmar.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link
                   href="/registro"
-                  className={cn(ctaPrimary, "bg-success text-ink hover:bg-success/85 focus-visible:ring-success/50")}
+                  className={cn(ctaPrimary, ctaBrand)}
                 >
                   Crear cuenta
                   <ArrowRight className="vx-nudge size-4" aria-hidden="true" />
@@ -160,7 +162,7 @@ export default async function Home() {
                   "Solo tu despacho ve tus datos",
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-2">
-                    <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
+                    <Check className="size-4 shrink-0 text-brand-sky" aria-hidden="true" />
                     {item}
                   </li>
                 ))}
@@ -171,15 +173,15 @@ export default async function Home() {
         </section>
 
         {/* Proof points */}
-        <section aria-label="Valuaxis en cifras" className="border-b bg-card">
+        <section aria-label="Valuaxis Soft en cifras" className="border-b bg-card">
           <dl data-vx="in" className={cn(container, "grid grid-cols-2 gap-x-6 gap-y-8 py-12 lg:grid-cols-4")}>
             {PROOF_POINTS.map((point, index) => (
-              <div key={point.label} className="vx-reveal grid gap-1 border-l-2 border-success/60 pl-4">
+              <div key={point.label} className="vx-reveal grid gap-1 border-l-2 border-brand/60 pl-4">
                 <dt className="order-2 text-sm text-muted-foreground">{point.label}</dt>
                 <dd
                   className={cn(
                     "order-1 font-display text-5xl font-semibold tracking-tight tabular-nums",
-                    index % 2 === 0 ? "text-primary" : "text-success-strong",
+                    index % 2 === 0 ? "text-primary" : "text-brand",
                   )}
                 >
                   <Odometer value={point.value} delay={index * 150} />
@@ -193,7 +195,7 @@ export default async function Home() {
         <section aria-labelledby="antes-title" className="scroll-mt-20">
           <div className={cn(container, "grid gap-12 py-20 lg:py-28")}>
             <SectionHeading id="antes-title" eyebrow="Ahorra horas en cada avalúo" title="Deja de ser el capturista de tu propio Excel.">
-              El valor lo decides tú. Valuaxis se encarga de que cada cifra llegue completa y bien numerada hasta el dictamen.
+              El valor lo decides tú. Valuaxis Soft se encarga de que cada cifra llegue completa y bien numerada hasta el dictamen.
             </SectionHeading>
             <div data-vx="in" className="grid gap-5 md:grid-cols-2">
               <div className="vx-reveal rounded-2xl border border-dashed bg-muted/50 p-6 sm:p-8">
@@ -210,16 +212,16 @@ export default async function Home() {
                   ))}
                 </ul>
               </div>
-              <div className="vx-reveal relative overflow-hidden rounded-2xl bg-card p-6 shadow-lift ring-1 ring-success/30 sm:p-8">
-                <div aria-hidden="true" className="absolute -top-16 -right-16 size-48 rounded-full bg-success/10 blur-2xl" />
+              <div className="vx-reveal relative overflow-hidden rounded-2xl bg-card p-6 shadow-lift ring-1 ring-brand/30 sm:p-8">
+                <div aria-hidden="true" className="absolute -top-16 -right-16 size-48 rounded-full bg-brand/10 blur-2xl" />
                 <h3 className="flex items-center gap-2 font-semibold">
-                  <BadgeCheck className="size-5 text-success-strong" aria-hidden="true" />
-                  Con Valuaxis
+                  <BadgeCheck className="size-5 text-brand" aria-hidden="true" />
+                  Con Valuaxis Soft
                 </h3>
                 <ul className="mt-5 grid gap-3.5">
                   {BEFORE_AFTER.after.map((item, index) => (
                     <li key={item} className="flex gap-3" style={seq(index, 300 + BEFORE_AFTER.before.length * 260 + 200, 260)}>
-                      <Check className="vx-seq-draw mt-0.5 size-5 shrink-0 text-success-strong" aria-hidden="true" />
+                      <Check className="vx-seq-draw mt-0.5 size-5 shrink-0 text-brand" aria-hidden="true" />
                       {item}
                     </li>
                   ))}
@@ -285,7 +287,7 @@ export default async function Home() {
                       <ul className="mt-1 grid gap-2 text-sm">
                         {approach.points.map((point) => (
                           <li key={point} className="flex gap-2">
-                            <Check className="mt-0.5 size-4 shrink-0 text-success-strong" aria-hidden="true" />
+                            <Check className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden="true" />
                             {point}
                           </li>
                         ))}
@@ -299,7 +301,7 @@ export default async function Home() {
             <div className="vx-reveal relative isolate grid gap-8 overflow-hidden rounded-3xl bg-ink p-6 text-ink-foreground sm:p-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
               <ContourLines className="absolute inset-0 -z-10 h-full w-full text-ink-foreground/[0.06]" />
               <div className="grid gap-4">
-                <p className="text-xs font-semibold tracking-[0.14em] text-success uppercase">Métodos alternativos</p>
+                <p className="text-xs font-semibold tracking-[0.14em] text-brand-sky uppercase">Métodos alternativos</p>
                 <h3 className="font-display text-2xl leading-tight font-semibold text-balance sm:text-3xl">
                   Regresión lineal múltiple y programación por metas, sin salir del avalúo.
                 </h3>
@@ -428,7 +430,7 @@ export default async function Home() {
                   dictámenes y memorias salen sin el aviso «Documento sin validez oficial».
                 </p>
                 <p className="mt-auto flex items-center gap-2 pt-6 text-sm font-medium">
-                  <BadgeCheck className="size-5 text-success" aria-hidden="true" />
+                  <BadgeCheck className="size-5 text-brand-sky" aria-hidden="true" />
                   La acreditación es permanente.
                 </p>
               </div>
@@ -451,16 +453,16 @@ export default async function Home() {
                 </span>
                 <span className="text-lg font-medium text-muted-foreground">MXN</span>
               </p>
-              <p className="mt-1 text-sm font-medium text-success-strong">IVA incluido</p>
+              <p className="mt-1 text-sm font-medium text-brand">IVA incluido</p>
               <ul className="mt-7 grid gap-3 border-t pt-7">
                 {PRICE_INCLUDES.map((item) => (
                   <li key={item} className="flex gap-3">
-                    <Check className="mt-0.5 size-5 shrink-0 text-success-strong" aria-hidden="true" />
+                    <Check className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden="true" />
                     {item}
                   </li>
                 ))}
               </ul>
-              <Link href="/registro" className={cn(ctaPrimary, "vx-shine mt-8 w-full")}>
+              <Link href="/registro" className={cn(ctaPrimary, ctaBrand, "vx-shine mt-8 w-full")}>
                 Crear cuenta
                 <ArrowRight className="vx-nudge size-4" aria-hidden="true" />
               </Link>
@@ -496,14 +498,14 @@ export default async function Home() {
             <ContourLines className="absolute inset-0 -z-10 h-full w-full text-ink-foreground/[0.08]" />
             <div className="grid gap-3">
               <h2 id="cta-title" className="font-display text-3xl leading-tight font-semibold text-balance sm:text-4xl">
-                Tu próximo avalúo, en Valuaxis.
+                Tu próximo avalúo, en Valuaxis Soft.
               </h2>
               <p className="max-w-xl text-lg text-ink-foreground/80">
                 Crea la cuenta de tu despacho y captura tu primer avalúo hoy. Pagas solo cuando lo concluyes.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Link href="/registro" className={cn(ctaPrimary, "bg-success text-ink hover:bg-success/85")}>
+              <Link href="/registro" className={cn(ctaPrimary, ctaBrand)}>
                 Crear cuenta
                 <ArrowRight className="vx-nudge size-4" aria-hidden="true" />
               </Link>

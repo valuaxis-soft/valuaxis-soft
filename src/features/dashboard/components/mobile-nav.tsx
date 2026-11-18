@@ -47,7 +47,7 @@ export function MobileNav({
         aria-current={current ? "page" : undefined}
         className={cn(
           "flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-          current ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted",
+          current ? "bg-brand/10 text-brand" : "text-foreground hover:bg-muted",
         )}
       >
         <Icon className="size-5 shrink-0" aria-hidden="true" />
@@ -72,7 +72,7 @@ export function MobileNav({
         <DialogPrimitive.Popup className="fixed inset-y-0 left-0 z-50 flex w-[min(20rem,calc(100vw-3rem))] flex-col bg-background shadow-2xl outline-none transition-transform duration-200 ease-out data-ending-style:-translate-x-full data-starting-style:-translate-x-full motion-reduce:transition-none">
           <div className="flex h-16 items-center justify-between border-b border-border px-4">
             <DialogPrimitive.Title render={<div />}>
-              <ValuaxisLogo markClassName="size-8" />
+              <ValuaxisLogo />
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
               aria-label="Cerrar menú"

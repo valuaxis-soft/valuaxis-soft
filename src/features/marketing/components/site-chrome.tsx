@@ -18,8 +18,8 @@ export function SiteHeader() {
         className="vx-header-bg absolute inset-0 -z-10 origin-top border-b border-border/70 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/75"
       />
       <div className="vx-header-row mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 [&>*]:pointer-events-auto">
-        <Link href="/" aria-label="Valuaxis, inicio" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-          <ValuaxisLogo className="vx-header-logo origin-left" />
+        <Link href="/" aria-label="Valuaxis Soft, inicio" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+          <ValuaxisLogo className="vx-header-logo h-10 origin-left" />
         </Link>
         <nav data-vx-nav="" aria-label="Principal" className="hidden items-center gap-1 text-sm lg:flex">
           {NAV_LINKS.map((link) => (
@@ -37,7 +37,7 @@ export function SiteHeader() {
             <span className="sm:hidden">Entrar</span>
             <span className="hidden sm:inline">Iniciar sesión</span>
           </Link>
-          <Link href="/registro" className={cn(buttonVariants({ size: "lg" }), "h-11 px-4")}>
+          <Link href="/registro" className={cn(buttonVariants({ size: "lg" }), "h-11 bg-brand px-4 text-brand-foreground hover:bg-brand/90")}>
             Crear cuenta
           </Link>
         </div>
@@ -51,7 +51,7 @@ export function SiteFooter() {
     <footer className="border-t bg-background">
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
         <div className="grid content-start gap-3">
-          <ValuaxisLogo />
+          <ValuaxisLogo className="h-11" />
           <p className="max-w-xs text-sm text-muted-foreground">
             Software de avalúos inmobiliarios y de maquinaria para valuadores y despachos en México.
           </p>
@@ -79,7 +79,7 @@ export function SiteFooter() {
       </div>
       <div className="border-t">
         <p className="mx-auto max-w-6xl px-4 py-5 text-xs text-muted-foreground sm:px-6">
-          © {new Date().getFullYear()} Valuaxis · valuaxissoft.com · Hecho en México
+          © {new Date().getFullYear()} Valuaxis Soft · valuaxissoft.com · Hecho en México
         </p>
       </div>
     </footer>

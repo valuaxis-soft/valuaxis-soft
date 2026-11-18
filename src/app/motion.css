@@ -632,7 +632,7 @@
   inset: auto 0.75rem 0.25rem;
   height: 2px;
   border-radius: 1px;
-  background: var(--success);
+  background: var(--brand);
   transform: scaleX(0);
   transform-origin: left center;
 }

@@ -34,8 +34,8 @@ function MarketVisual({ base = 0 }: VisualProps) {
           style={at(base, index)}
         />
       ))}
-      <line x1="10" x2="190" y1="16" y2="16" className="vx-seq-grow-x stroke-success" strokeWidth="2.5" strokeDasharray="5 4" style={at(base + 550)} />
-      <circle cx="190" cy="16" r="4" className="vx-seq-pop fill-success" style={at(base + 1000)} />
+      <line x1="10" x2="190" y1="16" y2="16" className="vx-seq-grow-x stroke-brand" strokeWidth="2.5" strokeDasharray="5 4" style={at(base + 550)} />
+      <circle cx="190" cy="16" r="4" className="vx-seq-pop fill-brand" style={at(base + 1000)} />
     </svg>
   );
 }
@@ -78,7 +78,7 @@ function IncomeVisual({ base = 0 }: VisualProps) {
         <path d="M146 67h14" className="stroke-muted-foreground" strokeWidth="2" strokeLinecap="round" />
         <path d="m156 62 5 5-5 5" fill="none" className="stroke-muted-foreground" strokeWidth="2" strokeLinecap="round" />
       </g>
-      <rect x="166" y="20" width="24" height="64" rx="4" className="vx-seq-grow-y fill-success" style={at(base + 950)} />
+      <rect x="166" y="20" width="24" height="64" rx="4" className="vx-seq-grow-y fill-brand" style={at(base + 950)} />
     </svg>
   );
 }
@@ -103,7 +103,7 @@ export function RegressionVisual() {
       {dots.map(([x, y], index) => (
         <circle key={index} cx={x} cy={y} r="4.5" className="vx-seq-pop fill-ink-foreground/85" style={at(100, index, 60)} />
       ))}
-      <path d="M22 158 252 46" className="vx-draw stroke-success" strokeWidth="3" strokeLinecap="round" style={{ ["--vx-draw-length" as string]: 260 }} />
+      <path d="M22 158 252 46" className="vx-draw stroke-brand" strokeWidth="3" strokeLinecap="round" style={{ ["--vx-draw-length" as string]: 260 }} />
       <circle cx="196" cy="73" r="7" className="vx-seq-pop fill-highlight stroke-ink" strokeWidth="2.5" style={at(1300)} />
     </svg>
   );

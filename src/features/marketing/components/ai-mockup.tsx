@@ -66,7 +66,7 @@ export function AiMockup() {
         </div>
       </div>
 
-      <ArrowRight className="vx-seq-pop mx-auto size-6 rotate-90 text-success md:rotate-0" aria-hidden="true" style={reading(0, -250)} />
+      <ArrowRight className="vx-seq-pop mx-auto size-6 rotate-90 text-brand md:rotate-0" aria-hidden="true" style={reading(0, -250)} />
 
       <div className="rounded-2xl bg-card p-5 text-card-foreground shadow-lift ring-1 ring-border">
         <p className="text-xs font-semibold text-muted-foreground">Datos propuestos · revisa antes de usar</p>

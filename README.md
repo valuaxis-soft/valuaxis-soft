@@ -1,4 +1,4 @@
-# Valuaxis
+# Valuaxis Soft
 
 Sistema SaaS de avalúos inmobiliarios construido como monolito modular con Next.js App Router, TypeScript, Prisma y PostgreSQL/PostGIS.
 
