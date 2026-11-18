@@ -39,6 +39,13 @@ export type ConclusionSettingsDto = {
    * the concluded value is that value.
    */
   summaryRows?: ConclusionSummaryRow[];
+  /**
+   * With one line only in the resumen, the concluded value prints under that
+   * line's name (V7.3-28); otherwise under the name the appraiser gave it.
+   */
+  concludedNameFromRow?: boolean;
+  /** The dictamen prints a chart of the values of the resumen (V7.1-26, «extra»): off unless chosen. */
+  valueChart?: boolean;
   /** Excel ROUND digits of the concluded value, the appraiser's choice; undefined keeps the default, null is no rounding. */
   rounding?: number | null;
   /** Formulas typed in the weights ("method.weights.costos"); absent keeps the stored ones whose value did not change. */

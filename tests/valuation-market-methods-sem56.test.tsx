@@ -35,13 +35,15 @@ const marketSection = (excludedFromReport?: ReportApproach[]): AppSection => ({
   ...(excludedFromReport ? { excludedFromReport } : {}),
 });
 
-test("V5.4-16: a market left out takes its alternative methods out of the dictamen and of the editor's preview", () => {
+test("V5.4-16, V7.3-19: a market left out leaves the dictamen and the preview; its alternative methods have their own switch now", () => {
   const section = marketSection(["mercado-inmuebles"]);
   const excluded = excludedReportApproaches([section]);
-  assert.equal(blockLeftOutOfReport({ id: "motor-estadistico-inmueble_venta" }, excluded), true);
+  assert.equal(blockLeftOutOfReport({ id: "motor-mercado-inmueble_venta-enfoque" }, excluded), true);
+  // «Si apagas un mercado… se hace bolas» (video 7.3, 33:19): the methods print in their own section, by their own switch.
+  assert.equal(blockLeftOutOfReport({ id: "motor-estadistico-inmueble_venta" }, excluded), false);
   assert.equal(blockLeftOutOfReport({ id: "motor-estadistico-terreno_venta" }, excluded), false);
   assert.deepEqual(sectionForReport(section, excluded)?.blocks.map((item) => item.id), [
-    "motor-mercado-terreno_venta-enfoque", "motor-estadistico-terreno_venta", "plantilla",
+    "motor-mercado-terreno_venta-enfoque", "motor-estadistico-terreno_venta", "motor-estadistico-inmueble_venta", "plantilla",
   ]);
   // The preview shows what prints: the same blocks; a section left out entirely shows as hidden.
   assert.deepEqual(previewSectionForReport(section, excluded).blocks.map((item) => item.id), sectionForReport(section, excluded)?.blocks.map((item) => item.id));

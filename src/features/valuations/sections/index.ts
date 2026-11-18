@@ -13,6 +13,7 @@ import { indirectosSection } from "./indirectos";
 import { ingresosSection } from "./ingresos";
 import { mercadoRentasSection } from "./mercado-rentas";
 import { mercadoVentaSection } from "./mercado-venta";
+import { metodosAlternativosSection } from "./metodos-alternativos";
 import { terrenoSection } from "./terreno";
 import {
   getCanonicalSectionKey,
@@ -30,6 +31,7 @@ const handcraftedSectionTemplates = [
   mercadoVentaSection,
   mercadoRentasSection,
   ingresosSection,
+  metodosAlternativosSection,
   conclusionesSection,
   fotosSujetoSection,
   croquisComparablesSection,

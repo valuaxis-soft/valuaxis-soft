@@ -14,10 +14,12 @@ import {
   NO_CONTRIBUTION_NOTE,
   STATISTICAL_VALUE_NOTE,
   methodComparison,
+  regressionContributions,
   splitColumns,
   statisticalDocumentBlocks,
   statisticalMemoryTables,
   withStatisticalBlocks,
+  withoutStatisticalBlocks,
 } from "../src/features/valuations/calculation/statistical-document";
 import { applyTableLayout } from "../src/features/valuations/calculation/generated-table-layout";
 import { solveGoalProgram } from "../src/features/valuations/calculation/goal-programming-solver";
@@ -224,7 +226,7 @@ test("the dictamen prints the goal programming briefly, the conclusion last; dev
   const marked = solvedGoal();
   marked.settings.goal = { ...marked.settings.goal, printedTables: ["deviations", "contributions"] };
   const tables = statisticalDocumentBlocks(marked)[0].apartados[1].tables.map((table) => ensureTableV2(table) as TableV2);
-  assert.deepEqual(tables.map((table) => table.title), ["Coeficientes de la programación por metas", "Desviaciones de la programación por metas", "Contribución de cada criterio"]);
+  assert.deepEqual(tables.map((table) => table.title), ["Coeficientes de la programación por metas", "Desviaciones de la programación por metas", "Tabla de contribución de criterios (programación por metas)"]);
   const [, deviations, contributions] = tables;
   assert.deepEqual(cellsOf(deviations, 0).slice(-1), ["A observar"]);
   assert.deepEqual(cellsOf(deviations, 1).slice(-1), ["—"]);
@@ -296,10 +298,11 @@ test("the calculation memory keeps the technical tables of both methods, whateve
   const regression = statisticalMemoryTables(dto(legacy));
   assert.deepEqual(regression.map((table) => table.title), [
     "Regresión lineal: tabla de sumas y productos", "Estadísticas de la regresión", "Análisis de varianza", "Coeficientes de la regresión",
+    "Tabla de contribución de criterios (regresión)",
   ]);
   assert.deepEqual(regression[0].columns, ["N", "X (SUP. CONST.)", "Y ($/M²)", "Z (EDAD)", "X²", "Z²", "XY", "XZ", "YZ"], "one table: the memory has room");
   assert.equal(regression[0].rows[10][0], "N = 10");
-  assert.deepEqual(statisticalMemoryTables(solvedGoal()).map((table) => table.title), ["Desviaciones de la programación por metas", "Contribución de cada criterio"]);
+  assert.deepEqual(statisticalMemoryTables(solvedGoal()).map((table) => table.title), ["Desviaciones de la programación por metas", "Tabla de contribución de criterios (programación por metas)"]);
 });
 
 test("«Agregar al informe valuatorio» off or «Quitar este cálculo» leaves the type's methods out of the dictamen", () => {
@@ -319,16 +322,41 @@ test("nothing prints until a method is marked and solved; the market no longer p
   assert.equal(marketDocumentBlocks(legacyMarket(), null).length, 1, "the market's own block only");
 });
 
-test("the block goes after the market's pages and leaves when nothing is shown", () => {
+test("V7.3-19: each market's block goes in the section of the alternative methods, in the books' order, and leaves when nothing is shown", () => {
   const legacy = statisticalFromMarket(legacyMarket());
   assert.ok(legacy);
-  const market = { id: "motor-mercado-inmueble_venta-enfoque", title: "M", sectionLabel: "", enabled: true, required: false, concepts: [], apartados: [], tables: [], images: [] };
-  const template = { ...market, id: "plantilla" };
-  const section = { id: "mercadoVenta", label: "VII", title: "MERCADO", sourceFile: "", enabled: true, required: false, blocks: [market, template] };
-  const shown = withStatisticalBlocks(section, "INMUEBLE_VENTA", statisticalDocumentBlocks(dto(legacy)));
-  assert.deepEqual(shown.blocks.map((block) => block.id), ["motor-mercado-inmueble_venta-enfoque", "motor-estadistico-inmueble_venta", "plantilla"]);
-  const removed = withStatisticalBlocks(shown, "INMUEBLE_VENTA", []);
-  assert.deepEqual(removed.blocks.map((block) => block.id), ["motor-mercado-inmueble_venta-enfoque", "plantilla"]);
+  const blank = { title: "M", sectionLabel: "", enabled: true, required: false, concepts: [], apartados: [], tables: [], images: [] };
+  const section = { id: "metodosAlternativos", label: "XII", title: "MÉTODOS ALTERNATIVOS", sourceFile: "", enabled: true, required: false, blocks: [{ ...blank, id: "propio" }] };
+  const buildings = withStatisticalBlocks(section, "INMUEBLE_VENTA", statisticalDocumentBlocks(dto(legacy)));
+  assert.deepEqual(buildings.blocks.map((block) => block.id), ["propio", "motor-estadistico-inmueble_venta"]);
+  // Land prints before buildings whichever is captured first.
+  const land = withStatisticalBlocks(buildings, "TERRENO_VENTA", [{ ...blank, id: "motor-estadistico-terreno_venta" }]);
+  assert.deepEqual(land.blocks.map((block) => block.id), ["propio", "motor-estadistico-terreno_venta", "motor-estadistico-inmueble_venta"]);
+  const removed = withStatisticalBlocks(land, "INMUEBLE_VENTA", []);
+  assert.deepEqual(removed.blocks.map((block) => block.id), ["propio", "motor-estadistico-terreno_venta"]);
+
+  // A valuation saved before: the block the market section kept leaves it, and nothing else does.
+  const market = { id: "mercadoVenta", label: "VII", title: "MERCADO", sourceFile: "", enabled: true, required: false, blocks: [{ ...blank, id: "motor-mercado-inmueble_venta-enfoque" }, ...buildings.blocks.slice(1), { ...blank, id: "plantilla" }] };
+  assert.deepEqual(withoutStatisticalBlocks(market, "INMUEBLE_VENTA").blocks.map((block) => block.id), ["motor-mercado-inmueble_venta-enfoque", "plantilla"]);
+  const untouched = withoutStatisticalBlocks(market, "TERRENO_VENTA");
+  assert.equal(untouched, market, "no block of that market: the same section");
+});
+
+test("V7.3-29: the regression has its table of contributions too: the intercept and coefficient × subject, adding up to Y estimated", () => {
+  const legacy = statisticalFromMarket(legacyMarket());
+  assert.ok(legacy);
+  const result = computeStatisticalRegression(dto(legacy));
+  assert.ok(result?.ok);
+  const rows = regressionContributions(result.result.fit, result.result.data.subject);
+  assert.equal(rows[0].name, "Intercepción");
+  assert.equal(rows[0].subjectValue, 1);
+  assert.equal(rows.length, result.result.fit.k + 1);
+  const total = rows.reduce((sum, row) => sum + row.contribution, 0);
+  assert.ok(Math.abs(total - result.result.fit.estimate) < 1e-6, `${total} ≈ ${result.result.fit.estimate}`);
+  // Marked, it prints in the dictamen before the conclusion, as the other technical tables.
+  const marked = { ...legacy, settings: { ...legacy.settings, regression: { ...legacy.settings.regression, printedTables: ["contributions" as const] } } };
+  const tables = statisticalDocumentBlocks(dto(marked))[0].apartados[1].tables.map((table) => table.title);
+  assert.ok(tables.includes("Tabla de contribución de criterios (regresión)"), tables.join(" | "));
 });
 
 test("the comparison sets the market's homologation beside RLM and PM, none adopted", () => {

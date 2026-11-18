@@ -356,7 +356,7 @@ test("the memoria técnica de comparables has the sheet of each comparable used,
   assert.deepEqual(withLink.validity, { updatedOn: "2026-01-10", validUntil: "2026-04-10", expired: true }, "its own months of validity");
 });
 
-test("the statistical methods of a market go right after that market, inside its section", () => {
+test("the statistical methods go in their own section (V7.3-19), after the markets", () => {
   const buildings: MarketCalculationDto = { ...land, settings: { ...land.settings, comparableType: "INMUEBLE_VENTA" } };
   const settings = defaultStatisticalSettings("TERRENO_VENTA");
   const statistical: StatisticalCalculationDto = {
@@ -364,5 +364,5 @@ test("the statistical methods of a market go right after that market, inside its
     comparables: [], locked: false, configured: true, fromMarket: false, goal: null, market: null,
   };
   const memory = memoryOf([marketSection], { ...NO_CALCULATIONS, markets: [land, buildings], statistical: [statistical] });
-  assert.deepEqual(memory.approaches.map((approach) => approach.key), ["MOTOR.MERCADO.TERRENO_VENTA", "MOTOR.ESTADISTICO.TERRENO_VENTA", "MOTOR.MERCADO.INMUEBLE_VENTA"]);
+  assert.deepEqual(memory.approaches.map((approach) => approach.key), ["MOTOR.MERCADO.TERRENO_VENTA", "MOTOR.MERCADO.INMUEBLE_VENTA", "MOTOR.ESTADISTICO.TERRENO_VENTA"]);
 });

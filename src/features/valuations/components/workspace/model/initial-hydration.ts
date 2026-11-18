@@ -237,6 +237,7 @@ function normalizeInitialSections(initialValuation: Pick<ValuationDetail, "secti
       flowSpacingBeforePx: block.flowSpacingBeforePx,
       ...(block.headerFields ? { headerFields: block.headerFields } : {}),
       ...(block.coverImageSize ? { coverImageSize: block.coverImageSize } : {}),
+      ...(block.valueChart ? { valueChart: true } : {}),
       apartados: block.subBlocks.map((subBlock) => ({
         id: subBlock.id,
         title: subBlock.title,

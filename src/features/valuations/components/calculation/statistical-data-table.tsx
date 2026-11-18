@@ -108,9 +108,8 @@ function GridCell(props: {
   const choosing = props.sources !== undefined && typedName !== null && (options.length > 0 || typedName === "");
 
   const finish = () => {
-    // What the formula field holds is its to apply: a formula being written (kept while "Buscar valor" is
-    // open) or a number typed over a formula, which replaces it.
-    if (draftText !== null) {
+    // A formula being written is the formula field's: it applies it, or keeps it while "Buscar valor" is open.
+    if (writingFormula) {
       formula.onBlur();
       // Applied or given up, the cell shows its value again.
       setEditing(null);
@@ -160,8 +159,7 @@ function GridCell(props: {
         return;
       }
     }
-    // Escape gives up a number typed over a formula too; Enter takes it and goes down, as below.
-    if (writingFormula || (draftText !== null && event.key === "Escape")) {
+    if (writingFormula) {
       formula.onKeyDown(event);
       return;
     }

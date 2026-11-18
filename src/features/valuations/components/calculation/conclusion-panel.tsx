@@ -5,6 +5,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -185,7 +186,15 @@ export function ConclusionPanel(props: {
       setWeights({ costos: weight("costos"), mercado: weight("mercado"), ingresos: weight("ingresos") });
     }
   };
-  const enqueueSave = useSerializedSave(async (settings: { method: ConclusionMethod; justification: string | null; rounding: RoundingDigits; formulas: CapturedFormulas; summaryRows: ConclusionSummaryRow[] }) => {
+  const enqueueSave = useSerializedSave(async (settings: {
+    method: ConclusionMethod;
+    justification: string | null;
+    rounding: RoundingDigits;
+    formulas: CapturedFormulas;
+    summaryRows: ConclusionSummaryRow[];
+    concludedNameFromRow: boolean;
+    valueChart: boolean;
+  }) => {
     setSaving(true);
     try {
       applyServerState(await api.conclusion.save(valuationId, settings));
@@ -231,7 +240,14 @@ export function ConclusionPanel(props: {
   const summaryRows = summaryRowValues(calculation);
   const result = canConclude(current) ? concludeValue(conclusionInput(current), conclusionEngineConfig(calculation)) : null;
   const rounding = calculation.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.conclusion : calculation.rounding;
-  const save = (next: { method?: ConclusionMethod; justification?: string; rounding?: RoundingDigits; summaryRows?: ConclusionSummaryRow[] }) => {
+  const save = (next: {
+    method?: ConclusionMethod;
+    justification?: string;
+    rounding?: RoundingDigits;
+    summaryRows?: ConclusionSummaryRow[];
+    concludedNameFromRow?: boolean;
+    valueChart?: boolean;
+  }) => {
     if (readOnly) return;
     const sent = next.method ?? method;
     void enqueueSave({
@@ -239,6 +255,8 @@ export function ConclusionPanel(props: {
       justification: (next.justification ?? justification).trim() || null,
       rounding: next.rounding === undefined ? rounding : next.rounding,
       summaryRows: next.summaryRows ?? calculation.summaryRows ?? [],
+      concludedNameFromRow: next.concludedNameFromRow ?? calculation.concludedNameFromRow === true,
+      valueChart: next.valueChart ?? calculation.valueChart === true,
       // The weights' formulas go with the weights; concluding with one approach has none.
       formulas: sent.kind === "weighted" ? formulasOfFields(APPROACHES.map((approach) => [weightPath(approach), weights[approach]] as const)) : {},
     });
@@ -267,6 +285,41 @@ export function ConclusionPanel(props: {
           save({ summaryRows: rows });
         }}
       />
+
+      <fieldset disabled={readOnly} className="grid gap-2 text-sm" data-conclusion-print-options>
+        {summaryRows.length === 1 ? (
+          <label className="flex items-start gap-2">
+            <Checkbox
+              className="mt-0.5"
+              checked={calculation.concludedNameFromRow === true}
+              onCheckedChange={(checked) => {
+                const on = checked === true;
+                setCalculation({ ...calculation, concludedNameFromRow: on });
+                save({ concludedNameFromRow: on });
+              }}
+            />
+            <span>
+              El valor concluido lleva el nombre de la fila del resumen («{summaryRows[0].label}»)
+              <span className="block text-xs text-muted-foreground">Apagado, conserva el nombre que le diste en el bloque (por ejemplo «Valor de mercado»).</span>
+            </span>
+          </label>
+        ) : null}
+        <label className="flex items-start gap-2">
+          <Checkbox
+            className="mt-0.5"
+            checked={calculation.valueChart === true}
+            onCheckedChange={(checked) => {
+              const on = checked === true;
+              setCalculation({ ...calculation, valueChart: on });
+              save({ valueChart: on });
+            }}
+          />
+          <span>
+            Imprimir la gráfica de los valores
+            <span className="block text-xs text-muted-foreground">Barras con los valores del resumen, bajo ellos en la conclusión del dictamen. Opcional.</span>
+          </span>
+        </label>
+      </fieldset>
 
       <h4 className={CALC_SECTION_HEADING}>Cómo se concluye</h4>
       <fieldset disabled={readOnly || summaryRows.length === 1} className="grid gap-3 sm:grid-cols-2">
@@ -332,7 +385,10 @@ export function ConclusionPanel(props: {
 
       {result ? (
         <div className="rounded-md border bg-background p-3">
-          <p className="text-xs text-muted-foreground">Valor concluido{summaryRows.length === 1 ? ` · ${summaryRows[0].label}` : ""}</p>
+          <p className="text-xs text-muted-foreground">
+            Valor concluido{summaryRows.length === 1 ? ` · ${summaryRows[0].label}` : ""}
+            {" "}· su nombre en el dictamen se cambia en el bloque de la conclusión y sigue recibiendo el valor
+          </p>
           {/* As the dictamen prints it: "$2,200,000.00 M.N.". */}
           <p className="text-lg font-semibold tabular-nums" data-concluded-value>{formatMoneyForDocument(result.value, { legalTender: true })}</p>
           <p className="text-xs text-muted-foreground">{result.valueInWords}</p>

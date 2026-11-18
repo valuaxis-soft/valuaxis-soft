@@ -122,6 +122,8 @@ export type ValuationBlockDto = {
   headerFields?: HeaderExtraField[];
   /** The carátula's company header block: the size of the principal cover image. */
   coverImageSize?: CoverImageSize;
+  /** The block of the concluded value: it prints the chart of the values. */
+  valueChart?: boolean;
   concepts: ValuationConceptDto[];
   subBlocks: ValuationApartadoDto[];
   tables: ValuationTableDto[];
@@ -147,6 +149,7 @@ export type ValuationConceptDto = {
   options?: string[];
   generatedLabel?: string;
   calculationUnlinked?: boolean;
+  calculationKey?: string;
 };
 
 export type ValuationTableDto = {
@@ -507,6 +510,7 @@ const DEFAULT_DOCUMENT_TEMPLATE_KEYS = new Set([
   "MERCADO_VENTA",
   "MERCADO_RENTAS",
   "INGRESOS",
+  "METODOS_ALTERNATIVOS",
   "FOTOS_SUJETO",
   "CROQUIS_COMPARABLES",
   "HOMOLOGACION",
@@ -779,6 +783,7 @@ function mapNodeToBlock(node: DbNode, label: string): ValuationBlockDto {
     flowSpacingBeforePx: blockMetadata.flowSpacingBeforePx,
     ...(blockMetadata.headerFields ? { headerFields: blockMetadata.headerFields } : {}),
     ...(blockMetadata.coverImageSize ? { coverImageSize: blockMetadata.coverImageSize } : {}),
+    ...(blockMetadata.valueChart ? { valueChart: true } : {}),
     concepts: conceptNodes.map(mapConceptNode),
     subBlocks: subBlockNodes.map((child) => {
       const subChildren = child.nodosHijos

@@ -1,6 +1,7 @@
 /**
  * The statistical methods in the dictamen: a block "MÉTODOS ALTERNATIVOS
- * PARA ESTIMACIÓN DE VALOR" (once "APLICACIÓN ESTADÍSTICA") of its own, after the market's pages of the same comparable type, with the
+ * PARA ESTIMACIÓN DE VALOR" (once "APLICACIÓN ESTADÍSTICA") per market, in
+ * the section of the same name (once after the market's pages), with the
  * criteria and their scales, the regression (a brief table, its equation,
  * constants and variables, and the conclusion last) and the goal programming
  * (its coefficients and the conclusion), each only when the appraiser turns
@@ -307,8 +308,46 @@ function regressionSpecs(calculation: StatisticalCalculationDto, result: Statist
     statistics: [statistics],
     anova: anovaTable ? [anovaTable] : [],
     coefficients: [coefficientsSpec(fit, `${prefix}-coeficientes`, decimals)],
+    contributions: [regressionContributionSpec(fit, data.subject, `${prefix}-contribucion`, yName)],
   };
   return { brief, extras, conclusion };
+}
+
+/** The title Álvaro gives the table of each criterion's part in the subject's value (video 7.3, 30:58). */
+export const CONTRIBUTION_TABLE_TITLE = "Tabla de contribución de criterios";
+
+/** One line of the regression's table of contributions: the constant or a criterion, its coefficient, the subject's value and their product. */
+export type RegressionContribution = { constant: string; name: string; coefficient: number; subjectValue: number; contribution: number };
+
+/**
+ * What each criterion contributes to the subject's Y in the regression (V7.3-29),
+ * as the goal programming's table: the intercept (× 1) and each coefficient
+ * times the subject's value; their sum is the Y the equation estimates.
+ */
+export function regressionContributions(fit: Pick<RegressionFit, "coefficientTable">, subject: readonly number[]): RegressionContribution[] {
+  return fit.coefficientTable.map((row, index) => {
+    const subjectValue = index === 0 ? 1 : subject[index - 1] ?? 0;
+    return { constant: row.constant, name: row.name, coefficient: row.coefficient, subjectValue, contribution: row.coefficient * subjectValue };
+  });
+}
+
+function regressionContributionSpec(fit: RegressionFit, subject: readonly number[], id: string, yName: string): TableSpec {
+  const rows = regressionContributions(fit, subject);
+  const total = rows.reduce((sum, row) => sum + row.contribution, 0);
+  return {
+    id,
+    title: `${CONTRIBUTION_TABLE_TITLE} (regresión)`,
+    columns: [textColumn("CRITERIO"), figureColumn("COEFICIENTE"), figureColumn("SUJETO"), figureColumn("CONTRIBUCIÓN")],
+    rows: [
+      ...rows.map((row) => [
+        row.name === "Intercepción" ? `${row.constant} (Intercepción)` : `${row.constant} (${row.name})`,
+        significant.format(row.coefficient), amount(row.subjectValue), figure(row.contribution),
+      ]),
+      [`VALOR Y ESTIMADO (${yName})`, "", "", figure(total)],
+    ],
+    rowKeys: [...rows.map((row) => row.constant), "total"],
+    notes: [{ position: "table", text: "Contribución = coeficiente × valor del sujeto en cada criterio; la intercepción entra una vez. Su suma es la Y que estima la ecuación." }],
+  };
 }
 
 /** Under the coefficients table: what the probability and the limits mean, in plain words. */
@@ -369,7 +408,7 @@ function goalSpecs(calculation: StatisticalCalculationDto, fit: GoalProgrammingF
   };
   const contributions: TableSpec = {
     id: `${prefix}-contribucion`,
-    title: "Contribución de cada criterio",
+    title: `${CONTRIBUTION_TABLE_TITLE} (programación por metas)`,
     columns: [textColumn("CRITERIO"), figureColumn("COEFICIENTE"), figureColumn("VALOR SUJETO"), moneyColumn("CONTRIBUCIÓN $"), textColumn("NOTA")],
     rows: fit.contributions.map((row) => [row.name, significant.format(row.coefficient), amount(row.subjectValue), money(row.contribution), row.contributes ? "" : NO_CONTRIBUTION_NOTE]),
   };
@@ -498,17 +537,34 @@ export function statisticalDocumentBlocks(calculation: StatisticalCalculationDto
   return [generatedBlock(prefix, STATISTICAL_BLOCK_TITLE, { apartados })];
 }
 
+/** The order the markets print in: land before buildings for sale, buildings before land for rent. */
+const PRINT_ORDER: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"];
+
 /**
- * The apartado's block in the market section: where it was, or after the
- * last page of the market approach (the photos of the comparables aside).
+ * The market's block in the section «Métodos alternativos» (V7.3-19): where it
+ * was, or before the blocks of the markets that print after it, so the
+ * markets keep the books' order whichever is captured first.
  */
 export function withStatisticalBlocks(section: AppSection, type: ComparableType, blocks: Block[]): AppSection {
   const prefix = prefixFor(type);
+  const later = PRINT_ORDER.slice(PRINT_ORDER.indexOf(type) + 1).map(prefixFor);
   return replaceGeneratedBlocks(section, (block) => block.id.startsWith(prefix), blocks, {
     position: "end",
     placeAmong: (kept) => {
-      const last = kept.findLastIndex((block) => block.id.startsWith(`${GENERATED_BLOCK_PREFIX}mercado-`) && !block.id.endsWith("-fotos"));
-      return last === -1 ? null : last + 1;
+      const next = kept.findIndex((block) => later.some((other) => block.id.startsWith(other)));
+      return next === -1 ? null : next;
     },
   });
+}
+
+/**
+ * The block a market section kept from before the methods had a section of
+ * their own: it leaves the market and the methods' section prints it,
+ * written again from the methods' own data, so nothing captured is lost.
+ */
+export function withoutStatisticalBlocks(section: AppSection, type: ComparableType): AppSection {
+  const prefix = prefixFor(type);
+  return section.blocks.some((block) => block.id.startsWith(prefix))
+    ? { ...section, blocks: section.blocks.filter((block) => !block.id.startsWith(prefix)) }
+    : section;
 }

@@ -5,7 +5,7 @@
  * solved), with the scales and codings of the criteria among what the
  * appraiser captured. Pure.
  */
-import { COMPARABLE_TYPE_LABELS, isRentComparableType } from "../calculation/market-types";
+import { COMPARABLE_TYPE_LABELS } from "../calculation/market-types";
 import {
   CODING_LABELS,
   DEFAULT_CONTRARY_BASE,
@@ -63,7 +63,8 @@ export function statisticalRuns(calculations: StatisticalCalculationDto[] | unde
     return [{
       key: `MOTOR.ESTADISTICO.${type}`,
       title: `Métodos alternativos para estimación de valor · ${COMPARABLE_TYPE_LABELS[type]}`,
-      sectionKey: isRentComparableType(type) ? "MERCADO_RENTAS" : "MERCADO_VENTA",
+      // Their own section in the dictamen (V7.3-19).
+      sectionKey: "METODOS_ALTERNATIVOS",
       trace: trace.steps.length ? trace : null,
       ...(pending ? { pending } : {}),
       captured: codings(calculation),

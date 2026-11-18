@@ -29,7 +29,7 @@ import {
   type ComparableType,
   type MarketCalculationDto,
 } from "@/features/valuations/calculation/market-types";
-import { COEFFICIENTS_NOTE, NO_CONTRIBUTION_NOTE, STATISTICAL_VALUE_NOTE, methodComparison, regressionEquation } from "@/features/valuations/calculation/statistical-document";
+import { COEFFICIENTS_NOTE, NO_CONTRIBUTION_NOTE, STATISTICAL_VALUE_NOTE, methodComparison, regressionContributions, regressionEquation } from "@/features/valuations/calculation/statistical-document";
 import {
   DEFAULT_GOAL_TITLE,
   DEFAULT_REGRESSION_TITLE,
@@ -66,13 +66,13 @@ const draftOf = (calculation: StatisticalCalculationDto): Draft => ({ settings: 
 const newId = () => globalThis.crypto.randomUUID();
 
 /**
- * "Métodos estadísticos" of a section's markets (sale or rent), one tab per
- * comparable type: the regression and the goal programming with comparables
+ * "Métodos alternativos" of the markets (sale and rent, in their own section
+ * since V7.3-19), one tab per comparable type: the regression and the goal programming with comparables
  * of their own, apart from the market approach above it.
  */
 export function StatisticalMethodsPanel(props: {
   valuationId: string;
-  types?: ComparableType[];
+  types?: readonly ComparableType[];
   readOnly: boolean;
   onCalculation: (calculation: StatisticalCalculationDto) => void;
 }) {
@@ -120,8 +120,9 @@ export function StatisticalMethodsPanel(props: {
           <BarChart3 className="size-5" /> Métodos alternativos para estimación de valor
         </h3>
         <p className="text-xs text-muted-foreground">
-          Regresión lineal múltiple y programación por metas, con comparables propios. Son una referencia: no cambian el valor del enfoque de mercado
-          ni la conclusión. Se imprimen en el dictamen, después del mercado, con «Agregar al informe valuatorio» y «Mostrar en el dictamen» de cada método.
+          Regresión lineal múltiple y programación por metas, con comparables propios, una pestaña por mercado. Son una referencia: no cambian el valor
+          del enfoque de mercado ni la conclusión, salvo que los elijas en el resumen de valores. Se imprimen en esta sección del dictamen con «Agregar al
+          informe valuatorio» y «Mostrar en el dictamen» de cada método, aunque el mercado se quite del informe.
         </p>
       </header>
       <div className="flex flex-wrap items-center gap-2">
@@ -620,6 +621,31 @@ function StatisticalTypePanel(props: {
                   <p className="px-1.5 py-1 text-xs text-muted-foreground">{COEFFICIENTS_NOTE}</p>
                 </CalcTableContextMenu>
                 <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={true}>
+                  <table className={cn(CALC_TABLE, "w-full")} aria-label="Tabla de contribución de criterios (regresión)">
+                    <thead className={CALC_HEAD}>
+                      <tr>
+                        {["Criterio", "Coeficiente", "Sujeto", "Contribución"].map((name, index) => (
+                          <th key={name} className={cn(CALC_HEAD_CELL, index ? "text-right" : "text-left")}>{name}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {regressionContributions(regression.result.fit, regression.result.data.subject).map((row) => (
+                        <tr key={row.constant} className={CALC_ROW} data-contribution={row.constant}>
+                          <td className="px-1.5 py-1">{row.constant} ({row.name})</td>
+                          <td className="px-1.5 py-1 text-right font-mono tabular-nums">{significant(row.coefficient)}</td>
+                          <td className="px-1.5 py-1 text-right tabular-nums">{significant(row.subjectValue)}</td>
+                          <td className="px-1.5 py-1 text-right tabular-nums">{figure(row.contribution, 2)}</td>
+                        </tr>
+                      ))}
+                      <tr className={cn(CALC_ROW, "font-semibold")}>
+                        <td className="px-1.5 py-1" colSpan={3}>Y estimado (suma de las contribuciones)</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums">{figure(regression.result.fit.estimate, 2)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </CalcTableContextMenu>
+                <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={true}>
                   <table className={cn(CALC_TABLE, "w-full")} aria-label="Valores estimados por la regresión">
                     <thead className={CALC_HEAD}>
                       <tr>
@@ -702,7 +728,7 @@ function StatisticalTypePanel(props: {
                   <p key={warning} className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"><AlertTriangle className="size-3.5 shrink-0" /> {warning}</p>
                 ))}
                 <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={true}>
-                  <table className={cn(CALC_TABLE, "w-full")} aria-label="Contribución de cada criterio">
+                  <table className={cn(CALC_TABLE, "w-full")} aria-label="Tabla de contribución de criterios (programación por metas)">
                     <thead className={CALC_HEAD}>
                       <tr>
                         {["Criterio", "Coeficiente", "Valor sujeto", "Contribución", ""].map((name, index) => <th key={index} className={cn(CALC_HEAD_CELL, "text-left")}>{name}</th>)}
@@ -808,8 +834,9 @@ const REGRESSION_TABLE_LABELS: Record<RegressionExtraTable, string> = {
   statistics: "Estadísticas de la regresión",
   anova: "Análisis de varianza",
   coefficients: "Coeficientes",
+  contributions: "Contribución de criterios",
 };
-const GOAL_TABLE_LABELS: Record<GoalExtraTable, string> = { deviations: "Desviaciones", contributions: "Contribución de cada criterio" };
+const GOAL_TABLE_LABELS: Record<GoalExtraTable, string> = { deviations: "Desviaciones", contributions: "Contribución de criterios" };
 
 /**
  * The technical tables of a method (video 5.3, 21:48): they are always in the

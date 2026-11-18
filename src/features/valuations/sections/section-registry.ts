@@ -11,6 +11,7 @@ export type ValuationSectionKey =
   | "MERCADO_VENTA"
   | "MERCADO_RENTAS"
   | "INGRESOS"
+  | "METODOS_ALTERNATIVOS"
   | "FOTOS_SUJETO"
   | "CROQUIS_COMPARABLES"
   | "HOMOLOGACION"
@@ -138,6 +139,18 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
     permissions: [AUTH_PERMISSIONS.editValuations],
   },
   {
+    // Regression and goal programming, every market's, in a section of their own (video 7.3, V7.3-19).
+    key: "METODOS_ALTERNATIVOS",
+    label: "MÉTODOS ALTERNATIVOS",
+    order: 105,
+    kind: "hybrid",
+    required: false,
+    visibleByDefault: true,
+    editable: true,
+    tables: ["MetodoEstadistico"],
+    permissions: [AUTH_PERMISSIONS.editValuations],
+  },
+  {
     key: "FOTOS_SUJETO",
     label: "FOTOGRAFÍAS SUJETO",
     order: 110,
@@ -207,8 +220,8 @@ export const valuationSectionRegistry: ValuationSectionDefinition[] = [
 
 /**
  * Sections without a sheet in the machinery and equipment book (MEH): land,
- * constructions, rents, income, sketches and maps of comparables and the
- * indirect costs of a construction. Its sheets are carátula, datos,
+ * constructions, rents, income, the alternative methods, sketches and maps of
+ * comparables and the indirect costs of a construction. Its sheets are carátula, datos,
  * consideraciones, costos, mercado, conclusión and the annexes of photographs
  * and of homologation factors.
  */
@@ -217,6 +230,7 @@ const MACHINERY_HIDDEN_SECTIONS: readonly ValuationSectionKey[] = [
   "CONSTRUCCION",
   "MERCADO_RENTAS",
   "INGRESOS",
+  "METODOS_ALTERNATIVOS",
   "CROQUIS_COMPARABLES",
   "INDIRECTOS",
   "MAPA_COMPARABLES",
@@ -292,6 +306,7 @@ sectionAliasMap.set(compactSectionKey("INDICADORES"), "MAPA_COMPARABLES");
 sectionAliasMap.set(compactSectionKey("MAPA_COMPARABLES"), "MAPA_COMPARABLES");
 sectionAliasMap.set(compactSectionKey("mapacomparables"), "MAPA_COMPARABLES");
 sectionAliasMap.set(compactSectionKey("ZONA"), "TERRENO");
+sectionAliasMap.set(compactSectionKey("METODOS_ESTADISTICOS"), "METODOS_ALTERNATIVOS");
 
 function sectionKeyToWorkspaceIdFromCanonical(key: ValuationSectionKey) {
   return key.toLowerCase().replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());

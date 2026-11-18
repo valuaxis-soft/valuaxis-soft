@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  CONCLUSION_KEYS,
   caratulaConclusionValues,
   conclusionValues,
   isConclusionCalculatedConcept,
+  signatureConceptValues,
   withConceptValues,
   withManualConclusionEdit,
   withSummaryRowConcepts,
+  withValueChart,
 } from "../src/features/valuations/calculation/conclusion-document";
-import type { ConclusionCalculationDto } from "../src/features/valuations/calculation/conclusion-types";
+import { conclusionesSection } from "../src/features/valuations/sections/conclusiones";
+import { conclusionInput, type ConclusionCalculationDto } from "../src/features/valuations/calculation/conclusion-types";
 import { concludeValue } from "../src/features/valuations/engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { conceptMetadataFromContent, hydrateConceptMetadata } from "../src/features/valuations/metadata";
@@ -22,7 +26,7 @@ const calculation = (costos: number): ConclusionCalculationDto => ({
   configured: true,
   locked: false,
 });
-const resultOf = (dto: ConclusionCalculationDto) => concludeValue({ values: dto.values, method: dto.method }, DEFAULT_ENGINE_CONFIG);
+const resultOf = (dto: ConclusionCalculationDto) => concludeValue(conclusionInput(dto), DEFAULT_ENGINE_CONFIG);
 const concept = (id: string, label: string, value = ""): Concept => ({ id, label, value, enabled: true });
 const sectionOf = (concepts: Concept[], id = "conclusiones"): AppSection => ({
   id, label: "XI", title: "CONCLUSIÓN", sourceFile: "", enabled: true, required: false,
@@ -75,7 +79,11 @@ test("only the values the conclusion fills unlink when written by hand", () => {
   const observations = concept("c6", "Observaciones finales", "Texto del perito");
   assert.deepEqual(withManualConclusionEdit("CONCLUSIONES", observations, { value: "Otro texto" }), { value: "Otro texto" });
   const concluded = concept("c4", "Valor concluido", "8580000.00");
-  assert.deepEqual(withManualConclusionEdit("CONCLUSIONES", concluded, { label: "Valor final" }), { label: "Valor final" }, "renaming is not writing the value");
+  assert.deepEqual(
+    withManualConclusionEdit("CONCLUSIONES", concluded, { label: "Valor final" }),
+    { label: "Valor final", calculationKey: CONCLUSION_KEYS.value },
+    "renaming is not writing the value: it stays linked and takes its key with it",
+  );
   assert.deepEqual(withManualConclusionEdit("CONCLUSIONES", concluded, { value: "8580000.00" }), { value: "8580000.00" }, "the same value is no edit");
   assert.deepEqual(withManualConclusionEdit("COSTOS", concluded, { value: "1" }), { value: "1" }, "other sections are not the conclusion's");
   assert.equal(isConclusionCalculatedConcept("CARATULA", concept("v", "Valor comercial del bien")), true);
@@ -116,4 +124,75 @@ test("the unlinking is stored with the concept's configuration", () => {
   const stored = conceptMetadataFromContent({ ...concept("c4", "Valor concluido"), calculationUnlinked: true });
   assert.equal(hydrateConceptMetadata({ kind: "concept", payload: stored }).calculationUnlinked, true);
   assert.equal(hydrateConceptMetadata({ kind: "concept", payload: conceptMetadataFromContent(concept("c4", "Valor concluido")) }).calculationUnlinked, undefined);
+});
+
+/* V7.3-28: «el valor concluido debería de poderse ajustar, el nombre que ellos decidan». */
+
+test("V7.3-28: a concluded value renamed by the appraiser still receives the value, saved before the key or after", () => {
+  // Saved before the key existed: recognized by its template label once, and the key is written.
+  const synced = sync(template(), calculation(8580000));
+  const concluded = synced.blocks[0].concepts.find((item) => item.id === "c4")!;
+  assert.equal(concluded.calculationKey, CONCLUSION_KEYS.value);
+  assert.equal(synced.blocks[0].concepts.find((item) => item.id === "c6")!.calculationKey, undefined, "the appraiser's text takes no key");
+  // Renamed afterwards: still linked, still written.
+  const renamed = { ...synced, blocks: [{ ...synced.blocks[0], concepts: synced.blocks[0].concepts.map((item) => (item.id === "c4" ? { ...item, label: "Valor de mercado" } : item)) }] };
+  const next = sync(renamed, calculation(8700000));
+  assert.equal(valueOf(next, "c4"), "8700000.00");
+  assert.equal(next.blocks[0].concepts[3].label, "Valor de mercado");
+  // Renamed in the editor before any sync (the edit carries the key): the same.
+  const early = template();
+  const edited = { ...early, blocks: [{ ...early.blocks[0], concepts: early.blocks[0].concepts.map((item) => (item.id === "c4" ? { ...item, ...withManualConclusionEdit("CONCLUSIONES", item, { label: "Valor comercial" }) } : item)) }] };
+  assert.equal(valueOf(sync(edited, calculation(8580000)), "c4"), "8580000.00");
+  // A value written by hand and then the concept renamed: it stays the appraiser's (#80).
+  const manual = edit(synced, "c4", "9000000.00");
+  const manualRenamed = { ...manual, blocks: [{ ...manual.blocks[0], concepts: manual.blocks[0].concepts.map((item) => (item.id === "c4" ? { ...item, label: "Valor de mercado" } : item)) }] };
+  assert.equal(valueOf(sync(manualRenamed, calculation(8700000)), "c4"), "9000000.00");
+  // The key is stored with the concept's configuration.
+  const stored = conceptMetadataFromContent(concluded);
+  assert.equal(hydrateConceptMetadata({ kind: "concept", payload: stored }).calculationKey, CONCLUSION_KEYS.value);
+});
+
+test("a new valuation's template carries the keys of what the calculation writes, and only those", () => {
+  const keys = conclusionesSection.blocks.flatMap((block) => block.concepts.map((item) => [item.label, item.calculationKey ?? null]));
+  assert.deepEqual(keys, [
+    ["Valor por enfoque de costos", CONCLUSION_KEYS.costos], ["Valor por enfoque de mercado", CONCLUSION_KEYS.mercado], ["Valor por enfoque de ingresos", CONCLUSION_KEYS.ingresos],
+    ["Valor concluido", CONCLUSION_KEYS.value], ["Valor concluido con letra", CONCLUSION_KEYS.words], ["Observaciones finales", null],
+    ["Declaración del valuador", null], ["Alcance del avalúo", null], ["Limitaciones", null], ["Fecha de emisión", null],
+    ["Valuador", CONCLUSION_KEYS.signerName], ["Cédula profesional", CONCLUSION_KEYS.signerCedula], ["Registro", null], ["Firma", null],
+  ]);
+});
+
+test("with one row in the resumen and «lleva el nombre de la fila», the concluded value prints under that row's name", () => {
+  const dto: ConclusionCalculationDto = {
+    ...calculation(8580000),
+    summaryRows: [{ source: "mercado-terrenos", label: "Valor de terreno por enfoque de mercado" }],
+    available: { "mercado-terrenos": 1528000 },
+  };
+  assert.equal(withSummaryRowConcepts(template(), dto).blocks[0].concepts.find((item) => item.id === "c4")!.label, "Valor concluido", "off: his name stays");
+  const named = withSummaryRowConcepts(template(), { ...dto, concludedNameFromRow: true });
+  const concluded = named.blocks[0].concepts.find((item) => item.id === "c4")!;
+  assert.equal(concluded.label, "Valor de terreno por enfoque de mercado");
+  assert.equal(valueOf(sync(named, dto), "c4"), "1530000.00", "renamed so, it still receives the value (rounded as the conclusion)");
+  assert.equal(withSummaryRowConcepts(named, { ...dto, concludedNameFromRow: true }), named, "nothing changed: the same section");
+});
+
+test("V7.1-24: FIRMAS takes the carátula's signatures, linked as the values are", () => {
+  const firmas = sectionOf([concept("f1", "Valuador"), concept("f2", "Cédula profesional"), concept("f3", "Registro"), concept("f4", "Firma")]);
+  const signed = withConceptValues(firmas, signatureConceptValues([{ name: "Arq. Persona Inventada", cedula: "1234567" }, { name: "Ing. Otra Persona", cedula: "7654321" }]));
+  assert.deepEqual(signed.blocks[0].concepts.map((item) => item.value), ["Arq. Persona Inventada, Ing. Otra Persona", "1234567, 7654321", "", ""]);
+  assert.equal(isConclusionCalculatedConcept("CONCLUSIONES", concept("f1", "Valuador")), true);
+  assert.equal(isConclusionCalculatedConcept("CONCLUSIONES", concept("f3", "Registro")), false);
+  // Written by hand: it stays.
+  const written = { ...signed, blocks: [{ ...signed.blocks[0], concepts: signed.blocks[0].concepts.map((item) => (item.id === "f1" ? { ...item, ...withManualConclusionEdit("CONCLUSIONES", item, { value: "Otro nombre" }) } : item)) }] };
+  assert.equal(valueOf(withConceptValues(written, signatureConceptValues([{ name: "Cambio", cedula: "1" }])), "f1"), "Otro nombre");
+});
+
+test("V7.1-26: the chart of the values is chosen for the block of the concluded value only", () => {
+  const section = sectionOf([concept("c4", "Valor concluido")]);
+  const withChart = withValueChart(section, true);
+  assert.equal(withChart.blocks[0].valueChart, true);
+  assert.equal(withValueChart(withChart, true), withChart);
+  assert.equal(withValueChart(withChart, false).blocks[0].valueChart, undefined);
+  const other = sectionOf([concept("o1", "Observaciones finales")]);
+  assert.equal(withValueChart(other, true), other);
 });

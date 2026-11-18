@@ -50,6 +50,8 @@ export type ConceptMetadata = {
   generatedLabel?: string;
   /** A concept of the conclusion the appraiser unlinked from the calculation. */
   calculationUnlinked?: boolean;
+  /** What the calculation writes in the concept ("conclusion:value"…), whatever its label reads. */
+  calculationKey?: string;
 };
 
 export type ImageMetadata = {
@@ -114,6 +116,8 @@ export type BlockMetadata = {
   headerFields?: HeaderExtraField[];
   /** The carátula's company header block only: the size of the principal cover image. */
   coverImageSize?: CoverImageSize;
+  /** The block of the concluded value only: it prints the chart of the values (V7.1-26). */
+  valueChart?: boolean;
 };
 
 export type ApartadoMetadata = {
@@ -174,6 +178,7 @@ export function conceptMetadataFromContent(content: ConceptMetadataContent): Con
     formula: content.formula,
     generatedLabel: content.generatedLabel,
     calculationUnlinked: content.calculationUnlinked || undefined,
+    calculationKey: content.calculationKey || undefined,
   };
 }
 
@@ -195,6 +200,7 @@ export function hydrateConceptMetadata(config: unknown): ConceptMetadata {
     formula: readConfigMetadata(config, (value) => (isRecord(value) ? readStoredFormula(value.formula) : undefined)),
     generatedLabel: conceptStringMetadata(config, "generatedLabel"),
     calculationUnlinked: readConfigMetadata(config, (value) => readBooleanMetadata(value, "calculationUnlinked")) || undefined,
+    calculationKey: conceptStringMetadata(config, "calculationKey"),
   };
 }
 
@@ -295,6 +301,7 @@ export function blockMetadataFromContent(content: BlockMetadataContent): BlockMe
     flowSpacingBeforePx: content.flowSpacingBeforePx,
     headerFields: content.headerFields,
     coverImageSize: content.coverImageSize,
+    valueChart: content.valueChart || undefined,
   };
 }
 
@@ -314,6 +321,7 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
     flowSpacingBeforePx: readFlowSpacingBeforePx(config),
     ...(headerFields?.length ? { headerFields } : {}),
     ...(coverImageSize && !isDefaultCoverImageSize(coverImageSize) ? { coverImageSize } : {}),
+    ...(readConfigMetadata(config, (value) => readBooleanMetadata(value, "valueChart")) ? { valueChart: true } : {}),
   };
 }
 
@@ -371,7 +379,7 @@ function conceptNumberMetadata(config: unknown, key: "spacingBefore" | "spacingA
   return readConfigMetadata(config, (value) => readNumberMetadata(value, key));
 }
 
-function conceptStringMetadata(config: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId" | "generatedLabel") {
+function conceptStringMetadata(config: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId" | "generatedLabel" | "calculationKey") {
   const value = readConfigMetadata(config, (candidate) => readStringMetadata(candidate, key));
   return value || undefined;
 }
@@ -546,13 +554,13 @@ function readFlowSpacingBeforePx(config: unknown): number | undefined {
   });
 }
 
-function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId" | "generatedLabel") {
+function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId" | "generatedLabel" | "calculationKey") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "string" ? metadata : undefined;
 }
 
-function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "custom" | "titleEdited" | "removed" | "calculationUnlinked") {
+function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "custom" | "titleEdited" | "removed" | "calculationUnlinked" | "valueChart") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "boolean" ? metadata : undefined;

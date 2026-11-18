@@ -39,6 +39,7 @@ import {
   CaratulaConclusionModule,
   CaratulaSignaturesModule,
 } from "./caratula-preview-modules";
+import { conclusionBlockFlowItems } from "./conclusion-preview-modules";
 import { UnaccreditedNotice, useUnaccreditedNotice } from "@/features/accreditation/components/unaccredited-notice";
 import { NOTICE_SECTION_KEYS } from "@/features/accreditation/accreditation-notice";
 
@@ -205,6 +206,7 @@ export function SectionDocument({
         ) : (
           <ReportSection
             applyConceptLayout={PRE_MARKET_LAYOUT_SECTION_KEYS.has(getCanonicalSectionKey(section.id))}
+            caratula={caratula}
             header={header}
             section={section}
           />
@@ -220,15 +222,24 @@ const isDatosSection = (section: AppSection) => section.id === "datos" || getCan
  * The printed items of a section other than the carátula, as its own pages
  * lay them out: to print it on the pages of the section before.
  */
-export function sectionFlowItems(section: AppSection, unaccreditedNotice = false): DocumentFlowItem[] {
+export function sectionFlowItems(section: AppSection, unaccreditedNotice = false, caratula?: Pick<CaratulaFormData, "firmas">): DocumentFlowItem[] {
   if (isDatosSection(section)) return datosFlowItems(section);
   if (isTerrenoSection(section)) return terrenoFlowItems(section);
   if (isConstruccionSection(section)) return construccionFlowItemsInFlow(section);
   const applyConceptLayout = PRE_MARKET_LAYOUT_SECTION_KEYS.has(getCanonicalSectionKey(section.id));
-  const items = section.blocks
+  return withUnaccreditedNotice(section, sectionBlockItems(section, applyConceptLayout, caratula), unaccreditedNotice);
+}
+
+/**
+ * The blocks of a section other than the carátula. The conclusion's value
+ * and its FIRMAS print in the despacho's format (video 7.1).
+ */
+function sectionBlockItems(section: AppSection, applyConceptLayout: boolean, caratula?: Pick<CaratulaFormData, "firmas">): DocumentFlowItem[] {
+  const print = (block: Block) => reportBlockFlowItems(block, applyConceptLayout);
+  const conclusion = getCanonicalSectionKey(section.id) === "CONCLUSIONES";
+  return section.blocks
     .filter((block) => block.enabled)
-    .flatMap((block) => reportBlockFlowItems(block, applyConceptLayout));
-  return withUnaccreditedNotice(section, items, unaccreditedNotice);
+    .flatMap((block) => (conclusion ? conclusionBlockFlowItems(block, caratula, print) : print(block)));
 }
 
 const NOTICE_SECTIONS: ReadonlySet<string> = new Set(NOTICE_SECTION_KEYS);
@@ -264,16 +275,16 @@ export function ContinuousSectionsDocument({
   return (
     <DocumentThemeProvider variant="standard">
       <div className="light" style={CARATULA_COLOR_VARS}>
-        <ContinuousSectionsFlow header={header} sections={sections} />
+        <ContinuousSectionsFlow caratula={caratula} header={header} sections={sections} />
       </div>
     </DocumentThemeProvider>
   );
 }
 
-function ContinuousSectionsFlow({ header, sections }: { header: ReactNode; sections: AppSection[] }) {
+function ContinuousSectionsFlow({ caratula, header, sections }: { caratula: CaratulaFormData; header: ReactNode; sections: AppSection[] }) {
   const theme = useDocumentTheme();
   const unaccreditedNotice = useUnaccreditedNotice();
-  const items = sections.flatMap((section) => sectionFlowItems(section, unaccreditedNotice));
+  const items = sections.flatMap((section) => sectionFlowItems(section, unaccreditedNotice, caratula));
   const contentLayoutKey = useMemo(() => sections.map(computeDocumentLayoutKey).join(":"), [sections]);
   return (
     <AutoPaginatedDocumentFlow
@@ -359,20 +370,18 @@ function CaratulaPreview({
 
 function ReportSection({
   applyConceptLayout,
+  caratula,
   header,
   section,
 }: {
   applyConceptLayout: boolean;
+  caratula: CaratulaFormData;
   header: ReactNode;
   section: AppSection;
 }) {
   const theme = useDocumentTheme();
   const unaccreditedNotice = useUnaccreditedNotice();
-  const items = withUnaccreditedNotice(
-    section,
-    section.blocks.filter((block) => block.enabled).flatMap((block) => reportBlockFlowItems(block, applyConceptLayout)),
-    unaccreditedNotice,
-  );
+  const items = withUnaccreditedNotice(section, sectionBlockItems(section, applyConceptLayout, caratula), unaccreditedNotice);
   const contentLayoutKey = useMemo(() => computeDocumentLayoutKey(section), [section]);
 
   return (

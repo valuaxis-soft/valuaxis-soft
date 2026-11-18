@@ -51,11 +51,10 @@ import { CostCalculationPanel } from "@/features/valuations/components/calculati
 import { IncomeCalculationPanel } from "@/features/valuations/components/calculation/income-calculation-panel";
 import { MachineryCostPanel, MachineryMarketPanel } from "@/features/valuations/components/calculation/machinery-calculation-panel";
 import { MarketCalculationPanel } from "@/features/valuations/components/calculation/market-calculation-panel";
-import { MarketSectionTabs } from "@/features/valuations/components/calculation/market-section-tabs";
 import { StatisticalMethodsPanel } from "@/features/valuations/components/calculation/statistical-methods-panel";
 import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { CroquisGeneratorProvider, CroquisSectionAccess } from "@/features/maps/components/croquis-generator";
-import { RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
+import { COMPARABLE_TYPES, RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { approachIncluded, excludedReportApproaches, previewSectionForReport, withApproachIncluded, type ReportApproach } from "@/features/valuations/services/report-approaches";
 import type { SectionCaptureHeaders } from "@/features/valuations/services/capture-headers";
@@ -441,19 +440,17 @@ export function ValuationWorkspace({
             ) : machinery && getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
               <MachineryMarketPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} />
             ) : getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
-              <MarketSectionTabs
-                market={(
-                  <MarketCalculationPanel
-                    valuationId={valuationId}
-                    readOnly={!canEdit}
-                    canReview={canReview}
-                    suggestedSubjectAreas={calculationSync.suggestedSubjectAreas}
-                    googleMaps={googleMaps}
-                    onCalculation={calculationSync.onMarketCalculation}
-                  />
-                )}
-                methods={<StatisticalMethodsPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onStatisticalCalculation} />}
+              <MarketCalculationPanel
+                valuationId={valuationId}
+                readOnly={!canEdit}
+                canReview={canReview}
+                suggestedSubjectAreas={calculationSync.suggestedSubjectAreas}
+                googleMaps={googleMaps}
+                onCalculation={calculationSync.onMarketCalculation}
               />
+            ) : !machinery && getCanonicalSectionKey(section.id) === "METODOS_ALTERNATIVOS" ? (
+              // Every market's alternative methods in their own section (V7.3-19), one tab per market.
+              <StatisticalMethodsPanel valuationId={valuationId} types={COMPARABLE_TYPES} readOnly={!canEdit} onCalculation={calculationSync.onStatisticalCalculation} />
             ) : getCanonicalSectionKey(section.id) === "COSTOS" ? (
               <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} approach={approachInReport(section, "costos")} {...captureHeadersOf(section)} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CONSTRUCCION" ? (
@@ -464,26 +461,14 @@ export function ValuationWorkspace({
                 onAdd={(kind) => updateSection(section.id, { blocks: withTemplateCaptureTable(section, kind).blocks })}
               />
             ) : getCanonicalSectionKey(section.id) === "MERCADO_RENTAS" ? (
-              <MarketSectionTabs
-                market={(
-                  <MarketCalculationPanel
-                    valuationId={valuationId}
-                    types={RENT_COMPARABLE_TYPES}
-                    readOnly={!canEdit}
-                    canReview={canReview}
-                    suggestedSubjectAreas={calculationSync.suggestedSubjectAreas}
-                    googleMaps={googleMaps}
-                    onCalculation={calculationSync.onMarketCalculation}
-                  />
-                )}
-                methods={(
-                  <StatisticalMethodsPanel
-                    valuationId={valuationId}
-                    types={RENT_COMPARABLE_TYPES}
-                    readOnly={!canEdit}
-                    onCalculation={calculationSync.onStatisticalCalculation}
-                  />
-                )}
+              <MarketCalculationPanel
+                valuationId={valuationId}
+                types={RENT_COMPARABLE_TYPES}
+                readOnly={!canEdit}
+                canReview={canReview}
+                suggestedSubjectAreas={calculationSync.suggestedSubjectAreas}
+                googleMaps={googleMaps}
+                onCalculation={calculationSync.onMarketCalculation}
               />
             ) : getCanonicalSectionKey(section.id) === "INGRESOS" ? (
               <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} approach={approachInReport(section, "ingresos")} {...captureHeadersOf(section)} />

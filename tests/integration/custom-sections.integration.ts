@@ -53,12 +53,12 @@ test("a custom section is saved with its content and position, renamed, and remo
   const afterMove = await load(fixture);
   assert.equal(afterMove[1].id, custom.id);
   assert.equal(afterMove[1].label, "I", "right after the carátula, which has no numeral");
-  assert.equal(afterMove.length, 16);
+  assert.equal(afterMove.length, 17);
 
   // Removed from the editor: not read back, and no section is lost.
   await save(fixture, removeCustomSection(afterMove, custom.id));
   const afterRemove = await load(fixture);
-  assert.equal(afterRemove.length, 15);
+  assert.equal(afterRemove.length, 16);
   assert.equal(afterRemove.some((section) => section.id === custom.id), false);
   const row = await prisma.seccionDocumento.findFirst({ where: { SClave: custom.id } });
   assert.equal(row?.BVisible, false, "kept in the database, hidden and marked removed");
