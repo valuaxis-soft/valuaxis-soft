@@ -71,7 +71,7 @@ export const installationName = (row: { description: string; costName?: string |
  * (video 7.4, 24:21): their figures fill in when their value is written.
  */
 export function costDocumentBlocks(calculation: CostCalculationDto, result: CostApproachResult | null, trace: Trace | null): Block[] {
-  const capturedInstallations = calculation.installations.filter((row) => row.description.trim());
+  const capturedInstallations = calculation.installations;
   if ((!result || !trace) && !capturedInstallations.length) return [];
   const value = (key: string) => trace?.find(key)?.value;
   const input = (key: string, name: string) => {
@@ -184,7 +184,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
     };
     const priced = (row: (typeof installations)[number], key: string) => value(`costos.instalaciones.${row.ref}.vnrParcial`) !== undefined ? amount(key) : EMPTY;
     const item = [figureColumn("P/C"), figureColumn("Ref."), textColumn("Descripción"), figureColumn("Unidad"), figureColumn("Cant.")];
-    const itemCells = (row: (typeof installations)[number]) => [row.share, row.ref, installationName(row), row.unit || EMPTY, figure(row.quantity)];
+    const itemCells = (row: (typeof installations)[number]) => [row.share, row.ref, installationName(row) || EMPTY, row.unit || EMPTY, figure(row.quantity)];
     apartados.push(generatedApartado(`${PREFIX}-instalaciones`, "C) INSTALACIONES ESPECIALES, ELEMENTOS ACCESORIOS Y OBRAS COMPLEMENTARIAS (IE, EA, OC)", {
       tables: [
         generatedTable(`${PREFIX}-tabla-instalaciones-partidas`, "Partidas de instalaciones especiales",

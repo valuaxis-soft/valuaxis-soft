@@ -28,6 +28,7 @@ import {
   emptyConstructionCost,
   emptyInstallation,
   findConstructionType,
+  installationHasData,
   landReferenceArea,
   landUnitValue,
   remainingUsefulLife,
@@ -47,6 +48,7 @@ import {
   type LandFactorKey,
 } from "@/features/valuations/calculation/cost-types";
 import { computeCostApproach, demeritPreview } from "@/features/valuations/engine/costs";
+import { nextCaptureRef } from "@/features/valuations/calculation/construction-capture";
 import { Trace } from "@/features/valuations/engine/trace";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
@@ -228,7 +230,7 @@ function withRowBack(current: Draft, list: "constructions" | "installations" | "
 function payloadOf(draft: Draft): PanelInput {
   const input = inputOf(draft);
   const constructions = keptRows(input.constructions, (row) => Boolean(row.ref.trim()));
-  const installations = keptRows(input.installations, (row) => Boolean(row.ref.trim() && row.description.trim()));
+  const installations = keptRows(input.installations, (row) => Boolean(row.ref.trim()) && installationHasData(row));
   const indirects = keptRows(input.indirects, (row) => Boolean(row.concept.trim()));
   const payload = {
     land: input.land,
@@ -851,7 +853,11 @@ export function CostCalculationPanel(props: {
         constructions: [...current.constructions, percentRow(emptyConstructionCost(ref))],
       };
     }
-    if (list === "installations") return { ...current, installations: [...current.installations, percentRow(emptyInstallation(current.installations.length))] };
+    // The next free number: with 1 and 3 left, a new one is 4, not a second 3 the save refuses (and the row was lost on reloading).
+    if (list === "installations") {
+      const ref = nextCaptureRef("installations", current.installations.map((row) => row.ref));
+      return { ...current, installations: [...current.installations, { ...percentRow(emptyInstallation(current.installations.length)), ref }] };
+    }
     return { ...current, indirects: [...current.indirects, { concept: "", percentage: "", base: "" }] };
   });
 
