@@ -58,7 +58,7 @@ const sixMonthsAgo = () => new Date(Date.now() - 200 * 86_400_000);
 test("the base lists each comparable once, with the valuations and clients that used it, and filters by every characteristic", async () => {
   const owner = await createValuationFixture();
   await prisma.avaluo.update({ where: { UIdentificadorPublico: owner.publicId }, data: { SNombreCliente: "Banco del Bajío" } });
-  const marker = randomUUID().slice(0, 6);
+  const marker = `m${randomUUID().slice(0, 6)}`; // a letter first: an all-digit marker would be read as a folio number
   await createComparable(owner.publicId, owner.user, "INMUEBLE_VENTA", comparable(`Juárez 12, col. Centro ${marker}, Arandas`, 180, 3_200_000, {
     address: { state: "Jalisco", municipality: "Arandas", postalCode: "47180", neighborhood: `Centro ${marker}`, street: "Juárez", number: "12" },
     landUse: "Habitacional H-3", landArea: 250, bedrooms: 3, bathrooms: 2.5, constructionType: "Casa habitación",
@@ -173,7 +173,7 @@ test("updating a comparable's data renews its validity; rating its factors or re
 
 test("a possible duplicate is the same (most recent data, existing number) or a different one (both kept)", async () => {
   const owner = await createValuationFixture();
-  const marker = randomUUID().slice(0, 6);
+  const marker = `m${randomUUID().slice(0, 6)}`; // a letter first: an all-digit marker would be read as a folio number
   await createComparable(owner.publicId, owner.user, "TERRENO_VENTA", comparable(`Allende 30, col. ${marker}, Arandas`, 500, 1_500_000, {
     offerDate: "2026-09-01",
   }));
@@ -228,7 +228,7 @@ test("a possible duplicate is the same (most recent data, existing number) or a 
 
 test("characteristics added to a comparable are kept, offered by name, and filter the base by name and value", async () => {
   const owner = await createValuationFixture();
-  const marker = randomUUID().slice(0, 8);
+  const marker = `m${randomUUID().slice(0, 8)}`; // a letter first: an all-digit marker would be read as a folio number
   await createComparable(owner.publicId, owner.user, "INMUEBLE_VENTA", comparable(`Juárez 40, col. Centro ${marker}, Arandas`, 150, 2_500_000, {
     attributes: [{ name: "Alberca", value: "Sí, techada" }, { name: "Vista", value: "Al lago" }, { name: "", value: "sin nombre" }],
   }));
