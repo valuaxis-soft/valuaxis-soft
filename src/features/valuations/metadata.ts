@@ -52,6 +52,8 @@ export type ConceptMetadata = {
   calculationUnlinked?: boolean;
   /** What the calculation writes in the concept ("conclusion:value"…), whatever its label reads. */
   calculationKey?: string;
+  /** A date linked to the header's: the valuation date or the validity. */
+  headerDate?: "valuation" | "validity";
 };
 
 export type ImageMetadata = {
@@ -104,6 +106,8 @@ export type SectionMetadata = {
 
 export type BlockMetadata = {
   enabled: boolean;
+  /** The title is not printed («Imprimir título: no»). */
+  titleHidden?: boolean;
   startOnNewPage?: boolean;
   pageBreak?: PageBreakMode;
   /** Only when "landscape": the block prints on pages lying on their side. */
@@ -122,6 +126,8 @@ export type BlockMetadata = {
 
 export type ApartadoMetadata = {
   enabled: boolean;
+  /** The title is not printed («Imprimir título: no»). */
+  titleHidden?: boolean;
   startOnNewPage?: boolean;
   pageBreak?: PageBreakMode;
   contentLayout?: ContentLayout;
@@ -179,6 +185,7 @@ export function conceptMetadataFromContent(content: ConceptMetadataContent): Con
     generatedLabel: content.generatedLabel,
     calculationUnlinked: content.calculationUnlinked || undefined,
     calculationKey: content.calculationKey || undefined,
+    ...(content.headerDate ? { headerDate: content.headerDate } : {}),
   };
 }
 
@@ -201,7 +208,13 @@ export function hydrateConceptMetadata(config: unknown): ConceptMetadata {
     generatedLabel: conceptStringMetadata(config, "generatedLabel"),
     calculationUnlinked: readConfigMetadata(config, (value) => readBooleanMetadata(value, "calculationUnlinked")) || undefined,
     calculationKey: conceptStringMetadata(config, "calculationKey"),
+    ...readHeaderDate(config),
   };
+}
+
+function readHeaderDate(config: unknown): { headerDate?: "valuation" | "validity" } {
+  const kind = conceptStringMetadata(config, "headerDate");
+  return kind === "valuation" || kind === "validity" ? { headerDate: kind } : {};
 }
 
 export function imageMetadataFromContent(content: ImageMetadataContent): ImageMetadata {
@@ -292,6 +305,7 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
 export function blockMetadataFromContent(content: BlockMetadataContent): BlockMetadata {
   return {
     enabled: content.enabled !== false,
+    ...(content.titleHidden ? { titleHidden: true } : {}),
     startOnNewPage: content.startOnNewPage,
     ...(content.pageBreak ? { pageBreak: content.pageBreak } : {}),
     ...(content.pageOrientation === "landscape" ? { pageOrientation: "landscape" } : {}),
@@ -312,6 +326,7 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
   const pageOrientation = readConfigMetadata(config, (value) => (isRecord(value) && isPageOrientation(value.pageOrientation) ? value.pageOrientation : undefined));
   return {
     enabled: true,
+    ...(sectionBooleanMetadata(config, "titleHidden") ? { titleHidden: true } : {}),
     startOnNewPage: sectionBooleanMetadata(config, "startOnNewPage"),
     ...(pageBreak ? { pageBreak } : {}),
     ...(pageOrientation === "landscape" ? { pageOrientation } : {}),
@@ -328,6 +343,7 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
 export function apartadoMetadataFromContent(content: ApartadoMetadataContent): ApartadoMetadata {
   return {
     enabled: content.enabled !== false,
+    ...(content.titleHidden ? { titleHidden: true } : {}),
     startOnNewPage: content.startOnNewPage,
     ...(content.pageBreak ? { pageBreak: content.pageBreak } : {}),
     contentLayout: content.contentLayout,
@@ -342,6 +358,7 @@ export function hydrateApartadoMetadata(config: unknown): ApartadoMetadata {
   return {
     // Only an explicit `false` hides it: apartados saved before visibility was stored show.
     enabled: readConfigMetadata(config, (value) => readBooleanMetadata(value, "enabled")) !== false,
+    ...(sectionBooleanMetadata(config, "titleHidden") ? { titleHidden: true } : {}),
     startOnNewPage: sectionBooleanMetadata(config, "startOnNewPage"),
     ...(pageBreak ? { pageBreak } : {}),
     contentLayout: parseContentLayout(config),
@@ -379,7 +396,7 @@ function conceptNumberMetadata(config: unknown, key: "spacingBefore" | "spacingA
   return readConfigMetadata(config, (value) => readNumberMetadata(value, key));
 }
 
-function conceptStringMetadata(config: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId" | "generatedLabel" | "calculationKey") {
+function conceptStringMetadata(config: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId" | "generatedLabel" | "calculationKey" | "headerDate") {
   const value = readConfigMetadata(config, (candidate) => readStringMetadata(candidate, key));
   return value || undefined;
 }
@@ -428,7 +445,7 @@ function imageCaptionAlign(config: unknown): "left" | "center" | "right" | undef
   });
 }
 
-function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "custom" | "titleEdited" | "removed") {
+function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "custom" | "titleEdited" | "removed" | "titleHidden") {
   return readConfigMetadata(config, (value) => readBooleanMetadata(value, key));
 }
 
@@ -554,13 +571,13 @@ function readFlowSpacingBeforePx(config: unknown): number | undefined {
   });
 }
 
-function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId" | "generatedLabel" | "calculationKey") {
+function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "customUnit" | "rowId" | "generatedLabel" | "calculationKey" | "headerDate") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "string" ? metadata : undefined;
 }
 
-function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "custom" | "titleEdited" | "removed" | "calculationUnlinked" | "valueChart") {
+function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "custom" | "titleEdited" | "removed" | "calculationUnlinked" | "valueChart" | "titleHidden") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "boolean" ? metadata : undefined;

@@ -18,6 +18,7 @@ import { DocumentParagraph, conceptSpacingStyle } from "./document-paragraph";
 import { DocumentImage } from "./document-image";
 import { DocumentTable } from "./document-table";
 import { DocumentBlockTitleBar } from "./document-block-title-bar";
+import { titlePrints } from "@/features/valuations/services/block-title";
 import { DocumentTechnicalList } from "./document-technical-list";
 import type { DocumentFlowItem } from "./document-preview-page";
 
@@ -114,8 +115,11 @@ export function documentBlockFlowItems(
   let previousTableRoom = false;
 
   // Title bar as first item — carries the block's page-break flag and never
-  // stays alone at the foot of a page.
-  if (renderTitleBar) {
+  // stays alone at the foot of a page. A block whose title does not print
+  // (empty, or «Imprimir título» off) has no title item: its first item
+  // takes the page break instead (withBlockPageBreak, below).
+  const printsTitle = renderTitleBar && titlePrints(block);
+  if (printsTitle) {
     const titleId = `${block.id}:title`;
     previous = "title";
     // "Continue": the block starts right where the one before ended, its title
@@ -306,8 +310,19 @@ export function documentBlockFlowItems(
     }
   }
 
+  const placed = renderTitleBar && !printsTitle ? withBlockPageBreak(block, items) : items;
   // A landscape block: every item of it goes to pages lying on their side.
-  return resolvePageOrientation(block) === "landscape" ? items.map((item) => ({ ...item, landscape: true })) : items;
+  return resolvePageOrientation(block) === "landscape" ? placed.map((item) => ({ ...item, landscape: true })) : placed;
+}
+
+/** The page break of a block without a printed title, on its first item: where the title would have carried it. */
+function withBlockPageBreak(block: Block, items: DocumentFlowItem[]): DocumentFlowItem[] {
+  const [first, ...rest] = items;
+  if (!first) return items;
+  const pageBreak = resolvePageBreak(block);
+  if (pageBreak === "new-page") return [{ ...first, startOnNewPage: true }, ...rest];
+  if (pageBreak === "continue") return [{ ...first, continuesPrevious: true }, ...rest];
+  return items;
 }
 
 /** An apartado printed in a format of its own; see `renderApartadoHead`. */
@@ -642,7 +657,10 @@ function DocumentApartado({
     // No indent: every apartado title starts at the left edge of the block's
     // title bar, like those of a format of their own (medidas y colindancias).
     <section className={className}>
-      {renderTitle
+      {/* An empty title, or «Imprimir título» off, prints no heading (video 7.1). */}
+      {!titlePrints(subBlock)
+        ? null
+        : renderTitle
         ? <>{renderTitle(block, subBlock, displayLabel)}</>
         : <DocumentApartadoTitle>{[displayLabel, subBlock.title].filter(Boolean).join(" ")}</DocumentApartadoTitle>
       }

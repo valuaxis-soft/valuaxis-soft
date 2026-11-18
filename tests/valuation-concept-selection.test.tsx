@@ -110,13 +110,9 @@ test("a row prints with labels with one concept alone or a long text too, and th
 /*  V5.2-02: N/K/S of a concept only while it is written in             */
 /* ------------------------------------------------------------------ */
 
-test("the N/K/S of a concept stay hidden until its field is being written in: not on hover, not because the text has marks", () => {
+test("V7.3-02: a concept shows no N/K/S of its own, not on hover, not while it is written in, not because the text has marks", () => {
   const html = renderToStaticMarkup(<TextMarksField value="<b>Casa</b> habitación" onChange={noop} disabled={false}><input readOnly /></TextMarksField>);
-  const toolbar = /<div class="([^"]*)" role="toolbar" aria-label="Formato del texto">/.exec(html);
-  assert.ok(toolbar);
-  assert.match(toolbar[1], /\binvisible\b/);
-  assert.match(toolbar[1], /group-focus-within\/marks:visible/);
-  assert.doesNotMatch(toolbar[1], /group-hover/);
+  assert.doesNotMatch(html, /role="toolbar"|aria-label="Negrita"|group-focus-within|<button/);
 });
 
 /* ------------------------------------------------------------------ */

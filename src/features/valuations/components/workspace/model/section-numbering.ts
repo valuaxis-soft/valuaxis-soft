@@ -2,6 +2,7 @@ import type { AppSection, Block } from "@/features/valuations/model";
 import { ensureTerrenoSections } from "@/features/valuations/sections/terreno";
 import { blockContentHidden } from "@/features/valuations/services/hidden-content";
 import { annexLabel, sectionDocumentRole } from "@/features/valuations/services/document-structure";
+import { titlePrints } from "@/features/valuations/services/block-title";
 import {
   blockLeftOutOfReport,
   excludedReportApproaches,
@@ -38,7 +39,8 @@ function asChapterBlock(block: Block): Block {
  * the dictamen always read the same number. The carátula has no numeral. The
  * sections after the conclusion (or the ones the appraiser made annexes)
  * print "ANEXO 1", "ANEXO 2"… on the title of their first block and number
- * nothing inside. A section or a page left out of the dictamen takes no number.
+ * nothing inside. A section or a page left out of the dictamen takes no number,
+ * nor a block whose title does not print.
  */
 export function resequenceSections(sections: AppSection[]) {
   const excluded = excludedReportApproaches(sections);
@@ -61,7 +63,7 @@ export function resequenceSections(sections: AppSection[]) {
         label,
         blocks: section.blocks.map((block) => {
           // The annex's label goes on the title of its first printed block; the rest print their titles only.
-          const takesLabel = !labeled && prints(block);
+          const takesLabel = !labeled && prints(block) && titlePrints(block);
           if (takesLabel) labeled = true;
           return { ...block, annex: true, sectionLabel: takesLabel ? label : "" };
         }),
@@ -75,8 +77,9 @@ export function resequenceSections(sections: AppSection[]) {
     // Sections the appraiser adds may push the count past the registry's: the numerals keep going.
     const blocks = section.blocks.map((original) => {
       const block = asChapterBlock(original);
-      // A block that prints nothing (hidden, all its content hidden, or left out of the dictamen) takes no number.
-      if (!prints(block)) return { ...block, sectionLabel: "" };
+      // A block that prints nothing (hidden, all its content hidden, or left out of the dictamen) takes no number,
+      // nor one whose title does not print (empty, or «Imprimir título» off): the number goes on the title.
+      if (!prints(block) || !titlePrints(block)) return { ...block, sectionLabel: "" };
       globalBlockIndex += 1;
       return { ...block, sectionLabel: toRomanNumeral(globalBlockIndex) };
     });

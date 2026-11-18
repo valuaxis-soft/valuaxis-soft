@@ -1,10 +1,14 @@
 import type { Block, Apartado } from "../model";
 import { resolveBlockFlowV2 } from "./block-flow";
+import { titlePrints } from "./block-title";
 
 type VisibleItem = {
   id: string;
   enabled?: boolean;
 };
+
+/** An apartado as its number sees it: one whose title does not print takes no number. */
+type NumberedApartado = VisibleItem & { title?: string; titleHidden?: boolean };
 
 export function getVisibleOrdinal(items: VisibleItem[], targetId: string) {
   let ordinal = 0;
@@ -32,8 +36,10 @@ export function formatVisibleChildLabel(parentLabel: string, items: VisibleItem[
 }
 
 /** The number an apartado prints ("III.2"); none inside an annex. */
-export function apartadoDisplayLabel(block: Pick<Block, "annex" | "sectionLabel">, items: VisibleItem[], targetId: string) {
-  return block.annex ? "" : formatVisibleChildLabel(block.sectionLabel, items, targetId);
+export function apartadoDisplayLabel(block: Pick<Block, "annex" | "sectionLabel">, items: NumberedApartado[], targetId: string) {
+  if (block.annex) return "";
+  const numbered = items.map((item) => (item.title !== undefined && !titlePrints({ title: item.title, titleHidden: item.titleHidden }) ? { ...item, enabled: false } : item));
+  return formatVisibleChildLabel(block.sectionLabel, numbered, targetId);
 }
 
 /**

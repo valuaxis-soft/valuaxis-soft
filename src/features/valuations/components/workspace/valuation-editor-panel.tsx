@@ -129,6 +129,7 @@ import { pageBreakPatch, resolvePageBreak, resolvePageOrientation } from "@/feat
 import { isNumericConcept, supportsValueFormat } from "@/features/valuations/services/concept-value-format";
 import { setConceptRowsTagStyle } from "@/features/valuations/services/content-layout";
 import { applyTextMark, type TextMark } from "@/features/valuations/services/text-marks";
+import { titlePrints } from "@/features/valuations/services/block-title";
 
 const PRE_MARKET_EDITOR_SECTION_KEYS = new Set([
   "DATOS_GENERALES",
@@ -666,6 +667,15 @@ function SortableBlockEditor(props: {
   });
   const locks = blockToolbarLocks(toolbar);
   const confirmDelete = useConfirmDelete();
+  // «Imprimir título» (video 7.1): the same choice in the ⋮ and in the right-click menu of the title, for blocks and subbloques.
+  const printBlockTitle = {
+    printed: !block.titleHidden,
+    onChange: (printed: boolean) => props.onUpdateBlock(section.id, block.id, { titleHidden: printed ? undefined : true }),
+  };
+  const apartadoPrintTitle = (subBlock: Apartado) => ({
+    printed: !subBlock.titleHidden,
+    onChange: (printed: boolean) => props.onUpdateApartado(section.id, block.id, subBlock.id, { titleHidden: printed ? undefined : true }),
+  });
   // «Agregar → Croquis de localización» (V5.7-01): the croquis generator for this block or one of its subbloques.
   const croquisGenerator = useCroquisGenerator();
   const apartadoCapabilities = isCaratula
@@ -773,7 +783,7 @@ function SortableBlockEditor(props: {
         ? block.enabled && !blockContentHidden(block)
           ? displayBlockLabel
             ? `${displayBlockLabel.replace(/\.+$/, "")}.`
-            : "Fijo"
+            : titlePrints(block) ? "Fijo" : "Sin título"
           : "Oculto"
         : null}
       dragHandle={dragHandle}
@@ -787,6 +797,7 @@ function SortableBlockEditor(props: {
             before: resolvePageBreak(block) === "new-page",
             onChange: (before) => props.onUpdateBlock(section.id, block.id, pageBreakPatch(before ? "new-page" : "auto")),
           } : null}
+          printTitle={printBlockTitle}
         />
       }
       titleContextMenu={!readOnly ? ({ titleRef }) => (
@@ -804,6 +815,7 @@ function SortableBlockEditor(props: {
             before: resolvePageBreak(block) === "new-page",
             onChange: (before) => props.onUpdateBlock(section.id, block.id, pageBreakPatch(before ? "new-page" : "auto")),
           } : undefined}
+          printTitle={printBlockTitle}
           onDelete={toolbar.delete.enabled ? () => props.onRemoveBlock(section.id, block.id) : undefined}
         />
       ) : undefined}
@@ -958,7 +970,8 @@ function SortableBlockEditor(props: {
             }
             renderApartado={(subBlock, flowIndex, dndState) => (
               <ApartadoEditor
-                extraActions={<ApartadoTransferMenu section={section} block={block} apartado={subBlock} label={`el ${subBlockTerm}`} />}
+                extraActions={<ApartadoTransferMenu section={section} block={block} apartado={subBlock} label={`el ${subBlockTerm}`} printTitle={apartadoPrintTitle(subBlock)} />}
+                printTitle={apartadoPrintTitle(subBlock)}
                 displayLabel={showStructuralNumbering ? apartadoDisplayLabel({ annex: block.annex, sectionLabel: displayBlockLabel }, getBlockFlowApartadoOrder(block), subBlock.id) : ""}
                 readOnly={readOnly}
                 subBlock={subBlock}
@@ -1187,6 +1200,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
     });
   };
   const visibility = { visible: block.enabled, onChange: setVisible };
+  const printTitle = { printed: !block.titleHidden, onChange: (printed: boolean) => onUpdateBlock({ titleHidden: printed ? undefined : true }) };
   const pageBreak = {
     before: resolvePageBreak(block) === "new-page",
     onChange: (before: boolean) => onUpdateBlock(pageBreakPatch(before ? "new-page" : "auto")),
@@ -1198,7 +1212,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
       cardRef={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn("rounded-lg border border-dashed bg-muted/20", market && cn("border-l-4", MARKET_ACCENT[market.type].border), !block.enabled && "opacity-65")}
-      badge={block.enabled ? (block.sectionLabel ? `${block.sectionLabel.replace(/\.+$/, "")}.` : "Fijo") : "Oculto"}
+      badge={block.enabled ? (block.sectionLabel ? `${block.sectionLabel.replace(/\.+$/, "")}.` : titlePrints(block) ? "Fijo" : "Sin título") : "Oculto"}
       dragHandle={
         <Button type="button" size="icon-sm" variant="ghost" aria-label={`Mover ${block.title}`} title="Arrastrar para reordenar" disabled={readOnly} {...attributes} {...listeners}>
           <GripVertical />
@@ -1212,6 +1226,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
           lock={toolbar.transfer.reason}
           visibility={visibility}
           pageBreak={pageBreak}
+          printTitle={printTitle}
         />
       }
       titleContextMenu={!readOnly ? ({ titleRef }) => (
@@ -1227,6 +1242,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
           hints={{ rename: GENERATED_BLOCK_TITLE_REASON, delete: locks.delete }}
           visibility={visibility}
           pageBreak={pageBreak}
+          printTitle={printTitle}
         />
       ) : undefined}
       title={stripLeadingRomanNumeral(block.title)}

@@ -1,26 +1,21 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  activeTextMarks,
   applyTextMark,
   hasTextMarks,
   rawSelectionOf,
   stripTextMarks,
+  TEXT_MARK_EVENT,
+  textMarkOfShortcut,
   textSelectionOf,
   withMarkedText,
   type TextMark,
+  type TextMarkEventDetail,
 } from "@/features/valuations/services/text-marks";
 import { markedRuns } from "../document-concept-value";
-
-const MARKS: Array<{ mark: TextMark; letter: string; title: string; className: string }> = [
-  { mark: "bold", letter: "N", title: "Negrita", className: "font-bold" },
-  { mark: "italic", letter: "K", title: "Cursiva", className: "italic" },
-  { mark: "underline", letter: "S", title: "Subrayado", className: "underline" },
-];
 
 type FieldSelection = { start: number; end: number };
 
@@ -35,12 +30,16 @@ export type MarkedTextField = {
 };
 
 /**
- * Bold, italic and underline for the text field it wraps. A button applies
- * the mark to the text selected in the field, or to the whole value when
- * nothing is selected, and removes it when that text already has it; with
- * only the caret in a marked stretch, it removes the mark from that stretch.
- * Each button shows itself pressed while the text it would work on has its
- * mark, and a value with marks shows under the field the way it prints.
+ * Bold, italic and underline for a word of the text field it wraps, without
+ * buttons under the field (video 7.3, 3:10: the N/K/S under every concept
+ * read as the per-concept controls that had been taken away). Ctrl+B, Ctrl+I
+ * and Ctrl+U (⌘ in a Mac) mark the text selected in the field, or the whole
+ * value when nothing is selected, and remove the mark when that text already
+ * has it; with only the caret in a marked stretch, they remove the mark from
+ * that stretch. The right-click menu of the concept does the same with the
+ * text selected when it opened (TEXT_MARK_EVENT). The whole value of several
+ * concepts gets N/K/S from «Seleccionar conceptos». A value with marks shows
+ * under the field the way it prints.
  *
  * Given as a function, the field shows the text without the tags and writes
  * back through `valueOf`, which keeps the marks; given as an element, it
@@ -52,7 +51,6 @@ export function TextMarksField({
   disabled,
   children,
   className,
-  toolbarClassName,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -60,103 +58,68 @@ export function TextMarksField({
   /** The input or textarea the marks apply to. */
   children: ReactNode | ((field: MarkedTextField) => ReactNode);
   className?: string;
-  toolbarClassName?: string;
 }) {
   const fieldRef = useRef<HTMLDivElement>(null);
-  // Where the selection or the caret is while the field has the focus, as the field counts it; without it, the buttons work on the whole value.
-  const [selection, setSelection] = useState<FieldSelection | null>(null);
   const showsText = typeof children === "function";
-  // The field counts in the text when it shows it; the marks are worked in the value as written.
-  const toRaw = (range: FieldSelection) => (showsText ? rawSelectionOf(value, range.start, range.end) : range);
-  const rawSelection = selection ? toRaw(selection) : null;
-  const active = activeTextMarks(value, rawSelection?.start, rawSelection?.end);
-
   const field = () => fieldRef.current?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea") ?? null;
-  const readSelection = () => {
-    const element = field();
-    if (!element || document.activeElement !== element || element.selectionStart === null || element.selectionEnd === null) {
-      setSelection(null);
-      return;
-    }
-    setSelection({ start: element.selectionStart, end: element.selectionEnd });
-  };
 
-  const apply = (mark: TextMark) => {
-    const element = field();
-    const focused = element !== null && document.activeElement === element && element.selectionStart !== null && element.selectionEnd !== null;
-    const fieldRange = focused ? { start: element.selectionStart!, end: element.selectionEnd! } : null;
-    const raw = fieldRange ? toRaw(fieldRange) : null;
+  /** Marks `range` of the field (as the field counts it), or the whole value; the selection follows the text it was on. */
+  const apply = (mark: TextMark, fieldRange: FieldSelection | null) => {
+    if (disabled) return;
+    // The field counts in the text when it shows it; the marks are worked in the value as written.
+    const raw = fieldRange ? (showsText ? rawSelectionOf(value, fieldRange.start, fieldRange.end) : fieldRange) : null;
     const next = applyTextMark(value, mark, raw?.start, raw?.end);
     if (next.value === value) return;
     onChange(next.value);
+    const element = field();
     if (!element || !fieldRange) return;
-    // The selection follows the text it was on; a lone caret stays a caret on the same text.
     const rawRange = fieldRange.start === fieldRange.end
       ? { start: next.selectionEnd, end: next.selectionEnd }
       : { start: next.selectionStart, end: next.selectionEnd };
     const range = showsText ? textSelectionOf(next.value, rawRange.start, rawRange.end) : rawRange;
-    setSelection(range);
     requestAnimationFrame(() => {
       element.focus();
       element.setSelectionRange(range.start, range.end);
     });
   };
+  const applyRef = useRef(apply);
+  useEffect(() => {
+    applyRef.current = apply;
+  });
+
+  // «Negrita» of the right-click menu, on the text that was selected when it opened.
+  useEffect(() => {
+    const node = fieldRef.current;
+    if (!node) return;
+    const onMark = (event: Event) => {
+      const detail = (event as CustomEvent<TextMarkEventDetail>).detail;
+      if (detail) applyRef.current(detail.mark, { start: detail.start, end: detail.end });
+    };
+    node.addEventListener(TEXT_MARK_EVENT, onMark);
+    return () => node.removeEventListener(TEXT_MARK_EVENT, onMark);
+  }, []);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const mark = textMarkOfShortcut(event);
+    const element = field();
+    if (!mark || !element || event.target !== element) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const focused = element.selectionStart !== null && element.selectionEnd !== null;
+    apply(mark, focused ? { start: element.selectionStart!, end: element.selectionEnd! } : null);
+  };
 
   return (
-    <div
-      className={cn("group/marks grid min-w-0 gap-1", className)}
-      ref={fieldRef}
-      onSelect={readSelection}
-      onKeyUp={readSelection}
-      onMouseUp={readSelection}
-      onFocus={readSelection}
-      onBlur={() => setSelection(null)}
-    >
+    <div className={cn("grid min-w-0 gap-1", className)} ref={fieldRef} data-text-marks-field="" onKeyDown={onKeyDown}>
       {typeof children === "function"
         ? children({ text: stripTextMarks(value), valueOf: (text) => withMarkedText(value, text) })
         : children}
-      <div className="flex min-w-0 items-start gap-2">
-        {/*
-          The buttons show only while the field is being written in, for a
-          word or a stretch of it: passing the pointer over the concepts does
-          not repeat them (V5.2-02). The whole value of several concepts gets
-          N/K/S from "Seleccionar conceptos" or the right-click menu.
-        */}
-        <div
-          className={cn(
-            "invisible flex items-center gap-0.5 group-focus-within/marks:visible",
-            toolbarClassName,
-          )}
-          role="toolbar"
-          aria-label="Formato del texto"
-        >
-          {MARKS.map((item) => (
-            <Button
-              key={item.mark}
-              type="button"
-              size="icon-xs"
-              variant={active[item.mark] ? "secondary" : "ghost"}
-              className={cn("text-xs", item.className, active[item.mark] && "border-border shadow-inner")}
-              aria-label={item.title}
-              aria-pressed={active[item.mark]}
-              data-active={active[item.mark] ? "" : undefined}
-              title={`${item.title} (al texto seleccionado o a todo el dato; si ya la tiene, se quita)`}
-              disabled={disabled}
-              // Keeps the focus, and with it the selection, in the field.
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => apply(item.mark)}
-            >
-              {item.letter}
-            </Button>
-          ))}
-        </div>
-        {hasTextMarks(value) ? (
-          // The field holds the marks as tags; this is how the text reads with them applied.
-          <p className="line-clamp-3 min-w-0 flex-1 pt-0.5 text-xs whitespace-pre-wrap wrap-break-word text-muted-foreground" data-text-marks-preview="" title="Así se ve el texto con su formato">
-            <span className="text-foreground">{markedRuns(value)}</span>
-          </p>
-        ) : null}
-      </div>
+      {hasTextMarks(value) ? (
+        // The field holds the marks as tags; this is how the text reads with them applied.
+        <p className="line-clamp-3 min-w-0 pt-0.5 text-xs whitespace-pre-wrap wrap-break-word text-muted-foreground" data-text-marks-preview="" title="Así se ve el texto con su formato">
+          <span className="text-foreground">{markedRuns(value)}</span>
+        </p>
+      ) : null}
     </div>
   );
 }

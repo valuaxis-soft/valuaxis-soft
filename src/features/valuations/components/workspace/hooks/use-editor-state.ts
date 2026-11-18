@@ -28,6 +28,7 @@ import {
 } from "../model/initial-hydration";
 import { withCaratulaFreeBlockOrder } from "@/features/valuations/services/caratula-blocks";
 import { normalizeEditorSections } from "../model/section-numbering";
+import { headerDatesOf, withHeaderDates } from "@/features/valuations/services/header-dates";
 
 /**
  * Editor document state (meta, sections, carátula), its undo/redo history and
@@ -221,12 +222,15 @@ export function useEditorState({
         patch.camposEncabezado !== undefined ||
         patch.tamanoImagenPrincipal !== undefined;
 
+      const sections = syncCompanyHeader
+        ? normalizeEditorSections(updateCompanyHeaderFields(current.sections, patch))
+        : current.sections;
+      // The dates of the body linked to the header follow it (video 7.3).
+      const datesChanged = patch.fechaAvaluo !== undefined || patch.fechaVigencia !== undefined || patch.mesesVigencia !== undefined;
       return {
         ...current,
         caratula: nextCaratula,
-        sections: syncCompanyHeader
-          ? normalizeEditorSections(updateCompanyHeaderFields(current.sections, patch))
-          : current.sections,
+        sections: datesChanged ? withHeaderDates(sections, headerDatesOf(nextCaratula)) : sections,
       };
     }, { groupKey: textEditGroupKey("caratula", patch) });
   };

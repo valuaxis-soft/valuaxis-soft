@@ -2,7 +2,7 @@
 
 import { Fragment, useState, type RefObject } from "react";
 
-import { ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
+import { ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
 import type { AppSection, Block } from "@/features/valuations/model";
 import { blockCopyLockReason, blockDestinationSections, blockMoveLockReason } from "@/features/valuations/services/structure-transfer";
 import { tableContextMenu, type BlockMenuTarget, type TableMenuAction } from "@/features/valuations/services/table-context-menu";
@@ -19,7 +19,7 @@ const NO_TRANSFER = "No se puede copiar ni mover.";
  * the dictamen, a page break before it and deleting it (asking first with the
  * same dialog as the trash can, and undone with "Deshacer").
  */
-export function BlockTitleContextMenu({ section, block, label, name, titleRef, canRename, visibility, pageBreak, onDelete, lock, hints }: {
+export function BlockTitleContextMenu({ section, block, label, name, titleRef, canRename, visibility, pageBreak, printTitle, onDelete, lock, hints }: {
   section: AppSection;
   block: Block;
   /** "el bloque" or "la sección", as the toolbar names it. */
@@ -31,6 +31,8 @@ export function BlockTitleContextMenu({ section, block, label, name, titleRef, c
   canRename: boolean;
   visibility?: { visible: boolean; onChange: (visible: boolean) => void };
   pageBreak?: { before: boolean; onChange: (before: boolean) => void };
+  /** «Imprimir título» (video 7.1): the title stays in the editor and prints or not. */
+  printTitle?: { printed: boolean; onChange: (printed: boolean) => void };
   onDelete?: () => void;
   /** Why the block can be neither copied nor moved, over what the section says (a block the calculation writes). */
   lock?: string | null;
@@ -52,6 +54,7 @@ export function BlockTitleContextMenu({ section, block, label, name, titleRef, c
     canHide: Boolean(visibility),
     pageBreakBefore: pageBreak?.before ?? false,
     canPageBreak: Boolean(pageBreak),
+    titlePrinted: printTitle?.printed,
     canDelete: Boolean(onDelete),
     hints: { ...hints, transfer: copyLock ?? undefined, move: copyLock ?? moveLock ?? undefined },
   });
@@ -78,6 +81,7 @@ export function BlockTitleContextMenu({ section, block, label, name, titleRef, c
       case "block-hide": visibility?.onChange(false); return;
       case "block-show": visibility?.onChange(true); return;
       case "block-page-break": pageBreak?.onChange(!pageBreak.before); return;
+      case "block-print-title": printTitle?.onChange(!printTitle.printed); return;
       case "block-delete":
         // The same dialog as the trash can of the toolbar; the block comes back with "Deshacer".
         if (onDelete) confirmDelete({ ...deleteConfirmation("block", name ?? block.title), onConfirm: onDelete });
@@ -93,6 +97,13 @@ export function BlockTitleContextMenu({ section, block, label, name, titleRef, c
           <Fragment key={index}>
             {index > 0 ? <ContextMenuSeparator /> : null}
             {group.map((item) => {
+              if (item.checked !== undefined) {
+                return (
+                  <ContextMenuCheckboxItem key={item.action} checked={item.checked} disabled={item.disabled} onClick={() => run(item.action)}>
+                    {item.label}
+                  </ContextMenuCheckboxItem>
+                );
+              }
               const node = (
                 <ContextMenuItem key={item.action} variant={item.destructive ? "destructive" : undefined} disabled={item.disabled} onClick={() => run(item.action)}>
                   {item.label}

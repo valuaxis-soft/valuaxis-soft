@@ -15,6 +15,7 @@ import {
   valueKind,
 } from "./db-values";
 import { ValuationWorkflowError } from "./errors";
+import { EMPTY_TITLE_FILLER } from "../block-title";
 import {
   logPersistenceOperation,
   type DocumentPersistenceCatalogs,
@@ -37,7 +38,9 @@ export async function upsertDocumentNode(input: {
   config: unknown;
   stats: PersistenceStats;
 }) {
-  const safeTitle = normalizeNodeTitle(input.title) || "Campo sin título";
+  // The column takes no empty title (a check of the database): an empty title is stored as the
+  // filler and read back empty (savedTitle in the repository, video 7.1: it printed «CAMPO SIN TÍTULO»).
+  const safeTitle = normalizeNodeTitle(input.title) || EMPTY_TITLE_FILLER;
   const sourceKey = input.key.trim();
   const safeKey = normalizeDbKey(sourceKey, `${input.kind}_${input.order}`, DOCUMENT_NODE_KEY_MAX_LENGTH);
   const safeNodeTitle = limitDbText(safeTitle, DOCUMENT_NODE_TITLE_MAX_LENGTH);

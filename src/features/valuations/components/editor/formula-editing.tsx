@@ -570,25 +570,32 @@ function FormulaValuePicker({
   const [query, setQuery] = useState("");
   const [openTableId, setOpenTableId] = useState<string | null>(null);
 
+  // Section › block › subbloque, in the order of the valuation's sections and of each block as the editor shows it (video 7.3, 5:38).
   const groups = useMemo(() => {
     if (!open) return [];
-    const bySection = new Map<string, { title: string; concepts: FormulaConceptEntry[]; tables: FormulaTableEntry[] }>();
-    const group = (entry: { sectionId: string; sectionTitle: string }) => {
-      let found = bySection.get(entry.sectionId);
-      if (!found) bySection.set(entry.sectionId, (found = { title: entry.sectionTitle, concepts: [], tables: [] }));
-      return found;
+    type PlaceGroup = { key: string; block: string; apartado?: string; concepts: FormulaConceptEntry[]; tables: FormulaTableEntry[] };
+    const bySection = new Map<string, { id: string; title: string; places: Map<string, PlaceGroup> }>();
+    const group = (entry: FormulaConceptEntry | FormulaTableEntry) => {
+      let section = bySection.get(entry.sectionId);
+      if (!section) bySection.set(entry.sectionId, (section = { id: entry.sectionId, title: entry.sectionTitle, places: new Map() }));
+      const key = `${entry.blockId}›${entry.place.apartado ?? ""}`;
+      let place = section.places.get(key);
+      if (!place) section.places.set(key, (place = { key, block: entry.place.block, apartado: entry.place.apartado, concepts: [], tables: [] }));
+      return place;
     };
     for (const entry of index.concepts) {
       if (`concept:${entry.id}` === session?.fieldKey) continue;
       // A number for a formula (a text like "Jalisco" would only produce #VALOR!); a text, as written.
       if (kind === "number" ? !conceptHasNumericValue(entry.concept) : !pickableText(entry.concept)) continue;
-      if (matches(query, entry.name, entry.sectionTitle, entry.blockTitle)) group(entry).concepts.push(entry);
+      if (matches(query, entry.name, entry.sectionTitle, entry.place.block, entry.place.apartado ?? "")) group(entry).concepts.push(entry);
     }
     for (const entry of index.tables) {
       if (!entry.table.rows.length) continue;
-      if (matches(query, entry.name, entry.sectionTitle, entry.blockTitle)) group(entry).tables.push(entry);
+      if (matches(query, entry.name, entry.sectionTitle, entry.place.block, entry.place.apartado ?? "")) group(entry).tables.push(entry);
     }
-    return [...bySection.values()].filter((item) => item.concepts.length || item.tables.length);
+    return [...bySection.values()]
+      .map((section) => ({ ...section, places: [...section.places.values()].filter((place) => place.concepts.length || place.tables.length) }))
+      .filter((section) => section.places.length);
   }, [index, kind, open, query, session?.fieldKey]);
 
   return (
@@ -601,9 +608,16 @@ function FormulaValuePicker({
         <Input autoFocus placeholder="Buscar por nombre, sección o bloque" value={query} onChange={(event) => setQuery(event.target.value)} />
         <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
           {groups.length === 0 ? <p className="text-sm text-muted-foreground">No hay valores con ese nombre.</p> : null}
-          {groups.map((group) => (
-            <section key={group.title} className="space-y-1">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</h3>
+          {groups.map((section) => (
+            <section key={section.id} className="space-y-2" data-picker-section={section.title}>
+              {/* The section stays in view while its values are scrolled, so it is clear where each one is. */}
+              <h3 className="sticky top-0 z-10 rounded-md bg-primary px-2 py-1 text-xs font-semibold uppercase tracking-wide text-primary-foreground">{section.title}</h3>
+              {section.places.map((group) => (
+              <div key={group.key} className="space-y-1 border-l-2 border-primary/30 pl-2">
+              <h4 className="text-xs font-semibold text-foreground" data-picker-place="">
+                {group.block.trim() || "Bloque sin título"}
+                {group.apartado ? <span className="font-normal text-muted-foreground"> › {group.apartado}</span> : null}
+              </h4>
               {group.concepts.map((entry) => (
                 <button
                   key={entry.id}
@@ -619,7 +633,7 @@ function FormulaValuePicker({
                   }}
                 >
                   <span className="min-w-0 truncate">{entry.name}</span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">{formatConceptValueForDocument(entry.concept) || "—"}</span>
+                  <span className="max-w-[45%] truncate tabular-nums text-muted-foreground" title={formatConceptValueForDocument(entry.concept) || undefined}>{formatConceptValueForDocument(entry.concept) || "—"}</span>
                 </button>
               ))}
               {group.tables.map((entry) => (
@@ -648,6 +662,8 @@ function FormulaValuePicker({
                     />
                   ) : null}
                 </div>
+              ))}
+              </div>
               ))}
             </section>
           ))}

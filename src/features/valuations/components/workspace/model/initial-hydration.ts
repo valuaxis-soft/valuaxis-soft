@@ -224,6 +224,7 @@ function normalizeInitialSections(initialValuation: Pick<ValuationDetail, "secti
       blocks: section.blocks.map((block) => ({
       id: block.id,
       title: block.title,
+      ...(block.titleHidden ? { titleHidden: true } : {}),
       sectionLabel: block.label,
       enabled: block.enabled,
       required: block.required,
@@ -241,6 +242,7 @@ function normalizeInitialSections(initialValuation: Pick<ValuationDetail, "secti
       apartados: block.subBlocks.map((subBlock) => ({
         id: subBlock.id,
         title: subBlock.title,
+        ...(subBlock.titleHidden ? { titleHidden: true } : {}),
         enabled: subBlock.enabled !== false,
         startOnNewPage: subBlock.startOnNewPage ?? false,
         ...(subBlock.pageBreak ? { pageBreak: subBlock.pageBreak } : {}),

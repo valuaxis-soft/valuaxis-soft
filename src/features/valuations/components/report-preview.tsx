@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, FileImage } from "lucide-react";
-import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,6 +42,7 @@ import {
 import { conclusionBlockFlowItems } from "./conclusion-preview-modules";
 import { UnaccreditedNotice, useUnaccreditedNotice } from "@/features/accreditation/components/unaccredited-notice";
 import { NOTICE_SECTION_KEYS } from "@/features/accreditation/accreditation-notice";
+import { titlePrints } from "@/features/valuations/services/block-title";
 
 const CARATULA_BLUE = "#003B73";
 const CARATULA_DARK_BLUE = "#00285A";
@@ -94,6 +95,13 @@ export function ReportPreview({
 }) {
   const isCaratula = props.section.id === "caratula";
   const sharedWith = group && group.length > 1 ? group.filter((section) => section.id !== props.section.id) : [];
+  const unaccreditedNotice = useUnaccreditedNotice();
+  // A section printed after another on the same pages opens where it starts, not on the group's first page (video 7.1, 2:46).
+  const startItemId = sharedWith.length && group && group[0]?.id !== props.section.id
+    ? sectionFlowItems(props.section, unaccreditedNotice)[0]?.id ?? null
+    : null;
+  const documentRef = useRef<HTMLDivElement>(null);
+  useScrollToSectionStart(documentRef, startItemId, props.section.id);
 
   return (
     <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg">
@@ -142,7 +150,7 @@ export function ReportPreview({
       <CardContent className="min-h-0 flex-1 p-0">
         <PreviewViewer key={props.section.id} className="h-full">
           {/* Carátula: no gray background — page fills the desk naturally */}
-          <div className={isCaratula ? "min-h-full p-4 sm:p-6 lg:p-8" : "min-h-full bg-muted/40 p-4 sm:p-6 lg:p-8"}>
+          <div ref={documentRef} className={isCaratula ? "min-h-full p-4 sm:p-6 lg:p-8" : "min-h-full bg-muted/40 p-4 sm:p-6 lg:p-8"}>
             {sharedWith.length && group ? (
               <ContinuousSectionsDocument
                 caratula={props.caratula}
@@ -159,6 +167,41 @@ export function ReportPreview({
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Once the shared pages are laid out, brings the page where the section starts
+ * (`startItemId`, its first printed item) to the top of the viewer: once per
+ * section shown, so editing it later does not move the view.
+ */
+function useScrollToSectionStart(rootRef: { current: HTMLElement | null }, startItemId: string | null, sectionId: string) {
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || !startItemId) return;
+    const scroll = () => {
+      const pagination = root.querySelector("[data-document-pagination]");
+      if (pagination?.getAttribute("data-document-pagination") !== "ready") return false;
+      const item = [...root.querySelectorAll<HTMLElement>('[data-document-pagination-content="visible"] [data-document-flow-item-id]')]
+        .find((element) => element.getAttribute("data-document-flow-item-id") === startItemId);
+      const page = item?.closest<HTMLElement>("[data-preview-page]");
+      const scroller = page?.closest<HTMLElement>("[data-preview-scroller]");
+      if (!page || !scroller) return false;
+      // Only the viewer scrolls: the editor beside it stays where it is.
+      scroller.scrollTop += page.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8;
+      return true;
+    };
+    if (scroll()) return;
+    const observer = new MutationObserver(() => {
+      if (scroll()) observer.disconnect();
+    });
+    observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-document-pagination"] });
+    // Pagination settles in a moment; past that the view stays where the appraiser leaves it.
+    const stop = window.setTimeout(() => observer.disconnect(), 5000);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(stop);
+    };
+  }, [rootRef, startItemId, sectionId]);
 }
 
 /**
@@ -320,9 +363,9 @@ function CaratulaPreview({
 
   // Carátula editable blocks show titles WITHOUT numeric section labels.
   const caratulaTitleOptions = {
-    renderBlockTitle: (block: Block) => <div className="mt-3"><CaratulaBlockHeading title={block.title} /></div>,
+    renderBlockTitle: (block: Block) => <div className="mt-3"><CaratulaBlockHeading title={block.title} hidden={block.titleHidden} /></div>,
     renderApartadoTitle: (_block: Block, subBlock: Apartado) => (
-      <h3 className={theme.apartadoTitle}>{subBlock.title}</h3>
+      titlePrints(subBlock) ? <h3 className={theme.apartadoTitle}>{subBlock.title}</h3> : null
     ),
   };
   // The subbloques of the assumptions and the conclusion print after their texts, as in any block.

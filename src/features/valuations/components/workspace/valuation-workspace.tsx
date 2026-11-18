@@ -95,6 +95,9 @@ import { useEditorViewport } from "./hooks/use-editor-viewport";
 import { StructureTransferProvider } from "./structure-transfer-context";
 import { SaveAsTemplateDialog } from "./template-dialogs";
 import { TemplateCalculationNote, TemplateEditingNotice, type TemplateEditing } from "./template-editing";
+import { useNoAutofill } from "../editor/no-autofill";
+import { HeaderDatesProvider } from "../editor/header-date-notice";
+import { headerDatesOf } from "@/features/valuations/services/header-dates";
 
 // Kept for existing imports of the section numbering helper.
 export { resequenceSections } from "./model/section-numbering";
@@ -139,6 +142,8 @@ export function ValuationWorkspace({
   customUnits?: string[];
 }) {
   const router = useRouter();
+  // Chrome offers no history under the fields of the editor (video 7.3).
+  useNoAutofill();
   const {
     editorPanelRef,
     previewPanelRef,
@@ -177,6 +182,7 @@ export function ValuationWorkspace({
     updateSection,
     updateSections,
   } = editor;
+  const headerDates = useMemo(() => headerDatesOf(caratula), [caratula]);
   const [activeSectionId, setActiveSectionId] = useState(
     initialValuation?.sections?.[0]?.id || "caratula",
   );
@@ -593,6 +599,8 @@ export function ValuationWorkspace({
     <NumberPresentationProvider presentation={numberPresentation}>
     <PagePresentationProvider presentation={pagePresentation}>
     <CustomUnitsProvider initialUnits={customUnits}>
+    {/* A template has no header dates: its dates are not compared with anything. */}
+    <HeaderDatesProvider dates={template ? null : headerDates}>
     <StructureTransferProvider
       sections={sections}
       readOnly={!canEdit}
@@ -792,6 +800,7 @@ export function ValuationWorkspace({
     </ConstructionCaptureProvider>
     </DeleteConfirmProvider>
     </StructureTransferProvider>
+    </HeaderDatesProvider>
     </CustomUnitsProvider>
     </PagePresentationProvider>
     </NumberPresentationProvider>

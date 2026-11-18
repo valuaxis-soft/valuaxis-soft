@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { activeTextMarks, applyTextMark, hasTextMarks, parseTextMarks, stripTextMarks, toggleTextMark } from "../src/features/valuations/services/text-marks";
+import { activeTextMarks, applyTextMark, hasTextMarks, parseTextMarks, rawSelectionOf, stripTextMarks, textMarkOfShortcut, toggleTextMark } from "../src/features/valuations/services/text-marks";
 import { TextMarksField } from "../src/features/valuations/components/editor/text-marks-toolbar";
 import { draftFactsFor } from "../src/features/valuations/services/draft-facts";
 import { ConceptEditorList } from "../src/features/valuations/components/editor/concept-editor";
@@ -89,21 +89,33 @@ test("the buttons know which marks the text they would work on already has", () 
   assert.deepEqual(activeTextMarks(""), none);
 });
 
-test("the format buttons show themselves pressed and the marked text shows as it prints", () => {
+test("V7.3-02: no N/K/S buttons under a text field; the marked text shows as it prints", () => {
   const render = (value: string) => renderToStaticMarkup(
     <TextMarksField value={value} onChange={noop} disabled={false}>
       <textarea value={value} readOnly />
     </TextMarksField>,
   );
   const marked = render("<b>Casa sola</b> de dos");
-  assert.match(marked, /aria-label="Negrita" aria-pressed="false"/, "only part of the value is bold");
+  assert.doesNotMatch(marked, /role="toolbar"|aria-label="Negrita"|aria-label="Cursiva"|aria-label="Subrayado"|<button/, "the buttons under the field are gone");
+  assert.match(marked, /data-text-marks-field=""/, "the field still takes the marks (shortcuts and the right-click menu)");
   assert.match(marked, /data-text-marks-preview=""[^>]*><span[^>]*><span><strong>Casa sola<\/strong><\/span><span> de dos<\/span><\/span><\/p>/);
-
-  const whole = render("<i>Casa sola</i>");
-  assert.match(whole, /aria-label="Cursiva" aria-pressed="true" data-active=""/);
-  assert.match(whole, /aria-label="Negrita" aria-pressed="false"/);
-
   assert.doesNotMatch(render("Casa sola"), /data-text-marks-preview/, "plain text needs no preview");
+});
+
+test("V7.3-02: Ctrl+B, Ctrl+I and Ctrl+U (⌘ in a Mac) mark a word; other keys and Shift or Alt do not", () => {
+  const key = (k: string, extra: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }> = {}) =>
+    textMarkOfShortcut({ key: k, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...extra });
+  assert.equal(key("b", { ctrlKey: true }), "bold");
+  assert.equal(key("B", { metaKey: true }), "bold", "Caps Lock or ⌘ in a Mac");
+  assert.equal(key("i", { ctrlKey: true }), "italic");
+  assert.equal(key("u", { metaKey: true }), "underline");
+  assert.equal(key("b"), null, "typing a «b» is typing");
+  assert.equal(key("n", { ctrlKey: true }), null, "Ctrl+N is the browser's");
+  assert.equal(key("b", { ctrlKey: true, shiftKey: true }), null);
+  assert.equal(key("i", { metaKey: true, altKey: true }), null, "⌘⌥I opens the browser's tools");
+  // The word selected gets the mark, as the shortcut applies it: «sola» of «Casa sola».
+  const raw = rawSelectionOf("Casa sola", 5, 9);
+  assert.equal(applyTextMark("Casa sola", "bold", raw.start, raw.end).value, "Casa <b>sola</b>");
 });
 
 test("the facts an AI draft is written from carry the text without marks", () => {
@@ -132,7 +144,7 @@ test("a new paragraph is a concept with no label that the saved metadata keeps a
   assert.equal(hydrateConceptMetadata({ type: "texto" }).type, undefined);
 });
 
-test("the editor shows a paragraph as one text field with its format buttons and no title", () => {
+test("the editor shows a paragraph as one text field with no format buttons under it and no title", () => {
   const html = renderToStaticMarkup(createElement(ConceptEditorList, {
     concepts: [concept("p", "", "Texto corrido", { type: "paragraph" }), concept("d", "Niveles", "2")],
     onRemove: noop,
@@ -143,10 +155,9 @@ test("the editor shows a paragraph as one text field with its format buttons and
   assert.match(paragraphRow, /<textarea[^>]*aria-label="Párrafo"[^>]*>Texto corrido<\/textarea>/);
   assert.doesNotMatch(paragraphRow.split("data-concept-name")[0], /placeholder="Título"|value="Niveles"/);
   assert.match(html, /data-concept-paragraph=""/);
-  assert.equal(html.match(/role="toolbar" aria-label="Formato del texto"/g)?.length, 2, "the paragraph and the text concept both take marks");
-  assert.match(html, /aria-label="Negrita"[^>]*>N<\/button>/);
-  assert.match(html, /aria-label="Cursiva"[^>]*>K<\/button>/);
-  assert.match(html, /aria-label="Subrayado"[^>]*>S<\/button>/);
+  assert.equal(html.match(/data-text-marks-field=""/g)?.length, 2, "the paragraph and the text concept both take marks");
+  // V7.3-02 (video 7.3, 3:10): no N/K/S under each concept; «Seleccionar conceptos», the shortcuts and the right-click menu give them.
+  assert.doesNotMatch(html, /role="toolbar" aria-label="Formato del texto"|>N<\/button>|>K<\/button>|>S<\/button>/);
 
   // A date or a number reads as one value: no marks.
   const dated = renderToStaticMarkup(createElement(ConceptEditorList, {
@@ -155,7 +166,7 @@ test("the editor shows a paragraph as one text field with its format buttons and
     onUpdate: noop,
     readOnly: false,
   }));
-  assert.doesNotMatch(dated, /aria-label="Negrita"[^>]*>N<\/button>/);
+  assert.doesNotMatch(dated, /data-text-marks-field/);
 });
 
 /* ------------------------------------------------------------------ */

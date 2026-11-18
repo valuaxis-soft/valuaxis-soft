@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -270,7 +271,23 @@ function TransferMenu({ label, lock, moveLock, onCopy, onDuplicate, onMove, move
  * the menu; one that cannot be copied or moved (the carátula's, the ones the
  * calculation writes, a read-only valuation) shows its items disabled and why.
  */
-export function BlockTransferMenu({ section, block, label, lock, visibility, pageBreak }: {
+/** «Imprimir título» of a block or a subbloque: on, the dictamen prints its title; off, only what it holds (video 7.1). */
+export type PrintTitleChoice = { printed: boolean; onChange: (printed: boolean) => void };
+
+function PrintTitleItem({ choice, disabled }: { choice: PrintTitleChoice; disabled: boolean }) {
+  return (
+    <DropdownMenuCheckboxItem
+      checked={choice.printed}
+      disabled={disabled}
+      title="Si lo apagas, el título se queda en el editor y no se imprime en el dictamen."
+      onClick={() => choice.onChange(!choice.printed)}
+    >
+      Imprimir título
+    </DropdownMenuCheckboxItem>
+  );
+}
+
+export function BlockTransferMenu({ section, block, label, lock, visibility, pageBreak, printTitle }: {
   section: AppSection;
   block: Block;
   label: string;
@@ -280,6 +297,7 @@ export function BlockTransferMenu({ section, block, label, lock, visibility, pag
   visibility?: { visible: boolean; onChange: (visible: boolean) => void } | null;
   /** "Salto de página antes", as the toolbar's page break; null shows it disabled. */
   pageBreak?: { before: boolean; onChange: (before: boolean) => void } | null;
+  printTitle?: PrintTitleChoice;
 }) {
   const transfer = useStructureTransfer();
   const [moving, setMoving] = useState(false);
@@ -328,6 +346,7 @@ export function BlockTransferMenu({ section, block, label, lock, visibility, pag
             </DropdownMenuItem>
           </>
         ) : null}
+        {printTitle ? <PrintTitleItem choice={printTitle} disabled={transfer.readOnly} /> : null}
       </TransferMenu>
       <DestinationPicker
         open={moving}
@@ -341,7 +360,13 @@ export function BlockTransferMenu({ section, block, label, lock, visibility, pag
 }
 
 /** Copiar, Duplicar and "Mover a…" of an Apartado. */
-export function ApartadoTransferMenu({ section, block, apartado, label }: { section: AppSection; block: Block; apartado: Apartado; label: string }) {
+export function ApartadoTransferMenu({ section, block, apartado, label, printTitle }: {
+  section: AppSection;
+  block: Block;
+  apartado: Apartado;
+  label: string;
+  printTitle?: PrintTitleChoice;
+}) {
   const transfer = useStructureTransfer();
   const [moving, setMoving] = useState(false);
   const source = { sectionId: section.id, blockId: block.id, apartadoId: apartado.id };
@@ -360,7 +385,14 @@ export function ApartadoTransferMenu({ section, block, apartado, label }: { sect
         onDuplicate={() => transfer.duplicateApartado(section.id, block.id, apartado.id)}
         onMove={() => setMoving(true)}
         moveLabel="Mover a…"
-      />
+      >
+        {printTitle ? (
+          <>
+            <DropdownMenuSeparator />
+            <PrintTitleItem choice={printTitle} disabled={transfer.readOnly} />
+          </>
+        ) : null}
+      </TransferMenu>
       <DestinationPicker
         open={moving}
         onOpenChange={setMoving}
