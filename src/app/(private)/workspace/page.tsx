@@ -44,10 +44,10 @@ export default async function WorkspacePage({
   const googleMapsKey = googleMapsBrowserKey();
   const nonce = (await headers()).get(NONCE_HEADER) ?? undefined;
 
+  // No <style nonce> here: after a navigation inside the app this request's nonce is not the document's.
+  // The maps loader gives Google the document's (google-maps-loader.ts, V7.3-08).
   return (
     <>
-      {/* Google Maps copies the nonce of the first <style nonce> it finds onto the styles it injects; without one, the CSP blocks them. */}
-      {googleMapsKey && <style nonce={nonce}>{".maps-style-nonce{}"}</style>}
       <ValuationWorkspace
         currentUser={user}
         letterhead={letterhead}

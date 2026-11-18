@@ -37,7 +37,8 @@ const NO_TEXT = "Escribe la zona, colonia, municipio o calle que buscas, o usa u
 
 /**
  * The query string of the search: ?tipo=&q=&supMin=&supMax=&precioMin=&precioMax=&limite=,
- * and the filters estado=&municipio=&colonia=&cp=&inmueble=&operacion=&consultaDesde=&consultaHasta=.
+ * and the filters estado=&municipio=&colonia=&cp=&inmueble=&operacion=&consultaDesde=&consultaHasta=&vialidad=,
+ * terrenoMin=&terrenoMax=&construidaMin=&construidaMax=&recamaras=&banos=&uso=&construccion= (the names of /comparables).
  * The text may be left out when a filter is used.
  */
 export const comparableSearchQuerySchema = z.object({
@@ -56,14 +57,23 @@ export const comparableSearchQuerySchema = z.object({
   vialidad: z.preprocess((value) => (empty(value) ? undefined : value), z.enum(STREET_TYPES, "Tipo de vialidad inválido.").optional()),
   consultaDesde: searchDay,
   consultaHasta: searchDay,
+  terrenoMin: bound,
+  terrenoMax: bound,
+  construidaMin: bound,
+  construidaMax: bound,
+  recamaras: bound,
+  banos: bound,
+  uso: place(100),
+  construccion: place(100),
   limite: z.preprocess(
     (value) => (empty(value) ? SEARCH_LIMIT_DEFAULT : Number(value)),
     z.number().int("El límite debe ser un entero.").min(1).max(SEARCH_LIMIT_MAX, `Se devuelven hasta ${SEARCH_LIMIT_MAX} resultados.`),
   ),
 })
   .superRefine((value, context) => {
-    const filtered = [value.supMin, value.supMax, value.precioMin, value.precioMax].some((item) => item !== null)
-      || [value.estado, value.municipio, value.colonia, value.cp, value.inmueble, value.operacion, value.consultaDesde, value.consultaHasta, value.vialidad]
+    const filtered = [value.supMin, value.supMax, value.precioMin, value.precioMax, value.terrenoMin, value.terrenoMax, value.construidaMin, value.construidaMax, value.recamaras, value.banos]
+      .some((item) => item !== null)
+      || [value.estado, value.municipio, value.colonia, value.cp, value.inmueble, value.operacion, value.consultaDesde, value.consultaHasta, value.vialidad, value.uso, value.construccion]
         .some((item) => item !== undefined);
     if (value.q === undefined || !value.q) {
       if (!filtered) context.addIssue({ code: "custom", path: ["q"], message: NO_TEXT });
@@ -74,6 +84,10 @@ export const comparableSearchQuerySchema = z.object({
   })
   .refine((value) => value.supMin === null || value.supMax === null || value.supMin <= value.supMax,
     { path: ["supMax"], message: "La superficie máxima debe ser mayor o igual que la mínima." })
+  .refine((value) => value.terrenoMin === null || value.terrenoMax === null || value.terrenoMin <= value.terrenoMax,
+    { path: ["terrenoMax"], message: "La superficie de terreno máxima debe ser mayor o igual que la mínima." })
+  .refine((value) => value.construidaMin === null || value.construidaMax === null || value.construidaMin <= value.construidaMax,
+    { path: ["construidaMax"], message: "La superficie construida máxima debe ser mayor o igual que la mínima." })
   .refine((value) => value.precioMin === null || value.precioMax === null || value.precioMin <= value.precioMax,
     { path: ["precioMax"], message: "El precio máximo debe ser mayor o igual que el mínimo." })
   .refine((value) => !value.consultaDesde || !value.consultaHasta || value.consultaDesde <= value.consultaHasta,
@@ -88,6 +102,14 @@ export const comparableSearchQuerySchema = z.object({
       ...(value.consultaDesde ? { consultedFrom: value.consultaDesde } : {}),
       ...(value.consultaHasta ? { consultedTo: value.consultaHasta } : {}),
       ...(value.vialidad ? { streetType: value.vialidad } : {}),
+      ...(value.terrenoMin !== null ? { landAreaMin: value.terrenoMin } : {}),
+      ...(value.terrenoMax !== null ? { landAreaMax: value.terrenoMax } : {}),
+      ...(value.construidaMin !== null ? { builtAreaMin: value.construidaMin } : {}),
+      ...(value.construidaMax !== null ? { builtAreaMax: value.construidaMax } : {}),
+      ...(value.recamaras !== null ? { bedrooms: value.recamaras } : {}),
+      ...(value.banos !== null ? { bathrooms: value.banos } : {}),
+      ...(value.uso ? { landUse: value.uso } : {}),
+      ...(value.construccion ? { constructionType: value.construccion } : {}),
     };
     return {
       text: value.q ?? "",
@@ -101,7 +123,10 @@ export const comparableSearchQuerySchema = z.object({
     };
   });
 
-const FILTER_PARAMS = ["estado", "municipio", "colonia", "cp", "inmueble", "operacion", "consultaDesde", "consultaHasta", "vialidad"] as const;
+const FILTER_PARAMS = [
+  "estado", "municipio", "colonia", "cp", "inmueble", "operacion", "consultaDesde", "consultaHasta", "vialidad",
+  "terrenoMin", "terrenoMax", "construidaMin", "construidaMax", "recamaras", "banos", "uso", "construccion",
+] as const;
 
 /** Reads the query from a URL; the first problem comes back in words. */
 export function parseComparableSearchQuery(params: URLSearchParams):

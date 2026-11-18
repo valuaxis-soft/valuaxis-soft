@@ -22,6 +22,20 @@ export type ComparableSearchFilters = {
   consultedTo?: string;
   /** «Tipo de vialidad»: a comparable captured before it existed counts as «Calle». */
   streetType?: StreetType;
+  /**
+   * V7.3-12: the land area and the built (or rentable) area apart, as in
+   * /comparables; `areaMin`/`areaMax` of the query is the area of the
+   * comparable's own type, for clients of before.
+   */
+  landAreaMin?: number;
+  landAreaMax?: number;
+  builtAreaMin?: number;
+  builtAreaMax?: number;
+  /** At least this many, as the default of /comparables. */
+  bedrooms?: number;
+  bathrooms?: number;
+  landUse?: string;
+  constructionType?: string;
 };
 
 export type ComparableSearchQuery = {

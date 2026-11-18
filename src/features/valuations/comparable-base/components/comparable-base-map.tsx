@@ -20,7 +20,7 @@ import {
   BASE_MAP_LAYERS, RADIUS_COLOR, VALUATION_PIN_COLOR, baseMapLayer, countByLayer, layerVisibility, pinStyle, visiblePins, type LayerVisibility,
 } from "@/features/maps/base-map/layers";
 import { comparablePinCardHtml, formatMoney, pinFeatures, pinPriceLine, valuationPinCardHtml } from "@/features/maps/base-map/pin-card";
-import { RADIUS_METERS, RADIUS_MAX_HITS, clampRadius, formatDistance } from "@/features/maps/base-map/radius";
+import { RADIUS_METERS, RADIUS_MAX_HITS, clampRadius, formatDistance, radiusSummary } from "@/features/maps/base-map/radius";
 import type { ComparablePinDto, ComparablePinsDto, RadiusHitDto, ValuationPinDto } from "@/features/maps/base-map/types";
 import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { loadGoogleMaps } from "@/features/maps/google-maps-loader";
@@ -190,6 +190,8 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
   }, [picking, mode]);
 
   const shown = useMemo(() => visiblePins(data?.pins ?? [], layers), [data, layers]);
+  // V7.3-15: the list of the radius obeys the layers too, as the pins do.
+  const shownHits = useMemo(() => (hits ? visiblePins(hits, layers) : null), [hits, layers]);
   const counts = useMemo(() => countByLayer(data?.pins ?? []), [data]);
 
   // The first pins frame the map; afterwards the appraiser keeps the view.
@@ -495,7 +497,8 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
       </div>
 
       <aside className="grid content-start gap-3.5 rounded-lg border p-3">
-        <Tabs value={tab} onValueChange={(value) => setTab(value as MapTab)}>
+        {/* V7.3-08: the card of the other tab closes with it; the valuation's stayed open over the comparables. */}
+        <Tabs value={tab} onValueChange={(value) => { setTab(value as MapTab); setSelected(null); setSelectedValuation(null); }}>
           <TabsList className="w-full">
             <TabsTrigger value="comparables" className="flex-1">Comparables</TabsTrigger>
             <TabsTrigger value="avaluos" className="flex-1">Avalúos</TabsTrigger>
@@ -596,13 +599,15 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
             {center ? (
               <div className="grid gap-1" aria-live="polite" aria-busy={searching}>
                 <span className="text-xs font-semibold text-muted-foreground">
-                  {hits === null ? "Buscando…" : `${hits.length}${hits.length >= RADIUS_MAX_HITS ? "+" : ""} comparables dentro de ${formatDistance(radius)}`}
+                  {hits === null || shownHits === null
+                    ? "Buscando…"
+                    : radiusSummary(shownHits.length, radius, { capped: hits.length >= RADIUS_MAX_HITS, hiddenByLayers: hits.length - shownHits.length })}
                 </span>
                 <div className="grid max-h-[260px] gap-1.5 overflow-auto">
-                  {hits?.length === 0 ? (
+                  {shownHits?.length === 0 ? (
                     <p className="text-[13px] text-muted-foreground">Ninguno con estos filtros. Amplía el radio, enciende una capa o quita un filtro.</p>
                   ) : null}
-                  {(hits ?? []).map((hit) => (
+                  {(shownHits ?? []).map((hit) => (
                     <Button
                       key={hit.id}
                       type="button"

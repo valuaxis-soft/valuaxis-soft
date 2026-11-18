@@ -77,7 +77,7 @@ type MapMode = "loading" | "google" | "failed";
 export interface GoogleMapsPageConfig {
   /** The browser key; null when maps are not configured on this server. */
   apiKey: string | null;
-  /** The request's CSP nonce, which the loader script carries. */
+  /** The request's CSP nonce: only a fallback, the loader takes the document's (google-maps-loader.ts). */
   nonce?: string;
 }
 
@@ -204,7 +204,8 @@ export function CroquisGeneratorBody({
   const subject = data?.location?.point ?? null;
   const settings = data?.croquis ?? DEFAULT_CROQUIS_SETTINGS;
   const highlights = settings.streets;
-  const withStreets = captures.some((kind) => kind !== "comparables");
+  // V7.1-22: the map of comparables has its streets too, as the croquis.
+  const withStreets = captures.length > 0;
   const comparables = useMemo<readonly ComparablePin[]>(() => data?.comparables ?? [], [data]);
   const shownPins = useMemo(() => (settings.includeComparables || captures.includes("comparables") ? comparables : []), [settings.includeComparables, captures, comparables]);
   const frameOf = (kind: CroquisKind) => frames[kind] ?? settings[kind];
@@ -372,7 +373,7 @@ export function CroquisGeneratorBody({
       const omitted: string[] = [];
       for (const kind of captures) {
         const frame = frameOf(kind);
-        const labelPlacements = kind === "comparables" ? [] : (placements[kind] ?? []);
+        const labelPlacements = placements[kind] ?? [];
         const { image, omittedStreets } = await api.valuations.croquis(valuationId, {
           kind,
           center: [...frameCenter(frame, subject)] as [number, number],
@@ -627,7 +628,6 @@ export function CroquisGeneratorBody({
 
         {subject && withStreets
           ? captures
-              .filter((kind) => kind !== "comparables")
               .map((kind) => {
                 const frame = frameOf(kind);
                 const center = frameCenter(frame, subject);

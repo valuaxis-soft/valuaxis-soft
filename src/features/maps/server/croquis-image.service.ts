@@ -12,7 +12,7 @@ import type { AuthUser } from "@/features/auth/model";
 import { storeEditorImage, type EditorImageDto } from "@/features/files/services/editor-image";
 import { ValuationWorkflowError } from "@/features/valuations/services/valuation-workflow/errors";
 
-import { CROQUIS_IMAGE_IDS, pinsOverlaySvg, streetLabelsOverlaySvg, type ComparablePin, type CroquisKind } from "../croquis";
+import { CROQUIS_IMAGE_IDS, croquisLegend, legendOverlaySvg, pinsOverlaySvg, streetLabelsOverlaySvg, type ComparablePin, type CroquisKind } from "../croquis";
 import { croquisStreets, type CroquisStreets } from "../croquis-streets";
 import { hasHighlights, placedStreetLabels, type StreetHighlights } from "../highlights";
 import type { CroquisLabelPlacement } from "../croquis-marker";
@@ -46,11 +46,12 @@ export interface CroquisRenderInput {
 const NO_STREETS: CroquisStreets = { paths: [], labels: [], omitted: [] };
 
 /**
- * The highlighted streets as the image draws them. The map of comparables
- * and a croquis with nothing highlighted ask OpenStreetMap for nothing.
+ * The highlighted streets as the image draws them, on every croquis and on
+ * the map of comparables (V7.1-22). One with nothing highlighted asks
+ * OpenStreetMap for nothing.
  */
 export async function resolveCroquisStreets(input: Pick<CroquisRenderInput, "kind" | "center" | "zoom" | "subject" | "streets" | "labels">): Promise<CroquisStreets> {
-  if (input.kind === "comparables" || !hasHighlights(input.streets)) return NO_STREETS;
+  if (!hasHighlights(input.streets)) return NO_STREETS;
   const { ways } = await getStreetsAround(input.subject);
   const streets = croquisStreets(input.kind, input.center, input.zoom, input.streets, ways, input.subject);
   return { ...streets, labels: placedStreetLabels(streets.labels, input.labels) };
@@ -69,7 +70,7 @@ export async function fetchStaticMap(input: Pick<CroquisRenderInput, "center" | 
   return Buffer.from(await response.arrayBuffer());
 }
 
-/** The base image with the street names, the comparables' pins and the north arrow over it, as JPEG. */
+/** The base image with the street names, the comparables' pins and their legend, and the north arrow over it, as JPEG. */
 export async function composeCroquisImage(base: Buffer, input: Pick<CroquisRenderInput, "center" | "zoom" | "northArrow" | "pins">, streets: CroquisStreets = NO_STREETS) {
   const image = sharp(base);
   const metadata = await image.metadata();
@@ -88,6 +89,9 @@ export async function composeCroquisImage(base: Buffer, input: Pick<CroquisRende
     layers.push({ input: labels, left: 0, top: 0 });
   }
   if (input.pins.length) {
+    // V7.3-09: what each color means, with only the types the image shows; under the pins, so none is hidden by it.
+    const legend = croquisLegend(input.center, input.zoom, input.pins);
+    if (legend.length) layers.push({ input: Buffer.from(legendOverlaySvg(legend, input.northArrow.corner, scale)), left: 0, top: 0 });
     const pins = Buffer.from(pinsOverlaySvg(input.center, input.zoom, input.pins, scale));
     layers.push({ input: pins, left: 0, top: 0 });
   }

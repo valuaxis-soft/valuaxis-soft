@@ -55,13 +55,14 @@ function pathUrlLength(path: StaticMapPath) {
 
 /**
  * The streets a croquis draws: the macro croquis the avenues only, the micro
- * every highlighted street, the map of comparables none. Pieces outside the
+ * and the map of comparables every highlighted street (the map of comparables
+ * drew none until V7.1-22, 16 nov 2026: the appraiser wants the streets
+ * there too). Pieces outside the
  * frame are left out, the rest simplified for the zoom; the closest pieces to
  * the center go first, so when the URL budget runs out the farthest are the
  * ones omitted. The names only go on streets that are drawn.
  */
 export function croquisStreets(kind: CroquisKind, center: LatLon, zoom: number, highlights: StreetHighlights, ways: readonly StreetWay[], subject: LatLon = center): CroquisStreets {
-  if (kind === "comparables") return { paths: [], labels: [], omitted: [] };
   const items = highlightedWays({ front: highlights.front, paint: paintFromStreets(highlights.streets) }, highlights.styles, ways);
   const shown = kind === "macro" ? macroHighlights(items) : items;
   const bounds = frameBounds(center, zoom);

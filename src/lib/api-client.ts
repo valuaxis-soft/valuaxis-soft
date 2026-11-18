@@ -141,11 +141,21 @@ export type ComparableSearchFilters = {
   consultedTo?: string;
   /** «Tipo de vialidad» (STREET_TYPES); empty, any. */
   streetType?: string;
+  /** V7.3-12: the land and the built area apart, as in /comparables. */
+  landAreaMin?: number | null;
+  landAreaMax?: number | null;
+  builtAreaMin?: number | null;
+  builtAreaMax?: number | null;
+  /** At least this many. */
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  landUse?: string;
+  constructionType?: string;
 };
 
 const SEARCH_FILTER_PARAMS = {
   state: "estado", municipality: "municipio", neighborhood: "colonia", postalCode: "cp", kind: "inmueble", operation: "operacion",
-  consultedFrom: "consultaDesde", consultedTo: "consultaHasta", streetType: "vialidad",
+  consultedFrom: "consultaDesde", consultedTo: "consultaHasta", streetType: "vialidad", landUse: "uso", constructionType: "construccion",
 } as const;
 
 /** The server answered 401: the session expired or was revoked. */
@@ -344,8 +354,12 @@ export const api = {
       ),
     searchComparables: (id: ApiId, type: ComparableType, filters: ComparableSearchFilters) => {
       const params = new URLSearchParams({ tipo: type, q: filters.text });
-      const ranges = { supMin: filters.areaMin, supMax: filters.areaMax, precioMin: filters.priceMin, precioMax: filters.priceMax };
-      for (const [key, value] of Object.entries(ranges)) if (value !== null) params.set(key, String(value));
+      const ranges = {
+        supMin: filters.areaMin, supMax: filters.areaMax, precioMin: filters.priceMin, precioMax: filters.priceMax,
+        terrenoMin: filters.landAreaMin, terrenoMax: filters.landAreaMax, construidaMin: filters.builtAreaMin, construidaMax: filters.builtAreaMax,
+        recamaras: filters.bedrooms, banos: filters.bathrooms,
+      };
+      for (const [key, value] of Object.entries(ranges)) if (value !== null && value !== undefined) params.set(key, String(value));
       for (const [field, param] of Object.entries(SEARCH_FILTER_PARAMS)) {
         const value = filters[field as keyof typeof SEARCH_FILTER_PARAMS]?.trim();
         if (value) params.set(param, value);

@@ -10,7 +10,10 @@ import { asRecord, decimal, inFirmBase } from "../../calculation/access";
 import { addressFromRecord, parseComparableId, type ComparableAddress, type OperationType, type UrbanProximity } from "../../calculation/comparable-card";
 import { reusedEvidenceOf, type ReusedComparableEvidence } from "../../calculation/market.service";
 import { searchTokens } from "../normalize";
-import { AREA, CONSULTED, FIRM_BASE_FROM, HAYSTACK, firmBaseCondition, likePattern, placeCondition, postalCodeCondition, streetTypeCondition } from "../own-base-sql";
+import {
+  AREA, BUILT_AREA, CONSULTED, FIRM_BASE_FROM, HAYSTACK, LAND_AREA, constructionTypeCondition, firmBaseCondition, jsonNumber, landUseCondition, likePattern,
+  placeCondition, postalCodeCondition, rangeCondition, streetTypeCondition,
+} from "../own-base-sql";
 import type { ComparableSearchContext, ComparableSearchQuery, ComparableSearchResult, ComparableSearchSource } from "../types";
 
 /** Rows read before ranking: the same offer repeats across valuations, and the most relevant may not be the newest. */
@@ -126,6 +129,13 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
     ...(query.areaMax === null ? [] : [Prisma.sql`${AREA} <= ${query.areaMax}`]),
     ...(query.priceMin === null ? [] : [Prisma.sql`c."NPrecioCapturado" >= ${query.priceMin}`]),
     ...(query.priceMax === null ? [] : [Prisma.sql`c."NPrecioCapturado" <= ${query.priceMax}`]),
+    // V7.3-12: the land and the built area apart, and the other filters of /comparables.
+    ...rangeCondition(LAND_AREA, filters.landAreaMin, filters.landAreaMax),
+    ...rangeCondition(BUILT_AREA, filters.builtAreaMin, filters.builtAreaMax),
+    ...rangeCondition(jsonNumber("bedrooms"), filters.bedrooms, undefined),
+    ...rangeCondition(jsonNumber("bathrooms"), filters.bathrooms, undefined),
+    ...landUseCondition(filters.landUse),
+    ...constructionTypeCondition(filters.constructionType),
   ];
   const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
     SELECT

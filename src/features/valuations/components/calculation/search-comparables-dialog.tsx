@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowLeft, ExternalLink, Loader2, Map as MapIcon, Search } from "lucide-react";
+import { AlertTriangle, ExternalLink, Loader2, Search } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
@@ -26,6 +26,7 @@ import { SEARCH_TEXT_MIN, searchText } from "@/features/valuations/comparable-se
 import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { ComparableBaseMap } from "@/features/valuations/comparable-base/components/comparable-base-map";
+import { searchMapQuery } from "@/features/valuations/comparable-search/map-query";
 import { useExpandableDialog } from "./expandable-dialog";
 
 const number = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
@@ -35,25 +36,31 @@ const day = (value: string | null) => (value ? value.split("-").reverse().join("
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudo buscar.";
 
-const PLACE_KEYS = ["state", "municipality", "neighborhood", "postalCode", "kind", "operation", "consultedFrom", "consultedTo", "streetType"] as const;
+const PLACE_KEYS = [
+  "state", "municipality", "neighborhood", "postalCode", "kind", "operation", "consultedFrom", "consultedTo", "streetType", "landUse", "constructionType",
+] as const;
 type PlaceKey = (typeof PLACE_KEYS)[number];
-type RangeKey = "areaMin" | "areaMax" | "priceMin" | "priceMax";
+/** V7.3-12: the land and the built area apart, as in /comparables («Superficie» alone did not say which). */
+type RangeKey = "landAreaMin" | "landAreaMax" | "builtAreaMin" | "builtAreaMax" | "priceMin" | "priceMax" | "bedrooms" | "bathrooms";
 type Draft = Record<"text" | RangeKey | PlaceKey, string>;
 /** The kind and operation start as those of the market searched for; "TODOS"/"TODAS" widen them. */
 const emptyDraft = (type: ComparableType): Draft => ({
-  text: "", areaMin: "", areaMax: "", priceMin: "", priceMax: "",
-  state: "", municipality: "", neighborhood: "", postalCode: "", consultedFrom: "", consultedTo: "", streetType: "",
+  text: "", landAreaMin: "", landAreaMax: "", builtAreaMin: "", builtAreaMax: "", priceMin: "", priceMax: "", bedrooms: "", bathrooms: "",
+  state: "", municipality: "", neighborhood: "", postalCode: "", consultedFrom: "", consultedTo: "", streetType: "", landUse: "", constructionType: "",
   kind: isLandComparableType(type) ? "TERRENO" : "CONSTRUIDO",
   operation: isRentComparableType(type) ? "RENTA" : "VENTA",
 });
 const RANGE_LABELS: Record<RangeKey, string> = {
-  areaMin: "la superficie mínima", areaMax: "la superficie máxima", priceMin: "el precio mínimo", priceMax: "el precio máximo",
+  landAreaMin: "la superficie de terreno mínima", landAreaMax: "la superficie de terreno máxima",
+  builtAreaMin: "la superficie construida mínima", builtAreaMax: "la superficie construida máxima",
+  priceMin: "el precio mínimo", priceMax: "el precio máximo", bedrooms: "las recámaras", bathrooms: "los baños",
 };
+const RANGE_KEYS = Object.keys(RANGE_LABELS) as RangeKey[];
 
 /** The filters the form holds, or what the appraiser has to correct. */
 function filtersFrom(draft: Draft, type: ComparableType): { filters: ComparableSearchFilters } | { error: string } {
   const defaults = emptyDraft(type);
-  const filtered = (["areaMin", "areaMax", "priceMin", "priceMax", "state", "municipality", "neighborhood", "postalCode", "consultedFrom", "consultedTo", "streetType"] as const)
+  const filtered = [...RANGE_KEYS, ...PLACE_KEYS.filter((key) => key !== "kind" && key !== "operation")]
     .some((key) => draft[key].trim()) || draft.kind !== defaults.kind || draft.operation !== defaults.operation;
   if (draft.text.trim() ? searchText(draft.text).length < SEARCH_TEXT_MIN : !filtered) {
     return { error: `Escribe al menos ${SEARCH_TEXT_MIN} letras de la zona, colonia, municipio o calle, o usa un filtro.` };
@@ -62,15 +69,18 @@ function filtersFrom(draft: Draft, type: ComparableType): { filters: ComparableS
   if (draft.consultedFrom && draft.consultedTo && draft.consultedFrom > draft.consultedTo) {
     return { error: "La fecha de consulta final debe ser igual o posterior a la inicial." };
   }
-  const ranges = { areaMin: null, areaMax: null, priceMin: null, priceMax: null } as Pick<ComparableSearchFilters, RangeKey>;
-  for (const key of Object.keys(RANGE_LABELS) as (keyof typeof RANGE_LABELS)[]) {
+  const ranges = Object.fromEntries(RANGE_KEYS.map((key) => [key, null])) as Record<RangeKey, number | null>;
+  for (const key of RANGE_KEYS) {
     if (!draft[key].trim()) continue;
     const value = parseDecimal(draft[key]);
     if (value === null || value <= 0) return { error: `Revisa ${RANGE_LABELS[key]}: debe ser un número mayor que cero.` };
     ranges[key] = value;
   }
-  if (ranges.areaMin !== null && ranges.areaMax !== null && ranges.areaMin > ranges.areaMax) {
-    return { error: "La superficie máxima debe ser mayor o igual que la mínima." };
+  if (ranges.landAreaMin !== null && ranges.landAreaMax !== null && ranges.landAreaMin > ranges.landAreaMax) {
+    return { error: "La superficie de terreno máxima debe ser mayor o igual que la mínima." };
+  }
+  if (ranges.builtAreaMin !== null && ranges.builtAreaMax !== null && ranges.builtAreaMin > ranges.builtAreaMax) {
+    return { error: "La superficie construida máxima debe ser mayor o igual que la mínima." };
   }
   if (ranges.priceMin !== null && ranges.priceMax !== null && ranges.priceMin > ranges.priceMax) {
     return { error: "El precio máximo debe ser mayor o igual que el mínimo." };
@@ -78,7 +88,7 @@ function filtersFrom(draft: Draft, type: ComparableType): { filters: ComparableS
   // The kind and operation of the market itself are not sent: the server starts from them.
   const places = Object.fromEntries(PLACE_KEYS.flatMap((key) =>
     draft[key].trim() && !((key === "kind" || key === "operation") && draft[key] === defaults[key]) ? [[key, draft[key].trim()]] : []));
-  return { filters: { text: draft.text.trim(), ...ranges, ...places } };
+  return { filters: { text: draft.text.trim(), areaMin: null, areaMax: null, ...ranges, ...places } };
 }
 
 /**
@@ -86,8 +96,10 @@ function filtersFrom(draft: Draft, type: ComparableType): { filters: ComparableS
  * the valuation. Factors are rated afterwards, as with the Excel import.
  * With `onChoose` the chosen results go to the caller instead (the
  * statistical methods take them as rows of their own, not of the market).
- * With `googleMaps`, "Ver en mapa" shows the firm's base on the map, where
- * a pin is added with "Usar el existente" (etapa 3 of the maps).
+ * With `googleMaps`, the firm's base shows on a map below the results, always
+ * open and with the same filters as the last search (V7.3-10/11, 16 nov
+ * 2026: «Ver en mapa» hid it and ignored the filters); a pin is added with
+ * "Usar el existente" (etapa 3 of the maps).
  */
 export function SearchComparablesDialog({
   valuationId,
@@ -120,14 +132,15 @@ export function SearchComparablesDialog({
   const [busy, setBusy] = useState<"search" | "add" | null>(null);
   const [found, setFound] = useState<{ text: string; response: ComparableSearchResponse } | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [view, setView] = useState<"buscar" | "mapa">("buscar");
+  /** The filters of the last search, which the map shows; before one, the market's types. */
+  const [mapFilters, setMapFilters] = useState<ComparableSearchFilters | null>(null);
   const mapOffered = Boolean(googleMaps?.apiKey) && !onChoose;
   // Only the answer to the last search is shown.
   const lastSearch = useRef(0);
 
   const reset = () => {
     lastSearch.current += 1;
-    setView("buscar");
+    setMapFilters(null);
     setDraft(emptyDraft(type));
     setError(null);
     setFound(null);
@@ -144,6 +157,7 @@ export function SearchComparablesDialog({
     }
     const current = ++lastSearch.current;
     setError(null);
+    setMapFilters(parsed.filters);
     setBusy("search");
     try {
       const response = await api.market.searchComparables(valuationId, type, parsed.filters);
@@ -203,31 +217,9 @@ export function SearchComparablesDialog({
         <Search data-icon="inline-start" /> {label}
       </Button>
       <Dialog open={open} onOpenChange={(next) => { if (busy !== "add") { setOpen(next); if (!next) reset(); } }}>
-        <DialogContent className={expandable.className(view === "mapa" ? "max-h-[90vh] overflow-y-auto sm:max-w-6xl" : "max-h-[90vh] overflow-y-auto sm:max-w-5xl")}>
+        <DialogContent className={expandable.className(mapOffered ? "max-h-[90vh] overflow-y-auto sm:max-w-6xl" : "max-h-[90vh] overflow-y-auto sm:max-w-5xl")}>
           {expandable.button}
-          {view === "mapa" && googleMaps ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>Mi base de comparables en el mapa</DialogTitle>
-                <DialogDescription>
-                  Pasa el cursor por un pin para ver su ficha; tócalo para agregarlo a este avalúo. Enciende las capas que necesites o busca alrededor de una dirección.
-                </DialogDescription>
-              </DialogHeader>
-              <ComparableBaseMap
-                googleMaps={googleMaps}
-                query=""
-                initialLayers={[type]}
-                valuation={{ id: valuationId, type, readOnly, onAdded: (calculation) => onAdded?.(calculation) }}
-              />
-              <DialogFooter>
-                <Button type="button" variant="ghost" onClick={() => setView("buscar")}>
-                  <ArrowLeft data-icon="inline-start" /> Volver a la búsqueda
-                </Button>
-                <Button type="button" variant="outline" onClick={() => { setOpen(false); reset(); }}>Cerrar</Button>
-              </DialogFooter>
-            </>
-          ) : null}
-          <DialogHeader hidden={view === "mapa"}>
+          <DialogHeader>
             <DialogTitle>{label}</DialogTitle>
             <DialogDescription>
               {description ?? (
@@ -237,7 +229,7 @@ export function SearchComparablesDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <form className="grid gap-3" onSubmit={(event) => void search(event)} noValidate hidden={view === "mapa"}>
+          <form className="grid gap-3" onSubmit={(event) => void search(event)} noValidate>
             <Field>
               <FieldLabel htmlFor="comparable-search-text">Zona, colonia, municipio o calle</FieldLabel>
               <Input
@@ -300,15 +292,42 @@ export function SearchComparablesDialog({
                 <Input id="comparable-search-to" type="date" {...field("consultedTo")} />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto] sm:items-end">
+            {/* The names of /comparables, so both searches read the same (V7.3-11/12). */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Field>
-                <FieldLabel htmlFor="comparable-search-area-min">Superficie mín. (m²)</FieldLabel>
-                <Input id="comparable-search-area-min" inputMode="decimal" placeholder="Opcional" {...field("areaMin")} />
+                <FieldLabel htmlFor="comparable-search-land-min">Sup. de terreno desde (m²)</FieldLabel>
+                <Input id="comparable-search-land-min" inputMode="decimal" autoComplete="off" placeholder="Opcional" {...field("landAreaMin")} />
               </Field>
               <Field>
-                <FieldLabel htmlFor="comparable-search-area-max">Superficie máx. (m²)</FieldLabel>
-                <Input id="comparable-search-area-max" inputMode="decimal" placeholder="Opcional" {...field("areaMax")} />
+                <FieldLabel htmlFor="comparable-search-land-max">Sup. de terreno hasta (m²)</FieldLabel>
+                <Input id="comparable-search-land-max" inputMode="decimal" autoComplete="off" placeholder="Opcional" {...field("landAreaMax")} />
               </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-built-min">Sup. construida o rentable desde (m²)</FieldLabel>
+                <Input id="comparable-search-built-min" inputMode="decimal" autoComplete="off" placeholder="Opcional" {...field("builtAreaMin")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-built-max">Sup. construida o rentable hasta (m²)</FieldLabel>
+                <Input id="comparable-search-built-max" inputMode="decimal" autoComplete="off" placeholder="Opcional" {...field("builtAreaMax")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-bedrooms">Recámaras (al menos)</FieldLabel>
+                <Input id="comparable-search-bedrooms" inputMode="numeric" autoComplete="off" placeholder="Opcional" {...field("bedrooms")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-bathrooms">Baños (al menos; acepta 2.5)</FieldLabel>
+                <Input id="comparable-search-bathrooms" inputMode="decimal" autoComplete="off" placeholder="Opcional" {...field("bathrooms")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-land-use">Uso de suelo</FieldLabel>
+                <Input id="comparable-search-land-use" autoComplete="off" placeholder="Habitacional, H-3…" {...field("landUse")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-construction">Tipo de construcción</FieldLabel>
+                <Input id="comparable-search-construction" autoComplete="off" placeholder="Opcional" {...field("constructionType")} />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(2,minmax(0,1fr))_auto] sm:items-end">
               <Field>
                 <FieldLabel htmlFor="comparable-search-price-min">{labels.price} mín. ($)</FieldLabel>
                 <Input id="comparable-search-price-min" inputMode="decimal" placeholder="Opcional" {...field("priceMin")} />
@@ -322,17 +341,12 @@ export function SearchComparablesDialog({
                 Buscar
               </Button>
             </div>
-            {mapOffered ? (
-              <Button type="button" variant="outline" size="sm" className="justify-self-start" onClick={() => setView("mapa")}>
-                <MapIcon data-icon="inline-start" /> Ver en mapa
-              </Button>
-            ) : null}
             <p id="comparable-search-hint" className={error ? "text-sm text-destructive" : "text-xs text-muted-foreground"} role={error ? "alert" : undefined}>
               {error ?? `Escribe al menos ${SEARCH_TEXT_MIN} letras, o deja el texto vacío y usa los filtros; no importan acentos ni mayúsculas.`}
             </p>
           </form>
 
-          <div className="grid gap-2" aria-live="polite" aria-busy={busy === "search"} hidden={view === "mapa"}>
+          <div className="grid gap-2" aria-live="polite" aria-busy={busy === "search"}>
             {busy === "search" ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Buscando comparables…</p>
             ) : null}
@@ -439,7 +453,25 @@ export function SearchComparablesDialog({
             ) : null}
           </div>
 
-          <DialogFooter hidden={view === "mapa"}>
+          {mapOffered && googleMaps ? (
+            <section className="grid gap-2 border-t pt-3" aria-label="Comparables en el mapa">
+              <div>
+                <h3 className="text-sm font-semibold">En el mapa</h3>
+                <p className="text-xs text-muted-foreground">
+                  {mapFilters
+                    ? "Los comparables de tu base con los filtros de la búsqueda. Pasa el cursor por un pin para ver su ficha; tócalo para agregarlo a este avalúo."
+                    : "Tu base de comparables de este mercado. Al buscar, el mapa toma los mismos filtros que la lista."}
+                </p>
+              </div>
+              <ComparableBaseMap
+                googleMaps={googleMaps}
+                query={searchMapQuery(type, mapFilters)}
+                valuation={{ id: valuationId, type, readOnly, onAdded: (calculation) => onAdded?.(calculation) }}
+              />
+            </section>
+          ) : null}
+
+          <DialogFooter>
             <Button type="button" variant="ghost" disabled={busy === "add"} onClick={() => { setOpen(false); reset(); }}>
               {readOnly ? "Cerrar" : "Cancelar"}
             </Button>

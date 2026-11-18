@@ -43,6 +43,28 @@ export const HAYSTACK = Prisma.sql`unaccent(lower(concat_ws(' ',
 /** The area of the comparable's type: land, built or rentable. */
 export const AREA = Prisma.sql`COALESCE(c."NSuperficieTerrenoCapturada", c."NSuperficieConstruccionCapturada", c."NSuperficieRentableCapturada")`;
 
+/** A number kept in the property's snapshot, or NULL: a text there is not compared as a number. */
+export const jsonNumber = (path: string) =>
+  Prisma.sql`CASE WHEN jsonb_typeof(c."JPropiedadSnapshot"->${path}) = 'number' THEN (c."JPropiedadSnapshot"->>${path})::numeric END`;
+/** The land area: the captured one of a land comparable, else the land of a built one. */
+export const LAND_AREA = Prisma.sql`COALESCE(c."NSuperficieTerrenoCapturada", ${jsonNumber("landArea")})`;
+/** The built or rentable area; NULL for land. */
+export const BUILT_AREA = Prisma.sql`COALESCE(c."NSuperficieConstruccionCapturada", c."NSuperficieRentableCapturada")`;
+
+/** From `min` to `max`, both inclusive; a missing side is open. */
+export const rangeCondition = (expression: Prisma.Sql, min: number | null | undefined, max: number | null | undefined) => [
+  ...(min === null || min === undefined ? [] : [Prisma.sql`${expression} >= ${min}`]),
+  ...(max === null || max === undefined ? [] : [Prisma.sql`${expression} <= ${max}`]),
+];
+
+/** «Uso de suelo»: words of the use or its key. */
+export const landUseCondition = (value: string | undefined) =>
+  wordsIn(Prisma.sql`unaccent(lower(concat_ws(' ', c."JPropiedadSnapshot"->>'landUse', c."JPropiedadSnapshot"->>'landUseKey')))`, value || undefined);
+
+/** «Tipo de construcción»: words of it. */
+export const constructionTypeCondition = (value: string | undefined) =>
+  wordsIn(Prisma.sql`unaccent(lower(COALESCE(c."JPropiedadSnapshot"->>'constructionType', '')))`, value || undefined);
+
 /** The day the offer was consulted: as captured, else the offer's date, else the day it was chosen. */
 export const CONSULTED = Prisma.sql`COALESCE(c."JPublicacionSnapshot"->>'consultedOn', c."JPublicacionSnapshot"->>'offerDate', to_char(c."DFechaSeleccion", 'YYYY-MM-DD'))`;
 
