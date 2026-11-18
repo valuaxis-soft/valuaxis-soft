@@ -273,6 +273,30 @@ export function FormulaEditingProvider({ sections, children }: { sections: AppSe
 
 type Draft = { text: string; initial: string };
 
+/**
+ * What typing `text` leaves in a field that holds `draft` (null: nothing being
+ * written) and keeps the formula `stored` (null: none). A draft back is the
+ * field's to show and apply; null leaves the text to the field's own handling.
+ * A plain number typed over a formula stays a draft: it is the number that
+ * replaces the formula when applied, so a field that shows the draft must
+ * also let it apply it (while `draftText !== null`, not only `writingFormula`).
+ */
+export function typedFormulaDraft(draft: Draft | null, text: string, stored: string | null): Draft | null {
+  if (draft) {
+    // A plain value that was never a formula goes back to the field's own handling.
+    if (!isFormulaText(text) && !isFormulaText(draft.initial)) return null;
+    return { ...draft, text };
+  }
+  // Typing over a formula that is showing its result replaces the formula once applied.
+  if (stored === null && !isFormulaText(text)) return null;
+  return { text, initial: stored ?? "" };
+}
+
+/** What applying `draft` sends: what was written when it changed; a lone "=" is a formula nobody wrote. */
+export function appliedFormulaDraft(draft: Draft | null): string | null {
+  return draft && draft.text !== draft.initial && draft.text.trim() !== "=" ? draft.text : null;
+}
+
 const NO_REFERENCES: FormulaReferenceHighlight[] = [];
 
 /**
@@ -319,9 +343,8 @@ export function useFormulaField({
   }, []);
   const commit = useCallback(() => {
     const apply = latestRef.current.onCommit;
-    const current = takeDraft();
-    // A lone "=" is a formula nobody wrote.
-    if (current && current.text !== current.initial && current.text.trim() !== "=") apply(current.text);
+    const applied = appliedFormulaDraft(takeDraft());
+    if (applied !== null) apply(applied);
   }, [takeDraft]);
   const discard = useCallback(() => {
     takeDraft();
@@ -388,24 +411,17 @@ export function useFormulaField({
     writingFormula,
     /** The references of the formula being written, with their colors, to paint its text. */
     references: writingFormula && draft ? formulaReferenceHighlights(draft.text, editing.index, homeTableId) : NO_REFERENCES,
-    /** Takes what was typed when it is, or was, a formula. False: the field handles it as a plain value. */
+    /**
+     * Takes what was typed when it is, or was, a formula. False: the field handles it as a plain value.
+     * True with a plain number typed over a formula: the field holds it, so Enter, Escape and leaving
+     * the field go through `onKeyDown` and `onBlur` while `draftText` is not null, or the number is lost.
+     */
     change: (text: string) => {
       // Typing ends the reference a click wrote: the next click adds another.
       lastReferenceRef.current = null;
-      if (draft) {
-        // A plain value that was never a formula goes back to the field's own handling.
-        if (!isFormulaText(text) && !isFormulaText(draft.initial)) {
-          setDraft(null);
-          return false;
-        }
-        setDraft({ ...draft, text });
-        return true;
-      }
-      // Typing over a formula that is showing its result replaces the formula once applied.
-      const stored = storedFormulaText();
-      if (stored === null && !isFormulaText(text)) return false;
-      setDraft({ text, initial: stored ?? "" });
-      return true;
+      const next = typedFormulaDraft(draft, text, draft ? null : storedFormulaText());
+      setDraft(next);
+      return next !== null;
     },
     onMouseDown: (event: MouseEvent<HTMLInputElement>) => {
       // A right click opens the field's menu without entering the field: the menu
