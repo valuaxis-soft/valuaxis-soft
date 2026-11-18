@@ -8,8 +8,9 @@
  */
 import type { MarketApproachResult } from "../engine/market";
 import type { AppSection, Block, TableContent } from "../model";
-import type { TableNote, TableSummaryBox, TableSummaryRow } from "../services/table";
+import { ensureTableV2, type GeneratedTableLayout, type TableNote, type TableSummaryBox, type TableSummaryRow } from "../services/table";
 import { factorDecimals } from "./calculation-precision";
+import { parseDecimal } from "./free-formula";
 import {
   EMPTY,
   figure,
@@ -221,8 +222,9 @@ function landUseCell({ landUseKey, landUse }: ComparableDto) {
 }
 
 /** A characteristic as the line prints it: figures with their units, texts as written. */
-function printedCharacteristic(comparable: ComparableDto, key: string): string | null | undefined {
-  if (!isBuiltinCharacteristic(key)) return comparable.extra?.[key];
+function printedCharacteristic(comparable: ComparableDto, field: CharacteristicField): string | null | undefined {
+  const { key } = field;
+  if (!isBuiltinCharacteristic(key)) return addedCharacteristicText(comparable.extra?.[key], field.kind);
   switch (key) {
     case "frontCount": return comparable.frontCount ? String(comparable.frontCount) : null;
     // The zoning key, without the description the land use column already gives.
@@ -236,6 +238,14 @@ function printedCharacteristic(comparable: ComparableDto, key: string): string |
   }
 }
 
+/** An added figure as the line prints it (V7.2-18): "12 m²" for an area, "2" for a number; what does not read as one, as written. */
+export function addedCharacteristicText(text: string | undefined, kind: CharacteristicField["kind"]): string | undefined {
+  if (!text || !kind) return text;
+  const value = parseDecimal(text);
+  if (value === null) return text;
+  return kind === "area" ? squareMetres(value) : figure(value, Number.isInteger(value) ? 0 : 2);
+}
+
 /**
  * One line with what was captured of the comparable, in the order and with
  * the tags of the list of characteristics; or the appraiser's own text.
@@ -243,10 +253,68 @@ function printedCharacteristic(comparable: ComparableDto, key: string): string |
 function characteristics(comparable: ComparableDto, fields: CharacteristicField[]) {
   if (comparable.characteristicsText?.trim()) return comparable.characteristicsText.trim();
   return printedCharacteristicFields(fields)
-    .map((field): [string, string | null | undefined] => [field.label, printedCharacteristic(comparable, field.key)])
+    .map((field): [string, string | null | undefined] => [field.label, printedCharacteristic(comparable, field)])
     .filter(([, value]) => value)
     .map(([tag, value]) => `${tag}: ${value}`)
     .join(" ; ") || EMPTY;
+}
+
+/** What a comparable's row of the market's tables is keyed by: its id, so what the appraiser wrote in it moves with it. */
+export const comparableRowKey = (id: string) => `cmp-${id}`;
+
+/** A row keyed by a comparable's reference, as the tables were written before they followed the comparable's id. */
+const REFERENCE_ROW = /^(r-.+-k-)(\d+)$/;
+
+/** The table's layout with each of its row ids renamed: hidden rows, the appraiser's columns and rows, and the formats and styles of cells. */
+function withRowsRenamed(layout: GeneratedTableLayout, rename: (rowId: string) => string): GeneratedTableLayout {
+  const byKey = <T,>(record: Record<string, T> | undefined) => record && Object.fromEntries(Object.entries(record).map(([key, value]) => [rename(key), value]));
+  // "rowId:columnId" keys of cell formats and styles; headers ("header:…") and the title stay.
+  const byCell = <T,>(record: Record<string, T> | undefined) => record && Object.fromEntries(Object.entries(record).map(([key, value]) => {
+    const at = key.lastIndexOf(":");
+    return [at > 0 ? `${rename(key.slice(0, at))}${key.slice(at)}` : key, value];
+  }));
+  return {
+    ...layout,
+    ...(layout.hiddenRows ? { hiddenRows: layout.hiddenRows.map(rename) } : {}),
+    ...(layout.extraColumns ? {
+      extraColumns: layout.extraColumns.map((column) => ({ ...column, values: byKey(column.values) ?? {}, ...(column.cells ? { cells: byKey(column.cells) } : {}) })),
+    } : {}),
+    ...(layout.extraRows ? { extraRows: layout.extraRows.map((row) => ({ ...row, after: row.after === null ? null : rename(row.after) })) } : {}),
+    ...(layout.cellFormats ? { cellFormats: byCell(layout.cellFormats) } : {}),
+    ...(layout.cellStyles ? { cellStyles: byCell(layout.cellStyles) } : {}),
+  };
+}
+
+/**
+ * The market's pages as they are in the document, with the rows the tables
+ * used to key by the comparable's reference keyed by its id: what the
+ * appraiser wrote in each row (his own columns, hidden rows, formats) stays
+ * with the comparable that is in that row now, and from then on follows it
+ * when the comparables are reordered or one is deleted.
+ */
+export function withComparableRowIds(blocks: Block[], comparables: ReadonlyArray<Pick<ComparableDto, "id" | "reference">>): Block[] {
+  const byReference = new Map(comparables.map((comparable) => [String(comparable.reference), comparable.id]));
+  const rename = (rowId: string) => {
+    const match = REFERENCE_ROW.exec(rowId);
+    const id = match ? byReference.get(match[2]) : undefined;
+    return match && id ? `${match[1]}${comparableRowKey(id).toLowerCase()}` : rowId;
+  };
+  const migrate = (tables: TableContent[]) => tables.map((table) => {
+    const normalized = ensureTableV2(table);
+    const generated = normalized.schema?.generated;
+    if (!generated?.layout || !/-k-\d+[":]/.test(JSON.stringify(generated.layout))) return table;
+    return { ...normalized, schema: { ...normalized.schema!, generated: { ...generated, layout: withRowsRenamed(generated.layout, rename) } } } as unknown as TableContent;
+  });
+  // Unchanged when nothing was keyed by reference: the same blocks, so the document is not touched.
+  return blocks.map((block) => {
+    const tables = migrate(block.tables);
+    const apartados = block.apartados.map((apartado) => {
+      const own = migrate(apartado.tables);
+      return own.every((table, index) => table === apartado.tables[index]) ? apartado : { ...apartado, tables: own };
+    });
+    const same = tables.every((table, index) => table === block.tables[index]) && apartados.every((apartado, index) => apartado === block.apartados[index]);
+    return same ? block : { ...block, tables, apartados };
+  });
 }
 
 /** The block of the market section. None while there is nothing to show. */
@@ -261,8 +329,8 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
   // The fourth column of the offers table: the books give the offer date for land and the conservation for buildings.
   const offersOfLand = isLandComparableType(settings.comparableType);
   const fields = characteristicFieldsOf(settings);
-  // The appraiser's added columns follow each comparable by its reference.
-  const rowKeys = comparables.map(reference);
+  // The appraiser's added columns follow each comparable by its id, also when the comparables are reordered (V7.2-14).
+  const rowKeys = comparables.map((comparable) => comparableRowKey(comparable.id));
 
   // The offer level of the market research: the options of the books (or the appraiser's), with an X on the one observed.
   const offerMark = offerMarkOf(settings);
@@ -561,13 +629,18 @@ export function withGeneratedBlocks(
   section: AppSection,
   type: ComparableType,
   blocks: Block[],
-  options: { placeholderIds?: string[]; position?: "start" | "end"; kind?: "calculo" | "fotos" } = {},
+  options: { placeholderIds?: string[]; position?: "start" | "end"; kind?: "calculo" | "fotos"; comparables?: ReadonlyArray<Pick<ComparableDto, "id" | "reference">> } = {},
 ): AppSection {
   const photos = `${prefixFor(type)}-fotos`;
   const owns = options.kind === "fotos"
     ? (item: Block) => item.id.startsWith(photos)
     : (item: Block) => item.id.startsWith(prefixFor(type)) && !item.id.startsWith(photos);
-  return replaceGeneratedBlocks(section, owns, blocks, { ...options, placeAmong: placeAmongMarkets(type, options.kind ?? "calculo") });
+  const { comparables, ...rest } = options;
+  // Pages written before the rows followed the comparable's id take it now, by the comparable in each row.
+  const renamed = comparables ? section.blocks.map((item) => (owns(item) ? withComparableRowIds([item], comparables)[0] : item)) : section.blocks;
+  const migrated = renamed.some((item, index) => item !== section.blocks[index]) ? { ...section, blocks: renamed } : section;
+  const next = replaceGeneratedBlocks(migrated, owns, blocks, { ...rest, placeAmong: placeAmongMarkets(type, options.kind ?? "calculo") });
+  return next;
 }
 
 /** Compares what the dictamen shows, ignoring labels the editor renumbers and photo URLs that expire. */

@@ -328,6 +328,9 @@ export const api = {
       request<{ deleted: boolean; comparableIds: string[] }>(`/avaluos/${id}/mercado?tipo=${type}`, { method: "DELETE" }),
     restoreMarket: (id: ApiId, type: ComparableType, comparableIds: string[]) =>
       request<MarketCalculationDto>(`/avaluos/${id}/mercado/restaurar`, { method: "POST", body: JSON.stringify({ comparableType: type, comparableIds }) }),
+    /** The comparables in a new order: references 1..n follow it (V7.2-14). */
+    reorderComparables: (id: ApiId, type: ComparableType, comparableIds: string[]) =>
+      request<MarketCalculationDto>(`/avaluos/${id}/mercado/comparables/orden`, { method: "PUT", body: JSON.stringify({ comparableType: type, comparableIds }) }),
     /** `mergeInto`: "es el mismo" that comparable of the firm's base; the new one keeps its number. */
     createComparable: (id: ApiId, type: ComparableType, comparable: ComparableFormValues, mergeInto?: string) =>
       request<MarketCalculationDto>(

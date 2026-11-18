@@ -1292,11 +1292,22 @@ export async function updateComparable(publicId: string, user: AuthUser, compara
   });
 }
 
+const COMPARABLE_REMOVED_REASON = "Comparable quitado del mercado; se puede deshacer.";
+
+/**
+ * "Eliminar comparable" of a market: it is set aside (`BIncluido` false, with
+ * its factors, photos and what the appraiser wrote in its rows of the
+ * dictamen), so «Deshacer» brings it back with `restoreMarket`, as every
+ * deletion; the rest are numbered 1..n again.
+ */
 export async function deleteComparable(publicId: string, user: AuthUser, comparableId: string) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
     const current = await findComparable(tx, versionId, comparableId);
-    await tx.comparableAvaluo.delete({ where: { IdComparableAvaluo: current.IdComparableAvaluo } });
+    await tx.comparableAvaluo.update({
+      where: { IdComparableAvaluo: current.IdComparableAvaluo },
+      data: { BIncluido: false, DFechaExclusion: new Date(), SMotivoExclusion: COMPARABLE_REMOVED_REASON },
+    });
     // Keep references 1..n in capture order, as the dictamen numbers them.
     const remaining = await tx.comparableAvaluo.findMany({
       where: { IdVersionAvaluo: versionId, IdTipoComparable: current.IdTipoComparable, BIncluido: true },
@@ -1307,6 +1318,33 @@ export async function deleteComparable(publicId: string, user: AuthUser, compara
       await tx.comparableAvaluo.update({ where: { IdComparableAvaluo: row.IdComparableAvaluo }, data: { IReferencia: index + 1, IOrden: index } });
     }
     await recompute(tx, versionId, current.tipoComparable.SClave as ComparableType);
+  });
+}
+
+/**
+ * The comparables of a market in the order the appraiser gave them (V7.2-14:
+ * dragged, or sorted by their unit value): references 1..n and the capture
+ * order follow it, and the dictamen numbers them so. The list must be the
+ * market's comparables, each once: a list of before (another tab added or
+ * removed one) is refused and nothing moves.
+ */
+export async function reorderComparables(publicId: string, user: AuthUser, type: ComparableType, comparableIds: string[]) {
+  await prisma.$transaction(async (tx) => {
+    const { versionId } = await writableVersion(tx, publicId, user);
+    const typeId = await comparableTypeId(tx, type);
+    const rows = await tx.comparableAvaluo.findMany({
+      where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, BIncluido: true },
+      select: { IdComparableAvaluo: true, UIdentificadorPublico: true },
+    });
+    const position = new Map(comparableIds.map((id, index) => [id, index]));
+    if (position.size !== comparableIds.length || rows.length !== comparableIds.length || rows.some((row) => !position.has(row.UIdentificadorPublico))) {
+      throw new ValuationWorkflowError("La lista de comparables cambió mientras la ordenabas. Vuelve a abrir el mercado e inténtalo de nuevo.", 409);
+    }
+    const ordered = [...rows].sort((a, b) => (position.get(a.UIdentificadorPublico) ?? 0) - (position.get(b.UIdentificadorPublico) ?? 0));
+    for (const [index, row] of ordered.entries()) {
+      await tx.comparableAvaluo.update({ where: { IdComparableAvaluo: row.IdComparableAvaluo }, data: { IReferencia: index + 1, IOrden: index } });
+    }
+    await recompute(tx, versionId, type);
   });
 }
 

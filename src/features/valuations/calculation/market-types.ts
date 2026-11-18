@@ -163,8 +163,14 @@ export const BUILTIN_CHARACTERISTICS = [
   "services", "price", "notes",
 ] as const;
 export type BuiltinCharacteristic = (typeof BUILTIN_CHARACTERISTICS)[number];
-/** A field of the characteristics line; hidden, it keeps what was captured but prints nothing. */
-export type CharacteristicField = { key: string; label: string; hidden?: boolean };
+/**
+ * A field of the characteristics line; hidden, it keeps what was captured but
+ * prints nothing. An added field may be a figure (V7.2-18): a number
+ * ("Cajones: 2") or an area with its own name ("Sup. común: 12 m²").
+ */
+export type CharacteristicField = { key: string; label: string; hidden?: boolean; kind?: CharacteristicKind };
+export const CHARACTERISTIC_KINDS = ["number", "area"] as const;
+export type CharacteristicKind = (typeof CHARACTERISTIC_KINDS)[number];
 
 /** As many characteristics as a market's list takes: the thirteen of the format and the appraiser's own. */
 export const MAX_CHARACTERISTIC_FIELDS = 30;
@@ -192,6 +198,10 @@ export const isBuiltinCharacteristic = (key: string): key is BuiltinCharacterist
   (BUILTIN_CHARACTERISTICS as readonly string[]).includes(key);
 /** Numbers of the capture form among the characteristics. */
 export const NUMERIC_CHARACTERISTICS: ReadonlySet<string> = new Set(["frontCount", "frontage", "depth", "area", "price"]);
+
+/** A field captured as a figure: one of the form's numbers, or an added number or area. */
+export const isNumericCharacteristic = (field: Pick<CharacteristicField, "key" | "kind">) =>
+  NUMERIC_CHARACTERISTICS.has(field.key) || field.kind !== undefined;
 
 /** Keys of the characteristics the appraiser adds: "custom:" and a short id. */
 export const CUSTOM_CHARACTERISTIC_KEY = /^custom:[a-z0-9-]{1,40}$/;
