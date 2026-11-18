@@ -32,6 +32,8 @@ pnpm test:e2e
 
 Crean sus propios despachos y sesiones en la base local. CI corre este paso después de compilar.
 
+`maps-style-nonce.e2e.ts` abre además un navegador (con `E2E_BROWSER` o `CHROMIUM_PATH` apuntando a Chrome o Chromium, y el servidor con `GOOGLE_MAPS_API_KEY`; sin ellos se omite): va de Comparables «Lista» a «Mapa» sin recargar y comprueba que ningún estilo de Google quede bloqueado por la CSP (V7.3-08). Por ejemplo: `E2E_BROWSER="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" pnpm test:e2e`.
+
 ## Avalúo de demostración
 
 `scripts/demo/load-demo-valuation.ts` carga un avalúo completo en la base local, a través de la API igual que el editor: crea organización, administrador con sesión y avalúo, sube las imágenes y guarda el documento. Sirve para revisar el dictamen con datos reales:

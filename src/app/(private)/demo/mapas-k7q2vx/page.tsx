@@ -24,10 +24,7 @@ export default async function DemoMapsPage() {
   const googleMapsKey = env.GOOGLE_MAPS_API_KEY?.trim() || null;
   const nonce = (await headers()).get(NONCE_HEADER) ?? undefined;
   return (
-    <>
-      {/* Google Maps copies the nonce of the first <style nonce> it finds onto the styles it injects; without one, the CSP blocks them. */}
-      {googleMapsKey && <style nonce={nonce}>{".demo-maps-style-nonce{}"}</style>}
-      <DemoMaps googleMapsKey={googleMapsKey} nonce={nonce} />
-    </>
+    // The loader gives Google the document's nonce (google-maps-loader.ts); this one is its fallback.
+    <DemoMaps googleMapsKey={googleMapsKey} nonce={nonce} />
   );
 }

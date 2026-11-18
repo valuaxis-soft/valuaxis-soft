@@ -70,8 +70,7 @@ export default async function ComparablesPage({
 
   return (
     <div className="min-h-dvh bg-background">
-      {/* Google Maps copies the nonce of the first <style nonce> it finds onto the styles it injects; without one, the CSP blocks them. */}
-      {googleMapsKey && <style nonce={nonce}>{".maps-style-nonce{}"}</style>}
+      {/* No <style nonce> here: «Lista → Mapa» renders this page without a new document; the maps loader gives Google the document's nonce (V7.3-08). */}
       <DashboardHeader user={user} active="comparables" />
 
       <PageContainer width="wide">
