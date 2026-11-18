@@ -72,6 +72,22 @@ export function typeInto(input: HTMLInputElement | HTMLTextAreaElement, text: st
   flush(() => input.blur());
 }
 
+/** What the menu sends to a capture cell (`CommitCell`) to write in it, without entering it. */
+export const CAPTURE_CELL_WRITE_EVENT = "valuaxis:capture-cell-write";
+
+/**
+ * Writes what the menu pastes, fills or brings back in a cell: a capture cell
+ * takes it as sent (typed in one go, a number over a formula or an emptied
+ * formula was lost, 17 nov 2026); any other field is typed into.
+ */
+export function writeCaptureCell(field: HTMLInputElement | HTMLTextAreaElement, text: string) {
+  if (field.dataset.commitCell !== undefined) field.dispatchEvent(new CustomEvent(CAPTURE_CELL_WRITE_EVENT, { detail: text }));
+  else typeInto(field, text);
+}
+
+/** How long a notice that offers «Deshacer» stays: time to read it and decide. */
+const UNDO_NOTICE_MS = 10_000;
+
 /**
  * The last cell "Copiar" took here: its formula and the value it showed, so
  * "Pegar solo valores" pastes that value when the formula's references cannot
@@ -222,7 +238,7 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
       case "cut":
         if (!input) return;
         await copyCell(copiedOf(hit));
-        typeInto(input, "");
+        writeCaptureCell(input, "");
         return;
       case "paste":
       case "paste-values": {
@@ -233,7 +249,7 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
           return;
         }
         if (action === "paste") {
-          typeInto(input, text);
+          writeCaptureCell(input, text);
           return;
         }
         // The number the formula gives, as Excel's "Pegar valores".
@@ -242,11 +258,11 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
           toast.error("No se pudo calcular el valor de lo copiado", { description: `«${text.trim()}» no da un número; pégalo con «Pegar» para conservar la fórmula.` });
           return;
         }
-        typeInto(input, value);
+        writeCaptureCell(input, value);
         return;
       }
       case "clear":
-        if (input) typeInto(input, "");
+        if (input) writeCaptureCell(input, "");
         return;
       case "edit-formula":
         if (input) {
@@ -269,7 +285,7 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
         const write = () => {
           const previous = selection.typeAll(plan.writes);
           toast.info(captureFillSummary(plan.writes.length, plan.computedSkipped, along, plan.replaced), previous.length
-            ? { description: "Se puede deshacer con «Deshacer».", action: { label: "Deshacer", onClick: () => void selection.typeAll(previous) } }
+            ? { description: "Se puede deshacer con «Deshacer».", duration: UNDO_NOTICE_MS, action: { label: "Deshacer", onClick: () => void selection.typeAll(previous) } }
             : undefined);
         };
         // Writing over what is captured is asked first; the empty cells are filled at once.
@@ -438,7 +454,7 @@ function useCaptureSelection(frameRef: RefObject<HTMLDivElement | null>, readOnl
       const held = field ? capturedText(field) : "";
       if (!field || !takesTyping(field, readOnly) || held === text) continue;
       previous.push({ point, text: held });
-      typeInto(field, text);
+      writeCaptureCell(field, text);
     }
     return previous;
   };
@@ -450,6 +466,7 @@ function useCaptureSelection(frameRef: RefObject<HTMLDivElement | null>, readOnl
     }
     toast.success(previous.length === 1 ? "Se pegó 1 celda" : `Se pegaron ${previous.length} celdas`, {
       description: "Se puede deshacer con «Deshacer».",
+      duration: UNDO_NOTICE_MS,
       action: { label: "Deshacer", onClick: () => void typeAll(previous) },
     });
   };
