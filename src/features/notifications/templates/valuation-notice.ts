@@ -17,7 +17,7 @@ const HEADLINES: Record<ValuationNoticeKind, (input: ValuationNoticeContent) => 
   concluido: (input) => `${input.actorName} concluyó el avalúo ${input.folio}`,
 };
 
-export const buildValuationNoticeSubject = (input: ValuationNoticeContent) => `${HEADLINES[input.kind](input)} · Valuaxis`;
+export const buildValuationNoticeSubject = (input: ValuationNoticeContent) => `${HEADLINES[input.kind](input)} · Valuaxis Soft`;
 
 export function buildValuationNoticeText(input: ValuationNoticeContent) {
   return [

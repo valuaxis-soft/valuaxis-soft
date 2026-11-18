@@ -2,7 +2,7 @@ export function buildPasswordResetEmailText(resetUrl: string) {
   return [
     "Hola,",
     "",
-    "Restablece tu contraseña de Valuaxis abriendo este enlace:",
+    "Restablece tu contraseña de Valuaxis Soft abriendo este enlace:",
     resetUrl,
     "",
     "Si no solicitaste este cambio, puedes ignorar este mensaje.",
@@ -18,7 +18,7 @@ export function buildPasswordResetEmailHtml(input: { name: string; resetUrl: str
     '<html lang="es">',
     "<body>",
     `<p>Hola ${name},</p>`,
-    "<p>Recibimos una solicitud para restablecer tu contraseña de Valuaxis.</p>",
+    "<p>Recibimos una solicitud para restablecer tu contraseña de Valuaxis Soft.</p>",
     `<p><a href="${resetUrl}">Restablecer contraseña</a></p>`,
     `<p>Si el botón no funciona, copia y pega este enlace en tu navegador:<br>${resetUrl}</p>`,
     "<p>Si no solicitaste este cambio, puedes ignorar este mensaje.</p>",

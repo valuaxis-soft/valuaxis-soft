@@ -8,7 +8,7 @@ export default function GlobalError(props: ErrorBoundaryProps) {
   return (
     <html lang="es" className="antialiased">
       <body className="min-h-dvh bg-background font-sans text-foreground">
-        <title>Algo salió mal · Valuaxis</title>
+        <title>Algo salió mal · Valuaxis Soft</title>
         <ErrorFallback {...props} />
       </body>
     </html>

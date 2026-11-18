@@ -25,7 +25,7 @@ const ZIP_LIMITS = { maxEntries: 500, maxEntryBytes: 8 * 1024 * 1024, maxTotalBy
  * ExcelJS parses it.
  */
 export function assertSafeZip(buffer: Buffer, limits = ZIP_LIMITS) {
-  const tooBig = () => new SpreadsheetError("El archivo es demasiado grande por dentro. Usa la plantilla de Valuaxis.");
+  const tooBig = () => new SpreadsheetError("El archivo es demasiado grande por dentro. Usa la plantilla de Valuaxis Soft.");
   const invalid = () => new SpreadsheetError("El archivo no es un Excel válido. Guárdalo como .xlsx e intenta de nuevo.");
   // End of central directory: signature, then up to a 64 KB comment.
   let end = -1;
@@ -144,7 +144,7 @@ export async function readComparableFile(buffer: Buffer, filename: string): Prom
 export async function buildComparableTemplate(type: ComparableType): Promise<Buffer> {
   const columns = importColumns(type);
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Valuaxis";
+  workbook.creator = "Valuaxis Soft";
 
   const sheet = workbook.addWorksheet(SHEET_NAME, { views: [{ state: "frozen", ySplit: 1 }] });
   sheet.columns = columns.map((column) => ({ header: column.header, key: column.key, width: column.width }));
@@ -168,7 +168,7 @@ export async function buildComparableTemplate(type: ComparableType): Promise<Buf
   help.addRow(["Cómo llenarlo", "Un comparable por renglón en la hoja Comparables, desde el renglón 2. No cambies los encabezados."]);
   help.addRow(["Obligatorio", "Solo la ubicación. Sin superficie o precio el comparable se importa, pero no entra al cálculo hasta completarlo."]);
   help.addRow(["Máximo", `${MAX_IMPORT_ROWS} comparables por archivo.`]);
-  help.addRow(["Factores y fotos", "Se capturan en Valuaxis después de importar."]);
+  help.addRow(["Factores y fotos", "Se capturan en Valuaxis Soft después de importar."]);
   help.addRow([]);
   help.addRow(["Columna", "Qué va"]).font = { bold: true };
   for (const column of columns) help.addRow([column.header + (column.required ? " *" : ""), column.hint]);

@@ -10,7 +10,7 @@ import { safeRedirectPath } from "@/security/validation/redirect-safety";
 
 export const metadata: Metadata = {
   title: "Iniciar sesión",
-  description: "Accede a Valuaxis para capturar, organizar y emitir tus avalúos inmobiliarios en línea.",
+  description: "Accede a Valuaxis Soft para capturar, organizar y emitir tus avalúos inmobiliarios en línea.",
   alternates: { canonical: "/iniciar-sesion" },
 };
 

@@ -314,7 +314,7 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
     <main className="mx-auto grid max-w-[1240px] gap-4 px-4 py-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">Valuaxis · demostración</p>
+          <p className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">Valuaxis Soft · demostración</p>
           <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-balance">Mapas en tu avalúo</h1>
           <p className="mt-1 max-w-[70ch] text-sm text-muted-foreground">
             Así funcionarían los mapas en tres etapas. Las calles son reales (Loma Bonita, Zapopan); el inmueble sujeto, los comparables, sus anuncios y

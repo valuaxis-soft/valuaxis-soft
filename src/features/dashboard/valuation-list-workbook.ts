@@ -46,7 +46,7 @@ export async function buildValuationListWorkbook(input: {
   truncatedFrom?: number;
 }) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Valuaxis";
+  workbook.creator = "Valuaxis Soft";
   workbook.created = new Date();
   const sheet = workbook.addWorksheet(input.sheetName.slice(0, 31), { views: [{ state: "frozen", ySplit: 1 }] });
   sheet.columns = input.columns.map((column) => ({

@@ -72,7 +72,7 @@ async function analyze(
 ): Promise<Analysis> {
   const parsed = parseComparableSheet(file.rows, { defaultType: options.defaultType });
   if (parsed.needsType) throw new ImportFileError("Es la plantilla de un solo mercado: elige el tipo de comparable antes de subirla, o usa la plantilla maestra.");
-  if (parsed.missingColumns.length) throw new ImportFileError(`Falta la columna ${parsed.missingColumns.join(", ")}. Usa la plantilla de Valuaxis.`);
+  if (parsed.missingColumns.length) throw new ImportFileError(`Falta la columna ${parsed.missingColumns.join(", ")}. Usa la plantilla de Valuaxis Soft.`);
   const destination = options.destination ?? file.destination ?? "AMBOS";
   const folios = origin.kind === "base" ? await resolveFolios(user.organizationId, parsed.rows.flatMap((row) => (row.valuationFolio ? [row.valuationFolio] : []))) : new Map();
   const canReview = canReviewComparables(user);

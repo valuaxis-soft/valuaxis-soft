@@ -84,7 +84,7 @@ test("Amazon SES sends the dictamen as a raw message in the firm's name", async 
   assert.deepEqual(input.ReplyToAddresses, ["contacto@despacho.mx"]);
   const raw = Buffer.from(input.Content?.Raw?.Data ?? new Uint8Array()).toString("utf8");
   assert.match(raw, /^From: =\?UTF-8\?B\?/m, "the sender name has an accent (vía), so it is encoded");
-  assert.match(Buffer.from(/^From: =\?UTF-8\?B\?([^?]+)\?=/m.exec(raw)![1], "base64").toString("utf8"), /^Valuadores de los Altos vía Valuaxis$/);
+  assert.match(Buffer.from(/^From: =\?UTF-8\?B\?([^?]+)\?=/m.exec(raw)![1], "base64").toString("utf8"), /^Valuadores de los Altos vía Valuaxis Soft$/);
   assert.match(raw, /filename="Dictamen-VDA-0001\.pdf"/);
 });
 
@@ -108,6 +108,6 @@ test("recipients are validated, lowercased and deduplicated", () => {
 
 test("notices say who did what", () => {
   const base = { recipientName: "Mariana", actorName: "Álvaro", folio: "VDA-0007", title: "Casa", organizationName: "Despacho", valuationUrl: "https://x" };
-  assert.equal(buildValuationNoticeSubject({ ...base, kind: "asignado" }), "Álvaro te asignó el avalúo VDA-0007 · Valuaxis");
-  assert.equal(buildValuationNoticeSubject({ ...base, kind: "concluido" }), "Álvaro concluyó el avalúo VDA-0007 · Valuaxis");
+  assert.equal(buildValuationNoticeSubject({ ...base, kind: "asignado" }), "Álvaro te asignó el avalúo VDA-0007 · Valuaxis Soft");
+  assert.equal(buildValuationNoticeSubject({ ...base, kind: "concluido" }), "Álvaro concluyó el avalúo VDA-0007 · Valuaxis Soft");
 });

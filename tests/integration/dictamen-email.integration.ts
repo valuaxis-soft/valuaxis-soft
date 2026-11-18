@@ -150,7 +150,7 @@ test("the dictamen leaves in the firm's name with the PDF attached, and the PDF 
   assert.equal(exported.archivo?.tipoArchivo.SClave, "PDF_BORRADOR", "an open valuation sends a draft");
   assert.equal(exported.archivo?.BPrivado, true);
 
-  // Through SES, the sender reads "<firm> vía Valuaxis" and the PDF is attached.
+  // Through SES, the sender reads "<firm> vía Valuaxis Soft" and the PDF is attached.
   const commands: SendEmailCommand[] = [];
   const ses = new AmazonSesEmailService(
     { async send(command) { commands.push(command); return {}; } },
@@ -160,7 +160,7 @@ test("the dictamen leaves in the firm's name with the PDF attached, and the PDF 
   const raw = Buffer.from(commands[0].input.Content?.Raw?.Data ?? new Uint8Array()).toString("utf8");
   const from = /^From: =\?UTF-8\?B\?([^?]+)\?= <([^>]+)>/m.exec(raw);
   assert.ok(from, "an encoded From header");
-  assert.equal(Buffer.from(from[1], "base64").toString("utf8"), `${fixture.firmName} vía Valuaxis`);
+  assert.equal(Buffer.from(from[1], "base64").toString("utf8"), `${fixture.firmName} vía Valuaxis Soft`);
   assert.equal(from[2], "no-reply@example.test");
   assert.deepEqual(commands[0].input.ReplyToAddresses, ["contacto@despacho.mx"]);
   assert.match(raw, new RegExp(`filename="Dictamen-${folio}\\.pdf"`));
