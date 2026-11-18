@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowDown, ArrowUp, Calculator, ChevronRight, FileDown, Loader2, Pencil, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowDownWideNarrow, ArrowUp, ArrowUpNarrowWide, Calculator, ChevronRight, EyeOff, FileDown, Loader2, MapPin, Pencil, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -68,7 +68,12 @@ import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { CalculationPrecisionControl } from "./calculation-precision-control";
 import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
 import { ImportComparablesDialog } from "./import-comparables-dialog";
-import { MarketCharacteristicsTable, characteristicNumberText } from "./market-characteristics-table";
+import { MarketCharacteristicsTable, characteristicNumberText, newFieldKey, type FieldsUpdate, type SubjectUpdate } from "./market-characteristics-table";
+import { MARKET_ACCENT } from "./market-accent";
+import { MarketEditSession, rebaseDraft } from "./market-edit-session";
+import { SortableRows, useSortableRow } from "./sortable-rows";
+import { sharedCharacteristics } from "@/features/valuations/calculation/market-characteristic-sharing";
+import type { SubjectFacts } from "@/features/valuations/calculation/market-subject-facts";
 import { MarketFactorSlots } from "./market-factor-slots";
 import { MarketHomologationTable } from "./market-homologation-table";
 import { MarketOfferLevel } from "./market-offer-level";
@@ -76,7 +81,6 @@ import { PasteListingDialog } from "./paste-listing-dialog";
 import { SearchComparablesDialog } from "./search-comparables-dialog";
 import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { useDraftHistory } from "./use-draft-history";
-import { useSerializedSave } from "./use-serialized-save";
 import { useNumberPresentation } from "@/features/valuations/components/number-presentation-context";
 import { useConfirmDelete } from "@/features/valuations/components/editor/delete-confirm";
 
@@ -155,12 +159,24 @@ export function MarketCalculationPanel(props: {
   /** The browser key of Google Maps, for "Ver en mapa" of the search; no key, no map. */
   googleMaps?: GoogleMapsPageConfig;
   onCalculation: (calculation: MarketCalculationDto, result: MarketApproachResult | null) => void;
+  /** The market shown changed: the editor shows only its pages (V7.2-01). */
+  onActiveChange?: (type: ComparableType) => void;
+  /** Titles of each market's pages hidden in the editor: they leave the dictamen (V7.4-07). */
+  hiddenBlocks?: Partial<Record<ComparableType, string[]>>;
+  /** Shows a market's hidden pages again. */
+  onShowBlocks?: (type: ComparableType) => void;
+  /** The subject's data already captured in the document, for the subject's column of the characteristics (V7.1-13). */
+  subjectFacts?: SubjectFacts;
 }) {
   const { valuationId } = props;
   const types = props.types ?? SALE_COMPARABLE_TYPES;
   const [type, setType] = useState<ComparableType>(types[0]);
   const [shown, setShown] = useState<ReadonlySet<ComparableType>>(() => new Set([types[0]]));
   const typesKey = types.join(",");
+  const reportActive = useEffectEvent((item: ComparableType) => props.onActiveChange?.(item));
+  useEffect(() => {
+    reportActive(type);
+  }, [type]);
 
   // A market with comparables or stored settings has its tab from the start.
   useEffect(() => {
@@ -223,6 +239,7 @@ export function MarketCalculationPanel(props: {
     });
   };
 
+  const hiddenHere = props.hiddenBlocks?.[type] ?? [];
   return (
     // The market shown: the preview follows it to its pages (V6.2-10).
     <div className="grid gap-2" data-active-market={type}>
@@ -236,12 +253,16 @@ export function MarketCalculationPanel(props: {
                 role="tab"
                 aria-selected={item === type}
                 className={cn(
-                  "rounded-md px-3 py-1 text-sm font-medium",
-                  item === type ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  "inline-flex items-center gap-1.5 rounded-md border-b-2 px-3 py-1 text-sm font-medium",
+                  item === type ? cn("bg-background shadow-sm", MARKET_ACCENT[item].border) : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
                 onClick={() => setType(item)}
               >
+                <span className={cn("size-2 shrink-0 rounded-full", MARKET_ACCENT[item].dot)} aria-hidden />
                 {COMPARABLE_TYPE_LABELS[item]}
+                {props.hiddenBlocks?.[item]?.length ? (
+                  <EyeOff className="size-3.5 text-amber-700 dark:text-amber-400" aria-label="Tiene bloques ocultos en el dictamen" />
+                ) : null}
               </button>
             ))}
           </div>
@@ -262,6 +283,29 @@ export function MarketCalculationPanel(props: {
           <span className="text-xs text-muted-foreground">
             Cada mercado lleva sus comparables, su homologación y su valor, y escribe sus propias páginas en el dictamen.
           </span>
+        </div>
+      ) : null}
+      {/* Where the appraiser is, always in sight while scrolling the panel and its pages (V7.2-02). */}
+      <p
+        className={cn("sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-md border-l-4 bg-background/95 px-3 py-1.5 text-sm shadow-sm backdrop-blur", MARKET_ACCENT[type].border)}
+        data-market-here={type}
+      >
+        <MapPin className="size-4 shrink-0" aria-hidden />
+        <span>Estás en: <strong>{COMPARABLE_TYPE_LABELS[type]}</strong></span>
+        {types.length > 1 ? (
+          <span className="text-xs text-muted-foreground">Abajo ves solo las páginas de este mercado; el dictamen imprime todos los mercados agregados al informe.</span>
+        ) : null}
+      </p>
+      {hiddenHere.length ? (
+        <div role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200" data-market-hidden-blocks="">
+          <EyeOff className="size-3.5 shrink-0" aria-hidden />
+          <span className="flex-1">
+            {hiddenHere.length === 1 ? "Este mercado tiene un bloque oculto" : `Este mercado tiene ${hiddenHere.length} bloques ocultos`} ({hiddenHere.map((title) => `«${title}»`).join(", ")}):
+            no sale en el dictamen aunque el mercado esté agregado al informe.
+          </span>
+          {props.onShowBlocks && !props.readOnly ? (
+            <Button type="button" size="sm" variant="outline" onClick={() => props.onShowBlocks?.(type)}>Mostrar en el dictamen</Button>
+          ) : null}
         </div>
       ) : null}
       {/* Its fields belong to this market: what is circular for them depends on it, not on the section. */}
@@ -320,6 +364,7 @@ function MarketTypePanel(props: {
   onCalculation: (calculation: MarketCalculationDto, result: MarketApproachResult | null) => void;
   /** Takes this market out (it can be undone); absent while it is the only market, or for a reader. */
   onRemoveMarket?: (type: ComparableType, snapshot: MarketCalculationDto) => void;
+  subjectFacts?: SubjectFacts;
 }) {
   const { valuationId, type } = props;
   const labels = MARKET_LABELS[type];
@@ -327,7 +372,10 @@ function MarketTypePanel(props: {
   const rent = isRentComparableType(type);
   const perUnit = rent ? "/m²/mes" : "/m²";
   const priceLabel = rent ? "Renta mensual ($)" : "Precio de oferta ($)";
+  // What the panel shows: what the server stored, with the changes still on their way on top (MarketEditSession).
   const [calculation, setCalculation] = useState<MarketCalculationDto | null>(null);
+  // What the server stored: the dictamen follows it.
+  const [stored, setStored] = useState<MarketCalculationDto | null>(null);
   const [draft, setDraft] = useState<SettingsDraft | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -338,9 +386,10 @@ function MarketTypePanel(props: {
   const [catalog, setCatalog] = useState<FactorCatalog>(EMPTY_FACTOR_CATALOG);
   const [customFactors, setCustomFactors] = useState<CustomFactor[]>([]);
   const [reviewThresholds, setReviewThresholds] = useState<{ builtAreaTolerance?: number; offerMaxAgeMonths?: number }>({});
-  // What the server last answered, for the changes of a comparable made one after another.
-  const latest = useRef<MarketCalculationDto | null>(null);
-  const comparableQueue = useRef<Promise<unknown>>(Promise.resolve());
+  // Every change of the panel goes through the session: shown at once, saved in order (V7.2-11, -13, -15).
+  const session = useRef<MarketEditSession | null>(null);
+  // The settings the fields being typed were read from.
+  const shownSettings = useRef<MarketSettingsDto | null>(null);
   // Undo and redo of the panel: settings (chips and their order included) and comparables, as captured, go back together.
   const restoreRef = useRef<(snapshot: MarketSnapshot) => void>(() => undefined);
   const history = useDraftHistory<MarketSnapshot>({
@@ -383,26 +432,47 @@ function MarketTypePanel(props: {
   }, [documentArea, type, valuationId]);
   const suggestedArea = documentArea ?? (isLandComparableType(type) ? null : typesBuiltArea);
 
-  const applyServerState = (next: MarketCalculationDto) => {
-    latest.current = next;
-    setCalculation(next);
-    setDraft(draftFrom(next.settings));
-  };
-
   // Only an editor writes the result into the dictamen; a reader would leave unsaved changes.
   const reportCalculation = useEffectEvent((next: MarketCalculationDto) => {
     if (!props.readOnly && !next.locked) props.onCalculation(next, compute(next).result);
   });
 
+  const failed = (error: unknown) => toast.error(error instanceof SessionExpiredError
+    ? "Tu sesión expiró. Vuelve a iniciar sesión."
+    : error instanceof Error ? error.message : "No se pudo guardar.");
+
+  /** Shows what the session holds; the fields not being typed follow the settings when they change (an undo, the server). */
+  const show = (current: MarketEditSession) => {
+    const view = current.view;
+    const before = shownSettings.current;
+    if (before && view.settings !== before) {
+      const from = draftFrom(before);
+      const to = draftFrom(view.settings);
+      setDraft((typed) => (typed ? rebaseDraft(typed, from, to) : to));
+    }
+    shownSettings.current = view.settings;
+    setCalculation(view);
+    setStored(current.server);
+    setSavingSettings(current.busy);
+  };
+
   useEffect(() => {
     let active = true;
+    let unsubscribe: () => void = () => undefined;
     api.market.get(valuationId, type)
       .then((next) => {
         if (!active) return;
+        const created = new MarketEditSession(next, {
+          saveSettings: (settings) => api.market.saveSettings(valuationId, settings),
+          saveComparable: (comparable) => api.market.updateComparable(valuationId, type, comparable.id, comparableFormValues(comparable)),
+        }, failed);
+        session.current = created;
+        unsubscribe = created.subscribe(() => show(created));
         setLoadError(null);
-        latest.current = next;
-        setCalculation(next);
+        shownSettings.current = next.settings;
         setDraft(draftFrom(next.settings));
+        setCalculation(next);
+        setStored(next);
         resetHistory();
       })
       .catch((error: unknown) => {
@@ -410,28 +480,23 @@ function MarketTypePanel(props: {
       });
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [type, valuationId]);
 
   // The dictamen follows what the server stored, never an unsaved draft.
   useEffect(() => {
-    if (calculation) reportCalculation(calculation);
-  }, [calculation]);
+    if (stored) reportCalculation(stored);
+  }, [stored]);
 
-  const failed = (error: unknown) => toast.error(error instanceof SessionExpiredError
-    ? "Tu sesión expiró. Vuelve a iniciar sesión."
-    : error instanceof Error ? error.message : "No se pudo guardar.");
-
+  /** An action that answers the market (add, delete, import…), in turn with the edits on their way. */
   const run = async (action: () => Promise<MarketCalculationDto>, success?: string) => {
-    try {
-      applyServerState(await action());
-      if (success) toast.success(success);
-      return true;
-    } catch (error) {
-      failed(error);
-      return false;
-    }
+    if (!session.current) return false;
+    const ok = await session.current.perform(action);
+    if (ok && success) toast.success(success);
+    return ok;
   };
+  const applyServerState = (next: MarketCalculationDto) => void run(async () => next);
 
   // Prefilled with the subject's real area (video 6.3): a value, not a hint, so $/m², the surface factor and FRe are computed; it stays editable.
   const prefilled = Boolean(calculation && draft && !readOnly && !draft.subjectArea && calculation.settings.subjectArea === null && suggestedArea);
@@ -440,60 +505,96 @@ function MarketTypePanel(props: {
   // Recomputed on every render: a handful of comparables, and it follows every keystroke.
   const live = calculation && liveSettings ? compute({ settings: liveSettings, comparables: calculation.comparables, precision: calculation.precision }) : null;
 
-  // The settings last asked to be saved, until the server has them: a change made right after another builds on it.
-  const requested = useRef<MarketSettingsDto | null>(null);
-  const enqueueSettings = useSerializedSave(async (settings: MarketSettingsDto) => {
-    setSavingSettings(true);
-    await run(() => api.market.saveSettings(valuationId, settings));
-    if (requested.current === settings) requested.current = null;
-    setSavingSettings(false);
-  });
-  const saveSettings = async (settings = liveSettings, options: { record?: boolean } = {}) => {
-    if (!calculation || !settings || readOnly) return;
-    if (JSON.stringify(settings) === JSON.stringify(calculation.settings)) return;
-    if (options.record !== false) history.record({ settings: calculation.settings, comparables: calculation.comparables }, null);
-    requested.current = settings;
-    await enqueueSettings(settings);
+  const snapshotOf = (view: MarketCalculationDto): MarketSnapshot => ({ settings: view.settings, comparables: view.comparables });
+  /**
+   * Saves the settings, whole: shown at once and sent after what is on its
+   * way. Without settings, those of the fields as typed over what the panel
+   * shows now (not over an earlier render).
+   */
+  const saveSettings = (settings?: MarketSettingsDto | null, options: { record?: boolean } = {}) => {
+    const current = session.current;
+    if (!current || readOnly || !draft) return;
+    const next = settings ?? settingsFrom(current.view.settings, effectiveDraft ?? draft);
+    if (JSON.stringify(next) === JSON.stringify(current.view.settings)) return;
+    if (options.record !== false) history.record(snapshotOf(current.view), null);
+    void current.setSettings(next);
+  };
+  /** One change of the settings, over the settings as the panel shows them now (with the fields as typed). */
+  const patchSettings = (patch: Partial<MarketSettingsDto> | ((settings: MarketSettingsDto) => Partial<MarketSettingsDto>)) => {
+    const current = session.current;
+    if (!current || !draft) return;
+    const base = settingsFrom(current.view.settings, effectiveDraft ?? draft);
+    saveSettings({ ...base, ...(typeof patch === "function" ? patch(base) : patch) });
   };
   // With comparables captured, the prefilled area is saved at once, so the dictamen is calculated too.
   const persistPrefilled = useEffectEvent(() => {
-    if (prefilled && calculation?.comparables.length && liveSettings) void saveSettings(liveSettings, { record: false });
+    if (prefilled && calculation?.comparables.length && liveSettings) saveSettings(liveSettings, { record: false });
   });
   useEffect(() => {
     persistPrefilled();
   }, [calculation?.comparables.length, prefilled]);
   /**
    * Changes one comparable from a cell of a table: shown at once, and sent
-   * after any change still on its way, built on what the server answered last.
+   * after any change still on its way, applied to what the server stores then.
+   * Each change is its own step of the undo.
    */
   const changeComparable = (comparable: ComparableDto, change: (current: ComparableDto) => ComparableDto, options: { record?: boolean } = {}) => {
-    if (readOnly) return;
-    if (options.record !== false && calculation) history.record({ settings: calculation.settings, comparables: calculation.comparables }, `comparable:${comparable.id}`);
-    setCalculation((current) => current
-      ? { ...current, comparables: current.comparables.map((item) => (item.id === comparable.id ? change(item) : item)) }
-      : current);
-    comparableQueue.current = comparableQueue.current.then(async () => {
-      const stored = latest.current?.comparables.find((item) => item.id === comparable.id);
-      if (!stored) return;
-      const ok = await run(() => api.market.updateComparable(valuationId, type, comparable.id, comparableFormValues(change(stored))));
-      // A rejected change goes back to what is stored.
-      if (!ok && latest.current) setCalculation(latest.current);
-    });
+    const current = session.current;
+    if (readOnly || !current) return;
+    if (options.record !== false) history.record(snapshotOf(current.view), null);
+    void current.changeComparable(comparable.id, change);
   };
 
   // What an undo or a redo puts back: the settings as they were, and each comparable whose capture changed.
   useEffect(() => {
     restoreRef.current = (snapshot) => {
-      if (!calculation) return;
-      void saveSettings(snapshot.settings, { record: false });
-      for (const target of changedComparables(calculation.comparables, snapshot.comparables)) {
-        changeComparable(target, () => target, { record: false });
+      const current = session.current;
+      if (!current || readOnly) return;
+      if (JSON.stringify(snapshot.settings) !== JSON.stringify(current.view.settings)) void current.setSettings(snapshot.settings);
+      for (const target of changedComparables(current.view.comparables, snapshot.comparables)) {
+        void current.changeComparable(target.id, () => target);
       }
     };
   });
-  const snapshot = (): MarketSnapshot | null => (calculation ? { settings: calculation.settings, comparables: calculation.comparables } : null);
+  const snapshot = (): MarketSnapshot | null => (session.current ? snapshotOf(session.current.view) : null);
 
-  const submitComparable = (current: ComparableDto | null) => async (values: ComparableFormValues, pending: PendingImages, mergeInto?: string) => {
+  /** The comparables in a new order (dragged or sorted): references 1..n follow it; «Deshacer» puts the order back. */
+  const reorderComparables = async (ids: string[], message: string) => {
+    const current = session.current;
+    if (!current || readOnly) return;
+    const before = current.view.comparables.map((item) => item.id);
+    if (ids.join(",") === before.join(",")) return;
+    const byId = new Map(current.view.comparables.map((item) => [item.id, item]));
+    setCalculation((view) => (view ? { ...view, comparables: ids.flatMap((id, index) => (byId.has(id) ? [{ ...byId.get(id)!, reference: index + 1 }] : [])) } : view));
+    const ok = await run(() => api.market.reorderComparables(valuationId, type, ids));
+    if (ok) {
+      toast.success(message, {
+        description: "El dictamen los numera en este orden. Las columnas propias que agregaste en sus tablas siguen el número de renglón: revísalas.",
+        duration: 12000,
+        action: { label: "Deshacer", onClick: () => void reorderComparables(before, "Orden anterior restaurado.") },
+      });
+    }
+  };
+
+  /**
+   * «Características agregadas» of a card, inside a valuation, become
+   * characteristics of the market (V7.2-10): in every card and in the table 2.1.
+   */
+  const withSharedCharacteristics = (values: ComparableFormValues): ComparableFormValues => {
+    const current = session.current;
+    if (!current || !values.attributes?.length) return values;
+    const shared = sharedCharacteristics(characteristicFieldsOf(current.view.settings), values, newFieldKey);
+    if (shared.added.length) {
+      patchSettings({ characteristicFields: shared.fields });
+      toast.info(`${shared.added.length === 1 ? "Característica agregada" : "Características agregadas"} al mercado: ${shared.added.map((field) => `«${field.label}»`).join(", ")}.`, {
+        description: "Se ven en todas las fichas de este mercado y en la tabla 2.1, y se imprimen en la línea de características.",
+      });
+    }
+    return shared.comparable;
+  };
+
+  const submitComparable = async (current: ComparableDto | null, typed: ComparableFormValues, pending: PendingImages, mergeInto?: string) => {
+    const values = withSharedCharacteristics(typed);
     if (current) return run(() => api.market.updateComparable(valuationId, type, current.id, values), "Comparable guardado");
     const before = new Set(calculation?.comparables.map((item) => item.id) ?? []);
     return run(async () => {
@@ -554,10 +655,42 @@ function MarketTypePanel(props: {
   // Factors rated from the catalog, whose subject rating is chosen once for all comparables.
   const ratedSlots = calculation.settings.factorSlots.filter((slot) =>
     !slot.key && !COMPUTED_FACTORS.has(slot.type) && !DIRECT_FACTORS.has(slot.type) && optionsFor(catalog, slot.type).length > 0);
+  // The subject's column of the characteristics starts from what the valuation has (V7.1-13): its area and, against the subject, its front and depth from here.
+  const subjectDefaults: Record<string, { value: string; source: string }> = { ...props.subjectFacts };
+  if (liveSettings.subjectArea) subjectDefaults.area = { value: String(liveSettings.subjectArea), source: `1. Especificaciones › ${labels.subjectArea}` };
+  if (!againstBase && liveSettings.typicalFrontage) subjectDefaults.frontage = { value: String(liveSettings.typicalFrontage), source: "1. Especificaciones › Frente del sujeto" };
+  if (!againstBase && liveSettings.typicalDepth) subjectDefaults.depth = { value: String(liveSettings.typicalDepth), source: "1. Especificaciones › Fondo del sujeto" };
+  const unitValueOf = (comparable: ComparableDto) => (comparable.area && comparable.price ? comparable.price / comparable.area : null);
+  const sortByUnitValue = (direction: 1 | -1) => {
+    const sorted = [...comparables].sort((a, b) => {
+      const left = unitValueOf(a);
+      const right = unitValueOf(b);
+      // Those without a unit value go last, in their order.
+      if (left === null || right === null) return left === null ? (right === null ? 0 : 1) : -1;
+      return (left - right) * direction;
+    });
+    void reorderComparables(sorted.map((item) => item.id), `Comparables ordenados por $${perUnit} de ${direction === 1 ? "menor a mayor" : "mayor a menor"}.`);
+  };
+  // Characteristics added in the cards before they were shared with the market: the appraiser brings them into the table.
+  const unsharedAttributes = comparables.reduce((sum, comparable) => sum + (comparable.attributes?.length ?? 0), 0);
+  const shareAttributes = () => {
+    const current = session.current;
+    if (!current) return;
+    let list = characteristicFieldsOf(current.view.settings);
+    let count = 0;
+    const changed: ComparableDto[] = [];
+    for (const comparable of current.view.comparables.filter((item) => item.attributes?.length)) {
+      const shared = sharedCharacteristics(list, comparable, () => newFieldKey(++count));
+      list = shared.fields;
+      changed.push(shared.comparable);
+    }
+    patchSettings({ characteristicFields: list });
+    for (const target of changed) changeComparable(target, () => target, { record: false });
+  };
 
   return (
     <section
-      className="grid gap-5 rounded-lg border-2 border-dashed border-primary/30 bg-muted/20 p-3 sm:p-4"
+      className={cn("grid gap-5 rounded-lg border-2 border-dashed bg-muted/20 p-3 sm:p-4", MARKET_ACCENT[type].border)}
       aria-labelledby="market-calculation-title"
       data-comparable-type={type}
       onKeyDown={(event) => {
@@ -595,7 +728,7 @@ function MarketTypePanel(props: {
       ) : null}
 
       <Part number={1} title="Especificaciones" aside={savingSettings ? <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}>
-        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
+        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => saveSettings()}>
           <Field>
             <FieldLabel htmlFor="market-subject-area">{labels.subjectArea}</FieldLabel>
             <FormulaInput
@@ -619,7 +752,7 @@ function MarketTypePanel(props: {
                     type="radio"
                     name={`market-basis-${type}`}
                     checked={basis === value}
-                    onChange={() => void saveSettings({ ...liveSettings, homologationBasis: value })}
+                    onChange={() => patchSettings({ homologationBasis: value })}
                   />
                   {label}
                 </label>
@@ -649,7 +782,7 @@ function MarketTypePanel(props: {
             <SurfacePowerSelect
               id="market-power"
               value={liveSettings.surfacePower}
-              onChange={(surfacePower) => void saveSettings({ ...liveSettings, surfacePower })}
+              onChange={(surfacePower) => patchSettings({ surfacePower })}
             />
           </Field>
           <p className="text-xs text-muted-foreground sm:col-span-4">
@@ -663,15 +796,30 @@ function MarketTypePanel(props: {
           intro={liveSettings.offerIntro ?? null}
           defaultIntro={defaultOfferIntro(type)}
           readOnly={readOnly}
-          onChange={(offer) => void saveSettings({ ...liveSettings, ...offer, offerLevel: null })}
+          onChange={(offer) => patchSettings({ ...offer, offerLevel: null })}
         />
       </Part>
 
-      <Part number={2} title="Comparables">
+      <Part
+        number={2}
+        title="Comparables"
+        aside={!readOnly && comparables.length > 1 ? (
+          <span className="flex flex-wrap items-center gap-1 text-xs font-normal">
+            <Button type="button" size="sm" variant="ghost" title={`Ordenar los comparables por su valor unitario, de menor a mayor`} onClick={() => sortByUnitValue(1)}>
+              <ArrowUpNarrowWide data-icon="inline-start" /> Ordenar por ${perUnit} ↑
+            </Button>
+            <Button type="button" size="sm" variant="ghost" title={`Ordenar los comparables por su valor unitario, de mayor a menor`} onClick={() => sortByUnitValue(-1)}>
+              <ArrowDownWideNarrow data-icon="inline-start" /> Ordenar por ${perUnit} ↓
+            </Button>
+          </span>
+        ) : null}
+      >
+        <SortableRows ids={comparables.map((comparable) => comparable.id)} onMove={(ids) => void reorderComparables(ids, "Orden de los comparables guardado.")}>
         <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly>
           <table className={cn(CALC_TABLE, "w-full min-w-[560px]")}>
             <thead className={CALC_HEAD}>
               <tr>
+                <th className={CALC_HEAD_CELL}><span className="sr-only">Mover</span></th>
                 <th className={CALC_HEAD_CELL}>Ref.</th>
                 <th className={CALC_HEAD_CELL}>ID</th>
                 <th className={CALC_HEAD_CELL}>Ubicación</th>
@@ -695,7 +843,7 @@ function MarketTypePanel(props: {
                 );
                 const status = comparable.review?.status ?? "POR_REVISAR";
                 return (
-                  <tr key={comparable.id} className={CALC_ROW} data-comparable-row={formatComparableId(comparable.folio) ?? comparable.id}>
+                  <SortableComparableRow key={comparable.id} comparable={comparable} readOnly={readOnly}>
                     <td className="px-2 py-1.5">{comparable.reference}</td>
                     <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">
                       {formatComparableId(comparable.folio) ?? "—"}
@@ -739,15 +887,16 @@ function MarketTypePanel(props: {
                         </Button>
                       ) : null}
                     </td>
-                  </tr>
+                  </SortableComparableRow>
                 );
               })}
               {!comparables.length ? (
-                <tr><td colSpan={7} className="px-2 py-6 text-center text-muted-foreground">Sin comparables todavía.</td></tr>
+                <tr><td colSpan={8} className="px-2 py-6 text-center text-muted-foreground">Sin comparables todavía.</td></tr>
               ) : null}
             </tbody>
           </table>
         </CalcTableContextMenu>
+        </SortableRows>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
@@ -790,8 +939,7 @@ function MarketTypePanel(props: {
                     ...state,
                     comparables: state.comparables.map((item) => (item.id === comparableId ? { ...item, review } : item)),
                   });
-                  if (latest.current) latest.current = patch(latest.current);
-                  setCalculation((current) => (current ? patch(current) : current));
+                  session.current?.patchStored(patch);
                 }}
               />
             ) : null}
@@ -806,6 +954,12 @@ function MarketTypePanel(props: {
         {comparables.length ? (
           <h5 className="mt-2 border-t pt-3 text-sm font-semibold" data-characteristics-title="">2.1 Tabla de características de comparables</h5>
         ) : null}
+        {comparables.length && unsharedAttributes && !readOnly ? (
+          <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-unshared-attributes="">
+            Hay {unsharedAttributes} {unsharedAttributes === 1 ? "característica agregada" : "características agregadas"} solo en las fichas.
+            <Button type="button" size="sm" variant="outline" onClick={shareAttributes}>Pasarlas a esta tabla</Button>
+          </p>
+        ) : null}
         {comparables.length ? (
           <MarketCharacteristicsTable
             fields={fields}
@@ -813,8 +967,10 @@ function MarketTypePanel(props: {
             comparables={comparables}
             subject={liveSettings.subjectCharacteristics ?? {}}
             readOnly={readOnly}
-            onFields={(characteristicFields) => void saveSettings({ ...liveSettings, characteristicFields })}
-            onSubject={(subjectCharacteristics) => void saveSettings({ ...liveSettings, subjectCharacteristics })}
+            subjectDefaults={subjectDefaults}
+            formulaScope={type}
+            onFields={(update: FieldsUpdate) => patchSettings((current) => ({ characteristicFields: update(characteristicFieldsOf(current)) }))}
+            onSubject={(update: SubjectUpdate) => patchSettings((current) => ({ subjectCharacteristics: update(current.subjectCharacteristics ?? {}) }))}
             onComparable={changeComparable}
           />
         ) : null}
@@ -822,7 +978,7 @@ function MarketTypePanel(props: {
 
       {/* After the comparables, as the appraiser asked (video of 27 Oct 2026); it prints only when its box is marked. */}
       <Part number={3} title="Monto adicional" collapsible={{ open: liveSettings.additionalAmount > 0 }}>
-        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
+        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => saveSettings()}>
           <Field>
             <FieldLabel htmlFor="market-additional">Monto adicional a considerar ($)</FieldLabel>
             <FormulaInput id="market-additional" grouping value={draft.additionalAmount} placeholder="0" onChange={setDraftField("additionalAmount")} />
@@ -834,7 +990,7 @@ function MarketTypePanel(props: {
                 onCheckedChange={(checked) => {
                   const inCalculation = checked === true;
                   // Out of the calculation it cannot print either.
-                  void saveSettings({ ...liveSettings, additionalAmountInCalculation: inCalculation, ...(inCalculation ? {} : { showAdditionalAmount: false }) });
+                  patchSettings({ additionalAmountInCalculation: inCalculation, ...(inCalculation ? {} : { showAdditionalAmount: false }) });
                 }}
               />
               Cálculo
@@ -843,7 +999,7 @@ function MarketTypePanel(props: {
               <Checkbox
                 checked={printsAdditionalAmount(liveSettings)}
                 disabled={readOnly || liveSettings.additionalAmountInCalculation === false}
-                onCheckedChange={(checked) => void saveSettings({ ...liveSettings, showAdditionalAmount: checked === true })}
+                onCheckedChange={(checked) => patchSettings({ showAdditionalAmount: checked === true })}
               />
               Mostrar en el dictamen
             </label>
@@ -861,7 +1017,7 @@ function MarketTypePanel(props: {
                 checked={homologatesOf(liveSettings)}
                 disabled={readOnly}
                 aria-label="Homologar"
-                onCheckedChange={(checked) => void saveSettings({ ...liveSettings, homologate: checked === true })}
+                onCheckedChange={(checked) => patchSettings({ homologate: checked === true })}
               />
               Homologar
             </label>
@@ -869,7 +1025,7 @@ function MarketTypePanel(props: {
               <Checkbox
                 checked={homologatesOf(liveSettings) && liveSettings.showHomologationTable !== false}
                 disabled={readOnly || !homologatesOf(liveSettings)}
-                onCheckedChange={(checked) => void saveSettings({ ...liveSettings, showHomologationTable: checked === true })}
+                onCheckedChange={(checked) => patchSettings({ showHomologationTable: checked === true })}
               />
               Mostrar en el dictamen
             </label>
@@ -895,7 +1051,7 @@ function MarketTypePanel(props: {
           customFactors={customFactors}
           readOnly={readOnly}
           saving={savingSettings}
-          onChange={(factorSlots) => void saveSettings({ ...liveSettings, factorSlots })}
+          onChange={(factorSlots) => patchSettings({ factorSlots })}
           onCreate={createFactor}
         />
         {ratedSlots.length ? (
@@ -912,9 +1068,7 @@ function MarketTypePanel(props: {
                     className="w-full"
                     disabled={readOnly}
                     value={slot.subjectOption ?? ""}
-                    onChange={(event) => void saveSettings({
-                      ...liveSettings,
-                      factorSlots: liveSettings.factorSlots.map((item) =>
+                    onChange={(event) => patchSettings({ factorSlots: liveSettings.factorSlots.map((item) =>
                         !item.key && item.type === slot.type ? { ...item, subjectOption: event.target.value || null } : item),
                     })}
                   >
@@ -937,14 +1091,12 @@ function MarketTypePanel(props: {
           unitValueLabel={`${labels.unitValue} $${perUnit}`}
           homologatedLabel={`Homologado $${perUnit}`}
           note={{ show: liveSettings.showHomologationNote !== false, text: liveSettings.homologationNote ?? null, defaultText: DEFAULT_HOMOLOGATION_NOTE }}
-          onNote={(note) => void saveSettings({ ...liveSettings, ...note })}
+          onNote={(note) => patchSettings({ ...note })}
           onFactors={changeComparable}
           onInvalid={(message) => toast.error(message)}
           decimals={factorDecimals(calculation.precision)}
           surfaceFormulas={surfaceFactorFormulas({ settings: liveSettings, comparables }, calculation.precision)}
-          onRenameSlot={(slot, label) => void saveSettings({
-            ...liveSettings,
-            factorSlots: liveSettings.factorSlots.map((item) => (factorKey(item) === factorKey(slot) ? { ...item, label } : item)),
+          onRenameSlot={(slot, label) => patchSettings({ factorSlots: liveSettings.factorSlots.map((item) => (factorKey(item) === factorKey(slot) ? { ...item, label } : item)),
           })}
         />
         </>) : null}
@@ -957,7 +1109,7 @@ function MarketTypePanel(props: {
       </Part>
 
       <Part number={5} title="Resultados">
-        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => void saveSettings()}>
+        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => saveSettings()}>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="market-adopted">{labels.adopted}</FieldLabel>
             <FormulaInput
@@ -976,7 +1128,7 @@ function MarketTypePanel(props: {
               id="market-rounding"
               label="Redondeo del valor"
               value={liveSettings.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.market.comparativeValue : liveSettings.rounding}
-              onChange={(rounding) => void saveSettings({ ...liveSettings, rounding })}
+              onChange={(rounding) => patchSettings({ rounding })}
             />
           </Field>
         </fieldset>
@@ -1025,7 +1177,7 @@ function MarketTypePanel(props: {
             <PrintedStatisticsControl
               value={printedStatisticsOf(liveSettings)}
               readOnly={readOnly}
-              onChange={(printedStatistics) => void saveSettings({ ...liveSettings, printedStatistics })}
+              onChange={(printedStatistics) => patchSettings({ printedStatistics })}
             />
           </div>
         ) : live?.reason ? (
@@ -1042,13 +1194,13 @@ function MarketTypePanel(props: {
             <Checkbox
               checked={liveSettings.showFactorJustification !== false}
               disabled={readOnly}
-              onCheckedChange={(checked) => void saveSettings({ ...liveSettings, showFactorJustification: checked === true })}
+              onCheckedChange={(checked) => patchSettings({ showFactorJustification: checked === true })}
             />
             Mostrar en el dictamen
           </label>
         )}
       >
-        <fieldset disabled={readOnly} className="grid gap-3" onBlur={() => void saveSettings()}>
+        <fieldset disabled={readOnly} className="grid gap-3" onBlur={() => saveSettings()}>
           <Field>
             <FieldLabel htmlFor="market-justification">Texto general (opcional)</FieldLabel>
             <Textarea id="market-justification" rows={2} value={draft.justification} onChange={setDraftField("justification")} />
@@ -1077,7 +1229,7 @@ function MarketTypePanel(props: {
           comparableType={type}
           unitLabel={priceLabel}
           readOnly={readOnly}
-          onSubmit={submitComparable(editingComparable)}
+          onSubmit={(values, pending, mergeInto) => submitComparable(editingComparable, values, pending, mergeInto)}
           onUploadPhoto={async (file) => {
             if (editingComparable) await run(() => api.market.uploadPhoto(valuationId, type, editingComparable.id, file), "Fotografía agregada");
           }}
@@ -1097,9 +1249,22 @@ function MarketTypePanel(props: {
           onReuse={(comparableId) => run(() => api.market.reuseComparable(valuationId, type, comparableId), "Comparable existente agregado. Califica sus factores.")}
           defaultValidityMonths={calculation.comparableValidityMonths}
           attributeNames={[...new Set(comparables.flatMap((item) => (item.attributes ?? []).map((attribute) => attribute.name)))]}
+          attributesHint="Lo que agregues aquí se vuelve una característica de este mercado: aparece en todas sus fichas y en la tabla 2.1, y se imprime. Una superficie con su nombre («Sup. común», 12) se imprime en m²."
         />
       ) : null}
     </section>
+  );
+}
+
+/** A row of «2. Comparables» that drags by its handle to change the order (V7.2-14). */
+function SortableComparableRow(props: { comparable: ComparableDto; readOnly: boolean; children: ReactNode }) {
+  const { comparable } = props;
+  const sortable = useSortableRow(comparable.id, { disabled: props.readOnly, label: `Arrastrar el comparable ${comparable.reference}` });
+  return (
+    <tr {...sortable.row} className={cn(CALC_ROW, sortable.className)} data-comparable-row={formatComparableId(comparable.folio) ?? comparable.id}>
+      <td className="w-8 px-0.5 py-1.5">{sortable.handle}</td>
+      {props.children}
+    </tr>
   );
 }
 

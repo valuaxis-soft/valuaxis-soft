@@ -296,6 +296,8 @@ export function ComparableDialog(props: {
   defaultValidityMonths?: number;
   /** Names of the characteristics added to other comparables, offered while typing a new one. */
   attributeNames?: string[];
+  /** What «Características agregadas» do here: in a valuation they become characteristics of its market. */
+  attributesHint?: string;
   /** In the firm's base the comparable is not in a market: its type is chosen in the form. */
   onTypeChange?: (type: ComparableType) => void;
 }) {
@@ -1026,7 +1028,7 @@ export function ComparableDialog(props: {
 
             <SheetFormSection
               title="Características agregadas"
-              hint="Agrega lo que este comparable tiene y la lista no (alberca, vista, amueblado…): nombre y valor. Sirven para capturar y para filtrar en Comparables; el cálculo no las usa."
+              hint={props.attributesHint ?? "Agrega lo que este comparable tiene y la lista no (alberca, vista, amueblado…): nombre y valor. Sirven para capturar y para filtrar en Comparables; el cálculo no las usa."}
             >
               <div className="grid gap-2" data-comparable-attributes>
                 {attributes.map((item, index) => (

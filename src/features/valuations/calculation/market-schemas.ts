@@ -9,6 +9,7 @@ import { MAX_SCALE_LEVELS, REGRESSION_DEPENDENTS } from "./market-regression";
 import { COVER_IMAGE_SCALE } from "../services/cover-image-focus";
 import {
   BUILTIN_CHARACTERISTICS,
+  CHARACTERISTIC_KINDS,
   COMPARABLE_TYPES,
   CUSTOM_CHARACTERISTIC_KEY,
   CUSTOM_FACTOR_KEY,
@@ -201,6 +202,7 @@ export const marketSettingsSchema = z.object({
     key: characteristicKey,
     label: z.string().trim().min(1, "Cada característica necesita un nombre.").max(60),
     hidden: z.boolean().optional(),
+    kind: z.enum(CHARACTERISTIC_KINDS).optional(),
   }))
     .max(MAX_CHARACTERISTIC_FIELDS, `Hasta ${MAX_CHARACTERISTIC_FIELDS} características por mercado.`)
     .refine((fields) => new Set(fields.map((field) => field.key)).size === fields.length, "Cada característica va una sola vez.")
@@ -240,6 +242,12 @@ export const comparableTypeSchema = z.enum(COMPARABLE_TYPES);
 export const restoreMarketSchema = z.object({
   comparableType: z.enum(COMPARABLE_TYPES),
   comparableIds: z.array(z.string().trim().min(1).max(80)).max(500),
+});
+
+/** "Ordenar" of a market's comparables: every one of them, once, in the new order. */
+export const reorderComparablesSchema = z.object({
+  comparableType: z.enum(COMPARABLE_TYPES),
+  comparableIds: z.array(z.string().trim().min(1).max(80)).min(1).max(500),
 });
 
 /** The review of a comparable in a valuation: it changes no calculation. */

@@ -54,7 +54,9 @@ import { MarketCalculationPanel } from "@/features/valuations/components/calcula
 import { StatisticalMethodsPanel } from "@/features/valuations/components/calculation/statistical-methods-panel";
 import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { CroquisGeneratorProvider, CroquisSectionAccess } from "@/features/maps/components/croquis-generator";
-import { COMPARABLE_TYPES, RENT_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
+import { COMPARABLE_TYPES, RENT_COMPARABLE_TYPES, SALE_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
+import { findSubjectFacts } from "@/features/valuations/calculation/market-subject-facts";
+import { hiddenMarketBlocks, withMarketBlocksShown, type ActiveMarket } from "@/features/valuations/components/workspace/model/active-market";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { approachIncluded, excludedReportApproaches, previewSectionForReport, withApproachIncluded, type ReportApproach } from "@/features/valuations/services/report-approaches";
 import type { SectionCaptureHeaders } from "@/features/valuations/services/capture-headers";
@@ -414,6 +416,31 @@ export function ValuationWorkspace({
   const handleExportPdf = () => openSavedDocument(`/avaluos/${valuationId}/dictamen`, "el avalúo");
   const handleCalculationMemory = () => openSavedDocument(`/avaluos/${valuationId}/memoria-calculo`, "la memoria de cálculo");
 
+  // The market open in each market section: its editor shows only that market's pages (V7.2-01, V7.4-06).
+  const [activeMarkets, setActiveMarkets] = useState<Record<string, ActiveMarket>>({});
+  const setActiveMarket = (sectionId: string, patch: Partial<ActiveMarket>, firstType: ActiveMarket["type"]) =>
+    setActiveMarkets((current) => {
+      const before = current[sectionId] ?? { tab: "mercado", type: firstType };
+      const next = { ...before, ...patch };
+      return before.tab === next.tab && before.type === next.type && current[sectionId] ? current : { ...current, [sectionId]: next };
+    });
+  const activeMarketOf = (section: AppSection): ActiveMarket | null => {
+    const key = getCanonicalSectionKey(section.id);
+    if (machinery) return null;
+    // The alternative methods' section: the market of its tab, once one is open.
+    if (key === "METODOS_ALTERNATIVOS") return activeMarkets[section.id] ?? null;
+    if (key !== "MERCADO_VENTA" && key !== "MERCADO_RENTAS") return null;
+    return activeMarkets[section.id] ?? { tab: "mercado", type: key === "MERCADO_VENTA" ? SALE_COMPARABLE_TYPES[0] : RENT_COMPARABLE_TYPES[0] };
+  };
+  // What the subject's column of the market's characteristics starts from (V7.1-13).
+  const subjectFacts = useMemo(() => findSubjectFacts(sections), [sections]);
+  // The market's pages the appraiser hid, shown in its panel; «Mostrar en el dictamen» puts them back (V7.4-07).
+  const marketBlocksOf = (section: AppSection) => ({
+    hiddenBlocks: hiddenMarketBlocks(section),
+    onShowBlocks: (type: ActiveMarket["type"]) => updateSection(section.id, { blocks: withMarketBlocksShown(section, type) }),
+    subjectFacts,
+  });
+
   // «Quitar este enfoque» of the cost and income panels: the same switch as the section's «Agregar al informe valuatorio».
   const approachInReport = (section: AppSection, approach: ReportApproach) => ({
     included: approachIncluded(section, approach),
@@ -447,10 +474,18 @@ export function ValuationWorkspace({
                 suggestedSubjectAreas={calculationSync.suggestedSubjectAreas}
                 googleMaps={googleMaps}
                 onCalculation={calculationSync.onMarketCalculation}
+                onActiveChange={(type) => setActiveMarket(section.id, { type }, SALE_COMPARABLE_TYPES[0])}
+                {...marketBlocksOf(section)}
               />
             ) : !machinery && getCanonicalSectionKey(section.id) === "METODOS_ALTERNATIVOS" ? (
               // Every market's alternative methods in their own section (V7.3-19), one tab per market.
-              <StatisticalMethodsPanel valuationId={valuationId} types={COMPARABLE_TYPES} readOnly={!canEdit} onCalculation={calculationSync.onStatisticalCalculation} />
+              <StatisticalMethodsPanel
+                valuationId={valuationId}
+                types={COMPARABLE_TYPES}
+                readOnly={!canEdit}
+                onCalculation={calculationSync.onStatisticalCalculation}
+                onActiveChange={(type) => setActiveMarket(section.id, { tab: "metodos", type }, type)}
+              />
             ) : getCanonicalSectionKey(section.id) === "COSTOS" ? (
               <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} approach={approachInReport(section, "costos")} {...captureHeadersOf(section)} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CONSTRUCCION" ? (
@@ -469,6 +504,8 @@ export function ValuationWorkspace({
                 suggestedSubjectAreas={calculationSync.suggestedSubjectAreas}
                 googleMaps={googleMaps}
                 onCalculation={calculationSync.onMarketCalculation}
+                onActiveChange={(type) => setActiveMarket(section.id, { type }, RENT_COMPARABLE_TYPES[0])}
+                {...marketBlocksOf(section)}
               />
             ) : getCanonicalSectionKey(section.id) === "INGRESOS" ? (
               <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} approach={approachInReport(section, "ingresos")} {...captureHeadersOf(section)} />
@@ -479,6 +516,7 @@ export function ValuationWorkspace({
             ) : !machinery && getCanonicalSectionKey(section.id) === "MAPA_COMPARABLES" ? (
               <CroquisSectionAccess captures={["comparables"]} sections={sections} />
             ) : undefined)}
+            activeMarket={activeMarketOf(section)}
             allSections={enabledSections}
             readOnly={!canEdit}
             onAddBlock={blocks.addBlock}

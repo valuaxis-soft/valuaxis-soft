@@ -10,6 +10,7 @@ import type { MarketApproachResult } from "../engine/market";
 import type { AppSection, Block, TableContent } from "../model";
 import type { TableNote, TableSummaryBox, TableSummaryRow } from "../services/table";
 import { factorDecimals } from "./calculation-precision";
+import { parseDecimal } from "./free-formula";
 import {
   EMPTY,
   figure,
@@ -221,8 +222,9 @@ function landUseCell({ landUseKey, landUse }: ComparableDto) {
 }
 
 /** A characteristic as the line prints it: figures with their units, texts as written. */
-function printedCharacteristic(comparable: ComparableDto, key: string): string | null | undefined {
-  if (!isBuiltinCharacteristic(key)) return comparable.extra?.[key];
+function printedCharacteristic(comparable: ComparableDto, field: CharacteristicField): string | null | undefined {
+  const { key } = field;
+  if (!isBuiltinCharacteristic(key)) return addedCharacteristicText(comparable.extra?.[key], field.kind);
   switch (key) {
     case "frontCount": return comparable.frontCount ? String(comparable.frontCount) : null;
     // The zoning key, without the description the land use column already gives.
@@ -236,6 +238,14 @@ function printedCharacteristic(comparable: ComparableDto, key: string): string |
   }
 }
 
+/** An added figure as the line prints it (V7.2-18): "12 m²" for an area, "2" for a number; what does not read as one, as written. */
+export function addedCharacteristicText(text: string | undefined, kind: CharacteristicField["kind"]): string | undefined {
+  if (!text || !kind) return text;
+  const value = parseDecimal(text);
+  if (value === null) return text;
+  return kind === "area" ? squareMetres(value) : figure(value, Number.isInteger(value) ? 0 : 2);
+}
+
 /**
  * One line with what was captured of the comparable, in the order and with
  * the tags of the list of characteristics; or the appraiser's own text.
@@ -243,7 +253,7 @@ function printedCharacteristic(comparable: ComparableDto, key: string): string |
 function characteristics(comparable: ComparableDto, fields: CharacteristicField[]) {
   if (comparable.characteristicsText?.trim()) return comparable.characteristicsText.trim();
   return printedCharacteristicFields(fields)
-    .map((field): [string, string | null | undefined] => [field.label, printedCharacteristic(comparable, field.key)])
+    .map((field): [string, string | null | undefined] => [field.label, printedCharacteristic(comparable, field)])
     .filter(([, value]) => value)
     .map(([tag, value]) => `${tag}: ${value}`)
     .join(" ; ") || EMPTY;

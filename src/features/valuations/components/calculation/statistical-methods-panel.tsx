@@ -75,11 +75,17 @@ export function StatisticalMethodsPanel(props: {
   types?: readonly ComparableType[];
   readOnly: boolean;
   onCalculation: (calculation: StatisticalCalculationDto) => void;
+  /** The market of the tab open: the editor below shows only its pages (V7.2-01). */
+  onActiveChange?: (type: ComparableType) => void;
 }) {
   const { valuationId } = props;
   const types = props.types ?? SALE_COMPARABLE_TYPES;
   const typesKey = types.join(",");
   const [type, setType] = useState<ComparableType | null>(null);
+  const reportActive = useEffectEvent((item: ComparableType) => props.onActiveChange?.(item));
+  useEffect(() => {
+    if (type) reportActive(type);
+  }, [type]);
   const [shown, setShown] = useState<ReadonlySet<ComparableType>>(new Set());
 
   // A type with stored methods, or a regression the market kept before, has its tab from the start.

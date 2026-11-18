@@ -1,7 +1,11 @@
 "use client";
 
 import { ConceptCreationControl } from "../editor/concept-creation-control";
+import { toast } from "sonner";
 import { isGeneratedBlock } from "@/features/valuations/calculation/market-document";
+import { COMPARABLE_TYPE_LABELS } from "@/features/valuations/calculation/market-types";
+import { MARKET_ACCENT } from "@/features/valuations/components/calculation/market-accent";
+import { generatedMarketOf, shownForActiveMarket, type ActiveMarket } from "@/features/valuations/components/workspace/model/active-market";
 import { isConclusionCalculatedConcept } from "@/features/valuations/calculation/conclusion-document";
 import {
   ConceptCalculationLinkScope,
@@ -220,6 +224,8 @@ export function ValuationEditorPanel(props: {
   section: AppSection;
   /** Calculation panel of the section (market approach), shown above its blocks. */
   calculationPanel?: ReactNode;
+  /** In a market section, the tab and market open: only its pages show below (V7.2-01); the dictamen prints them all. */
+  activeMarket?: ActiveMarket | null;
   allSections: AppSection[];
   readOnly: boolean;
   /** "Desvincular" / "Volver a vincular" of a concept the conclusion fills. */
@@ -320,7 +326,10 @@ export function ValuationEditorPanel(props: {
       onUpdate={props.onUpdateCaratula}
     />
   ) : null;
-  const sortableBlockIds = editableBlocks.map((block) => block.id);
+  // A market section shows the pages of the market open in its panel; the appraiser's own blocks always show.
+  const shownBlocks = editableBlocks.filter((block) => shownForActiveMarket(block, props.activeMarket));
+  const otherMarketBlocks = editableBlocks.length - shownBlocks.length;
+  const sortableBlockIds = shownBlocks.map((block) => block.id);
   // Content moves between the Blocks of the section, except where something else owns it.
   const moveRules = useMemo(() => contentMoveRulesForSection(section), [section]);
   const transfer = useStructureTransfer();
@@ -562,7 +571,13 @@ export function ValuationEditorPanel(props: {
           >
             <SortableContext items={sortableBlockIds} strategy={verticalListSortingStrategy}>
               <div className="space-y-4">
-                {editableBlocks.map((block, index) => renderBlockEditor(block, index, editableBlocks.length))}
+                {props.activeMarket && otherMarketBlocks ? (
+                  <p className="text-xs text-muted-foreground" data-other-market-blocks={otherMarketBlocks}>
+                    {`Se muestran las páginas de ${COMPARABLE_TYPE_LABELS[props.activeMarket.type].toLowerCase()}; las de los otros mercados están en su pestaña.`}
+                    {" "}El dictamen las imprime todas.
+                  </p>
+                ) : null}
+                {shownBlocks.map((block) => renderBlockEditor(block, editableBlocks.indexOf(block), editableBlocks.length))}
               </div>
             </SortableContext>
           </ContentDndScope>
@@ -1160,7 +1175,18 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
   ].filter(({ table }) => !ensureTableV2(table).schema?.plain);
   const toolbar = blockToolbarState({ kind: "generated", readOnly });
   const locks = blockToolbarLocks(toolbar);
-  const visibility = { visible: block.enabled, onChange: (enabled: boolean) => onUpdateBlock({ enabled }) };
+  const market = generatedMarketOf(block);
+  // Hiding a market's page takes it out of the dictamen though the market is in the report: it says so, with «Deshacer» (V7.4-07).
+  const setVisible = (enabled: boolean) => {
+    onUpdateBlock({ enabled });
+    if (enabled || market?.kind !== "mercado") return;
+    toast.warning(`«${stripLeadingRomanNumeral(block.title)}» no saldrá en el dictamen.`, {
+      description: `El mercado de ${COMPARABLE_TYPE_LABELS[market.type].toLowerCase()} sigue agregado al informe y su valor entra en la conclusión, pero sus páginas no se imprimen mientras el bloque esté oculto.`,
+      duration: 15000,
+      action: { label: "Deshacer", onClick: () => onUpdateBlock({ enabled: true }) },
+    });
+  };
+  const visibility = { visible: block.enabled, onChange: setVisible };
   const pageBreak = {
     before: resolvePageBreak(block) === "new-page",
     onChange: (before: boolean) => onUpdateBlock(pageBreakPatch(before ? "new-page" : "auto")),
@@ -1171,7 +1197,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
       blockId={block.id}
       cardRef={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("rounded-lg border border-dashed bg-muted/20", !block.enabled && "opacity-65")}
+      className={cn("rounded-lg border border-dashed bg-muted/20", market && cn("border-l-4", MARKET_ACCENT[market.type].border), !block.enabled && "opacity-65")}
       badge={block.enabled ? (block.sectionLabel ? `${block.sectionLabel.replace(/\.+$/, "")}.` : "Fijo") : "Oculto"}
       dragHandle={
         <Button type="button" size="icon-sm" variant="ghost" aria-label={`Mover ${block.title}`} title="Arrastrar para reordenar" disabled={readOnly} {...attributes} {...listeners}>
@@ -1216,7 +1242,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
           onMoveDown: () => onMoveBlock(section.id, block.id, 1),
         },
         onConceptPresentationChange: (next) => onUpdateBlock({ conceptPresentation: next }),
-        visibility: { visible: block.enabled, onChange: (enabled) => onUpdateBlock({ enabled }) },
+        visibility: { visible: block.enabled, onChange: setVisible },
         pageBreak: { value: resolvePageBreak(block), onChange: (mode) => onUpdateBlock(pageBreakPatch(mode)) },
         // Its wide tables on pages lying on their side, as any block; kept when the calculation writes it again.
         pageOrientation: {
@@ -1236,6 +1262,13 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
         onAddTable={() => undefined}
         subBlockLabel={ADD_SUBBLOCK_LABEL}
       />
+      {market ? (
+        <p className={cn("flex w-fit items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium", MARKET_ACCENT[market.type].soft)} data-block-market={market.type}>
+          <span className={cn("size-2 rounded-full", MARKET_ACCENT[market.type].dot)} aria-hidden />
+          {market.kind === "estadistico" ? "Métodos alternativos · " : ""}{COMPARABLE_TYPE_LABELS[market.type]}
+          {!block.enabled ? " · oculto: no sale en el dictamen" : ""}
+        </p>
+      ) : null}
       <p className="text-xs text-muted-foreground" data-generated-block-notice>
         Las cifras de este bloque las escribe el cálculo y se cambian en su panel{block.images.length ? ` · ${block.images.length} fotos` : ""}. Sus tablas se editan como cualquier tabla: encabezados, columnas y filas propias, y formato; todo se conserva al recalcular.
       </p>
