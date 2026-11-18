@@ -43,6 +43,16 @@ export function formatDistance(meters: number) {
   return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toLocaleString("es-MX", { maximumFractionDigits: 1 })} km`;
 }
 
+/**
+ * The heading of the radius list: "1 comparable dentro de 500 m", "12 comparables…",
+ * "200+" when the server capped the hits, and how many the layers turned off hide (V7.3-15).
+ */
+export function radiusSummary(shown: number, radius: number, options: { capped?: boolean; hiddenByLayers?: number } = {}) {
+  const plural = shown === 1 && !options.capped ? "comparable" : "comparables";
+  const hidden = options.hiddenByLayers ? ` (${options.hiddenByLayers} más en capas apagadas)` : "";
+  return `${shown}${options.capped ? "+" : ""} ${plural} dentro de ${formatDistance(radius)}${hidden}`;
+}
+
 export type RadiusQuery = { center: LatLon; radius: number };
 
 /**

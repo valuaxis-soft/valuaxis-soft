@@ -3,7 +3,7 @@
  * values, and back. Pure, so it is tested without a request; anything that
  * does not parse is left out rather than rejected.
  */
-import { OPERATION_TYPES, type OperationType } from "../calculation/comparable-card";
+import { OPERATION_TYPES, STREET_TYPES, type OperationType, type StreetType } from "../calculation/comparable-card";
 import { VALIDITY_STATUSES, type ValidityStatus } from "../calculation/comparable-validity";
 import { COMPARABLE_TYPES, type ComparableType } from "../calculation/market-types";
 
@@ -86,6 +86,14 @@ export type ComparableListParams = {
   to: string | null;
   validity: ValidityStatus | null;
   located: LocatedFilter | null;
+  /**
+   * "Fecha de consulta" from and to and «Tipo de vialidad», the filters of
+   * «Buscar comparables» in the valuation, so its map shows what its list
+   * shows (V7.3-10). The page's own filters do not offer them.
+   */
+  consultedFrom?: string | null;
+  consultedTo?: string | null;
+  streetType?: StreetType | null;
   sort: ComparableSort;
 };
 
@@ -157,6 +165,9 @@ export function parseComparableListParams(searchParams: Record<string, RawParam>
     to: dayOf(searchParams.hasta),
     validity: oneOf(searchParams.vigencia, VALIDITY_STATUSES, (raw) => raw.toUpperCase()),
     located: oneOf(searchParams.ubicacion, LOCATED_FILTERS),
+    consultedFrom: dayOf(searchParams.consultaDesde),
+    consultedTo: dayOf(searchParams.consultaHasta),
+    streetType: oneOf(searchParams.vialidad, STREET_TYPES, (raw) => raw.toUpperCase()),
     sort: oneOf(searchParams.orden, COMPARABLE_SORTS) ?? "reciente",
   };
 }
@@ -167,7 +178,7 @@ export function hasAdvancedFilters(params: ComparableListParams) {
     || params.types.length || params.operation || params.constructionType || params.landUse || params.source || params.attribute || params.attributeValue
     || [params.landAreaMin, params.landAreaMax, params.builtAreaMin, params.builtAreaMax, params.bedrooms, params.bathrooms, params.priceMin, params.priceMax]
       .some((value) => value !== null)
-    || params.from || params.to || params.validity || params.located);
+    || params.from || params.to || params.validity || params.located || params.consultedFrom || params.consultedTo || params.streetType);
 }
 
 export const hasFilters = (params: ComparableListParams) => Boolean(params.q) || hasAdvancedFilters(params);
@@ -206,6 +217,9 @@ export function buildComparableListHref(params: Partial<ComparableListParams>) {
   set("hasta", params.to);
   set("vigencia", params.validity?.toLowerCase());
   set("ubicacion", params.located);
+  set("consultaDesde", params.consultedFrom);
+  set("consultaHasta", params.consultedTo);
+  set("vialidad", params.streetType);
   if (params.sort && params.sort !== "reciente") query.set("orden", params.sort);
   if (params.page && params.page > 1) query.set("page", String(params.page));
   if (params.view === "mapa") query.set("vista", "mapa");

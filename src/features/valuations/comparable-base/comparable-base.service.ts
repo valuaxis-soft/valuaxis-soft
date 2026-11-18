@@ -15,7 +15,8 @@ import { comparableValidity, type ComparableValidity } from "../calculation/comp
 import { isRentComparableType, type ComparableType } from "../calculation/market-types";
 import { searchTokens } from "../comparable-search/normalize";
 import {
-  AREA, COMPARABLE_POINT, FIRM_BASE_FROM, HAYSTACK, firmBaseCondition, likePattern, placeCondition, postalCodeCondition, wordsIn,
+  AREA, BUILT_AREA, COMPARABLE_POINT, CONSULTED, FIRM_BASE_FROM, HAYSTACK, LAND_AREA, constructionTypeCondition, firmBaseCondition, jsonNumber,
+  landUseCondition, likePattern, placeCondition, postalCodeCondition, rangeCondition, streetTypeCondition, wordsIn,
 } from "../comparable-search/own-base-sql";
 import { COMPARABLE_LIST_PAGE_SIZE, type ComparableListParams, type ComparableSort, type CountMode } from "./comparable-list-params";
 
@@ -69,11 +70,6 @@ type Row = {
 
 type UseRow = { baseKey: string; organizationId: number; valuationId: string; folio: string; title: string | null; client: string | null };
 
-/** A number kept in a snapshot, or NULL: a text there is not compared as a number. */
-const jsonNumber = (path: string) =>
-  Prisma.sql`CASE WHEN jsonb_typeof(c."JPropiedadSnapshot"->${path}) = 'number' THEN (c."JPropiedadSnapshot"->>${path})::numeric END`;
-const LAND_AREA = Prisma.sql`COALESCE(c."NSuperficieTerrenoCapturada", ${jsonNumber("landArea")})`;
-const BUILT_AREA = Prisma.sql`COALESCE(c."NSuperficieConstruccionCapturada", c."NSuperficieRentableCapturada")`;
 /** The day of its data in Mexico, and that day plus the months of validity. */
 const DATA_DAY = Prisma.sql`(c."DFechaActualizacionDatos" AT TIME ZONE 'America/Mexico_City')::date`;
 /** Its own months when it was captured with them (1 to 12), otherwise the firm's. */
@@ -191,10 +187,7 @@ export async function comparableAttributeNames(organizationId: number): Promise<
 /** The filters of the list (and of the map) as conditions over `c`, `p` and `t`; the text is matched word by word. */
 export function comparableBaseConditions(params: ComparableListParams, today: string, firmMonths: number): Prisma.Sql[] {
   const folio = parseComparableId(params.q);
-  const range = (expression: Prisma.Sql, min: number | null, max: number | null) => [
-    ...(min === null ? [] : [Prisma.sql`${expression} >= ${min}`]),
-    ...(max === null ? [] : [Prisma.sql`${expression} <= ${max}`]),
-  ];
+  const range = rangeCondition;
   const clientWords = searchTokens(params.client);
   return [
     ...(folio ? [Prisma.sql`p."IFolioComparable" = ${folio}`] : wordsIn(HAYSTACK, params.q)),
@@ -211,8 +204,8 @@ export function comparableBaseConditions(params: ComparableListParams, today: st
     ...postalCodeCondition(params.postalCode || undefined),
     ...(params.types.length ? [Prisma.sql`t."SClave" IN (${Prisma.join(params.types)})`] : []),
     ...(params.operation ? [Prisma.sql`${OPERATION} = ${params.operation}`] : []),
-    ...wordsIn(Prisma.sql`unaccent(lower(COALESCE(c."JPropiedadSnapshot"->>'constructionType', '')))`, params.constructionType || undefined),
-    ...wordsIn(Prisma.sql`unaccent(lower(concat_ws(' ', c."JPropiedadSnapshot"->>'landUse', c."JPropiedadSnapshot"->>'landUseKey')))`, params.landUse || undefined),
+    ...constructionTypeCondition(params.constructionType),
+    ...landUseCondition(params.landUse),
     ...wordsIn(Prisma.sql`unaccent(lower(COALESCE(c."JPublicacionSnapshot"->>'sourceName', '')))`, params.source || undefined),
     ...attributeCondition(params.attribute, params.attributeValue),
     ...range(LAND_AREA, params.landAreaMin, params.landAreaMax),
@@ -222,6 +215,10 @@ export function comparableBaseConditions(params: ComparableListParams, today: st
     ...range(Prisma.sql`c."NPrecioCapturado"`, params.priceMin, params.priceMax),
     ...(params.from ? [Prisma.sql`${DATA_DAY} >= ${params.from}::date`] : []),
     ...(params.to ? [Prisma.sql`${DATA_DAY} <= ${params.to}::date`] : []),
+    // The search of the market panel shows its results on this map with these (V7.3-10).
+    ...(params.consultedFrom ? [Prisma.sql`${CONSULTED} >= ${params.consultedFrom}`] : []),
+    ...(params.consultedTo ? [Prisma.sql`${CONSULTED} <= ${params.consultedTo}`] : []),
+    ...streetTypeCondition(params.streetType ?? undefined),
     ...(params.validity === "VIGENTE" ? [Prisma.sql`${VALID_UNTIL(firmMonths)} >= ${today}::date`] : []),
     ...(params.validity === "VENCIDO" ? [Prisma.sql`${VALID_UNTIL(firmMonths)} < ${today}::date`] : []),
     ...(params.located === "con" ? [Prisma.sql`${COMPARABLE_POINT} IS NOT NULL`] : []),
