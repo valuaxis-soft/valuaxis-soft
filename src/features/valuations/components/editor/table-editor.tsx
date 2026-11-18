@@ -49,7 +49,9 @@ import {
   setRowHidden,
   sortTableRows,
   fillColumnWithFormula,
+  fillReplacedCount,
   fillRowWithFormula,
+  setTableCaptionShown,
   buildFormulaFromSelection,
   resolveColumnCapability,
   getTableHeaderLayout,
@@ -58,7 +60,11 @@ import {
   updateHeaderGroupTitle,
 } from "../../services/table";
 import {
+  fillReplaceConfirmation,
+  pasteValuesText,
   tableContextMenu,
+  tableFormatGroup,
+  withTableFormatGroup,
   type TableMenuAction,
   type TableMenuGroup,
   type TableMenuItem,
@@ -374,7 +380,21 @@ const TableSelectionContext = createContext<{
   actions: SelectionActions;
   /** The same actions on other keys: the right click on a cell outside a selection acts on that cell alone. */
   actionsFor: (keys: string[]) => SelectionActions;
+  /** The table's own items of every right click: "Formato de la tabla…" and its title in the dictamen (video 7.3). */
+  tableFormat: TableFormatMenu;
 } | null>(null);
+
+/** Whether the table's title prints, and what its own items of the right click do; `run` tells whether the action was one of them. */
+type TableFormatMenu = { captionShown: boolean; run: (action: TableMenuAction) => boolean };
+
+/** A menu's groups and handlers with the table's own items at the end. */
+function withTableItems(groups: TableMenuGroup[], handlers: MenuHandlers, tableFormat: TableFormatMenu | undefined): { groups: TableMenuGroup[]; handlers: MenuHandlers } {
+  if (!tableFormat) return { groups, handlers };
+  return {
+    groups: withTableFormatGroup(groups, tableFormat),
+    handlers: { ...handlers, onAction: (action) => { if (!tableFormat.run(action)) handlers.onAction(action); } },
+  };
+}
 
 /** Why units and decimals wait for a cell with data: headers and the title take only the style. */
 const ONLY_BODY_FORMAT_HINT = "Las unidades y los decimales son de las celdas con datos, no de los encabezados ni del título.";
@@ -467,7 +487,7 @@ function SortableColumnHeader({
   };
 
   // The actions of the right click and of the header's menu, the same in both.
-  const groups = tableContextMenu("editable", {
+  const { groups, handlers } = withTableItems(tableContextMenu("editable", {
     kind: "column",
     canInsertBeside: canInsertBesideColumn(tableV2, column.id),
     canRename: capability.headerEditable !== false,
@@ -478,12 +498,11 @@ function SortableColumnHeader({
     canHide: true,
     // A table the calculation writes: its columns are hidden, not deleted, and its rows keep the calculation's order.
     reasons: calculatedColumnReasons(calculated, column.id),
-  });
-  const handlers: MenuHandlers = {
+  }), {
     onAction: (action) => onColumnAction(column.id, action),
     onFormat: (format) => onColumnAction(column.id, "column-format", format),
     currentFormat: column.format,
-  };
+  }, selection?.tableFormat);
 
   return (
     <TableHead
@@ -759,7 +778,8 @@ function EditableTableCell({
   const opensLeft = columnIndex >= Math.ceil(columnCount / 2) && columnCount > 1;
 
   /* ---- The right-click menu ---- */
-  const groups = tableContextMenu("editable", {
+  const confirmDelete = useConfirmDelete();
+  const cellGroups = tableContextMenu("editable", {
     kind: "cell",
     editable: !locked,
     hasFormula: isFormula,
@@ -808,7 +828,8 @@ function EditableTableCell({
           return;
         }
         if (action === "paste" && pasted.formulaText) applyFormulaText(pasted.formulaText);
-        else setValue(pasted.text);
+        // A formula pasted as a value is the number it gives, not its text (video 7.4, 06:54).
+        else setValue(action === "paste-values" ? pasteValuesText(pasted.text) ?? pasted.text : pasted.text);
         return;
       }
       case "insert-row-above": structure.insertRowAbove(row.id); return;
@@ -818,8 +839,19 @@ function EditableTableCell({
       case "insert-column-right": structure.insertColumnRight(column.id); return;
       case "delete-column": structure.deleteColumn(column.id); return;
       case "edit-formula": enterCell(); return;
-      case "fill-column": onUpdate(tableId, v2Updater((v2) => fillColumnWithFormula(v2, row.id, column.id))); return;
-      case "fill-row": onUpdate(tableId, v2Updater((v2) => fillRowWithFormula(v2, row.id, column.id))); return;
+      case "fill-column-empty": onUpdate(tableId, v2Updater((v2) => fillColumnWithFormula(v2, row.id, column.id))); return;
+      case "fill-row-empty": onUpdate(tableId, v2Updater((v2) => fillRowWithFormula(v2, row.id, column.id))); return;
+      case "fill-column":
+      case "fill-row": {
+        // As Excel's fill: every cell of the column or row, what they hold replaced, asked first (video 7.4, 10:26); Ctrl+Z undoes it.
+        const along = action === "fill-row" ? "row" : "column";
+        const fill = along === "row" ? fillRowWithFormula : fillColumnWithFormula;
+        const write = () => onUpdate(tableId, v2Updater((v2) => fill(v2, row.id, column.id, { overwrite: true })));
+        const replaced = fillReplacedCount(tableV2, row.id, column.id, along);
+        if (replaced) confirmDelete({ ...fillReplaceConfirmation(replaced, along, isFormula ? "fórmula" : "valor"), onConfirm: write });
+        else write();
+        return;
+      }
       case "remove-formula":
       case "clear":
         onUpdate(tableId, v2Updater((v2) => setCellFormula(v2, row.id, column.id, null)));
@@ -829,7 +861,7 @@ function EditableTableCell({
         return;
     }
   };
-  const handlers: MenuHandlers = {
+  const { groups, handlers } = withTableItems(cellGroups, {
     onAction: (action) => void runAction(action),
     onFormat: (format) => onUpdate(tableId, v2Updater((v2) => setCellResultFormat(v2, row.id, column.id, format))),
     // A cell without a format of its own starts from its column's.
@@ -838,7 +870,7 @@ function EditableTableCell({
     onAlign: (align) => styleActions?.alignTo(align),
     currentAlign: cellStyle.align,
     onOperation: (operation) => (operation ? onStartSelection(row.id, column.id, operation) : enterCell()),
-  };
+  }, selection?.tableFormat);
 
   return (
     <TableCell
@@ -1041,7 +1073,8 @@ function SortableRow({
   };
   const hidden = isRowHidden(tableV2, row.id);
   // The same menu from the row's number and from its handle.
-  const groups = tableContextMenu("editable", {
+  const selection = useContext(TableSelectionContext);
+  const { groups, handlers } = withTableItems(tableContextMenu("editable", {
     kind: "row",
     canInsert: true,
     canMoveUp: rowIndex > 0,
@@ -1051,9 +1084,7 @@ function SortableRow({
     canDelete: rowCount > 1,
     // A row the calculation writes keeps its place: it is hidden, not deleted, duplicated or moved.
     reasons: calculatedRowReasons(calculated, row.id),
-  });
-  const handlers: MenuHandlers = { onAction: (action) => onRowAction(row.id, action) };
-  const selection = useContext(TableSelectionContext);
+  }), { onAction: (action) => onRowAction(row.id, action) }, selection?.tableFormat);
   const menu = !readOnly ? (
     <ContextMenuContent className="w-56">
       <MenuGroups groups={groups} parts={CONTEXT_PARTS} handlers={handlers} />
@@ -1515,7 +1546,24 @@ export function TableEditorItem({
   const selectedBodyCells = bodyCellsOf(tableV2, selectedKeys);
   const firstSelectedCell = selectedBodyCells[0] ? tableV2.rows.find((row) => row.id === selectedBodyCells[0].rowId)?.cells[selectedBodyCells[0].columnId] : undefined;
   const firstSelectedColumn = selectedBodyCells[0] ? tableV2.columns.find((column) => column.id === selectedBodyCells[0].columnId) : undefined;
-  const selectionContext = { api: selection, actions: selectionActions, actionsFor };
+  // "Formato de la tabla…" of a right click opens the same panel as the button, once the menu has closed.
+  const [formatOpen, setFormatOpen] = useState(false);
+  const tableFormat: TableFormatMenu = {
+    captionShown: tableV2.schema?.hideCaption !== true,
+    run: (action) => {
+      if (action === "table-format") {
+        window.setTimeout(() => setFormatOpen(true), 80);
+        return true;
+      }
+      if (action === "caption-show" || action === "caption-hide") {
+        onUpdate(table.id, v2Updater((v2) => setTableCaptionShown(v2, action === "caption-show")));
+        toast.info(action === "caption-show" ? "El título de la tabla se imprime en el dictamen." : "El título de la tabla ya no se imprime; sigue nombrándola en el editor.");
+        return true;
+      }
+      return false;
+    },
+  };
+  const selectionContext = { api: selection, actions: selectionActions, actionsFor, tableFormat };
   const titleStyle = tableCellStyle(tableV2, TITLE_STYLE_KEY);
 
   return (
@@ -1537,15 +1585,25 @@ export function TableEditorItem({
       <div className="mb-3 flex items-center justify-between gap-3">
         {/* The title is selected with the cells too (Ctrl/⌘+clic or Shift+clic, or Ctrl/⌘+A): bold, italic, alignment. */}
         <div className="min-w-0 flex-1" data-grid-title="">
-          <Input
-            disabled={readOnly}
-            value={tableV2.title}
-            onChange={(event) => onUpdate(table.id, (current) => ({ ...current, title: event.target.value }))}
-            className={cn("font-semibold", selection.titleSelected && "bg-primary/10 ring-2 ring-primary/60 dark:bg-primary/20")}
-            style={cellStyleCss(titleStyle)}
-            aria-label="Título de la tabla"
-            data-table-title={table.id}
-          />
+          {/* Its right click gives the table's format and its title in the dictamen (video 7.3, 00:28). */}
+          <ContextMenu>
+            <ContextMenuTrigger>
+              <Input
+                disabled={readOnly}
+                value={tableV2.title}
+                onChange={(event) => onUpdate(table.id, (current) => ({ ...current, title: event.target.value }))}
+                className={cn("font-semibold", selection.titleSelected && "bg-primary/10 ring-2 ring-primary/60 dark:bg-primary/20")}
+                style={cellStyleCss(titleStyle)}
+                aria-label="Título de la tabla"
+                data-table-title={table.id}
+              />
+            </ContextMenuTrigger>
+            {!readOnly ? (
+              <ContextMenuContent className="w-72" aria-label="Menú del título de la tabla">
+                <MenuGroups groups={[tableFormatGroup(tableFormat)]} parts={CONTEXT_PARTS} handlers={{ onAction: (action) => void tableFormat.run(action) }} />
+              </ContextMenuContent>
+            ) : null}
+          </ContextMenu>
         </div>
         <div className="flex items-center gap-1">
           {actions}
@@ -1555,7 +1613,7 @@ export function TableEditorItem({
           <Button type="button" size="icon" variant="outline" aria-label="Agregar fila" disabled={readOnly} title="Agregar fila" onClick={() => onAddRow(table.id)}>
             <Rows3 />
           </Button>
-          <TableFormatControl table={tableV2} readOnly={readOnly} generated={Boolean(calculated) && !calculated?.capture} onChange={(updater) => onUpdate(table.id, v2Updater(updater))} />
+          <TableFormatControl table={tableV2} readOnly={readOnly} generated={Boolean(calculated) && !calculated?.capture} onChange={(updater) => onUpdate(table.id, v2Updater(updater))} open={formatOpen} onOpenChange={setFormatOpen} />
           {/* A disabled button takes no pointer events: the reason hangs from what wraps it. */}
           <span title={calculated ? (calculated.capture?.removeHint ?? CALCULATED_TABLE_REMOVE_HINT) : "Quitar tabla"} className="inline-flex">
             <Button type="button" size="icon" variant="ghost" aria-label={`Quitar ${tableV2.title}`} disabled={readOnly || Boolean(calculated)} aria-description={calculated ? (calculated.capture?.removeHint ?? CALCULATED_TABLE_REMOVE_HINT) : undefined} data-remove-table={table.id} onClick={() => requestTableRemoval(confirmDelete, { id: table.id, title: tableV2.title }, onRemove)}>

@@ -59,7 +59,8 @@ import { withTableHeaders, type CaptureHeaders, type SectionCaptureHeaders } fro
 import { cn } from "@/lib/utils";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
 import { FormulaInput } from "./formula-input";
-import { CalculationPrecisionControl } from "./calculation-precision-control";
+import { EditorConfigPanel } from "../editor/editor-config-panel";
+import { CalculationPrecisionSummary } from "./calculation-precision-control";
 import { useSerializedSave } from "./use-serialized-save";
 import { useDraftHistory } from "./use-draft-history";
 import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
@@ -449,6 +450,8 @@ function ConservationRatingSelect(props: { value: string; label: string; criteri
  */
 function ConservationCriterionEditor(props: {
   id: string;
+  /** Which table it rates, in the costs' configuration. */
+  title: string;
   criterion: ConservationCriterionDto;
   readOnly: boolean;
   onChange: (next: ConservationCriterionDto, commit: boolean) => void;
@@ -464,9 +467,9 @@ function ConservationCriterionEditor(props: {
   return (
     <div className="grid gap-2 rounded-md border bg-background/60 p-2 text-xs" data-testid={`${props.id}-conservation-criterion`}>
       <label className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">Criterio de conservación</span>
+        <span className="font-medium">{props.title}</span>
         <select
-          aria-label="Criterio de conservación"
+          aria-label={props.title}
           className="h-7 rounded-md border bg-transparent px-1 text-xs"
           value={criterion.kind}
           disabled={props.readOnly}
@@ -1024,12 +1027,26 @@ export function CostCalculationPanel(props: {
       </header>
       {props.approach && !props.approach.included ? <ApproachLeftOutNotice name="costos" /> : null}
       {calculation.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
-      <CalculationPrecisionControl
-        valuationId={valuationId}
-        precision={calculation.precision}
-        readOnly={readOnly}
-        onChanged={() => void api.costs.get(valuationId).then(applyServerState).catch(() => undefined)}
-      />
+      {/* What configures the calculation, apart from what it captures (video 7.4, 18:49): the conservation criteria of B) and C); the precision is the valuation's. */}
+      <EditorConfigPanel title="Configuración del cálculo de costos" description="Los criterios de conservación se aplican a las tablas B) Construcciones y C) Instalaciones; en cada renglón solo se elige el estado.">
+        <div className="grid gap-2 lg:grid-cols-2">
+          <ConservationCriterionEditor
+            id="cost-constructions"
+            title="B) Construcciones: criterio de conservación"
+            criterion={conservationCriterionOfColumns(draft.columns.constructions)}
+            readOnly={readOnly}
+            onChange={(criterion, commit) => changeCriterion("constructions", criterion, commit)}
+          />
+          <ConservationCriterionEditor
+            id="cost-installations"
+            title="C) Instalaciones: criterio de conservación"
+            criterion={conservationCriterionOfColumns(draft.columns.installations)}
+            readOnly={readOnly}
+            onChange={(criterion, commit) => changeCriterion("installations", criterion, commit)}
+          />
+        </div>
+        <CalculationPrecisionSummary precision={calculation.precision} />
+      </EditorConfigPanel>
       <p className="text-xs text-muted-foreground">
         Los factores con fórmula en el Excel (Sup. y FRe del terreno; Edad y FRe de construcciones e instalaciones) se calculan solos mientras el campo está vacío; el número gris es el resultado de la fórmula. Escribe un valor para sustituirla y bórralo para volver a la fórmula. El factor de conservación (Cons.) sale del estado de conservación y su calificación (criterio de Ross-Heidecke) mientras no escribas otro.
       </p>
@@ -1140,12 +1157,6 @@ export function CostCalculationPanel(props: {
             y vuelve con «+ Construcción». Para quitarlo de todo el avalúo, borra su fila allá.
             {calculation.types.length ? "" : " Aún no hay tipos: escríbelos en la tabla de tipos de construcción de la sección INF. CONSTRUCCIÓN."}
           </p>
-          <ConservationCriterionEditor
-            id="cost-constructions"
-            criterion={conservationCriterionOfColumns(draft.columns.constructions)}
-            readOnly={readOnly}
-            onChange={(criterion, commit) => changeCriterion("constructions", criterion, commit)}
-          />
           <DemeritColumnsEditor
             id="cost-constructions"
             factors={draft.columns.constructions}
@@ -1256,12 +1267,6 @@ export function CostCalculationPanel(props: {
             breve; la descripción larga sigue allá. El mantenimiento y las columnas que necesites van en esa tabla.
           </p>
           <div className="flex flex-wrap items-start justify-between gap-2">
-            <ConservationCriterionEditor
-              id="cost-installations"
-              criterion={conservationCriterionOfColumns(draft.columns.installations)}
-              readOnly={readOnly}
-              onChange={(criterion, commit) => changeCriterion("installations", criterion, commit)}
-            />
             <DemeritColumnsEditor
               id="cost-installations"
               factors={draft.columns.installations}

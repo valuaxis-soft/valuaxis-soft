@@ -1,6 +1,6 @@
 "use client";
 
-import { Merge, Trash2 } from "lucide-react";
+import { Merge, Settings2, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -42,11 +42,16 @@ export function TableFormatControl({
   readOnly,
   onChange,
   generated = false,
+  open,
+  onOpenChange,
 }: {
   table: TableV2;
   readOnly: boolean;
   onChange: (updater: (table: TableV2) => TableV2) => void;
   generated?: boolean;
+  /** Opened from outside too: "Formato de la tabla…" of the right click on a cell, a header or the title. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const columns = getDisplayColumns(table);
   const [from, setFrom] = useState("");
@@ -65,11 +70,13 @@ export function TableFormatControl({
   };
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={onOpenChange ? (next) => onOpenChange(next) : undefined}>
+      {/* A gear with its name, where the appraiser looks for it (video 7.3, 00:00: the ⅄ alone was not found). */}
       <PopoverTrigger
         render={
-          <Button type="button" size="icon" variant="outline" aria-label="Formato de la tabla" title="Formato de la tabla: título, ancho, espacio, sangría, decimales y encabezado doble" disabled={readOnly}>
-            <Merge />
+          <Button type="button" size="sm" variant="outline" aria-label="Formato de la tabla" title="Formato de la tabla: título, ancho, espacio, sangría, decimales y encabezado doble" disabled={readOnly} data-table-format="">
+            <Settings2 data-icon="inline-start" />
+            Formato de la tabla
           </Button>
         }
       />

@@ -119,7 +119,7 @@ test("V5.7-18: copying «Ubicación» along the land row of Costos leaves the ca
   assert.equal(captureFillSummary(1, 0, "column"), "Se llenó 1 celda de la columna.");
   assert.equal(captureFillSummary(0, 1, "row"), "No hay celdas vacías en la fila para copiarlo. Se omitió 1 celda que calcula el sistema; para cambiarla, escribe en ella.");
   // The free text is left out too, but it is not a calculation.
-  assert.deepEqual(captureFillPlan([field(null, "1"), { ...field(), noFill: "other" as const }], 0), { targets: [], computedSkipped: 0 });
+  assert.deepEqual(captureFillPlan([field(null, "1"), { ...field(), noFill: "other" as const }], 0), { targets: [], computedSkipped: 0, replaced: 0 });
 
   // The panels' fields carry the mark to the page.
   const html = renderToStaticMarkup(<FormulaInput aria-label="Factor resultante del terreno (FRe)" data-no-fill="computed" value="" onChange={() => {}} />);

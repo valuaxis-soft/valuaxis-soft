@@ -12,6 +12,8 @@ import { factorFormulaPath, factorKey, type ComparableDto, type ComparableFactor
 
 const NUMBER = String.raw`\d*\.?\d+`;
 const RATINGS = new RegExp(String.raw`^=\s*(${NUMBER})\s*/\s*(${NUMBER})\s*$`);
+/** Numbers joined by an operation, without "=": "1/1.1", "0.9*1.05", "(1345*235)^(1/6)". */
+const ARITHMETIC = /^[\d.\s()]*\d[\d.\s()]*[*/^+][\d.\s()*/^+-]*\d[\d.\s()]*$/;
 
 export type FactorInput =
   | { kind: "empty" }
@@ -21,8 +23,10 @@ export type FactorInput =
   | { kind: "invalid" };
 
 export function parseFactorInput(text: string): FactorInput {
-  const typed = text.trim();
-  if (!typed) return { kind: "empty" };
+  const trimmed = text.trim();
+  if (!trimmed) return { kind: "empty" };
+  // Arithmetic written without its "=" ("1/1.1") is the formula it reads as (video 7.4, 06:54).
+  const typed = ARITHMETIC.test(trimmed) ? `=${trimmed}` : trimmed;
   const ratings = typed.match(RATINGS);
   if (ratings) {
     const subjectRating = Number(ratings[1]);

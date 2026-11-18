@@ -65,7 +65,7 @@ import { ComparableCardButton } from "./comparable-card-dialog";
 import { ComparableDialog, type PendingImages } from "./comparable-dialog";
 import { ComparableReviewDialog } from "./comparable-review-dialog";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
-import { CalculationPrecisionControl } from "./calculation-precision-control";
+import { CalculationPrecisionSummary } from "./calculation-precision-control";
 import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
 import { ImportComparablesDialog } from "./import-comparables-dialog";
 import { MarketCharacteristicsTable, characteristicNumberText, newFieldKey, type FieldsUpdate, type SubjectUpdate } from "./market-characteristics-table";
@@ -1065,12 +1065,8 @@ function MarketTypePanel(props: {
           </p>
         ) : null}
         {type === "TERRENO_RENTA" && homologatesOf(liveSettings) ? <p className="text-sm font-medium" data-same-factors="">{SAME_FACTORS_AS_LAND_SALE}</p> : null}
-        <CalculationPrecisionControl
-          valuationId={valuationId}
-          precision={calculation.precision}
-          readOnly={readOnly}
-          onChanged={() => void api.market.get(valuationId, type).then(applyServerState).catch(failed)}
-        />
+        {/* The precision is chosen in Carátula › Configuración del avalúo; here it is only said (video 7.4, 00:00). */}
+        <CalculationPrecisionSummary precision={calculation.precision} />
         {homologatesOf(liveSettings) ? (<>
         <MarketFactorSlots
           slots={calculation.settings.factorSlots}

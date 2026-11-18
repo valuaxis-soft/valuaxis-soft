@@ -8,6 +8,7 @@ import { isFormulaText } from "@/features/valuations/services/formula-references
 import { liveFormulaText, readableFormulaText } from "@/features/valuations/services/live-formulas";
 import { numericFieldProblem, percentAsNumberText } from "@/features/valuations/calculation/free-formula";
 import { cn } from "@/lib/utils";
+import { focusCaptureCell } from "./calc-table-context-menu";
 import { LIVE_WARNING_CLASS, LiveCellMark, useLiveCell } from "./live-cell";
 
 /**
@@ -95,9 +96,17 @@ export function CommitCell(props: {
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (formulaOwnsEdit) {
       formula.onKeyDown(event);
+      // The formula applied, Enter goes down as with a value (video 7.4, 06:33).
+      if (event.key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey) focusCaptureCell(event.currentTarget, event.shiftKey ? -1 : 1);
       return;
     }
-    if (event.key === "Enter") event.currentTarget.blur();
+    if (event.key === "Enter") {
+      // Sent, and down to the cell below (Shift+Enter, up), as in Excel and in every table of the editor.
+      event.preventDefault();
+      const cell = event.currentTarget;
+      cell.blur();
+      if (!event.altKey && !event.ctrlKey && !event.metaKey) focusCaptureCell(cell, event.shiftKey ? -1 : 1);
+    }
     if (event.key === "Escape") {
       cancelled.current = true;
       event.currentTarget.blur();
@@ -130,6 +139,8 @@ export function CommitCell(props: {
       // The formula behind the result shown, for the table's menu ("Copiar fórmula a toda la fila").
       data-formula={live.readable ?? (isFormulaText(props.value) ? props.value.trim() : undefined)}
       data-formula-warning={live.warning ?? undefined}
+      // What is captured, not what is shown: an empty factor shows the 1.00 it counts as (video 7.4, 05:49).
+      data-value={props.value}
       className={cn(
         "h-7 w-full min-w-0 rounded-sm border border-transparent bg-transparent px-1.5 text-sm outline-none",
         "hover:border-input focus:border-ring focus:bg-background focus:ring-2 focus:ring-ring/30 disabled:cursor-default disabled:hover:border-transparent",
