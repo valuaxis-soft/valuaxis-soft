@@ -11,6 +11,7 @@ import type { ValuationSignature } from "@/features/valuations/services/valuatio
 import { formatNumericValue } from "@/features/valuations/services/concept-value-format";
 import { coverImageLayout, normalizeCoverImageSize } from "@/features/valuations/services/cover-image-focus";
 import { appraisedGoodWording } from "@/features/valuations/services/appraised-good-wording";
+import { titlePrints } from "@/features/valuations/services/block-title";
 
 // Module 1: Cover (title, location, principal image)
 export function CaratulaCoverModule({
@@ -65,19 +66,23 @@ export function CaratulaCoverModule({
 
 /**
  * The title of a block of the carátula: its own blocks, the assumptions and the
- * conclusion print it alike (videos 5.2 and 5.6: "DATOS DEL BIEN" was missing).
+ * conclusion print it alike (videos 5.2 and 5.6: "DATOS DEL BIEN" was missing),
+ * boxed in a thin frame like the bars of the other sections, not over a rule
+ * from edge to edge (video 7.1, 2:08: «encajonado, con su marco»). An empty
+ * title, or one with «Imprimir título» off, prints nothing.
  */
-export function CaratulaBlockHeading({ title }: { title: string }) {
+export function CaratulaBlockHeading({ title, hidden = false }: { title: string; hidden?: boolean }) {
+  if (!titlePrints({ title, titleHidden: hidden })) return null;
   return (
-    <h2 className="border-b-2 border-[var(--caratula-blue)] pb-0.5 text-[12px] font-black uppercase leading-tight text-[var(--caratula-blue)]" data-caratula-block-title>
-      {title || "No se proporcionó"}
+    <h2 className="border border-[var(--caratula-blue)] px-2 py-0.5 text-center text-[12px] font-black uppercase leading-tight text-[var(--caratula-blue)]" data-caratula-block-title>
+      {title}
     </h2>
   );
 }
 
 /** "CONCLUSION", as the template names it, prints with its accent. */
 function conclusionTitle(title: string) {
-  return !title.trim() || title.trim().toUpperCase() === "CONCLUSION" ? "CONCLUSIÓN" : title;
+  return title.trim().toUpperCase() === "CONCLUSION" ? "CONCLUSIÓN" : title;
 }
 
 // Module 2: Assumptions (long text blocks)
@@ -92,7 +97,7 @@ export function CaratulaAssumptionsModule({
     <>
       {blocks.map((block) => (
         <section className="mt-3" key={block.id}>
-          <CaratulaBlockHeading title={block.title} />
+          <CaratulaBlockHeading title={block.title} hidden={block.titleHidden} />
           <div className="min-h-8 space-y-1 pt-1 text-justify text-[10.5px] leading-snug text-slate-700">
             {block.concepts.map((concept) => (
               <p className="whitespace-pre-wrap" key={concept.id}>
@@ -125,7 +130,8 @@ export function CaratulaConclusionModule({
 
   return (
     <section className="mt-4">
-      <CaratulaBlockHeading title={conclusionTitle(blocks[0]?.title ?? "")} />
+      {/* Without its block (the value printed at the end), it is still the conclusion. */}
+      <CaratulaBlockHeading title={conclusionTitle(blocks[0]?.title ?? "CONCLUSION")} hidden={blocks[0]?.titleHidden} />
       {narrativeConcepts.length ? (
         <div className="space-y-1 pt-1 text-justify text-[11px] leading-snug text-slate-700">
           {narrativeConcepts.map((concept) => (

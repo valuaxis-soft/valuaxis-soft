@@ -89,7 +89,11 @@ export function FormulaInput({
     storedFormulaText: () => (isFormulaText(value) ? readableFormulaText(value.trim(), index) : null),
     onCommit: (text) => {
       if (!isFormulaText(text)) {
-        send(percentAsNumberText(text));
+        // A formula erased or written over with a number (video 7.3, 4:13: «Frente del sujeto» came back):
+        // the panel saves it on the blur that follows it, as an applied formula.
+        const plain = percentAsNumberText(text);
+        appliedRef.current = plain;
+        send(plain);
         return;
       }
       const captured = liveFormulaText(text, index);
@@ -133,6 +137,8 @@ export function FormulaInput({
   const warningId = `${fieldId}-aviso`;
   const input = (
     <Input
+      // Chrome's history of the field is not offered under a figure (video 7.3: «350/800»).
+      autoComplete="off"
       {...props}
       ref={inputRef}
       aria-describedby={warning ? warningId : props["aria-describedby"]}

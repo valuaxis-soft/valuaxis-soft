@@ -59,6 +59,8 @@ import {
 } from "@/features/valuations/services/caratula-blocks";
 
 import { ValuationDateField } from "../editor/valuation-date-field";
+import { HeaderDateNotice, useHeaderDates } from "./header-date-notice";
+import { conceptDatePatch } from "@/features/valuations/services/header-dates";
 import { TextMarksField, type MarkedTextField } from "./text-marks-toolbar";
 import { stripTextMarks } from "@/features/valuations/services/text-marks";
 import { ConceptSelectionCheckbox } from "./concept-selection";
@@ -591,7 +593,7 @@ function ConceptValueFormatControl({
             <Field className="gap-1.5">
               <FieldLabel className="text-xs text-muted-foreground">Unidad</FieldLabel>
               <div className="flex items-center gap-1">
-                <Input
+                <Input autoComplete="off"
                   className="h-8"
                   disabled={readOnly}
                   maxLength={MAX_CUSTOM_UNIT_LENGTH}
@@ -759,7 +761,7 @@ function ConceptListOptionsEditor({
   return (
     <Field className="gap-1 px-2 py-1">
       <FieldLabel className="text-xs text-muted-foreground">Opciones de la lista</FieldLabel>
-      <Textarea
+      <Textarea autoComplete="off"
         aria-label="Opciones de la lista"
         className="min-h-20 text-sm"
         disabled={readOnly}
@@ -1055,7 +1057,7 @@ function ConceptValueInput({
 
   return (
     <div className="relative min-w-0">
-      <Input
+      <Input autoComplete="off"
         {...inputProps}
         ref={inputRef}
         className={cn(
@@ -1170,6 +1172,7 @@ export function ConceptEditorRow({
   const usesSingleLineEditor = isSingleLineConceptType(conceptType);
   const formatIsSourceOwned = isFullLinkedSourceOwned(concept, allConcepts);
   const { index: formulaIndex } = useFormulaEditing();
+  const headerDates = useHeaderDates();
   const presentation = useNumberPresentation();
   // While a formula is being written elsewhere, a click on the concept writes its reference there.
   const reference = useFormulaReferenceTarget(`concept:${concept.id}`, () => conceptReferenceText(formulaIndex, concept.id));
@@ -1295,7 +1298,7 @@ export function ConceptEditorRow({
         </div>
         {conceptType === "paragraph" ? null : (
         <Field className="min-w-0" data-invalid={titleMissing}>
-          <Input
+          <Input autoComplete="off"
             aria-invalid={titleMissing}
             className={cn("h-10 min-w-0", CONCEPT_TITLE_CLASS)}
             data-concept-title
@@ -1312,25 +1315,28 @@ export function ConceptEditorRow({
         {conceptType === "list" ? (
           <ConceptListValueSelect concept={effectiveConcept} readOnly={readOnly} onChange={(value) => handleLinkedAwareUpdate({ value })} />
         ) : conceptType === "date" ? (
-          <ValuationDateField
-            allowClear
-            className="h-10 min-w-0"
-            display={concept.dateFormat ?? "normal"}
-            readOnly={readOnly}
-            value={effectiveConcept.value}
-            onChange={(value) => handleLinkedAwareUpdate({ value })}
-          />
+          <div className="grid min-w-0 gap-1">
+            <ValuationDateField
+              allowClear
+              className="h-10 min-w-0"
+              display={concept.dateFormat ?? "normal"}
+              readOnly={readOnly}
+              value={effectiveConcept.value}
+              onChange={(value) => handleLinkedAwareUpdate(conceptDatePatch(concept, value, headerDates))}
+            />
+            <HeaderDateNotice concept={{ ...effectiveConcept, headerDate: concept.headerDate }} readOnly={readOnly} onPatch={handleLinkedAwareUpdate} />
+          </div>
         ) : conceptType === "paragraph" ? (
           <TextMarksField className="col-span-2" value={effectiveConcept.value} disabled={readOnly} onChange={(value) => handleLinkedAwareUpdate({ value })}>
             {(marked) => (
-              <Textarea aria-label="Párrafo" className="min-w-0" disabled={readOnly} placeholder="Texto del párrafo" value={marked.text} onChange={(event) => handleLinkedAwareUpdate({ value: marked.valueOf(event.target.value) })} />
+              <Textarea autoComplete="off" aria-label="Párrafo" className="min-w-0" disabled={readOnly} placeholder="Texto del párrafo" value={marked.text} onChange={(event) => handleLinkedAwareUpdate({ value: marked.valueOf(event.target.value) })} />
             )}
           </TextMarksField>
         ) : conceptType === "longText" ? (
           <div className="grid min-w-0 gap-1">
             <TextMarksField value={effectiveConcept.value} disabled={readOnly} onChange={(value) => handleLinkedAwareUpdate({ value })}>
               {(marked) => (
-                <Textarea
+                <Textarea autoComplete="off"
                   className="min-w-0"
                   disabled={readOnly}
                   placeholder="Dato"
@@ -1404,7 +1410,7 @@ export function ConceptEditorRow({
   const paragraphField = conceptType === "paragraph" ? (
     <TextMarksField className="col-span-2" value={effectiveConcept.value} disabled={readOnly} onChange={(value) => onUpdate(concept.id, { value })}>
       {(marked) => (
-        <Textarea aria-label="Párrafo" className="min-w-0" disabled={readOnly} placeholder="Texto del párrafo" value={marked.text} onChange={(event) => onUpdate(concept.id, { value: marked.valueOf(event.target.value) })} />
+        <Textarea autoComplete="off" aria-label="Párrafo" className="min-w-0" disabled={readOnly} placeholder="Texto del párrafo" value={marked.text} onChange={(event) => onUpdate(concept.id, { value: marked.valueOf(event.target.value) })} />
       )}
     </TextMarksField>
   ) : null;
@@ -1456,7 +1462,7 @@ export function ConceptEditorRow({
       {paragraphField ? paragraphField : showTerrenoLengthHint && !usesSingleLineEditor ? (
         <div className="min-w-0 space-y-1">
           <Field data-invalid={titleMissing}>
-            <Input
+            <Input autoComplete="off"
               aria-invalid={titleMissing}
               className={cn("w-full", CONCEPT_TITLE_CLASS)}
               data-concept-title
@@ -1476,14 +1482,14 @@ export function ConceptEditorRow({
             {titleMissing ? <FieldError>Escribe un título para este campo.</FieldError> : null}
           </Field>
           {withTextMarks((marked) => (
-            <Textarea className="w-full" disabled={readOnly} value={marked.text} onChange={(event) => onUpdate(concept.id, { value: marked.valueOf(event.target.value) })} />
+            <Textarea autoComplete="off" className="w-full" disabled={readOnly} value={marked.text} onChange={(event) => onUpdate(concept.id, { value: marked.valueOf(event.target.value) })} />
           ))}
           {draftAssist}
         </div>
       ) : (
         <>
           <Field className="min-w-0" data-invalid={titleMissing}>
-            <Input
+            <Input autoComplete="off"
               aria-invalid={titleMissing}
               className={cn("h-10 min-w-0", CONCEPT_TITLE_CLASS)}
               data-concept-title
@@ -1505,14 +1511,17 @@ export function ConceptEditorRow({
           {conceptType === "list" ? (
             <ConceptListValueSelect concept={effectiveConcept} readOnly={readOnly} onChange={(value) => onUpdate(concept.id, { value })} />
           ) : conceptType === "date" ? (
-            <ValuationDateField
-              allowClear
-              className="h-10 min-w-0"
-              display={concept.dateFormat ?? "normal"}
-              readOnly={readOnly}
-              value={effectiveConcept.value}
-              onChange={(value) => onUpdate(concept.id, { value })}
-            />
+            <div className="grid min-w-0 gap-1">
+              <ValuationDateField
+                allowClear
+                className="h-10 min-w-0"
+                display={concept.dateFormat ?? "normal"}
+                readOnly={readOnly}
+                value={effectiveConcept.value}
+                onChange={(value) => onUpdate(concept.id, conceptDatePatch(concept, value, headerDates))}
+              />
+              <HeaderDateNotice concept={{ ...effectiveConcept, headerDate: concept.headerDate }} readOnly={readOnly} onPatch={(patch) => onUpdate(concept.id, patch)} />
+            </div>
           ) : isNumericConcept(effectiveConcept) ? withFormatChip(
             <ConceptValueInput
               concept={effectiveConcept}
@@ -1543,7 +1552,7 @@ export function ConceptEditorRow({
           ) : (
             <div className="grid min-w-0 gap-1">
               {withTextMarks((marked) => (
-                <Textarea disabled={readOnly} value={marked.text} onChange={(event) => onUpdate(concept.id, { value: marked.valueOf(event.target.value) })} />
+                <Textarea autoComplete="off" disabled={readOnly} value={marked.text} onChange={(event) => onUpdate(concept.id, { value: marked.valueOf(event.target.value) })} />
               ))}
               {draftAssist}
             </div>
@@ -1621,7 +1630,7 @@ export function LongTextConceptEditor({
               </Button>
             ) : null}
           </div>
-          <Textarea
+          <Textarea autoComplete="off"
             className="min-h-36"
             disabled={readOnly}
             value={concept.value}

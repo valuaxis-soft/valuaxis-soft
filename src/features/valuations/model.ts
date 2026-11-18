@@ -140,6 +140,8 @@ export type Concept = {
    * the appraiser may rename it and it still receives the value.
    */
   calculationKey?: string;
+  /** A date of the body linked to the header's (video 7.3): it follows the valuation date or the validity. */
+  headerDate?: "valuation" | "validity";
 };
 
 export type TableContent = {
@@ -295,6 +297,8 @@ export type BlockFlowV2 = {
 export type Apartado = {
   id: string;
   title: string;
+  /** «Imprimir título: no»: the title stays in the editor and the dictamen prints none (video 7.1). */
+  titleHidden?: boolean;
   enabled: boolean;
   startOnNewPage?: boolean;
   /** Where it starts on the printed pages; absent, as `startOnNewPage` says. */
@@ -311,6 +315,8 @@ export type Apartado = {
 export type Block = {
   id: string;
   title: string;
+  /** «Imprimir título: no»: the title stays in the editor and the dictamen prints none, nor its number (video 7.1). */
+  titleHidden?: boolean;
   sectionLabel: string;
   enabled: boolean;
   required: boolean;

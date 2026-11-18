@@ -10,6 +10,22 @@
 
 export type TextMark = "bold" | "italic" | "underline";
 
+const SHORTCUT_MARKS: Record<string, TextMark> = { b: "bold", i: "italic", u: "underline" };
+
+/**
+ * The mark a key gives a word of a text field, as in a word processor:
+ * Ctrl+B, Ctrl+I and Ctrl+U (⌘ in a Mac). Nothing for any other key, or with
+ * Shift or Alt held (they are the browser's or the system's).
+ */
+export function textMarkOfShortcut(key: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }): TextMark | null {
+  if (!(key.ctrlKey || key.metaKey) || key.shiftKey || key.altKey) return null;
+  return SHORTCUT_MARKS[key.key.toLowerCase()] ?? null;
+}
+
+/** The event a menu sends to a text field to mark the text that was selected in it when the menu opened. */
+export const TEXT_MARK_EVENT = "valuaxis:text-mark";
+export type TextMarkEventDetail = { mark: TextMark; start: number; end: number };
+
 /** A run of text with the marks that apply to it. */
 export type TextMarkSegment = {
   text: string;

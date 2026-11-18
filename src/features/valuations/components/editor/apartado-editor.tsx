@@ -1,8 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { resolvePageBreak, type PageBreakMode } from "@/features/valuations/services/document-structure";
 
+import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
@@ -13,6 +14,7 @@ import type { ConceptPresentation } from "@/features/valuations/services/concept
 
 import { StructuralActions } from "./structural-actions";
 import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
+import type { PrintTitleChoice } from "./structure-transfer-actions";
 
 import type { EditorCapabilities } from "./editor-capabilities";
 
@@ -33,6 +35,7 @@ export function ApartadoEditor({
   onPageBreakChange,
   onTitleChange,
   onVisibleChange,
+  printTitle,
   readOnly,
   siblingIndex,
   subBlock,
@@ -55,6 +58,8 @@ export function ApartadoEditor({
   onPageBreakChange?: (pageBreak: PageBreakMode) => void;
   onTitleChange: (title: string) => void;
   onVisibleChange?: (visible: boolean) => void;
+  /** «Imprimir título» (video 7.1): in its ⋮ and in the right-click menu of its title. */
+  printTitle?: PrintTitleChoice;
   readOnly: boolean;
   siblingIndex: number;
   subBlock: Apartado;
@@ -63,6 +68,25 @@ export function ApartadoEditor({
   const itemLabel = subBlockTerm === "apartados" ? "apartado" : "subbloque";
   const useBlueTone = siblingIndex % 2 === 0;
   const confirmDelete = useConfirmDelete();
+  const titleRef = useRef<HTMLInputElement | null>(null);
+  const askDelete = () => confirmDelete({ ...deleteConfirmation("subblock", subBlock.title), onConfirm: onRemove });
+  const titleField = (
+    <Input
+      ref={titleRef}
+      aria-label="Título del apartado"
+      className={cn(
+        "h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-black uppercase leading-tight text-[#00285A] dark:text-sky-200 shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background",
+        printTitle && !printTitle.printed && "line-through decoration-1 opacity-60",
+      )}
+      disabled={readOnly}
+      placeholder="Sin título"
+      title={printTitle && !printTitle.printed ? "Este título no se imprime en el dictamen («Imprimir título» está apagado)." : undefined}
+      value={subBlock.title}
+      onChange={(event) =>
+        onTitleChange(event.target.value.toUpperCase())
+      }
+    />
+  );
 
   return (
     <section
@@ -79,15 +103,38 @@ export function ApartadoEditor({
               {displayLabel}
             </span>
           ) : null}
-          <Input
-            aria-label="Título del apartado"
-            className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-black uppercase leading-tight text-[#00285A] dark:text-sky-200 shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background"
-            disabled={readOnly}
-            value={subBlock.title}
-            onChange={(event) =>
-              onTitleChange(event.target.value.toUpperCase())
-            }
-          />
+          {readOnly ? titleField : (
+            // The right-click menu of the title, as a block's: rename, print the title or not, hide and delete.
+            <ContextMenu>
+              <ContextMenuTrigger className="flex min-w-0 flex-1 items-center">{titleField}</ContextMenuTrigger>
+              <ContextMenuContent className="w-60" data-apartado-title-menu={subBlock.id}>
+                <ContextMenuItem
+                  onClick={() => window.setTimeout(() => {
+                    titleRef.current?.focus();
+                    titleRef.current?.select();
+                  }, 80)}
+                >
+                  Renombrar
+                </ContextMenuItem>
+                {printTitle ? (
+                  <ContextMenuCheckboxItem checked={printTitle.printed} onClick={() => printTitle.onChange(!printTitle.printed)}>
+                    Imprimir título
+                  </ContextMenuCheckboxItem>
+                ) : null}
+                {capabilities.visibility && onVisibleChange ? (
+                  <ContextMenuItem onClick={() => onVisibleChange(!subBlock.enabled)}>
+                    {subBlock.enabled ? "Ocultar en el dictamen" : "Mostrar en el dictamen"}
+                  </ContextMenuItem>
+                ) : null}
+                {capabilities.delete ? (
+                  <>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem variant="destructive" onClick={askDelete}>Eliminar {itemLabel}…</ContextMenuItem>
+                  </>
+                ) : null}
+              </ContextMenuContent>
+            </ContextMenu>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -116,7 +163,7 @@ export function ApartadoEditor({
             } : undefined}
             deleteAction={capabilities.delete ? {
               // Deleting asks first; what was deleted comes back with "Deshacer".
-              onDelete: () => confirmDelete({ ...deleteConfirmation("subblock", subBlock.title), onConfirm: onRemove }),
+              onDelete: askDelete,
             } : undefined}
           />
         </div>

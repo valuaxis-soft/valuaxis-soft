@@ -27,6 +27,7 @@ import { extractStorageKey, isS3Source } from "@/features/valuations/services/im
 import { resolveSignatures, validityMonthsBetween, type ValuationSignature } from "@/features/valuations/services/valuation-signatures";
 import { COVER_IMAGE_FOCUS_CENTER, normalizeCoverImageFocus, type CoverImageFocus, type CoverImageSize } from "@/features/valuations/services/cover-image-focus";
 import { readOwnKindNames } from "@/features/valuations/services/property-kinds";
+import { savedTitle } from "@/features/valuations/services/block-title";
 
 export type ValuationListItem = {
   id: string;
@@ -114,6 +115,7 @@ export type ValuationBlockDto = {
   startOnNewPage?: boolean;
   pageBreak?: BlockMetadata["pageBreak"];
   pageOrientation?: BlockMetadata["pageOrientation"];
+  titleHidden?: boolean;
   flowSpacingBeforePx?: number;
   contentLayout?: ContentLayout;
   blockFlow?: BlockFlowV2;
@@ -150,6 +152,7 @@ export type ValuationConceptDto = {
   generatedLabel?: string;
   calculationUnlinked?: boolean;
   calculationKey?: string;
+  headerDate?: "valuation" | "validity";
 };
 
 export type ValuationTableDto = {
@@ -770,7 +773,8 @@ function mapNodeToBlock(node: DbNode, label: string): ValuationBlockDto {
   return {
     id: node.SClave,
     label,
-    title: node.STitulo,
+    title: savedTitle(node.STitulo),
+    ...(blockMetadata.titleHidden ? { titleHidden: true } : {}),
     enabled: node.BVisible,
     required: node.BObligatorio,
     sortOrder: node.IOrden,
@@ -791,7 +795,7 @@ function mapNodeToBlock(node: DbNode, label: string): ValuationBlockDto {
         .sort((a, b) => a.IOrden - b.IOrden);
       return {
         id: child.SClave,
-        title: child.STitulo,
+        title: savedTitle(child.STitulo),
         ...hydrateApartadoMetadata(child.JConfiguracion),
         sortOrder: child.IOrden,
         concepts: subChildren.filter((grandChild) => nodeKind(grandChild) === "concept").map(mapConceptNode),

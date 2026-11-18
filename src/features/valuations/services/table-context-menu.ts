@@ -25,7 +25,7 @@ export type TableMenuAction =
   | "bold" | "italic" | "underline" | "align" | "clear-format"
   | "rename" | "move-left" | "move-right" | "column-width" | "sort-asc" | "sort-desc" | "hide-column" | "show-column" | "column-format" | "column-decimals"
   | "duplicate-row" | "move-row-up" | "move-row-down" | "hide-row" | "show-row"
-  | "block-rename" | "block-copy" | "block-duplicate" | "block-move" | "block-hide" | "block-show" | "block-page-break" | "block-delete";
+  | "block-rename" | "block-copy" | "block-duplicate" | "block-move" | "block-hide" | "block-show" | "block-page-break" | "block-print-title" | "block-delete";
 
 export type TableMenuItem = {
   action: TableMenuAction;
@@ -34,6 +34,8 @@ export type TableMenuItem = {
   /** Why the item is disabled, shown as a tooltip. */
   hint?: string;
   destructive?: boolean;
+  /** A choice that is on or off («Imprimir título»): shown with its check. */
+  checked?: boolean;
   /**
    * The item opens a submenu the component fills: the operations, or the
    * "Unidades de valor" and "Decimales" of a value, the same as a concept's.
@@ -126,6 +128,8 @@ export type BlockMenuTarget = {
   canHide: boolean;
   pageBreakBefore: boolean;
   canPageBreak: boolean;
+  /** «Imprimir título»: whether the dictamen prints the title; absent, the item is not offered. */
+  titlePrinted?: boolean;
   canDelete: boolean;
   /** Why each disabled item is disabled, over the general reasons. */
   hints?: Partial<Record<"rename" | "transfer" | "move" | "hide" | "pageBreak" | "delete", string>>;
@@ -260,6 +264,7 @@ function blockMenu(target: BlockMenuTarget): TableMenuGroup[] {
         !target.canPageBreak,
         hints.pageBreak ?? "Este bloque sigue al anterior.",
       ),
+      ...(target.titlePrinted === undefined ? [] : [{ action: "block-print-title" as const, label: "Imprimir título", checked: target.titlePrinted }]),
     ],
     [disabledWhen({ action: "block-delete", label: "Eliminar bloque…", destructive: true }, !target.canDelete, hints.delete ?? "Este bloque no se puede eliminar.")],
   ];

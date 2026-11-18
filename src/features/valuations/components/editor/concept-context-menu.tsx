@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import {
   ContextMenu,
@@ -29,7 +29,7 @@ import {
   resolveEffectiveSourceUnit,
 } from "@/features/valuations/services/concept-value-format";
 import type { ContainerAddress } from "@/features/valuations/services/structure-transfer";
-import type { TextMark } from "@/features/valuations/services/text-marks";
+import { TEXT_MARK_EVENT, type TextMark, type TextMarkEventDetail } from "@/features/valuations/services/text-marks";
 import { findCustomUnit } from "@/features/firm/custom-units";
 import { TAG_STYLE_CHOICES, useConceptContainerActions } from "./concept-selection";
 import { useCustomUnits } from "./custom-units-context";
@@ -53,20 +53,34 @@ function valueFormatPatch(concept: Concept, format: ConceptValueFormat, customUn
   return patch;
 }
 
-/** The text selected in a field keeps the browser's menu (copy, paste, spelling), as in a spreadsheet's formula bar. */
+/** Text selected in a field when its menu opens: where it is, to mark it from the menu. */
+type SelectedText = { field: HTMLElement; start: number; end: number };
+
+/** The text selected in the field right-clicked, when there is some. */
+function selectedTextOf(event: MouseEvent<HTMLDivElement>): (SelectedText & { marks: boolean }) | null {
+  const field = (event.target as HTMLElement).closest?.("input, textarea");
+  if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return null;
+  try {
+    if (document.activeElement !== field || field.selectionStart === null || field.selectionEnd === null || field.selectionStart === field.selectionEnd) return null;
+    const marksField = field.closest<HTMLElement>("[data-text-marks-field]");
+    return { field: marksField ?? field, start: field.selectionStart, end: field.selectionEnd, marks: Boolean(marksField) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The text selected in a field keeps the browser's menu (copy, paste,
+ * spelling), as in a spreadsheet's formula bar; in a text that takes bold,
+ * italic and underline, the concept's menu opens, and its N/K/S mark the
+ * selected words (video 7.3: the buttons under the field are gone).
+ */
 function keepsBrowserMenu(event: MouseEvent<HTMLDivElement>) {
   const target = event.target as Node;
   // A popover or dialog opened from the row (its ⋮, a draft) bubbles through React to here: it keeps its own menu.
   if (!event.currentTarget.contains(target)) return true;
-  const field = (target as HTMLElement).closest?.("input, textarea");
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
-    try {
-      return document.activeElement === field && field.selectionStart !== field.selectionEnd;
-    } catch {
-      return false;
-    }
-  }
-  return false;
+  const selected = selectedTextOf(event);
+  return selected !== null && !selected.marks;
 }
 
 /**
@@ -115,6 +129,8 @@ export function ConceptContextMenu({
   const { units: firmUnits } = useCustomUnits();
   const [moving, setMoving] = useState(false);
   const [linking, setLinking] = useState(false);
+  /** The words selected in the field when the menu opened: N/K/S mark them, not the whole value. */
+  const selectedText = useRef<SelectedText | null>(null);
   const groups = conceptContextMenu({
     ...target,
     canRowStyle: Boolean(container?.applyTagStyle),
@@ -126,6 +142,11 @@ export function ConceptContextMenu({
   const run = (action: ConceptMenuAction) => {
     const mark = MARKS[action];
     if (mark) {
+      const selected = selectedText.current;
+      if (selected) {
+        selected.field.dispatchEvent(new CustomEvent<TextMarkEventDetail>(TEXT_MARK_EVENT, { detail: { mark, start: selected.start, end: selected.end } }));
+        return;
+      }
       onTextMark?.(mark);
       return;
     }
@@ -218,7 +239,12 @@ export function ConceptContextMenu({
         <ContextMenuTrigger
           className="block w-full min-w-0 select-auto"
           onContextMenuCapture={(event) => {
-            if (keepsBrowserMenu(event)) event.stopPropagation();
+            if (keepsBrowserMenu(event)) {
+              event.stopPropagation();
+              return;
+            }
+            const selected = selectedTextOf(event);
+            selectedText.current = selected?.marks ? selected : null;
           }}
         >
           {children}

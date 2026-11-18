@@ -15,7 +15,9 @@
  */
 import { FORMULA_FUNCTION_NAMES, formulaReferenceSpans, parseFormula, type CellPosition, type FormulaFunctionName, type FormulaSyntax } from "../calculation/free-formula";
 import { isGeneratedBlock } from "../calculation/market-document";
-import type { AppSection, Concept } from "../model";
+import type { Apartado, AppSection, Block, Concept, TableContent } from "../model";
+import { resolveBlockFlowV2 } from "./block-flow";
+import { resolveContentLayout } from "./content-layout";
 import { normalizeConceptTitle } from "./concept-title";
 import {
   ensureTableV2,
@@ -38,7 +40,10 @@ type FormulaEntryPlace = {
   sectionTitle: string;
   /** The block that holds it: a generated block's id says which calculation wrote it. */
   blockId: string;
+  /** The title of the subbloque that holds it, or of its block. */
   blockTitle: string;
+  /** The block that holds it, by its title, and its subbloque when it is in one: where «Buscar valor» shows it. */
+  place: { block: string; apartado?: string };
   /** Written by a calculation of the engine: a source of references, never a place for formulas. */
   generated: boolean;
 };
@@ -96,6 +101,63 @@ export function canonicalTable(table: unknown): TableV2 {
   return canonical;
 }
 
+type IndexedContainer = { title: string; place: FormulaEntryPlace["place"]; concepts: Concept[]; tables: TableContent[] };
+
+/** The concepts of each row of a block or a subbloque, as the editor shows them: left to right in a row. */
+function conceptRows(container: Block | Apartado): Array<{ rowId: string; concepts: Concept[] }> {
+  const byId = new Map(container.concepts.map((concept) => [concept.id, concept]));
+  return resolveContentLayout(container).rows.map((row) => ({
+    rowId: row.id,
+    concepts: row.columns.flatMap((column) => column.items.flatMap((item) => {
+      const concept = item.type === "concept" ? byId.get(item.id) : undefined;
+      return concept ? [concept] : [];
+    })),
+  }));
+}
+
+/** The concepts of a block or a subbloque row by row; any the layout does not place, after them. */
+function conceptsInLayoutOrder(container: Block | Apartado): Concept[] {
+  const ordered = conceptRows(container).flatMap((row) => row.concepts);
+  const placed = new Set(ordered.map((concept) => concept.id));
+  return [...ordered, ...container.concepts.filter((concept) => !placed.has(concept.id))];
+}
+
+/**
+ * A block and its subbloques in the order the editor shows them (video 7.3,
+ * 5:38: «Buscar valor» listed a concept added again at the end, not where
+ * it is): the block's rows and its subbloques as its flow lays them out.
+ */
+function containersInLayoutOrder(block: Block): IndexedContainer[] {
+  const own = (concepts: Concept[], tables: TableContent[]): IndexedContainer => ({ title: block.title, place: { block: block.title }, concepts, tables });
+  const ofApartado = (apartado: Apartado): IndexedContainer => ({
+    title: apartado.title || block.title,
+    place: { block: block.title, ...(apartado.title.trim() ? { apartado: apartado.title } : {}) },
+    concepts: conceptsInLayoutOrder(apartado),
+    tables: apartado.tables,
+  });
+  const rows = new Map(conceptRows(block).map((row) => [row.rowId, row.concepts]));
+  const apartados = new Map(block.apartados.map((apartado) => [apartado.id, apartado]));
+  const placed = new Set<string>();
+  const containers: IndexedContainer[] = [own([], block.tables)];
+  for (const structural of resolveBlockFlowV2(block)?.rows ?? []) {
+    for (const item of structural.items) {
+      if (item.type === "content-row") {
+        const concepts = rows.get(item.rowId) ?? [];
+        concepts.forEach((concept) => placed.add(concept.id));
+        if (concepts.length) containers.push(own(concepts, []));
+        continue;
+      }
+      const apartado = apartados.get(item.apartadoId);
+      if (!apartado) continue;
+      containers.push(ofApartado(apartado));
+      apartados.delete(item.apartadoId);
+    }
+  }
+  containers.push(own(block.concepts.filter((concept) => !placed.has(concept.id)), []));
+  for (const apartado of apartados.values()) containers.push(ofApartado(apartado));
+  return containers;
+}
+
 /** Every table and concept of the valuation, in document order, with the name formulas use for each. */
 export function buildFormulaIndex(sections: AppSection[]): FormulaIndex {
   const index: FormulaIndex = {
@@ -111,15 +173,18 @@ export function buildFormulaIndex(sections: AppSection[]): FormulaIndex {
 
   for (const section of sections) {
     for (const block of section.blocks) {
-      const place: FormulaEntryPlace = {
-        sectionId: section.id,
-        sectionTitle: section.title || section.label,
-        blockId: block.id,
-        blockTitle: block.title,
-        generated: isGeneratedBlock(block),
-      };
-      const containers = [{ title: block.title, content: block }, ...block.apartados.map((apartado) => ({ title: apartado.title || block.title, content: apartado }))];
-      for (const { title, content } of containers) {
+      const generated = isGeneratedBlock(block);
+      for (const container of containersInLayoutOrder(block)) {
+        const { title } = container;
+        const place: FormulaEntryPlace = {
+          sectionId: section.id,
+          sectionTitle: section.title || section.label,
+          blockId: block.id,
+          blockTitle: title,
+          place: container.place,
+          generated,
+        };
+        const content = container;
         for (const concept of content.concepts) {
           if (index.conceptById.has(referenceKey(concept.id))) continue;
           const entry: FormulaConceptEntry = {
@@ -319,16 +384,80 @@ function formulaSyntaxProblem(source: string): string {
 /** A reference a click wrote into a formula: where it is and what it says. */
 export type InsertedReference = { start: number; end: number; text: string };
 
+/** A cell, a range or a column of a table as written: B2, $B$2, A1:A5, B:B. */
+const CELL_TEXT = /\$?[A-Za-z]{1,3}\$?\d{1,5}(?::\$?[A-Za-z]{1,3}\$?\d{1,5})?|\$?[A-Za-z]{1,3}:\$?[A-Za-z]{1,3}/y;
+
 /**
- * The formula with a clicked reference written at the caret. A click right
- * after another, with no operator typed between them, replaces the reference
- * the first one wrote, as a spreadsheet does: =B2, then a click on C3, reads
- * =C3, not =B2C3.
+ * Where each reference of a formula is written, as the appraiser typed it:
+ * a concept or a table between brackets ([Superficie], [Tabla]!B2), a sheet
+ * between quotes, and the cells and ranges. Used to never write a reference
+ * inside another one.
+ */
+export function referenceSpansOf(text: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = [];
+  let index = 0;
+  while (index < text.length) {
+    const character = text[index];
+    if (character === "[" || character === "'") {
+      const close = text.indexOf(character === "[" ? "]" : "'", index + 1);
+      // A name still being written runs to the end.
+      let end = close === -1 ? text.length : close + 1;
+      if (text[end] === "!") {
+        CELL_TEXT.lastIndex = end + 1;
+        const cell = CELL_TEXT.exec(text);
+        end = cell ? CELL_TEXT.lastIndex : end + 1;
+      }
+      spans.push({ start: index, end });
+      index = end;
+      continue;
+    }
+    // A cell starts a word: «LN(B2)» is a function and then a cell, «B2» a cell.
+    if (/[A-Za-z$]/.test(character) && !/[\wÁÉÍÓÚÜÑáéíóúüñ$.]/.test(text[index - 1] ?? "")) {
+      CELL_TEXT.lastIndex = index;
+      const cell = CELL_TEXT.exec(text);
+      if (cell && !/[\w(]/.test(text[CELL_TEXT.lastIndex] ?? "")) {
+        spans.push({ start: index, end: CELL_TEXT.lastIndex });
+        index = CELL_TEXT.lastIndex;
+        continue;
+      }
+      const word = /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ_]+/y;
+      word.lastIndex = index;
+      index = word.exec(text) ? word.lastIndex : index + 1;
+      continue;
+    }
+    index += 1;
+  }
+  return spans;
+}
+
+/**
+ * The formula with a clicked reference written at the caret, never inside
+ * another reference (video 7.3, 3:15: a click with the caret inside
+ * «[Superficie total de Terreno]» wrote «[Superfici[Frente…]e total…]»): a
+ * caret inside a reference goes to its end, and a selection that takes part
+ * of one takes all of it. A click right after a reference, with no operator
+ * written between them, replaces it, as a spreadsheet does: =B2, then a
+ * click on C3, reads =C3, not =B2C3; the same when the formula was opened
+ * already written (=[Superficie], a click on Frente: =[Frente]).
  */
 export function withReference(text: string, selection: { start: number; end: number }, reference: string, last: InsertedReference | null) {
-  let { start } = selection;
-  const { end } = selection;
-  if (last && start === end && start === last.end && text.slice(last.start, last.end) === last.text) start = last.start;
+  let { start, end } = selection;
+  const spans = referenceSpansOf(text);
+  for (const span of spans) {
+    if (start > span.start && start < span.end) start = start === end ? span.end : span.start;
+    if (end > span.start && end < span.end) end = span.end;
+  }
+  if (end < start) end = start;
+  if (start === end) {
+    if (last && start === last.end && text.slice(last.start, last.end) === last.text) {
+      start = last.start;
+    } else {
+      // The reference right before the caret, with only spaces between: it is replaced.
+      const before = spans.find((span) => span.end <= start && text.slice(span.end, start).trim() === "");
+      const closest = spans.filter((span) => span.end <= start).at(-1);
+      if (before && closest === before) start = before.start;
+    }
+  }
   return {
     text: text.slice(0, start) + reference + text.slice(end),
     reference: { start, end: start + reference.length, text: reference } satisfies InsertedReference,

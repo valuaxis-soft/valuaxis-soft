@@ -562,6 +562,7 @@ function withBlockPresentation(block: Block, previous: Block | undefined): Block
   return {
     ...block,
     ...(previous.enabled === false ? { enabled: false } : {}),
+    ...(previous.titleHidden ? { titleHidden: true } : {}),
     ...(previous.pageBreak ? { pageBreak: previous.pageBreak } : {}),
     ...(previous.startOnNewPage !== undefined ? { startOnNewPage: previous.startOnNewPage } : {}),
     ...(previous.pageOrientation ? { pageOrientation: previous.pageOrientation } : {}),
