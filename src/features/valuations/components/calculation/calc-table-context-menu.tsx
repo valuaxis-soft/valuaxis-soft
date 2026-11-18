@@ -15,11 +15,17 @@ import { useClearCells } from "@/features/valuations/components/editor/delete-co
 import { useCellSelection, type GridTarget } from "@/features/valuations/components/editor/use-cell-selection";
 import { parseTabularText, pastePlan, type GridPoint, type GridShape } from "@/features/valuations/services/cell-selection";
 import { cn } from "@/lib/utils";
+import { useConfirmDelete } from "@/features/valuations/components/editor/delete-confirm";
 import {
   CAPTURE_FORMAT_HINT,
   captureFillPlan,
   captureFillSummary,
+  copiedCaptureText,
+  fillReplaceConfirmation,
+  pasteValuesText,
   tableContextMenu,
+  type CaptureFillMode,
+  type CopiedCaptureCell,
   type TableMenuAction,
   type TableMenuGroup,
   type TableMenuTarget,
@@ -66,13 +72,39 @@ export function typeInto(input: HTMLInputElement | HTMLTextAreaElement, text: st
   flush(() => input.blur());
 }
 
-/** What the system clipboard holds; the last text copied here when it cannot be read. */
-let lastCopied = "";
+/** What the menu sends to a capture cell (`CommitCell`) to write in it, without entering it. */
+export const CAPTURE_CELL_WRITE_EVENT = "valuaxis:capture-cell-write";
 
-async function copyText(text: string) {
-  lastCopied = text;
+/**
+ * Writes what the menu pastes, fills or brings back in a cell: a capture cell
+ * takes it as sent (typed in one go, a number over a formula or an emptied
+ * formula was lost, 17 nov 2026); any other field is typed into.
+ */
+export function writeCaptureCell(field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, text: string) {
+  if (field instanceof HTMLSelectElement) {
+    // A list: its option chosen, as a click does.
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(field, text);
+    flushSync(() => field.dispatchEvent(new Event("change", { bubbles: true })));
+    return;
+  }
+  if (field.dataset.commitCell !== undefined) field.dispatchEvent(new CustomEvent(CAPTURE_CELL_WRITE_EVENT, { detail: text }));
+  else typeInto(field, text);
+}
+
+/** How long a notice that offers «Deshacer» stays: time to read it and decide. */
+const UNDO_NOTICE_MS = 10_000;
+
+/**
+ * The last cell "Copiar" took here: its formula and the value it showed, so
+ * "Pegar solo valores" pastes that value when the formula's references cannot
+ * be computed from the clipboard. Its text is what the clipboard got.
+ */
+let lastCopied: CopiedCaptureCell = { formula: null, value: "" };
+
+async function copyCell(copied: CopiedCaptureCell) {
+  lastCopied = copied;
   try {
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(copiedCaptureText(copied));
   } catch {
     // Without permission the text stays in memory for a paste inside the app.
   }
@@ -80,14 +112,49 @@ async function copyText(text: string) {
 
 async function readClipboard(): Promise<string> {
   try {
-    return (await navigator.clipboard.readText()) || lastCopied;
+    return (await navigator.clipboard.readText()) || copiedCaptureText(lastCopied);
   } catch {
-    return lastCopied;
+    return copiedCaptureText(lastCopied);
   }
 }
 
-/** The text a cell shows: what its input holds, or what is written in it. */
-const cellText = (hit: CalcTableHit) => (hit.input ? hit.input.value : hit.cell.textContent?.trim() ?? "");
+/** What "Copiar" takes from a cell: the formula behind it (as Excel copies it) and the value it shows, as a fallback. */
+const copiedOf = (hit: CalcTableHit): CopiedCaptureCell => ({
+  formula: formulaOf(hit.input),
+  value: hit.input instanceof HTMLSelectElement ? hit.input.selectedOptions[0]?.textContent?.trim() ?? "" : hit.input ? hit.input.value : hit.cell.textContent?.trim() ?? "",
+});
+
+/**
+ * What a field holds as captured, not what it shows: the formula behind a
+ * result, the text typed (`data-value` of a CommitCell, whose empty factor
+ * shows the 1.00 it counts as), or its value.
+ */
+export function capturedText(field: HTMLInputElement | HTMLTextAreaElement): string {
+  const formula = field.dataset.formula?.trim();
+  if (formula?.startsWith("=")) return formula;
+  return field.dataset.value ?? field.value;
+}
+
+/**
+ * Enter goes to the cell below in the same column, Shift+Enter to the one
+ * above, as in Excel and in the editor's tables (video 7.4, 06:33); rows
+ * without a field there (a total) are skipped. False when there is none.
+ */
+export function focusCaptureCell(from: HTMLElement, by: 1 | -1): boolean {
+  const cell = from.closest<HTMLTableCellElement>("td, th");
+  const row = cell?.parentElement as HTMLTableRowElement | null;
+  const section = row?.parentElement as HTMLTableSectionElement | null;
+  if (!cell || !row || !section?.rows) return false;
+  const rows = Array.from(section.rows);
+  for (let index = rows.indexOf(row) + by; index >= 0 && index < rows.length; index += by) {
+    const field = rows[index].cells[cell.cellIndex]?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input:not([type=checkbox]):not([type=radio]), textarea");
+    if (!field || field.disabled || field.readOnly) continue;
+    field.focus();
+    field.select();
+    return true;
+  }
+  return false;
+}
 
 /**
  * Whether a field holds a selection of part of its text, which the browser's
@@ -125,6 +192,7 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
   const [menu, setMenu] = useState<{ anchor: ReturnType<typeof pointAnchor>; hit: CalcTableHit; groups: TableMenuGroup[] } | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const selection = useCaptureSelection(frameRef, readOnly);
+  const confirm = useConfirmDelete();
   // Part of a text the appraiser had selected in a field before the right click. Chrome for Mac
   // selects the word under the pointer on the right press itself, and a field entered with Tab has
   // all its text selected: neither is a selection of his, and the menu is the table's.
@@ -165,18 +233,18 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
     if (selection.count > 1 && selection.isSelected({ row: hit.rowIndex, col: hit.columnIndex })) {
       if (action === "copy") return selection.copy();
       if (action === "cut") return selection.cut();
-      if (action === "paste" || action === "paste-values") return selection.pasteFromClipboard();
+      if (action === "paste" || action === "paste-values") return selection.pasteFromClipboard(action === "paste-values");
       if (action === "clear") return selection.clearSelected();
     }
     const input = takesTyping(hit.input, readOnly) ? hit.input : null;
     switch (action) {
       case "copy":
-        await copyText(cellText(hit));
+        await copyCell(copiedOf(hit));
         return;
       case "cut":
         if (!input) return;
-        await copyText(input.value);
-        typeInto(input, "");
+        await copyCell(copiedOf(hit));
+        writeCaptureCell(input, "");
         return;
       case "paste":
       case "paste-values": {
@@ -186,11 +254,21 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
           toast.info("No hay nada que pegar.");
           return;
         }
-        typeInto(input, action === "paste-values" ? text.replace(/^=/, "") : text);
+        if (action === "paste") {
+          writeCaptureCell(input, text);
+          return;
+        }
+        // The number the formula gives, as Excel's "Pegar valores".
+        const value = pasteValuesText(text, lastCopied);
+        if (value === null) {
+          toast.error("No se pudo calcular el valor de lo copiado", { description: `«${text.trim()}» no da un número; pégalo con «Pegar» para conservar la fórmula.` });
+          return;
+        }
+        writeCaptureCell(input, value);
         return;
       }
       case "clear":
-        if (input) typeInto(input, "");
+        if (input) writeCaptureCell(input, "");
         return;
       case "edit-formula":
         if (input) {
@@ -204,8 +282,23 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
         return;
       case "fill-column":
       case "fill-row":
-        fillFormula(hit, action === "fill-row" ? "row" : "column", readOnly);
+      case "fill-column-empty":
+      case "fill-row-empty": {
+        const along = action === "fill-row" || action === "fill-row-empty" ? "row" : "column";
+        const mode: CaptureFillMode = action === "fill-column" || action === "fill-row" ? "all" : "empty";
+        const plan = fillPlan(hit, along, mode, readOnly);
+        if (!plan) return;
+        const write = () => {
+          const previous = selection.typeAll(plan.writes);
+          toast.info(captureFillSummary(plan.writes.length, plan.computedSkipped, along, plan.replaced), previous.length
+            ? { description: "Se puede deshacer con «Deshacer».", duration: UNDO_NOTICE_MS, action: { label: "Deshacer", onClick: () => void selection.typeAll(previous) } }
+            : undefined);
+        };
+        // Writing over what is captured is asked first; the empty cells are filled at once.
+        if (plan.replaced) confirm({ ...fillReplaceConfirmation(plan.replaced, along, plan.copies), onConfirm: write });
+        else write();
         return;
+      }
       case "insert-row-above": rows?.insertAbove?.(hit.rowIndex); return;
       case "insert-row-below": rows?.insertBelow?.(hit.rowIndex); return;
       case "duplicate-row": rows?.duplicate?.(hit.rowIndex); return;
@@ -252,7 +345,15 @@ export function CalcTableContextMenu({ children, readOnly, rows, className }: {
       onMouseDownCapture={onMouseDownCapture}
       onMouseDown={selection.containerProps.onMouseDown}
       onMouseOver={selection.containerProps.onMouseOver}
-      onKeyDown={selection.containerProps.onKeyDown}
+      onKeyDown={(event) => {
+        selection.containerProps.onKeyDown(event);
+        // Enter confirms the field and goes down, as in Excel; a cell that moved on its own already said so.
+        if (event.key !== "Enter" || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+        const field = event.target as HTMLElement;
+        if (!(field instanceof HTMLInputElement) || field.type === "checkbox" || !frameRef.current?.querySelector("table")?.contains(field)) return;
+        event.preventDefault();
+        if (!focusCaptureCell(field, event.shiftKey ? -1 : 1)) field.blur();
+      }}
       tabIndex={-1}
       data-calc-table-menu=""
     >
@@ -317,12 +418,12 @@ function locateCapture(frame: HTMLElement | null) {
   };
 }
 
-/** The text of a capture cell: what its field holds, or what is written in it. */
+/** The text of a capture cell as copied: the formula behind its result (as Excel copies it), what its field holds, or what is written in it. */
 function captureText(cell: HTMLTableCellElement | null) {
   if (!cell) return "";
   const field = cell.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select");
   if (field instanceof HTMLSelectElement) return field.selectedOptions[0]?.textContent?.trim() ?? "";
-  return field ? field.value : cell.textContent?.trim() ?? "";
+  return field ? formulaOf(field) ?? field.value : cell.textContent?.trim() ?? "";
 }
 
 /**
@@ -355,9 +456,19 @@ function useCaptureSelection(frameRef: RefObject<HTMLDivElement | null>, readOnl
     const previous: Array<{ point: GridPoint; text: string }> = [];
     for (const { point, text } of writes) {
       const field = fieldAt(point);
-      if (!field || !takesTyping(field, readOnly) || field.value === text) continue;
-      previous.push({ point, text: field.value });
-      typeInto(field, text);
+      const choice = field ? null : choiceOf(captureCell(frameRef.current, point) ?? undefined);
+      if (choice) {
+        // A list takes an option it has, as choosing it.
+        if (!takesChoice(choice, readOnly, text) || choice.value === text) continue;
+        previous.push({ point, text: choice.value });
+        writeCaptureCell(choice, text);
+        continue;
+      }
+      // What it held as captured comes back on «Deshacer»: a formula, not its result; nothing, not a suggestion.
+      const held = field ? capturedText(field) : "";
+      if (!field || !takesTyping(field, readOnly) || held === text) continue;
+      previous.push({ point, text: held });
+      writeCaptureCell(field, text);
     }
     return previous;
   };
@@ -369,13 +480,14 @@ function useCaptureSelection(frameRef: RefObject<HTMLDivElement | null>, readOnl
     }
     toast.success(previous.length === 1 ? "Se pegó 1 celda" : `Se pegaron ${previous.length} celdas`, {
       description: "Se puede deshacer con «Deshacer».",
+      duration: UNDO_NOTICE_MS,
       action: { label: "Deshacer", onClick: () => void typeAll(previous) },
     });
   };
   const clear = (points: GridPoint[]) => {
     const filled = points.filter((point) => {
       const field = fieldAt(point);
-      return field !== null && takesTyping(field, readOnly) && field.value !== "";
+      return field !== null && takesTyping(field, readOnly) && capturedText(field) !== "";
     });
     if (!filled.length) return;
     let previous: Array<{ point: GridPoint; text: string }> = [];
@@ -418,12 +530,14 @@ function useCaptureSelection(frameRef: RefObject<HTMLDivElement | null>, readOnl
 
   return {
     ...api,
+    typeAll,
     clearSelected: () => clear(api.points),
     cut: async () => {
       await api.copy();
       if (!readOnly) clear(api.points);
     },
-    pasteFromClipboard: async () => {
+    /** Pastes what was copied over the selection; `valuesOnly`, each formula as the number it gives. */
+    pasteFromClipboard: async (valuesOnly = false) => {
       if (readOnly) return;
       let text = "";
       try {
@@ -432,7 +546,8 @@ function useCaptureSelection(frameRef: RefObject<HTMLDivElement | null>, readOnl
         toast.info("El navegador no dejó leer lo copiado: pega con Ctrl+V (⌘V en Mac).");
         return;
       }
-      paste(pastePlan(api.selection, shape, parseTabularText(text)));
+      const grid = parseTabularText(text);
+      paste(pastePlan(api.selection, shape, valuesOnly ? grid.map((line) => line.map((cell) => pasteValuesText(cell) ?? cell)) : grid));
     },
   };
 }
@@ -452,26 +567,70 @@ function formulaOf(input: CalcTableHit["input"]): string | null {
 /** The field of a cell that takes typing, if any. */
 const fieldOf = (cell: HTMLTableCellElement | undefined) => cell?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea") ?? null;
 
-/** "Copiar fórmula/valor a toda la fila/columna": the formula of the cell, or its value, typed in the empty fields of its row or column. */
-function fillFormula(hit: CalcTableHit, along: "row" | "column", readOnly: boolean) {
-  const formula = takesTyping(hit.input, readOnly) ? formulaOf(hit.input) ?? (hit.input.value.trim() || null) : null;
+/** The list of a cell (estado de conservación, P/C, a rating of the catalog), if any. */
+const choiceOf = (cell: HTMLTableCellElement | undefined) => cell?.querySelector<HTMLSelectElement>("select") ?? null;
+
+/** Whether a list can take `value`: it is not locked and has that option. */
+const takesChoice = (select: HTMLSelectElement, readOnly: boolean, value: string) =>
+  !readOnly && !select.disabled && Array.from(select.options).some((option) => option.value === value);
+
+/** The cells of the row or the column of what was clicked, and its place among them. */
+function lineOf(hit: CalcTableHit, along: "row" | "column") {
   const row = hit.cell.closest("tr");
   const body = row?.closest("tbody");
-  if (!formula || !row || !body) return;
+  if (!row || !body) return null;
   const cells = along === "row" ? Array.from(row.cells) : Array.from(body.rows).map((item) => item.cells[hit.columnIndex]);
-  const from = along === "row" ? hit.columnIndex : hit.rowIndex;
+  return { cells, from: along === "row" ? hit.columnIndex : hit.rowIndex };
+}
+
+/**
+ * "Copiar valor a toda la columna" from a list: the option chosen, chosen in
+ * the lists of the column that have it (video 7.4, 23:41: «NUEVO = 0.98»
+ * picked row by row in Costos).
+ */
+function choiceFillPlan(hit: CalcTableHit, along: "row" | "column", mode: CaptureFillMode, readOnly: boolean) {
+  const value = hit.input instanceof HTMLSelectElement ? hit.input.value : "";
+  const line = lineOf(hit, along);
+  if (readOnly || !value || !line) return null;
+  const seen = line.cells.map((cell) => {
+    const select = choiceOf(cell);
+    return select ? { takesTyping: takesChoice(select, readOnly, value), text: select.value, hasFormula: false, noFill: null } : null;
+  });
+  const { targets, computedSkipped, replaced } = captureFillPlan(seen, line.from, mode);
+  const point = (index: number): GridPoint => (along === "row" ? { row: hit.rowIndex, col: index } : { row: index, col: hit.columnIndex });
+  return { writes: targets.map((index) => ({ point: point(index), text: value })), computedSkipped, replaced, copies: "valor" as const };
+}
+
+/**
+ * "Copiar fórmula/valor a toda la fila/columna": the formula of the cell, or
+ * its value, for the fields of its row or column that take typing (`all`,
+ * replacing what they hold) or only the empty ones (`empty`). Empty is what
+ * was captured, not what is shown: a factor left empty shows the 1.00 it
+ * counts as and still takes the copy (video 7.4, 05:49).
+ */
+function fillPlan(hit: CalcTableHit, along: "row" | "column", mode: CaptureFillMode, readOnly: boolean) {
+  if (hit.input instanceof HTMLSelectElement) return choiceFillPlan(hit, along, mode, readOnly);
+  const formula = takesTyping(hit.input, readOnly) ? formulaOf(hit.input) ?? (capturedText(hit.input).trim() || hit.input.value.trim() || null) : null;
+  const line = lineOf(hit, along);
+  if (!formula || !line) return null;
+  const { cells, from } = line;
   const fields = cells.map(fieldOf);
   // A cell marked `data-no-fill` is left alone: "computed" when the system calculates it while empty
   // (Sup., FRe, the subject's area…), otherwise not one more value of the row (a comparable's free text).
   const seen = fields.map((field) => (field
     ? {
-      takesTyping: takesTyping(field, readOnly), text: field.value, hasFormula: formulaOf(field) !== null,
+      takesTyping: takesTyping(field, readOnly), text: capturedText(field), hasFormula: formulaOf(field) !== null,
       noFill: field.dataset.noFill === undefined ? null : field.dataset.noFill === "computed" ? "computed" as const : "other" as const,
     }
     : null));
-  const { targets, computedSkipped } = captureFillPlan(seen, from);
-  for (const index of targets) typeInto(fields[index]!, formula);
-  toast.info(captureFillSummary(targets.length, computedSkipped, along));
+  const { targets, computedSkipped, replaced } = captureFillPlan(seen, from, mode);
+  const point = (index: number): GridPoint => (along === "row" ? { row: hit.rowIndex, col: index } : { row: index, col: hit.columnIndex });
+  return {
+    writes: targets.map((index) => ({ point: point(index), text: formula })),
+    computedSkipped,
+    replaced,
+    copies: formula.startsWith("=") ? "fórmula" as const : "valor" as const,
+  };
 }
 
 /** The menu's target for what was clicked: a header, a row's first cell or a cell. */
@@ -490,6 +649,15 @@ function targetOf(hit: CalcTableHit, readOnly: boolean, rows: CalcTableRowAction
       canDelete: ownRow && Boolean(rows.delete),
       hidden: false,
       canHide: false,
+    };
+  }
+  // A list copies its option to the column or the row (video 7.4, 23:41); it is chosen, not typed.
+  if (hit.input instanceof HTMLSelectElement && !readOnly && !hit.input.disabled) {
+    const listHint = "Es una lista: elige la opción, o cópiala a toda la columna o la fila.";
+    return {
+      kind: "cell", editable: true, hasFormula: false, hasValue: Boolean(hit.input.value), canPaste: false,
+      canInsertRow: canInsert, canInsertColumn: false, canDeleteColumn: false, canDeleteRow: ownRow && Boolean(rows.delete),
+      reasons: { cut: listHint, "edit-formula": listHint, clear: listHint },
     };
   }
   const editable = takesTyping(hit.input, readOnly);

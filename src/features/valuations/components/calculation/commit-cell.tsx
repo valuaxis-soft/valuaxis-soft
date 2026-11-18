@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 
 import { useFormulaEditing, useFormulaField } from "@/features/valuations/components/editor/formula-editing";
@@ -8,6 +8,7 @@ import { isFormulaText } from "@/features/valuations/services/formula-references
 import { liveFormulaText, readableFormulaText } from "@/features/valuations/services/live-formulas";
 import { numericFieldProblem, percentAsNumberText } from "@/features/valuations/calculation/free-formula";
 import { cn } from "@/lib/utils";
+import { CAPTURE_CELL_WRITE_EVENT, focusCaptureCell } from "./calc-table-context-menu";
 import { LIVE_WARNING_CLASS, LiveCellMark, useLiveCell } from "./live-cell";
 
 /**
@@ -74,6 +75,31 @@ export function CommitCell(props: {
     },
   });
 
+  /**
+   * What the table's menu writes in the cell (a paste, «Copiar a toda la columna», «Deshacer»)
+   * is sent as typed, without entering the cell: typed in one go, a number over a formula, or an
+   * emptied formula, was lost (17 nov 2026). See `writeCaptureCell`.
+   */
+  const send = useEffectEvent((text: string) => {
+    if (props.disabled || text === props.value) return;
+    if (withFormulas && isFormulaText(text)) {
+      const captured = liveFormulaText(text, index);
+      if (captured.ok) props.onCommit(captured.text);
+      else toast.error("La fórmula no se aplicó", { description: captured.message, duration: 12_000 });
+      return;
+    }
+    props.onCommit(props.numeric ? percentAsNumberText(text) : text);
+  });
+  const ownRef = useRef<HTMLInputElement | null>(null);
+  const fieldRef = withFormulas ? formula.inputRef : ownRef;
+  useEffect(() => {
+    const element = fieldRef.current;
+    if (!element) return;
+    const listener = (event: Event) => send((event as CustomEvent<string>).detail);
+    element.addEventListener(CAPTURE_CELL_WRITE_EVENT, listener);
+    return () => element.removeEventListener(CAPTURE_CELL_WRITE_EVENT, listener);
+  });
+
   // What the formula field holds is its to send: a formula being written, or a number typed over a formula.
   const formulaOwnsEdit = withFormulas && formula.draftText !== null;
   const finish = () => {
@@ -95,9 +121,17 @@ export function CommitCell(props: {
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (formulaOwnsEdit) {
       formula.onKeyDown(event);
+      // The formula applied, Enter goes down as with a value (video 7.4, 06:33).
+      if (event.key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey) focusCaptureCell(event.currentTarget, event.shiftKey ? -1 : 1);
       return;
     }
-    if (event.key === "Enter") event.currentTarget.blur();
+    if (event.key === "Enter") {
+      // Sent, and down to the cell below (Shift+Enter, up), as in Excel and in every table of the editor.
+      event.preventDefault();
+      const cell = event.currentTarget;
+      cell.blur();
+      if (!event.altKey && !event.ctrlKey && !event.metaKey) focusCaptureCell(cell, event.shiftKey ? -1 : 1);
+    }
     if (event.key === "Escape") {
       cancelled.current = true;
       event.currentTarget.blur();
@@ -117,7 +151,8 @@ export function CommitCell(props: {
   const shown = withFormulas && formula.draftText !== null ? formula.draftText : editing ?? props.display ?? props.value;
   const input = (
     <input
-      ref={withFormulas ? formula.inputRef : undefined}
+      ref={fieldRef}
+      data-commit-cell=""
       aria-label={props.ariaLabel}
       aria-describedby={live.warning ? warningId : undefined}
       title={problem ? `${problem}: lo escrito no entra en los cálculos.` : live.title ? `${props.title ? `${props.title}. ` : ""}${live.title}` : props.title}
@@ -130,6 +165,8 @@ export function CommitCell(props: {
       // The formula behind the result shown, for the table's menu ("Copiar fórmula a toda la fila").
       data-formula={live.readable ?? (isFormulaText(props.value) ? props.value.trim() : undefined)}
       data-formula-warning={live.warning ?? undefined}
+      // What is captured, not what is shown: an empty factor shows the 1.00 it counts as (video 7.4, 05:49).
+      data-value={props.value}
       className={cn(
         "h-7 w-full min-w-0 rounded-sm border border-transparent bg-transparent px-1.5 text-sm outline-none",
         "hover:border-input focus:border-ring focus:bg-background focus:ring-2 focus:ring-ring/30 disabled:cursor-default disabled:hover:border-transparent",

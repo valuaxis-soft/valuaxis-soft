@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
+import { OPEN_SECTION_EVENT } from "@/features/valuations/components/calculation/calculation-precision-control";
 import { ReadOnlyValuationAlert } from "@/features/valuations/components/feedback/valuation-error-alert";
 import { UnaccreditedEditorAlert, UnaccreditedNoticeProvider } from "@/features/accreditation/components/unaccredited-notice";
 import { FormulaEditingProvider } from "@/features/valuations/components/editor/formula-editing";
@@ -195,6 +196,17 @@ export function ValuationWorkspace({
     setActiveSectionId(sectionId);
     setPreviewSectionId(null);
   };
+  // A panel's "Se cambia en Carátula › Configuración del avalúo" opens that section at its top.
+  const openSectionByKey = useEffectEvent((event: Event) => {
+    const key = (event as CustomEvent<string>).detail;
+    const target = sections.find((section) => !section.removed && getCanonicalSectionKey(section.id) === key);
+    if (target) handleActiveSectionChange(target.id);
+  });
+  useEffect(() => {
+    const listener = (event: Event) => openSectionByKey(event);
+    window.addEventListener(OPEN_SECTION_EVENT, listener);
+    return () => window.removeEventListener(OPEN_SECTION_EVENT, listener);
+  }, []);
 
   const liveFormulasRef = useRef<(owners: string[]) => void>(() => undefined);
   const {

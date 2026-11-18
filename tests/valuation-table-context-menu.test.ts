@@ -249,7 +249,7 @@ test("the cell menu of an editable table offers every item of the model, and cop
   assert.deepEqual(without.map((group) => group.map((entry) => entry.label)), [
     ["Cortar", "Copiar", "Pegar", "Pegar solo valores"],
     ["Insertar fila arriba", "Insertar fila abajo", "Insertar columna a la izquierda", "Insertar columna a la derecha", "Eliminar fila", "Eliminar columna"],
-    ["Insertar fórmula…", "Copiar valor a toda la columna", "Copiar valor a toda la fila", "Operaciones"],
+    ["Insertar fórmula…", "Copiar valor a toda la columna", "Copiar valor a toda la fila", "Copiar valor solo a las vacías de la columna", "Copiar valor solo a las vacías de la fila", "Operaciones"],
     ["Unidades de valor", "Decimales", "Limpiar contenido"],
     ["Negrita", "Cursiva", "Subrayado", "Alineación", "Limpiar formato"],
   ]);

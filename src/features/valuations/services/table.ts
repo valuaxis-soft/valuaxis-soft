@@ -1260,13 +1260,13 @@ const isEmptyCell = (cell: TableCellV2 | undefined) => !cell || (cell.kind === "
  * its own row each copy reads from its row, and what it reads one row up,
  * one row up from the copy. A row fixed with "$" ($B$2, B$2) does not move;
  * the column of a reference never does, the copies stay in their column.
- * Rows whose cell already holds a value are skipped unless `overwrite`.
+ * Rows whose cell already holds a value or a formula are skipped unless `overwrite`.
  */
 export function fillColumnWithFormula(table: TableV2, rowId: string, columnId: string, options: { overwrite?: boolean } = {}): TableV2 {
   const sourceIndex = table.rows.findIndex((row) => row.id === rowId);
   const source = table.rows[sourceIndex]?.cells[columnId];
   if (isFillableValue(source)) {
-    return { ...table, rows: table.rows.map((row) => (row.id !== rowId && isEmptyCell(row.cells[columnId]) ? { ...row, cells: { ...row.cells, [columnId]: { ...source } } } : row)) };
+    return { ...table, rows: table.rows.map((row) => (row.id !== rowId && (options.overwrite || isEmptyCell(row.cells[columnId])) ? { ...row, cells: { ...row.cells, [columnId]: { ...source } } } : row)) };
   }
   if (source?.kind !== "formula") return table;
   const rowIds = table.rows.map((row) => row.id);
@@ -1275,11 +1275,23 @@ export function fillColumnWithFormula(table: TableV2, rowId: string, columnId: s
     rows: table.rows.map((row, index) => {
       if (row.id === rowId) return row;
       const current = row.cells[columnId];
-      if (!options.overwrite && current?.kind === "value" && current.value.trim() !== "") return row;
+      if (!options.overwrite && !isEmptyCell(current)) return row;
       const formula = { ...source.formula, expression: expressionShifted(source.formula.expression, rowIds, index - sourceIndex) };
       return { ...row, cells: { ...row.cells, [columnId]: { ...source, formula } } };
     }),
   };
+}
+
+/**
+ * How many cells of the column (or the row) of a cell "Copiar … a toda la
+ * columna/fila" would write over: the others that hold a value or a formula.
+ * Asked first when there are any (video 7.4, 10:26).
+ */
+export function fillReplacedCount(table: TableV2, rowId: string, columnId: string, along: "row" | "column"): number {
+  const filled = (cell: TableCellV2 | undefined) => !isEmptyCell(cell);
+  if (along === "column") return table.rows.filter((row) => row.id !== rowId && filled(row.cells[columnId])).length;
+  const row = table.rows.find((item) => item.id === rowId);
+  return row ? getDisplayColumns(table).filter((column) => column.id !== columnId && filled(row.cells[column.id])).length : 0;
 }
 
 /**
@@ -1320,14 +1332,14 @@ function expressionShiftedColumns(expression: FormulaExpression, columnIds: stri
  * moves as many columns as the copy is from the original, so what it reads
  * from its own column each copy reads from its column. A column fixed with
  * "$" ($B2, $B$2) does not move; the row of a reference never does. Cells
- * that already hold a value are skipped unless `overwrite`.
+ * that already hold a value or a formula are skipped unless `overwrite`.
  */
 export function fillRowWithFormula(table: TableV2, rowId: string, columnId: string, options: { overwrite?: boolean } = {}): TableV2 {
   const row = table.rows.find((item) => item.id === rowId);
   const source = row?.cells[columnId];
   if (row && isFillableValue(source)) {
     const cells = { ...row.cells };
-    for (const column of getDisplayColumns(table)) if (column.id !== columnId && isEmptyCell(cells[column.id])) cells[column.id] = { ...source };
+    for (const column of getDisplayColumns(table)) if (column.id !== columnId && (options.overwrite || isEmptyCell(cells[column.id]))) cells[column.id] = { ...source };
     return { ...table, rows: table.rows.map((item) => (item.id === rowId ? { ...item, cells } : item)) };
   }
   if (!row || source?.kind !== "formula") return table;
@@ -1338,7 +1350,7 @@ export function fillRowWithFormula(table: TableV2, rowId: string, columnId: stri
   columnIds.forEach((id, index) => {
     if (id === columnId) return;
     const current = cells[id];
-    if (!options.overwrite && current?.kind === "value" && current.value.trim() !== "") return;
+    if (!options.overwrite && !isEmptyCell(current)) return;
     const formula = { ...source.formula, expression: expressionShiftedColumns(source.formula.expression, columnIds, index - sourceIndex) };
     cells[id] = { ...source, formula };
   });

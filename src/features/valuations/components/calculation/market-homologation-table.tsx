@@ -69,7 +69,8 @@ export function MarketHomologationTable(props: {
   const typed = (comparable: ComparableDto, slot: FactorSlotConfig) => (text: string) => {
     const input = parseFactorInput(text);
     if (input.kind === "invalid") {
-      props.onInvalid(`«${text}» no es un factor válido: escribe un número o una fórmula como =0.9/1.05.`);
+      // Examples, not a range: any number or arithmetic is a factor (video 7.4, 06:54).
+      props.onInvalid(`«${text}» no se lee como número. Escribe un número (por ejemplo, 0.95) o una operación (por ejemplo, =1/1.1).`);
       return;
     }
     props.onFactors(comparable, (current) => withTypedComparableFactor(current, slot, input));

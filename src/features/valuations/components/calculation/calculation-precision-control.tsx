@@ -15,11 +15,37 @@ import {
   type DisplayDecimals,
 } from "@/features/valuations/calculation/calculation-precision";
 
+/** The event that takes the editor to a section by its key ("CARATULA"): the workspace listens for it. */
+export const OPEN_SECTION_EVENT = "valuaxis:open-section";
+
 /**
- * "Precisión del cálculo" of the valuation, in every panel that has factors:
- * the decimals they show and whether the valuation calculates with them. One
- * choice for the whole valuation; saving it recomputes every approach, and
- * `onChanged` reloads the panel.
+ * What a calculation panel says of the precision: the choice in force and
+ * where it is changed, Carátula › Configuración del avalúo. The control itself
+ * lives only there (video 7.4, 00:00: «lo que es configuración va arriba»).
+ */
+export function CalculationPrecisionSummary({ precision }: { precision: CalculationPrecision | undefined }) {
+  const current = precision ?? LEGACY_PRECISION;
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground" data-calculation-precision-summary="">
+      <span>
+        Factores con {current.decimals} decimales{current.calculateWithShown ? ", calculando con la precisión mostrada" : ", calculando con todos los decimales"}.
+      </span>
+      <button
+        type="button"
+        className="font-medium text-primary underline-offset-2 hover:underline"
+        onClick={() => window.dispatchEvent(new CustomEvent(OPEN_SECTION_EVENT, { detail: "CARATULA" }))}
+      >
+        Se cambia en Carátula › Configuración del avalúo
+      </button>
+    </p>
+  );
+}
+
+/**
+ * "Precisión del cálculo" of the valuation, in Carátula › Configuración del
+ * avalúo: the decimals the factors show and whether the valuation calculates
+ * with them. One choice for the whole valuation; saving it recomputes every
+ * approach, and `onChanged` reloads what shows it.
  */
 export function CalculationPrecisionControl(props: {
   valuationId: string;

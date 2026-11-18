@@ -9,6 +9,7 @@
  * Pure TypeScript — no React, no side effects. The components render the
  * groups this module gives and run the action chosen.
  */
+import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 
 /**
  * What kind of table the menu is for: one the appraiser edits cell by cell
@@ -20,11 +21,12 @@ export type TableMenuKind = "editable" | "capture" | "generated";
 export type TableMenuAction =
   | "cut" | "copy" | "paste" | "paste-values"
   | "insert-row-above" | "insert-row-below" | "insert-column-left" | "insert-column-right" | "delete-row" | "delete-column"
-  | "edit-formula" | "fill-column" | "fill-row" | "remove-formula"
+  | "edit-formula" | "fill-column" | "fill-row" | "fill-column-empty" | "fill-row-empty" | "remove-formula"
   | "format" | "format-decimals" | "clear"
   | "bold" | "italic" | "underline" | "align" | "clear-format"
   | "rename" | "move-left" | "move-right" | "column-width" | "sort-asc" | "sort-desc" | "hide-column" | "show-column" | "column-format" | "column-decimals"
   | "duplicate-row" | "move-row-up" | "move-row-down" | "hide-row" | "show-row"
+  | "table-format" | "caption-show" | "caption-hide"
   | "block-rename" | "block-copy" | "block-duplicate" | "block-move" | "block-hide" | "block-show" | "block-page-break" | "block-print-title" | "block-delete";
 
 export type TableMenuItem = {
@@ -174,9 +176,13 @@ function cellMenu(kind: TableMenuKind, target: CellMenuTarget): TableMenuGroup[]
     ],
     [
       typing({ action: "edit-formula", label: target.hasFormula ? "Editar fórmula…" : "Insertar fórmula…" }),
-      // The formula, or the value written, goes to the empty cells of its column or row that take typing.
+      // The formula, or the value written, goes to every cell of its column or row that takes typing,
+      // replacing what they hold (asked first, and undone), as Excel's fill (video 7.4, 10:26); or only
+      // to the empty ones.
       typing({ action: "fill-column", label: `Copiar ${fillCopies} a toda la columna` }, canFill, EMPTY_CELL_HINT),
       typing({ action: "fill-row", label: `Copiar ${fillCopies} a toda la fila` }, canFill, EMPTY_CELL_HINT),
+      typing({ action: "fill-column-empty", label: `Copiar ${fillCopies} solo a las vacías de la columna` }, canFill, EMPTY_CELL_HINT),
+      typing({ action: "fill-row-empty", label: `Copiar ${fillCopies} solo a las vacías de la fila` }, canFill, EMPTY_CELL_HINT),
       ...(kind === "editable" ? [typing({ action: "edit-formula", label: "Operaciones", submenu: "operations" })] : []),
       ...(target.hasFormula && kind === "editable" ? [{ action: "remove-formula" as const, label: "Quitar fórmula" }] : []),
     ],
@@ -270,18 +276,26 @@ function blockMenu(target: BlockMenuTarget): TableMenuGroup[] {
   ];
 }
 
-/** A cell of a capture table's row or column, as "Copiar fórmula/valor a toda la fila/columna" sees it; null when it has no field. */
+/**
+ * A cell of a capture table's row or column, as "Copiar fórmula/valor a toda la fila/columna" sees it;
+ * null when it has no field. `text` is what was captured in it, not what it shows: a factor left
+ * empty shows the 1.00 it counts as, in italics, and is still empty (video 7.4, 05:49).
+ */
 export type CaptureFillCell = { takesTyping: boolean; text: string; hasFormula: boolean } | null;
+
+/** "Copiar … a toda la fila/columna" replaces what the cells hold; "… solo a las vacías", only the empty ones. */
+export type CaptureFillMode = "all" | "empty";
+
+const isEmptyCapture = (cell: NonNullable<CaptureFillCell>) => !cell.hasFormula && !cell.text.trim();
 
 /**
  * Where "Copiar fórmula/valor a toda la fila/columna" of a capture table writes the
  * formula (or the value) of the cell at `from`: the other cells of the row or column that
- * take typing and are empty. A capture's formulas are arithmetic without
- * references (=1345*235), so each copy is the same formula; what is already
- * captured is never overwritten, as in the editor's own tables.
+ * take typing; with `empty`, only those with nothing captured. A capture's formulas are
+ * arithmetic without references (=1345*235), so each copy is the same formula.
  */
-export function captureFillTargets(cells: CaptureFillCell[], from: number): number[] {
-  return cells.flatMap((cell, index) => (index !== from && cell?.takesTyping && !cell.hasFormula && !cell.text.trim() ? [index] : []));
+export function captureFillTargets(cells: CaptureFillCell[], from: number, mode: CaptureFillMode = "empty"): number[] {
+  return cells.flatMap((cell, index) => (index !== from && cell?.takesTyping && (mode === "all" || isEmptyCapture(cell)) ? [index] : []));
 }
 
 /**
@@ -289,30 +303,99 @@ export function captureFillTargets(cells: CaptureFillCell[], from: number): numb
  * la fila/columna": `computed`, its empty value means the system calculates
  * it (a resultant factor, the subject's area from the market, a derived
  * value) and typing there would replace the calculation; `other`, it is not
- * one more value of its row or column (the free text of a comparable).
+ * one more value of its row or column (the free text of a comparable). A
+ * `computed` cell the appraiser already wrote in is replaced as any other.
  */
 export type CaptureNoFill = "computed" | "other";
 
-/** The cells to write and how many empty ones were left out because the system calculates them. */
+/** The cells to write, how many of them hold something that is replaced, and how many empty ones were left out because the system calculates them. */
 export function captureFillPlan(
-  cells: Array<(NonNullable<CaptureFillCell> & { noFill?: CaptureNoFill | null }) | null>, from: number,
-): { targets: number[]; computedSkipped: number } {
-  const empty = captureFillTargets(cells, from);
+  cells: Array<(NonNullable<CaptureFillCell> & { noFill?: CaptureNoFill | null }) | null>, from: number, mode: CaptureFillMode = "empty",
+): { targets: number[]; computedSkipped: number; replaced: number } {
+  const candidates = captureFillTargets(cells, from, mode);
+  const computedEmpty = (index: number) => cells[index]?.noFill === "computed" && isEmptyCapture(cells[index]!);
+  const targets = candidates.filter((index) => cells[index]?.noFill !== "other" && !computedEmpty(index));
   return {
-    targets: empty.filter((index) => !cells[index]?.noFill),
-    computedSkipped: empty.filter((index) => cells[index]?.noFill === "computed").length,
+    targets,
+    computedSkipped: candidates.filter(computedEmpty).length,
+    replaced: targets.filter((index) => !isEmptyCapture(cells[index]!)).length,
   };
 }
 
-/** What the menu tells after copying: how many cells it filled and how many calculated ones it left alone. */
-export function captureFillSummary(filled: number, computedSkipped: number, along: "row" | "column") {
+/** What the menu tells after copying: how many cells it filled or replaced and how many calculated ones it left alone. */
+export function captureFillSummary(filled: number, computedSkipped: number, along: "row" | "column", replaced = 0) {
   const place = along === "row" ? "fila" : "columna";
   const skipped = computedSkipped
     ? ` Se ${computedSkipped === 1 ? "omitió 1 celda" : `omitieron ${computedSkipped} celdas`} que calcula el sistema; para cambiarla${computedSkipped === 1 ? "" : "s"}, escribe en ella${computedSkipped === 1 ? "" : "s"}.`
     : "";
   if (!filled) return `No hay celdas vacías en la ${place} para copiarlo.${skipped}`;
-  return `Se ${filled === 1 ? "llenó 1 celda" : `llenaron ${filled} celdas`} de la ${place}.${skipped}`;
+  const over = replaced ? ` (${replaced === 1 ? "se reemplazó 1 que tenía valor" : `se reemplazaron ${replaced} que tenían valor`})` : "";
+  return `Se ${filled === 1 ? "llenó 1 celda" : `llenaron ${filled} celdas`} de la ${place}${over}.${skipped}`;
 }
+
+/** What is asked before "Copiar … a toda la fila/columna" writes over cells that hold a value or a formula. */
+export function fillReplaceConfirmation(replaced: number, along: "row" | "column", copies: "fórmula" | "valor") {
+  const place = along === "row" ? "fila" : "columna";
+  const one = replaced === 1;
+  return {
+    title: one ? `¿Reemplazar 1 celda de la ${place}?` : `¿Reemplazar ${replaced} celdas de la ${place}?`,
+    description: `${one ? "Tiene" : "Tienen"} un valor o una fórmula y ${one ? "se sustituye" : "se sustituyen"} por la ${copies} copiada. Puedes deshacerlo con «Deshacer». Para no tocar lo capturado, usa «Copiar ${copies} solo a las vacías».`,
+    confirmLabel: "Reemplazar",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Copy and paste of a capture cell, as Excel's (video 7.4)           */
+/* ------------------------------------------------------------------ */
+
+/** What "Copiar" took from a capture cell: its formula, when it has one, and the value it shows. */
+export type CopiedCaptureCell = { formula: string | null; value: string };
+
+/** The text "Copiar" puts in the clipboard: the formula, as Excel copies it; the value when there is none. */
+export const copiedCaptureText = (copied: CopiedCaptureCell) => copied.formula ?? copied.value;
+
+/**
+ * What "Pegar solo valores" writes for the text in the clipboard: the number a
+ * formula gives, not the formula without its "=" (video 7.4, 06:54: "=1/1.1"
+ * pasted «1/1.1», which no factor reads, and the warning read as a limit). A
+ * formula copied here whose references cannot be computed from the clipboard
+ * pastes the value it showed. Null when the formula cannot be computed.
+ * Anything else pastes as it is.
+ */
+export function pasteValuesText(text: string, copied?: CopiedCaptureCell | null): string | null {
+  const typed = text.trim();
+  if (!typed.startsWith("=")) return text;
+  const value = parseDecimal(typed);
+  if (value !== null) return String(Number(value.toPrecision(12)));
+  if (copied && copiedCaptureText(copied).trim() === typed && copied.value.trim()) return copied.value.trim();
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  The table's own items (video 7.3, 00:00)                           */
+/* ------------------------------------------------------------------ */
+
+/** The table a cell, a header, a row or the title belongs to: whether its title prints in the dictamen. */
+export type TableFormatMenuTarget = { captionShown: boolean };
+
+/**
+ * The last group of the right click on a cell, a header, a row's number or the
+ * title of a table: "Formato de la tabla…" (title, width, space before and
+ * after, indent, alignment and decimals) and its title shown or hidden in the
+ * dictamen, where the appraiser looks for them (video 7.3, 00:28).
+ */
+export function tableFormatGroup(target: TableFormatMenuTarget): TableMenuGroup {
+  return [
+    { action: "table-format", label: "Formato de la tabla (espacio, sangría, decimales)…" },
+    target.captionShown
+      ? { action: "caption-hide", label: "Ocultar el título en el dictamen" }
+      : { action: "caption-show", label: "Mostrar el título en el dictamen" },
+  ];
+}
+
+/** The groups of a menu with the table's own group at the end, when it has one. */
+export const withTableFormatGroup = (groups: TableMenuGroup[], target: TableFormatMenuTarget | null | undefined): TableMenuGroup[] =>
+  (target ? [...groups, tableFormatGroup(target)] : groups);
 
 /** The groups of the menu for what was right-clicked, in the order they are shown; a separator goes between groups. */
 export function tableContextMenu(kind: TableMenuKind, target: TableMenuTarget): TableMenuGroup[] {
