@@ -151,7 +151,7 @@ test("non-finite numbers and strings are rejected in cost amounts", () => {
   }
 });
 
-test("constructions and installations need a reference, installations a description, in Spanish", () => {
+test("constructions and installations need a reference, in Spanish; an installation may wait for its description", () => {
   assert.deepEqual(
     issues(costInputSchema, { ...cost, constructions: [{ ...construction, ref: "   " }] }),
     ["constructions.0.ref: Cada construcción necesita su referencia."],
@@ -160,10 +160,8 @@ test("constructions and installations need a reference, installations a descript
     issues(costInputSchema, { ...cost, installations: [{ ...installation, ref: "" }] }),
     ["installations.0.ref: Cada instalación necesita su referencia."],
   );
-  assert.deepEqual(
-    issues(costInputSchema, { ...cost, installations: [{ ...installation, description: " " }] }),
-    ["installations.0.description: Describe cada instalación especial."],
-  );
+  // Captured without its description yet (unit, state, value): it is kept, not lost on reloading.
+  assert.ok(costInputSchema.safeParse({ ...cost, installations: [{ ...installation, description: " " }] }).success);
 });
 
 test("references cannot repeat, ignoring case", () => {

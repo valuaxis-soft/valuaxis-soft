@@ -485,6 +485,16 @@ export function isConstructionComplete(row: ConstructionDto) {
     && positive(effectiveConservation(row)) && positive(row.unitReplacementCost);
 }
 
+/**
+ * Something of the installation is captured (its description or any datum
+ * of its own; the defaults of a new row do not count): it is saved, even
+ * before it has its description.
+ */
+export function installationHasData(row: InstallationDto) {
+  return Boolean(row.description.trim() || row.unit.trim() || row.maintenance.trim() || row.conservationState || row.costName?.trim())
+    || [row.quantity, row.age, row.usefulLife, row.conservation, row.conservationRating, row.ageFactor, row.resultantFactor, row.unitReplacementCost].some((value) => value !== null && value !== undefined);
+}
+
 export function isInstallationComplete(row: InstallationDto) {
   return positive(row.quantity) && row.age !== null && row.age >= 0 && positive(row.usefulLife)
     && positive(effectiveConservation(row)) && positive(row.unitReplacementCost);

@@ -63,7 +63,17 @@ type CapturedFactors = {
   extraFactors: number[];
   /** An installation's own name in the cost approach, unlinked from its description. */
   costName?: string | null;
+  /** The installation was saved before it had its description: its row holds UNDESCRIBED, which reads back as empty. */
+  undescribed?: boolean;
 };
+
+/**
+ * The description kept in the row of an installation saved without one: the
+ * database requires a description, and an installation captured in Costos
+ * before it is described (unit, state, value) is saved instead of lost on
+ * reloading. It reads back as empty (`undescribed` in the captured factors).
+ */
+const UNDESCRIBED = "Sin descripción";
 type StoredFactors = {
   /** By construction type id, as the cost rows themselves. */
   constructions?: Record<string, CapturedFactors>;
@@ -80,6 +90,7 @@ const capturedOf = (stored: Partial<CapturedFactors> | undefined): CapturedFacto
     ? stored.extraFactors.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
     : [],
   ...(typeof stored?.costName === "string" && stored.costName.trim() ? { costName: stored.costName.trim() } : {}),
+  ...(stored?.undescribed === true ? { undescribed: true } : {}),
 });
 const refKey = (ref: string) => ref.trim().toLowerCase();
 
@@ -136,7 +147,7 @@ async function loadInput(tx: Tx, versionId: number): Promise<StoredCost> {
       const captured = capturedOf(factors.installations?.[refKey(row.SReferencia ?? "")]);
       return {
         ref: row.SReferencia ?? "",
-        description: row.SDescripcion,
+        description: captured.undescribed && row.SDescripcion === UNDESCRIBED ? "" : row.SDescripcion,
         share: row.tipoParticipacion.SClave === "COMUN" ? "C" as const : "P" as const,
         unit: row.SUnidad ?? "",
         quantity: decimal(row.NCantidad),
@@ -199,7 +210,7 @@ const capturedFactors = (row: Partial<CapturedFactors>): CapturedFactors => capt
 const hasCaptured = (row: Partial<CapturedFactors>) => {
   const factors = capturedOf(row);
   return factors.ageFactor !== null || factors.resultantFactor !== null || factors.conservationRating !== null || factors.conservationState !== null
-    || factors.extraFactors.length > 0 || Boolean(factors.costName);
+    || factors.extraFactors.length > 0 || Boolean(factors.costName) || Boolean(factors.undescribed);
 };
 
 /** Replaces the whole capture of the version and recomputes the approach. */
@@ -221,7 +232,10 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
     const columns = costColumnsOf(payload.columns ?? previous.columns);
     const factors: Required<StoredFactors> = {
       constructions: {},
-      installations: Object.fromEntries(payload.installations.filter(hasCaptured).map((row) => [refKey(row.ref), capturedFactors(row)])),
+      installations: Object.fromEntries(payload.installations
+        .map((row) => (row.description.trim() ? row : { ...row, undescribed: true }))
+        .filter(hasCaptured)
+        .map((row) => [refKey(row.ref), capturedFactors(row)])),
     };
     const approach = await tx.enfoqueCosto.upsert({
       where: { IdVersionAvaluo: versionId },
@@ -288,7 +302,7 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
           IdVersionAvaluo: versionId,
           IdTipoParticipacion: shareId(row.share),
           SReferencia: row.ref,
-          SDescripcion: row.description,
+          SDescripcion: row.description.trim() || UNDESCRIBED,
           SUnidad: row.unit || null,
           NCantidad: row.quantity,
           NEdad: row.age,

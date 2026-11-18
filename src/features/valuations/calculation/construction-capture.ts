@@ -289,9 +289,9 @@ const refOfRow = (table: TableV2, row: TableRow, map: ReturnType<typeof columnMa
  * a reference and something written, or that the server already knows.
  * `synced` is what the server held the last time both agreed, by row: a
  * figure shown as it was saved keeps its decimals, and a column the table
- * does not have keeps the server's datum. An installation without
- * description is not one yet (the cost approach needs it), unless the server
- * has its description.
+ * does not have keeps the server's datum. An installation is one as soon as
+ * something of it is written, its description or not: one waiting for its
+ * description was never saved, and was lost on reloading.
  */
 export function readCapture(tableContent: TableContent | TableV2, kind: CaptureKind, synced: SyncedItem[] | null): Array<{ rowId: string; id?: number; item: CaptureItem }> {
   const table = ensureTableV2(tableContent);
@@ -312,11 +312,6 @@ export function readCapture(tableContent: TableContent | TableV2, kind: CaptureK
     if (!known && !rowHasData(table, row, map)) return [];
     const record = rowRecord(table, row, kind, map, known ? (known.item as unknown as ItemRecord) : null);
     record.ref = ref;
-    if (kind === "installations" && !String(record.description ?? "").trim()) {
-      const description = known ? String((known.item as InstallationItem).description ?? "") : "";
-      if (!description) return [];
-      record.description = description;
-    }
     const item = Object.fromEntries(fields.map((field) => [field, record[field]])) as unknown as CaptureItem;
     return [{ rowId: row.id, ...(known?.id === undefined ? {} : { id: known.id }), item }];
   });

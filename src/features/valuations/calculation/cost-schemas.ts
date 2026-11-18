@@ -87,7 +87,9 @@ export const costInputSchema = z.object({
   })).max(30).refine(uniqueRefs, "Las referencias de las construcciones no se pueden repetir."),
   installations: z.array(z.object({
     ref: text(20).min(1, "Cada instalación necesita su referencia."),
-    description: text(500).min(1, "Describe cada instalación especial."),
+    // An installation captured without its description yet (unit, quantity, state, value…) is kept: it used to wait in the
+    // panel and was lost on reloading. It prints once described.
+    description: text(500),
     share: z.enum(["P", "C"]),
     unit: text(30),
     quantity: amount,

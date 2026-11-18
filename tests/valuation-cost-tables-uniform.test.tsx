@@ -15,6 +15,7 @@ import {
   captureTablesOf,
   findCaptureTable,
   mergeCapture,
+  nextCaptureRef,
   readCapture,
   serverItems,
   syncedFromTable,
@@ -77,6 +78,8 @@ test("an installation taken out renumbers the others 1, 2…; references of the 
   assert.deepEqual(withoutInstallation(rows, 0), [{ ref: "1", name: "b" }, { ref: "2", name: "c" }]);
   const own = [{ ref: "IE-1" }, { ref: "IE-2" }, { ref: "IE-3" }];
   assert.deepEqual(withoutInstallation(own, 1), [{ ref: "IE-1" }, { ref: "IE-3" }]);
+  // A new one takes the next free number: with 1 and 3 left, 4 (a second 3 was refused by the save, and lost on reloading).
+  assert.equal(nextCaptureRef("installations", ["1", "3"]), "4");
 });
 
 test("the construction section follows the renumbering: each row keeps its own columns and takes its new number; «Deshacer» puts it back", () => {
