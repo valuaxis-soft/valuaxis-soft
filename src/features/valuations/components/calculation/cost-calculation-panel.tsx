@@ -413,7 +413,7 @@ function ConservationRatingSelect(props: { value: string; label: string; criteri
     return (
       <select
         aria-label={props.label}
-        className="h-7 w-full min-w-32 rounded-md border bg-transparent px-1 text-xs"
+        className="h-7 w-full min-w-32 rounded-md border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
       >
@@ -428,7 +428,7 @@ function ConservationRatingSelect(props: { value: string; label: string; criteri
   return (
     <select
       aria-label={props.label}
-      className="h-7 w-full min-w-32 rounded-md border bg-transparent px-1 text-xs"
+      className="h-7 w-full min-w-32 rounded-md border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
       value={props.value}
       onChange={(event) => props.onChange(event.target.value)}
     >
@@ -472,7 +472,7 @@ function ConservationCriterionEditor(props: {
         <span className="font-medium">{props.title}</span>
         <select
           aria-label={props.title}
-          className="h-7 rounded-md border bg-transparent px-1 text-xs"
+          className="h-7 rounded-md border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           value={criterion.kind}
           disabled={props.readOnly}
           onChange={(event) => props.onChange(conservationCriterionOf(event.target.value as ConservationCriterion, criterion), true)}
@@ -486,7 +486,7 @@ function ConservationCriterionEditor(props: {
         </span>
       </label>
       {criterion.kind === "TABLA_ESTADO" ? (
-        <p className="rounded-sm bg-amber-50 px-2 py-1 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" data-suggested-values>
+        <p className="rounded-sm border border-highlight/50 bg-highlight/10 px-2 py-1 text-foreground" data-suggested-values>
           Valores sugeridos, ajústalos: la tabla aún debe confirmarse con el despacho.
         </p>
       ) : null}
@@ -1188,7 +1188,7 @@ export function CostCalculationPanel(props: {
                     <td className="w-20 p-1">
                       <select
                         aria-label="Tipo de construcción"
-                        className="h-7 w-full rounded-md border bg-transparent px-1 text-xs"
+                        className="h-7 w-full rounded-md border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                         value={type ? type.ref : row.ref}
                         onChange={(event) => pickConstruction(index, event.target.value)}
                       >
@@ -1300,7 +1300,7 @@ export function CostCalculationPanel(props: {
                         <select
                           aria-label="P/C (P = Privativa, C = Común)"
                           title="P = Privativa, C = Común"
-                          className="h-7 w-full rounded-md border bg-transparent px-1 text-xs"
+                          className="h-7 w-full rounded-md border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                           value={row.share}
                           onChange={(event) => setRow("installations", index, "share", event.target.value)}
                         >

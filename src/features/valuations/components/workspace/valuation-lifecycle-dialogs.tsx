@@ -95,7 +95,7 @@ export function ConcludeValuationDialog({
             {hasUnsavedChanges ? " Antes de concluir se guardarán los cambios pendientes." : ""}
           </AlertDialogDescription>
           {unreviewed ? (
-            <p className="text-sm text-amber-700 dark:text-amber-400" role="status" data-unreviewed-comparables>
+            <p className="text-sm text-highlight-strong" role="status" data-unreviewed-comparables>
               {unreviewed === 1 ? "Hay 1 comparable" : `Hay ${unreviewed} comparables`} por revisar en «Revisión de comparables». Puedes concluir de
               todos modos.
             </p>

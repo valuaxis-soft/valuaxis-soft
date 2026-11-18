@@ -154,7 +154,7 @@ function RatingSelect(props: { id?: string; label: string; value: string; compac
     <select
       id={props.id}
       aria-label={props.label}
-      className={props.compact ? "h-7 w-full rounded-md border bg-transparent px-1 text-xs" : "h-8 w-full rounded-md border bg-transparent px-2 text-sm"}
+      className={props.compact ? "h-7 w-full rounded-md border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" : "h-8 w-full rounded-md border bg-transparent px-2 text-sm"}
       value={props.value}
       onChange={(event) => props.onChange(event.target.value)}
     >
@@ -213,7 +213,7 @@ function CaptureTable<Row extends Record<string, string>>(props: {
                   ) : column.options ? (
                     <select
                       aria-label={column.label}
-                      className="h-7 w-full rounded-md border bg-transparent px-1 text-xs"
+                      className="h-7 w-full rounded-md border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                       value={row[column.key]}
                       onChange={(event) => props.onChange(index, column.key, event.target.value)}
                     >

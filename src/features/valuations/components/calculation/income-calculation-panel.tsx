@@ -481,7 +481,7 @@ export function IncomeCalculationPanel(props: {
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Dispersión final (máx. ÷ mín. homologadas)</dt>
-              <dd className={cn("tabular-nums", rentStats.dispersion > 1.25 && "text-amber-700 dark:text-amber-400")} data-dispersion="final">
+              <dd className={cn("tabular-nums", rentStats.dispersion > 1.25 && "text-highlight-strong")} data-dispersion="final">
                 {rentStats.dispersion.toFixed(2)}
               </dd>
             </div>

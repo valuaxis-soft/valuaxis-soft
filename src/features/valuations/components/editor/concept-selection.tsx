@@ -325,7 +325,7 @@ export function ConceptSelectionScope({
   // While choosing, the bar stays at the top of the editor as it scrolls down the block.
   const bar = active ? (
     <div
-      className="sticky top-0 z-20 flex flex-wrap items-center gap-1 rounded-md border border-primary/40 bg-card px-2 py-1 text-xs shadow-sm"
+      className="sticky top-0 z-20 flex flex-wrap items-center gap-1 rounded-lg border border-primary/40 bg-card px-2 py-1 text-xs shadow-lift"
       role="toolbar"
       aria-label="Conceptos seleccionados"
       data-concept-selection=""
@@ -408,11 +408,11 @@ export function ConceptSelectionScope({
           Eliminar
         </Button>
       ) : lockedButton("Eliminar", <Trash2 data-icon="inline-start" />)}
-      {/* A green check in the corner ends the selection. */}
+      {/* A check in the corner, in the brand blue, ends the selection. */}
       <Button
         type="button"
         size="xs"
-        className="ml-auto bg-success text-success-foreground hover:bg-success/90"
+        className="ml-auto bg-brand text-brand-foreground hover:bg-brand/90"
         aria-label="Listo: terminar la selección"
         title="Listo: terminar la selección"
         data-concept-selection-done=""
