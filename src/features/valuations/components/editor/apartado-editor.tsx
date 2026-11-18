@@ -92,12 +92,12 @@ export function ApartadoEditor({
     <section
       className={cn(
         // A subbloque hangs from its block: a navy rule on its left, and every other one tinted so neighbours read apart.
-        "rounded-lg border border-l-[3px] border-l-primary/45 p-4",
-        useBlueTone ? "border-primary/20 bg-primary/[0.06] dark:bg-primary/10" : "bg-background",
+        "rounded-lg border border-l-[3px] border-l-brand/50 p-4",
+        useBlueTone ? "border-brand/20 bg-brand/[0.05] dark:bg-brand/10" : "bg-background",
         !subBlock.enabled && "border-dashed border-muted-foreground/40 opacity-80",
       )}
     >
-      <div className="mb-4 flex items-center justify-between gap-3 border-b border-primary/15 pb-3">
+      <div className="mb-4 flex items-center justify-between gap-3 border-b border-brand/15 pb-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {displayLabel ? (
             <span className="shrink-0 text-sm font-bold uppercase leading-tight tracking-wide text-primary">

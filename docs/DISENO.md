@@ -189,11 +189,11 @@ Las maquetas siguen usando datos inventados; las fotos solo reemplazan los dibuj
 
 Herramienta de trabajo de horas: densa, sin adornos, con la misma paleta que el área privada. El documento (vista previa, dictamen, PDF) no toma nada de esto.
 
-- **Jerarquía** sección › bloque › subbloque › concepto: el nombre de la sección en `font-display` (24 px) sobre una línea; el bloque con su banda de tinta al 5 % (`bg-primary/[0.05]`) y título en `text-primary`; el subbloque con una regla izquierda `border-l-primary/45` y, uno sí y uno no, un tinte `bg-primary/[0.06]`; el nombre del concepto sobre arena (`bg-muted/60`) para leerse aparte de su dato.
-- **Pestañas de secciones:** franja `bg-secondary`; la activa en `bg-card`, texto `text-primary` y `shadow-soft`. Sin cambiar el peso de la letra al activarse, para que la franja no se reacomode.
-- **Avisos:** ocre (`text-highlight-strong`, recuadros `bg-highlight/10`) para un dato a observar; verde texto `text-success-strong`; información en tinta (`bg-primary/5`). «Cambios pendientes» en `bg-highlight`. El azul de las fórmulas y sus colores de referencia imitan a Excel y se conservan.
+- **Jerarquía** sección › bloque › subbloque › concepto: el nombre de la sección en `font-display` (24 px) sobre una línea; el bloque con su banda del azul de marca al 5 % (`bg-brand/[0.05]`) y título en `text-primary` (marino); el subbloque con una regla izquierda `border-l-brand/50` y, uno sí y uno no, un tinte `bg-brand/[0.05]`; el nombre del concepto sobre arena (`bg-muted/60`) para leerse aparte de su dato.
+- **Pestañas de secciones:** franja `bg-secondary`; la activa en `bg-card`, texto `text-primary`, anillo `ring-brand/25` y `shadow-soft`. Sin cambiar el peso de la letra al activarse, para que la franja no se reacomode.
+- **Avisos:** ocre (`text-highlight-strong`, recuadros `bg-highlight/10`) para un dato a observar; verde (`text-success-strong`) solo para estados, como «verificado»; información en azul de marca (`bg-brand/5`). «Listo» de «Seleccionar conceptos» es una acción: `bg-brand` con texto blanco (`brand-foreground`). «Cambios pendientes» en `bg-highlight`. El azul de las fórmulas y sus colores de referencia imitan a Excel y se conservan.
 - **Tablas de captura del cálculo:** en claro conservan los colores del dictamen a propósito (el valuador las compara con lo impreso); en oscuro usan tokens.
-- **Foco:** dentro de `[data-valuation-workspace]` botones, pestañas y menús muestran un contorno de 2 px `--ring` (3:1 o más). El bloque que se edita marca su borde en tinta (`focus-within`), con transición solo si no hay movimiento reducido.
+- **Foco:** dentro de `[data-valuation-workspace]` botones, pestañas y menús muestran un contorno de 2 px `--ring` (3:1 o más). El bloque que se edita marca su borde en azul de marca (`focus-within:ring-brand/45`), con transición solo si no hay movimiento reducido.
 
 ## Página pública
 

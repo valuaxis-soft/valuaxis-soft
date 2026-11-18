@@ -36,7 +36,7 @@ export function BlockEditorCard({
     <Card
       ref={cardRef}
       style={style}
-      className={cn("overflow-clip pt-0 focus-within:ring-primary/35 motion-safe:transition-shadow", className)}
+      className={cn("overflow-clip pt-0 focus-within:ring-brand/45 motion-safe:transition-shadow", className)}
       data-block-id={blockId}
     >
       {children}
@@ -80,7 +80,7 @@ export function BlockEditorHeader({
     </span>
   );
   return (
-    <CardHeader className="items-center border-b border-primary/15 bg-primary/[0.05] py-2 [.border-b]:pb-2 dark:bg-primary/10">
+    <CardHeader className="items-center border-b border-brand/15 bg-brand/[0.05] py-2 [.border-b]:pb-2 dark:bg-brand/10">
       <CardTitle className="flex min-w-0 items-center gap-2">
         {dragHandle}
         {badge ? <Badge>{badge}</Badge> : null}

@@ -20,7 +20,7 @@ export const REVIEW_STATUS_STYLES: Record<ReviewStatus, { solid: string; row: st
   },
   VERIFICADO_NO_VIGENTE: {
     solid: "bg-primary text-primary-foreground",
-    row: "border-l-4 border-l-primary/60 bg-primary/5",
+    row: "border-l-4 border-l-brand/60 bg-brand/5",
     text: "text-primary",
   },
   CON_OBSERVACIONES: {

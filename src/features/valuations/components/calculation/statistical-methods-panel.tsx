@@ -452,7 +452,7 @@ function StatisticalTypePanel(props: {
       </div>
       {calculation.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
       {calculation.fromMarket ? (
-        <p className="rounded-md border border-primary/25 bg-primary/5 p-2 text-xs text-foreground dark:bg-primary/10">
+        <p className="rounded-md border border-brand/25 bg-brand/5 p-2 text-xs text-foreground dark:bg-brand/10">
           Esta regresión se capturó dentro del enfoque de mercado, antes de que los métodos alternativos fueran un apartado propio. Se lee de ahí con los
           comparables del mercado; al primer cambio que hagas aquí se guarda una copia propia y el mercado queda como estaba.
         </p>
@@ -522,7 +522,7 @@ function StatisticalTypePanel(props: {
         <MethodControls label="Calcular por regresión lineal múltiple" method={settings.regression} defaultTitle={DEFAULT_REGRESSION_TITLE} readOnly={readOnly} onChange={(patch) => setMethod("regression", patch)} />
         {/* Video 5.4, 14:54: «Mostrar en el dictamen» of the regression is only the regression's; the goal programming has its own. */}
         {!settings.regression.showInDictamen && settings.goal.enabled && settings.goal.showInDictamen && !settings.excludedFromReport ? (
-          <p className="rounded-md border border-primary/25 bg-primary/5 p-2 text-xs text-foreground dark:bg-primary/10" data-goal-still-printed="">
+          <p className="rounded-md border border-brand/25 bg-brand/5 p-2 text-xs text-foreground dark:bg-brand/10" data-goal-still-printed="">
             La regresión no se imprime, pero el bloque de métodos alternativos sigue en el dictamen por la programación por metas (su «Mostrar en el
             dictamen» está marcado, abajo). Para quitar todo el bloque, apaga «Agregar al informe valuatorio» arriba.
           </p>
@@ -881,7 +881,7 @@ function SampleSizeAdvice({ n, k }: { n: number; k: number }) {
   const advice = sampleSizeRecommendation(n, k);
   if (!advice) return null;
   return (
-    <p className="rounded-md border border-primary/25 bg-primary/5 p-2 text-xs text-foreground dark:bg-primary/10" data-sample-size-advice="">
+    <p className="rounded-md border border-brand/25 bg-brand/5 p-2 text-xs text-foreground dark:bg-brand/10" data-sample-size-advice="">
       {advice}
     </p>
   );

@@ -105,7 +105,7 @@ export function SortableSectionTab({
             // Inactive names stay readable (AA over the strip); the active one reads as a raised navy tab.
             "text-foreground/75 hover:bg-background/60 motion-reduce:transition-none",
             !disabled && !pinned && "cursor-grab active:cursor-grabbing",
-            isActive && "data-active:bg-card data-active:text-primary data-active:shadow-soft data-active:ring-1 data-active:ring-primary/20",
+            isActive && "data-active:bg-card data-active:text-primary data-active:shadow-soft data-active:ring-1 data-active:ring-brand/25",
           )}
           {...sortableAttributes}
           {...(pinned ? {} : listeners)}

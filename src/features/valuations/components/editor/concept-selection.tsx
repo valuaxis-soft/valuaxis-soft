@@ -408,11 +408,11 @@ export function ConceptSelectionScope({
           Eliminar
         </Button>
       ) : lockedButton("Eliminar", <Trash2 data-icon="inline-start" />)}
-      {/* A green check in the corner ends the selection. */}
+      {/* A check in the corner, in the brand blue, ends the selection. */}
       <Button
         type="button"
         size="xs"
-        className="ml-auto bg-success text-foreground hover:bg-success/85 dark:text-success-foreground"
+        className="ml-auto bg-brand text-brand-foreground hover:bg-brand/90"
         aria-label="Listo: terminar la selección"
         title="Listo: terminar la selección"
         data-concept-selection-done=""
