@@ -108,7 +108,7 @@ test("V7.3-03: every field of a concept turns Chrome's suggestions off", () => {
     concepts: [
       concept("t", "Calle", "Hidalgo"),
       concept("n", "Número", "4", { type: "number" }),
-      concept("l", "Descripción", "Casa", { type: "long-text" }),
+      concept("l", "Descripción", "Casa", { type: "longText" }),
       concept("p", "", "Texto corrido", { type: "paragraph" }),
     ],
     onRemove: noop,

@@ -11,7 +11,7 @@ import { HEADER_DATE_LABELS, headerDateMismatch, type HeaderDates } from "@/feat
 /** The dates of the page header, for the dates of the body to compare with; null where there is no header (a template). */
 const HeaderDatesContext = createContext<HeaderDates | null>(null);
 
-export function HeaderDatesProvider({ dates, children }: { dates: HeaderDates | null; children: ReactNode }) {
+export function HeaderDatesProvider({ dates, children }: { dates: HeaderDates | null; children?: ReactNode }) {
   return <HeaderDatesContext value={dates}>{children}</HeaderDatesContext>;
 }
 

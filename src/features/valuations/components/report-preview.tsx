@@ -170,7 +170,7 @@ export function ReportPreview({
 }
 
 /**
- * Once the shared pages are laid out, brings the page where the section starts
+ * Once the shared pages are laid out, brings where the section starts
  * (`startItemId`, its first printed item) to the top of the viewer: once per
  * section shown, so editing it later does not move the view.
  */
@@ -183,11 +183,10 @@ function useScrollToSectionStart(rootRef: { current: HTMLElement | null }, start
       if (pagination?.getAttribute("data-document-pagination") !== "ready") return false;
       const item = [...root.querySelectorAll<HTMLElement>('[data-document-pagination-content="visible"] [data-document-flow-item-id]')]
         .find((element) => element.getAttribute("data-document-flow-item-id") === startItemId);
-      const page = item?.closest<HTMLElement>("[data-preview-page]");
-      const scroller = page?.closest<HTMLElement>("[data-preview-scroller]");
-      if (!page || !scroller) return false;
-      // Only the viewer scrolls: the editor beside it stays where it is.
-      scroller.scrollTop += page.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8;
+      const scroller = item?.closest<HTMLElement>("[data-preview-scroller]");
+      if (!item || !scroller) return false;
+      // Only the viewer scrolls, to the section's first title (on its page, even halfway down); the editor stays where it is.
+      scroller.scrollTop += item.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 24;
       return true;
     };
     if (scroll()) return;
