@@ -46,6 +46,7 @@ import {
 import type { DuplicateMatchDto } from "@/features/valuations/calculation/comparable-card.service";
 import { DUPLICATE_REASON_LABELS, duplicateProbeOf, type DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { ComparableLocationPicker } from "@/features/valuations/comparable-base/components/comparable-location-picker";
 import { ComparableCardButton } from "./comparable-card-dialog";
 import { ComparableValidityLine } from "./comparable-validity-badge";
 import { COMPARABLE_VALIDITY_MONTHS, addMonths, validityMonthsOf } from "@/features/valuations/calculation/comparable-validity";
@@ -625,6 +626,15 @@ export function ComparableDialog(props: {
                 <p className="text-xs text-muted-foreground sm:col-span-6">
                   Pega las coordenadas en decimales o como las copia Google Earth (20°43&apos;31.39&quot;N); si pegas las dos juntas, se llenan solas.
                 </p>
+                {/* V7.2-06: the pin on the map fills the latitude and longitude (comparable-location-picker.tsx, maps area). */}
+                <ComparableLocationPicker
+                  className="sm:col-span-6"
+                  latitude={parseCoordinate(draft.latitude)}
+                  longitude={parseCoordinate(draft.longitude)}
+                  address={location}
+                  disabled={readOnly || saving}
+                  onChange={(point) => setDraft((current) => ({ ...current, latitude: String(point.latitude), longitude: String(point.longitude) }))}
+                />
               </FieldGroup>
             </SheetFormSection>
 

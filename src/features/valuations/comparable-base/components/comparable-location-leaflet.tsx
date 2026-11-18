@@ -5,6 +5,8 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useEffect, useRef } from "react";
 
+import { cn } from "@/lib/utils";
+
 export type LatLng = { latitude: number; longitude: number };
 
 /** The centre of Mexico, where the map opens when the comparable has no coordinates yet. */
@@ -25,11 +27,14 @@ function pinIcon() {
 /**
  * The map of the card, with OpenStreetMap tiles (no Google Maps): fixed with
  * the pin of the comparable, or, when `onChange` is given, one where a click
- * places the pin and a drag moves it.
+ * places the pin and a drag moves it. `approximate` (V7.2-06) is where the
+ * address was found: the map goes there and marks it with a dashed circle,
+ * without placing the pin.
  */
-export default function ComparableLocationLeaflet({ value, onChange, className }: {
+export default function ComparableLocationLeaflet({ value, onChange, approximate, className }: {
   value: LatLng | null;
   onChange?: (next: LatLng) => void;
+  approximate?: LatLng | null;
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -91,5 +96,19 @@ export default function ComparableLocationLeaflet({ value, onChange, className }
     }
   }, [value]);
 
-  return <div ref={containerRef} className={className} role="img" aria-label="Mapa de la ubicación del comparable" />;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !approximate) return;
+    const circle = L.circle([approximate.latitude, approximate.longitude], {
+      radius: 120, color: "#003B73", weight: 2, dashArray: "6 6", fillOpacity: 0.08, interactive: false,
+    }).addTo(map);
+    map.setView([approximate.latitude, approximate.longitude], 16, { animate: false });
+    return () => {
+      circle.remove();
+    };
+  }, [approximate]);
+
+  // `isolate`: Leaflet's panes and controls (z-index 400 to 1000) stay inside the map instead of
+  // drawing over a dialog opened above it, such as «Reubicar» (V7.3-18).
+  return <div ref={containerRef} className={cn("isolate", className)} role="img" aria-label="Mapa de la ubicación del comparable" />;
 }
