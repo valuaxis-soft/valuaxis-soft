@@ -12,7 +12,7 @@ import { z } from "zod";
 import { COMPARABLE_TYPES, type ComparableType } from "@/features/valuations/calculation/market-types";
 
 import { DEFAULT_STREET_HIGHLIGHTS, streetHighlightsSchema, type StreetLabel } from "./highlights";
-import { DEFAULT_NORTH_ARROW, MACRO_FRAME, MAP_CORNERS, MAP_TYPES, MICRO_FRAME, NORTH_ARROW_STYLES, type CroquisFrame, type MapType, type NorthArrow } from "./map-styles";
+import { DEFAULT_NORTH_ARROW, MACRO_FRAME, MAP_CORNERS, MAP_TYPES, MICRO_FRAME, NORTH_ARROW_STYLES, type CroquisFrame, type MapCorner, type MapType, type NorthArrow } from "./map-styles";
 import { STATIC_MAP_SIZE, imagePixel, imagePosition } from "./static-map";
 import type { LatLon } from "./types";
 
@@ -263,4 +263,74 @@ export function streetLabelsOverlaySvg(center: LatLon, zoom: number, labels: rea
 /** The pins that would show on an image framed this way (for the legend and the tests). */
 export function pinsInFrame(center: LatLon, zoom: number, pins: readonly ComparablePin[]) {
   return pins.filter((pin) => imagePosition(center, zoom, pin.point) !== null);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Legend («Simbología»)                                              */
+/* ------------------------------------------------------------------ */
+
+export interface CroquisLegendEntry {
+  color: string;
+  label: string;
+  /** The subject's pin is a drop, the comparables' a circle. */
+  shape: "subject" | "comparable";
+}
+
+const COMPARABLE_LEGEND_LABELS: Record<ComparableType, string> = {
+  TERRENO_VENTA: "Comparables de terrenos en venta",
+  INMUEBLE_VENTA: "Comparables de inmuebles en venta",
+  INMUEBLE_RENTA: "Comparables de inmuebles en renta",
+  TERRENO_RENTA: "Comparables de terrenos en renta",
+};
+
+/**
+ * V7.3-09 (16 nov 2026): what the colors of an image with comparables mean.
+ * The subject, then only the types of the pins the image shows, in the
+ * order of the markets; nothing when no comparable falls in the frame.
+ */
+export function croquisLegend(center: LatLon, zoom: number, pins: readonly ComparablePin[]): CroquisLegendEntry[] {
+  const types = new Set(pinsInFrame(center, zoom, pins).map((pin) => pin.type));
+  if (!types.size) return [];
+  return [
+    { color: SUBJECT_PIN_COLOR, label: "Inmueble valuado", shape: "subject" },
+    ...COMPARABLE_TYPES.filter((type) => types.has(type)).map((type): CroquisLegendEntry => ({ color: COMPARABLE_PIN_COLORS[type], label: COMPARABLE_LEGEND_LABELS[type], shape: "comparable" })),
+  ];
+}
+
+const LEGEND_ROW = 18;
+const LEGEND_PADDING = 8;
+const LEGEND_FONT = 11;
+const LEGEND_CHAR_WIDTH = 5.9;
+
+/**
+ * The legend as an SVG the size of the image (at `scale`), in a white box in
+ * a top corner: Google prints its logo and its credits along the bottom, and
+ * the north arrow keeps its corner, so the legend takes the other top one.
+ */
+export function legendOverlaySvg(entries: readonly CroquisLegendEntry[], northCorner: MapCorner, scale = 2) {
+  const width = STATIC_MAP_SIZE.width * scale;
+  const height = STATIC_MAP_SIZE.height * scale;
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
+  if (!entries.length) return `${open}</svg>`;
+  const title = "Simbología";
+  const boxWidth = (LEGEND_PADDING * 2 + 18 + Math.max(title.length, ...entries.map((entry) => entry.label.length)) * LEGEND_CHAR_WIDTH) * scale;
+  const boxHeight = (LEGEND_PADDING * 2 + LEGEND_ROW * (entries.length + 1)) * scale;
+  const margin = 10 * scale;
+  const x = northCorner === "top-left" ? width - boxWidth - margin : margin;
+  const y = margin;
+  const text = (dx: number, dy: number, value: string, weight: number) =>
+    `<text x="${(x + dx * scale).toFixed(1)}" y="${(y + dy * scale).toFixed(1)}" font-family="${STREET_LABEL_FONT_FAMILY}" font-weight="${weight}" font-size="${LEGEND_FONT * scale}" fill="#1b2733">${escapeXml(value)}</text>`;
+  const rows = entries.map((entry, index) => {
+    const cy = LEGEND_PADDING + LEGEND_ROW * (index + 1) + LEGEND_ROW / 2;
+    const cx = LEGEND_PADDING + 6;
+    const symbol = entry.shape === "subject"
+      ? `<path transform="translate(${(x + cx * scale).toFixed(1)} ${(y + (cy + 6) * scale).toFixed(1)}) scale(${scale})" d="M0 0C0 0-6-7-6-11.5a6 6 0 0 1 12 0C6-7 0 0 0 0z" fill="${entry.color}" stroke="#fff" stroke-width="1"/>`
+      : `<circle cx="${(x + cx * scale).toFixed(1)}" cy="${(y + cy * scale).toFixed(1)}" r="${5.5 * scale}" fill="${entry.color}" stroke="#fff" stroke-width="${1.2 * scale}"/>`;
+    return symbol + text(LEGEND_PADDING + 18, cy + LEGEND_FONT * 0.36, entry.label, 400);
+  });
+  return open
+    + `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${boxWidth.toFixed(1)}" height="${boxHeight.toFixed(1)}" rx="${4 * scale}" fill="#ffffff" fill-opacity="0.94" stroke="#9aa5b1" stroke-width="${scale}"/>`
+    + text(LEGEND_PADDING, LEGEND_PADDING + LEGEND_ROW / 2 + LEGEND_FONT * 0.36, title, 700)
+    + rows.join("")
+    + "</svg>";
 }

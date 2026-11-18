@@ -234,7 +234,7 @@ test("simplification keeps the shape within the tolerance and drops the vertices
   assert.equal(wayInBounds(GRID[4], bounds), false, "the ring road 2 km away is outside the micro frame");
 });
 
-test("what each croquis draws: the micro every street in frame, the macro the avenues, the map of comparables nothing; names only on drawn streets", () => {
+test("what each croquis draws: the micro and the map of comparables every street in frame, the macro the avenues; names only on drawn streets", () => {
   const detection = detectStreets(PIN, GRID);
   const highlights: StreetHighlights = { front: detection.front, streets: streetsFromPaint(paintStreet(seedPaint(detection, GRID), "Lejos", "secundaria", detection.front)), styles: DEFAULT_HIGHLIGHT_STYLES, names: true };
   const micro = croquisStreets("micro", PIN, 17, highlights, GRID);
@@ -249,7 +249,12 @@ test("what each croquis draws: the micro every street in frame, the macro the av
   const macro = croquisStreets("macro", PIN, 15, highlights, GRID);
   assert.deepEqual(macro.paths.map((path) => path.color), [DEFAULT_HIGHLIGHT_STYLES.principal.color]);
   assert.deepEqual(macro.labels.map((label) => label.name), ["Avenida"]);
-  assert.deepEqual(croquisStreets("comparables", PIN, 15, highlights, GRID), { paths: [], labels: [], omitted: [] });
+  // V7.1-22: the map of comparables drew no street at all; it now draws every highlighted one in its wider frame.
+  const comparables = croquisStreets("comparables", PIN, 15, highlights, GRID);
+  assert.deepEqual(comparables.paths.map((path) => path.color).sort(), [
+    DEFAULT_HIGHLIGHT_STYLES.front.color, DEFAULT_HIGHLIGHT_STYLES.principal.color, DEFAULT_HIGHLIGHT_STYLES.secundaria.color, DEFAULT_HIGHLIGHT_STYLES.terciaria.color,
+  ].sort());
+  assert.ok(comparables.labels.some((label) => label.name === "Frente"));
   assert.deepEqual(croquisStreets("micro", PIN, 17, { ...highlights, names: false }, GRID).labels, []);
   // The image URL carries them as encoded paths and stays short.
   const url = staticMapUrl({ apiKey: "k".repeat(39), center: PIN, zoom: 17, subject: PIN, clean: true, paths: micro.paths });
