@@ -285,6 +285,8 @@ test("on the capture table the rows are the appraiser's; the columns of costs an
 
 const context = (tables: Array<[string, "types" | "installations"]>): ConstructionCaptureContextValue => ({
   tables: new Map(tables),
+  linkable: new Set(),
+  linkInstallations: () => undefined,
   costs: arandas,
   setExcludedTypes: async () => undefined,
   relink: () => undefined,

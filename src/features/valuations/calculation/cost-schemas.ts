@@ -97,6 +97,8 @@ export const costInputSchema = z.object({
     conservationRating,
     conservationState,
     maintenance: text(120),
+    // The cost approach's own name of the installation; missing in older clients (linked to the description).
+    costName: text(500).nullable().optional(),
     ageFactor: formulaFactor,
     otherFactor: factor,
     extraFactors,

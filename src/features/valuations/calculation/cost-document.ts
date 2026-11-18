@@ -6,7 +6,7 @@
  * construction section are the capture of the types and the installations
  * (construction-capture.ts).
  */
-import type { CostApproachResult } from "../engine/costs";
+import { demeritPreview, type CostApproachResult } from "../engine/costs";
 import type { Trace } from "../engine/trace";
 import type { Apartado, Block, TableContent } from "../model";
 import { ensureTableV2, type TableSummaryBox } from "../services/table";
@@ -14,6 +14,7 @@ import {
   LAND_FACTORS,
   LAND_FACTOR_SHORT_LABELS,
   costColumnsOf,
+  costEngineConfig,
   effectiveConservation,
   extraFactorLabel,
   extraFactorsOf,
@@ -61,15 +62,25 @@ const demeritColumns = (columns: DemeritColumnsDto) => [
 const remainingLife = (usefulLife: number | null, age: number | null) =>
   (usefulLife !== null && age !== null ? whole(Math.max(usefulLife - age, 0)) : EMPTY);
 
-/** The block of the cost section. None while nothing is captured. */
+/** The name an installation prints with in the cost approach: its own (unlinked) or the description. */
+export const installationName = (row: { description: string; costName?: string | null }) => row.costName?.trim() || row.description;
+
+/**
+ * The block of the cost section. None while nothing is captured; the
+ * installations captured print as soon as they are, with what they have
+ * (video 7.4, 24:21): their figures fill in when their value is written.
+ */
 export function costDocumentBlocks(calculation: CostCalculationDto, result: CostApproachResult | null, trace: Trace | null): Block[] {
-  if (!result || !trace) return [];
-  const value = (key: string) => trace.find(key)?.value;
+  const capturedInstallations = calculation.installations.filter((row) => row.description.trim());
+  if ((!result || !trace) && !capturedInstallations.length) return [];
+  const value = (key: string) => trace?.find(key)?.value;
   const input = (key: string, name: string) => {
-    const found = trace.find(key)?.inputs[name];
+    const found = trace?.find(key)?.inputs[name];
     return typeof found === "number" ? found : undefined;
   };
   const amount = (key: string) => money(value(key) ?? 0);
+  // The land and the constructions print only with their values, that is, with a result.
+  const totals: CostApproachResult = result ?? { land: 0, constructions: 0, specialInstallations: 0, otherAssets: 0, indirects: 0, physicalValue: 0 };
   const columns = costColumnsOf(calculation.columns);
   // Factors with the decimals of the valuation (two unless it chose four).
   const decimals = factorDecimals(calculation.precision);
@@ -102,7 +113,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
           { id: "valor-mercado", position: "top", align: "end", rows: [{ label: "Valor comparativo de Mercado ($/m²):", value: amount("costos.terreno.valorUnitario") }] },
           { id: "superficie", position: "bottom", align: "start", rows: [{ label: "Superficie valuada:", value: squareMetres(area) }] },
           { id: "medio", position: "bottom", align: "center", rows: [{ label: "Valor Unitario Medio ($/m²):", value: amount("costos.terreno.valorUnitarioNeto") }] },
-          { id: "valor", position: "bottom", align: "end", rows: [{ label: "A) Valor del Terreno:", value: money(result.land), emphasis: "strong" }] },
+          { id: "valor", position: "bottom", align: "end", rows: [{ label: "A) Valor del Terreno:", value: money(totals.land), emphasis: "strong" }] },
         ] })],
     }));
   }
@@ -145,19 +156,35 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
             ];
           }),
           { rowKeys: constructions.map((row) => row.ref), summaryBoxes: [
-            { id: "subtotal", position: "bottom", align: "end", rows: [{ label: "Subtotal:", value: money(input("costos.construcciones.valor", "subtotal") ?? result.constructions) }] },
+            { id: "subtotal", position: "bottom", align: "end", rows: [{ label: "Subtotal:", value: money(input("costos.construcciones.valor", "subtotal") ?? totals.constructions) }] },
             { id: "superficie", position: "bottom", align: "start", rows: [{ label: "Superficie valuada:", value: squareMetres(builtArea) }] },
             { id: "medio", position: "bottom", align: "center", rows: [{ label: "Valor Unitario Medio ($/m²):", value: amount("costos.construcciones.valorUnitarioMedio") }] },
-            { id: "valor", position: "bottom", align: "end", rows: [{ label: "B) Valor de las Construcciones:", value: money(result.constructions), emphasis: "strong" }] },
+            { id: "valor", position: "bottom", align: "end", rows: [{ label: "B) Valor de las Construcciones:", value: money(totals.constructions), emphasis: "strong" }] },
           ] }),
       ],
     }));
   }
 
-  const installations = calculation.installations.filter((row) => value(`costos.instalaciones.${row.ref}.vnrParcial`) !== undefined);
+  // An installation that does not enter the calculation yet prints what it has: its Edad and FRe as the calculation would give them, dashes for its values.
+  const installations = capturedInstallations;
+  const valued = installations.filter((row) => value(`costos.instalaciones.${row.ref}.vnrParcial`) !== undefined);
   if (installations.length) {
+    const config = costEngineConfig(calculation);
+    const demerit = (row: (typeof installations)[number]) => {
+      const key = `costos.instalaciones.${row.ref}`;
+      if (value(`${key}.vnrParcial`) !== undefined) return { age: value(`${key}.factorEdad`), resultant: value(`${key}.factorResultante`) };
+      const extras = extraFactorsOf(row, columns.installations);
+      const preview = demeritPreview({
+        ref: row.ref, age: row.age, usefulLife: row.usefulLife, conservation: effectiveConservation(row), otherFactor: row.otherFactor,
+        ...(row.ageFactor === null ? {} : { ageFactor: row.ageFactor }),
+        ...(row.resultantFactor === null ? {} : { resultantFactor: row.resultantFactor }),
+        ...(extras.length ? { extraFactors: extras } : {}),
+      }, config);
+      return { age: preview.ageFactor, resultant: preview.resultantFactor };
+    };
+    const priced = (row: (typeof installations)[number], key: string) => value(`costos.instalaciones.${row.ref}.vnrParcial`) !== undefined ? amount(key) : EMPTY;
     const item = [figureColumn("P/C"), figureColumn("Ref."), textColumn("Descripción"), figureColumn("Unidad"), figureColumn("Cant.")];
-    const itemCells = (row: (typeof installations)[number]) => [row.share, row.ref, row.description, row.unit || EMPTY, figure(row.quantity)];
+    const itemCells = (row: (typeof installations)[number]) => [row.share, row.ref, installationName(row), row.unit || EMPTY, figure(row.quantity)];
     apartados.push(generatedApartado(`${PREFIX}-instalaciones`, "C) INSTALACIONES ESPECIALES, ELEMENTOS ACCESORIOS Y OBRAS COMPLEMENTARIAS (IE, EA, OC)", {
       tables: [
         generatedTable(`${PREFIX}-tabla-instalaciones-partidas`, "Partidas de instalaciones especiales",
@@ -166,11 +193,11 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
             ...demeritColumns(columns.installations), figureColumn("Grado de terminación"), figureColumn("Indiviso"),
           ],
           installations.map((row) => {
-            const key = `costos.instalaciones.${row.ref}`;
+            const factors = demerit(row);
             return [
               ...itemCells(row), whole(row.age), whole(row.usefulLife), remainingLife(row.usefulLife, row.age),
-              factor(effectiveConservation(row)), factor(value(`${key}.factorEdad`)), factor(row.otherFactor),
-              ...extraFactorsOf(row, columns.installations).map((extra) => factor(extra)), factor(value(`${key}.factorResultante`)),
+              factor(effectiveConservation(row)), factor(factors.age), factor(row.otherFactor),
+              ...extraFactorsOf(row, columns.installations).map((extra) => factor(extra)), factor(factors.resultant),
               percent(row.completion), percent(row.undivided),
             ];
           }),
@@ -184,11 +211,12 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
           ],
           installations.map((row) => {
             const key = `costos.instalaciones.${row.ref}`;
+            const isValued = value(`${key}.vnrParcial`) !== undefined;
             return [
               ...itemCells(row),
-              money(row.unitReplacementCost ?? 0), amount(`${key}.vrnParcial`),
-              factor(value(`${key}.factorResultante`)),
-              amount(`${key}.vnrUnitario`), amount(`${key}.vnrParcial`),
+              isValued || row.unitReplacementCost !== null ? money(row.unitReplacementCost ?? 0) : EMPTY, priced(row, `${key}.vrnParcial`),
+              factor(demerit(row).resultant),
+              priced(row, `${key}.vnrUnitario`), priced(row, `${key}.vnrParcial`),
             ];
           }),
           { rowKeys: installations.map((row) => row.ref), summaryBoxes: [
@@ -197,9 +225,9 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
               position: "bottom",
               align: "end",
               rows: [
-                { label: "Suma Privativa (P):", value: amount("costos.instalaciones.privativas") },
-                { label: "Suma Común (C):", value: amount("costos.instalaciones.comunes") },
-                { label: "Subtotal:", value: money(input("costos.instalaciones.valor", "subtotal") ?? result.specialInstallations) },
+                { label: "Suma Privativa (P):", value: valued.length ? amount("costos.instalaciones.privativas") : EMPTY },
+                { label: "Suma Común (C):", value: valued.length ? amount("costos.instalaciones.comunes") : EMPTY },
+                { label: "Subtotal:", value: valued.length && result ? money(input("costos.instalaciones.valor", "subtotal") ?? result.specialInstallations) : EMPTY },
               ],
             },
             {
@@ -208,7 +236,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
               align: "end",
               rows: [{
                 label: "C) Valor de Instalaciones Especiales, Elementos Accesorios y Obras Complementarias:",
-                value: money(result.specialInstallations),
+                value: valued.length && result ? money(result.specialInstallations) : EMPTY,
                 emphasis: "strong",
               }],
             },
@@ -216,6 +244,9 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
       ],
     }));
   }
+
+  // Without a result (only installations without their value), the page shows them and no physical value yet.
+  if (!result) return apartados.length ? [generatedBlock(PREFIX, "ENFOQUE FÍSICO O DE COSTOS", { apartados })] : [];
 
   if (result.indirects) {
     // The engine numbers the indirects it receives: the rows with a concept and a percentage.
@@ -238,7 +269,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
   const parts = [
     ...(value("costos.terreno.valor") !== undefined ? [{ letter: "A", label: "A) Valor del Terreno:", amount: result.land }] : []),
     ...(constructions.length ? [{ letter: "B", label: "B) Valor de las Construcciones:", amount: result.constructions }] : []),
-    ...(installations.length ? [{ letter: "C", label: "C) Valor de Instalaciones Especiales:", amount: result.specialInstallations }] : []),
+    ...(valued.length ? [{ letter: "C", label: "C) Valor de Instalaciones Especiales:", amount: result.specialInstallations }] : []),
     ...(result.indirects ? [{ letter: "D", label: "D) Costos Indirectos:", amount: result.indirects }] : []),
   ];
   const closing: TableSummaryBox = {

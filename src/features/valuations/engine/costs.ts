@@ -309,6 +309,31 @@ function recordResultant(row: DemeritRow, key: string, age: number, other: numbe
   });
 }
 
+/**
+ * Edad and FRe of a row that does not enter the calculation yet (no unit
+ * value, for one), with the same formulas and roundings as the calculation:
+ * the panel and the dictamen show them as soon as the row has what they
+ * need (video 7.4, 24:10). Null where it does not.
+ */
+export function demeritPreview(
+  row: {
+    ref: string; age: number | null; usefulLife: number | null; conservation: number | null;
+    ageFactor?: number; resultantFactor?: number; otherFactor?: number; extraFactors?: number[];
+  },
+  config: EngineConfig,
+): { ageFactor: number | null; resultantFactor: number | null } {
+  const trace = new Trace();
+  const key = `vista.${row.ref}`;
+  const hasLife = row.age !== null && row.age >= 0 && row.usefulLife !== null && row.usefulLife > 0;
+  const age = hasLife
+    ? recordAgeFactor({ ...row, age: row.age as number, usefulLife: row.usefulLife as number, conservation: row.conservation ?? 0 }, key, config, trace)
+    : row.ageFactor === undefined ? null : shownFactor(row.ageFactor, config.displayedPrecision).value;
+  if (row.resultantFactor !== undefined) return { ageFactor: age, resultantFactor: shownFactor(row.resultantFactor, config.displayedPrecision).value };
+  if (age === null || row.conservation === null) return { ageFactor: age, resultantFactor: null };
+  const demerit = { ...row, age: row.age ?? 0, usefulLife: row.usefulLife ?? 0, conservation: row.conservation };
+  return { ageFactor: age, resultantFactor: recordResultant(demerit, key, age, row.otherFactor ?? 1, trace, config) };
+}
+
 function costInstallations(rows: SpecialInstallationInput[], config: EngineConfig, trace: Trace): number {
   let subtotal = 0;
   let privateSum = 0;

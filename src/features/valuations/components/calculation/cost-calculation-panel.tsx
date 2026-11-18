@@ -1,6 +1,6 @@
 "use client";
 
-import { Calculator, Loader2, Plus, Trash2 } from "lucide-react";
+import { Calculator, Link2, Link2Off, Loader2, Plus, Redo2, Rows3, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -46,8 +46,7 @@ import {
   type InstallationDto,
   type LandFactorKey,
 } from "@/features/valuations/calculation/cost-types";
-import { computeCostApproach } from "@/features/valuations/engine/costs";
-import { ageFactor } from "@/features/valuations/engine/factors";
+import { computeCostApproach, demeritPreview } from "@/features/valuations/engine/costs";
 import { Trace } from "@/features/valuations/engine/trace";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
@@ -55,14 +54,15 @@ import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { CALC_RESULT, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { ApproachLeftOutNotice, ApproachRemoval, type ApproachInReport } from "./approach-removal";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
-import { CaptureHeaderControl, CaptureTableHead, type CaptureHeadColumn } from "./capture-table-head";
+import { CaptureHeaderControl, CaptureTableBar, CaptureTableHead, type CaptureHeadColumn } from "./capture-table-head";
 import { withTableHeaders, type CaptureHeaders, type SectionCaptureHeaders } from "@/features/valuations/services/capture-headers";
-import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
 import { FormulaInput } from "./formula-input";
 import { CalculationPrecisionControl } from "./calculation-precision-control";
 import { useSerializedSave } from "./use-serialized-save";
+import { useDraftHistory } from "./use-draft-history";
+import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
@@ -120,12 +120,15 @@ function percentRow<T extends CostRow>(row: T): PercentRow<T> {
 function fractionRow<T extends CostRow>(row: PercentRow<T>, template: T): T {
   // The state of a criterion other than Ross-Heidecke is a text: the template of numbers does not carry it.
   const state = (row as unknown as { conservationState?: unknown }).conservationState;
+  // An installation's own name in the cost approach; empty, it is linked to its description again.
+  const costName = (row as unknown as { costName?: unknown }).costName;
   return {
     ...numbersOf(row as unknown as Texts<T>, template),
     completion: fractionOf(row.completion),
     undivided: fractionOf(row.undivided),
     extraFactors: row.extraFactors.map((text) => parseDecimal(text) ?? 1),
     ...(typeof state === "string" && state ? { conservationState: state } : {}),
+    ...(typeof costName === "string" && costName.trim() ? { costName: costName.trim() } : {}),
   };
 }
 
@@ -179,6 +182,45 @@ function inputOf(draft: Draft): PanelInput {
 const keptRows = <T,>(rows: T[], keep: (row: T) => boolean) => rows.flatMap((row, index) => (keep(row) ? [index] : []));
 
 /**
+ * The installations after one is taken out: numbered 1, 2, 3… as they were,
+ * they are numbered again in order (video 7.4, 20:30), as the editor's
+ * tables do; references of the appraiser's own (IE-1, A…) stay as written.
+ */
+export function withoutInstallation<T extends { ref: string }>(rows: T[], index: number): T[] {
+  const consecutive = rows.every((row, position) => row.ref.trim() === String(position + 1));
+  const kept = rows.filter((_, position) => position !== index);
+  return consecutive ? kept.map((row, position) => ({ ...row, ref: String(position + 1) })) : kept;
+}
+
+/**
+ * The draft with a row taken out put back in its place, when something was
+ * changed after it went: a construction enters the calculation again, and
+ * installations numbered 1, 2, 3… are numbered again.
+ */
+function withRowBack(current: Draft, list: "constructions" | "installations" | "indirects", index: number, before: Draft): Draft {
+  const row = before[list][index];
+  if (!row) return current;
+  const rows = [...current[list].slice(0, index), row, ...current[list].slice(index)];
+  if (list === "constructions") {
+    const ref = (row as Draft["constructions"][number]).ref.trim().toLowerCase();
+    const excludedTypes = (current.columns.excludedTypes ?? []).filter((item) => item.trim().toLowerCase() !== ref);
+    return { ...current, columns: { ...current.columns, excludedTypes }, constructions: rows as Draft["constructions"] };
+  }
+  if (list === "installations") {
+    const installations = rows as Draft["installations"];
+    const consecutive = current.installations.every((item, position) => item.ref.trim() === String(position + 1));
+    const taken = new Set(current.installations.map((item) => item.ref.trim().toLowerCase()));
+    return {
+      ...current,
+      installations: consecutive
+        ? installations.map((item, position) => ({ ...item, ref: String(position + 1) }))
+        : installations.map((item, position) => (position === index && taken.has(item.ref.trim().toLowerCase()) ? { ...item, ref: `${item.ref}-b` } : item)),
+    };
+  }
+  return { ...current, indirects: rows as Draft["indirects"] };
+}
+
+/**
  * What can be saved: rows still being written (no reference or description)
  * wait in the draft. The formulas typed in the rows saved go with them.
  */
@@ -228,12 +270,16 @@ function computeCalculation(calculation: CostCalculationDto) {
 }
 
 const cell = "h-7 min-w-0 px-1.5 text-xs";
+/** A demerit factor's column: wide enough for 0.9734 and «—», the same in both tables. */
+const FACTOR_CELL = "w-20 min-w-[4.5rem] p-1";
 const resultCell = cn(cell, CALC_RESULT);
 const figure = (value: number | null | undefined, digits = 2) =>
   (value === null || value === undefined ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: digits }));
 // What the calculation gives, in the gray of the table, not lighter.
 const readOnlyCell = "px-1.5 whitespace-nowrap tabular-nums";
 const FORMULA_HINT = "Vacío: se calcula con la fórmula del Excel. Escribe un valor para sustituirla; bórralo para volver a la fórmula.";
+/** Why a factor with a formula shows a dash: what it still needs. */
+const PENDING_FORMULA_HINT = "Se calcula en cuanto el renglón tiene edad, vida útil y Cons. (o su estado de conservación).";
 
 const LAND_REFERENCE_SOURCE = {
   captured: "Lote tipo capturado aquí; bórralo para tomar el del enfoque de mercado.",
@@ -539,11 +585,6 @@ export function CostCalculationPanel(props: {
 
   // What the server holds, to skip saves that would not change anything.
   const lastSaved = useRef<string | null>(null);
-  const applyServerState = (next: CostCalculationDto) => {
-    lastSaved.current = JSON.stringify(savedInputOf(next));
-    setCalculation(next);
-    setDraft(draftOf(next));
-  };
   const enqueueSave = useSerializedSave(async (payload: PanelInput) => {
     if (JSON.stringify(payload) === lastSaved.current) return;
     setSaving(true);
@@ -560,6 +601,24 @@ export function CostCalculationPanel(props: {
       setSaving(false);
     }
   });
+  // Undo and redo of the panel (Ctrl+Z, Ctrl+Y), as in the market panel: taking out a row comes back too (video 7.4, 20:27).
+  const saveDraft = (next: Draft) => {
+    if (!readOnly) void enqueueSave(payloadOf(next));
+  };
+  const history = useDraftHistory<Draft>({
+    apply: (next) => {
+      setDraft(next);
+      saveDraft(next);
+    },
+    cellElement: (cell) => document.querySelector<HTMLElement>(`[data-cost-cell="${window.CSS.escape(cell)}"]`),
+  });
+  const applyServerState = (next: CostCalculationDto) => {
+    lastSaved.current = JSON.stringify(savedInputOf(next));
+    setCalculation(next);
+    setDraft(draftOf(next));
+    history.reset();
+  };
+  const loaded = useEffectEvent((next: CostCalculationDto) => applyServerState(next));
   const report = useEffectEvent((next: CostCalculationDto) => {
     if (!props.readOnly) props.onCalculation(next);
   });
@@ -567,7 +626,7 @@ export function CostCalculationPanel(props: {
   useEffect(() => {
     let active = true;
     api.costs.get(valuationId)
-      .then((next) => { if (active) applyServerState(next); })
+      .then((next) => { if (active) loaded(next); })
       .catch((error: unknown) => { if (active) setLoadError(error instanceof Error ? error.message : "No se pudo cargar el enfoque de costos."); });
     return () => { active = false; };
   }, [valuationId]);
@@ -575,6 +634,11 @@ export function CostCalculationPanel(props: {
   useEffect(() => {
     if (calculation) report(calculation);
   }, [calculation]);
+
+  const draftRef = useRef<Draft | null>(null);
+  useEffect(() => {
+    draftRef.current = draft;
+  });
 
   if (loadError) return <p className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">{loadError}</p>;
   if (!calculation || !draft) {
@@ -607,38 +671,75 @@ export function CostCalculationPanel(props: {
   const unpickedTypes = calculation.types.filter((type) => !pickedRefs.has(type.ref.trim().toLowerCase()));
   const addConstructionReason = addConstructionDisabledReason(calculation.types.length, unpickedTypes.length);
 
-  const save = (next = draft) => {
-    if (!readOnly) void enqueueSave(payloadOf(next));
-  };
+  const save = (next = draft) => saveDraft(next);
+  // Each change is one step of «Deshacer»; typing in one field is one step, as in the document.
+  const record = (cell: string | null) => history.record(draft, cell);
   // A select has no blur to wait for: it saves as soon as it changes.
   const change = (patch: Partial<Pick<Draft, "rounding">> & { surfacePower?: number }) => {
     const land = patch.surfacePower === undefined ? draft.land : { ...draft.land, surfacePower: String(patch.surfacePower) };
     const next = { ...draft, land, rounding: patch.rounding ?? draft.rounding };
+    record(null);
     setDraft(next);
     save(next);
   };
 
-  const setLand = (key: keyof Omit<Draft["land"], "factors">) => (event: { target: { value: string } }) =>
+  const setLand = (key: keyof Omit<Draft["land"], "factors">) => (event: { target: { value: string } }) => {
+    record(`land.${key}`);
     setDraft((current) => current && { ...current, land: { ...current.land, [key]: event.target.value } });
-  const setFactor = (key: LandFactorKey) => (event: { target: { value: string } }) =>
+  };
+  const setFactor = (key: LandFactorKey) => (event: { target: { value: string } }) => {
+    record(`land.factors.${key}`);
     setDraft((current) => current && { ...current, land: { ...current.land, factors: { ...current.land.factors, [key]: event.target.value } } });
+  };
   function setRow<K extends "constructions" | "installations" | "indirects">(list: K, index: number, key: string, next: string) {
+    record(`${list}.${index}.${key}`);
     setDraft((current) => current && {
       ...current,
       [list]: current[list].map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: next } : row)),
     });
   }
-  // A removal has no blur to wait for: it saves at once. A construction removed here stays described in its section.
+  /**
+   * A removal has no blur to wait for: it saves at once, and «Deshacer» (or
+   * Ctrl+Z) brings the row back (video 7.4, 20:27). A construction removed
+   * here stays described in its section; the installations numbered 1, 2,
+   * 3… are numbered again, here and in the table of the construction section.
+   */
   function removeRow(list: "constructions" | "installations" | "indirects", index: number) {
     if (!draft) return;
+    const before = draft;
     // A type taken out stays out: the others of the construction section keep entering on their own.
     const removedRef = list === "constructions" ? draft.constructions[index]?.ref.trim() : "";
     const columns = removedRef
       ? { ...draft.columns, excludedTypes: [...new Set([...(draft.columns.excludedTypes ?? []), removedRef])] }
       : draft.columns;
-    const next = { ...draft, columns, [list]: draft[list].filter((_, rowIndex) => rowIndex !== index) };
+    const rows = list === "installations" ? withoutInstallation(draft.installations, index) : draft[list].filter((_, rowIndex) => rowIndex !== index);
+    const next = { ...draft, columns, [list]: rows };
+    record(null);
     setDraft(next);
     save(next);
+    const removed = before[list][index];
+    const name = list === "constructions"
+      ? `Se quitó ${removedRef || "la construcción"} del cálculo`
+      : list === "installations" ? `Se quitó la instalación ${(removed as Draft["installations"][number] | undefined)?.ref ?? ""}`.trim() : "Se quitó el indirecto";
+    toast.success(name, {
+      description: "Ctrl+Z también lo deshace.",
+      action: {
+        label: "Deshacer",
+        onClick: () => {
+          const current = draftRef.current;
+          if (!current) return;
+          // Nothing changed since: the step back. Otherwise the row goes back to its place in what there is now.
+          if (current === next) {
+            history.undo(current);
+            return;
+          }
+          const restored = withRowBack(current, list, index, before);
+          history.record(current, null);
+          setDraft(restored);
+          saveDraft(restored);
+        },
+      },
+    });
   }
   // The calificación is a select too: it saves at once and gives the Cons. Picking one replaces a Cons.
   // typed before (it used to win over the calificación, so changing the calificación changed nothing).
@@ -647,6 +748,7 @@ export function CostCalculationPanel(props: {
     const criterion = conservationCriterionOfColumns(draft.columns[list]);
     const ross = criterion.kind === "ROSS_HEIDECKE";
     const factor = ross ? null : conservationOfState(criterion, rating);
+    record(null);
     const next = {
       ...draft,
       [list]: draft[list].map((row, rowIndex) => {
@@ -660,22 +762,27 @@ export function CostCalculationPanel(props: {
   };
   // The criterion of a table: typed changes wait for the field to be left; picking a criterion or adding a state saves at once.
   const changeCriterion = (list: "constructions" | "installations", criterion: ConservationCriterionDto, commit: boolean) => {
+    record(commit ? null : `criterio.${list}`);
     const next = { ...draft, columns: { ...draft.columns, [list]: { ...draft.columns[list], conservation: criterion } } };
     setDraft(next);
     if (commit) save(next);
   };
   // The names of the demerit columns are typed (saved when the field is left); adding or removing a factor saves at once.
-  const renameDemerit = (list: "constructions" | "installations", factors: DemeritColumnsDto) =>
+  const renameDemerit = (list: "constructions" | "installations", factors: DemeritColumnsDto) => {
+    record(`columnas.${list}`);
     setDraft((current) => current && { ...current, columns: { ...current.columns, [list]: factors } });
+  };
   const addDemerit = (list: "constructions" | "installations") => {
     const factors = draft.columns[list];
     if (factors.extra.length >= MAX_EXTRA_DEMERIT_FACTORS) return;
+    record(null);
     const next = { ...draft, columns: { ...draft.columns, [list]: { ...factors, extra: [...factors.extra, ""] } } };
     setDraft(next);
     save(next);
   };
   const removeDemerit = (list: "constructions" | "installations", index: number) => {
     const factors = draft.columns[list];
+    record(null);
     const next = {
       ...draft,
       columns: { ...draft.columns, [list]: { ...factors, extra: factors.extra.filter((_, position) => position !== index) } },
@@ -684,7 +791,8 @@ export function CostCalculationPanel(props: {
     setDraft(next);
     save(next);
   };
-  const setExtraFactor = (list: "constructions" | "installations", index: number, position: number, text: string) =>
+  const setExtraFactor = (list: "constructions" | "installations", index: number, position: number, text: string) => {
+    record(`${list}.${index}.extraFactors.${position}`);
     setDraft((current) => current && {
       ...current,
       [list]: current[list].map((row, rowIndex) => {
@@ -694,20 +802,41 @@ export function CostCalculationPanel(props: {
         return { ...row, extraFactors };
       }),
     });
-  // Mantenim. prints in the construction section and does not enter the calculation: an appraisal of a building may leave it out.
-  const showMaintenance = draft.columns.showMaintenance ?? draft.installations.some((row) => row.maintenance.trim());
-  const toggleMaintenance = (show: boolean) => {
-    const next = { ...draft, columns: { ...draft.columns, showMaintenance: show } };
+  };
+  /**
+   * The name of an installation in the cost approach (video 7.4, 28:00):
+   * linked, its description in the construction section; unlinked, a name
+   * of its own (a short one for the cost tables) that is not written there.
+   */
+  const toggleNameLink = (index: number) => {
+    const row = draft.installations[index];
+    if (!row) return;
+    const linked = typeof row.costName !== "string";
+    const next = {
+      ...draft,
+      installations: draft.installations.map((item, position) => {
+        if (position !== index) return item;
+        if (linked) return { ...item, costName: item.description };
+        const { costName: _own, ...rest } = item;
+        return rest;
+      }),
+    };
+    record(null);
     setDraft(next);
     save(next);
   };
   // The type is a select: picking one saves at once.
   const pickConstruction = (index: number, ref: string) => {
+    record(null);
     const next = { ...draft, constructions: draft.constructions.map((row, rowIndex) => (rowIndex === index ? { ...row, ref } : row)) };
     setDraft(next);
     save(next);
   };
-  const addRow = (list: "constructions" | "installations" | "indirects") => setDraft((current) => {
+  const addRow = (list: "constructions" | "installations" | "indirects") => {
+    record(null);
+    insertRow(list);
+  };
+  const insertRow = (list: "constructions" | "installations" | "indirects") => setDraft((current) => {
     if (!current) return current;
     // A new construction row picks the first type not valued yet, and takes it back into the cost approach.
     if (list === "constructions") {
@@ -729,7 +858,7 @@ export function CostCalculationPanel(props: {
 
   /** `grouping`: amounts and areas show their thousands separator; factors, ages and percentages do not. */
   const textInput = (
-    list: "constructions" | "installations" | "indirects", index: number, key: string, current: string, label: string, numeric = true, placeholder?: string, grouping = false,
+    list: "constructions" | "installations" | "indirects", index: number, key: string, current: string, label: string, numeric = true, placeholder?: string, grouping = false, title?: string,
   ) => {
     const Control = numeric ? FormulaInput : Input;
     return (
@@ -739,7 +868,10 @@ export function CostCalculationPanel(props: {
         className={cell}
         value={current}
         placeholder={placeholder}
-        title={placeholder === undefined ? undefined : `${label}. ${FORMULA_HINT}`}
+        // The browser's own suggestions (1.1, 100…) covered the cells (video 7.4, 26:45).
+        autoComplete="off"
+        data-cost-cell={`${list}.${index}.${key}`}
+        title={title ?? (placeholder === undefined ? undefined : `${label}. ${FORMULA_HINT}`)}
         // The age factor, the base of an indirect and a conservation from its rating are calculated while empty.
         data-no-fill={key === "ageFactor" || key === "base" || (key === "conservation" && placeholder !== undefined) ? "computed" : undefined}
         onChange={(event) => setRow(list, index, key, event.target.value)}
@@ -754,13 +886,21 @@ export function CostCalculationPanel(props: {
         className={cell}
         value={current}
         placeholder="100"
+        autoComplete="off"
+        data-cost-cell={`${list}.${index}.${key}`}
         onChange={(event) => setRow(list, index, key, event.target.value)}
       />
       <span className="text-muted-foreground">%</span>
     </div>
   );
-  // Placeholder of a factor with a formula: the formula's result, shown while the field is empty.
-  const hint = (formula: number | undefined) => (formula === undefined ? "Fórmula" : figure(formula, 4));
+  // Placeholder of a factor with a formula: the formula's result with the valuation's decimals, shown while the field is empty;
+  // a dash while the row lacks what the formula needs (it used to say «Fórmula», video 7.4, 24:10).
+  const decimals = factorDecimals(calculation.precision);
+  const hint = (formula: number | null | undefined) => (formula === undefined || formula === null
+    ? "—"
+    : formula.toLocaleString("es-MX", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }));
+  const hintTitle = (label: string, formula: number | null | undefined) =>
+    `${label}. ${formula === undefined || formula === null ? PENDING_FORMULA_HINT : FORMULA_HINT}`;
   /**
    * The demerit factors of a row: Cons. typed or, empty, the one of the
    * calificación; Edad and FRe by formula unless typed; Otro typed (1 when empty).
@@ -773,11 +913,21 @@ export function CostCalculationPanel(props: {
     age: number | null,
     usefulLife: number | null,
   ) => {
-    const ageFormula = formulaValue(`${key}.factorEdad`) ?? (age !== null && usefulLife ? ageFactor(age, usefulLife, config.ageFactor) : undefined);
     const criterion = conservationCriterionOfColumns(draft.columns[list]);
     const ross = criterion.kind === "ROSS_HEIDECKE";
     const fromRating = ross ? conservationOfRating(parseDecimal(row.conservationRating)) : null;
     const state = (row as { conservationState?: string | null }).conservationState ?? "";
+    // Edad and FRe as the calculation gives them; a row without its value (or not complete) gets them too.
+    const extras = draft.columns[list].extra.map((_, position) => parseDecimal(row.extraFactors[position] ?? "") ?? 1);
+    const base = {
+      ref: key, age, usefulLife, conservation: parseDecimal(row.conservation) ?? fromRating,
+      otherFactor: parseDecimal(row.otherFactor) ?? 1, ...(extras.length ? { extraFactors: extras } : {}),
+    };
+    const typedAge = parseDecimal(row.ageFactor);
+    const ageFormula = formulaValue(`${key}.factorEdad`) ?? demeritPreview(base, config).ageFactor;
+    const resultantFormula = formulaValue(`${key}.factorResultante`)
+      ?? demeritPreview({ ...base, ...(typedAge === null ? {} : { ageFactor: typedAge }) }, config).resultantFactor;
+    const ageLabel = "Factor de edad = 1 − (edad / vida útil)^1.4";
     return (
       <>
         <td className="w-36 p-1">
@@ -788,30 +938,34 @@ export function CostCalculationPanel(props: {
             onChange={(rating) => pickRating(list, index, rating)}
           />
         </td>
-        <td className="w-16 p-1">
+        <td className={FACTOR_CELL}>
           {textInput(list, index, "conservation", row.conservation, "Factor de conservación (Cons.)", true, fromRating === null ? undefined : figure(fromRating, 3))}
         </td>
-        <td className="w-16 p-1">{textInput(list, index, "ageFactor", row.ageFactor, "Factor de edad = 1 − (edad / vida útil)^1.4", true, hint(ageFormula))}</td>
-        <td className="w-14 p-1">{textInput(list, index, "otherFactor", row.otherFactor, draft.columns[list].other, true, "1")}</td>
+        <td className={FACTOR_CELL}>{textInput(list, index, "ageFactor", row.ageFactor, ageLabel, true, hint(ageFormula), false, hintTitle(ageLabel, ageFormula))}</td>
+        <td className={FACTOR_CELL}>{textInput(list, index, "otherFactor", row.otherFactor, draft.columns[list].other, true, "1")}</td>
         {draft.columns[list].extra.map((name, position) => (
-          <td key={position} className="w-14 p-1">
+          <td key={position} className={FACTOR_CELL}>
             <FormulaInput
               aria-label={name.trim() || `Factor ${position + 1}`}
               className={cell}
               value={row.extraFactors[position] ?? ""}
               placeholder="1"
+              autoComplete="off"
+              data-cost-cell={`${list}.${index}.extraFactors.${position}`}
               onChange={(event) => setExtraFactor(list, index, position, event.target.value)}
             />
           </td>
         ))}
-        <td className="w-16 p-1">
+        <td className={FACTOR_CELL}>
           <FormulaInput
             aria-label="Factor resultante FRe = Cons. × Edad × Otro"
             data-no-fill="computed"
             className={resultCell}
             value={row.resultantFactor}
-            placeholder={hint(formulaValue(`${key}.factorResultante`))}
-            title={`Factor resultante FRe = ${demeritLabels(draft.columns[list]).slice(0, -1).join(" × ")}. ${FORMULA_HINT}`}
+            placeholder={hint(resultantFormula)}
+            autoComplete="off"
+            data-cost-cell={`${list}.${index}.resultantFactor`}
+            title={hintTitle(`Factor resultante FRe = ${demeritLabels(draft.columns[list]).slice(0, -1).join(" × ")}`, resultantFormula)}
             onChange={(event) => setRow(list, index, "resultantFactor", event.target.value)}
           />
         </td>
@@ -839,18 +993,32 @@ export function CostCalculationPanel(props: {
     leading: ["P/C", "Ref.", "Descripción", "Unidad", "Cant.", "Edad", "Vida útil"],
     remaining: "Vida Remanente",
     factors: draft.columns.installations,
-    trailing: showMaintenance ? ["Mantenim."] : [],
   });
   const surfaceFormula = step("costos.terreno.factorSuperficie")?.formula;
 
   return (
-    <section className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby="cost-calculation-title" onBlur={() => save()}>
+    <section
+      className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4"
+      aria-labelledby="cost-calculation-title"
+      onBlur={() => save()}
+      onKeyDown={(event) => history.onKeyDown(event, draft)}
+    >
       <header className="flex items-center justify-between gap-2">
         <h3 id="cost-calculation-title" className="flex items-center gap-2 text-sm font-semibold">
           <Calculator className="size-4" /> Cálculo del enfoque de costos
         </h3>
         <div className="flex items-center gap-2">
           {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
+          {!readOnly ? (
+            <span className="inline-flex items-center gap-1" role="group" aria-label="Deshacer y rehacer del cálculo">
+              <Button type="button" size="sm" variant="ghost" disabled={!history.canUndo} title="Deshacer el último cambio del cálculo (Ctrl+Z)" onClick={() => history.undo(draft)}>
+                <Undo2 data-icon="inline-start" /> Deshacer
+              </Button>
+              <Button type="button" size="sm" variant="ghost" disabled={!history.canRedo} title="Rehacer (Ctrl+Y)" onClick={() => history.redo(draft)}>
+                <Redo2 data-icon="inline-start" /> Rehacer
+              </Button>
+            </span>
+          ) : null}
           {props.approach ? <ApproachRemoval name="costos" approach={props.approach} readOnly={readOnly} /> : null}
         </div>
       </header>
@@ -874,7 +1042,7 @@ export function CostCalculationPanel(props: {
               {/* Without a lote tipo the homologation is against the subject, and the field says so with its measure. */}
               <FieldLabel htmlFor="cost-land-reference">{reference.source === "subject" ? "Lote Sujeto (m²)" : "Lote Tipo (m²)"}</FieldLabel>
               <FormulaInput
-                id="cost-land-reference"
+                id="cost-land-reference" autoComplete="off"
                 grouping
                 value={draft.land.referenceArea}
                 placeholder={calculation.market.baseArea !== null ? `De mercado: ${calculation.market.baseArea}` : reference.area ? `Sujeto: ${reference.area}` : "Igual al sujeto"}
@@ -883,14 +1051,16 @@ export function CostCalculationPanel(props: {
             </Field>
             <Field>
               <FieldLabel htmlFor="cost-land-value">Valor comparativo de Mercado ($/m²)</FieldLabel>
-              <FormulaInput id="cost-land-value" grouping value={draft.land.unitValue} placeholder={marketValue ? `De mercado: ${marketValue}` : "Captura el mercado de terrenos"} onChange={setLand("unitValue")} />
+              <FormulaInput id="cost-land-value" autoComplete="off" grouping value={draft.land.unitValue} placeholder={marketValue ? `De mercado: ${marketValue}` : "Captura el mercado de terrenos"} onChange={setLand("unitValue")} />
             </Field>
             <Field>
               <FieldLabel htmlFor="cost-land-power">Potencia</FieldLabel>
               <SurfacePowerSelect id="cost-land-power" value={input.land.surfacePower} onChange={(surfacePower) => change({ surfacePower })} />
             </Field>
           </div>
-          <CaptureHeaderControl label="Terreno en estudio" columns={LAND_HEAD_COLUMNS} {...headOf("costos.terreno")} />
+          <CaptureTableBar title="Terreno en estudio" {...headOf("costos.terreno")}>
+            <CaptureHeaderControl label="Terreno en estudio" columns={LAND_HEAD_COLUMNS} {...headOf("costos.terreno")} />
+          </CaptureTableBar>
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly}>
             <table className={cn(CALC_TABLE, "w-auto min-w-[900px]")} aria-label="Terreno en estudio">
               <CaptureTableHead columns={LAND_HEAD_COLUMNS} {...headOf("costos.terreno")} />
@@ -899,7 +1069,7 @@ export function CostCalculationPanel(props: {
                   <td className="px-1.5 text-center">I</td>
                   <td className="w-24 p-1">
                     <FormulaInput
-                      id="cost-land-area"
+                      id="cost-land-area" autoComplete="off"
                       grouping
                       aria-label="Superficie de Sujeto (m²)"
                       data-no-fill={calculation.market.subjectArea ? "computed" : undefined}
@@ -914,7 +1084,7 @@ export function CostCalculationPanel(props: {
                     <td key={factor.key} className="w-16 p-1">
                       {factor.key === "surface" ? (
                         <FormulaInput
-                          id="cost-factor-surface"
+                          id="cost-factor-surface" autoComplete="off"
                           aria-label="Factor de superficie (Sup.)"
                           data-no-fill="computed"
                           className={cell}
@@ -924,13 +1094,13 @@ export function CostCalculationPanel(props: {
                           onChange={setLand("surfaceFactor")}
                         />
                       ) : (
-                        <FormulaInput id={`cost-factor-${factor.key}`} aria-label={factor.label} className={cell} value={draft.land.factors[factor.key]} onChange={setFactor(factor.key)} />
+                        <FormulaInput id={`cost-factor-${factor.key}`} autoComplete="off" aria-label={factor.label} className={cell} value={draft.land.factors[factor.key]} onChange={setFactor(factor.key)} />
                       )}
                     </td>
                   ))}
                   <td className="w-16 p-1">
                     <FormulaInput
-                      id="cost-factor-resultant"
+                      id="cost-factor-resultant" autoComplete="off"
                       aria-label="Factor resultante del terreno (FRe)"
                       data-no-fill="computed"
                       className={resultCell}
@@ -984,7 +1154,14 @@ export function CostCalculationPanel(props: {
             onAdd={() => addDemerit("constructions")}
             onRemove={(position) => removeDemerit("constructions", position)}
           />
-          <CaptureHeaderControl label="Construcciones: factores de demérito" columns={constructionDemeritColumns} {...headOf("costos.construcciones")} />
+          <CaptureTableBar title="Construcciones: factores de demérito" {...headOf("costos.construcciones")}>
+            {!readOnly ? (
+              <span title={addConstructionReason ?? "Agregar fila"} className="inline-flex">
+                <Button type="button" size="icon" variant="outline" aria-label="Agregar fila a Construcciones" disabled={addConstructionReason !== null} onClick={() => addRow("constructions")}><Rows3 /></Button>
+              </span>
+            ) : null}
+            <CaptureHeaderControl label="Construcciones: factores de demérito" columns={constructionDemeritColumns} {...headOf("costos.construcciones")} />
+          </CaptureTableBar>
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={constructionRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[1000px]")} aria-label="Construcciones: factores de demérito">
               <CaptureTableHead columns={constructionDemeritColumns} {...headOf("costos.construcciones")} />
@@ -1020,7 +1197,9 @@ export function CostCalculationPanel(props: {
               </tbody>
             </table>
           </CalcTableContextMenu>
-          <CaptureHeaderControl label="Construcciones: valor de reposición" columns={CONSTRUCTION_VALUE_COLUMNS} {...headOf("costos.construcciones.valores")} />
+          <CaptureTableBar title="Construcciones: valor de reposición" {...headOf("costos.construcciones.valores")}>
+            <CaptureHeaderControl label="Construcciones: valor de reposición" columns={CONSTRUCTION_VALUE_COLUMNS} {...headOf("costos.construcciones.valores")} />
+          </CaptureTableBar>
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={constructionRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[900px]")} aria-label="Construcciones: valor de reposición">
               <CaptureTableHead columns={CONSTRUCTION_VALUE_COLUMNS} {...headOf("costos.construcciones.valores")} />
@@ -1073,9 +1252,8 @@ export function CostCalculationPanel(props: {
           <p className="text-xs text-muted-foreground" data-testid="cost-installations-legend">
             P/C: P = Privativa, C = Común. Las sumas privativa y común son informativas; el subtotal incluye las dos.
             Están vinculadas con la tabla de instalaciones de la sección INF. CONSTRUCCIÓN: lo que agregues o cambies allá (descripción, unidad, cantidad,
-            edad, vida útil, mantenimiento) llega aquí, y lo de aquí se escribe allá.
-            Mantenim. se imprime en la tabla de instalaciones de la sección de construcciones y no entra en el cálculo; si el avalúo no lo lleva, quítalo aquí
-            y borra la columna de esa tabla.
+            edad, vida útil) llega aquí, y lo de aquí se escribe allá. Con la cadena de cada renglón desvinculas solo el nombre, para escribir aquí uno más
+            breve; la descripción larga sigue allá. El mantenimiento y las columnas que necesites van en esa tabla.
           </p>
           <div className="flex flex-wrap items-start justify-between gap-2">
             <ConservationCriterionEditor
@@ -1092,12 +1270,13 @@ export function CostCalculationPanel(props: {
               onAdd={() => addDemerit("installations")}
               onRemove={(position) => removeDemerit("installations", position)}
             />
-            <label className="flex items-center gap-1.5 text-xs">
-              <Checkbox checked={showMaintenance} disabled={readOnly} onCheckedChange={(checked) => toggleMaintenance(checked === true)} />
-              Capturar Mantenim.
-            </label>
           </div>
-          <CaptureHeaderControl label="Instalaciones especiales: factores de demérito" columns={installationDemeritColumns} {...headOf("costos.instalaciones")} />
+          <CaptureTableBar title="Instalaciones especiales: factores de demérito" {...headOf("costos.instalaciones")}>
+            {!readOnly ? (
+              <Button type="button" size="icon" variant="outline" aria-label="Agregar fila a Instalaciones especiales" title="Agregar fila" onClick={() => addRow("installations")}><Rows3 /></Button>
+            ) : null}
+            <CaptureHeaderControl label="Instalaciones especiales: factores de demérito" columns={installationDemeritColumns} {...headOf("costos.instalaciones")} />
+          </CaptureTableBar>
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={installationRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[1200px]")} aria-label="Instalaciones especiales: factores de demérito">
               <CaptureTableHead columns={installationDemeritColumns} {...headOf("costos.instalaciones")} />
@@ -1119,7 +1298,11 @@ export function CostCalculationPanel(props: {
                         </select>
                       </td>
                       <td className="w-12 p-1">{textInput("installations", index, "ref", row.ref, "Referencia", false)}</td>
-                      <td className="min-w-48 p-1">{textInput("installations", index, "description", row.description, "Descripción", false)}</td>
+                      <td className="min-w-48 p-1">
+                        {typeof row.costName === "string"
+                          ? textInput("installations", index, "costName", row.costName, "Nombre en Costos (desvinculado de la descripción de INF. CONSTRUCCIÓN)", false, row.description, false, `Nombre propio de Costos. La descripción de INF. CONSTRUCCIÓN sigue siendo «${row.description}».`)
+                          : textInput("installations", index, "description", row.description, "Descripción", false)}
+                      </td>
                       <td className="w-16 p-1">{textInput("installations", index, "unit", row.unit, "Unidad", false)}</td>
                       <td className="w-16 p-1">{textInput("installations", index, "quantity", row.quantity, "Cantidad", true, undefined, true)}</td>
                       <td className="w-12 p-1">{textInput("installations", index, "age", row.age, "Edad")}</td>
@@ -1128,11 +1311,25 @@ export function CostCalculationPanel(props: {
                       {demeritCells("installations", index, row, installationKey(row.ref), numbers.age, numbers.usefulLife)}
                       <td className="w-20 p-1">{percentInput("installations", index, "completion", row.completion, "Grado de terminación")}</td>
                       <td className="w-20 p-1">{percentInput("installations", index, "undivided", row.undivided, "Indiviso")}</td>
-                      {showMaintenance ? (
-                        <td className="w-24 p-1">{textInput("installations", index, "maintenance", row.maintenance, "Mantenimiento (sección de construcciones)", false)}</td>
-                      ) : null}
                       <td className="p-1">
-                        {!readOnly ? <Button type="button" size="icon-sm" variant="ghost" aria-label={`Quitar la instalación ${row.ref}`} onClick={() => removeRow("installations", index)}><Trash2 /></Button> : null}
+                        {!readOnly ? (
+                          <span className="flex items-center">
+                            <Button
+                              type="button"
+                              size="icon-sm"
+                              variant="ghost"
+                              aria-pressed={typeof row.costName === "string"}
+                              aria-label={typeof row.costName === "string" ? `Vincular el nombre de la instalación ${row.ref}` : `Desvincular el nombre de la instalación ${row.ref}`}
+                              title={typeof row.costName === "string"
+                                ? "Nombre propio de Costos. Vincúlalo para volver a la descripción de INF. CONSTRUCCIÓN."
+                                : "Nombre vinculado con la descripción de INF. CONSTRUCCIÓN. Desvincúlalo para escribir aquí uno más breve; edad, vida útil y cantidad siguen vinculadas."}
+                              onClick={() => toggleNameLink(index)}
+                            >
+                              {typeof row.costName === "string" ? <Link2Off /> : <Link2 />}
+                            </Button>
+                            <Button type="button" size="icon-sm" variant="ghost" aria-label={`Quitar la instalación ${row.ref}`} onClick={() => removeRow("installations", index)}><Trash2 /></Button>
+                          </span>
+                        ) : null}
                       </td>
                     </tr>
                   );
@@ -1140,7 +1337,9 @@ export function CostCalculationPanel(props: {
               </tbody>
             </table>
           </CalcTableContextMenu>
-          <CaptureHeaderControl label="Instalaciones especiales: valor de reposición" columns={INSTALLATION_VALUE_COLUMNS} {...headOf("costos.instalaciones.valores")} />
+          <CaptureTableBar title="Instalaciones especiales: valor de reposición" {...headOf("costos.instalaciones.valores")}>
+            <CaptureHeaderControl label="Instalaciones especiales: valor de reposición" columns={INSTALLATION_VALUE_COLUMNS} {...headOf("costos.instalaciones.valores")} />
+          </CaptureTableBar>
           <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly} rows={installationRowActions}>
             <table className={cn(CALC_TABLE, "w-full min-w-[1000px]")} aria-label="Instalaciones especiales: valor de reposición">
               <CaptureTableHead columns={INSTALLATION_VALUE_COLUMNS} {...headOf("costos.instalaciones.valores")} />
@@ -1151,7 +1350,7 @@ export function CostCalculationPanel(props: {
                     <tr key={index} className={CALC_ROW}>
                       <td className="w-14 px-1.5">{row.share}</td>
                       <td className="w-12 px-1.5">{row.ref || "—"}</td>
-                      <td className={`min-w-48 ${readOnlyCell}`}>{row.description || "—"}</td>
+                      <td className={`min-w-48 ${readOnlyCell}`}>{(typeof row.costName === "string" && row.costName.trim()) || row.description || "—"}</td>
                       <td className={`w-16 ${readOnlyCell}`}>{row.unit || "—"}</td>
                       <td className={`w-16 ${readOnlyCell}`}>{figure(input.installations[index].quantity)}</td>
                       <td className="w-28 p-1">{textInput("installations", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario", true, undefined, true)}</td>

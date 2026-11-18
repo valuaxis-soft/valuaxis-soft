@@ -8,6 +8,7 @@ import {
   findCaptureTable,
   isCaptureMarked,
   isCaptureUnlinked,
+  linkableTablesOf,
   normalizeCapture,
   readCapture,
   sameItems,
@@ -15,6 +16,7 @@ import {
   syncedFromTable,
   withCaptureTables,
   withConstructionTables,
+  withLinkedCaptureTable,
   type CaptureKind,
   type InstallationItem,
   type SyncedItem,
@@ -53,6 +55,7 @@ export function useConstructionCapture({
   valuationId,
   onCostsSaved,
   refreshCosts,
+  updateConstructionSection,
 }: {
   canEdit: boolean;
   machinery: boolean;
@@ -62,6 +65,8 @@ export function useConstructionCapture({
   onCostsSaved: (calculation: CostCalculationDto) => void;
   /** Reads the cost approach again and writes it in the document (after a type is saved). */
   refreshCosts: () => Promise<void>;
+  /** Changes the construction section of the document, as one step of its history. */
+  updateConstructionSection: (change: (section: AppSection) => AppSection) => void;
 }) {
   const active = canEdit && !machinery && Boolean(valuationId);
   // What the server held the last time each table and the server agreed; null until the first reading.
@@ -251,8 +256,48 @@ export function useConstructionCapture({
     }
   };
 
+  /**
+   * «Vincular con Costos» on a table of the appraiser's (video 7.4, 21:53):
+   * it becomes the capture of the installations, its rows are what the cost
+   * approach takes (an installation with the same number keeps its value and
+   * factors), and the table that was the capture stays as his, unlinked.
+   */
+  const linkInstallations = async (tableId: string) => {
+    const current = costsRef.current;
+    const latest = constructionSection(sectionsRef.current);
+    if (!active || !valuationId || !current || !latest) return;
+    const linked = withLinkedCaptureTable(latest, tableId, "installations", current);
+    const table = findCaptureTable(linked, "installations");
+    if (!table || table.id !== tableId) return;
+    const items = readCapture(table, "installations", null);
+    const byRef = new Map(current.installations.map((row, index) => [refKey(row.ref), { row, index }]));
+    const sources = items.map(({ item }) => byRef.get(refKey(item.ref))?.index ?? null);
+    const installations = items.map(({ item }, index): InstallationDto => ({ ...(byRef.get(refKey(item.ref))?.row ?? emptyInstallation(index)), ...(item as InstallationItem) }));
+    const input = costInputOf(current);
+    // What the table holds is what both will hold: the save a moment after the edit finds nothing to send.
+    synced.current.installations = items.map((entry) => ({ rowId: entry.rowId, item: entry.item }));
+    saving.current += 1;
+    updateConstructionSection((section) => withLinkedCaptureTable(section, tableId, "installations", current));
+    try {
+      const next = await api.costs.save(valuationId, {
+        ...input,
+        installations,
+        formulas: installationFormulas(input.formulas ?? {}, current.installations, installations, sources),
+      });
+      saving.current -= 1;
+      onCostsSaved(next);
+      toast.success(`Tabla vinculada con Costos: ${installations.length === 1 ? "1 instalación" : `${installations.length} instalaciones`}.`);
+    } catch (error) {
+      saving.current -= 1;
+      synced.current.installations = null;
+      reportError(error, "las instalaciones especiales");
+    }
+  };
+
   const context: ConstructionCaptureContextValue = {
     tables: section && active ? captureTablesOf(section) : new Map(),
+    linkable: section && active ? linkableTablesOf(section) : new Set(),
+    linkInstallations: (tableId) => void linkInstallations(tableId),
     costs,
     setExcludedTypes,
     relink: (kind) => {

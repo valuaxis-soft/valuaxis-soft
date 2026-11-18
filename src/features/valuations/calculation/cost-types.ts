@@ -367,6 +367,13 @@ export type InstallationDto = {
   conservationState?: string | null;
   /** Printed in the installations table of the construction section; not part of the calculation. */
   maintenance: string;
+  /**
+   * The name the cost approach gives the installation when its link with the
+   * description of the construction section is taken off (video 7.4, 28:00):
+   * a short one for the cost tables, the long one stays there. Absent or
+   * null, the description.
+   */
+  costName?: string | null;
   /** Edad of the demerit factors (R47); empty to take the formula. */
   ageFactor: number | null;
   otherFactor: number;

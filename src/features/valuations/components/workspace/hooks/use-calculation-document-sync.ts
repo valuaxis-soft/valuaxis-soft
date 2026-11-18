@@ -89,6 +89,8 @@ export function useCalculationDocumentSync({
     valuationId,
     onCostsSaved: (calculation) => onCostCalculation(calculation),
     refreshCosts: () => refresh({ costs: true, conclusion: true }),
+    updateConstructionSection: (change) =>
+      updateBySection("vincular-costos", (key, section) => (key === "CONSTRUCCION" ? change(section) : section)),
   });
 
   // The last calculation of each market, for the annex that sums up their justifications.
