@@ -134,6 +134,12 @@ export type Concept = {
    * or unlinked it, and the calculation leaves it until he links it again.
    */
   calculationUnlinked?: boolean;
+  /**
+   * Only in a concept the calculation fills: what it writes there
+   * ("conclusion:value", "conclusion:words"…). The concept is found by it, so
+   * the appraiser may rename it and it still receives the value.
+   */
+  calculationKey?: string;
 };
 
 export type TableContent = {
@@ -328,6 +334,8 @@ export type Block = {
   flowSpacingBeforePx?: number;
   /** Only the carátula's company header block: the extra header data, kept in its configuration. */
   headerFields?: HeaderExtraField[];
+  /** Only the block of the concluded value: it prints the chart of the values (V7.1-26, off unless chosen). */
+  valueChart?: boolean;
   /** Only the carátula's company header block: the size of the principal cover image. */
   coverImageSize?: CoverImageSize;
 };

@@ -151,7 +151,15 @@ const HAND_SIGNATURE_ROOM_PX = 36;
 
 // Module 4: Signatures (one or many; the grid wraps three per row)
 export function CaratulaSignaturesModule({ caratula }: { caratula: CaratulaFormData }) {
-  const signatures: ValuationSignature[] = caratula.firmas.length ? caratula.firmas : [{ name: "", cedula: "", role: "" }];
+  return <SignatureLines signatures={caratula.firmas} />;
+}
+
+/**
+ * Each signature with room to sign, its line, the name, the cédula and the
+ * role: the carátula's, and the conclusion's FIRMAS (V7.1-24).
+ */
+export function SignatureLines({ signatures: given }: { signatures: readonly ValuationSignature[] }) {
+  const signatures: readonly ValuationSignature[] = given.length ? given : [{ name: "", cedula: "", role: "" }];
 
   return (
     <section className="mb-2 flex flex-wrap justify-center gap-x-6" data-caratula-signatures>

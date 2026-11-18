@@ -58,6 +58,7 @@ export type ConceptPayload = {
   formula?: unknown;
   generatedLabel?: string;
   calculationUnlinked?: boolean;
+  calculationKey?: string;
 };
 
 export type ApartadoPayload = {

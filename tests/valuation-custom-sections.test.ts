@@ -119,7 +119,7 @@ test("a stored custom section comes back at its saved position, with its blocks;
   assert.equal(sections.some((section) => section.id === "seccion-zzzz"), false);
   assert.equal(sections.at(-1)?.id, "seccion-c3d4", "a position past the end lands at the end");
   // Registry sections are all still there, once each, in their order.
-  assert.equal(sections.filter((section) => !section.custom).length, 15);
+  assert.equal(sections.filter((section) => !section.custom).length, 16);
   assert.equal(sections[0].id, "caratula");
   assert.equal(sections[1].id, "datosGenerales");
 });

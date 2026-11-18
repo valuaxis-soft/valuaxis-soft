@@ -1,7 +1,8 @@
 /**
  * The concluded value in the dictamen: the conclusion section's values and the
- * carátula's value and amount in words. Fills the template concepts by label
- * and leaves the appraiser's own text (observations, declarations) alone.
+ * carátula's value and amount in words. Fills the template concepts by their
+ * key (`calculationKey`; the template label for those saved before it) and
+ * leaves the appraiser's own text (observations, declarations) alone.
  *
  * Each of those concepts is linked to the calculation until the appraiser
  * writes its value by hand or unlinks it ("Desvincular"): from then on the
@@ -12,10 +13,32 @@
 import type { ConclusionResult } from "../engine/conclusion";
 import type { AppSection, Block, Concept, ConceptValueFormat } from "../model";
 import { appraisedGoodWording } from "../services/appraised-good-wording";
+import type { ValuationSignature } from "../services/valuation-signatures";
 import { summaryRowValues, type ConclusionCalculationDto } from "./conclusion-types";
 import { MACHINERY_PROPERTY_TYPE } from "./machinery-types";
 
 const NOT_APPLICABLE = "NO APLICA";
+
+/**
+ * What the calculation writes in each concept, by a key the concept keeps in
+ * its configuration (`calculationKey`), so the appraiser may rename "Valor
+ * concluido" (V7.3-28: «el nombre que ellos decidan») and it still receives the
+ * value. Concepts saved before the key existed are recognized once by their
+ * template label and take the key (`conceptCalculationKey`).
+ */
+export const CONCLUSION_KEYS = {
+  costos: "conclusion:approach:costos",
+  mercado: "conclusion:approach:mercado",
+  ingresos: "conclusion:approach:ingresos",
+  value: "conclusion:value",
+  words: "conclusion:words",
+  /** Who signs, from the carátula's signatures (V7.1-24). */
+  signerName: "conclusion:signer-name",
+  signerCedula: "conclusion:signer-cedula",
+  caratulaValue: "caratula:value",
+  caratulaWords: "caratula:words",
+} as const;
+type ConclusionKey = (typeof CONCLUSION_KEYS)[keyof typeof CONCLUSION_KEYS];
 
 /**
  * What the calculation writes in a concept: a text as it is, or a number with
@@ -32,92 +55,134 @@ const normalize = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, 
 
 const CONCLUDED_VALUE_LABELS = [null, MACHINERY_PROPERTY_TYPE].map((kind) => appraisedGoodWording(kind).concludedValueLabel);
 
+/** The template labels of the concepts saved before they carried their key. */
+const LEGACY_LABEL_KEYS = new Map<string, ConclusionKey>([
+  ["valor por enfoque de costos", CONCLUSION_KEYS.costos],
+  ["valor por enfoque de mercado", CONCLUSION_KEYS.mercado],
+  ["valor por enfoque de ingresos", CONCLUSION_KEYS.ingresos],
+  ...CONCLUDED_VALUE_LABELS.map((label): [string, ConclusionKey] => [normalize(label), CONCLUSION_KEYS.value]),
+  ["valor concluido con letra", CONCLUSION_KEYS.words],
+  ["valuador", CONCLUSION_KEYS.signerName],
+  ["cedula profesional", CONCLUSION_KEYS.signerCedula],
+  ["valor comercial del bien", CONCLUSION_KEYS.caratulaValue],
+  ["cifra en letras", CONCLUSION_KEYS.caratulaWords],
+]);
+
+const SECTION_KEYS: Record<string, ReadonlySet<string>> = {
+  CONCLUSIONES: new Set<string>([
+    CONCLUSION_KEYS.costos, CONCLUSION_KEYS.mercado, CONCLUSION_KEYS.ingresos, CONCLUSION_KEYS.value, CONCLUSION_KEYS.words,
+    CONCLUSION_KEYS.signerName, CONCLUSION_KEYS.signerCedula,
+  ]),
+  CARATULA: new Set<string>([CONCLUSION_KEYS.caratulaValue, CONCLUSION_KEYS.caratulaWords]),
+};
+
 /** The id of the concept that prints a row of the resumen de valores, by its place. */
 const SUMMARY_CONCEPT_PREFIX = "conclusion-resumen-";
 const summaryConceptId = (index: number) => `${SUMMARY_CONCEPT_PREFIX}${index + 1}`;
-const APPROACH_LABELS_IN_DOCUMENT = ["valor por enfoque de costos", "valor por enfoque de mercado", "valor por enfoque de ingresos"];
-const isApproachConcept = (concept: Concept) => APPROACH_LABELS_IN_DOCUMENT.includes(normalize(concept.label)) || concept.id.startsWith(SUMMARY_CONCEPT_PREFIX);
 
-const CONCLUSION_LABELS = new Set([
-  ...APPROACH_LABELS_IN_DOCUMENT,
-  ...CONCLUDED_VALUE_LABELS.map(normalize),
-  "valor concluido con letra",
-]);
-const CARATULA_LABELS = new Set(["valor comercial del bien", "cifra en letras"]);
+/** What the calculation writes in the concept: its key, or the one its template label had. */
+export function conceptCalculationKey(concept: Pick<Concept, "label" | "calculationKey">): string | undefined {
+  return concept.calculationKey ?? LEGACY_LABEL_KEYS.get(normalize(concept.label));
+}
+
+const APPROACH_KEYS = new Set<string>([CONCLUSION_KEYS.costos, CONCLUSION_KEYS.mercado, CONCLUSION_KEYS.ingresos]);
+
+/** A row of the resumen de valores: one of the three approaches, or a row the appraiser chose. */
+export function isSummaryConcept(concept: Pick<Concept, "id" | "label" | "calculationKey">) {
+  return concept.id.startsWith(SUMMARY_CONCEPT_PREFIX) || APPROACH_KEYS.has(conceptCalculationKey(concept) ?? "");
+}
+const isConcludedConcept = (concept: Pick<Concept, "label" | "calculationKey">) => conceptCalculationKey(concept) === CONCLUSION_KEYS.value;
 
 /** Whether the conclusion writes this concept of the section (by canonical key), linked or not. */
-export function isConclusionCalculatedConcept(sectionKey: string, concept: Pick<Concept, "id" | "label">): boolean {
-  if (sectionKey === "CONCLUSIONES") return CONCLUSION_LABELS.has(normalize(concept.label)) || concept.id.startsWith(SUMMARY_CONCEPT_PREFIX);
-  if (sectionKey === "CARATULA") return CARATULA_LABELS.has(normalize(concept.label));
-  return false;
+export function isConclusionCalculatedConcept(sectionKey: string, concept: Pick<Concept, "id" | "label" | "calculationKey">): boolean {
+  if (sectionKey === "CONCLUSIONES" && concept.id.startsWith(SUMMARY_CONCEPT_PREFIX)) return true;
+  return SECTION_KEYS[sectionKey]?.has(conceptCalculationKey(concept) ?? "") ?? false;
 }
 
 /**
  * A change the appraiser makes to a concept: writing by hand the value of one
  * the calculation fills unlinks it, so the next sync leaves what he wrote.
+ * Renaming it keeps it linked: the key goes with the new name.
  */
 export function withManualConclusionEdit(sectionKey: string, concept: Concept, patch: Partial<Concept>): Partial<Concept> {
-  if (patch.value === undefined || patch.value === concept.value) return patch;
-  if (concept.calculationUnlinked || "calculationUnlinked" in patch) return patch;
   if (!isConclusionCalculatedConcept(sectionKey, concept)) return patch;
-  return { ...patch, calculationUnlinked: true };
+  const key = conceptCalculationKey(concept);
+  const renamed = patch.label !== undefined && patch.label !== concept.label;
+  const keyed = renamed && key && !concept.calculationKey && !concept.id.startsWith(SUMMARY_CONCEPT_PREFIX) ? { ...patch, calculationKey: key } : patch;
+  if (keyed.value === undefined || keyed.value === concept.value) return keyed;
+  if (concept.calculationUnlinked || "calculationUnlinked" in keyed) return keyed;
+  return { ...keyed, calculationUnlinked: true };
 }
 
-/** Label → value of the conclusion section concepts. */
+/** Key → value of the conclusion section concepts (the rows of the resumen go by their id). */
 export function conclusionValues(calculation: ConclusionCalculationDto, result: ConclusionResult): Record<string, ConclusionConceptValue> {
   const approach = (value: number | null | undefined) => (value === null || value === undefined ? NOT_APPLICABLE : amount(value, "mxn"));
-  // The concluded amount prints with the legal tender mark: "$2,200,000.00 M.N." (2 Nov 2026).
-  const concluded = amount(result.value, "mxn-mn");
   const rows = summaryRowValues(calculation);
   return {
     ...(rows.length
       ? Object.fromEntries(rows.map((row, index) => [summaryConceptId(index), approach(row.value)]))
       : {
-          "valor por enfoque de costos": approach(result.summary.costos ?? calculation.values.costos),
-          "valor por enfoque de mercado": approach(result.summary.mercado ?? calculation.values.mercado),
-          "valor por enfoque de ingresos": approach(result.summary.ingresos ?? calculation.values.ingresos),
+          [CONCLUSION_KEYS.costos]: approach(result.summary.costos ?? calculation.values.costos),
+          [CONCLUSION_KEYS.mercado]: approach(result.summary.mercado ?? calculation.values.mercado),
+          [CONCLUSION_KEYS.ingresos]: approach(result.summary.ingresos ?? calculation.values.ingresos),
         }),
-    // The concluded value under either name: the real estate books' and the machinery one's.
-    ...Object.fromEntries(CONCLUDED_VALUE_LABELS.map((label) => [normalize(label), concluded])),
-    "valor concluido con letra": result.valueInWords,
+    // The concluded amount prints with the legal tender mark: "$2,200,000.00 M.N." (2 Nov 2026).
+    [CONCLUSION_KEYS.value]: amount(result.value, "mxn-mn"),
+    [CONCLUSION_KEYS.words]: result.valueInWords,
+  };
+}
+
+/**
+ * Who signs the conclusion: the carátula's signatures (V7.1-24: «y las
+ * firmas»), linked as the values are. Several signers read one after another.
+ */
+export function signatureConceptValues(signatures: ReadonlyArray<Pick<ValuationSignature, "name" | "cedula">>): Record<string, ConclusionConceptValue> {
+  const join = (values: string[]) => values.map((value) => value.trim()).filter(Boolean).join(", ");
+  return {
+    [CONCLUSION_KEYS.signerName]: join(signatures.map((signature) => signature.name)),
+    [CONCLUSION_KEYS.signerCedula]: join(signatures.map((signature) => signature.cedula)),
   };
 }
 
 /**
  * The concepts of the resumen de valores in the block of the concluded value:
  * the rows the appraiser chose, under the names he wrote, in place of the
- * three approaches. Without rows the block keeps its approach concepts.
+ * three approaches. Without rows the block keeps its approach concepts. With
+ * one row and "the concluded value takes its name" (V7.3-28), the concluded
+ * value prints under that row's name.
  */
-export function withSummaryRowConcepts(section: AppSection, calculation: Pick<ConclusionCalculationDto, "summaryRows" | "available">): AppSection {
+export function withSummaryRowConcepts(section: AppSection, calculation: Pick<ConclusionCalculationDto, "summaryRows" | "available" | "concludedNameFromRow">): AppSection {
   const rows = summaryRowValues(calculation);
   if (!rows.length) return section;
+  const concludedName = rows.length === 1 && calculation.concludedNameFromRow ? rows[0].label : null;
   let changed = false;
   const blocks = section.blocks.map((block): Block => {
-    const concluded = block.concepts.findIndex((concept) => CONCLUDED_VALUE_LABELS.some((label) => normalize(label) === normalize(concept.label)));
+    const concluded = block.concepts.findIndex(isConcludedConcept);
     if (concluded === -1) return block;
-    const current = block.concepts.filter(isApproachConcept);
+    const current = block.concepts.filter(isSummaryConcept);
     const next = rows.map((row, index): Concept => {
       const existing = current[index];
-      const concept: Concept = existing?.id === summaryConceptId(index)
-        ? { ...existing, label: row.label }
-        : { id: summaryConceptId(index), label: row.label, value: "", enabled: true };
-      return concept;
+      if (existing?.id !== summaryConceptId(index)) return { id: summaryConceptId(index), label: row.label, value: "", enabled: true };
+      return existing.label === row.label ? existing : { ...existing, label: row.label };
     });
     const same = current.length === next.length && current.every((concept, index) => concept === next[index]);
-    if (same) return block;
+    const renamed = concludedName !== null && block.concepts[concluded].label !== concludedName;
+    if (same && !renamed) return block;
     changed = true;
-    const kept = block.concepts.filter((concept) => !isApproachConcept(concept));
-    const at = kept.findIndex((concept) => CONCLUDED_VALUE_LABELS.some((label) => normalize(label) === normalize(concept.label)));
+    const kept = (same ? block.concepts : block.concepts.filter((concept) => !isSummaryConcept(concept)))
+      .map((concept) => (renamed && isConcludedConcept(concept) ? { ...concept, label: concludedName, calculationKey: CONCLUSION_KEYS.value } : concept));
+    if (same) return { ...block, concepts: kept };
+    const at = kept.findIndex(isConcludedConcept);
     return { ...block, concepts: [...kept.slice(0, at), ...next, ...kept.slice(at)] };
   });
   return changed ? { ...section, blocks } : section;
 }
 
-/** Label → value of the carátula conclusion concepts. */
+/** Key → value of the carátula conclusion concepts. */
 export function caratulaConclusionValues(result: ConclusionResult): Record<string, ConclusionConceptValue> {
   return {
-    "valor comercial del bien": amount(result.value, "mxn-mn"),
-    "cifra en letras": result.valueInWords,
+    [CONCLUSION_KEYS.caratulaValue]: amount(result.value, "mxn-mn"),
+    [CONCLUSION_KEYS.caratulaWords]: result.valueInWords,
   };
 }
 
@@ -135,20 +200,26 @@ function fillConcept(concept: Concept, value: ConclusionConceptValue): Concept {
   return { ...concept, value: stored, type, valueFormat };
 }
 
+/** The concept with its key written: saved before the key existed, it is recognized by its label once. */
+function withKey(concept: Concept, key: string | undefined): Concept {
+  return key && !concept.id.startsWith(SUMMARY_CONCEPT_PREFIX) && concept.calculationKey !== key ? { ...concept, calculationKey: key } : concept;
+}
+
 function fillConcepts(concepts: Concept[], values: Record<string, ConclusionConceptValue>) {
   let changed = false;
   const next = concepts.map((concept) => {
-    // The rows of the resumen de valores go by their id: their labels are the appraiser's.
-    const value = values[concept.id] ?? values[normalize(concept.label)];
+    // The rows of the resumen de valores go by their id, the rest by their key: their labels are the appraiser's.
+    const key = conceptCalculationKey(concept);
+    const value = values[concept.id] ?? (key === undefined ? undefined : values[key]);
     if (value === undefined) return concept;
-    const filled = fillConcept(concept, value);
+    const filled = fillConcept(withKey(concept, key), value);
     if (filled !== concept) changed = true;
     return filled;
   });
   return changed ? next : concepts;
 }
 
-/** Sets the values of the concepts whose labels match, in every block and apartado of the section. */
+/** Sets the values of the concepts whose keys match, in every block and apartado of the section. */
 export function withConceptValues(section: AppSection, values: Record<string, ConclusionConceptValue>): AppSection {
   let changed = false;
   const blocks = section.blocks.map((block): Block => {
@@ -160,6 +231,24 @@ export function withConceptValues(section: AppSection, values: Record<string, Co
     if (concepts === block.concepts && apartados.every((apartado, index) => apartado === block.apartados[index])) return block;
     changed = true;
     return { ...block, concepts, apartados };
+  });
+  return changed ? { ...section, blocks } : section;
+}
+
+/** The block of the concluded value: the one holding the concept the concluded value is written in. */
+export function isConcludedValueBlock(block: Pick<Block, "concepts">) {
+  return block.concepts.some(isConcludedConcept);
+}
+
+/** "Gráfica de los valores" chosen in the panel (V7.1-26): the block of the concluded value prints it. */
+export function withValueChart(section: AppSection, on: boolean): AppSection {
+  let changed = false;
+  const blocks = section.blocks.map((block): Block => {
+    if (!isConcludedValueBlock(block) || Boolean(block.valueChart) === on) return block;
+    changed = true;
+    if (on) return { ...block, valueChart: true };
+    const { valueChart: _chart, ...rest } = block;
+    return rest;
   });
   return changed ? { ...section, blocks } : section;
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { caratulaConclusionValues, conclusionValues, withConceptValues } from "../src/features/valuations/calculation/conclusion-document";
+import { CONCLUSION_KEYS, caratulaConclusionValues, conclusionValues, withConceptValues } from "../src/features/valuations/calculation/conclusion-document";
 import { NO_CAPITALIZATION_RATE, NO_UNIT_RENT, incomeDocumentBlocks } from "../src/features/valuations/calculation/income-document";
 import { DEFAULT_ANNUITY, DEFAULT_DEDUCTIONS, DEFAULT_MARKET_RATE, toIncomeEngineInput, type IncomeCalculationDto } from "../src/features/valuations/calculation/income-types";
 import { concludeValue } from "../src/features/valuations/engine/conclusion";
@@ -97,5 +97,5 @@ test("the concluded value fills the conclusion and carátula concepts and leaves
   // A format the appraiser chose stays: only the number changes.
   const chosen = { ...filled, blocks: [{ ...filled.blocks[0], concepts: filled.blocks[0].concepts.map((item) => (item.id === "c4" ? { ...item, valueFormat: "mxn" as const } : item)) }] };
   assert.equal(withConceptValues(chosen, conclusionValues(calculation, result)).blocks[0].concepts[3].valueFormat, "mxn");
-  assert.deepEqual(caratulaConclusionValues(result)["valor comercial del bien"], { amount: 8580000, valueFormat: "mxn-mn" });
+  assert.deepEqual(caratulaConclusionValues(result)[CONCLUSION_KEYS.caratulaValue], { amount: 8580000, valueFormat: "mxn-mn" });
 });

@@ -180,7 +180,7 @@ test("a new machinery valuation starts with the real estate sections hidden, and
 
   // As the creation of the valuation does it.
   await initializeWorkingVersionStructure({ avaluoId: IdAvaluo, userId: fixture.user.id, initiallyHidden: initiallyHiddenSections(MACHINERY_PROPERTY_TYPE) });
-  const initial = ["TERRENO", "CONSTRUCCION", "MERCADO_RENTAS", "INGRESOS", "CROQUIS_COMPARABLES", "INDIRECTOS", "MAPA_COMPARABLES"];
+  const initial = ["TERRENO", "CONSTRUCCION", "MERCADO_RENTAS", "INGRESOS", "METODOS_ALTERNATIVOS", "CROQUIS_COMPARABLES", "INDIRECTOS", "MAPA_COMPARABLES"];
   assert.deepEqual(await hidden(), initial);
 
   await save();

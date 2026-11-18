@@ -1,7 +1,14 @@
 import { useEffect, useEffectEvent, useRef } from "react";
 
 import { api } from "@/lib/api-client";
-import { caratulaConclusionValues, conclusionValues, withConceptValues, withSummaryRowConcepts } from "@/features/valuations/calculation/conclusion-document";
+import {
+  caratulaConclusionValues,
+  conclusionValues,
+  signatureConceptValues,
+  withConceptValues,
+  withSummaryRowConcepts,
+  withValueChart,
+} from "@/features/valuations/calculation/conclusion-document";
 import { canConclude, conclusionEngineConfig, conclusionInput, type ConclusionCalculationDto } from "@/features/valuations/calculation/conclusion-types";
 import { COST_TEMPLATE_BLOCK_IDS, costDocumentBlocks } from "@/features/valuations/calculation/cost-document";
 import { FACTOR_ANNEX_PREFIX, FACTOR_ANNEX_TEMPLATE_BLOCK_IDS, factorJustificationBlocks, marketsInReport } from "@/features/valuations/calculation/factor-justification-document";
@@ -29,7 +36,7 @@ import {
   type ComparableType,
   type MarketCalculationDto,
 } from "@/features/valuations/calculation/market-types";
-import { statisticalDocumentBlocks, withStatisticalBlocks } from "@/features/valuations/calculation/statistical-document";
+import { statisticalDocumentBlocks, withStatisticalBlocks, withoutStatisticalBlocks } from "@/features/valuations/calculation/statistical-document";
 import type { StatisticalCalculationDto } from "@/features/valuations/calculation/statistical-types";
 import { concludeValue } from "@/features/valuations/engine/conclusion";
 import { computeCostApproach } from "@/features/valuations/engine/costs";
@@ -121,13 +128,15 @@ export function useCalculationDocumentSync({
     if (annex) applyFactorAnnex();
   };
 
-  // The statistical methods print after the market of their type, in the same section.
+  // The statistical methods print in their own section (V7.3-19); a block a market section kept from before leaves it.
   const applyStatistical = (calculation: StatisticalCalculationDto) => {
     if (!canEdit || calculation.locked) return;
     const type = calculation.settings.comparableType;
     const blocks = statisticalDocumentBlocks(calculation);
-    const sectionKey = isRentComparableType(type) ? "MERCADO_RENTAS" : "MERCADO_VENTA";
-    updateBySection(`motor-estadistico-${type}`, (key, section) => (key === sectionKey ? withStatisticalBlocks(section, type, blocks) : section));
+    updateBySection(`motor-estadistico-${type}`, (key, section) =>
+      key === "METODOS_ALTERNATIVOS" ? withStatisticalBlocks(section, type, blocks)
+        : key === "MERCADO_VENTA" || key === "MERCADO_RENTAS" ? withoutStatisticalBlocks(section, type)
+          : section);
   };
 
   // The construction tables follow the types even before the cost approach is configured.
@@ -183,7 +192,7 @@ export function useCalculationDocumentSync({
     const sectionValues = conclusionValues(calculation, result);
     const caratulaValues = caratulaConclusionValues(result);
     updateBySection("motor-conclusion", (key, section) =>
-      key === "CONCLUSIONES" ? withConceptValues(withSummaryRowConcepts(section, calculation), sectionValues)
+      key === "CONCLUSIONES" ? withValueChart(withConceptValues(withSummaryRowConcepts(section, calculation), sectionValues), calculation.valueChart === true)
         : key === "CARATULA" ? withConceptValues(section, caratulaValues)
           : section);
     const total = String(result.value);
@@ -290,6 +299,14 @@ export function useCalculationDocumentSync({
     refreshConclusion();
   }, [exclusionKey, saveStatus]);
 
+  // Who signs the conclusion follows the carátula's signatures (V7.1-24), unless written by hand.
+  const signatureKey = JSON.stringify(caratula.firmas.map((signature) => [signature.name, signature.cedula]));
+  const applySignatures = useEffectEvent(() => {
+    if (!canEdit || lastConclusion.current?.locked) return;
+    const values = signatureConceptValues(caratula.firmas);
+    updateBySection("motor-firmas", (key, section) => (key === "CONCLUSIONES" ? withConceptValues(section, values) : section));
+  });
+
   // A concept of the conclusion unlinked or linked again: linked, it takes the calculation's value at once.
   const unlinkedKey = sections
     .filter((section) => ["CONCLUSIONES", "CARATULA"].includes(getCanonicalSectionKey(section.id)))
@@ -299,10 +316,14 @@ export function useCalculationDocumentSync({
     .join(",");
   const reapplyConclusion = useEffectEvent(() => {
     if (lastConclusion.current) applyConclusion(lastConclusion.current);
+    applySignatures();
   });
   useEffect(() => {
     reapplyConclusion();
   }, [unlinkedKey]);
+  useEffect(() => {
+    applySignatures();
+  }, [signatureKey]);
 
   return {
     onLiveFormulas: (owners: string[]) => void onLiveFormulas(owners),

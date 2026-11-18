@@ -136,7 +136,9 @@ async function load(tx: Tx, versionId: number) {
     approachValues(tx, versionId),
   ]);
   const available = await availableValues(tx, versionId, new Set(excluded));
-  const configuration = asRecord(summary?.JConfiguracion ?? null) as { method?: ConclusionMethod; rounding?: number | null; formulas?: unknown; summaryRows?: unknown };
+  const configuration = asRecord(summary?.JConfiguracion ?? null) as {
+    method?: ConclusionMethod; rounding?: number | null; formulas?: unknown; summaryRows?: unknown; concludedNameFromRow?: unknown; valueChart?: unknown;
+  };
   const summaryRows = storedSummaryRows(configuration.summaryRows);
   return {
     values,
@@ -144,6 +146,8 @@ async function load(tx: Tx, versionId: number) {
     excluded,
     available,
     ...(summaryRows ? { summaryRows } : {}),
+    ...(configuration.concludedNameFromRow === true ? { concludedNameFromRow: true } : {}),
+    ...(configuration.valueChart === true ? { valueChart: true } : {}),
     method: configuration.method ?? defaultMethod(values),
     justification: summary?.SJustificacion ?? null,
     ...(configuration.rounding === undefined ? {} : { rounding: configuration.rounding }),
@@ -182,6 +186,9 @@ export async function saveConclusionSettings(publicId: string, user: AuthUser, p
       ...(payload.rounding === undefined ? {} : { rounding: payload.rounding }),
       formulas,
       ...(summaryRows?.length ? { summaryRows } : {}),
+      // The name of the concluded value and the chart change only when sent.
+      ...((payload.concludedNameFromRow ?? previous.concludedNameFromRow) ? { concludedNameFromRow: true } : {}),
+      ...((payload.valueChart ?? previous.valueChart) ? { valueChart: true } : {}),
     };
     const data = { JConfiguracion: configuration as Prisma.InputJsonValue, SJustificacion: payload.justification };
     await tx.resumenValor.upsert({ where: { IdVersionAvaluo: versionId }, create: { IdVersionAvaluo: versionId, ...data }, update: data });

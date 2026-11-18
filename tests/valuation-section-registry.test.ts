@@ -35,6 +35,8 @@ test("section key normalization supports compact historical aliases", () => {
   assert.equal(getCanonicalSectionKey("croquiscomparables"), "CROQUIS_COMPARABLES");
   assert.equal(getCanonicalSectionKey("mapacomparables"), "MAPA_COMPARABLES");
   assert.equal(getCanonicalSectionKey("INDICADORES"), "MAPA_COMPARABLES");
+  assert.equal(getCanonicalSectionKey("metodosAlternativos"), "METODOS_ALTERNATIVOS");
+  assert.equal(getCanonicalSectionKey("MÉTODOS ALTERNATIVOS"), "METODOS_ALTERNATIVOS");
   assert.equal(sectionKeyToWorkspaceId("datosgenerales"), "datosGenerales");
 });
 
@@ -49,7 +51,7 @@ test("all valuation sections are active by default for the workspace", () => {
 test("a machinery valuation starts without the sections its book has no sheet for; any other starts with all", () => {
   assert.deepEqual(
     [...initiallyHiddenSections("MAQUINARIA_EQUIPO")],
-    ["TERRENO", "CONSTRUCCION", "MERCADO_RENTAS", "INGRESOS", "CROQUIS_COMPARABLES", "INDIRECTOS", "MAPA_COMPARABLES"],
+    ["TERRENO", "CONSTRUCCION", "MERCADO_RENTAS", "INGRESOS", "METODOS_ALTERNATIVOS", "CROQUIS_COMPARABLES", "INDIRECTOS", "MAPA_COMPARABLES"],
   );
   assert.deepEqual([...initiallyHiddenSections("maquinaria_equipo")], [...initiallyHiddenSections("MAQUINARIA_EQUIPO")]);
   // The sheets of the MEH book stay in view, and no required section is ever hidden.

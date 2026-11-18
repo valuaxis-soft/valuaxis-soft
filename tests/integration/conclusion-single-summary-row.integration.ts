@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { conclusionValues } from "../../src/features/valuations/calculation/conclusion-document";
+import { CONCLUSION_KEYS, conclusionValues } from "../../src/features/valuations/calculation/conclusion-document";
 import { getConclusionCalculation, saveConclusionSettings } from "../../src/features/valuations/calculation/conclusion.service";
 import { canConclude, conclusionEngineConfig, conclusionInput, type ConclusionSummaryRow } from "../../src/features/valuations/calculation/conclusion-types";
 import { concludeValue } from "../../src/features/valuations/engine/conclusion";
@@ -39,7 +39,7 @@ async function concluded(fixture: Valuation) {
   const calculation = await getConclusionCalculation(fixture.publicId, fixture.organizationId);
   assert.ok(canConclude(calculation));
   const result = concludeValue(conclusionInput(calculation), conclusionEngineConfig(calculation));
-  const written = conclusionValues(calculation, result)["valor concluido"];
+  const written = conclusionValues(calculation, result)[CONCLUSION_KEYS.value];
   return { stored: Number(stored.NValorConcluido), printed: typeof written === "string" ? written : written.amount };
 }
 

@@ -49,7 +49,9 @@ test("Conclusión moved between Ingresos and Fotografías is read back there, al
   await save(fixture, moveBefore(initial, "conclusiones", "fotosSujeto"));
   const reloaded = await load(fixture);
   const order = ids(reloaded);
-  assert.equal(order.indexOf("conclusiones"), order.indexOf("ingresos") + 1, "right after Ingresos");
+  // Between Ingresos and Fotografías sit the alternative methods since they have a section of their own (V7.3-19).
+  assert.equal(order.indexOf("conclusiones"), order.indexOf("metodosAlternativos") + 1, "right after the alternative methods, which follow Ingresos");
+  assert.equal(order.indexOf("metodosAlternativos"), order.indexOf("ingresos") + 1);
   assert.equal(order.indexOf("fotosSujeto"), order.indexOf("conclusiones") + 1, "right before Fotografías");
   assert.equal(reloaded.length, initial.length, "no section lost or doubled");
   // Numbered in its new place.

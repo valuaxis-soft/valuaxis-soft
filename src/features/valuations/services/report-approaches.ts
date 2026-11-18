@@ -31,13 +31,14 @@ const SECTION_APPROACHES: Record<string, readonly ReportApproach[]> = {
 
 /**
  * The pages the calculation writes for each market, wherever they are (its
- * photos go to the annex), and the alternative methods of the same comparable
- * type: a market left out takes its regression and goal programming with it.
+ * photos go to the annex). The alternative methods are not among them: they
+ * have a section and a switch of their own (V7.3-19: «si apagas un mercado…
+ * se hace bolas»), so a market left out no longer takes them with it.
  */
 const GENERATED_BLOCK_PREFIXES: Partial<Record<ReportApproach, readonly string[]>> = {
-  "mercado-inmuebles": ["motor-mercado-inmueble_venta", "motor-estadistico-inmueble_venta"],
-  "mercado-terrenos": ["motor-mercado-terreno_venta", "motor-estadistico-terreno_venta"],
-  "mercado-rentas": ["motor-mercado-inmueble_renta", "motor-mercado-terreno_renta", "motor-estadistico-inmueble_renta", "motor-estadistico-terreno_renta"],
+  "mercado-inmuebles": ["motor-mercado-inmueble_venta"],
+  "mercado-terrenos": ["motor-mercado-terreno_venta"],
+  "mercado-rentas": ["motor-mercado-inmueble_renta", "motor-mercado-terreno_renta"],
 };
 
 export function isReportApproach(value: unknown): value is ReportApproach {

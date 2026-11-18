@@ -16,6 +16,9 @@ export const conclusionSettingsSchema = z.object({
   formulas: capturedFormulasSchema.optional(),
   /** Absent keeps the resumen as stored; an empty list lists the approaches as always. */
   summaryRows: z.array(summaryRow).max(SUMMARY_SOURCES.length).optional(),
+  /** Absent keeps what is stored. */
+  concludedNameFromRow: z.boolean().optional(),
+  valueChart: z.boolean().optional(),
 });
 
 export type ConclusionSettingsPayload = z.infer<typeof conclusionSettingsSchema>;

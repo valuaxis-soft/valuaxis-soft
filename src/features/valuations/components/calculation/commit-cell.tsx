@@ -74,11 +74,9 @@ export function CommitCell(props: {
     },
   });
 
-  // What the formula field holds is its to send: a formula being written, or a number typed over a formula.
-  const formulaOwnsEdit = withFormulas && formula.draftText !== null;
   const finish = () => {
-    // The formula field sends it, or keeps a formula while the value picker is open.
-    if (formulaOwnsEdit) {
+    // A formula being written is the formula field's: it sends it, or keeps it while the value picker is open.
+    if (withFormulas && formula.writingFormula) {
       formula.onBlur();
       // Applied or given up with Escape, the cell shows its value again.
       setEditing(null);
@@ -93,7 +91,7 @@ export function CommitCell(props: {
     setEditing(null);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (formulaOwnsEdit) {
+    if (withFormulas && formula.writingFormula) {
       formula.onKeyDown(event);
       return;
     }

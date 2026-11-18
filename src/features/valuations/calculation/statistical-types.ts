@@ -88,7 +88,7 @@ export type StatisticalMethodSettings = {
 };
 
 /** The regression's tables that go to the calculation memory and, if the appraiser marks them, to the dictamen too. */
-export const REGRESSION_EXTRA_TABLES = ["products", "statistics", "anova", "coefficients"] as const;
+export const REGRESSION_EXTRA_TABLES = ["products", "statistics", "anova", "coefficients", "contributions"] as const;
 export type RegressionExtraTable = (typeof REGRESSION_EXTRA_TABLES)[number];
 /** The goal programming's tables that go to the calculation memory and, if marked, to the dictamen too. */
 export const GOAL_EXTRA_TABLES = ["deviations", "contributions"] as const;
