@@ -1,38 +1,63 @@
 # Sistema visual
 
-Valuaxis es una herramienta de trabajo para valuadores: se usa horas seguidas, con cifras que se firman. El diseño busca **confianza** (tinta azul marino), **calma** (papel cálido, no gris frío), **precisión** (cifras tabulares, alineadas) y un poco de **vida** (el verde de "aprobado", líneas topográficas, movimiento discreto). Todo vive en `src/app/globals.css`; ninguna pantalla debería escribir colores sueltos.
+Valuaxis Soft es una herramienta de trabajo para valuadores: se usa horas seguidas, con cifras que se firman. El diseño busca **confianza** (el marino del logo), **calma** (papel cálido, no gris frío), **precisión** (cifras tabulares, alineadas) y un poco de **vida** (el azul y el cian del logo, líneas topográficas, movimiento discreto). Todo vive en `src/app/globals.css`; ninguna pantalla debería escribir colores sueltos.
 
 ## Marca
 
-El logo no cambia: la casa con palomita sobre azul marino `#014069` y verde `#40a47e` (`src/app/icon.svg`, `src/components/brand/valuaxis-logo.tsx`). Alrededor de él:
+El nombre es **Valuaxis Soft** (`SITE_NAME`, `src/app/_lib/site.ts`); el dominio sigue siendo valuaxissoft.com y los nombres internos (código, tablas, cookies, variables) no cambian. El logo es el del cliente (noviembre de 2026, video 6.3): una «V» facetada en degradado de cian a marino, «VALUA» en marino, «XIS» en azul y «SOFT» espaciado entre dos líneas. No se redibuja ni se recolorea fuera de las variantes de abajo.
+
+| Archivo | Qué es | Dónde se usa |
+|---|---|---|
+| `public/brand/valuaxis-soft.png` (1614 × 513) | Logo horizontal completo, el original del cliente sin el fondo blanco (antialias conservado, márgenes recortados) | JSON-LD (`Organization.logo`), descargas |
+| `public/brand/valuaxis-soft.webp` (480 × 153) | El mismo, para pantalla | Encabezados, pie, acceso, páginas de error (fondo claro) |
+| `public/brand/valuaxis-soft-oscuro.png` / `.webp` | Variante para fondo oscuro: «VALUA» en blanco, «XIS», «SOFT» y las líneas en azul claro `#6eb2ff`, y la «V» con sus sombras más bajas aclaradas para que no se pierdan en el marino | Panel de marca del acceso, modo oscuro, imagen para redes |
+| `public/brand/valuaxis-v.svg` / `-oscuro.svg` | La «V» sola, recreada en SVG: siete polígonos con sus degradados, trazados sobre el original | `variant="mark"` |
+| `src/app/icon.svg` | La «V» como favicon; en pestañas oscuras (`prefers-color-scheme: dark`) aclara su punta marino | Favicon |
+| `public/brand/apple-touch-icon.png` (180), `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` | La «V» sobre blanco (la maskable con la «V» dentro de la zona segura) | iOS, manifest de la PWA |
+
+La versión con resplandor que mandó el cliente (fondo negro con brillo azul) no se usa en la interfaz: en ella «VALUA» queda en marino sobre negro y no se lee, menos en tamaños chicos. Para fondo oscuro se hizo la variante limpia de arriba. `ValuaxisLogo` (`src/components/brand/valuaxis-logo.tsx`) dibuja el logo completo o solo la «V» (`variant`), para fondo claro, oscuro o según el tema (`tone="auto"`: las dos imágenes, la oculta con carga diferida); su texto alternativo es «Valuaxis Soft». Se dimensiona por altura (`h-9` en encabezados, `h-12` en acceso y errores).
+
+Alrededor del logo:
 
 - **Curvas de nivel** (`src/components/brand/contour-lines.tsx`): el motivo de fondo. Remite a terreno, levantamiento y croquis. Se usa con opacidad de 6 a 8 % sobre las bandas de tinta, nunca detrás de texto largo.
-- **Imagen para redes** (`src/app/opengraph-image.tsx`): 1200 × 630, tinta a azul marino, precio en verde.
+- **Imagen para redes** (`src/app/opengraph-image.tsx`): 1200 × 630, marino del logo a azul profundo, logo para fondo oscuro y el precio en una píldora azul del logo.
 
 ## Paleta
 
 Tokens de shadcn en oklch, claro en `:root` y `.light`, oscuro en `.dark`. El documento del avalúo (vista previa, dictamen, PDF) va dentro de `.light` y siempre se ve claro.
+
+Los tonos salen del logo, muestreados del PNG del cliente: **marino** `#011541` (las letras «VALUA»), **azul** `#005bea` («XIS», «SOFT» y la cara media de la «V») y **cian** `#05b4fd` (la punta iluminada de la «V»). El marino es el ancla (`primary`, `ink`): botones de la interfaz, bandas oscuras, texto de marca. El azul es el acento de marca (`brand`): la llamada principal de la página pública y del precio, el resaltado de la sección activa y lo que antes iba en el verde de la marca anterior. El cian (`brand-sky`) es el segundo acento, discreto: solo sobre la tinta (titular del hero y del acceso, palomitas, etiquetas) o como relleno, nunca como texto sobre papel (2.2:1). El papel cálido y los neutros se conservan: el azul saturado contrasta bien con el crema y las sesiones largas siguen siendo tranquilas.
+
+**El verde deja de ser color de marca.** Queda solo como color semántico (`success`): terminado, aprobado, calculado, acreditado.
 
 | Token | Claro | Oscuro | Uso |
 |---|---|---|---|
 | `background` | `oklch(0.982 0.006 85)` `#fbf9f5` papel | `oklch(0.215 0.022 250)` | Fondo de página |
 | `foreground` | `oklch(0.215 0.035 250)` `#0c1a29` tinta | `oklch(0.96 0.008 85)` | Texto |
 | `card` / `popover` | `oklch(0.995 0.003 85)` | `oklch(0.255 0.024 250)` | Superficies |
-| `primary` | `oklch(0.36 0.091 245.5)` = `#014069` | `oklch(0.78 0.08 232)` | Acción principal, enlaces, marca |
+| `primary` | `oklch(0.214 0.088 261.1)` = `#011541` marino del logo | `oklch(0.8 0.1 250)` `#8cc3fc` | Botones de la interfaz, enlaces, marca |
+| `brand` / `brand-foreground` | `oklch(0.524 0.228 261.1)` = `#005bea` azul del logo / blanco | `oklch(0.72 0.15 256)` `#61a6ff` / marino | Llamada principal (Crear cuenta), indicador de la sección activa, resaltados de la página pública |
+| `brand-sky` | `oklch(0.729 0.158 236.8)` = `#05b4fd` cian del logo | `oklch(0.8 0.13 232)` `#57ccff` | Acento secundario sobre tinta y rellenos |
 | `secondary` / `muted` | `oklch(0.945 0.012 80)` arena | `oklch(0.31 0.022 250)` | Bandas alternas, rellenos |
 | `muted-foreground` | `oklch(0.5 0.017 75)` | `oklch(0.78 0.014 80)` | Texto secundario |
-| `accent` | `oklch(0.945 0.03 165)` menta | `oklch(0.34 0.05 165)` | Hover de menús, estado "calculado" |
-| `success` | `oklch(0.649 0.11 165)` = `#40a47e` | `oklch(0.74 0.12 165)` | Valor, aprobado, CTA sobre tinta. Solo rellenos e íconos |
+| `accent` | `oklch(0.95 0.025 255)` `#e4f0ff` azul hielo | `oklch(0.32 0.06 258)` | Hover de menús, estado "calculado" |
+| `success` | `oklch(0.649 0.11 165)` = `#40a47e` | `oklch(0.74 0.12 165)` | Solo estados: terminado, aprobado, calculado. Rellenos e íconos |
 | `success-strong` | `oklch(0.47 0.1 165)` | `oklch(0.8 0.11 165)` | Verde para **texto** (6:1 sobre papel) |
 | `highlight` | `oklch(0.7 0.12 68)` ocre cantera | `oklch(0.79 0.11 72)` | Acento secundario sobrio: un dato a observar, una marca. Nunca para errores |
 | `highlight-strong` | `oklch(0.5 0.1 58)` | `oklch(0.83 0.1 72)` | Ocre para texto |
-| `ink` / `ink-foreground` | `oklch(0.24 0.06 248)` / papel | más profundo | Bandas oscuras de marca (hero, CTA, panel de acceso) |
+| `ink` / `ink-foreground` | `oklch(0.214 0.088 261.1)` `#011541` / papel | `oklch(0.17 0.06 262)` `#020d29` | Bandas oscuras de marca (hero, CTA, panel de acceso) |
 | `destructive` | `oklch(0.58 0.22 25)` | `oklch(0.7 0.18 25)` | Errores y borrar |
 | `border` / `input` | `oklch(0.895 0.012 80)` / `0.875` | blanco 14 % / `oklch(0.6 0.015 250)` | Bordes; `input` tiene más contraste para los campos |
 
-Contraste medido (WCAG 2): tinta sobre papel 16.6:1; `muted-foreground` sobre papel 5.7:1 y sobre `muted` 5.2:1 (en oscuro, 8.7:1); `success-strong` sobre papel 6.1:1; tinta sobre `success` 5.3:1 (botón verde); papel sobre `primary` 10.4:1. El verde de marca **no** pasa AA como texto sobre papel (2.9:1): para texto se usa `success-strong`.
+Los neutros oscuros (`background`, `card`, `muted`… en `.dark`) pasaron del tono 250 al 258 para acercarse al marino del logo; claridad y croma son los mismos. Las sombras van teñidas con el marino del logo (`--shadow-color: 224 70% 16%`).
 
-Las gráficas usan `chart-1` (azul), `chart-2` (verde de marca), `chart-3` (ocre), `chart-4` (violeta) y `chart-5` (terracota).
+Contraste medido (WCAG 2, sobre los valores sRGB de cada token): tinta sobre papel 16.7:1; papel sobre `primary` 17.0:1; `primary` sobre papel 16.9:1; blanco sobre `brand` 5.7:1 (botón azul); `brand` como texto sobre papel 5.4:1 y sobre `card` 5.6:1; `brand` sobre `ink` 3.1:1 (borde del botón azul en las bandas, mínimo de 3:1 para componentes); `brand-sky` sobre `ink` 7.6:1; marino sobre `accent` 15.4:1; `muted-foreground` sobre papel 5.7:1 y sobre `muted` 5.2:1; `success-strong` sobre papel 6.1:1. En oscuro: marino sobre `primary` 9.6:1 y `primary` sobre el fondo 9.4:1; marino sobre `brand` 7.1:1 y `brand` sobre el fondo 7.0:1 (sobre `card`, 6.3:1); `brand-sky` sobre `ink` 10.5:1; `muted-foreground` sobre `muted` 6.6:1. El cian **no** pasa AA como texto sobre papel (2.2:1) ni el verde (2.9:1): para texto sobre papel se usan `brand` y `success-strong`.
+
+### El documento no cambia de colores
+
+El documento del avalúo conserva la paleta con que se aprobó: en `globals.css`, cada página (`article[data-document-page]`), la copia de medición (`[data-document-pagination]`) y los `.light` dentro de ellas fijan los valores anteriores de los tokens que se movieron (`primary` `#014069`, `accent` menta, `ring`, `ink`, `chart-1`, sombras). Si un token cambia otra vez, se agrega ahí con su valor actual. Se comprobó píxel a píxel: las 16 páginas del dictamen, la impresión del dictamen, la vista previa del editor y la memoria de cálculo salen idénticas antes y después del cambio de marca (en la memoria solo cambia la hora de generación). Las maquetas de la página pública que imitan el dictamen (`dictamen-mockup.tsx`, pines de `map-mockup.tsx`) siguen en `#014069` porque el documento real sigue en ese color.
+
+Las gráficas usan `chart-1` (azul del logo), `chart-2` (verde), `chart-3` (ocre), `chart-4` (violeta) y `chart-5` (terracota).
 
 ### Estados del avalúo
 
@@ -42,7 +67,7 @@ Una sola fuente: `STATUS_TONE_CLASSES` en `src/features/dashboard/valuation-stat
 |---|---|---|
 | Nuevo | `muted` / `muted-foreground` | Aún no pasa nada |
 | En edición | `highlight` (punto en `highlight-strong`, 5.3:1) | Un dato a observar, sin alarma |
-| En revisión | `primary` | El paso formal del despacho |
+| En revisión | `primary` (marino) | El paso formal del despacho |
 | Terminado | `success` | Aprobado |
 | Reabierto | `chart-4` (violeta) | No hay token semántico; se distingue del ocre, del verde y del rojo |
 | Cancelado | `destructive` | Ya no sigue |
@@ -115,10 +140,10 @@ Retrasos: `--vx-base` (en el contenedor o el elemento) + `--vx-i` × `--vx-stagg
 
 ### Qué se mueve en cada sección
 
-- **Encabezado:** al bajar se compacta (fondo a escala 0.81, fila 6 px arriba, logo al 94 %) y toma sombra; todo con `transform`, así que nada debajo se recorre. El enlace de la sección visible queda marcado (`aria-current="location"`, subrayado verde).
+- **Encabezado:** al bajar se compacta (fondo a escala 0.81, fila 6 px arriba, logo al 94 %) y toma sombra; todo con `transform`, así que nada debajo se recorre. El enlace de la sección visible queda marcado (`aria-current="location"`, subrayado azul del logo).
 - **Hero:** titular palabra por palabra y subrayado que se dibuja; la maqueta trabaja sola (`src/features/marketing/hero-cycle.ts`): se limpia, entran las cuatro filas con sus factores y el homologado contando, se llenan promedio, mediana y adoptado, el marcador se desliza al rango, aparece «Calculado», el valor concluido cuenta hasta $3,482,000.00 y la cifra en letras se escribe.
 - **Cifras, precio:** conteo al entrar.
-- **Excel vs Valuaxis:** las ✕ se dibujan y tachan cada línea; luego las ✓ se palomean.
+- **Excel vs Valuaxis Soft:** las ✕ se dibujan y tachan cada línea; luego las ✓ se palomean.
 - **Cuatro pasos:** la línea se llena y cada paso se enciende al llegar.
 - **Tres enfoques:** barras que crecen, curva de depreciación que se traza, rentas que alimentan el valor capitalizado; al pasar el cursor la tarjeta se eleva y la gráfica se acerca.
 - **Dictamen:** las páginas se abren en abanico; al pasar el cursor se separan más.
@@ -132,7 +157,7 @@ No hay transiciones entre páginas: la View Transitions API de React (`<ViewTran
 - Español de México, de tú, como un colega que también valúa. Frases cortas.
 - Concreto: "Homologación, factores y estadísticos se recalculan solos", no "Potencia tu productividad".
 - **Nunca prometer lo que el sistema no hace** ni cifras inventadas de ahorro. Cada afirmación de la página pública sale de `docs/` (`src/features/marketing/content.ts`).
-- El criterio es del valuador: "el sistema calcula y avisa", "tú eliges", nunca "Valuaxis recomienda".
+- El criterio es del valuador: "el sistema calcula y avisa", "tú eliges", nunca "Valuaxis Soft recomienda".
 - Precios con IVA dicho explícitamente: "$170 MXN por avalúo, IVA incluido".
 
 ## Sí y no
@@ -140,7 +165,7 @@ No hay transiciones entre páginas: la View Transitions API de React (`<ViewTran
 | Sí | No |
 |---|---|
 | Tokens (`bg-primary`, `text-success-strong`) | Hex sueltos en componentes (salvo el documento impreso y las maquetas que imitan papel) |
-| Verde para valor, aprobado, "dentro del rango" | Verde como color de texto sobre papel (usa `success-strong`) |
+| Azul del logo (`brand`) para la llamada principal y los resaltados de marca; verde solo para estados (aprobado, terminado, calculado) | Verde como color de marca o de botón; cian o verde como texto sobre papel (usa `brand` o `success-strong`) |
 | Ocre para resaltar un dato | Ocre o verde para errores; para eso está `destructive` |
 | `font-display` en títulos | `font-display` en tablas, formularios o cifras alineadas |
 | Maquetas con datos inventados y verosímiles | Capturas con datos de clientes reales |

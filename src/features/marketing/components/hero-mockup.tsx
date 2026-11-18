@@ -29,7 +29,7 @@ export function HeroMockup() {
     <div className="relative mx-auto mb-16 w-full max-w-xl lg:mb-10 lg:max-w-none">
       <div
         role="img"
-        aria-label="Maqueta de Valuaxis: homologación de cuatro comparables de terreno con un valor concluido de 3,482,000 pesos."
+        aria-label="Maqueta de Valuaxis Soft: homologación de cuatro comparables de terreno con un valor concluido de 3,482,000 pesos."
       >
         <div className="overflow-hidden rounded-2xl bg-card text-card-foreground shadow-float ring-1 ring-white/10">
           <div className="flex items-center gap-3 border-b bg-muted/60 px-4 py-2.5">
@@ -130,7 +130,7 @@ export function HeroMockup() {
                   </dd>
                 </div>
                 <div className="relative rounded-lg bg-accent px-2.5 py-2">
-                  <span aria-hidden="true" className="vx-seq-fade absolute inset-0 rounded-lg ring-1 ring-success/40" style={delay(350)} />
+                  <span aria-hidden="true" className="vx-seq-fade absolute inset-0 rounded-lg ring-1 ring-brand/40" style={delay(350)} />
                   <dt className="text-accent-foreground">Adoptado /m²</dt>
                   <dd className="text-xs font-semibold text-accent-foreground tabular-nums">
                     <Odometer value="$18,450" delay={190} />
@@ -141,9 +141,9 @@ export function HeroMockup() {
               {/* Value bar: the adopted value inside the ±30 % range. */}
               <div data-vx="step" data-vx-step={6} className="grid gap-1.5 pb-1">
                 <div className="relative h-2 rounded-full bg-muted">
-                  <div className="vx-seq-fade absolute inset-y-0 left-[12%] right-[12%] rounded-full bg-success/25" />
+                  <div className="vx-seq-fade absolute inset-y-0 left-[12%] right-[12%] rounded-full bg-brand/20" />
                   <div className="vx-seq-move absolute inset-0" style={{ ["--vx-from" as string]: "translateX(-50%)" }}>
-                    <div className="absolute top-1/2 left-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-success shadow-soft" />
+                    <div className="absolute top-1/2 left-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-brand shadow-soft" />
                   </div>
                 </div>
                 <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">

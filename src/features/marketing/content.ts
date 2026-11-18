@@ -126,9 +126,9 @@ export const PRICE_INCLUDES = [
 
 export const FAQS = [
   {
-    question: "¿Cuánto cuesta Valuaxis?",
+    question: "¿Cuánto cuesta Valuaxis Soft?",
     answer:
-      `Crear tu cuenta no tiene costo. Pagas $${PRICE_PER_VALUATION_MXN} MXN, IVA incluido, por cada avalúo que concluyes. El pago se hace con tarjeta en la página segura de Stripe; Valuaxis no ve ni guarda tus tarjetas.`,
+      `Crear tu cuenta no tiene costo. Pagas $${PRICE_PER_VALUATION_MXN} MXN, IVA incluido, por cada avalúo que concluyes. El pago se hace con tarjeta en la página segura de Stripe; Valuaxis Soft no ve ni guarda tus tarjetas.`,
   },
   {
     question: "¿Cuándo se descuenta un avalúo?",
@@ -138,7 +138,7 @@ export const FAQS = [
   {
     question: "¿Necesito instalar algo?",
     answer:
-      "No. Valuaxis funciona en el navegador de tu computadora, tableta o teléfono. El PDF del dictamen se genera en el servidor, igual desde cualquier equipo.",
+      "No. Valuaxis Soft funciona en el navegador de tu computadora, tableta o teléfono. El PDF del dictamen se genera en el servidor, igual desde cualquier equipo.",
   },
   {
     question: "¿Los cálculos son los mismos que en mis libros de Excel?",
@@ -158,11 +158,11 @@ export const FAQS = [
   {
     question: "¿Puedo usar mis comparables actuales?",
     answer:
-      "Sí. Descarga la plantilla, llénala con tus comparables e impórtala desde Excel o CSV. Valuaxis revisa duplicados y vigencia, y puedes exportar tu base cuando quieras.",
+      "Sí. Descarga la plantilla, llénala con tus comparables e impórtala desde Excel o CSV. Valuaxis Soft revisa duplicados y vigencia, y puedes exportar tu base cuando quieras.",
   },
   {
     question: "¿Sirve para avalúos de maquinaria y equipo?",
     answer:
-      "Sí. Además de inmuebles urbanos y rurales, Valuaxis calcula maquinaria y equipo con cotización, tipo de cambio, edad, conservación y obsolescencias.",
+      "Sí. Además de inmuebles urbanos y rurales, Valuaxis Soft calcula maquinaria y equipo con cotización, tipo de cambio, edad, conservación y obsolescencias.",
   },
 ] as const;

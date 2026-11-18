@@ -24,7 +24,7 @@ export function SectionHeading({
       <p
         className={cn(
           "inline-flex w-fit items-center gap-2 text-xs font-semibold tracking-[0.14em] uppercase",
-          tone === "inverse" ? "text-success" : "text-success-strong",
+          tone === "inverse" ? "text-brand-sky" : "text-brand",
         )}
       >
         <span aria-hidden="true" className="h-px w-6 bg-current" />

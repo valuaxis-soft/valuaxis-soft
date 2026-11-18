@@ -8,7 +8,7 @@ import { getCurrentSession } from "@/features/auth/services/session.service";
 export const metadata: Metadata = {
   title: "Crear cuenta",
   description:
-    "Crea tu cuenta y la de tu despacho en Valuaxis, la plataforma web para peritos valuadores y despachos de avalúos en México.",
+    "Crea tu cuenta y la de tu despacho en Valuaxis Soft, la plataforma web para peritos valuadores y despachos de avalúos en México.",
   alternates: { canonical: "/registro" },
 };
 

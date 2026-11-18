@@ -169,7 +169,7 @@ const column = (
 ): MasterColumn => ({ key, header, group, apiKey, kind, required, rule, width: extra.width ?? (kind === "text" ? 20 : 14), ...extra });
 
 export const MASTER_COLUMNS: MasterColumn[] = [
-  column("ref", "REF / ID", 0, "comparable_id", "text", "No", "El número del comparable en Valuaxis (C-00123). Vacío en uno nuevo: Valuaxis le da uno al importarlo. Si trae el número, se ofrece unirlo con ese comparable.", { width: 11, aliases: ["ref", "id", "referencia"] }),
+  column("ref", "REF / ID", 0, "comparable_id", "text", "No", "El número del comparable en Valuaxis Soft (C-00123). Vacío en uno nuevo: Valuaxis Soft le da uno al importarlo. Si trae el número, se ofrece unirlo con ese comparable.", { width: 11, aliases: ["ref", "id", "referencia"] }),
   column("valuationFolio", "Folio avalúo", 0, "avaluo_folio", "text", "No", "Folio del avalúo al que se asocia el comparable. Importando desde Comparables con destino «Ambos» o «Solo avalúo», el renglón se agrega a ese avalúo.", { width: 14, aliases: ["folio", "foliodelavaluo"] }),
   column("useStatus", "Estado de uso", 0, "estado_uso", "catalog", "Sí", "Pendiente se importa por revisar; Aceptado con datos verificados «Sí» se importa verificado si quien importa puede revisar comparables; Descartado no se importa.", { catalog: "useStatus", width: 13 }),
   column("propertyType", "Tipo de inmueble", 0, "tipo_inmueble", "catalog", "Cond.", "Terreno, o el tipo de construcción. Con la operación decide el mercado: terrenos o inmuebles, en venta o en renta. Importando desde un mercado, vacío es el de ese mercado.", { catalog: "propertyType", width: 18, aliases: ["tipodecomparable"] }),
@@ -187,7 +187,7 @@ export const MASTER_COLUMNS: MasterColumn[] = [
   column("postalCode", "Código postal", 1, "codigo_postal", "text", "No", "Cinco dígitos; se guarda como texto para conservar los ceros.", { width: 11, aliases: ["cp"] }),
   column("latitude", "Latitud", 1, "latitud", "number", "No", "Grados decimales; latitud y longitud van juntas o ninguna.", { width: 11, advanced: true }),
   column("longitude", "Longitud", 1, "longitud", "number", "No", "Grados decimales, negativa en México.", { width: 11, advanced: true }),
-  column("location", "Ubicación (como se imprime)", 1, "ubicacion_dictamen", "text", "Cond.", "La línea que imprime el dictamen. Vacía, Valuaxis la arma con las partes. Hace falta esta o la calle.", { width: 36, aliases: ["ubicacion", "direccion", "domicilio"] }),
+  column("location", "Ubicación (como se imprime)", 1, "ubicacion_dictamen", "text", "Cond.", "La línea que imprime el dictamen. Vacía, Valuaxis Soft la arma con las partes. Hace falta esta o la calle.", { width: 36, aliases: ["ubicacion", "direccion", "domicilio"] }),
   column("landUse", "Uso de suelo", 1, "uso_suelo", "catalog", "No", "El uso declarado o el del plan; no se confunde con la normativa verificada.", { catalog: "landUse", width: 16, aliases: ["uso"] }),
   column("landUseKey", "Clave de uso de suelo", 1, "clave_uso_suelo", "text", "No", "La clave del plan, por ejemplo AU-I/H-3.", { width: 14, aliases: ["clave"], advanced: true }),
   column("zone", "Tipo de zona", 1, "tipo_zona", "catalog", "No", "Calle tipo, superior, inferior…", { catalog: "zone", width: 15, aliases: ["zona"] }),
@@ -210,12 +210,12 @@ export const MASTER_COLUMNS: MasterColumn[] = [
   column("bathrooms", "Baños", 3, "banos", "number", "No", "Enteros o medios: 2.5 para dos baños y medio.", { width: 10, aliases: ["banoscompletos"] }),
   column("parking", "Estacionamientos", 3, "estacionamientos", "integer", "No", "Entero.", { width: 12, advanced: true }),
   column("price", "Precio de oferta", 4, "precio_oferta", "number", "Sí", "Solo el número. En rentas, puedes usar «Renta mensual» o «Renta anual» en su lugar; si solo llenas este, es la renta del periodo indicado. Sin precio se importa, pero no entra al cálculo hasta completarlo (aviso).", { width: 16, aliases: ["precio", "preciodeoferta", "oferta"] }),
-  column("monthlyRent", "Renta mensual", 4, "renta_mensual", "number", "Cond.", "En rentas: la renta de un mes. Si falta y hay renta anual, Valuaxis la calcula (anual entre 12). Es la que se guarda.", { width: 14, aliases: ["rentamensual"] }),
+  column("monthlyRent", "Renta mensual", 4, "renta_mensual", "number", "Cond.", "En rentas: la renta de un mes. Si falta y hay renta anual, Valuaxis Soft la calcula (anual entre 12). Es la que se guarda.", { width: 14, aliases: ["rentamensual"] }),
   column("annualRent", "Renta anual", 4, "renta_anual", "number", "Cond.", "En rentas: la renta de un año. Si falta y hay renta mensual, se calcula (mensual por 12). Si traen las dos y no cuadran, manda la mensual (aviso).", { width: 14, aliases: ["rentaanual"] }),
   column("currency", "Moneda", 4, "moneda", "catalog", "No", "MXN o USD; vacía es MXN. Se guarda como está, sin convertir; un precio en USD lleva aviso.", { catalog: "currency", width: 9, advanced: true }),
-  column("rentPeriod", "Periodo renta", 4, "periodicidad_renta", "catalog", "Cond.", "En rentas, cuando la renta va en «Precio de oferta»: mensual o anual. Valuaxis guarda la renta mensual: una anual se divide entre 12 (aviso).", { catalog: "rentPeriod", width: 12, aliases: ["periododerenta"], advanced: true }),
+  column("rentPeriod", "Periodo renta", 4, "periodicidad_renta", "catalog", "Cond.", "En rentas, cuando la renta va en «Precio de oferta»: mensual o anual. Valuaxis Soft guarda la renta mensual: una anual se divide entre 12 (aviso).", { catalog: "rentPeriod", width: 12, aliases: ["periododerenta"], advanced: true }),
   column("unitBasis", "Base del unitario", 4, "base_unitario", "catalog", "No", "Terreno m², Construcción m² o Terreno ha. Vacía: terreno m² en terrenos, construcción m² en inmuebles.", { catalog: "unitBasis", width: 15, advanced: true }),
-  column("unitPrice", "Precio unitario (auto)", 4, "precio_unitario", "formula", "Auto", "Precio entre el área de la base. Es una ayuda: Valuaxis lo vuelve a calcular y no lee esta columna. No es homologación.", { width: 16 }),
+  column("unitPrice", "Precio unitario (auto)", 4, "precio_unitario", "formula", "Auto", "Precio entre el área de la base. Es una ayuda: Valuaxis Soft lo vuelve a calcular y no lee esta columna. No es homologación.", { width: 16 }),
   column("priceChangedOn", "Fecha cambio de precio", 4, "fecha_precio", "date", "No", "Última fecha comprobable en que cambió la oferta.", { advanced: true }),
   column("url", "URL de publicación", 5, "url_publicacion", "url", "Cond.", "Empieza con http:// o https://. Se compara sin parámetros ni fragmento para encontrar duplicados.", { width: 34, aliases: ["ligadelanuncio", "liga", "url", "enlace", "link"] }),
   column("photoUrl", "URL fotografía", 5, "url_fotografia", "url", "No", "Liga a la foto; no se descarga ni se incrusta.", { width: 26, advanced: true }),
@@ -227,7 +227,7 @@ export const MASTER_COLUMNS: MasterColumn[] = [
   column("verified", "Datos verificados", 6, "datos_verificados", "catalog", "No", "Sí / No / Parcialmente.", { catalog: "verified", width: 12 }),
   column("reviewedBy", "Revisó", 6, "revisado_por", "text", "No", "Quien validó el registro.", { width: 16, advanced: true }),
   column("reviewedOn", "Fecha revisión", 6, "fecha_revision", "date", "No", "", { advanced: true }),
-  column("control", "Control automático", 6, "control_automatico", "formula", "Auto", "Alerta mínima de captura; no sustituye la revisión del perito. Valuaxis repite estas alertas al importar.", { width: 20 }),
+  column("control", "Control automático", 6, "control_automatico", "formula", "Auto", "Alerta mínima de captura; no sustituye la revisión del perito. Valuaxis Soft repite estas alertas al importar.", { width: 20 }),
 ];
 
 /** Spreadsheet column letters: 0 → A, 26 → AA. */
@@ -370,7 +370,7 @@ export function monthlyAndAnnualRent(input: { monthly: number | null; annual: nu
     return { monthly: input.annual / 12, annual: input.annual, warnings };
   }
   if (input.price !== null && input.period === "ANUAL") {
-    warnings.push("Renta anual: Valuaxis guarda la renta mensual, así que se dividió entre 12.");
+    warnings.push("Renta anual: Valuaxis Soft guarda la renta mensual, así que se dividió entre 12.");
     return { monthly: input.price / 12, annual: input.price, warnings };
   }
   return { monthly: input.price, annual: input.price === null ? null : input.price * 12, warnings };

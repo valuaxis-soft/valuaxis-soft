@@ -160,7 +160,7 @@ export function ComparableReviewChecklistCard() {
             <Button type="button" variant="outline" size="sm" disabled={busy || draft.checks.length >= MAX_REVIEW_CHECKS} onClick={addItem}>
               <Plus data-icon="inline-start" /> Agregar punto
             </Button>
-            {settings.customized ? <Badge variant="secondary">Lista propia del despacho</Badge> : <Badge variant="outline">Lista de Valuaxis</Badge>}
+            {settings.customized ? <Badge variant="secondary">Lista propia del despacho</Badge> : <Badge variant="outline">Lista de Valuaxis Soft</Badge>}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -178,7 +178,7 @@ export function ComparableReviewChecklistCard() {
                 onChange={(event) => setDraft((current) => (current ? { ...current, tolerance: event.target.value } : current))}
               />
               <FieldDescription>
-                Un comparable construido cuya superficie difiere de la del sujeto más de este porcentaje muestra un aviso. Valuaxis usa ±
+                Un comparable construido cuya superficie difiere de la del sujeto más de este porcentaje muestra un aviso. Valuaxis Soft usa ±
                 {DEFAULT_REVIEW_CHECKLIST.builtAreaTolerancePercent} %.
               </FieldDescription>
             </Field>
@@ -207,10 +207,10 @@ export function ComparableReviewChecklistCard() {
               type="button"
               variant="ghost"
               disabled={busy || !settings.customized}
-              title="Vuelve a la lista y al porcentaje de Valuaxis; la vigencia queda como esté"
-              onClick={() => void send(null, "Se restableció la lista de verificación de Valuaxis.")}
+              title="Vuelve a la lista y al porcentaje de Valuaxis Soft; la vigencia queda como esté"
+              onClick={() => void send(null, "Se restableció la lista de verificación de Valuaxis Soft.")}
             >
-              <RotateCcw data-icon="inline-start" /> Restablecer la de Valuaxis
+              <RotateCcw data-icon="inline-start" /> Restablecer la de Valuaxis Soft
             </Button>
             <Button type="submit" disabled={busy}>
               {busy ? <Loader2 className="size-4 animate-spin" /> : null}

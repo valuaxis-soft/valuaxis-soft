@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 export default function NotFound() {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-background px-4 py-12 text-center">
-      <Link href="/" aria-label="Valuaxis, ir al inicio">
-        <ValuaxisLogo className="text-2xl" markClassName="size-10" />
+      <Link href="/" aria-label="Valuaxis Soft, ir al inicio">
+        <ValuaxisLogo className="h-12" />
       </Link>
       <div className="grid max-w-md gap-3">
         <p className="text-sm font-semibold text-primary">Error 404</p>

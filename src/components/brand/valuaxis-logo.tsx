@@ -1,52 +1,56 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Valuaxis mark: a roof outline over a "V". The tile takes the primary color
- * and the "V" the accent color, so it follows the theme tokens.
+ * The Valuaxis Soft brand, from the client's artwork (public/brand/, see
+ * docs/DISENO.md). `tone` is the background the logo sits on: "light" for
+ * paper, "dark" for the ink bands, "auto" follows the theme (both files are
+ * in the page; the hidden one is lazy, so it is not downloaded).
  */
-export function ValuaxisMark({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 32 32"
-      aria-hidden="true"
-      focusable="false"
-      className={cn("size-8 shrink-0", className)}
-    >
-      <rect width="32" height="32" rx="8" className="fill-primary" />
-      <path
-        d="M7.5 15.5 16 8.5l8.5 7"
-        fill="none"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="stroke-primary-foreground"
-      />
-      <path
-        d="m11 15.5 5 8 5-8"
-        fill="none"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="stroke-chart-2"
-      />
-    </svg>
-  );
-}
+type BrandTone = "auto" | "light" | "dark";
 
-/** Mark plus the "Valuaxis" wordmark. */
+const BRAND_NAME = "Valuaxis Soft";
+
+const FILES = {
+  full: { light: "/brand/valuaxis-soft.webp", dark: "/brand/valuaxis-soft-oscuro.webp", width: 480, height: 153 },
+  mark: { light: "/brand/valuaxis-v.svg", dark: "/brand/valuaxis-v-oscuro.svg", width: 32, height: 32 },
+} as const;
+
+/**
+ * The full logo (the "V", VALUAXIS and SOFT) or, with `variant="mark"`, the
+ * faceted "V" alone. Size it by height (`className="h-10"`); the width
+ * follows. Its text alternative is the brand name.
+ */
 export function ValuaxisLogo({
   className,
-  markClassName,
+  tone = "auto",
+  variant = "full",
 }: {
   className?: string;
-  markClassName?: string;
+  tone?: BrandTone;
+  variant?: "full" | "mark";
 }) {
+  const file = FILES[variant];
+  const base = variant === "full" ? "h-9 w-auto max-w-none shrink-0" : "size-8 shrink-0";
+  const image = (src: string, themeClass: string, lazy: boolean) => (
+    // eslint-disable-next-line @next/next/no-img-element -- static brand files, already sized and compressed.
+    <img
+      key={src}
+      src={src}
+      width={file.width}
+      height={file.height}
+      alt={BRAND_NAME}
+      decoding="async"
+      loading={lazy ? "lazy" : undefined}
+      draggable={false}
+      className={cn(base, themeClass, className)}
+    />
+  );
+  if (tone === "light") return image(file.light, "", false);
+  if (tone === "dark") return image(file.dark, "", false);
   return (
-    <span className={cn("inline-flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground", className)}>
-      <ValuaxisMark className={markClassName} />
-      <span>
-        Valu<span className="text-primary">axis</span>
-      </span>
-    </span>
+    <>
+      {image(file.light, "dark:hidden", false)}
+      {image(file.dark, "hidden dark:block", true)}
+    </>
   );
 }

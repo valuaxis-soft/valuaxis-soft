@@ -76,8 +76,8 @@ export function MapMockup() {
 
       {/* Subject pin, with a soft pulse */}
       <span className="absolute top-[52.5%] left-1/2 flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center">
-        <span className="vx-pulse relative flex size-5 rounded-full text-success" style={at(1100)}>
-          <span className="relative z-10 size-5 rounded-full border-[3px] border-white bg-success shadow-soft" />
+        <span className="vx-pulse relative flex size-5 rounded-full text-brand" style={at(1100)}>
+          <span className="relative z-10 size-5 rounded-full border-[3px] border-white bg-brand shadow-soft" />
         </span>
       </span>
 

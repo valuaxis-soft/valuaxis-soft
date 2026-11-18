@@ -7,9 +7,11 @@
    light tokens and turns off `dark:` utilities for its subtree. */
 @custom-variant dark (&:is(.dark *):not(:is(.light, .light *)));
 
-/* Valuaxis visual system (docs/DISENO.md). Navy ink anchors trust, the brand
-   green means value and "approved", warm paper neutrals keep long sessions
-   calm, and a muted cantera ochre is the sober secondary accent. */
+/* Valuaxis Soft visual system (docs/DISENO.md). The tones come from the
+   logo: its navy anchors trust (primary, ink), its blue is the brand accent
+   (main calls to action, highlights) and its cyan a quiet second accent. Warm
+   paper neutrals keep long sessions calm; green only means "approved" or
+   "done", and a muted cantera ochre marks a figure to watch. */
 :root,
 .light {
   color-scheme: light;
@@ -19,29 +21,34 @@
   --card-foreground: oklch(0.215 0.035 250);
   --popover: oklch(0.995 0.003 85);
   --popover-foreground: oklch(0.215 0.035 250);
-  /* Brand navy #014069. */
-  --primary: oklch(0.36 0.091 245.5);
+  /* Logo navy #011541. */
+  --primary: oklch(0.214 0.088 261.1);
   --primary-foreground: oklch(0.985 0.006 85);
   --secondary: oklch(0.945 0.012 80);
   --secondary-foreground: oklch(0.27 0.04 250);
   --muted: oklch(0.952 0.009 80);
   --muted-foreground: oklch(0.5 0.017 75);
-  --accent: oklch(0.945 0.03 165);
-  --accent-foreground: oklch(0.3 0.07 165);
+  --accent: oklch(0.95 0.025 255);
+  --accent-foreground: oklch(0.214 0.088 261.1);
   --destructive: oklch(0.58 0.22 25);
   --border: oklch(0.895 0.012 80);
   --input: oklch(0.875 0.014 80);
-  --ring: oklch(0.55 0.1 240);
-  /* Brand green #40a47e for fills and icons; `success-strong` is the text-safe shade. */
+  --ring: oklch(0.524 0.228 261.1);
+  /* Logo blue #005bea: main calls to action and brand highlights (text-safe
+     on paper, 5.4:1). Logo cyan #05b4fd: second accent, on ink or as a fill. */
+  --brand: oklch(0.524 0.228 261.1);
+  --brand-foreground: oklch(1 0 0);
+  --brand-sky: oklch(0.729 0.158 236.8);
+  /* Green #40a47e for "approved" and "done" fills and icons; `success-strong` is the text-safe shade. */
   --success: oklch(0.649 0.11 165);
   --success-strong: oklch(0.47 0.1 165);
   --success-foreground: oklch(0.985 0.006 85);
   --highlight: oklch(0.7 0.12 68);
   --highlight-strong: oklch(0.5 0.1 58);
   --highlight-foreground: oklch(0.215 0.035 250);
-  --ink: oklch(0.24 0.06 248);
+  --ink: oklch(0.214 0.088 261.1);
   --ink-foreground: oklch(0.97 0.008 85);
-  --chart-1: oklch(0.55 0.11 240);
+  --chart-1: oklch(0.524 0.228 261.1);
   --chart-2: oklch(0.649 0.11 165);
   --chart-3: oklch(0.7 0.12 68);
   --chart-4: oklch(0.56 0.1 285);
@@ -49,58 +56,79 @@
   --radius: 0.625rem;
   --sidebar: oklch(0.972 0.008 82);
   --sidebar-foreground: oklch(0.215 0.035 250);
-  --sidebar-primary: oklch(0.36 0.091 245.5);
+  --sidebar-primary: oklch(0.214 0.088 261.1);
   --sidebar-primary-foreground: oklch(0.985 0.006 85);
   --sidebar-accent: oklch(0.94 0.013 80);
   --sidebar-accent-foreground: oklch(0.27 0.04 250);
   --sidebar-border: oklch(0.895 0.012 80);
-  --sidebar-ring: oklch(0.55 0.1 240);
-  /* Shadows tinted with the navy ink instead of plain black. */
-  --shadow-color: 248 40% 18%;
+  --sidebar-ring: oklch(0.524 0.228 261.1);
+  /* Shadows tinted with the logo navy instead of plain black. */
+  --shadow-color: 224 70% 16%;
 }
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.215 0.022 250);
+  --background: oklch(0.215 0.022 258);
   --foreground: oklch(0.96 0.008 85);
-  --card: oklch(0.255 0.024 250);
+  --card: oklch(0.255 0.024 258);
   --card-foreground: oklch(0.96 0.008 85);
-  --popover: oklch(0.27 0.024 250);
+  --popover: oklch(0.27 0.024 258);
   --popover-foreground: oklch(0.96 0.008 85);
-  --primary: oklch(0.78 0.08 232);
-  --primary-foreground: oklch(0.2 0.03 250);
-  --secondary: oklch(0.31 0.022 250);
+  --primary: oklch(0.8 0.1 250);
+  --primary-foreground: oklch(0.214 0.088 261.1);
+  --secondary: oklch(0.31 0.022 258);
   --secondary-foreground: oklch(0.96 0.008 85);
-  --muted: oklch(0.31 0.022 250);
+  --muted: oklch(0.31 0.022 258);
   --muted-foreground: oklch(0.78 0.014 80);
-  --accent: oklch(0.34 0.05 165);
-  --accent-foreground: oklch(0.93 0.04 165);
+  --accent: oklch(0.32 0.06 258);
+  --accent-foreground: oklch(0.93 0.04 250);
   --destructive: oklch(0.7 0.18 25);
   --border: oklch(1 0 0 / 14%);
   --input: oklch(0.6 0.015 250);
-  --ring: oklch(0.7 0.09 232);
+  --ring: oklch(0.72 0.15 256);
+  --brand: oklch(0.72 0.15 256);
+  --brand-foreground: oklch(0.214 0.088 261.1);
+  --brand-sky: oklch(0.8 0.13 232);
   --success: oklch(0.74 0.12 165);
   --success-strong: oklch(0.8 0.11 165);
   --success-foreground: oklch(0.2 0.03 250);
   --highlight: oklch(0.79 0.11 72);
   --highlight-strong: oklch(0.83 0.1 72);
   --highlight-foreground: oklch(0.2 0.03 250);
-  --ink: oklch(0.18 0.03 250);
+  --ink: oklch(0.17 0.06 262);
   --ink-foreground: oklch(0.96 0.008 85);
-  --chart-1: oklch(0.74 0.1 235);
+  --chart-1: oklch(0.72 0.15 256);
   --chart-2: oklch(0.72 0.11 165);
   --chart-3: oklch(0.79 0.11 72);
   --chart-4: oklch(0.7 0.1 285);
   --chart-5: oklch(0.72 0.12 40);
-  --sidebar: oklch(0.235 0.023 250);
+  --sidebar: oklch(0.235 0.023 258);
   --sidebar-foreground: oklch(0.96 0.008 85);
-  --sidebar-primary: oklch(0.78 0.08 232);
-  --sidebar-primary-foreground: oklch(0.2 0.03 250);
-  --sidebar-accent: oklch(0.31 0.022 250);
+  --sidebar-primary: oklch(0.8 0.1 250);
+  --sidebar-primary-foreground: oklch(0.214 0.088 261.1);
+  --sidebar-accent: oklch(0.31 0.022 258);
   --sidebar-accent-foreground: oklch(0.96 0.008 85);
   --sidebar-border: oklch(1 0 0 / 14%);
-  --sidebar-ring: oklch(0.7 0.09 232);
+  --sidebar-ring: oklch(0.72 0.15 256);
   --shadow-color: 250 50% 4%;
+}
+
+/* The appraisal document keeps the palette it was approved with: a page and
+   its measurement copy pin the tokens the brand change moved, so the preview,
+   the dictamen and the PDF stay identical. */
+article[data-document-page],
+article[data-document-page] .light,
+[data-document-pagination],
+[data-document-pagination] .light {
+  --primary: oklch(0.36 0.091 245.5);
+  --accent: oklch(0.945 0.03 165);
+  --accent-foreground: oklch(0.3 0.07 165);
+  --ring: oklch(0.55 0.1 240);
+  --ink: oklch(0.24 0.06 248);
+  --chart-1: oklch(0.55 0.11 240);
+  --sidebar-primary: oklch(0.36 0.091 245.5);
+  --sidebar-ring: oklch(0.55 0.1 240);
+  --shadow-color: 248 40% 18%;
 }
 
 @theme inline {
@@ -129,6 +157,9 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-sky: var(--brand-sky);
   --color-success: var(--success);
   --color-success-strong: var(--success-strong);
   --color-success-foreground: var(--success-foreground);

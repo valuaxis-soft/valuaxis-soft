@@ -193,7 +193,7 @@ function fillStart(sheet: ExcelJS.Worksheet, input: { destination: ImportDestina
   sheet.mergeCells("A4:L4");
   sheet.getCell("A4").value = "INSTRUCCIONES BREVES:  ① Elige el destino aquí abajo.  ② En COMPARABLES llena una fila por anuncio: los encabezados "
     + "tienen colores por bloque y una nota con su regla; las listas aceptan otros valores en calidad, conservación, zona y similares.  "
-    + "③ Las columnas avanzadas están agrupadas: ábrelas con [+].  ④ En Valuaxis usa «Importar Excel» en Comparables o en el mercado del avalúo.";
+    + "③ Las columnas avanzadas están agrupadas: ábrelas con [+].  ④ En Valuaxis Soft usa «Importar Excel» en Comparables o en el mercado del avalúo.";
   sheet.getCell("A4").alignment = { wrapText: true, vertical: "middle" };
   sheet.getCell("A4").font = { size: 10, color: { argb: NAVY } };
   sheet.getCell("A4").fill = fill(LIGHT);
@@ -221,7 +221,7 @@ function fillStart(sheet: ExcelJS.Worksheet, input: { destination: ImportDestina
       + `"AVALÚO ${"+"} BASE: verifica que cada comparable del avalúo tenga su folio en la columna «Folio avalúo»."))`,
   };
   sheet.getCell("A9").font = { italic: true };
-  sheet.getCell("A10").value = "Valuaxis toma este destino como el inicial al importar; lo confirmas en el sistema.";
+  sheet.getCell("A10").value = "Valuaxis Soft toma este destino como el inicial al importar; lo confirmas en el sistema.";
   sheet.getCell("A10").font = { italic: true, color: { argb: "FF555555" } };
 
   section("A12", "02  |  RESUMEN AUTOMÁTICO DE CAPTURA");
@@ -297,9 +297,9 @@ const IMPORT_RULES = [
   "Errores (el renglón no se importa): sin ubicación ni calle, sin tipo de inmueble u operación cuando no se importa desde un mercado, un número o fecha ilegible, una opción que no es de la lista en Operación, Estado de uso, Moneda, Periodo, Base, Proximidad o Datos verificados, latitud sin longitud.",
   "Avisos (el renglón se importa): sin precio o sin la superficie de su base, base del unitario que no es la del mercado, precio en USD, renta anual (se guarda mensual, entre 12), renta mensual y anual que no cuadran (manda la mensual), origen portal sin URL, sin municipio, la misma publicación dos veces en el archivo.",
   "Rentas: captura «Renta mensual» o «Renta anual» (la otra se calcula); también puedes dejar la renta en «Precio de oferta» con su «Periodo renta».",
-  "Listas abiertas: en calidad, conservación, zona, forma, topografía, servicios y las demás listas del despacho puedes escribir otro valor; Excel solo te avisa y lo conserva. Las listas de Valuaxis (estado de uso, operación, moneda, periodo, base, proximidad, datos verificados) solo aceptan sus opciones.",
-  "El precio unitario se vuelve a calcular en Valuaxis; las columnas «Precio unitario (auto)» y «Control automático» solo ayudan a capturar.",
-  "La moneda se guarda como está; Valuaxis no convierte divisas.",
+  "Listas abiertas: en calidad, conservación, zona, forma, topografía, servicios y las demás listas del despacho puedes escribir otro valor; Excel solo te avisa y lo conserva. Las listas de Valuaxis Soft (estado de uso, operación, moneda, periodo, base, proximidad, datos verificados) solo aceptan sus opciones.",
+  "El precio unitario se vuelve a calcular en Valuaxis Soft; las columnas «Precio unitario (auto)» y «Control automático» solo ayudan a capturar.",
+  "La moneda se guarda como está; Valuaxis Soft no convierte divisas.",
   "Duplicados: el mismo número de comparable (REF / ID), el mismo portal con el mismo ID de publicación, o la misma URL (sin parámetros ni fragmento) son el mismo comparable; también se buscan la misma dirección, el mismo teléfono con el mismo precio y la misma colonia con superficie y precio. Para cada uno eliges «Es el mismo», «Usar el existente» o «Son diferentes».",
   "Estado de uso: «Descartado» no se importa; «Pendiente» entra por revisar; «Aceptado» con «Datos verificados» = Sí entra verificado si tu usuario puede revisar comparables, si no, por revisar.",
   "Destino: «Solo base general» guarda cada fila en la base del despacho, sin avalúo. «Solo avalúo» y «Ambos» agregan cada fila al avalúo de su «Folio avalúo» (importando desde Comparables) o al avalúo abierto (importando desde su mercado); un comparable de un avalúo ya es parte de la base. Un folio que no existe o un avalúo concluido es un aviso: con «Ambos» la fila queda en la base.",
@@ -346,7 +346,7 @@ export async function buildMasterWorkbook(input: {
   valuationFolio?: string | null;
 } = {}): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Valuaxis";
+  workbook.creator = "Valuaxis Soft";
   const ranges = catalogRanges();
   // INICIO goes first, but its formulas need the last row of COMPARABLES: it is filled after.
   const start = workbook.addWorksheet(START_SHEET);

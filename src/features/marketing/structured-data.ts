@@ -17,7 +17,7 @@ export function landingStructuredData({ name, description, url }: SiteInfo) {
         "@id": `${home}#organizacion`,
         name,
         url: home,
-        logo: `${url}/icon.svg`,
+        logo: `${url}/brand/valuaxis-soft.png`,
         areaServed: "MX",
       },
       {

@@ -25,7 +25,7 @@ export function ComparableBaseLinks({ exportHref }: { exportHref: string }) {
         className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
         href={exportHref}
         download
-        title="Los comparables filtrados, en la plantilla de Valuaxis, para editarlos e importarlos de vuelta"
+        title="Los comparables filtrados, en la plantilla de Valuaxis Soft, para editarlos e importarlos de vuelta"
       >
         <FileSpreadsheet data-icon="inline-start" /> {BASE_ACTION_LABELS.export}
       </a>

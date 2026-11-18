@@ -67,7 +67,7 @@ export class AmazonSesEmailService implements EmailService {
   async sendVerificationEmail(input: VerificationEmailInput) {
     await this.sendEmail({
       to: input.to,
-      subject: "Verifica tu correo en Valuaxis",
+      subject: "Verifica tu correo en Valuaxis Soft",
       text: buildVerificationEmailText(input.verificationUrl),
       html: buildVerificationEmailHtml({
         name: input.name,
@@ -79,7 +79,7 @@ export class AmazonSesEmailService implements EmailService {
   async sendPasswordResetEmail(input: PasswordResetEmailInput) {
     await this.sendEmail({
       to: input.to,
-      subject: "Restablece tu contraseña de Valuaxis",
+      subject: "Restablece tu contraseña de Valuaxis Soft",
       text: buildPasswordResetEmailText(input.resetUrl),
       html: buildPasswordResetEmailHtml({
         name: input.name,
@@ -104,7 +104,7 @@ export class AmazonSesEmailService implements EmailService {
    */
   async sendDictamenEmail(input: DictamenEmailInput) {
     const message = buildMimeMessage({
-      from: { name: `${input.firm.name} vía Valuaxis`, email: this.config.fromEmail },
+      from: { name: `${input.firm.name} vía Valuaxis Soft`, email: this.config.fromEmail },
       to: input.to,
       replyTo: input.replyTo,
       subject: input.subject,

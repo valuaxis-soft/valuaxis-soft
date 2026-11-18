@@ -57,7 +57,7 @@ test("the invitation email names the team, the role and the link, with the names
   assert.match(html, /Valuadores &lt;de los Altos&gt;/);
   assert.match(html, /href="https:\/\/valuaxissoft\.com\/organizacion\/invitaciones\/abc"/);
   const text = buildTeamInvitationEmailText(content);
-  assert.match(text, /Álvaro te invitó a trabajar en Valuadores <de los Altos> en Valuaxis con el rol de Valuador/);
+  assert.match(text, /Álvaro te invitó a trabajar en Valuadores <de los Altos> en Valuaxis Soft con el rol de Valuador/);
   assert.match(text, /5 de octubre de 2026/);
 });
 

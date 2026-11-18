@@ -17,8 +17,8 @@ export default function PrivateError({ error, reset, unstable_retry }: ErrorBoun
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <div className="flex h-16 items-center border-b border-border px-4 lg:px-6">
-        <Link href="/dashboard" aria-label="Valuaxis, ir al inicio" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-          <ValuaxisLogo markClassName="size-8" className="text-base" />
+        <Link href="/dashboard" aria-label="Valuaxis Soft, ir al inicio" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+          <ValuaxisLogo />
         </Link>
       </div>
       <main id="contenido" className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center gap-4 px-4 py-16 text-center">
