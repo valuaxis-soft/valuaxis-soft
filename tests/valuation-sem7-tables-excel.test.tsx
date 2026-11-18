@@ -211,3 +211,25 @@ test("V7.4-21: the conservation criteria of B) and C) are in the costs' configur
   assert.equal(editors.length, 2);
   assert.ok(editors.every((index) => index > config && index < source.indexOf("</EditorConfigPanel>")), "both inside the configuration panel");
 });
+
+/* ------------------------------------------------------------------ */
+/*  V7.4-29: a list's option copies to the column (Costos)             */
+/* ------------------------------------------------------------------ */
+
+test("V7.4-29: «Copiar valor a toda la columna» also copies the option of a list, only to the lists that have it", () => {
+  const source = readFileSync("src/features/valuations/components/calculation/calc-table-context-menu.tsx", "utf8");
+  assert.match(source, /function choiceFillPlan/);
+  assert.match(source, /takesChoice\(select, readOnly, value\)/, "a list without that option is left alone");
+  // The same planner decides: «NUEVO 9» picked in the first row goes to the other two, the replaced one asked first.
+  const list = (value: string, has = true) => ({ takesTyping: has, text: value, hasFormula: false, noFill: null });
+  const plan = captureFillPlan([list("9"), list(""), list("7"), list("", false)], 0, "all");
+  assert.deepEqual(plan.targets, [1, 2]);
+  assert.equal(plan.replaced, 1);
+});
+
+test("V7.4-13/18: what the menu writes in a capture cell is sent as typed, without entering the cell", () => {
+  const html = renderToStaticMarkup(<CommitCell ariaLabel="Ubic." value="=1/1.1" display="0.91" numeric onCommit={() => {}} />);
+  assert.match(html, /data-commit-cell=""/);
+  const cell = readFileSync("src/features/valuations/components/calculation/commit-cell.tsx", "utf8");
+  assert.match(cell, /addEventListener\(CAPTURE_CELL_WRITE_EVENT/);
+});

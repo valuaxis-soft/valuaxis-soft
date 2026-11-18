@@ -80,7 +80,13 @@ export const CAPTURE_CELL_WRITE_EVENT = "valuaxis:capture-cell-write";
  * takes it as sent (typed in one go, a number over a formula or an emptied
  * formula was lost, 17 nov 2026); any other field is typed into.
  */
-export function writeCaptureCell(field: HTMLInputElement | HTMLTextAreaElement, text: string) {
+export function writeCaptureCell(field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, text: string) {
+  if (field instanceof HTMLSelectElement) {
+    // A list: its option chosen, as a click does.
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(field, text);
+    flushSync(() => field.dispatchEvent(new Event("change", { bubbles: true })));
+    return;
+  }
   if (field.dataset.commitCell !== undefined) field.dispatchEvent(new CustomEvent(CAPTURE_CELL_WRITE_EVENT, { detail: text }));
   else typeInto(field, text);
 }
@@ -450,6 +456,14 @@ function useCaptureSelection(frameRef: RefObject<HTMLDivElement | null>, readOnl
     const previous: Array<{ point: GridPoint; text: string }> = [];
     for (const { point, text } of writes) {
       const field = fieldAt(point);
+      const choice = field ? null : choiceOf(captureCell(frameRef.current, point) ?? undefined);
+      if (choice) {
+        // A list takes an option it has, as choosing it.
+        if (!takesChoice(choice, readOnly, text) || choice.value === text) continue;
+        previous.push({ point, text: choice.value });
+        writeCaptureCell(choice, text);
+        continue;
+      }
       // What it held as captured comes back on «Deshacer»: a formula, not its result; nothing, not a suggestion.
       const held = field ? capturedText(field) : "";
       if (!field || !takesTyping(field, readOnly) || held === text) continue;
@@ -553,6 +567,40 @@ function formulaOf(input: CalcTableHit["input"]): string | null {
 /** The field of a cell that takes typing, if any. */
 const fieldOf = (cell: HTMLTableCellElement | undefined) => cell?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input, textarea") ?? null;
 
+/** The list of a cell (estado de conservación, P/C, a rating of the catalog), if any. */
+const choiceOf = (cell: HTMLTableCellElement | undefined) => cell?.querySelector<HTMLSelectElement>("select") ?? null;
+
+/** Whether a list can take `value`: it is not locked and has that option. */
+const takesChoice = (select: HTMLSelectElement, readOnly: boolean, value: string) =>
+  !readOnly && !select.disabled && Array.from(select.options).some((option) => option.value === value);
+
+/** The cells of the row or the column of what was clicked, and its place among them. */
+function lineOf(hit: CalcTableHit, along: "row" | "column") {
+  const row = hit.cell.closest("tr");
+  const body = row?.closest("tbody");
+  if (!row || !body) return null;
+  const cells = along === "row" ? Array.from(row.cells) : Array.from(body.rows).map((item) => item.cells[hit.columnIndex]);
+  return { cells, from: along === "row" ? hit.columnIndex : hit.rowIndex };
+}
+
+/**
+ * "Copiar valor a toda la columna" from a list: the option chosen, chosen in
+ * the lists of the column that have it (video 7.4, 23:41: «NUEVO = 0.98»
+ * picked row by row in Costos).
+ */
+function choiceFillPlan(hit: CalcTableHit, along: "row" | "column", mode: CaptureFillMode, readOnly: boolean) {
+  const value = hit.input instanceof HTMLSelectElement ? hit.input.value : "";
+  const line = lineOf(hit, along);
+  if (readOnly || !value || !line) return null;
+  const seen = line.cells.map((cell) => {
+    const select = choiceOf(cell);
+    return select ? { takesTyping: takesChoice(select, readOnly, value), text: select.value, hasFormula: false, noFill: null } : null;
+  });
+  const { targets, computedSkipped, replaced } = captureFillPlan(seen, line.from, mode);
+  const point = (index: number): GridPoint => (along === "row" ? { row: hit.rowIndex, col: index } : { row: index, col: hit.columnIndex });
+  return { writes: targets.map((index) => ({ point: point(index), text: value })), computedSkipped, replaced, copies: "valor" as const };
+}
+
 /**
  * "Copiar fórmula/valor a toda la fila/columna": the formula of the cell, or
  * its value, for the fields of its row or column that take typing (`all`,
@@ -561,12 +609,11 @@ const fieldOf = (cell: HTMLTableCellElement | undefined) => cell?.querySelector<
  * counts as and still takes the copy (video 7.4, 05:49).
  */
 function fillPlan(hit: CalcTableHit, along: "row" | "column", mode: CaptureFillMode, readOnly: boolean) {
+  if (hit.input instanceof HTMLSelectElement) return choiceFillPlan(hit, along, mode, readOnly);
   const formula = takesTyping(hit.input, readOnly) ? formulaOf(hit.input) ?? (capturedText(hit.input).trim() || hit.input.value.trim() || null) : null;
-  const row = hit.cell.closest("tr");
-  const body = row?.closest("tbody");
-  if (!formula || !row || !body) return null;
-  const cells = along === "row" ? Array.from(row.cells) : Array.from(body.rows).map((item) => item.cells[hit.columnIndex]);
-  const from = along === "row" ? hit.columnIndex : hit.rowIndex;
+  const line = lineOf(hit, along);
+  if (!formula || !line) return null;
+  const { cells, from } = line;
   const fields = cells.map(fieldOf);
   // A cell marked `data-no-fill` is left alone: "computed" when the system calculates it while empty
   // (Sup., FRe, the subject's area…), otherwise not one more value of the row (a comparable's free text).
@@ -602,6 +649,15 @@ function targetOf(hit: CalcTableHit, readOnly: boolean, rows: CalcTableRowAction
       canDelete: ownRow && Boolean(rows.delete),
       hidden: false,
       canHide: false,
+    };
+  }
+  // A list copies its option to the column or the row (video 7.4, 23:41); it is chosen, not typed.
+  if (hit.input instanceof HTMLSelectElement && !readOnly && !hit.input.disabled) {
+    const listHint = "Es una lista: elige la opción, o cópiala a toda la columna o la fila.";
+    return {
+      kind: "cell", editable: true, hasFormula: false, hasValue: Boolean(hit.input.value), canPaste: false,
+      canInsertRow: canInsert, canInsertColumn: false, canDeleteColumn: false, canDeleteRow: ownRow && Boolean(rows.delete),
+      reasons: { cut: listHint, "edit-formula": listHint, clear: listHint },
     };
   }
   const editable = takesTyping(hit.input, readOnly);
