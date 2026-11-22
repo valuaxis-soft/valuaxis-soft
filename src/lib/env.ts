@@ -67,6 +67,12 @@ const envObject = z.object({
   AI_EXTRACTION_MODEL: z.string().optional(),
   AI_DRAFTING_MODEL: z.string().optional(),
   /**
+   * «Buscar con IA» in the search of comparables: "true" turns it on. Each search runs the provider's
+   * web search and costs far more than the other assisted features, so it is off unless asked for.
+   */
+  AI_COMPARABLE_SEARCH_ENABLED: z.string().optional(),
+  AI_SEARCH_MODEL: z.string().optional(),
+  /**
    * Key of the HMAC that stores the CURP of an accreditation (docs/ACREDITACION.md).
    * Optional; without it the CURP is kept as a plain SHA-256, weaker. Never change it once set.
    */

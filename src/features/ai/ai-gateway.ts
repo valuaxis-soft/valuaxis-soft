@@ -12,6 +12,8 @@ export type AiUsage = {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** Web searches the provider ran and bills apart from the tokens; absent on calls without them. */
+  webSearches?: number;
 };
 
 export type AiErrorKind = "rate_limit" | "no_credit" | "overloaded" | "timeout" | "refused" | "invalid_output" | "configuration" | "unavailable";
@@ -44,9 +46,26 @@ export type AiPrompt = {
   user: string;
 };
 
+/** How far a web search has gone: the searches run so far and what the last one asked. */
+export type AiWebSearchProgress = { searches: number; query: string | null };
+
+export type AiWebSearchOptions = {
+  /** Searches the provider may run for this call. */
+  maxSearches: number;
+  /** The whole call, searches included. */
+  timeoutMs: number;
+  onProgress?: (progress: AiWebSearchProgress) => void;
+};
+
 export interface AiGateway {
   /** A small, fast extraction whose answer must match the schema. */
   extract<T>(prompt: AiPrompt, schema: z.ZodType<T>): Promise<{ data: T; usage: AiUsage }>;
   /** A short text. */
   write(prompt: AiPrompt): Promise<{ text: string; usage: AiUsage }>;
+  /**
+   * A search of the web run by the provider, answered in the shape of the
+   * schema. `resultUrls` are the addresses the provider's search returned,
+   * so the caller can tell a page that was found from one that was written.
+   */
+  searchWeb<T>(prompt: AiPrompt, schema: z.ZodType<T>, options: AiWebSearchOptions): Promise<{ data: T; usage: AiUsage; resultUrls: string[] }>;
 }

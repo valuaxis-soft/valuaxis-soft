@@ -73,6 +73,9 @@ export const rateLimits = {
   /** AI assistance: every call is billed by the provider. One person, and the whole firm in a day. */
   aiByUser: createRateLimiter({ limit: 20, windowMs: 10 * MINUTE }),
   aiByOrganization: createRateLimiter({ limit: 200, windowMs: 24 * 60 * MINUTE }),
+  /** «Buscar con IA»: each search is several billed web searches and a long answer. One person, and the whole firm in a day. */
+  aiWebSearchByUser: createRateLimiter({ limit: 6, windowMs: 10 * MINUTE }),
+  aiWebSearchByOrganization: createRateLimiter({ limit: 60, windowMs: 24 * 60 * MINUTE }),
 };
 
 /**

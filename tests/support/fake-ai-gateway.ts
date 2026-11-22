@@ -4,7 +4,7 @@
  * tested without the network and without spending.
  */
 import type { z } from "zod";
-import { AiGatewayError, type AiErrorKind, type AiGateway, type AiPrompt, type AiUsage } from "../../src/features/ai/ai-gateway";
+import { AiGatewayError, type AiErrorKind, type AiGateway, type AiPrompt, type AiUsage, type AiWebSearchOptions } from "../../src/features/ai/ai-gateway";
 import type { ListingExtraction } from "../../src/features/ai/listing-extraction";
 
 export const EMPTY_EXTRACTION: ListingExtraction = {
@@ -20,13 +20,28 @@ export function createFakeAiGateway(script: {
   extraction?: Partial<ListingExtraction> | ((prompt: AiPrompt) => Partial<ListingExtraction>);
   /** The texts the model writes, one per call, in order. */
   drafts?: string[];
+  /** What a web search answers and the addresses the provider's search returned; its queries are reported as progress. */
+  webSearch?: { answer: unknown; resultUrls?: string[]; queries?: string[]; delayMs?: number };
   /** Every call fails this way. */
   failure?: AiErrorKind;
 } = {}) {
-  const prompts: Array<{ kind: "extract" | "write"; prompt: AiPrompt }> = [];
+  const prompts: Array<{ kind: "extract" | "write" | "search"; prompt: AiPrompt }> = [];
   const drafts = [...(script.drafts ?? [])];
 
   const gateway: AiGateway = {
+    async searchWeb<T>(prompt: AiPrompt, schema: z.ZodType<T>, options: AiWebSearchOptions) {
+      prompts.push({ kind: "search", prompt });
+      if (script.failure) throw new AiGatewayError(script.failure);
+      if (!script.webSearch) throw new Error("The fake AI gateway has no web search to answer.");
+      const queries = script.webSearch.queries ?? [];
+      queries.forEach((query, index) => options.onProgress?.({ searches: index + 1, query }));
+      if (script.webSearch.delayMs) await new Promise((resolve) => setTimeout(resolve, script.webSearch?.delayMs));
+      return {
+        data: schema.parse(script.webSearch.answer),
+        usage: { ...usage("fake-search"), inputTokens: 42_000, outputTokens: 3_000, webSearches: queries.length },
+        resultUrls: script.webSearch.resultUrls ?? [],
+      };
+    },
     async extract<T>(prompt: AiPrompt, schema: z.ZodType<T>) {
       prompts.push({ kind: "extract", prompt });
       if (script.failure) throw new AiGatewayError(script.failure);
