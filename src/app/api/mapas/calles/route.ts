@@ -17,8 +17,9 @@ const querySchema = z.object({
 
 /**
  * The streets around the subject's pin for the croquis panel (etapa 2):
- * `?lat&lon&radio` from OpenStreetMap through the server, cached by rounded
- * coordinates. Nothing is stored; 503 when no Overpass mirror answers.
+ * `?lat&lon&radio` from OpenStreetMap through the server (our own copy in
+ * the database first, Overpass for a zone it has nothing for), cached by
+ * rounded coordinates. 503 when the copy is empty and no mirror answers.
  */
 export async function GET(request: Request) {
   try {
