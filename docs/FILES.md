@@ -41,6 +41,6 @@ Chromium viene de `CHROMIUM_PATH`: la imagen de producción instala `/usr/bin/ch
 
 ## Correos automáticos
 
-- **Dictamen al cliente:** "Enviar por correo" en el dictamen genera un PDF nuevo (se guarda igual que una descarga) y lo manda adjunto. SES solo acepta adjuntos como mensaje MIME completo, que arma `src/infrastructure/email/mime-message.ts`. El remitente muestra el nombre del despacho con la dirección verificada en SES (`SES_FROM_EMAIL`); las respuestas van al correo del despacho. Límite: 25 MB de PDF.
+- **Dictamen al cliente:** "Enviar por correo" en el dictamen genera un PDF nuevo (se guarda igual que una descarga) y lo manda adjunto. Con Resend el PDF va en base64 dentro de la petición; con SES (respaldo) va como mensaje MIME completo, que arma `src/infrastructure/email/mime-message.ts`. El remitente muestra el nombre del despacho con la dirección verificada del dominio (`EMAIL_FROM_ADDRESS`, o `SES_FROM_EMAIL`); las respuestas van al correo del despacho. Límite: 25 MB de PDF (los dos proveedores aceptan 40 MB por correo, ya en base64).
 - **Avisos al responsable del avalúo** (`src/features/notifications/valuation-notices.ts`): cuando otra persona se lo asigna al crearlo y cuando otra persona lo concluye. Salen después de responder (`after()`); si el correo falla se registra y la acción no se ve afectada.
 

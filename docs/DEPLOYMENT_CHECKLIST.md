@@ -3,14 +3,14 @@
 Antes de produccion:
 
 - Configurar `DATABASE_URL` PostgreSQL/PostGIS.
-- Configurar email:
-  - `EMAIL_PROVIDER=ses`
-  - `AWS_REGION`
-  - `AWS_ACCESS_KEY_ID`
-  - `AWS_SECRET_ACCESS_KEY`
-  - `SES_FROM_EMAIL`
-  - `SES_FROM_NAME`
+- Configurar email (pasos en OPERACION.md, sección 12):
+  - `EMAIL_PROVIDER=resend`
+  - `RESEND_API_KEY`
+  - `EMAIL_FROM_ADDRESS`
+  - `EMAIL_FROM_NAME`
+  - `EMAIL_REPLY_TO` (opcional)
   - `APP_URL`
+  - Respaldo con SES (`EMAIL_PROVIDER=ses`): `AWS_SES_REGION`, `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY`; el remitente usa las mismas variables (o `SES_FROM_EMAIL`/`SES_FROM_NAME`).
 - Configurar Google OAuth:
   - `GOOGLE_CLIENT_ID`
   - `GOOGLE_CLIENT_SECRET`

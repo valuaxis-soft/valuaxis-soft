@@ -9,6 +9,8 @@ import {
   requestPasswordRecovery,
 } from "../../src/features/auth/services/password-recovery.service";
 import { createSecureSession, getCurrentSession } from "../../src/features/auth/services/session.service";
+import { EmailConfigurationError, EmailDeliveryError } from "../../src/infrastructure/email/email.errors";
+import { getEmailService } from "../../src/infrastructure/email/email.service";
 import { hashToken } from "../../src/security/tokens/token-hashing";
 import {
   TestCookieJar,
@@ -44,6 +46,32 @@ test("asking to reset an unknown email answers the same and sends nothing", asyn
   // The caller cannot tell the two cases apart.
   assert.equal(unknownAnswer, undefined);
   assert.deepEqual(knownAnswer, unknownAnswer);
+});
+
+for (const failure of [
+  new EmailDeliveryError("No pudimos enviar el correo por Resend."),
+  new EmailConfigurationError("EMAIL_PROVIDER=resend requiere variables faltantes: RESEND_API_KEY"),
+]) {
+  test(`a reset email that fails with ${failure.name} answers the same as an unknown email instead of crashing`, async (t) => {
+    t.mock.method(getEmailService(), "sendPasswordResetEmail", async () => {
+      throw failure;
+    });
+    t.mock.method(console, "error", () => {});
+    const fixture = await createAuthUserFixture();
+
+    const answer = await requestPasswordRecovery(fixture.email, "10.0.0.1", "UA");
+    assert.equal(answer, undefined);
+    // The stored token stays: it is only a hash, it expires, and a new request revokes it.
+    assert.equal(await prisma.tokenRecuperacionContrasena.count({ where: { IdUsuario: fixture.userId } }), 1);
+  });
+}
+
+test("an unexpected reset email error is not swallowed", async (t) => {
+  t.mock.method(getEmailService(), "sendPasswordResetEmail", async () => {
+    throw new Error("bug");
+  });
+  const fixture = await createAuthUserFixture();
+  await assert.rejects(requestPasswordRecovery(fixture.email), /bug/);
 });
 
 test("a deleted account does not receive a reset link", async (t) => {
