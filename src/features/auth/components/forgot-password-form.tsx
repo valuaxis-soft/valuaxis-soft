@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { authErrorMessages } from "../constants/auth-errors";
+import { authErrorMessages, authErrorSeverity } from "../constants/auth-errors";
 import { requestPasswordResetAction, type ForgotPasswordActionState } from "../actions/request-password-reset.action";
 import { AuthFeedback } from "./auth-feedback";
 
@@ -18,13 +18,8 @@ export function ForgotPasswordForm() {
 
   return (
     <form action={formAction} className="grid gap-5">
-      {state.ok && state.data === undefined ? null : null}
       {!state.ok ? <AuthFeedback message={state.message} severity={state.severity} /> : null}
-      {state.ok && state !== initialState ? (
-        <p className="text-sm text-muted-foreground" aria-live="polite">
-          {authErrorMessages.PASSWORD_RESET_SENT}
-        </p>
-      ) : null}
+      {state.ok && state !== initialState ? <PasswordResetSentNotice /> : null}
 
       <FieldGroup>
         <Field data-invalid={!state.ok && Boolean(state.fieldErrors?.email)}>
@@ -46,5 +41,15 @@ export function ForgotPasswordForm() {
         Volver a iniciar sesión
       </Link>
     </form>
+  );
+}
+
+export function PasswordResetSentNotice() {
+  return (
+    <AuthFeedback message={authErrorMessages.PASSWORD_RESET_SENT} severity={authErrorSeverity.PASSWORD_RESET_SENT}>
+      <Link className="font-medium text-foreground underline underline-offset-4" href="/iniciar-sesion">
+        Volver a iniciar sesión
+      </Link>
+    </AuthFeedback>
   );
 }
