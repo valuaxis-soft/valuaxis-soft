@@ -43,7 +43,7 @@ Datos reales al 23 sep 2026: 10 organizaciones, 11 usuarios, 19 avalúos, ningun
 
 ## Configuración de la app
 
-- `NODE_ENV=production`, `STORAGE_DRIVER=s3`, `EMAIL_PROVIDER=ses`.
+- `NODE_ENV=production`, `STORAGE_DRIVER=s3`, `EMAIL_PROVIDER=ses`. (Nota posterior: SES nunca salió del sandbox; el correo pasa a Resend con `EMAIL_PROVIDER=resend`, ver [ADR 0001](adr/0001-correo-con-resend.md) y OPERACION.md, sección 12.)
 - Archivos en el bucket S3 `devpware-avaluos-produccion` (us-east-1).
 - Correos enviados desde `no-reply@devpware.network`.
 - Google OAuth con callback `https://valuaxissoft.com/api/auth/google/callback`.

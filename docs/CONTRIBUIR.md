@@ -9,7 +9,7 @@ Dos equipos trabajan sobre este repositorio: **imSoft** (Brandon) y **devpware**
 | Funciones de la cotización COT-2026-001: dictamen en PDF, correos, equipos, IA, extracción de comparables, créditos y cobro | Almacenamiento en AWS (S3), centralización de archivos |
 | Motor de cálculo, editor y dictamen (`src/features/valuations/**`) | `src/infrastructure/storage/**` |
 | UX/UI, seguridad de la aplicación, SEO | Servidor: Dockerfile, compose, imagen con Chromium para el PDF, actualizaciones del sistema |
-| Pruebas del motor contra los Excel del despacho | Respaldos automáticos (`scripts/ops/`), monitoreo, dominio de correo en SES |
+| Pruebas del motor contra los Excel del despacho | Respaldos automáticos (`scripts/ops/`), monitoreo, dominio de correo (Resend; SES de respaldo) |
 | | Despliegues, siguiendo [OPERACION.md](OPERACION.md) |
 
 Si una tarea no está en la tabla, se acuerda antes de empezarla.

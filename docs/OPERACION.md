@@ -244,3 +244,41 @@ docker exec valuos-app node --import tsx scripts/ops/corregir-estado-nuevo.ts --
 Cuenta como capturado el avalúo guardado más de 2 minutos después de crearse o que ya tiene comparables. Cada uno pasa a «En edición» con un renglón en su historial («corrección: ya tenía captura») y conserva su fecha de última modificación. Se puede correr otra vez: no cambia los ya corregidos.
 
 La papelera no necesita tarea programada: al abrir «Papelera» en `/avaluos` se eliminan definitivamente los avalúos de ese despacho que llevan más de 30 días en ella (el renglón se conserva por los créditos y la auditoría; solo deja de aparecer y de poder restaurarse).
+
+## 12. Correo con Resend (`EMAIL_PROVIDER=resend`)
+
+Todos los correos de la app (verificación de cuenta, «olvidé mi contraseña», invitaciones al equipo, avisos de avalúos y el dictamen al cliente con el PDF adjunto) salen por el proveedor que indique `EMAIL_PROVIDER`: `development` (solo registra en el log), `ses` (Amazon SES, se conserva como respaldo) o `resend`. Por qué Resend: [ADR 0001](adr/0001-correo-con-resend.md).
+
+1. En Resend, el dominio `valuaxissoft.com` ya está verificado (región us-east-1). Crear una llave de API con permiso **solo de envío** (*Sending access*) limitada a ese dominio. La llave se ve una sola vez: se pega directo en el servidor, nunca en el chat, en un ticket ni en el repositorio.
+2. Editar `/opt/apps/valuos/secrets/production.env`:
+
+   ```bash
+   EMAIL_PROVIDER=resend
+   RESEND_API_KEY=<llave de Resend>
+   EMAIL_FROM_ADDRESS=no-reply@valuaxissoft.com
+   EMAIL_FROM_NAME=Valuaxis Soft
+   EMAIL_REPLY_TO=contacto@valuaxissoft.com
+   ```
+
+   - `EMAIL_FROM_ADDRESS` y `EMAIL_FROM_NAME` son el remitente para cualquier proveedor. Si faltan, la app usa `SES_FROM_EMAIL` y `SES_FROM_NAME`; hoy `SES_FROM_EMAIL` apunta a un dominio que Resend no tiene verificado, así que **hay que definir `EMAIL_FROM_ADDRESS`** con la dirección de `valuaxissoft.com`.
+   - `EMAIL_REPLY_TO` es opcional: a dónde llegan las respuestas a los correos del sistema. El dictamen no la usa: sus respuestas van al correo del despacho («Datos del despacho»), igual que antes.
+   - `EMAIL_FROM` no lo lee el código (es de la configuración inicial); se puede dejar o quitar.
+   - Las variables de SES (`AWS_SES_*`, `SES_FROM_*`) se pueden dejar: no estorban y permiten volver a `EMAIL_PROVIDER=ses` si hiciera falta.
+3. `pnpm env:check` (paso 2.3). Con `EMAIL_PROVIDER=resend` y sin `RESEND_API_KEY` reporta la variable y el servidor no arrancaría.
+4. Recrear la app para que lea `production.env` (no hace falta reconstruir la imagen):
+
+   ```bash
+   cd /opt/apps/valuos/deployment
+   docker compose -f compose.production.yml -f compose.migrated-db.yml up -d valuos-app
+   ```
+
+5. Correo de prueba (un correo de verificación con un enlace que no sirve; no registra la llave ni tokens):
+
+   ```bash
+   docker exec -e TEST_EMAIL_TO=<tu correo> valuos-app node --import tsx scripts/send-test-email.ts
+   ```
+
+   En local, con las variables en `.env`: `TEST_EMAIL_TO=<tu correo> pnpm email:test`.
+6. Probar en el navegador «¿Olvidaste tu contraseña?» con una cuenta propia y, en un avalúo de prueba, «Enviar por correo» el dictamen a un correo propio: debe llegar con el PDF adjunto, a nombre de «<despacho> vía Valuaxis Soft».
+
+Si un correo no sale, el usuario ve el mismo mensaje de siempre y el log lo dice sin mostrar la llave: `docker logs valuos-app 2>&1 | grep -E "Resend email delivery failed|PASSWORD_RESET_EMAIL|DICTAMEN_EMAIL"` (trae el código HTTP y el motivo que dio Resend, por ejemplo dominio no verificado o llave inválida). La solicitud a Resend se corta a los 25 s. El PDF del dictamen se limita a 25 MB (Resend acepta 40 MB por correo, contando el adjunto en base64). Para volver a SES: `EMAIL_PROVIDER=ses` y recrear la app.

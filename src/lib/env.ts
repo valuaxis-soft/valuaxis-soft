@@ -1,12 +1,20 @@
 import { z } from "zod";
 
-const envSchema = z.object({
+const envObject = z.object({
   DATABASE_URL: z.string().min(1),
 
   APP_URL: z.string().optional(),
 
-  EMAIL_PROVIDER: z.enum(["development", "ses"]).optional(),
+  EMAIL_PROVIDER: z.enum(["development", "ses", "resend"]).optional(),
+  /** Not read by the code; kept because an old production.env defines it. The sender is EMAIL_FROM_ADDRESS. */
   EMAIL_FROM: z.string().optional(),
+  /** Sender of every email, for any provider; falls back to SES_FROM_EMAIL / SES_FROM_NAME. */
+  EMAIL_FROM_ADDRESS: z.string().optional(),
+  EMAIL_FROM_NAME: z.string().optional(),
+  /** Where replies to system emails go (the dictamen replies go to the firm). Optional. */
+  EMAIL_REPLY_TO: z.string().optional(),
+  /** Server-only key of Resend; required with EMAIL_PROVIDER=resend. */
+  RESEND_API_KEY: z.string().optional(),
   AWS_SES_REGION: z.string().optional(),
   AWS_SES_ACCESS_KEY_ID: z.string().optional(),
   AWS_SES_SECRET_ACCESS_KEY: z.string().optional(),
@@ -65,6 +73,12 @@ const envSchema = z.object({
   ACCREDITATION_HASH_SECRET: z.string().min(32).optional().or(z.literal("")),
 });
 
+const envSchema = envObject.superRefine((value, context) => {
+  if (value.EMAIL_PROVIDER === "resend" && !value.RESEND_API_KEY) {
+    context.addIssue({ code: "custom", path: ["RESEND_API_KEY"], message: "EMAIL_PROVIDER=resend requiere RESEND_API_KEY" });
+  }
+});
+
 export type Env = z.infer<typeof envSchema>;
 
 /**
@@ -83,7 +97,7 @@ function loadEnv(): Env {
     throw new Error(`Invalid environment variables: ${JSON.stringify(problems)}`);
   }
   console.warn("Invalid environment variables:", problems);
-  return envSchema.partial({ DATABASE_URL: true }).parse({}) as Env;
+  return envObject.partial({ DATABASE_URL: true }).parse({}) as Env;
 }
 
 export const env = loadEnv();

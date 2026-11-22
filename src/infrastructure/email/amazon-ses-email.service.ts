@@ -1,26 +1,13 @@
 import { SendEmailCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import {
-  buildPasswordResetEmailHtml,
-  buildPasswordResetEmailText,
-} from "@/features/notifications/templates/reset-password";
-import {
-  buildVerificationEmailHtml,
-  buildVerificationEmailText,
-} from "@/features/notifications/templates/verify-email";
-import {
-  buildTeamInvitationEmailHtml,
-  buildTeamInvitationEmailSubject,
-  buildTeamInvitationEmailText,
-} from "@/features/notifications/templates/team-invitation";
-import {
-  buildDictamenEmailHtml,
-  buildDictamenEmailText,
-} from "@/features/notifications/templates/dictamen-email";
-import {
-  buildValuationNoticeHtml,
-  buildValuationNoticeSubject,
-  buildValuationNoticeText,
-} from "@/features/notifications/templates/valuation-notice";
+  dictamenEmailContent,
+  dictamenSenderName,
+  formatFromAddress,
+  passwordResetEmailContent,
+  teamInvitationEmailContent,
+  valuationNoticeContent,
+  verificationEmailContent,
+} from "./email-content";
 import { EmailDeliveryError } from "./email.errors";
 import { buildMimeMessage } from "./mime-message";
 import type {
@@ -38,6 +25,8 @@ export type AmazonSesEmailConfig = {
   secretAccessKey: string;
   fromEmail: string;
   fromName: string;
+  /** Where replies to system emails go; without it they go to the sender. */
+  replyTo?: string;
 };
 
 export type SesEmailClient = {
@@ -65,51 +54,24 @@ export class AmazonSesEmailService implements EmailService {
   ) {}
 
   async sendVerificationEmail(input: VerificationEmailInput) {
-    await this.sendEmail({
-      to: input.to,
-      subject: "Verifica tu correo en Valuaxis Soft",
-      text: buildVerificationEmailText(input.verificationUrl),
-      html: buildVerificationEmailHtml({
-        name: input.name,
-        verificationUrl: input.verificationUrl,
-      }),
-    });
+    await this.sendEmail(input.to, verificationEmailContent(input));
   }
 
   async sendPasswordResetEmail(input: PasswordResetEmailInput) {
-    await this.sendEmail({
-      to: input.to,
-      subject: "Restablece tu contraseña de Valuaxis Soft",
-      text: buildPasswordResetEmailText(input.resetUrl),
-      html: buildPasswordResetEmailHtml({
-        name: input.name,
-        resetUrl: input.resetUrl,
-      }),
-    });
+    await this.sendEmail(input.to, passwordResetEmailContent(input));
   }
 
   async sendTeamInvitationEmail(input: TeamInvitationEmailInput) {
-    await this.sendEmail({
-      to: input.to,
-      subject: buildTeamInvitationEmailSubject(input),
-      text: buildTeamInvitationEmailText(input),
-      html: buildTeamInvitationEmailHtml(input),
-    });
+    await this.sendEmail(input.to, teamInvitationEmailContent(input));
   }
 
-  /**
-   * Raw MIME: SES only attaches files that way. The sender reads "<firm> vía
-   * Valuaxis": the firm is visible, and nobody can pose as someone else just
-   * by naming their space that way.
-   */
+  /** Raw MIME: SES only attaches files that way. Replies go to the firm. */
   async sendDictamenEmail(input: DictamenEmailInput) {
     const message = buildMimeMessage({
-      from: { name: `${input.firm.name} vía Valuaxis Soft`, email: this.config.fromEmail },
+      from: { name: dictamenSenderName(input.firm.name), email: this.config.fromEmail },
       to: input.to,
       replyTo: input.replyTo,
-      subject: input.subject,
-      text: buildDictamenEmailText(input),
-      html: buildDictamenEmailHtml(input),
+      ...dictamenEmailContent(input),
       attachments: [{ filename: input.pdf.filename, contentType: "application/pdf", content: input.pdf.content }],
     });
     await this.deliver(new SendEmailCommand({
@@ -120,34 +82,30 @@ export class AmazonSesEmailService implements EmailService {
   }
 
   async sendValuationNotice(input: ValuationNoticeInput) {
-    await this.sendEmail({
-      to: input.to,
-      subject: buildValuationNoticeSubject(input),
-      text: buildValuationNoticeText(input),
-      html: buildValuationNoticeHtml(input),
-    });
+    await this.sendEmail(input.to, valuationNoticeContent(input));
   }
 
-  private async sendEmail(input: { to: string; subject: string; text: string; html: string }) {
+  private async sendEmail(to: string, content: { subject: string; text: string; html: string }) {
     const command = new SendEmailCommand({
       FromEmailAddress: formatFromAddress(this.config.fromName, this.config.fromEmail),
       Destination: {
-        ToAddresses: [input.to],
+        ToAddresses: [to],
       },
+      ...(this.config.replyTo ? { ReplyToAddresses: [this.config.replyTo] } : {}),
       Content: {
         Simple: {
           Subject: {
             Charset: CHARSET,
-            Data: input.subject,
+            Data: content.subject,
           },
           Body: {
             Text: {
               Charset: CHARSET,
-              Data: input.text,
+              Data: content.text,
             },
             Html: {
               Charset: CHARSET,
-              Data: input.html,
+              Data: content.html,
             },
           },
         },
@@ -169,11 +127,4 @@ export class AmazonSesEmailService implements EmailService {
       throw new EmailDeliveryError("No pudimos enviar el correo por Amazon SES.", { cause: error });
     }
   }
-}
-
-function formatFromAddress(name: string, email: string) {
-  const safeName = name.replace(/[\r\n"]/g, "").trim();
-  const safeEmail = email.replace(/[\r\n<>]/g, "").trim();
-  if (!safeName) return safeEmail;
-  return `"${safeName}" <${safeEmail}>`;
 }

@@ -9,7 +9,7 @@ import { getEmailService } from "@/infrastructure/email/email.service";
 import { generateDictamenPdf } from "./dictamen-pdf.service";
 import { ValuationWorkflowError } from "./valuation-workflow/errors";
 
-/** SES takes 40 MB per message and base64 adds a third. */
+/** SES and Resend take 40 MB per message and base64 adds a third. */
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 export async function sendDictamenByEmail(

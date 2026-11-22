@@ -1,6 +1,7 @@
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { recordAuditEvent } from "../repositories/audit.repository";
 import { createSecureToken, hashToken } from "@/security/tokens/token-hashing";
+import { EmailConfigurationError, EmailDeliveryError } from "@/infrastructure/email/email.errors";
 import { getEmailService } from "@/infrastructure/email/email.service";
 import { buildPublicAppUrl } from "@/lib/public-url";
 import { PASSWORD_RESET_TTL_MINUTES } from "../constants/auth.constants";
@@ -32,11 +33,18 @@ export async function requestPasswordRecovery(email: string, ip?: string | null,
     },
   });
 
-  await getEmailService().sendPasswordResetEmail({
-    to: user.SCorreo,
-    name: user.SNombre,
-    resetUrl: buildPublicAppUrl(`/restablecer-contrasena?token=${encodeURIComponent(token)}`).toString(),
-  });
+  try {
+    await getEmailService().sendPasswordResetEmail({
+      to: user.SCorreo,
+      name: user.SNombre,
+      resetUrl: buildPublicAppUrl(`/restablecer-contrasena?token=${encodeURIComponent(token)}`).toString(),
+    });
+  } catch (error) {
+    if (!(error instanceof EmailDeliveryError || error instanceof EmailConfigurationError)) throw error;
+    // The answer stays the same as for an unknown email (OWASP Forgot Password); the
+    // stored token is kept: it is only a hash, expires, and the next request revokes it.
+    console.error(`[PASSWORD_RESET_EMAIL] Delivery failed for user ${user.IdUsuario}: ${error.message}`);
+  }
 }
 
 export async function consumePasswordRecoveryToken(token: string, password: string) {

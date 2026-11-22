@@ -35,7 +35,7 @@ Estado real del código al 23 de septiembre de 2026. Este documento describe lo 
 
 ## Proveedores
 
-- **Email:** `DevelopmentEmailService` con `EMAIL_PROVIDER=development`, `AmazonSesEmailService` con `EMAIL_PROVIDER=ses`. El servicio se crea en el primer envío, no al importar.
+- **Email:** `DevelopmentEmailService` con `EMAIL_PROVIDER=development`, `ResendEmailService` con `EMAIL_PROVIDER=resend` (producción) y `AmazonSesEmailService` con `EMAIL_PROVIDER=ses` (respaldo). La llave `RESEND_API_KEY` solo vive en el servidor y nunca se registra. El servicio se crea en el primer envío, no al importar.
 - **Storage:** `DevelopmentStorageProvider` en local y `S3StorageProvider` con URLs firmadas de 15 minutos.
 - **OAuth:** Google.
 - **Mapas:** Google Maps (Maps JavaScript API en el navegador; Geocoding y Maps Static API desde el servidor), opcional.

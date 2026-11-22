@@ -92,7 +92,19 @@ Errores publicos:
 El contrato activo es `EmailService` y se resuelve desde una unica factoria:
 
 - `EMAIL_PROVIDER=development`: usa `DevelopmentEmailService` y no envia correos reales.
-- `EMAIL_PROVIDER=ses`: usa `AmazonSesEmailService` con `@aws-sdk/client-sesv2`.
+- `EMAIL_PROVIDER=resend`: usa `ResendEmailService` con la API REST de Resend (producción).
+- `EMAIL_PROVIDER=ses`: usa `AmazonSesEmailService` con `@aws-sdk/client-sesv2` (respaldo).
+
+Variables de configuración para Resend:
+
+- `EMAIL_PROVIDER=resend`
+- `RESEND_API_KEY`
+- `EMAIL_FROM_ADDRESS`
+- `EMAIL_FROM_NAME`
+- `EMAIL_REPLY_TO` (opcional)
+- `APP_URL`
+
+Si un correo de restablecimiento no sale, la respuesta es la misma que para un correo desconocido y el error queda en el log (`[PASSWORD_RESET_EMAIL]`).
 
 Variables de configuración para SES:
 
@@ -100,8 +112,7 @@ Variables de configuración para SES:
 - `AWS_SES_REGION`
 - `AWS_SES_ACCESS_KEY_ID`
 - `AWS_SES_SECRET_ACCESS_KEY`
-- `SES_FROM_EMAIL`
-- `SES_FROM_NAME`
+- `EMAIL_FROM_ADDRESS` y `EMAIL_FROM_NAME` (o `SES_FROM_EMAIL` y `SES_FROM_NAME`)
 - `APP_URL`
 
 Durante la migracion se mantienen `AWS_REGION`, `AWS_ACCESS_KEY_ID` y `AWS_SECRET_ACCESS_KEY` como compatibilidad temporal.
