@@ -292,3 +292,23 @@ Todos los correos de la app (verificación de cuenta, «olvidé mi contraseña»
 6. Probar en el navegador «¿Olvidaste tu contraseña?» con una cuenta propia y, en un avalúo de prueba, «Enviar por correo» el dictamen a un correo propio: debe llegar con el PDF adjunto, a nombre de «<despacho> vía Valuaxis Soft».
 
 Si un correo no sale, el usuario ve el mismo mensaje de siempre y el log lo dice sin mostrar la llave: `docker logs valuos-app 2>&1 | grep -E "Resend email delivery failed|PASSWORD_RESET_EMAIL|DICTAMEN_EMAIL"` (trae el código HTTP y el motivo que dio Resend, por ejemplo dominio no verificado o llave inválida). La solicitud a Resend se corta a los 25 s. El PDF del dictamen se limita a 25 MB (Resend acepta 40 MB por correo, contando el adjunto en base64). Para volver a SES: `EMAIL_PROVIDER=ses` y recrear la app.
+
+## 13. Búsqueda de comparables con IA (`AI_COMPARABLE_SEARCH_ENABLED`)
+
+«Buscar con IA en la web», dentro de «Buscar comparables», está **apagada por omisión** porque cada búsqueda cuesta bastante más que las otras ayudas de IA (ver «Costo y registro de uso» en [IA.md](IA.md)). Para encenderla:
+
+1. En `/root/valuos/deployment/production.env`, con la llave de Anthropic ya puesta (`ANTHROPIC_API_KEY`, nunca en el repositorio ni en un chat):
+
+   ```
+   AI_COMPARABLE_SEARCH_ENABLED=true
+   # Opcional; vacío usa claude-opus-5-5.
+   AI_SEARCH_MODEL=
+   ```
+
+2. En la consola de Anthropic (Settings → Capabilities) la búsqueda web debe estar permitida para la organización de esa llave. Viene permitida salvo que un administrador la haya deshabilitado.
+3. Recrear la app (paso 2) y, en un avalúo de prueba con un terreno, abrir «Buscar comparables» → «Buscar con IA en la web» → «Buscar». Debe mostrar el avance y, en uno o dos minutos, la tabla de anuncios. Abrir al menos tres ligas y comparar precio y superficie con el anuncio.
+4. Si falla: `docker logs valuos-app 2>&1 | grep -E "\[AI\]"`. `COMPARABLE_SEARCH failed: configuration` es llave inválida (401) o búsqueda web deshabilitada en la consola (la línea `web search rejected by the provider` trae el motivo); `timeout` es que pasó de 150 s; `no_credit`, que la cuenta no tiene saldo.
+
+Para apagarla, quitar la variable o ponerla en `false` y recrear la app: la opción queda deshabilitada con su aviso y lo demás funciona igual. La búsqueda corre en segundo plano dentro del contenedor (la petición que la inicia responde de inmediato y el navegador consulta el estado), así que el límite de 60 s del proxy no la corta; un reinicio de la app sí termina las que estén en curso.
+
+El gasto por despacho sale de la auditoría (acción `AI_COMPARABLE_SEARCH`); la consulta está en [IA.md](IA.md).

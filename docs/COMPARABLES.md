@@ -148,6 +148,16 @@ Sin migración: todo vive en `JDireccionSnapshot`, `JPropiedadSnapshot` y `JImag
 
 Se probó leer anuncios desde el servidor el 29 de septiembre de 2026. Inmuebles24, Lamudi, Vivanuncios, Propiedades.com y Mitula bloquean a los robots (401/403, verificación anti-bots); solo Mercado Libre responde, con datos estructurados. No se evaden esas protecciones. Las opciones viables, pendientes de decidir con el cliente, son pegar el texto del anuncio y extraerlo con IA (cualquier portal) e importar por liga desde Mercado Libre.
 
+## Buscar con IA en la web (22 nov 2026)
+
+Lo que pidió el valuador: describir lo que busca («terrenos de 5,000 a 7,000 m² en la mancha urbana de Arandas») y recibir varios comparables en una tabla, como en un chat. Dentro de «Buscar comparables» hay dos modos: **En la base del despacho** (la búsqueda de siempre) y **Buscar con IA en la web** (`ai-comparable-search.tsx`).
+
+- El cuadro «Describe lo que buscas» llega lleno con los datos del sujeto y del mercado abierto (`suggestedWebSearchText`); se edita, se busca, y después se afina («también los libramientos norte y sur») conservando lo ya encontrado.
+- Resultados en tabla (Superficie · Precio · $/m² · Zona · Fuente), ordenable, con casillas; cada renglón dice «Sin verificar» y trae «Abrir anuncio». Lo que el anuncio no publica dice «Precio no publicado» / «Superficie no publicada». Con menos de 4 anuncios se avisa que el mercado publicado puede ser reducido.
+- «Crear fichas» agrega los elegidos al mercado y a la base del despacho como «Sin revisar», con su liga, su portal y «Datos verificados: No»; respeta duplicados (misma liga).
+- No lee portales desde el servidor ni evade sus protecciones: usa solo la búsqueda web del proveedor de IA. Qué garantiza y qué no, límites, costo y cómo encenderla: [IA.md](IA.md).
+- No es una fuente del registro (`registry.ts`): esas responden en 8 s con comparables completos; esta tarda hasta 2.5 minutos, corre aparte y devuelve anuncios por verificar (`web-search.service.ts`, `web-listings.ts`).
+
 ## Pendiente
 
 - Coordenadas: `DireccionPropiedad` exige latitud y longitud, así que la dirección capturada (ahora por partes, con latitud y longitud a mano) se guarda solo en el snapshot hasta tener mapa y geocodificación.

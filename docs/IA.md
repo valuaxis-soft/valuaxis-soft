@@ -1,6 +1,6 @@
 # Asistencia con IA
 
-Dos ayudas dentro del editor del avalúo, las dos opcionales y las dos de **borrador**: nada de lo que devuelve la IA se guarda sin que el valuador lo revise y guarde como siempre.
+Dos ayudas dentro del editor del avalúo, las dos opcionales y las dos de **borrador**: nada de lo que devuelve la IA se guarda sin que el valuador lo revise y guarde como siempre. Desde el 22 de noviembre de 2026 hay una tercera, **Buscar con IA**, que busca anuncios en la web para proponerlos como comparables; se enciende aparte y tiene su propia sección más abajo.
 
 El criterio del valuador no se toca. La IA solo (a) copia datos que están escritos en un texto que el valuador pegó y (b) pone en prosa datos que el valuador ya capturó. Nunca estima un valor, ni sugiere precio, factor, homologación, vida útil o conclusión, ni califica un comparable, ni completa un dato que falta: lo que no está escrito queda vacío.
 
@@ -52,6 +52,55 @@ No se envía el nombre del cliente, el folio, la organización, el usuario ni ni
 
 De cada uso se registra en auditoría (`EXPORTACION`, acciones `AI_LISTING_EXTRACT` y `AI_DRAFT_WRITE`) quién, en qué avalúo, desde qué IP, el modelo, los tokens de entrada y salida, y conteos (caracteres, datos propuestos y descartados, datos, tablas y celdas enviadas, intentos). Los registros del servidor solo llevan el tipo de falla.
 
+## Buscar con IA (comparables en la web)
+
+Desde el 22 de noviembre de 2026, a petición del valuador («en ChatGPT le describo el terreno y me manda comparables»). Dentro de **Buscar comparables**, la opción **Buscar con IA en la web**:
+
+1. **Describe lo que buscas.** El cuadro llega lleno con una descripción armada con los datos del avalúo: tipo de inmueble y operación del mercado abierto, la ubicación capturada del sujeto, su superficie y un rango de ±30 %, y el uso de suelo si está capturado. El valuador la edita a su gusto.
+2. **Buscar.** El servidor pide a Claude que busque anuncios con la búsqueda web del proveedor y responde con una tabla: Superficie · Precio · $/m² · Zona · Fuente, ordenable, con casillas. Mientras busca se ve el avance (búsquedas hechas, última consulta, segundos).
+3. **Afinar.** Con resultados en pantalla, el cuadro pasa a «Afina la búsqueda o pide más» («también los libramientos norte y sur»). Lo ya encontrado se conserva y lo nuevo se agrega; el modelo recibe las solicitudes anteriores y las ligas ya mostradas para no repetirlas. «Nueva búsqueda» empieza de cero.
+4. **Crear fichas.** Cada anuncio elegido se vuelve comparable del mercado abierto, con ubicación por partes (estado, municipio, colonia), superficies, precio, fuente (nombre del portal y liga), tipo de operación, fecha de consulta de hoy, «Origen del dato: Búsqueda con IA» y «Datos verificados: No». Queda **«Sin revisar»**, sin fotos ni pantalla de referencia, y entra a la base del despacho con su número. El valuador lo completa y lo pasa por la lista de verificación como cualquier otro.
+
+### Qué garantiza el código y qué no
+
+- **Nada se inventa en el servidor.** El modelo responde por una herramienta con esquema estricto (`report_results`); el servidor valida la forma y descarta el candidato **sin liga `http(s)` válida**, el de la otra operación (una renta en un mercado de venta), el repetido y el que ya estaba en pantalla. Un precio o superficie que no sea un número positivo queda vacío: la tabla dice «Precio no publicado» / «Superficie no publicada».
+- **El $/m² lo calcula el servidor** (`unitValueOf`): precio entre la superficie del tipo de comparable, solo en pesos. El modelo no lo calcula.
+- **Dólares:** se muestran como «USD …, sin convertir»; al crear la ficha el precio queda vacío y la cifra publicada se anota en observaciones.
+- **Liga confirmada por el buscador:** el servidor compara cada liga con las que devolvió la búsqueda web del proveedor. La que el modelo reporta y la búsqueda no devolvió tal cual se muestra con el aviso «La liga no salió tal cual en el buscador: ábrela antes de elegirlo». No se oculta, porque un anuncio puede venir de una página de listado.
+- **Lo que el código NO puede garantizar:** que el precio y la superficie que el modelo leyó coincidan con el anuncio, que el anuncio siga vigente ni que la liga abra. Por eso cada renglón dice **«Sin verificar»** y trae «Abrir anuncio» en pestaña nueva, y la ficha nace «Sin revisar» con «Datos verificados: No». La verificación la hace el valuador.
+- **Contenido web no confiable:** las instrucciones dicen que lo que venga en las páginas son datos, no instrucciones. El servidor no abre ninguna página ni evade protecciones de los portales: solo usa la búsqueda web del proveedor.
+- **Duplicados:** los resultados marcan los que ya están en el avalúo o en la base del despacho (misma liga). Al crear fichas, el que ya está en el avalúo se salta y el que ya está en la base, en el mismo mercado, se trae con «Usar el existente» (su número, fotos y pantalla de referencia) en vez de capturarse dos veces.
+
+### Cómo corre
+
+Una búsqueda tarda de decenas de segundos a un par de minutos, más que los 60 s que espera el proxy. Por eso `POST …/buscar-ia` responde de inmediato (202) con un id y la búsqueda sigue en el servidor; el navegador pregunta `GET …/buscar-ia/[jobId]` cada 2.5 s. Las búsquedas en curso viven en la memoria del proceso (un solo contenedor, igual que los límites de intentos): un reinicio las termina y el valuador vuelve a buscar. Los resultados se leen hasta 15 minutos después y solo por quien la inició. Se puede cerrar la ventana: la búsqueda sigue y los resultados se conservan mientras no se recargue la página.
+
+- Modelo: `claude-opus-5-5` (`DEFAULT_LISTING_SEARCH_MODEL`, aparte de `DEFAULT_EXTRACTION_MODEL`), esfuerzo `medium`, con `fallbacks: "default"`.
+- Herramienta: `web_search_20260209` (búsqueda web del proveedor con filtrado dinámico), hasta **8 búsquedas** por solicitud (`max_uses`), ubicación aproximada México.
+- Tiempo máximo: **150 s** por solicitud; pasado ese tiempo el valuador lee «tardó demasiado».
+- Límites propios, aparte de las otras ayudas: **6 búsquedas por usuario cada 10 minutos y 60 por organización al día**; una búsqueda a la vez por persona.
+- Permisos: buscar pide lo mismo que la búsqueda en la base (`AVALUO_VER`); crear fichas pide `AVALUO_EDITAR` y un avalúo no concluido.
+
+### Encenderla
+
+Está **apagada por omisión**. Se enciende con `AI_COMPARABLE_SEARCH_ENABLED=true` (además de `ANTHROPIC_API_KEY`) y un reinicio. Apagada o sin llave, la opción aparece deshabilitada con el motivo escrito y la búsqueda en la base del despacho funciona igual. La búsqueda web también debe estar permitida en la consola de Anthropic (Settings → Capabilities); si la organización la tiene deshabilitada, el valuador lee «El servicio de IA no está bien configurado» y el log trae el motivo (`[AI] web search rejected by the provider`).
+
+### Costo y registro de uso
+
+Cada búsqueda se registra en auditoría (`EXPORTACION`, acción `AI_COMPARABLE_SEARCH`) con organización, usuario, avalúo, modelo, tokens de entrada y salida, **búsquedas web** (`webSearches`), candidatos mostrados y descartados, y segundos. No se guarda la descripción ni los anuncios. Para saber cuánto gasta un despacho:
+
+```sql
+SELECT o."SNombre" AS despacho, count(*) AS busquedas,
+       sum((a."JMetadatos"->>'webSearches')::int) AS busquedas_web,
+       sum((a."JMetadatos"->>'inputTokens')::int) AS tokens_entrada,
+       sum((a."JMetadatos"->>'outputTokens')::int) AS tokens_salida
+FROM "devpware_auditorias" a JOIN "devpware_organizaciones" o USING ("IdOrganizacion")
+WHERE a."SAccion" = 'AI_COMPARABLE_SEARCH' AND a."DFechaEvento" >= date_trunc('month', now())
+GROUP BY 1 ORDER BY 2 DESC;
+```
+
+El proveedor cobra **USD 10 por cada 1,000 búsquedas web** más los tokens (Opus 5.5: USD 4 por millón de entrada, USD 20 de salida); los resultados de búsqueda cuentan como tokens de entrada. **Estimación, sin medir todavía con llamadas reales** (la llave local no era válida el 22 nov 2026): con 8 búsquedas web (USD 0.08), entre 20,000 y 60,000 tokens de entrada y entre 3,000 y 6,000 de salida, una búsqueda costaría entre **USD 0.20 y 0.45** (de 4 a 9 pesos). Hay que medirlo en producción con la consulta de arriba y corregir esta cifra.
+
 ## Quién puede usarla
 
 Solo quien puede editar ese avalúo (`AVALUO_EDITAR`), en avalúos de su organización y que no estén concluidos. Límites: 20 solicitudes por usuario cada 10 minutos y 200 por organización al día; anuncio de hasta 12,000 caracteres; por borrador, hasta 60 datos, 6 tablas y 400 celdas de tabla.
@@ -63,6 +112,8 @@ Solo quien puede editar ese avalúo (`AVALUO_EDITAR`), en avalúos de su organiz
 | `ANTHROPIC_API_KEY` | Clave de la API de Anthropic. **Opcional.** |
 | `AI_EXTRACTION_MODEL` | Modelo para leer anuncios. Vacío: `claude-haiku-4-5` |
 | `AI_DRAFTING_MODEL` | Modelo para redactar. Vacío: `claude-opus-5-5` |
+| `AI_COMPARABLE_SEARCH_ENABLED` | `true` enciende «Buscar con IA en la web». Vacío o cualquier otro valor: apagada |
+| `AI_SEARCH_MODEL` | Modelo de «Buscar con IA». Vacío: `claude-opus-5-5` |
 
 **Para deshabilitarla**, deja `ANTHROPIC_API_KEY` vacía y reinicia: los botones no aparecen, las rutas responden 503 "La asistencia con IA no está habilitada en esta instalación" y el resto de la app funciona igual. `pnpm env:check` no la exige.
 
