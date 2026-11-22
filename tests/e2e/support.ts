@@ -274,6 +274,17 @@ export const shortListingPayload = { text: "Terreno en venta", url: null };
 // Nothing captured: the server answers 422 before reaching the provider (one datum is enough to draft).
 export const thinDraftPayload = { field: "Descripción del terreno", facts: [{ label: "Topografía", value: " " }] };
 
+/** «Buscar con IA»: a request too short to be searched, refused (400) before anything is asked, whatever the server's key. */
+export const shortWebSearchPayload = { text: "terrenos" };
+/** A listing found on the web sent back to become a comparable (POST …/buscar-ia/fichas); invented, and it calls no AI. */
+export const webListingsPayload = {
+  candidates: [{
+    title: "Terreno E2E", propertyType: "terreno", landArea: 500, builtArea: null, price: 750000, currency: "MXN",
+    neighborhood: "Colonia Ejemplo", municipality: "Villa Ejemplo", state: "Jalisco", reference: null,
+    portal: "Portal Ejemplo", url: "https://portal.example/anuncio/e2e", listingDate: null, notes: null,
+  }],
+};
+
 export const firmPayload = { validityMonths: 6, folioPrefix: "E2E" };
 
 export const emailPayload = { to: ["cliente@example.test"], subject: "Dictamen", message: "Adjunto el dictamen." };

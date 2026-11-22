@@ -30,9 +30,11 @@ import {
   prisma,
   reopenPayload,
   shortListingPayload,
+  shortWebSearchPayload,
   thinDraftPayload,
   valuationCatalogIds,
   waitForServer,
+  webListingsPayload,
   addRentMarket,
   type Actor,
   type Role,
@@ -200,6 +202,14 @@ const calculationCases: Case[] = [
 const aiCases: Case[] = [
   { name: "read a pasted listing", method: "POST", path: (id) => `/api/avaluos/${id}/ia/anuncio`, body: () => shortListingPayload, expected: editors(422) },
   { name: "draft a descriptive text", method: "POST", path: (id) => `/api/avaluos/${id}/ia/redaccion`, body: () => thinDraftPayload, expected: editors(422) },
+  // «Buscar con IA»: whoever reads the valuation may search, as with the firm's base; a request too short is refused (400) after the permission check.
+  { name: "prepare an AI web search", method: "GET", path: (id) => `/api/avaluos/${id}/mercado/comparables/buscar-ia?tipo=TERRENO_VENTA`, expected: all(200) },
+  { name: "start an AI web search", method: "POST", path: (id) => `/api/avaluos/${id}/mercado/comparables/buscar-ia?tipo=TERRENO_VENTA`,
+    body: () => shortWebSearchPayload, expected: all(400) },
+  { name: "read an AI web search that is not theirs", method: "GET",
+    path: (id) => `/api/avaluos/${id}/mercado/comparables/buscar-ia/00000000-0000-4000-8000-000000000000`, expected: all(404) },
+  { name: "create comparables from an AI web search", method: "POST", path: (id) => `/api/avaluos/${id}/mercado/comparables/buscar-ia/fichas?tipo=TERRENO_VENTA`,
+    body: () => webListingsPayload, expected: editors(201) },
 ];
 
 const dictamenCases: Case[] = [

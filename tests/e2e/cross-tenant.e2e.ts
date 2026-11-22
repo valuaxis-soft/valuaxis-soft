@@ -27,6 +27,7 @@ import {
   thinDraftPayload,
   valuationCatalogIds,
   waitForServer,
+  webListingsPayload,
   type World,
 } from "./support";
 
@@ -87,6 +88,10 @@ const reads: Attempt[] = [
   // The AI assistance writes nothing, but it would send the valuation's data out.
   ["POST", (id) => `/api/avaluos/${id}/ia/anuncio`, { json: shortListingPayload }],
   ["POST", (id) => `/api/avaluos/${id}/ia/redaccion`, { json: thinDraftPayload }],
+  // «Buscar con IA»: a valid request; the valuation is not found before the search is turned on, counted or started.
+  ["GET", (id) => `/api/avaluos/${id}/mercado/comparables/buscar-ia?tipo=TERRENO_VENTA`],
+  ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/buscar-ia?tipo=TERRENO_VENTA`, { json: { text: "Terrenos en venta en Villa Ejemplo, Jalisco" } }],
+  ["GET", (id) => `/api/avaluos/${id}/mercado/comparables/buscar-ia/00000000-0000-4000-8000-000000000000`],
 ];
 
 const writes: Attempt[] = [
@@ -100,6 +105,7 @@ const writes: Attempt[] = [
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/importar?tipo=TERRENO_VENTA`, { form: comparablesCsv }],
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/importar?tipo=TERRENO_VENTA&confirmar=1`, { form: comparablesCsv }],
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/buscar?tipo=TERRENO_VENTA`, { json: foundComparablesPayload }],
+  ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/buscar-ia/fichas?tipo=TERRENO_VENTA`, { json: webListingsPayload }],
   ["POST", (id) => `/api/avaluos/${id}/mercado/comparables/reusar?tipo=TERRENO_VENTA`, { json: { comparableId: "00000000-0000-4000-8000-000000000000" } }],
   ["POST", (id) => `/api/avaluos/${id}/conclude`],
 ];
