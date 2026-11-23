@@ -16,7 +16,7 @@ const PROMPT = { system: "Reglas de la búsqueda.", user: "Terrenos en venta en 
 const LISTING = {
   title: "Terreno en Las Lomas", propertyType: "terreno", operation: "venta" as const, landArea: 6000, builtArea: null, price: 3_000_000,
   currency: "MXN" as const, neighborhood: "Las Lomas", municipality: "Villa Ejemplo", state: "Jalisco", addressOrReference: "",
-  portal: "Portal Ejemplo", url: "https://portal.example/anuncio/1", listingDate: "", notes: "",
+  portal: "Portal Ejemplo", url: "https://portal.example/anuncio/1", urlKind: "anuncio", listingDate: "", notes: "",
 };
 const REPORT = { candidates: [LISTING], marketNote: "" };
 
@@ -70,6 +70,8 @@ test("a search asks for the provider's web search with a cap, and answers throug
     assert.equal((tools[0].user_location as { country: string }).country, "MX");
     assert.equal(tools[1].name, "report_results");
     assert.equal(tools[1].strict, true);
+    // Without a number of pages to open, the provider only searches.
+    assert.equal(tools.length, 2);
     const schema = tools[1].input_schema as { type: string; additionalProperties: boolean; required: string[] };
     assert.equal(schema.type, "object");
     assert.equal(schema.additionalProperties, false);
@@ -109,6 +111,12 @@ test("a turn the provider paused is sent back as it came, and the searches left 
   ], async (gateway, server) => {
     await gateway.searchWeb(PROMPT, webListingSearchSchema, { maxSearches: 8, timeoutMs: 5_000 });
     assert.equal((server.requests[1].body.tools as Array<{ max_uses: number }>)[0].max_uses, 8);
+  });
+  // With pages to open, the provider's reader is offered after the report tool, with its own cap.
+  await withServer([{ report: REPORT, stopReason: "tool_use" }], async (gateway, server) => {
+    await gateway.searchWeb(PROMPT, webListingSearchSchema, { maxSearches: 8, maxFetches: 6, timeoutMs: 5_000 });
+    const tools = server.requests[0].body.tools as Array<Record<string, unknown>>;
+    assert.deepEqual([tools[2].type, tools[2].name, tools[2].max_uses], ["web_fetch_20260209", "web_fetch", 6]);
   });
 });
 

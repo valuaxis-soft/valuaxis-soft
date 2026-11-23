@@ -32,10 +32,13 @@ const SYSTEM = `Trabajas para un despacho de valuación inmobiliaria en México.
 
 Cómo buscar:
 - Usa la herramienta web_search con consultas en español que lleven el tipo de inmueble, la operación, el municipio y el estado. Varía las consultas: portales (Inmuebles24, Propiedades.com, Lamudi, Vivanuncios, Mercado Libre Inmuebles, EasyBroker) y sitios de inmobiliarias de la zona.
+- Trabaja en dos pasos. Primero localiza anuncios con búsquedas generales. Después, por cada anuncio que solo viste en una página de listado o que no muestra su precio, haz una búsqueda dirigida con el título del anuncio entre comillas y el nombre del portal, para dar con la página propia del anuncio y con su precio. Reparte tus búsquedas entre los dos pasos y no repitas una consulta.
+- Si tienes la herramienta web_fetch, úsala solo con direcciones que aparecieron en tus resultados, para leer la página de un anuncio y confirmar precio y superficie. Varios portales no dejan abrir sus páginas: si una dirección de un sitio falla, no insistas con ese sitio y sigue con lo que muestran los resultados.
 - Busca varios anuncios distintos dentro de lo que pide la solicitud. Si el mercado es reducido, reporta los que haya y dilo en marketNote; no rellenes con anuncios de otra ciudad ni de otro tipo de inmueble.
 
 Qué reportar:
-- Solo anuncios que aparecieron en los resultados de tus búsquedas, cada uno con la dirección web (url) exacta del resultado donde lo viste. Nunca escribas, completes ni corrijas una dirección web de memoria. Prefiere la página del anuncio; si el dato solo aparece en una página de listado, usa la dirección de esa página y dilo en notes.
+- Solo anuncios que aparecieron en los resultados de tus búsquedas, cada uno con la dirección web (url) exacta del resultado donde lo viste. Nunca escribas, completes ni corrijas una dirección web de memoria. Prefiere siempre la página propia del anuncio; si el dato solo aparece en una página de listado, usa la dirección de esa página.
+- urlKind es "anuncio" cuando la dirección es la página de ese anuncio en particular y "listado" cuando es una página con varios anuncios o de resultados del portal.
 - Un candidato por anuncio. No repitas un anuncio ni reportes los que la solicitud marca como ya encontrados.
 - price, landArea y builtArea son números copiados del anuncio, sin signos ni separadores. Si el anuncio no publica el precio o una superficie, ese campo va en null. No estimes, no promedies, no calcules precio por metro cuadrado y no conviertas monedas.
 - La única conversión permitida es de hectáreas a metros cuadrados (1 ha = 10,000 m²), y cuando la hagas escribe en notes la superficie como la publica el anuncio.
@@ -94,6 +97,7 @@ const modelCandidateSchema = z.object({
   addressOrReference: z.string(),
   portal: z.string(),
   url: z.string(),
+  urlKind: z.enum(["anuncio", "listado"]),
   listingDate: z.string(),
   notes: z.string(),
 });
@@ -127,6 +131,8 @@ export type WebListingCandidate = {
   url: string;
   listingDate: string | null;
   notes: string | null;
+  /** The address is a page of several listings, not this listing's own: the appraiser has to find it there. */
+  listingPage: boolean;
   /** The provider's search returned this very address; false when the model reported one the search did not list. */
   urlConfirmed: boolean;
 };
@@ -196,6 +202,7 @@ export function normalizeWebListings(
       url,
       listingDate: /^\d{4}-\d{2}-\d{2}$/.test(item.listingDate.trim()) ? item.listingDate.trim() : null,
       notes: text(item.notes, 500),
+      listingPage: item.urlKind === "listado",
       urlConfirmed: found.has(key),
     };
     candidate.unitValue = unitValueOf(type, candidate);

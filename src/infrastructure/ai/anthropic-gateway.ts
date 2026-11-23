@@ -30,6 +30,8 @@ const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 const SEARCH_MAX_TOKENS = 32_000;
 /** Times a search paused by the provider (`pause_turn`) or ended without its answer is sent back. */
 const SEARCH_MAX_CONTINUATIONS = 3;
+/** What is read of a page opened during a search: a listing's data is at its top. */
+const FETCH_MAX_CONTENT_TOKENS = 6_000;
 /** The client tool the model answers a web search with: its input is the answer, held to the schema. */
 const REPORT_TOOL = "report_results";
 
@@ -122,6 +124,10 @@ export function createAnthropicGateway(options: { apiKey: string; extractionMode
                 strict: true,
                 input_schema: zodOutputFormat(schema).schema as Anthropic.Beta.BetaTool.InputSchema,
               },
+              // Opening a page found: the large portals refuse the provider's reader, smaller sites answer.
+              ...(search.maxFetches
+                ? [{ type: "web_fetch_20260209" as const, name: "web_fetch" as const, max_uses: search.maxFetches, max_content_tokens: FETCH_MAX_CONTENT_TOKENS }]
+                : []),
             ],
             // Forced tool use is rejected by this model family: the instructions name the tool.
             tool_choice: { type: "auto" },
@@ -139,6 +145,8 @@ export function createAnthropicGateway(options: { apiKey: string; extractionMode
             if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
               for (const result of block.content) resultUrls.add(result.url);
             }
+            // A page the provider opened is as found as one its search listed.
+            if (block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result") resultUrls.add(block.content.url);
           });
           const message = await stream.finalMessage();
           usage = addUsage({ ...usage, model: message.model }, message.usage);

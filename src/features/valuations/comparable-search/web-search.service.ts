@@ -41,9 +41,11 @@ import {
 } from "./web-listings";
 
 /** Web searches the provider may run for one request of the appraiser. */
-export const WEB_SEARCH_MAX_SEARCHES = 8;
+export const WEB_SEARCH_MAX_SEARCHES = 14;
+/** Pages the provider may open for one request: the listing itself, where its site lets it be read. */
+export const WEB_SEARCH_MAX_FETCHES = 6;
 /** The whole search; past it the appraiser reads that it took too long. */
-export const WEB_SEARCH_TIMEOUT_MS = 150_000;
+export const WEB_SEARCH_TIMEOUT_MS = 240_000;
 /** A finished search can still be read this long. */
 const JOB_KEPT_MS = 15 * 60_000;
 const MAX_JOBS = 300;
@@ -185,6 +187,7 @@ async function runJob(job: Job, input: WebListingSearchInput, origin: RequestOri
       webListingSearchSchema,
       {
         maxSearches: WEB_SEARCH_MAX_SEARCHES,
+        maxFetches: WEB_SEARCH_MAX_FETCHES,
         timeoutMs: WEB_SEARCH_TIMEOUT_MS,
         onProgress: (progress) => {
           job.searches = progress.searches;

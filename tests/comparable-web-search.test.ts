@@ -24,7 +24,7 @@ type ModelCandidate = WebListingSearchAnswer["candidates"][number];
 const listing = (overrides: Partial<ModelCandidate> = {}): ModelCandidate => ({
   title: "Terreno en Las Lomas", propertyType: "terreno", operation: "venta", landArea: 7881, builtArea: null, price: 4_216_335,
   currency: "MXN", neighborhood: "Las Lomas", municipality: "Villa Ejemplo", state: "Jalisco", addressOrReference: "a 2 km del libramiento norte",
-  portal: "Portal Ejemplo", url: "https://www.portal.example/anuncio/1/", listingDate: "2026-11-02", notes: "Frente de 40 m.",
+  portal: "Portal Ejemplo", url: "https://www.portal.example/anuncio/1/", urlKind: "anuncio", listingDate: "2026-11-02", notes: "Frente de 40 m.",
   ...overrides,
 });
 const normalize = (candidates: ModelCandidate[], options: { resultUrls?: string[]; knownUrls?: string[] } = {}) =>
@@ -89,6 +89,14 @@ test("a repeat, a listing already on screen and one of the other operation are l
   assert.deepEqual(candidates.map((candidate) => candidate.key), ["portal.example/anuncio/1", "portal.example/sin-operacion"]);
   assert.equal(candidates[1].operation, null);
   assert.equal(discarded, 3);
+});
+
+test("a listing known only from a page of several listings says so: its link is not the listing's own", () => {
+  const { candidates } = normalize([
+    listing(),
+    listing({ url: "https://portal.example/terrenos/villa-ejemplo", urlKind: "listado" }),
+  ]);
+  assert.deepEqual(candidates.map((candidate) => candidate.listingPage), [false, true]);
 });
 
 test("an address the provider's search did not return is marked, not hidden", () => {
