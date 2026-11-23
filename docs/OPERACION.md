@@ -312,3 +312,24 @@ Si un correo no sale, el usuario ve el mismo mensaje de siempre y el log lo dice
 Para apagarla, quitar la variable o ponerla en `false` y recrear la app: la opción queda deshabilitada con su aviso y lo demás funciona igual. La búsqueda corre en segundo plano dentro del contenedor (la petición que la inicia responde de inmediato y el navegador consulta el estado), así que el límite de 60 s del proxy no la corta; un reinicio de la app sí termina las que estén en curso.
 
 El gasto por despacho sale de la auditoría (acción `AI_COMPARABLE_SEARCH`); la consulta está en [IA.md](IA.md).
+
+## 14. Operador de la plataforma (`OPERATOR_EMAILS`)
+
+El dueño de la plataforma necesita saber quién es cada persona registrada (si una autoridad pregunta quién hizo un avalúo), sin ver el contenido de sus avalúos. Para eso existe `/operador/usuarios`: nombre, correo, teléfono (tal como lo capturó, sin verificar), despachos y rol, acreditación, alta, último acceso y cuántos avalúos creó y concluyó. Nada más de sus avalúos. Ver [AUTHORIZATION.md](AUTHORIZATION.md#operador-de-la-plataforma).
+
+1. En `/root/valuos/deployment/production.env`, el correo (o los correos, separados por comas) de las cuentas del operador. Deben ser cuentas ya registradas y con el correo verificado:
+
+   ```
+   OPERATOR_EMAILS=correo-del-operador@ejemplo.com
+   ```
+
+2. `pnpm env:check` y recrear la app (paso 2). La persona ve «Usuarios de la plataforma» en el menú de su cuenta.
+3. Para quitar el acceso, borrar su correo de la variable y recrear la app. Sin la variable nadie es operador y la página responde «no encontrado».
+
+Cada consulta y cada exportación quedan en la auditoría (acciones `OPERATOR_USER_DIRECTORY_VIEW` y `OPERATOR_USER_DIRECTORY_EXPORT`, con quién, cuándo, IP y lo que buscó); los intentos de quien no es operador, como `OPERATOR_ACCESS_DENIED`:
+
+```sql
+select a."DFechaEvento", u."SCorreo", a."SAccion", a."JMetadatos"
+from devpware_auditorias a join devpware_usuarios u on u."IdUsuario" = a."IdUsuario"
+where a."SAccion" like 'OPERATOR_%' order by a."DFechaEvento" desc limit 50;
+```

@@ -77,6 +77,17 @@ const envObject = z.object({
    * Optional; without it the CURP is kept as a plain SHA-256, weaker. Never change it once set.
    */
   ACCREDITATION_HASH_SECRET: z.string().min(32).optional().or(z.literal("")),
+  /**
+   * Emails of the platform operators, comma-separated, case-insensitive: they open the registry of
+   * every user (/operador/usuarios). Without it nobody is an operator. Read on each request by
+   * src/features/operator/operator-access.ts; see docs/AUTHORIZATION.md.
+   */
+  OPERATOR_EMAILS: z
+    .string()
+    .optional()
+    .refine((value) => !value?.trim() || value.split(",").every((email) => !email.trim() || /^[^\s@,]+@[^\s@,]+$/.test(email.trim())), {
+      message: "OPERATOR_EMAILS debe ser una lista de correos separados por comas",
+    }),
 });
 
 const envSchema = envObject.superRefine((value, context) => {

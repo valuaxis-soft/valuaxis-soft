@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BadgeCheck, Bell, ChevronDown, Keyboard, LogOut, RotateCw, Timer } from "lucide-react";
+import { BadgeCheck, Bell, ChevronDown, Keyboard, LogOut, RotateCw, Timer, UsersRound } from "lucide-react";
 import { useRef } from "react";
 
 import {
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { logoutAction } from "@/features/auth/actions/logout.action";
 import { openCommandPalette } from "@/features/dashboard/components/command-palette";
+import { OPERATOR_USER_DIRECTORY_HREF } from "@/features/operator/operator-access";
 import { cn } from "@/lib/utils";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -38,19 +39,24 @@ export function Avatar({ initials, className }: { initials: string; className?: 
   );
 }
 
-/** The account menu: who is signed in, "Mi cuenta", the editor's autosave, the notifications to receive, the shortcuts, "Recargar página", the theme and "Cerrar sesión". */
+/**
+ * The account menu: who is signed in, "Mi cuenta", the editor's autosave, the notifications to receive, the shortcuts, "Recargar página", the theme and "Cerrar sesión".
+ * The platform operator (OPERATOR_EMAILS) also gets "Usuarios de la plataforma"; the page checks it again on the server.
+ */
 export function UserMenu({
   name,
   email,
   organizationName,
   role,
   initials,
+  operator = false,
 }: {
   name: string;
   email: string;
   organizationName: string;
   role: string;
   initials: string;
+  operator?: boolean;
 }) {
   const logoutForm = useRef<HTMLFormElement>(null);
 
@@ -89,6 +95,12 @@ export function UserMenu({
             <Bell />
             Qué notificaciones recibo
           </DropdownMenuItem>
+          {operator ? (
+            <DropdownMenuItem className="min-h-9 gap-2 px-2" render={<Link href={OPERATOR_USER_DIRECTORY_HREF} />}>
+              <UsersRound />
+              Usuarios de la plataforma
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem className="min-h-9 gap-2 px-2" onClick={() => openCommandPalette("shortcuts")}>
             <Keyboard />
             Atajos de teclado
