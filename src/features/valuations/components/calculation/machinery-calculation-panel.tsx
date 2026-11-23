@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { api, SessionExpiredError } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 import {
   EMPTY_MACHINERY_ITEM,
   MACHINERY_CHARACTERISTICS_MAX,
@@ -41,6 +41,7 @@ import { CALC_SECTION_HEADING } from "./calculation-table-style";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
 import { FormulaInput } from "./formula-input";
 import { useSerializedSave } from "./use-serialized-save";
+import { SaveRefusedNotice, saveRefusedMessage } from "./save-refused";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 const factor = (value: number | undefined) => (value === undefined ? "—" : value.toFixed(4));
@@ -93,10 +94,7 @@ function useMachinerySave<K extends "cost" | "market">(
       // The draft stays as typed; only the saved state moves.
       onSaved(next);
     } catch (error) {
-      const message = error instanceof SessionExpiredError
-        ? "Tu sesión expiró. Vuelve a iniciar sesión."
-        // The field's path in the payload («cost.item.freight») says nothing to the appraiser: the reason alone does.
-        : error instanceof Error ? error.message.replace(/\((?:cost|market)\.[\w.]+: /, "(") : "No se pudo guardar el cálculo de maquinaria y equipo.";
+      const message = saveRefusedMessage(error, "No se pudo guardar el cálculo de maquinaria y equipo.");
       setSaveError(message);
       toast.error(message);
     } finally {
@@ -116,12 +114,7 @@ function PanelFrame(props: { titleId: string; title: string; saving: boolean; sa
         {props.saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
       </header>
       {props.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
-      {/* The toast goes away; this stays until a save goes through, so nobody keeps typing into a capture that is not being saved. */}
-      {props.saveError ? (
-        <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" role="alert" data-machinery-save-error="">
-          <strong>Este cálculo no se está guardando.</strong> {props.saveError} Corrige el dato: mientras tanto, lo que escribas aquí no se guarda.
-        </p>
-      ) : null}
+      <SaveRefusedNotice message={props.saveError ?? null} />
       {props.children}
     </section>
   );

@@ -10,7 +10,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { api, SessionExpiredError } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 import {
   SUMMARY_SOURCES,
   SUMMARY_SOURCE_LABELS,
@@ -33,6 +33,7 @@ import { CALC_SECTION_HEADING } from "./calculation-table-style";
 import { useSerializedSave } from "./use-serialized-save";
 import { marketLeftOut } from "@/features/valuations/services/report-approaches";
 import { formatMoneyForDocument } from "@/features/valuations/services/concept-value-format";
+import { SaveRefusedNotice, saveRefusedMessage } from "./save-refused";
 
 const APPROACHES: Approach[] = ["costos", "mercado", "ingresos"];
 const weightPath = (approach: Approach) => `method.weights.${approach}`;
@@ -174,6 +175,7 @@ export function ConclusionPanel(props: {
   const [weights, setWeights] = useState<Record<Approach, string>>({ costos: "", mercado: "", ingresos: "" });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const readOnly = props.readOnly || Boolean(calculation?.locked);
 
   const applyServerState = (next: ConclusionCalculationDto) => {
@@ -198,10 +200,11 @@ export function ConclusionPanel(props: {
     setSaving(true);
     try {
       applyServerState(await api.conclusion.save(valuationId, settings));
+      setSaveError(null);
     } catch (error) {
-      toast.error(error instanceof SessionExpiredError
-        ? "Tu sesión expiró. Vuelve a iniciar sesión."
-        : error instanceof Error ? error.message : "No se pudo guardar la conclusión.");
+      const message = saveRefusedMessage(error, "No se pudo guardar la conclusión.");
+      setSaveError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -265,6 +268,7 @@ export function ConclusionPanel(props: {
 
   return (
     <section className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby="conclusion-title">
+      <SaveRefusedNotice message={saveError} />
       <header className="flex items-center justify-between gap-2">
         <h3 id="conclusion-title" className="flex items-center gap-2 text-sm font-semibold">
           <Calculator className="size-4" /> Conclusión de valor

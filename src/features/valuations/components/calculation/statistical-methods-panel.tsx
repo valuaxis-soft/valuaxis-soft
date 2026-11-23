@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { api, SessionExpiredError } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { LiveFormulaOwnerProvider } from "./formula-input";
 import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
@@ -55,6 +55,7 @@ import { StatisticalDataTable, type SubjectSource } from "./statistical-data-tab
 import { StatisticalVariables } from "./statistical-variables";
 import { useSerializedSave } from "./use-serialized-save";
 import { useConfirmDelete } from "@/features/valuations/components/editor/delete-confirm";
+import { SaveRefusedNotice, saveRefusedMessage } from "./save-refused";
 
 type Draft = Pick<StatisticalCalculationDto, "settings" | "comparables">;
 
@@ -258,6 +259,7 @@ function StatisticalTypePanel(props: {
   const [market, setMarket] = useState<MarketCalculationDto | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   // The last draft sent: a server answer to an older one does not replace what was typed after it.
   const latestDraft = useRef<Draft | null>(null);
   // Set once the save is defined; a reader never restores (the save checks it too).
@@ -300,8 +302,11 @@ function StatisticalTypePanel(props: {
       setCalculation(next);
       // Only the answer to the last draft replaces it: a change typed meanwhile stays.
       if (latestDraft.current === sent) setDraft(draftOf(next));
+      setSaveError(null);
     } catch (error) {
-      toast.error(error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudo guardar.");
+      const message = saveRefusedMessage(error, "No se pudo guardar.");
+      setSaveError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -458,6 +463,7 @@ function StatisticalTypePanel(props: {
         </p>
       ) : null}
 
+      <SaveRefusedNotice message={saveError} />
       <Part
         number={1}
         title="Comparables y características"

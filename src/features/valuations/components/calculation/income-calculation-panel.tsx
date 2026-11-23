@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { api, SessionExpiredError } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 import {
   DEDUCTIONS_BY_METHOD,
   DEFAULT_DEDUCTIONS,
@@ -36,6 +36,7 @@ import { rowActionsOf } from "./calc-table-rows";
 import { CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { useSerializedSave } from "./use-serialized-save";
 import { cn } from "@/lib/utils";
+import { SaveRefusedNotice, saveRefusedMessage } from "./save-refused";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 const percent = (value: number, digits = 2) => `${(value * 100).toFixed(digits)} %`;
@@ -163,6 +164,7 @@ export function IncomeCalculationPanel(props: {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const readOnly = props.readOnly || Boolean(calculation?.locked);
   // The headers of each capture table as the appraiser named and grouped them; the data and the calculation do not change.
   const headOf = (table: string) => ({
@@ -178,16 +180,21 @@ export function IncomeCalculationPanel(props: {
     setDraft(draftOf(next));
   };
   const enqueueSave = useSerializedSave(async (payload: IncomeInputDto) => {
-    if (JSON.stringify(payload) === lastSaved.current) return;
+    if (JSON.stringify(payload) === lastSaved.current) {
+      // Back to what the server holds: nothing is left unsaved.
+      setSaveError(null);
+      return;
+    }
     setSaving(true);
     try {
       const next = await api.income.save(valuationId, payload);
       lastSaved.current = JSON.stringify(savedInputOf(next));
+      setSaveError(null);
       setCalculation(next);
     } catch (error) {
-      toast.error(error instanceof SessionExpiredError
-        ? "Tu sesión expiró. Vuelve a iniciar sesión."
-        : error instanceof Error ? error.message : "No se pudo guardar el enfoque de ingresos.");
+      const message = saveRefusedMessage(error, "No se pudo guardar el enfoque de ingresos.");
+      setSaveError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -268,6 +275,7 @@ export function IncomeCalculationPanel(props: {
 
   return (
     <section className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby="income-calculation-title" onBlur={save}>
+      <SaveRefusedNotice message={saveError} />
       <header className="flex items-center justify-between gap-2">
         <h3 id="income-calculation-title" className="flex items-center gap-2 text-sm font-semibold">
           <Calculator className="size-4" /> Cálculo del enfoque de ingresos
