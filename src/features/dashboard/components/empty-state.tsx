@@ -11,17 +11,17 @@ function Drawing({ kind }: { kind: Illustration }) {
   const common = { viewBox: "0 0 160 120", "aria-hidden": true, focusable: false, className: "h-28 w-auto" } as const;
   switch (kind) {
     case "valuations":
-      // A house over a document with a check: the first valuation.
+      // An empty sheet (dashed) with its house still in outline, and a plus: nothing here yet, start one. No check: a check reads as "done".
       return (
         <svg {...common}>
           <ellipse cx="80" cy="108" rx="54" ry="6" className="fill-muted" />
-          <rect x="44" y="26" width="64" height="78" rx="8" className="fill-card stroke-border" strokeWidth="2" />
-          <rect x="54" y="72" width="34" height="5" rx="2.5" className="fill-muted" />
-          <rect x="54" y="83" width="44" height="5" rx="2.5" className="fill-muted" />
-          <path d="M58 58V45l18-14 18 14v13z" className="fill-primary/10 stroke-primary" strokeWidth="2.5" strokeLinejoin="round" />
-          <rect x="70" y="48" width="12" height="10" rx="1.5" className="fill-primary/25" />
-          <circle cx="110" cy="34" r="14" className="fill-success/20 stroke-success" strokeWidth="2.5" />
-          <path d="m104 34 4.5 4.5L117 30" fill="none" className="stroke-success" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="44" y="26" width="64" height="78" rx="8" className="fill-card stroke-muted-foreground/45" strokeWidth="2" strokeDasharray="6 5" />
+          <path d="M58 62V49l18-14 18 14v13z" className="fill-primary/5 stroke-primary/70" strokeWidth="2.5" strokeLinejoin="round" />
+          <rect x="54" y="76" width="34" height="5" rx="2.5" className="fill-muted" />
+          <rect x="54" y="87" width="44" height="5" rx="2.5" className="fill-muted" />
+          <circle cx="110" cy="34" r="14" className="fill-primary stroke-card" strokeWidth="3" />
+          <rect x="102.5" y="32.5" width="15" height="3" rx="1.5" className="fill-primary-foreground" />
+          <rect x="108.5" y="26.5" width="3" height="15" rx="1.5" className="fill-primary-foreground" />
         </svg>
       );
     case "search":
