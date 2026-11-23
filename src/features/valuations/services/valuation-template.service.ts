@@ -11,6 +11,7 @@
  */
 import { Prisma } from "@prisma/client";
 import type { AuthUser } from "@/features/auth/model";
+import { getFirmDocumentPalette, withFirmDocumentPalette } from "@/features/firm/document-palette.service";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { initialSectionsFor } from "@/features/valuations/components/workspace/model/initial-hydration";
 import { getValuationByPublicId, newValuationSections } from "@/features/valuations/repositories/valuation.repository";
@@ -325,9 +326,13 @@ export async function createBlankValuationTemplate(input: {
 }): Promise<ValuationTemplateSummary> {
   if (await templateNamed(input.user.organizationId, input.name)) throw nameTaken();
   const target = await appliesTo(prisma, input.appraisalTypeId, input.propertyTypeId);
-  const sections = blankTemplateSections(
-    initialSectionsFor({ sections: newValuationSections(target.propertyTypeKey?.toLowerCase()) }),
-    initiallyHiddenSections(target.propertyTypeKey ?? ""),
+  const firm = await getFirmDocumentPalette(input.user.organizationId);
+  const sections = withFirmDocumentPalette(
+    blankTemplateSections(
+      initialSectionsFor({ sections: newValuationSections(target.propertyTypeKey?.toLowerCase()) }),
+      initiallyHiddenSections(target.propertyTypeKey ?? ""),
+    ),
+    firm.customized ? firm.palette : null,
   );
   const content: DocumentTemplateContent = {
     ...editedTemplate(sections),

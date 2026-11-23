@@ -7,6 +7,7 @@ import {
   type ValuationSignature,
 } from "@/features/valuations/services/valuation-signatures";
 import { comparableReviewChecklistSchema } from "@/features/valuations/calculation/comparable-review-checklist";
+import { documentPaletteSchema } from "@/features/valuations/services/document-palette";
 import { normalizeFolioPrefix } from "./firm-rules";
 
 const COMPARABLE_MONTHS_ERROR = "La vigencia de los comparables va de 1 a 12 meses.";
@@ -47,3 +48,6 @@ export const comparableReviewSettingsSchema = z.object({
 });
 
 export type ComparableReviewSettingsInput = z.infer<typeof comparableReviewSettingsSchema>;
+
+/** Despacho → Colores del dictamen: the firm's palette, or null to go back to the document's own blue. */
+export const firmDocumentPaletteSchema = z.object({ palette: documentPaletteSchema.nullable() });

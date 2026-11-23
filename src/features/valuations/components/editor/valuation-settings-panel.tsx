@@ -6,6 +6,7 @@ import { api } from "@/lib/api-client";
 import type { AppSection } from "@/features/valuations/model";
 import type { CalculationPrecision } from "@/features/valuations/calculation/calculation-precision";
 import { CalculationPrecisionControl } from "../calculation/calculation-precision-control";
+import { DocumentPaletteControl } from "./document-palette-control";
 import { EditorConfigPanel } from "./editor-config-panel";
 import { DocumentNumberFormatControl } from "./number-format-control";
 import { DocumentPageFormatControl } from "./page-format-control";
@@ -13,7 +14,7 @@ import { DocumentPageFormatControl } from "./page-format-control";
 /**
  * "Configuración del avalúo", at the top of the carátula: the choices that
  * shape the whole document (thousands separator, binding margin, title bars
- * and band) and the precision of the calculation, set apart from the
+ * and band, colours) and the precision of the calculation, set apart from the
  * carátula's content, which prints.
  */
 export function ValuationSettingsPanel({
@@ -34,6 +35,7 @@ export function ValuationSettingsPanel({
     >
       <DocumentNumberFormatControl section={section} readOnly={readOnly} onUpdateSection={onUpdateSection} />
       <DocumentPageFormatControl section={section} readOnly={readOnly} onUpdateSection={onUpdateSection} />
+      <DocumentPaletteControl section={section} readOnly={readOnly} onUpdateSection={onUpdateSection} />
       {valuationId ? <PrecisionAccess valuationId={valuationId} readOnly={readOnly} /> : null}
     </EditorConfigPanel>
   );

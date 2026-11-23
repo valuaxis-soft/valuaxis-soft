@@ -11,6 +11,7 @@ import {
 } from "@/features/valuations/services/valuation-workflow.service";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
+import { applyFirmDocumentPalette } from "@/features/firm/document-palette.service";
 import { getValuationDefaults } from "@/features/firm/firm.service";
 import { reserveNextValuationFolio } from "@/features/valuations/services/valuation-folio.service";
 import {
@@ -256,6 +257,8 @@ export async function saveValuation(input: SaveValuationInput) {
       if (templateSections) {
         await writeVersionSections(tx, versionId, templateDocumentPayload(templateSections, generalCaratulaDefaults));
       }
+      // The firm's colours, unless the template brought its own.
+      await applyFirmDocumentPalette(tx, versionId, user.organizationId);
       await saveCaratula({
         versionId,
         tx,
