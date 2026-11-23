@@ -52,6 +52,8 @@ export type AiWebSearchProgress = { searches: number; query: string | null };
 export type AiWebSearchOptions = {
   /** Searches the provider may run for this call. */
   maxSearches: number;
+  /** Pages the provider may open for this call; without it, it only searches. */
+  maxFetches?: number;
   /** The whole call, searches included. */
   timeoutMs: number;
   onProgress?: (progress: AiWebSearchProgress) => void;

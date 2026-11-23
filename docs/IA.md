@@ -76,8 +76,9 @@ Desde el 22 de noviembre de 2026, a petición del valuador («en ChatGPT le desc
 Una búsqueda tarda de decenas de segundos a un par de minutos, más que los 60 s que espera el proxy. Por eso `POST …/buscar-ia` responde de inmediato (202) con un id y la búsqueda sigue en el servidor; el navegador pregunta `GET …/buscar-ia/[jobId]` cada 2.5 s. Las búsquedas en curso viven en la memoria del proceso (un solo contenedor, igual que los límites de intentos): un reinicio las termina y el valuador vuelve a buscar. Los resultados se leen hasta 15 minutos después y solo por quien la inició. Se puede cerrar la ventana: la búsqueda sigue y los resultados se conservan mientras no se recargue la página.
 
 - Modelo: `claude-opus-5-5` (`DEFAULT_LISTING_SEARCH_MODEL`, aparte de `DEFAULT_EXTRACTION_MODEL`), esfuerzo `medium`, con `fallbacks: "default"`.
-- Herramienta: `web_search_20260209` (búsqueda web del proveedor con filtrado dinámico), hasta **8 búsquedas** por solicitud (`max_uses`), ubicación aproximada México.
-- Tiempo máximo: **150 s** por solicitud; pasado ese tiempo el valuador lee «tardó demasiado».
+- Herramientas: `web_search_20260209` (búsqueda web del proveedor con filtrado dinámico), hasta **14 búsquedas** por solicitud (`max_uses`), ubicación aproximada México; y `web_fetch_20260209`, hasta **6 páginas** por solicitud, para leer la página de un anuncio que salió en los resultados. Las búsquedas van en dos pasos: primero generales, luego dirigidas con el título de cada anuncio para dar con su página propia y su precio.
+- **Límite conocido (medido el 23 nov 2026):** Mercado Libre, Inmuebles24, Lamudi y Century 21 no dejan que el lector del proveedor abra sus páginas (`url_not_allowed`, `url_not_accessible`), así que la mayoría de los anuncios se conocen solo por lo que muestra el resultado de la búsqueda y su liga es la de una página de listado del portal. Cada candidato dice si su liga es la del anuncio (`urlKind: "anuncio"`) o la de un listado (`"listado"`, en pantalla «Abrir listado»). El índice de búsqueda puede traer anuncios ya dados de baja: por eso todo entra «Sin revisar».
+- Tiempo máximo: **240 s** por solicitud; pasado ese tiempo el valuador lee «tardó demasiado».
 - Límites propios, aparte de las otras ayudas: **6 búsquedas por usuario cada 10 minutos y 60 por organización al día**; una búsqueda a la vez por persona.
 - Permisos: buscar pide lo mismo que la búsqueda en la base (`AVALUO_VER`); crear fichas pide `AVALUO_EDITAR` y un avalúo no concluido.
 
@@ -99,7 +100,7 @@ WHERE a."SAccion" = 'AI_COMPARABLE_SEARCH' AND a."DFechaEvento" >= date_trunc('m
 GROUP BY 1 ORDER BY 2 DESC;
 ```
 
-El proveedor cobra **USD 10 por cada 1,000 búsquedas web** más los tokens (Opus 5.5: USD 4 por millón de entrada, USD 20 de salida); los resultados de búsqueda cuentan como tokens de entrada. **Estimación, sin medir todavía con llamadas reales** (la llave local no era válida el 22 nov 2026): con 8 búsquedas web (USD 0.08), entre 20,000 y 60,000 tokens de entrada y entre 3,000 y 6,000 de salida, una búsqueda costaría entre **USD 0.20 y 0.45** (de 4 a 9 pesos). Hay que medirlo en producción con la consulta de arriba y corregir esta cifra.
+El proveedor cobra **USD 10 por cada 1,000 búsquedas web** más los tokens (Opus 5.5: USD 4 por millón de entrada, USD 20 de salida); los resultados de búsqueda cuentan como tokens de entrada. **Medido el 23 nov 2026 con llamadas reales** (terrenos de 3,000 a 10,000 m² en Arandas y casas en Tepatitlán): 14 búsquedas web (USD 0.14), unos 335,000 tokens leídos de caché, entre 43,000 y 58,000 escritos a caché y entre 7,500 y 9,500 de salida: alrededor de **USD 0.60 por búsqueda** (unos 11 pesos), en 80 a 115 s. Resultados de esas corridas: de 4 a 10 anuncios, entre la mitad y casi todos con precio, y de 1 a 2 con liga al anuncio individual; el número cambia de una corrida a otra. De tres ligas abiertas a mano, una coincidió exacta, una era un anuncio ya terminado y otra un listado donde el anuncio ya no aparecía.
 
 ## Quién puede usarla
 

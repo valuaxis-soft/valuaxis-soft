@@ -307,7 +307,7 @@ Si un correo no sale, el usuario ve el mismo mensaje de siempre y el log lo dice
 
 2. En la consola de Anthropic (Settings → Capabilities) la búsqueda web debe estar permitida para la organización de esa llave. Viene permitida salvo que un administrador la haya deshabilitado.
 3. Recrear la app (paso 2) y, en un avalúo de prueba con un terreno, abrir «Buscar comparables» → «Buscar con IA en la web» → «Buscar». Debe mostrar el avance y, en uno o dos minutos, la tabla de anuncios. Abrir al menos tres ligas y comparar precio y superficie con el anuncio.
-4. Si falla: `docker logs valuos-app 2>&1 | grep -E "\[AI\]"`. `COMPARABLE_SEARCH failed: configuration` es llave inválida (401) o búsqueda web deshabilitada en la consola (la línea `web search rejected by the provider` trae el motivo); `timeout` es que pasó de 150 s; `no_credit`, que la cuenta no tiene saldo.
+4. Si falla: `docker logs valuos-app 2>&1 | grep -E "\[AI\]"`. `COMPARABLE_SEARCH failed: configuration` es llave inválida (401) o búsqueda web deshabilitada en la consola (la línea `web search rejected by the provider` trae el motivo); `timeout` es que pasó de 240 s; `no_credit`, que la cuenta no tiene saldo.
 
 Para apagarla, quitar la variable o ponerla en `false` y recrear la app: la opción queda deshabilitada con su aviso y lo demás funciona igual. La búsqueda corre en segundo plano dentro del contenedor (la petición que la inicia responde de inmediato y el navegador consulta el estado), así que el límite de 60 s del proxy no la corta; un reinicio de la app sí termina las que estén en curso.
 

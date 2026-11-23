@@ -325,7 +325,7 @@ export function AiComparableSearchPanel({
             <Progress value={Math.min(100, (running.searches / setup.maxSearches) * 100)} aria-label="Avance de la búsqueda" />
             <p className="text-xs text-muted-foreground">
               {running.query ? <>Última consulta: «{running.query}». </> : null}
-              Suele tardar de 30 segundos a 2 minutos. Puedes cerrar esta ventana: la búsqueda sigue.
+              Suele tardar de 1 a 4 minutos. Puedes cerrar esta ventana: la búsqueda sigue.
             </p>
           </div>
         ) : null}
@@ -439,10 +439,14 @@ export function AiComparableSearchPanel({
                             href={candidate.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            aria-label={`Abrir el anuncio «${candidate.title}» en otra pestaña`}
+                            aria-label={candidate.listingPage
+                              ? `Abrir en otra pestaña el listado del portal donde está «${candidate.title}»`
+                              : `Abrir el anuncio «${candidate.title}» en otra pestaña`}
+                            data-listing-page={candidate.listingPage ? "" : undefined}
                           >
-                            <ExternalLink className="size-3.5" /> Abrir anuncio
+                            <ExternalLink className="size-3.5" /> {candidate.listingPage ? "Abrir listado" : "Abrir anuncio"}
                           </a>
+                          {candidate.listingPage ? <span className="block text-muted-foreground">Liga al listado del portal: busca ahí el anuncio.</span> : null}
                         </td>
                       </tr>
                     );

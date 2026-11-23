@@ -101,7 +101,7 @@ const site = `https://portal-${randomUUID().slice(0, 8)}.example`;
 const listing = (path: string, overrides: Record<string, unknown> = {}) => ({
   title: `Terreno ${path}`, propertyType: "terreno", operation: "venta", landArea: 6000, builtArea: null, price: 3_000_000, currency: "MXN",
   neighborhood: "Las Lomas", municipality: "Villa Ejemplo", state: "Jalisco", addressOrReference: "", portal: "Portal Ejemplo",
-  url: `${site}/anuncio/${path}`, listingDate: "", notes: "",
+  url: `${site}/anuncio/${path}`, urlKind: "anuncio", listingDate: "", notes: "",
   ...overrides,
 });
 const ANSWER = {
