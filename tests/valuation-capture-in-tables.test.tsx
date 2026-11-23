@@ -12,7 +12,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { captureColumnPlace, captureDisplayBlocks } from "../src/features/valuations/calculation/capture-display";
+import { captureColumnPlace, captureDisplayBlocks, templateStripSpaceSection } from "../src/features/valuations/calculation/capture-display";
 import { COST_TEMPLATE_BLOCK_IDS, costCaptureColumns, costDocumentBlocks, costIndirectOrder } from "../src/features/valuations/calculation/cost-document";
 import { DEFAULT_LAND, costColumnsOf, emptyInstallation, toCostEngineInput, type CostCalculationDto } from "../src/features/valuations/calculation/cost-types";
 import { editGeneratedTable, layoutOf, sourceOf } from "../src/features/valuations/calculation/generated-table-layout";
@@ -331,4 +331,14 @@ test("costos: the reference of an installation typed in its cell is one truth wi
   const merged = ensureTableV2(mergeCapture(table, serverItems("installations", after), synced, after));
   const refs = merged.rows.map((row) => { const cell = row.cells[merged.columns[0].id]; return cell?.kind === "value" ? cell.value : ""; });
   assert.deepEqual(refs, ["IE-7", "IE-2"], "its own references are not renumbered: only the one typed changes");
+});
+
+test("the room of the template strip stays when the first result takes the strip away", () => {
+  // While the template's blocks show, their section is remembered.
+  assert.equal(templateStripSpaceSection(null, "costos", true), "costos");
+  // The first result removes the strip: its room stays, so the table being typed in does not move.
+  assert.equal(templateStripSpaceSection("costos", "costos", false), "costos");
+  // Another section, or one that never showed the strip, keeps no gap.
+  assert.equal(templateStripSpaceSection("costos", "mercado", false), null);
+  assert.equal(templateStripSpaceSection(null, "costos", false), null);
 });
