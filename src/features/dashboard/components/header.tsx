@@ -14,6 +14,7 @@ import { NAV_ICONS } from "@/features/dashboard/components/nav-icons";
 import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { OrganizationScopeSelector } from "@/features/dashboard/components/organization-scope-selector";
 import { UserMenu } from "@/features/dashboard/components/user-menu";
+import { isPlatformOperator } from "@/features/operator/operator-access";
 import { MAIN_CONTENT_ID, buildNavigation, initialsOf, type NavKey } from "@/features/dashboard/navigation";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +36,7 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
   const initials = initialsOf(user.name);
   const organizationActive = navigation.organization.some((item) => item.key === active);
   const OrganizationIcon = NAV_ICONS.despacho;
+  const operator = isPlatformOperator(user.email);
 
   return (
     <>
@@ -46,7 +48,7 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
       </a>
       <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-xl supports-backdrop-filter:bg-background/70">
         <div className="mx-auto flex h-16 max-w-[1760px] items-center gap-1 px-2 sm:px-4 lg:gap-2 lg:px-6">
-          <MobileNav navigation={navigation} active={active} name={user.name} email={user.email} role={user.role} initials={initials} />
+          <MobileNav navigation={navigation} active={active} name={user.name} email={user.email} role={user.role} initials={initials} operator={operator} />
           <Link
             href="/dashboard"
             aria-label="Valuaxis Soft, ir al inicio"
@@ -100,7 +102,7 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
             <CommandPaletteTrigger className="w-11 justify-center px-0 xl:w-64 xl:justify-start xl:px-3" />
             <OrganizationScopeSelector key={user.organizationName} activeOrganizationName={user.organizationName} />
             <NotificationBell />
-            <UserMenu name={user.name} email={user.email} organizationName={user.organizationName} role={user.role} initials={initials} />
+            <UserMenu name={user.name} email={user.email} organizationName={user.organizationName} role={user.role} initials={initials} operator={operator} />
           </div>
         </div>
         <CommandPalette navigation={navigation} />

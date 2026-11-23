@@ -67,6 +67,21 @@ Una organización es `PERSONAL` (la que recibe cada usuario al registrarse, como
 | `GET` y `POST /api/organizacion/invitaciones` | Sesión; solo invitaciones al correo del usuario |
 | `GET /api/notificaciones`, `POST /api/notificaciones/leidas`, `GET` y `PATCH /api/cuenta/preferencias` | Sesión; solo las notificaciones y preferencias de la propia persona, en el despacho abierto o personales |
 
+## Operador de la plataforma
+
+El operador es quien opera la instalación (el dueño del servicio), no un rol de un despacho. No existe en la base: sale de la variable `OPERATOR_EMAILS` (correos separados por comas, sin distinguir mayúsculas). Sin ella nadie es operador. El operador sigue siendo un usuario normal de sus propios despachos, con su rol en cada uno; ser operador **solo** abre las páginas y rutas de `/operador/**`, nunca los avalúos de otros. Código: `src/features/operator/` y `src/security/guards/operator-guard.ts`.
+
+Por indicación del abogado del cliente, el operador puede saber **quién** es cada persona (si una autoridad pregunta quién hizo un avalúo), pero **no** tiene acceso a sus avalúos ni a su contenido. Por eso el registro solo lee de los avalúos dos conteos (creados y concluidos); ni títulos, ni clientes, ni folios, ni enlaces.
+
+- **Cómo se verifica:** en el servidor, en cada petición: sesión válida, correo verificado y correo en `OPERATOR_EMAILS`. La interfaz solo decide si muestra «Usuarios de la plataforma» en el menú de la cuenta.
+- **Quien no es operador recibe 404**, no 403, para no revelar que la página existe; su intento queda en la auditoría (`ACCESO_DENEGADO`, acción `OPERATOR_ACCESS_DENIED`).
+- **Auditoría:** cada vista y cada exportación se registran con quién, cuándo, IP, navegador y lo que se buscó (`EXPORTACION`, acciones `OPERATOR_USER_DIRECTORY_VIEW` y `OPERATOR_USER_DIRECTORY_EXPORT`). La consulta está en [OPERACION.md](OPERACION.md) §14.
+- **Límite:** 5 exportaciones por operador por minuto.
+
+| Ruta | Permiso |
+|---|---|
+| `/operador/usuarios`, `GET /api/operador/usuarios/exportar` | Operador (`OPERATOR_EMAILS`); cualquier otra persona, 404 |
+
 ## Pendiente
 
 - **Mandar a la papelera** exige `AVALUO_EDITAR`, igual que antes; solo eliminar definitivamente tiene permiso propio (`AVALUO_ELIMINAR_DEFINITIVO`). Si el despacho quiere restringir también la papelera, se usa ese mismo permiso con otra migración.
