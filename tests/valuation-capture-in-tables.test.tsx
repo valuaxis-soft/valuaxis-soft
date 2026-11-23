@@ -20,6 +20,10 @@ import { INCOME_CAPTURE, incomeCaptureBlocks, incomeDocumentBlocks } from "../sr
 import { DEFAULT_INCOME, toIncomeEngineInput, type IncomeCalculationDto } from "../src/features/valuations/calculation/income-types";
 import { marketCaptureColumns, marketDocumentBlocks } from "../src/features/valuations/calculation/market-document";
 import { defaultMarketSettings, marketEngineConfig, toMarketEngineInput, type ComparableDto, type MarketCalculationDto } from "../src/features/valuations/calculation/market-types";
+import { installationRefProblem } from "../src/features/valuations/components/calculation/cost-calculation-panel";
+import { mergeCapture, syncedFromTable, serverItems, findCaptureTable, withConstructionTables } from "../src/features/valuations/calculation/construction-capture";
+import { construccionSection } from "../src/features/valuations/sections/construccion";
+import type { AppSection } from "../src/features/valuations/model";
 import { CaptureStore, CaptureStoreProvider, captureSlotKey } from "../src/features/valuations/components/editor/capture-host";
 import { GeneratedTableEditor } from "../src/features/valuations/components/editor/generated-table-editor";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
@@ -306,4 +310,25 @@ test("a cell the calculation captures is one field: the table leaves its place t
   assert.match(withCapture, /data-capture-slot\]_input\]:bg-background/);
   const plainTable = renderToStaticMarkup(createElement(CaptureStoreProvider, { value: new CaptureStore() }, createElement(GeneratedTableEditor, { table, readOnly: false, onUpdate: () => {} })));
   assert.doesNotMatch(plainTable, /var\(--doc-pastel/, "a table that is not the capture keeps the editor's own header");
+});
+
+test("costos: the reference of an installation typed in its cell is one truth with its table of INF. CONSTRUCCIONES, and is never repeated", () => {
+  // A reference another installation has is refused with its reason; its own, or a new one, is not.
+  assert.match(installationRefProblem(["IE-1", "IE-2"], 0, " ie-2 ") ?? "", /Ya hay una instalación con la referencia «ie-2»/);
+  assert.equal(installationRefProblem(["IE-1", "IE-2"], 0, "IE-7"), null);
+  assert.equal(installationRefProblem(["IE-1", "IE-2"], 0, "IE-1"), null);
+
+  // Linked: the table of the construction section holds IE-1 as saved; the cost approach saves it as IE-7 and the row takes it.
+  const before = costs({ installations: [
+    { ...emptyInstallation(0), ref: "IE-1", description: "Cisterna", unit: "pza", quantity: 1, age: 12, usefulLife: 40, conservation: 0.9, unitReplacementCost: 38_000 },
+    { ...emptyInstallation(1), ref: "IE-2", description: "Barda", unit: "m", quantity: 40, age: 12, usefulLife: 50, conservation: 0.9, unitReplacementCost: 1_900 },
+  ] });
+  const section = withConstructionTables(JSON.parse(JSON.stringify(construccionSection)) as AppSection, before, { types: null, installations: null });
+  const table = findCaptureTable(section, "installations");
+  assert.ok(table);
+  const synced = syncedFromTable(table, serverItems("installations", before));
+  const after = costs({ installations: before.installations.map((row) => (row.ref === "IE-1" ? { ...row, ref: "IE-7" } : row)) });
+  const merged = ensureTableV2(mergeCapture(table, serverItems("installations", after), synced, after));
+  const refs = merged.rows.map((row) => { const cell = row.cells[merged.columns[0].id]; return cell?.kind === "value" ? cell.value : ""; });
+  assert.deepEqual(refs, ["IE-7", "IE-2"], "its own references are not renumbered: only the one typed changes");
 });

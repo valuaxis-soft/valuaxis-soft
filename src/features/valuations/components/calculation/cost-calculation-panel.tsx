@@ -497,6 +497,13 @@ function ConservationCriterionEditor(props: {
   );
 }
 
+/** Why a reference typed for the installation at `index` cannot be kept: another installation already has it (case and spaces aside). */
+export function installationRefProblem(refs: string[], index: number, ref: string): string | null {
+  const key = ref.trim().toLowerCase();
+  const taken = refs.some((other, position) => position !== index && other.trim().toLowerCase() === key);
+  return taken ? `Ya hay una instalación con la referencia «${ref.trim()}». Escribe otra: las referencias no se repiten.` : null;
+}
+
 /**
  * The reference of an installation, in its cell: sent when the cell is left
  * (the row of the table is known by it, so it cannot change at every key).
@@ -514,10 +521,14 @@ function InstallationRefInput(props: { value: string; disabled: boolean; onCommi
       data-no-fill=""
       value={typed ?? props.value}
       onChange={(event) => setTyped(event.target.value)}
-      onBlur={() => {
+      onBlur={(event) => {
         const ref = typed?.trim();
         setTyped(null);
-        if (ref && ref !== props.value) props.onCommit(ref);
+        if (!ref || ref === props.value) return;
+        // The panel saves on every blur with what it held before this one: only the save of the new reference must go,
+        // or the old one was saved after it and came back on reloading.
+        event.stopPropagation();
+        props.onCommit(ref);
       }}
     />
   );
@@ -1250,6 +1261,12 @@ export function CostCalculationPanel(props: {
                 value={row.ref}
                 disabled={readOnly}
                 onCommit={(ref) => {
+                  // A repeated reference makes the server refuse the whole capture: said here, and the cell keeps the one it had.
+                  const problem = installationRefProblem(draft.installations.map((item) => item.ref), index, ref);
+                  if (problem) {
+                    toast.error(problem);
+                    return;
+                  }
                   record(null);
                   const next = { ...draft, installations: draft.installations.map((item, position) => (position === index ? { ...item, ref } : item)) };
                   setDraft(next);
