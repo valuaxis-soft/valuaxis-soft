@@ -1,4 +1,5 @@
 import type { DictamenEmailContent } from "@/features/notifications/templates/dictamen-email";
+import type { InvoiceEmailContent } from "@/features/notifications/templates/invoice-email";
 import type { TeamInvitationEmailContent } from "@/features/notifications/templates/team-invitation";
 import type { ValuationNoticeContent } from "@/features/notifications/templates/valuation-notice";
 import { createEmailService } from "./email-service.factory";
@@ -27,6 +28,13 @@ export type DictamenEmailInput = DictamenEmailContent & {
 
 export type ValuationNoticeInput = ValuationNoticeContent & { to: string };
 
+/** A CFDI for the organization that bought a package: its PDF and XML attached. */
+export type InvoiceEmailInput = InvoiceEmailContent & {
+  to: string;
+  pdf: { filename: string; content: Buffer };
+  xml: { filename: string; content: Buffer };
+};
+
 export interface EmailService {
   /** False for the development service: it only logs, and nothing reaches an inbox. */
   readonly delivers: boolean;
@@ -35,6 +43,7 @@ export interface EmailService {
   sendTeamInvitationEmail(input: TeamInvitationEmailInput): Promise<void>;
   sendDictamenEmail(input: DictamenEmailInput): Promise<void>;
   sendValuationNotice(input: ValuationNoticeInput): Promise<void>;
+  sendInvoiceEmail(input: InvoiceEmailInput): Promise<void>;
 }
 
 let instance: EmailService | null = null;

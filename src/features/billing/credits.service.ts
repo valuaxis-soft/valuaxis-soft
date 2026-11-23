@@ -10,6 +10,7 @@ import { recordAuditEvent } from "@/features/auth/repositories/audit.repository"
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { BILLING_PAGE_PATH, BILLING_PROVIDER } from "./billing-rules";
 import { CREDIT_MOVEMENT_TYPES, concludeCreditDecision, creditMovementLabel, isValidMovement, type CreditMovementType } from "./credit-rules";
+import { movementInvoiceDto, type MovementInvoiceDto } from "./invoicing.service";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -35,6 +36,8 @@ export type CreditMovementDto = {
   valuation: { id: string; folio: string } | null;
   userName: string | null;
   createdAt: string;
+  /** The CFDI of a purchase, once it was attempted or went into a global invoice. */
+  invoice: MovementInvoiceDto | null;
 };
 
 export const CREDIT_MOVEMENTS_SHOWN = 50;
@@ -45,6 +48,7 @@ export async function listCreditMovements(organizationId: number, limit = CREDIT
     include: {
       avaluo: { select: { UIdentificadorPublico: true, SFolio: true } },
       usuario: { select: { SNombre: true, SApellidoPaterno: true } },
+      cfdi: true,
     },
     orderBy: [{ DFechaCreacion: "desc" }, { IdMovimientoCreditos: "desc" }],
     take: limit,
@@ -58,6 +62,7 @@ export async function listCreditMovements(organizationId: number, limit = CREDIT
     valuation: row.avaluo ? { id: row.avaluo.UIdentificadorPublico, folio: row.avaluo.SFolio } : null,
     userName: row.usuario ? [row.usuario.SNombre, row.usuario.SApellidoPaterno].filter(Boolean).join(" ") : null,
     createdAt: row.DFechaCreacion.toISOString(),
+    invoice: row.cfdi ? movementInvoiceDto(row.cfdi) : null,
   }));
 }
 

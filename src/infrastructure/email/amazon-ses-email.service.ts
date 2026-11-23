@@ -3,6 +3,8 @@ import {
   dictamenEmailContent,
   dictamenSenderName,
   formatFromAddress,
+  invoiceAttachments,
+  invoiceEmailContent,
   passwordResetEmailContent,
   teamInvitationEmailContent,
   valuationNoticeContent,
@@ -13,6 +15,7 @@ import { buildMimeMessage } from "./mime-message";
 import type {
   DictamenEmailInput,
   EmailService,
+  InvoiceEmailInput,
   PasswordResetEmailInput,
   TeamInvitationEmailInput,
   ValuationNoticeInput,
@@ -83,6 +86,22 @@ export class AmazonSesEmailService implements EmailService {
 
   async sendValuationNotice(input: ValuationNoticeInput) {
     await this.sendEmail(input.to, valuationNoticeContent(input));
+  }
+
+  /** Raw MIME, as the dictamen: SES only attaches files that way. */
+  async sendInvoiceEmail(input: InvoiceEmailInput) {
+    const message = buildMimeMessage({
+      from: { name: this.config.fromName, email: this.config.fromEmail },
+      to: [input.to],
+      replyTo: this.config.replyTo ?? null,
+      ...invoiceEmailContent(input),
+      attachments: invoiceAttachments(input),
+    });
+    await this.deliver(new SendEmailCommand({
+      Destination: { ToAddresses: [input.to] },
+      ...(this.config.replyTo ? { ReplyToAddresses: [this.config.replyTo] } : {}),
+      Content: { Raw: { Data: message } },
+    }));
   }
 
   private async sendEmail(to: string, content: { subject: string; text: string; html: string }) {

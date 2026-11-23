@@ -28,6 +28,7 @@ import {
 import { findSellablePackages } from "./credit-packages.service";
 import { packagePricing } from "./credit-rules";
 import { getCreditBalance, listCreditMovements, type CreditMovementDto } from "./credits.service";
+import { getFiscalData, type InvoicingOverviewDto } from "./invoicing.service";
 import { findBillingCustomer, refreshOrganizationSubscription } from "./subscription-sync.service";
 
 export type BillingPriceDto = {
@@ -79,6 +80,8 @@ export type BillingOverviewDto = {
   /** The organization has paid something through Stripe at least once: the portal has receipts to show. */
   hasCustomer: boolean;
   credits: CreditsOverviewDto;
+  /** CFDI invoicing: on with FACTURAPI_KEY; the fiscal data its admins capture either way. */
+  invoicing: InvoicingOverviewDto;
   current: {
     planName: string;
     stateKey: string;
@@ -118,7 +121,7 @@ async function trialDaysFor(organizationId: number, plan: { BPermitePrueba: bool
 }
 
 export async function getBillingOverview(organizationId: number, gateway: BillingGateway | null, now = new Date()): Promise<BillingOverviewDto> {
-  const [subscription, plans, organization, balance, movements, packages, customer] = await Promise.all([
+  const [subscription, plans, organization, balance, movements, packages, customer, fiscalData] = await Promise.all([
     findCurrentSubscription(organizationId),
     findSellablePlans({}, now),
     prisma.organizacion.findUniqueOrThrow({ where: { IdOrganizacion: organizationId }, select: { BCobroPorAvaluo: true } }),
@@ -126,6 +129,7 @@ export async function getBillingOverview(organizationId: number, gateway: Billin
     listCreditMovements(organizationId),
     findSellablePackages(),
     findBillingCustomer(organizationId),
+    getFiscalData(organizationId),
   ]);
   const paid = isLiveStripeSubscription(subscription);
   const cancelsAt = (subscription?.JMetadatos as { stripe?: { cancelAt?: string | null } } | null)?.stripe?.cancelAt ?? null;
@@ -134,6 +138,7 @@ export async function getBillingOverview(organizationId: number, gateway: Billin
   return {
     enabled: gateway !== null,
     hasCustomer: customer !== null,
+    invoicing: { enabled: Boolean(env.FACTURAPI_KEY?.trim()), fiscalData },
     credits: {
       balance,
       enforced: organization.BCobroPorAvaluo,

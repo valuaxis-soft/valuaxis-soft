@@ -175,7 +175,7 @@ describe("purchase", () => {
 
     const request = fake.purchaseWebhookRequest(sessionId, SECRET);
     const webhook = await handleStripeWebhook({ rawBody: request.rawBody, signature: request.signature }, fake.gateway, SECRET);
-    assert.deepEqual(webhook, { status: 200, body: { received: true, credits: 10, credited: false } });
+    assert.deepEqual(webhook, { status: 200, body: { received: true, credits: 10, credited: false }, invoicePayment: sessionId });
     // The same event delivered again is a duplicate before anything is asked of Stripe.
     const replay = await handleStripeWebhook({ rawBody: request.rawBody, signature: request.signature }, fake.gateway, SECRET);
     assert.deepEqual(replay, { status: 200, body: { received: true, duplicate: true } });

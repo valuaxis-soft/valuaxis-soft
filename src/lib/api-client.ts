@@ -32,6 +32,8 @@ import type { ComparableReviewSettingsDto } from "@/features/firm/comparable-rev
 import type { FirmDocumentPaletteDto } from "@/features/firm/document-palette.service";
 import type { DocumentPalette } from "@/features/valuations/services/document-palette";
 import type { BillingOverviewDto } from "@/features/billing/billing.service";
+import type { FiscalData } from "@/features/billing/invoice-rules";
+import type { FiscalDataDto, MovementInvoiceDto } from "@/features/billing/invoicing.service";
 import type { AccreditationView } from "@/features/accreditation/accreditation.service";
 import type { PhoneVerificationView } from "@/features/account/phone/phone-verification.service";
 import type { PhoneChannel } from "@/features/account/phone/phone-verification-gateway";
@@ -583,6 +585,10 @@ export const api = {
     /** Buys a credit package: answers the Stripe page to send the browser to. */
     buyPackage: (packageId: string) =>
       request<{ url: string }>(`/organizacion/facturacion/creditos/checkout`, { method: "POST", body: JSON.stringify({ packageId }) }),
+    /** The organization's fiscal data for its CFDI. */
+    saveFiscalData: (data: FiscalData) => request<FiscalDataDto>(`/organizacion/facturacion/datos-fiscales`, { method: "PUT", body: JSON.stringify(data) }),
+    /** «Reintentar factura» of a purchase. */
+    retryInvoice: (invoiceId: string) => request<MovementInvoiceDto>(`/organizacion/facturacion/facturas/${invoiceId}/reintentar`, { method: "POST" }),
   },
   /** The firm's templates, and its other valuations to import Blocks from. */
   templates: {

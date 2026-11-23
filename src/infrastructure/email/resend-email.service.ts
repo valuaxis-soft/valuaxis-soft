@@ -7,6 +7,8 @@ import {
   dictamenEmailContent,
   dictamenSenderName,
   formatFromAddress,
+  invoiceAttachments,
+  invoiceEmailContent,
   passwordResetEmailContent,
   teamInvitationEmailContent,
   valuationNoticeContent,
@@ -16,6 +18,7 @@ import { EmailDeliveryError } from "./email.errors";
 import type {
   DictamenEmailInput,
   EmailService,
+  InvoiceEmailInput,
   PasswordResetEmailInput,
   TeamInvitationEmailInput,
   ValuationNoticeInput,
@@ -85,6 +88,16 @@ export class ResendEmailService implements EmailService {
 
   async sendValuationNotice(input: ValuationNoticeInput) {
     await this.sendSystemEmail(input.to, valuationNoticeContent(input));
+  }
+
+  async sendInvoiceEmail(input: InvoiceEmailInput) {
+    await this.deliver({
+      from: formatFromAddress(this.config.fromName, this.config.fromEmail),
+      to: [input.to],
+      ...(this.config.replyTo ? { reply_to: this.config.replyTo } : {}),
+      ...invoiceEmailContent(input),
+      attachments: invoiceAttachments(input).map((file) => ({ filename: file.filename, content: file.content.toString("base64"), content_type: file.contentType })),
+    });
   }
 
   private async sendSystemEmail(to: string, content: { subject: string; text: string; html: string }) {
