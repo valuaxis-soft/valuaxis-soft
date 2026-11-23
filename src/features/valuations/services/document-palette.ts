@@ -167,6 +167,10 @@ export function documentPaletteVars(palette?: DocumentPalette | null): Record<st
     "--doc-ink-on-pastel": readableTextOn(pastel),
     "--doc-pastel-soft": softTint(pastel),
     "--doc-on-pastel-soft": contrastRatio(strong, softTint(pastel)) >= AA_TEXT_CONTRAST ? strong : DARK,
+    // The shaded rows of the tables and the boxes of a value (the cover's concluded value among them) follow the pastel
+    // too, one tint for all of them: grey-blue rows under green or terracotta titles read as another document.
+    "--doc-zebra": tint(pastel, 0.35),
+    "--doc-zebra-strong": tint(pastel, 0.6),
   };
 }
 

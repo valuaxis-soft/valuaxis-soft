@@ -326,7 +326,7 @@ test("report tables alternate gray and white rows, the first one gray", () => {
     table: { id: "t", title: "Instalaciones", columns: ["#", "Tipo"], rows: [["1", "E.A."], ["2", "O.C."], ["3", "O.C."]], enabled: true },
   }));
   // The colour follows the row's place in the table, so it carries on when the table breaks across pages.
-  assert.deepEqual(html.match(/<tr[^>]*data-split-table-row[^>]*>/g)?.map((row) => /bg-slate-100/.test(row)), [true, false, true]);
+  assert.deepEqual(html.match(/<tr[^>]*data-split-table-row[^>]*>/g)?.map((row) => /--doc-zebra,#F1F5F9/.test(row)), [true, false, true]);
   assert.match(html, /<td[^>]*px-2 py-1[^>]*>E\.A\.<\/td>/);
   assert.match(html, /<caption[^>]*>Instalaciones<\/caption>/);
 
@@ -390,7 +390,7 @@ test("summary boxes print with their table: the basis above, subtotals and the f
   const lines = bottom.match(/<div class="flex items-start gap-3">/g);
   assert.equal(lines?.length, 2);
   assert.ok(bottom.indexOf("Sup. de Sujeto") < bottom.indexOf("Valor homologado a utilizar"));
-  assert.match(bottom, /<tr class="[^"]*bg-slate-200 font-bold[^"]*"><th[^>]*>Valor homologado a utilizar/);
+  assert.match(bottom, /<tr class="[^"]*bg-\[var\(--doc-zebra-strong,#E2E8F0\)\] font-bold[^"]*"><th[^>]*>Valor homologado a utilizar/);
   assert.match(bottom, /<tr class="[^"]*print-color-adjust:exact[^"]*bg-\[var\(--caratula-dark-blue\)\] font-bold text-\[color:var\(--doc-on-strong,#fff\)\][^"]*"><th[^>]*>VALOR COMPARATIVO DE MERCADO \(TERRENOS\):<\/th><td[^>]*>\$ 1,528,000\.00<\/td>/);
   assert.ok(bottom.indexOf("VALOR COMPARATIVO") < bottom.indexOf("Justificación del valor adoptado:"), "the note closes the table");
 });

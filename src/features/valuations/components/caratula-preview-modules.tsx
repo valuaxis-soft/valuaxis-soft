@@ -141,7 +141,7 @@ export function CaratulaConclusionModule({
           ))}
         </div>
       ) : null}
-      {showValue ? <div className="mt-1 border-2 border-[var(--caratula-blue)] bg-slate-200/80 px-4 py-1.5 text-center">
+      {showValue ? <div className="mt-1 border-2 border-[var(--caratula-blue)] bg-[var(--doc-zebra-strong,#E2E8F0CC)] px-4 py-1.5 text-center">
         <h3 className="text-sm font-black leading-tight text-[var(--caratula-blue)]">{appraisedGoodWording(meta.propertyKind).commercialValueTitle}</h3>
         <p className="pt-1 text-3xl font-medium leading-tight text-[var(--caratula-blue)]">{caratula.valorTotal ? formatNumericValue(caratula.valorTotal, { valueFormat: "mxn-mn" }) : "Sin calcular"}</p>
         <p className="pt-1 text-sm font-medium uppercase leading-tight text-slate-600">
