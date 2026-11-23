@@ -290,6 +290,19 @@ test("the free technical characteristics print in their order between the descri
   assert.deepEqual(withRows, without);
 });
 
+test("an expense typed as an amount is refused in words the appraiser can act on", () => {
+  // Fletes captured as 20,000 pesos instead of the fraction 0.02: the save is refused, and the reason says what to write.
+  const refused = machineryInputSchema.safeParse({ cost: { ...workbookCost, item: { ...workbookCost.item, freight: 20_000 } } });
+  assert.equal(refused.success, false);
+  const [issue] = refused.error!.issues;
+  assert.deepEqual(issue.path, ["cost", "item", "freight"]);
+  assert.match(issue.message, /fracción de la cotización, no como importe: 0\.02 es 2 %/);
+  // The limits of factors and years speak Spanish too.
+  const messages = (item: object) => machineryInputSchema.safeParse({ cost: { ...workbookCost, item: { ...workbookCost.item, ...item } } }).error?.issues.map((entry) => entry.message) ?? [];
+  assert.deepEqual(messages({ maintenance: 11 }), ["Un factor no puede pasar de 10."]);
+  assert.deepEqual(messages({ age: -1 }), ["Los años no pueden ser negativos."]);
+});
+
 test("a free characteristic carries one value per offer, and a capture saved before they existed has none", () => {
   const row = { label: "Cabina", subject: "Cerrada", values: ["Cerrada", "Abierta", "Cerrada", "Cerrada", "Cerrada"] };
   const parse = (market: unknown) => machineryInputSchema.safeParse({ market });
