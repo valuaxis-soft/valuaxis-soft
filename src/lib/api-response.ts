@@ -50,7 +50,7 @@ export async function readJsonBody<T>(
   if (!parsed.success) {
     const fields = parsed.error.issues.slice(0, 20).map((issue) => ({
       path: issue.path.join("."),
-      message: issue.message,
+      message: issueInSpanish(issue),
     }));
     logRejected(request, "400", fields);
     // Name the first field: "no son válidos" alone leaves the user with nothing to correct.
@@ -67,4 +67,29 @@ export function tooManyRequests(retryAfterSeconds: number) {
     { error: "Demasiados intentos. Espera un momento antes de volver a intentarlo." },
     { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
   );
+}
+
+/**
+ * A schema's own message is already the user's; the ones the validator words
+ * itself are in English («Too big: expected number to be <=10»), and they
+ * reach the screen when a save is refused.
+ */
+export function issueInSpanish(issue: { code?: string; message: string; maximum?: unknown; minimum?: unknown; origin?: unknown }) {
+  const builtIn = /^(Too big|Too small|Invalid input|Invalid |Unrecognized key|Expected )/.test(issue.message);
+  if (!builtIn) return issue.message;
+  const text = issue.origin === "string" || issue.origin === "array";
+  const limit = (value: unknown) => (typeof value === "number" || typeof value === "bigint" ? Number(value).toLocaleString("es-MX") : null);
+  if (issue.code === "too_big") {
+    const max = limit(issue.maximum);
+    if (issue.origin === "string") return max ? `el texto es demasiado largo: admite hasta ${max} caracteres` : "el texto es demasiado largo";
+    if (issue.origin === "array") return max ? `hay demasiados renglones: se admiten hasta ${max}` : "hay demasiados renglones";
+    return max ? `el valor es demasiado grande: el máximo es ${max}` : "el valor es demasiado grande";
+  }
+  if (issue.code === "too_small") {
+    const min = limit(issue.minimum);
+    if (text) return "falta un dato obligatorio";
+    return min ? `el valor es demasiado chico: el mínimo es ${min}` : "el valor es demasiado chico";
+  }
+  if (issue.code === "invalid_type") return "falta un dato o no es del tipo esperado";
+  return "el dato no es válido";
 }

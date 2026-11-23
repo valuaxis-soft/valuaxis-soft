@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { api, SessionExpiredError } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 import {
   CONSERVATION_CRITERIA,
   CONSERVATION_CRITERION_LABELS,
@@ -64,6 +64,7 @@ import { CalculationPrecisionSummary } from "./calculation-precision-control";
 import { useSerializedSave } from "./use-serialized-save";
 import { useDraftHistory } from "./use-draft-history";
 import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
+import { SaveRefusedNotice, saveRefusedMessage } from "./save-refused";
 
 /** Completion and undivided share are fractions (1 = 100 %) edited as percentages; the added factors are texts too. */
 type PercentRow<T> = Omit<Texts<T>, "completion" | "undivided" | "extraFactors"> & { completion: string; undivided: string; extraFactors: string[] };
@@ -552,22 +553,28 @@ export function CostCalculationPanel(props: {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const readOnly = props.readOnly || Boolean(calculation?.locked);
 
   // What the server holds, to skip saves that would not change anything.
   const lastSaved = useRef<string | null>(null);
   const enqueueSave = useSerializedSave(async (payload: PanelInput) => {
-    if (JSON.stringify(payload) === lastSaved.current) return;
+    if (JSON.stringify(payload) === lastSaved.current) {
+      // Back to what the server holds: nothing is left unsaved.
+      setSaveError(null);
+      return;
+    }
     setSaving(true);
     try {
       const next = await api.costs.save(valuationId, payload);
       lastSaved.current = JSON.stringify(savedInputOf(next));
+      setSaveError(null);
       // The draft stays as typed; only the saved state moves.
       setCalculation(next);
     } catch (error) {
-      toast.error(error instanceof SessionExpiredError
-        ? "Tu sesión expiró. Vuelve a iniciar sesión."
-        : error instanceof Error ? error.message : "No se pudo guardar el enfoque de costos.");
+      const message = saveRefusedMessage(error, "No se pudo guardar el enfoque de costos.");
+      setSaveError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -998,6 +1005,7 @@ export function CostCalculationPanel(props: {
         title="Configuración del cálculo de costos"
         description="Los datos del enfoque se capturan abajo, en las tablas de su bloque: las celdas en blanco son tuyas y las grises las calcula el sistema. Aquí queda solo lo que no es una tabla del dictamen."
       >
+        <SaveRefusedNotice message={saveError} />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 id="cost-calculation-title" className="flex items-center gap-2 text-sm font-semibold">
             <Calculator className="size-4" /> Cálculo del enfoque de costos
