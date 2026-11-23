@@ -79,6 +79,8 @@ function useMachinerySave<K extends "cost" | "market">(
   onSaved: (calculation: MachineryCalculationDto) => void,
 ) {
   const [saving, setSaving] = useState(false);
+  // What the server refused last: while it stands, nothing typed after it is being saved.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const lastSaved = useRef(JSON.stringify(initial));
   const enqueueSave = useSerializedSave(async (payload: MachineryCalculationDto[K]) => {
     const sent = JSON.stringify(payload);
@@ -87,20 +89,24 @@ function useMachinerySave<K extends "cost" | "market">(
     try {
       const next = await api.machinery.save(valuationId, { [part]: payload });
       lastSaved.current = sent;
+      setSaveError(null);
       // The draft stays as typed; only the saved state moves.
       onSaved(next);
     } catch (error) {
-      toast.error(error instanceof SessionExpiredError
+      const message = error instanceof SessionExpiredError
         ? "Tu sesión expiró. Vuelve a iniciar sesión."
-        : error instanceof Error ? error.message : "No se pudo guardar el cálculo de maquinaria y equipo.");
+        // The field's path in the payload («cost.item.freight») says nothing to the appraiser: the reason alone does.
+        : error instanceof Error ? error.message.replace(/\((?:cost|market)\.[\w.]+: /, "(") : "No se pudo guardar el cálculo de maquinaria y equipo.";
+      setSaveError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
   });
-  return { saving, enqueueSave };
+  return { saving, saveError, enqueueSave };
 }
 
-function PanelFrame(props: { titleId: string; title: string; saving: boolean; locked: boolean; onBlur: () => void; children: ReactNode }) {
+function PanelFrame(props: { titleId: string; title: string; saving: boolean; saveError?: string | null; locked: boolean; onBlur: () => void; children: ReactNode }) {
   return (
     <section className="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:p-4" aria-labelledby={props.titleId} onBlur={props.onBlur}>
       <header className="flex items-center justify-between gap-2">
@@ -110,6 +116,12 @@ function PanelFrame(props: { titleId: string; title: string; saving: boolean; lo
         {props.saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
       </header>
       {props.locked ? <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p> : null}
+      {/* The toast goes away; this stays until a save goes through, so nobody keeps typing into a capture that is not being saved. */}
+      {props.saveError ? (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" role="alert" data-machinery-save-error="">
+          <strong>Este cálculo no se está guardando.</strong> {props.saveError} Corrige el dato: mientras tanto, lo que escribas aquí no se guarda.
+        </p>
+      ) : null}
       {props.children}
     </section>
   );
@@ -326,7 +338,7 @@ type FormProps = { valuationId: string; readOnly: boolean; calculation: Machiner
 function CostForm({ valuationId, readOnly, calculation, onSaved }: FormProps) {
   const { conservationTwice } = calculation.cost;
   const [draft, setDraft] = useState(() => costDraftOf(calculation.cost));
-  const { saving, enqueueSave } = useMachinerySave("cost", valuationId, costPayloadOf(costOf(costDraftOf(calculation.cost), conservationTwice)), onSaved);
+  const { saving, saveError, enqueueSave } = useMachinerySave("cost", valuationId, costPayloadOf(costOf(costDraftOf(calculation.cost), conservationTwice)), onSaved);
 
   const cost = costOf(draft, conservationTwice);
   const input = toMachineryCostEngineInput(cost);
@@ -368,7 +380,7 @@ function CostForm({ valuationId, readOnly, calculation, onSaved }: FormProps) {
   const extendedLife = age !== null && usefulLife !== null && usefulLife > 0 && effectiveUsefulLife(age, usefulLife, true) !== usefulLife;
 
   return (
-    <PanelFrame titleId="machinery-cost-title" title="Cálculo del enfoque de costos de maquinaria y equipo" saving={saving} locked={calculation.locked} onBlur={() => save()}>
+    <PanelFrame titleId="machinery-cost-title" title="Cálculo del enfoque de costos de maquinaria y equipo" saving={saving} saveError={saveError} locked={calculation.locked} onBlur={() => save()}>
       <fieldset disabled={readOnly} className="grid gap-4">
         <div className="grid gap-3">
           <h4 className={heading}>Identificación del bien</h4>
@@ -662,7 +674,7 @@ export function MachineryMarketPanel(props: PanelProps) {
 
 function MarketForm({ valuationId, readOnly, calculation, onSaved }: FormProps) {
   const [draft, setDraft] = useState(() => marketDraftOf(calculation.market));
-  const { saving, enqueueSave } = useMachinerySave("market", valuationId, marketPayloadOf(marketOf(marketDraftOf(calculation.market))), onSaved);
+  const { saving, saveError, enqueueSave } = useMachinerySave("market", valuationId, marketPayloadOf(marketOf(marketDraftOf(calculation.market))), onSaved);
 
   const market = marketOf(draft);
   const input = toMachineryMarketEngineInput(market);
@@ -693,7 +705,7 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved }: FormProps) 
   ];
 
   return (
-    <PanelFrame titleId="machinery-market-title" title="Cálculo del enfoque de mercado de maquinaria y equipo" saving={saving} locked={calculation.locked} onBlur={() => save()}>
+    <PanelFrame titleId="machinery-market-title" title="Cálculo del enfoque de mercado de maquinaria y equipo" saving={saving} saveError={saveError} locked={calculation.locked} onBlur={() => save()}>
       <fieldset disabled={readOnly} className="grid gap-4">
         <div className="grid gap-3 sm:grid-cols-3">
           <Field>

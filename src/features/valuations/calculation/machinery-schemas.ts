@@ -7,10 +7,18 @@ import { roundingSchema } from "./market-schemas";
 
 const text = (max: number) => z.string().trim().max(max);
 const amount = z.number().finite().min(0).max(1e12).nullable();
-const factor = z.number().finite().min(0).max(10);
+// The messages are the appraiser's: a value out of range stops the save, and they read what to correct.
+const factor = z.number().finite()
+  .min(0, "Los factores no pueden ser negativos.")
+  .max(10, "Un factor no puede pasar de 10.");
 // Expenses are fractions of the quotation; several times its amount is a typing slip.
-const rate = z.number().finite().min(0).max(10);
-const years = z.number().finite().min(0).max(1000).nullable();
+const rate = z.number().finite()
+  .min(0, "Los gastos no pueden ser negativos.")
+  .max(10, "Los gastos se escriben como fracción de la cotización, no como importe: 0.02 es 2 %.");
+const years = z.number().finite()
+  .min(0, "Los años no pueden ser negativos.")
+  .max(1000, "Revisa los años: no pueden pasar de 1,000.")
+  .nullable();
 /** The rating looks its factor up in the book's table, so it is one of its rows. */
 const rating = z.number().refine((value) => MACHINERY_CONSERVATION.some((row) => row.rating === value), "La calificación de conservación va de 1 a 10.").nullable();
 const depreciationFactors = { conservation: factor, maintenance: factor, technological: factor, economic: factor };

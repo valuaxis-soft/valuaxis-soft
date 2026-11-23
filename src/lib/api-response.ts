@@ -55,7 +55,7 @@ export async function readJsonBody<T>(
     logRejected(request, "400", fields);
     // Name the first field: "no son válidos" alone leaves the user with nothing to correct.
     const [first] = fields;
-    const error = first ? `Los datos enviados no son válidos (${first.path || "contenido"}: ${first.message}).` : "Los datos enviados no son válidos.";
+    const error = first ? `Los datos enviados no son válidos (${first.path || "contenido"}: ${first.message.replace(/\.$/, "")}).` : "Los datos enviados no son válidos.";
     return { ok: false, response: NextResponse.json({ error, fields }, { status: 400 }) };
   }
   return { ok: true, data: parsed.data };
