@@ -1,18 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { BadgeCheck, Bell, ChevronDown, Keyboard, LogOut, Monitor, Moon, RotateCw, Sun, Timer } from "lucide-react";
-import { useTheme } from "next-themes";
+import { BadgeCheck, Bell, ChevronDown, Keyboard, LogOut, RotateCw, Timer } from "lucide-react";
 import { useRef } from "react";
 
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
@@ -57,7 +52,6 @@ export function UserMenu({
   role: string;
   initials: string;
 }) {
-  const { theme, setTheme } = useTheme();
   const logoutForm = useRef<HTMLFormElement>(null);
 
   return (
@@ -105,24 +99,6 @@ export function UserMenu({
             <RotateCw />
             Recargar página
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuLabel className="px-2 text-xs text-muted-foreground">Tema</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={theme ?? "system"} onValueChange={(value) => setTheme(String(value))}>
-              <DropdownMenuRadioItem value="light" className="min-h-9 gap-2">
-                <Sun />
-                Claro
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="dark" className="min-h-9 gap-2">
-                <Moon />
-                Oscuro
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="system" className="min-h-9 gap-2">
-                <Monitor />
-                Como el sistema
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" className="min-h-9 gap-2 px-2" onClick={() => logoutForm.current?.requestSubmit()}>
             <LogOut />

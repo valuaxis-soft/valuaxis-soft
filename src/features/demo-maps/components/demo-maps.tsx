@@ -3,7 +3,6 @@
 /// <reference types="google.maps" />
 
 import dynamic from "next/dynamic";
-import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -102,8 +101,8 @@ const parsePrice = (text: string) => {
 };
 
 export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | null; nonce: string | undefined }) {
-  const { resolvedTheme } = useTheme();
-  const dark = resolvedTheme === "dark";
+  // The app is always light.
+  const dark = false;
   const stage = readStage(useSyncExternalStore(subscribeHash, () => window.location.hash, () => ""));
 
   const [mode, setMode] = useState<MapMode>(googleMapsKey ? "loading" : "leaflet");

@@ -113,7 +113,7 @@ function HeroArt() {
           <path d="M172 150v-48l32-25 32 25v48" />
           <path d="M112 150v-30h28v30M196 118h16v14h-16z" />
         </g>
-        <path d="M108 86l18 24 28-36" fill="none" className="stroke-success" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M115 89l11 14 17-22" fill="none" className="stroke-success" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </div>
   );

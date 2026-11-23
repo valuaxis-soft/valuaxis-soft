@@ -2,8 +2,7 @@
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import Link from "next/link";
-import { LogOut, Menu, Moon, Plus, Sun, X } from "lucide-react";
-import { useTheme } from "next-themes";
+import { LogOut, Menu, Plus, X } from "lucide-react";
 import { useState } from "react";
 
 import { ValuaxisLogo } from "@/components/brand/valuaxis-logo";
@@ -33,8 +32,6 @@ export function MobileNav({
   initials: string;
 }) {
   const [open, setOpen] = useState(false);
-  const { resolvedTheme, setTheme } = useTheme();
-  const dark = resolvedTheme === "dark";
 
   const link = (item: NavItem) => {
     const Icon = NAV_ICONS[item.key];
@@ -103,18 +100,6 @@ export function MobileNav({
             <p className="mt-5 mb-1 px-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">Tu cuenta</p>
             <div className="grid gap-1">
               {link(navigation.account)}
-              <button
-                type="button"
-                onClick={() => setTheme(dark ? "light" : "dark")}
-                className="flex min-h-12 items-center gap-3 rounded-lg px-3 text-left text-sm font-medium transition-colors duration-150 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <Sun className="size-5 shrink-0 dark:hidden" aria-hidden="true" />
-                <Moon className="hidden size-5 shrink-0 dark:block" aria-hidden="true" />
-                <span>
-                  <span className="dark:hidden">Usar tema oscuro</span>
-                  <span className="hidden dark:inline">Usar tema claro</span>
-                </span>
-              </button>
             </div>
           </nav>
 
