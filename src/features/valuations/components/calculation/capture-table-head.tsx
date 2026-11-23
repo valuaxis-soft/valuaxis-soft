@@ -1,7 +1,7 @@
 "use client";
 
 import { Merge, RotateCcw, Trash2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -111,55 +111,6 @@ export function CaptureTableHead(props: {
       </tr>
       {layout.bottom.length ? <tr>{layout.bottom.map((cell) => columnCell(cell))}</tr> : null}
     </thead>
-  );
-}
-
-/** Where the title of a capture table is kept among its headers: renamed, it is one more label. */
-const CAPTURE_TITLE_KEY = "titulo-tabla";
-
-/**
- * The title line of a capture table, as a configurable table's (video 7.4,
- * 20:40): its name, written over as the table's title, and at its right the
- * same buttons (add a row, «Formato de la tabla» with the double header)
- * instead of a button apart above the table.
- */
-export function CaptureTableBar(props: {
-  title: string;
-  headers: CaptureHeaders | undefined;
-  readOnly: boolean;
-  onChange: (headers: CaptureHeaders) => void;
-  children?: ReactNode;
-}) {
-  const named = props.headers?.labels?.[CAPTURE_TITLE_KEY] ?? "";
-  const [draft, setDraft] = useState<string | null>(null);
-  const commit = () => {
-    if (draft === null) return;
-    if (draft.trim() !== named) props.onChange(withCaptureLabel(props.headers, CAPTURE_TITLE_KEY, draft));
-    setDraft(null);
-  };
-  return (
-    <div className="flex items-center justify-between gap-3" data-capture-bar="">
-      <div className="min-w-0 flex-1">
-        <Input
-          aria-label={`Título de la tabla ${props.title}`}
-          title="Título de la tabla en el panel; vacío, vuelve el del panel."
-          className="h-8 font-semibold"
-          autoComplete="off"
-          disabled={props.readOnly}
-          value={draft ?? named}
-          placeholder={props.title}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              event.currentTarget.blur();
-            }
-          }}
-        />
-      </div>
-      <div className="flex items-center gap-1">{props.children}</div>
-    </div>
   );
 }
 

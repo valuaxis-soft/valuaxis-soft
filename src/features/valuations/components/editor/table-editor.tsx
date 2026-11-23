@@ -112,8 +112,12 @@ import {
   writeCellTexts,
   type StyleMark,
 } from "../../services/table-cell-style";
+import { CaptureSlotTarget, captureFieldIn, captureSlotKey, useCaptureDeclared } from "./capture-host";
+import { capturedText, writeCaptureCell } from "../calculation/calc-table-context-menu";
+import { captureColumnPlace } from "@/features/valuations/calculation/capture-display";
 import {
   CALCULATED_CELL_HINT,
+  CALCULATED_IN_PLACE_HINT,
   CALCULATED_TABLE_REMOVE_HINT,
   CAPTURE_CELL_HINT,
   calculatedCellReasons,
@@ -693,7 +697,15 @@ function EditableTableCell({
   const styleActions = selection ? (several ? selection.actions : selection.actionsFor([styleKey])) : null;
   // A figure of a table the calculation writes: shown, copied and named in formulas, never typed.
   const calculatedTable = useCalculatedTable();
-  const locked = Boolean(calculatedTable?.row(row.id) && calculatedTable.column(column.id));
+  // A datum the calculation captures: its panel's own field sits in the cell (capture-host.tsx), and the menu writes in it.
+  // Named by the column's id or, in a table saved with ids of its own (income), by its place among the calculation's columns.
+  const addressById = { table: tableId, row: row.id, column: column.id };
+  const addressByPlace = { table: tableId, row: row.id, column: captureColumnPlace(calculatedTable?.columnPlace?.(column.id) ?? -1) };
+  const capturedById = useCaptureDeclared(addressById);
+  const capturedByPlace = useCaptureDeclared(addressByPlace);
+  const captured = capturedById || capturedByPlace;
+  const captureAddress = capturedById ? addressById : addressByPlace;
+  const locked = !captured && Boolean(calculatedTable?.row(row.id) && calculatedTable.column(column.id));
 
   /* ---- What was already written in the column, offered while typing ---- */
   const [typed, setTyped] = useState<string | null>(null);
@@ -782,8 +794,8 @@ function EditableTableCell({
   const cellGroups = tableContextMenu("editable", {
     kind: "cell",
     editable: !locked,
-    hasFormula: isFormula,
-    hasValue: cell?.kind === "value" && cell.value.trim() !== "",
+    hasFormula: isFormula && !captured,
+    hasValue: captured || (cell?.kind === "value" && cell.value.trim() !== ""),
     canPaste: true,
     canInsertRow: true,
     canInsertColumn: canInsertBesideColumn(tableV2, column.id),
@@ -794,6 +806,71 @@ function EditableTableCell({
   });
   // The menu gives the focus back when it closes; the cell is entered after that.
   const enterCell = () => window.setTimeout(start, 80);
+  /**
+   * The same menu on a cell the calculation captures: copying, pasting,
+   * clearing and filling write in the field of the capture, as typing does,
+   * so its panel saves and undoes them.
+   */
+  const runCaptureAction = async (action: TableMenuAction) => {
+    // Found when the menu acts, by the place the capture declared: the cell and its field are the panel's.
+    const ownCell = document.querySelector(`[data-capture-slot="${window.CSS.escape(captureSlotKey(captureAddress))}"]`)?.closest("td") ?? null;
+    const field = captureFieldIn(ownCell);
+    if (!field) return;
+    const held = (target: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) => (target instanceof HTMLSelectElement ? target.value : capturedText(target));
+    const text = held(field);
+    const shown = field instanceof HTMLSelectElement ? field.selectedOptions[0]?.textContent?.trim() ?? "" : field.value;
+    const fields = (along: "row" | "column") => {
+      const cells = along === "row"
+        ? Array.from(ownCell?.parentElement?.children ?? [])
+        : Array.from(ownCell?.closest("tbody")?.querySelectorAll(`:scope > tr > td[data-grid-col="${columnIndex}"]`) ?? []);
+      return cells.filter((cell) => cell !== ownCell).flatMap((cell) => {
+        const target = captureFieldIn(cell);
+        // What the system calculates while empty and what is not one more value of the row or column are left out.
+        return target && !target.disabled && target.dataset.noFill === undefined && target.tagName === field.tagName ? [target] : [];
+      });
+    };
+    switch (action) {
+      case "copy":
+      case "cut":
+        await copyCellToClipboard(shown, text.trim().startsWith("=") ? text : null);
+        if (action === "cut") writeCaptureCell(field, "");
+        return;
+      case "paste":
+      case "paste-values": {
+        const pasted = await readCellClipboard();
+        if (!pasted) {
+          toast.info("No hay nada que pegar.");
+          return;
+        }
+        if (action === "paste" && pasted.formulaText) writeCaptureCell(field, pasted.formulaText);
+        else writeCaptureCell(field, action === "paste-values" ? pasteValuesText(pasted.text) ?? pasted.text : pasted.text);
+        return;
+      }
+      case "remove-formula":
+      case "clear":
+        writeCaptureCell(field, "");
+        return;
+      case "edit-formula":
+        window.setTimeout(() => field.focus(), 80);
+        return;
+      case "fill-column-empty":
+      case "fill-row-empty":
+        for (const target of fields(action === "fill-row-empty" ? "row" : "column")) if (!held(target).trim()) writeCaptureCell(target, text);
+        return;
+      case "fill-column":
+      case "fill-row": {
+        const along = action === "fill-row" ? "row" : "column";
+        const targets = fields(along);
+        const write = () => targets.forEach((target) => writeCaptureCell(target, text));
+        const replaced = targets.filter((target) => held(target).trim() && held(target) !== text).length;
+        if (replaced) confirmDelete({ ...fillReplaceConfirmation(replaced, along, text.trim().startsWith("=") ? "fórmula" : "valor"), onConfirm: write });
+        else write();
+        return;
+      }
+      default:
+        return;
+    }
+  };
   const runAction = async (action: TableMenuAction) => {
     // Bold, italic, underline and "Limpiar formato": on the cell, or on all the cells selected with it.
     if (styleActions && (action === "bold" || action === "italic" || action === "underline")) {
@@ -802,6 +879,10 @@ function EditableTableCell({
     }
     if (styleActions && action === "clear-format") {
       styleActions.clearFormat();
+      return;
+    }
+    if (captured) {
+      await runCaptureAction(action);
       return;
     }
     // Copying, cutting, pasting and clearing a selection of several cells: all of them, as Excel.
@@ -876,7 +957,7 @@ function EditableTableCell({
     <TableCell
       className={cn(
         "p-0.5",
-        isFormula && "bg-blue-50/80 dark:bg-blue-500/15",
+        isFormula && !captured && "bg-blue-50/80 dark:bg-blue-500/15",
         isFormulaTarget && "ring-2 ring-blue-400 ring-inset",
         isFormulaSource && "bg-blue-100/80 dark:bg-blue-500/25 ring-1 ring-blue-300 ring-inset",
         formulaMode && !isFormulaTarget && !isFormulaSource && "opacity-60",
@@ -897,6 +978,10 @@ function EditableTableCell({
     >
       <ContextMenu>
         <ContextMenuTrigger>
+          {captured ? (
+            // The field of the calculation's capture, in the cell of its datum: typed here, it is the calculation's.
+            <CaptureSlotTarget address={captureAddress} className="flex min-h-7 min-w-0 items-center [&_input]:min-w-16" />
+          ) : (
           <div className="relative flex h-7 items-center">
             <div
               className={cn(
@@ -958,7 +1043,7 @@ function EditableTableCell({
                   numericProblem && draftText === null && "border border-destructive ring-1 ring-destructive/40 text-destructive dark:text-red-400",
                   locked && "cursor-default rounded-sm bg-muted/70 tabular-nums",
                 )}
-                title={locked ? (calculatedTable?.capture ? CAPTURE_CELL_HINT : CALCULATED_CELL_HINT) : title}
+                title={locked ? (calculatedTable?.capture ? CAPTURE_CELL_HINT : calculatedTable?.inPlace ? CALCULATED_IN_PLACE_HINT : CALCULATED_CELL_HINT) : title}
                 // Bold, italic, underline and alignment chosen on a selection, as the dictamen prints them.
                 style={cellStyleCss(cellStyle)}
               />
@@ -974,6 +1059,7 @@ function EditableTableCell({
               <FunctionSquare className="h-3 w-3 shrink-0 text-blue-500 mr-1" />
             )}
           </div>
+          )}
           {suggestions.length > 0 && anchor && focused ? createPortal(
             <ul
               className="fixed z-50 max-h-48 overflow-y-auto rounded-md border bg-popover py-1 text-xs text-popover-foreground shadow-md"
@@ -1072,6 +1158,7 @@ function SortableRow({
     opacity: isDragging ? 0.5 : undefined,
   };
   const hidden = isRowHidden(tableV2, row.id);
+  const rowCaptured = useCaptureDeclared({ table: tableId, row: row.id });
   // The same menu from the row's number and from its handle.
   const selection = useContext(TableSelectionContext);
   const { groups, handlers } = withTableItems(tableContextMenu("editable", {
@@ -1134,19 +1221,23 @@ function SortableRow({
       ))}
       {/* Row context menu + drag handle */}
       <TableCell className="w-8 p-0.5">
-        <ContextMenu>
-          <ContextMenuTrigger>
-            <div
-              className="flex items-center justify-center"
-              ref={setActivatorNodeRef}
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical className="h-3.5 w-3.5 cursor-grab text-muted-foreground/70" />
-            </div>
-          </ContextMenuTrigger>
-          {menu}
-        </ContextMenu>
+        <div className="flex items-center">
+          <ContextMenu>
+            <ContextMenuTrigger>
+              <div
+                className="flex items-center justify-center"
+                ref={setActivatorNodeRef}
+                {...attributes}
+                {...listeners}
+              >
+                <GripVertical className="h-3.5 w-3.5 cursor-grab text-muted-foreground/70" />
+              </div>
+            </ContextMenuTrigger>
+            {menu}
+          </ContextMenu>
+          {/* What the calculation's capture does with the row (taking it out of the calculation, its links). */}
+          {rowCaptured ? <CaptureSlotTarget address={{ table: tableId, row: row.id }} className="flex items-center" /> : null}
+        </div>
       </TableCell>
     </TableRow>
   );
@@ -1661,7 +1752,7 @@ export function TableEditorItem({
           count={selection.count}
           label={selectionLabel(selection.points.length, selection.titleSelected)}
           readOnly={readOnly}
-          hint={`Para calcular, escribe = en una celda, por ejemplo =B2*C2 o =SUMA(A1:A5); «10%» vale 0.10.${calculated?.capture ? " Las cifras en gris las calcula el sistema; lo demás que escribas en las columnas del tipo entra al enfoque de costos." : calculated ? " Las cifras en gris las escribe el cálculo y se cambian en su panel; los encabezados, el formato y las columnas y filas que agregues son tuyos y se conservan al recalcular." : ""}`}
+          hint={`Para calcular, escribe = en una celda, por ejemplo =B2*C2 o =SUMA(A1:A5); «10%» vale 0.10.${calculated?.capture ? " Las cifras en gris las calcula el sistema; lo demás que escribas en las columnas del tipo entra al enfoque de costos." : calculated?.inPlace ? " Las celdas en blanco son la captura del cálculo: escribe en ellas. Las cifras en gris las calcula el sistema; los encabezados, el formato y las columnas y filas que agregues son tuyos y se conservan al recalcular." : calculated ? " Las cifras en gris las escribe el cálculo y se cambian en su panel; los encabezados, el formato y las columnas y filas que agregues son tuyos y se conservan al recalcular." : ""}`}
           marks={selectionActions.marks}
           align={selectionActions.align}
           current={firstSelectedCell?.format ?? firstSelectedColumn?.format}

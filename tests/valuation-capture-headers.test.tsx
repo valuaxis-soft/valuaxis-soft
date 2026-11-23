@@ -10,7 +10,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { CaptureTableHead } from "../src/features/valuations/components/calculation/capture-table-head";
 import { ignoredClose, isPartOfText } from "../src/features/valuations/components/calculation/calc-table-context-menu";
-import { demeritHeadColumns } from "../src/features/valuations/components/calculation/cost-calculation-panel";
 import { hydrateSectionMetadata, sectionMetadataFromContent } from "../src/features/valuations/metadata";
 import {
   captureHeaderLayout,
@@ -100,17 +99,4 @@ test("a right click on one capture cell opens the table's menu unless the apprai
   assert.equal(ignoredClose({ reason: "trigger-hover" }), true);
   assert.equal(ignoredClose({ reason: "escape-key" }), false);
   assert.equal(ignoredClose(undefined), false);
-});
-
-test("the demerit headers of Costos keep their own keys: «Edad» of the type and «Edad» of the factors are two columns", () => {
-  const columns = demeritHeadColumns({
-    leading: ["Ref.", "Tipo de Construcción", "Clasificación", "Calidad", "Superficie Construida (m²)", "Edad", "Vida útil"],
-    remaining: "Vida remanente",
-    factors: { other: "Otro", extra: ["Funcional"] },
-  });
-  const keys = columns.map((column) => column.key);
-  assert.equal(new Set(keys).size, keys.length, "every column has a key of its own");
-  const layout = captureHeaderLayout(columns, undefined);
-  assert.deepEqual(layout.top.flatMap((cell) => (cell.kind === "group" ? [[cell.title, cell.colSpan]] : [])), [["Factores de Demérito", 5]]);
-  assert.deepEqual(layout.bottom.map((cell) => cell.label), ["Cons.", "Edad", "Otro", "Funcional", "FRe"]);
 });

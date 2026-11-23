@@ -230,6 +230,45 @@ function nextLabel(fields: ReadonlyArray<CharacteristicField>, base: string) {
   return `${base} ${number}`;
 }
 
+/**
+ * A characteristic of a comparable, typed in its cell: in the characteristics
+ * sheet, and in the cell of the table of the dictamen that prints it (its
+ * surface and its offer, its land use). The same datum and the same formulas
+ * (`comparable:<id>:<key>`) wherever it is typed.
+ */
+export function ComparableCharacteristicCell(props: {
+  comparable: ComparableDto;
+  field: CharacteristicField;
+  readOnly: boolean;
+  numberText: (text: string) => string;
+  className?: string;
+  /** Where the cell sits, when the same datum has a cell in two places: its formula field must be one of a kind. */
+  place?: string;
+  onComparable: (comparable: ComparableDto, change: (current: ComparableDto) => ComparableDto) => void;
+}) {
+  const { comparable, field } = props;
+  const numeric = isNumericCharacteristic(field);
+  // The form's numbers keep their formulas apart; an added figure keeps the number a formula gives.
+  const builtinNumber = numeric && isBuiltinCharacteristic(field.key);
+  return (
+    <CommitCell
+      ariaLabel={`${field.label}, comparable ${comparable.reference}`}
+      className={props.className}
+      disabled={props.readOnly}
+      numeric={numeric}
+      formulaKey={builtinNumber ? `comparable:${comparable.id}:${field.key}${props.place ? `:${props.place}` : ""}` : undefined}
+      value={characteristicText(comparable, field.key)}
+      display={numeric ? props.numberText(characteristicValueText(comparable, field.key)) : undefined}
+      onCommit={(text) => props.onComparable(comparable, (current) => {
+        const parsed = numeric ? parseDecimal(text) : null;
+        // An added figure is kept as the number it gives.
+        const kept = numeric && !builtinNumber && parsed !== null ? String(parsed) : text;
+        return withCharacteristic(current, field.key, kept, parsed);
+      })}
+    />
+  );
+}
+
 function CharacteristicRow(props: {
   field: CharacteristicField;
   first: boolean;
@@ -249,8 +288,6 @@ function CharacteristicRow(props: {
 }) {
   const { field, readOnly, numberText } = props;
   const numeric = isNumericCharacteristic(field);
-  // The form's numbers keep their formulas apart; an added figure keeps the number a formula gives.
-  const builtinNumber = numeric && isBuiltinCharacteristic(field.key);
   const hidden = field.hidden === true;
   const sortable = useSortableRow(field.key, { disabled: readOnly, label: `Arrastrar ${field.label}` });
   const unit = field.kind === "area" ? " (m²)" : "";
@@ -295,21 +332,7 @@ function CharacteristicRow(props: {
       </td>
       {props.comparables.map((comparable) => (
         <td key={comparable.id} className={cn(CALC_CELL, "px-1 py-1")}>
-          <CommitCell
-            ariaLabel={`${field.label}, comparable ${comparable.reference}`}
-            className="text-center"
-            disabled={readOnly}
-            numeric={numeric}
-            formulaKey={builtinNumber ? `comparable:${comparable.id}:${field.key}` : undefined}
-            value={characteristicText(comparable, field.key)}
-            display={numeric ? numberText(characteristicValueText(comparable, field.key)) : undefined}
-            onCommit={(text) => props.onComparable(comparable, (current) => {
-              const parsed = numeric ? parseDecimal(text) : null;
-              // An added figure is kept as the number it gives.
-              const kept = numeric && !builtinNumber && parsed !== null ? String(parsed) : text;
-              return withCharacteristic(current, field.key, kept, parsed);
-            })}
-          />
+          <ComparableCharacteristicCell comparable={comparable} field={field} readOnly={readOnly} numberText={numberText} className="text-center" onComparable={props.onComparable} />
         </td>
       ))}
       <td className={cn(CALC_CELL, "px-1 py-1 whitespace-nowrap")}>

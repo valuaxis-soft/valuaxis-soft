@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle } from "lucide-react";
+import { Fragment } from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -23,11 +24,11 @@ import {
   type FactorSlotConfig,
 } from "@/features/valuations/calculation/market-types";
 import { cn } from "@/lib/utils";
-import { CALC_HEAD, CALC_HEAD_CELL, CALC_RESULT, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
-import { CalcTableContextMenu } from "./calc-table-context-menu";
+import { CaptureSlot } from "../editor/capture-host";
 import { CommitCell } from "./commit-cell";
 
-const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+/** A factor in its cell of the table of the dictamen: framed as a field, so it reads as the appraiser's among the gray figures. */
+const CAPTURE_FACTOR_CELL = "border-input bg-background text-xs";
 /** Factors and FRe show the decimals of the valuation (two unless it chose four), as the printed homologation. */
 const withDecimals = (decimals: number) => (value: number) =>
   value.toLocaleString("es-MX", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -36,19 +37,21 @@ const withDecimals = (decimals: number) => (value: number) =>
 const slotOptions = (catalog: FactorCatalog, slot: FactorSlotConfig) => (slot.key ? [] : optionsFor(catalog, slot.type));
 
 /**
- * The homologation as the appraiser's format prints it, and where its factors
- * are captured: a row per comparable, a column per factor, in multiplication
- * order. Each cell takes a number or a formula (=0.9/1.05); the surface
- * column, left empty, takes the formula with the power n.
+ * The factors of the homologation, captured in the homologation table of the
+ * dictamen (20 nov 2026: one table): a field per comparable and factor, each
+ * in the cell of that table that prints it (`at`). Each takes a number or a
+ * formula (=0.9/1.05); the surface factor, left empty, takes the formula with
+ * the power n. The figures around them (unit values, FRe, homologated value)
+ * are the table's own, written by the calculation.
  */
-export function MarketHomologationTable(props: {
+export function MarketHomologationCapture(props: {
   comparables: ComparableDto[];
   slots: FactorSlotConfig[];
   result: MarketApproachResult | null;
   catalog: FactorCatalog;
   readOnly: boolean;
-  unitValueLabel: string;
-  homologatedLabel: string;
+  /** The homologation table of the page: its id, the row of each comparable and the column of each factor. */
+  at: { table: string; rows: string[]; factor: (slotIndex: number) => string };
   /** The note under the table: whether it prints, the appraiser's text (null: the format's) and the format's. */
   note: { show: boolean; text: string | null; defaultText: string };
   onNote: (note: { showHomologationNote: boolean; homologationNote: string | null }) => void;
@@ -57,8 +60,6 @@ export function MarketHomologationTable(props: {
   onInvalid: (message: string) => void;
   /** Decimals the factors are shown with; two by default. */
   decimals?: number;
-  /** Renames a factor from its header (video 5.3, 10:12); the dictamen prints the new name. Absent, the headers are fixed. */
-  onRenameSlot?: (slot: FactorSlotConfig, label: string) => void;
   /** The formula of each surface factor the calculation computes, by reference: shown while its cell is edited. */
   surfaceFormulas?: ReadonlyMap<string, string>;
 }) {
@@ -102,132 +103,98 @@ export function MarketHomologationTable(props: {
   };
 
   return (
-    <div className="grid gap-1.5">
-      <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly={readOnly}>
-        <table className={cn(CALC_TABLE, "w-full min-w-[640px]")} aria-label="Homologación">
-          <thead className={CALC_HEAD}>
-            <tr>
-              <th className={CALC_HEAD_CELL} rowSpan={2}>Ref.</th>
-              <th className={CALC_HEAD_CELL} rowSpan={2}>{props.unitValueLabel}</th>
-              <th className={CALC_HEAD_CELL} colSpan={slots.length + 1}>Factores de homologación</th>
-              <th className={CALC_HEAD_CELL} rowSpan={2}>{props.homologatedLabel}</th>
-            </tr>
-            <tr>
-              {slots.map((slot) => (
-                <th key={factorKey(slot)} className={cn(CALC_HEAD_CELL, "min-w-20")}>
-                  {props.onRenameSlot && !readOnly ? (
-                    <FactorHeader slot={slot} onRename={props.onRenameSlot} />
-                  ) : slot.label}
-                </th>
-              ))}
-              <th className={CALC_HEAD_CELL}>FRe</th>
-            </tr>
-          </thead>
-          <tbody>
-            {comparables.map((comparable) => {
-              const row = byReference.get(String(comparable.reference));
-              const warnings = row ? warningsOf(comparable, row.surfaceFactor, row.resultantFactor) : [];
-              // Without a result yet (no subject area) the unit value and the product of the captured factors still show.
-              const offerUnit = comparable.area && comparable.price ? comparable.price / comparable.area : null;
-              const partialFactor = row ? null : slots.reduce((product, slot) => product * (slot.type === "SUPERFICIE"
-                ? comparable.factors.find((factor) => factor.type === "SUPERFICIE")?.value || 1
-                : factorValue(findFactor(comparable, slot))), 1);
-              const detail = warnings.map((warning) => `${warning.label}: ${twoDecimals(warning.value)}`).join(" · ");
+    <>
+      {comparables.map((comparable, index) => {
+        const rowId = props.at.rows[index];
+        if (!rowId) return null;
+        const row = byReference.get(String(comparable.reference));
+        const warnings = row ? warningsOf(comparable, row.surfaceFactor, row.resultantFactor) : [];
+        const detail = warnings.map((warning) => `${warning.label}: ${twoDecimals(warning.value)}`).join(" · ");
+        return (
+          <Fragment key={comparable.id}>
+            {slots.map((slot, slotIndex) => {
+              const label = `${slot.label}, comparable ${comparable.reference}`;
+              const at = { table: props.at.table, row: rowId, column: props.at.factor(slotIndex) };
+              if (slot.type === "SUPERFICIE") {
+                const surface = comparable.factors.find((factor) => factor.type === "SUPERFICIE");
+                return (
+                  <CaptureSlot key={factorKey(slot)} at={at}>
+                    <CommitCell
+                      ariaLabel={label}
+                      numeric
+                      formulaKey={`homologacion:${comparable.id}:${factorKey(slot)}`}
+                      disabled={readOnly}
+                      value={factorInputText(surface, factorFormulaOf(comparable, slot))}
+                      display={surface?.value ? twoDecimals(surface.value) : row ? twoDecimals(row.surfaceFactor) : ""}
+                      computed={!surface?.value}
+                      placeholder="fórmula"
+                      // Empty, the formula with the power n gives it: copying a factor along the row leaves it alone.
+                      noFill="computed"
+                      editText={surface?.value ? undefined : props.surfaceFormulas?.get(String(comparable.reference))}
+                      title={surface?.value
+                        ? "Factor escrito por ti; vacíalo para usar la fórmula"
+                        : `Fórmula con la potencia n${props.surfaceFormulas?.get(String(comparable.reference)) ? `: ${props.surfaceFormulas.get(String(comparable.reference))}` : ""}; escribe otro valor si lo prefieres`}
+                      className={CAPTURE_FACTOR_CELL}
+                      onCommit={typed(comparable, slot)}
+                    />
+                  </CaptureSlot>
+                );
+              }
+              const factor = findFactor(comparable, slot);
+              const options = slotOptions(catalog, slot);
+              const direct = DIRECT_FACTORS.has(slot.type);
+              const current = direct ? matchOption(options, factor?.value) : matchOption(options, factor?.comparableRating);
               return (
-                <tr key={comparable.id} className={cn(CALC_ROW, "align-top")}>
-                  <td className="px-2 py-1.5">{comparable.reference}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{row ? money(row.unitValue) : offerUnit ? money(offerUnit) : "—"}</td>
-                  {slots.map((slot) => {
-                    const label = `${slot.label}, comparable ${comparable.reference}`;
-                    if (slot.type === "SUPERFICIE") {
-                      const surface = comparable.factors.find((factor) => factor.type === "SUPERFICIE");
-                      return (
-                        <td key={factorKey(slot)} className="px-1 py-1">
-                          <CommitCell
-                            ariaLabel={label}
-                            numeric
-                            formulaKey={`homologacion:${comparable.id}:${factorKey(slot)}`}
-                            disabled={readOnly}
-                            value={factorInputText(surface, factorFormulaOf(comparable, slot))}
-                            display={surface?.value ? twoDecimals(surface.value) : row ? twoDecimals(row.surfaceFactor) : ""}
-                            computed={!surface?.value}
-                            placeholder="fórmula"
-                            // Empty, the formula with the power n gives it: copying a factor along the row leaves it alone.
-                            noFill="computed"
-                            editText={surface?.value ? undefined : props.surfaceFormulas?.get(String(comparable.reference))}
-                            title={surface?.value
-                              ? "Factor escrito por ti; vacíalo para usar la fórmula"
-                              : `Fórmula con la potencia n${props.surfaceFormulas?.get(String(comparable.reference)) ? `: ${props.surfaceFormulas.get(String(comparable.reference))}` : ""}; escribe otro valor si lo prefieres`}
-                            className="text-xs"
-                            onCommit={typed(comparable, slot)}
-                          />
-                        </td>
-                      );
-                    }
-                    const factor = findFactor(comparable, slot);
-                    const options = slotOptions(catalog, slot);
-                    const direct = DIRECT_FACTORS.has(slot.type);
-                    const current = direct ? matchOption(options, factor?.value) : matchOption(options, factor?.comparableRating);
-                    return (
-                      <td key={factorKey(slot)} className="px-1 py-1">
-                        <CommitCell
-                          ariaLabel={label}
-                          numeric
-                          formulaKey={`homologacion:${comparable.id}:${factorKey(slot)}`}
-                          disabled={readOnly}
-                          value={factorInputText(factor, factorFormulaOf(comparable, slot))}
-                          display={twoDecimals(factorValue(factor))}
-                          computed={!factor}
-                          className="text-xs"
-                          onCommit={typed(comparable, slot)}
-                        />
-                        {options.length ? (
-                          <NativeSelect
-                            size="sm"
-                            aria-label={`${label}: calificación del catálogo`}
-                            className="mt-0.5 w-full text-xs"
-                            disabled={readOnly || (!direct && !slot.subjectOption)}
-                            title={!direct && !slot.subjectOption ? "Elige primero la calificación del sujeto" : undefined}
-                            value={current?.label ?? ""}
-                            onChange={(event) => picked(comparable, slot)(event.target.value)}
-                          >
-                            <NativeSelectOption value="">{direct ? "Catálogo…" : "Calif.…"}</NativeSelectOption>
-                            {options.map((option) => (
-                              <NativeSelectOption key={option.label} value={option.label}>{option.label} ({option.value})</NativeSelectOption>
-                            ))}
-                          </NativeSelect>
-                        ) : null}
-                      </td>
-                    );
-                  })}
-                  <td className={cn("px-2 py-1.5 text-center tabular-nums", CALC_RESULT)}>
-                    {row ? (
-                      <span className="inline-flex items-center gap-1">
-                        {warnings.length ? (
-                          <AlertTriangle className="size-3.5 text-highlight-strong" aria-label={`Fuera del rango del despacho: ${detail}`}>
-                            <title>{`Fuera del rango que fijó el despacho: ${detail}`}</title>
-                          </AlertTriangle>
-                        ) : null}
-                        {twoDecimals(row.resultantFactor)}
-                      </span>
-                    ) : partialFactor !== null ? (
-                      <span className="text-muted-foreground" title="Producto de los factores capturados; el de superficie entra al capturar la superficie del sujeto" data-partial-resultant="">
-                        {twoDecimals(partialFactor)}
-                      </span>
-                    ) : "—"}
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-medium tabular-nums">{row ? money(row.homologatedUnitValue) : "—"}</td>
-                </tr>
+                <CaptureSlot key={factorKey(slot)} at={at}>
+                  <span className="grid w-full gap-0.5">
+                    <CommitCell
+                      ariaLabel={label}
+                      numeric
+                      formulaKey={`homologacion:${comparable.id}:${factorKey(slot)}`}
+                      disabled={readOnly}
+                      value={factorInputText(factor, factorFormulaOf(comparable, slot))}
+                      display={twoDecimals(factorValue(factor))}
+                      computed={!factor}
+                      className={CAPTURE_FACTOR_CELL}
+                      onCommit={typed(comparable, slot)}
+                    />
+                    {options.length ? (
+                      <NativeSelect
+                        size="sm"
+                        aria-label={`${label}: calificación del catálogo`}
+                        className="w-full text-xs"
+                        data-no-fill=""
+                        disabled={readOnly || (!direct && !slot.subjectOption)}
+                        title={!direct && !slot.subjectOption ? "Elige primero la calificación del sujeto" : undefined}
+                        value={current?.label ?? ""}
+                        onChange={(event) => picked(comparable, slot)(event.target.value)}
+                      >
+                        <NativeSelectOption value="">{direct ? "Catálogo…" : "Calif.…"}</NativeSelectOption>
+                        {options.map((option) => (
+                          <NativeSelectOption key={option.label} value={option.label}>{option.label} ({option.value})</NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                    ) : null}
+                  </span>
+                </CaptureSlot>
               );
             })}
-            {!comparables.length ? (
-              <tr><td colSpan={slots.length + 4} className="px-2 py-6 text-center text-muted-foreground">Agrega comparables para homologarlos.</td></tr>
+            {/* A factor or the FRe out of the range the firm set: a warning at the end of the row, never a block. */}
+            {warnings.length ? (
+              <CaptureSlot at={{ table: props.at.table, row: rowId }}>
+                <AlertTriangle className="size-3.5 text-highlight-strong" aria-label={`Fuera del rango del despacho: ${detail}`} data-factor-warning="">
+                  <title>{`Fuera del rango que fijó el despacho: ${detail}`}</title>
+                </AlertTriangle>
+              </CaptureSlot>
             ) : null}
-          </tbody>
-        </table>
-      </CalcTableContextMenu>
-      <HomologationNote note={props.note} readOnly={readOnly} onChange={props.onNote} />
-    </div>
+          </Fragment>
+        );
+      })}
+      {/* Under the table of the dictamen, its note; while that table is not on screen, here. */}
+      <CaptureSlot at={{ table: props.at.table, part: "footer" }} fallback>
+        <HomologationNote note={props.note} readOnly={readOnly} onChange={props.onNote} />
+      </CaptureSlot>
+    </>
   );
 }
 
@@ -259,31 +226,5 @@ function HomologationNote({ note, readOnly, onChange }: {
         className={cn("min-w-60 flex-1 border-input text-xs", !note.show && "text-muted-foreground line-through")}
       />
     </div>
-  );
-}
-
-/** A factor's name in the header, renamed in place: Enter or leaving the field keeps it; an empty name goes back. */
-function FactorHeader({ slot, onRename }: { slot: FactorSlotConfig; onRename: (slot: FactorSlotConfig, label: string) => void }) {
-  return (
-    <input
-      key={slot.label}
-      aria-label={`Nombre del factor ${slot.label}`}
-      title="Escribe para renombrar el factor; el dictamen imprime este nombre"
-      className="w-full min-w-16 rounded-sm border border-transparent bg-transparent px-1 text-center font-semibold hover:border-border focus:border-ring focus:bg-background focus:outline-none"
-      defaultValue={slot.label}
-      maxLength={60}
-      onBlur={(event) => {
-        const label = event.target.value.trim();
-        if (!label) event.target.value = slot.label;
-        else if (label !== slot.label) onRename(slot, label);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") event.currentTarget.blur();
-        if (event.key === "Escape") {
-          event.currentTarget.value = slot.label;
-          event.currentTarget.blur();
-        }
-      }}
-    />
   );
 }

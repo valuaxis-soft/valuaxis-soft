@@ -18,6 +18,8 @@ import {
   resultantColumn,
   generatedApartado,
   generatedBlock,
+  generatedColumnId,
+  generatedRowIds,
   generatedTable,
   money,
   moneyColumn,
@@ -42,6 +44,7 @@ import {
   printedCharacteristicFields,
   printsAdditionalAmount,
   printsHomologationTable,
+  homologatesOf,
   shownStatistics,
   STATISTICS_BESIDE_ADOPTED,
   type CharacteristicField,
@@ -250,7 +253,7 @@ export function addedCharacteristicText(text: string | undefined, kind: Characte
  * One line with what was captured of the comparable, in the order and with
  * the tags of the list of characteristics; or the appraiser's own text.
  */
-function characteristics(comparable: ComparableDto, fields: CharacteristicField[]) {
+export function characteristicsLine(comparable: ComparableDto, fields: CharacteristicField[]) {
   if (comparable.characteristicsText?.trim()) return comparable.characteristicsText.trim();
   return printedCharacteristicFields(fields)
     .map((field): [string, string | null | undefined] => [field.label, printedCharacteristic(comparable, field)])
@@ -318,7 +321,12 @@ export function withComparableRowIds(blocks: Block[], comparables: ReadonlyArray
 }
 
 /** The block of the market section. None while there is nothing to show. */
-export function marketDocumentBlocks(calculation: MarketCalculationDto, result: MarketApproachResult | null): Block[] {
+export function marketDocumentBlocks(
+  calculation: MarketCalculationDto,
+  result: MarketApproachResult | null,
+  /** `capture`: the page as the editor captures in it, with the homologation table though the dictamen leaves it out; never saved. */
+  options: { capture?: boolean } = {},
+): Block[] {
   const { settings, comparables } = calculation;
   if (!comparables.length) return [];
   const prefix = `${prefixFor(settings.comparableType)}-enfoque`;
@@ -341,7 +349,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
     : [];
 
   // The appraiser may leave the homologation table out of the dictamen: the offers then carry the statistics and the value.
-  const homologationShown = printsHomologationTable(settings);
+  const homologationShown = options.capture ? homologatesOf(settings) : printsHomologationTable(settings);
   const data = generatedApartado(`${prefix}-datos`, `DATOS DE COMPARABLES ${page.scope}`, {
     tables: [
       generatedTable(`${prefix}-tabla-caracteristicas`, "Características de los comparables",
@@ -350,7 +358,7 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
           reference(comparable),
           comparable.location,
           landUseCell(comparable),
-          characteristics(comparable, fields),
+          characteristicsLine(comparable, fields),
         ]),
         { notes: [{ position: "top", label: "Obtención del valor unitario.", text: page.intro }], rowKeys }),
       generatedTable(`${prefix}-tabla-ofertas`, "Ofertas de los comparables",
@@ -422,6 +430,27 @@ export function marketDocumentBlocks(calculation: MarketCalculationDto, result: 
   return [
     generatedBlock(prefix, page.title, { apartados: [...offer, data, homologation] }),
   ];
+}
+
+/**
+ * Where each datum the market captures sits in the tables of its page (the
+ * table, the row of each comparable and the column), so the editor captures
+ * it there. Kept beside the columns above: they are the same ones.
+ */
+export function marketCaptureColumns({ settings, comparables }: Pick<MarketCalculationDto, "settings" | "comparables">) {
+  const prefix = `${prefixFor(settings.comparableType)}-enfoque`;
+  const keys = comparables.map((comparable) => comparableRowKey(comparable.id));
+  const table = (name: string) => `${prefix}-tabla-${name}`;
+  const rows = (name: string) => generatedRowIds(table(name), keys.length, keys);
+  // The adopted value closes the box of the statistics printed beside it; its row has a key once the appraiser chose them.
+  const beside = shownStatistics(settings).filter((key) => STATISTICS_BESIDE_ADOPTED.has(key)).length;
+  return {
+    characteristics: { table: table("caracteristicas"), rows: rows("caracteristicas"), location: generatedColumnId(1), landUse: generatedColumnId(2), text: generatedColumnId(3) },
+    offers: { table: table("ofertas"), rows: rows("ofertas"), phone: generatedColumnId(2), area: generatedColumnId(4), price: generatedColumnId(5) },
+    homologation: { table: table("homologacion"), rows: rows("homologacion"), factor: (slotIndex: number) => generatedColumnId(4 + slotIndex) },
+    /** Under the homologation; under the offers when the market does not homologate. */
+    adopted: { table: table(homologatesOf(settings) ? "homologacion" : "ofertas"), box: `valores.${settings.printedStatistics ? "adoptado" : beside}` },
+  };
 }
 
 export const FACTOR_JUSTIFICATION_TITLE = "Justificación de los factores utilizados";

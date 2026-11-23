@@ -518,7 +518,7 @@ export function ValuationWorkspace({
                 onActiveChange={(type) => setActiveMarket(section.id, { tab: "metodos", type }, type)}
               />
             ) : getCanonicalSectionKey(section.id) === "COSTOS" ? (
-              <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} approach={approachInReport(section, "costos")} {...captureHeadersOf(section)} />
+              <CostCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onCostCalculation} approach={approachInReport(section, "costos")} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CONSTRUCCION" ? (
               // The types and installations are captured in their tables of this section (video 5.3); only a way to put one back if it is missing.
               <ConstructionCaptureAccess

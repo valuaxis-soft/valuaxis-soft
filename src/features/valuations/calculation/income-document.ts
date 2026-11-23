@@ -5,6 +5,8 @@
 import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, type IncomeApproachResult } from "../engine/income";
 import type { Block, TableContent } from "../model";
 import { RATE_TABLE_OPTIONS, rentMarketStats, type IncomeCalculationDto } from "./income-types";
+import { captureColumnPlace } from "./capture-display";
+import { generatedRowIds, generatedTable, textColumn } from "./generated-content";
 import { GENERATED_BLOCK_PREFIX } from "./market-document";
 
 export const INCOME_BLOCK_PREFIX = `${GENERATED_BLOCK_PREFIX}ingresos`;
@@ -197,6 +199,67 @@ export function incomeDocumentBlocks(calculation: IncomeCalculationDto, result: 
     concepts: concepts(`${prefix}-resultado`, [["valor", "Valor por capitalización de rentas", money.format(result.value)]]),
   }));
   return blocks;
+}
+
+const EMPTY = "—";
+
+/** Where the income approach captures in the tables of its pages: the rentable surfaces, the deductions and the ratings of the rate. */
+export const INCOME_CAPTURE = {
+  // By place: the tables of the income approach are saved with column ids of their own.
+  units: { table: `${INCOME_BLOCK_PREFIX}-tabla-rentas`, description: captureColumnPlace(0), area: captureColumnPlace(1), unitRent: captureColumnPlace(2) },
+  deductions: { table: `${INCOME_BLOCK_PREFIX}-tabla-deducciones`, concept: captureColumnPlace(0), rate: captureColumnPlace(1) },
+  rating: { table: `${INCOME_BLOCK_PREFIX}-tabla-tasa`, option: captureColumnPlace(1) },
+  rows: (table: string, count: number) => generatedRowIds(table, count),
+};
+
+/**
+ * The pages of the income approach as the editor captures in them (never
+ * saved): the same blocks the dictamen gets, with every rentable surface and
+ * deduction being written, and the seven criteria of the rate table though
+ * not all are rated yet; without a result, their figures are dashes. The
+ * market-rate method (TR) prints no table of what it captures: none here.
+ */
+export function incomeCaptureBlocks(calculation: IncomeCalculationDto, result: IncomeApproachResult | null): Block[] {
+  if (calculation.method === "mercado") return [];
+  const prefix = INCOME_BLOCK_PREFIX;
+  const written = result && !result.marketRate ? incomeDocumentBlocks(calculation, result) : [];
+  // With the calculation's column ids (col-1…): the same on every render, so a field being typed in stays in its cell.
+  const table = (id: string, title: string, columns: string[], rows: string[][]) => generatedTable(id, title, columns.map((name) => textColumn(name)), rows);
+  const tables: Record<string, TableContent> = {
+    rentas: table(INCOME_CAPTURE.units.table, "Renta bruta mensual", ["Concepto", "Superficie rentable", "Renta unitaria", "Renta mensual"],
+      calculation.rentableUnits.map((unit) => {
+        const unitArea = unit.area ?? calculation.rentMarket.subjectArea ?? null;
+        const unitRent = unit.unitRent ?? result?.unitRent ?? null;
+        return [
+          unit.description || "Superficie rentable",
+          unitArea === null ? EMPTY : area(unitArea),
+          unitRent === null ? EMPTY : `${money.format(unitRent)} /m²/mes`,
+          unitArea === null || unitRent === null ? EMPTY : money.format(unitArea * unitRent),
+        ];
+      })),
+    deducciones: table(INCOME_CAPTURE.deductions.table, "Deducciones sobre la renta bruta", ["Concepto", "Porcentaje", "Importe mensual"],
+      calculation.deductions.map((deduction) => [
+        deduction.concept,
+        deduction.rate === null ? EMPTY : percent(deduction.rate),
+        result && deduction.rate !== null ? money.format(deduction.rate * result.grossMonthlyRent) : EMPTY,
+      ])),
+    ...(calculation.method === "tabla" ? {
+      tasa: table(INCOME_CAPTURE.rating.table, "Construcción de la tasa", ["Criterio", "Calificación", "Tasa"],
+        RATE_TABLE_CRITERIA.map((criterion, index) => {
+          const column = calculation.ratingColumns[index];
+          return [criterion, column === null ? EMPTY : RATE_TABLE_OPTIONS[criterion][column], column === null ? EMPTY : percent(RATE_TABLE_RATES[column], 0)];
+        })),
+    } : {}),
+  };
+  const titles: Record<string, string> = { rentas: "CAPITALIZACIÓN DE RENTAS", deducciones: "DEDUCCIONES", tasa: "TASA DE CAPITALIZACIÓN" };
+  const captured = Object.entries(tables).map(([name, item]) => {
+    const existing = written.find((candidate) => candidate.id === `${prefix}-${name}`);
+    return existing ? { ...existing, tables: [item] } : block(`${prefix}-${name}`, titles[name], { tables: [item] });
+  });
+  const capturedIds = new Set(captured.map((item) => item.id));
+  const before = written.filter((item) => !capturedIds.has(item.id) && item.id !== `${prefix}-tasa` && item.id !== `${prefix}-resultado`);
+  const after = written.filter((item) => !capturedIds.has(item.id) && !before.includes(item));
+  return [...before, ...captured, ...after];
 }
 
 /** TR: the market rate from each rent comparable's income against its sale price. */

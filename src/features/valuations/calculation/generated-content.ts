@@ -59,6 +59,21 @@ export const moneyColumn = (name: string, group?: string): GeneratedColumn => fi
 /** A row id the appraiser's added columns can follow: the row's reference, in lower case. */
 const rowIdPart = (key: string) => key.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
+/** The ids of the rows of a table the calculation writes: by what each row is (`rowKeys`), or by its place. */
+export function generatedRowIds(id: string, count: number, rowKeys?: string[]): string[] {
+  const used = new Set<string>();
+  return Array.from({ length: count }, (_, rowIndex) => {
+    if (!rowKeys) return `r-${id}-${rowIndex}`;
+    const part = rowIdPart(rowKeys[rowIndex] ?? "");
+    const unique = part && !used.has(part) ? part : `${part || "fila"}-${rowIndex + 1}`;
+    used.add(unique);
+    return `r-${id}-k-${unique}`;
+  });
+}
+
+/** The id of a column of a table the calculation writes, by its place among the ones it wrote. */
+export const generatedColumnId = (index: number) => `col-${index + 1}`;
+
 /**
  * A table with stable column and row ids, so a regenerated table is the same
  * table. The title names it in the editor (a table is saved with a name); the
@@ -82,7 +97,7 @@ export function generatedTable(
     widthMode?: "content";
   } = {},
 ): TableContent {
-  const columnIds = columns.map((_, index) => `col-${index + 1}`);
+  const columnIds = columns.map((_, index) => generatedColumnId(index));
   const zones: StructuralZone[] = [];
   const headerGroups: HeaderGroup[] = [];
   if (columns.some((column) => column.group)) {
@@ -108,21 +123,14 @@ export function generatedTable(
     }
   });
   const boxes = (options.summaryBoxes ?? []).filter((box) => box.rows.length);
-  const used = new Set<string>();
-  const rowIdOf = (rowIndex: number) => {
-    if (!options.rowKeys) return `r-${id}-${rowIndex}`;
-    const part = rowIdPart(options.rowKeys[rowIndex] ?? "");
-    const unique = part && !used.has(part) ? part : `${part || "fila"}-${rowIndex + 1}`;
-    used.add(unique);
-    return `r-${id}-k-${unique}`;
-  };
+  const rowIds = generatedRowIds(id, rows.length, options.rowKeys);
   const table: TableV2 = {
     id,
     title,
     version: 2,
     columns: columns.map((column, index) => ({ id: columnIds[index], name: column.name })),
     rows: rows.map((row, rowIndex) => ({
-      id: rowIdOf(rowIndex),
+      id: rowIds[rowIndex],
       cells: Object.fromEntries(columnIds.map((columnId, index): [string, TableCellV2] => [columnId, { kind: "value", value: row[index] ?? "" }])),
     })),
     enabled: true,

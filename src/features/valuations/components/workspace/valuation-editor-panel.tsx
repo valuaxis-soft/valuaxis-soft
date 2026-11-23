@@ -3,6 +3,8 @@
 import { ConceptCreationControl } from "../editor/concept-creation-control";
 import { toast } from "sonner";
 import { isGeneratedBlock } from "@/features/valuations/calculation/market-document";
+import { captureDisplayBlocks } from "@/features/valuations/calculation/capture-display";
+import { CaptureStore, CaptureStoreProvider, useCapturePages } from "../editor/capture-host";
 import { COMPARABLE_TYPE_LABELS } from "@/features/valuations/calculation/market-types";
 import { MARKET_ACCENT } from "@/features/valuations/components/calculation/market-accent";
 import { generatedMarketOf, shownForActiveMarket, type ActiveMarket } from "@/features/valuations/components/workspace/model/active-market";
@@ -63,7 +65,7 @@ import { GeneratedConcepts } from "../editor/generated-concepts";
 
 import { Check, Eye, EyeOff, GripVertical, PencilLine, Plus, Trash2, X } from "lucide-react";
 
-import { ChangeEvent, useMemo, useState, type ReactNode } from "react";
+import { ChangeEvent, useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import { ensureTableV2 } from "@/features/valuations/services/table";
 import { sectionDisplayName } from "./model/section-numbering";
 import type { DragEndEvent } from "@dnd-kit/core";
@@ -330,7 +332,11 @@ export function ValuationEditorPanel(props: {
   // A market section shows the pages of the market open in its panel; the appraiser's own blocks always show.
   const shownBlocks = editableBlocks.filter((block) => shownForActiveMarket(block, props.activeMarket));
   const otherMarketBlocks = editableBlocks.length - shownBlocks.length;
-  const sortableBlockIds = shownBlocks.map((block) => block.id);
+  // The pages of the section's calculation as its capture holds them: each of their tables shows once and is where it is captured.
+  const [captureStore] = useState(() => new CaptureStore());
+  const capturePages = useDeferredValue(useCapturePages(captureStore));
+  const displayBlocks = captureDisplayBlocks(shownBlocks, capturePages);
+  const sortableBlockIds = displayBlocks.map(({ block }) => block.id);
   // Content moves between the Blocks of the section, except where something else owns it.
   const moveRules = useMemo(() => contentMoveRulesForSection(section), [section]);
   const transfer = useStructureTransfer();
@@ -377,12 +383,13 @@ export function ValuationEditorPanel(props: {
         };
     transfer.moveApartado({ sectionId: section.id, blockId: fromBlockId, apartadoId }, { sectionId: section.id, blockId: toBlockId }, position);
   };
-  const renderBlockEditor = (block: Block, blockIndex: number, blockCount: number) => isGeneratedBlock(block) ? (
+  const renderBlockEditor = (block: Block, blockIndex: number, blockCount: number, capture?: { pending: boolean }) => isGeneratedBlock(block) ? (
     <GeneratedBlockEditor
       key={block.id}
       block={block}
       blockCount={blockCount}
       blockIndex={blockIndex}
+      capture={capture}
       readOnly={props.readOnly}
       section={section}
       onMoveBlock={props.onMoveBlock}
@@ -487,6 +494,7 @@ export function ValuationEditorPanel(props: {
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-4">
+        <CaptureStoreProvider value={captureStore}>
         <ConceptValueFormatEverywhere enabled={!isCaratula}>
         <ConceptCalculationLinkScope value={calculationLink}>
         {isCaratula ? (
@@ -579,13 +587,19 @@ export function ValuationEditorPanel(props: {
                     {" "}El dictamen las imprime todas.
                   </p>
                 ) : null}
-                {shownBlocks.map((block) => renderBlockEditor(block, editableBlocks.indexOf(block), editableBlocks.length))}
+                {displayBlocks.map(({ block, pending, capture }) => renderBlockEditor(
+                  block,
+                  editableBlocks.findIndex((item) => item.id === block.id),
+                  editableBlocks.length,
+                  capture ? { pending } : undefined,
+                ))}
               </div>
             </SortableContext>
           </ContentDndScope>
         )}
         </ConceptCalculationLinkScope>
         </ConceptValueFormatEverywhere>
+        </CaptureStoreProvider>
       </CardContent>
     </Card>
   );
@@ -1173,10 +1187,12 @@ function valueFormatPatch(valueFormat: ConceptValueFormat, customUnit?: string):
  * content, copying it, deleting it) is disabled and says why. Its tables
  * show as any table of the editor (video 5.3), its figures locked.
  */
-function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section, onMoveBlock, onUpdateBlock, onUpdateTable }: {
+function GeneratedBlockEditor({ block, blockCount, blockIndex, capture, readOnly: sectionReadOnly, section, onMoveBlock, onUpdateBlock, onUpdateTable }: {
   block: Block;
   blockCount: number;
   blockIndex: number;
+  /** Its tables are where its calculation is captured; `pending`, the dictamen does not have the block yet. */
+  capture?: { pending: boolean };
   readOnly: boolean;
   section: AppSection;
   onMoveBlock: (sectionId: string, blockId: string, direction: -1 | 1) => void;
@@ -1187,6 +1203,9 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
     ...block.tables.map((table) => ({ table, apartadoId: undefined as string | undefined, apartadoTitle: undefined as string | undefined })),
     ...block.apartados.flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id, apartadoTitle: apartado.title }))),
   ].filter(({ table }) => !ensureTableV2(table).schema?.plain);
+  // A block the dictamen does not have yet is only captured in: hiding, moving and formatting it come with its first result.
+  const pending = Boolean(capture?.pending);
+  const readOnly = sectionReadOnly || pending;
   const toolbar = blockToolbarState({ kind: "generated", readOnly });
   const locks = blockToolbarLocks(toolbar);
   const market = generatedMarketOf(block);
@@ -1213,7 +1232,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
       cardRef={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn("rounded-xl border border-dashed bg-muted/20", market && cn("border-l-4", MARKET_ACCENT[market.type].border), !block.enabled && "opacity-65")}
-      badge={block.enabled ? (block.sectionLabel ? `${block.sectionLabel.replace(/\.+$/, "")}.` : titlePrints(block) ? "Fijo" : "Sin título") : "Oculto"}
+      badge={pending ? "Por capturar" : block.enabled ? (block.sectionLabel ? `${block.sectionLabel.replace(/\.+$/, "")}.` : titlePrints(block) ? "Fijo" : "Sin título") : "Oculto"}
       dragHandle={
         <Button type="button" size="icon-sm" variant="ghost" aria-label={`Mover ${block.title}`} title="Arrastrar para reordenar" disabled={readOnly} {...attributes} {...listeners}>
           <GripVertical />
@@ -1286,18 +1305,28 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, readOnly, section
           {!block.enabled ? " · oculto: no sale en el dictamen" : ""}
         </p>
       ) : null}
-      <p className="text-xs text-muted-foreground" data-generated-block-notice>
-        Las cifras de este bloque las escribe el cálculo y se cambian en su panel{block.images.length ? ` · ${block.images.length} fotos` : ""}. Sus tablas se editan como cualquier tabla: encabezados, columnas y filas propias, y formato; todo se conserva al recalcular.
+      <p className="text-xs text-muted-foreground" data-generated-block-notice data-capture-block={capture ? (pending ? "pending" : "") : undefined}>
+        {capture
+          ? `${pending ? "El dictamen imprimirá este bloque en cuanto el cálculo tenga resultado. " : ""}Captura aquí mismo, en cada tabla: las celdas en blanco son tuyas y las grises las calcula el sistema${block.images.length ? ` · ${block.images.length} fotos` : ""}. Encabezados, columnas y filas propias y formato se editan como en cualquier tabla y se conservan al recalcular.`
+          : `Las cifras de este bloque las escribe el cálculo y se cambian en su panel${block.images.length ? ` · ${block.images.length} fotos` : ""}. Sus tablas se editan como cualquier tabla: encabezados, columnas y filas propias, y formato; todo se conserva al recalcular.`}
       </p>
       {block.enabled ? <GeneratedConcepts block={block} readOnly={readOnly} onChange={onUpdateBlock} /> : null}
-      {block.enabled ? tables.map(({ table, apartadoId, apartadoTitle }, index) => (
+      {/* A hidden block still takes its capture: it leaves the dictamen, not the calculation. */}
+      {block.enabled || capture ? tables.map(({ table, apartadoId, apartadoTitle }, index) => (
         <div key={table.id} className="grid min-w-0 gap-1.5">
           {/* The apartado's title over its first table, as the dictamen prints it. */}
           {apartadoTitle && tables[index - 1]?.apartadoId !== apartadoId ? <h4 className="text-xs font-semibold uppercase text-muted-foreground">{apartadoTitle}</h4> : null}
           <GeneratedTableEditor
             table={table}
-            readOnly={readOnly}
-            onUpdate={(updater) => onUpdateTable(table.id, updater, apartadoId)}
+            readOnly={sectionReadOnly}
+            capture={Boolean(capture)}
+            onUpdate={(updater) => {
+              if (pending) {
+                toast.info("Esta tabla todavía no está en el dictamen.", { id: "capture-pending-table", description: "Captura sus datos: en cuanto el cálculo tenga resultado podrás darle formato, renombrar sus encabezados y agregarle columnas." });
+                return;
+              }
+              onUpdateTable(table.id, updater, apartadoId);
+            }}
           />
         </div>
       )) : null}
