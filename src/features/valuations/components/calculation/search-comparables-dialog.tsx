@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ExternalLink, Loader2, Search } from "lucide-react";
+import { AlertTriangle, ExternalLink, Loader2, Search, Sparkles } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
@@ -27,6 +27,7 @@ import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/v
 import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { ComparableBaseMap } from "@/features/valuations/comparable-base/components/comparable-base-map";
 import { searchMapQuery } from "@/features/valuations/comparable-search/map-query";
+import { AiComparableSearchPanel, useAiComparableSearch } from "./ai-comparable-search";
 import { useExpandableDialog } from "./expandable-dialog";
 
 const number = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
@@ -137,6 +138,12 @@ export function SearchComparablesDialog({
   const mapOffered = Boolean(googleMaps?.apiKey) && !onChoose;
   // Only the answer to the last search is shown.
   const lastSearch = useRef(0);
+  // «Buscar con IA» creates comparables of the market: not offered when the results go to the caller.
+  const aiOffered = !onChoose;
+  const [mode, setMode] = useState<"base" | "ai">("base");
+  // Kept here, outside the dialog's content: closing the dialog does not lose what a search found.
+  const ai = useAiComparableSearch(valuationId, type, open && aiOffered);
+  const aiDisabled = ai.setup ? !ai.setup.enabled : true;
 
   const reset = () => {
     lastSearch.current += 1;
@@ -222,13 +229,51 @@ export function SearchComparablesDialog({
           <DialogHeader>
             <DialogTitle>{label}</DialogTitle>
             <DialogDescription>
-              {description ?? (
+              {mode === "ai" && aiOffered ? (
+                "Describe lo que buscas, como se lo pedirías a una persona. La IA busca anuncios en la web y te los presenta en una tabla; "
+                + "tú eliges cuáles se vuelven fichas de este mercado. Son anuncios sin verificar."
+              ) : description ?? (
                 "Escribe la zona, colonia, municipio, calle o el ID del comparable (C-00123), o usa los filtros, y elige las ofertas que quieras "
                 + "agregar al avalúo. Se agregan con sus fotos, su pantalla de referencia y su ID; los factores se califican después."
               )}
             </DialogDescription>
           </DialogHeader>
 
+          {aiOffered ? (
+            <div className="grid gap-1.5">
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Dónde buscar">
+                <Button type="button" size="sm" variant={mode === "base" ? "default" : "outline"} aria-pressed={mode === "base"} onClick={() => setMode("base")}>
+                  <Search data-icon="inline-start" /> En la base del despacho
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mode === "ai" ? "default" : "outline"}
+                  aria-pressed={mode === "ai"}
+                  disabled={aiDisabled}
+                  aria-describedby={aiDisabled && ai.setup ? "ai-search-disabled" : undefined}
+                  onClick={() => setMode("ai")}
+                >
+                  <Sparkles data-icon="inline-start" /> Buscar con IA en la web
+                  {ai.candidates.length ? <span className="tabular-nums"> ({ai.candidates.length})</span> : null}
+                </Button>
+              </div>
+              {ai.setup && !ai.setup.enabled ? <p id="ai-search-disabled" className="text-xs text-muted-foreground">{ai.setup.disabledReason}</p> : null}
+              {ai.setupError ? <p className="text-xs text-muted-foreground">Buscar con IA: {ai.setupError}</p> : null}
+            </div>
+          ) : null}
+
+          {mode === "ai" && aiOffered ? (
+            <AiComparableSearchPanel
+              search={ai}
+              type={type}
+              readOnly={readOnly}
+              onCreated={(calculation) => onAdded?.(calculation)}
+              onClose={() => { setOpen(false); reset(); }}
+            />
+          ) : null}
+
+          <div className={mode === "ai" ? "hidden" : "contents"}>
           <form className="grid gap-3" onSubmit={(event) => void search(event)} noValidate>
             <Field>
               <FieldLabel htmlFor="comparable-search-text">Zona, colonia, municipio o calle</FieldLabel>
@@ -359,7 +404,8 @@ export function SearchComparablesDialog({
 
             {found && busy !== "search" && !results.length ? (
               <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                Sin resultados para «{found.text}». Por ahora la búsqueda consulta solo los comparables que tu despacho ya capturó en otros avalúos; más adelante se agregarán más fuentes.
+                Sin resultados para «{found.text}». Esta búsqueda consulta solo los comparables que tu despacho ya capturó en otros avalúos
+                {aiOffered && !aiDisabled ? "; para buscar anuncios en internet usa «Buscar con IA en la web»." : "."}
               </p>
             ) : null}
 
@@ -482,6 +528,7 @@ export function SearchComparablesDialog({
               </Button>
             ) : null}
           </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </>
