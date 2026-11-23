@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { getOrderedValuationSections } from "../../src/features/valuations/sections/section-registry";
+import { getCanonicalSectionKey, getOrderedValuationSections, sectionKeyToWorkspaceId } from "../../src/features/valuations/sections/section-registry";
 import {
   concludeValuation,
   initializeWorkingVersionStructure,
@@ -152,6 +152,31 @@ test("a valuation that was never edited cannot be concluded", async () => {
   const fixture = await createValuationFixture({ precision: "shown" });
   await rejectsWith(conclude(fixture), 409, "No existe version de trabajo");
   assert.equal((await avaluo(fixture)).BBloqueado, false);
+});
+
+test("a document saved by the editor, with every section in its payload, can be concluded", async () => {
+  const fixture = await createValuationFixture();
+  // The editor sends all its sections and none says it is required.
+  const registry = getOrderedValuationSections()
+    .map((definition) => ({ id: sectionKeyToWorkspaceId(definition.key), label: definition.label, title: definition.label, blocks: [] }))
+    .filter((section) => getCanonicalSectionKey(section.id) !== getCanonicalSectionKey("costos"));
+  await save(fixture, [...registry, ...document()]);
+  const { IdVersionTrabajo } = await avaluo(fixture);
+  assert.ok(
+    await prisma.seccionDocumento.count({ where: { IdVersionAvaluo: IdVersionTrabajo!, BObligatoria: true } }) > 0,
+    "the required sections keep their flag after the editor's save",
+  );
+  await conclude(fixture);
+  assert.equal((await avaluo(fixture)).BBloqueado, true);
+});
+
+test("a document whose required flags were cleared by an earlier save can still be concluded", async () => {
+  const fixture = await createValuationFixture();
+  await save(fixture);
+  const { IdVersionTrabajo } = await avaluo(fixture);
+  await prisma.seccionDocumento.updateMany({ where: { IdVersionAvaluo: IdVersionTrabajo! }, data: { BObligatoria: false } });
+  await conclude(fixture);
+  assert.equal((await avaluo(fixture)).BBloqueado, true);
 });
 
 test("a document without visible required sections cannot be concluded", async () => {

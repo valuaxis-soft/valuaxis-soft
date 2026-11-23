@@ -261,6 +261,15 @@ export function findSectionDefinition(key: string) {
   return valuationSectionRegistry.find((section) => section.key === normalized);
 }
 
+/**
+ * Whether the document cannot be concluded without this section. It is the
+ * registry's to say: the editor does not send it, and a section the appraiser
+ * added is never required.
+ */
+export function isRequiredSectionKey(key: string) {
+  return findSectionDefinition(key)?.required ?? false;
+}
+
 export function getOrderedValuationSections() {
   return [...valuationSectionRegistry].sort((a, b) => a.order - b.order);
 }

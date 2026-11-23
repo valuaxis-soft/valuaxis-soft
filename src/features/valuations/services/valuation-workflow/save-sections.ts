@@ -5,6 +5,7 @@ import { isRemovedSectionConfig } from "@/features/valuations/metadata";
 import {
   getCanonicalSectionKey,
   isCustomSectionId,
+  isRequiredSectionKey,
   sectionKeyToWorkspaceId,
 } from "@/features/valuations/sections/section-registry";
 import { saveCaratula } from "./caratula";
@@ -112,6 +113,8 @@ export async function writeVersionSections(
     const custom = Boolean(section.id && isCustomSectionId(section.id));
     const canonical = custom ? section.id! : getCanonicalSectionKey(section.id ?? section.label ?? `section-${index + 1}`);
     const key = custom ? canonical : sectionKeyToWorkspaceId(canonical);
+    // The editor's save carries every section and none says it is required: taken from it, the flag was cleared and nothing could be concluded.
+    const required = !custom && isRequiredSectionKey(canonical);
     const existingSection = custom
       ? await tx.seccionDocumento.findUnique({
           where: { IdVersionAvaluo_SClave: { IdVersionAvaluo: versionId, SClave: key } },
@@ -132,7 +135,7 @@ export async function writeVersionSections(
             SNombre: limitDbText(section.title ?? key, 220),
             IOrden: section.sortOrder ?? index,
             BVisible: section.enabled ?? true,
-            BObligatoria: section.required ?? false,
+            BObligatoria: required,
             BEliminable: custom,
             JConfiguracion: section as Prisma.InputJsonObject,
           },
@@ -144,7 +147,7 @@ export async function writeVersionSections(
             SNombre: limitDbText(section.title ?? key, 220),
             IOrden: section.sortOrder ?? index,
             BVisible: section.enabled ?? true,
-            BObligatoria: section.required ?? false,
+            BObligatoria: required,
             BEliminable: custom,
             JConfiguracion: section as Prisma.InputJsonObject,
           },

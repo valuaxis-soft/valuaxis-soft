@@ -7,6 +7,7 @@ import { resolveSignatures, signatureListError } from "@/features/valuations/ser
 import { prisma } from "@/infrastructure/database/prisma-client";
 import type { AuthUser } from "@/features/auth/model";
 import { copyVersionContent } from "@/features/valuations/services/valuation-version-copy.service";
+import { isRequiredSectionKey } from "@/features/valuations/sections/section-registry";
 import { ValuationWorkflowError } from "./errors";
 
 /** Today's date in Mexico, "YYYY-MM-DD", to compare with the valuation date. */
@@ -55,8 +56,9 @@ export async function concludeValuation(input: {
       throw new ValuationWorkflowError("Faltan estados finales configurados", 500);
     }
 
+    // The registry also counts: documents saved while the editor's save cleared the flag have it off in every section.
     const requiredSections = avaluo.versionTrabajo.seccionesDocumentos.filter(
-      (section) => section.BObligatoria && section.BVisible,
+      (section) => (section.BObligatoria || isRequiredSectionKey(section.SClave)) && section.BVisible,
     );
     if (!requiredSections.length) {
       throw new ValuationWorkflowError("No hay secciones obligatorias configuradas para concluir", 409);
