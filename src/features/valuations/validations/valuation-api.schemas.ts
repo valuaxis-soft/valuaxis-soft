@@ -5,6 +5,7 @@
  * that is stored as-is in JConfiguracion, so unknown keys are kept.
  */
 import { z } from "zod";
+import { documentPaletteSchema } from "@/features/valuations/services/document-palette";
 
 const id = z.string().trim().min(1).max(200);
 const shortText = z.string().max(250);
@@ -84,6 +85,8 @@ const sectionSchema = z.looseObject({
   label: z.string().max(250).optional(),
   title: z.string().max(250).optional(),
   blocks: z.array(blockSchema).max(200).optional(),
+  // The document's colours end up in its style: only "#RRGGBB".
+  palette: documentPaletteSchema.optional(),
 });
 
 export const saveFullValuationSchema = z.object({

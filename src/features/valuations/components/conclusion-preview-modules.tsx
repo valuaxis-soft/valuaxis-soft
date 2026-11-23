@@ -61,7 +61,7 @@ function ValueChart({ rows }: { rows: Array<{ id: string; label: string; value: 
             <span className="truncate text-right font-semibold uppercase">{row.label}</span>
             <span className="flex items-center gap-1.5">
               <span
-                className={`block h-3 [-webkit-print-color-adjust:exact] [print-color-adjust:exact] ${row.concluded ? "bg-[var(--caratula-blue)]" : "bg-[#8EA9D1]"}`}
+                className={`block h-3 [-webkit-print-color-adjust:exact] [print-color-adjust:exact] ${row.concluded ? "bg-[var(--caratula-blue)]" : "bg-[var(--doc-strong-soft,#8EA9D1)]"}`}
                 style={{ width: `${Math.max(1, (row.value / max) * 78)}%` }}
               />
               <span className="whitespace-nowrap tabular-nums">${figure(row.value)}</span>
@@ -95,7 +95,7 @@ export function ConclusionValueModule({ block }: { block: Block }) {
         <table className="ml-auto w-[88%] border-separate border-spacing-y-[3px] text-[11px] font-bold" data-conclusion-summary-rows>
           <tbody>
             {summary.map((concept) => (
-              <tr key={concept.id} className="bg-[#B4C6E7] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
+              <tr key={concept.id} className="bg-[var(--doc-pastel,#B4C6E7)] text-[color:var(--doc-ink-on-pastel,inherit)] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
                 <td className="px-2 py-0.5 text-right uppercase">{printedLabel(concept.label)}</td>
                 <td className="w-[30%] py-0.5 pr-2 pl-3"><Amount value={concept.value} /></td>
               </tr>
@@ -106,7 +106,7 @@ export function ConclusionValueModule({ block }: { block: Block }) {
       {chartRows.length ? <ValueChart rows={chartRows} /> : null}
       {concluded ? (
         <div className="mx-auto mt-4 flex w-[80%] border border-[var(--caratula-blue)] text-[15px] font-bold [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" data-concluded-value-box>
-          <div className="flex-1 bg-[var(--caratula-blue)] px-3 py-1 text-right uppercase text-white" data-concluded-value-label>{printedLabel(concluded.label)}</div>
+          <div className="flex-1 bg-[var(--caratula-blue)] px-3 py-1 text-right uppercase text-[color:var(--doc-on-strong,#fff)]" data-concluded-value-label>{printedLabel(concluded.label)}</div>
           <div className="w-[42%] bg-slate-200 px-3 py-1 text-slate-900"><Amount value={concluded.value} /></div>
         </div>
       ) : null}

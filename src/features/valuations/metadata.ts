@@ -4,6 +4,7 @@ import { isDefaultImageFraming, readStoredImageFraming, type ImageFraming } from
 import { readCroquisMarker, type CroquisImageMarker } from "@/features/maps/croquis-marker";
 import type { ConceptPresentation } from "@/features/valuations/services/concept-presentation";
 import { isBlockFlowV2 } from "@/features/valuations/services/block-flow";
+import { readDocumentPalette, type DocumentPalette } from "@/features/valuations/services/document-palette";
 import { normalizeHeaderExtraFields } from "@/features/valuations/services/caratula-company-header";
 import { isDefaultCoverImageSize, normalizeCoverImageSize, type CoverImageSize } from "@/features/valuations/services/cover-image-focus";
 import {
@@ -84,6 +85,8 @@ export type SectionMetadata = {
   titleBars?: TitleBarStyle;
   /** The document's style of title band, carried by its carátula section. */
   titleBand?: TitleBandStyle;
+  /** The document's colours, carried by its carátula section. */
+  palette?: DocumentPalette;
   /** The carátula prints its blocks in the editor's order. */
   freeBlockOrder?: boolean;
   /** Chapter or annex, as the appraiser chose. */
@@ -252,6 +255,7 @@ export function hydrateImageMetadata(config: unknown): ImageMetadata {
 }
 
 export function sectionMetadataFromContent(content: SectionMetadataContent): SectionMetadata {
+  const palette = readDocumentPalette(content.palette);
   return {
     enabled: content.enabled !== false,
     startOnNewPage: content.startOnNewPage,
@@ -260,6 +264,7 @@ export function sectionMetadataFromContent(content: SectionMetadataContent): Sec
     bindingMargin: content.bindingMargin,
     titleBars: content.titleBars,
     titleBand: content.titleBand,
+    ...(palette ? { palette } : {}),
     ...(content.freeBlockOrder ? { freeBlockOrder: true } : {}),
     ...(content.documentRole ? { documentRole: content.documentRole } : {}),
     ...(content.annexTitle?.trim() ? { annexTitle: content.annexTitle.trim() } : {}),
@@ -286,6 +291,7 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
     bindingMargin: readConfigMetadata(config, (value) => (isRecord(value) && isBindingMargin(value.bindingMargin) ? value.bindingMargin : undefined)),
     titleBars: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBarStyle(value.titleBars) ? value.titleBars : undefined)),
     titleBand: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBandStyle(value.titleBand) ? value.titleBand : undefined)),
+    palette: readConfigMetadata(config, (value) => (isRecord(value) ? readDocumentPalette(value.palette) : undefined)),
     freeBlockOrder: sectionBooleanMetadata(config, "freeBlockOrder"),
     documentRole: readConfigMetadata(config, (value) => (isRecord(value) && isSectionDocumentRole(value.documentRole) ? value.documentRole : undefined)),
     annexTitle: readConfigMetadata(config, (value) => (isRecord(value) && typeof value.annexTitle === "string" && value.annexTitle.trim() ? value.annexTitle.trim().slice(0, 60) : undefined)),

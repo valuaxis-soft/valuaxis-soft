@@ -53,7 +53,7 @@ export interface DocumentThemeTokens {
  * already and its rule fills it (`PAIRED_APARTADOS_CLASS_NAME`).
  */
 const APARTADO_TITLE =
-  "relative mb-1 pb-0.5 text-[11px] font-bold uppercase leading-tight text-[#2F5495] after:absolute after:bottom-0 after:left-0 after:w-1/2 after:border-b-2 after:border-[#2F5495] after:content-['']";
+  "relative mb-1 pb-0.5 text-[11px] font-bold uppercase leading-tight text-[color:var(--doc-apartado,#2F5495)] after:absolute after:bottom-0 after:left-0 after:w-1/2 after:border-b-2 after:border-[var(--doc-apartado,#2F5495)] after:content-['']";
 
 /** Two apartados side by side: each column is half the page, so their title rules fill it. */
 export const PAIRED_APARTADOS_CLASS_NAME = "[&_h3]:after:w-full";
@@ -61,7 +61,7 @@ export const PAIRED_APARTADOS_CLASS_NAME = "[&_h3]:after:w-full";
 /* ── Carátula variant ──────────────────────────────────────────── */
 const CARATULA_THEME: DocumentThemeTokens = {
   sectionTitle:
-    "mb-1 border-b border-[#00285A]/30 pb-0.5 text-[11px] font-bold uppercase tracking-wide text-[#00285A]",
+    "mb-1 border-b border-[color-mix(in_oklab,var(--caratula-dark-blue,#00285A)_30%,transparent)] pb-0.5 text-[11px] font-bold uppercase tracking-wide text-[color:var(--caratula-dark-blue,#00285A)]",
   apartadoTitle: APARTADO_TITLE,
   conceptLabel:
     "min-w-0 text-[10px] font-medium text-[#1a1a1a] leading-snug",
@@ -81,7 +81,7 @@ const CARATULA_THEME: DocumentThemeTokens = {
 const STANDARD_THEME: DocumentThemeTokens = {
   // A fine bar, thinner than the document's title band in the header.
   sectionTitle:
-    "mb-1 bg-[#00285A] px-3 py-0.5 text-center text-[11px] font-bold uppercase leading-tight text-white",
+    "mb-1 bg-[var(--caratula-dark-blue,#00285A)] px-3 py-0.5 text-center text-[11px] font-bold uppercase leading-tight text-[color:var(--doc-on-strong,#fff)]",
   apartadoTitle: APARTADO_TITLE,
   conceptLabel:
     "min-w-0 text-[11px] font-semibold text-[#1a1a1a] leading-snug",
@@ -103,7 +103,7 @@ const STANDARD_THEME: DocumentThemeTokens = {
  * header (video 5.1). The filled bar has no frame: just the blue band.
  */
 const OUTLINE_SECTION_TITLE =
-  "mb-1 border border-[#00285A] bg-white px-3 py-0.5 text-center text-[11px] font-bold uppercase leading-tight text-[#00285A]";
+  "mb-1 border border-[var(--caratula-dark-blue,#00285A)] bg-white px-3 py-0.5 text-center text-[11px] font-bold uppercase leading-tight text-[color:var(--caratula-dark-blue,#00285A)]";
 
 /* ── Theme map ─────────────────────────────────────────────────── */
 const THEMES: Record<DocumentThemeVariant, DocumentThemeTokens> = {
@@ -118,7 +118,7 @@ const OUTLINE_STANDARD_THEME: DocumentThemeTokens = { ...STANDARD_THEME, section
  * in the appraiser's own format. It prints with its background.
  */
 export const TABLE_HEADER_BAND =
-  "bg-[#BDD7EE] text-[var(--caratula-dark-blue)] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]";
+  "bg-[var(--doc-pastel,#BDD7EE)] text-[color:var(--doc-on-pastel,var(--caratula-dark-blue))] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]";
 
 /**
  * The rules between the headers of a table: white and as thick as the rule

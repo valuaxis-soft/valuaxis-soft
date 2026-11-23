@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, FileImage } from "lucide-react";
-import { useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,17 +40,16 @@ import {
   CaratulaSignaturesModule,
 } from "./caratula-preview-modules";
 import { conclusionBlockFlowItems } from "./conclusion-preview-modules";
+import { useDocumentPaletteStyle } from "./page-presentation-context";
 import { UnaccreditedNotice, useUnaccreditedNotice } from "@/features/accreditation/components/unaccredited-notice";
 import { NOTICE_SECTION_KEYS } from "@/features/accreditation/accreditation-notice";
 import { titlePrints } from "@/features/valuations/services/block-title";
 
-const CARATULA_BLUE = "#003B73";
-const CARATULA_DARK_BLUE = "#00285A";
+/** The root of a document: always light, with the colours of its palette as CSS variables. */
+function DocumentRoot({ children }: { children: ReactNode }) {
+  return <div className="light" style={useDocumentPaletteStyle()}>{children}</div>;
+}
 
-const CARATULA_COLOR_VARS = {
-  "--caratula-blue": CARATULA_BLUE,
-  "--caratula-dark-blue": CARATULA_DARK_BLUE,
-} as CSSProperties;
 const PRE_MARKET_LAYOUT_SECTION_KEYS = new Set([
   "CARATULA",
   "DATOS_GENERALES",
@@ -223,7 +222,7 @@ export function SectionDocument({
   if (section.id === "caratula") {
     return (
       <DocumentThemeProvider variant="caratula">
-        <div className="light" style={CARATULA_COLOR_VARS}>
+        <DocumentRoot>
           <CaratulaPreview
             caratula={caratula}
             meta={meta}
@@ -231,14 +230,14 @@ export function SectionDocument({
             principalImage={principalCoverImage}
             header={header}
           />
-        </div>
+        </DocumentRoot>
       </DocumentThemeProvider>
     );
   }
 
   return (
     <DocumentThemeProvider variant="standard">
-      <div className="light" style={CARATULA_COLOR_VARS}>
+      <DocumentRoot>
         {isDatosGenerales ? (
           <DatosPreview header={header} section={section} />
         ) : isTerreno ? (
@@ -253,7 +252,7 @@ export function SectionDocument({
             section={section}
           />
         )}
-      </div>
+      </DocumentRoot>
     </DocumentThemeProvider>
   );
 }
@@ -316,9 +315,9 @@ export function ContinuousSectionsDocument({
   const header = <DocumentPreviewHeader caratula={caratula} letterhead={letterhead} headerImage={documentHeaderImage} propertyKind={meta.propertyKind} />;
   return (
     <DocumentThemeProvider variant="standard">
-      <div className="light" style={CARATULA_COLOR_VARS}>
+      <DocumentRoot>
         <ContinuousSectionsFlow caratula={caratula} header={header} sections={sections} />
-      </div>
+      </DocumentRoot>
     </DocumentThemeProvider>
   );
 }

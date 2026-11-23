@@ -50,7 +50,7 @@ export function DocumentPreviewHeader({
   return (
     <header className="px-5 pt-5 sm:px-8 sm:pt-7" data-document-preview-header>
       <div className="grid gap-3 sm:grid-cols-[190px_minmax(0,1fr)]">
-        <div className={`flex h-24 items-center justify-center  text-3xl font-black tracking-tight shadow-sm ${image?.src ? "bg-white text-[var(--caratula-blue)]" : "bg-gradient-to-br from-[var(--caratula-blue)] to-[var(--caratula-dark-blue)] text-white"}`}>
+        <div className={`flex h-24 items-center justify-center  text-3xl font-black tracking-tight shadow-sm ${image?.src ? "bg-white text-[var(--caratula-blue)]" : "bg-gradient-to-br from-[var(--caratula-blue)] to-[var(--caratula-dark-blue)] text-[color:var(--doc-on-strong,#fff)]"}`}>
           {image?.src ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -111,7 +111,7 @@ export function DocumentPreviewHeader({
         </div>
       ) : (
         <div
-          className="mt-1 bg-[var(--caratula-dark-blue)] px-5 py-0.5 text-center text-base font-black leading-tight text-white [-webkit-print-color-adjust:exact] [print-color-adjust:exact]"
+          className="mt-1 bg-[var(--caratula-dark-blue)] px-5 py-0.5 text-center text-base font-black leading-tight text-[color:var(--doc-on-strong,#fff)] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]"
           data-title-band={titleBand}
         >
           {appraisedGoodWording(propertyKind).documentTitle}

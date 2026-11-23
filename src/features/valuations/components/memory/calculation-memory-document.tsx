@@ -4,12 +4,10 @@ import type { CaratulaFormData, ImageContent, Letterhead } from "../../model";
 import type { ComparableCardDto } from "../../calculation/comparable-card.service";
 import { memoryChapters, roundingText, type CalculationMemory, type MemoryApproach, type MemoryChapter, type MemoryConcept, type MemoryDataTable, type MemoryTable } from "../../memory/calculation-memory";
 import { formatDateValue } from "../../services/concept-value-format";
+import { documentPaletteVars, type DocumentPalette } from "../../services/document-palette";
 import { ComparableCardView } from "../calculation/comparable-card-view";
 import { DocumentPreviewHeader } from "../document-preview-header";
 import { UnaccreditedNotice } from "@/features/accreditation/components/unaccredited-notice";
-
-/** The dictamen's blues, so the header prints as in the dictamen. */
-const HEADER_COLORS = { "--caratula-blue": "#003B73", "--caratula-dark-blue": "#00285A" } as CSSProperties;
 
 /** Values computed by a formula print in this blue; typed values in black. */
 const COMPUTED = "text-[#1d4ed8]";
@@ -332,6 +330,7 @@ export function CalculationMemoryDocument({
   memory,
   propertyKind,
   unaccreditedNotice = false,
+  palette,
 }: {
   caratula: CaratulaFormData;
   headerImage: ImageContent | null;
@@ -342,10 +341,12 @@ export function CalculationMemoryDocument({
   comparables?: ComparableCardDto[];
   /** The issuer is not accredited: the memory opens with "DOCUMENTO SIN VALIDEZ OFICIAL" (docs/ACREDITACION.md). */
   unaccreditedNotice?: boolean;
+  /** The colours of the valuation's dictamen, so the memory prints as it does. */
+  palette?: DocumentPalette;
 }) {
   const chapters = memoryChapters(memory);
   return (
-    <main data-print-memory className="py-8 print:p-0" style={HEADER_COLORS}>
+    <main data-print-memory className="py-8 print:p-0" style={documentPaletteVars(palette) as CSSProperties}>
       <style>{"@page { size: letter; margin: 10mm 12mm 14mm; } @media print { [data-print-memory] thead.memory-page-header { display: table-header-group; } }"}</style>
       <table className="mx-auto w-full max-w-[816px] bg-white text-black shadow-sm print:max-w-none print:shadow-none">
         <thead className="memory-page-header">

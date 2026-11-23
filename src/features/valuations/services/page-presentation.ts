@@ -7,6 +7,7 @@
  * Pure TypeScript — no React, no side effects.
  */
 import type { AppSection } from "../model";
+import { DEFAULT_DOCUMENT_PALETTE, readDocumentPalette, sameDocumentPalette, type DocumentPalette } from "./document-palette";
 import { DOCUMENT_SETTINGS_SECTION_ID } from "./number-presentation";
 
 /** "normal" keeps the page as always; "wide" leaves 1.5 cm more on the left for binding. */
@@ -26,6 +27,8 @@ export type PagePresentation = {
   bindingMargin: BindingMargin;
   titleBars: TitleBarStyle;
   titleBand: TitleBandStyle;
+  /** The colours the document chose; absent while it prints with the ones it always had. */
+  palette?: DocumentPalette;
 };
 
 /** What a document prints until the appraiser chooses: as documents always printed. */
@@ -39,11 +42,13 @@ export const isTitleBarStyle = (value: unknown): value is TitleBarStyle => value
 export const isTitleBandStyle = (value: unknown): value is TitleBandStyle => value === "filled" || value === "outline";
 
 /** The page presentation a document chose, read from its carátula section; the default for what it did not choose. */
-export function documentPagePresentation(sections: ReadonlyArray<Pick<AppSection, "id" | "bindingMargin" | "titleBars" | "titleBand">>): PagePresentation {
+export function documentPagePresentation(sections: ReadonlyArray<Pick<AppSection, "id" | "bindingMargin" | "titleBars" | "titleBand" | "palette">>): PagePresentation {
   const cover = sections.find((section) => section.id === DOCUMENT_SETTINGS_SECTION_ID) ?? sections[0];
+  const palette = readDocumentPalette(cover?.palette);
   return {
     bindingMargin: isBindingMargin(cover?.bindingMargin) ? cover.bindingMargin : DEFAULT_PAGE_PRESENTATION.bindingMargin,
     titleBars: isTitleBarStyle(cover?.titleBars) ? cover.titleBars : DEFAULT_PAGE_PRESENTATION.titleBars,
     titleBand: isTitleBandStyle(cover?.titleBand) ? cover.titleBand : DEFAULT_PAGE_PRESENTATION.titleBand,
+    ...(palette && !sameDocumentPalette(palette, DEFAULT_DOCUMENT_PALETTE) ? { palette } : {}),
   };
 }

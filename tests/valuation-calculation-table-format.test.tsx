@@ -332,7 +332,7 @@ test("a box marked with an x is shaded, the offer level's ( X ) is not, and the 
   const boxed = render(generatedTable("h", "H", [figureColumn("REF")], [["1"]], {
     summaryBoxes: [{ id: "base", position: "top", rows: [{ label: "Lote Tipo:", value: "140 m²", mark: false }, { label: "Lote Sujeto:", value: "169 m²", mark: true }] }],
   }));
-  assert.match(boxed, /<td class="[^"]*bg-\[#BDD7EE\][^"]*">x<\/td>/);
-  assert.doesNotMatch(boxed, /<td class="[^"]*bg-\[#BDD7EE\][^"]*"><\/td>/, "the option not chosen is not shaded");
+  assert.match(boxed, /<td class="[^"]*bg-\[var\(--doc-pastel,#BDD7EE\)\][^"]*">x<\/td>/);
+  assert.doesNotMatch(boxed, /<td class="[^"]*bg-\[var\(--doc-pastel,#BDD7EE\)\][^"]*"><\/td>/, "the option not chosen is not shaded");
   assert.doesNotMatch(boxed, /border-\[var\(--caratula-dark-blue\)\]/);
 });

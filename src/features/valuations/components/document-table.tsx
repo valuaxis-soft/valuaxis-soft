@@ -157,9 +157,9 @@ function renderSchemaHeader(
 /** Dark gray, as the text of the other sections: tables do not print in black. */
 const TABLE_TEXT = "text-[#333333]";
 /** Rules of the boxes: a soft blue gray of the document's palette, not black. */
-const BOX_RULE = "border-[#A9BCD6]";
+const BOX_RULE = "border-[var(--doc-rule,#A9BCD6)]";
 /** A box or a cell marked with an X is shaded, as the appraiser asked, and prints so. */
-const MARKED = "bg-[#BDD7EE] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]";
+const MARKED = "bg-[var(--doc-pastel,#BDD7EE)] text-[color:var(--doc-ink-on-pastel,inherit)] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]";
 /** "( X )", the mark of the option chosen in a grid of options. */
 const isMarkedCell = (text: string) => /^\(\s*x\s*\)$/i.test(text.trim());
 
@@ -203,7 +203,7 @@ function SummaryBoxes({ tableV2, position }: { tableV2: TableV2; position: Table
                       <tr
                         className={cn(
                           "[-webkit-print-color-adjust:exact] [print-color-adjust:exact]",
-                          row.emphasis === "total" && "bg-[var(--caratula-dark-blue)] font-bold text-white",
+                          row.emphasis === "total" && "bg-[var(--caratula-dark-blue)] font-bold text-[color:var(--doc-on-strong,#fff)]",
                           row.emphasis === "strong" && "bg-slate-200 font-bold",
                           marked && cn("border-b last:border-b-0", BOX_RULE),
                         )}

@@ -148,14 +148,14 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
 
   return (
     <article className={cn("grid gap-3 text-sm", printable && "text-black")} data-comparable-card={id ?? comparable.id}>
-      <header className="flex flex-wrap items-center gap-2 rounded-sm bg-[#003B73] px-3 py-2 text-white">
+      <header className="flex flex-wrap items-center gap-2 rounded-sm bg-[var(--caratula-blue,#003B73)] px-3 py-2 text-[color:var(--doc-on-strong,#fff)]">
         <span className="font-mono text-base font-semibold">{id ?? "Sin número"}</span>
         <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs">{COMPARABLE_TYPE_LABELS[type]}</span>
         <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs">Comparable {comparable.reference}</span>
         {review && !printable ? (
           <span className={cn("rounded-sm px-1.5 py-0.5 text-xs font-medium", REVIEW_STATUS_STYLES[review.status].solid)}>{REVIEW_STATUS_LABELS[review.status]}</span>
         ) : null}
-        <span className="ml-auto text-xs text-white/80">
+        <span className="ml-auto text-xs text-[color:color-mix(in_oklab,var(--doc-on-strong,#fff)_80%,transparent)]">
           {card.valuation ? `Capturado en el avalúo ${card.valuation.folio}` : "En la base general, sin avalúo"}
         </span>
       </header>

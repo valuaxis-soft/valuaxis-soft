@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { OPEN_SECTION_EVENT } from "@/features/valuations/components/calculation/calculation-precision-control";
@@ -13,6 +13,7 @@ import { NumberPresentationProvider } from "@/features/valuations/components/num
 import { documentNumberPresentation } from "@/features/valuations/services/number-presentation";
 import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
 import { documentPagePresentation } from "@/features/valuations/services/page-presentation";
+import { documentPaletteVars } from "@/features/valuations/services/document-palette";
 import { AiAssistProvider } from "@/features/ai/ai-assist-context";
 import { ValuationEditorPanel } from "@/features/valuations/components/workspace/valuation-editor-panel";
 import type { SplitLayout, WorkspaceMode } from "@/features/valuations/components/workspace/valuation-workspace-layout";
@@ -295,10 +296,22 @@ export function ValuationWorkspace({
   // One choice for the whole document: the editor, the preview and the external window write numbers the same way.
   const numberPresentation = useMemo(() => documentNumberPresentation(sections), [sections]);
   const pagePresentationChoice = documentPagePresentation(sections);
+  const paletteStrong = pagePresentationChoice.palette?.strong;
+  const palettePastel = pagePresentationChoice.palette?.pastel;
   // Kept by value: a new object on every edit would repaint every page of the preview.
   const pagePresentation = useMemo(
-    () => ({ bindingMargin: pagePresentationChoice.bindingMargin, titleBars: pagePresentationChoice.titleBars, titleBand: pagePresentationChoice.titleBand }),
-    [pagePresentationChoice.bindingMargin, pagePresentationChoice.titleBars, pagePresentationChoice.titleBand],
+    () => ({
+      bindingMargin: pagePresentationChoice.bindingMargin,
+      titleBars: pagePresentationChoice.titleBars,
+      titleBand: pagePresentationChoice.titleBand,
+      ...(paletteStrong && palettePastel ? { palette: { strong: paletteStrong, pastel: palettePastel } } : {}),
+    }),
+    [pagePresentationChoice.bindingMargin, pagePresentationChoice.titleBars, pagePresentationChoice.titleBand, paletteStrong, palettePastel],
+  );
+  // The capture tables that imitate the dictamen in light take the document's colours; nothing else of the editor reads them.
+  const paletteStyle = useMemo(
+    () => (pagePresentation.palette ? (documentPaletteVars(pagePresentation.palette) as CSSProperties) : undefined),
+    [pagePresentation.palette],
   );
   const {
     label: navigationLabel,
@@ -634,7 +647,7 @@ export function ValuationWorkspace({
     >
     <Tabs value={activeSection.id} onValueChange={handleActiveSectionChange} className="gap-0 h-full">
       {/* Clipped, not hidden: a hidden overflow still scrolls when something is brought into view, and took the top bar with it. */}
-      <main ref={workspaceRef} className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-clip" data-valuation-workspace="">
+      <main ref={workspaceRef} className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-clip" style={paletteStyle} data-valuation-workspace="">
       <section className="shrink-0 border-b bg-background" data-workspace-top-bar="">
         <div className="mx-auto grid max-w-[1760px] grid-cols-1 gap-3 overflow-hidden px-3 py-3 sm:px-4 lg:gap-4 lg:px-6 lg:py-4">
           <ValuationTopBar

@@ -269,12 +269,12 @@ test("concepts placed directly in a block sit as close as the concepts of an apa
 test("block title bars are fine bars, thinner than the document's title band, and stay with what follows", () => {
   const [title] = documentBlockFlowItems(block({ concepts: [concept("a", "Niveles", "4")] }));
   const bar = render(title.node);
-  assert.match(bar, /class="mb-1 bg-\[#00285A\] px-3 py-0\.5 text-center text-\[11px\] font-bold uppercase/);
+  assert.match(bar, /class="mb-1 bg-\[var\(--caratula-dark-blue,#00285A\)\] px-3 py-0\.5 text-center text-\[11px\] font-bold uppercase/);
   assert.doesNotMatch(bar, /py-1\.5|font-black/);
   assert.equal(title.keepWithNext, true);
   // The apartado title carries its rule right under the text, 2px thick and half the page long: no separate line further down.
   const html = renderItems(block({ apartados: [apartado("datos", [concept("a", "Niveles", "4")])] }));
-  assert.match(html, /<h3 class="relative mb-1 pb-0\.5 [^"]*leading-tight[^"]*after:bottom-0 after:left-0 after:w-1\/2 after:border-b-2 after:border-\[#2F5495\][^"]*">III\.1 Apartado datos<\/h3><div class="mt-1 grid/);
+  assert.match(html, /<h3 class="relative mb-1 pb-0\.5 [^"]*leading-tight[^"]*after:bottom-0 after:left-0 after:w-1\/2 after:border-b-2 after:border-\[var\(--doc-apartado,#2F5495\)\][^"]*">III\.1 Apartado datos<\/h3><div class="mt-1 grid/);
   assert.doesNotMatch(html, /<h3 class="[^"]*(?<!after:)border-b-2/, "the rule is not the title's own border, which ran edge to edge");
 });
 
@@ -341,9 +341,9 @@ test("table headers are a light blue band with navy bold text that prints with i
     variant: "report",
     table: { id: "t", title: "Instalaciones", columns: ["#", "Tipo"], rows: [["1", "E.A."]], enabled: true },
   }));
-  assert.match(html, /<thead class="bg-\[#BDD7EE\] text-\[var\(--caratula-dark-blue\)\][^"]*\[print-color-adjust:exact\]"/);
+  assert.match(html, /<thead class="bg-\[var\(--doc-pastel,#BDD7EE\)\] text-\[color:var\(--doc-on-pastel,var\(--caratula-dark-blue\)\)\][^"]*\[print-color-adjust:exact\]"/);
   assert.match(html, /<th class="[^"]*text-center[^"]*font-bold[^"]*">Tipo<\/th>/);
-  assert.doesNotMatch(html, /<thead[^>]*text-white/);
+  assert.doesNotMatch(html, /<thead[^>]*text-\[color:var\(--doc-on-strong,#fff\)\]/);
 });
 
 const homologationTable = () => generatedTable("homologacion", "Homologación",
@@ -391,7 +391,7 @@ test("summary boxes print with their table: the basis above, subtotals and the f
   assert.equal(lines?.length, 2);
   assert.ok(bottom.indexOf("Sup. de Sujeto") < bottom.indexOf("Valor homologado a utilizar"));
   assert.match(bottom, /<tr class="[^"]*bg-slate-200 font-bold[^"]*"><th[^>]*>Valor homologado a utilizar/);
-  assert.match(bottom, /<tr class="[^"]*print-color-adjust:exact[^"]*bg-\[var\(--caratula-dark-blue\)\] font-bold text-white[^"]*"><th[^>]*>VALOR COMPARATIVO DE MERCADO \(TERRENOS\):<\/th><td[^>]*>\$ 1,528,000\.00<\/td>/);
+  assert.match(bottom, /<tr class="[^"]*print-color-adjust:exact[^"]*bg-\[var\(--caratula-dark-blue\)\] font-bold text-\[color:var\(--doc-on-strong,#fff\)\][^"]*"><th[^>]*>VALOR COMPARATIVO DE MERCADO \(TERRENOS\):<\/th><td[^>]*>\$ 1,528,000\.00<\/td>/);
   assert.ok(bottom.indexOf("VALOR COMPARATIVO") < bottom.indexOf("Justificación del valor adoptado:"), "the note closes the table");
 });
 

@@ -88,6 +88,8 @@ export type ValuationSectionDto = {
   bindingMargin?: "normal" | "wide";
   titleBars?: "filled" | "outline";
   titleBand?: "filled" | "outline";
+  /** The document's colours, on the carátula section. */
+  palette?: SectionMetadata["palette"];
   freeBlockOrder?: boolean;
   /** Chapter or annex, the label of an annex, where it starts and the approaches left out of the dictamen. */
   documentRole?: SectionMetadata["documentRole"];
@@ -660,6 +662,7 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition, 
     ...(sectionMetadata.bindingMargin ? { bindingMargin: sectionMetadata.bindingMargin } : {}),
     ...(sectionMetadata.titleBars ? { titleBars: sectionMetadata.titleBars } : {}),
     ...(sectionMetadata.titleBand ? { titleBand: sectionMetadata.titleBand } : {}),
+    ...(sectionMetadata.palette ? { palette: sectionMetadata.palette } : {}),
     ...(sectionMetadata.freeBlockOrder ? { freeBlockOrder: true } : {}),
     ...sectionStructureDto(sectionMetadata),
     ...(renamed ? { titleEdited: true } : {}),
