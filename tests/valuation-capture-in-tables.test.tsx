@@ -301,4 +301,9 @@ test("a cell the calculation captures is one field: the table leaves its place t
   assert.equal((withCapture.match(new RegExp(`data-capture-slot="${captureSlotKey(address).replace(/[|]/g, "\\|")}"`, "g")) ?? []).length, 1, "one place for the field");
   assert.equal(cells(withCapture), cells(without) - 1, "and no figure of the table's own in that cell");
   assert.match(withCapture, /Las celdas en blanco son la captura del cálculo/);
+  // Its headers take the palette of the dictamen (as the preview prints them) and its capture cells are white.
+  assert.match(withCapture, /var\(--doc-pastel/);
+  assert.match(withCapture, /data-capture-slot\]_input\]:bg-background/);
+  const plainTable = renderToStaticMarkup(createElement(CaptureStoreProvider, { value: new CaptureStore() }, createElement(GeneratedTableEditor, { table, readOnly: false, onUpdate: () => {} })));
+  assert.doesNotMatch(plainTable, /var\(--doc-pastel/, "a table that is not the capture keeps the editor's own header");
 });

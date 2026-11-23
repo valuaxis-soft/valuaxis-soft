@@ -65,6 +65,22 @@ const isTextField = (target: EventTarget | null): target is TextField =>
   target instanceof HTMLTextAreaElement || (target instanceof HTMLInputElement && !["checkbox", "radio", "button", "submit"].includes(target.type));
 
 /**
+ * After a step of the history taken with the keyboard, the field that let go
+ * of the focus to apply it takes it back, with the value the step left, so
+ * the keys that follow (Ctrl+Y after Ctrl+Z) reach the panel. Not when the
+ * field is gone, or when the focus is already somewhere of the appraiser's choice.
+ */
+export function focusBackAfterStep(
+  field: { isConnected: boolean; disabled?: boolean; focus: (options?: { preventScroll?: boolean }) => void },
+  doc: { activeElement: unknown; body: unknown },
+): boolean {
+  if (!field.isConnected || field.disabled) return false;
+  if (doc.activeElement !== null && doc.activeElement !== doc.body) return false;
+  field.focus({ preventScroll: true });
+  return true;
+}
+
+/**
  * Undo and redo for the table of a calculation panel, which saves on its own
  * outside the document's history: Ctrl+Z and Ctrl+Y (or Ctrl+Shift+Z) in its
  * fields go back and forth through its states, and the cell changed is
@@ -155,6 +171,8 @@ export function useDraftHistory<T>({
     event.stopPropagation();
     if (isUndo) undo(current);
     else redo(current);
+    // The step applied, the field takes the focus back: the next Ctrl+Z or Ctrl+Y is still the panel's (redo after undo did nothing).
+    if (field) window.requestAnimationFrame(() => window.requestAnimationFrame(() => focusBackAfterStep(field, document)));
   };
 
   /** Forgets the steps: the panel loaded another state from the server. */
