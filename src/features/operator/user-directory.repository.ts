@@ -74,6 +74,10 @@ const directorySelect = {
   DFechaEliminacion: true,
   DFechaCreacion: true,
   DFechaUltimoAcceso: true,
+  // Accounts that only ever signed in with Google kept their last access on the identity, and a long session never signs in again:
+  // the latest of the three is when the person was last here.
+  identidades: { select: { DFechaUltimoAcceso: true }, orderBy: { DFechaUltimoAcceso: { sort: "desc", nulls: "last" } }, take: 1 },
+  sesiones: { select: { DFechaUltimaActividad: true }, orderBy: { DFechaUltimaActividad: { sort: "desc", nulls: "last" } }, take: 1 },
   acreditacion: { select: { SEstado: true, SNivelAcademico: true } },
   miembros: {
     where: { BActivo: true },
@@ -120,7 +124,7 @@ function toEntry(row: DirectoryRow, concluded: Map<number, number>): UserDirecto
     accreditation: toAccreditationStatus(row.acreditacion?.SEstado),
     accreditationLevel: level ? ACADEMIC_LEVEL_LABELS[level] ?? null : null,
     signedUpAt: row.DFechaCreacion,
-    lastAccessAt: row.DFechaUltimoAcceso,
+    lastAccessAt: latestDate(row.DFechaUltimoAcceso, row.identidades[0]?.DFechaUltimoAcceso, row.sesiones[0]?.DFechaUltimaActividad),
     valuationsCreated: row._count.avaluosCreados,
     valuationsConcluded: concluded.get(row.IdUsuario) ?? 0,
   };
@@ -143,4 +147,8 @@ export function listUserDirectoryPage(params: UserDirectoryParams, pageSize: num
 /** Every page of the search, up to `limit` rows (the export). */
 export function listUserDirectoryForExport(params: UserDirectoryParams, limit: number) {
   return readDirectory(params, 0, limit);
+}
+
+function latestDate(...dates: Array<Date | null | undefined>): Date | null {
+  return dates.reduce<Date | null>((latest, date) => (date && (!latest || date > latest) ? date : latest), null);
 }

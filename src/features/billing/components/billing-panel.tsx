@@ -219,7 +219,7 @@ function CreditsCard({
           {credits.enforced ? <Badge variant="secondary">Cobro por avalúo activo</Badge> : null}
           {negative ? <Badge variant="destructive">Pendiente de pago</Badge> : null}
         </CardTitle>
-        <CardDescription>Cada avalúo descuenta un crédito la primera vez que se concluye; reabrirlo y volver a concluirlo no cuesta.</CardDescription>
+        <CardDescription>Cada avalúo descuenta un crédito al concluirse.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         <p>
