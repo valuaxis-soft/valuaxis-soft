@@ -163,7 +163,6 @@ export function MarketHomologationCapture(props: {
                         size="sm"
                         aria-label={`${label}: calificación del catálogo`}
                         className="w-full text-xs"
-                        data-no-fill=""
                         disabled={readOnly || (!direct && !slot.subjectOption)}
                         title={!direct && !slot.subjectOption ? "Elige primero la calificación del sujeto" : undefined}
                         value={current?.label ?? ""}

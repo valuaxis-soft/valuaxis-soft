@@ -1,7 +1,7 @@
 "use client";
 
 import { Calculator, Link2, Link2Off, Loader2, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
-import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { Fragment, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -356,7 +356,6 @@ function ConservationRatingSelect(props: { value: string; label: string; criteri
         className="h-6 w-full min-w-0 rounded-md border border-input bg-background px-1 text-[11px] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         value={props.value}
         disabled={props.disabled}
-        data-no-fill=""
         onChange={(event) => props.onChange(event.target.value)}
       >
         <option value="">Sin calificar</option>
@@ -373,7 +372,6 @@ function ConservationRatingSelect(props: { value: string; label: string; criteri
       className="h-6 w-full min-w-0 rounded-md border border-input bg-background px-1 text-[11px] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
       value={props.value}
       disabled={props.disabled}
-      data-no-fill=""
       onChange={(event) => props.onChange(event.target.value)}
     >
       <option value="">Sin calificar</option>
@@ -607,11 +605,18 @@ export function CostCalculationPanel(props: {
     if (!calculation || !draft) return null;
     const input = inputOf(draft);
     const live = compute(calculation, input);
-    const captured = { ...calculation, ...input, constructions: input.constructions.map((row) => withConstructionType(row, calculation.types)) };
-    const pages: CapturePages = { blocks: costDocumentBlocks(captured, live.result, live.trace, { capture: true }), placeholderIds: COST_TEMPLATE_BLOCK_IDS };
-    return { input, live, pages };
+    return { input, live };
   }, [calculation, draft]);
-  usePublishCapturePages(derived?.pages ?? null);
+  // Built a moment after each key, not within it: typing stays as quick as before.
+  const pagesDraft = useDeferredValue(draft);
+  const capturePages = useMemo<CapturePages | null>(() => {
+    if (!calculation || !pagesDraft) return null;
+    const input = inputOf(pagesDraft);
+    const live = compute(calculation, input);
+    const captured = { ...calculation, ...input, constructions: input.constructions.map((row) => withConstructionType(row, calculation.types)) };
+    return { blocks: costDocumentBlocks(captured, live.result, live.trace, { capture: true }), placeholderIds: COST_TEMPLATE_BLOCK_IDS };
+  }, [calculation, pagesDraft]);
+  usePublishCapturePages(capturePages);
 
   if (loadError) return <p className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">{loadError}</p>;
   if (!calculation || !draft || !derived) {

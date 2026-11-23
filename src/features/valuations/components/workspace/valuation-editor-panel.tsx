@@ -587,12 +587,24 @@ export function ValuationEditorPanel(props: {
                     {" "}El dictamen las imprime todas.
                   </p>
                 ) : null}
-                {displayBlocks.map(({ block, pending, capture }) => renderBlockEditor(
+                {displayBlocks.filter((item) => !item.placeholder).map(({ block, pending, capture }) => renderBlockEditor(
                   block,
                   editableBlocks.findIndex((item) => item.id === block.id),
                   editableBlocks.length,
                   capture ? { pending } : undefined,
                 ))}
+                {/* The template's blocks the calculation will replace: they print until it does, so they stay within reach, apart from the capture. */}
+                {displayBlocks.some((item) => item.placeholder) ? (
+                  <details className="grid gap-3 rounded-lg border border-dashed p-3" data-template-placeholders="">
+                    <summary className="cursor-pointer text-sm font-medium">
+                      Bloques de la plantilla ({displayBlocks.filter((item) => item.placeholder).length})
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">Se imprimen mientras el cálculo no tenga resultado; después, sus páginas los sustituyen. El cálculo no se captura aquí.</span>
+                    </summary>
+                    <div className="mt-3 space-y-4">
+                      {displayBlocks.filter((item) => item.placeholder).map(({ block }) => renderBlockEditor(block, editableBlocks.findIndex((item) => item.id === block.id), editableBlocks.length))}
+                    </div>
+                  </details>
+                ) : null}
               </div>
             </SortableContext>
           </ContentDndScope>

@@ -8,6 +8,7 @@ import {
   useEffectEvent,
   useLayoutEffect,
   useSyncExternalStore,
+  type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -15,7 +16,10 @@ import {
 import { createPortal } from "react-dom";
 
 import type { CapturePages } from "@/features/valuations/calculation/capture-display";
-import { focusCaptureCell } from "../calculation/calc-table-context-menu";
+import { toast } from "sonner";
+
+import { parseTabularText } from "@/features/valuations/services/cell-selection";
+import { capturedText, focusCaptureCell, writeCaptureCell } from "../calculation/calc-table-context-menu";
 
 /**
  * The capture of a calculation inside the tables of its pages (20 nov 2026:
@@ -183,6 +187,67 @@ export function CaptureSlotTarget({ address, className }: { address: CaptureAddr
   return <div ref={register} className={className} data-capture-slot={key} data-native-undo="" />;
 }
 
+type CaptureField = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+
+/** What a field holds as captured: the option of a list, the formula behind a result or what was typed. */
+export const captureFieldText = (field: CaptureField) => (field instanceof HTMLSelectElement ? field.value : capturedText(field));
+
+/**
+ * The field of a cell the table's menu acts on: the list, when the right
+ * click was on it (a cell may hold a factor and, under it, the list that
+ * proposes it); else its first field.
+ */
+export function captureMenuField(cell: Element | null): CaptureField | null {
+  const slot = cell?.querySelector<HTMLElement>("[data-capture-slot]");
+  const list = slot?.dataset.captureMenu === "select" ? slot.querySelector("select") : null;
+  return list ?? captureFieldIn(cell);
+}
+
+/** The field of the same kind in another cell of the table: its list for a list, its first field otherwise. */
+export function captureFieldLike(cell: Element | null, like: CaptureField): CaptureField | null {
+  if (like instanceof HTMLSelectElement) return cell?.querySelector<HTMLSelectElement>("[data-capture-slot] select") ?? null;
+  const field = captureFieldIn(cell);
+  return field instanceof HTMLSelectElement ? null : field;
+}
+
+/**
+ * Whether a fill of its row or column writes in a field: not in one that is
+ * not one more value of them, and not in one the system calculates while
+ * empty (a surface factor left to its formula), as in every capture table.
+ */
+export function captureFieldTakesFill(field: CaptureField): boolean {
+  if (field.disabled) return false;
+  const mark = field.dataset.noFill;
+  if (mark === undefined) return true;
+  return mark === "computed" && captureFieldText(field).trim() !== "";
+}
+
+/**
+ * Several cells pasted from a spreadsheet, from the cell of `start` to the
+ * right and down, each in the field of the capture of its cell; cells
+ * without one (the calculation's figures) are skipped. Returns what each
+ * field held, to undo it.
+ */
+export function pasteCaptureRange(start: Element, rows: string[][]): Array<{ field: CaptureField; previous: string }> {
+  const cell = start.closest("td");
+  const body = cell?.closest("tbody");
+  const row = cell?.parentElement;
+  if (!cell || !body || !row) return [];
+  const bodyRows = Array.from(body.children);
+  const fromRow = bodyRows.indexOf(row);
+  const fromColumn = Number((cell as HTMLElement).dataset.gridCol ?? -1);
+  if (fromRow < 0 || fromColumn < 0) return [];
+  const written: Array<{ field: CaptureField; previous: string }> = [];
+  rows.forEach((texts, rowOffset) => texts.forEach((text, columnOffset) => {
+    const target = bodyRows[fromRow + rowOffset]?.querySelector(`:scope > td[data-grid-col="${fromColumn + columnOffset}"]`);
+    const field = captureFieldIn(target ?? null);
+    if (!field || field.disabled || field instanceof HTMLSelectElement) return;
+    written.push({ field, previous: captureFieldText(field) });
+    writeCaptureCell(field, text.trim());
+  }));
+  return written;
+}
+
 /** The field of the capture a place of a table holds, if any. */
 export function captureFieldIn(container: Element | null) {
   return container?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
@@ -204,6 +269,19 @@ export function CaptureSlot({ at, children, fallback = false }: { at: CaptureAdd
   return createPortal(<CaptureSlotContent element={element}>{children}</CaptureSlotContent>, element);
 }
 
+/** Says how many cells a paste or a fill wrote, with «Deshacer»: each goes back to what it held. */
+export function notifyCaptureWrite(written: Array<{ field: CaptureField; previous: string }>, what: string) {
+  if (!written.length) {
+    toast.info("No hay celdas de captura donde escribir desde aquí.");
+    return;
+  }
+  toast.success(written.length === 1 ? `1 celda ${what.replace(/s$/, "")}` : `${written.length} celdas ${what}`, {
+    description: "Se puede deshacer con «Deshacer».",
+    duration: 10_000,
+    action: { label: "Deshacer", onClick: () => written.forEach(({ field, previous }) => { if (field.isConnected) writeCaptureCell(field, previous); }) },
+  });
+}
+
 /**
  * What a field keeps of the table it sits in. React hands its events to the
  * panel (the portal's parent), so the two the table answers are passed on by
@@ -214,6 +292,8 @@ function CaptureSlotContent({ element, children }: { element: HTMLElement; child
   const onContextMenu = (event: MouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    // The menu acts on the list when the click was on it (a state of conservation under its factor).
+    event.currentTarget.parentElement?.setAttribute("data-capture-menu", event.target instanceof HTMLSelectElement ? "select" : "field");
     element.dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: event.clientX, clientY: event.clientY, button: 2 }));
   };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -223,8 +303,17 @@ function CaptureSlotContent({ element, children }: { element: HTMLElement; child
     event.preventDefault();
     if (!focusCaptureCell(field, event.shiftKey ? -1 : 1)) field.blur();
   };
+  // A range copied in a spreadsheet (tabs and line breaks) fills the cells from this one, as in every table.
+  const onPaste = (event: ClipboardEvent<HTMLElement>) => {
+    const text = event.clipboardData.getData("text/plain");
+    if (!(event.target instanceof HTMLInputElement) || !/[\t\n]/.test(text.replace(/[\r\n]+$/, ""))) return;
+    event.preventDefault();
+    const field = event.target;
+    field.blur();
+    notifyCaptureWrite(pasteCaptureRange(field, parseTabularText(text)), "pegadas");
+  };
   return (
-    <span className="contents" onContextMenu={onContextMenu} onKeyDown={onKeyDown}>
+    <span className="contents" onContextMenu={onContextMenu} onKeyDown={onKeyDown} onPaste={onPaste}>
       {children}
     </span>
   );

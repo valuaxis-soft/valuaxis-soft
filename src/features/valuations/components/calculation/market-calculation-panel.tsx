@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, ArrowDown, ArrowDownWideNarrow, ArrowUp, ArrowUpNarrowWide, Calculator, ChevronRight, EyeOff, FileDown, Loader2, MapPin, Pencil, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
-import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -526,15 +526,17 @@ function MarketTypePanel(props: {
   // Recomputed on every render: a handful of comparables, and it follows every keystroke.
   const live = calculation && liveSettings ? compute({ settings: liveSettings, comparables: calculation.comparables, precision: calculation.precision }) : null;
   // The pages of this market as the capture holds them right now: their tables are where it is captured (one table, 20 nov 2026).
+  // Built a moment after each key, not within it: typing in a field of the panel stays as quick as before.
+  const pagesDraft = useDeferredValue(draft);
   const capturePages = useMemo<CapturePages | null>(() => {
-    if (!calculation || !draft) return null;
-    const settings = settingsFrom(calculation.settings, prefilled ? { ...draft, subjectArea: String(suggestedArea) } : draft);
+    if (!calculation || !pagesDraft) return null;
+    const settings = settingsFrom(calculation.settings, prefilled ? { ...pagesDraft, subjectArea: String(suggestedArea) } : pagesDraft);
     const computed = compute({ settings, comparables: calculation.comparables, precision: calculation.precision });
     return {
       blocks: marketDocumentBlocks({ ...calculation, settings }, computed.result, { capture: true }),
       placeholderIds: isRentComparableType(calculation.settings.comparableType) ? RENT_TEMPLATE_BLOCK_IDS : MARKET_TEMPLATE_BLOCK_IDS,
     };
-  }, [calculation, draft, prefilled, suggestedArea]);
+  }, [calculation, pagesDraft, prefilled, suggestedArea]);
   usePublishCapturePages(capturePages);
 
   const snapshotOf = (view: MarketCalculationDto): MarketSnapshot => ({ settings: view.settings, comparables: view.comparables });

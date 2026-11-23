@@ -112,8 +112,18 @@ import {
   writeCellTexts,
   type StyleMark,
 } from "../../services/table-cell-style";
-import { CaptureSlotTarget, captureFieldIn, captureSlotKey, useCaptureDeclared } from "./capture-host";
-import { capturedText, writeCaptureCell } from "../calculation/calc-table-context-menu";
+import {
+  CaptureSlotTarget,
+  captureFieldLike,
+  captureFieldTakesFill,
+  captureFieldText,
+  captureMenuField,
+  captureSlotKey,
+  notifyCaptureWrite,
+  pasteCaptureRange,
+  useCaptureDeclared,
+} from "./capture-host";
+import { writeCaptureCell } from "../calculation/calc-table-context-menu";
 import { captureColumnPlace } from "@/features/valuations/calculation/capture-display";
 import {
   CALCULATED_CELL_HINT,
@@ -633,6 +643,13 @@ type CellStructureActions = {
  * formula again when it is entered. While a formula is being written
  * anywhere, a click on the cell writes its reference there.
  */
+/** Whether the field of the capture in that cell holds a formula now; false while the page is not in the browser. */
+function capturedFieldHasFormula(address: { table: string; row: string; column: string }) {
+  if (typeof document === "undefined") return false;
+  const field = document.querySelector<HTMLElement>(`[data-capture-slot="${window.CSS.escape(captureSlotKey(address))}"] [data-formula]`);
+  return Boolean(field?.dataset.formula?.trim().startsWith("="));
+}
+
 function EditableTableCell({
   row,
   rowIndex,
@@ -794,7 +811,8 @@ function EditableTableCell({
   const cellGroups = tableContextMenu("editable", {
     kind: "cell",
     editable: !locked,
-    hasFormula: isFormula && !captured,
+    // In a cell of the capture the formula is its field's: read from it, so the menu says «fórmula» or «valor» as it is.
+    hasFormula: captured ? capturedFieldHasFormula(captureAddress) : isFormula,
     hasValue: captured || (cell?.kind === "value" && cell.value.trim() !== ""),
     canPaste: true,
     canInsertRow: true,
@@ -814,20 +832,23 @@ function EditableTableCell({
   const runCaptureAction = async (action: TableMenuAction) => {
     // Found when the menu acts, by the place the capture declared: the cell and its field are the panel's.
     const ownCell = document.querySelector(`[data-capture-slot="${window.CSS.escape(captureSlotKey(captureAddress))}"]`)?.closest("td") ?? null;
-    const field = captureFieldIn(ownCell);
+    const field = captureMenuField(ownCell);
     if (!field) return;
-    const held = (target: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) => (target instanceof HTMLSelectElement ? target.value : capturedText(target));
-    const text = held(field);
+    const text = captureFieldText(field);
     const shown = field instanceof HTMLSelectElement ? field.selectedOptions[0]?.textContent?.trim() ?? "" : field.value;
     const fields = (along: "row" | "column") => {
       const cells = along === "row"
         ? Array.from(ownCell?.parentElement?.children ?? [])
         : Array.from(ownCell?.closest("tbody")?.querySelectorAll(`:scope > tr > td[data-grid-col="${columnIndex}"]`) ?? []);
       return cells.filter((cell) => cell !== ownCell).flatMap((cell) => {
-        const target = captureFieldIn(cell);
-        // What the system calculates while empty and what is not one more value of the row or column are left out.
-        return target && !target.disabled && target.dataset.noFill === undefined && target.tagName === field.tagName ? [target] : [];
+        const target = captureFieldLike(cell, field);
+        return target && captureFieldTakesFill(target) ? [target] : [];
       });
+    };
+    const writeAll = (targets: Array<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      const written = targets.map((target) => ({ field: target, previous: captureFieldText(target) }));
+      targets.forEach((target) => writeCaptureCell(target, text));
+      notifyCaptureWrite(written, "llenadas");
     };
     switch (action) {
       case "copy":
@@ -842,8 +863,13 @@ function EditableTableCell({
           toast.info("No hay nada que pegar.");
           return;
         }
+        // Several cells copied in a spreadsheet: from this cell to the right and down.
+        if (!(field instanceof HTMLSelectElement) && !pasted.formulaText && /[\t\n]/.test(pasted.text.replace(/[\r\n]+$/, ""))) {
+          notifyCaptureWrite(pasteCaptureRange(field, parseTabularText(pasted.text)), "pegadas");
+          return;
+        }
         if (action === "paste" && pasted.formulaText) writeCaptureCell(field, pasted.formulaText);
-        else writeCaptureCell(field, action === "paste-values" ? pasteValuesText(pasted.text) ?? pasted.text : pasted.text);
+        else writeCaptureCell(field, action === "paste-values" ? pasteValuesText(pasted.formulaText ?? pasted.text) ?? pasted.text : pasted.text);
         return;
       }
       case "remove-formula":
@@ -855,16 +881,15 @@ function EditableTableCell({
         return;
       case "fill-column-empty":
       case "fill-row-empty":
-        for (const target of fields(action === "fill-row-empty" ? "row" : "column")) if (!held(target).trim()) writeCaptureCell(target, text);
+        writeAll(fields(action === "fill-row-empty" ? "row" : "column").filter((target) => !captureFieldText(target).trim()));
         return;
       case "fill-column":
       case "fill-row": {
         const along = action === "fill-row" ? "row" : "column";
         const targets = fields(along);
-        const write = () => targets.forEach((target) => writeCaptureCell(target, text));
-        const replaced = targets.filter((target) => held(target).trim() && held(target) !== text).length;
-        if (replaced) confirmDelete({ ...fillReplaceConfirmation(replaced, along, text.trim().startsWith("=") ? "fórmula" : "valor"), onConfirm: write });
-        else write();
+        const replaced = targets.filter((target) => captureFieldText(target).trim() && captureFieldText(target) !== text).length;
+        if (replaced) confirmDelete({ ...fillReplaceConfirmation(replaced, along, text.trim().startsWith("=") ? "fórmula" : "valor"), onConfirm: () => writeAll(targets) });
+        else writeAll(targets);
         return;
       }
       default:

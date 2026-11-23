@@ -32,6 +32,8 @@ export type CaptureDisplayBlock = {
   pending: boolean;
   /** Its tables are the capture of the calculation. */
   capture: boolean;
+  /** A block of the template the calculation's pages will replace: it still prints, and is shown apart, folded. */
+  placeholder?: boolean;
 };
 
 // Saved ids come back in lower case.
@@ -104,7 +106,7 @@ function captureBlock(live: Block, saved: Block): Block {
  * captures in its tables: each block the calculation writes once, with the
  * tables of the capture, in the place the dictamen has it; the ones the
  * dictamen does not have yet go where the template's blocks they stand in
- * for are (those are not shown: the calculation replaces them), or first.
+ * for are (those are marked `placeholder`: the editor shows them apart), or first.
  */
 export function captureDisplayBlocks(blocks: Block[], capture: CapturePages | null): CaptureDisplayBlock[] {
   if (!capture) return blocks.map((block) => ({ block, pending: false, capture: false }));
@@ -128,6 +130,7 @@ export function captureDisplayBlocks(blocks: Block[], capture: CapturePages | nu
       shown.push({ block: captureBlock(live, block), pending: false, capture: true });
     } else if (placeholders.has(key(block.id))) {
       placeMissing();
+      shown.push({ block, pending: false, capture: false, placeholder: true });
     } else {
       shown.push({ block, pending: false, capture: false });
     }

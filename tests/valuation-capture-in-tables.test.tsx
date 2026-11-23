@@ -250,7 +250,9 @@ test("the editor shows each block of the calculation once, with the tables of th
 
   // Nothing written in the dictamen yet: the page of the capture stands where the template's block was, once.
   const before = captureDisplayBlocks([template, own], pages);
-  assert.deepEqual(before.map((item) => [item.block.id, item.pending, item.capture]), [[live[0].id, true, true], ["bloque-propio", false, false]]);
+  assert.deepEqual(before.filter((item) => !item.placeholder).map((item) => [item.block.id, item.pending, item.capture]), [[live[0].id, true, true], ["bloque-propio", false, false]]);
+  // The template's block still prints until the calculation replaces it: it stays within reach, apart.
+  assert.deepEqual(before.filter((item) => item.placeholder).map((item) => item.block.id), [template.id]);
 
   // Written by the calculation, with a header the appraiser renamed and the block hidden: both stay, and the rows are the capture's.
   const saved = costPages(calculation, false)[0];

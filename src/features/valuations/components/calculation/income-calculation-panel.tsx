@@ -1,7 +1,7 @@
 "use client";
 
 import { Calculator, Loader2, Plus, Trash2 } from "lucide-react";
-import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { Fragment, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -209,18 +209,20 @@ export function IncomeCalculationPanel(props: {
   }, [calculation]);
 
   // The pages of the approach as the capture holds them right now: their tables are where it is captured (one table, 20 nov 2026).
+  // Built a moment after each key, not within it: typing stays as quick as before.
+  const pagesDraft = useDeferredValue(draft);
   const capturePages = useMemo<CapturePages | null>(() => {
-    if (!calculation || !draft) return null;
-    const typed = valuesOf(draft);
-    const engine = toIncomeEngineInput({ ...inputOf(draft), rentMarket: calculation.rentMarket });
+    if (!calculation || !pagesDraft) return null;
+    const typed = valuesOf(pagesDraft);
+    const engine = toIncomeEngineInput({ ...inputOf(pagesDraft), rentMarket: calculation.rentMarket });
     const computed = engine.ok ? computeIncomeApproach(engine.input, incomeEngineConfig(calculation)) : null;
     // Every row being written, also a deduction without its concept yet.
-    const deductions = draft.deductions.map((deduction) => {
+    const deductions = pagesDraft.deductions.map((deduction) => {
       const rate = parseDecimal(deduction.rate);
       return { concept: deduction.concept, rate: rate === null ? null : rate / 100 };
     });
     return { blocks: incomeCaptureBlocks({ ...calculation, ...typed, deductions }, computed), placeholderIds: INCOME_TEMPLATE_BLOCK_IDS };
-  }, [calculation, draft]);
+  }, [calculation, pagesDraft]);
   usePublishCapturePages(capturePages);
 
   if (loadError) return <p className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">{loadError}</p>;
