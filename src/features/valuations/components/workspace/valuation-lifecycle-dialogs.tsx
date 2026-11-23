@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { adoptedValueConcludeError, marketsWithAdoptedValueOutside } from "@/features/valuations/calculation/adopted-value-check";
 import { COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import type { ReportApproach } from "@/features/valuations/services/report-approaches";
+import { CONCLUDED_VALUATIONS_CAN_BE_REOPENED } from "@/features/valuations/lifecycle-rules";
 
 /** Text the user accepts when reopening; it is stored with the reopening record. */
 export const REOPEN_ACCEPTANCE_TEXT =
@@ -90,8 +91,9 @@ export function ConcludeValuationDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>¿Concluir el avalúo?</AlertDialogTitle>
           <AlertDialogDescription>
-            La versión actual queda cerrada y ya no se podrá editar. Para corregirla después habrá que reabrirla, lo
-            que crea una versión nueva.
+            {CONCLUDED_VALUATIONS_CAN_BE_REOPENED
+              ? "La versión actual queda cerrada y ya no se podrá editar. Para corregirla después habrá que reabrirla, lo que crea una versión nueva."
+              : "El avalúo queda cerrado tal como está: ya no se podrá editar ni reabrir. Revisa la vista previa antes de concluir. Al concluir se descargan el informe y su memoria de cálculo."}
             {hasUnsavedChanges ? " Antes de concluir se guardarán los cambios pendientes." : ""}
           </AlertDialogDescription>
           {unreviewed ? (

@@ -152,9 +152,10 @@ describe("organization B cannot reach organization A's valuation", () => {
     });
   }
 
-  test("write: reopen A's concluded valuation → 404 and it stays concluded", async () => {
+  test("write: reopen A's concluded valuation → refused and it stays concluded", async () => {
     const response = await call(world.b.admin, "POST", `/api/avaluos/${concludedTarget}/reopen`, { json: reopenPayload });
-    assert.equal(response.status, 404, describeCall("org B admin POST reopen", response));
+    // Nobody reopens (lifecycle-rules.ts): the same 409 for any id, so it tells nothing about A's valuation.
+    assert.equal(response.status, 409, describeCall("org B admin POST reopen", response));
     const row = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: concludedTarget }, select: { BBloqueado: true } });
     assert.equal(row.BBloqueado, true);
   });

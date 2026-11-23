@@ -1,8 +1,28 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { api, ApiError, SessionExpiredError } from "@/lib/api-client";
 import { REOPEN_ACCEPTANCE_TEXT } from "@/features/valuations/components/workspace/valuation-lifecycle-dialogs";
+import { downloadValuationDocument } from "@/features/valuations/components/dictamen/download-dictamen-pdf-button";
+
+const DELIVERABLES_PENDING_KEY = "valuaxis:entregables-al-concluir";
+
+/**
+ * Concluding hands over the deliverables: the report and its calculation
+ * memory download by themselves, once, when the page comes back concluded.
+ * They stay in the notice of the concluded valuation to download again.
+ */
+export function useDeliverablesAfterConclude(valuationId: string | null, concluded: boolean) {
+  useEffect(() => {
+    if (!valuationId || !concluded) return;
+    let pending: string | null = null;
+    try {
+      pending = window.sessionStorage.getItem(DELIVERABLES_PENDING_KEY);
+      if (pending === valuationId) window.sessionStorage.removeItem(DELIVERABLES_PENDING_KEY);
+    } catch { return; }
+    if (pending === valuationId) void downloadValuationDocument(valuationId, "entregables");
+  }, [valuationId, concluded]);
+}
 
 /** Conclude and reopen: dialog state and the requests that change the valuation's lifecycle. */
 export function useValuationLifecycle({
@@ -42,7 +62,11 @@ export function useValuationLifecycle({
     if (!valuationId) return;
     if (hasUnsavedChanges && !(await handleSave())) return;
     setConcludeOpen(false);
-    await runLifecycleAction(() => api.valuations.conclude(valuationId), "Avalúo concluido.");
+    await runLifecycleAction(async () => {
+      await api.valuations.conclude(valuationId);
+      // The page loads again as concluded: it downloads the deliverables then (see useDeliverablesAfterConclude).
+      try { window.sessionStorage.setItem(DELIVERABLES_PENDING_KEY, valuationId); } catch { /* without storage they are one click away, in the notice of the concluded valuation */ }
+    }, "Avalúo concluido.");
   };
 
   const handleReopen = async (reason: string) => {

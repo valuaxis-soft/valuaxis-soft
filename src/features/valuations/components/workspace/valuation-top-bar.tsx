@@ -128,6 +128,7 @@ export function ValuationTopBar({
   onSplitLayoutChange = () => undefined,
   onUndo,
   onWorkspaceModeChange,
+  previewOnly = false,
   readOnly,
   redoAvailable,
   removedSections,
@@ -168,6 +169,8 @@ export function ValuationTopBar({
   onSplitLayoutChange?: (layout: SplitLayout) => void;
   onUndo: () => void;
   onWorkspaceModeChange: (mode: WorkspaceMode) => void;
+  /** Not concluded yet: the dictamen and the memory are a preview on screen; their PDF comes with the conclusion. */
+  previewOnly?: boolean;
   readOnly: boolean;
   redoAvailable: boolean;
   /** Registry sections the appraiser deleted, offered to restore in the list of sections. */
@@ -366,7 +369,7 @@ export function ValuationTopBar({
                     onClick={onExport}
                   >
                     <FileDown />
-                    Generar avalúo
+                    {previewOnly ? "Vista previa" : "Generar avalúo"}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="min-h-10"
@@ -482,7 +485,7 @@ export function ValuationTopBar({
               className="flex-none whitespace-nowrap"
             >
               <FileDown data-icon="inline-start" />
-              Generar avalúo
+              {previewOnly ? "Vista previa" : "Generar avalúo"}
             </Button>
           </>
         )}

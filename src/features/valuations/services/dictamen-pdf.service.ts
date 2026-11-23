@@ -16,6 +16,7 @@ import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { AUTH_SESSION_COOKIE } from "@/features/auth/constants/auth.constants";
 import { PAGINATION_PENDING_SELECTOR } from "./pagination-state";
 import { ValuationWorkflowError } from "./valuation-workflow/errors";
+import { DELIVERABLES_NEED_CONCLUSION } from "@/features/valuations/lifecycle-rules";
 
 const PDF_ENTITY = "AVALUO_DICTAMEN_PDF";
 
@@ -47,6 +48,7 @@ export async function generateDictamenPdf(
     },
   });
   if (!valuation) throw new ValuationWorkflowError("Avalúo no encontrado", 404);
+  if (!valuation.BBloqueado) throw new ValuationWorkflowError(DELIVERABLES_NEED_CONCLUSION, 409);
   const versionId = (valuation.BBloqueado ? valuation.IdVersionFinal : valuation.IdVersionTrabajo) ?? valuation.IdVersionFinal ?? valuation.IdVersionTrabajo;
   if (!versionId) throw new ValuationWorkflowError("El avalúo todavía no tiene contenido para imprimir.", 409);
 

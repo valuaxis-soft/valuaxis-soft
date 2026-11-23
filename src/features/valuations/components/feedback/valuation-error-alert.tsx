@@ -4,6 +4,7 @@ import { ShieldCheck } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { DownloadDictamenPdfButton } from "../dictamen/download-dictamen-pdf-button";
+import { CONCLUDED_VALUATIONS_CAN_BE_REOPENED } from "@/features/valuations/lifecycle-rules";
 
 /**
  * Why the capture is read-only. A concluded valuation also offers its two
@@ -20,7 +21,9 @@ export function ReadOnlyValuationAlert({ reason = "role", deliverablesOf }: {
       <AlertTitle>{reason === "concluded" ? "Avalúo concluido" : "Modo consulta"}</AlertTitle>
       <AlertDescription>
         {reason === "concluded"
-          ? "Esta versión está cerrada. Para corregirla, reábrela: se creará una versión nueva y esta se conserva."
+          ? CONCLUDED_VALUATIONS_CAN_BE_REOPENED
+            ? "Esta versión está cerrada. Para corregirla, reábrela: se creará una versión nueva y esta se conserva."
+            : "Este avalúo está cerrado y queda tal como se concluyó: no se puede editar ni reabrir."
           : "Tu rol permite ver y exportar avalúos, pero no editar su captura."}
         {reason === "concluded" && deliverablesOf ? (
           <div className="mt-2 grid gap-2" data-deliverables>

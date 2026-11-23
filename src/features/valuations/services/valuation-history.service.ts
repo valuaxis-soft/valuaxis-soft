@@ -159,7 +159,8 @@ export async function findValuationPdf(publicId: string, organizationId: number,
   if (!UUID.test(publicId) || !UUID.test(filePublicId)) return null;
   const item = await prisma.exportacionAvaluo.findFirst({
     where: {
-      avaluo: { UIdentificadorPublico: publicId, IdOrganizacion: organizationId, BActivo: true, DFechaEliminacion: null },
+      // A PDF kept before the valuation was concluded is a deliverable like any other: it waits for the conclusion.
+      avaluo: { UIdentificadorPublico: publicId, IdOrganizacion: organizationId, BActivo: true, DFechaEliminacion: null, BBloqueado: true },
       archivo: { UIdentificadorPublico: filePublicId, IdOrganizacion: organizationId, DFechaEliminacion: null },
     },
     select: { archivo: { select: { SClaveObjeto: true, SNombreOriginal: true } } },

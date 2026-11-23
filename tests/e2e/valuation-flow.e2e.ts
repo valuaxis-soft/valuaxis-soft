@@ -32,7 +32,7 @@ before(async () => {
 });
 after(() => prisma.$disconnect());
 
-test("create → capture → read back → conclude → locked → reopen → edit", async () => {
+test("create → capture → read back → conclude → locked for good", async () => {
   const actor = world.a.valuador;
   const ok = (label: string, response: Awaited<ReturnType<typeof call>>, status = 200) =>
     assert.equal(response.status, status, describeCall(label, response));
@@ -89,14 +89,19 @@ test("create → capture → read back → conclude → locked → reopen → ed
   assert.ok(conclusion.data.values.costos > 0, `cost value ${conclusion.data.values.costos}`);
   assert.equal(conclusion.data.values.ingresos !== null, true);
 
+  // The printable documents come with the conclusion: before it, the export is refused.
+  const early = await call(actor, "GET", `/api/avaluos/${id}/export`);
+  assert.equal(early.status, 409, describeCall("GET export before concluding", early));
+
+  // Conclude: the valuation is locked, edits are refused with 409.
+  ok("conclude", await call(actor, "POST", `/api/avaluos/${id}/conclude`));
+
   // Export: the summary PDF is generated without a browser.
   const exported = await call(actor, "GET", `/api/avaluos/${id}/export`);
   ok("GET export", exported);
   assert.equal(exported.headers.get("content-type"), "application/pdf");
   assert.equal(Buffer.from(exported.body as ArrayBuffer).subarray(0, 5).toString(), "%PDF-");
 
-  // Conclude: the valuation is locked, edits are refused with 409.
-  ok("conclude", await call(actor, "POST", `/api/avaluos/${id}/conclude`));
   const locked = await call(actor, "GET", `/api/avaluos/${id}/costos`);
   assert.equal(locked.data.locked, true);
   const editLocked = await call(actor, "PUT", `/api/avaluos/${id}/costos`, { json: costPayload });
@@ -109,16 +114,10 @@ test("create → capture → read back → conclude → locked → reopen → ed
     assert.equal(assisted.status, 409, describeCall(`ia/${route} on a concluded valuation`, assisted));
   }
 
-  // Reopen needs a reason; then the valuation is editable again.
-  const noReason = await call(actor, "POST", `/api/avaluos/${id}/reopen`, { json: { reason: "", acceptedText: "Acepto" } });
-  assert.equal(noReason.status, 400);
-  ok("reopen", await call(actor, "POST", `/api/avaluos/${id}/reopen`, { json: reopenPayload }));
-  ok("PUT costos after reopening", await call(actor, "PUT", `/api/avaluos/${id}/costos`, {
-    json: { ...costPayload, land: { ...costPayload.land, unitValue: 1800 } },
-  }));
-  const reopened = await call(actor, "GET", `/api/avaluos/${id}/costos`);
-  assert.equal(reopened.data.locked, false);
-  assert.equal(reopened.data.land.unitValue, 1800);
+  // A concluded valuation is not reopened: it stays as it was concluded.
+  const reopen = await call(actor, "POST", `/api/avaluos/${id}/reopen`, { json: reopenPayload });
+  assert.equal(reopen.status, 409, describeCall("POST reopen", reopen));
+  assert.equal((await call(actor, "GET", `/api/avaluos/${id}/costos`)).data.locked, true);
 
   // Delete: gone for everyone in the organization.
   ok("DELETE", await call(actor, "DELETE", `/api/avaluos/${id}`));
@@ -128,6 +127,11 @@ test("create → capture → read back → conclude → locked → reopen → ed
 test("dictamen PDF and email pass authorization and reach the PDF renderer", async () => {
   const actor = world.a.valuador;
   const id = await createValuation(actor, "Dictamen E2E");
+  // Before concluding there is no PDF, only the preview on screen.
+  const early = await call(actor, "POST", `/api/avaluos/${id}/dictamen/pdf`);
+  assert.equal(early.status, 409, describeCall("POST dictamen/pdf before concluding", early));
+  const concluded = await call(actor, "POST", `/api/avaluos/${id}/conclude`);
+  assert.equal(concluded.status, 200, describeCall("POST conclude", concluded));
   // 200 when Chromium is installed (CHROMIUM_PATH); 503 when it is not.
   const pdf = await call(actor, "POST", `/api/avaluos/${id}/dictamen/pdf`);
   assert.ok([200, 503].includes(pdf.status), describeCall("POST dictamen/pdf", pdf));
