@@ -24,8 +24,14 @@ import {
   buildValuationNoticeSubject,
   buildValuationNoticeText,
 } from "@/features/notifications/templates/valuation-notice";
+import {
+  buildInvoiceEmailHtml,
+  buildInvoiceEmailSubject,
+  buildInvoiceEmailText,
+} from "@/features/notifications/templates/invoice-email";
 import type {
   DictamenEmailInput,
+  InvoiceEmailInput,
   PasswordResetEmailInput,
   TeamInvitationEmailInput,
   ValuationNoticeInput,
@@ -63,6 +69,18 @@ export const valuationNoticeContent = (input: ValuationNoticeInput): EmailConten
   text: buildValuationNoticeText(input),
   html: buildValuationNoticeHtml(input),
 });
+
+export const invoiceEmailContent = (input: InvoiceEmailInput): EmailContent => ({
+  subject: buildInvoiceEmailSubject(input),
+  text: buildInvoiceEmailText(input),
+  html: buildInvoiceEmailHtml(input),
+});
+
+/** The two files of a CFDI, as every provider attaches them. */
+export const invoiceAttachments = (input: InvoiceEmailInput) => [
+  { filename: input.pdf.filename, contentType: "application/pdf", content: input.pdf.content },
+  { filename: input.xml.filename, contentType: "application/xml", content: input.xml.content },
+];
 
 /**
  * The dictamen leaves as "<firm> vía Valuaxis Soft": the firm is visible, and

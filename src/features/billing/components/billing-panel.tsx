@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, CreditCard, Info, Loader2, ShoppingCart } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CreditCard, Download, Info, Loader2, RotateCw, ShoppingCart } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -12,6 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import type { BillingOverviewDto, BillingPlanDto, CreditPackageDto, CreditsOverviewDto } from "../billing.service";
+import type { CreditMovementDto } from "../credits.service";
+import type { MovementInvoiceDto } from "../invoicing.service";
+import { FiscalDataCard } from "./fiscal-data-card";
 
 /** The words next to the balance; a negative balance counts valuations concluded without paying. */
 function balanceWords(balance: number) {
@@ -45,7 +48,11 @@ const NOTICES: Record<Exclude<BillingNotice, null>, { title: string; text: strin
     text: "Stripe todavía no confirma la suscripción. Suele tardar unos segundos: vuelve a cargar la página.",
     tone: "info",
   },
-  purchased: { title: "Compra confirmada", text: "Stripe confirmó tu pago y los avalúos ya están en tu saldo. Stripe te envía el recibo por correo.", tone: "ok" },
+  purchased: {
+    title: "Compra confirmada",
+    text: "Stripe confirmó tu pago y los avalúos ya están en tu saldo. Stripe te envía el recibo por correo; la factura aparece en Movimientos en cuanto se emite.",
+    tone: "ok",
+  },
   "purchase-confirming": {
     title: "Estamos confirmando tu pago",
     text: "Stripe todavía no confirma el pago del paquete. Suele tardar unos segundos: vuelve a cargar la página.",
@@ -59,7 +66,18 @@ const NOTICES: Record<Exclude<BillingNotice, null>, { title: string; text: strin
   },
 };
 
-export function BillingPanel({ overview, canManage, notice }: { overview: BillingOverviewDto; canManage: boolean; notice: BillingNotice }) {
+export function BillingPanel({
+  overview,
+  canManage,
+  canManageInvoicing,
+  notice,
+}: {
+  overview: BillingOverviewDto;
+  canManage: boolean;
+  /** FACTURACION_ADMINISTRAR: fiscal data and «Reintentar factura». */
+  canManageInvoicing: boolean;
+  notice: BillingNotice;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const { current, plans, credits } = overview;
 
@@ -113,7 +131,9 @@ export function BillingPanel({ overview, canManage, notice }: { overview: Billin
         </section>
       )}
 
-      <MovementsCard credits={credits} />
+      <MovementsCard credits={credits} invoicingEnabled={overview.invoicing.enabled} canRetry={canManageInvoicing && overview.invoicing.enabled} />
+
+      <FiscalDataCard invoicing={overview.invoicing} canManage={canManageInvoicing} />
 
       {current?.stateKey === "PAGO_PENDIENTE" || current?.stateKey === "SUSPENDIDA" ? (
         <Alert variant="destructive">
@@ -265,7 +285,26 @@ function PackageCard({ pkg, canManage, busy, onBuy }: { pkg: CreditPackageDto; c
   );
 }
 
-function MovementsCard({ credits }: { credits: CreditsOverviewDto }) {
+function MovementsCard({ credits, invoicingEnabled, canRetry }: { credits: CreditsOverviewDto; invoicingEnabled: boolean; canRetry: boolean }) {
+  const [movements, setMovements] = useState(credits.movements);
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const showInvoices = invoicingEnabled || movements.some((movement) => movement.invoice);
+
+  const retry = async (invoice: MovementInvoiceDto) => {
+    setRetrying(invoice.id);
+    try {
+      const next = await api.billing.retryInvoice(invoice.id);
+      setMovements((current) => current.map((movement) => (movement.invoice?.id === next.id ? { ...movement, invoice: next } : movement)));
+      if (next.state === "EMITIDA" && next.emailed) toast.success("Factura emitida y enviada por correo.");
+      else if (next.state === "EMITIDA") toast.warning("La factura se emitió, pero no se pudo enviar por correo.");
+      else toast.error(next.error ?? "No se pudo emitir la factura.");
+    } catch (error) {
+      toast.error(errorMessage(error, "No se pudo reintentar la factura."));
+    } finally {
+      setRetrying(null);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -273,7 +312,7 @@ function MovementsCard({ credits }: { credits: CreditsOverviewDto }) {
         <CardDescription>Compras, avalúos concluidos y ajustes, del más reciente al más antiguo (se muestran hasta 50).</CardDescription>
       </CardHeader>
       <CardContent>
-        {credits.movements.length === 0 ? (
+        {movements.length === 0 ? (
           <p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>
         ) : (
           <Table>
@@ -282,11 +321,12 @@ function MovementsCard({ credits }: { credits: CreditsOverviewDto }) {
                 <TableHead>Fecha</TableHead>
                 <TableHead>Movimiento</TableHead>
                 <TableHead>Detalle</TableHead>
+                {showInvoices ? <TableHead>Factura</TableHead> : null}
                 <TableHead className="text-right">Avalúos</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {credits.movements.map((movement) => (
+              {movements.map((movement) => (
                 <TableRow key={movement.id}>
                   <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(movement.createdAt)}</TableCell>
                   <TableCell>{movement.typeLabel}</TableCell>
@@ -300,6 +340,11 @@ function MovementsCard({ credits }: { credits: CreditsOverviewDto }) {
                     )}
                     {movement.userName ? <span className="text-muted-foreground"> · {movement.userName}</span> : null}
                   </TableCell>
+                  {showInvoices ? (
+                    <TableCell className="whitespace-normal">
+                      <InvoiceCell movement={movement} canRetry={canRetry} retrying={retrying === movement.invoice?.id} onRetry={retry} />
+                    </TableCell>
+                  ) : null}
                   <TableCell className={`text-right font-medium tabular-nums ${movement.credits < 0 ? "text-destructive" : ""}`}>
                     {movement.credits > 0 ? `+${movement.credits}` : movement.credits}
                   </TableCell>
@@ -310,6 +355,64 @@ function MovementsCard({ credits }: { credits: CreditsOverviewDto }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+const monthLabel = (period: string) =>
+  new Date(`${period}-15T12:00:00Z`).toLocaleDateString("es-MX", { month: "long", year: "numeric", timeZone: "America/Mexico_City" });
+
+/** The CFDI of a purchase: links to its PDF and XML, where it went, or why it failed and «Reintentar factura». */
+function InvoiceCell({
+  movement,
+  canRetry,
+  retrying,
+  onRetry,
+}: {
+  movement: CreditMovementDto;
+  canRetry: boolean;
+  retrying: boolean;
+  onRetry: (invoice: MovementInvoiceDto) => void;
+}) {
+  const invoice = movement.invoice;
+  if (movement.type !== "COMPRA") return null;
+  if (!invoice) return <span className="text-xs text-muted-foreground">Sin factura todavía</span>;
+  if (invoice.kind === "GLOBAL") {
+    return (
+      <span className="text-xs text-muted-foreground">
+        {invoice.state === "EMITIDA" && invoice.globalPeriod ? `En la factura global de ${monthLabel(invoice.globalPeriod)}` : "En la factura global del mes"}
+      </span>
+    );
+  }
+  const base = `/api/organizacion/facturacion/facturas/${invoice.id}`;
+  return (
+    <div className="grid gap-1 text-xs">
+      {invoice.state === "EMITIDA" ? (
+        <span className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">Factura {invoice.label ?? ""}</Badge>
+          {invoice.downloadable ? (
+            <>
+              <a href={`${base}/pdf`} className="inline-flex items-center gap-1 underline underline-offset-2">
+                <Download className="size-3" /> PDF
+              </a>
+              <a href={`${base}/xml`} className="inline-flex items-center gap-1 underline underline-offset-2">
+                <Download className="size-3" /> XML
+              </a>
+            </>
+          ) : null}
+        </span>
+      ) : invoice.state === "PENDIENTE" ? (
+        <span className="text-muted-foreground">Emitiendo la factura…</span>
+      ) : (
+        <Badge variant="destructive" className="w-fit">No se pudo emitir</Badge>
+      )}
+      {invoice.error ? <span className="text-muted-foreground">{invoice.error}</span> : null}
+      {canRetry && invoice.retryable ? (
+        <Button type="button" size="sm" variant="outline" className="w-fit" disabled={retrying} onClick={() => onRetry(invoice)}>
+          {retrying ? <Loader2 className="animate-spin" /> : <RotateCw />}
+          Reintentar factura
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 import type {
   DictamenEmailInput,
   EmailService,
+  InvoiceEmailInput,
   PasswordResetEmailInput,
   TeamInvitationEmailInput,
   ValuationNoticeInput,
@@ -52,6 +53,16 @@ export class DevelopmentEmailService implements EmailService {
   async sendValuationNotice(input: ValuationNoticeInput) {
     if (process.env.NODE_ENV !== "production") {
       console.info("Development valuation notice prepared", { to: input.to, kind: input.kind, folio: input.folio });
+    }
+  }
+
+  async sendInvoiceEmail(input: InvoiceEmailInput) {
+    if (process.env.NODE_ENV !== "production") {
+      console.info("Development invoice email prepared", {
+        to: input.to,
+        invoice: input.invoiceLabel,
+        attachments: [`${input.pdf.filename} (${input.pdf.content.length} bytes)`, `${input.xml.filename} (${input.xml.content.length} bytes)`],
+      });
     }
   }
 }

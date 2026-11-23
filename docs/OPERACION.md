@@ -213,6 +213,34 @@ Es idempotente y no llama a Stripe.
 docker exec -it valuos-app node --import tsx scripts/billing-credits.ts enforce <slug|uuid> on
 ```
 
+### 8.1 Facturación CFDI con Facturapi (`FACTURAPI_KEY`)
+
+**Apagada mientras no exista `FACTURAPI_KEY`.** Sin ella no se emite nada; los administradores pueden capturar sus datos fiscales en «Plan y facturación» y la página dice que la facturación automática todavía no está habilitada. Detalle del funcionamiento en [COBRO.md](COBRO.md), sección «Facturación CFDI».
+
+Para encenderla (la cuenta de Facturapi y el CSD los maneja el cliente; nosotros nunca vemos el CSD ni su contraseña):
+
+1. El cliente abre su cuenta en Facturapi, crea la organización emisora con sus datos fiscales, sube su CSD (.cer, .key y contraseña) y, si quiere, su logotipo y la serie de folios. Con el contador confirma las claves del SAT (ver COBRO.md).
+2. Primero en pruebas: la llave secreta de pruebas (`sk_test_…`) en `/opt/apps/valuos/secrets/production.env`, nunca en el repositorio ni en un chat:
+
+   ```
+   FACTURAPI_KEY=sk_test_...
+   # Opcionales; vacías usan 81112106 y E48.
+   INVOICE_PRODUCT_KEY=
+   INVOICE_UNIT_KEY=
+   ```
+
+   `FACTURAPI_BASE_URL` se deja sin definir en producción (solo sirve para pruebas en local).
+3. Recrear la app (paso 2). Con una organización de prueba con datos fiscales completos, comprar el paquete más barato y revisar en «Movimientos» que aparezca la factura con PDF y XML, que llegue el correo y que en el panel de Facturapi (modo pruebas) esté la factura con los importes de Stripe. Reembolsar el cargo en Stripe y cancelar la factura de prueba en Facturapi.
+4. Cambiar a la llave en vivo (`sk_live_…`) y recrear la app. Desde ese momento cada compra de una organización con datos fiscales se timbra ante el SAT.
+5. Cada mes, el día 1 (el SAT pide emitir la factura global en cuanto cierra el periodo; el plazo exacto lo confirma el contador), la factura global de los pagos sin datos fiscales del mes anterior:
+
+   ```bash
+   docker exec -it valuos-app node --import tsx scripts/invoices-global.ts --month 2026-11           # simulación
+   docker exec -it valuos-app node --import tsx scripts/invoices-global.ts --month 2026-11 --apply   # emite
+   ```
+
+Si una factura no sale: `docker logs valuos-app 2>&1 | grep "\[INVOICING\]"` (trae el código de Facturapi; el RFC aparece abreviado y la llave nunca). El mensaje completo del SAT o de Facturapi queda en la fila de la compra y lo ve el administrador en «Movimientos», con «Reintentar factura».
+
 ## 9. Acreditación profesional
 
 Ver [ACREDITACION.md](ACREDITACION.md). Tras desplegar la migración 054:

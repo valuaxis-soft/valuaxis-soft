@@ -19,7 +19,12 @@ import { findBillingProvider, reconcileSubscription } from "./subscription-sync.
 
 const MAX_BODY_BYTES = 1_000_000;
 
-export type WebhookResponse = { status: number; body: Record<string, unknown> };
+export type WebhookResponse = {
+  status: number;
+  body: Record<string, unknown>;
+  /** A paid package purchase: the route invoices it (CFDI) after answering Stripe. */
+  invoicePayment?: string;
+};
 
 export async function handleStripeWebhook(
   input: { rawBody: string; signature: string | null },
@@ -82,7 +87,8 @@ export async function handleStripeWebhook(
       data: { ...processed, BProcesado: true, DFechaProcesamiento: new Date(), SMensajeError: result.applied ? null : result.reason },
     });
     const outcome = !result.applied ? { ignored: result.reason } : "state" in result ? { state: result.state } : { credits: result.credits, credited: result.credited };
-    return { status: 200, body: { received: true, ...outcome } };
+    const purchase = result.applied && decision.action === "reconcile-purchase" ? decision.checkoutSessionId : undefined;
+    return { status: 200, body: { received: true, ...outcome }, ...(purchase ? { invoicePayment: purchase } : {}) };
   } catch (error) {
     console.error(`[STRIPE_WEBHOOK] ${event.type} ${event.id} failed`, error);
     await prisma.eventoWebhookPago.update({

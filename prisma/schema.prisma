@@ -258,6 +258,14 @@ model Organizacion {
   BCobroPorAvaluo           Boolean   @default(false) @map("BCobroPorAvaluo")
   /// Last number given to a comparable of the firm's base ("C-00123"); it only grows (migration 044).
   IUltimoFolioComparable    Int       @default(0) @map("IUltimoFolioComparable")
+  /// Fiscal data for the CFDI of its purchases, next to SRazonSocial and SRFC (migration 063): c_RegimenFiscal key.
+  SRegimenFiscal            String?   @map("SRegimenFiscal") @db.VarChar(3)
+  /// Zip code of the fiscal address, as in the Constancia de Situación Fiscal (migration 063).
+  SCodigoPostalFiscal       String?   @map("SCodigoPostalFiscal") @db.VarChar(5)
+  /// c_UsoCFDI key of its invoices (migration 063).
+  SUsoCfdi                  String?   @map("SUsoCfdi") @db.VarChar(4)
+  /// Where its invoices (PDF and XML) are emailed (migration 063).
+  SCorreoFacturacion        String?   @map("SCorreoFacturacion") @db.VarChar(180)
   BActivo                   Boolean   @default(true) @map("BActivo")
   DFechaCreacion            DateTime  @default(now()) @map("DFechaCreacion")
   DFechaModificacion        DateTime  @updatedAt @map("DFechaModificacion")
@@ -286,7 +294,8 @@ model Organizacion {
   invitaciones               InvitacionOrganizacion[]
   clientesPago               ClientePago[]
   movimientosCreditos        MovimientoCreditos[]
-  comparablesBase            ComparableAvaluo[]       @relation("ComparableBaseOrganizacion")
+  cfdisPagos                 CfdiPago[]
+  comparablesBase           ComparableAvaluo[]       @relation("ComparableBaseOrganizacion")
   notificaciones             Notificacion[]
 
   @@index([IdEstadoOrganizacion])
@@ -3881,10 +3890,58 @@ model MovimientoCreditos {
   paquete      PaqueteCreditos? @relation(fields: [IdPaqueteCreditos], references: [IdPaqueteCreditos], onDelete: Restrict, onUpdate: Cascade)
   avaluo       Avaluo?          @relation(fields: [IdAvaluo], references: [IdAvaluo], onDelete: Restrict, onUpdate: Cascade)
   usuario      Usuario?         @relation(fields: [IdUsuario], references: [IdUsuario], onDelete: SetNull, onUpdate: Cascade)
+  cfdi         CfdiPago?
 
   @@index([IdOrganizacion, DFechaCreacion(sort: Desc)], map: "devpware_movimientos_creditos_org_fecha_idx")
   @@index([IdAvaluo], map: "devpware_movimientos_creditos_avaluo_idx")
   @@map("devpware_movimientos_creditos")
+}
+
+/// The CFDI of a package payment (migration 063): one row per payment at most, so retries never invoice twice.
+/// A global invoice (público en general) covers several payments: each keeps its row, all with the same Facturapi id and UUID.
+model CfdiPago {
+  IdCfdiPago            BigInt    @id @default(autoincrement()) @map("IdCfdiPago")
+  UIdentificadorPublico String    @unique(map: "devpware_cfdis_pagos_publico_key") @default(dbgenerated("gen_random_uuid()")) @map("UIdentificadorPublico") @db.Uuid
+  IdOrganizacion        Int       @map("IdOrganizacion")
+  /// The COMPRA movement this payment credited.
+  IdMovimientoCreditos  BigInt    @unique(map: "devpware_cfdis_pagos_movimiento_key") @map("IdMovimientoCreditos")
+  SProveedorPago        String    @map("SProveedorPago") @db.VarChar(80)
+  /// The Checkout Session id of the payment.
+  SReferenciaPago       String    @map("SReferenciaPago") @db.VarChar(255)
+  /// INDIVIDUAL (to the organization's RFC) or GLOBAL (público en general).
+  STipo                 String    @map("STipo") @db.VarChar(20)
+  /// PENDIENTE, EMITIDA or FALLIDA.
+  SEstado               String    @map("SEstado") @db.VarChar(20)
+  /// "2026-11": the month a global invoice covers.
+  SPeriodoGlobal        String?   @map("SPeriodoGlobal") @db.VarChar(7)
+  /// The invoice id in Facturapi.
+  SIdentificadorExterno String?   @map("SIdentificadorExterno") @db.VarChar(255)
+  /// The fiscal folio (UUID) the SAT gave the CFDI.
+  SUuid                 String?   @map("SUuid") @db.VarChar(40)
+  SSerie                String?   @map("SSerie") @db.VarChar(25)
+  IFolio                Int?      @map("IFolio")
+  SMoneda               String    @default("MXN") @map("SMoneda") @db.VarChar(3)
+  NSubtotal             Decimal   @map("NSubtotal") @db.Decimal(24, 2)
+  NImpuestos            Decimal   @map("NImpuestos") @db.Decimal(24, 2)
+  NTotal                Decimal   @map("NTotal") @db.Decimal(24, 2)
+  /// The receiver as invoiced (RFC, legal name, regime, zip, use, email), for the record.
+  JDatosReceptor        Json?     @map("JDatosReceptor") @db.JsonB
+  /// Why the last attempt failed (Facturapi's message), or why the email did not go out.
+  SMensajeError         String?   @map("SMensajeError") @db.VarChar(2000)
+  IIntentos             Int       @default(0) @map("IIntentos")
+  DFechaPago            DateTime  @map("DFechaPago") @db.Timestamptz(3)
+  DFechaEmision         DateTime? @map("DFechaEmision") @db.Timestamptz(3)
+  /// When the PDF and XML were emailed; null while not sent.
+  DFechaCorreo          DateTime? @map("DFechaCorreo") @db.Timestamptz(3)
+  DFechaCreacion        DateTime  @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+  DFechaModificacion    DateTime  @default(now()) @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
+
+  organizacion Organizacion       @relation(fields: [IdOrganizacion], references: [IdOrganizacion], onDelete: Restrict, onUpdate: Cascade, map: "devpware_cfdis_pagos_org_fkey")
+  movimiento   MovimientoCreditos @relation(fields: [IdMovimientoCreditos], references: [IdMovimientoCreditos], onDelete: Restrict, onUpdate: Cascade, map: "devpware_cfdis_pagos_movimiento_fkey")
+
+  @@unique([SProveedorPago, SReferenciaPago], map: "devpware_cfdis_pagos_referencia_key")
+  @@index([IdOrganizacion, DFechaPago(sort: Desc)], map: "devpware_cfdis_pagos_org_fecha_idx")
+  @@map("devpware_cfdis_pagos")
 }
 
 /// Named streets of Mexico copied from OpenStreetMap (ODbL), one row per way; filled by scripts/ops/importar-calles.ts.

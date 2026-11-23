@@ -61,6 +61,17 @@ const envObject = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   /** Valuaxis' own customer portal configuration (bpc_...), printed by pnpm stripe:sync. */
   STRIPE_PORTAL_CONFIGURATION: z.string().optional(),
+  /**
+   * Facturapi secret key (sk_live_… or sk_test_…): CFDI invoices of the package purchases.
+   * Optional: without it nothing is invoiced and the page says so (docs/COBRO.md).
+   */
+  FACTURAPI_KEY: z.string().optional(),
+  /** Tests and local checks only: a fake Facturapi. Empty uses https://www.facturapi.io/v2. */
+  FACTURAPI_BASE_URL: z.string().url().optional().or(z.literal("")),
+  /** c_ClaveProdServ of the invoice concept; empty uses 81112106. To be confirmed by the accountant. */
+  INVOICE_PRODUCT_KEY: z.string().regex(/^\d{8}$/).optional().or(z.literal("")),
+  /** c_ClaveUnidad of the invoice concept; empty uses E48 (Unidad de servicio). */
+  INVOICE_UNIT_KEY: z.string().regex(/^[A-Z0-9]{2,3}$/).optional().or(z.literal("")),
   /** The AI assistance is optional: without the key its buttons do not render and its routes answer "no habilitado". */
   ANTHROPIC_API_KEY: z.string().optional(),
   /** Model overrides; empty uses the defaults of src/infrastructure/ai/anthropic-gateway.ts. */

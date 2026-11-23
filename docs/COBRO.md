@@ -71,7 +71,65 @@ Para probar en local: `pnpm billing:example-packages` inserta los cuatro paquete
 
 ### Impuestos
 
-`NImporte` es el precio antes de impuestos y `NImpuestoPorcentaje` el IVA. Stripe cobra **el total con IVA incluido** como un solo importe ($499.00 + 16% = $578.84); la página muestra el desglose. Stripe Tax queda apagado y no se crean tasas de impuesto en la cuenta compartida. El recibo de Stripe no desglosa el IVA: el CFDI se emite por fuera.
+`NImporte` es el precio antes de impuestos y `NImpuestoPorcentaje` el IVA. Stripe cobra **el total con IVA incluido** como un solo importe ($499.00 + 16% = $578.84); la página muestra el desglose. Stripe Tax queda apagado y no se crean tasas de impuesto en la cuenta compartida. El recibo de Stripe no desglosa el IVA ni es un CFDI: la factura la emite Facturapi (sección «Facturación CFDI»).
+
+## Facturación CFDI (Facturapi)
+
+Cada compra de un paquete se factura con un **CFDI 4.0 de ingreso** emitido por [Facturapi](https://docs.facturapi.io), con el CSD del cliente. Está **apagada mientras no exista `FACTURAPI_KEY`**: sin ella no se emite nada, el formulario de datos fiscales sigue guardando y la página dice «La facturación automática todavía no está habilitada». El cliente abre su cuenta de Facturapi y sube su CSD él mismo: Valuaxis nunca ve el CSD ni su contraseña, solo guarda la llave secreta en `production.env`.
+
+### Datos fiscales
+
+Un administrador (`FACTURACION_ADMINISTRAR`) los captura una vez en «Plan y facturación» → «Datos fiscales»: RFC, razón social, régimen fiscal (catálogo c_RegimenFiscal), código postal del domicilio fiscal (5 dígitos), uso del CFDI (G03, G01 o S01) y correo para facturas. Deben coincidir con la Constancia de Situación Fiscal; el SAT rechaza el timbrado si no. Se valida el formato del RFC (12 caracteres persona moral, 13 física, con fecha real), que el régimen corresponda al tipo de persona y que el uso lo permita el régimen.
+
+La razón social y el RFC son las mismas columnas que «Datos del despacho» (`SRazonSocial`, `SRFC`); lo demás vive en columnas nuevas de la organización (migración 063). En la factura la razón social va en mayúsculas y **sin el régimen societario** («S.A. de C.V.», «S. de R.L. de C.V.», «S.C.»…), como pide el CFDI 4.0; el membrete del dictamen la sigue mostrando como está escrita.
+
+### Cuándo se factura
+
+1. Stripe confirma el pago (webhook `checkout.session.completed` o la página de éxito) y los créditos se abonan como siempre.
+2. **Después de responder** (`after()`), si Facturapi está configurado y la organización tiene datos fiscales completos, se crea el CFDI y se envía por correo (PDF y XML adjuntos) al correo para facturas, con el servicio de correo de la app.
+3. **Una factura por pago**: la tabla `devpware_cfdis_pagos` tiene un índice único por movimiento de compra y por referencia de Stripe. Antes de llamar a Facturapi se aparta la fila, así que el webhook, sus reintentos y la página de éxito nunca facturan dos veces. Además, la petición lleva `idempotency_key = valuaxis-<sesión de Checkout>` y `external_id = <sesión>`: si una respuesta se pierde, el siguiente intento encuentra la factura que ya existe en vez de crear otra.
+4. Si Facturapi o el SAT la rechazan, la fila queda **FALLIDA** con el mensaje tal cual, visible en «Movimientos» junto con «Reintentar factura» (solo `FACTURACION_ADMINISTRAR`). El reintento usa los datos fiscales como estén en ese momento: se corrige el dato y se reintenta. Si la factura se emitió pero el correo falló, «Reintentar factura» solo reenvía el correo.
+5. En «Movimientos» cada compra muestra su factura con enlaces a PDF y XML (se descargan de Facturapi en el momento; la app no guarda copia), «Emitiendo la factura…», el error, o «En la factura global de <mes>».
+
+Se audita: `BILLING_FISCAL_DATA_UPDATED`, `BILLING_INVOICE_ISSUED`, `BILLING_INVOICE_FAILED`, `BILLING_INVOICE_RETRIED`, `BILLING_GLOBAL_INVOICE_ISSUED` y `BILLING_GLOBAL_INVOICE_FAILED`. En los registros y la auditoría el RFC aparece abreviado (`EKU…C9`); la llave nunca.
+
+### Importes
+
+Stripe cobra el total con IVA incluido. El CFDI lleva un concepto por compra (cantidad 1) con el **precio antes de IVA** y el IVA trasladado al 16 %, calculados para que subtotal + IVA redondeados a centavos den exactamente lo que cobró Stripe: el avalúo de $170.00 se factura como $146.55 + $23.45. El total sale del importe que Stripe registró en la compra (`amountTotal`), no del precio actual del paquete. Si algún día un total no tuviera un subtotal exacto en centavos, el concepto se manda con el IVA incluido y Facturapi lo desglosa.
+
+### Claves del SAT (por confirmar con el contador del cliente)
+
+| Campo | Valor | Por qué |
+|---|---|---|
+| Clave de producto o servicio | `81112106` «Proveedores de servicios de aplicación» (`INVOICE_PRODUCT_KEY`) | Lo que se vende es el uso del software en línea (créditos para emitir avalúos), no el avalúo mismo, que firma el perito |
+| Clave de unidad | `E48` «Unidad de servicio» (`INVOICE_UNIT_KEY`) | La unidad habitual para servicios |
+| Forma de pago | `31` «Intermediario pagos» | El comprador paga a través de Stripe, sea tarjeta de crédito o de débito; si el contador prefiere `04` (tarjeta de crédito) se cambia en `CFDI_DEFAULTS` |
+| Método de pago | `PUE` | La compra está pagada por completo antes de facturar |
+| Objeto de impuesto | `02` con IVA trasladado 16 % | |
+| Uso del CFDI | El que elija la organización (G03 por lo general) | |
+
+La serie y el folio los asigna Facturapi según la configuración de la organización emisora.
+
+### Factura global (público en general)
+
+Los pagos de organizaciones **sin datos fiscales**, y los que se hicieron mientras la facturación estaba apagada, no se facturan uno por uno: van en la **factura global mensual** a «PUBLICO EN GENERAL» (RFC `XAXX010101000`, régimen 616, uso S01, periodicidad mensual), con un concepto por pago (clave `01010101`, unidad `ACT`, «Venta», la sesión de Stripe como número de identificación):
+
+```bash
+pnpm invoices:global --month 2026-11            # simulación: lista los pagos y los importes
+pnpm invoices:global --month 2026-11 --apply    # emite
+# dentro del contenedor de producción:
+docker exec -it valuos-app node --import tsx scripts/invoices-global.ts --month 2026-11 [--apply]
+```
+
+El mes se cuenta en hora de la Ciudad de México. Antes de emitir aparta las filas de esos pagos (ya no se pueden facturar uno por uno), y si Facturapi la rechaza quedan **FALLIDA**: volver a correr el comando reintenta los mismos pagos sin duplicar. Un pago que ya está en una global emitida no vuelve a entrar. Una factura individual que falló no entra en la global: el comando lo avisa para reintentarla desde la página. Las organizaciones ven en «Movimientos» que su pago está en la global del mes, sin enlaces de descarga (ese CFDI no es a su nombre).
+
+### Cancelaciones
+
+La app no cancela facturas. Si hace falta (un reembolso, un dato equivocado), se cancela en el panel de Facturapi con el motivo que indique el contador; la fila de la app conserva el registro original.
+
+### Lo que no está probado contra el Facturapi real
+
+Las pruebas corren contra un Facturapi falso local (`tests/support/fake-facturapi-server.ts`) que imita los endpoints documentados. Falta confirmar con la llave de pruebas del cliente: que acepte el cliente en línea con estos campos, el redondeo del IVA en su PDF y XML, el comportamiento con el timbrado diferido (respuesta 202), la factura global y los mensajes de error reales del SAT.
 
 ## Variables de entorno
 
@@ -81,6 +139,10 @@ Para probar en local: `pnpm billing:example-packages` inserta los cuatro paquete
 | `STRIPE_WEBHOOK_SECRET` | Secreto de firma del endpoint (`whsec_…`). Sin él, el webhook rechaza todo (503) |
 | `STRIPE_PORTAL_CONFIGURATION` | Id de la configuración del portal propia de Valuaxis (`bpc_…`); la imprime `pnpm stripe:sync`. Sin ella se usa la configuración predeterminada de la cuenta |
 | `STRIPE_PUBLISHABLE_KEY` | **No se usa**: Checkout es por redirección, sin Stripe.js en el navegador |
+
+| `FACTURAPI_KEY` | Llave secreta de la organización emisora en Facturapi (`sk_test_…` o `sk_live_…`). Sin ella no se factura nada |
+| `FACTURAPI_BASE_URL` | Solo pruebas y revisión en local (un Facturapi falso). En producción no se define |
+| `INVOICE_PRODUCT_KEY`, `INVOICE_UNIT_KEY` | Claves del SAT del concepto; vacías usan `81112106` y `E48` |
 
 `pnpm env:check` no falla si faltan. Nunca van con prefijo `NEXT_PUBLIC`.
 
@@ -152,4 +214,7 @@ Para probar en local hay dos planes de ejemplo: `pnpm billing:example-plans` (so
 | Consumo al concluir | `src/features/valuations/services/valuation-workflow/lifecycle.ts` |
 | Conciliación | `src/features/billing/subscription-sync.service.ts` |
 | Webhook | `src/features/billing/billing-webhook.service.ts`, `src/app/api/stripe/webhook/route.ts` |
-| Pruebas | `tests/billing-*.test.ts`, `tests/integration/billing.integration.ts`, `tests/integration/billing-credits.integration.ts`, `tests/support/fake-billing-gateway.ts` |
+| Facturación CFDI: reglas puras (catálogos, RFC, importes, cuerpos para Facturapi) | `src/features/billing/invoice-rules.ts` |
+| Facturación CFDI: datos fiscales, emisión, reintento, descarga y factura global | `src/features/billing/invoicing.service.ts`, `scripts/invoices-global.ts` |
+| Interfaz del proveedor de CFDI y su implementación con `fetch` | `src/features/billing/invoicing-gateway.ts`, `src/infrastructure/invoicing/facturapi-gateway.ts` |
+| Pruebas | `tests/billing-*.test.ts`, `tests/integration/billing.integration.ts`, `tests/integration/billing-credits.integration.ts`, `tests/integration/invoicing.integration.ts`, `tests/support/fake-billing-gateway.ts`, `tests/support/fake-facturapi-server.ts` |
