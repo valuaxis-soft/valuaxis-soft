@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
+import { phoneRequiredResponse } from "@/features/account/phone/phone-http";
 import { saveValuation } from "@/features/valuations/actions/save-valuation.action";
 import { listValuations } from "@/features/valuations/repositories/valuation.repository";
 import { createValuationSchema } from "@/features/valuations/validations/valuation-api.schemas";
@@ -22,6 +23,8 @@ export async function POST(request: Request) {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.createValuations);
     if (!auth.ok) return auth.response;
+    const phoneRequired = await phoneRequiredResponse(auth.user.id);
+    if (phoneRequired) return phoneRequired;
 
     const body = await readJsonBody(request, createValuationSchema);
     if (!body.ok) return body.response;

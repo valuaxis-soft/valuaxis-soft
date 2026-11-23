@@ -297,7 +297,7 @@ Si un correo no sale, el usuario ve el mismo mensaje de siempre y el log lo dice
 
 «Buscar con IA en la web», dentro de «Buscar comparables», está **apagada por omisión** porque cada búsqueda cuesta bastante más que las otras ayudas de IA (ver «Costo y registro de uso» en [IA.md](IA.md)). Para encenderla:
 
-1. En `/root/valuos/deployment/production.env`, con la llave de Anthropic ya puesta (`ANTHROPIC_API_KEY`, nunca en el repositorio ni en un chat):
+1. En `/opt/apps/valuos/secrets/production.env`, con la llave de Anthropic ya puesta (`ANTHROPIC_API_KEY`, nunca en el repositorio ni en un chat):
 
    ```
    AI_COMPARABLE_SEARCH_ENABLED=true
@@ -317,7 +317,7 @@ El gasto por despacho sale de la auditoría (acción `AI_COMPARABLE_SEARCH`); la
 
 El dueño de la plataforma necesita saber quién es cada persona registrada (si una autoridad pregunta quién hizo un avalúo), sin ver el contenido de sus avalúos. Para eso existe `/operador/usuarios`: nombre, correo, teléfono (tal como lo capturó, sin verificar), despachos y rol, acreditación, alta, último acceso y cuántos avalúos creó y concluyó. Nada más de sus avalúos. Ver [AUTHORIZATION.md](AUTHORIZATION.md#operador-de-la-plataforma).
 
-1. En `/root/valuos/deployment/production.env`, el correo (o los correos, separados por comas) de las cuentas del operador. Deben ser cuentas ya registradas y con el correo verificado:
+1. En `/opt/apps/valuos/secrets/production.env`, el correo (o los correos, separados por comas) de las cuentas del operador. Deben ser cuentas ya registradas y con el correo verificado:
 
    ```
    OPERATOR_EMAILS=correo-del-operador@ejemplo.com
@@ -333,3 +333,36 @@ select a."DFechaEvento", u."SCorreo", a."SAccion", a."JMetadatos"
 from devpware_auditorias a join devpware_usuarios u on u."IdUsuario" = a."IdUsuario"
 where a."SAccion" like 'OPERATOR_%' order by a."DFechaEvento" desc limit 50;
 ```
+
+## 15. Verificación del teléfono (Twilio Verify)
+
+Cada usuario verifica su celular en «Mi cuenta» → «Teléfono» con un código por SMS o WhatsApp, para que nadie abra cuentas falsas y vuelva a usar los avalúos gratuitos. Un teléfono verificado pertenece a una sola cuenta (migración 062). Registrarse y explorar sigue libre; mientras el teléfono no esté verificado, las páginas privadas muestran un recordatorio que se puede posponer 3 días. **Sin las tres llaves de Twilio no pasa nada**: no hay recordatorio, «Mi cuenta» dice que la verificación todavía no está habilitada y `PHONE_VERIFICATION_REQUIRED` se ignora (el log lo dice una vez: `[PHONE] PHONE_VERIFICATION_REQUIRED is on but the Twilio keys are missing`).
+
+**Crear la cuenta y el servicio (lo hace el cliente, una vez):**
+
+1. Crear la cuenta en [twilio.com](https://www.twilio.com) a nombre del despacho y pasarla de prueba a pagada (Upgrade). En prueba solo llegan códigos a números verificados a mano en la consola.
+2. Console → Verify → Services → «Create new»: nombre `Valuaxis Soft` (es el que aparece en el mensaje), longitud del código 6. En «Delivery channels» encender **SMS** y, si se quiere, **WhatsApp**. Copiar el **Service SID** (`VA…`).
+3. **WhatsApp necesita un remitente:** un número de WhatsApp Business aprobado por Meta y asociado al servicio (Verify → Services → el servicio → WhatsApp, o Messaging → Senders → WhatsApp senders). Mientras no lo tenga, quien elija WhatsApp ve «Ese medio de envío no está disponible por ahora. Elige SMS.» (error 60223 de Twilio) y SMS funciona igual.
+4. Console → Messaging → Settings → Geo permissions (o Verify → Settings → Geo permissions): permitir **México** (y los países de los que se acepten números). Fraud Guard puede quedarse encendido.
+5. Copiar de la portada de la consola el **Account SID** (`AC…`) y el **Auth Token**. Nunca en el repositorio, un chat ni un correo.
+
+**Encenderla en el servidor:**
+
+1. En `/opt/apps/valuos/secrets/production.env`:
+
+   ```
+   TWILIO_ACCOUNT_SID=AC...
+   TWILIO_AUTH_TOKEN=...
+   TWILIO_VERIFY_SERVICE_SID=VA...
+   # Al principio en false: solo se recuerda. En true, crear un avalúo exige el teléfono verificado.
+   PHONE_VERIFICATION_REQUIRED=false
+   ```
+
+   `TWILIO_API_BASE_URL` es solo para pruebas en local y en producción se ignora; no ponerla.
+2. `pnpm env:check` y recrear la app (paso 2).
+3. Con una cuenta propia: «Mi cuenta» → «Teléfono» → escribir el celular → SMS → «Enviar código» → escribir el código → «Verificar». Debe quedar «Verificado» y seguir así al recargar. Repetir con WhatsApp si se configuró el remitente.
+4. Cuando el cliente lo decida, `PHONE_VERIFICATION_REQUIRED=true` y recrear la app: el formulario de «Nuevo avalúo» y «Duplicar» piden verificar el teléfono, con liga a «Mi cuenta». Para apagarlo, `false` y recrear.
+
+**Límites y costo:** cada código es un mensaje que Twilio cobra (SMS a México o conversación de WhatsApp, más la verificación). La app permite 5 envíos por hora por persona y por número, y 10 intentos de código cada 15 minutos; Twilio además corta a los 5 envíos en 10 minutos y a los 5 intentos por código. El código vence a los 10 minutos.
+
+**Si falla:** `docker logs valuos-app 2>&1 | grep "\[PHONE\]"`. Las líneas traen el código HTTP y el de Twilio, nunca el código enviado ni el número completo (`+52 ••••••1234`). `20003` es SID o token inválidos; `20404` al enviar, Service SID equivocado; `60223`, canal no habilitado (WhatsApp sin remitente); `60410` o `60605`, bloqueado por Fraud Guard o por los permisos de país; `21608`, cuenta de prueba. Los envíos y las verificaciones quedan en la auditoría con las acciones `TELEFONO_CODIGO_ENVIADO` y `TELEFONO_VERIFICADO`.

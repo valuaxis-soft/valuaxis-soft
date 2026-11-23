@@ -13,6 +13,7 @@ import { getCustomUnits, getLetterhead } from "@/features/firm/firm.service";
 import { isAiEnabled } from "@/features/ai/ai-gateway-provider";
 import { getValuationCreationCatalogs } from "@/features/valuations/services/valuation-catalogs.service";
 import { getUserPreferences } from "@/features/account/user-preferences.service";
+import { phoneRequirementBlock } from "@/features/account/phone/phone-verification.service";
 
 export default async function WorkspacePage({
   searchParams,
@@ -26,8 +27,8 @@ export default async function WorkspacePage({
 
   if (action === "new") {
     if (!hasPermission(user, AUTH_PERMISSIONS.createValuations)) redirect("/dashboard");
-    const catalogs = await getValuationCreationCatalogs(user.organizationId);
-    return <CreateValuationForm catalogs={catalogs} preselectedTemplate={params.plantilla ?? null} />;
+    const [catalogs, phoneBlock] = await Promise.all([getValuationCreationCatalogs(user.organizationId), phoneRequirementBlock(user.id)]);
+    return <CreateValuationForm catalogs={catalogs} preselectedTemplate={params.plantilla ?? null} phoneRequired={phoneBlock?.message ?? null} />;
   }
 
   if (!valuationId || !hasPermission(user, AUTH_PERMISSIONS.viewValuations)) redirect("/dashboard");

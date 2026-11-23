@@ -88,6 +88,17 @@ const envObject = z.object({
     .refine((value) => !value?.trim() || value.split(",").every((email) => !email.trim() || /^[^\s@,]+@[^\s@,]+$/.test(email.trim())), {
       message: "OPERATOR_EMAILS debe ser una lista de correos separados por comas",
     }),
+  /**
+   * Phone verification with Twilio Verify (docs/OPERACION.md, section 15). Optional: without the
+   * three values «Mi cuenta» says it is not enabled yet and nothing asks for the phone.
+   */
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_VERIFY_SERVICE_SID: z.string().optional(),
+  /** Local trials only: a fake Verify API in place of Twilio's. Ignored in production. */
+  TWILIO_API_BASE_URL: z.string().url().optional().or(z.literal("")),
+  /** "true": creating a valuation requires a verified phone. Ignored while the Twilio keys are missing. */
+  PHONE_VERIFICATION_REQUIRED: z.string().optional(),
 });
 
 const envSchema = envObject.superRefine((value, context) => {

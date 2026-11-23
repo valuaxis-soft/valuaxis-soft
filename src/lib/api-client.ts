@@ -33,6 +33,8 @@ import type { FirmDocumentPaletteDto } from "@/features/firm/document-palette.se
 import type { DocumentPalette } from "@/features/valuations/services/document-palette";
 import type { BillingOverviewDto } from "@/features/billing/billing.service";
 import type { AccreditationView } from "@/features/accreditation/accreditation.service";
+import type { PhoneVerificationView } from "@/features/account/phone/phone-verification.service";
+import type { PhoneChannel } from "@/features/account/phone/phone-verification-gateway";
 import type { AccountPreferences, UserPreferences } from "@/features/account/user-preferences";
 import type { NotificationListDto, NotificationPreferences } from "@/features/notifications/notification-types";
 import type { FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
@@ -550,6 +552,13 @@ export const api = {
   /** The signed-in user's professional accreditation (docs/ACREDITACION.md). */
   accreditation: {
     upload: (file: File) => uploadForm<AccreditationView>(`/cuenta/acreditacion`, { file }),
+  },
+  /** The signed-in user's phone, verified with a code (Twilio Verify). */
+  phone: {
+    sendCode: (input: { phone: string; channel: PhoneChannel }) =>
+      request<{ phone: string }>(`/cuenta/telefono/codigo`, { method: "POST", body: JSON.stringify(input) }),
+    verify: (input: { phone: string; code: string }) =>
+      request<PhoneVerificationView>(`/cuenta/telefono/verificar`, { method: "POST", body: JSON.stringify(input) }),
   },
   /** The signed-in user's own preferences, such as the editor's autosave interval. */
   preferences: {
