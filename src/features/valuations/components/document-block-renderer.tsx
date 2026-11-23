@@ -506,8 +506,8 @@ function imageCaptionSlots(items: Array<{ type: string; id: string }>, imagesByI
 function conceptTagClassName(tagStyle: ContentLayoutRowV2["tagStyle"]) {
   if (!tagStyle) return undefined;
   return cn(
-    "shadow-[inset_0_0_0_1px_#A9BCD6]",
-    tagStyle === "shaded" ? "bg-[#E7EEF7] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" : "bg-white",
+    "shadow-[inset_0_0_0_1px_var(--doc-rule,#A9BCD6)]",
+    tagStyle === "shaded" ? "bg-[var(--doc-pastel-soft,#E7EEF7)] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" : "bg-white",
   );
 }
 

@@ -42,7 +42,7 @@ test("the table of measures prints as the other tables, with its distances in wh
   const section = boundariesSection((_, table) => moveTableColumnTo(table, table.columns[1].id, table.columns[2].id));
   const html = printed(section);
   // The header band and the rows of the report tables.
-  assert.match(html, /<thead class="bg-\[#BDD7EE\][^"]*">/);
+  assert.match(html, /<thead class="bg-\[var\(--doc-pastel,#BDD7EE\)\][^"]*">/);
   assert.match(html, /data-split-table-row=""/);
   assert.doesNotMatch(html, /border-slate-400/, "no header style of its own");
   const [firstRow] = html.match(/<tr[^>]*data-split-table-row[\s\S]*?<\/tr>/g)!;

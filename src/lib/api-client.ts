@@ -27,6 +27,8 @@ import type { MyInvitationDto, SentInvitationDto, TeamDto } from "@/features/tea
 import type { ComparableReviewSettingsInput, FirmSettingsInput } from "@/features/firm/firm-schemas";
 import type { FirmSettingsDto } from "@/features/firm/firm.service";
 import type { ComparableReviewSettingsDto } from "@/features/firm/comparable-review-settings.service";
+import type { FirmDocumentPaletteDto } from "@/features/firm/document-palette.service";
+import type { DocumentPalette } from "@/features/valuations/services/document-palette";
 import type { BillingOverviewDto } from "@/features/billing/billing.service";
 import type { AccreditationView } from "@/features/accreditation/accreditation.service";
 import type { AccountPreferences, UserPreferences } from "@/features/account/user-preferences";
@@ -511,6 +513,10 @@ export const api = {
     reviewChecklist: () => request<ComparableReviewSettingsDto>(`/organizacion/despacho/revision-comparables`),
     saveReviewChecklist: (input: ComparableReviewSettingsInput) =>
       request<ComparableReviewSettingsDto>(`/organizacion/despacho/revision-comparables`, { method: "PUT", body: JSON.stringify(input) }),
+    /** Despacho → Colores del dictamen: the palette new valuations and templates start with. */
+    documentPalette: () => request<FirmDocumentPaletteDto>(`/organizacion/despacho/paleta`),
+    saveDocumentPalette: (palette: DocumentPalette | null) =>
+      request<FirmDocumentPaletteDto>(`/organizacion/despacho/paleta`, { method: "PUT", body: JSON.stringify({ palette }) }),
     customUnits: () => request<{ units: string[] }>(`/organizacion/despacho/unidades`),
     addCustomUnit: (unit: string) =>
       request<{ units: string[] }>(`/organizacion/despacho/unidades`, { method: "POST", body: JSON.stringify({ unit }) }),

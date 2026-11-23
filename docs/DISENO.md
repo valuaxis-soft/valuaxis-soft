@@ -57,6 +57,15 @@ Contraste medido (WCAG 2, sobre los valores sRGB de cada token): tinta sobre pap
 
 El documento del avalúo conserva la paleta con que se aprobó: en `globals.css`, cada página (`article[data-document-page]`), la copia de medición (`[data-document-pagination]`) y los `.light` dentro de ellas fijan los valores anteriores de los tokens que se movieron (`primary` `#014069`, `accent` menta, `ring`, `ink`, `chart-1`, sombras). Si un token cambia otra vez, se agrega ahí con su valor actual. Se comprobó píxel a píxel: las 16 páginas del dictamen, la impresión del dictamen, la vista previa del editor y la memoria de cálculo salen idénticas antes y después del cambio de marca (en la memoria solo cambia la hora de generación). Las maquetas de la página pública que imitan el dictamen (`dictamen-mockup.tsx`, pines de `map-mockup.tsx`) siguen en `#014069` porque el documento real sigue en ese color.
 
+### Paleta del dictamen
+
+Lo anterior fija los tokens de la interfaz dentro del documento. Aparte, cada avalúo puede elegir los **colores de su dictamen**: un color fuerte y un color pastel («Carátula › Configuración del avalúo»; predeterminada del despacho en «Despacho › Colores del dictamen»). Detalle en [VALUATION_SECTIONS.md](VALUATION_SECTIONS.md#colores-del-dictamen).
+
+- El documento ya no escribe sus azules de marca como hex fijos: los lee de variables CSS con el valor de siempre como respaldo (`var(--caratula-dark-blue,#00285A)`, `var(--doc-pastel,#BDD7EE)`, `var(--doc-apartado,#2F5495)`…). Un color nuevo de marca en el documento se escribe igual, nunca como hex suelto. Los grises, los avisos y los colores semánticos siguen fijos.
+- Sin paleta (o con «Azul clásico») el documento se imprime idéntico: se comprobó comparando imágenes de las 20 páginas del dictamen, la vista previa del editor, la memoria de cálculo y los dos PDF del servidor antes y después del cambio (en la memoria solo cambia la hora de generación).
+- Las diez paletas listas cumplen AA (blanco sobre el fuerte, texto oscuro sobre el pastel y el fuerte sobre el pastel, 4.5:1 o más; lo verifica `tests/document-palette.test.tsx`). Con «Personalizada» el sistema avisa de un contraste bajo y ajusta solo el texto (blanco u oscuro) sobre cada color; no impide la elección.
+- La interfaz no toma estos colores: sigue con los tokens de `globals.css`. Las únicas piezas de la aplicación que los leen son las tablas de captura del cálculo en modo claro (que imitan al dictamen) y la muestra del selector.
+
 Las gráficas usan `chart-1` (azul del logo), `chart-2` (verde), `chart-3` (ocre), `chart-4` (violeta) y `chart-5` (terracota).
 
 ### Estados del avalúo
@@ -192,7 +201,7 @@ Herramienta de trabajo de horas: densa, sin adornos, con la misma paleta que el 
 - **Jerarquía** sección › bloque › subbloque › concepto: el nombre de la sección en `font-display` (24 px) sobre una línea; el bloque con su banda del azul de marca al 5 % (`bg-brand/[0.05]`) y título en `text-primary` (marino); el subbloque con una regla izquierda `border-l-brand/50` y, uno sí y uno no, un tinte `bg-brand/[0.05]`; el nombre del concepto sobre arena (`bg-muted/60`) para leerse aparte de su dato.
 - **Pestañas de secciones:** franja `bg-secondary`; la activa en `bg-card`, texto `text-primary`, anillo `ring-brand/25` y `shadow-soft`. Sin cambiar el peso de la letra al activarse, para que la franja no se reacomode.
 - **Avisos:** ocre (`text-highlight-strong`, recuadros `bg-highlight/10`) para un dato a observar; verde (`text-success-strong`) solo para estados, como «verificado»; información en azul de marca (`bg-brand/5`). «Listo» de «Seleccionar conceptos» es una acción: `bg-brand` con texto blanco (`brand-foreground`). «Cambios pendientes» en `bg-highlight`. El azul de las fórmulas y sus colores de referencia imitan a Excel y se conservan.
-- **Tablas de captura del cálculo:** en claro conservan los colores del dictamen a propósito (el valuador las compara con lo impreso); en oscuro usan tokens.
+- **Tablas de captura del cálculo:** en claro conservan los colores del dictamen a propósito (el valuador las compara con lo impreso) y siguen la paleta que el avalúo eligió; en oscuro usan tokens.
 - **Foco:** dentro de `[data-valuation-workspace]` botones, pestañas y menús muestran un contorno de 2 px `--ring` (3:1 o más). El bloque que se edita marca su borde en azul de marca (`focus-within:ring-brand/45`), con transición solo si no hay movimiento reducido.
 
 ## Página pública

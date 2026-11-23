@@ -10,6 +10,7 @@ import { CalculationMemoryDocument } from "@/features/valuations/components/memo
 import { CalculationMemoryToolbar } from "@/features/valuations/components/memory/calculation-memory-toolbar";
 import { getDocumentHeaderImage } from "@/features/valuations/components/workspace/model/section-content";
 import { loadCalculationMemory } from "@/features/valuations/memory/calculation-memory.service";
+import { documentPagePresentation } from "@/features/valuations/services/page-presentation";
 import { ValuationWorkflowError } from "@/features/valuations/services/valuation-workflow/errors";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { requireSession } from "@/security/guards/require-session";
@@ -54,6 +55,7 @@ export default async function CalculationMemoryPage({ params }: { params: Promis
         headerImage={getDocumentHeaderImage(loaded.sections)}
         letterhead={loaded.letterhead}
         memory={loaded.memory}
+        palette={documentPagePresentation(loaded.sections).palette}
         propertyKind={loaded.propertyKind}
         unaccreditedNotice={unaccreditedNotice}
       />

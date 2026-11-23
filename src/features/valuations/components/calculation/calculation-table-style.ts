@@ -23,7 +23,7 @@ export const CALC_TABLE_FRAME = "overflow-x-auto rounded-md border border-[#C9D6
 export const CALC_TABLE = "border-collapse text-xs text-[#333333] tabular-nums dark:text-foreground";
 
 /** The header band, as the printed tables. */
-export const CALC_HEAD = "bg-[#BDD7EE] text-[#00285A] dark:bg-primary/20 dark:text-foreground";
+export const CALC_HEAD = "bg-[var(--doc-pastel,#BDD7EE)] text-[color:var(--doc-on-pastel,#00285A)] dark:bg-primary/20 dark:text-foreground";
 
 /** A header cell. */
 export const CALC_HEAD_CELL = "border-2 border-white px-1.5 py-1 text-center align-middle font-bold dark:border-border";

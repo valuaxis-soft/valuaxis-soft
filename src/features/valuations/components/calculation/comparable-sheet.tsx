@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
  */
 const tones = (printable: boolean) => ({
   frame: printable ? "border-slate-300" : "border-slate-300 dark:border-slate-700",
-  band: printable ? "bg-[#DCE6F2] text-[#00285A]" : "bg-[#DCE6F2] text-[#00285A] dark:bg-[#12345a] dark:text-blue-100",
+  band: printable ? "bg-[var(--doc-pastel-soft,#DCE6F2)] text-[color:var(--doc-on-pastel-soft,#00285A)]" : "bg-[var(--doc-pastel-soft,#DCE6F2)] text-[color:var(--doc-on-pastel-soft,#00285A)] dark:bg-[#12345a] dark:text-blue-100",
   label: printable ? "bg-slate-100 text-slate-600" : "bg-slate-100 text-slate-600 dark:bg-slate-800/80 dark:text-slate-300",
   value: printable ? "bg-white text-black" : "bg-background",
 });

@@ -368,6 +368,12 @@ export type AppSection = {
   /** The document's title band under the page header, blue or white with a line. Carátula section only; absent means "filled". */
   titleBand?: "filled" | "outline";
   /**
+   * The colours of the dictamen: a strong one for titles and bars and a pastel
+   * one for its tables ("#RRGGBB"). Carátula section only; absent means the
+   * blues the document always printed.
+   */
+  palette?: { strong: string; pastel: string };
+  /**
    * Carátula section only: its blocks print in the editor's order. Absent on a
    * carátula saved before they moved freely; reading it puts them in the order
    * it printed then (withCaratulaFreeBlockOrder).

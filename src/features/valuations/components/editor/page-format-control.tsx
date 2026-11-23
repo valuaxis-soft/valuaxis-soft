@@ -54,10 +54,10 @@ export function DocumentPageFormatControl({
             if (isTitleBarStyle(event.target.value)) onUpdateSection(section.id, { titleBars: event.target.value });
           }}
         >
-          <NativeSelectOption value="filled">Barra azul</NativeSelectOption>
+          <NativeSelectOption value="filled">Barra de color</NativeSelectOption>
           <NativeSelectOption value="outline">Fondo blanco (título con marco)</NativeSelectOption>
         </NativeSelect>
-        <FieldDescription>Los títulos de los bloques se imprimen {titleBars === "outline" ? "en azul sobre blanco, con un marco fino, como el recuadro del folio" : "en una barra azul, sin marco"}.</FieldDescription>
+        <FieldDescription>Los títulos de los bloques se imprimen {titleBars === "outline" ? "en el color fuerte sobre blanco, con un marco fino, como el recuadro del folio" : "en una barra del color fuerte, sin marco"}.</FieldDescription>
       </Field>
       <Field className="gap-1.5">
         <FieldLabel htmlFor="document-title-band">Banda «Dictamen valuatorio»</FieldLabel>
@@ -70,13 +70,13 @@ export function DocumentPageFormatControl({
             if (isTitleBandStyle(event.target.value)) onUpdateSection(section.id, { titleBand: event.target.value });
           }}
         >
-          <NativeSelectOption value="filled">Barra azul</NativeSelectOption>
-          <NativeSelectOption value="outline">Sin relleno (letras azules con marco)</NativeSelectOption>
+          <NativeSelectOption value="filled">Barra de color</NativeSelectOption>
+          <NativeSelectOption value="outline">Sin relleno (letras de color con marco)</NativeSelectOption>
         </NativeSelect>
         <FieldDescription>
           {titleBand === "outline"
-            ? "El título del documento va en blanco con letras azules, dentro de un marco como el del folio."
-            : "El título del documento, bajo el encabezado de cada página, va en una barra azul sin marco."}
+            ? "El título del documento va en blanco con letras del color fuerte, dentro de un marco como el del folio."
+            : "El título del documento, bajo el encabezado de cada página, va en una barra del color fuerte, sin marco."}
         </FieldDescription>
       </Field>
     </section>

@@ -73,12 +73,12 @@ test("a wide binding margin leaves 1.5 cm more on the left of every page", () =>
 test("title bars print as a blue band without frame, or on white inside a thin blue frame", () => {
   const [title] = documentBlockFlowItems(block);
   const filled = printed(DEFAULT_PAGE_PRESENTATION, title.node);
-  assert.match(filled, /bg-\[#00285A\][^"]*text-white/);
-  assert.doesNotMatch(filled, /border-\[#00285A\]/);
+  assert.match(filled, /bg-\[var\(--caratula-dark-blue,#00285A\)\][^"]*text-\[color:var\(--doc-on-strong,#fff\)\]/);
+  assert.doesNotMatch(filled, /border-\[var\(--caratula-dark-blue,#00285A\)\]/);
 
   const outline = printed({ ...DEFAULT_PAGE_PRESENTATION, titleBars: "outline" }, title.node);
-  assert.doesNotMatch(outline, /bg-\[#00285A\]|text-white/);
-  assert.match(outline, /border border-\[#00285A\] bg-white[^"]*text-\[#00285A\]/);
+  assert.doesNotMatch(outline, /bg-\[var\(--caratula-dark-blue,#00285A\)\]|text-\[color:var\(--doc-on-strong,#fff\)\]/);
+  assert.match(outline, /border border-\[var\(--caratula-dark-blue,#00285A\)\] bg-white[^"]*text-\[color:var\(--caratula-dark-blue,#00285A\)\]/);
   assert.match(outline, /III\. TERRENO/);
 
   // The cover keeps its own titles whatever the choice.
@@ -95,7 +95,7 @@ test("the DICTAMEN VALUATORIO band prints blue with no frame, or white with blue
   };
   const filled = band(DEFAULT_PAGE_PRESENTATION);
   assert.equal(filled?.[2], "filled");
-  assert.match(filled?.[1] ?? "", /bg-\[var\(--caratula-dark-blue\)\][^"]*text-white/, "as always");
+  assert.match(filled?.[1] ?? "", /bg-\[var\(--caratula-dark-blue\)\][^"]*text-\[color:var\(--doc-on-strong,#fff\)\]/, "as always");
   assert.doesNotMatch(filled?.[1] ?? "", /border/, "the blue band has no frame");
   const html = printed(DEFAULT_PAGE_PRESENTATION, <DocumentPreviewHeader caratula={caratula} letterhead={letterhead} />);
   assert.doesNotMatch(html, /data-title-band-frame/, "nor a frame around it");
@@ -104,9 +104,9 @@ test("the DICTAMEN VALUATORIO band prints blue with no frame, or white with blue
   assert.equal(outline?.[2], "outline");
   assert.match(outline?.[1] ?? "", /border-2 border-\[var\(--caratula-dark-blue\)\] bg-white/, "framed like the folio");
   assert.match(outline?.[1] ?? "", /text-\[var\(--caratula-dark-blue\)\]/);
-  assert.doesNotMatch(outline?.[1] ?? "", /text-white/);
+  assert.doesNotMatch(outline?.[1] ?? "", /text-\[color:var\(--doc-on-strong,#fff\)\]/);
 
   // The block bars keep their own choice: filled bars under an unfilled band, as the appraiser's Excel.
   const [title] = documentBlockFlowItems(block);
-  assert.match(printed({ ...DEFAULT_PAGE_PRESENTATION, titleBand: "outline" }, title.node), /bg-\[#00285A\][^"]*text-white/);
+  assert.match(printed({ ...DEFAULT_PAGE_PRESENTATION, titleBand: "outline" }, title.node), /bg-\[var\(--caratula-dark-blue,#00285A\)\][^"]*text-\[color:var\(--doc-on-strong,#fff\)\]/);
 });

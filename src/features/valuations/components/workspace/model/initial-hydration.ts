@@ -212,6 +212,7 @@ function normalizeInitialSections(initialValuation: Pick<ValuationDetail, "secti
     ...(section.bindingMargin ? { bindingMargin: section.bindingMargin } : {}),
     ...(section.titleBars ? { titleBars: section.titleBars } : {}),
     ...(section.titleBand ? { titleBand: section.titleBand } : {}),
+    ...(section.palette ? { palette: section.palette } : {}),
     ...(section.freeBlockOrder ? { freeBlockOrder: true } : {}),
     ...(section.documentRole ? { documentRole: section.documentRole } : {}),
     ...(section.annexTitle ? { annexTitle: section.annexTitle } : {}),
