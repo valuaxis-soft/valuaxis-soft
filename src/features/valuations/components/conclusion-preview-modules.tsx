@@ -107,7 +107,7 @@ export function ConclusionValueModule({ block }: { block: Block }) {
       {concluded ? (
         <div className="mx-auto mt-4 flex w-[80%] border border-[var(--caratula-blue)] text-[15px] font-bold [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" data-concluded-value-box>
           <div className="flex-1 bg-[var(--caratula-blue)] px-3 py-1 text-right uppercase text-[color:var(--doc-on-strong,#fff)]" data-concluded-value-label>{printedLabel(concluded.label)}</div>
-          <div className="w-[42%] bg-slate-200 px-3 py-1 text-slate-900"><Amount value={concluded.value} /></div>
+          <div className="w-[42%] bg-[var(--doc-zebra-strong,#E2E8F0)] px-3 py-1 text-slate-900"><Amount value={concluded.value} /></div>
         </div>
       ) : null}
       {words?.value.trim() ? (

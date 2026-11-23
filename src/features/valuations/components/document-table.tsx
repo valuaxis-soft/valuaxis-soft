@@ -204,7 +204,7 @@ function SummaryBoxes({ tableV2, position }: { tableV2: TableV2; position: Table
                         className={cn(
                           "[-webkit-print-color-adjust:exact] [print-color-adjust:exact]",
                           row.emphasis === "total" && "bg-[var(--caratula-dark-blue)] font-bold text-[color:var(--doc-on-strong,#fff)]",
-                          row.emphasis === "strong" && "bg-slate-200 font-bold",
+                          row.emphasis === "strong" && "bg-[var(--doc-zebra-strong,#E2E8F0)] font-bold",
                           marked && cn("border-b last:border-b-0", BOX_RULE),
                         )}
                         key={index}
@@ -379,7 +379,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
           {renderSchemaHeader(tableV2, columns, { fixed: true })}
           <tbody>
             {printableRows(tableV2).length ? printableRows(tableV2).map((row) => (
-              <tr className="border-t border-slate-300 odd:bg-slate-50" key={row.id}>
+              <tr className="border-t border-slate-300 odd:bg-[var(--doc-zebra,#F8FAFC)]" key={row.id}>
                 {columns.map((column) => {
                   const displayValue = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
                   return (
@@ -488,7 +488,7 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
           {rows.map((row, index) => (
             // Gray and white rows alternate, first one gray, as in the appraiser's own format;
             // by the row's place in the whole table, so a continuation follows on.
-            <TableRow className={cn(plain ? "border-0" : "border-slate-300", !plain && (firstRow + index) % 2 === 0 && "bg-slate-100")} data-split-table-row="" key={row.id}>
+            <TableRow className={cn(plain ? "border-0" : "border-slate-300", !plain && (firstRow + index) % 2 === 0 && "bg-[var(--doc-zebra,#F1F5F9)]")} data-split-table-row="" key={row.id}>
               {columns.map((column) => {
                 const value = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
                 return (

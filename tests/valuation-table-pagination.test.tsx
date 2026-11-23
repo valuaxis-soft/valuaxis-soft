@@ -218,7 +218,7 @@ test("every fragment repeats the header rows; what opens the table goes first an
 
 test("gray and white rows keep alternating across the break", () => {
   const table = longTable(9);
-  const gray = (html: string) => printedRows(html).map((row) => /bg-slate-100/.test(row));
+  const gray = (html: string) => printedRows(html).map((row) => /--doc-zebra,#F1F5F9/.test(row));
   const whole = gray(renderToStaticMarkup(createElement(DocumentTable, { variant: "report", table })));
   assert.deepEqual(whole, [true, false, true, false, true, false, true, false, true]);
   const split = [fragment(0, 3), fragment(3, 7), fragment(7, 9, { last: true })].flatMap((part) => gray(renderFragment(table, part)));
@@ -230,7 +230,7 @@ test("the offer level prints as the grid of the books: two rows of three options
     variant: "report",
     table: offerLevelTable("oferta", "Nivel de oferta observada durante la investigación de mercado de terrenos.", "MEDIA_BAJA"),
   }));
-  assert.doesNotMatch(html, /<thead|Observada|bg-slate-100/);
+  assert.doesNotMatch(html, /<thead|Observada|--doc-zebra,#F1F5F9/);
   assert.match(html, /^<div[^>]*><div[^>]*data-table-notes="top"[^>]*><p[^>]*>Nivel de oferta observada/, "the sentence stays above the grid");
   const text = (cell: string) => cell.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
   const rows = html.match(/<tr[^>]*data-split-table-row[\s\S]*?<\/tr>/g) ?? [];

@@ -116,6 +116,10 @@ test("a document without a palette sets only the two blues it always set", () =>
   // An invalid one is no palette.
   assert.deepEqual(documentPaletteVars({ strong: "red", pastel: "#BDD7EE" }), untouched);
   const vino = documentPaletteVars(VINO);
+  // The shaded rows and the boxes of a value are tints of the pastel, dark text over them.
+  assert.equal(vino["--doc-zebra"], "#FAF1F2");
+  assert.equal(vino["--doc-zebra-strong"], "#F7E7E9");
+  assert.ok(contrastRatio("#1A1A1A", vino["--doc-zebra-strong"]) >= AA_TEXT_CONTRAST);
   assert.equal(vino["--caratula-blue"], "#6B1F2E");
   assert.equal(vino["--caratula-dark-blue"], "#6B1F2E");
   assert.equal(vino["--doc-apartado"], "#6B1F2E");
