@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 import { cn } from "@/lib/utils";
 import type { ValuationCreationCatalogs } from "@/features/valuations/services/valuation-catalogs.service";
+import { PHONE_ACCOUNT_LINK } from "@/features/account/phone/phone-link";
 
 type CatalogMissing = {
   code: string;
@@ -49,14 +50,19 @@ export function typesOfTemplate(templates: TemplateOption[], templateId: string)
 export function CreateValuationForm({
   catalogs,
   preselectedTemplate = null,
+  phoneRequired = null,
 }: {
   catalogs: ValuationCreationCatalogs;
   /** "Crear avalúo con esta plantilla": the public id of the firm's template to start on. */
   preselectedTemplate?: string | null;
+  /** PHONE_VERIFICATION_REQUIRED and the person's phone is not verified: why the valuation cannot be created. */
+  phoneRequired?: string | null;
 }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(phoneRequired);
+  /** A page where the person can fix the error, as the server offers it. */
+  const [errorLink, setErrorLink] = useState<string | null>(phoneRequired ? PHONE_ACCOUNT_LINK : null);
   const [missingCatalog, setMissingCatalog] = useState<string | null>(null);
   const [form, setForm] = useState(() => {
     const preselected = preselectedTemplateId(catalogs.templates, preselectedTemplate);
@@ -102,6 +108,7 @@ export function CreateValuationForm({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+    setErrorLink(null);
     setMissingCatalog(null);
 
     if (missing) {
@@ -130,6 +137,7 @@ export function CreateValuationForm({
       if (!response.ok || !json?.data?.workspaceUrl) {
         setError(json?.error ?? "No pudimos crear el avalúo. Revisa los datos e inténtalo de nuevo.");
         setMissingCatalog(json?.missingCatalog ?? null);
+        setErrorLink(typeof json?.link === "string" ? json.link : null);
         return;
       }
 
@@ -168,6 +176,11 @@ export function CreateValuationForm({
             <div>
               <p className="font-medium text-foreground">{error}</p>
               {missingCatalog ? <p className="mt-1 text-muted-foreground">Catálogo faltante: {missingCatalog}</p> : null}
+              {errorLink === PHONE_ACCOUNT_LINK ? (
+                <Link href={errorLink} className="mt-2 inline-block font-medium text-primary underline underline-offset-4" data-phone-required-link>
+                  Verificar mi teléfono en «Mi cuenta»
+                </Link>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -261,7 +274,7 @@ export function CreateValuationForm({
             <Button type="button" variant="outline" className="h-11 px-4 sm:h-10" onClick={() => router.push("/avaluos")}>
               Cancelar
             </Button>
-            <Button type="submit" className="h-11 gap-2 px-5 sm:h-10" disabled={submitting || Boolean(missing)}>
+            <Button type="submit" className="h-11 gap-2 px-5 sm:h-10" disabled={submitting || Boolean(missing) || Boolean(phoneRequired)}>
               {submitting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}
               {submitting ? "Creando…" : "Crear y abrir el editor"}
             </Button>

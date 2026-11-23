@@ -76,6 +76,12 @@ export const rateLimits = {
   /** «Buscar con IA»: each search is several billed web searches and a long answer. One person, and the whole firm in a day. */
   aiWebSearchByUser: createRateLimiter({ limit: 6, windowMs: 10 * MINUTE }),
   aiWebSearchByOrganization: createRateLimiter({ limit: 60, windowMs: 24 * 60 * MINUTE }),
+  /** Codes of the phone verification: each one is a billed SMS or WhatsApp message. One person, and one number. */
+  phoneCodeByUser: createRateLimiter({ limit: 5, windowMs: 60 * MINUTE }),
+  phoneCodeByPhone: createRateLimiter({ limit: 5, windowMs: 60 * MINUTE }),
+  /** Codes typed: guessing a code must not be possible, whatever Twilio allows. */
+  phoneCheckByUser: createRateLimiter({ limit: 10, windowMs: 15 * MINUTE }),
+  phoneCheckByPhone: createRateLimiter({ limit: 10, windowMs: 15 * MINUTE }),
 };
 
 /**

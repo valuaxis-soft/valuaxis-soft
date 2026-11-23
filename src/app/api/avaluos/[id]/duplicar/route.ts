@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
+import { phoneRequiredResponse } from "@/features/account/phone/phone-http";
 import { duplicateValuation } from "@/features/valuations/services/valuation-duplicate.service";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
 import { requireApiUser } from "@/security/guards/api-guard";
@@ -10,6 +11,8 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.createValuations);
     if (!auth.ok) return auth.response;
+    const phoneRequired = await phoneRequiredResponse(auth.user.id);
+    if (phoneRequired) return phoneRequired;
 
     const { id } = await params;
     const result = await duplicateValuation(auth.user, id);
