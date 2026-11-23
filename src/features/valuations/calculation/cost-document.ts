@@ -29,6 +29,8 @@ import {
   figureColumn,
   generatedApartado,
   generatedBlock,
+  generatedColumnId,
+  generatedRowIds,
   generatedTable,
   money,
   moneyColumn,
@@ -59,6 +61,7 @@ const demeritColumns = (columns: DemeritColumnsDto) => [
   ...columns.extra.map((_, index) => figureColumn(extraFactorLabel(columns, index), { group: DEMERIT })),
   resultantColumn("FRe", DEMERIT),
 ];
+const INDIRECT_COLUMNS = [textColumn("Concepto"), figureColumn("Porcentaje"), moneyColumn("Base $"), moneyColumn("Importe $")];
 const remainingLife = (usefulLife: number | null, age: number | null) =>
   (usefulLife !== null && age !== null ? whole(Math.max(usefulLife - age, 0)) : EMPTY);
 
@@ -70,9 +73,16 @@ export const installationName = (row: { description: string; costName?: string |
  * installations captured print as soon as they are, with what they have
  * (video 7.4, 24:21): their figures fill in when their value is written.
  */
-export function costDocumentBlocks(calculation: CostCalculationDto, result: CostApproachResult | null, trace: Trace | null): Block[] {
+export function costDocumentBlocks(
+  calculation: CostCalculationDto,
+  result: CostApproachResult | null,
+  trace: Trace | null,
+  /** `capture`: the page as the editor captures in it, with the land and every construction though they have no value yet; never saved. */
+  options: { capture?: boolean } = {},
+): Block[] {
+  const capture = Boolean(options.capture);
   const capturedInstallations = calculation.installations;
-  if ((!result || !trace) && !capturedInstallations.length) return [];
+  if ((!result || !trace) && !capturedInstallations.length && !capture) return [];
   const value = (key: string) => trace?.find(key)?.value;
   const input = (key: string, name: string) => {
     const found = trace?.find(key)?.inputs[name];
@@ -87,7 +97,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
   const factor = (found: number | null | undefined) => figure(found, decimals);
   const apartados: Apartado[] = [];
 
-  if (value("costos.terreno.valor") !== undefined) {
+  if (value("costos.terreno.valor") !== undefined || capture) {
     const land = calculation.land;
     const area = land.subjectArea ?? calculation.market.subjectArea ?? 0;
     const referenceArea = input("costos.terreno.factorSuperficie", "loteTipo") ?? area;
@@ -118,7 +128,7 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
     }));
   }
 
-  const constructions = calculation.constructions.filter((row) => value(`costos.construcciones.${row.ref}.vnrParcial`) !== undefined);
+  const constructions = calculation.constructions.filter((row) => capture || value(`costos.construcciones.${row.ref}.vnrParcial`) !== undefined);
   if (constructions.length) {
     const builtArea = constructions.reduce((sum, row) => sum + (row.area ?? 0), 0);
     const type = [figureColumn("Ref."), textColumn("Tipo de Construcción"), figureColumn("Superficie Construida (m²)")];
@@ -245,20 +255,34 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
     }));
   }
 
+  // The engine numbers the indirects it receives: the rows with a concept and a percentage.
+  const entersIndirects = (row: (typeof calculation.indirects)[number]) => Boolean(row.concept.trim()) && (row.percentage ?? 0) > 0;
+  const valuedIndirects = calculation.indirects.filter(entersIndirects);
+  if (capture && calculation.indirects.length && !result?.indirects) {
+    // Being captured: the rows as they are, the ones that already enter the calculation first, as it numbers them.
+    const rows = [...valuedIndirects, ...calculation.indirects.filter((row) => !entersIndirects(row))];
+    apartados.push(generatedApartado(`${PREFIX}-indirectos`, "D) COSTOS INDIRECTOS", {
+      tables: [generatedTable(`${PREFIX}-tabla-indirectos`, "Indirectos", INDIRECT_COLUMNS,
+        rows.map((row) => [row.concept, row.percentage === null ? EMPTY : percent(row.percentage, 2), EMPTY, EMPTY]))],
+    }));
+  }
+
   // Without a result (only installations without their value), the page shows them and no physical value yet.
   if (!result) return apartados.length ? [generatedBlock(PREFIX, "ENFOQUE FÍSICO O DE COSTOS", { apartados })] : [];
 
   if (result.indirects) {
-    // The engine numbers the indirects it receives: the rows with a concept and a percentage.
-    const indirects = calculation.indirects.filter((row) => row.concept.trim() && (row.percentage ?? 0) > 0);
+    const pendingIndirects = capture ? calculation.indirects.filter((row) => !entersIndirects(row)) : [];
+    const indirects = valuedIndirects;
     // Letter D and the wording of the appraiser's TCH book ("D) Costos Indirectos"); the table prints here, not in an annex.
     apartados.push(generatedApartado(`${PREFIX}-indirectos`, "D) COSTOS INDIRECTOS", {
-      tables: [generatedTable(`${PREFIX}-tabla-indirectos`, "Indirectos",
-        [textColumn("Concepto"), figureColumn("Porcentaje"), moneyColumn("Base $"), moneyColumn("Importe $")],
-        indirects.map((row, index) => {
-          const key = `costos.indirectos.${index + 1}`;
-          return [row.concept, percent(row.percentage ?? 0, 2), money(input(key, "base") ?? 0), amount(key)];
-        }),
+      tables: [generatedTable(`${PREFIX}-tabla-indirectos`, "Indirectos", INDIRECT_COLUMNS,
+        [
+          ...indirects.map((row, index) => {
+            const key = `costos.indirectos.${index + 1}`;
+            return [row.concept, percent(row.percentage ?? 0, 2), money(input(key, "base") ?? 0), amount(key)];
+          }),
+          ...pendingIndirects.map((row) => [row.concept, row.percentage === null ? EMPTY : percent(row.percentage, 2), EMPTY, EMPTY]),
+        ],
         { summaryBoxes: [{ id: "valor", position: "bottom", align: "end", rows: [{ label: "D) Costos Indirectos:", value: money(result.indirects), emphasis: "strong" }] }] })],
     }));
   }
@@ -284,6 +308,69 @@ export function costDocumentBlocks(calculation: CostCalculationDto, result: Cost
   };
   const closed = { ...last, tables: last.tables.map((item, index) => (index === last.tables.length - 1 ? withSummaryBox(item, closing) : item)) };
   return [generatedBlock(PREFIX, "ENFOQUE FÍSICO O DE COSTOS", { apartados: [...apartados.slice(0, -1), closed] })];
+}
+
+/**
+ * The place of each captured indirect in the table of the page being
+ * captured: the ones that enter the calculation first, as it numbers them,
+ * then the ones still being written. Each item is the index of the indirect.
+ */
+export function costIndirectOrder(indirects: Array<{ concept: string; percentage: number | null }>): number[] {
+  const enters = (row: { concept: string; percentage: number | null }) => Boolean(row.concept.trim()) && (row.percentage ?? 0) > 0;
+  const indexes = indirects.map((_, index) => index);
+  return [...indexes.filter((index) => enters(indirects[index])), ...indexes.filter((index) => !enters(indirects[index]))];
+}
+
+/**
+ * Where each datum the cost approach captures sits in the tables of its page
+ * (the table and the column the calculation writes it in), so the editor
+ * captures it there. Kept beside the columns above: they are the same ones.
+ */
+export function costCaptureColumns(columns: { constructions: DemeritColumnsDto; installations: DemeritColumnsDto }) {
+  const table = (name: string) => `${PREFIX}-tabla-${name}`;
+  /** Cons., Edad, Otro, the factors added, FRe, Grado de terminación and Indiviso, from the first of them. */
+  const demerit = (start: number, extra: number) => ({
+    conservation: generatedColumnId(start),
+    ageFactor: generatedColumnId(start + 1),
+    otherFactor: generatedColumnId(start + 2),
+    extraFactors: Array.from({ length: extra }, (_, index) => generatedColumnId(start + 3 + index)),
+    resultantFactor: generatedColumnId(start + 3 + extra),
+    completion: generatedColumnId(start + 4 + extra),
+    undivided: generatedColumnId(start + 5 + extra),
+  });
+  const rowsOf = (name: string) => (keys: string[]) => generatedRowIds(table(name), keys.length, keys);
+  return {
+    land: {
+      table: table("terreno"),
+      row: generatedRowIds(table("terreno"), 1)[0],
+      subjectArea: generatedColumnId(1),
+      unitValue: generatedColumnId(2),
+      factors: Object.fromEntries(LAND_FACTORS.map((factor, index) => [factor.key, generatedColumnId(3 + index)])) as Record<(typeof LAND_FACTORS)[number]["key"], string>,
+      resultantFactor: generatedColumnId(3 + LAND_FACTORS.length),
+    },
+    constructions: { table: table("construcciones-tipos"), rows: rowsOf("construcciones-tipos"), ref: generatedColumnId(0), ...demerit(6, columns.constructions.extra.length) },
+    constructionValues: { table: table("construcciones-valores"), rows: rowsOf("construcciones-valores"), unitReplacementCost: generatedColumnId(3) },
+    installations: {
+      table: table("instalaciones-partidas"),
+      rows: rowsOf("instalaciones-partidas"),
+      share: generatedColumnId(0),
+      ref: generatedColumnId(1),
+      description: generatedColumnId(2),
+      unit: generatedColumnId(3),
+      quantity: generatedColumnId(4),
+      age: generatedColumnId(5),
+      usefulLife: generatedColumnId(6),
+      ...demerit(8, columns.installations.extra.length),
+    },
+    installationValues: { table: table("instalaciones-valores"), rows: rowsOf("instalaciones-valores"), unitReplacementCost: generatedColumnId(5) },
+    indirects: {
+      table: table("indirectos"),
+      rows: (count: number) => generatedRowIds(table("indirectos"), count),
+      concept: generatedColumnId(0),
+      percentage: generatedColumnId(1),
+      base: generatedColumnId(2),
+    },
+  };
 }
 
 /** The table with one more summary box after the ones it has. */

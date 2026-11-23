@@ -7,6 +7,8 @@ import type { DeleteConfirmation } from "./delete-confirm";
 
 /** Why a cell the calculation writes is not typed, as the cells of the capture panels say it. */
 export const CALCULATED_CELL_HINT = "Esta cifra la calcula el sistema; cámbiala en su panel de cálculo.";
+/** The same, in a table whose blank cells are the capture of its calculation. */
+export const CALCULATED_IN_PLACE_HINT = "Esta cifra la calcula el sistema con lo que capturas en las celdas en blanco de la tabla.";
 /** The same, in a capture table of the construction section. */
 export const CAPTURE_CELL_HINT = "Esta cifra la calcula el sistema: el VUR es VUT − Edad; la conservación y el valor unitario vienen del enfoque de costos.";
 const CALCULATED_COLUMN_HINT = "Esta columna la escribe el cálculo: ocúltala en el dictamen en lugar de eliminarla.";
@@ -26,6 +28,10 @@ export const CALCULATED_TABLE_REMOVE_HINT = "Esta tabla la escribe el cálculo: 
 export type CalculatedTableLock = {
   row: (rowId: string) => boolean;
   column: (columnId: string) => boolean;
+  /** The calculation is captured in the blank cells of this table (capture-host.tsx), not in a panel. */
+  inPlace?: boolean;
+  /** The place of a column among the ones the calculation wrote; -1 for the appraiser's. */
+  columnPlace?: (columnId: string) => number;
   /**
    * A capture table of the construction section: its rows are the
    * appraiser's (inserted, duplicated, moved and deleted) and only the

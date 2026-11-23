@@ -17,6 +17,7 @@ import type { TableContent } from "@/features/valuations/model";
 import { appendTableColumn, ensureTableV2, insertTableRow, type TableV2 } from "@/features/valuations/services/table";
 import { CommitCell } from "../calculation/commit-cell";
 import { CALCULATED_CELL_HINT, CalculatedTableProvider, type CalculatedTableLock } from "./calculated-table-context";
+import { CaptureSlotTarget, useCaptureDeclared, useCaptureStore } from "./capture-host";
 import { TableEditorItem } from "./table-editor";
 
 const asContent = (table: TableV2) => ({ ...table, version: 2 }) as unknown as TableContent;
@@ -33,15 +34,32 @@ const asContent = (table: TableV2) => ({ ...table, version: 2 }) as unknown as T
 export function GeneratedTableEditor(props: {
   table: TableContent;
   readOnly: boolean;
+  /** Its blank cells are the capture of its calculation. */
+  capture?: boolean;
   onUpdate: (updater: (table: TableContent) => TableContent) => void;
 }) {
   const source = useMemo(() => sourceOf(props.table), [props.table]);
   const lock = useMemo<CalculatedTableLock>(() => {
     const rows = new Set(source.rows.map((row) => row.id));
     const columns = new Set(source.columns.map((column) => column.id));
-    return { row: (id) => rows.has(id), column: (id) => columns.has(id) };
-  }, [source]);
-  const edit = (change: (table: TableContent) => TableContent) => props.onUpdate((current) => editGeneratedTable(current, change));
+    const places = new Map(source.columns.map((column, index) => [column.id, index]));
+    return { row: (id) => rows.has(id), column: (id) => columns.has(id), ...(props.capture ? { inPlace: true, columnPlace: (id: string) => places.get(id) ?? -1 } : {}) };
+  }, [source, props.capture]);
+  const captureStore = useCaptureStore();
+  const edit = (change: (table: TableContent) => TableContent) => props.onUpdate((current) => {
+    const next = editGeneratedTable(current, change);
+    // A header whose name is the calculation's (a factor of the homologation): the calculation takes the new name
+    // and prints it everywhere (the annex, the memory), and the table keeps no label of its own over it.
+    const naming = captureStore?.headerRename(source.id);
+    if (!naming) return next;
+    const before = layoutOf(current).labels ?? {};
+    const after = layoutOf(next).labels ?? {};
+    const taken = Object.keys(after).filter((id) => after[id] !== before[id] && after[id].trim() && naming.handles(id));
+    if (!taken.length) return next;
+    for (const id of taken) queueMicrotask(() => naming.rename(id, after[id].trim()));
+    const labels = Object.fromEntries(Object.entries(after).filter(([id]) => !taken.includes(id)));
+    return applyTableLayout(sourceOf(next), { ...layoutOf(next), labels });
+  });
   const addColumn = () => {
     if ((layoutOf(props.table).extraColumns?.length ?? 0) >= MAX_EXTRA_COLUMNS) {
       toast.info(`Una tabla del cálculo lleva hasta ${MAX_EXTRA_COLUMNS} columnas propias.`);
@@ -64,10 +82,27 @@ export function GeneratedTableEditor(props: {
           })}
           // The calculation writes the table: it is hidden with its block, never removed here.
           onRemove={() => undefined}
-          footer={<GeneratedBoxLabels table={props.table} readOnly={props.readOnly} onUpdate={props.onUpdate} />}
+          footer={(
+            <>
+              {/* Under the grid, what the calculation's capture adds to the table (a row more). */}
+              <CaptureSlotTarget address={{ table: source.id, part: "footer" }} className="mt-2 flex flex-wrap items-center gap-2 empty:hidden" />
+              <GeneratedBoxLabels table={props.table} readOnly={props.readOnly} onUpdate={props.onUpdate} />
+            </>
+          )}
         />
       </div>
     </CalculatedTableProvider>
+  );
+}
+
+/** The figure of a row of a box: the calculation's, in gray, or the field of its capture when the appraiser sets it (the adopted value). */
+function BoxValue(props: { table: string; box: string; value: string }) {
+  const address = { table: props.table, box: props.box };
+  if (useCaptureDeclared(address)) return <CaptureSlotTarget address={address} className="flex min-w-28 items-center" />;
+  return (
+    <span className="rounded-sm bg-muted/70 px-1.5 py-1 text-right tabular-nums" title={CALCULATED_CELL_HINT}>
+      {props.value}
+    </span>
   );
 }
 
@@ -112,9 +147,7 @@ function GeneratedBoxLabels(props: { table: TableContent; readOnly: boolean; onU
                     className="border-input text-xs"
                     onCommit={(text) => rename(key, text)}
                   />
-                  <span className="rounded-sm bg-muted/70 px-1.5 py-1 text-right tabular-nums" title={CALCULATED_CELL_HINT}>
-                    {row.value}
-                  </span>
+                  <BoxValue table={source.id} box={key} value={row.value} />
                 </div>
               );
             })}
