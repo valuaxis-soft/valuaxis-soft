@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useSyncExternalStore,
   type KeyboardEvent,
@@ -49,12 +50,20 @@ export function captureSlotKey(address: CaptureAddress): string {
 
 type Listener = () => void;
 
+/**
+ * A header of a table of the capture whose name is a datum of the calculation
+ * (a factor's): renamed in the table, the calculation takes the name and
+ * writes it everywhere it prints, instead of the table keeping a label of its own.
+ */
+export type CaptureHeaderRename = { handles: (columnId: string) => boolean; rename: (columnId: string, name: string) => void };
+
 /** What the panel declared and where the tables left room for it, for one section of the editor. */
 export class CaptureStore {
   private declared = new Map<string, number>();
   private elements = new Map<string, HTMLElement>();
   private listeners = new Set<Listener>();
   private current: CapturePages | null = null;
+  private headers = new Map<string, CaptureHeaderRename>();
 
   subscribe = (listener: Listener) => {
     this.listeners.add(listener);
@@ -89,6 +98,16 @@ export class CaptureStore {
       }
       this.declared.delete(key);
       this.notify();
+    };
+  }
+
+  /** Who names the columns of a table of the capture, if its panel does (the factors of the homologation). */
+  headerRename = (table: string) => this.headers.get(table.toLowerCase()) ?? null;
+
+  setHeaderRename(table: string, rename: CaptureHeaderRename) {
+    this.headers.set(table.toLowerCase(), rename);
+    return () => {
+      if (this.headers.get(table.toLowerCase()) === rename) this.headers.delete(table.toLowerCase());
     };
   }
 
@@ -128,6 +147,17 @@ export function usePublishCapturePages(pages: CapturePages | null) {
     store?.setPages(pages);
   }, [store, pages]);
   useEffect(() => () => store?.setPages(null), [store]);
+}
+
+/** The store of the section's capture, for a table to ask who names its columns. */
+export const useCaptureStore = () => useContext(CaptureStoreContext);
+
+/** The panel names those columns of that table: a header renamed there is the calculation's name. */
+export function useCaptureHeaderRename(table: string, handles: (columnId: string) => boolean, rename: (columnId: string, name: string) => void) {
+  const store = useContext(CaptureStoreContext);
+  const onHandles = useEffectEvent(handles);
+  const onRename = useEffectEvent(rename);
+  useEffect(() => store?.setHeaderRename(table, { handles: (columnId) => onHandles(columnId), rename: (columnId, name) => onRename(columnId, name) }), [store, table]);
 }
 
 /** Whether the capture fills that place of the table. */

@@ -500,6 +500,32 @@ function ConservationCriterionEditor(props: {
 }
 
 /**
+ * The reference of an installation, in its cell: sent when the cell is left
+ * (the row of the table is known by it, so it cannot change at every key).
+ * Linked with the table of INF. CONSTRUCCIÓN it is written there too; with
+ * that table unlinked, this is where it is changed.
+ */
+function InstallationRefInput(props: { value: string; disabled: boolean; onCommit: (ref: string) => void }) {
+  const [typed, setTyped] = useState<string | null>(null);
+  return (
+    <Input
+      aria-label="Referencia"
+      className={cell}
+      autoComplete="off"
+      disabled={props.disabled}
+      data-no-fill=""
+      value={typed ?? props.value}
+      onChange={(event) => setTyped(event.target.value)}
+      onBlur={() => {
+        const ref = typed?.trim();
+        setTyped(null);
+        if (ref && ref !== props.value) props.onCommit(ref);
+      }}
+    />
+  );
+}
+
+/**
  * Cost approach: land (valued with the unit value adopted in the land market
  * and homologated against its lote tipo), the construction types picked from
  * the construction section with their cost columns, special installations
@@ -1213,6 +1239,18 @@ export function CostCalculationPanel(props: {
                 <option value="P">P</option>
                 <option value="C">C</option>
               </select>
+            </CaptureSlot>
+            <CaptureSlot at={cellAt(at.installations.ref)}>
+              <InstallationRefInput
+                value={row.ref}
+                disabled={readOnly}
+                onCommit={(ref) => {
+                  record(null);
+                  const next = { ...draft, installations: draft.installations.map((item, position) => (position === index ? { ...item, ref } : item)) };
+                  setDraft(next);
+                  save(next);
+                }}
+              />
             </CaptureSlot>
             <CaptureSlot at={cellAt(at.installations.description)}>
               {ownName

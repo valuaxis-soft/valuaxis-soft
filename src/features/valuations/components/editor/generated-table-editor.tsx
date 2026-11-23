@@ -17,7 +17,7 @@ import type { TableContent } from "@/features/valuations/model";
 import { appendTableColumn, ensureTableV2, insertTableRow, type TableV2 } from "@/features/valuations/services/table";
 import { CommitCell } from "../calculation/commit-cell";
 import { CALCULATED_CELL_HINT, CalculatedTableProvider, type CalculatedTableLock } from "./calculated-table-context";
-import { CaptureSlotTarget, useCaptureDeclared } from "./capture-host";
+import { CaptureSlotTarget, useCaptureDeclared, useCaptureStore } from "./capture-host";
 import { TableEditorItem } from "./table-editor";
 
 const asContent = (table: TableV2) => ({ ...table, version: 2 }) as unknown as TableContent;
@@ -45,7 +45,21 @@ export function GeneratedTableEditor(props: {
     const places = new Map(source.columns.map((column, index) => [column.id, index]));
     return { row: (id) => rows.has(id), column: (id) => columns.has(id), ...(props.capture ? { inPlace: true, columnPlace: (id: string) => places.get(id) ?? -1 } : {}) };
   }, [source, props.capture]);
-  const edit = (change: (table: TableContent) => TableContent) => props.onUpdate((current) => editGeneratedTable(current, change));
+  const captureStore = useCaptureStore();
+  const edit = (change: (table: TableContent) => TableContent) => props.onUpdate((current) => {
+    const next = editGeneratedTable(current, change);
+    // A header whose name is the calculation's (a factor of the homologation): the calculation takes the new name
+    // and prints it everywhere (the annex, the memory), and the table keeps no label of its own over it.
+    const naming = captureStore?.headerRename(source.id);
+    if (!naming) return next;
+    const before = layoutOf(current).labels ?? {};
+    const after = layoutOf(next).labels ?? {};
+    const taken = Object.keys(after).filter((id) => after[id] !== before[id] && after[id].trim() && naming.handles(id));
+    if (!taken.length) return next;
+    for (const id of taken) queueMicrotask(() => naming.rename(id, after[id].trim()));
+    const labels = Object.fromEntries(Object.entries(after).filter(([id]) => !taken.includes(id)));
+    return applyTableLayout(sourceOf(next), { ...layoutOf(next), labels });
+  });
   const addColumn = () => {
     if ((layoutOf(props.table).extraColumns?.length ?? 0) >= MAX_EXTRA_COLUMNS) {
       toast.info(`Una tabla del cálculo lleva hasta ${MAX_EXTRA_COLUMNS} columnas propias.`);

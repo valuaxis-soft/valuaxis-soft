@@ -432,6 +432,10 @@ export function marketDocumentBlocks(
   ];
 }
 
+/** The homologation table of a market's page, and the column of each of its factors, in the order they multiply. */
+export const marketHomologationTableId = (type: ComparableType) => `${prefixFor(type)}-enfoque-tabla-homologacion`;
+export const marketFactorColumnId = (slotIndex: number) => generatedColumnId(4 + slotIndex);
+
 /**
  * Where each datum the market captures sits in the tables of its page (the
  * table, the row of each comparable and the column), so the editor captures
@@ -447,7 +451,7 @@ export function marketCaptureColumns({ settings, comparables }: Pick<MarketCalcu
   return {
     characteristics: { table: table("caracteristicas"), rows: rows("caracteristicas"), location: generatedColumnId(1), landUse: generatedColumnId(2), text: generatedColumnId(3) },
     offers: { table: table("ofertas"), rows: rows("ofertas"), phone: generatedColumnId(2), area: generatedColumnId(4), price: generatedColumnId(5) },
-    homologation: { table: table("homologacion"), rows: rows("homologacion"), factor: (slotIndex: number) => generatedColumnId(4 + slotIndex) },
+    homologation: { table: table("homologacion"), rows: rows("homologacion"), factor: marketFactorColumnId },
     /** Under the homologation; under the offers when the market does not homologate. */
     adopted: { table: table(homologatesOf(settings) ? "homologacion" : "ofertas"), box: `valores.${settings.printedStatistics ? "adoptado" : beside}` },
   };

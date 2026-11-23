@@ -53,11 +53,13 @@ import {
   characteristicsLine,
   defaultOfferIntro,
   marketCaptureColumns,
+  marketFactorColumnId,
+  marketHomologationTableId,
   marketDocumentBlocks,
   suggestedSubjectAreaFor,
 } from "@/features/valuations/calculation/market-document";
 import type { CapturePages } from "@/features/valuations/calculation/capture-display";
-import { CaptureSlot, usePublishCapturePages } from "../editor/capture-host";
+import { CaptureSlot, useCaptureHeaderRename, usePublishCapturePages } from "../editor/capture-host";
 import { CommitCell } from "./commit-cell";
 import {
   COMPUTED_FACTORS,
@@ -681,6 +683,17 @@ function MarketTypePanel(props: {
     }
   };
 
+  // A factor renamed in the header of the homologation table of the dictamen is the factor's name (video 5.3, 10:12): the annex and the memory print it too.
+  const factorAt = (columnId: string) => (liveSettings?.factorSlots ?? []).findIndex((_, index) => marketFactorColumnId(index) === columnId.toLowerCase());
+  useCaptureHeaderRename(
+    marketHomologationTableId(type),
+    (columnId) => factorAt(columnId) >= 0,
+    (columnId, label) => {
+      const index = factorAt(columnId);
+      if (index >= 0 && liveSettings) patchSettings({ factorSlots: liveSettings.factorSlots.map((item, position) => (position === index ? { ...item, label } : item)) });
+    },
+  );
+
   if (loadError) {
     return <p className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">{loadError}</p>;
   }
@@ -1131,7 +1144,7 @@ function MarketTypePanel(props: {
           </div>
         ) : null}
         <p className="text-xs text-muted-foreground" data-homologation-in-table="">
-          Los factores de cada comparable se escriben en la tabla «Homologación» de su bloque, abajo. Para renombrar un factor, escribe sobre su encabezado en esa tabla.
+          Los factores de cada comparable se escriben en la tabla «Homologación» de su bloque, abajo. Para renombrar un factor, escribe sobre su encabezado en esa tabla: el anexo de factores y la memoria toman el mismo nombre.
         </p>
         <MarketHomologationCapture
           at={captureAt.homologation}
