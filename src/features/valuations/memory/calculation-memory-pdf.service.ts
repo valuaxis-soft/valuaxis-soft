@@ -10,6 +10,7 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { renderPageToPdf } from "@/infrastructure/pdf/chromium-pdf";
 import { dictamenPdfFilename } from "../services/dictamen-pdf.service";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
+import { DELIVERABLES_NEED_CONCLUSION } from "@/features/valuations/lifecycle-rules";
 
 /** Safe file name for the download: Memoria-de-calculo-VDA-0001.pdf. */
 export const calculationMemoryPdfFilename = (folio: string) => dictamenPdfFilename(folio).replace(/^Dictamen-/, "Memoria-de-calculo-");
@@ -20,6 +21,7 @@ export async function generateCalculationMemoryPdf(user: AuthUser, valuationPubl
     select: { SFolio: true, BBloqueado: true, IdVersionTrabajo: true, IdVersionFinal: true },
   });
   if (!valuation) throw new ValuationWorkflowError("Avalúo no encontrado", 404);
+  if (!valuation.BBloqueado) throw new ValuationWorkflowError(DELIVERABLES_NEED_CONCLUSION, 409);
   if (!valuation.IdVersionTrabajo && !valuation.IdVersionFinal) {
     throw new ValuationWorkflowError("El avalúo todavía no tiene contenido para imprimir.", 409);
   }

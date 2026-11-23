@@ -18,6 +18,7 @@ import { AmazonSesEmailService } from "../../src/infrastructure/email/amazon-ses
 import { getEmailService, type DictamenEmailInput } from "../../src/infrastructure/email/email.service";
 import { PdfRenderError } from "../../src/infrastructure/pdf/chromium-pdf";
 import { createSecureToken, hashToken } from "../../src/security/tokens/token-hashing";
+import { DELIVERABLES_NEED_CONCLUSION } from "../../src/features/valuations/lifecycle-rules";
 import { createValuationFixture, prisma, TestCookieJar, withCookies } from "./support";
 
 type Fixture = Awaited<ReturnType<typeof createValuationFixture>>;
@@ -88,7 +89,8 @@ function captureDictamenEmails(t: TestContext, fail = false) {
   return sent;
 }
 
-async function editableFixture() {
+/** A valuation with content, concluded unless told otherwise: its documents are obtained once it is concluded. */
+async function editableFixture(options: { concluded?: boolean } = {}) {
   const fixture = await createValuationFixture();
   const organization = await prisma.organizacion.update({
     where: { IdOrganizacion: fixture.organizationId },
@@ -101,6 +103,9 @@ async function editableFixture() {
     user: fixture.user,
     sections: [{ id: "costos", label: "ENF. COSTOS", title: "ENF. COSTOS", blocks: [] }],
   });
+  if (options.concluded !== false) {
+    await concludeValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user: fixture.user });
+  }
   return { ...fixture, firmName: organization.SNombre };
 }
 
@@ -147,7 +152,7 @@ test("the dictamen leaves in the firm's name with the PDF attached, and the PDF 
   assert.equal(exported.SEstado, "COMPLETADA");
   assert.equal(exported.IdUsuario, fixture.user.id);
   assert.equal(exported.archivo?.IdOrganizacion, fixture.organizationId);
-  assert.equal(exported.archivo?.tipoArchivo.SClave, "PDF_BORRADOR", "an open valuation sends a draft");
+  assert.equal(exported.archivo?.tipoArchivo.SClave, "PDF_FINAL", "only a concluded valuation is sent, with its final PDF");
   assert.equal(exported.archivo?.BPrivado, true);
 
   // Through SES, the sender reads "<firm> vía Valuaxis Soft" and the PDF is attached.
@@ -189,6 +194,17 @@ test("another organization cannot email a valuation: nothing is printed, stored 
   assert.equal(opened.length, 0);
   assert.equal(sent.length, 0);
   assert.deepEqual(await exportsOf(fixture), []);
+});
+
+test("a valuation that is not concluded is not emailed: its documents come with the conclusion", async (t) => {
+  const opened = fakeChromium(t);
+  const sent = captureDictamenEmails(t);
+  const fixture = await editableFixture({ concluded: false });
+  await assert.rejects(sendDictamenByEmail(fixture.user, fixture.publicId, "token", INPUT), (error: unknown) =>
+    error instanceof ValuationWorkflowError && error.status === 409 && error.message === DELIVERABLES_NEED_CONCLUSION);
+  assert.equal(opened.length, 0, "nothing is printed");
+  assert.equal(sent.length, 0, "nothing is sent");
+  assert.equal((await exportsOf(fixture)).length, 0, "nothing is kept");
 });
 
 test("a valuation without content cannot be emailed", async (t) => {

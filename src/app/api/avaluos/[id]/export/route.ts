@@ -5,6 +5,7 @@ import { requireApiUser } from "@/security/guards/api-guard";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { generateValuationPdf, type PdfValuation } from "@/features/reports/services/pdf-generator";
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
+import { DELIVERABLES_NEED_CONCLUSION } from "@/features/valuations/lifecycle-rules";
 
 export async function GET(
   request: Request,
@@ -20,6 +21,7 @@ export async function GET(
     if (!valuation) {
       return NextResponse.json({ error: "Avaluo no encontrado" }, { status: 404 });
     }
+    if (!valuation.locked) return NextResponse.json({ error: DELIVERABLES_NEED_CONCLUSION }, { status: 409 });
 
     const pdfData: PdfValuation = {
       folio: valuation.folio,

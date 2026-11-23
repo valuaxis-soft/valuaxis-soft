@@ -7,11 +7,14 @@ import { reopenValuation } from "@/features/valuations/services/valuation-workfl
 import { reopenValuationSchema } from "@/features/valuations/validations/valuation-api.schemas";
 import { readJsonBody } from "@/lib/api-response";
 import { requireApiUser } from "@/security/guards/api-guard";
+import { CONCLUDED_VALUATIONS_CAN_BE_REOPENED, REOPEN_NOT_AVAILABLE } from "@/features/valuations/lifecycle-rules";
 
 export async function POST(request: Request, { params }: RouteContext<"/api/avaluos/[id]/reopen">) {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.reopenValuations);
     if (!auth.ok) return auth.response;
+    // The client's rule: nobody reopens a concluded valuation, whatever their role.
+    if (!CONCLUDED_VALUATIONS_CAN_BE_REOPENED) return NextResponse.json({ error: REOPEN_NOT_AVAILABLE }, { status: 409 });
 
     const body = await readJsonBody(request, reopenValuationSchema);
     if (!body.ok) return body.response;

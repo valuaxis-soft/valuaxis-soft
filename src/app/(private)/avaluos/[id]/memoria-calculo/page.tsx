@@ -14,6 +14,7 @@ import { documentPagePresentation } from "@/features/valuations/services/page-pr
 import { ValuationWorkflowError } from "@/features/valuations/services/valuation-workflow/errors";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { requireSession } from "@/security/guards/require-session";
+import { DELIVERABLES_NEED_CONCLUSION } from "@/features/valuations/lifecycle-rules";
 
 export const metadata: Metadata = { title: "Memoria de cálculo" };
 
@@ -48,17 +49,21 @@ export default async function CalculationMemoryPage({ params }: { params: Promis
 
   return (
     <div className="min-h-dvh bg-muted/40 print:bg-white">
-      <CalculationMemoryToolbar folio={loaded.memory.folio} valuationId={id} />
-      <CalculationMemoryDocument
-        caratula={loaded.caratula}
-        comparables={loaded.comparables}
-        headerImage={getDocumentHeaderImage(loaded.sections)}
-        letterhead={loaded.letterhead}
-        memory={loaded.memory}
-        palette={documentPagePresentation(loaded.sections).palette}
-        propertyKind={loaded.propertyKind}
-        unaccreditedNotice={unaccreditedNotice}
-      />
+      <CalculationMemoryToolbar concluded={loaded.memory.concluded} folio={loaded.memory.folio} valuationId={id} />
+      {!loaded.memory.concluded ? <p className="hidden p-8 text-center text-sm print:block" data-preview-print-notice="">{DELIVERABLES_NEED_CONCLUSION}</p> : null}
+      {/* Before the conclusion the memory is read on screen; the paper only says why it is empty. */}
+      <div className={loaded.memory.concluded ? undefined : "print:hidden"}>
+        <CalculationMemoryDocument
+          caratula={loaded.caratula}
+          comparables={loaded.comparables}
+          headerImage={getDocumentHeaderImage(loaded.sections)}
+          letterhead={loaded.letterhead}
+          memory={loaded.memory}
+          palette={documentPagePresentation(loaded.sections).palette}
+          propertyKind={loaded.propertyKind}
+          unaccreditedNotice={unaccreditedNotice}
+        />
+      </div>
     </div>
   );
 }

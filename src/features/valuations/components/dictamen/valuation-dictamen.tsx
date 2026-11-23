@@ -27,6 +27,8 @@ import {
 import { useStoredValuationImages } from "@/features/valuations/components/workspace/hooks/use-stored-images";
 import type { ValuationDetail } from "@/features/valuations/repositories/valuation.repository";
 import type { Letterhead } from "@/features/valuations/model";
+import { DELIVERABLES_NEED_CONCLUSION } from "@/features/valuations/lifecycle-rules";
+import { cn } from "@/lib/utils";
 
 /**
  * The whole dictamen as saved: every enabled section, in order, with the same
@@ -40,7 +42,10 @@ export function ValuationDictamen({
   valuationId,
   unaccreditedNotice,
   readOnlyVersion = null,
+  concluded,
 }: {
+  /** Not concluded: the page is a preview on screen, with no print, PDF, .zip or email (the client's rule, lifecycle-rules.ts). */
+  concluded: boolean;
   /** An earlier version opened from «Historial»: shown as saved, to read and print; no PDF or email of it. */
   readOnlyVersion?: number | null;
   canShare: boolean;
@@ -86,13 +91,17 @@ export function ValuationDictamen({
         <DictamenToolbar
           backHref={`/workspace?id=${valuationId}`}
           folio={readOnlyVersion ? `${initial.meta.folio} · versión V${readOnlyVersion}` : initial.meta.folio}
-          note={readOnlyVersion ? "Solo lectura: así quedó guardada esta versión. Para cambiar algo, trabaja en la versión actual." : undefined}
+          note={readOnlyVersion
+            ? "Solo lectura: así quedó guardada esta versión. Para cambiar algo, trabaja en la versión actual."
+            : concluded ? undefined : "Así se verá el dictamen. Regresa al editor para cambiar algo."}
         >
-          <Button variant="outline" onClick={() => window.print()}>
-            <Printer data-icon="inline-start" />
-            Imprimir
-          </Button>
-          {readOnlyVersion ? null : (
+          {concluded ? (
+            <Button variant="outline" onClick={() => window.print()}>
+              <Printer data-icon="inline-start" />
+              Imprimir
+            </Button>
+          ) : null}
+          {readOnlyVersion || !concluded ? null : (
             <>
               {canShare ? <SendDictamenEmailDialog valuationId={valuationId} folio={initial.meta.folio} firmName={letterhead.name} /> : null}
               <DownloadDictamenPdfButton kind="memoria" variant="outline" valuationId={valuationId} />
@@ -106,9 +115,16 @@ export function ValuationDictamen({
             Estás viendo la <strong>versión V{readOnlyVersion}</strong> en solo lectura. Su PDF guardado, si se generó, está en «Historial».
           </p>
         ) : null}
+        {!concluded ? (
+          <p role="status" className="border-t bg-highlight/15 px-4 py-2 text-center text-sm" data-preview-only="">
+            <strong>Vista previa.</strong> {DELIVERABLES_NEED_CONCLUSION}
+          </p>
+        ) : null}
       </header>
+      {/* Printing from the browser is a way to the document too: before concluding, the paper says why it is empty. */}
+      {!concluded ? <p className="hidden p-8 text-center text-sm print:block" data-preview-print-notice="">{DELIVERABLES_NEED_CONCLUSION}</p> : null}
 
-      <main data-print-document className="overflow-x-auto py-8 print:overflow-visible print:p-0" ref={documentRef}>
+      <main data-print-document className={cn("overflow-x-auto py-8 print:overflow-visible print:p-0", !concluded && "print:hidden")} ref={documentRef}>
         <DocumentPageFooterProvider enabled>
         <UnaccreditedNoticeProvider show={unaccreditedNotice}>
         <NumberPresentationProvider presentation={documentNumberPresentation(sections)}>

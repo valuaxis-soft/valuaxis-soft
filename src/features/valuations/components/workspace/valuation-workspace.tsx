@@ -84,7 +84,7 @@ import { useExternalPreviewSync } from "./hooks/use-external-preview-sync";
 import { useImageMutations } from "./hooks/use-image-mutations";
 import { useSessionHeartbeat } from "./hooks/use-session-heartbeat";
 import { useTableMutations } from "./hooks/use-table-mutations";
-import { useValuationLifecycle } from "./hooks/use-valuation-lifecycle";
+import { useDeliverablesAfterConclude, useValuationLifecycle } from "./hooks/use-valuation-lifecycle";
 import { useValuationSave } from "./hooks/use-valuation-save";
 import { useMarginWheel } from "./hooks/use-margin-wheel";
 import { usePreviewFollow } from "./hooks/use-preview-follow";
@@ -100,6 +100,7 @@ import { TemplateCalculationNote, TemplateEditingNotice, type TemplateEditing } 
 import { useNoAutofill } from "../editor/no-autofill";
 import { HeaderDatesProvider } from "../editor/header-date-notice";
 import { headerDatesOf } from "@/features/valuations/services/header-dates";
+import { CONCLUDED_VALUATIONS_CAN_BE_REOPENED } from "@/features/valuations/lifecycle-rules";
 
 // Kept for existing imports of the section numbering helper.
 export { resequenceSections } from "./model/section-numbering";
@@ -166,8 +167,9 @@ export function ValuationWorkspace({
   const canExport = canExportProject(currentUser);
   // Reviewing comparables is open to reviewers too, while the valuation is not concluded.
   const canReview = canReviewComparables(currentUser) && !locked;
+  useDeliverablesAfterConclude(valuationId, locked);
   const canConclude = !locked && Boolean(valuationId) && hasPermission(currentUser, AUTH_PERMISSIONS.concludeValuations);
-  const canReopen = locked && Boolean(valuationId) && hasPermission(currentUser, AUTH_PERMISSIONS.reopenValuations);
+  const canReopen = CONCLUDED_VALUATIONS_CAN_BE_REOPENED && locked && Boolean(valuationId) && hasPermission(currentUser, AUTH_PERMISSIONS.reopenValuations);
 
   const editor = useEditorState({ canEdit, initialValuation, initialDocument: template?.sections, valuationId });
   const {
@@ -647,11 +649,12 @@ export function ValuationWorkspace({
     >
     <Tabs value={activeSection.id} onValueChange={handleActiveSectionChange} className="gap-0 h-full">
       {/* Clipped, not hidden: a hidden overflow still scrolls when something is brought into view, and took the top bar with it. */}
-      <main ref={workspaceRef} className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-clip" style={paletteStyle} data-valuation-workspace="">
+      <main ref={workspaceRef} className="min-h-0 bg-muted/40 text-foreground flex flex-col h-full overflow-clip print:hidden" style={paletteStyle} data-valuation-workspace="">
       <section className="shrink-0 border-b bg-background" data-workspace-top-bar="">
         <div className="mx-auto grid max-w-[1760px] grid-cols-1 gap-3 overflow-hidden px-3 py-3 sm:px-4 lg:gap-4 lg:px-6 lg:py-4">
           <ValuationTopBar
             activeSectionId={activeSection.id}
+            previewOnly={!locked}
             autosaveNote={`Guardado automático: ${describeAutosave(autosaveSeconds)}. Se cambia en Mi cuenta → Autoguardado.`}
             canEdit={canEdit}
             lifecycleAction={

@@ -61,6 +61,7 @@ export default async function DictamenPage({
       canShare={hasPermission(user, AUTH_PERMISSIONS.shareValuations)}
       unaccreditedNotice={unaccreditedNotice}
       readOnlyVersion={version}
+      concluded={valuation.locked}
     />
   );
 }

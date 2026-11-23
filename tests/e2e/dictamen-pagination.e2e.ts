@@ -88,6 +88,9 @@ test("the server PDF prints every row of a table that splits across pages, and t
   assert.deepEqual(screen.missing, [], "every row and the block after the table are on a page");
   assert.ok(screen.tablePages >= 2, `the table splits across pages (${screen.tablePages})`);
 
+  // The PDF comes with the conclusion.
+  const concluded = await call(actor, "POST", `/api/avaluos/${id}/conclude`);
+  assert.equal(concluded.status, 200, describeCall("POST conclude", concluded));
   const pdf = await call(actor, "POST", `/api/avaluos/${id}/dictamen/pdf`);
   assert.equal(pdf.status, 200, describeCall("POST dictamen/pdf", pdf));
   const printedPages = (Buffer.from(pdf.body as ArrayBuffer).toString("latin1").match(/\/Type\s*\/Page(?![s\w])/g) ?? []).length;

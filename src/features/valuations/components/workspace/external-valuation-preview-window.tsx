@@ -237,7 +237,8 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
   }
 
   return (
-    <main className="flex h-screen min-h-0 flex-col gap-2 bg-muted/40 p-4 text-foreground">
+    // The preview is for the screen: the document is printed from the dictamen, once concluded (lifecycle-rules.ts).
+    <main className="flex h-screen min-h-0 flex-col gap-2 bg-muted/40 p-4 text-foreground print:hidden">
       <OtherPreviewWindows others={others} onPick={focusWindow} />
       {/* Named as the preview beside the editor: it moves to the block followed the same way. */}
       <div id="valuation-preview" className="min-h-0 flex-1">

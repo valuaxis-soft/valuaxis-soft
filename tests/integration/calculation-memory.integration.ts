@@ -23,6 +23,7 @@ import { setCellFormula, type TableV2 } from "../../src/features/valuations/serv
 import { ValuationWorkflowError } from "../../src/features/valuations/services/valuation-workflow/errors";
 import { concludeValuation, saveValuationSections, type SectionPayload } from "../../src/features/valuations/services/valuation-workflow.service";
 import { createSecureToken, hashToken } from "../../src/security/tokens/token-hashing";
+import { DELIVERABLES_NEED_CONCLUSION } from "../../src/features/valuations/lifecycle-rules";
 import { createValuationFixture, prisma, TestCookieJar, withCookies } from "./support";
 
 type Fixture = Awaited<ReturnType<typeof createValuationFixture>>;
@@ -237,6 +238,7 @@ test("every role that exports prints the memory with its own session and page nu
   for (const roleKey of ["ADMINISTRADOR", "VALUADOR", "REVISOR", "CONSULTA"]) {
     const opened = fakeChromium(t);
     const fixture = await capturedValuation();
+    await concludeValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user: editor(fixture) });
     const { jar, token } = await signIn(fixture, roleKey);
     const response = await post(jar, fixture.publicId);
     assert.equal(response.status, 200, roleKey);
@@ -251,8 +253,18 @@ test("every role that exports prints the memory with its own session and page nu
     assert.equal(opened[0].options.displayHeaderFooter, true, "page numbers at the foot");
 
     const audit = await prisma.auditoria.findFirstOrThrow({ where: { SIdentificadorEntidad: fixture.publicId, SAccion: "VALUATION_EXPORT" } });
-    assert.deepEqual(audit.JMetadatos, { format: "memoria-calculo-pdf", final: false, bytes: FAKE_PDF.length });
+    assert.deepEqual(audit.JMetadatos, { format: "memoria-calculo-pdf", final: true, bytes: FAKE_PDF.length });
   }
+});
+
+test("the memory of a valuation that is not concluded is not printed: it is read on screen until then", async (t) => {
+  const opened = fakeChromium(t);
+  const fixture = await capturedValuation();
+  const { jar } = await signIn(fixture, "VALUADOR");
+  const response = await post(jar, fixture.publicId);
+  assert.equal(response.status, 409);
+  assert.equal(((await response.json()) as { error: string }).error, DELIVERABLES_NEED_CONCLUSION);
+  assert.equal(opened.length, 0, "nothing is printed");
 });
 
 test("a concluded valuation's memory is still printed", async (t) => {

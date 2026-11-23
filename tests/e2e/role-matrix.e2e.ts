@@ -128,11 +128,14 @@ const valuationCases: Case[] = [
     expected: editors(200),
   },
   { name: "delete a valuation", method: "DELETE", path: (id) => `/api/avaluos/${id}`, expected: editors(200), fresh: true },
-  { name: "export the summary PDF", method: "GET", path: (id) => `/api/avaluos/${id}/export`, expected: all(200) },
+  // The printable documents come with the conclusion (lifecycle-rules.ts): each role asks for them on a concluded valuation.
+  { name: "export the summary PDF", method: "GET", path: (id) => `/api/avaluos/${id}/export`, expected: all(200), fresh: true, prepare: concluded },
+  { name: "export the summary PDF before concluding", method: "GET", path: (id) => `/api/avaluos/${id}/export`, expected: all(409) },
   { name: "conclude", method: "POST", path: (id) => `/api/avaluos/${id}/conclude`, fresh: true,
     expected: { ADMINISTRADOR: 200, VALUADOR: 200, REVISOR: 200, CONSULTA: 403 } },
+  // Nobody reopens a concluded valuation (lifecycle-rules.ts): those with the permission are told so, the rest are still forbidden.
   { name: "reopen", method: "POST", path: (id) => `/api/avaluos/${id}/reopen`, body: () => reopenPayload, fresh: true, prepare: concluded,
-    expected: { ADMINISTRADOR: 200, VALUADOR: 200, REVISOR: 403, CONSULTA: 403 } },
+    expected: { ADMINISTRADOR: 409, VALUADOR: 409, REVISOR: 403, CONSULTA: 403 } },
 ];
 
 // The comparable each fresh valuation was given, for the calls on one comparable.
@@ -214,11 +217,14 @@ const aiCases: Case[] = [
 
 const dictamenCases: Case[] = [
   // Downloading is exporting: every role may.
-  { name: "generate the dictamen PDF", method: "POST", path: (id) => `/api/avaluos/${id}/dictamen/pdf`, expected: all(PDF_OK) },
+  { name: "generate the dictamen PDF", method: "POST", path: (id) => `/api/avaluos/${id}/dictamen/pdf`, expected: all(PDF_OK), fresh: true, prepare: concluded },
+  // Before the conclusion there is only the preview on screen.
+  { name: "generate the dictamen PDF before concluding", method: "POST", path: (id) => `/api/avaluos/${id}/dictamen/pdf`, expected: all(409) },
   // The calculation memory is downloaded as the dictamen is.
-  { name: "generate the calculation memory PDF", method: "POST", path: (id) => `/api/avaluos/${id}/memoria-calculo/pdf`, expected: all(PDF_OK) },
+  { name: "generate the calculation memory PDF", method: "POST", path: (id) => `/api/avaluos/${id}/memoria-calculo/pdf`, expected: all(PDF_OK), fresh: true, prepare: concluded },
+  { name: "generate the calculation memory PDF before concluding", method: "POST", path: (id) => `/api/avaluos/${id}/memoria-calculo/pdf`, expected: all(409) },
   // Sending to third parties is sharing: CONSULTA and REVISOR cannot.
-  { name: "email the dictamen", method: "POST", path: (id) => `/api/avaluos/${id}/dictamen/correo`, body: () => emailPayload,
+  { name: "email the dictamen", method: "POST", path: (id) => `/api/avaluos/${id}/dictamen/correo`, body: () => emailPayload, fresh: true, prepare: concluded,
     expected: { ADMINISTRADOR: PDF_OK, VALUADOR: PDF_OK, REVISOR: 403, CONSULTA: 403 } },
 ];
 
