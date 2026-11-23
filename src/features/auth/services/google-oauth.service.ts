@@ -158,6 +158,8 @@ export async function completeGoogleOAuth(input: {
     await auditOAuthFailure("oauth_unknown_error", ip, userAgent, requestRecord.IdSolicitudOAuth.toString());
     throw new OAuthFlowError("oauth_unknown_error", "Could not resolve Google account.", { cause: error });
   });
+  // The account's last access, as a password sign-in writes it: the identity keeps its own, and the registry reads the account's.
+  await prisma.usuario.update({ where: { IdUsuario: result.userId }, data: { DFechaUltimoAcceso: new Date() } });
 
   const organization = await resolveDefaultOrganization(result.userId);
   if (!organization) {

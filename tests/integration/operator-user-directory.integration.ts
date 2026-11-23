@@ -149,3 +149,37 @@ test("the operator's registry: 404 for anyone else, people of every firm, no val
   assert.equal((audit.JMetadatos as { q?: string; rows?: number }).q, tag);
   assert.equal((audit.JMetadatos as { rows?: number }).rows, 2);
 });
+
+test("the registry's last access is the latest of a password sign-in, a Google sign-in and the session's activity", async () => {
+  const fixture = await createValuationFixture();
+  const user = await prisma.usuario.findUniqueOrThrow({ where: { IdUsuario: fixture.user.id }, select: { SCorreo: true } });
+  const byEmail = async () => (await listUserDirectoryPage(parseUserDirectoryParams({ q: user.SCorreo }), 25)).items[0];
+
+  // Signed in only with Google, before the account recorded it: the account has no date, the identity and the session do.
+  await prisma.usuario.update({ where: { IdUsuario: fixture.user.id }, data: { DFechaUltimoAcceso: null } });
+  const provider = await prisma.proveedorIdentidad.findFirstOrThrow({ select: { IdProveedorIdentidad: true } });
+  const googleAt = new Date("2026-11-20T10:00:00Z");
+  await prisma.identidadUsuario.create({
+    data: {
+      IdUsuario: fixture.user.id,
+      IdProveedorIdentidad: provider.IdProveedorIdentidad,
+      SIdentificadorProveedor: `google-${randomUUID()}`,
+      SCorreoProveedor: user.SCorreo,
+      BCorreoVerificadoProveedor: true,
+      DFechaUltimoAcceso: googleAt,
+    },
+  });
+  assert.equal((await byEmail()).lastAccessAt?.toISOString(), googleAt.toISOString());
+
+  const activeAt = new Date("2026-11-22T18:30:00Z");
+  await prisma.sesion.create({
+    data: {
+      IdUsuario: fixture.user.id,
+      IdOrganizacion: fixture.organizationId,
+      STokenHash: hashToken(createSecureToken()),
+      DFechaExpiracion: new Date(Date.now() + 60 * 60 * 1000),
+      DFechaUltimaActividad: activeAt,
+    },
+  });
+  assert.equal((await byEmail()).lastAccessAt?.toISOString(), activeAt.toISOString(), "a long session counts as being here");
+});
