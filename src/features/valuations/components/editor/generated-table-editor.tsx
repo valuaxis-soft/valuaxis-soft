@@ -15,6 +15,7 @@ import {
 } from "@/features/valuations/calculation/generated-table-layout";
 import type { TableContent } from "@/features/valuations/model";
 import { appendTableColumn, ensureTableV2, insertTableRow, type TableV2 } from "@/features/valuations/services/table";
+import { cn } from "@/lib/utils";
 import { CommitCell } from "../calculation/commit-cell";
 import { CALCULATED_CELL_HINT, CalculatedTableProvider, type CalculatedTableLock } from "./calculated-table-context";
 import { CaptureSlotTarget, useCaptureDeclared, useCaptureStore } from "./capture-host";
@@ -70,7 +71,11 @@ export function GeneratedTableEditor(props: {
 
   return (
     <CalculatedTableProvider value={lock}>
-      <div className="min-w-0" data-generated-table={source.id}>
+      {/* The cells of the capture are white, the appraiser's among the gray figures of the calculation, whatever field holds them. */}
+      <div
+        className={cn("min-w-0", props.capture && "[&_[data-capture-slot]_input]:bg-background [&_[data-capture-slot]_select]:bg-background [&_[data-capture-slot]_input:disabled]:bg-transparent")}
+        data-generated-table={source.id}
+      >
         <TableEditorItem
           table={props.table}
           readOnly={props.readOnly}
