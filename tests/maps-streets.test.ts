@@ -26,7 +26,7 @@ import {
 import { STATIC_MAP_SIZE, imagePosition, staticMapUrl } from "../src/features/maps/static-map";
 import { detectStreets, metersPerPixel, simplifyPolyline, wayInBounds, type StreetWay } from "../src/features/maps/streets";
 import { DEFAULT_STREETS_RADIUS, MAX_STREET_WAYS, highwayRank, overpassQuery, parseOverpassWays, streetsCacheKey, type OverpassElement } from "../src/features/maps/streets-osm";
-import { fetchStreetsFromOverpass, getStreetsAround } from "../src/features/maps/server/streets.service";
+import { fetchStreetsFromOverpass, getStreetsAround, type StoredStreets } from "../src/features/maps/server/streets.service";
 import { rateLimits } from "../src/security/rate-limit/rate-limiter";
 
 const PIN: [number, number] = [20.6301, -103.4];
@@ -103,14 +103,16 @@ const silent = (init?: RequestInit) =>
   new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
 
 async function quietly<T>(run: () => Promise<T>) {
-  const { warn, error } = console;
+  const { warn, error, info } = console;
   console.warn = () => {};
   console.error = () => {};
+  console.info = () => {};
   try {
     return await run();
   } finally {
     console.warn = warn;
     console.error = error;
+    console.info = info;
   }
 }
 
@@ -151,6 +153,20 @@ test("MAP-04: when no mirror answers, the error comes within the total budget (t
   assert.ok(Date.now() - started < 1_000);
 });
 
+/** Our copy of the streets as a database without rows (or with them): the unit tests never open a connection. */
+function storedStreets(ways: StreetWay[], loaded = ways.length > 0): StoredStreets & { asked: number } {
+  const stored = {
+    asked: 0,
+    around: async () => {
+      stored.asked += 1;
+      return ways;
+    },
+    loaded: async () => loaded,
+  };
+  return stored;
+}
+const NO_COPY = storedStreets([]);
+
 test("MAP-05: an answer is reused for the same zone without asking the mirrors again, even when they are down", async () => {
   let asked = 0;
   const point: [number, number] = [21.0012, -101.5034];
@@ -158,13 +174,77 @@ test("MAP-05: an answer is reused for the same zone without asking the mirrors a
     asked += 1;
     return Response.json(PERLA);
   }) as typeof fetch;
-  const first = await getStreetsAround(point, 1000, answer);
-  const nearby = await getStreetsAround([21.0014, -101.5031], 1000, answer);
+  const first = await quietly(() => getStreetsAround(point, 1000, answer, undefined, NO_COPY));
+  const nearby = await getStreetsAround([21.0014, -101.5031], 1000, answer, undefined, NO_COPY);
   assert.equal(asked, 1, "a pin a few meters away shares the answer");
   assert.deepEqual(nearby, first);
   const down = (async () => new Response("down", { status: 504 })) as typeof fetch;
   // Still fresh: the mirrors are not even asked.
-  assert.deepEqual(await getStreetsAround(point, 1000, down), first);
+  assert.deepEqual(await getStreetsAround(point, 1000, down, undefined, NO_COPY), first);
+});
+
+test("the streets come from our own copy without asking Overpass, and the log says where they came from", async () => {
+  const copy = storedStreets(GRID.slice(0, 2));
+  const never = (async () => assert.fail("Overpass must not be asked when the copy has the zone")) as unknown as typeof fetch;
+  const lines: string[] = [];
+  const { info } = console;
+  console.info = (line: string) => void lines.push(line);
+  try {
+    const answer = await getStreetsAround([22.1012, -100.9034], 1000, never, undefined, copy);
+    assert.deepEqual(answer.ways, GRID.slice(0, 2));
+    assert.equal(answer.radius, 1000);
+    assert.match(answer.attribution, /OpenStreetMap/);
+    // A reload of the same zone is served from memory: the copy is not read again either.
+    await getStreetsAround([22.1014, -100.9031], 1000, never, undefined, copy);
+    assert.equal(copy.asked, 1);
+  } finally {
+    console.info = info;
+  }
+  assert.deepEqual(lines, ["[STREETS] source=db n=2 zone=22.101,-100.903,1000"]);
+});
+
+test("a loaded copy without streets in the zone answers empty at once: Overpass holds the same data and is not asked", async () => {
+  const never = (async () => assert.fail("Overpass must not be asked when the copy is loaded")) as unknown as typeof fetch;
+  const lines: string[] = [];
+  const { info } = console;
+  console.info = (line: string) => void lines.push(line);
+  try {
+    const rural = await getStreetsAround([22.2012, -100.9034], 1000, never, undefined, storedStreets([], true));
+    assert.deepEqual(rural.ways, []);
+    assert.match(rural.attribution, /OpenStreetMap/);
+  } finally {
+    console.info = info;
+  }
+  assert.deepEqual(lines, ["[STREETS] source=db n=0 zone=22.201,-100.903,1000"]);
+});
+
+test("Overpass is the fallback only while the copy is empty or cannot be read, and its failure is then an error", async () => {
+  let asked = 0;
+  const answer = (async () => {
+    asked += 1;
+    return Response.json(PERLA);
+  }) as typeof fetch;
+  const neverLoaded = await quietly(() => getStreetsAround([22.3012, -100.9034], 1000, answer, undefined, storedStreets([], false)));
+  assert.equal(neverLoaded.ways[0].n, "Calle Perla");
+  assert.equal(asked, 1);
+  const broken: StoredStreets = { around: async () => Promise.reject(new Error('relation "devpware_calles_osm" does not exist')), loaded: async () => Promise.reject(new Error("down")) };
+  const unreadable = await quietly(() => getStreetsAround([22.4012, -100.9034], 1000, answer, undefined, broken));
+  assert.equal(unreadable.ways[0].n, "Calle Perla");
+  assert.equal(asked, 2);
+  const down = (async () => new Response("down", { status: 504 })) as typeof fetch;
+  await quietly(() => assert.rejects(getStreetsAround([22.5012, -100.9034], 1000, down, undefined, storedStreets([], false)), /OpenStreetMap/));
+  await quietly(() => assert.rejects(getStreetsAround([22.6012, -100.9034], 1000, down, undefined, broken), /OpenStreetMap/));
+});
+
+test("the request to a mirror identifies the app with an ASCII User-Agent (a header value cannot carry «ú»)", async () => {
+  let userAgent = "";
+  const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+    userAgent = new Headers(init?.headers).get("User-Agent") ?? "";
+    return Response.json(PERLA);
+  }) as typeof fetch;
+  await fetchStreetsFromOverpass(PIN, 1000, fetchImpl, ["https://a/api"]);
+  assert.match(userAgent, /^Valuaxis\/[\d.]+ \(\+https:\/\/[a-z.]+\)$/);
+  assert.match(userAgent, /^[\x20-\x7e]+$/);
 });
 
 test("the palette and the painted streets persist with the croquis settings and read back piece by piece", () => {

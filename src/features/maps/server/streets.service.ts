@@ -1,18 +1,34 @@
 /**
- * The streets around a point, from OpenStreetMap through the Overpass API:
- * public mirrors raced with a short head start each, the answer cached in
- * memory for a day under the rounded coordinates, so dragging the pin a
- * few meters, "Generar croquis de localización" and a reload do not ask again. The
- * browser never calls Overpass itself.
+ * The streets around a point, from OpenStreetMap. They come from our own
+ * copy first (`devpware_calles_osm`, streets-db.ts): the public Overpass
+ * mirrors failed almost every time in production (nov 2026). Overpass stays
+ * as the fallback only while the copy is empty or cannot be read: mirrors
+ * raced with a short head start each. Either answer is cached in memory for a day under
+ * the rounded coordinates, so dragging the pin a few meters, "Generar
+ * croquis de localización" and a reload do not ask again. The browser never
+ * calls Overpass itself.
  */
 import { ValuationWorkflowError } from "@/features/valuations/services/valuation-workflow/errors";
 
 import type { StreetWay } from "../streets";
 import { DEFAULT_STREETS_RADIUS, OSM_ATTRIBUTION, overpassQuery, parseOverpassWays, streetsCacheKey, type OverpassElement, type StreetsAroundDto } from "../streets-osm";
 import type { LatLon } from "../types";
+import { hasStoredStreets, streetsFromDatabase } from "./streets-db";
 
 /** Public Overpass instances, in the order they are tried. */
 const OVERPASS_MIRRORS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+
+/** ASCII only (HTTP header values are Latin-1 at most, and the mirrors ask for a way to reach the operator). */
+const OVERPASS_USER_AGENT = "Valuaxis/1.0 (+https://valuaxissoft.com)";
+
+/** Our own copy of the streets; the tests replace it. */
+export interface StoredStreets {
+  around: (point: LatLon, radiusMeters: number) => Promise<StreetWay[]>;
+  /** Whether the copy was ever loaded. */
+  loaded: () => Promise<boolean>;
+}
+
+const DATABASE_STREETS: StoredStreets = { around: streetsFromDatabase, loaded: hasStoredStreets };
 
 export interface OverpassTiming {
   /** One mirror gets this long before it is abandoned. */
@@ -48,7 +64,7 @@ const inFlight = new Map<string, Promise<StreetsAroundDto>>();
 async function queryMirror(url: string, query: string, fetchImpl: typeof fetch, signal: AbortSignal) {
   const response = await fetchImpl(url, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "Valuaxis/1.0 (croquis de avalúos)" },
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": OVERPASS_USER_AGENT },
     body: `data=${encodeURIComponent(query)}`,
     signal,
   });
@@ -121,15 +137,35 @@ function purgeExpired(now: number) {
 }
 
 /**
- * The streets around the point, from the cache when they are fresh. When
- * every mirror fails, an older answer for the same cell (up to a week) is
- * better than nothing.
+ * The streets of the zone from our copy. Null when the copy cannot answer
+ * for it: it was never loaded, or it cannot be read (a database without
+ * migration 061 must not take the croquis down with it). An empty list from
+ * a loaded copy is an answer: Overpass serves the same OpenStreetMap data,
+ * so asking it would only make the valuer wait for the same nothing.
+ */
+async function storedStreetsAround(stored: StoredStreets, point: LatLon, radiusMeters: number) {
+  try {
+    const ways = await stored.around(point, radiusMeters);
+    if (ways.length) return ways;
+    return (await stored.loaded()) ? ways : null;
+  } catch (error) {
+    console.error(`[STREETS] source=db failed: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+/**
+ * The streets around the point, from the cache when they are fresh, then
+ * from our copy, and from Overpass only while the copy is empty or cannot be
+ * read. When every mirror fails, an older answer for the same cell (up to a
+ * week) is better than nothing.
  */
 export async function getStreetsAround(
   point: LatLon,
   radiusMeters = DEFAULT_STREETS_RADIUS,
   fetchImpl: typeof fetch = fetch,
   timing: OverpassTiming = OVERPASS_TIMING,
+  stored: StoredStreets = DATABASE_STREETS,
 ): Promise<StreetsAroundDto> {
   const key = streetsCacheKey(point, radiusMeters);
   const now = Date.now();
@@ -141,13 +177,17 @@ export async function getStreetsAround(
     try {
       // The query runs around the rounded point, so every pin in the same cell shares the answer.
       const [lat, lon] = key.split(",").map(Number) as [number, number, number];
-      let ways: StreetWay[];
-      try {
-        ways = await fetchStreetsFromOverpass([lat, lon], radiusMeters, fetchImpl, OVERPASS_MIRRORS, timing);
-      } catch (error) {
-        const stale = cache.get(key);
-        if (stale && Date.now() - stale.storedAt < STALE_MS) return stale.dto;
-        throw error;
+      let ways = await storedStreetsAround(stored, [lat, lon], radiusMeters);
+      if (ways) console.info(`[STREETS] source=db n=${ways.length} zone=${key}`);
+      else {
+        try {
+          ways = await fetchStreetsFromOverpass([lat, lon], radiusMeters, fetchImpl, OVERPASS_MIRRORS, timing);
+          console.info(`[STREETS] source=overpass n=${ways.length} zone=${key}`);
+        } catch (error) {
+          const stale = cache.get(key);
+          if (stale && Date.now() - stale.storedAt < STALE_MS) return stale.dto;
+          throw error;
+        }
       }
       const dto: StreetsAroundDto = { ways, radius: radiusMeters, attribution: OSM_ATTRIBUTION };
       purgeExpired(Date.now());

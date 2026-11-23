@@ -3882,3 +3882,18 @@ model MovimientoCreditos {
   @@index([IdAvaluo], map: "devpware_movimientos_creditos_avaluo_idx")
   @@map("devpware_movimientos_creditos")
 }
+
+/// Named streets of Mexico copied from OpenStreetMap (ODbL), one row per way; filled by scripts/ops/importar-calles.ts.
+/// The GiST index over GLinea lives in migration 061 (Prisma does not model it).
+model CalleOsm {
+  /// The id of the way in OpenStreetMap.
+  IdViaOsm    BigInt                                    @id @map("IdViaOsm")
+  SNombre     String                                    @map("SNombre") @db.VarChar(255)
+  /// The `highway` tag (residential, primary, trunk_link…).
+  STipoVia    String                                    @map("STipoVia") @db.VarChar(40)
+  GLinea      Unsupported("geography(LineString,4326)") @map("GLinea")
+  /// When the import last wrote the row; a full import deletes the ones it did not touch.
+  DFechaCarga DateTime                                  @default(now()) @map("DFechaCarga") @db.Timestamptz(3)
+
+  @@map("devpware_calles_osm")
+}

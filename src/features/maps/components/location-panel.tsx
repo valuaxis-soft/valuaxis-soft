@@ -259,7 +259,7 @@ export function CroquisGeneratorBody({
     api.maps
       .streets(subject)
       .then((dto) => {
-        if (!cancelled) setLoaded({ key: subjectKey, ways: dto.ways, problem: dto.ways.length ? null : "OpenStreetMap no tiene calles con nombre alrededor de este punto.", failed: false });
+        if (!cancelled) setLoaded({ key: subjectKey, ways: dto.ways, problem: dto.ways.length ? null : "OpenStreetMap no tiene calles con nombre en esta zona.", failed: false });
       })
       .catch((error: unknown) => {
         if (!cancelled) setLoaded({ key: subjectKey, ways: [], problem: error instanceof Error && error.message ? error.message : "No se pudieron obtener las calles.", failed: true });
