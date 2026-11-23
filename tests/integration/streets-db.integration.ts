@@ -2,7 +2,8 @@
  * The streets of the croquis from our own copy of OpenStreetMap
  * (`devpware_calles_osm`, migration 061): a handful of made-up streets
  * loaded as the import loads them come back around a pin without a single
- * request to Overpass; a zone the copy has nothing for still asks Overpass;
+ * request to Overpass; with the table loaded, a zone without streets answers
+ * empty without asking Overpass, which is only asked while the table is empty;
  * loading again replaces instead of duplicating, and a full import removes
  * what it did not write.
  *
@@ -94,16 +95,24 @@ test("the streets loaded in the database answer around the pin, closest first, w
   assert.equal((await streetsFromDatabase(PIN, 2000)).length, 3);
 });
 
-test("a zone the database has nothing for asks Overpass as before", async () => {
-  // 30 km from the made-up streets.
+test("with the table loaded, a zone without streets answers empty at once and Overpass is not asked", async () => {
+  // 30 km from the made-up streets; the first test left rows in the table.
   const elsewhere: [number, number] = [PIN[0] + 30_000 * METER, PIN[1] + 0.4];
-  assert.deepEqual(await streetsFromDatabase(elsewhere, 1000), []);
+  assert.equal(await hasStoredStreets(), true);
+  const answer = await quietly(() => getStreetsAround(elsewhere, 1000, noFetch));
+  assert.deepEqual(answer.ways, []);
+  assert.equal(answer.attribution, "Calles: © colaboradores de OpenStreetMap (ODbL)");
+});
+
+test("while the table is empty, the same zone asks Overpass as before", async () => {
+  // The local table may hold all of Mexico, so "empty" is told to the service; the query for the zone is the real one.
+  const elsewhere: [number, number] = [PIN[0] + 60_000 * METER, PIN[1] + 0.8];
   let asked = 0;
   const overpass = (async () => {
     asked += 1;
     return Response.json({ elements: [{ type: "way", id: 77, tags: { highway: "residential", name: "Calle de Overpass" }, geometry: [{ lat: elsewhere[0], lon: elsewhere[1] }, { lat: elsewhere[0] + 0.001, lon: elsewhere[1] }] }] });
   }) as typeof fetch;
-  const answer = await quietly(() => getStreetsAround(elsewhere, 1000, overpass));
+  const answer = await quietly(() => getStreetsAround(elsewhere, 1000, overpass, undefined, { around: streetsFromDatabase, loaded: async () => false }));
   assert.equal(asked, 1);
   assert.deepEqual(answer.ways.map((way) => way.n), ["Calle de Overpass"]);
 });

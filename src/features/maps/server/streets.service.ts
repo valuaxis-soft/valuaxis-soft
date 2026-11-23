@@ -2,8 +2,8 @@
  * The streets around a point, from OpenStreetMap. They come from our own
  * copy first (`devpware_calles_osm`, streets-db.ts): the public Overpass
  * mirrors failed almost every time in production (nov 2026). Overpass stays
- * as the fallback for a zone the copy has nothing for: mirrors raced with a
- * short head start each. Either answer is cached in memory for a day under
+ * as the fallback only while the copy is empty or cannot be read: mirrors
+ * raced with a short head start each. Either answer is cached in memory for a day under
  * the rounded coordinates, so dragging the pin a few meters, "Generar
  * croquis de localización" and a reload do not ask again. The browser never
  * calls Overpass itself.
@@ -137,14 +137,17 @@ function purgeExpired(now: number) {
 }
 
 /**
- * The streets of the zone from our copy, or null when it has none there (or
- * cannot be read: a database without migration 061 must not take the croquis
- * down with it).
+ * The streets of the zone from our copy. Null when the copy cannot answer
+ * for it: it was never loaded, or it cannot be read (a database without
+ * migration 061 must not take the croquis down with it). An empty list from
+ * a loaded copy is an answer: Overpass serves the same OpenStreetMap data,
+ * so asking it would only make the valuer wait for the same nothing.
  */
 async function storedStreetsAround(stored: StoredStreets, point: LatLon, radiusMeters: number) {
   try {
     const ways = await stored.around(point, radiusMeters);
-    return ways.length ? ways : null;
+    if (ways.length) return ways;
+    return (await stored.loaded()) ? ways : null;
   } catch (error) {
     console.error(`[STREETS] source=db failed: ${error instanceof Error ? error.message : String(error)}`);
     return null;
@@ -153,10 +156,9 @@ async function storedStreetsAround(stored: StoredStreets, point: LatLon, radiusM
 
 /**
  * The streets around the point, from the cache when they are fresh, then
- * from our copy, then from Overpass. When every mirror fails, an older
- * answer for the same cell (up to a week) is better than nothing; and with
- * the copy loaded, a zone without streets in it is a zone without named
- * streets, not an error.
+ * from our copy, and from Overpass only while the copy is empty or cannot be
+ * read. When every mirror fails, an older answer for the same cell (up to a
+ * week) is better than nothing.
  */
 export async function getStreetsAround(
   point: LatLon,
@@ -184,9 +186,7 @@ export async function getStreetsAround(
         } catch (error) {
           const stale = cache.get(key);
           if (stale && Date.now() - stale.storedAt < STALE_MS) return stale.dto;
-          if (!(await stored.loaded().catch(() => false))) throw error;
-          console.info(`[STREETS] source=db n=0 zone=${key} (no named streets in the copy, and Overpass did not answer)`);
-          ways = [];
+          throw error;
         }
       }
       const dto: StreetsAroundDto = { ways, radius: radiusMeters, attribution: OSM_ATTRIBUTION };

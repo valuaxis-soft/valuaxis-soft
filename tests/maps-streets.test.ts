@@ -203,26 +203,37 @@ test("the streets come from our own copy without asking Overpass, and the log sa
   assert.deepEqual(lines, ["[STREETS] source=db n=2 zone=22.101,-100.903,1000"]);
 });
 
-test("a zone the copy has nothing for falls back to Overpass; a copy that cannot be read does too", async () => {
+test("a loaded copy without streets in the zone answers empty at once: Overpass holds the same data and is not asked", async () => {
+  const never = (async () => assert.fail("Overpass must not be asked when the copy is loaded")) as unknown as typeof fetch;
+  const lines: string[] = [];
+  const { info } = console;
+  console.info = (line: string) => void lines.push(line);
+  try {
+    const rural = await getStreetsAround([22.2012, -100.9034], 1000, never, undefined, storedStreets([], true));
+    assert.deepEqual(rural.ways, []);
+    assert.match(rural.attribution, /OpenStreetMap/);
+  } finally {
+    console.info = info;
+  }
+  assert.deepEqual(lines, ["[STREETS] source=db n=0 zone=22.201,-100.903,1000"]);
+});
+
+test("Overpass is the fallback only while the copy is empty or cannot be read, and its failure is then an error", async () => {
   let asked = 0;
   const answer = (async () => {
     asked += 1;
     return Response.json(PERLA);
   }) as typeof fetch;
-  const empty = await quietly(() => getStreetsAround([22.2012, -100.9034], 1000, answer, undefined, storedStreets([], true)));
-  assert.equal(empty.ways[0].n, "Calle Perla");
+  const neverLoaded = await quietly(() => getStreetsAround([22.3012, -100.9034], 1000, answer, undefined, storedStreets([], false)));
+  assert.equal(neverLoaded.ways[0].n, "Calle Perla");
   assert.equal(asked, 1);
   const broken: StoredStreets = { around: async () => Promise.reject(new Error('relation "devpware_calles_osm" does not exist')), loaded: async () => Promise.reject(new Error("down")) };
-  const fromOverpass = await quietly(() => getStreetsAround([22.3012, -100.9034], 1000, answer, undefined, broken));
-  assert.equal(fromOverpass.ways[0].n, "Calle Perla");
+  const unreadable = await quietly(() => getStreetsAround([22.4012, -100.9034], 1000, answer, undefined, broken));
+  assert.equal(unreadable.ways[0].n, "Calle Perla");
   assert.equal(asked, 2);
-});
-
-test("with Overpass down: an error while the copy was never loaded, and no streets (not an error) once it was", async () => {
   const down = (async () => new Response("down", { status: 504 })) as typeof fetch;
-  await quietly(() => assert.rejects(getStreetsAround([22.4012, -100.9034], 1000, down, undefined, storedStreets([], false)), /OpenStreetMap/));
-  const rural = await quietly(() => getStreetsAround([22.5012, -100.9034], 1000, down, undefined, storedStreets([], true)));
-  assert.deepEqual(rural.ways, []);
+  await quietly(() => assert.rejects(getStreetsAround([22.5012, -100.9034], 1000, down, undefined, storedStreets([], false)), /OpenStreetMap/));
+  await quietly(() => assert.rejects(getStreetsAround([22.6012, -100.9034], 1000, down, undefined, broken), /OpenStreetMap/));
 });
 
 test("the request to a mirror identifies the app with an ASCII User-Agent (a header value cannot carry «ú»)", async () => {
