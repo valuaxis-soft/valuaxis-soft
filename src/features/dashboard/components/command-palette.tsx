@@ -2,9 +2,8 @@
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type { LucideIcon } from "lucide-react";
-import { CornerDownLeft, Keyboard, Moon, Plus, Search, Sun } from "lucide-react";
+import { CornerDownLeft, Keyboard, Plus, Search } from "lucide-react";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { useTheme } from "next-themes";
 import { useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { NAV_ICONS } from "@/features/dashboard/components/nav-icons";
@@ -95,7 +94,6 @@ const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
 export function CommandPalette({ navigation }: { navigation: AppNavigation }) {
   // Rendered inside the app the router navigates; in a static render, the page does.
   const router = useContext(AppRouterContext);
-  const { resolvedTheme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<PaletteMode>("commands");
   const [query, setQuery] = useState("");
@@ -189,18 +187,6 @@ export function CommandPalette({ navigation }: { navigation: AppNavigation }) {
     if (navigation.canCreateValuation) {
       list.push({ id: "new", group: "Acciones", label: "Nuevo avalúo", hint: "Empieza un avalúo desde una plantilla", icon: Plus, keys: ["N"], run: () => go(NEW_VALUATION_HREF) });
     }
-    const dark = resolvedTheme === "dark";
-    list.push({
-      id: "theme",
-      group: "Acciones",
-      label: dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro",
-      hint: "Modo de la pantalla",
-      icon: dark ? Sun : Moon,
-      run: () => {
-        setTheme(dark ? "light" : "dark");
-        setOpen(false);
-      },
-    });
     list.push({ id: "shortcuts", group: "Acciones", label: "Ver atajos de teclado", icon: Keyboard, keys: ["?"], run: () => show("shortcuts") });
     for (const item of destinations) {
       list.push({
@@ -235,7 +221,7 @@ export function CommandPalette({ navigation }: { navigation: AppNavigation }) {
       });
     }
     return matches;
-  }, [destinations, go, navigation.canCreateValuation, query, resolvedTheme, setTheme, show]);
+  }, [destinations, go, navigation.canCreateValuation, query, show]);
 
   const activeIndex = Math.min(active, Math.max(commands.length - 1, 0));
   const optionId = (index: number) => `${listId}-option-${index}`;

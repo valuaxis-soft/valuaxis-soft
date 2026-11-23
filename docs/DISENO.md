@@ -24,6 +24,8 @@ Alrededor del logo:
 
 ## Paleta
 
+**La aplicación es siempre clara, con los colores de Valuaxis: no hay modo oscuro** (decisión del 23 nov 2026). `ThemeProvider` fuerza el tema claro (`forcedTheme="light"`), sin importar el sistema ni lo que el navegador tuviera guardado, y no hay ningún control para cambiarlo. No se agregan estilos `dark:` nuevos ni se prueba en oscuro. Los tokens de `.dark` siguen en `globals.css` solo porque componentes heredados los nombran; no se usan.
+
 Tokens de shadcn en oklch, claro en `:root` y `.light`, oscuro en `.dark`. El documento del avalúo (vista previa, dictamen, PDF) va dentro de `.light` y siempre se ve claro.
 
 Los tonos salen del logo, muestreados del PNG del cliente: **marino** `#011541` (las letras «VALUA»), **azul** `#005bea` («XIS», «SOFT» y la cara media de la «V») y **cian** `#05b4fd` (la punta iluminada de la «V»). El marino es el ancla (`primary`, `ink`): botones de la interfaz, bandas oscuras, texto de marca. El azul es el acento de marca (`brand`): la llamada principal de la página pública y del precio, el resaltado de la sección activa y lo que antes iba en el verde de la marca anterior. El cian (`brand-sky`) es el segundo acento, discreto: solo sobre la tinta (titular del hero y del acceso, palomitas, etiquetas) o como relleno, nunca como texto sobre papel (2.2:1). El papel cálido y los neutros se conservan: el azul saturado contrasta bien con el crema y las sesiones largas siguen siendo tranquilas.
