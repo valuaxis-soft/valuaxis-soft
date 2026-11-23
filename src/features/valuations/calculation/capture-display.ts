@@ -102,6 +102,17 @@ function captureBlock(live: Block, saved: Block): Block {
 }
 
 /**
+ * The section whose strip of template blocks left a gap to keep. The strip
+ * sits under the capture and goes away with the calculation's first result:
+ * without its room the page gets shorter and, scrolled to its end, the table
+ * being typed in moves down under the mouse (the next click lands on a header).
+ */
+export function templateStripSpaceSection(remembered: string | null, sectionId: string, hasPlaceholders: boolean): string | null {
+  if (hasPlaceholders) return sectionId;
+  return remembered === sectionId ? sectionId : null;
+}
+
+/**
  * The blocks of a section as the editor shows them while its calculation
  * captures in its tables: each block the calculation writes once, with the
  * tables of the capture, in the place the dictamen has it; the ones the

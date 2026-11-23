@@ -3,7 +3,7 @@
 import { ConceptCreationControl } from "../editor/concept-creation-control";
 import { toast } from "sonner";
 import { isGeneratedBlock } from "@/features/valuations/calculation/market-document";
-import { captureDisplayBlocks } from "@/features/valuations/calculation/capture-display";
+import { captureDisplayBlocks, templateStripSpaceSection } from "@/features/valuations/calculation/capture-display";
 import { CaptureStore, CaptureStoreProvider, useCapturePages } from "../editor/capture-host";
 import { COMPARABLE_TYPE_LABELS } from "@/features/valuations/calculation/market-types";
 import { MARKET_ACCENT } from "@/features/valuations/components/calculation/market-accent";
@@ -337,6 +337,11 @@ export function ValuationEditorPanel(props: {
   const capturePages = useDeferredValue(useCapturePages(captureStore));
   const displayBlocks = captureDisplayBlocks(shownBlocks, capturePages);
   const sortableBlockIds = displayBlocks.map(({ block }) => block.id);
+  // The room of the strip of template blocks stays once the first result takes the strip away (see templateStripSpaceSection).
+  const hasPlaceholders = displayBlocks.some((item) => item.placeholder);
+  const [stripSpaceSection, setStripSpaceSection] = useState<string | null>(null);
+  const nextStripSpaceSection = templateStripSpaceSection(stripSpaceSection, section.id, hasPlaceholders);
+  if (nextStripSpaceSection !== stripSpaceSection) setStripSpaceSection(nextStripSpaceSection);
   // Content moves between the Blocks of the section, except where something else owns it.
   const moveRules = useMemo(() => contentMoveRulesForSection(section), [section]);
   const transfer = useStructureTransfer();
@@ -594,7 +599,7 @@ export function ValuationEditorPanel(props: {
                   capture ? { pending } : undefined,
                 ))}
                 {/* The template's blocks the calculation will replace: they print until it does, so they stay within reach, apart from the capture. */}
-                {displayBlocks.some((item) => item.placeholder) ? (
+                {hasPlaceholders ? (
                   <details className="grid gap-3 rounded-lg border border-dashed p-3" data-template-placeholders="">
                     <summary className="cursor-pointer text-sm font-medium">
                       Bloques de la plantilla ({displayBlocks.filter((item) => item.placeholder).length})
@@ -604,6 +609,8 @@ export function ValuationEditorPanel(props: {
                       {displayBlocks.filter((item) => item.placeholder).map(({ block }) => renderBlockEditor(block, editableBlocks.findIndex((item) => item.id === block.id), editableBlocks.length))}
                     </div>
                   </details>
+                ) : nextStripSpaceSection === section.id ? (
+                  <div aria-hidden className="h-12" data-template-placeholders-space="" />
                 ) : null}
               </div>
             </SortableContext>
