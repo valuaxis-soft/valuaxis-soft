@@ -45,7 +45,6 @@ export function ScreenshotSlot(props: {
 
   return (
     <section className="grid gap-2" aria-label="Pantalla de referencia">
-      <h3 className="text-sm font-medium">Pantalla de referencia</h3>
       <p className="text-xs text-muted-foreground">
         La captura del anuncio tal como estaba al consultarlo. Haz clic en el recuadro y pega con Ctrl+V (⌘V en Mac), o sube la imagen.
       </p>

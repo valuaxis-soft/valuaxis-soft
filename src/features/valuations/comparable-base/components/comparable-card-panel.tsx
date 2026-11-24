@@ -87,8 +87,11 @@ export function ComparableCardPanel({ card, canEdit, validityMonths, attributeNa
           <TabsTrigger value="historial"><History data-icon="inline-start" /> Historial</TabsTrigger>
         </TabsList>
         <TabsContent value="ficha" className="grid gap-3">
-          <ComparableLocationMap comparableId={comparable.id} coordinates={coordinates} canEdit={canEdit} />
-          <ComparableCardView card={card} />
+          {/* The map under the location, as in the card of the valuation (V8.2). */}
+          <ComparableCardView
+            card={card}
+            map={<div className="border-t p-1.5"><ComparableLocationMap comparableId={comparable.id} coordinates={coordinates} canEdit={canEdit} /></div>}
+          />
         </TabsContent>
         <TabsContent value="historial" className="grid gap-3 text-sm" data-comparable-history>
           <section className="rounded-md border">

@@ -79,6 +79,7 @@ export function BaseComparableDialog(props: {
       open={props.open}
       onOpenChange={props.onOpenChange}
       comparable={comparable}
+      card={card}
       characteristicFields={defaultCharacteristicFields(type)}
       comparableType={type}
       onTypeChange={setType}

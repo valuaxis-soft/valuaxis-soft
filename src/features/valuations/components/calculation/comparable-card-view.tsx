@@ -1,4 +1,5 @@
 import { AlertTriangle, ExternalLink, ImageOff } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -21,6 +22,7 @@ import {
   defaultCharacteristicFields,
   isBuiltComparableType,
   isRentComparableType,
+  type ComparableDto,
   type ComparableType,
 } from "@/features/valuations/calculation/market-types";
 import { cn } from "@/lib/utils";
@@ -64,7 +66,12 @@ function ListingLink({ href, printable }: { href: string; printable: boolean }) 
  * Grouped as the tables of the dictamen. In the calculation memory
  * (`printable`) it leaves out the review, the warnings and the uses.
  */
-export function ComparableCardView({ card, printable = false }: { card: ComparableCardDto; printable?: boolean }) {
+export function ComparableCardView({ card, printable = false, map }: {
+  card: ComparableCardDto;
+  printable?: boolean;
+  /** The map with the comparable's pin, under its location (V8.2); the printed memory has none. */
+  map?: ReactNode;
+}) {
   const { comparable, type } = card;
   const rent = isRentComparableType(type);
   const unitValue = comparable.area && comparable.price ? comparable.price / comparable.area : null;
@@ -136,38 +143,20 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
     ...(comparable.characteristicsText ? [{ label: "Texto de características", value: comparable.characteristicsText, wide: true }] : []),
     { label: "Observaciones", value: orDash(comparable.notes), wide: true },
   ];
-  const details: SheetItem[] = comparable.propertyDetails || comparable.listingDetails ? [
-    { label: "Moneda", value: comparable.listingDetails?.currency ?? "MXN" },
-    { label: "Base del unitario", value: comparable.propertyDetails?.unitBasis ? UNIT_BASIS_LABELS[comparable.propertyDetails.unitBasis] : "—" },
-    { label: "Origen del dato", value: orDash(comparable.listingDetails?.dataOrigin) },
-    { label: "Datos verificados", value: comparable.listingDetails?.dataVerified ? DATA_VERIFIED_LABELS[comparable.listingDetails.dataVerified] : "—" },
-    { label: "Cambio de precio", value: dayText(comparable.listingDetails?.priceChangedOn) },
-    { label: "Confianza de la extracción", value: orDash(comparable.listingDetails?.extractionConfidence) },
-    ...(comparable.listingDetails?.photoUrl ? [{ label: "URL de la fotografía", value: <ListingLink href={comparable.listingDetails.photoUrl} printable={printable} />, wide: true }] : []),
-  ] : [];
+  const details = listingDetailItems(comparable, printable);
 
   return (
     <article className={cn("grid gap-3 text-sm", printable && "text-black")} data-comparable-card={id ?? comparable.id}>
-      <header className="flex flex-wrap items-center gap-2 rounded-sm bg-[var(--caratula-blue,#003B73)] px-3 py-2 text-[color:var(--doc-on-strong,#fff)]">
-        <span className="font-mono text-base font-semibold">{id ?? "Sin número"}</span>
-        <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs">{COMPARABLE_TYPE_LABELS[type]}</span>
-        <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs">Comparable {comparable.reference}</span>
-        {review && !printable ? (
-          <span className={cn("rounded-sm px-1.5 py-0.5 text-xs font-medium", REVIEW_STATUS_STYLES[review.status].solid)}>{REVIEW_STATUS_LABELS[review.status]}</span>
-        ) : null}
-        <span className="ml-auto text-xs text-[color:color-mix(in_oklab,var(--doc-on-strong,#fff)_80%,transparent)]">
-          {card.valuation ? `Capturado en el avalúo ${card.valuation.folio}` : "En la base general, sin avalúo"}
-        </span>
-      </header>
+      <ComparableCardHeader
+        id={id}
+        type={type}
+        reference={comparable.reference}
+        review={printable ? null : review}
+        where={card.valuation ? `Capturado en el avalúo ${card.valuation.folio}` : "En la base general, sin avalúo"}
+      />
       {printable ? null : <ComparableValidityLine validity={card.validity} />}
 
-      {!printable && card.warnings.length ? (
-        <ul className="grid gap-1 rounded-md border border-highlight/50 bg-highlight/10 p-2 text-xs text-foreground" aria-label="Avisos">
-          {card.warnings.map((warning) => (
-            <li key={warning.key} className="flex items-start gap-1"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> {warning.message}</li>
-          ))}
-        </ul>
-      ) : null}
+      {printable ? null : <ComparableCardWarnings warnings={card.warnings} />}
 
       <div className={cn("grid gap-3", printable ? "grid-cols-2" : "sm:grid-cols-2")}>
         <SheetSection title="Fotografías" printable={printable}>
@@ -198,7 +187,10 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
       </div>
 
       <SheetSection title="Oferta" printable={printable}><SheetTable items={offer} printable={printable} /></SheetSection>
-      <SheetSection title="Ubicación" printable={printable}><SheetTable items={location} printable={printable} /></SheetSection>
+      <SheetSection title="Ubicación" printable={printable}>
+        <SheetTable items={location} printable={printable} />
+        {printable ? null : map}
+      </SheetSection>
       <SheetSection title="Fuente de información" printable={printable}>
         <SheetTable items={source} printable={printable} />
         {comparable.listingText && !printable ? (
@@ -217,41 +209,99 @@ export function ComparableCardView({ card, printable = false }: { card: Comparab
         <SheetSection title="Más datos del anuncio" printable={printable}><SheetTable items={details} printable={printable} /></SheetSection>
       ) : null}
 
-      {!printable && review && review.status !== "POR_REVISAR" ? (
-        <SheetSection title="Revisión">
-          <div className="grid gap-2 p-2 text-xs">
-            <p>
-              {REVIEW_STATUS_LABELS[review.status]}
-              {review.reviewedBy ? ` por ${review.reviewedBy}` : ""}
-              {review.reviewedAt ? ` el ${new Date(review.reviewedAt).toLocaleString("es-MX")}` : ""}
-            </p>
-            <ul className="flex flex-wrap gap-1">
-              {/* Every check the review saved, under the name it had then (the firm's list may have changed since). */}
-              {Object.entries(review.checks).filter(([, marked]) => marked !== undefined).map(([check, marked]) => (
-                <li key={check}><Badge variant={marked ? "secondary" : "destructive"}>{marked ? "✓" : "✗"} {reviewCheckLabel(check, review.labels)}</Badge></li>
-              ))}
-            </ul>
-            {review.notes ? <p className="whitespace-pre-wrap">{review.notes}</p> : null}
-          </div>
-        </SheetSection>
-      ) : null}
+      {printable ? null : <ComparableCardReview review={review} />}
 
-      {!printable ? (
-        <SheetSection title="Avalúos en que se usó">
-          <ul className="grid gap-1 p-2 text-xs">
-            {card.uses.map((use) => (
-              <li key={`${use.valuationId}:${use.type}:${use.reference}`} className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{use.folio}</span>
-                <span className="text-muted-foreground">{use.title ?? ""}</span>
-                {use.client ? <span className="text-muted-foreground">· cliente {use.client}</span> : null}
-                <span className="text-muted-foreground">· {COMPARABLE_TYPE_LABELS[use.type]}, comparable {use.reference}, agregado el {dayText(use.addedOn)}</span>
-                <a className="text-primary underline-offset-2 hover:underline" href={`/workspace?id=${use.valuationId}`} target="_blank" rel="noopener noreferrer">Abrir avalúo</a>
-              </li>
-            ))}
-            {!card.uses.length ? <li className="text-muted-foreground">Todavía no se usa en un avalúo.</li> : null}
-          </ul>
-        </SheetSection>
-      ) : null}
+      {printable ? null : <ComparableCardUses uses={card.uses} />}
     </article>
+  );
+}
+
+/** The band over the card: its number, its type, its reference, its review and where it was captured. */
+export function ComparableCardHeader(props: {
+  id: string | null;
+  type: ComparableType;
+  reference: number | null;
+  review?: ComparableDto["review"];
+  where: string;
+}) {
+  return (
+    <header className="flex flex-wrap items-center gap-2 rounded-sm bg-[var(--caratula-blue,#003B73)] px-3 py-2 text-[color:var(--doc-on-strong,#fff)]" data-card-header="">
+      <span className="font-mono text-base font-semibold">{props.id ?? "Sin número"}</span>
+      <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs">{COMPARABLE_TYPE_LABELS[props.type]}</span>
+      {props.reference ? <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs">Comparable {props.reference}</span> : null}
+      {props.review ? (
+        <span className={cn("rounded-sm px-1.5 py-0.5 text-xs font-medium", REVIEW_STATUS_STYLES[props.review.status].solid)}>{REVIEW_STATUS_LABELS[props.review.status]}</span>
+      ) : null}
+      <span className="ml-auto text-xs text-[color:color-mix(in_oklab,var(--doc-on-strong,#fff)_80%,transparent)]">{props.where}</span>
+    </header>
+  );
+}
+
+/** The warnings of the comparable: a notice, never a block. */
+export function ComparableCardWarnings({ warnings }: { warnings: ComparableCardDto["warnings"] }) {
+  if (!warnings.length) return null;
+  return (
+    <ul className="grid gap-1 rounded-md border border-highlight/50 bg-highlight/10 p-2 text-xs text-foreground" aria-label="Avisos">
+      {warnings.map((warning) => (
+        <li key={warning.key} className="flex items-start gap-1"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> {warning.message}</li>
+      ))}
+    </ul>
+  );
+}
+
+/** «Más datos del anuncio»: what the master workbook or the listing brought that the capture does not ask for. */
+export function listingDetailItems(comparable: ComparableDto, printable = false): SheetItem[] {
+  if (!comparable.propertyDetails && !comparable.listingDetails) return [];
+  return [
+    { label: "Moneda", value: comparable.listingDetails?.currency ?? "MXN" },
+    { label: "Base del unitario", value: comparable.propertyDetails?.unitBasis ? UNIT_BASIS_LABELS[comparable.propertyDetails.unitBasis] : "—" },
+    { label: "Origen del dato", value: orDash(comparable.listingDetails?.dataOrigin) },
+    { label: "Datos verificados", value: comparable.listingDetails?.dataVerified ? DATA_VERIFIED_LABELS[comparable.listingDetails.dataVerified] : "—" },
+    { label: "Cambio de precio", value: dayText(comparable.listingDetails?.priceChangedOn) },
+    { label: "Confianza de la extracción", value: orDash(comparable.listingDetails?.extractionConfidence) },
+    ...(comparable.listingDetails?.photoUrl ? [{ label: "URL de la fotografía", value: <ListingLink href={comparable.listingDetails.photoUrl} printable={printable} />, wide: true }] : []),
+  ];
+}
+
+/** «Revisión»: who reviewed it, when, and every check it saved. */
+export function ComparableCardReview({ review }: { review: ComparableDto["review"] }) {
+  if (!review || review.status === "POR_REVISAR") return null;
+  return (
+    <SheetSection title="Revisión">
+      <div className="grid gap-2 p-2 text-xs">
+        <p>
+          {REVIEW_STATUS_LABELS[review.status]}
+          {review.reviewedBy ? ` por ${review.reviewedBy}` : ""}
+          {review.reviewedAt ? ` el ${new Date(review.reviewedAt).toLocaleString("es-MX")}` : ""}
+        </p>
+        <ul className="flex flex-wrap gap-1">
+          {/* Every check the review saved, under the name it had then (the firm's list may have changed since). */}
+          {Object.entries(review.checks).filter(([, marked]) => marked !== undefined).map(([check, marked]) => (
+            <li key={check}><Badge variant={marked ? "secondary" : "destructive"}>{marked ? "✓" : "✗"} {reviewCheckLabel(check, review.labels)}</Badge></li>
+          ))}
+        </ul>
+        {review.notes ? <p className="whitespace-pre-wrap">{review.notes}</p> : null}
+      </div>
+    </SheetSection>
+  );
+}
+
+/** «Avalúos en que se usó», each with a link to open it. */
+export function ComparableCardUses({ uses }: { uses: ComparableCardDto["uses"] }) {
+  return (
+    <SheetSection title="Avalúos en que se usó">
+      <ul className="grid gap-1 p-2 text-xs">
+        {uses.map((use) => (
+          <li key={`${use.valuationId}:${use.type}:${use.reference}`} className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{use.folio}</span>
+            <span className="text-muted-foreground">{use.title ?? ""}</span>
+            {use.client ? <span className="text-muted-foreground">· cliente {use.client}</span> : null}
+            <span className="text-muted-foreground">· {COMPARABLE_TYPE_LABELS[use.type]}, comparable {use.reference}, agregado el {dayText(use.addedOn)}</span>
+            <a className="text-primary underline-offset-2 hover:underline" href={`/workspace?id=${use.valuationId}`} target="_blank" rel="noopener noreferrer">Abrir avalúo</a>
+          </li>
+        ))}
+        {!uses.length ? <li className="text-muted-foreground">Todavía no se usa en un avalúo.</li> : null}
+      </ul>
+    </SheetSection>
   );
 }
