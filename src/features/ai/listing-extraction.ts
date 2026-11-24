@@ -13,6 +13,7 @@ import {
   labelBefore,
   parseAmount,
   parseCount,
+  parseDimensions,
   parseListingDate,
   parseMeters,
   parsePostalCode,
@@ -100,16 +101,16 @@ Campos:
 - price: el precio de oferta o la renta, con su signo o moneda (por ejemplo «$2,350,000», «2.35 mdp», «USD 150,000»).
 - landArea: la superficie de terreno con su unidad tal como está escrita («1 200 m2», «3.5 hectáreas», «12-50-00 has»).
 - builtArea: la superficie construida con su unidad.
-- frontage y depth: el frente y el fondo del terreno, cada uno con su número («10 m de frente»).
-- street: el nombre de la calle o vialidad, sin el número. streetNumber: el número exterior. neighborhood: colonia o localidad. subdivision: fraccionamiento, condominio o desarrollo. municipality: municipio o ciudad. state: estado. postalCode: el código postal.
+- frontage y depth: el frente y el fondo del terreno, cada uno con su número («10 m de frente», «M² de frente: 12»). Si el anuncio los escribe juntos («Terreno de 12 x 30 m»), copia ese mismo fragmento en los dos campos.
+- street: el nombre de la calle o vialidad, sin el número («Paseo de los Leones», «Remanso de los Conejos Poniente»). streetNumber: el número exterior. neighborhood: colonia o localidad. subdivision: fraccionamiento, condominio o desarrollo («Ciudad Bugambilias»). municipality: municipio o ciudad. state: estado. postalCode: el código postal («C.P. 45238»).
 - propertyType: el tipo de inmueble («casa», «terreno rústico», «local comercial»).
-- bedrooms: las recámaras («3 recámaras»). bathrooms: los baños completos, o el total si no los separa («2 baños», «2.5 baños»). halfBaths: los medios baños («1 medio baño»). parking: los lugares de estacionamiento («2 cajones»). levels: los niveles o plantas («2 plantas»). age: la antigüedad en años («10 años de antigüedad»); no la calcules a partir de un año de construcción.
+- bedrooms: las recámaras («3 recámaras»). bathrooms: los baños completos, o el total si no los separa («2 baños», «2.5 baños»). halfBaths: los medios baños («1 medio baño»; en «4 baños, 1 medio» bathrooms es «4 baños» y halfBaths es «1 medio»). parking: los lugares de estacionamiento («2 cajones», «2 estacionamientos»). levels: los niveles o plantas («2 plantas»); el piso en que está un departamento («Piso 3») no es un nivel: va en otherFacts. age: la antigüedad en años («10 años de antigüedad»); no la calcules a partir de un año de construcción.
 - conservation: el estado de conservación como lo dice el anuncio («a estrenar», «buen estado», «para remodelar»).
-- frontCount: el número de frentes («2 frentes»). shape: la forma del terreno («regular», «rectangular»). zone: la zona como la describe el anuncio («zona habitacional», «zona industrial»).
+- frontCount: el número de frentes («2 frentes»). shape: la forma del terreno («regular», «rectangular», «forma irregular»). zone: la zona como la describe el anuncio («zona habitacional», «zona industrial»).
 - landUse: el uso de suelo. topography: la topografía. services: los servicios con que cuenta.
 - portal: el portal o la inmobiliaria que publica el anuncio. publicationId: el número, clave, folio o ID del anuncio en el portal, con su etiqueta tal como está escrita («ID: 145-998», «Clave EB-XK1234», «Publicación No. 998877», «Folio 4521»).
 - listingDate: la fecha de publicación del anuncio, solo si está escrita como fecha.
-- contactName: el nombre del anunciante o asesor. contactPhone: su teléfono, solo los dígitos como están escritos, sin «tel.» («33 1234 5678»).
+- contactName: el nombre del anunciante o asesor («Información del anunciante: Manuel Flores» → «Manuel Flores»); si solo aparece la inmobiliaria, su nombre. contactPhone: su teléfono, solo los dígitos como están escritos, sin «tel.» («33 1234 5678»).
 - amenities: cada amenidad o equipamiento que el anuncio menciona («alberca», «jardín», «cocina integral»), un fragmento por elemento, hasta ${LISTING_MAX_FACTS}.
 - otherFacts: otros datos del inmueble que el anuncio dice y no caben en los campos anteriores (orientación, vigilancia, cuota de mantenimiento, régimen de propiedad, a qué distancia está algo), un fragmento literal por dato, hasta ${LISTING_MAX_FACTS}. No repitas lo que ya va en otro campo y no incluyas frases de venta («gran oportunidad», «excelente inversión»).`;
 
@@ -237,8 +238,9 @@ export function verifyListingExtraction(text: string, url: string | null, extrac
     }),
     landArea: figure("landArea", extraction.landArea, parseSurface),
     builtArea: figure("builtArea", extraction.builtArea, parseSurface),
-    frontage: figure("frontage", extraction.frontage, wrap(parseMeters)),
-    depth: figure("depth", extraction.depth, wrap(parseMeters)),
+    // «Terreno de 12 x 30 m» holds both: the front is the first length and the depth the second.
+    frontage: figure("frontage", extraction.frontage, wrap((evidence) => parseDimensions(evidence)?.frontage ?? parseMeters(evidence))),
+    depth: figure("depth", extraction.depth, wrap((evidence) => parseDimensions(evidence)?.depth ?? parseMeters(evidence))),
     listingDate: figure("listingDate", extraction.listingDate, wrap(parseListingDate)),
     url: link ? { value: link, evidence: link } : null,
     postalCode: figure("postalCode", extraction.postalCode, wrap(parsePostalCode)),

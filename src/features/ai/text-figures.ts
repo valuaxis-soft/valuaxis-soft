@@ -87,13 +87,31 @@ export function parseSurface(fragment: string): { value: number; unit: SurfaceUn
   return null;
 }
 
-/** "10 m de frente", "25 mts", "12.5 metros" or a bare "10": meters. Other units are not read. */
+/**
+ * "10 m de frente", "25 mts", "12.5 metros" or a bare "10": meters. Other units are not read.
+ * A unit written as a label before the number («M² de frente: 12») is not a number of its own.
+ */
 export function parseMeters(fragment: string): number | null {
-  const number = firstNumber(plainText(fragment));
+  const number = firstNumber(plainText(fragment).replace(/(?<![\d.,] ?)\b(m|mts?|mt)2\b/g, "$1"));
   if (!number || number.value <= 0) return null;
   const unit = /^ ?([a-z]+\d?)/.exec(number.rest)?.[1];
   if (unit && /^(cm|mm|km|ft|pies?|in|pulgadas?|ha|has|hectareas?|m2|mts?2|mt2)$/.test(unit)) return null;
   return number.value;
+}
+
+/**
+ * The front and the depth of a lot written together, front first, as
+ * listings do: «Terreno de 12 x 30 m», «12 por 30 metros», «12×30». Null
+ * when the fragment does not write two lengths that way.
+ */
+export function parseDimensions(fragment: string): { frontage: number; depth: number } | null {
+  const text = plainText(fragment);
+  const match = /(\d+(?:[.,]\d+)?) ?(?:m|mts?|metros)?\.? ?(?:x|×|por) ?(\d+(?:[.,]\d+)?) ?(m2|mts?2|mt2|ha|has|hectareas?|cm|km)?/.exec(text);
+  // «12 x 30 m2» is not a lot of 12 by 30: it is a surface.
+  if (!match || match[3]) return null;
+  const frontage = Number(match[1].replace(",", "."));
+  const depth = Number(match[2].replace(",", "."));
+  return frontage > 0 && depth > 0 ? { frontage, depth } : null;
 }
 
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];

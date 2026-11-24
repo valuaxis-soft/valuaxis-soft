@@ -21,6 +21,7 @@ import { getMarketCalculation, saveMarketSettings } from "../../src/features/val
 import { DEFAULT_FACTOR_SLOTS } from "../../src/features/valuations/calculation/market-types";
 import { listComparableBase } from "../../src/features/valuations/comparable-base/comparable-base.service";
 import { parseComparableListParams } from "../../src/features/valuations/comparable-base/comparable-list-params";
+import { candidateInputOf, normalizeWebListings, type WebListingSearchAnswer } from "../../src/features/valuations/comparable-search/web-listings";
 import type { WebSearchStatusDto } from "../../src/features/valuations/comparable-search/web-search.service";
 import { concludeValuation, saveValuationSections } from "../../src/features/valuations/services/valuation-workflow.service";
 import { createSecureToken, hashToken } from "../../src/security/tokens/token-hashing";
@@ -104,10 +105,11 @@ const site = `https://portal-${randomUUID().slice(0, 8)}.example`;
 const listing = (path: string, overrides: Record<string, unknown> = {}) => ({
   title: `Terreno ${path}`, propertyType: "terreno", operation: "venta", landArea: 6000, builtArea: null, price: 3_000_000, currency: "MXN",
   neighborhood: "Las Lomas", municipality: "Villa Ejemplo", state: "Jalisco", addressOrReference: "", portal: "Portal Ejemplo",
-  url: `${site}/anuncio/${path}`, urlKind: "anuncio", listingDate: "", notes: "",
+  url: `${site}/anuncio/${path}`, urlKind: "anuncio", pageStatus: "sin_abrir", listingDate: "", notes: "",
   // What else a listing may publish; here, nothing.
-  street: "", postalCode: "", bedrooms: null, bathrooms: null, halfBaths: null, parking: null, levels: null, age: null, frontage: null, depth: null,
-  frontCount: null, landUse: "", topography: "", services: "", shape: "", conservation: "", amenities: "", contactName: "", contactPhone: "", publicationId: "",
+  street: "", streetNumber: "", subdivision: "", postalCode: "", bedrooms: null, bathrooms: null, halfBaths: null, parking: null, levels: null, floor: "",
+  age: null, frontage: null, depth: null, frontCount: null, landUse: "", topography: "", services: "", shape: "", conservation: "", amenities: "",
+  contactName: "", agency: "", contactPhone: "", publicationId: "",
   ...overrides,
 });
 const ANSWER = {
@@ -252,11 +254,14 @@ test("a search answers with what was found: no invented address, $/m² computed 
   assert.equal(usage.IdUsuario, fixture.user.id);
   assert.equal(usage.IdOrganizacion, fixture.organizationId);
   assert.equal(usage.SDireccionIP, "203.0.113.30");
-  const { seconds, ...metadata } = usage.JMetadatos as Record<string, number | string>;
+  const { seconds, modelSeconds, ...metadata } = usage.JMetadatos as Record<string, number | string>;
   assert.equal(typeof seconds, "number");
+  assert.equal(typeof modelSeconds, "number");
   assert.deepEqual(metadata, {
     model: "fake-search", inputTokens: 42_000, outputTokens: 3_000, cacheReadTokens: 0, cacheWriteTokens: 0, webSearches: 2,
-    candidates: 3, discarded: 1, characters: REQUEST.length,
+    candidates: 3, discarded: 1, discardedListingPages: 0, discardedUnpublished: 0, discardedExtra: 0, requested: 5,
+    pagesOpened: 0, pagesRead: 0, pageInputTokens: 0, pageOutputTokens: 0,
+    firstSearchSeconds: null, lastToolSeconds: null, reportStartSeconds: null, turns: null, characters: REQUEST.length,
   });
   // Neither the request nor the listings are in the record.
   assert.ok(!JSON.stringify(usage.JMetadatos).includes("Villa Ejemplo"));
@@ -311,7 +316,7 @@ test("the seventh search of a person in ten minutes waits, without calling the p
 });
 
 test("«Crear fichas» adds the chosen listings to the market and to the firm's base, unverified, and respects duplicates", async () => {
-  turnOn();
+  const fake = turnOn();
   const fixture = await createValuationFixture();
   const jar = await signIn(fixture, "VALUADOR");
   const found = await searchAndWait(jar, fixture.publicId);
@@ -356,13 +361,12 @@ test("«Crear fichas» adds the chosen listings to the market and to the firm's 
   assert.deepEqual({ created: again.body.data?.created, reused: again.body.data?.reused, skipped: again.body.data?.skipped }, { created: 0, reused: 0, skipped: 2 });
   assert.equal((await market(fixture)).comparables.length, 2);
 
-  // A new search marks what the firm already has; here, in this very valuation.
+  // A new search does not propose again what this very valuation has (V8.2): the model is told, and what it repeats is left out.
   const later = await searchAndWait(jar, fixture.publicId);
   assert.equal(later.status, "done");
   if (later.status !== "done") return;
-  assert.deepEqual(later.candidates.map((candidate) => candidate.existing && { folio: candidate.existing.folio, inValuation: candidate.existing.inValuation }), [
-    { folio: one.folio, inValuation: true }, { folio: two.folio, inValuation: true }, null,
-  ]);
+  assert.deepEqual(later.candidates.map((candidate) => candidate.url), [`${site}/anuncio/de-memoria`]);
+  assert.match(fake.prompts.at(-1)?.prompt.user ?? "", new RegExp(`<ya_encontrados>[\\s\\S]*${site.replace(/[.]/g, "\\.")}/anuncio/uno`));
 
   // In another valuation of the same firm the listing is brought from the base, with its number: one comparable, not two.
   const source = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
@@ -481,4 +485,182 @@ test("a concluded valuation can search but not create comparables, and a made-up
   const locked = await createCards(jar, fixture.publicId, found.candidates.slice(0, 1));
   assert.equal(locked.status, 409);
   assert.equal(locked.body.error, "El avalúo está concluido; reábrelo para editarlo.");
+});
+
+/** Listings of the model's answer, numbered, each with its own page. */
+const numbered = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, index) => listing(`n${from + index}`, { landArea: 6000 + from + index }));
+/** What the browser sends back to create cards, without a search: the same shape a search shows. */
+const inputsOf = (answer: unknown[]) => (answer as WebListingSearchAnswer["candidates"]).flatMap((item) =>
+  normalizeWebListings("TERRENO_VENTA", { candidates: [item], marketNote: "" }, { resultUrls: [], knownUrls: [] }).candidates.map(candidateInputOf));
+
+test("V8.2: a search proposes five at most, and «Buscar 2 más» asks for two that are not on screen nor in the valuation", async () => {
+  // The model answers seven, past what was asked; then, asked for more, it repeats one already shown and brings three new ones.
+  const fake = createFakeAiGateway({
+    webSearch: {
+      answer: (prompt: { user: string }) => ({ marketNote: "", candidates: prompt.user.includes("dos anuncios más") ? [listing("n1"), ...numbered(8, 10)] : numbered(1, 7) }),
+      queries: ["terrenos Villa Ejemplo"],
+    },
+  });
+  overrideAiGateway(fake.gateway);
+  overrideAiWebSearch(true);
+  const fixture = await createValuationFixture();
+  const jar = await signIn(fixture, "VALUADOR");
+
+  const first = await searchAndWait(jar, fixture.publicId);
+  assert.equal(first.status, "done");
+  if (first.status !== "done") return;
+  assert.deepEqual(first.candidates.map((candidate) => candidate.url), numbered(1, 5).map((item) => item.url));
+  assert.equal(first.count, 5);
+  assert.equal(first.discards.extra, 2);
+  assert.match(fake.prompts[0].prompt.user, /reporta como máximo cinco anuncios\./);
+  assert.equal(fake.searchOptions[0].maxSearches, 9);
+  assert.equal(fake.searchOptions[0].maxFetches, 8);
+
+  // Three of them become comparables; the appraiser asks for two more.
+  assert.equal((await createCards(jar, fixture.publicId, first.candidates.slice(0, 3))).status, 201);
+  const more = await searchAndWait(jar, fixture.publicId, {
+    text: REQUEST, previous: [REQUEST], knownUrls: first.candidates.slice(3).map((candidate) => candidate.url), count: 2,
+  });
+  assert.equal(more.status, "done");
+  if (more.status !== "done") return;
+  const prompt = fake.prompts[1].prompt.user;
+  assert.match(prompt, /reporta como máximo dos anuncios más, distintos de los ya encontrados/);
+  // Not to repeat: the two still on screen and the three already in the valuation.
+  for (const item of numbered(1, 5)) assert.ok(prompt.includes(item.url), item.url);
+  assert.deepEqual(more.candidates.map((candidate) => candidate.url), numbered(8, 9).map((item) => item.url));
+  assert.equal(more.count, 2);
+  assert.equal(fake.searchOptions[1].maxSearches, 6);
+  assert.deepEqual(more.quota, { used: 3, cap: 25 });
+  const records = await usageOf(fixture, "AI_COMPARABLE_SEARCH");
+  assert.deepEqual(records.map((record) => (record.JMetadatos as { requested: number }).requested), [5, 2]);
+});
+
+test("V8.1: a valuation includes 25 comparables found with AI at most, across its markets, and the server holds it", async () => {
+  const fake = turnOn({ marketNote: "", candidates: numbered(1, 5) });
+  const fixture = await createValuationFixture();
+  const jar = await signIn(fixture, "VALUADOR");
+  const before = await setup(jar, fixture.publicId);
+  assert.deepEqual(before.body.data?.quota, { used: 0, cap: 25 });
+  assert.equal(before.body.data?.batch, 5);
+
+  // 20 land listings and 4 houses: 24 of 25, counted across both markets.
+  assert.equal((await createCards(jar, fixture.publicId, inputsOf(numbered(101, 120)))).status, 201);
+  const houses = inputsOf(numbered(201, 205).map((item, index) => ({ ...item, propertyType: "Casa", builtArea: 150 + index })));
+  assert.equal((await createCards(jar, fixture.publicId, houses.slice(0, 4), "INMUEBLE_VENTA")).status, 201);
+  assert.deepEqual((await setup(jar, fixture.publicId)).body.data?.quota, { used: 24, cap: 25 });
+
+  // A search asks only for the one place left.
+  const started = await start(jar, fixture.publicId, { text: REQUEST, count: 5 });
+  assert.equal(started.status, 202, started.body.error);
+  assert.equal(started.body.data?.count, 1);
+  const found = await finished(jar, fixture.publicId, String(started.body.data?.jobId));
+  assert.equal(found.status, "done");
+  if (found.status !== "done") return;
+  assert.equal(found.candidates.length, 1);
+  assert.match(fake.prompts.at(-1)?.prompt.user ?? "", /reporta como máximo un anuncio\./);
+
+  // Two cards do not fit: rejected whole, saying how many are left.
+  const tooMany = await createCards(jar, fixture.publicId, inputsOf(numbered(301, 302)));
+  assert.equal(tooMany.status, 409);
+  assert.match(tooMany.body.error ?? "", /tiene 24 de 25 comparables encontrados con IA: solo puedes agregar uno más/);
+  const last = await createCards(jar, fixture.publicId, inputsOf(numbered(301, 301)));
+  assert.equal(last.status, 201, last.body.error);
+  assert.deepEqual(last.body.data?.quota, { used: 25, cap: 25 });
+
+  // Full: no search runs, in this market or another, and no card is created.
+  const calls = fake.prompts.length;
+  const refused = await start(jar, fixture.publicId, { text: REQUEST });
+  assert.equal(refused.status, 409);
+  assert.match(refused.body.error ?? "", /ya tiene los 25 comparables encontrados con IA que puede incluir/);
+  assert.equal((await start(jar, fixture.publicId, { text: REQUEST }, "INMUEBLE_VENTA")).status, 409);
+  assert.equal(fake.prompts.length, calls, "the provider was not called");
+  const fifth = await createCards(jar, fixture.publicId, houses.slice(4), "INMUEBLE_VENTA");
+  assert.equal(fifth.status, 409);
+  assert.equal((await getMarketCalculation(fixture.publicId, fixture.organizationId, "INMUEBLE_VENTA")).comparables.length, 4);
+
+  // Taking one found with AI out of the valuation frees its place.
+  const [removed] = (await market(fixture)).comparables;
+  await prisma.comparableAvaluo.update({ where: { UIdentificadorPublico: removed.id }, data: { BIncluido: false, DFechaExclusion: new Date(), SMotivoExclusion: "Prueba" } });
+  assert.deepEqual((await setup(jar, fixture.publicId)).body.data?.quota, { used: 24, cap: 25 });
+});
+
+test("V8.1: a card created from a listing without a date is dated the day of consultation and valid six months", async () => {
+  turnOn({ marketNote: "", candidates: [listing("sin-fecha"), listing("con-fecha", { listingDate: "2026-10-30", landArea: 6100 })] });
+  const fixture = await createValuationFixture();
+  const jar = await signIn(fixture, "VALUADOR");
+  const found = await searchAndWait(jar, fixture.publicId);
+  assert.equal(found.status, "done");
+  if (found.status !== "done") return;
+  assert.equal((await createCards(jar, fixture.publicId, found.candidates)).status, 201);
+  const [undated, dated] = (await market(fixture)).comparables;
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(new Date());
+  assert.equal(undated.offerDate, today);
+  assert.equal(undated.consultedOn, today);
+  assert.equal(undated.validityMonths, 6);
+  assert.equal(dated.offerDate, "2026-10-30");
+  assert.equal(dated.validityMonths, 6);
+});
+
+test("V8.2: the page the provider opened is read again, verified as written, and a page that says it is no longer published leaves its listing out", async () => {
+  const page = `${site}/anuncio/leones`;
+  const pageText = [
+    "Terreno en venta en Paseo de los Leones, Ciudad Bugambilias, Zapopan", "$3,910,000", "391 m² de terreno",
+    "Terreno de 10 x 39.1 m", "El lote presenta una forma irregular.", "Información del anunciante: Manuel Flores",
+  ].join("\n");
+  const fake = createFakeAiGateway({
+    webSearch: {
+      answer: {
+        marketNote: "",
+        candidates: [
+          listing("leones", { landArea: 391, price: 3_910_000, pageStatus: "vigente" }),
+          listing("baja", { pageStatus: "vigente" }),
+          listing("listado", { urlKind: "listado" }),
+        ],
+      },
+      queries: ["terrenos Ciudad Ejemplo"],
+      pages: [{ url: page, text: pageText }, { url: `${site}/anuncio/baja`, text: "Este anuncio ya no está publicado." }],
+    },
+    extraction: {
+      operation: "venta", operationEvidence: "Terreno en venta", street: "Paseo de los Leones", subdivision: "Ciudad Bugambilias",
+      frontage: "Terreno de 10 x 39.1 m", depth: "Terreno de 10 x 39.1 m", shape: "forma irregular", contactName: "Manuel Flores",
+      price: "$3,910,000", landArea: "391 m²", publicationId: "ID inventado que no está en la página",
+    },
+  });
+  overrideAiGateway(fake.gateway);
+  overrideAiWebSearch(true);
+  const fixture = await createValuationFixture();
+  const jar = await signIn(fixture, "VALUADOR");
+  const found = await searchAndWait(jar, fixture.publicId);
+  assert.equal(found.status, "done");
+  if (found.status !== "done") return;
+  assert.deepEqual(found.candidates.map((candidate) => candidate.url), [page]);
+  assert.deepEqual(found.discards, { listingPage: 1, unpublished: 1, extra: 0, other: 0 });
+  const [read] = found.candidates;
+  assert.equal(read.pageRead, true);
+  assert.equal(read.street, "Paseo de los Leones");
+  assert.equal(read.subdivision, "Ciudad Bugambilias");
+  assert.equal(read.frontage, 10);
+  assert.equal(read.depth, 39.1);
+  assert.equal(read.shape, "forma irregular");
+  assert.equal(read.contactName, "Manuel Flores");
+  assert.equal(read.publicationId, null, "a fragment that is not in the page is never filled");
+  assert.ok(read.verifiedFields.includes("price"));
+  // Both pages the provider opened were read as they arrived; the reading is recorded apart.
+  assert.equal(fake.prompts.filter((item) => item.kind === "extract").length, 2);
+  const [record] = await usageOf(fixture, "AI_COMPARABLE_SEARCH");
+  const metadata = record.JMetadatos as Record<string, number>;
+  assert.equal(metadata.pagesOpened, 2);
+  assert.equal(metadata.pagesRead, 1);
+  assert.equal(metadata.discardedListingPages, 1);
+  assert.equal(metadata.discardedUnpublished, 1);
+
+  const created = await createCards(jar, fixture.publicId, found.candidates);
+  assert.equal(created.status, 201, created.body.error);
+  const [card] = (await market(fixture)).comparables;
+  assert.equal(card.address?.street, "Paseo de los Leones");
+  assert.equal(card.address?.subdivision, "Ciudad Bugambilias");
+  assert.equal(card.frontage, 10);
+  assert.equal(card.depth, 39.1);
+  assert.equal(card.shape, "forma irregular");
+  assert.equal(card.contactName, "Manuel Flores");
 });

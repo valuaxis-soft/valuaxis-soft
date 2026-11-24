@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError, SessionExpiredError } from "@/lib/api-client";
@@ -16,7 +17,9 @@ import { formatComparableId } from "@/features/valuations/calculation/comparable
 import { isLandComparableType, isRentComparableType, type ComparableType, type MarketCalculationDto } from "@/features/valuations/calculation/market-types";
 import { imageCount, NO_IMAGES, uploadListingImages, type PendingImages } from "@/features/valuations/comparable-search/listing-images";
 import {
+  AI_COMPARABLES_PER_VALUATION,
   WEB_LISTING_DETAIL_LABELS,
+  WEB_SEARCH_BATCH,
   WEB_SEARCH_FEW_RESULTS,
   WEB_SEARCH_MAX_KNOWN,
   WEB_SEARCH_MAX_PREVIOUS,
@@ -26,7 +29,7 @@ import {
   publishedDetails,
   type WebListingDetails,
 } from "@/features/valuations/comparable-search/web-listings";
-import type { WebSearchCandidateDto, WebSearchStatusDto } from "@/features/valuations/comparable-search/web-search.service";
+import type { AiComparableQuota, WebSearchCandidateDto, WebSearchPhase, WebSearchStatusDto } from "@/features/valuations/comparable-search/web-search.service";
 import { ListingImagesPicker } from "./listing-images-picker";
 
 const POLL_MS = 2500;
@@ -35,9 +38,35 @@ const pesos = (value: number) => value.toLocaleString("es-MX", { style: "currenc
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudo buscar.";
 
-type Setup = { enabled: boolean; disabledReason: string | null; suggestion: string; maxSearches: number };
-type Running = { searches: number; query: string | null; elapsedSeconds: number };
-type Round = { found: number; discarded: number; marketNote: string | null; searches: number; elapsedSeconds: number };
+type Setup = { enabled: boolean; disabledReason: string | null; suggestion: string; maxSearches: number; batch: number; quota: AiComparableQuota };
+type Running = { searches: number; maxSearches: number; fetches: number; phase: WebSearchPhase; query: string | null; elapsedSeconds: number };
+type Round = Pick<Extract<WebSearchStatusDto, { status: "done" }>, "discarded" | "discards" | "marketNote" | "searches" | "elapsedSeconds" | "count"> & { found: number };
+
+/** What the search is doing, in the appraiser's words, so a long wait does not look frozen. */
+function phaseText(running: Running) {
+  if (running.phase === "reading") return "Revisando los datos contra la página de cada anuncio…";
+  if (running.phase === "reporting") return "Escribiendo los datos de cada anuncio…";
+  if (running.phase === "fetching") return `Abriendo la página de cada anuncio para confirmar que sigue publicado (${running.fetches})…`;
+  return running.searches ? `Buscando anuncios en la web: ${running.searches} de hasta ${running.maxSearches} búsquedas…` : "Preparando las búsquedas…";
+}
+
+/** How far the search has gone, roughly: searching is most of it, then the pages, then the answer. */
+function progressOf(running: Running) {
+  if (running.phase === "reading") return 95;
+  if (running.phase === "reporting") return 85;
+  const searched = Math.min(1, running.searches / Math.max(1, running.maxSearches));
+  return Math.min(80, Math.round(searched * 60 + (running.phase === "fetching" ? 15 : 0)));
+}
+
+/** «3 descartados por ser un listado y no la página del anuncio; 1 porque ya no está publicado». */
+function discardsText(round: Round) {
+  const parts = [
+    round.discards.listingPage ? `${round.discards.listingPage} por traer la liga de un listado o una búsqueda y no la del anuncio` : null,
+    round.discards.unpublished ? `${round.discards.unpublished} porque su página dice que ya no está publicado` : null,
+    round.discards.other ? `${round.discards.other} por no traer una liga válida, ser de otra operación o estar repetido` : null,
+  ].filter(Boolean);
+  return parts.length ? ` · Descartados: ${parts.join("; ")}` : "";
+}
 type SortKey = "area" | "price" | "unitValue" | "zone" | "portal";
 type Sort = { key: SortKey; direction: "asc" | "desc" };
 
@@ -69,6 +98,10 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
   const [round, setRound] = useState<Round | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  /** Listings the next search asks for: five, or fewer for «Buscar N más». */
+  const [count, setCount] = useState(WEB_SEARCH_BATCH);
+  /** Comparables found with AI the valuation includes, across its markets, and how many it may. */
+  const [quota, setQuota] = useState<AiComparableQuota | null>(null);
   // The appraiser's own screenshot and photos of each listing, by its key, until its comparable is created.
   const [images, setImages] = useState<Record<string, PendingImages>>({});
   const requested = useRef(false);
@@ -81,6 +114,7 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
     api.ai.webSearchSetup(valuationId, type)
       .then((loaded) => {
         setSetup(loaded);
+        setQuota(loaded.quota);
         setText((current) => current || loaded.suggestion);
       })
       .catch((failure) => {
@@ -92,19 +126,21 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
   useEffect(() => () => { generation.current += 1; }, []);
 
   const search = useCallback(async () => {
-    const request = text.trim();
+    // «Buscar N más» without new words asks again for what was asked last.
+    const request = text.trim() || asked[asked.length - 1] || "";
     if (request.length < WEB_SEARCH_TEXT_MIN) {
       setError(`Describe lo que buscas con al menos ${WEB_SEARCH_TEXT_MIN} letras: tipo de inmueble, municipio y rango de superficie.`);
       return;
     }
     const current = ++generation.current;
     setError(null);
-    setRunning({ searches: 0, query: null, elapsedSeconds: 0 });
+    setRunning({ searches: 0, maxSearches: setup?.maxSearches ?? 9, fetches: 0, phase: "searching", query: null, elapsedSeconds: 0 });
     try {
       const { jobId } = await api.ai.startWebSearch(valuationId, type, {
         text: request,
         previous: asked.slice(-WEB_SEARCH_MAX_PREVIOUS),
         knownUrls: candidates.slice(-WEB_SEARCH_MAX_KNOWN).map((candidate) => candidate.url),
+        count,
       });
       let missed = 0;
       for (;;) {
@@ -121,7 +157,9 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
         }
         if (current !== generation.current) return;
         if (status.status === "running") {
-          setRunning({ searches: status.searches, query: status.query, elapsedSeconds: status.elapsedSeconds });
+          setRunning({
+            searches: status.searches, maxSearches: status.maxSearches, fetches: status.fetches, phase: status.phase, query: status.query, elapsedSeconds: status.elapsedSeconds,
+          });
           continue;
         }
         if (status.status === "failed") throw new Error(status.error);
@@ -130,7 +168,11 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
           const known = new Set(previous.map((candidate) => candidate.key));
           return [...previous, ...status.candidates.filter((candidate) => !known.has(candidate.key))];
         });
-        setRound({ found: status.candidates.length, discarded: status.discarded, marketNote: status.marketNote, searches: status.searches, elapsedSeconds: status.elapsedSeconds });
+        setRound({
+          found: status.candidates.length, discarded: status.discarded, discards: status.discards, marketNote: status.marketNote,
+          searches: status.searches, elapsedSeconds: status.elapsedSeconds, count: status.count,
+        });
+        setQuota(status.quota);
         setAsked((previous) => [...previous, request]);
         setText("");
         return;
@@ -140,7 +182,7 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
     } finally {
       if (current === generation.current) setRunning(null);
     }
-  }, [asked, candidates, text, type, valuationId]);
+  }, [asked, candidates, count, setup, text, type, valuationId]);
 
   const restart = useCallback(() => {
     generation.current += 1;
@@ -166,6 +208,7 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
     setCreating(true);
     try {
       const result = await api.ai.addWebListings(valuationId, type, chosen.map(candidateInputOf));
+      setQuota(result.quota);
       const keys = new Set(chosen.map((candidate) => candidate.key));
       // They are in the valuation now: shown as such, and not offered again.
       setCandidates((previous) => previous.map((candidate) => (keys.has(candidate.key)
@@ -219,6 +262,7 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
 
   return {
     setup, setupError, text, setText, asked, candidates, selected, setSelected, images, setImagesFor, running, round, error, creating, search, restart, create,
+    count, setCount, quota,
   };
 }
 
@@ -323,8 +367,24 @@ export function AiComparableSearchPanel({
 
   const refining = search.asked.length > 0;
   const busy = running !== null || search.creating;
+  const quota = search.quota ?? setup.quota;
+  const left = Math.max(0, quota.cap - quota.used);
+  // «Buscar N más» never asks for more than the places left.
+  const counts = Array.from({ length: Math.min(setup.batch, left) }, (_, index) => index + 1);
+  const asking = Math.min(search.count, left);
+  const tooMany = chosen.length > left;
   return (
     <>
+      <div className="grid gap-1 rounded-md border bg-muted/40 p-3 text-xs" data-ai-quota>
+        <p className="flex flex-wrap items-center gap-2 text-sm">
+          <Badge variant={left ? "secondary" : "outline"} className="tabular-nums">{quota.used} de {quota.cap} con IA</Badge>
+          <span className="text-muted-foreground">comparables encontrados con IA en este avalúo, sumando todos sus mercados</span>
+        </p>
+        <p className="text-muted-foreground">
+          El avalúo puede incluir hasta {AI_COMPARABLES_PER_VALUATION} comparables encontrados con IA. Cada búsqueda propone hasta {setup.batch} anuncios y se cobra
+          aunque no uses ninguno: elige bien dónde buscar. Si te faltan comparables, captúralos o búscalos a mano.
+        </p>
+      </div>
       <form className="grid gap-2" onSubmit={submit} noValidate>
         {refining ? (
           <ol className="grid gap-1 text-xs text-muted-foreground" aria-label="Lo que ya buscaste">
@@ -340,16 +400,30 @@ export function AiComparableSearchPanel({
             maxLength={WEB_SEARCH_TEXT_MAX}
             value={search.text}
             disabled={busy}
-            placeholder={refining ? "Por ejemplo: también los libramientos norte y sur, hasta 9,000 m²" : "Por ejemplo: terrenos en venta de 5,000 a 7,000 m² en la mancha urbana de Arandas, Jalisco"}
+            placeholder={refining ? "Opcional: también los libramientos norte y sur, hasta 9,000 m². Vacío, busca más de lo mismo." : "Por ejemplo: terrenos en venta de 5,000 a 7,000 m² en la mancha urbana de Arandas, Jalisco"}
             aria-describedby="ai-search-hint"
             onChange={(event) => search.setText(event.target.value)}
           />
         </Field>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" disabled={busy}>
-            {running ? <Loader2 data-icon="inline-start" className="animate-spin motion-reduce:animate-none" /> : <Sparkles data-icon="inline-start" />}
-            {refining ? "Buscar más" : "Buscar"}
-          </Button>
+          {left ? (
+            <>
+              <Button type="submit" disabled={busy}>
+                {running ? <Loader2 data-icon="inline-start" className="animate-spin motion-reduce:animate-none" /> : <Sparkles data-icon="inline-start" />}
+                {refining ? `Buscar ${asking} más` : `Buscar ${asking} anuncio${asking === 1 ? "" : "s"}`}
+              </Button>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {refining ? "¿Cuántos más?" : "¿Cuántos?"}
+                <NativeSelect size="sm" value={asking} disabled={busy} onChange={(event) => search.setCount(Number(event.target.value))} aria-label="Anuncios que propone la búsqueda" data-ai-count>
+                  {counts.map((value) => <NativeSelectOption key={value} value={value}>{value}</NativeSelectOption>)}
+                </NativeSelect>
+              </label>
+            </>
+          ) : (
+            <p className="text-sm text-highlight-strong" role="status">
+              Este avalúo ya tiene sus {quota.cap} comparables encontrados con IA. Captura los demás a mano o búscalos en la base del despacho.
+            </p>
+          )}
           {refining ? (
             <Button type="button" variant="ghost" disabled={busy} onClick={search.restart}>
               <RotateCcw data-icon="inline-start" /> Nueva búsqueda
@@ -358,7 +432,7 @@ export function AiComparableSearchPanel({
         </div>
         <p id="ai-search-hint" className={search.error ? "text-sm text-destructive" : "text-xs text-muted-foreground"} role={search.error ? "alert" : undefined}>
           {search.error ?? (refining
-            ? "Los resultados anteriores se conservan; lo nuevo se agrega a la tabla."
+            ? "Los resultados anteriores se conservan y no se vuelven a proponer; lo nuevo se agrega a la tabla."
             : "La descripción se arma con los datos del sujeto; edítala a tu gusto. Se envía a un servicio de IA que busca anuncios en la web. No incluyas datos del cliente.")}
         </p>
       </form>
@@ -368,15 +442,14 @@ export function AiComparableSearchPanel({
           <div className="grid gap-1.5 rounded-md border p-3 text-sm">
             <p className="flex items-center gap-2">
               <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-              <span>
-                Buscando anuncios en la web… <span className="tabular-nums">{running.searches}</span> de hasta {setup.maxSearches} búsquedas
-                {" · "}<span className="tabular-nums">{running.elapsedSeconds}</span> s
+              <span data-ai-phase={running.phase}>
+                {phaseText(running)}{" · "}<span className="tabular-nums">{running.elapsedSeconds}</span> s
               </span>
             </p>
-            <Progress value={Math.min(100, (running.searches / setup.maxSearches) * 100)} aria-label="Avance de la búsqueda" />
+            <Progress value={progressOf(running)} aria-label="Avance de la búsqueda" />
             <p className="text-xs text-muted-foreground">
-              {running.query ? <>Última consulta: «{running.query}». </> : null}
-              Suele tardar de 1 a 4 minutos. Puedes cerrar esta ventana: la búsqueda sigue.
+              {running.query && running.phase === "searching" ? <>Última consulta: «{running.query}». </> : null}
+              Suele tardar de 40 segundos a 2 minutos. Puedes cerrar esta ventana: la búsqueda sigue.
             </p>
           </div>
         ) : null}
@@ -385,18 +458,18 @@ export function AiComparableSearchPanel({
           <p className="text-sm">
             <span className="font-medium">{candidates.length} anuncio{candidates.length === 1 ? "" : "s"} encontrado{candidates.length === 1 ? "" : "s"}</span>
             <span className="text-muted-foreground">
-              {refining && search.asked.length > 1 ? ` (${round.found} en la última búsqueda)` : ""}
+              {refining && search.asked.length > 1 ? ` (${round.found} de ${round.count} pedidos en la última búsqueda)` : round.found < round.count ? ` de ${round.count} pedidos` : ""}
               {" · "}{round.searches} búsqueda{round.searches === 1 ? "" : "s"} en la web en {round.elapsedSeconds} s
-              {round.discarded ? ` · ${round.discarded} descartado${round.discarded === 1 ? "" : "s"} por no traer una liga válida, ser de otra operación o estar repetido${round.discarded === 1 ? "" : "s"}` : ""}
+              {discardsText(round)}
             </span>
           </p>
         ) : null}
 
-        {round && !running && candidates.length < WEB_SEARCH_FEW_RESULTS ? (
+        {round && !running && round.found < Math.min(round.count, WEB_SEARCH_FEW_RESULTS) ? (
           <p className="flex items-start gap-1.5 rounded-md border border-dashed p-3 text-sm text-highlight-strong">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <span>
-              {candidates.length ? "Se encontraron pocos anuncios." : "No se encontraron anuncios."} El mercado publicado en la web para esa zona puede ser reducido:
+              {round?.found ? "Se encontraron pocos anuncios." : "No se encontraron anuncios nuevos."} El mercado publicado en la web para esa zona puede ser reducido:
               amplía el rango de superficie o la zona («también las colonias vecinas», «también los libramientos») y vuelve a buscar.
             </span>
           </p>
@@ -465,6 +538,15 @@ export function AiComparableSearchPanel({
                             <Badge variant="outline">Sin verificar</Badge>
                             {candidate.existing?.inValuation ? <Badge variant="secondary">Ya está en este avalúo</Badge>
                               : candidate.existing ? <Badge variant="secondary">Ya está en tu base{folio ? ` (${folio})` : ""}: se usará esa ficha</Badge> : null}
+                            {candidate.pageRead ? (
+                              <Badge variant="secondary" data-page-read>
+                                Página abierta: sigue publicado{candidate.verifiedFields.length ? ` · ${candidate.verifiedFields.length} datos confirmados en ella` : ""}
+                              </Badge>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-highlight-strong" data-page-unread>
+                                <AlertTriangle className="size-3" /> No se pudo abrir el anuncio: confirma que siga publicado
+                              </span>
+                            )}
                             {!candidate.urlConfirmed ? (
                               <span className="inline-flex items-center gap-1 text-highlight-strong">
                                 <AlertTriangle className="size-3" /> La liga no salió tal cual en el buscador: ábrela antes de elegirlo
@@ -515,14 +597,10 @@ export function AiComparableSearchPanel({
                             href={candidate.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            aria-label={candidate.listingPage
-                              ? `Abrir en otra pestaña el listado del portal donde está «${candidate.title}»`
-                              : `Abrir el anuncio «${candidate.title}» en otra pestaña`}
-                            data-listing-page={candidate.listingPage ? "" : undefined}
+                            aria-label={`Abrir el anuncio «${candidate.title}» en otra pestaña`}
                           >
-                            <ExternalLink className="size-3.5" /> {candidate.listingPage ? "Abrir listado" : "Abrir anuncio"}
+                            <ExternalLink className="size-3.5" /> Abrir anuncio
                           </a>
-                          {candidate.listingPage ? <span className="block text-muted-foreground">Liga al listado del portal: busca ahí el anuncio.</span> : null}
                         </td>
                       </tr>
                       {takesImages && imagesOpen ? (
@@ -550,7 +628,8 @@ export function AiComparableSearchPanel({
               <p className="text-xs text-muted-foreground">El avalúo es de solo lectura: puedes buscar y abrir los anuncios, pero no crear fichas.</p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                «Crear fichas» agrega los anuncios elegidos a este mercado y a la base del despacho, con su liga, su fuente y los datos que publica, como «Sin revisar».
+                «Crear fichas» agrega los anuncios elegidos a este mercado y a la base del despacho, con su liga, su fuente y los datos que publica, como «Sin revisar»;
+                la fecha de la oferta es la de consulta si el anuncio no dice otra, y la vigencia, de 6 meses.
                 Con «Pegar captura y fotos» pegas la captura del anuncio que abriste y sus fotos: se guardan como pantalla de referencia y fotografías de la ficha.
               </p>
             )}
@@ -560,8 +639,13 @@ export function AiComparableSearchPanel({
 
       <DialogFooter>
         <Button type="button" variant="ghost" disabled={search.creating} onClick={onClose}>Cerrar</Button>
+        {!readOnly && tooMany ? (
+          <p className="text-xs text-destructive" role="alert">
+            {left ? `Solo puedes agregar ${left} más con IA en este avalúo: elige menos anuncios.` : "Este avalúo ya tiene sus comparables encontrados con IA."}
+          </p>
+        ) : null}
         {!readOnly ? (
-          <Button type="button" disabled={busy || !chosen.length} onClick={() => void create()}>
+          <Button type="button" disabled={busy || !chosen.length || tooMany} onClick={() => void create()}>
             {search.creating ? <Loader2 data-icon="inline-start" className="animate-spin motion-reduce:animate-none" /> : null}
             Crear fichas ({chosen.length})
           </Button>

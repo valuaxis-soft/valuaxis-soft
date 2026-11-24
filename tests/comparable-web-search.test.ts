@@ -12,8 +12,11 @@ import {
   candidateInputOf,
   comparableFromWebListing,
   publishedDetails,
+  WEB_SEARCH_BATCH,
   listingUrl,
+  listingsWanted,
   normalizeWebListings,
+  pageSaysUnpublished,
   suggestedWebSearchText,
   webListingSearchPrompt,
   webListingSearchSchema,
@@ -25,18 +28,19 @@ import { consumeAiWebSearchRateLimit } from "../src/security/rate-limit/ai-limit
 type ModelCandidate = WebListingSearchAnswer["candidates"][number];
 /** The details a listing did not publish: empty texts and null numbers. */
 const NOT_PUBLISHED = {
-  street: "", postalCode: "", bedrooms: null, bathrooms: null, halfBaths: null, parking: null, levels: null, age: null, frontage: null, depth: null,
-  frontCount: null, landUse: "", topography: "", services: "", shape: "", conservation: "", amenities: "", contactName: "", contactPhone: "", publicationId: "",
+  street: "", streetNumber: "", subdivision: "", postalCode: "", bedrooms: null, bathrooms: null, halfBaths: null, parking: null, levels: null, floor: "",
+  age: null, frontage: null, depth: null, frontCount: null, landUse: "", topography: "", services: "", shape: "", conservation: "", amenities: "",
+  contactName: "", agency: "", contactPhone: "", publicationId: "",
 } satisfies Partial<ModelCandidate>;
 const listing = (overrides: Partial<ModelCandidate> = {}): ModelCandidate => ({
   title: "Terreno en Las Lomas", propertyType: "terreno", operation: "venta", landArea: 7881, builtArea: null, price: 4_216_335,
   currency: "MXN", neighborhood: "Las Lomas", municipality: "Villa Ejemplo", state: "Jalisco", addressOrReference: "a 2 km del libramiento norte",
-  portal: "Portal Ejemplo", url: "https://www.portal.example/anuncio/1/", urlKind: "anuncio", listingDate: "2026-11-02", notes: "Frente de 40 m.",
+  portal: "Portal Ejemplo", url: "https://www.portal.example/anuncio/1/", urlKind: "anuncio", pageStatus: "sin_abrir", listingDate: "2026-11-02", notes: "Frente de 40 m.",
   ...NOT_PUBLISHED,
   ...overrides,
 });
-const normalize = (candidates: ModelCandidate[], options: { resultUrls?: string[]; knownUrls?: string[] } = {}) =>
-  normalizeWebListings("TERRENO_VENTA", { candidates, marketNote: "" }, { resultUrls: options.resultUrls ?? [], knownUrls: options.knownUrls ?? [] });
+const normalize = (candidates: ModelCandidate[], options: { resultUrls?: string[]; knownUrls?: string[]; count?: number; pages?: Map<string, string> } = {}) =>
+  normalizeWebListings("TERRENO_VENTA", { candidates, marketNote: "" }, { resultUrls: options.resultUrls ?? [], knownUrls: options.knownUrls ?? [], count: options.count, pages: options.pages });
 
 test("the model answers in a fixed shape: a missing field or a number as text is not accepted", () => {
   assert.equal(webListingSearchSchema.safeParse({ candidates: [listing()], marketNote: "" }).success, true);
@@ -99,12 +103,47 @@ test("a repeat, a listing already on screen and one of the other operation are l
   assert.equal(discarded, 3);
 });
 
-test("a listing known only from a page of several listings says so: its link is not the listing's own", () => {
-  const { candidates } = normalize([
+test("V8.2: a listing known only from a page of several listings or a search is left out: its link is not the listing's own", () => {
+  const { candidates, discards } = normalize([
     listing(),
     listing({ url: "https://portal.example/terrenos/villa-ejemplo", urlKind: "listado" }),
   ]);
-  assert.deepEqual(candidates.map((candidate) => candidate.listingPage), [false, true]);
+  assert.deepEqual(candidates.map((candidate) => candidate.url), ["https://www.portal.example/anuncio/1/"]);
+  assert.equal(discards.listingPage, 1);
+});
+
+test("V8.2: a listing whose page says it is no longer published is left out, by the model's word or by the page's text", () => {
+  const pages = new Map([
+    ["portal.example/anuncio/2", "Terreno en Las Lomas\nEste anuncio ya no está publicado. Mira otros similares."],
+    ["portal.example/anuncio/3", "Terreno en venta\n$3,000,000\n7,000 m²\nInformación del anunciante: Manuel Flores"],
+    ["portal.example/anuncio/4", "La propiedad ya no está disponible"],
+  ]);
+  const { candidates, discards } = normalize([
+    listing({ url: "https://portal.example/anuncio/1", pageStatus: "no_publicado" }),
+    listing({ url: "https://portal.example/anuncio/2", pageStatus: "vigente" }),
+    listing({ url: "https://portal.example/anuncio/3", pageStatus: "vigente" }),
+    listing({ url: "https://portal.example/anuncio/4", pageStatus: "sin_abrir" }),
+    listing({ url: "https://portal.example/anuncio/5", pageStatus: "vigente" }),
+  ], { pages });
+  assert.deepEqual(candidates.map((candidate) => candidate.key), ["portal.example/anuncio/3", "portal.example/anuncio/5"]);
+  assert.equal(discards.unpublished, 3);
+  // Read only when the server saw the page: the model saying «vigente» of one nobody returned is not a reading.
+  assert.deepEqual(candidates.map((candidate) => candidate.pageRead), [true, false]);
+  assert.equal(pageSaysUnpublished("Publicación finalizada"), true);
+  assert.equal(pageSaysUnpublished("Terreno plano, todos los servicios disponibles"), false);
+});
+
+test("V8.2: a search proposes at most the number asked for, five by default, never «varios»", () => {
+  const many = Array.from({ length: 8 }, (_, index) => listing({ url: `https://portal.example/anuncio/${index + 1}` }));
+  const five = normalize(many);
+  assert.equal(five.candidates.length, 5);
+  assert.equal(five.discards.extra, 3);
+  const two = normalize(many, { count: 2 });
+  assert.deepEqual(two.candidates.map((candidate) => candidate.key), ["portal.example/anuncio/1", "portal.example/anuncio/2"]);
+  // More than the batch is never shown, whatever is asked.
+  assert.equal(normalize(many, { count: 40 }).candidates.length, WEB_SEARCH_BATCH);
+  assert.equal(listingsWanted(5), "cinco anuncios");
+  assert.equal(listingsWanted(1), "un anuncio");
 });
 
 test("an address the provider's search did not return is marked, not hidden", () => {
@@ -136,6 +175,7 @@ test("the request tells the model the rules and carries the appraiser's words as
     text: "terrenos de 5,000 a 7,000 m² en Villa Ejemplo",
     previous: ["terrenos en la mancha urbana"],
     knownUrls: ["https://portal.example/anuncio/1"],
+    count: 2,
   }, "2026-11-22");
   assert.match(prompt.system, /No estimes/);
   assert.match(prompt.system, /información no confiable/);
@@ -144,8 +184,19 @@ test("the request tells the model the rules and carries the appraiser's words as
   assert.match(prompt.user, /<solicitud>\nterrenos de 5,000 a 7,000 m² en Villa Ejemplo\n<\/solicitud>/);
   assert.match(prompt.user, /<solicitud_anterior>\nterrenos en la mancha urbana\n<\/solicitud_anterior>/);
   assert.match(prompt.user, /<ya_encontrados>\nhttps:\/\/portal\.example\/anuncio\/1\n<\/ya_encontrados>/);
+  // «Buscar 2 más»: the number in words, and only new ones.
+  assert.match(prompt.user, /reporta como máximo dos anuncios más, distintos de los ya encontrados/);
+  assert.match(prompt.system, /Reporta como máximo ese número, nunca más/);
+  // Every datum of the listing in its field: the examples of the appraiser's videos are in the rules.
+  for (const example of ["Remanso de los Conejos Poniente", "Ciudad Bugambilias", "Terreno de 12 x 30 m", "M² de frente: 12", "forma irregular", "Manuel Flores", "4 baños, 1 medio", "Piso 3", "C.P. 45238"]) {
+    assert.ok(prompt.system.includes(example), example);
+  }
+  assert.match(prompt.system, /SU PROPIA página/);
+  assert.match(prompt.system, /ya no está publicado/);
+  const first = webListingSearchPrompt({ type: "INMUEBLE_RENTA", text: "otra cosa distinta", previous: [], knownUrls: [], count: 5 }, "2026-01-01");
+  assert.match(first.user, /reporta como máximo cinco anuncios\./);
   // The rules are the same bytes on every call; what changes travels in the user turn.
-  assert.equal(prompt.system, webListingSearchPrompt({ type: "INMUEBLE_RENTA", text: "otra cosa distinta", previous: [], knownUrls: [] }, "2026-01-01").system);
+  assert.equal(prompt.system, first.system);
 });
 
 test("the box starts with a request written from the subject", () => {
@@ -154,17 +205,17 @@ test("the box starts with a request written from the subject", () => {
       propertyType: "Terreno", neighborhood: "Las Lomas", municipality: "Villa Ejemplo", state: "Jalisco", address: null, area: 6000, landUse: "habitacional",
     }),
     "Terrenos en venta en Villa Ejemplo, Jalisco, en la colonia Las Lomas o cerca de ella, de 4,200 a 7,800 m² de terreno (el sujeto mide 6,000 m²), "
-    + "con uso habitacional. Necesito varios, con superficie, precio, zona y la liga de cada anuncio.",
+    + "con uso habitacional. Necesito cinco, con superficie, precio, zona, características y la liga de cada anuncio.",
   );
   assert.equal(
     suggestedWebSearchText("INMUEBLE_RENTA", { propertyType: "Local comercial", neighborhood: null, municipality: null, state: null, address: "Av. Ficticia 12, Villa Ejemplo", area: 80, landUse: null }),
     // 80 ± 30 % is 56 to 104; two significant figures.
     "Local comercial en renta cerca de Av. Ficticia 12, Villa Ejemplo, de 56 a 100 m² de construcción (el sujeto mide 80 m²). "
-    + "Necesito varios, con superficie, precio, zona y la liga de cada anuncio.",
+    + "Necesito cinco, con superficie, precio, zona, características y la liga de cada anuncio.",
   );
   assert.equal(
     suggestedWebSearchText("INMUEBLE_VENTA", { propertyType: null, neighborhood: null, municipality: null, state: null, address: null, area: null, landUse: null }),
-    "Inmuebles construidos en venta. Necesito varios, con superficie, precio, zona y la liga de cada anuncio.",
+    "Inmuebles construidos en venta. Necesito cinco, con superficie, precio, zona, características y la liga de cada anuncio.",
   );
 });
 
@@ -173,7 +224,11 @@ test("the request of a search has a minimum, a maximum and keeps only real addre
   assert.equal(webSearchRequestSchema.safeParse({ text: "x".repeat(2001) }).success, false);
   assert.equal(webSearchRequestSchema.safeParse({ text: "terrenos en Villa Ejemplo", previous: Array(6).fill("antes") }).success, false);
   const parsed = webSearchRequestSchema.parse({ text: "  terrenos en Villa Ejemplo  ", knownUrls: ["https://portal.example/a", "no es una liga"] });
-  assert.deepEqual(parsed, { text: "terrenos en Villa Ejemplo", previous: [], knownUrls: ["https://portal.example/a"] });
+  assert.deepEqual(parsed, { text: "terrenos en Villa Ejemplo", previous: [], knownUrls: ["https://portal.example/a"], count: 5 });
+  // «Buscar N más»: one to five.
+  assert.equal(webSearchRequestSchema.parse({ text: "terrenos en Villa Ejemplo", count: 2 }).count, 2);
+  assert.equal(webSearchRequestSchema.safeParse({ text: "terrenos en Villa Ejemplo", count: 0 }).success, false);
+  assert.equal(webSearchRequestSchema.safeParse({ text: "terrenos en Villa Ejemplo", count: 6 }).success, false);
 });
 
 test("a chosen listing becomes the payload of a comparable with only what the listing gave", () => {
@@ -191,7 +246,8 @@ test("a chosen listing becomes the payload of a comparable with only what the li
     url: "https://www.portal.example/anuncio/1/",
     offerDate: "2026-11-02",
     consultedOn: "2026-11-22",
-    address: { state: "Jalisco", municipality: "Villa Ejemplo", neighborhood: "Las Lomas", street: null, postalCode: null },
+    validityMonths: 6,
+    address: { state: "Jalisco", municipality: "Villa Ejemplo", neighborhood: "Las Lomas", street: null, number: null, subdivision: null, postalCode: null },
     operationType: "VENTA",
     listingDetails: { currency: "MXN", dataOrigin: "Búsqueda con IA", dataVerified: "NO", publicationId: null },
   });

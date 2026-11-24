@@ -18,7 +18,7 @@ import type { ComparableReviewDto } from "@/features/valuations/calculation/comp
 import type { ImageFraming } from "@/features/valuations/services/image-framing";
 import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 import type { WebListingCandidateInput } from "@/features/valuations/comparable-search/web-listings";
-import type { WebListingOutcome, WebSearchStatusDto } from "@/features/valuations/comparable-search/web-search.service";
+import type { AiComparableQuota, WebListingOutcome, WebSearchStatusDto } from "@/features/valuations/comparable-search/web-search.service";
 import type { ConstructionTypeDto, ConstructionTypesDto, CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
 import type { ConclusionCalculationDto, ConclusionSettingsDto } from "@/features/valuations/calculation/conclusion-types";
 import type { IncomeCalculationDto, IncomeInputDto } from "@/features/valuations/calculation/income-types";
@@ -454,15 +454,17 @@ export const api = {
       request<{ text: string }>(`/avaluos/${id}/ia/redaccion`, { method: "POST", body: JSON.stringify(input) }),
     /** «Buscar con IA»: whether it can run and the request its box starts with. */
     webSearchSetup: (id: ApiId, type: ComparableType) =>
-      request<{ enabled: boolean; disabledReason: string | null; suggestion: string; maxSearches: number }>(`/avaluos/${id}/mercado/comparables/buscar-ia?tipo=${type}`),
+      request<{ enabled: boolean; disabledReason: string | null; suggestion: string; maxSearches: number; batch: number; quota: AiComparableQuota }>(
+        `/avaluos/${id}/mercado/comparables/buscar-ia?tipo=${type}`,
+      ),
     /** Starts a search; its progress and results are asked for with `webSearchStatus`. */
-    startWebSearch: (id: ApiId, type: ComparableType, input: { text: string; previous: string[]; knownUrls: string[] }) =>
-      request<{ jobId: string }>(`/avaluos/${id}/mercado/comparables/buscar-ia?tipo=${type}`, { method: "POST", body: JSON.stringify(input) }),
+    startWebSearch: (id: ApiId, type: ComparableType, input: { text: string; previous: string[]; knownUrls: string[]; count: number }) =>
+      request<{ jobId: string; count: number }>(`/avaluos/${id}/mercado/comparables/buscar-ia?tipo=${type}`, { method: "POST", body: JSON.stringify(input) }),
     webSearchStatus: (id: ApiId, jobId: string) =>
       request<WebSearchStatusDto>(`/avaluos/${id}/mercado/comparables/buscar-ia/${jobId}`, { cache: "no-store" }),
     /** «Crear fichas» of the listings chosen. */
     addWebListings: (id: ApiId, type: ComparableType, candidates: WebListingCandidateInput[]) =>
-      request<{ created: number; reused: number; skipped: number; items: WebListingOutcome[]; calculation: MarketCalculationDto }>(
+      request<{ created: number; reused: number; skipped: number; items: WebListingOutcome[]; calculation: MarketCalculationDto; quota: AiComparableQuota }>(
         `/avaluos/${id}/mercado/comparables/buscar-ia/fichas?tipo=${type}`,
         { method: "POST", body: JSON.stringify({ candidates }) },
       ),

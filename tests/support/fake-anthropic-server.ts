@@ -12,6 +12,8 @@ export type FakeTurn =
   | {
     /** Web searches of the turn: each one is a `server_tool_use` and its result block. */
     searches?: Array<{ query: string; results?: Array<{ url: string; title: string }>; errorCode?: string; direct?: boolean }>;
+    /** Pages the provider opens after its searches: each one is a `server_tool_use` of web_fetch and its result, with the page's text or an error. */
+    fetches?: Array<{ url: string; text?: string; errorCode?: string }>;
     /** Text the model writes outside any tool. */
     text?: string;
     /** The input of the `report_results` call that ends the turn. */
@@ -69,6 +71,21 @@ export async function startFakeAnthropicServer(turns: FakeTurn[] | ((request: Re
             : (search.results ?? []).map((result) => ({ type: "web_search_result", url: result.url, title: result.title, encrypted_content: "ZmFrZQ==", page_age: null })),
         });
       });
+      (turn.fetches ?? []).forEach((fetched, position) => {
+        const id = `srvtoolu_fake_fetch_${index}_${position}`;
+        whole({ type: "server_tool_use", id, name: "web_fetch", input: {}, caller: { type: "direct" } }, { url: fetched.url });
+        whole({
+          type: "web_fetch_tool_result",
+          tool_use_id: id,
+          caller: { type: "direct" },
+          content: fetched.errorCode
+            ? { type: "web_fetch_tool_result_error", error_code: fetched.errorCode }
+            : {
+              type: "web_fetch_result", url: fetched.url, retrieved_at: null,
+              content: { type: "document", title: null, citations: null, source: { type: "text", media_type: "text/plain", data: fetched.text ?? "" } },
+            },
+        });
+      });
       if (turn.text) {
         send({ type: "content_block_start", index: block, content_block: { type: "text", text: "" } });
         send({ type: "content_block_delta", index: block, delta: { type: "text_delta", text: turn.text } });
@@ -80,7 +97,7 @@ export async function startFakeAnthropicServer(turns: FakeTurn[] | ((request: Re
         send({
           type: "message_delta",
           delta: { stop_reason: turn.stopReason, stop_sequence: null },
-          usage: { ...usage, server_tool_use: { web_search_requests: turn.searches?.length ?? 0, web_fetch_requests: 0 } },
+          usage: { ...usage, server_tool_use: { web_search_requests: turn.searches?.length ?? 0, web_fetch_requests: turn.fetches?.length ?? 0 } },
         });
         send({ type: "message_stop" });
         response.end();

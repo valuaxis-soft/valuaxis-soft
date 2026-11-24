@@ -16,10 +16,10 @@ const PROMPT = { system: "Reglas de la búsqueda.", user: "Terrenos en venta en 
 const LISTING = {
   title: "Terreno en Las Lomas", propertyType: "terreno", operation: "venta" as const, landArea: 6000, builtArea: null, price: 3_000_000,
   currency: "MXN" as const, neighborhood: "Las Lomas", municipality: "Villa Ejemplo", state: "Jalisco", addressOrReference: "",
-  portal: "Portal Ejemplo", url: "https://portal.example/anuncio/1", urlKind: "anuncio", listingDate: "", notes: "",
-  street: "", postalCode: "", bedrooms: null, bathrooms: null, halfBaths: null, parking: null, levels: null, age: null, frontage: 40, depth: null,
-  frontCount: null, landUse: "Habitacional", topography: "", services: "", shape: "", conservation: "", amenities: "", contactName: "", contactPhone: "",
-  publicationId: "",
+  portal: "Portal Ejemplo", url: "https://portal.example/anuncio/1", urlKind: "anuncio" as const, pageStatus: "vigente" as const, listingDate: "", notes: "",
+  street: "", streetNumber: "", subdivision: "", postalCode: "", bedrooms: null, bathrooms: null, halfBaths: null, parking: null, levels: null, floor: "",
+  age: null, frontage: 40, depth: null, frontCount: null, landUse: "Habitacional", topography: "", services: "", shape: "", conservation: "", amenities: "",
+  contactName: "", agency: "", contactPhone: "", publicationId: "",
 };
 const REPORT = { candidates: [LISTING], marketNote: "" };
 
@@ -60,7 +60,13 @@ test("a search asks for the provider's web search with a cap, and answers throug
     assert.deepEqual(result.data, REPORT);
     assert.deepEqual(result.resultUrls, ["https://portal.example/anuncio/1", "https://otro.example/lista"]);
     assert.deepEqual(result.usage, { model: "claude-opus-5-5", inputTokens: 30_000, outputTokens: 2_000, cacheReadTokens: 0, cacheWriteTokens: 0, webSearches: 2 });
-    assert.deepEqual(progress, [{ searches: 1, query: "terrenos en venta Villa Ejemplo" }, { searches: 2, query: "terrenos Villa Ejemplo inmobiliaria" }]);
+    assert.deepEqual(progress, [
+      { searches: 1, query: "terrenos en venta Villa Ejemplo", fetches: 0, phase: "searching" },
+      { searches: 2, query: "terrenos Villa Ejemplo inmobiliaria", fetches: 0, phase: "searching" },
+      { searches: 2, query: "terrenos Villa Ejemplo inmobiliaria", fetches: 0, phase: "reporting" },
+    ]);
+    // A ceiling of cost that fits five listings with all their data.
+    assert.equal(server.requests[0].body.max_tokens, 20_000);
 
     assert.equal(server.requests.length, 1);
     const { body, headers } = server.requests[0];
@@ -167,5 +173,35 @@ test("a rejected key is a configuration failure and a search past its time is a 
     const started = Date.now();
     await assert.rejects(gateway.searchWeb(PROMPT, webListingSearchSchema, { maxSearches: 8, timeoutMs: 150 }), expectFailure("timeout"));
     assert.ok(Date.now() - started < 1_500, "the search ended at its time limit, not when the provider answered");
+  });
+});
+
+test("V8.2: the pages the provider opened come back as text, each as soon as it arrives, and the times of the search are measured", async () => {
+  await withServer([{
+    searches: [{ query: "terrenos en venta Villa Ejemplo", results: [{ url: "https://portal.example/anuncio/1", title: "Terreno" }] }],
+    fetches: [
+      { url: "https://portal.example/anuncio/1", text: "Terreno en venta\n$3,000,000\nInformación del anunciante: Manuel Flores" },
+      { url: "https://portal.example/anuncio/2", errorCode: "url_not_accessible" },
+    ],
+    report: REPORT,
+    stopReason: "tool_use",
+  }], async (gateway) => {
+    const arrived: string[] = [];
+    const phases: string[] = [];
+    const result = await gateway.searchWeb(PROMPT, webListingSearchSchema, {
+      maxSearches: 9, maxFetches: 8, timeoutMs: 5_000,
+      onPage: (page) => arrived.push(page.url),
+      onProgress: (progress) => phases.push(`${progress.phase}:${progress.fetches}`),
+    });
+    assert.deepEqual(result.pages, [{ url: "https://portal.example/anuncio/1", text: "Terreno en venta\n$3,000,000\nInformación del anunciante: Manuel Flores" }]);
+    assert.deepEqual(arrived, ["https://portal.example/anuncio/1"]);
+    // Searching, opening the two pages, then writing the answer.
+    assert.deepEqual(phases, ["searching:0", "fetching:1", "fetching:2", "reporting:2"]);
+    // A page that failed to open is neither a page nor an address that was found.
+    assert.deepEqual(result.resultUrls, ["https://portal.example/anuncio/1"]);
+    assert.equal(result.timings?.turns, 1);
+    assert.ok((result.timings?.firstSearchMs ?? -1) >= 0);
+    assert.ok((result.timings?.reportStartMs ?? -1) >= (result.timings?.firstSearchMs ?? 0));
+    assert.ok((result.timings?.totalMs ?? -1) >= (result.timings?.reportStartMs ?? 0));
   });
 });

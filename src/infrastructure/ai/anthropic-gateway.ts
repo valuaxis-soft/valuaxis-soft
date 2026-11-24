@@ -6,7 +6,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
-import { AiGatewayError, type AiGateway, type AiPrompt, type AiUsage, type AiWebSearchOptions } from "@/features/ai/ai-gateway";
+import { AiGatewayError, type AiFetchedPage, type AiGateway, type AiPrompt, type AiUsage, type AiWebSearchOptions } from "@/features/ai/ai-gateway";
 
 /** Extraction is a small, fast task: the cheapest current model. */
 export const DEFAULT_EXTRACTION_MODEL = "claude-haiku-4-5";
@@ -26,8 +26,13 @@ const EXTRACTION_MAX_TOKENS = 2048;
 /** Thinking counts toward the limit on models that always think. */
 const DRAFTING_MAX_TOKENS = 4096;
 const FALLBACK_BETA = "server-side-fallback-2026-07-01";
-/** A ceiling of cost for one search, thinking included; the answer itself is a few thousand tokens. */
-const SEARCH_MAX_TOKENS = 32_000;
+/**
+ * A ceiling of cost for one search, thinking included. Five listings with all
+ * their data measured 7,500 to 9,500 tokens of output; nine, 13,150.
+ */
+const SEARCH_MAX_TOKENS = 20_000;
+/** What is kept of the text of a page the provider opened, for the server to read it again. */
+const FETCHED_PAGE_MAX_CHARS = 30_000;
 /** Times a search paused by the provider (`pause_turn`) or ended without its answer is sent back. */
 const SEARCH_MAX_CONTINUATIONS = 3;
 /** What is read of a page opened during a search: a listing's data is at its top. */
@@ -100,15 +105,25 @@ export function createAnthropicGateway(options: { apiKey: string; extractionMode
       const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: prompt.user }];
       const resultUrls = new Set<string>();
       let usage: AiUsage = { model: searchModel, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, webSearches: 0 };
+      const pages: AiFetchedPage[] = [];
+      const started = Date.now();
+      const since = () => Date.now() - started;
+      let firstSearchMs: number | null = null;
+      let lastToolMs: number | null = null;
+      let reportStartMs: number | null = null;
+      let turns = 0;
       let searches = 0;
+      let fetches = 0;
+      let lastQuery: string | null = null;
       // The provider counts the direct searches of a resumed turn itself; those run from its code execution it does not.
       let filteredSearches = 0;
       let reminded = false;
       try {
         for (let turn = 0; turn <= SEARCH_MAX_CONTINUATIONS; turn += 1) {
+          turns += 1;
           const stream = client.beta.messages.stream({
             model: searchModel,
-            max_tokens: SEARCH_MAX_TOKENS,
+            max_tokens: search.maxTokens ?? SEARCH_MAX_TOKENS,
             system: system(`${prompt.system}\n\nAl terminar de buscar, entrega el resultado llamando una sola vez a la herramienta ${REPORT_TOOL}. No lo escribas como texto.`),
             messages,
             tools: [
@@ -134,19 +149,42 @@ export function createAnthropicGateway(options: { apiKey: string; extractionMode
             output_config: { effort: "medium" },
             ...(takesFallbacks(searchModel) ? { betas: [FALLBACK_BETA], fallbacks: "default" as const } : {}),
           }, { signal: controller.signal });
+          // The answer starts: the searching is over, and the appraiser reads that it is being written.
+          stream.on("streamEvent", (event) => {
+            if (event.type === "content_block_start" && event.content_block.type === "tool_use" && event.content_block.name === REPORT_TOOL) {
+              reportStartMs ??= since();
+              search.onProgress?.({ searches, query: lastQuery, fetches, phase: "reporting" });
+            }
+          });
           stream.on("contentBlock", (block) => {
             if (block.type === "server_tool_use" && block.name === "web_search") {
               searches += 1;
+              firstSearchMs ??= since();
+              lastToolMs = since();
               if (block.caller && block.caller.type !== "direct") filteredSearches += 1;
               const query = (block.input as { query?: unknown } | null)?.query;
-              search.onProgress?.({ searches, query: typeof query === "string" ? query : null });
+              lastQuery = typeof query === "string" ? query : null;
+              search.onProgress?.({ searches, query: lastQuery, fetches, phase: "searching" });
+            }
+            if (block.type === "server_tool_use" && block.name === "web_fetch") {
+              fetches += 1;
+              lastToolMs = since();
+              search.onProgress?.({ searches, query: lastQuery, fetches, phase: "fetching" });
             }
             // An error of the search comes as an object in place of the list of results.
             if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
               for (const result of block.content) resultUrls.add(result.url);
             }
-            // A page the provider opened is as found as one its search listed.
-            if (block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result") resultUrls.add(block.content.url);
+            // A page the provider opened is as found as one its search listed; its text is kept to be read again.
+            if (block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result") {
+              resultUrls.add(block.content.url);
+              const source = block.content.content.source;
+              if (source.type === "text" && source.data.trim()) {
+                const page = { url: block.content.url, text: source.data.slice(0, FETCHED_PAGE_MAX_CHARS) };
+                pages.push(page);
+                search.onPage?.(page);
+              }
+            }
           });
           const message = await stream.finalMessage();
           usage = addUsage({ ...usage, model: message.model }, message.usage);
@@ -156,7 +194,13 @@ export function createAnthropicGateway(options: { apiKey: string; extractionMode
           if (report?.type === "tool_use") {
             const parsed = schema.safeParse(report.input);
             if (!parsed.success) throw new AiGatewayError("invalid_output");
-            return { data: parsed.data, usage, resultUrls: [...resultUrls] };
+            return {
+              data: parsed.data,
+              usage,
+              resultUrls: [...resultUrls],
+              pages,
+              timings: { firstSearchMs, lastToolMs, reportStartMs, totalMs: since(), turns },
+            };
           }
           messages.push({ role: "assistant", content: message.content });
           // A paused turn is resumed by sending it back as it came, with nothing added.
