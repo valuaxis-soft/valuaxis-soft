@@ -14,6 +14,7 @@ import sharp from "sharp";
 import {
   COMPARABLES_FRAME,
   COMPARABLE_PIN_COLORS,
+  SUBJECT_PIN_COLOR,
   comparablePins,
   comparablesFitFrame,
   croquisLegend,
@@ -22,8 +23,10 @@ import {
   legendCorner,
   pinNumbers,
   pinsOutsideFrame,
+  pinsOverlaySvg,
   readCroquisSettings,
   streetLabelBox,
+  subjectPinSvg,
   type ComparableForPin,
 } from "../src/features/maps/croquis";
 import { croquisStreets } from "../src/features/maps/croquis-streets";
@@ -131,6 +134,34 @@ test("FAL-10: the composed image carries the comparables' pins in their color an
   assert.ok(drawn >= 13, `${drawn} pins drawn in their color`);
   // The legend's box is white over the grey map.
   assert.ok(near(pixel((placement.box.x + placement.box.width - 6) * scale, (placement.box.y + placement.box.height - 4) * scale), [255, 255, 255]));
+  // The subject's red drop is on the image too (it was the Static API's marker, absent here).
+  const subject = imagePixel(center, frame.zoom, SUBJECT);
+  assert.ok(near(pixel(subject.x * scale, (subject.y - 16) * scale), hex(SUBJECT_PIN_COLOR)), "the subject's pin is drawn");
+});
+
+test("the subject's pin draws on top: a comparable at the same spot, with its number, never covers it", async () => {
+  const scale = 2;
+  const base = await sharp({ create: { width: STATIC_MAP_SIZE.width * scale, height: STATIC_MAP_SIZE.height * scale, channels: 3, background: "#e8e8e8" } }).png().toBuffer();
+  // A comparable on the subject's own spot and one just above its head, where the drop is drawn.
+  const pins = comparablePins([
+    { type: "TERRENO_VENTA", comparable: { id: "a", reference: 1, latitude: SUBJECT[0], longitude: SUBJECT[1], location: "Al lado" } },
+    { type: "INMUEBLE_VENTA", comparable: { id: "b", reference: 1, latitude: SUBJECT[0] + 2 * METER, longitude: SUBJECT[1], location: "Enfrente" } },
+  ]);
+  const jpeg = await composeCroquisImage(base, { center: SUBJECT, zoom: 17, northArrow: { style: "flecha", corner: "top-right" }, pins, lines: [], subject: SUBJECT });
+  const { data, info } = await sharp(jpeg).raw().toBuffer({ resolveWithObject: true });
+  const at = imagePixel(SUBJECT, 17, SUBJECT);
+  const offset = (Math.round((at.y - 16) * scale) * info.width + Math.round(at.x * scale)) * info.channels;
+  const red = [1, 3, 5].map((index) => parseInt(SUBJECT_PIN_COLOR.slice(index, index + 2), 16));
+  assert.ok(red.every((value, index) => Math.abs(data[offset + index] - value) < 40), "the drop's body is the subject's red, over the comparables");
+  // A number that would fall under the drop goes to the other side of its pin, so it stays readable.
+  const beside = comparablePins([{ type: "INMUEBLE_VENTA", comparable: { id: "c", reference: 4, latitude: SUBJECT[0] + 3 * METER, longitude: SUBJECT[1] - east(12), location: "Junto" } }]);
+  const chipX = (svg: string) => Number(/<rect x="([\d.-]+)"/.exec(svg)![1]);
+  const pinX = imagePixel(SUBJECT, 17, beside[0].point).x * scale;
+  assert.ok(chipX(pinsOverlaySvg(SUBJECT, 17, beside, scale)) > pinX, "to the right when nothing is there");
+  assert.ok(chipX(pinsOverlaySvg(SUBJECT, 17, beside, scale, SUBJECT)) < pinX, "to the left when the subject's drop is to the right");
+  // Outside the frame, no pin; the image carries it only where the subject is.
+  assert.doesNotMatch(subjectPinSvg(SUBJECT, 17, [SUBJECT[0] + 1, SUBJECT[1]]), /<path/);
+  assert.match(subjectPinSvg(SUBJECT, 17, SUBJECT), new RegExp(`fill="${SUBJECT_PIN_COLOR}"`));
 });
 
 /** Two avenues 80 m apart crossed by two streets 120 m apart, all through the subject's block, with long names (Av. López Mateos). */

@@ -12,7 +12,7 @@ import type { AuthUser } from "@/features/auth/model";
 import { storeEditorImage, type EditorImageDto } from "@/features/files/services/editor-image";
 import { ValuationWorkflowError } from "@/features/valuations/services/valuation-workflow/errors";
 
-import { CROQUIS_IMAGE_IDS, croquisLegendPlacement, legendOverlaySvg, pinsInFrame, pinsOutsideFrame, pinsOverlaySvg, streetLabelsOverlaySvg, type ComparablePin, type CroquisKind } from "../croquis";
+import { CROQUIS_IMAGE_IDS, croquisLegendPlacement, subjectPinSvg, legendOverlaySvg, pinsInFrame, pinsOutsideFrame, pinsOverlaySvg, streetLabelsOverlaySvg, type ComparablePin, type CroquisKind } from "../croquis";
 import { croquisStreets, type CroquisStreets } from "../croquis-streets";
 import { freeLinesOverlaySvg, type FreeLine } from "../free-lines";
 import { hasHighlights, placedStreetLabels, type CroquisLabelPlacement, type StreetHighlights } from "../highlights";
@@ -72,11 +72,15 @@ export async function resolveCroquisStreets(
   return { ...streets, labels: placedStreetLabels(streets.labels, input.labels) };
 }
 
-/** The base image from Google, as PNG bytes, with the highlighted streets drawn by the Static API. */
-export async function fetchStaticMap(input: Pick<CroquisRenderInput, "center" | "zoom" | "subject" | "clean" | "mapType">, streets: CroquisStreets = NO_STREETS, fetchImpl: typeof fetch = fetch) {
+/**
+ * The base image from Google, as PNG bytes, with the highlighted streets
+ * drawn by the Static API. Without the subject's marker: it is composed over
+ * everything (`subjectPinSvg`), where nothing covers it.
+ */
+export async function fetchStaticMap(input: Pick<CroquisRenderInput, "center" | "zoom" | "clean" | "mapType">, streets: CroquisStreets = NO_STREETS, fetchImpl: typeof fetch = fetch) {
   const apiKey = googleMapsServerKey();
   if (!apiKey) throw new ValuationWorkflowError(MAPS_NOT_CONFIGURED, 503);
-  const response = await fetchImpl(staticMapUrl({ apiKey, center: input.center, zoom: input.zoom, subject: input.subject, clean: input.clean, mapType: input.mapType, paths: streets.paths }));
+  const response = await fetchImpl(staticMapUrl({ apiKey, center: input.center, zoom: input.zoom, subject: null, clean: input.clean, mapType: input.mapType, paths: streets.paths }));
   if (!response.ok) {
     // The key is rejected or the API is not enabled: the cause goes to the log, the client gets a generic message.
     console.error(`[CROQUIS] Maps Static API answered ${response.status}: ${(await response.text()).slice(0, 300)}`);
@@ -113,9 +117,11 @@ export async function composeCroquisImage(
     // V7.3-09, FAL-10: what each color means, with the numbers the image shows, in the corner that hides the fewest pins; under the pins.
     const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject ?? input.center);
     if (legend) layers.push({ input: Buffer.from(legendOverlaySvg(legend.entries, legend.corner, scale)), left: 0, top: 0 });
-    const pins = Buffer.from(pinsOverlaySvg(input.center, input.zoom, input.pins, scale));
+    const pins = Buffer.from(pinsOverlaySvg(input.center, input.zoom, input.pins, scale, input.subject));
     layers.push({ input: pins, left: 0, top: 0 });
   }
+  // The subject's pin over everything else: a comparable next door, its number or the legend never hide it.
+  if (input.subject) layers.push({ input: Buffer.from(subjectPinSvg(input.center, input.zoom, input.subject, scale)), left: 0, top: 0 });
   layers.push({ input: arrow, left: Math.max(0, placement.left), top: Math.max(0, placement.top) });
   return image.composite(layers).flatten({ background: "#ffffff" }).jpeg({ quality: 90 }).toBuffer();
 }

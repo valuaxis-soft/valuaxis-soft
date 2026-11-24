@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import sharp from "sharp";
 
-import { COMPARABLES_FRAME, COMPARABLE_PIN_COLORS, DEFAULT_CROQUIS_SETTINGS, comparablesFitFrame, croquisLegend, croquisLegendPlacement, pinsOutsideFrame } from "../../src/features/maps/croquis";
+import { COMPARABLES_FRAME, COMPARABLE_PIN_COLORS, DEFAULT_CROQUIS_SETTINGS, SUBJECT_PIN_COLOR, comparablesFitFrame, croquisLegend, croquisLegendPlacement, pinsOutsideFrame } from "../../src/features/maps/croquis";
 import { frameCenter } from "../../src/features/maps/map-styles";
 import { composeCroquisImage, storeCroquisImage } from "../../src/features/maps/server/croquis-image.service";
 import { getSubjectLocation, saveSubjectLocation } from "../../src/features/maps/server/subject-location.service";
@@ -68,11 +68,19 @@ test("FAL-10: the map of comparables fits every comparable, numbered per market,
   const { data, info } = await sharp(jpeg).raw().toBuffer({ resolveWithObject: true });
   const legend = croquisLegendPlacement(center, frame.zoom, dto.comparables, northArrow.corner, SUBJECT)!;
   assert.notEqual(legend.corner, "top-right", "never the north arrow's corner");
+  const colorAt = (x: number, y: number, hex: string) => {
+    const offset = (Math.round(y * STATIC_MAP_SCALE) * info.width + Math.round(x * STATIC_MAP_SCALE)) * info.channels;
+    const color = [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16));
+    return color.every((value, index) => Math.abs(data[offset + index] - value) < 40);
+  };
+  // The subject's drop is drawn over everything: «Casa junto», 70 m away, sits under it at this zoom.
+  const subject = imagePixel(center, frame.zoom, SUBJECT);
+  assert.ok(colorAt(subject.x, subject.y - 16, SUBJECT_PIN_COLOR), "the subject's pin is on the image, on top");
+  const underDrop = (x: number, y: number) => Math.abs(x - subject.x) <= 15 && y <= subject.y && y >= subject.y - 38;
   for (const pin of dto.comparables) {
     const at = imagePixel(center, frame.zoom, pin.point);
-    const offset = (Math.round(at.y * STATIC_MAP_SCALE) * info.width + Math.round(at.x * STATIC_MAP_SCALE)) * info.channels;
-    const color = [1, 3, 5].map((index) => parseInt(COMPARABLE_PIN_COLORS[pin.type].slice(index, index + 2), 16));
-    assert.ok(color.every((value, index) => Math.abs(data[offset + index] - value) < 40), `${pin.type} ${pin.label} is drawn in its color`);
+    if (underDrop(at.x, at.y)) continue;
+    assert.ok(colorAt(at.x, at.y, COMPARABLE_PIN_COLORS[pin.type]), `${pin.type} ${pin.label} is drawn in its color`);
   }
   const stored = await storeCroquisImage(user, "comparables", jpeg);
   assert.equal(stored.mimeType, "image/jpeg");

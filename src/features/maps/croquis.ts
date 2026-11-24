@@ -207,21 +207,30 @@ function escapeXml(text: string) {
  * out. The Static API's own markers only take one character as a label, so
  * "C-12" is drawn here.
  */
-export function pinsOverlaySvg(center: LatLon, zoom: number, pins: readonly ComparablePin[], scale = 2) {
+export function pinsOverlaySvg(center: LatLon, zoom: number, pins: readonly ComparablePin[], scale = 2, subject?: LatLon) {
   const width = STATIC_MAP_SIZE.width * scale;
   const height = STATIC_MAP_SIZE.height * scale;
   const r = PIN_RADIUS * scale;
+  // The subject's drop (drawn over the pins): a number that would fall under it goes to the other side of its pin.
+  const drop = subject ? imagePosition(center, zoom, subject) : null;
+  const underDrop = (left: number, top: number, chipWidth: number, chipHeight: number) =>
+    drop !== null && left < drop.x * width + 15 * scale && left + chipWidth > drop.x * width - 15 * scale && top < drop.y * height && top + chipHeight > drop.y * height - 38 * scale;
   const items = pins.flatMap((pin) => {
     const at = imagePosition(center, zoom, pin.point);
     if (!at) return [];
-    const x = (at.x * width).toFixed(1);
-    const y = (at.y * height).toFixed(1);
+    const x = at.x * width;
+    const y = at.y * height;
     const color = COMPARABLE_PIN_COLORS[pin.type];
+    const chipWidth = (pin.label.length * 7 + 8) * scale;
+    const chipHeight = r * 1.7;
+    const top = y - r * 0.85;
+    const right = x + r * 0.6;
+    const left = underDrop(right, top, chipWidth, chipHeight) ? x - r * 0.6 - chipWidth : right;
     return [
       `<g>` +
-        `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}" stroke="#fff" stroke-width="${1.5 * scale}"/>` +
-        `<rect x="${(Number(x) + r * 0.6).toFixed(1)}" y="${(Number(y) - r * 0.85).toFixed(1)}" width="${(pin.label.length * 7 + 8) * scale}" height="${r * 1.7}" rx="${2 * scale}" fill="rgba(255,255,255,0.92)" stroke="${color}" stroke-width="${scale}"/>` +
-        `<text x="${(Number(x) + r * 0.6 + 4 * scale).toFixed(1)}" y="${(Number(y) + r * 0.4).toFixed(1)}" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="${11 * scale}" fill="#12212f">${escapeXml(pin.label)}</text>` +
+        `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${color}" stroke="#fff" stroke-width="${1.5 * scale}"/>` +
+        `<rect x="${left.toFixed(1)}" y="${top.toFixed(1)}" width="${chipWidth}" height="${chipHeight}" rx="${2 * scale}" fill="rgba(255,255,255,0.92)" stroke="${color}" stroke-width="${scale}"/>` +
+        `<text x="${(left + 4 * scale).toFixed(1)}" y="${(y + r * 0.4).toFixed(1)}" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="${11 * scale}" fill="#12212f">${escapeXml(pin.label)}</text>` +
         `</g>`,
     ];
   });
@@ -448,4 +457,28 @@ export function croquisLegendPlacement(center: LatLon, zoom: number, pins: reado
   if (!entries.length) return null;
   const corner = legendCorner(entries, northCorner, center, zoom, pinsInFrame(center, zoom, pins), subject);
   return { entries, corner, box: legendBox(entries, corner) };
+}
+
+/**
+ * The subject's pin as an SVG the size of the image (at `scale`), its tip
+ * on the subject, the same drop as on the interactive map (subject-map.tsx).
+ * Composed last, over the comparables, their numbers and the legend, so
+ * nothing hides it: until 24 nov 2026 it was the Static API's own marker,
+ * under every overlay, and a comparable next door covered it. Nothing when
+ * the subject falls outside the frame.
+ */
+export function subjectPinSvg(center: LatLon, zoom: number, subject: LatLon, scale = 2) {
+  const width = STATIC_MAP_SIZE.width * scale;
+  const height = STATIC_MAP_SIZE.height * scale;
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
+  const at = imagePosition(center, zoom, subject);
+  if (!at) return `${open}</svg>`;
+  // The drop is drawn in a 30 × 40 box with its tip at (15, 38).
+  const x = at.x * width - 15 * scale;
+  const y = at.y * height - 38 * scale;
+  return open
+    + `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${scale})">`
+    + `<path d="M15 38C15 38 3 23 3 14a12 12 0 0 1 24 0c0 9-12 24-12 24z" fill="${SUBJECT_PIN_COLOR}" stroke="#fff" stroke-width="3"/>`
+    + `<circle cx="15" cy="14" r="4" fill="#fff"/>`
+    + `</g></svg>`;
 }
