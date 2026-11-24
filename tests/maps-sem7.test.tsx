@@ -89,7 +89,8 @@ test("V7.3-09: the map of comparables carries its legend, with only the types it
 
 test("V7.3-18: the card's Leaflet map is isolated, so it no longer draws over the «Reubicar» dialog", () => {
   const source = readFileSync("src/features/valuations/comparable-base/components/comparable-location-leaflet.tsx", "utf8");
-  assert.match(source, /className=\{cn\("isolate", className\)\}/);
+  // The box that holds the map (and the wheel hint over it) is the isolated one.
+  assert.match(source, /className=\{cn\("relative isolate overflow-hidden", className\)\}/);
 });
 
 test("V7.2-06: the comparable's capture has a small map whose pin fills the latitude and longitude", () => {

@@ -342,6 +342,14 @@ function ContinuousSectionsFlow({ caratula, header, sections }: { caratula: Cara
   );
 }
 
+/**
+ * The carátula is one page (24 Nov 2026: a new valuation printed its
+ * signatures alone on a second one): when its content overflows the page by
+ * a little it prints reduced on it, down to this scale; more than that and it
+ * continues on the next page as any section.
+ */
+const CARATULA_MIN_SCALE = 0.75;
+
 function CaratulaPreview({
   caratula,
   meta,
@@ -392,7 +400,7 @@ function CaratulaPreview({
   });
 
   // Build all items: fixed modules + editable blocks, paginated as one flow.
-  const items: DocumentFlowItem[] = [
+  const contentItems: DocumentFlowItem[] = [
     // Fixed: Cover
     { id: "caratula-cover", node: <CaratulaCoverModule caratula={caratula} meta={meta} principalImage={principalImage} /> },
     // Fixed, for an unaccredited issuer: on the cover, under the principal image
@@ -400,6 +408,10 @@ function CaratulaPreview({
     ...blockItems,
     // With its conclusion hidden, the commercial value still prints, as it always did.
     ...(valueConclusionId ? [] : [{ id: "caratula-conclusion", node: <CaratulaConclusionModule blocks={[]} caratula={caratula} meta={meta} /> }]),
+  ];
+  const items: DocumentFlowItem[] = [
+    // What prints last goes with the signatures to a next page, so they never print there alone (24 Nov 2026).
+    ...contentItems.map((item, index) => (index === contentItems.length - 1 ? { ...item, keepWithNext: true } : item)),
     // Fixed: Signatures, their own item so many of them can move to the next page
     { id: "caratula-signatures", node: <CaratulaSignaturesModule caratula={caratula} /> },
   ];
@@ -413,6 +425,7 @@ function CaratulaPreview({
       header={header}
       items={items}
       pageKeyPrefix="caratula"
+      fitOnOnePage={CARATULA_MIN_SCALE}
     />
   );
 }

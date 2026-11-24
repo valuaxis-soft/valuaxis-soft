@@ -3,9 +3,10 @@
 import "leaflet/dist/leaflet.css";
 
 import L from "leaflet";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { guardWheelZoom, WHEEL_ZOOM_HINT } from "./wheel-zoom-guard";
 
 export type LatLng = { latitude: number; longitude: number };
 
@@ -13,6 +14,9 @@ export type LatLng = { latitude: number; longitude: number };
 const MEXICO: LatLng = { latitude: 23.6345, longitude: -102.5528 };
 const OSM_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a>";
+
+/** How long the hint stays after the wheel passed over the map. */
+const HINT_MS = 1600;
 
 /** A pin drawn with CSS: Leaflet's default icon needs image files the bundle does not serve. */
 function pinIcon() {
@@ -29,7 +33,9 @@ function pinIcon() {
  * the pin of the comparable, or, when `onChange` is given, one where a click
  * places the pin and a drag moves it. `approximate` (V7.2-06) is where the
  * address was found: the map goes there and marks it with a dashed circle,
- * without placing the pin.
+ * without placing the pin. The wheel zooms only with Ctrl/⌘ held or after a
+ * click on the map (`guardWheelZoom`), so scrolling a card or a dialog over it
+ * scrolls the page; the +/− buttons always zoom.
  */
 export default function ComparableLocationLeaflet({ value, onChange, approximate, className }: {
   value: LatLng | null;
@@ -44,16 +50,24 @@ export default function ComparableLocationLeaflet({ value, onChange, approximate
   useEffect(() => {
     latestChange.current = onChange;
   });
+  const [hint, setHint] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const editable = Boolean(latestChange.current);
+    let hintTimer: ReturnType<typeof setTimeout> | undefined;
+    // Before the map, so its listener runs ahead of Leaflet's on the same container.
+    const releaseWheel = guardWheelZoom(container, () => {
+      setHint(true);
+      clearTimeout(hintTimer);
+      hintTimer = setTimeout(() => setHint(false), HINT_MS);
+    });
     const map = L.map(container, {
       zoomControl: true,
       attributionControl: true,
       dragging: true,
-      scrollWheelZoom: editable,
+      scrollWheelZoom: true,
     });
     L.tileLayer(OSM_URL, { attribution: OSM_ATTRIBUTION, maxZoom: 19 }).addTo(map);
     const start = value ?? MEXICO;
@@ -65,6 +79,8 @@ export default function ComparableLocationLeaflet({ value, onChange, approximate
     const resize = new ResizeObserver(() => map.invalidateSize());
     resize.observe(container);
     return () => {
+      clearTimeout(hintTimer);
+      releaseWheel();
       resize.disconnect();
       map.remove();
       mapRef.current = null;
@@ -110,5 +126,20 @@ export default function ComparableLocationLeaflet({ value, onChange, approximate
 
   // `isolate`: Leaflet's panes and controls (z-index 400 to 1000) stay inside the map instead of
   // drawing over a dialog opened above it, such as «Reubicar» (V7.3-18).
-  return <div ref={containerRef} className={cn("isolate", className)} role="img" aria-label="Mapa de la ubicación del comparable" />;
+  return (
+    <div className={cn("relative isolate overflow-hidden", className)}>
+      <div ref={containerRef} className="size-full" role="img" aria-label="Mapa de la ubicación del comparable" />
+      {/* Over Leaflet's panes (z-index up to 1000), without taking the pointer. */}
+      <p
+        aria-hidden={!hint}
+        className={cn(
+          "pointer-events-none absolute inset-x-0 top-1/2 z-[1100] mx-auto w-max max-w-[90%] -translate-y-1/2 rounded-md bg-foreground/80 px-3 py-1.5 text-center text-xs font-medium text-background transition-opacity duration-200 motion-reduce:transition-none",
+          hint ? "opacity-100" : "opacity-0",
+        )}
+        data-wheel-zoom-hint
+      >
+        {WHEEL_ZOOM_HINT}
+      </p>
+    </div>
+  );
 }

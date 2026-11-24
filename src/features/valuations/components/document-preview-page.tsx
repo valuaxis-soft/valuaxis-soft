@@ -393,7 +393,26 @@ type AutoPaginatedDocumentFlowProps = {
   pageKeyPrefix: string;
   /** Extra className applied to each DocumentPreviewPage article (e.g. borderless for caratula). */
   pageClassName?: string;
+  /**
+   * The smallest scale the items may print at to stay on one page (the
+   * carátula): when they overflow the page by less than that, they print
+   * reduced on it instead of leaving their last item alone on a second one.
+   */
+  fitOnOnePage?: number;
 };
+
+/**
+ * The scale that puts items of these measured heights on one page: 1 when
+ * they fit, less (rounded down, never under `minScale`) when they overflow
+ * it by little, null when not even `minScale` fits them.
+ */
+export function onePageScale(heights: readonly number[], availableHeight: number, minScale: number): number | null {
+  const total = heights.reduce((sum, height) => sum + height, 0);
+  if (total <= availableHeight) return 1;
+  if (availableHeight <= 0) return null;
+  const scale = Math.floor((availableHeight / total) * 1000) / 1000;
+  return scale >= minScale ? scale : null;
+}
 
 /**
  * The items on their pages. A run of landscape items (a block printed on its
@@ -441,6 +460,7 @@ function AutoPaginatedDocumentFlowRun({
   landscape = false,
   pageKeyPrefix,
   pageClassName,
+  fitOnOnePage,
 }: AutoPaginatedDocumentFlowProps & { landscape?: boolean }) {
   const measurePageRef = useRef<HTMLDivElement | null>(null);
   const measureContentRef = useRef<HTMLDivElement | null>(null);
@@ -456,19 +476,22 @@ function AutoPaginatedDocumentFlowRun({
   const landscapeRef = useRef(landscape);
   // Refs are synced after commit (layout phase, before any scheduled rAF
   // measurement can run) instead of during render.
+  const fitOnOnePageRef = useRef(fitOnOnePage);
   useLayoutEffect(() => {
     itemsRef.current = items;
     itemLayoutSignatureRef.current = itemLayoutSignature;
     landscapeRef.current = landscape;
-  }, [items, itemLayoutSignature, landscape]);
+    fitOnOnePageRef.current = fitOnOnePage;
+  }, [items, itemLayoutSignature, landscape, fitOnOnePage]);
 
   const [availableHeight, setAvailableHeight] = useState(DEFAULT_CONTENT_HEIGHT_PX);
   // Pagination stores ONLY item IDs per page (and the rows of a split table),
   // not full DocumentFlowItem objects. This ensures content always renders
   // from the latest items, never stale ReactNodes.
-  const [pagination, setPagination] = useState<{ itemLayoutSignature: string; pageItemIds: PlacedItemRef[][] }>(() => ({
+  const [pagination, setPagination] = useState<{ itemLayoutSignature: string; pageItemIds: PlacedItemRef[][]; scale: number }>(() => ({
     itemLayoutSignature,
     pageItemIds: splitDocumentFlowItemIds(items),
+    scale: 1,
   }));
 
   // Single-flight pagination scheduler — at most one measurement per animation frame
@@ -540,7 +563,15 @@ function AutoPaginatedDocumentFlowRun({
       table: tableById.get(item.id),
     }));
 
-    const nextPages = splitMeasuredDocumentFlowItems(measuredItems, nextAvailableHeight);
+    // On one page, reduced if need be, when the run asks for it and has no page break of its own.
+    const minScale = fitOnOnePageRef.current;
+    const scale = minScale && !currentItems.some((item, index) => index > 0 && item.startOnNewPage)
+      ? onePageScale(measuredItems.map((measured) => measured.height), nextAvailableHeight, minScale)
+      : null;
+    const nextPages = scale !== null
+      ? [measuredItems.map(({ item }): PlacedDocumentFlowItem => ({ id: item.id, item }))]
+      : splitMeasuredDocumentFlowItems(measuredItems, nextAvailableHeight);
+    const nextScale = scale ?? 1;
     // Convert pages to ID-only arrays for comparison and storage
     const nextPageIds = nextPages.map((page) => page.map(({ id, fragment }): PlacedItemRef => ({ id, fragment })));
 
@@ -561,11 +592,12 @@ function AutoPaginatedDocumentFlowRun({
     setPagination((current) => {
       if (
         current.itemLayoutSignature === itemLayoutSignatureRef.current &&
-        samePageIds(current.pageItemIds, nextPageIds)
+        samePageIds(current.pageItemIds, nextPageIds) &&
+        current.scale === nextScale
       ) {
         return current;
       }
-      return { itemLayoutSignature: itemLayoutSignatureRef.current, pageItemIds: nextPageIds };
+      return { itemLayoutSignature: itemLayoutSignatureRef.current, pageItemIds: nextPageIds, scale: nextScale };
     });
     return true;
   }, []);
@@ -622,6 +654,13 @@ function AutoPaginatedDocumentFlowRun({
     overflow: "hidden",
   } as CSSProperties;
 
+  const sigMatch = pagination.itemLayoutSignature === itemLayoutSignature;
+  // Reduced to stay on one page: drawn smaller and as much wider, so it still spans the page's width.
+  const pageScale = sigMatch ? pagination.scale : 1;
+  const scaledStyle: CSSProperties | undefined = pageScale < 1
+    ? { transform: `scale(${pageScale})`, transformOrigin: "top left", width: `${100 / pageScale}%` }
+    : undefined;
+
   const visiblePages = (() => {
     // Build item lookup Map for O(1) resolution (no silent .filter(Boolean))
     const itemById = new Map(items.map((item) => [item.id, item]));
@@ -634,7 +673,6 @@ function AutoPaginatedDocumentFlowRun({
         }),
       );
 
-    const sigMatch = pagination.itemLayoutSignature === itemLayoutSignature;
     const hasPages = pagination.pageItemIds.length > 0;
     if (sigMatch && hasPages) {
       const resolved = resolvePageIds(pagination.pageItemIds);
@@ -648,6 +686,12 @@ function AutoPaginatedDocumentFlowRun({
     const resolved = resolvePageIds(provisional);
     return resolved;
   })();
+
+  const renderPageItems = (pageItems: PlacedDocumentFlowItem[]) => pageItems.map(({ item, fragment }, index) => (
+    <DocumentFlowItemFrame fragment={fragment} itemId={item.id} joinsNext={pageItems[index + 1]?.item.continuesPrevious} key={item.id}>
+      {fragment && item.renderTableFragment ? item.renderTableFragment(fragment) : item.node}
+    </DocumentFlowItemFrame>
+  ));
 
   // Report canonical page count upward to the viewer
   const reportPageCount = useReportPageCount();
@@ -680,17 +724,23 @@ function AutoPaginatedDocumentFlowRun({
         {visiblePages.map((pageItems, pageIndex) => (
           <DocumentPreviewPage header={header} key={`${pageKeyPrefix}-page-${pageIndex + 1}`} landscape={landscape} pageNumber={pageIndex + 1} className={pageClassName}>
             <div {...contentProps} className={contentClassName} style={paginatedContentStyle} data-document-pagination-content="visible">
-              {pageItems.map(({ item, fragment }, index) => (
-                <DocumentFlowItemFrame fragment={fragment} itemId={item.id} joinsNext={pageItems[index + 1]?.item.continuesPrevious} key={item.id}>
-                  {fragment && item.renderTableFragment ? item.renderTableFragment(fragment) : item.node}
-                </DocumentFlowItemFrame>
-              ))}
+              {scaledStyle ? (
+                // The gap between items comes from the content's class: the reduced box keeps it.
+                <div className={itemGapClassName(contentClassName)} style={scaledStyle} data-document-page-scale={pageScale}>
+                  {renderPageItems(pageItems)}
+                </div>
+              ) : renderPageItems(pageItems)}
             </div>
           </DocumentPreviewPage>
         ))}
       </div>
     </LayoutInvalidationContext.Provider>
   );
+}
+
+/** The classes of a content box that space its items («space-y-1»), for a box that holds them in its place. */
+function itemGapClassName(className: string) {
+  return className.split(/\s+/).filter((name) => /(^|:)space-y-/.test(name)).join(" ");
 }
 
 function splitDocumentFlowItemIds(items: DocumentFlowItem[]): PlacedItemRef[][] {
