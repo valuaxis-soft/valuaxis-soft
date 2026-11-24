@@ -150,16 +150,42 @@ export function parsePostalCode(fragment: string): string | null {
   return match ? match[1] : null;
 }
 
+/** The words a listing writes before the id of its publication: «Publicación No.», «ID del anuncio:», «Clave», «Folio», «Ref.». */
+const PUBLICATION_LABEL = /^(?:(?:id|clave|c[oó]digo|folio|ref(?:erencia)?|n[uú]m(?:ero)?|no|n[º°]|publicaci[oó]n|anuncio|propiedad|inmueble)(?![\p{L}\d])\.?|(?:de|del)\s)\s*[:#]?\s*/iu;
+
 /**
  * The id of a listing in its portal without its label ("ID: 145-998" →
- * "145-998", "Clave EB-XK1234" → "EB-XK1234"). It has a digit, and no spaces.
+ * "145-998", "Clave EB-XK1234" → "EB-XK1234", "Publicación No. 998877" →
+ * "998877"). It has a digit, and no spaces.
  */
 export function parsePublicationId(fragment: string): string | null {
-  const value = fragment.trim()
-    .replace(/^(?:id(?:\s+del\s+anuncio)?|clave|c[oó]digo|folio|ref(?:erencia)?\.?|n[uú]m(?:ero)?\.?|no\.)\s*(?:de\s+(?:anuncio|publicaci[oó]n|propiedad)\s*)?[:#.-]?\s*/i, "")
-    .replace(/^#\s*/, "")
-    .trim();
+  let value = fragment.trim();
+  for (let label = PUBLICATION_LABEL.exec(value); label?.[0]; label = PUBLICATION_LABEL.exec(value)) value = value.slice(label[0].length);
+  value = value.replace(/^[:#.-]\s*/, "").trim();
   return /^[A-Za-z0-9][\w./-]{0,59}$/.test(value) && /\d/.test(value) ? value : null;
+}
+
+/**
+ * The label the text writes right before the fragment, in its own clause
+ * ("Estado: excelente" → "Estado"), as written; null without one. A fact
+ * moved to the observations keeps it, so it reads on its own.
+ */
+export function labelBefore(text: string, fragment: string): string | null {
+  // The text compared as plainText compares it, remembering where each character came from.
+  let plain = "";
+  const from: number[] = [];
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index].normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s/g, " ");
+    if (char === " " && (plain === "" || plain.endsWith(" "))) continue;
+    for (const piece of char) {
+      plain += piece;
+      from.push(index);
+    }
+  }
+  const at = plain.indexOf(plainText(fragment));
+  if (at <= 0) return null;
+  const clause = text.slice(0, from[at]).split(/[.;,\n]/).pop() ?? "";
+  return /((?:\p{L}+ ){0,2}\p{L}+)\s*:\s*$/u.exec(clause)?.[1] ?? null;
 }
 
 /** The first http(s) link of the text, without the punctuation that closes a sentence. */

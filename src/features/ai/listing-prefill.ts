@@ -5,6 +5,7 @@
  * for (amenities, other facts, rooms of a land) goes to «Observaciones», as
  * written. Runs in the browser.
  */
+import { withoutNeighborhoodPrefix } from "@/features/valuations/calculation/comparable-card";
 import { isBuiltComparableType, isRentComparableType, type ComparableType } from "@/features/valuations/calculation/market-types";
 import type { ListingProposal } from "./listing-extraction";
 import { plainText } from "./text-figures";
@@ -63,7 +64,7 @@ export function listingRows(proposal: ListingProposal, type: ComparableType, pri
     text("state", "Estado", place(proposal.state)),
     text("municipality", "Municipio o alcaldía", place(proposal.municipality)),
     text("postalCode", "Código postal", proposal.postalCode),
-    text("neighborhood", "Colonia", place(proposal.neighborhood)),
+    text("neighborhood", "Colonia", neighborhoodName(place(proposal.neighborhood))),
     text("subdivision", "Fraccionamiento", place(proposal.subdivision)),
     text("street", "Vialidad", place(proposal.street)),
     text("number", "Número", proposal.streetNumber),
@@ -185,11 +186,40 @@ export function listingRows(proposal: ListingProposal, type: ComparableType, pri
   };
 }
 
-/** The fragments of the construction of a land, which travel in its «Observaciones». */
+/** The colonia without the «Col.» the listing writes before it: the dictamen prints its own «col.». */
+function neighborhoodName(item: Item): Item {
+  if (!item) return null;
+  const value = withoutNeighborhoodPrefix(item.value);
+  return value ? { ...item, value } : null;
+}
+
+/**
+ * What each fact of the construction of a land is called in its
+ * «Observaciones», and the words that already say it («3 recámaras» needs no label).
+ */
+const LAND_ROOM_LABELS = [
+  ["builtArea", "Construcción", /constru/i],
+  ["bedrooms", "Recámaras", /rec[aá]mara|habitaci[oó]n|dormitorio|cuarto/i],
+  ["bathrooms", "Baños", /baño/i],
+  ["halfBaths", "Medios baños", /baño/i],
+  ["parking", "Estacionamientos", /estacionamiento|caj[oó]n|cochera|auto/i],
+  ["levels", "Niveles", /nivel|planta|piso/i],
+  ["age", "Antigüedad", /antig|año/i],
+  ["conservation", "Conservación", /conserva|estado|estrenar|remodelar/i],
+] as const;
+
+/**
+ * The fragments of the construction of a land, which travel in its
+ * «Observaciones». With `labeled`, each keeps the label the listing wrote
+ * before it («Estado: excelente»), or gets one when the fragment alone does
+ * not say what it is («excelente», «90 m2»): the observations read on their own.
+ */
 function landRooms(proposal: ListingProposal, labeled = false) {
-  // «90 m2» alone does not say what it measures: in the notes it says it is the construction.
-  const built = proposal.builtArea && labeled && !/constru/i.test(proposal.builtArea.evidence)
-    ? { evidence: `Construcción: ${proposal.builtArea.evidence}` } : proposal.builtArea;
-  return [built, proposal.bedrooms, proposal.bathrooms, proposal.halfBaths, proposal.parking, proposal.levels, proposal.age, proposal.conservation]
-    .flatMap((item) => (item ? [item.evidence] : []));
+  return LAND_ROOM_LABELS.flatMap(([field, label, says]) => {
+    const item = proposal[field];
+    if (!item) return [];
+    if (!labeled) return [item.evidence];
+    const written = item.label ?? (says.test(item.evidence) ? null : label);
+    return [written ? `${written}: ${item.evidence}` : item.evidence];
+  });
 }

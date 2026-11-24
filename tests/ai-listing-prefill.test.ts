@@ -110,6 +110,54 @@ test("everything the listing publishes lands in its field of the card; the rest 
   assert.doesNotMatch(row(rows, "notes")?.value ?? "", /oportunidad/i);
 });
 
+const LOT = "Terreno en venta en Calle Hidalgo 245, Col. Centro, Arandas, Jalisco, C.P. 47180. Precio: $1,850,000 MXN. "
+  + "Superficie de terreno: 320 m2, frente de 10 m. Uso de suelo habitacional mixto. Servicios: agua, luz y drenaje. Estado: excelente. "
+  + "Contacto: Inmobiliaria Ejemplo, tel. 33 1234 5678. Publicación No. 998877. Amenidades: cerca de la plaza y escuelas.";
+const LOT_ANSWER = {
+  ...EMPTY_EXTRACTION,
+  operation: "venta" as const, operationEvidence: "Terreno en venta", price: "$1,850,000 MXN", landArea: "320 m2", frontage: "frente de 10 m",
+  street: "Calle Hidalgo", streetNumber: "245", neighborhood: "Col. Centro", municipality: "Arandas", state: "Jalisco", postalCode: "C.P. 47180",
+  propertyType: "Terreno", landUse: "habitacional mixto", services: "agua, luz y drenaje", conservation: "excelente",
+  contactName: "Inmobiliaria Ejemplo", contactPhone: "tel. 33 1234 5678", publicationId: "Publicación No. 998877",
+  otherFacts: ["cerca de la plaza y escuelas"],
+};
+
+test("a pasted lot: its colonia without «Col.», its publication number, its phone, and the leftovers labeled in the observations", () => {
+  const read = verifyListingExtraction(LOT, null, LOT_ANSWER);
+  // Nothing the listing says is lost: «Publicación No.» and «tel.» are labels, not reasons to discard the datum.
+  assert.deepEqual(read.discarded, []);
+  assert.deepEqual(read.publicationId, { value: "998877", evidence: "Publicación No. 998877" });
+  assert.equal(read.contactPhone?.value, "33 1234 5678");
+
+  const { rows } = listingRows(read, "TERRENO_VENTA", "Precio de oferta ($)");
+  assert.equal(row(rows, "neighborhood")?.value, "Centro", "the dictamen prints its own «col.»");
+  assert.equal(row(rows, "neighborhood")?.evidence, "Col. Centro");
+  assert.equal(row(rows, "publicationId")?.value, "998877");
+  assert.equal(row(rows, "contactPhone")?.value, "33 1234 5678");
+  // A land has no field for its condition: it goes to the observations with the label the listing gives it, as does any other fact.
+  assert.equal(row(rows, "notes")?.value, "Estado: excelente. Amenidades: cerca de la plaza y escuelas.");
+
+  // The same fact as an «other fact» keeps its label too.
+  const asFact = verifyListingExtraction(LOT, null, { ...LOT_ANSWER, conservation: "", otherFacts: ["excelente", "cerca de la plaza y escuelas"] });
+  assert.equal(row(listingRows(asFact, "TERRENO_VENTA", "Precio de oferta ($)").rows, "notes")?.value, "Estado: excelente. Amenidades: cerca de la plaza y escuelas.");
+
+  // A building has a field for its condition: it goes there, as written.
+  const built = listingRows(read, "INMUEBLE_VENTA", "Precio de oferta ($)").rows;
+  assert.equal(row(built, "conservation")?.value, "excelente");
+  assert.equal(row(built, "notes")?.value, "Amenidades: cerca de la plaza y escuelas.");
+
+  // Without a label in the text, the observations name what the fragment is.
+  const bare = verifyListingExtraction("Terreno en venta en buen sitio, excelente, 320 m2.", null, { ...EMPTY_EXTRACTION, conservation: "excelente" });
+  assert.equal(row(listingRows(bare, "TERRENO_VENTA", "Precio de oferta ($)").rows, "notes")?.value, "Conservación: excelente.");
+});
+
+test("an id or a phone the listing does not write is never filled", () => {
+  const read = verifyListingExtraction(LOT, null, { ...LOT_ANSWER, publicationId: "Publicación No. 112233", contactPhone: "tel. 33 9999 0000" });
+  assert.equal(read.publicationId, null);
+  assert.equal(read.contactPhone, null);
+  assert.ok(read.discarded.includes("publicationId") && read.discarded.includes("contactPhone"));
+});
+
 test("counts are read in code: a year of construction is not an age, and a bare half bathroom is half", () => {
   const text = "Casa construida en 1998, medio baño en planta baja, dos recámaras.";
   const read = verifyListingExtraction(text, null, {

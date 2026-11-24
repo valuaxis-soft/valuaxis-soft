@@ -122,7 +122,7 @@ import { getCanonicalSectionKey } from "@/features/valuations/sections/section-r
 import {
   isTerrenoSection,
 } from "@/features/valuations/sections/terreno";
-import { cn } from "@/lib/utils";
+import { cn, countLabel } from "@/lib/utils";
 import { stripLeadingRomanNumeral } from "../datos-generales-display";
 import { pinFullLinkResolution, type ExistingConceptRelationMode } from "@/features/valuations/concept-links";
 import { canRemoveSection, SECTION_TITLE_MAX } from "@/features/valuations/services/section-edit-operations";
@@ -1326,8 +1326,8 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, capture, readOnly
       ) : null}
       <p className="text-xs text-muted-foreground" data-generated-block-notice data-capture-block={capture ? (pending ? "pending" : "") : undefined}>
         {capture
-          ? `${pending ? "El dictamen imprimirá este bloque en cuanto el cálculo tenga resultado. " : ""}Captura aquí mismo, en cada tabla: las celdas en blanco son tuyas y las grises las calcula el sistema${block.images.length ? ` · ${block.images.length} fotos` : ""}. Encabezados, columnas y filas propias y formato se editan como en cualquier tabla y se conservan al recalcular.`
-          : `Las cifras de este bloque las escribe el cálculo y se cambian en su panel${block.images.length ? ` · ${block.images.length} fotos` : ""}. Sus tablas se editan como cualquier tabla: encabezados, columnas y filas propias, y formato; todo se conserva al recalcular.`}
+          ? `${pending ? "El dictamen imprimirá este bloque en cuanto el cálculo tenga resultado. " : ""}Captura aquí mismo, en cada tabla: las celdas en blanco son tuyas y las grises las calcula el sistema${block.images.length ? ` · ${countLabel(block.images.length, "foto")}` : ""}. Encabezados, columnas y filas propias y formato se editan como en cualquier tabla y se conservan al recalcular.`
+          : `Las cifras de este bloque las escribe el cálculo y se cambian en su panel${block.images.length ? ` · ${countLabel(block.images.length, "foto")}` : ""}. Sus tablas se editan como cualquier tabla: encabezados, columnas y filas propias, y formato; todo se conserva al recalcular.`}
       </p>
       {block.enabled ? <GeneratedConcepts block={block} readOnly={readOnly} onChange={onUpdateBlock} /> : null}
       {/* A hidden block still takes its capture: it leaves the dictamen, not the calculation. */}
