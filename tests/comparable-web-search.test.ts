@@ -9,7 +9,9 @@ import { test } from "node:test";
 import { foundComparableSchema } from "../src/features/valuations/comparable-search/schemas";
 import {
   addWebListingsSchema,
+  candidateInputOf,
   comparableFromWebListing,
+  publishedDetails,
   listingUrl,
   normalizeWebListings,
   suggestedWebSearchText,
@@ -21,10 +23,16 @@ import {
 import { consumeAiWebSearchRateLimit } from "../src/security/rate-limit/ai-limit";
 
 type ModelCandidate = WebListingSearchAnswer["candidates"][number];
+/** The details a listing did not publish: empty texts and null numbers. */
+const NOT_PUBLISHED = {
+  street: "", postalCode: "", bedrooms: null, bathrooms: null, halfBaths: null, parking: null, levels: null, age: null, frontage: null, depth: null,
+  frontCount: null, landUse: "", topography: "", services: "", shape: "", conservation: "", amenities: "", contactName: "", contactPhone: "", publicationId: "",
+} satisfies Partial<ModelCandidate>;
 const listing = (overrides: Partial<ModelCandidate> = {}): ModelCandidate => ({
   title: "Terreno en Las Lomas", propertyType: "terreno", operation: "venta", landArea: 7881, builtArea: null, price: 4_216_335,
   currency: "MXN", neighborhood: "Las Lomas", municipality: "Villa Ejemplo", state: "Jalisco", addressOrReference: "a 2 km del libramiento norte",
   portal: "Portal Ejemplo", url: "https://www.portal.example/anuncio/1/", urlKind: "anuncio", listingDate: "2026-11-02", notes: "Frente de 40 m.",
+  ...NOT_PUBLISHED,
   ...overrides,
 });
 const normalize = (candidates: ModelCandidate[], options: { resultUrls?: string[]; knownUrls?: string[] } = {}) =>
@@ -176,17 +184,87 @@ test("a chosen listing becomes the payload of a comparable with only what the li
     location: "a 2 km del libramiento norte, Las Lomas, Villa Ejemplo, Jalisco",
     area: 7881,
     price: 4_216_335,
-    landUse: null, shape: null, zone: null, frontage: null, depth: null, topography: null, services: null,
+    landUse: null, shape: null, zone: null, frontCount: null, frontage: null, depth: null, topography: null, services: null,
     notes: "Terreno en Las Lomas. Frente de 40 m.",
     sourceName: "Portal Ejemplo",
     contactName: null, contactPhone: null,
     url: "https://www.portal.example/anuncio/1/",
     offerDate: "2026-11-02",
     consultedOn: "2026-11-22",
-    address: { state: "Jalisco", municipality: "Villa Ejemplo", neighborhood: "Las Lomas" },
+    address: { state: "Jalisco", municipality: "Villa Ejemplo", neighborhood: "Las Lomas", street: null, postalCode: null },
     operationType: "VENTA",
-    listingDetails: { currency: "MXN", dataOrigin: "Búsqueda con IA", dataVerified: "NO" },
+    listingDetails: { currency: "MXN", dataOrigin: "Búsqueda con IA", dataVerified: "NO", publicationId: null },
   });
+});
+
+test("everything else a listing publishes lands in its field of the card; what is not published stays empty", () => {
+  const { candidates } = normalizeWebListings("INMUEBLE_VENTA", {
+    marketNote: "",
+    candidates: [listing({
+      title: "Casa en Fraccionamiento Ejemplo", propertyType: "Casa", landArea: 160, builtArea: 185, price: 2_350_000, url: "https://portal.example/casa/7",
+      street: "Av. Inventada 245", postalCode: "C.P. 47600", bedrooms: 3, bathrooms: 2, halfBaths: 1, parking: 2, levels: 2, age: 10,
+      frontage: 8, depth: 20, frontCount: 1, landUse: "Habitacional", topography: "Plana", services: "Todos los servicios", shape: "Regular",
+      conservation: "Buen estado", amenities: "jardín, cocina integral", contactName: "Asesora Ficticia", contactPhone: "33 0000 0000",
+      publicationId: "EB-XX0001", notes: "Orientación norte.",
+    })],
+  }, { resultUrls: [], knownUrls: [] });
+  const [candidate] = candidates;
+  assert.equal(candidate.bathrooms, 2.5, "two whole bathrooms and a half one are 2.5, as the card keeps them");
+  assert.equal(candidate.postalCode, "47600");
+  assert.deepEqual(publishedDetails(candidate).length, 19);
+  const parsed = addWebListingsSchema.parse({ candidates: [candidateInputOf(candidate)] }).candidates[0];
+  const comparable = foundComparableSchema.parse(comparableFromWebListing("INMUEBLE_VENTA", parsed, "2026-11-23"));
+  assert.equal(comparable.area, 185);
+  assert.equal(comparable.landArea, 160);
+  assert.equal(comparable.bedrooms, 3);
+  assert.equal(comparable.bathrooms, 2.5);
+  assert.equal(comparable.conservation, "Buen estado");
+  assert.deepEqual(comparable.propertyDetails, { age: 10, levels: 2, parking: 2 });
+  assert.equal(comparable.frontage, 8);
+  assert.equal(comparable.depth, 20);
+  assert.equal(comparable.frontCount, 1);
+  assert.equal(comparable.landUse, "Habitacional");
+  assert.equal(comparable.topography, "Plana");
+  assert.equal(comparable.services, "Todos los servicios");
+  assert.equal(comparable.shape, "Regular");
+  assert.equal(comparable.contactName, "Asesora Ficticia");
+  assert.equal(comparable.contactPhone, "33 0000 0000");
+  assert.equal(comparable.address?.street, "Av. Inventada 245");
+  assert.equal(comparable.address?.postalCode, "47600");
+  assert.equal(comparable.listingDetails?.publicationId, "EB-XX0001");
+  assert.equal(comparable.notes, "Casa en Fraccionamiento Ejemplo. Referencia: a 2 km del libramiento norte. Orientación norte. Amenidades: jardín, cocina integral.");
+  // With its street, the location is the line the dictamen prints from the parts, the road with the type its name says.
+  assert.equal(comparable.location, "Av. Inventada 245, col. Las Lomas, C.P. 47600, Villa Ejemplo, Jalisco");
+  assert.equal(comparable.address?.streetType, "AVENIDA");
+
+  // A reference that repeats the street and the town is not written twice.
+  const repeated = comparableFromWebListing("INMUEBLE_VENTA", { ...parsed, street: "Libra 1274", reference: "Libra 1274, Villa Ejemplo, Jalisco" }, "2026-11-23");
+  assert.equal(repeated.location, "Libra 1274, col. Las Lomas, C.P. 47600, Villa Ejemplo, Jalisco");
+  assert.doesNotMatch(repeated.notes ?? "", /Referencia/);
+  const noStreet = comparableFromWebListing("INMUEBLE_VENTA", { ...parsed, street: null, reference: "Las Lomas, Villa Ejemplo" }, "2026-11-23");
+  assert.equal(noStreet.location, "Las Lomas, Villa Ejemplo, Jalisco");
+
+  // A land's card has no rooms: they go to its notes, as numbers the listing gave.
+  const land = normalizeWebListings("TERRENO_VENTA", { marketNote: "", candidates: [listing({ builtArea: 90, bedrooms: 2, age: 30 })] }, { resultUrls: [], knownUrls: [] });
+  const landComparable = comparableFromWebListing("TERRENO_VENTA", addWebListingsSchema.parse({ candidates: [candidateInputOf(land.candidates[0])] }).candidates[0], "2026-11-23");
+  assert.equal(landComparable.bedrooms, undefined);
+  assert.match(landComparable.notes ?? "", /El anuncio publica 90 m² de construcción\. 2 recámaras\. 30 años de antigüedad\./);
+
+  // What is not a usable value is «no publicado», never a guess: a year is not an age, a word is not a phone.
+  const odd = normalize([listing({ age: 1998, contactPhone: "por WhatsApp", postalCode: "476", bedrooms: 2.5, frontCount: 0 })]).candidates[0];
+  assert.equal(odd.age, null);
+  assert.equal(odd.contactPhone, null);
+  assert.equal(odd.postalCode, null);
+  assert.equal(odd.bedrooms, null);
+  assert.equal(odd.frontCount, null);
+});
+
+test("a client of before that does not send the details still creates the card", () => {
+  const [candidate] = normalize([listing()]).candidates;
+  const { street: _street, bedrooms: _bedrooms, contactPhone: _phone, ...before } = candidateInputOf(candidate);
+  const parsed = addWebListingsSchema.parse({ candidates: [before] }).candidates[0];
+  assert.equal(parsed.street, null);
+  assert.equal(parsed.bedrooms, null);
 });
 
 test("an unpublished price stays empty and a price in dollars is not written as the price", () => {

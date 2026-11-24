@@ -11,8 +11,11 @@ import {
   appearsIn,
   firstUrl,
   parseAmount,
+  parseCount,
   parseListingDate,
   parseMeters,
+  parsePostalCode,
+  parsePublicationId,
   parseSurface,
   type ListingCurrency,
   type SurfaceUnit,
@@ -23,12 +26,19 @@ export const LISTING_TEXT_MAX = 12_000;
 /** A fragment longer than this is not "the shortest that holds the datum". */
 const EVIDENCE_MAX = 300;
 
-/** The text fields of the comparable form the listing can fill, copied as written. */
+/** Literal facts of the listing beyond the fields (amenities, other details) the model may list. */
+export const LISTING_MAX_FACTS = 15;
+
+/** The text fields of the comparable card the listing can fill, copied as written. */
 const TEXT_FIELDS = [
-  "street", "neighborhood", "municipality", "state", "propertyType", "landUse", "topography", "services", "portal", "contactName", "contactPhone",
+  "street", "streetNumber", "neighborhood", "subdivision", "municipality", "state", "propertyType", "landUse", "topography", "services",
+  "shape", "zone", "conservation", "portal", "contactName", "contactPhone",
 ] as const;
 type TextField = (typeof TEXT_FIELDS)[number];
-const FIGURE_FIELDS = ["price", "landArea", "builtArea", "frontage", "depth", "listingDate"] as const;
+/** Counts written in the listing ("3 recámaras", "dos plantas"), read in code. */
+const COUNT_FIELDS = ["bedrooms", "bathrooms", "halfBaths", "parking", "levels", "age", "frontCount"] as const;
+type CountField = (typeof COUNT_FIELDS)[number];
+const FIGURE_FIELDS = ["price", "landArea", "builtArea", "frontage", "depth", "listingDate", "postalCode", "publicationId", ...COUNT_FIELDS] as const;
 
 const fragment = z.string();
 
@@ -46,17 +56,33 @@ export const listingExtractionSchema = z.object({
   frontage: fragment,
   depth: fragment,
   street: fragment,
+  streetNumber: fragment,
   neighborhood: fragment,
+  subdivision: fragment,
   municipality: fragment,
   state: fragment,
+  postalCode: fragment,
   propertyType: fragment,
+  bedrooms: fragment,
+  bathrooms: fragment,
+  halfBaths: fragment,
+  parking: fragment,
+  levels: fragment,
+  age: fragment,
+  conservation: fragment,
+  frontCount: fragment,
+  shape: fragment,
+  zone: fragment,
   landUse: fragment,
   topography: fragment,
   services: fragment,
   portal: fragment,
+  publicationId: fragment,
   listingDate: fragment,
   contactName: fragment,
   contactPhone: fragment,
+  amenities: z.array(fragment),
+  otherFacts: z.array(fragment),
 });
 export type ListingExtraction = z.infer<typeof listingExtractionSchema>;
 
@@ -74,12 +100,17 @@ Campos:
 - landArea: la superficie de terreno con su unidad tal como está escrita («1 200 m2», «3.5 hectáreas», «12-50-00 has»).
 - builtArea: la superficie construida con su unidad.
 - frontage y depth: el frente y el fondo del terreno, cada uno con su número («10 m de frente»).
-- street: calle y número. neighborhood: colonia, fraccionamiento o localidad. municipality: municipio o ciudad. state: estado.
+- street: el nombre de la calle o vialidad, sin el número. streetNumber: el número exterior. neighborhood: colonia o localidad. subdivision: fraccionamiento, condominio o desarrollo. municipality: municipio o ciudad. state: estado. postalCode: el código postal.
 - propertyType: el tipo de inmueble («casa», «terreno rústico», «local comercial»).
+- bedrooms: las recámaras («3 recámaras»). bathrooms: los baños completos, o el total si no los separa («2 baños», «2.5 baños»). halfBaths: los medios baños («1 medio baño»). parking: los lugares de estacionamiento («2 cajones»). levels: los niveles o plantas («2 plantas»). age: la antigüedad en años («10 años de antigüedad»); no la calcules a partir de un año de construcción.
+- conservation: el estado de conservación como lo dice el anuncio («a estrenar», «buen estado», «para remodelar»).
+- frontCount: el número de frentes («2 frentes»). shape: la forma del terreno («regular», «rectangular»). zone: la zona como la describe el anuncio («zona habitacional», «zona industrial»).
 - landUse: el uso de suelo. topography: la topografía. services: los servicios con que cuenta.
-- portal: el portal o la inmobiliaria que publica el anuncio.
+- portal: el portal o la inmobiliaria que publica el anuncio. publicationId: el número, clave o ID del anuncio en el portal, con su etiqueta («ID: 145-998», «Clave EB-XK1234»).
 - listingDate: la fecha de publicación del anuncio, solo si está escrita como fecha.
-- contactName: el nombre del anunciante o asesor. contactPhone: su teléfono.`;
+- contactName: el nombre del anunciante o asesor. contactPhone: su teléfono.
+- amenities: cada amenidad o equipamiento que el anuncio menciona («alberca», «jardín», «cocina integral»), un fragmento por elemento, hasta ${LISTING_MAX_FACTS}.
+- otherFacts: otros datos del inmueble que el anuncio dice y no caben en los campos anteriores (orientación, vigilancia, cuota de mantenimiento, régimen de propiedad, a qué distancia está algo), un fragmento literal por dato, hasta ${LISTING_MAX_FACTS}. No repitas lo que ya va en otro campo y no incluyas frases de venta («gran oportunidad», «excelente inversión»).`;
 
 /** The listing between its tags. The tags themselves cannot come inside the text. */
 export function buildListingPrompt(text: string): AiPrompt {
@@ -102,7 +133,12 @@ export type ListingProposal = {
   listingDate: Evidenced<{ value: string }>;
   /** Given by the appraiser, or the first link written in the listing. */
   url: Evidenced<{ value: string }>;
-} & Record<TextField, Evidenced<{ value: string }>> & {
+  postalCode: Evidenced<{ value: string }>;
+  publicationId: Evidenced<{ value: string }>;
+  /** Amenities and other facts the card has no field for, each as written; they go to the observations. */
+  amenities: Array<{ value: string; evidence: string }>;
+  otherFacts: Array<{ value: string; evidence: string }>;
+} & Record<TextField, Evidenced<{ value: string }>> & Record<CountField, Evidenced<{ value: number }>> & {
   /** Fields the model answered that were discarded: not literally in the text, or not readable as a figure. */
   discarded: string[];
 };
@@ -155,6 +191,24 @@ export function verifyListingExtraction(text: string, url: string | null, extrac
     (OPERATION_WORDS[extraction.operation as "venta" | "renta"].test(evidence) ? { value: extraction.operation as "venta" | "renta" } : null));
 
   const link = url?.trim() || firstUrl(text);
+  /** Each fact of a list, if it really is in the text; repeated ones once. */
+  const facts = (field: string, values: string[]) => {
+    const kept: Array<{ value: string; evidence: string }> = [];
+    for (const value of values.slice(0, LISTING_MAX_FACTS)) {
+      const evidence = literal(field, value);
+      if (evidence && !kept.some((item) => item.evidence.toLowerCase() === evidence.toLowerCase())) kept.push({ value: evidence, evidence });
+    }
+    return kept;
+  };
+  const counts = Object.fromEntries(COUNT_FIELDS.map((field) => [field, figure(field, extraction[field], wrap((evidence) => {
+    // Bathrooms go in wholes or halves ("2.5 baños"); the rest are whole numbers. An age is in years, never a year of construction.
+    // «medio baño», without a number, is one half bathroom.
+    const count = parseCount(evidence, { halves: field === "bathrooms" }) ?? (field === "halfBaths" && /\bmedio\b/i.test(evidence) ? 1 : null);
+    if (count === null) return null;
+    if (field === "age" && count > 200) return null;
+    if (field === "frontCount" && count < 1) return null;
+    return count;
+  }))])) as Record<CountField, Evidenced<{ value: number }>>;
 
   return {
     operation,
@@ -168,14 +222,20 @@ export function verifyListingExtraction(text: string, url: string | null, extrac
     depth: figure("depth", extraction.depth, wrap(parseMeters)),
     listingDate: figure("listingDate", extraction.listingDate, wrap(parseListingDate)),
     url: link ? { value: link, evidence: link } : null,
+    postalCode: figure("postalCode", extraction.postalCode, wrap(parsePostalCode)),
+    publicationId: figure("publicationId", extraction.publicationId, wrap(parsePublicationId)),
+    ...counts,
     ...texts,
+    amenities: facts("amenities", extraction.amenities),
+    otherFacts: facts("otherFacts", extraction.otherFacts),
     discarded,
   };
 }
 
 /** How many fields came back with a value; the usage record keeps counts, never contents. */
 export function countProposed(proposal: ListingProposal) {
-  return [...TEXT_FIELDS, ...FIGURE_FIELDS, "operation" as const].filter((field) => proposal[field] !== null).length;
+  return [...TEXT_FIELDS, ...FIGURE_FIELDS, "operation" as const].filter((field) => proposal[field] !== null).length
+    + proposal.amenities.length + proposal.otherFacts.length;
 }
 
 export async function extractListing(gateway: AiGateway, input: { text: string; url: string | null }): Promise<{ proposal: ListingProposal; usage: AiUsage }> {

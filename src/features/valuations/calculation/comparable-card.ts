@@ -119,6 +119,19 @@ function streetWithType(address: ComparableAddress) {
   return already ? name : `${printed} ${name}`;
 }
 
+/**
+ * The type of road a name already starts with («Av. Hidalgo» → AVENIDA,
+ * «Boulevard Juárez» → BOULEVARD), so a road read from a listing is not
+ * printed «Calle Av. Hidalgo». Null when the name does not start with one.
+ */
+export function streetTypeOfName(name: string): StreetType | null {
+  const first = plainWord(name.trim().split(/\s+/)[0] ?? "").replace(/\.$/, "");
+  if (!first) return null;
+  const found = STREET_TYPES.find((type) => type !== "OTRO"
+    && [STREET_TYPE_LABELS[type], STREET_TYPE_PRINTED[type]].some((word) => word && plainWord(word).replace(/\.$/, "") === first));
+  return found ?? (first === "blvr" || first === "bulevar" ? "BOULEVARD" : first === "avda" ? "AVENIDA" : null);
+}
+
 /** The type of road as the card shows it: «Avenida», or «Otro: Callejuela». */
 export function streetTypeText(address: Pick<ComparableAddress, "streetType" | "streetTypeOther"> | null | undefined) {
   const type = streetTypeOf(address);

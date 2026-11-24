@@ -23,7 +23,7 @@ import { consumeAiWebSearchRateLimit } from "@/security/rate-limit/ai-limit";
 import { decimal, findValuation } from "../calculation/access";
 import { todayInMexico } from "../calculation/comparable-card";
 import { findDuplicates } from "../calculation/comparable-card.service";
-import { getMarketCalculation, importComparables, type ImportEntry } from "../calculation/market.service";
+import { getMarketCalculation, importComparableIds, type ImportEntry } from "../calculation/market.service";
 import { isLandComparableType, type ComparableType, type MarketCalculationDto } from "../calculation/market-types";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { identityKeys, withProvenance } from "./normalize";
@@ -54,6 +54,9 @@ export const WEB_SEARCH_DISABLED: Record<"no_key" | "off", string> = {
   no_key: "La búsqueda con IA no está disponible: esta instalación no tiene configurada la llave del servicio de IA. Avisa al administrador.",
   off: "La búsqueda con IA está apagada en esta instalación. El administrador la enciende con AI_COMPARABLE_SEARCH_ENABLED.",
 };
+
+/** What «Crear fichas» did with one listing, and the comparable of the valuation it is now. */
+export type WebListingOutcome = { url: string; outcome: "CREATED" | "REUSED" | "SKIPPED"; comparableId: string | null };
 
 /** A listing found, with the comparable of the firm's base that has the same address on the web, if any. */
 export type WebSearchCandidateDto = WebListingCandidate & {
@@ -266,44 +269,53 @@ export function webSearchStatus(publicId: string, user: Pick<AuthUser, "id" | "o
  * already has (same address on the web, same market) is brought from the base
  * with its number and its evidence instead of captured twice; one the
  * valuation already has is skipped.
+ *
+ * `items` says, in the order the listings came, what became of each and the
+ * comparable it is now: the browser uploads to it the screenshot and photos
+ * the appraiser pasted for that listing, through the same routes as the form.
  */
 export async function addWebListings(
   publicId: string,
   user: AuthUser,
   type: ComparableType,
   candidates: WebListingCandidateInput[],
-): Promise<{ created: number; reused: number; skipped: number; calculation: MarketCalculationDto }> {
+): Promise<{ created: number; reused: number; skipped: number; items: WebListingOutcome[]; calculation: MarketCalculationDto }> {
   const current = await getMarketCalculation(publicId, user.organizationId, type);
   if (current.locked) throw new ValuationWorkflowError("El avalúo está concluido; reábrelo para editarlo.", 409);
   const today = todayInMexico();
   const seen = new Set(current.comparables.flatMap(identityKeys));
   const entries: ImportEntry[] = [];
-  let reused = 0;
-  let skipped = 0;
+  const items: WebListingOutcome[] = [];
+  // The item of each entry, so the ids the import answers land on their listing.
+  const itemOfEntry: number[] = [];
   for (const candidate of candidates) {
     const comparable = foundComparableSchema.parse(withProvenance(comparableFromWebListing(type, candidate, today), WEB_SEARCH_SOURCE_LABEL, candidate.portal));
     const keys = identityKeys(comparable);
     if (keys.some((key) => seen.has(key))) {
-      skipped += 1;
+      items.push({ url: candidate.url, outcome: "SKIPPED", comparableId: null });
       continue;
     }
     for (const key of keys) seen.add(key);
     const matches = await findDuplicates(publicId, user.organizationId, { url: comparable.url, location: "", contactPhone: null, price: null });
     const same = matches.find((match) => match.reasons.includes("URL") && match.type === type);
     if (same?.sameValuation) {
-      skipped += 1;
-    } else if (same) {
-      entries.push({ reuseFrom: same.comparableId });
-      reused += 1;
-    } else {
-      entries.push({ ...comparable, factors: [] });
+      items.push({ url: candidate.url, outcome: "SKIPPED", comparableId: null });
+      continue;
     }
+    itemOfEntry.push(items.length);
+    items.push({ url: candidate.url, outcome: same ? "REUSED" : "CREATED", comparableId: null });
+    entries.push(same ? { reuseFrom: same.comparableId } : { ...comparable, factors: [] });
   }
-  if (entries.length) await importComparables(publicId, user, type, entries);
+  if (entries.length) {
+    const ids = await importComparableIds(publicId, user, type, entries);
+    ids.forEach((id, index) => { items[itemOfEntry[index]].comparableId = id; });
+  }
+  const count = (outcome: WebListingOutcome["outcome"]) => items.filter((item) => item.outcome === outcome).length;
   return {
-    created: entries.length - reused,
-    reused,
-    skipped,
+    created: count("CREATED"),
+    reused: count("REUSED"),
+    skipped: count("SKIPPED"),
+    items,
     calculation: entries.length ? await getMarketCalculation(publicId, user.organizationId, type) : current,
   };
 }

@@ -16,6 +16,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea";
 import { api, type ComparableFormValues } from "@/lib/api-client";
 import type { ComparablePrefill } from "@/features/ai/listing-prefill";
+import type { PendingImages } from "@/features/valuations/comparable-search/listing-images";
 import { PasteImageButton } from "@/features/files/components/paste-image-button";
 import {
   ADDRESS_LABELS,
@@ -46,6 +47,7 @@ import {
   STREET_TYPE_LABEL,
   STREET_TYPE_LABELS,
   streetTypeOf,
+  streetTypeOfName,
 } from "@/features/valuations/calculation/comparable-card";
 import type { DuplicateMatchDto } from "@/features/valuations/calculation/comparable-card.service";
 import { DUPLICATE_REASON_LABELS, duplicateProbeOf, type DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
@@ -57,6 +59,7 @@ import { COMPARABLE_VALIDITY_MONTHS, addMonths, validityMonthsOf } from "@/featu
 import { FormulaInput } from "./formula-input";
 import { useExpandableDialog } from "./expandable-dialog";
 import { ScreenshotSlot } from "./screenshot-slot";
+import { previewUrl } from "./listing-images-picker";
 import { ComparablePhotoFraming } from "./comparable-photo-framing";
 import type { ImageFraming } from "@/features/valuations/services/image-framing";
 import { SheetFormSection } from "./comparable-sheet";
@@ -149,7 +152,9 @@ function initialDraft(
   comparable: ComparableDto | null, type: ComparableType, prefill: ComparablePrefill = {}, listingText?: string, defaultMonths?: number,
 ): Draft {
   const address = emptyAddress();
-  for (const part of ADDRESS_PARTS) address[part] = comparable?.address?.[part] ?? "";
+  for (const part of ADDRESS_PARTS) address[part] = comparable?.address?.[part] ?? (comparable ? "" : prefill[part as keyof ComparablePrefill] ?? "");
+  // A road read from a listing that already says its type («Av. Hidalgo») takes it, so it is not printed «Calle Av. Hidalgo».
+  const prefilledStreetType = !comparable && prefill.street ? streetTypeOfName(prefill.street) : null;
   return {
     location: comparable?.location ?? "",
     // A number typed as a formula reads back as typed.
@@ -177,10 +182,12 @@ function initialDraft(
     constructionType: comparable?.constructionType ?? "",
     address,
     // A comparable of before has no type of road: it reads as «Calle».
-    streetType: streetTypeOf(comparable?.address),
+    streetType: prefilledStreetType ?? streetTypeOf(comparable?.address),
     streetTypeOther: comparable?.address?.streetTypeOther ?? "",
     // A new comparable may start from the data read from a pasted listing.
-    ...(comparable ? {} : pick(prefill, ["location", "area", "price", "sourceName", "contactName", "contactPhone", "url", "offerDate", "landUse"])),
+    ...(comparable ? {} : pick(prefill, [
+      "area", "price", "sourceName", "contactName", "contactPhone", "url", "offerDate", "landUse", "landArea", "bedrooms", "bathrooms", "constructionType",
+    ])),
   };
 }
 
@@ -188,14 +195,47 @@ function pick(prefill: ComparablePrefill, keys: DraftKey[]): Partial<Draft> {
   return Object.fromEntries(keys.flatMap((key) => (key in prefill ? [[key, prefill[key as keyof ComparablePrefill] ?? ""]] : [])));
 }
 
-/** The characteristics as the form shows them, by field key; a pasted listing may fill some. */
+/** Characteristics of the market's list a pasted listing may fill. */
+const PREFILLED_CHARACTERISTICS = ["frontCount", "frontage", "depth", "shape", "zone", "conservation", "topography", "services", "notes"] as const;
+const PREFILLED_LABELS: Record<(typeof PREFILLED_CHARACTERISTICS)[number], string> = {
+  frontCount: "Frentes", frontage: "Frente", depth: "Fondo", shape: "Forma", zone: "Zona", conservation: "Conservación",
+  topography: "Topografía", services: "Servicios", notes: "",
+};
+
+/**
+ * The characteristics as the form shows them, by field key; a pasted listing
+ * may fill some. One the market's list does not have goes to «Observaciones»
+ * with its name, so nothing the listing said is lost.
+ */
 function initialCharacteristics(comparable: ComparableDto | null, fields: CharacteristicField[], prefill: ComparablePrefill = {}) {
   const values = Object.fromEntries(fields.map((field) => [field.key, comparable ? characteristicText(comparable, field.key) : ""]));
   if (comparable) return values;
-  for (const key of ["frontage", "depth", "topography", "services"] as const) {
-    if (prefill[key] !== undefined && key in values) values[key] = prefill[key] ?? "";
+  const loose: string[] = [];
+  for (const key of PREFILLED_CHARACTERISTICS) {
+    const value = prefill[key]?.trim();
+    if (!value) continue;
+    if (key in values) values[key] = value;
+    else if (key !== "notes") loose.push(`${PREFILLED_LABELS[key]}: ${value}`);
   }
+  if (loose.length && "notes" in values) values.notes = [values.notes, ...loose].filter(Boolean).join(". ").slice(0, 1000);
   return values;
+}
+
+/** What a pasted listing gives that the form does not show (parking, levels, age, its id in the portal): kept in the card. */
+function prefilledDetails(prefill: ComparablePrefill | undefined, built: boolean): Pick<ComparableFormValues, "propertyDetails" | "listingDetails"> {
+  const count = (value: string | undefined) => {
+    const parsed = value?.trim() ? parseDecimal(value) : null;
+    return parsed !== null && Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+  };
+  const age = prefill?.age?.trim() ? parseDecimal(prefill.age) : null;
+  const propertyDetails = built
+    ? { age: age !== null && age >= 0 ? age : null, levels: count(prefill?.levels), parking: count(prefill?.parking) }
+    : null;
+  const publicationId = prefill?.publicationId?.trim().slice(0, 120) || null;
+  return {
+    ...(propertyDetails && Object.values(propertyDetails).some((value) => value !== null) ? { propertyDetails } : {}),
+    ...(publicationId ? { listingDetails: { publicationId } } : {}),
+  };
 }
 
 const EMPTY_VALUES: ComparableFormValues = {
@@ -255,11 +295,8 @@ export function buildingFieldsOf(draft: { landArea: string; bedrooms: string; ba
 /** What the appraiser captured, to tell whether closing the form would lose something. */
 const snapshotOf = (...parts: unknown[]) => JSON.stringify(parts, (_key, value: unknown) => (value instanceof File ? `${value.name}:${value.size}` : value));
 
-/**
- * Images chosen before the comparable exists (videos 7.1 and 7.2): uploaded
- * right after it is saved, the photos in the order they were chosen.
- */
-export type PendingImages = { screenshot: File | null; photos: File[] };
+/** Images chosen before the comparable exists (videos 7.1 and 7.2): uploaded right after it is saved, the photos in their order. */
+export type { PendingImages };
 
 /**
  * The data of one comparable: where it is, its offer, its source and
@@ -276,6 +313,8 @@ export function ComparableDialog(props: {
   prefill?: ComparablePrefill;
   /** The pasted listing a new comparable comes from, kept as evidence. */
   listingText?: string;
+  /** The screenshot and photos a new comparable opens with (pasted in «Pegar anuncio»); uploaded when it is saved. */
+  initialImages?: PendingImages;
   characteristicFields: CharacteristicField[];
   comparableType: ComparableType;
   unitLabel: string;
@@ -314,9 +353,13 @@ export function ComparableDialog(props: {
   const [annualRent, setAnnualRent] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<"photo" | "screenshot" | null>(null);
-  const [pendingScreenshot, setPendingScreenshot] = useState<File | null>(null);
+  // A new comparable may start with the screenshot and photos pasted in «Pegar anuncio».
+  const [pendingScreenshot, setPendingScreenshot] = useState<File | null>(() => (comparable ? null : props.initialImages?.screenshot ?? null));
   // Photos of a new comparable, chosen before it is saved; shown from their local copy.
-  const [pendingPhotos, setPendingPhotos] = useState<Array<{ file: File; url: string }>>([]);
+  const [pendingPhotos, setPendingPhotos] = useState<Array<{ file: File; url: string }>>(() => (comparable ? [] : (props.initialImages?.photos ?? [])
+    .slice(0, MAX_COMPARABLE_PHOTOS).map((file) => ({ file, url: previewUrl(file) }))));
+  // Those previews belong to the page (the paste dialog shows them too): closing the form does not release them.
+  const [keptUrls] = useState(() => new Set(pendingPhotos.map((photo) => photo.url)));
   // What the firm already captured, offered while typing (municipio, colonia, zona…).
   const [suggestions, setSuggestions] = useState<ComparableSuggestions>(emptySuggestions);
   const [error, setError] = useState<{ message: string; field?: ComparableFormField } | null>(null);
@@ -357,7 +400,7 @@ export function ComparableDialog(props: {
   useEffect(() => {
     pendingUrls.current = pendingPhotos.map((photo) => photo.url);
   }, [pendingPhotos]);
-  useEffect(() => () => { for (const url of pendingUrls.current) URL.revokeObjectURL(url); }, []);
+  useEffect(() => () => { for (const url of pendingUrls.current) if (!keptUrls.has(url)) URL.revokeObjectURL(url); }, [keptUrls]);
 
   const built = isBuiltComparableType(props.comparableType);
   const rent = isRentComparableType(props.comparableType);
@@ -420,6 +463,7 @@ export function ComparableDialog(props: {
       characteristicsText: freeText.trim() || null,
       attributes: cleanAttributes(attributes),
       ...(building ?? {}),
+      ...(comparable ? {} : prefilledDetails(props.prefill, built)),
     };
     for (const key of ["area", "price"] as const) values = withCharacteristic(values, key, draft[key], parseDecimal(draft[key]));
     for (const field of fields) {

@@ -398,7 +398,7 @@ function MarketTypePanel(props: {
   const [savingSettings, setSavingSettings] = useState(false);
   const [editing, setEditing] = useState<ComparableDto | "nuevo" | null>(null);
   // Data read from a pasted listing, waiting in the form of a new comparable.
-  const [prefill, setPrefill] = useState<{ values: ComparablePrefill; listingText: string } | null>(null);
+  const [prefill, setPrefill] = useState<{ values: ComparablePrefill; listingText: string; images: PendingImages } | null>(null);
   const ai = useAiAssist();
   const [catalog, setCatalog] = useState<FactorCatalog>(EMPTY_FACTOR_CATALOG);
   const [customFactors, setCustomFactors] = useState<CustomFactor[]>([]);
@@ -974,7 +974,7 @@ function MarketTypePanel(props: {
                     valuationId={valuationId}
                     type={type}
                     priceLabel={priceLabel}
-                    onUse={(values, listingText) => { setPrefill({ values, listingText }); setEditing("nuevo"); }}
+                    onUse={(values, listingText, images) => { setPrefill({ values, listingText, images }); setEditing("nuevo"); }}
                   />
                 ) : null}
               </>
@@ -1319,6 +1319,7 @@ function MarketTypePanel(props: {
           onOpenChange={(open) => { if (!open) { setEditing(null); setPrefill(null); } }}
           prefill={prefill?.values}
           listingText={prefill?.listingText}
+          initialImages={prefill?.images}
           comparable={editingComparable ? cardOf(comparables.find((item) => item.id === editingComparable.id) ?? editingComparable) : null}
           characteristicFields={fields}
           comparableType={type}

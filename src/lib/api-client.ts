@@ -18,7 +18,7 @@ import type { ComparableReviewDto } from "@/features/valuations/calculation/comp
 import type { ImageFraming } from "@/features/valuations/services/image-framing";
 import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 import type { WebListingCandidateInput } from "@/features/valuations/comparable-search/web-listings";
-import type { WebSearchStatusDto } from "@/features/valuations/comparable-search/web-search.service";
+import type { WebListingOutcome, WebSearchStatusDto } from "@/features/valuations/comparable-search/web-search.service";
 import type { ConstructionTypeDto, ConstructionTypesDto, CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
 import type { ConclusionCalculationDto, ConclusionSettingsDto } from "@/features/valuations/calculation/conclusion-types";
 import type { IncomeCalculationDto, IncomeInputDto } from "@/features/valuations/calculation/income-types";
@@ -462,7 +462,7 @@ export const api = {
       request<WebSearchStatusDto>(`/avaluos/${id}/mercado/comparables/buscar-ia/${jobId}`, { cache: "no-store" }),
     /** «Crear fichas» of the listings chosen. */
     addWebListings: (id: ApiId, type: ComparableType, candidates: WebListingCandidateInput[]) =>
-      request<{ created: number; reused: number; skipped: number; calculation: MarketCalculationDto }>(
+      request<{ created: number; reused: number; skipped: number; items: WebListingOutcome[]; calculation: MarketCalculationDto }>(
         `/avaluos/${id}/mercado/comparables/buscar-ia/fichas?tipo=${type}`,
         { method: "POST", body: JSON.stringify({ candidates }) },
       ),

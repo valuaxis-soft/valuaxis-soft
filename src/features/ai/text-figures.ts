@@ -117,6 +117,51 @@ export function parseListingDate(fragment: string): string | null {
   return date.toISOString().slice(0, 10);
 }
 
+/** "un", "una" and "uno" are a count when they open the fragment ("una recámara"); in prose they are articles. */
+const COUNT_WORDS: Record<string, number> = { un: 1, una: 1, uno: 1 };
+
+/**
+ * A count as a listing writes it: "3 recámaras", "dos plantas", "una
+ * recámara", "2.5 baños". Whole numbers only, or halves with `halves` (the
+ * way bathrooms are captured); anything else is not read.
+ */
+export function parseCount(fragment: string, options: { halves?: boolean } = {}): number | null {
+  const text = plainText(fragment);
+  const digits = /\d+(?:[.,]\d+)?/.exec(text);
+  let value: number | null = null;
+  if (digits) {
+    value = Number(digits[0].replace(",", "."));
+  } else {
+    for (const word of text.split(/[^a-z]+/)) {
+      const known = NUMBER_WORDS[word] ?? COUNT_WORDS[word];
+      if (known !== undefined) {
+        value = known;
+        break;
+      }
+    }
+  }
+  if (value === null || !Number.isFinite(value) || value < 0 || value > 10_000) return null;
+  return Number.isInteger(value) || (options.halves && Number.isInteger(value * 2)) ? value : null;
+}
+
+/** The five digits of a Mexican postal code ("C.P. 47600"). */
+export function parsePostalCode(fragment: string): string | null {
+  const match = /(?:^|\D)(\d{5})(?!\d)/.exec(fragment);
+  return match ? match[1] : null;
+}
+
+/**
+ * The id of a listing in its portal without its label ("ID: 145-998" →
+ * "145-998", "Clave EB-XK1234" → "EB-XK1234"). It has a digit, and no spaces.
+ */
+export function parsePublicationId(fragment: string): string | null {
+  const value = fragment.trim()
+    .replace(/^(?:id(?:\s+del\s+anuncio)?|clave|c[oó]digo|folio|ref(?:erencia)?\.?|n[uú]m(?:ero)?\.?|no\.)\s*(?:de\s+(?:anuncio|publicaci[oó]n|propiedad)\s*)?[:#.-]?\s*/i, "")
+    .replace(/^#\s*/, "")
+    .trim();
+  return /^[A-Za-z0-9][\w./-]{0,59}$/.test(value) && /\d/.test(value) ? value : null;
+}
+
 /** The first http(s) link of the text, without the punctuation that closes a sentence. */
 export function firstUrl(text: string): string | null {
   const match = /https?:\/\/[^\s<>"')\]]+/i.exec(text);
