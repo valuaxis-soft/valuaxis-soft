@@ -97,8 +97,8 @@ export type FactorSlotConfig = {
   key?: string | null;
 };
 
-/** At most six factors per homologation, as the columns of the appraiser's format; FRe is not one of them. */
-export const MAX_FACTOR_SLOTS = 6;
+/** At most eight factors per homologation; the appraiser's Excel uses seven and the FRe, which is not one of them (FAL-12, 23 Nov 2026). */
+export const MAX_FACTOR_SLOTS = 8;
 
 /** What identifies a factor in a homologation: the firm's own key, or its type. */
 export const factorKey = (item: { type: FactorType; key?: string | null }) => item.key ?? item.type;
