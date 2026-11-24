@@ -73,11 +73,12 @@ test("FAL-03: the first value added to the resumen keeps the three approaches th
 test("FAL-03: adding a value leaves the others in the dictamen, and removing the last one brings the approaches back", () => {
   const before = synced(structuredClone(conclusionesSection), calculation());
   const added = synced(before, calculation({ summaryRows: summaryRowsWith(calculation(), "mercado-terrenos") }));
+  // Costs and market list as their approach printed them (FAL-14: one figure per value); income and the concluded value take the conclusion's rounding.
   assert.deepEqual(rowsOf(added).slice(0, 5), [
     ["Valor por enfoque de costos", "8010000.00"],
-    ["Valor por enfoque de mercado", "7390000.00"],
+    ["Valor por enfoque de mercado", "7390400.00"],
     ["Valor por enfoque de ingresos", "3150000.00"],
-    ["Valor de terreno por enfoque de mercado", "1530000.00"],
+    ["Valor de terreno por enfoque de mercado", "1528000.00"],
     ["Valor concluido", "7390000.00"],
   ]);
 
@@ -86,7 +87,7 @@ test("FAL-03: adding a value leaves the others in the dictamen, and removing the
   assert.equal(concepts.some((concept) => concept.id.startsWith("conclusion-resumen-")), false, "the rows go");
   assert.deepEqual(rowsOf(removed).slice(0, 4), [
     ["Valor por enfoque de costos", "8010000.00"],
-    ["Valor por enfoque de mercado", "7390000.00"],
+    ["Valor por enfoque de mercado", "7390400.00"],
     ["Valor por enfoque de ingresos", "3150000.00"],
     ["Valor concluido", "7390000.00"],
   ], "the approaches come back before the concluded value, with their rounding");
