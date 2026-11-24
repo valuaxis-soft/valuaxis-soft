@@ -43,6 +43,15 @@ test("an unexpected failure of the full save returns its cause and a code, and l
   assert.doesNotMatch(body.error, /devpware_/, "the table and constraint stay in the log");
 });
 
+test("FAL-04: a failed save of a comparable answers with its cause and a code, not only «No se pudo guardar el comparable.»", async () => {
+  const repeated = new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "6" });
+  const { result, logged } = await quietly(() => valuationErrorResponse("COMPARABLE_UPDATE", repeated, "No se pudo guardar el comparable."));
+  assert.equal(result.status, 500);
+  const body = await result.json() as { error: string; code: string };
+  assert.match(body.error, /^No se pudo guardar el comparable: un dato que debe ser único está repetido\. Código: G-[A-Z0-9]{6}\.$/);
+  assert.equal(logged[0][0], `[COMPARABLE_UPDATE] ${body.code}`);
+});
+
 test("the database's errors read as what happened; business errors keep their message and status", async () => {
   const known = (code: string) => new Prisma.PrismaClientKnownRequestError("x", { code, clientVersion: "6" });
   assert.equal(failureCause(known("P2034")), "otro guardado del mismo avalúo ocurrió al mismo tiempo");

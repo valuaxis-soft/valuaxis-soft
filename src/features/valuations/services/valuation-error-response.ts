@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { internalError } from "@/lib/api-response";
 import { ValuationWorkflowError } from "./valuation-workflow.service";
 
 /** Letters and digits that read the same aloud and on a screenshot (no 0/O, 1/I/L). */
@@ -44,14 +43,15 @@ function causeForLog(error: unknown) {
 
 /**
  * Business failures return their message; anything else is logged with a
- * code (and the valuation's id) and the client gets the message, the kind of
- * failure when it is known and that code, never the details.
+ * code (and the valuation's id, when given) and the client gets the message,
+ * the kind of failure when it is known and that code, never the details. A
+ * failed save of a comparable said only «No se pudo guardar el comparable.»
+ * (FAL-04, 23 Nov 2026): every route of a valuation answers with the code.
  */
 export function valuationErrorResponse(context: string, error: unknown, fallbackMessage: string, details: { valuationId?: string } = {}) {
   if (error instanceof ValuationWorkflowError && error.status !== 500) {
     return NextResponse.json({ error: error.message, ...(error.link ? { link: error.link } : {}) }, { status: error.status });
   }
-  if (!details.valuationId && !(error instanceof ValuationWorkflowError)) return internalError(context, error, fallbackMessage);
   const reference = errorReference();
   const cause = failureCause(error);
   console.error(`[${context}] ${reference}`, { valuationId: details.valuationId ?? null, cause: causeForLog(error) }, error);
