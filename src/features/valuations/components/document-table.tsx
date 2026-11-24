@@ -23,7 +23,7 @@ import {
   type FormulaResult,
   type TableV2,
 } from "../services/table";
-import { evaluateTableFormulas, getCellDisplayValue } from "../services/table-formula-engine";
+import { evaluateTableFormulas, getCellPrintedValue } from "../services/table-formula-engine";
 import { TITLE_STYLE_KEY, cellStyleCss, cellStyleKey, headerStyleKey, tableCellStyle } from "../services/table-cell-style";
 import type { DocumentTableFragment } from "../services/table-pagination";
 import { TABLE_FIT_STEPS, canvasTextMeasure, planTablePrintFit, printFitColumns, type TablePrintFit } from "../services/table-print-fit";
@@ -381,7 +381,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
             {printableRows(tableV2).length ? printableRows(tableV2).map((row) => (
               <tr className="border-t border-slate-300 odd:bg-[var(--doc-zebra,#F8FAFC)]" key={row.id}>
                 {columns.map((column) => {
-                  const displayValue = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
+                  const displayValue = getCellPrintedValue(tableV2, row.id, column.id, formulaResults, presentation);
                   return (
                     <td className="border-r border-slate-300 px-1.5 py-1 align-top text-wrap break-words last:border-r-0" style={cellStyleCss(tableCellStyle(tableV2, cellStyleKey(row.id, column.id)))} key={column.id}>
                       {displayValue || EMPTY_VALUE}
@@ -490,7 +490,7 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
             // by the row's place in the whole table, so a continuation follows on.
             <TableRow className={cn(plain ? "border-0" : "border-slate-300", !plain && (firstRow + index) % 2 === 0 && "bg-[var(--doc-zebra,#F1F5F9)]")} data-split-table-row="" key={row.id}>
               {columns.map((column) => {
-                const value = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
+                const value = getCellPrintedValue(tableV2, row.id, column.id, formulaResults, presentation);
                 return (
                   <TableCell
                     className={cn(many ? "px-1.5 py-1" : "px-2 py-1", cellPresentation(tableV2, column.id, row.id, fitted?.fits === false), !plain && isMarkedCell(value) && MARKED)}
@@ -620,7 +620,7 @@ function CompactDocumentTable({ table }: { table: TableContent }) {
           <tr key={row.id}>
             {columns.map((column) => (
               <td className="overflow-hidden break-words border border-slate-300 px-1 py-0.5" key={column.id}>
-                {getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation)}
+                {getCellPrintedValue(tableV2, row.id, column.id, formulaResults, presentation)}
               </td>
             ))}
           </tr>

@@ -14,7 +14,7 @@
  */
 import { DEFAULT_NUMBER_PRESENTATION, type NumberPresentation } from "./number-presentation";
 import { columnWidthOf, printableColumns, printableRows, type FormulaResult, type TableV2 } from "./table";
-import { getCellDisplayValue } from "./table-formula-engine";
+import { getCellPrintedValue } from "./table-formula-engine";
 
 /** The letter of every table of the document (TABLE_TEXT_SIZE). */
 export const TABLE_FONT_PX = 11;
@@ -246,7 +246,7 @@ export function printFitColumns(
     return {
       header: column.name.trim() || "No se proporcionó",
       // A row of the appraiser's own wraps even in a column of figures: it asks as a text.
-      cells: rows.filter((row) => !noWrap || !extraRows.has(row.id)).map((row) => getCellDisplayValue(table, row.id, column.id, formulaResults, presentation)),
+      cells: rows.filter((row) => !noWrap || !extraRows.has(row.id)).map((row) => getCellPrintedValue(table, row.id, column.id, formulaResults, presentation)),
       ...(noWrap ? { noWrap } : {}),
       ...(width ? { width } : {}),
     };
