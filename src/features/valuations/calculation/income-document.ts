@@ -188,6 +188,8 @@ function rateTable(ratingColumns: ReadonlyArray<number | null>): TableContent {
       ...generated.schema!,
       shadedRows: keys.flatMap((key, index) => (key.startsWith("calificacion-") ? [rowIds[index]] : [])),
       cellStyles: bold,
+      // Read as one grid, as the book prints it: never broken between pages when it fits one.
+      keepTogether: true,
     },
   } as unknown as TableContent;
 }
@@ -197,12 +199,13 @@ const ensureV2 = (content: TableContent) => content as unknown as TableV2;
 /** «XII.4 TASA A UTILIZAR»: the resultant rate, the market and weighted rates when captured, and the rate applied. */
 function rateToUseTable(calculation: IncomeCalculationDto, tableRate: number | null, appliedRate: number | null): TableContent {
   const shown = (value: number | null) => (value === null ? "" : bookPercent(value, 4));
-  return generatedTable(RATE_TO_USE_TABLE_ID, "Tasa a utilizar", [textColumn("Concepto"), figureColumn("Tasa")], [
+  const table = ensureV2(generatedTable(RATE_TO_USE_TABLE_ID, "Tasa a utilizar", [textColumn("Concepto"), figureColumn("Tasa")], [
     ["I) Tasa resultante:", tableRate === null ? EMPTY : bookPercent(tableRate, 4)],
     ["II) Tasa obtenida de mercado:", shown(calculation.rateFromMarket ?? null)],
     ["III) Tasa ponderada:", shown(calculation.weightedRate ?? null)],
     ["IV) Tasa aplicada:", appliedRate === null ? EMPTY : bookPercent(appliedRate, 4)],
-  ], { rowKeys: ["resultante", "mercado", "ponderada", "aplicada"], widthMode: "content" });
+  ], { rowKeys: ["resultante", "mercado", "ponderada", "aplicada"], widthMode: "content" }));
+  return { ...table, schema: { ...table.schema!, keepTogether: true } } as unknown as TableContent;
 }
 
 /* ------------------------------------------------------------------ */

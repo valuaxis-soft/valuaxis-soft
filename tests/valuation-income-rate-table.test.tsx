@@ -29,6 +29,7 @@ import { computeIncomeApproach, rateTableBreakdown } from "../src/features/valua
 import type { AppSection, Block, TableContent } from "../src/features/valuations/model";
 import { resolveContentLayout } from "../src/features/valuations/services/content-layout";
 import { ensureTableV2, type TableV2 } from "../src/features/valuations/services/table";
+import { splitTableRows } from "../src/features/valuations/services/table-pagination";
 
 /** TCH: 250 m² at $30, the book's deductions (31 %) and its ratings (K31, O33, K35, M37, M40, H43, R45). */
 const tch: IncomeCalculationDto = {
@@ -174,6 +175,25 @@ test("the template's income blocks give way to the pages only while nothing was 
   });
   assert.equal(incomeTemplateUntouched(template("")), true);
   assert.equal(incomeTemplateUntouched(template("8.5 % según mercado")), false);
+});
+
+test("the rate tables print whole on one page: they move to the next page instead of breaking after PROYECTO", () => {
+  const blocks = incomeDocumentBlocks(tch, resultOf(tch));
+  for (const id of [INCOME_CAPTURE.rating.table, INCOME_CAPTURE.rateToUse.table]) {
+    const table = tableIn(blocks, id);
+    assert.equal(table.schema?.keepTogether, true, id);
+    const html = renderToStaticMarkup(createElement(DocumentTable, { variant: "report", table: table as unknown as TableContent }));
+    assert.ok(html.includes("data-keep-together") && html.includes("break-inside-avoid"), id);
+  }
+  // 21 rows of 20 px under a 60 px head, with 300 px left on a 700 px page: the whole table on the next page.
+  const measured = { leadHeight: 60, headerHeight: 40, rowHeights: Array(21).fill(20), tailHeight: 20 };
+  const kept = splitTableRows({ ...measured, keepTogether: true }, { remainingHeight: 300, pageHeight: 700, atPageTop: false });
+  assert.deepEqual(kept, { startsOnNewPage: true, fragments: [{ from: 0, to: 21, height: 500, clipped: false }], oversizedRows: [] });
+  // Room enough on this page: it stays, whole.
+  assert.equal(splitTableRows({ ...measured, keepTogether: true }, { remainingHeight: 600, pageHeight: 700, atPageTop: false }).startsOnNewPage, false);
+  // Any other table breaks by rows, as before; one kept together but taller than a page breaks too.
+  assert.ok(splitTableRows(measured, { remainingHeight: 300, pageHeight: 700, atPageTop: false }).fragments.length > 1);
+  assert.ok(splitTableRows({ ...measured, keepTogether: true }, { remainingHeight: 300, pageHeight: 400, atPageTop: false }).fragments.length > 1);
 });
 
 /* --------------------- Tables of a generated block --------------------- */

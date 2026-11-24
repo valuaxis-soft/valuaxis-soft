@@ -308,6 +308,11 @@ export type TableSchema = {
    */
   shadedRows?: string[];
   /**
+   * Printed whole on one page when it fits one: it moves to the next page
+   * instead of breaking by rows (the rate table of the income approach).
+   */
+  keepTogether?: boolean;
+  /**
    * A grid of labels and marks printed as written, like the offer level of the
    * appraiser's format: no header row, no rules or shading, in bold.
    */

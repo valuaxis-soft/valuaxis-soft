@@ -469,10 +469,13 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
           (plain || (contentWidth && !fitted)) && print.align === "center" && "mx-auto",
           (plain || (contentWidth && !fitted)) && print.align === "right" && "ml-auto",
           (columnWidths || fitted) && "table-fixed",
+          tableV2.schema?.keepTogether && "break-inside-avoid",
         )}
         // Only this table takes the smaller letter it needs to fit the page.
         style={fitted ? { fontSize: `${fitted.fontPx}px` } : undefined}
         data-split-table=""
+        // Kept whole on one page when it fits: the pagination moves it, and the print engine does not break it either.
+        data-keep-together={tableV2.schema?.keepTogether ? "" : undefined}
         data-table-width={tableV2.schema?.widthMode === "content" ? "content" : undefined}
         data-table-fit-step={fitted ? fitted.step : undefined}
         data-table-fits={fitted ? String(fitted.fits) : undefined}

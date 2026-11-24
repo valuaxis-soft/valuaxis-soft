@@ -774,6 +774,7 @@ function measureSplittableTable(itemElement: HTMLElement, itemRect: DOMRect): Me
     keepWithNext,
     columnWidths,
     ...(Number.isFinite(fitStep) ? { fitStep } : {}),
+    ...(grid.hasAttribute("data-keep-together") ? { keepTogether: true } : {}),
   };
 }
 
