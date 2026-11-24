@@ -84,6 +84,41 @@ export function SheetTable({ items, printable = false }: { items: SheetItem[]; p
   );
 }
 
+/** A field of the editable sheet: its label beside its control, as the card shows a datum beside its name. */
+export type SheetField = { key: string; label: ReactNode; htmlFor?: string; control: ReactNode; wide?: boolean };
+
+/**
+ * The editable sheet (24 nov 2026, «una sola ventana»): the same label and
+ * value cells as the card, two pairs a row on a wide screen and one on a
+ * phone, with the field inside the value cell. Every field keeps its own
+ * label (`htmlFor`), so it is read and focused as before.
+ */
+export function SheetFieldTable({ items }: { items: SheetField[] }) {
+  const tone = tones(false);
+  const cell = cn("border-t", tone.frame);
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] text-xs sm:grid-cols-[minmax(0,9.5rem)_minmax(0,1fr)_minmax(0,9.5rem)_minmax(0,1fr)]",
+        // The fields of the form, as small as the text of the card.
+        "[&_[data-slot=input]]:h-7 [&_[data-slot=input]]:text-xs [&_[data-slot=native-select]]:h-7 [&_[data-slot=native-select]]:text-xs [&_textarea]:text-xs",
+      )}
+      data-sheet-fields=""
+    >
+      {sheetRows(items).map((row) => row.map((item) => (
+        <div key={item.key} className="contents">
+          <div className={cn(cell, tone.label, "flex items-start px-2 py-1.5 font-medium")}>
+            {item.htmlFor ? <label htmlFor={item.htmlFor}>{item.label}</label> : <span>{item.label}</span>}
+          </div>
+          <div className={cn(cell, "grid min-w-0 content-start gap-1 px-1.5 py-1", (item.wide || row.length === 1) && "sm:col-span-3")} data-sheet-field={item.key}>
+            {item.control}
+          </div>
+        </div>
+      )))}
+    </div>
+  );
+}
+
 function SheetPair({ item, labelClass, valueClass, span }: { item: SheetItem; labelClass: string; valueClass: string; span: number }) {
   return (
     <>

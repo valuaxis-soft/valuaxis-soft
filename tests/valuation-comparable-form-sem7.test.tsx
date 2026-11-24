@@ -118,7 +118,9 @@ test("V7.2-17: the area says which one, and the fields go in the order he asked 
   assert.match(DIALOG, /TERRENO_VENTA: "Superficie de terreno \(m²\)"/);
   assert.ok(!DIALOG.includes(">Superficie (m²)<"));
   const at = (text: string) => DIALOG.indexOf(text);
-  const order = ["Tipo de operación", "Tipo de construcción", "{props.unitLabel}", "Superficie de terreno (m²)</FieldLabel>", "{AREA_FIELD_LABELS[props.comparableType]}"];
+  // Since the card is the form (V8.2), each field is an item of its band, in this order.
+  const order = ['field("operation", "Tipo de operación"', 'field("constructionType", "Tipo de construcción"', 'field("price", props.unitLabel', 'field("landArea", "Superficie de terreno (m²)"', 'field("area", AREA_FIELD_LABELS[props.comparableType]'];
+  for (const marker of order) assert.ok(at(marker) >= 0, `${marker} is in the card`);
   for (let index = 1; index < order.length; index += 1) assert.ok(at(order[index - 1]) < at(order[index]), `${order[index - 1]} before ${order[index]}`);
 });
 

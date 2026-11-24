@@ -8,8 +8,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import type { ComparableCardDto } from "@/features/valuations/calculation/comparable-card.service";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { ComparableLocationMap } from "@/features/valuations/comparable-base/components/comparable-location-map";
 import { ComparableCardView } from "./comparable-card-view";
 import { useExpandableDialog } from "./expandable-dialog";
+
+const coordinatesOf = ({ comparable }: ComparableCardDto) =>
+  comparable.latitude !== null && comparable.latitude !== undefined && comparable.longitude !== null && comparable.longitude !== undefined
+    ? { latitude: comparable.latitude, longitude: comparable.longitude } : null;
 
 /** The card of a comparable of the firm's base, read when it opens. */
 function ComparableCardDialog({ comparableId, onClose }: { comparableId: string; onClose: () => void }) {
@@ -38,7 +43,11 @@ function ComparableCardDialog({ comparableId, onClose }: { comparableId: string;
         ) : "error" in state ? (
           <p className="text-sm text-destructive" role="alert">{state.error}</p>
         ) : (
-          <ComparableCardView card={state.card} />
+          <ComparableCardView
+            card={state.card}
+            // V8.2: the card shows where it is, with its pin.
+            map={<div className="border-t p-1.5"><ComparableLocationMap comparableId={comparableId} coordinates={coordinatesOf(state.card)} canEdit={false} /></div>}
+          />
         )}
         <DialogFooter>
           <a className={cn(buttonVariants({ variant: "outline" }))} href={`/comparables/${comparableId}`} target="_blank" rel="noopener noreferrer">

@@ -1,7 +1,7 @@
 "use client";
 
-import { AlertTriangle, ArrowDown, ArrowDownWideNarrow, ArrowUp, ArrowUpNarrowWide, Calculator, ChevronRight, EyeOff, FileDown, Loader2, MapPin, Pencil, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
-import { Fragment, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
+import { AlertTriangle, ArrowDown, ArrowDownWideNarrow, ArrowUp, ArrowUpNarrowWide, Calculator, ChevronRight, EyeOff, FileDown, IdCard, Loader2, MapPin, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
+import { Fragment, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { toast } from "sonner";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -76,7 +76,8 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { formatComparableId, todayInMexico } from "@/features/valuations/calculation/comparable-card";
 import { REVIEW_STATUS_LABELS, comparableWarnings, isVerifiedStatus } from "@/features/valuations/calculation/comparable-review";
 import { builtAreaToleranceOf } from "@/features/valuations/calculation/comparable-review-checklist";
-import { ComparableCardButton } from "./comparable-card-dialog";
+import { changesList, comparableListSteps } from "./market-comparable-undo";
+import { marketMemoryKey, sessionStore, storeMarketScroll, storeMarketType, storedMarketScroll, storedMarketType } from "./market-tab-memory";
 import { ComparableDialog, type PendingImages } from "./comparable-dialog";
 import { ComparableReviewDialog } from "./comparable-review-dialog";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
@@ -188,8 +189,26 @@ export function MarketCalculationPanel(props: {
 }) {
   const { valuationId } = props;
   const types = props.types ?? SALE_COMPARABLE_TYPES;
-  const [type, setType] = useState<ComparableType>(types[0]);
-  const [shown, setShown] = useState<ReadonlySet<ComparableType>>(() => new Set([types[0]]));
+  // The market open last time (V8.2): changing the view or reloading mounts the panel again, on the same market.
+  const memoryKey = marketMemoryKey(valuationId, types);
+  const isClient = useSyncExternalStore(subscribeToNothing, () => true, () => false);
+  const [type, setType] = useState<ComparableType>(() => (isClient ? storedMarketType(sessionStore(), memoryKey, types) : null) ?? types[0]);
+  const [shown, setShown] = useState<ReadonlySet<ComparableType>>(() => new Set([types[0], type]));
+  // Rendered on the server first: the kept market is read once on the client (adjusted during render, as the view mode is).
+  const [restored, setRestored] = useState(isClient);
+  if (isClient && !restored) {
+    setRestored(true);
+    const kept = storedMarketType(sessionStore(), memoryKey, types);
+    if (kept && kept !== type) {
+      setType(kept);
+      setShown((current) => new Set([...current, kept]));
+    }
+  }
+  useEffect(() => {
+    if (restored) storeMarketType(sessionStore(), memoryKey, type);
+  }, [memoryKey, restored, type]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useKeptEditorScroll(rootRef, memoryKey);
   const typesKey = types.join(",");
   const reportActive = useEffectEvent((item: ComparableType) => props.onActiveChange?.(item));
   useEffect(() => {
@@ -260,7 +279,7 @@ export function MarketCalculationPanel(props: {
   const hiddenHere = props.hiddenBlocks?.[type] ?? [];
   return (
     // The market shown: the preview follows it to its pages (V6.2-10).
-    <div className="grid gap-2" data-active-market={type}>
+    <div ref={rootRef} className="grid gap-2" data-active-market={type}>
       {types.length > 1 ? (
         <div className="flex flex-wrap items-center gap-2">
           <div role="tablist" aria-label="Mercados del avalúo" className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1">
@@ -304,14 +323,15 @@ export function MarketCalculationPanel(props: {
         </div>
       ) : null}
       {/* Where the appraiser is, always in sight while scrolling the panel and its pages (V7.2-02). */}
+      {/* Filled with the market's pastel (V8.3), so it does not get lost among the pages of the template. */}
       <p
-        className={cn("sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-md border-l-4 bg-background/95 px-3 py-1.5 text-sm shadow-sm backdrop-blur", MARKET_ACCENT[type].border)}
+        className={cn("sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-md border border-l-4 px-3 py-2 text-sm shadow-sm", MARKET_ACCENT[type].border, MARKET_ACCENT[type].here)}
         data-market-here={type}
       >
         <MapPin className="size-4 shrink-0" aria-hidden />
-        <span>Estás en: <strong>{COMPARABLE_TYPE_LABELS[type]}</strong></span>
+        <span>Estás en: <strong className="font-semibold">{COMPARABLE_TYPE_LABELS[type]}</strong></span>
         {types.length > 1 ? (
-          <span className="text-xs text-muted-foreground">Abajo ves solo las páginas de este mercado; el dictamen imprime todos los mercados agregados al informe.</span>
+          <span className="text-xs text-foreground/75">Abajo ves solo las páginas de este mercado; el dictamen imprime todos los mercados agregados al informe.</span>
         ) : null}
       </p>
       {hiddenHere.length ? (
@@ -580,7 +600,21 @@ function MarketTypePanel(props: {
     void current.changeComparable(comparable.id, change);
   };
 
-  // What an undo or a redo puts back: the settings as they were, and each comparable whose capture changed.
+  // Comparables deleted in this panel: they wait aside on the server, and an undo brings them back (V8.3).
+  const deletedInPanel = useRef(new Set<string>());
+  /** Brings back the comparables deleted that `target` has, or deletes again those it does not, and leaves its order. */
+  const applyComparableList = async (target: Pick<MarketSnapshot, "comparables">) => {
+    const ids = () => session.current?.view.comparables.map((item) => item.id) ?? [];
+    const steps = comparableListSteps(ids(), target.comparables.map((item) => item.id), deletedInPanel.current);
+    if (!changesList(steps)) return;
+    for (const id of steps.remove) if (!(await run(() => api.market.deleteComparable(valuationId, type, id)))) return;
+    if (steps.restore.length && !(await run(() => api.market.restoreMarket(valuationId, type, steps.restore)))) return;
+    if (steps.order.join(",") !== ids().join(",")) await run(() => api.market.reorderComparables(valuationId, type, steps.order));
+    if (steps.restore.length) {
+      toast.success(steps.restore.length === 1 ? "Comparable restaurado en su lugar, con sus factores y fotos." : `${steps.restore.length} comparables restaurados en su lugar.`);
+    }
+  };
+  // What an undo or a redo puts back: the settings as they were, each comparable whose capture changed, and those deleted or brought back.
   useEffect(() => {
     restoreRef.current = (snapshot) => {
       const current = session.current;
@@ -589,6 +623,7 @@ function MarketTypePanel(props: {
       for (const target of changedComparables(current.view.comparables, snapshot.comparables)) {
         void current.changeComparable(target.id, () => target);
       }
+      void applyComparableList(snapshot);
     };
   });
   const snapshot = (): MarketSnapshot | null => (session.current ? snapshotOf(session.current.view) : null);
@@ -612,25 +647,34 @@ function MarketTypePanel(props: {
   };
 
   /**
-   * "Eliminar comparable": the server sets it aside, so «Deshacer» brings it
-   * back in its place, with its factors, photos and what was written in its
-   * rows of the dictamen (they follow its id).
+   * "Eliminar comparable": the server sets it aside, so «Deshacer» of the
+   * notice, the panel's «Deshacer» and Ctrl+Z bring it back in its place, with
+   * its factors, photos and what was written in its rows of the dictamen (they
+   * follow its id). The focus stays in the panel, so Ctrl+Z is the panel's and
+   * not the document's (V8.3: «ya está cambiando otras cosas pero no eso»).
    */
   const removeComparable = async (comparable: ComparableDto) => {
-    const before = session.current?.view.comparables.map((item) => item.id) ?? [];
+    const current = session.current;
+    if (!current || readOnly) return;
+    const before = snapshotOf(current.view);
+    history.record(before, null);
+    deletedInPanel.current.add(comparable.id);
     const ok = await run(() => api.market.deleteComparable(valuationId, type, comparable.id));
     if (!ok) return;
+    // After the confirmation closes (it hands the focus back to the deleted row's button, which is gone, or keeps it).
+    window.setTimeout(() => {
+      const panel = panelRef.current;
+      const active = document.activeElement;
+      if (panel && (!active || !active.isConnected || !panel.contains(active))) panel.focus({ preventScroll: true });
+    }, 300);
     toast.success(`Comparable ${comparable.reference} eliminado.`, {
+      description: "Deshacer (o Ctrl+Z en el panel) lo regresa a su lugar con sus factores y fotos.",
       duration: 15000,
-      action: {
-        label: "Deshacer",
-        onClick: () => void (async () => {
-          if (!(await run(() => api.market.restoreMarket(valuationId, type, [comparable.id])))) return;
-          await reorderComparables(before, `Comparable ${comparable.reference} restaurado.`);
-        })(),
-      },
+      action: { label: "Deshacer", onClick: () => void applyComparableList(before) },
     });
   };
+  const confirmDeleteComparable = useConfirmDelete();
+  const panelRef = useRef<HTMLElement>(null);
 
   /**
    * «Características agregadas» of a card, inside a valuation, become
@@ -651,6 +695,8 @@ function MarketTypePanel(props: {
   };
 
   const submitComparable = async (current: ComparableDto | null, typed: ComparableFormValues, pending: PendingImages, mergeInto?: string) => {
+    // What the card saves is a step of the panel's undo, as a change in a cell.
+    if (current && session.current) history.record(snapshotOf(session.current.view), null);
     const values = withSharedCharacteristics(typed);
     if (current) return run(() => api.market.updateComparable(valuationId, type, current.id, values), "Comparable guardado");
     const before = new Set(calculation?.comparables.map((item) => item.id) ?? []);
@@ -761,7 +807,10 @@ function MarketTypePanel(props: {
 
   return (
     <section
-      className={cn("grid gap-5 rounded-lg border-2 border-dashed bg-muted/20 p-3 sm:p-4", MARKET_ACCENT[type].border)}
+      ref={panelRef}
+      // Focusable from code only: after a deletion the focus waits here, so Ctrl+Z is the panel's.
+      tabIndex={-1}
+      className={cn("grid gap-5 rounded-lg border-2 border-dashed bg-muted/20 p-3 outline-none sm:p-4", MARKET_ACCENT[type].border)}
       aria-labelledby="market-calculation-title"
       data-comparable-type={type}
       onKeyDown={(event) => {
@@ -932,22 +981,34 @@ function MarketTypePanel(props: {
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-2 py-1.5 text-right whitespace-nowrap">
-                      <ComparableCardButton compact comparableId={comparable.id} label={`Ver ficha del comparable ${comparable.reference}`} />
-                      <Button type="button" size="icon-sm" variant="ghost" aria-label={`Editar comparable ${comparable.reference}`} onClick={() => setEditing(comparable)}>
-                        <Pencil />
+                    {/* One window (V8.2): «Ver ficha» opens the card, editable in place; no separate «Editar». */}
+                    <td className="px-2 py-1.5 text-right whitespace-nowrap" data-comparable-actions="">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Ver ficha del comparable ${comparable.reference}`}
+                        title={readOnly ? "Ver la ficha del comparable" : "Ver y editar la ficha del comparable"}
+                        onClick={() => setEditing(comparable)}
+                      >
+                        <IdCard data-icon="inline-start" /> Ver ficha
                       </Button>
                       {!readOnly ? (
                         <Button
                           type="button"
-                          size="icon-sm"
+                          size="sm"
                           variant="ghost"
+                          className="text-destructive"
                           aria-label={`Eliminar comparable ${comparable.reference}`}
-                          onClick={() => {
-                            if (window.confirm(`¿Eliminar el comparable ${comparable.reference}?`)) void removeComparable(comparable);
-                          }}
+                          onClick={() => confirmDeleteComparable({
+                            title: `¿Eliminar el comparable ${comparable.reference}?`,
+                            description: "Se quita de este mercado con sus factores y sus renglones del dictamen. Puedes regresarlo con «Deshacer» en el aviso, "
+                              + "con «Deshacer» del cálculo o con Ctrl+Z.",
+                            confirmLabel: "Eliminar comparable",
+                            onConfirm: () => void removeComparable(comparable),
+                          })}
                         >
-                          <Trash2 />
+                          <Trash2 data-icon="inline-start" /> Eliminar
                         </Button>
                       ) : null}
                     </td>
@@ -1352,6 +1413,54 @@ function MarketTypePanel(props: {
       ) : null}
     </section>
   );
+}
+
+const subscribeToNothing = () => () => {};
+
+/**
+ * How far down the editor was while this market's panel was open, kept for
+ * the tab (V8.2): after changing the view or reloading, the editor goes back
+ * there once the page is tall enough, unless the appraiser scrolls first.
+ */
+function useKeptEditorScroll(root: RefObject<HTMLElement | null>, key: string) {
+  useEffect(() => {
+    const scroller = root.current?.closest<HTMLElement>("#valuation-form");
+    if (!scroller) return;
+    const target = storedMarketScroll(sessionStore(), key);
+    let restoring = target !== null;
+    let frame = 0;
+    const started = performance.now();
+    const stopRestoring = () => { restoring = false; };
+    // The panel and its pages load a moment after: try for a few seconds, until the editor can scroll that far.
+    const restore = () => {
+      if (!restoring || target === null) return;
+      if (scroller.scrollHeight - scroller.clientHeight >= target - 2) {
+        scroller.scrollTop = target;
+        restoring = false;
+        return;
+      }
+      if (performance.now() - started > 4000) { restoring = false; return; }
+      frame = window.requestAnimationFrame(restore);
+    };
+    frame = window.requestAnimationFrame(restore);
+    let pending = 0;
+    const keep = () => {
+      if (restoring || pending) return;
+      pending = window.requestAnimationFrame(() => {
+        pending = 0;
+        storeMarketScroll(sessionStore(), key, scroller.scrollTop);
+      });
+    };
+    scroller.addEventListener("scroll", keep, { passive: true });
+    // The appraiser moving the page himself wins over the restore.
+    for (const event of ["wheel", "touchstart", "keydown", "pointerdown"] as const) scroller.addEventListener(event, stopRestoring, { passive: true });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(pending);
+      scroller.removeEventListener("scroll", keep);
+      for (const event of ["wheel", "touchstart", "keydown", "pointerdown"] as const) scroller.removeEventListener(event, stopRestoring);
+    };
+  }, [root, key]);
 }
 
 /** A row of «2. Comparables» that drags by its handle to change the order (V7.2-14). */

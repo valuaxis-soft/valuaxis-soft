@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import type { ComparableAddress } from "@/features/valuations/calculation/comparable-card";
+import { bestGeocodingResult } from "@/features/valuations/calculation/comparable-geocoding";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import type { LatLng } from "./comparable-location-leaflet";
 
@@ -33,11 +35,15 @@ const errorMessage = (error: unknown) =>
  * places the pin or takes that point. OpenStreetMap tiles, as the card's
  * map: no Google key in the browser.
  */
-export function ComparableLocationPicker({ latitude, longitude, address, onChange, disabled = false, className }: {
+export function ComparableLocationPicker({ latitude, longitude, address, query, parts, onChange, disabled = false, className }: {
   latitude: number | null;
   longitude: number | null;
   /** The address as the dictamen prints it; looked up when there are no coordinates. */
   address: string;
+  /** What the geocoder is asked for, in a map's words (`geocodingQueryOf`); the printed line without it. */
+  query?: string;
+  /** The parts captured: among the geocoder's answers, the one in their postal code and municipality is shown (V8.2). */
+  parts?: ComparableAddress | null;
   onChange: (next: LatLng) => void;
   disabled?: boolean;
   className?: string;
@@ -52,7 +58,7 @@ export function ComparableLocationPicker({ latitude, longitude, address, onChang
     setLooking(true);
     setProblem(null);
     try {
-      const [first] = await api.maps.geocode(text.trim());
+      const first = bestGeocodingResult(await api.maps.geocode(text.trim()), parts);
       if (first) setFound({ point: { latitude: first.point[0], longitude: first.point[1] }, address: first.address });
       else setProblem("No se encontró esa dirección; haz clic en el mapa para poner el pin.");
     } catch (error) {
@@ -67,12 +73,17 @@ export function ComparableLocationPicker({ latitude, longitude, address, onChang
   useEffect(() => {
     if (looked.current || value || !address.trim() || disabled) return;
     looked.current = true;
-    void lookUp(address);
+    void lookUp(query || address);
     // Only the first render decides; afterwards the appraiser asks with the button.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const place = (next: LatLng) => onChange({ latitude: roundCoordinate(next.latitude), longitude: roundCoordinate(next.longitude) });
+  const place = (next: LatLng) => {
+    setFound(null);
+    onChange({ latitude: roundCoordinate(next.latitude), longitude: roundCoordinate(next.longitude) });
+  };
+  // A search asked for with the pin already placed shows where the address falls, to move the pin there or keep it.
+  const offered = found && !(value && value.latitude === roundCoordinate(found.point.latitude) && value.longitude === roundCoordinate(found.point.longitude)) ? found : null;
 
   return (
     <section className={className} aria-label="Ubicación en el mapa" data-comparable-location-picker="">
@@ -82,21 +93,21 @@ export function ComparableLocationPicker({ latitude, longitude, address, onChang
             {value ? "Arrastra el pin o haz clic en el mapa para corregir la ubicación." : "Haz clic en el mapa para poner el pin: llena la latitud y la longitud."}
           </span>
           <span className="flex flex-wrap gap-1.5">
-            {found && !value && !disabled ? (
-              <Button type="button" size="sm" variant="secondary" className="h-7" onClick={() => place(found.point)}>
+            {offered && !disabled ? (
+              <Button type="button" size="sm" variant="secondary" className="h-7" onClick={() => place(offered.point)}>
                 <MapPin data-icon="inline-start" /> Poner el pin aquí
               </Button>
             ) : null}
-            <Button type="button" size="sm" variant="outline" className="h-7" disabled={disabled || looking || !address.trim()} onClick={() => void lookUp(address)}>
+            <Button type="button" size="sm" variant="outline" className="h-7" disabled={disabled || looking || !(query || address).trim()} onClick={() => void lookUp(query || address)}>
               {looking ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Search data-icon="inline-start" />} Buscar la dirección
             </Button>
           </span>
         </div>
-        <Leaflet value={value} onChange={disabled ? undefined : place} approximate={value ? null : found?.point ?? null} className="h-56 w-full rounded-sm" />
+        <Leaflet value={value} onChange={disabled ? undefined : place} approximate={offered?.point ?? null} className="h-56 w-full rounded-sm" />
         <p className="px-0.5 text-xs text-muted-foreground" role={problem ? "alert" : undefined}>
           {problem
-            ?? (found && !value
-              ? `Ubicación aproximada: ${found.address}. Pon el pin para guardarla.`
+            ?? (offered
+              ? `La dirección cae en: ${offered.address}. ${value ? "«Poner el pin aquí» lo mueve ahí; o arrástralo." : "Pon el pin para guardarla."}`
               : value
                 ? `${value.latitude}, ${value.longitude} · OpenStreetMap`
                 : "OpenStreetMap")}

@@ -60,6 +60,14 @@
   --chart-3: oklch(0.7 0.12 68);
   --chart-4: oklch(0.56 0.1 285);
   --chart-5: oklch(0.6 0.13 40);
+  /* Each market's pastel (V8.3, «que se rellene la barrita»): the fill of the
+     «Estás en» bar, the same hue as its chart color, light enough that the
+     ink reads on it (13:1 or more). Land soft amber, buildings soft blue,
+     rents soft violet, land for rent soft terracotta. */
+  --market-land: oklch(0.935 0.06 75);
+  --market-building: oklch(0.935 0.045 255);
+  --market-rent: oklch(0.935 0.045 290);
+  --market-land-rent: oklch(0.935 0.05 40);
   --radius: 0.625rem;
   --sidebar: oklch(0.972 0.008 255);
   --sidebar-foreground: oklch(0.215 0.035 250);
@@ -208,6 +216,10 @@ article[data-document-page] .light,
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-market-land: var(--market-land);
+  --color-market-building: var(--market-building);
+  --color-market-rent: var(--market-rent);
+  --color-market-land-rent: var(--market-land-rent);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
