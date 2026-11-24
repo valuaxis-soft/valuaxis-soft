@@ -47,7 +47,7 @@ import type { ValuationDetail, ValuationListItem } from "@/features/valuations/r
 import type { AppSection } from "@/features/valuations/model";
 import type { ValuationHistory } from "@/features/valuations/services/valuation-history";
 import type { CroquisKind, CroquisSettings } from "@/features/maps/croquis";
-import type { CroquisLabelPlacement } from "@/features/maps/croquis-marker";
+import type { CroquisLabelPlacement } from "@/features/maps/highlights";
 import type { StreetsAroundDto } from "@/features/maps/streets-osm";
 import type { SubjectLocationInput } from "@/features/maps/subject-location";
 import type { SubjectLocationDto } from "@/features/maps/server/subject-location.service";
@@ -82,8 +82,8 @@ export type CroquisRequest = {
   lines?: CroquisSettings["lines"];
 };
 
-/** What "Generar croquis de localización" returns: the stored image and the streets that did not fit the croquis. */
-export type CroquisResponse = { image: EditorImageDto; omittedStreets: string[] };
+/** What "Generar croquis de localización" returns: the stored image, the streets that did not fit the croquis and the comparables its frame left out («C-3»). */
+export type CroquisResponse = { image: EditorImageDto; omittedStreets: string[]; omittedPins: string[] };
 
 export type PrincipalCoverImageResponse = {
   id: string;
