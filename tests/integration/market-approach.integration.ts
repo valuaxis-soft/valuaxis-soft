@@ -293,9 +293,9 @@ test("the conclusion follows the approaches: Arandas concludes 8,580,000 with th
     justification: "Ponderación de prueba.",
   });
   const weighted = await prisma.resumenValor.findUniqueOrThrow({ where: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1 } });
-  // Each approach is rounded in the summary (market 1,528,000 → 1,530,000):
-  // 0.5 × 8,580,000 + 0.5 × 1,530,000 = 5,055,000 → 5,060,000.
-  assert.equal(Number(weighted.NValorConcluido), 5060000);
+  // One figure per value (FAL-14): the market value as its approach rounded it, 1,528,000;
+  // 0.5 × 8,580,000 + 0.5 × 1,528,000 = 5,054,000 → 5,050,000 with the conclusion's rounding.
+  assert.equal(Number(weighted.NValorConcluido), 5050000);
   assert.equal(weighted.SJustificacion, "Ponderación de prueba.");
 });
 

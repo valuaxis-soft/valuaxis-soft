@@ -126,13 +126,14 @@ test("a concluded valuation rejects edits, and reopening copies the captures and
   const user = { ...fixture.user, permissions: [...fixture.user.permissions, "AVALUO_CONCLUIR", "AVALUO_REABRIR"] };
   await saveMachineryCalculation(fixture.publicId, user, machineryInputSchema.parse({ cost: workbookCost, market: workbookMarket }));
   await saveConclusionSettings(fixture.publicId, user, { method: { kind: "weighted", weights: { costos: 0.4, mercado: 0.6 } }, justification: null });
-  // ROUND(0.4 · 930,000 + 0.6 · 980,000, −4): each approach is rounded in the summary, as the book does.
+  // ROUND(0.4 · 933,000 + 0.6 · 980,000, −4): one figure per value (FAL-14), the summary lists the physical
+  // value as Costos rounded it («A miles»), not rounded again as the book did (930,000).
   const summary = async () => {
     const valuation = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
     const row = await prisma.resumenValor.findUniqueOrThrow({ where: { IdVersionAvaluo: (valuation.IdVersionTrabajo ?? valuation.IdVersionFinal)! } });
     return [Number(row.NValorEnfoqueCostos), Number(row.NValorEnfoqueMercado), Number(row.NValorConcluido)];
   };
-  assert.deepEqual(await summary(), [930000, 980000, 960000]);
+  assert.deepEqual(await summary(), [933000, 980000, 960000]);
 
   // Concluding needs the document structure, created on the first save.
   await saveValuationSections({
@@ -162,7 +163,7 @@ test("a concluded valuation rejects edits, and reopening copies the captures and
   assert.deepEqual(reopened.cost, { ...workbookCost, formulas: {} });
   assert.deepEqual(reopened.market, { ...workbookMarket, formulas: {} });
   assert.deepEqual(await stored(fixture.publicId).then(({ physical, market }) => ({ physical, market })), { physical: 933000, market: 980000 });
-  assert.deepEqual(await summary(), [930000, 980000, 960000]);
+  assert.deepEqual(await summary(), [933000, 980000, 960000]);
 });
 
 test("a new machinery valuation starts with the real estate sections hidden, and the appraiser's choice is what stays", async () => {
