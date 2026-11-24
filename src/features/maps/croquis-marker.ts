@@ -10,15 +10,8 @@
 import { z } from "zod";
 
 import { CROQUIS_IMAGE_IDS, CROQUIS_KINDS, type CroquisKind } from "./croquis";
+import { MAX_LABEL_PLACEMENTS, croquisLabelPlacementSchema, type CroquisLabelPlacement } from "./highlights";
 import type { CroquisFrame } from "./map-styles";
-import type { LatLon } from "./types";
-
-/** A street name the appraiser moved or turned: where it sits and its angle in degrees (clockwise, 0 = horizontal). */
-export interface CroquisLabelPlacement {
-  name: string;
-  point: LatLon;
-  angle: number;
-}
 
 export interface CroquisImageMarker {
   kind: CroquisKind;
@@ -27,17 +20,6 @@ export interface CroquisImageMarker {
   /** The street names placed by hand; the others follow their street. */
   labels?: CroquisLabelPlacement[];
 }
-
-/** More names than this would not fit one croquis. */
-export const MAX_LABEL_PLACEMENTS = 60;
-
-const pointSchema = z.tuple([z.number().finite().min(-90).max(90), z.number().finite().min(-180).max(180)]);
-
-export const croquisLabelPlacementSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  point: pointSchema,
-  angle: z.number().finite().min(-180).max(180),
-});
 
 export const croquisMarkerSchema = z.object({
   kind: z.enum(CROQUIS_KINDS.map((item) => item.kind) as [CroquisKind, ...CroquisKind[]]),

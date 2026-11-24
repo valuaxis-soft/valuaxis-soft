@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 import { STREET_LABEL_FONT_FAMILY, streetLabelBox } from "../croquis";
-import type { CroquisLabelPlacement } from "../croquis-marker";
+import type { CroquisLabelPlacement } from "../highlights";
 import type { CroquisStreets } from "../croquis-streets";
 import { FREE_LINE_OPACITY, freeLinePixels, type FreeLine } from "../free-lines";
 import { placedStreetLabels, uprightAngle, type StreetLabel } from "../highlights";

@@ -25,7 +25,7 @@ import { DatosPreview, datosFlowItems } from "./datos-generales-preview";
 import { TerrenoPreview, terrenoFlowItems } from "./terreno-preview";
 import { isTerrenoSection } from "@/features/valuations/sections/terreno";
 import { ConstruccionPreview, construccionFlowItemsInFlow, isConstruccionSection } from "./construccion-preview";
-import { documentBlockFlowItems } from "./document-block-renderer";
+import { documentBlockFlowItems, inPhotoGrid } from "./document-block-renderer";
 import { DocumentPreviewHeader } from "./document-preview-header";
 import {
   AutoPaginatedDocumentFlow,
@@ -44,6 +44,7 @@ import { useDocumentPaletteStyle } from "./page-presentation-context";
 import { UnaccreditedNotice, useUnaccreditedNotice } from "@/features/accreditation/components/unaccredited-notice";
 import { NOTICE_SECTION_KEYS } from "@/features/accreditation/accreditation-notice";
 import { titlePrints } from "@/features/valuations/services/block-title";
+import { isPhotoBlock, photoGridBlock } from "@/features/valuations/services/photo-layout";
 
 /** The root of a document: always light, with the colours of its palette as CSS variables. */
 function DocumentRoot({ children }: { children: ReactNode }) {
@@ -277,10 +278,12 @@ export function sectionFlowItems(section: AppSection, unaccreditedNotice = false
  */
 function sectionBlockItems(section: AppSection, applyConceptLayout: boolean, caratula?: Pick<CaratulaFormData, "firmas">): DocumentFlowItem[] {
   const print = (block: Block) => reportBlockFlowItems(block, applyConceptLayout);
-  const conclusion = getCanonicalSectionKey(section.id) === "CONCLUSIONES";
+  const key = getCanonicalSectionKey(section.id);
+  const conclusion = key === "CONCLUSIONES";
   return section.blocks
     .filter((block) => block.enabled)
-    .flatMap((block) => (conclusion ? conclusionBlockFlowItems(block, caratula, print) : print(block)));
+    // FAL-11: the photographs of the subject and of the comparables, two per row with their captions.
+    .flatMap((block) => (isPhotoBlock(key, block) ? inPhotoGrid(print(photoGridBlock(block))) : conclusion ? conclusionBlockFlowItems(block, caratula, print) : print(block)));
 }
 
 const NOTICE_SECTIONS: ReadonlySet<string> = new Set(NOTICE_SECTION_KEYS);

@@ -1,5 +1,7 @@
 "use client";
 
+import { createContext, useContext } from "react";
+
 import type { Block, Concept, ImageContent, Apartado, TableContent, ContentLayoutRowV2 } from "@/features/valuations/model";
 import { resolveBlockFlowV2 } from "@/features/valuations/services/block-flow";
 import { resolveContentLayout, rowPrintsAsTags } from "@/features/valuations/services/content-layout";
@@ -21,6 +23,24 @@ import { DocumentBlockTitleBar } from "./document-block-title-bar";
 import { titlePrints } from "@/features/valuations/services/block-title";
 import { DocumentTechnicalList } from "./document-technical-list";
 import type { DocumentFlowItem } from "./document-preview-page";
+
+/**
+ * FAL-11: the rows printed inside it are of a block of photographs: a photo
+ * left alone in its row (the last of an odd number) keeps the half width
+ * and the frame of the pairs, instead of growing to a page of its own.
+ */
+const PhotoGridContext = createContext(false);
+
+/** Wraps the flow items of a block of photographs (photo-layout.ts). */
+export function inPhotoGrid(items: DocumentFlowItem[]): DocumentFlowItem[] {
+  return items.map((item) => ({
+    ...item,
+    node: <PhotoGridContext.Provider value>{item.node}</PhotoGridContext.Provider>,
+    ...(item.renderTableFragment
+      ? { renderTableFragment: (fragment: DocumentTableFragment) => <PhotoGridContext.Provider value>{item.renderTableFragment!(fragment)}</PhotoGridContext.Provider> }
+      : {}),
+  }));
+}
 
 /* ------------------------------------------------------------------ */
 /*  documentBlockFlowItems — pagination-friendly flow items from       */
@@ -399,10 +419,15 @@ function DocumentContentRow({
   afterTableRoom?: boolean;
 }) {
   const theme = useDocumentTheme();
+  const photoGrid = useContext(PhotoGridContext);
   const columnCount = layoutRow.columns.length;
-  const gridClass = columnCount === 1
+  const lonePhoto = photoGrid && columnCount === 1 && layoutRow.columns[0].items.length === 1 && layoutRow.columns[0].items[0].type === "image"
+    && !imagesById.get(layoutRow.columns[0].items[0].id)?.croquis;
+  // A lone photo of a block of photographs prints as the first of a pair.
+  const shownColumns = lonePhoto ? 2 : columnCount;
+  const gridClass = shownColumns === 1
     ? "grid-cols-1"
-    : columnCount === 2
+    : shownColumns === 2
       ? "grid-cols-2"
       : "grid-cols-3";
 
@@ -432,7 +457,7 @@ function DocumentContentRow({
     // The continuation of a table opens its page: no room above it.
     rowSpacing,
     gridClass,
-    columnCount > 1 && "gap-x-4",
+    shownColumns > 1 && "gap-x-4",
     sharedRule && theme.conceptRule,
   );
 
@@ -473,8 +498,8 @@ function DocumentContentRow({
                 if (!image || image.enabled === false) return null;
                 // Images sharing a row (location sketches) print as a compact framed pair.
                 return (
-                  <div className={columnCount > 1 ? "my-1" : "my-4"} key={itemRef.id}>
-                    <DocumentImage image={image} sideBySide={columnCount > 1} captionSlots={captionSlots} />
+                  <div className={shownColumns > 1 ? "my-1" : "my-4"} key={itemRef.id}>
+                    <DocumentImage image={image} sideBySide={shownColumns > 1} captionSlots={captionSlots} />
                   </div>
                 );
               }

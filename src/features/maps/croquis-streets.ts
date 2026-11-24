@@ -7,8 +7,18 @@
  */
 import type { CroquisKind } from "./croquis";
 import { streetLabelBox } from "./croquis";
-import { highlightedWays, macroHighlights, paintFromStreets, streetAngle, type HighlightedWay, type StreetHighlights, type StreetLabel } from "./highlights";
-import { STATIC_MAP_SIZE, encodePolyline, imagePixel, type StaticMapPath } from "./static-map";
+import {
+  highlightedWays,
+  macroHighlights,
+  paintFromStreets,
+  streetAngle,
+  uprightAngle,
+  type CroquisLabelPlacement,
+  type HighlightedWay,
+  type StreetHighlights,
+  type StreetLabel,
+} from "./highlights";
+import { STATIC_MAP_SIZE, encodePolyline, imagePixel, pointAtPixel, type StaticMapPath } from "./static-map";
 import { distanceMeters, metersPerPixel, simplifyPolyline, wayInBounds, type StreetWay } from "./streets";
 import type { LatLon } from "./types";
 
@@ -62,7 +72,15 @@ function pathUrlLength(path: StaticMapPath) {
  * the center go first, so when the URL budget runs out the farthest are the
  * ones omitted. The names only go on streets that are drawn.
  */
-export function croquisStreets(kind: CroquisKind, center: LatLon, zoom: number, highlights: StreetHighlights, ways: readonly StreetWay[], subject: LatLon = center): CroquisStreets {
+export function croquisStreets(
+  kind: CroquisKind,
+  center: LatLon,
+  zoom: number,
+  highlights: StreetHighlights,
+  ways: readonly StreetWay[],
+  subject: LatLon = center,
+  avoid: LabelObstacles = {},
+): CroquisStreets {
   const items = highlightedWays({ front: highlights.front, paint: paintFromStreets(highlights.streets) }, highlights.styles, ways);
   const shown = kind === "macro" ? macroHighlights(items) : items;
   const bounds = frameBounds(center, zoom);
@@ -90,7 +108,7 @@ export function croquisStreets(kind: CroquisKind, center: LatLon, zoom: number, 
   const drawnNames = new Set(drawn.map((entry) => entry.way.n));
   return {
     paths: drawn.map(({ way, style }) => ({ color: style.color, weight: style.weight, points: way.g })),
-    labels: highlights.names ? frameLabels(drawn, center, zoom, subject) : [],
+    labels: highlights.names ? frameLabels(drawn, center, zoom, subject, avoid) : [],
     omitted: [...omitted].filter((name) => !drawnNames.has(name)),
   };
 }
@@ -98,7 +116,23 @@ export function croquisStreets(kind: CroquisKind, center: LatLon, zoom: number, 
 /** A name keeps this far from the subject's pin, in map pixels. */
 const LABEL_MARGIN = 12;
 /** Where along the visible piece a name is tried, in order: the middle first. */
-const LABEL_SPOTS = [0.5, 0.32, 0.68, 0.18, 0.82];
+const LABEL_SPOTS = [0.5, 0.32, 0.68, 0.18, 0.82, 0.08, 0.92];
+/** Runs of a street tried for its name, the longest first. */
+const LABEL_RUNS = 3;
+/** How far beside its street a name may sit when no spot on it is free, in map pixels (a band is 20 high). */
+const LABEL_SIDE_OFFSETS = [0, -15, 15];
+
+/**
+ * FAL-35: what the street names keep clear of, besides the subject's pin and
+ * each other: the names the appraiser placed by hand (they stay where they
+ * are), the comparables' pins with their numbers and the legend's box.
+ */
+export interface LabelObstacles {
+  placements?: readonly CroquisLabelPlacement[];
+  pins?: readonly LatLon[];
+  /** In map pixels of the image. */
+  legend?: { x: number; y: number; width: number; height: number } | null;
+}
 
 interface Sample {
   point: LatLon;
@@ -138,7 +172,6 @@ function visibleRuns(pieces: readonly StreetWay[], center: LatLon, zoom: number)
 }
 
 type Box = { x: number; y: number; halfX: number; halfY: number };
-const overlaps = (a: Box, b: Box) => Math.abs(a.x - b.x) < a.halfX + b.halfX && Math.abs(a.y - b.y) < a.halfY + b.halfY;
 
 function boxOf(center: LatLon, zoom: number, label: Pick<StreetLabel, "name" | "point" | "angle">): Box {
   const box = streetLabelBox(center, zoom, label);
@@ -151,15 +184,22 @@ function boxOf(center: LatLon, zoom: number, label: Pick<StreetLabel, "name" | "
   };
 }
 
+/** How much two boxes overlap, in square map pixels; 0 when they do not touch. */
+const overlapArea = (a: Box, b: Box) =>
+  Math.max(0, Math.min(a.x + a.halfX, b.x + b.halfX) - Math.max(a.x - a.halfX, b.x - b.halfX)) *
+  Math.max(0, Math.min(a.y + a.halfY, b.y + b.halfY) - Math.max(a.y - a.halfY, b.y - b.halfY));
+
 /**
- * V5.7-14: one name per drawn street, on the longest piece of it the image
- * shows and turned along it there. The middle of that piece is tried first,
- * then points to either side, so a name does not cover the subject's pin or
- * another name; when every spot is taken it goes in the middle anyway. The
- * front street is placed first. The appraiser moves or turns any of them in
- * the generator («Letreros»).
+ * V5.7-14, FAL-35: one name per drawn street, turned along it. The names the
+ * appraiser placed by hand stay where they are; every other one is tried at
+ * points along the longest pieces of its street the image shows (the middle
+ * first), so it does not cover the subject's pin, a comparable with its
+ * number, the legend or another name. When every spot is taken it goes
+ * where it covers the least. The front street is placed first. The
+ * appraiser moves or turns any of them in the generator («Letreros», or by
+ * dragging it on the map).
  */
-export function frameLabels(drawn: readonly HighlightedWay[], center: LatLon, zoom: number, subject: LatLon = center): StreetLabel[] {
+export function frameLabels(drawn: readonly HighlightedWay[], center: LatLon, zoom: number, subject: LatLon = center, avoid: LabelObstacles = {}): StreetLabel[] {
   const byName = new Map<string, { pieces: StreetWay[]; color: string; front: boolean }>();
   for (const { way, style, key } of drawn) {
     const entry = byName.get(way.n) ?? { pieces: [], color: style.color, front: key === "front" };
@@ -168,15 +208,44 @@ export function frameLabels(drawn: readonly HighlightedWay[], center: LatLon, zo
   }
   const pin = imagePixel(center, zoom, subject);
   const taken: Box[] = [{ x: pin.x, y: pin.y, halfX: LABEL_MARGIN, halfY: LABEL_MARGIN * 1.5 }];
-  const labels: StreetLabel[] = [];
-  const ordered = [...byName.entries()].sort(([, a], [, b]) => Number(b.front) - Number(a.front));
-  for (const [name, { pieces, color }] of ordered) {
-    const run = visibleRuns(pieces, center, zoom).sort((a, b) => b.length - a.length)[0];
-    if (!run) continue;
-    const candidates = LABEL_SPOTS.map((spot) => run[Math.min(run.length - 1, Math.floor(spot * run.length))]).map((sample) => ({ name, point: sample.point, color, angle: sample.angle }));
-    const chosen = candidates.find((label) => !taken.some((box) => overlaps(box, boxOf(center, zoom, label)))) ?? candidates[0];
-    taken.push(boxOf(center, zoom, chosen));
-    labels.push(chosen);
+  // A comparable's circle with its number to the right («C-12»).
+  for (const point of avoid.pins ?? []) {
+    const at = imagePixel(center, zoom, point);
+    taken.push({ x: at.x + 16, y: at.y, halfX: 28, halfY: 11 });
   }
-  return labels;
+  if (avoid.legend) {
+    const { x, y, width, height } = avoid.legend;
+    taken.push({ x: x + width / 2, y: y + height / 2, halfX: width / 2 + 4, halfY: height / 2 + 4 });
+  }
+  const placed = new Map((avoid.placements ?? []).map((placement) => [placement.name, placement]));
+  const labels = new Map<string, StreetLabel>();
+  for (const [name, { color }] of byName) {
+    const placement = placed.get(name);
+    if (!placement) continue;
+    const label: StreetLabel = { name, point: placement.point, color, angle: uprightAngle(placement.angle) };
+    taken.push(boxOf(center, zoom, label));
+    labels.set(name, label);
+  }
+  const ordered = [...byName.entries()].sort(([, a], [, b]) => Number(b.front) - Number(a.front));
+  for (const [name, { pieces, color }] of ordered.filter(([key]) => !placed.has(key))) {
+    const runs = visibleRuns(pieces, center, zoom).sort((a, b) => b.length - a.length).slice(0, LABEL_RUNS);
+    if (!runs.length) continue;
+    const samples = runs.flatMap((run) => LABEL_SPOTS.map((spot) => run[Math.min(run.length - 1, Math.floor(spot * run.length))]));
+    // On the street first; then just beside it, on either side, before covering anything.
+    const candidates = LABEL_SIDE_OFFSETS.flatMap((offset) =>
+      samples.map((sample): StreetLabel => {
+        if (!offset) return { name, point: sample.point, color, angle: sample.angle };
+        const radians = (sample.angle * Math.PI) / 180;
+        return { name, point: pointAtPixel(center, zoom, sample.x - Math.sin(radians) * offset, sample.y + Math.cos(radians) * offset), color, angle: sample.angle };
+      }),
+    );
+    const covering = (label: StreetLabel) => {
+      const box = boxOf(center, zoom, label);
+      return taken.reduce((sum, other) => sum + overlapArea(box, other), 0);
+    };
+    const chosen = candidates.find((label) => covering(label) === 0) ?? candidates.reduce((best, label) => (covering(label) < covering(best) ? label : best), candidates[0]);
+    taken.push(boxOf(center, zoom, chosen));
+    labels.set(name, chosen);
+  }
+  return ordered.flatMap(([name]) => (labels.has(name) ? [labels.get(name)!] : []));
 }

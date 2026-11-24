@@ -12,14 +12,14 @@ import type { AuthUser } from "@/features/auth/model";
 import { storeEditorImage, type EditorImageDto } from "@/features/files/services/editor-image";
 import { ValuationWorkflowError } from "@/features/valuations/services/valuation-workflow/errors";
 
-import { CROQUIS_IMAGE_IDS, croquisLegend, legendOverlaySvg, pinsOverlaySvg, streetLabelsOverlaySvg, type ComparablePin, type CroquisKind } from "../croquis";
+import { CROQUIS_IMAGE_IDS, croquisLegendPlacement, subjectPinSvg, legendOverlaySvg, pinsInFrame, pinsOutsideFrame, pinsOverlaySvg, streetLabelsOverlaySvg, type ComparablePin, type CroquisKind } from "../croquis";
 import { croquisStreets, type CroquisStreets } from "../croquis-streets";
 import { freeLinesOverlaySvg, type FreeLine } from "../free-lines";
-import { hasHighlights, placedStreetLabels, type StreetHighlights } from "../highlights";
-import type { CroquisLabelPlacement } from "../croquis-marker";
+import { hasHighlights, placedStreetLabels, type CroquisLabelPlacement, type StreetHighlights } from "../highlights";
 import type { MapType, NorthArrow } from "../map-styles";
 import { northArrowPlacement, northArrowSvg } from "../north-arrow-symbols";
 import { STATIC_MAP_SCALE, STATIC_MAP_SIZE, staticMapUrl } from "../static-map";
+import { withPreferredStreetNames } from "../street-names";
 import type { LatLon } from "../types";
 import { MAPS_NOT_CONFIGURED, googleMapsServerKey } from "./google-maps-keys";
 import { getStreetsAround } from "./streets.service";
@@ -44,6 +44,8 @@ export interface CroquisRenderInput {
   labels?: readonly CroquisLabelPlacement[];
   /** «Trazo libre»: the lines drawn by hand, drawn where they were drawn on every framing. */
   lines?: readonly FreeLine[];
+  /** FAL-35: the carátula's address; its street's spelling wins over OpenStreetMap's. */
+  address?: string;
 }
 
 const NO_STREETS: CroquisStreets = { paths: [], labels: [], omitted: [] };
@@ -51,20 +53,34 @@ const NO_STREETS: CroquisStreets = { paths: [], labels: [], omitted: [] };
 /**
  * The highlighted streets as the image draws them, on every croquis and on
  * the map of comparables (V7.1-22). One with nothing highlighted asks
- * OpenStreetMap for nothing.
+ * OpenStreetMap for nothing. The names keep clear of the comparables, the
+ * legend and the names placed by hand (FAL-35), and the subject's street
+ * takes the address's spelling.
  */
-export async function resolveCroquisStreets(input: Pick<CroquisRenderInput, "kind" | "center" | "zoom" | "subject" | "streets" | "labels">): Promise<CroquisStreets> {
+export async function resolveCroquisStreets(
+  input: Pick<CroquisRenderInput, "kind" | "center" | "zoom" | "subject" | "streets" | "labels" | "pins" | "northArrow" | "address">,
+): Promise<CroquisStreets> {
   if (!hasHighlights(input.streets)) return NO_STREETS;
-  const { ways } = await getStreetsAround(input.subject);
-  const streets = croquisStreets(input.kind, input.center, input.zoom, input.streets, ways, input.subject);
+  const around = await getStreetsAround(input.subject);
+  const { ways, highlights } = withPreferredStreetNames(around.ways, input.streets, input.address ?? "");
+  const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject);
+  const streets = croquisStreets(input.kind, input.center, input.zoom, highlights, ways, input.subject, {
+    placements: input.labels,
+    pins: pinsInFrame(input.center, input.zoom, input.pins).map((pin) => pin.point),
+    legend: legend?.box ?? null,
+  });
   return { ...streets, labels: placedStreetLabels(streets.labels, input.labels) };
 }
 
-/** The base image from Google, as PNG bytes, with the highlighted streets drawn by the Static API. */
-export async function fetchStaticMap(input: Pick<CroquisRenderInput, "center" | "zoom" | "subject" | "clean" | "mapType">, streets: CroquisStreets = NO_STREETS, fetchImpl: typeof fetch = fetch) {
+/**
+ * The base image from Google, as PNG bytes, with the highlighted streets
+ * drawn by the Static API. Without the subject's marker: it is composed over
+ * everything (`subjectPinSvg`), where nothing covers it.
+ */
+export async function fetchStaticMap(input: Pick<CroquisRenderInput, "center" | "zoom" | "clean" | "mapType">, streets: CroquisStreets = NO_STREETS, fetchImpl: typeof fetch = fetch) {
   const apiKey = googleMapsServerKey();
   if (!apiKey) throw new ValuationWorkflowError(MAPS_NOT_CONFIGURED, 503);
-  const response = await fetchImpl(staticMapUrl({ apiKey, center: input.center, zoom: input.zoom, subject: input.subject, clean: input.clean, mapType: input.mapType, paths: streets.paths }));
+  const response = await fetchImpl(staticMapUrl({ apiKey, center: input.center, zoom: input.zoom, subject: null, clean: input.clean, mapType: input.mapType, paths: streets.paths }));
   if (!response.ok) {
     // The key is rejected or the API is not enabled: the cause goes to the log, the client gets a generic message.
     console.error(`[CROQUIS] Maps Static API answered ${response.status}: ${(await response.text()).slice(0, 300)}`);
@@ -74,7 +90,11 @@ export async function fetchStaticMap(input: Pick<CroquisRenderInput, "center" | 
 }
 
 /** The base image with the free lines, the street names, the comparables' pins and their legend, and the north arrow over it, as JPEG. */
-export async function composeCroquisImage(base: Buffer, input: Pick<CroquisRenderInput, "center" | "zoom" | "northArrow" | "pins" | "lines">, streets: CroquisStreets = NO_STREETS) {
+export async function composeCroquisImage(
+  base: Buffer,
+  input: Pick<CroquisRenderInput, "center" | "zoom" | "northArrow" | "pins" | "lines"> & Partial<Pick<CroquisRenderInput, "subject">>,
+  streets: CroquisStreets = NO_STREETS,
+) {
   const image = sharp(base);
   const metadata = await image.metadata();
   const width = metadata.width ?? STATIC_MAP_SIZE.width * STATIC_MAP_SCALE;
@@ -94,12 +114,14 @@ export async function composeCroquisImage(base: Buffer, input: Pick<CroquisRende
     layers.push({ input: labels, left: 0, top: 0 });
   }
   if (input.pins.length) {
-    // V7.3-09: what each color means, with only the types the image shows; under the pins, so none is hidden by it.
-    const legend = croquisLegend(input.center, input.zoom, input.pins);
-    if (legend.length) layers.push({ input: Buffer.from(legendOverlaySvg(legend, input.northArrow.corner, scale)), left: 0, top: 0 });
-    const pins = Buffer.from(pinsOverlaySvg(input.center, input.zoom, input.pins, scale));
+    // V7.3-09, FAL-10: what each color means, with the numbers the image shows, in the corner that hides the fewest pins; under the pins.
+    const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject ?? input.center);
+    if (legend) layers.push({ input: Buffer.from(legendOverlaySvg(legend.entries, legend.corner, scale)), left: 0, top: 0 });
+    const pins = Buffer.from(pinsOverlaySvg(input.center, input.zoom, input.pins, scale, input.subject));
     layers.push({ input: pins, left: 0, top: 0 });
   }
+  // The subject's pin over everything else: a comparable next door, its number or the legend never hide it.
+  if (input.subject) layers.push({ input: Buffer.from(subjectPinSvg(input.center, input.zoom, input.subject, scale)), left: 0, top: 0 });
   layers.push({ input: arrow, left: Math.max(0, placement.left), top: Math.max(0, placement.top) });
   return image.composite(layers).flatten({ background: "#ffffff" }).jpeg({ quality: 90 }).toBuffer();
 }
@@ -110,10 +132,15 @@ export async function storeCroquisImage(user: Pick<AuthUser, "id" | "organizatio
   return storeEditorImage(user, file, "CROQUIS");
 }
 
-/** Resolve the streets, fetch, compose and store, in that order; with the streets that did not fit the image. */
+/**
+ * Resolve the streets, fetch, compose and store, in that order; with the
+ * streets that did not fit the image and the comparables its frame left
+ * out (FAL-10: the generator says which).
+ */
 export async function renderAndStoreCroquis(user: Pick<AuthUser, "id" | "organizationId">, input: CroquisRenderInput) {
   const streets = await resolveCroquisStreets(input);
   const base = await fetchStaticMap(input, streets);
   const jpeg = await composeCroquisImage(base, input, streets);
-  return { image: await storeCroquisImage(user, input.kind, jpeg), omittedStreets: streets.omitted };
+  const omittedPins = pinsOutsideFrame(input.center, input.zoom, input.pins).map((pin) => pin.label);
+  return { image: await storeCroquisImage(user, input.kind, jpeg), omittedStreets: streets.omitted, omittedPins };
 }

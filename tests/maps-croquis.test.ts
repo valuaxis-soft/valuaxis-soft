@@ -18,7 +18,7 @@ import {
   DEFAULT_CROQUIS_SETTINGS,
   comparablePins,
   croquisSettingsSchema,
-  pinsForCroquis,
+  includesComparables,
   pinsInFrame,
   pinsOverlaySvg,
   readCroquisSettings,
@@ -51,10 +51,12 @@ test("comparables become numbered pins by market and reference; those without co
     [["C-1", "TERRENO_VENTA", "t"], ["C-1", "INMUEBLE_VENTA", "a"], ["C-2", "INMUEBLE_VENTA", "b"]],
   );
   assert.deepEqual(pins[1].point, [20.6349, -103.4019]);
-  // The croquis carry them only when asked; the map of comparables always.
-  assert.equal(pinsForCroquis("macro", { includeComparables: false }, pins).length, 0);
-  assert.equal(pinsForCroquis("micro", { includeComparables: true }, pins).length, 3);
-  assert.equal(pinsForCroquis("comparables", { includeComparables: false }, pins).length, 3);
+  // The croquis carry them only when asked; the map of comparables unless its own «Incluir comparables» is off (FAL-10).
+  assert.equal(includesComparables("macro", { includeComparables: false, comparablesOnMap: true }), false);
+  assert.equal(includesComparables("micro", { includeComparables: true, comparablesOnMap: false }), true);
+  assert.equal(includesComparables("comparables", { includeComparables: false, comparablesOnMap: true }), true);
+  assert.equal(includesComparables("comparables", { includeComparables: true, comparablesOnMap: false }), false);
+  assert.equal(DEFAULT_CROQUIS_SETTINGS.comparablesOnMap, true);
 });
 
 test("the overlay draws each pin where its point falls on the image, with its number, and skips the ones outside", () => {
@@ -78,7 +80,7 @@ test("the overlay draws each pin where its point falls on the image, with its nu
 });
 
 test("the settings default to the demonstration's frames and read back what is valid, piece by piece", () => {
-  assert.deepEqual(DEFAULT_CROQUIS_SETTINGS, { macro: MACRO_FRAME, micro: MICRO_FRAME, comparables: COMPARABLES_FRAME, clean: true, northArrow: { style: "flecha", corner: "top-right" }, includeComparables: false, streets: DEFAULT_STREET_HIGHLIGHTS, mapType: "roadmap", lines: [] });
+  assert.deepEqual(DEFAULT_CROQUIS_SETTINGS, { macro: MACRO_FRAME, micro: MICRO_FRAME, comparables: COMPARABLES_FRAME, clean: true, northArrow: { style: "flecha", corner: "top-right" }, includeComparables: false, comparablesOnMap: true, streets: DEFAULT_STREET_HIGHLIGHTS, mapType: "roadmap", lines: [], labels: {} });
   assert.deepEqual(CROQUIS_KINDS.map((item) => item.kind), ["macro", "micro", "comparables"]);
   assert.equal(CROQUIS_KINDS[0].caption, "Croquis de macrolocalización");
   assert.deepEqual(readCroquisSettings(undefined), DEFAULT_CROQUIS_SETTINGS);

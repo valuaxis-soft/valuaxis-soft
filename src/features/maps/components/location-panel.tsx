@@ -28,9 +28,22 @@ import { api, SessionExpiredError } from "@/lib/api-client";
 import type { SubjectLocationDto } from "@/features/maps/server/subject-location.service";
 import type { GeocodingResult } from "@/features/maps/server/geocoding.service";
 
-import { COMPARABLE_PIN_COLORS, DEFAULT_CROQUIS_SETTINGS, croquisKind, type ComparablePin, type CroquisKind, type CroquisSettings } from "../croquis";
+import {
+  COMPARABLES_FRAME,
+  COMPARABLE_PIN_COLORS,
+  CROQUIS_KINDS,
+  DEFAULT_CROQUIS_SETTINGS,
+  comparablesFitFrame,
+  croquisKind,
+  includesComparables,
+  pinsOutsideFrame,
+  type ComparablePin,
+  type CroquisKind,
+  type CroquisLabelPlacements,
+  type CroquisSettings,
+} from "../croquis";
 import type { GeneratedCroquis } from "../croquis-document";
-import type { CroquisImageMarker, CroquisLabelPlacement } from "../croquis-marker";
+import type { CroquisImageMarker } from "../croquis-marker";
 import { croquisStreets } from "../croquis-streets";
 import {
   DEFAULT_FREE_LINE_STYLE,
@@ -50,11 +63,14 @@ import {
   highlightedWays,
   paintFromStreets,
   paintStreet,
+  placedStreetLabels,
   seedPaint,
   streetLabels,
   streetsFromPaint,
+  withMovedLabel,
   type CategoryKey,
   type StreetHighlights,
+  type StreetLabel,
 } from "../highlights";
 import {
   MAP_CORNERS,
@@ -70,6 +86,7 @@ import {
 } from "../map-styles";
 import { detectStreets, metersPerPixel, type StreetWay } from "../streets";
 import { OSM_ATTRIBUTION } from "../streets-osm";
+import { preferredStreetName, renamedHighlights, renamedWays } from "../street-names";
 import type { LatLon } from "../types";
 import { CroquisLabelEditor } from "./croquis-label-editor";
 import { FreeLinesPanel } from "./free-lines-panel";
@@ -84,6 +101,8 @@ const SubjectMap = dynamic(() => import("./subject-map").then((module) => module
 const MEXICO_VIEW: MapView = { center: [23.6, -102.5], zoom: 5 };
 const PLACED_ZOOM = 17;
 const NO_STREETS: readonly StreetWay[] = [];
+/** The names placed by hand save this long after the last move, not on every step of a drag. */
+const LABELS_SAVE_DELAY_MS = 600;
 /** Two clicks closer than this many screen pixels are one vertex (a double click's two clicks). */
 const SAME_VERTEX_PIXELS = 4;
 
@@ -173,6 +192,8 @@ export function CroquisGeneratorBody({
   const [streetsAttempt, setStreetsAttempt] = useState(0);
   /** MAP-11: the croquis about to be generated would replace images uploaded by hand; the appraiser decides. */
   const [pendingReplace, setPendingReplace] = useState<Partial<Record<CroquisKind, ImageContent>> | null>(null);
+  /** FAL-35: the croquis about to be generated would replace one generated before; the appraiser confirms. */
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false);
   const [category, setCategory] = useState<CategoryKey>("principal");
   /** True after the pin moves: the next streets that arrive seed the front street and the suggestion again. */
   const reseed = useRef(false);
@@ -180,7 +201,8 @@ export function CroquisGeneratorBody({
   const [frames, setFrames] = useState<Partial<Record<CroquisKind, CroquisFrame>>>(() =>
     Object.fromEntries(Object.entries(markers).flatMap(([kind, marker]) => (marker?.frame ? [[kind, marker.frame]] : []))),
   );
-  const [placements, setPlacements] = useState<Partial<Record<CroquisKind, CroquisLabelPlacement[]>>>(() =>
+  // The names of a croquis generated again are its own; the others start from the valuation's (FAL-35), once they load.
+  const [placements, setPlacements] = useState<CroquisLabelPlacements>(() =>
     Object.fromEntries(Object.entries(markers).map(([kind, marker]) => [kind, marker?.labels ?? []])),
   );
 
@@ -191,6 +213,11 @@ export function CroquisGeneratorBody({
       .then((dto) => {
         if (cancelled) return;
         setData(dto);
+        setPlacements((current) => {
+          const next = { ...current };
+          for (const { kind } of CROQUIS_KINDS) if (!next[kind]) next[kind] = dto.croquis.labels[kind] ?? [];
+          return next;
+        });
         setSearch((current) => current || address || dto.address);
         if (dto.location) setView((v) => ({ center: dto.location!.point, zoom: PLACED_ZOOM, key: v.key + 1 }));
       })
@@ -223,12 +250,24 @@ export function CroquisGeneratorBody({
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
-  const highlights = settings.streets;
   // V7.1-22: the map of comparables has its streets too, as the croquis.
   const withStreets = captures.length > 0;
   const comparables = useMemo<readonly ComparablePin[]>(() => data?.comparables ?? [], [data]);
-  const shownPins = useMemo(() => (settings.includeComparables || captures.includes("comparables") ? comparables : []), [settings.includeComparables, captures, comparables]);
-  const frameOf = (kind: CroquisKind) => frames[kind] ?? settings[kind];
+  const includes = (kind: CroquisKind) => includesComparables(kind, settings);
+  const anyIncludes = captures.some(includes);
+  const shownPins = useMemo(() => (anyIncludes ? comparables : []), [anyIncludes, comparables]);
+  /**
+   * The frame of each croquis: the one it was generated with, else the
+   * valuation's. FAL-10: the map of comparables still on its default frame
+   * takes the one that shows every comparable.
+   */
+  const frameOf = (kind: CroquisKind) => {
+    const own = frames[kind];
+    if (own) return own;
+    const stored = settings[kind];
+    const untouched = stored.zoom === COMPARABLES_FRAME.zoom && stored.offset[0] === 0 && stored.offset[1] === 0;
+    return kind === "comparables" && untouched && subject && comparables.length ? comparablesFitFrame(subject, comparables) : stored;
+  };
 
   const report = (error: unknown, fallback: string) => {
     if (error instanceof SessionExpiredError) toast.error("Tu sesión expiró. Inicia sesión en otra pestaña y vuelve a intentarlo.");
@@ -270,7 +309,6 @@ export function CroquisGeneratorBody({
     setData((current) => (current ? { ...current, croquis: next } : current));
     void save({ croquis: next });
   };
-  const updateHighlights = (patch: Partial<StreetHighlights>) => updateSettings({ streets: { ...highlights, ...patch } });
 
   // The streets around the pin, through the server; cached there by rounded coordinates, so only a move beyond the cell asks again.
   const subjectKey = subject ? `${subject[0].toFixed(3)},${subject[1].toFixed(3)}` : "";
@@ -290,7 +328,13 @@ export function CroquisGeneratorBody({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subjectKey, withStreets, streetsAttempt]);
-  const streets = loaded.key === subjectKey ? loaded.ways : NO_STREETS;
+  const osmStreets = loaded.key === subjectKey ? loaded.ways : NO_STREETS;
+  // FAL-35: the subject's street with the address's spelling, everywhere the generator shows it, as the server draws it.
+  const savedAddress = data?.address ?? "";
+  const streetRename = useMemo(() => preferredStreetName(new Set(osmStreets.map((way) => way.n)), savedAddress), [osmStreets, savedAddress]);
+  const streets = useMemo(() => renamedWays(osmStreets, streetRename), [osmStreets, streetRename]);
+  const highlights = useMemo(() => renamedHighlights(settings.streets, streetRename), [settings.streets, streetRename]);
+  const updateHighlights = (patch: Partial<StreetHighlights>) => updateSettings({ streets: { ...highlights, ...patch } });
   const streetsLoading = Boolean(subject) && loaded.key !== subjectKey;
   const streetsStatus = !subject ? null : streetsLoading ? "Buscando las calles alrededor del inmueble…" : loaded.problem;
   const streetsFailed = !streetsLoading && loaded.failed;
@@ -323,7 +367,34 @@ export function CroquisGeneratorBody({
     () => (withStreets ? highlightedWays({ front: highlights.front, paint: paintFromStreets(highlights.streets) }, highlights.styles, streets) : []),
     [withStreets, highlights, streets],
   );
-  const labels = useMemo(() => (highlights.names && subject ? streetLabels(highlightedItems, subject) : []), [highlights.names, highlightedItems, subject]);
+  const primaryPlacements = placements[captures[0]];
+  const labels = useMemo(
+    () => (highlights.names && subject ? placedStreetLabels(streetLabels(highlightedItems, subject), primaryPlacements) : []),
+    [highlights.names, highlightedItems, subject, primaryPlacements],
+  );
+
+  // FAL-35: the names placed by hand save with the valuation's settings, a moment after the last move.
+  const placementsRef = useRef(placements);
+  const labelsSaveTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (labelsSaveTimer.current !== null) window.clearTimeout(labelsSaveTimer.current);
+  }, []);
+  const changePlacements = (patch: CroquisLabelPlacements) => {
+    const next = { ...placementsRef.current, ...patch };
+    placementsRef.current = next;
+    setPlacements(next);
+    if (!canEdit) return;
+    if (labelsSaveTimer.current !== null) window.clearTimeout(labelsSaveTimer.current);
+    labelsSaveTimer.current = window.setTimeout(() => {
+      labelsSaveTimer.current = null;
+      updateSettings({ labels: { ...settingsRef.current.labels, ...placementsRef.current } });
+    }, LABELS_SAVE_DELAY_MS);
+  };
+  /** A name dragged on the map: it goes there in every croquis of this opening. */
+  const moveLabel = (label: StreetLabel, point: LatLon) => {
+    changePlacements(Object.fromEntries(captures.map((kind) => [kind, withMovedLabel(placementsRef.current[kind] ?? [], label, point)])));
+    toast(`Letrero «${label.name}» acomodado`, { description: "Así sale en el croquis. «Seguir la calle» en «Letreros» lo regresa a su calle." });
+  };
 
   const onStreetClick = (name: string) => {
     if (!canEdit) return;
@@ -452,6 +523,16 @@ export function CroquisGeneratorBody({
     setView((v) => ({ center: frameCenter(frame, subject), zoom: frame.zoom, key: v.key + 1 }));
   };
 
+  /** FAL-10: the frame that shows the subject and every comparable, for this croquis; the map moves to it. */
+  const fitComparables = (kind: CroquisKind) => {
+    if (!subject || !comparables.length) return;
+    const frame = comparablesFitFrame(subject, comparables);
+    setFrames((current) => ({ ...current, [kind]: frame }));
+    updateSettings({ [kind]: frame });
+    setView((v) => ({ center: frameCenter(frame, subject), zoom: frame.zoom, key: v.key + 1 }));
+    toast(`Encuadre de ${croquisKind(kind).title.toLowerCase()} ajustado a los ${comparables.length} comparables (zoom ${frame.zoom})`);
+  };
+
   const takeFrame = (kind: CroquisKind) => {
     if (!subject) return;
     const frame = frameFromView(liveView.current, subject);
@@ -467,10 +548,13 @@ export function CroquisGeneratorBody({
   };
   const framesAlike = captures.includes("macro") && captures.includes("micro") && subject !== null && sameFraming(frameOf("macro"), frameOf("micro"), subject[0]);
 
+  /** The croquis of this opening already generated, which the new ones replace. */
+  const regenerated = captures.filter((kind) => markers[kind]);
   const applyToCroquis = () => {
     if (!subject || applying) return;
     const replacements = replacementsFor?.(captures) ?? {};
     if (Object.keys(replacements).length) setPendingReplace(replacements);
+    else if (regenerated.length) setConfirmRegenerate(true);
     else void generateCroquis({});
   };
 
@@ -480,16 +564,17 @@ export function CroquisGeneratorBody({
     try {
       const generated: GeneratedCroquis[] = [];
       const omitted: string[] = [];
+      const outside: string[] = [];
       for (const kind of captures) {
         const frame = frameOf(kind);
         const labelPlacements = placements[kind] ?? [];
-        const { image, omittedStreets } = await api.valuations.croquis(valuationId, {
+        const { image, omittedStreets, omittedPins } = await api.valuations.croquis(valuationId, {
           kind,
           center: [...frameCenter(frame, subject)] as [number, number],
           zoom: frame.zoom,
           clean: settings.clean,
           northArrow: settings.northArrow,
-          includeComparables: settings.includeComparables,
+          includeComparables: includes(kind),
           streets: highlights,
           mapType: settings.mapType,
           labels: labelPlacements,
@@ -497,6 +582,7 @@ export function CroquisGeneratorBody({
         });
         generated.push({ kind, src: image.url, marker: { kind, frame, ...(labelPlacements.length ? { labels: labelPlacements } : {}) } });
         if (omittedStreets.length) omitted.push(`${croquisKind(kind).title}: ${omittedStreets.join(", ")}`);
+        if (omittedPins.length) outside.push(`${croquisKind(kind).title}: ${omittedPins.length} de ${comparables.length} (${omittedPins.join(", ")})`);
       }
       const missing = onGenerated(generated, replacements);
       const placed = generated.filter((item) => !missing.includes(item.kind));
@@ -508,9 +594,21 @@ export function CroquisGeneratorBody({
           action: { label: "Deshacer", onClick: onUndo },
           duration: 12_000,
         });
+      } else if (placed.length && regenerated.length) {
+        toast.success(`${titles(placed)}: reemplazó al que estaba en ${destination}`, {
+          description: "Guarda el avalúo para conservarlo. «Deshacer» (o Ctrl+Z) devuelve el anterior.",
+          action: { label: "Deshacer", onClick: onUndo },
+          duration: 12_000,
+        });
       } else if (placed.length) toast.success(`Croquis listo en ${destination}: ${titles(placed)}`, { description: "Guarda el avalúo para conservarlo en el documento." });
       if (missing.length) toast.warning(`${titles(missing.map((kind) => ({ kind })))}: su lugar ya no está en el documento, así que la imagen no se colocó.`);
       if (omitted.length) toast.warning("Algunas calles no cupieron en el croquis; quita las más lejanas o acerca el encuadre.", { description: omitted.join(" · ") });
+      if (outside.length) {
+        toast.warning("Algunos comparables quedaron fuera del encuadre y no salen en la imagen.", {
+          description: `${outside.join(" · ")}. Pulsa «Encuadrar los comparables» o aleja el mapa y «Tomar del mapa».`,
+          duration: 12_000,
+        });
+      }
       if (placed.length) onDone();
     } catch (error) {
       report(error, "No se pudo generar el croquis.");
@@ -550,6 +648,7 @@ export function CroquisGeneratorBody({
             streets={canEdit && withStreets && !drawing ? streets : NO_STREETS}
             highlights={highlightedItems}
             labels={labels}
+            onLabelMove={canEdit && !drawing ? moveLabel : undefined}
             onStreetClick={onStreetClick}
             onMapClick={onMapClick}
             freeLines={freeLines}
@@ -669,7 +768,12 @@ export function CroquisGeneratorBody({
           <Label className="font-normal">
             <Checkbox checked={settings.clean} disabled={!canEdit || settings.mapType !== "roadmap"} onCheckedChange={(on) => updateSettings({ clean: on === true })} /> Mapa limpio
           </Label>
-          {generatesComparables ? null : (
+          {generatesComparables ? (
+            <Label className="font-normal">
+              <Checkbox checked={settings.comparablesOnMap} disabled={!canEdit} onCheckedChange={(on) => updateSettings({ comparablesOnMap: on === true })} /> Incluir
+              comparables
+            </Label>
+          ) : (
             <Label className="font-normal">
               <Checkbox checked={settings.includeComparables} disabled={!canEdit} onCheckedChange={(on) => updateSettings({ includeComparables: on === true })} /> Incluir
               comparables
@@ -710,18 +814,37 @@ export function CroquisGeneratorBody({
 
         <div className="grid gap-2">
           <span className="text-xs font-semibold text-muted-foreground">Encuadres</span>
-          {captures.map((kind) => (
-            <div key={kind} className="flex flex-wrap items-center gap-2 text-[13px]">
-              <span className="min-w-36 font-medium">{croquisKind(kind).title}</span>
-              <span className="text-xs text-muted-foreground tabular-nums">zoom {frameOf(kind).zoom}</span>
-              <Button type="button" size="sm" variant="outline" disabled={!subject || mode !== "google"} onClick={() => showFrame(kind)}>
-                Ver encuadre
-              </Button>
-              <Button type="button" size="sm" variant="outline" disabled={!canEdit || !subject || mode !== "google"} onClick={() => takeFrame(kind)}>
-                Tomar del mapa
-              </Button>
-            </div>
-          ))}
+          {captures.map((kind) => {
+            const frame = frameOf(kind);
+            // FAL-10: the comparables this frame leaves out, said before generating.
+            const outside = subject && includes(kind) ? pinsOutsideFrame(frameCenter(frame, subject), frame.zoom, comparables) : [];
+            return (
+              <div key={kind} className="grid gap-1.5">
+                <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                  <span className="min-w-36 font-medium">{croquisKind(kind).title}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">zoom {frame.zoom}</span>
+                  <Button type="button" size="sm" variant="outline" disabled={!subject || mode !== "google"} onClick={() => showFrame(kind)}>
+                    Ver encuadre
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" disabled={!canEdit || !subject || mode !== "google"} onClick={() => takeFrame(kind)}>
+                    Tomar del mapa
+                  </Button>
+                </div>
+                {outside.length ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-highlight/45 bg-highlight/15 px-2 py-1.5 text-xs text-foreground" role="status" data-comparables-outside={kind}>
+                    <span className="min-w-0 flex-1">
+                      {outside.length === comparables.length
+                        ? `Ningún comparable cabe en este encuadre (zoom ${frame.zoom}); la imagen saldría sin ellos.`
+                        : `${outside.length} de ${comparables.length} comparables quedan fuera de este encuadre: ${outside.map((pin) => pin.label).join(", ")}.`}
+                    </span>
+                    <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={!canEdit} onClick={() => fitComparables(kind)}>
+                      Encuadrar los comparables
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
           {framesAlike ? (
             <p className="rounded-md border border-highlight/45 bg-highlight/15 px-2 py-1.5 text-xs text-foreground" role="status">
               Macrolocalización y microlocalización tienen el mismo encuadre (zoom {frameOf("macro").zoom}), así que los dos croquis saldrán iguales. Acerca el mapa y
@@ -772,11 +895,14 @@ export function CroquisGeneratorBody({
                     center={center}
                     zoom={frame.zoom}
                     subject={subject}
-                    streets={croquisStreets(kind, center, frame.zoom, highlights, streets, subject)}
+                    streets={croquisStreets(kind, center, frame.zoom, highlights, streets, subject, {
+                      placements: placements[kind],
+                      pins: includes(kind) ? comparables.map((pin) => pin.point) : [],
+                    })}
                     placements={placements[kind] ?? []}
                     lines={freeLines}
                     disabled={!canEdit}
-                    onChange={(next) => setPlacements((current) => ({ ...current, [kind]: next }))}
+                    onChange={(next) => changePlacements({ [kind]: next })}
                   />
                 );
               })
@@ -806,6 +932,29 @@ export function CroquisGeneratorBody({
           </Button>
         </div>
       </div>
+
+      <AlertDialog open={confirmRegenerate} onOpenChange={setConfirmRegenerate}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{generatesComparables ? "¿Reemplazar el mapa de comparables actual?" : "¿Reemplazar el croquis actual?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {regenerated.map((kind) => croquisKind(kind).title).join(" y ")} ya está en {destination}. El nuevo toma su lugar con el mismo pie y tamaño; «Deshacer» (o
+              Ctrl+Z) devuelve el anterior antes de guardar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmRegenerate(false);
+                void generateCroquis({});
+              }}
+            >
+              Reemplazar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={pendingReplace !== null} onOpenChange={(open) => (open ? null : setPendingReplace(null))}>
         <AlertDialogContent>

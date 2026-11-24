@@ -181,6 +181,32 @@ export function streetLabels(items: readonly HighlightedWay[], center: LatLon): 
   return [...best.values()].map((entry) => entry.label);
 }
 
+/** A street name the appraiser moved or turned: where it sits and its angle in degrees (clockwise, 0 = horizontal). */
+export interface CroquisLabelPlacement {
+  name: string;
+  point: LatLon;
+  angle: number;
+}
+
+/** More names than this would not fit one croquis. */
+export const MAX_LABEL_PLACEMENTS = 60;
+
+export const croquisLabelPlacementSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  point: z.tuple([z.number().finite().min(-90).max(90), z.number().finite().min(-180).max(180)]).readonly(),
+  angle: z.number().finite().min(-180).max(180),
+});
+
+/**
+ * FAL-35: a name dragged on the map moves to that point in every croquis of
+ * the opening; the angle it already had there stays (the name's own along its
+ * street when it was not placed before).
+ */
+export function withMovedLabel(placements: readonly CroquisLabelPlacement[], label: Pick<StreetLabel, "name" | "angle">, point: LatLon): CroquisLabelPlacement[] {
+  const current = placements.find((item) => item.name === label.name);
+  return [...placements.filter((item) => item.name !== label.name), { name: label.name, point: [point[0], point[1]], angle: uprightAngle(current?.angle ?? label.angle) }];
+}
+
 /** The names with the place and angle the appraiser gave them by hand; a placement of a street no longer highlighted is ignored. */
 export function placedStreetLabels(labels: readonly StreetLabel[], placements: readonly { name: string; point: LatLon; angle: number }[] | undefined): StreetLabel[] {
   if (!placements?.length) return [...labels];

@@ -12,9 +12,9 @@ import { z } from "zod";
 import { COMPARABLE_TYPES, type ComparableType } from "@/features/valuations/calculation/market-types";
 
 import { freeLinesSchema, readFreeLines } from "./free-lines";
-import { DEFAULT_STREET_HIGHLIGHTS, streetHighlightsSchema, type StreetLabel } from "./highlights";
+import { DEFAULT_STREET_HIGHLIGHTS, MAX_LABEL_PLACEMENTS, croquisLabelPlacementSchema, streetHighlightsSchema, type CroquisLabelPlacement, type StreetLabel } from "./highlights";
 import { DEFAULT_NORTH_ARROW, MACRO_FRAME, MAP_CORNERS, MAP_TYPES, MICRO_FRAME, NORTH_ARROW_STYLES, type CroquisFrame, type MapCorner, type MapType, type NorthArrow } from "./map-styles";
-import { STATIC_MAP_SIZE, imagePixel, imagePosition } from "./static-map";
+import { STATIC_MAP_SIZE, imagePixel, imagePosition, pointAtPixel } from "./static-map";
 import type { LatLon } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -59,6 +59,12 @@ export const northArrowSchema = z.object({
   corner: z.enum(MAP_CORNERS.map((item) => item.key) as [NorthArrow["corner"], ...NorthArrow["corner"][]]),
 });
 
+const labelListSchema = z.array(croquisLabelPlacementSchema).max(MAX_LABEL_PLACEMENTS);
+const labelPlacementsSchema = z.object({ macro: labelListSchema, micro: labelListSchema, comparables: labelListSchema }).partial();
+
+/** The names placed by hand of each croquis, as the valuation keeps them. */
+export type CroquisLabelPlacements = Partial<Record<CroquisKind, CroquisLabelPlacement[]>>;
+
 const mapTypeSchema = z.enum(MAP_TYPES.map((item) => item.key) as [MapType, ...MapType[]]);
 
 export const croquisSettingsSchema = z.object({
@@ -68,14 +74,18 @@ export const croquisSettingsSchema = z.object({
   /** Without points of interest, businesses or transit. */
   clean: z.boolean(),
   northArrow: northArrowSchema,
-  /** The comparables with coordinates, numbered, on the croquis and on the interactive map. */
+  /** The comparables with coordinates, numbered, on the macro and micro croquis and on the interactive map. */
   includeComparables: z.boolean(),
+  /** FAL-10 (24 nov 2026): «Incluir comparables» of the map of comparables, on unless the appraiser turns it off; settings stored before have none. */
+  comparablesOnMap: z.boolean().default(true),
   /** Etapa 2: the front street, the painted streets, their palette and whether the names show. */
   streets: streetHighlightsSchema,
   /** Settings stored before 12 nov 2026 have none: the street map. */
   mapType: mapTypeSchema.default("roadmap"),
   /** «Trazo libre» (23 nov 2026): the lines drawn by hand; settings stored before have none. */
   lines: freeLinesSchema.default([]),
+  /** FAL-35 (24 nov 2026): the street names placed by hand («Letreros» or dragged on the map), per croquis; settings stored before have none. */
+  labels: labelPlacementsSchema.default({}),
 });
 
 export type CroquisSettings = z.infer<typeof croquisSettingsSchema>;
@@ -87,9 +97,11 @@ export const DEFAULT_CROQUIS_SETTINGS: CroquisSettings = {
   clean: true,
   northArrow: DEFAULT_NORTH_ARROW,
   includeComparables: false,
+  comparablesOnMap: true,
   streets: DEFAULT_STREET_HIGHLIGHTS,
   mapType: "roadmap",
   lines: [],
+  labels: {},
 };
 
 /** Settings as stored, completed with the defaults; invalid or missing pieces take the default. */
@@ -108,10 +120,12 @@ export function readCroquisSettings(value: unknown): CroquisSettings {
     clean: pick(z.boolean(), "clean", DEFAULT_CROQUIS_SETTINGS.clean),
     northArrow: pick(northArrowSchema, "northArrow", DEFAULT_CROQUIS_SETTINGS.northArrow),
     includeComparables: pick(z.boolean(), "includeComparables", DEFAULT_CROQUIS_SETTINGS.includeComparables),
+    comparablesOnMap: pick(z.boolean(), "comparablesOnMap", DEFAULT_CROQUIS_SETTINGS.comparablesOnMap),
     streets: pick(streetHighlightsSchema, "streets", DEFAULT_CROQUIS_SETTINGS.streets),
     mapType: pick(mapTypeSchema, "mapType", DEFAULT_CROQUIS_SETTINGS.mapType),
     // One damaged line never loses the others.
     lines: readFreeLines(record.lines),
+    labels: pick(labelPlacementsSchema, "labels", DEFAULT_CROQUIS_SETTINGS.labels),
   };
 }
 
@@ -134,6 +148,8 @@ export interface ComparablePin {
   id: string;
   /** "C-1": the comparable's reference in its market. */
   label: string;
+  /** The number the market's tables print for it ("Comparable 1"). */
+  reference: number;
   type: ComparableType;
   point: LatLon;
   /** The line the dictamen prints for it. */
@@ -153,15 +169,20 @@ export function comparablePins(rows: readonly ComparableForPin[]): ComparablePin
     .map(({ comparable, type }) => ({
       id: comparable.id,
       label: `C-${comparable.reference}`,
+      reference: comparable.reference,
       type,
       point: [comparable.latitude as number, comparable.longitude as number],
       location: comparable.location,
     }));
 }
 
-/** The pins the croquis of this kind carries: the comparables only when they are included. */
-export function pinsForCroquis(kind: CroquisKind, settings: Pick<CroquisSettings, "includeComparables">, pins: readonly ComparablePin[]) {
-  return kind === "comparables" || settings.includeComparables ? pins : [];
+/**
+ * Whether the croquis of this kind carries the comparables: the map of
+ * comparables with its own «Incluir comparables» (on by default, FAL-10),
+ * the macro and micro croquis with theirs (off by default).
+ */
+export function includesComparables(kind: CroquisKind, settings: Pick<CroquisSettings, "includeComparables" | "comparablesOnMap">) {
+  return kind === "comparables" ? settings.comparablesOnMap : settings.includeComparables;
 }
 
 const isLatitude = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 90;
@@ -186,21 +207,30 @@ function escapeXml(text: string) {
  * out. The Static API's own markers only take one character as a label, so
  * "C-12" is drawn here.
  */
-export function pinsOverlaySvg(center: LatLon, zoom: number, pins: readonly ComparablePin[], scale = 2) {
+export function pinsOverlaySvg(center: LatLon, zoom: number, pins: readonly ComparablePin[], scale = 2, subject?: LatLon) {
   const width = STATIC_MAP_SIZE.width * scale;
   const height = STATIC_MAP_SIZE.height * scale;
   const r = PIN_RADIUS * scale;
+  // The subject's drop (drawn over the pins): a number that would fall under it goes to the other side of its pin.
+  const drop = subject ? imagePosition(center, zoom, subject) : null;
+  const underDrop = (left: number, top: number, chipWidth: number, chipHeight: number) =>
+    drop !== null && left < drop.x * width + 15 * scale && left + chipWidth > drop.x * width - 15 * scale && top < drop.y * height && top + chipHeight > drop.y * height - 38 * scale;
   const items = pins.flatMap((pin) => {
     const at = imagePosition(center, zoom, pin.point);
     if (!at) return [];
-    const x = (at.x * width).toFixed(1);
-    const y = (at.y * height).toFixed(1);
+    const x = at.x * width;
+    const y = at.y * height;
     const color = COMPARABLE_PIN_COLORS[pin.type];
+    const chipWidth = (pin.label.length * 7 + 8) * scale;
+    const chipHeight = r * 1.7;
+    const top = y - r * 0.85;
+    const right = x + r * 0.6;
+    const left = underDrop(right, top, chipWidth, chipHeight) ? x - r * 0.6 - chipWidth : right;
     return [
       `<g>` +
-        `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}" stroke="#fff" stroke-width="${1.5 * scale}"/>` +
-        `<rect x="${(Number(x) + r * 0.6).toFixed(1)}" y="${(Number(y) - r * 0.85).toFixed(1)}" width="${(pin.label.length * 7 + 8) * scale}" height="${r * 1.7}" rx="${2 * scale}" fill="rgba(255,255,255,0.92)" stroke="${color}" stroke-width="${scale}"/>` +
-        `<text x="${(Number(x) + r * 0.6 + 4 * scale).toFixed(1)}" y="${(Number(y) + r * 0.4).toFixed(1)}" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="${11 * scale}" fill="#12212f">${escapeXml(pin.label)}</text>` +
+        `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${color}" stroke="#fff" stroke-width="${1.5 * scale}"/>` +
+        `<rect x="${left.toFixed(1)}" y="${top.toFixed(1)}" width="${chipWidth}" height="${chipHeight}" rx="${2 * scale}" fill="rgba(255,255,255,0.92)" stroke="${color}" stroke-width="${scale}"/>` +
+        `<text x="${(left + 4 * scale).toFixed(1)}" y="${(y + r * 0.4).toFixed(1)}" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="${11 * scale}" fill="#12212f">${escapeXml(pin.label)}</text>` +
         `</g>`,
     ];
   });
@@ -271,6 +301,38 @@ export function pinsInFrame(center: LatLon, zoom: number, pins: readonly Compara
   return pins.filter((pin) => imagePosition(center, zoom, pin.point) !== null);
 }
 
+/** FAL-10: the pins an image framed this way leaves out, so the generator can say which. */
+export function pinsOutsideFrame(center: LatLon, zoom: number, pins: readonly ComparablePin[]) {
+  return pins.filter((pin) => imagePosition(center, zoom, pin.point) === null);
+}
+
+/** Room kept between the outermost pin and the edge of the image, in map pixels: the pin's number sits to its right. */
+const FIT_MARGIN = { x: 64, y: 40 } as const;
+/** Closer than this the streets around one comparable say nothing of the others. */
+const FIT_MAX_ZOOM = 17;
+const FIT_MIN_ZOOM = 3;
+
+/**
+ * FAL-10: the frame of the map of comparables that shows the subject and
+ * every comparable with coordinates, as close as they fit: centered on all
+ * of them, at the largest whole zoom where they stay inside the image with
+ * room for their numbers. Without comparables, the default frame.
+ */
+export function comparablesFitFrame(subject: LatLon, pins: readonly ComparablePin[]): CroquisFrame {
+  if (!pins.length) return COMPARABLES_FRAME;
+  for (let zoom = FIT_MAX_ZOOM; zoom >= FIT_MIN_ZOOM; zoom -= 1) {
+    const pixels = [subject, ...pins.map((pin) => pin.point)].map((point) => imagePixel(subject, zoom, point));
+    const xs = pixels.map((at) => at.x);
+    const ys = pixels.map((at) => at.y);
+    const spanX = Math.max(...xs) - Math.min(...xs);
+    const spanY = Math.max(...ys) - Math.min(...ys);
+    if (spanX > STATIC_MAP_SIZE.width - 2 * FIT_MARGIN.x || spanY > STATIC_MAP_SIZE.height - 2 * FIT_MARGIN.y) continue;
+    const center = pointAtPixel(subject, zoom, (Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...ys) + Math.min(...ys)) / 2);
+    return { offset: [center[0] - subject[0], center[1] - subject[1]], zoom };
+  }
+  return { offset: [0, 0], zoom: FIT_MIN_ZOOM };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Legend («Simbología»)                                              */
 /* ------------------------------------------------------------------ */
@@ -283,23 +345,39 @@ export interface CroquisLegendEntry {
 }
 
 const COMPARABLE_LEGEND_LABELS: Record<ComparableType, string> = {
-  TERRENO_VENTA: "Comparables de terrenos en venta",
-  INMUEBLE_VENTA: "Comparables de inmuebles en venta",
-  INMUEBLE_RENTA: "Comparables de inmuebles en renta",
-  TERRENO_RENTA: "Comparables de terrenos en renta",
+  TERRENO_VENTA: "Terrenos en venta",
+  INMUEBLE_VENTA: "Inmuebles en venta",
+  INMUEBLE_RENTA: "Inmuebles en renta",
+  TERRENO_RENTA: "Terrenos en renta",
 };
 
+/** "C-1 a C-3, C-5": the numbers of the pins, the runs written as ranges. */
+export function pinNumbers(references: readonly number[]) {
+  const sorted = [...new Set(references)].sort((a, b) => a - b);
+  const runs: [number, number][] = [];
+  for (const value of sorted) {
+    const last = runs[runs.length - 1];
+    if (last && value === last[1] + 1) last[1] = value;
+    else runs.push([value, value]);
+  }
+  return runs.map(([from, to]) => (from === to ? `C-${from}` : to === from + 1 ? `C-${from}, C-${to}` : `C-${from} a C-${to}`)).join(", ");
+}
+
 /**
- * V7.3-09 (16 nov 2026): what the colors of an image with comparables mean.
- * The subject, then only the types of the pins the image shows, in the
- * order of the markets; nothing when no comparable falls in the frame.
+ * V7.3-09 (16 nov 2026), FAL-10: what the colors of an image with
+ * comparables mean. The subject, then only the markets of the pins the
+ * image shows, in the order of the markets, each with the numbers it shows
+ * (the dictamen's, per market); nothing when no comparable falls in the frame.
  */
 export function croquisLegend(center: LatLon, zoom: number, pins: readonly ComparablePin[]): CroquisLegendEntry[] {
-  const types = new Set(pinsInFrame(center, zoom, pins).map((pin) => pin.type));
-  if (!types.size) return [];
+  const shown = pinsInFrame(center, zoom, pins);
+  if (!shown.length) return [];
   return [
     { color: SUBJECT_PIN_COLOR, label: "Inmueble valuado", shape: "subject" },
-    ...COMPARABLE_TYPES.filter((type) => types.has(type)).map((type): CroquisLegendEntry => ({ color: COMPARABLE_PIN_COLORS[type], label: COMPARABLE_LEGEND_LABELS[type], shape: "comparable" })),
+    ...COMPARABLE_TYPES.flatMap((type): CroquisLegendEntry[] => {
+      const numbers = shown.filter((pin) => pin.type === type).map((pin) => pin.reference);
+      return numbers.length ? [{ color: COMPARABLE_PIN_COLORS[type], label: `${COMPARABLE_LEGEND_LABELS[type]}: ${pinNumbers(numbers)}`, shape: "comparable" }] : [];
+    }),
   ];
 }
 
@@ -307,23 +385,55 @@ const LEGEND_ROW = 18;
 const LEGEND_PADDING = 8;
 const LEGEND_FONT = 11;
 const LEGEND_CHAR_WIDTH = 5.9;
+const LEGEND_MARGIN = 10;
+/** Google prints its logo and its credits along the bottom: a legend there sits above them. */
+const LEGEND_BOTTOM_ROOM = 26;
+
+/** The legend's box on the image, in map pixels, in a corner. */
+export function legendBox(entries: readonly CroquisLegendEntry[], corner: MapCorner) {
+  const width = LEGEND_PADDING * 2 + 18 + Math.max("Simbología".length, ...entries.map((entry) => entry.label.length)) * LEGEND_CHAR_WIDTH;
+  const height = LEGEND_PADDING * 2 + LEGEND_ROW * (entries.length + 1);
+  const x = corner.endsWith("left") ? LEGEND_MARGIN : STATIC_MAP_SIZE.width - width - LEGEND_MARGIN;
+  const y = corner.startsWith("top") ? LEGEND_MARGIN : STATIC_MAP_SIZE.height - height - LEGEND_BOTTOM_ROOM;
+  return { x, y, width, height };
+}
+
+/** Corners tried for the legend, the top ones first; the north arrow keeps its own. */
+const LEGEND_CORNERS: readonly MapCorner[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
 
 /**
- * The legend as an SVG the size of the image (at `scale`), in a white box in
- * a top corner: Google prints its logo and its credits along the bottom, and
- * the north arrow keeps its corner, so the legend takes the other top one.
+ * FAL-10: the free corner for the legend. Of the corners the north arrow
+ * does not take, the one that covers the fewest pins (the subject's counts
+ * double, it must never hide), the top ones first on a tie.
  */
-export function legendOverlaySvg(entries: readonly CroquisLegendEntry[], northCorner: MapCorner, scale = 2) {
+export function legendCorner(
+  entries: readonly CroquisLegendEntry[],
+  northCorner: MapCorner,
+  center: LatLon,
+  zoom: number,
+  pins: readonly ComparablePin[],
+  subject: LatLon = center,
+): MapCorner {
+  const points = [subject, subject, ...pins.map((pin) => pin.point)].map((point) => imagePixel(center, zoom, point));
+  // A pin a little outside the box still hides under it: its circle and its number reach that far.
+  const reach = 14;
+  const covered = (corner: MapCorner) => {
+    const box = legendBox(entries, corner);
+    return points.filter((at) => at.x >= box.x - reach && at.x <= box.x + box.width + reach && at.y >= box.y - reach && at.y <= box.y + box.height + reach).length;
+  };
+  const corners = LEGEND_CORNERS.filter((corner) => corner !== northCorner);
+  return corners.reduce((best, corner) => (covered(corner) < covered(best) ? corner : best), corners[0]);
+}
+
+/** The legend as an SVG the size of the image (at `scale`), in a white box in the given corner (`legendCorner`). */
+export function legendOverlaySvg(entries: readonly CroquisLegendEntry[], corner: MapCorner, scale = 2) {
   const width = STATIC_MAP_SIZE.width * scale;
   const height = STATIC_MAP_SIZE.height * scale;
   const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
   if (!entries.length) return `${open}</svg>`;
-  const title = "Simbología";
-  const boxWidth = (LEGEND_PADDING * 2 + 18 + Math.max(title.length, ...entries.map((entry) => entry.label.length)) * LEGEND_CHAR_WIDTH) * scale;
-  const boxHeight = (LEGEND_PADDING * 2 + LEGEND_ROW * (entries.length + 1)) * scale;
-  const margin = 10 * scale;
-  const x = northCorner === "top-left" ? width - boxWidth - margin : margin;
-  const y = margin;
+  const box = legendBox(entries, corner);
+  const x = box.x * scale;
+  const y = box.y * scale;
   const text = (dx: number, dy: number, value: string, weight: number) =>
     `<text x="${(x + dx * scale).toFixed(1)}" y="${(y + dy * scale).toFixed(1)}" font-family="${STREET_LABEL_FONT_FAMILY}" font-weight="${weight}" font-size="${LEGEND_FONT * scale}" fill="#1b2733">${escapeXml(value)}</text>`;
   const rows = entries.map((entry, index) => {
@@ -335,8 +445,40 @@ export function legendOverlaySvg(entries: readonly CroquisLegendEntry[], northCo
     return symbol + text(LEGEND_PADDING + 18, cy + LEGEND_FONT * 0.36, entry.label, 400);
   });
   return open
-    + `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${boxWidth.toFixed(1)}" height="${boxHeight.toFixed(1)}" rx="${4 * scale}" fill="#ffffff" fill-opacity="0.94" stroke="#9aa5b1" stroke-width="${scale}"/>`
-    + text(LEGEND_PADDING, LEGEND_PADDING + LEGEND_ROW / 2 + LEGEND_FONT * 0.36, title, 700)
+    + `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(box.width * scale).toFixed(1)}" height="${(box.height * scale).toFixed(1)}" rx="${4 * scale}" fill="#ffffff" fill-opacity="0.94" stroke="#9aa5b1" stroke-width="${scale}"/>`
+    + text(LEGEND_PADDING, LEGEND_PADDING + LEGEND_ROW / 2 + LEGEND_FONT * 0.36, "Simbología", 700)
     + rows.join("")
     + "</svg>";
+}
+
+/** The legend of an image with comparables, its corner and its box; null when no comparable falls in the frame. */
+export function croquisLegendPlacement(center: LatLon, zoom: number, pins: readonly ComparablePin[], northCorner: MapCorner, subject: LatLon = center) {
+  const entries = croquisLegend(center, zoom, pins);
+  if (!entries.length) return null;
+  const corner = legendCorner(entries, northCorner, center, zoom, pinsInFrame(center, zoom, pins), subject);
+  return { entries, corner, box: legendBox(entries, corner) };
+}
+
+/**
+ * The subject's pin as an SVG the size of the image (at `scale`), its tip
+ * on the subject, the same drop as on the interactive map (subject-map.tsx).
+ * Composed last, over the comparables, their numbers and the legend, so
+ * nothing hides it: until 24 nov 2026 it was the Static API's own marker,
+ * under every overlay, and a comparable next door covered it. Nothing when
+ * the subject falls outside the frame.
+ */
+export function subjectPinSvg(center: LatLon, zoom: number, subject: LatLon, scale = 2) {
+  const width = STATIC_MAP_SIZE.width * scale;
+  const height = STATIC_MAP_SIZE.height * scale;
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
+  const at = imagePosition(center, zoom, subject);
+  if (!at) return `${open}</svg>`;
+  // The drop is drawn in a 30 × 40 box with its tip at (15, 38).
+  const x = at.x * width - 15 * scale;
+  const y = at.y * height - 38 * scale;
+  return open
+    + `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${scale})">`
+    + `<path d="M15 38C15 38 3 23 3 14a12 12 0 0 1 24 0c0 9-12 24-12 24z" fill="${SUBJECT_PIN_COLOR}" stroke="#fff" stroke-width="3"/>`
+    + `<circle cx="15" cy="14" r="4" fill="#fff"/>`
+    + `</g></svg>`;
 }

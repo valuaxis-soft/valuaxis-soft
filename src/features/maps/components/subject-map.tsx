@@ -22,9 +22,26 @@ const SUBJECT_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
 /** The number of a comparable beside its pin: a white chip, readable over any map. */
 const PIN_LABEL_CLASS =
   "rounded-sm! border-0! bg-white/95! px-1! py-px! text-[11px]! leading-4! font-bold! text-[#12212f]! whitespace-nowrap! shadow-[0_0_0_1px_rgba(0,0,0,.18)]!";
-/** Street name next to a highlighted street: the same chip, a little lighter. */
-const STREET_LABEL_CLASS =
-  "rounded-sm! border-0! bg-white/95! px-1! py-px! text-[11px]! leading-4! font-semibold! text-[#12212f]! whitespace-nowrap! shadow-[0_0_0_1px_rgba(0,0,0,.18)]! before:hidden!";
+/**
+ * A street name next to a highlighted street: a white chip edged with its
+ * street's color, drawn as the marker's own icon so the whole chip can be
+ * grabbed and dragged (FAL-35: as a label of an invisible marker, dragging
+ * it moved the map).
+ */
+function streetLabelIcon(name: string, color: string): google.maps.Icon {
+  const width = Math.round(name.length * 6.4 + 14);
+  const height = 18;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+    `<rect x="0.75" y="0.75" width="${width - 1.5}" height="${height - 1.5}" rx="8.25" fill="#ffffff" fill-opacity="0.95" stroke="${escapeHtml(color)}" stroke-width="1.5"/>` +
+    `<text x="${width / 2}" y="12.6" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#12212f">${escapeHtml(name)}</text>` +
+    `</svg>`;
+  return {
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    scaledSize: new google.maps.Size(width, height),
+    anchor: new google.maps.Point(width / 2, height + 6),
+  };
+}
 /** The invisible, wide line that catches the click on a street. */
 const HIT_LINE_COLOR = "#1f7ac2";
 
@@ -53,6 +70,8 @@ export interface SubjectMapProps {
   highlights: readonly HighlightedWay[];
   /** Names next to the highlighted streets; empty when hidden. */
   labels: readonly StreetLabel[];
+  /** FAL-35: a name was dragged to this point. Absent, the names stay put (a concluded valuation, or while drawing). */
+  onLabelMove?: (label: StreetLabel, point: LatLon) => void;
   onStreetClick?: (name: string) => void;
   /** A click on the map that hit no street (nor a pin): the panel says why, when the streets did not load. */
   onMapClick?: () => void;
@@ -102,6 +121,7 @@ export function SubjectMap(props: SubjectMapProps) {
   const draggable = Boolean(onSubjectMove);
   const drawing = draft !== null;
   const linesEditable = Boolean(props.onLinePointsChange);
+  const labelsMovable = Boolean(props.onLabelMove);
 
   // Created once; the effects below run after this one in the same commit.
   useEffect(() => {
@@ -252,23 +272,32 @@ export function SubjectMap(props: SubjectMapProps) {
       ({ way, style }, index) =>
         new google.maps.Polyline({ map: parts.map, path: way.g.map(toLatLng), strokeColor: style.color, strokeWeight: style.weight, strokeOpacity: 0.9, clickable: false, zIndex: 2 + index / 1000 }),
     );
-    // A marker without a symbol carries the name as a label on a white chip.
-    const chips = labels.map(
-      (label) =>
-        new google.maps.Marker({
-          map: parts.map,
-          position: toLatLng(label.point),
-          clickable: false,
-          zIndex: 4,
-          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0, labelOrigin: new google.maps.Point(0, -14) },
-          label: { text: label.name, className: STREET_LABEL_CLASS, color: "#12212f", fontSize: "11px", fontWeight: "600" },
-        }),
-    );
+    // Each name is a marker drawn as its chip: dragging the chip moves the name, not the map.
+    const chips = labels.map((label) => {
+      const chip = new google.maps.Marker({
+        map: parts.map,
+        position: toLatLng(label.point),
+        clickable: labelsMovable,
+        draggable: labelsMovable,
+        cursor: labelsMovable ? "move" : undefined,
+        title: labelsMovable ? `${label.name}: arrástralo para acomodarlo` : label.name,
+        zIndex: 8,
+        icon: streetLabelIcon(label.name, label.color),
+      });
+      chip.addListener("dragend", () => {
+        const position = chip.getPosition();
+        if (position) latest.current.onLabelMove?.(label, [position.lat(), position.lng()]);
+      });
+      return chip;
+    });
     return () => {
       for (const line of lines) line.setMap(null);
-      for (const chip of chips) chip.setMap(null);
+      for (const chip of chips) {
+        google.maps.event.clearInstanceListeners(chip);
+        chip.setMap(null);
+      }
     };
-  }, [highlights, labels]);
+  }, [highlights, labels, labelsMovable]);
 
   // «Trazo libre»: while drawing, the cursor is a cross and a double click finishes the line instead of zooming.
   useEffect(() => {

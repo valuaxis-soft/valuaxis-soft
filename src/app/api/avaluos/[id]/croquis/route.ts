@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
-import { CROQUIS_KINDS, croquisSettingsSchema, latLonSchema, northArrowSchema, pinsForCroquis, type CroquisKind } from "@/features/maps/croquis";
-import { MAX_LABEL_PLACEMENTS, croquisLabelPlacementSchema } from "@/features/maps/croquis-marker";
+import { CROQUIS_KINDS, croquisSettingsSchema, latLonSchema, northArrowSchema, type CroquisKind } from "@/features/maps/croquis";
+import { MAX_LABEL_PLACEMENTS, croquisLabelPlacementSchema } from "@/features/maps/highlights";
 import { freeLinesSchema } from "@/features/maps/free-lines";
 import { streetHighlightsSchema } from "@/features/maps/highlights";
 import { renderAndStoreCroquis } from "@/features/maps/server/croquis-image.service";
@@ -22,6 +22,7 @@ const bodySchema = z.object({
   zoom: z.number().int().min(1).max(21),
   clean: z.boolean(),
   northArrow: northArrowSchema,
+  /** Whether this croquis carries the comparables (the map of comparables' own «Incluir comparables», or the macro and micro's). */
   includeComparables: z.boolean(),
   streets: streetHighlightsSchema,
   mapType: croquisSettingsSchema.shape.mapType,
@@ -62,10 +63,11 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
       clean,
       mapType,
       northArrow,
-      pins: pinsForCroquis(kind, { includeComparables }, stored.comparables),
+      pins: includeComparables ? stored.comparables : [],
       streets,
       labels,
       lines,
+      address: stored.address,
     });
     return NextResponse.json({ data: result }, { status: 201 });
   } catch (error) {

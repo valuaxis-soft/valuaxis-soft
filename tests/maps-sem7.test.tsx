@@ -72,17 +72,18 @@ test("V7.3-09: the map of comparables carries its legend, with only the types it
   const legend = croquisLegend(SUBJECT, 15, pins);
   assert.deepEqual(legend.map((entry) => [entry.label, entry.color]), [
     ["Inmueble valuado", SUBJECT_PIN_COLOR],
-    ["Comparables de terrenos en venta", COMPARABLE_PIN_COLORS.TERRENO_VENTA],
-    ["Comparables de inmuebles en venta", COMPARABLE_PIN_COLORS.INMUEBLE_VENTA],
+    // FAL-10: each market with the numbers the image shows, as its tables print them.
+    ["Terrenos en venta: C-1", COMPARABLE_PIN_COLORS.TERRENO_VENTA],
+    ["Inmuebles en venta: C-1", COMPARABLE_PIN_COLORS.INMUEBLE_VENTA],
   ]);
   assert.deepEqual(croquisLegend(SUBJECT, 21, pins), [], "no comparable in the frame, no legend");
   const svg = legendOverlaySvg(legend, "top-right");
   assert.match(svg, /Simbología/);
-  assert.match(svg, /Comparables de terrenos en venta/);
-  assert.doesNotMatch(svg, /inmuebles en renta/);
-  // The north arrow keeps its corner: with it at the top left, the legend goes right.
-  const left = Number(/<rect x="([\d.]+)"/.exec(svg)![1]);
-  const right = Number(/<rect x="([\d.]+)"/.exec(legendOverlaySvg(legend, "top-left"))![1]);
+  assert.match(svg, /Terrenos en venta: C-1/);
+  assert.doesNotMatch(svg, /en renta/);
+  // The legend goes in the corner it is given (legendCorner picks it).
+  const right = Number(/<rect x="([\d.]+)"/.exec(svg)![1]);
+  const left = Number(/<rect x="([\d.]+)"/.exec(legendOverlaySvg(legend, "top-left"))![1]);
   assert.ok(left < right);
 });
 
