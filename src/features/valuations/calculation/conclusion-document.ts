@@ -123,11 +123,14 @@ export function withManualConclusionEdit(sectionKey: string, concept: Concept, p
  */
 export function conclusionValues(calculation: ConclusionCalculationDto, result: ConclusionResult): Record<string, ConclusionConceptValue> {
   const approach = (value: number | null | undefined) => (value === null || value === undefined ? NOT_APPLICABLE : amount(value, "mxn"));
-  const rounding = conclusionEngineConfig(calculation).rounding.conclusion;
+  const config = conclusionEngineConfig(calculation).rounding;
+  const rounding = config.conclusion;
+  // One figure per value (FAL-14): a row of the cost or market approach lists it as its approach printed it, like the approach concepts.
+  const rowRounding = (source: string) => (config.summaryRoundsApproaches === false && (source === "costos" || source.startsWith("mercado")) ? null : rounding);
   const rows = summaryRowValues(calculation);
   return {
     ...(rows.length
-      ? Object.fromEntries(rows.map((row, index) => [summaryConceptId(index), approach(row.value === null ? null : roundIfSet(row.value, rounding))]))
+      ? Object.fromEntries(rows.map((row, index) => [summaryConceptId(index), approach(row.value === null ? null : roundIfSet(row.value, rowRounding(row.source)))]))
       : {
           [CONCLUSION_KEYS.costos]: approach(result.summary.costos ?? calculation.values.costos),
           [CONCLUSION_KEYS.mercado]: approach(result.summary.mercado ?? calculation.values.mercado),
