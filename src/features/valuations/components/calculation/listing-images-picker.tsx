@@ -12,11 +12,20 @@ import { NOT_AN_IMAGE_MESSAGE } from "@/features/files/image-content";
 import { MAX_COMPARABLE_PHOTOS } from "@/features/valuations/calculation/market-types";
 import { addListingImages, promoteToScreenshot, type PendingImages } from "@/features/valuations/comparable-search/listing-images";
 
-/** Local previews of files not uploaded yet, let go when they change. */
-function usePreviews(files: File[]) {
-  const urls = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
-  useEffect(() => () => { for (const url of urls) URL.revokeObjectURL(url); }, [urls]);
-  return urls;
+/**
+ * The local preview of a file not uploaded yet, one per file for the life of
+ * the page. Not released on unmount: the same file travels from this box to
+ * the comparable's form, and a remount (React's development check) would
+ * leave its image pointing at a released address.
+ */
+const previews = new WeakMap<File, string>();
+export function previewUrl(file: File) {
+  let url = previews.get(file);
+  if (!url) {
+    url = URL.createObjectURL(file);
+    previews.set(file, url);
+  }
+  return url;
 }
 
 /**
@@ -45,7 +54,6 @@ export function ListingImagesPicker(props: {
   const focusOnMount = props.autoFocus;
   useEffect(() => { if (focusOnMount) zone.current?.focus(); }, [focusOnMount]);
   const files = useMemo(() => [...(images.screenshot ? [images.screenshot] : []), ...images.photos], [images]);
-  const previews = usePreviews(files);
   const offset = images.screenshot ? 1 : 0;
 
   const add = (incoming: File[]) => {
@@ -109,7 +117,7 @@ export function ListingImagesPicker(props: {
               data-listing-image={isScreenshot ? "screenshot" : "photo"}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={previews[index]} alt={isScreenshot ? "Pantalla de referencia por guardar" : `Fotografía ${index - offset + 1} por guardar`} className="size-full object-cover" />
+              <img src={previewUrl(file)}alt={isScreenshot ? "Pantalla de referencia por guardar" : `Fotografía ${index - offset + 1} por guardar`} className="size-full object-cover" />
               <figcaption className="absolute inset-x-0 bottom-0 truncate bg-background/85 px-1 text-[10px] text-foreground">{name}</figcaption>
               {!props.disabled ? (
                 <div className="absolute right-0.5 top-0.5 flex gap-0.5">

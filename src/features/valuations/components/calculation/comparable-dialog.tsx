@@ -59,6 +59,7 @@ import { COMPARABLE_VALIDITY_MONTHS, addMonths, validityMonthsOf } from "@/featu
 import { FormulaInput } from "./formula-input";
 import { useExpandableDialog } from "./expandable-dialog";
 import { ScreenshotSlot } from "./screenshot-slot";
+import { previewUrl } from "./listing-images-picker";
 import { ComparablePhotoFraming } from "./comparable-photo-framing";
 import type { ImageFraming } from "@/features/valuations/services/image-framing";
 import { SheetFormSection } from "./comparable-sheet";
@@ -356,7 +357,9 @@ export function ComparableDialog(props: {
   const [pendingScreenshot, setPendingScreenshot] = useState<File | null>(() => (comparable ? null : props.initialImages?.screenshot ?? null));
   // Photos of a new comparable, chosen before it is saved; shown from their local copy.
   const [pendingPhotos, setPendingPhotos] = useState<Array<{ file: File; url: string }>>(() => (comparable ? [] : (props.initialImages?.photos ?? [])
-    .slice(0, MAX_COMPARABLE_PHOTOS).map((file) => ({ file, url: URL.createObjectURL(file) }))));
+    .slice(0, MAX_COMPARABLE_PHOTOS).map((file) => ({ file, url: previewUrl(file) }))));
+  // Those previews belong to the page (the paste dialog shows them too): closing the form does not release them.
+  const [keptUrls] = useState(() => new Set(pendingPhotos.map((photo) => photo.url)));
   // What the firm already captured, offered while typing (municipio, colonia, zona…).
   const [suggestions, setSuggestions] = useState<ComparableSuggestions>(emptySuggestions);
   const [error, setError] = useState<{ message: string; field?: ComparableFormField } | null>(null);
@@ -397,7 +400,7 @@ export function ComparableDialog(props: {
   useEffect(() => {
     pendingUrls.current = pendingPhotos.map((photo) => photo.url);
   }, [pendingPhotos]);
-  useEffect(() => () => { for (const url of pendingUrls.current) URL.revokeObjectURL(url); }, []);
+  useEffect(() => () => { for (const url of pendingUrls.current) if (!keptUrls.has(url)) URL.revokeObjectURL(url); }, [keptUrls]);
 
   const built = isBuiltComparableType(props.comparableType);
   const rent = isRentComparableType(props.comparableType);

@@ -1,21 +1,18 @@
 "use client";
 
 import { AlertTriangle, ImagePlus, Loader2, Trash2 } from "lucide-react";
-import { useEffect, useMemo, type ClipboardEvent } from "react";
+import type { ClipboardEvent } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { CLIPBOARD_IMAGE_TYPES, pastedImages } from "@/features/files/clipboard-image";
 import { PasteImageButton } from "@/features/files/components/paste-image-button";
+import { previewUrl } from "./listing-images-picker";
 
 const BASE_NAME = "pantalla-de-referencia";
 
-/** A local preview of a file not uploaded yet; released when it changes. */
-function usePreview(file: File | null) {
-  const url = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
-  return url;
-}
+/** A local preview of a file not uploaded yet (one per file: see `previewUrl`). */
+const usePreview = (file: File | null) => (file ? previewUrl(file) : null);
 
 /**
  * "Pantalla de referencia": the screenshot of the listing as it was when

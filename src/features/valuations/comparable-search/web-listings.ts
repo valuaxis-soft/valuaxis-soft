@@ -8,7 +8,7 @@
 import { z } from "zod";
 
 import type { AiPrompt } from "@/features/ai/ai-gateway";
-import type { Currency } from "../calculation/comparable-card";
+import { formatAddress, streetTypeOfName, type Currency } from "../calculation/comparable-card";
 import { isLandComparableType, isRentComparableType, type ComparableType } from "../calculation/market-types";
 import { urlKey } from "./normalize";
 import type { FoundComparable } from "./types";
@@ -395,7 +395,19 @@ const money = (value: number, currency: Currency) => `${currency} ${value.toLoca
  */
 export function comparableFromWebListing(type: ComparableType, candidate: WebListingCandidateInput, today: string): FoundComparable {
   const land = isLandComparableType(type);
-  const place = [candidate.street, candidate.reference, candidate.neighborhood, candidate.municipality, candidate.state].filter(Boolean).join(", ");
+  const streetType = candidate.street ? streetTypeOfName(candidate.street) : null;
+  const address = {
+    state: candidate.state, municipality: candidate.municipality, neighborhood: candidate.neighborhood,
+    street: candidate.street, postalCode: candidate.postalCode, ...(streetType ? { streetType } : {}),
+  };
+  // With its street, the location is the line the dictamen prints from the parts; a reference the parts do not say goes to the notes.
+  // Without it, the reference leads, as the model wrote it, and a part it already names is not repeated.
+  const plain = (value: string) => value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const says = (whole: string, piece: string) => piece.split(",").every((segment) => plain(whole).includes(plain(segment)));
+  const formatted = candidate.street ? formatAddress(address) : "";
+  const reference = candidate.reference && !(formatted && says(formatted, candidate.reference)) ? candidate.reference : null;
+  const parts = [reference, candidate.neighborhood, candidate.municipality, candidate.state].filter((part): part is string => Boolean(part));
+  const place = formatted || parts.filter((part, index) => !parts.some((other, at) => at < index && says(other, part))).join(", ");
   const dollars = candidate.currency === "USD" && candidate.price !== null;
   const count = (value: number | null, one: string, many: string) => (value === null ? null : `${value.toLocaleString("es-MX")} ${value === 1 ? one : many}`);
   // A land's card has no rooms, levels nor age: what the listing says of its construction goes to the notes.
@@ -412,6 +424,7 @@ export function comparableFromWebListing(type: ComparableType, candidate: WebLis
     : [];
   const notes = [
     candidate.title,
+    formatted && reference ? `Referencia: ${reference}` : null,
     candidate.notes,
     candidate.amenities ? `Amenidades: ${candidate.amenities}` : null,
     ...construction,
@@ -446,10 +459,7 @@ export function comparableFromWebListing(type: ComparableType, candidate: WebLis
     url: listingUrl(candidate.url),
     offerDate: candidate.listingDate,
     consultedOn: today,
-    address: {
-      state: candidate.state, municipality: candidate.municipality, neighborhood: candidate.neighborhood,
-      street: candidate.street, postalCode: candidate.postalCode,
-    },
+    address,
     operationType: isRentComparableType(type) ? "RENTA" : "VENTA",
     ...(building ?? {}),
     listingDetails: { currency: candidate.currency, dataOrigin: WEB_SEARCH_SOURCE_LABEL, dataVerified: "NO", publicationId: candidate.publicationId },

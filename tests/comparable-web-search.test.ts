@@ -232,7 +232,17 @@ test("everything else a listing publishes lands in its field of the card; what i
   assert.equal(comparable.address?.street, "Av. Inventada 245");
   assert.equal(comparable.address?.postalCode, "47600");
   assert.equal(comparable.listingDetails?.publicationId, "EB-XX0001");
-  assert.equal(comparable.notes, "Casa en Fraccionamiento Ejemplo. Orientación norte. Amenidades: jardín, cocina integral.");
+  assert.equal(comparable.notes, "Casa en Fraccionamiento Ejemplo. Referencia: a 2 km del libramiento norte. Orientación norte. Amenidades: jardín, cocina integral.");
+  // With its street, the location is the line the dictamen prints from the parts, the road with the type its name says.
+  assert.equal(comparable.location, "Av. Inventada 245, col. Las Lomas, C.P. 47600, Villa Ejemplo, Jalisco");
+  assert.equal(comparable.address?.streetType, "AVENIDA");
+
+  // A reference that repeats the street and the town is not written twice.
+  const repeated = comparableFromWebListing("INMUEBLE_VENTA", { ...parsed, street: "Libra 1274", reference: "Libra 1274, Villa Ejemplo, Jalisco" }, "2026-11-23");
+  assert.equal(repeated.location, "Libra 1274, col. Las Lomas, C.P. 47600, Villa Ejemplo, Jalisco");
+  assert.doesNotMatch(repeated.notes ?? "", /Referencia/);
+  const noStreet = comparableFromWebListing("INMUEBLE_VENTA", { ...parsed, street: null, reference: "Las Lomas, Villa Ejemplo" }, "2026-11-23");
+  assert.equal(noStreet.location, "Las Lomas, Villa Ejemplo, Jalisco");
 
   // A land's card has no rooms: they go to its notes, as numbers the listing gave.
   const land = normalizeWebListings("TERRENO_VENTA", { marketNote: "", candidates: [listing({ builtArea: 90, bedrooms: 2, age: 30 })] }, { resultUrls: [], knownUrls: [] });
