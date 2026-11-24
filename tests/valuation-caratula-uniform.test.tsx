@@ -229,3 +229,25 @@ test("an approach without a value says why next to «No aplica» (UNI-02)", () =
   assert.doesNotMatch(html, /data-approach-unavailable="costos"/, "a value needs no reason");
   assert.doesNotMatch(html, /data-approach-unavailable="ingresos"/, "left out of the report says so itself");
 });
+
+test("24 Nov 2026: the carátula's own empty block «CARATULA» prints no bar over «CONCLUSIÓN»; a title that repeats the section prints none either", () => {
+  const section = templateCaratula();
+  const titlesOf = (html: string) => [...html.matchAll(/data-caratula-block-title="true">([^<]+)</g)].map((match) => match[1]);
+  // A valuation started without a template keeps the section's own block, empty, titled after it.
+  const empty = printCaratula({ ...section, blocks: [block("caratula-root", "CARATULA"), ...section.blocks] });
+  assert.ok(!titlesOf(empty).includes("CARATULA"), "no «CARATULA» bar");
+  assert.equal(titlesOf(empty).at(-1), "CONCLUSIÓN");
+  // With content, the content prints without the repeated title; another empty block prints nothing.
+  const withContent = printCaratula({
+    ...section,
+    blocks: [
+      block("caratula-root", "Carátula", { concepts: [{ id: "dato", label: "Dato del despacho", value: "Valor de prueba", enabled: true }] }),
+      block("vacio", "DATOS ADICIONALES"),
+      ...section.blocks,
+    ],
+  });
+  assert.ok(withContent.includes("Valor de prueba"));
+  assert.ok(!titlesOf(withContent).includes("Carátula") && !titlesOf(withContent).includes("DATOS ADICIONALES"));
+  // The template's own blocks keep their titles.
+  assert.ok(titlesOf(withContent).includes("DATOS DEL BIEN"));
+});

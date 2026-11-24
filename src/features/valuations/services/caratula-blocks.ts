@@ -61,3 +61,21 @@ export function isConclusionNarrativeConcept(concept: Pick<Concept, "label">) {
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 }
+
+/**
+ * Whether a block of the carátula prints in the dictamen and with its title.
+ * A block with nothing in it (the section's own empty block, «CARATULA», that
+ * a valuation started without a template keeps) prints nothing: not even its
+ * title, which used to print as a hollow frame and, filled, stood out over
+ * «CONCLUSIÓN» (24 Nov 2026). A title that only repeats the section's name
+ * prints no bar; the block's content still prints.
+ */
+export function caratulaBlockPrinting(
+  block: Pick<Block, "title" | "concepts" | "apartados" | "tables" | "images">,
+  section: Pick<AppSection, "title" | "label">,
+): { prints: boolean; title: boolean } {
+  const empty = !block.concepts.length && !block.apartados.length && !block.tables.length && !block.images.length;
+  const title = normalize(block.title.trim());
+  const sectionNames = [section.title, section.label, "CARATULA"].filter(Boolean).map((name) => normalize(String(name).trim()));
+  return { prints: !empty, title: !sectionNames.includes(title) };
+}

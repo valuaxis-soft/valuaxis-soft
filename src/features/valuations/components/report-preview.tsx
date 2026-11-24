@@ -16,6 +16,7 @@ import type {
 } from "../model";
 import { COMPANY_HEADER_BLOCK_ID } from "@/features/valuations/services/caratula-company-header";
 import {
+  caratulaBlockPrinting,
   getCaratulaBlockKind,
   primaryCaratulaConclusionId,
 } from "@/features/valuations/services/caratula-blocks";
@@ -361,7 +362,10 @@ function CaratulaPreview({
 
   // Carátula editable blocks show titles WITHOUT numeric section labels.
   const caratulaTitleOptions = {
-    renderBlockTitle: (block: Block) => <div className="mt-3"><CaratulaBlockHeading title={block.title} hidden={block.titleHidden} /></div>,
+    // A title that only repeats the section's name («CARATULA») prints no bar.
+    renderBlockTitle: (block: Block) => (caratulaBlockPrinting(block, section).title
+      ? <div className="mt-3"><CaratulaBlockHeading title={block.title} hidden={block.titleHidden} /></div>
+      : null),
     renderApartadoTitle: (_block: Block, subBlock: Apartado) => (
       titlePrints(subBlock) ? <h3 className={theme.apartadoTitle}>{subBlock.title}</h3> : null
     ),
@@ -380,7 +384,8 @@ function CaratulaPreview({
       const node = <CaratulaConclusionModule blocks={[block]} caratula={caratula} meta={meta} showValue={block.id === valueConclusionId} />;
       return [{ id: `caratula-conclusion-${block.id}`, node }, ...apartadoItems(block)];
     }
-    return reportBlockFlowItems(block, true, caratulaTitleOptions);
+    // A block with nothing in it prints nothing, not even its title.
+    return caratulaBlockPrinting(block, section).prints ? reportBlockFlowItems(block, true, caratulaTitleOptions) : [];
   });
 
   // Build all items: fixed modules + editable blocks, paginated as one flow.
