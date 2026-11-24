@@ -606,7 +606,7 @@ function withInstallationColumns(table: TableV2): TableV2 {
  * the template leaves it). Its title does not print, as it never did in this
  * section.
  */
-export function asCaptureTable(tableContent: TableContent, calculation: CostCalculationDto): TableContent {
+export function asCaptureTable(tableContent: TableContent, calculation: CaptureCosts): TableContent {
   let table = ensureTableV2(tableContent);
   const kind = captureKindOf(table);
   if (!kind || table.schema?.capture) return tableContent;
@@ -642,6 +642,23 @@ export function asCaptureTable(tableContent: TableContent, calculation: CostCalc
   const schema = { ...(table.schema ?? { zones: [] }), capture: { kind } as TableCaptureMarker };
   if (schema.hideCaption === undefined) schema.hideCaption = true;
   return normalizeCapture(asContent({ ...table, rows, schema }, tableContent.title), calculation);
+}
+
+/** What the conversion of a table into the capture reads of the cost approach. */
+type CaptureCosts = Pick<CostCalculationDto, "types" | "typesCaptured" | "installations" | "configured" | "constructions">;
+
+/** The cost approach of a valuation that has captured nothing yet. */
+const NOTHING_CAPTURED: CaptureCosts = { types: [], typesCaptured: false, installations: [], configured: false, constructions: [] };
+
+/**
+ * The construction section with its capture tables already the capture, as
+ * the first reading of the cost approach of a new valuation leaves them. A
+ * valuation is created with it, so opening it untouched changes nothing (24
+ * nov 2026: a new valuation opened with «Cambios pendientes» and the
+ * browser's «¿Salir del sitio?»).
+ */
+export function withCaptureMarks(section: AppSection): AppSection {
+  return withCaptureTables(section, (table) => asCaptureTable(table, NOTHING_CAPTURED));
 }
 
 /** Every table of a section, in its order. */

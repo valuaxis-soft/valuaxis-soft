@@ -4,7 +4,8 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/features/auth/session";
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
-import { initiallyHiddenSections } from "@/features/valuations/sections/section-registry";
+import { getCanonicalSectionKey, initiallyHiddenSections } from "@/features/valuations/sections/section-registry";
+import { withCaptureMarks } from "@/features/valuations/calculation/construction-capture";
 import {
   initializeWorkingVersionStructure,
   saveCaratula,
@@ -360,7 +361,10 @@ async function validateCreationCatalogs(input: SaveValuationInput, organizationI
 function templateDocumentPayload(sections: AppSection[], defaults: GeneralCaratulaDefaults): SectionPayload[] {
   // A template saved with a client's data (before 2 Nov 2026) never passes them on: the new valuation starts blank.
   const clean = stripClientDataFromSections(sections, { includeImages: true });
-  const hydrated = clean.map((section) => (section.id === "caratula" ? hydrateGeneralCaratulaTemplate(section, defaults) : section));
+  // The construction tables become the capture here, not on the first opening (which then asked to save).
+  const hydrated = clean.map((section) => (section.id === "caratula" ? hydrateGeneralCaratulaTemplate(section, defaults)
+    : getCanonicalSectionKey(section.id) === "CONSTRUCCION" ? withCaptureMarks(section)
+      : section));
   return buildSectionsPayload(hydrated) as SectionPayload[];
 }
 

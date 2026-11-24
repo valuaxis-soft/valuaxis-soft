@@ -14,6 +14,8 @@ import { DELETE as deleteTemplate, GET as getTemplate, PATCH as patchTemplate } 
 import { PUT as putTemplateDocument } from "../../src/app/api/plantillas/[id]/documento/route";
 import { POST as duplicateTemplate } from "../../src/app/api/plantillas/[id]/duplicar/route";
 import { AUTH_SESSION_COOKIE } from "../../src/features/auth/constants/auth.constants";
+import { withConstructionTables } from "../../src/features/valuations/calculation/construction-capture";
+import { getCostCalculation } from "../../src/features/valuations/calculation/cost.service";
 import { createCustomSection } from "../../src/features/valuations/components/workspace/model/content-factories";
 import { initialSectionsFor } from "../../src/features/valuations/components/workspace/model/initial-hydration";
 import { buildSectionsPayload } from "../../src/features/valuations/components/workspace/model/save-payload";
@@ -472,6 +474,10 @@ test("«Nueva plantilla» starts as a new valuation does, the editor saves it wi
   assert.equal(valuation.status, 201, JSON.stringify(valuation.body));
   const sections = await load((valuation.body!.data as { publicId: string }).publicId, fixture.organizationId);
   const block = sections.find((section) => section.id === "consideraciones")!.blocks.find((item) => item.title === "CONDICIONES DEL FRACCIONAMIENTO");
+  // Opened untouched, nothing changes: its construction tables were stored as the capture (24 nov 2026).
+  const construction = sections.find((section) => section.id === "construccion")!;
+  const costs = await getCostCalculation((valuation.body!.data as { publicId: string }).publicId, fixture.organizationId);
+  assert.equal(withConstructionTables(construction, costs), construction, "no «Cambios pendientes» on opening");
   assert.ok(block, "the block added in the template editor");
   assert.equal(block.concepts[0].value, "Barda perimetral y caseta de vigilancia.");
   assert.ok(importableBlocks(stored.content.sections).some((item) => item.block.title === "CONDICIONES DEL FRACCIONAMIENTO"));

@@ -22,11 +22,12 @@ import {
   syncedFromTable,
   withConstructionTables,
   withNewCaptureRow,
+  withCaptureMarks,
   withTemplateCaptureTable,
   type SyncedItem,
   type TypeItem,
 } from "../src/features/valuations/calculation/construction-capture";
-import { DEFAULT_LAND, emptyInstallation, toCostEngineInput, type CostCalculationDto } from "../src/features/valuations/calculation/cost-types";
+import { DEFAULT_LAND, costColumnsOf, emptyInstallation, toCostEngineInput, type CostCalculationDto } from "../src/features/valuations/calculation/cost-types";
 import { construccionFlowItems } from "../src/features/valuations/components/construccion-preview";
 import { calculatedCellReasons, calculatedColumnReasons, calculatedRowReasons, type CalculatedTableLock } from "../src/features/valuations/components/editor/calculated-table-context";
 import { ConstructionCaptureAccess, ConstructionCaptureProvider, EditorTable, type ConstructionCaptureContextValue } from "../src/features/valuations/components/editor/construction-capture-table";
@@ -367,4 +368,33 @@ test("a construction section without a capture table offers to put it back, in t
   assert.ok(findCaptureTable(restored, "installations"));
   assert.equal(restored.blocks.find((block) => block.id === "instalaciones_especiales")?.apartados[0].id, "instalaciones_especiales_detalle");
   assert.equal(withTemplateCaptureTable(restored, "installations"), restored, "never a second one");
+});
+
+/* ── 8. A new valuation opens without changes ──────────────────────────────────────── */
+
+/** The cost approach the server reads for a valuation just created: nothing captured, nothing configured. */
+const nothingCaptured: CostCalculationDto = {
+  land: DEFAULT_LAND, constructions: [], types: [], installations: [], indirects: [], columns: costColumnsOf(null),
+  market: { adoptedUnitValue: null, subjectArea: null, baseArea: null }, configured: false, typesCaptured: false, locked: false,
+};
+
+test("a new valuation is created with its capture tables marked, so the first reading of the cost approach changes nothing (24 nov 2026)", () => {
+  // Before: the template's tables became the capture on opening, and an untouched valuation asked to be saved.
+  const template = templateSection();
+  assert.notEqual(withConstructionTables(template, nothingCaptured), template, "the unmarked template is changed on opening");
+
+  const created = withCaptureMarks(templateSection());
+  const types = ensureTableV2(tableOf(created, "construccion_tipos"));
+  const installations = ensureTableV2(tableOf(created, "instalaciones_especiales"));
+  assert.deepEqual(types.schema?.capture, { kind: "types" });
+  assert.deepEqual(installations.schema?.capture, { kind: "installations" });
+  assert.equal(types.schema?.hideCaption, true);
+  // The rows are the template's: the reference T-1 and the three numbered installations.
+  assert.deepEqual(readCapture(tableOf(created, "construccion_tipos"), "types", []), []);
+  assert.equal(installations.rows.length, 3);
+
+  // Opening it (the sync of the editor, then again after a reload) leaves the very same section: no «Cambios pendientes».
+  assert.equal(withConstructionTables(created, nothingCaptured), created);
+  assert.equal(withConstructionTables(created, nothingCaptured, { types: null, installations: null }), created);
+  assert.equal(withCaptureMarks(created), created, "marking twice changes nothing");
 });
