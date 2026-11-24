@@ -6,6 +6,7 @@ import {
   sectionKeyToWorkspaceId,
 } from "@/features/valuations/sections/section-registry";
 import { getInitialSectionTemplate } from "@/features/valuations/sections";
+import { withCaptureMarks } from "@/features/valuations/calculation/construction-capture";
 import {
   hydrateGeneralCaratulaTemplate,
   type GeneralCaratulaDefaults,
@@ -133,9 +134,13 @@ export async function initializeWorkingVersionStructure(input: {
     const sectionTemplate = shouldPersistInitialBlocks
       ? getInitialSectionTemplate(definition.key)
       : null;
+    // The construction tables are stored already as the capture of the cost approach: opening the
+    // valuation untouched must not change its document (it asked to save, and «¿Salir del sitio?»).
     const initialTemplate = sectionTemplate && definition.key === "CARATULA"
       ? hydrateGeneralCaratulaTemplate(sectionTemplate, input.generalCaratulaDefaults ?? {})
-      : sectionTemplate;
+      : sectionTemplate && definition.key === "CONSTRUCCION"
+        ? withCaptureMarks(sectionTemplate)
+        : sectionTemplate;
     const emptyPlaceholder = initialTemplate
       && isEmptySectionPlaceholder(existingRoots, definition.label);
 

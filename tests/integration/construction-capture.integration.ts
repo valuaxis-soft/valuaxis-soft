@@ -19,6 +19,7 @@ import {
 import { getConstructionTypes, saveConstructionTypes } from "../../src/features/valuations/calculation/construction-types.service";
 import { getCostCalculation, saveCostCalculation } from "../../src/features/valuations/calculation/cost.service";
 import { DEFAULT_LAND, costInputOf, emptyConstructionCost, emptyInstallation, type CostInputDto } from "../../src/features/valuations/calculation/cost-types";
+import { initialSectionsFor } from "../../src/features/valuations/components/workspace/model/initial-hydration";
 import { buildSectionsPayload } from "../../src/features/valuations/components/workspace/model/save-payload";
 import type { AppSection, TableContent } from "../../src/features/valuations/model";
 import { getValuationByPublicId } from "../../src/features/valuations/repositories/valuation.repository";
@@ -125,6 +126,22 @@ test("a new valuation's construction section comes with its subbloques and both 
   // Before, the template's subbloques (kept as `apartados`) were lost when the valuation was created.
   assert.deepEqual(readCapture(tableIn(section, "construccion_tipos"), "types", []), [], "the types table, with its empty rows");
   assert.equal(ensureTableV2(tableIn(section, "instalaciones_especiales")).columns.length, 10);
+});
+
+test("a new valuation opens untouched without changes: the first reading of the cost approach leaves its construction section as stored (24 nov 2026)", async () => {
+  const fixture = await createValuationFixture();
+  const avaluo = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  await initializeWorkingVersionStructure({ avaluoId: avaluo.IdAvaluo, userId: fixture.user.id });
+  const detail = await getValuationByPublicId(fixture.publicId, fixture.organizationId);
+  assert.ok(detail);
+  // As the editor hydrates it, and as it syncs it on opening (use-calculation-document-sync.ts).
+  const section = initialSectionsFor(detail).find((item) => item.id === "construccion");
+  assert.ok(section);
+  assert.deepEqual(ensureTableV2(tableIn(section, "construccion_tipos")).schema?.capture, { kind: "types" }, "stored as the capture");
+  assert.deepEqual(ensureTableV2(tableIn(section, "instalaciones_especiales")).schema?.capture, { kind: "installations" });
+  const costs = await getCostCalculation(fixture.publicId, fixture.organizationId);
+  // Before, the tables became the capture here: «Cambios pendientes» and «¿Salir del sitio?» on a valuation nobody touched.
+  assert.equal(withConstructionTables(section, costs), section, "opening changes nothing");
 });
 
 test("a type renamed in the table keeps its row and its cost columns; one taken out takes its cost row", async () => {
