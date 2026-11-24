@@ -110,6 +110,12 @@ const envObject = z.object({
   TWILIO_API_BASE_URL: z.string().url().optional().or(z.literal("")),
   /** "true": creating a valuation requires a verified phone. Ignored while the Twilio keys are missing. */
   PHONE_VERIFICATION_REQUIRED: z.string().optional(),
+  /**
+   * Who takes a change of the valuation's format on opening (src/features/valuations/services/layout-refresh.ts):
+   * "all" (default, the tuning phase) every valuation not concluded; "new" only those created since the
+   * change shipped, the others with «Actualizar formato». Concluded valuations never change.
+   */
+  VALUATION_LAYOUT_REFRESH: z.enum(["all", "new"]).optional().or(z.literal("")),
 });
 
 const envSchema = envObject.superRefine((value, context) => {

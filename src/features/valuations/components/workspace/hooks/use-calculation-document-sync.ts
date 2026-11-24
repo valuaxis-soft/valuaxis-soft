@@ -258,7 +258,8 @@ export function useCalculationDocumentSync({
     await refresh({ costs: true, income: true, conclusion: true });
   };
 
-  const syncOnOpen = useEffectEvent(async (id: string) => {
+  // Every calculation writes its pages again with the current generators: on opening, and with «Actualizar formato».
+  const syncAll = async (id: string) => {
     const markets = await Promise.all(COMPARABLE_TYPES.map((type) => api.market.get(id, type).catch(() => null)));
     for (const calculation of markets) {
       if (!calculation) continue;
@@ -275,7 +276,8 @@ export function useCalculationDocumentSync({
       if (calculation) applyMachinery(calculation);
     }
     await refresh({ costs: true, income: true, conclusion: true });
-  });
+  };
+  const syncOnOpen = useEffectEvent(syncAll);
 
   useEffect(() => {
     if (canEdit && valuationId) void syncOnOpen(valuationId);
@@ -328,6 +330,7 @@ export function useCalculationDocumentSync({
   }, [signatureKey]);
 
   return {
+    resyncAll: () => (canEdit && valuationId ? syncAll(valuationId) : Promise.resolve()),
     onLiveFormulas: (owners: string[]) => void onLiveFormulas(owners),
     onMarketCalculation,
     onCostCalculation,

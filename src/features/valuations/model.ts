@@ -379,6 +379,12 @@ export type AppSection = {
    * it printed then (withCaratulaFreeBlockOrder).
    */
   freeBlockOrder?: boolean;
+  /**
+   * Carátula section only: the version of the format the document was last
+   * brought up to (`LAYOUT_VERSION`, services/layout-refresh.ts). Absent on a
+   * document never refreshed.
+   */
+  layoutVersion?: number;
   /** Chapter or annex, as the appraiser chose; absent, an annex when it comes after the conclusion. */
   documentRole?: SectionDocumentRole;
   /** The label an annex prints instead of "ANEXO n", when the appraiser wrote one. */

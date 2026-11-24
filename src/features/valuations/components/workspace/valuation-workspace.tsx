@@ -79,6 +79,8 @@ import { sectionIconMap } from "./model/section-icons";
 import { sectionDisplayName } from "./model/section-numbering";
 import { useBlockMutations } from "./hooks/use-block-mutations";
 import { useCalculationDocumentSync } from "./hooks/use-calculation-document-sync";
+import { useLayoutRefresh } from "./hooks/use-layout-refresh";
+import type { LayoutRefreshPolicy } from "@/features/valuations/services/layout-refresh";
 import { useEditorHistoryShortcuts, useEditorState, type AppliedHistoryStep } from "./hooks/use-editor-state";
 import { useExternalPreviewSync } from "./hooks/use-external-preview-sync";
 import { useImageMutations } from "./hooks/use-image-mutations";
@@ -121,7 +123,10 @@ export function ValuationWorkspace({
   unaccreditedNotice = null,
   autosaveSeconds = DEFAULT_AUTOSAVE_SECONDS,
   template = null,
+  layoutRefresh = "all",
 }: {
+  /** Who is brought up to the current format on opening (VALUATION_LAYOUT_REFRESH; services/layout-refresh.ts). */
+  layoutRefresh?: LayoutRefreshPolicy;
   /**
    * «Nueva plantilla» / «Editar plantilla»: the same editor on a template of
    * the firm instead of a valuation. It saves the template's document; with no
@@ -425,6 +430,16 @@ export function ValuationWorkspace({
   // A machinery valuation captures its cost and market approaches with the panels of the MEH format.
   const machinery = isMachineryPropertyKind(initialValuation?.propertyKind);
   const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, machinery, valuationId });
+  // Valuations worked before a change of format take it (video 8.3); concluded ones never (canEdit).
+  const layoutRefreshState = useLayoutRefresh({
+    canEdit,
+    createdAt: initialValuation?.createdAt ?? null,
+    policy: layoutRefresh,
+    resyncCalculations: calculationSync.resyncAll,
+    sections,
+    updateSections,
+    valuationId,
+  });
   useEffect(() => {
     liveFormulasRef.current = calculationSync.onLiveFormulas;
   });
@@ -708,6 +723,7 @@ export function ValuationWorkspace({
               saveStatus={saveStatus}
               hasUnsavedChanges={hasUnsavedChanges}
               onSave={handleSave}
+              layoutRefresh={canEdit ? { pending: layoutRefreshState.pending, onRefresh: layoutRefreshState.refreshNow } : undefined}
             />
           ) : null}
 

@@ -89,6 +89,8 @@ export type SectionMetadata = {
   palette?: DocumentPalette;
   /** The carátula prints its blocks in the editor's order. */
   freeBlockOrder?: boolean;
+  /** The document's format version, carried by its carátula section (services/layout-refresh.ts). */
+  layoutVersion?: number;
   /** Chapter or annex, as the appraiser chose. */
   documentRole?: SectionDocumentRole;
   /** The label the annex prints instead of "ANEXO n". */
@@ -266,6 +268,7 @@ export function sectionMetadataFromContent(content: SectionMetadataContent): Sec
     titleBand: content.titleBand,
     ...(palette ? { palette } : {}),
     ...(content.freeBlockOrder ? { freeBlockOrder: true } : {}),
+    ...(isLayoutVersion(content.layoutVersion) ? { layoutVersion: content.layoutVersion } : {}),
     ...(content.documentRole ? { documentRole: content.documentRole } : {}),
     ...(content.annexTitle?.trim() ? { annexTitle: content.annexTitle.trim() } : {}),
     ...(content.pageBreak ? { pageBreak: content.pageBreak } : {}),
@@ -293,6 +296,7 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
     titleBand: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBandStyle(value.titleBand) ? value.titleBand : undefined)),
     palette: readConfigMetadata(config, (value) => (isRecord(value) ? readDocumentPalette(value.palette) : undefined)),
     freeBlockOrder: sectionBooleanMetadata(config, "freeBlockOrder"),
+    layoutVersion: readConfigMetadata(config, (value) => (isRecord(value) && isLayoutVersion(value.layoutVersion) ? value.layoutVersion : undefined)),
     documentRole: readConfigMetadata(config, (value) => (isRecord(value) && isSectionDocumentRole(value.documentRole) ? value.documentRole : undefined)),
     annexTitle: readConfigMetadata(config, (value) => (isRecord(value) && typeof value.annexTitle === "string" && value.annexTitle.trim() ? value.annexTitle.trim().slice(0, 60) : undefined)),
     pageBreak: readConfigMetadata(config, (value) => (isRecord(value) && isSectionPageBreak(value.pageBreak) ? value.pageBreak : undefined)),
@@ -449,6 +453,10 @@ function imageCaptionAlign(config: unknown): "left" | "center" | "right" | undef
     const align = value.captionAlign;
     return align === "left" || align === "center" || align === "right" ? align : undefined;
   });
+}
+
+function isLayoutVersion(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 && value < 10_000;
 }
 
 function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "custom" | "titleEdited" | "removed" | "titleHidden") {

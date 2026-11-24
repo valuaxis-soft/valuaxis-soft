@@ -14,6 +14,8 @@ import { isAiEnabled } from "@/features/ai/ai-gateway-provider";
 import { getValuationCreationCatalogs } from "@/features/valuations/services/valuation-catalogs.service";
 import { getUserPreferences } from "@/features/account/user-preferences.service";
 import { phoneRequirementBlock } from "@/features/account/phone/phone-verification.service";
+import { layoutRefreshPolicy } from "@/features/valuations/services/layout-refresh";
+import { env } from "@/lib/env";
 
 export default async function WorkspacePage({
   searchParams,
@@ -54,6 +56,7 @@ export default async function WorkspacePage({
         letterhead={letterhead}
         customUnits={customUnits}
         autosaveSeconds={preferences.autosaveSeconds}
+        layoutRefresh={layoutRefreshPolicy(env.VALUATION_LAYOUT_REFRESH)}
         valuationId={valuationId}
         initialValuation={initialValuation}
         aiEnabled={isAiEnabled()}
