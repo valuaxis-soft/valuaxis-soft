@@ -29,6 +29,7 @@ import {
   CONSTRUCTION_TYPE_SUGGESTIONS,
   QUALITY_OPTIONS,
   coordinatesError,
+  customLocationText,
   formatAddress,
   formatComparableId,
   formatCoordinateDms,
@@ -177,7 +178,8 @@ function initialDraft(
   const prefilledStreetType = !comparable && prefill.street ? streetTypeOfName(prefill.street) : null;
   const details = comparable?.propertyDetails;
   return {
-    location: comparable?.location ?? "",
+    // The line stored as the parts assemble it is not a text of the appraiser's: it keeps following the fields.
+    location: customLocationText(comparable?.location, comparable?.address),
     // A number typed as a formula reads back as typed.
     area: comparable?.formulas?.area ?? text(comparable?.area),
     price: comparable?.formulas?.price ?? text(comparable?.price),

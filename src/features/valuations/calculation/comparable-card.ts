@@ -177,6 +177,18 @@ export function formatAddress(address: ComparableAddress | null | undefined) {
   ].filter(Boolean).join(", ");
 }
 
+/**
+ * What «Ubicación como la imprime el dictamen» shows as typed for a stored
+ * comparable: the stored line when the appraiser wrote one of their own, and
+ * empty when it is just the line the parts assemble (every capture stores the
+ * printed line, and «Crear fichas» stored it so), so editing the street
+ * later moves the printed location with it (24 Nov 2026).
+ */
+export function customLocationText(location: string | null | undefined, address: ComparableAddress | null | undefined) {
+  const stored = location?.trim() ?? "";
+  return stored && normalizeCrossing(stored) === formatAddress(address) ? "" : stored;
+}
+
 const NEIGHBORHOOD_PREFIX = /^(?:colonia(?!\p{L})|col\.|col(?=\s))\s*/iu;
 const SUBDIVISION_PREFIX = /^(?:fraccionamiento(?!\p{L})|fracc?\.|fracc?(?=\s))\s*/iu;
 const POSTAL_CODE_PREFIX = /^(?:c\.\s?p\.?|cp(?!\p{L}))\s*:?\s*/iu;
