@@ -330,6 +330,7 @@ export function TeamManager() {
             <AlertDialogCancel disabled={busy !== null}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               type="button"
+              variant="destructive"
               disabled={busy !== null}
               onClick={() => {
                 const member = removing;

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -571,7 +572,7 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <Button type="button" variant="outline" onClick={() => { setAsking(false); runImport("append"); }}>Agregar al final</Button>
-            <Button type="button" variant="destructive" onClick={() => { setAsking(false); runImport("replace"); }}>Reemplazar contenido</Button>
+            <AlertDialogAction type="button" variant="destructive" onClick={() => { setAsking(false); runImport("replace"); }}>Reemplazar contenido</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

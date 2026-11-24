@@ -6,6 +6,7 @@ import { CornerDownLeft, Keyboard, Plus, Search } from "lucide-react";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
+import { POPUP_OVERLAY_CLASS, POPUP_SURFACE_CLASS, POPUP_TITLE_CLASS } from "@/components/ui/dialog";
 import { NAV_ICONS } from "@/features/dashboard/components/nav-icons";
 import { NEW_VALUATION_HREF, type AppNavigation, type NavItem } from "@/features/dashboard/navigation";
 import { cn } from "@/lib/utils";
@@ -242,15 +243,15 @@ export function CommandPalette({ navigation }: { navigation: AppNavigation }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-foreground/25 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none supports-backdrop-filter:backdrop-blur-[2px]" />
+        <DialogPrimitive.Backdrop className={cn("fixed inset-0 z-50 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none", POPUP_OVERLAY_CLASS)} />
         <DialogPrimitive.Popup
           initialFocus={mode === "commands" ? inputRef : true}
-          className="fixed top-[10dvh] left-1/2 z-50 flex max-h-[80dvh] w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl outline-none transition-[opacity,scale] duration-200 ease-out data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0 motion-reduce:transition-none"
+          className={cn("fixed top-[10dvh] left-1/2 z-50 flex max-h-[80dvh] w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 flex-col overflow-hidden pt-1 outline-none transition-[opacity,scale] duration-200 ease-out data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0 motion-reduce:transition-none", POPUP_SURFACE_CLASS)}
         >
           {mode === "shortcuts" ? (
             <div className="grid gap-4 p-5">
               <div>
-                <DialogPrimitive.Title className="text-base font-semibold">Atajos de teclado</DialogPrimitive.Title>
+                <DialogPrimitive.Title className={POPUP_TITLE_CLASS}>Atajos de teclado</DialogPrimitive.Title>
                 <DialogPrimitive.Description className="mt-1 text-sm text-muted-foreground">
                   Funcionan fuera de los campos de texto. «G» y luego la letra, una tras otra.
                 </DialogPrimitive.Description>
@@ -322,10 +323,10 @@ export function CommandPalette({ navigation }: { navigation: AppNavigation }) {
                           onClick={() => command.run()}
                           className={cn(
                             "flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors duration-100",
-                            selected ? "bg-muted text-foreground" : "text-foreground/90",
+                            selected ? "bg-accent text-accent-foreground" : "text-foreground/90",
                           )}
                         >
-                          <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background", selected && "border-primary/30 text-primary")}>
+                          <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background", selected && "border-brand/30 bg-card text-brand")}>
                             <Icon className="size-4" aria-hidden="true" />
                           </span>
                           <span className="min-w-0 flex-1">

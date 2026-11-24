@@ -22,7 +22,7 @@ const navLinkClass = (current: boolean) =>
   cn(
     "relative inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
     "after:pointer-events-none after:absolute after:inset-x-3 after:-bottom-[14px] after:h-0.5 after:rounded-full after:transition-colors after:duration-200",
-    current ? "text-foreground after:bg-brand" : "text-muted-foreground hover:bg-muted hover:text-foreground after:bg-transparent",
+    current ? "bg-accent text-primary after:bg-brand" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground after:bg-transparent",
   );
 
 /**
@@ -46,7 +46,7 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
       >
         Saltar al contenido
       </a>
-      <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-xl supports-backdrop-filter:bg-background/70">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/85 brand-rule backdrop-blur-xl supports-backdrop-filter:bg-background/70">
         <div className="mx-auto flex h-16 max-w-[1760px] items-center gap-1 px-2 sm:px-4 lg:gap-2 lg:px-6">
           <MobileNav navigation={navigation} active={active} name={user.name} email={user.email} role={user.role} initials={initials} operator={operator} />
           <Link
@@ -70,7 +70,7 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
             })}
             {navigation.organization.length ? (
               <DropdownMenu>
-                <DropdownMenuTrigger className={cn(navLinkClass(organizationActive), "aria-expanded:bg-muted aria-expanded:text-foreground")}>
+                <DropdownMenuTrigger className={cn(navLinkClass(organizationActive), "aria-expanded:bg-accent aria-expanded:text-accent-foreground")}>
                   <OrganizationIcon className="size-4" aria-hidden="true" />
                   Despacho
                   <ChevronDown className="size-3.5 opacity-60" aria-hidden="true" />
@@ -82,10 +82,10 @@ export function DashboardHeader({ user, active }: { user: AuthUser; active?: Nav
                     return (
                       <DropdownMenuItem
                         key={item.key}
-                        className={cn("items-start gap-3 px-2.5 py-2", current && "bg-muted")}
+                        className={cn("items-start gap-3 px-2.5 py-2", current && "bg-accent text-accent-foreground")}
                         render={<Link href={item.href} aria-current={current ? "page" : undefined} />}
                       >
-                        <Icon className="mt-0.5 size-4 text-muted-foreground" aria-hidden="true" />
+                        <Icon className={cn("mt-0.5 size-4", current ? "text-brand" : "text-muted-foreground")} aria-hidden="true" />
                         <span className="min-w-0">
                           <span className="block font-medium">{item.label}</span>
                           <span className="block text-xs text-muted-foreground">{item.description}</span>

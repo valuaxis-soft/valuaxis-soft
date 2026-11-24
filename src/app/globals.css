@@ -9,58 +9,65 @@
 
 /* Valuaxis Soft visual system (docs/DISENO.md). The tones come from the
    logo: its navy anchors trust (primary, ink), its blue is the brand accent
-   (main calls to action, highlights) and its cyan a quiet second accent. Warm
-   paper neutrals keep long sessions calm; green only means "approved" or
-   "done", and a muted cantera ochre marks a figure to watch. */
+   (buttons, selected states, highlights) and its cyan a quiet second accent.
+   Neutrals are a cool, barely blue paper that keeps long sessions calm; green
+   only means "approved" or "done", and a muted cantera ochre marks a figure
+   to watch. */
 :root,
 .light {
   color-scheme: light;
-  --background: oklch(0.982 0.006 85);
+  /* Cool paper: a very light blue-grey drawn toward the logo navy (hue 255),
+     so the interface reads as Valuaxis instead of beige. */
+  --background: oklch(0.984 0.006 255);
   --foreground: oklch(0.215 0.035 250);
-  --card: oklch(0.995 0.003 85);
+  --card: oklch(0.998 0.002 255);
   --card-foreground: oklch(0.215 0.035 250);
-  --popover: oklch(0.995 0.003 85);
+  --popover: oklch(0.998 0.002 255);
   --popover-foreground: oklch(0.215 0.035 250);
   /* Logo navy #011541. */
   --primary: oklch(0.214 0.088 261.1);
-  --primary-foreground: oklch(0.985 0.006 85);
-  --secondary: oklch(0.945 0.012 80);
+  --primary-foreground: oklch(0.985 0.005 255);
+  --secondary: oklch(0.948 0.014 255);
   --secondary-foreground: oklch(0.27 0.04 250);
-  --muted: oklch(0.952 0.009 80);
-  --muted-foreground: oklch(0.5 0.017 75);
-  --accent: oklch(0.95 0.025 255);
+  --muted: oklch(0.955 0.012 255);
+  --muted-foreground: oklch(0.48 0.03 258);
+  /* Ice blue: hover of menus and lists, selected items. */
+  --accent: oklch(0.94 0.035 255);
   --accent-foreground: oklch(0.214 0.088 261.1);
   --destructive: oklch(0.58 0.22 25);
-  --border: oklch(0.895 0.012 80);
-  --input: oklch(0.875 0.014 80);
+  /* White on the red of a confirmed deletion (4.8:1). */
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9 0.016 255);
+  --input: oklch(0.85 0.022 255);
   --ring: oklch(0.524 0.228 261.1);
-  /* Logo blue #005bea: main calls to action and brand highlights (text-safe
-     on paper, 5.4:1). Logo cyan #05b4fd: second accent, on ink or as a fill. */
+  /* Logo blue #005bea: the interface's buttons, selected states and brand
+     highlights (text-safe on paper, 5.5:1). Logo cyan #05b4fd: second accent,
+     on ink or as a fill. */
   --brand: oklch(0.524 0.228 261.1);
   --brand-foreground: oklch(1 0 0);
   --brand-sky: oklch(0.729 0.158 236.8);
   /* Green #40a47e for "approved" and "done" fills and icons; `success-strong` is the text-safe shade. */
   --success: oklch(0.649 0.11 165);
   --success-strong: oklch(0.47 0.1 165);
-  --success-foreground: oklch(0.985 0.006 85);
+  --success-foreground: oklch(0.985 0.005 255);
   --highlight: oklch(0.7 0.12 68);
   --highlight-strong: oklch(0.5 0.1 58);
   --highlight-foreground: oklch(0.215 0.035 250);
   --ink: oklch(0.214 0.088 261.1);
-  --ink-foreground: oklch(0.97 0.008 85);
+  --ink-foreground: oklch(0.975 0.006 255);
   --chart-1: oklch(0.524 0.228 261.1);
   --chart-2: oklch(0.649 0.11 165);
   --chart-3: oklch(0.7 0.12 68);
   --chart-4: oklch(0.56 0.1 285);
   --chart-5: oklch(0.6 0.13 40);
   --radius: 0.625rem;
-  --sidebar: oklch(0.972 0.008 82);
+  --sidebar: oklch(0.972 0.008 255);
   --sidebar-foreground: oklch(0.215 0.035 250);
   --sidebar-primary: oklch(0.214 0.088 261.1);
-  --sidebar-primary-foreground: oklch(0.985 0.006 85);
-  --sidebar-accent: oklch(0.94 0.013 80);
-  --sidebar-accent-foreground: oklch(0.27 0.04 250);
-  --sidebar-border: oklch(0.895 0.012 80);
+  --sidebar-primary-foreground: oklch(0.985 0.005 255);
+  --sidebar-accent: oklch(0.94 0.035 255);
+  --sidebar-accent-foreground: oklch(0.214 0.088 261.1);
+  --sidebar-border: oklch(0.9 0.016 255);
   --sidebar-ring: oklch(0.524 0.228 261.1);
   /* Shadows tinted with the logo navy instead of plain black. */
   --shadow-color: 224 70% 16%;
@@ -113,9 +120,36 @@
   --shadow-color: 250 50% 4%;
 }
 
-/* The appraisal document keeps the palette it was approved with: a page and
-   its measurement copy pin the tokens the brand change moved, so the preview,
-   the dictamen and the PDF stay identical. */
+/* The appraisal document keeps the palette it was approved with. The cool
+   paper of 23 nov 2026 moved the neutrals: a page, its measurement copy and
+   the calculation memory keep the warm values they printed with. */
+article[data-document-page],
+article[data-document-page] .light,
+[data-document-pagination],
+[data-document-pagination] .light,
+[data-print-memory],
+[data-print-memory] .light {
+  --background: oklch(0.982 0.006 85);
+  --card: oklch(0.995 0.003 85);
+  --popover: oklch(0.995 0.003 85);
+  --primary-foreground: oklch(0.985 0.006 85);
+  --secondary: oklch(0.945 0.012 80);
+  --muted: oklch(0.952 0.009 80);
+  --muted-foreground: oklch(0.5 0.017 75);
+  --accent: oklch(0.95 0.025 255);
+  --border: oklch(0.895 0.012 80);
+  --input: oklch(0.875 0.014 80);
+  --success-foreground: oklch(0.985 0.006 85);
+  --ink-foreground: oklch(0.97 0.008 85);
+  --sidebar: oklch(0.972 0.008 82);
+  --sidebar-primary-foreground: oklch(0.985 0.006 85);
+  --sidebar-accent: oklch(0.94 0.013 80);
+  --sidebar-accent-foreground: oklch(0.27 0.04 250);
+  --sidebar-border: oklch(0.895 0.012 80);
+}
+
+/* And a page and its measurement copy pin the tokens the brand change moved
+   before that, so the preview, the dictamen and the PDF stay identical. */
 article[data-document-page],
 article[data-document-page] .light,
 [data-document-pagination],
@@ -154,6 +188,7 @@ article[data-document-page] .light,
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -197,6 +232,26 @@ article[data-document-page] .light,
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
   --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* The Valuaxis rule: a 4 px band from navy through the logo blue to its cyan,
+   along the top edge of a surface. Popups (Dialog, AlertDialog, the command
+   palette and the side menu) and the app header wear it; it is a background
+   image, so it stays put while the popup scrolls. */
+@utility brand-rule {
+  background-image: linear-gradient(90deg, var(--primary), var(--brand) 55%, var(--brand-sky));
+  background-repeat: no-repeat;
+  background-size: 100% 4px;
+}
+
+/* A popup: the rule plus a wash of ice blue behind its header that fades out
+   in 112 px. */
+@utility brand-popup {
+  background-image:
+    linear-gradient(90deg, var(--primary), var(--brand) 55%, var(--brand-sky)),
+    linear-gradient(180deg, var(--accent), transparent);
+  background-repeat: no-repeat;
+  background-size: 100% 4px, 100% 112px;
 }
 
 @layer base {

@@ -502,7 +502,7 @@ export function ComparableBaseTable({ items, params, userId, canEdit }: {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction type="button" disabled={busy} onClick={confirmDelete}>
+            <AlertDialogAction type="button" variant="destructive" disabled={busy} onClick={confirmDelete}>
               {busy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null} Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>

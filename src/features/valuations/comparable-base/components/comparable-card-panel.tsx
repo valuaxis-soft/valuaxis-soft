@@ -168,7 +168,7 @@ export function ComparableCardPanel({ card, canEdit, validityMonths, attributeNa
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction type="button" disabled={busy} onClick={() => void remove()}>
+            <AlertDialogAction type="button" variant="destructive" disabled={busy} onClick={() => void remove()}>
               {busy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null} Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>

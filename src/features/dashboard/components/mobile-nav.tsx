@@ -6,6 +6,7 @@ import { LogOut, Menu, Plus, UsersRound, X } from "lucide-react";
 import { useState } from "react";
 
 import { ValuaxisLogo } from "@/components/brand/valuaxis-logo";
+import { POPUP_OVERLAY_CLASS } from "@/components/ui/dialog";
 import { logoutAction } from "@/features/auth/actions/logout.action";
 import { NAV_ICONS } from "@/features/dashboard/components/nav-icons";
 import { Avatar, roleLabel } from "@/features/dashboard/components/user-menu";
@@ -48,7 +49,7 @@ export function MobileNav({
         aria-current={current ? "page" : undefined}
         className={cn(
           "flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-          current ? "bg-brand/10 text-brand" : "text-foreground hover:bg-muted",
+          current ? "bg-accent text-brand" : "text-foreground hover:bg-accent hover:text-accent-foreground",
         )}
       >
         <Icon className="size-5 shrink-0" aria-hidden="true" />
@@ -69,8 +70,8 @@ export function MobileNav({
         <Menu className="size-5" aria-hidden="true" />
       </DialogPrimitive.Trigger>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-foreground/30 transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none" />
-        <DialogPrimitive.Popup className="fixed inset-y-0 left-0 z-50 flex w-[min(20rem,calc(100vw-3rem))] flex-col bg-background shadow-2xl outline-none transition-transform duration-200 ease-out data-ending-style:-translate-x-full data-starting-style:-translate-x-full motion-reduce:transition-none">
+        <DialogPrimitive.Backdrop className={cn("fixed inset-0 z-50 transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none", POPUP_OVERLAY_CLASS)} />
+        <DialogPrimitive.Popup className="fixed inset-y-0 left-0 z-50 flex w-[min(20rem,calc(100vw-3rem))] flex-col bg-background brand-rule shadow-float outline-none transition-transform duration-200 ease-out data-ending-style:-translate-x-full data-starting-style:-translate-x-full motion-reduce:transition-none">
           <div className="flex h-16 items-center justify-between border-b border-border px-4">
             <DialogPrimitive.Title render={<div />}>
               <ValuaxisLogo />
@@ -88,7 +89,7 @@ export function MobileNav({
               <Link
                 href={NEW_VALUATION_HREF}
                 onClick={() => setOpen(false)}
-                className="mb-4 flex h-12 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-colors duration-150 outline-none hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="mb-4 flex h-12 items-center justify-center gap-2 rounded-lg bg-brand text-sm font-medium text-brand-foreground transition-colors duration-150 outline-none hover:bg-brand/90 focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 <Plus className="size-4" aria-hidden="true" />
                 Nuevo avalúo
