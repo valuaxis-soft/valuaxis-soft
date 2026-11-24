@@ -84,7 +84,7 @@ test("the carátula prints the title of each of its blocks (videos 5.2 and 5.6: 
   assert.deepEqual(titles, [
     "DATOS DEL BIEN",
     "DATOS DEL SOLICITANTE",
-    "CARACTERISTICAS",
+    "CARACTERÍSTICAS",
     "DATOS DEL AVALUO",
     "SUPUESTOS Y CONDICIONES LIMITANTES QUE INFLUYEN EN EL VALOR DICTAMINADO",
     "CONCLUSIÓN",

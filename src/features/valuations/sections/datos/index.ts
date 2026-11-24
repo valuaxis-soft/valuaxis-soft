@@ -29,13 +29,13 @@ export const datosSection = defineSection({
       title: "UBICACION DEL BIEN",
       concepts: [
         ["Calle", "Camino a los Sauces"],
-        ["Numero exterior / interior", "340 / 2"],
-        ["Codigo postal"],
+        ["Número exterior / interior", "340 / 2"],
+        ["Código postal"],
         ["Superficie total terreno", "160.00 m2"],
       ],
     },
     {
-      title: "CARACTERISTICAS URBANAS DE LA ZONA",
+      title: "CARACTERÍSTICAS URBANAS DE LA ZONA",
       concepts: [
         ["Clasificacion de la zona", "Habitacional - Comercial mixto"],
         ["Indice de saturacion", "70%"],

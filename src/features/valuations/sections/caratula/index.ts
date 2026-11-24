@@ -14,10 +14,10 @@ export const caratulaSection = defineSection({
       title: "DATOS DEL BIEN",
       concepts: [
         ["Calle"],
-        ["Numero exterior / interior"],
+        ["Número exterior / interior"],
         ["Ejido o poblado"],
         ["Delegacion o municipio"],
-        ["Codigo postal"],
+        ["Código postal"],
         ["Entidad federativa"],
       ],
     },
@@ -33,7 +33,7 @@ export const caratulaSection = defineSection({
     },
     {
       id: "caratula-block-3-caracteristicas",
-      title: "CARACTERISTICAS",
+      title: "CARACTERÍSTICAS",
       concepts: [
         ["Superficie total terreno"],
         ["Superficie total de construccion"],
