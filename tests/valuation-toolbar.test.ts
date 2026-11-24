@@ -82,7 +82,8 @@ test("dirty y error conservan el estado azul y el intercambio de copy por hover"
     assert.match(html, /Cambios pendientes/);
     assert.match(html, /Guardar cambios/);
     assert.match(html, /group\/save/);
-    assert.match(html, /bg-primary/);
+    // The bar's buttons are in the logo blue (docs/DISENO.md).
+    assert.match(html, /bg-brand/);
   }
 });
 

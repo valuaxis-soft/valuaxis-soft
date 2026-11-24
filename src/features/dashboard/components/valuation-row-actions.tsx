@@ -210,10 +210,10 @@ export function ValuationRowActions({ id, folio, view, permissions }: { id: stri
           </label>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <Button type="button" variant="destructive" disabled={!folioMatches || pending} onClick={() => void purge()}>
+            <AlertDialogAction type="button" variant="destructive" disabled={!folioMatches || pending} onClick={() => void purge()}>
               {pending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Trash2 data-icon="inline-start" />}
               Eliminar definitivamente
-            </Button>
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

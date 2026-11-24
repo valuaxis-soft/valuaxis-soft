@@ -132,9 +132,9 @@ export function CroquisGeneratorProvider({
           className="flex h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none sm:p-0"
           data-croquis-dialog=""
         >
-          <div className="border-b px-4 py-3 pr-12">
-            <DialogTitle className="text-base">Generador de croquis</DialogTitle>
-            <DialogDescription className="text-xs">
+          <div className="border-b px-4 pt-5 pb-3 pr-12">
+            <DialogTitle>Generador de croquis</DialogTitle>
+            <DialogDescription>
               Ubica el inmueble, encuadra cada croquis, resalta calles y acomoda sus letreros; el croquis se guarda como imagen del avalúo, así el dictamen no
               depende de Google.
             </DialogDescription>

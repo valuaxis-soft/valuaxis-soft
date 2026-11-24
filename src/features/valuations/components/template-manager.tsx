@@ -298,6 +298,7 @@ export function TemplateManager({ initialTemplates, canCreate, letterhead, appra
             <AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               type="button"
+              variant="destructive"
               disabled={busy}
               onClick={() => {
                 const template = removing;

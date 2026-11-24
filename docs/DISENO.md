@@ -1,6 +1,6 @@
 # Sistema visual
 
-Valuaxis Soft es una herramienta de trabajo para valuadores: se usa horas seguidas, con cifras que se firman. El diseño busca **confianza** (el marino del logo), **calma** (papel cálido, no gris frío), **precisión** (cifras tabulares, alineadas) y un poco de **vida** (el azul y el cian del logo, líneas topográficas, movimiento discreto). Todo vive en `src/app/globals.css`; ninguna pantalla debería escribir colores sueltos.
+Valuaxis Soft es una herramienta de trabajo para valuadores: se usa horas seguidas, con cifras que se firman. El diseño busca **confianza** (el marino del logo), **calma** (un papel gris azulado muy claro, sin manchas de color), **precisión** (cifras tabulares, alineadas) y un poco de **vida** (el azul y el cian del logo, líneas topográficas, movimiento discreto). Todo vive en `src/app/globals.css`; ninguna pantalla debería escribir colores sueltos.
 
 ## Marca
 
@@ -28,36 +28,38 @@ Alrededor del logo:
 
 Tokens de shadcn en oklch, claro en `:root` y `.light`, oscuro en `.dark`. El documento del avalúo (vista previa, dictamen, PDF) va dentro de `.light` y siempre se ve claro.
 
-Los tonos salen del logo, muestreados del PNG del cliente: **marino** `#011541` (las letras «VALUA»), **azul** `#005bea` («XIS», «SOFT» y la cara media de la «V») y **cian** `#05b4fd` (la punta iluminada de la «V»). El marino es el ancla (`primary`, `ink`): botones de la interfaz, bandas oscuras, texto de marca. El azul es el acento de marca (`brand`): la llamada principal de la página pública y del precio, el resaltado de la sección activa y lo que antes iba en el verde de la marca anterior. El cian (`brand-sky`) es el segundo acento, discreto: solo sobre la tinta (titular del hero y del acceso, palomitas, etiquetas) o como relleno, nunca como texto sobre papel (2.2:1). El papel cálido y los neutros se conservan: el azul saturado contrasta bien con el crema y las sesiones largas siguen siendo tranquilas.
+Los tonos salen del logo, muestreados del PNG del cliente: **marino** `#011541` (las letras «VALUA»), **azul** `#005bea` («XIS», «SOFT» y la cara media de la «V») y **cian** `#05b4fd` (la punta iluminada de la «V»). El marino es el ancla (`primary`, `ink`): botones de la interfaz, bandas oscuras, texto de marca. El azul es el acento de marca (`brand`): la llamada principal de la página pública y del precio, el resaltado de la sección activa y lo que antes iba en el verde de la marca anterior. El cian (`brand-sky`) es el segundo acento, discreto: solo sobre la tinta (titular del hero y del acceso, palomitas, etiquetas) o como relleno, nunca como texto sobre papel (2.2:1).
+
+**Papel azulado, no beige** (23 nov 2026: el cliente pidió toda la plataforma «con los azules de Valuaxis, viva»; el papel crema se leía café). Los neutros (`background`, `card`, `secondary`, `muted`, `border`, `input`, `sidebar`) pasaron del tono 80–85 (arena) al 255, el del marino, con la misma claridad y poco croma: se ven blanco azulado, no azul. El acento (`accent`) es hielo un poco más marcado para el hover y lo seleccionado. Los **botones** de la interfaz (variante `default` de `Button`) van en el azul del logo con texto blanco; el marino queda para títulos, bandas oscuras y texto de marca. Lo seleccionado (casillas, calendario, deslizador, barra de progreso, pestaña de línea, navegación activa) también va en `brand`.
 
 **El verde deja de ser color de marca.** Queda solo como color semántico (`success`): terminado, aprobado, calculado, acreditado.
 
 | Token | Claro | Oscuro | Uso |
 |---|---|---|---|
-| `background` | `oklch(0.982 0.006 85)` `#fbf9f5` papel | `oklch(0.215 0.022 250)` | Fondo de página |
+| `background` | `oklch(0.984 0.006 255)` `#f7fafe` papel azulado | `oklch(0.215 0.022 250)` | Fondo de página |
 | `foreground` | `oklch(0.215 0.035 250)` `#0c1a29` tinta | `oklch(0.96 0.008 85)` | Texto |
-| `card` / `popover` | `oklch(0.995 0.003 85)` | `oklch(0.255 0.024 250)` | Superficies |
-| `primary` | `oklch(0.214 0.088 261.1)` = `#011541` marino del logo | `oklch(0.8 0.1 250)` `#8cc3fc` | Botones de la interfaz, enlaces, marca |
-| `brand` / `brand-foreground` | `oklch(0.524 0.228 261.1)` = `#005bea` azul del logo / blanco | `oklch(0.72 0.15 256)` `#61a6ff` / marino | Llamada principal (Crear cuenta), indicador de la sección activa, resaltados de la página pública |
+| `card` / `popover` | `oklch(0.998 0.002 255)` `#fdfeff` | `oklch(0.255 0.024 250)` | Superficies |
+| `primary` | `oklch(0.214 0.088 261.1)` = `#011541` marino del logo | `oklch(0.8 0.1 250)` `#8cc3fc` | Títulos (páginas, tarjetas, ventanas), bandas oscuras, texto de marca |
+| `brand` / `brand-foreground` | `oklch(0.524 0.228 261.1)` = `#005bea` azul del logo / blanco | `oklch(0.72 0.15 256)` `#61a6ff` / marino | Botones de la interfaz, enlaces, lo seleccionado, indicador de la sección activa, llamada principal de la página pública |
 | `brand-sky` | `oklch(0.729 0.158 236.8)` = `#05b4fd` cian del logo | `oklch(0.8 0.13 232)` `#57ccff` | Acento secundario sobre tinta y rellenos |
-| `secondary` / `muted` | `oklch(0.945 0.012 80)` arena | `oklch(0.31 0.022 250)` | Bandas alternas, rellenos |
-| `muted-foreground` | `oklch(0.5 0.017 75)` | `oklch(0.78 0.014 80)` | Texto secundario |
-| `accent` | `oklch(0.95 0.025 255)` `#e4f0ff` azul hielo | `oklch(0.32 0.06 258)` | Hover de menús, estado "calculado" |
+| `secondary` / `muted` | `oklch(0.948 0.014 255)` `#e8eef7` / `oklch(0.955 0.012 255)` `#ebf1f8` gris azulado | `oklch(0.31 0.022 250)` | Bandas alternas, rellenos |
+| `muted-foreground` | `oklch(0.48 0.03 258)` `#535e6f` | `oklch(0.78 0.014 80)` | Texto secundario |
+| `accent` | `oklch(0.94 0.035 255)` `#dcedff` azul hielo | `oklch(0.32 0.06 258)` | Hover de botones, menús y listas; navegación activa; estado "calculado" |
 | `success` | `oklch(0.649 0.11 165)` = `#40a47e` | `oklch(0.74 0.12 165)` | Solo estados: terminado, aprobado, calculado. Rellenos e íconos |
 | `success-strong` | `oklch(0.47 0.1 165)` | `oklch(0.8 0.11 165)` | Verde para **texto** (6:1 sobre papel) |
 | `highlight` | `oklch(0.7 0.12 68)` ocre cantera | `oklch(0.79 0.11 72)` | Acento secundario sobrio: un dato a observar, una marca. Nunca para errores |
 | `highlight-strong` | `oklch(0.5 0.1 58)` | `oklch(0.83 0.1 72)` | Ocre para texto |
 | `ink` / `ink-foreground` | `oklch(0.214 0.088 261.1)` `#011541` / papel | `oklch(0.17 0.06 262)` `#020d29` | Bandas oscuras de marca (hero, CTA, panel de acceso) |
-| `destructive` | `oklch(0.58 0.22 25)` | `oklch(0.7 0.18 25)` | Errores y borrar |
-| `border` / `input` | `oklch(0.895 0.012 80)` / `0.875` | blanco 14 % / `oklch(0.6 0.015 250)` | Bordes; `input` tiene más contraste para los campos |
+| `destructive` / `destructive-foreground` | `oklch(0.58 0.22 25)` / blanco | `oklch(0.7 0.18 25)` | Errores y borrar; el botón que confirma un borrado es rojo sólido con texto blanco |
+| `border` / `input` | `oklch(0.9 0.016 255)` `#d7dfe9` / `oklch(0.85 0.022 255)` `#c4cfdc` | blanco 14 % / `oklch(0.6 0.015 250)` | Bordes; `input` tiene más contraste para los campos |
 
 Los neutros oscuros (`background`, `card`, `muted`… en `.dark`) pasaron del tono 250 al 258 para acercarse al marino del logo; claridad y croma son los mismos. Las sombras van teñidas con el marino del logo (`--shadow-color: 224 70% 16%`).
 
-Contraste medido (WCAG 2, sobre los valores sRGB de cada token): tinta sobre papel 16.7:1; papel sobre `primary` 17.0:1; `primary` sobre papel 16.9:1; blanco sobre `brand` 5.7:1 (botón azul); `brand` como texto sobre papel 5.4:1 y sobre `card` 5.6:1; `brand` sobre `ink` 3.1:1 (borde del botón azul en las bandas, mínimo de 3:1 para componentes); `brand-sky` sobre `ink` 7.6:1; marino sobre `accent` 15.4:1; `muted-foreground` sobre papel 5.7:1 y sobre `muted` 5.2:1; `success-strong` sobre papel 6.1:1. En oscuro: marino sobre `primary` 9.6:1 y `primary` sobre el fondo 9.4:1; marino sobre `brand` 7.1:1 y `brand` sobre el fondo 7.0:1 (sobre `card`, 6.3:1); `brand-sky` sobre `ink` 10.5:1; `muted-foreground` sobre `muted` 6.6:1. El cian **no** pasa AA como texto sobre papel (2.2:1) ni el verde (2.9:1): para texto sobre papel se usan `brand` y `success-strong`.
+Contraste medido (WCAG 2, sobre los valores sRGB de cada token, 23 nov 2026): tinta sobre papel 16.7:1 y sobre `secondary` 15.0:1; papel sobre `primary` 17.0:1; `primary` sobre papel 16.9:1 y sobre `card` 17.6:1; blanco sobre `brand` 5.7:1 (botón azul); `brand` como texto sobre papel 5.5:1, sobre `card` 5.7:1 y sobre `accent` 4.8:1; `brand` sobre `ink` 3.1:1 (borde del botón azul en las bandas, mínimo de 3:1 para componentes); `brand-sky` sobre `ink` 7.6:1; marino sobre `accent` 14.9:1; `muted-foreground` sobre papel 6.2:1, sobre `card` 6.5:1, sobre `muted` 5.7:1, sobre `secondary` 5.6:1 y sobre `accent` 5.5:1; `success-strong` sobre papel 6.2:1; `highlight-strong` sobre papel 5.9:1; blanco sobre `destructive` 4.8:1; el foco (`ring`) sobre papel 5.5:1. El borde de los campos (`input`) queda en 1.6:1 sobre `card`, como antes (1.5:1): el campo se identifica por su etiqueta y su relleno. En oscuro: marino sobre `primary` 9.6:1 y `primary` sobre el fondo 9.4:1; marino sobre `brand` 7.1:1 y `brand` sobre el fondo 7.0:1 (sobre `card`, 6.3:1); `brand-sky` sobre `ink` 10.5:1; `muted-foreground` sobre `muted` 6.6:1. El cian **no** pasa AA como texto sobre papel (2.2:1) ni el verde (2.9:1): para texto sobre papel se usan `brand` y `success-strong`.
 
 ### El documento no cambia de colores
 
-El documento del avalúo conserva la paleta con que se aprobó: en `globals.css`, cada página (`article[data-document-page]`), la copia de medición (`[data-document-pagination]`) y los `.light` dentro de ellas fijan los valores anteriores de los tokens que se movieron (`primary` `#014069`, `accent` menta, `ring`, `ink`, `chart-1`, sombras). Si un token cambia otra vez, se agrega ahí con su valor actual. Se comprobó píxel a píxel: las 16 páginas del dictamen, la impresión del dictamen, la vista previa del editor y la memoria de cálculo salen idénticas antes y después del cambio de marca (en la memoria solo cambia la hora de generación). Las maquetas de la página pública que imitan el dictamen (`dictamen-mockup.tsx`, pines de `map-mockup.tsx`) siguen en `#014069` porque el documento real sigue en ese color.
+El documento del avalúo conserva la paleta con que se aprobó: en `globals.css`, cada página (`article[data-document-page]`), la copia de medición (`[data-document-pagination]`) y los `.light` dentro de ellas fijan los valores anteriores de los tokens que se movieron (`primary` `#014069`, `accent` menta, `ring`, `ink`, `chart-1`, sombras). El papel azulado del 23 nov 2026 se fija aparte, en un bloque que también cubre la memoria de cálculo (`[data-print-memory]`): ahí `background`, `card`, `secondary`, `muted`, `muted-foreground`, `border`, `input`, `sidebar` y los textos sobre color conservan sus valores cálidos (y la memoria, el `accent` hielo que ya tenía). Si un token cambia otra vez, se agrega ahí con su valor actual; `tests/popup-look.test.tsx` revisa que los neutros sigan fijados. Al pasar al papel azulado se comprobó píxel a píxel: las 16 páginas del dictamen, la vista previa del editor y la memoria de cálculo salieron idénticas antes y después. Se comprobó píxel a píxel: las 16 páginas del dictamen, la impresión del dictamen, la vista previa del editor y la memoria de cálculo salen idénticas antes y después del cambio de marca (en la memoria solo cambia la hora de generación). Las maquetas de la página pública que imitan el dictamen (`dictamen-mockup.tsx`, pines de `map-mockup.tsx`) siguen en `#014069` porque el documento real sigue en ese color.
 
 ### Paleta del dictamen
 
@@ -69,6 +71,18 @@ Lo anterior fija los tokens de la interfaz dentro del documento. Aparte, cada av
 - La interfaz no toma estos colores: sigue con los tokens de `globals.css`. Las únicas piezas de la aplicación que los leen son las tablas de captura del cálculo en modo claro (que imitan al dictamen) y la muestra del selector.
 
 Las gráficas usan `chart-1` (azul del logo), `chart-2` (verde), `chart-3` (ocre), `chart-4` (violeta) y `chart-5` (terracota).
+
+### Ventanas emergentes
+
+**Toda ventana emergente usa el aspecto compartido de `Dialog`, `AlertDialog` (en `src/components/ui/`) y, para las que no son una ventana centrada, sus mismas clases** (`POPUP_SURFACE_CLASS`, `POPUP_OVERLAY_CLASS`, `POPUP_TITLE_CLASS` de `dialog.tsx`): la paleta de comandos y el menú lateral las importan. Ninguna pantalla les pone fondo, velo, sombra, radio o tamaño de título propios; solo el ancho y el alto que su contenido necesita (el generador de croquis ocupa la pantalla).
+
+- **Superficie:** `rounded-2xl`, `bg-popover`, sombra `shadow-float` (teñida de marino) y anillo `ring-primary/10`.
+- **Encabezado de marca:** la regla de Valuaxis (`brand-popup`: 4 px de marino → azul → cian en el borde de arriba, y un lavado de `accent` que se desvanece en 112 px detrás del título). Es imagen de fondo: no se desplaza con el contenido.
+- **Título** en `font-display` 20 px, `text-primary`; descripción en `muted-foreground`.
+- **Velo** `bg-primary/30` con desenfoque de 3 px.
+- **Pie:** separado por una línea (`border-t`), acciones a la derecha. La acción principal es `brand` (variante por omisión); la que confirma un borrado es `AlertDialogAction variant="destructive"`: rojo sólido con texto blanco (4.8:1). Cancelar es `outline`.
+- **Menús, listas y popovers** (`DropdownMenu`, `ContextMenu`, `Select`, `Popover`): `shadow-lift` y `ring-primary/10`; el elemento resaltado en `accent`. **Avisos** (sonner): borde izquierdo de 3 px en `brand` y la misma sombra.
+- La misma regla (`brand-rule`, solo la línea) corona el encabezado del área privada y la barra superior del editor.
 
 ### Estados del avalúo
 
@@ -176,6 +190,7 @@ No hay transiciones entre páginas: la View Transitions API de React (`<ViewTran
 | Sí | No |
 |---|---|
 | Tokens (`bg-primary`, `text-success-strong`) | Hex sueltos en componentes (salvo el documento impreso y las maquetas que imitan papel) |
+| Ventanas con `Dialog` / `AlertDialog` y sus clases compartidas | Ventanas con fondo, velo, sombra o título propios |
 | Azul del logo (`brand`) para la llamada principal y los resaltados de marca; verde solo para estados (aprobado, terminado, calculado) | Verde como color de marca o de botón; cian o verde como texto sobre papel (usa `brand` o `success-strong`) |
 | Ocre para resaltar un dato | Ocre o verde para errores; para eso está `destructive` |
 | `font-display` en títulos | `font-display` en tablas, formularios o cifras alineadas |
@@ -200,7 +215,7 @@ Las maquetas siguen usando datos inventados; las fotos solo reemplazan los dibuj
 
 Herramienta de trabajo de horas: densa, sin adornos, con la misma paleta que el área privada. El documento (vista previa, dictamen, PDF) no toma nada de esto.
 
-- **Jerarquía** sección › bloque › subbloque › concepto: el nombre de la sección en `font-display` (24 px) sobre una línea; el bloque con su banda del azul de marca al 5 % (`bg-brand/[0.05]`) y título en `text-primary` (marino); el subbloque con una regla izquierda `border-l-brand/50` y, uno sí y uno no, un tinte `bg-brand/[0.05]`; el nombre del concepto sobre arena (`bg-muted/60`) para leerse aparte de su dato.
+- **Jerarquía** sección › bloque › subbloque › concepto: el nombre de la sección en `font-display` (24 px) sobre una línea; el bloque con su banda del azul de marca al 5 % (`bg-brand/[0.05]`) y título en `text-primary` (marino); el subbloque con una regla izquierda `border-l-brand/50` y, uno sí y uno no, un tinte `bg-brand/[0.05]`; el nombre del concepto sobre gris azulado (`bg-muted/60`) para leerse aparte de su dato.
 - **Pestañas de secciones:** franja `bg-secondary`; la activa en `bg-card`, texto `text-primary`, anillo `ring-brand/25` y `shadow-soft`. Sin cambiar el peso de la letra al activarse, para que la franja no se reacomode.
 - **Avisos:** ocre (`text-highlight-strong`, recuadros `bg-highlight/10`) para un dato a observar; verde (`text-success-strong`) solo para estados, como «verificado»; información en azul de marca (`bg-brand/5`). «Listo» de «Seleccionar conceptos» es una acción: `bg-brand` con texto blanco (`brand-foreground`). «Cambios pendientes» en `bg-highlight`. El azul de las fórmulas y sus colores de referencia imitan a Excel y se conservan.
 - **Tablas de captura del cálculo:** en claro conservan los colores del dictamen a propósito (el valuador las compara con lo impreso) y siguen la paleta que el avalúo eligió; en oscuro usan tokens.
