@@ -14,6 +14,7 @@ import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/compon
 import { cn } from "@/lib/utils";
 import type { ValuationCreationCatalogs } from "@/features/valuations/services/valuation-catalogs.service";
 import { PHONE_ACCOUNT_LINK } from "@/features/account/phone/phone-link";
+import { isOwnKindKey } from "@/features/valuations/services/property-kinds";
 
 type CatalogMissing = {
   code: string;
@@ -21,6 +22,11 @@ type CatalogMissing = {
 };
 
 type TemplateOption = ValuationCreationCatalogs["templates"][number];
+
+/** Whether the option chosen of a catalog is «Otro»/«Otra»: then the form asks «¿Cuál?». */
+export function choosesOwnKind(options: ReadonlyArray<{ id: number; key?: string }>, id: string) {
+  return isOwnKindKey(options.find((option) => option.id.toString() === id)?.key);
+}
 
 /** The templates offered for an appraisal type: the firm's documents serve any type. */
 function templatesFor(templates: TemplateOption[], appraisalTypeId: string) {
@@ -74,6 +80,9 @@ export function CreateValuationForm({
       operationTypeId: catalogs.operationTypes[0]?.id?.toString() ?? "",
       templateId: preselected ?? defaultTemplateId(catalogs.templates, catalogs.appraisalTypes[0]?.id?.toString() ?? ""),
       responsibleUserId: catalogs.responsibleUsers[0]?.id?.toString() ?? "",
+      appraisalTypeOther: "",
+      propertyTypeOther: "",
+      operationTypeOther: "",
       ...(preselected ? typesOfTemplate(catalogs.templates, preselected) : null),
     };
   });
@@ -90,6 +99,11 @@ export function CreateValuationForm({
   const systemTemplates = templatesForType.filter((template) => template.system);
   const firmTemplates = templatesForType.filter((template) => !template.system);
   const chosenTemplate = catalogs.templates.find((template) => template.id.toString() === form.templateId);
+  const ownKinds = {
+    appraisal: choosesOwnKind(catalogs.appraisalTypes, form.appraisalTypeId),
+    property: choosesOwnKind(catalogs.propertyTypes, form.propertyTypeId),
+    operation: choosesOwnKind(catalogs.operationTypes, form.operationTypeId),
+  };
 
   const update = (key: keyof typeof form, value: string) => {
     setForm((current) => {
@@ -130,6 +144,10 @@ export function CreateValuationForm({
           operationTypeId: Number(form.operationTypeId),
           templateId: form.templateId ? Number(form.templateId) : null,
           responsibleUserId: form.responsibleUserId ? Number(form.responsibleUserId) : null,
+          // «¿Cuál?» goes only with a kind chosen as «Otro».
+          ...(ownKinds.appraisal ? { appraisalTypeOther: form.appraisalTypeOther.trim() } : null),
+          ...(ownKinds.property ? { propertyTypeOther: form.propertyTypeOther.trim() } : null),
+          ...(ownKinds.operation ? { operationTypeOther: form.operationTypeOther.trim() } : null),
         }),
       });
       const json = await response.json();
@@ -216,18 +234,21 @@ export function CreateValuationForm({
                   value={form.appraisalTypeId}
                   onChange={(value) => update("appraisalTypeId", value)}
                   options={catalogs.appraisalTypes}
+                  other={ownKinds.appraisal ? { value: form.appraisalTypeOther, onChange: (value) => update("appraisalTypeOther", value), placeholder: "Ej. Arbitraje" } : undefined}
                 />
                 <SelectField
                   label="Tipo de bien"
                   value={form.propertyTypeId}
                   onChange={(value) => update("propertyTypeId", value)}
                   options={catalogs.propertyTypes}
+                  other={ownKinds.property ? { value: form.propertyTypeOther, onChange: (value) => update("propertyTypeOther", value), placeholder: "Ej. Hotel boutique" } : undefined}
                 />
                 <SelectField
                   label="Tipo de operación"
                   value={form.operationTypeId}
                   onChange={(value) => update("operationTypeId", value)}
                   options={catalogs.operationTypes}
+                  other={ownKinds.operation ? { value: form.operationTypeOther, onChange: (value) => update("operationTypeOther", value), placeholder: "Ej. Dación en pago" } : undefined}
                 />
               </div>
             </FieldGroup>
@@ -309,6 +330,7 @@ function SelectField({
   label,
   onChange,
   options,
+  other,
   placeholder = "Selecciona una opción",
   required = true,
   value,
@@ -316,11 +338,14 @@ function SelectField({
   label: string;
   onChange: (value: string) => void;
   options: { id: number; label: string }[];
+  /** «Otro» chosen: the name of the appraiser's own, required, under the list. */
+  other?: { value: string; onChange: (value: string) => void; placeholder: string };
   placeholder?: string;
   required?: boolean;
   value: string;
 }) {
   const id = useId();
+  const otherId = useId();
   return (
     <Field>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
@@ -338,6 +363,22 @@ function SelectField({
           </NativeSelectOption>
         ))}
       </NativeSelect>
+      {other ? (
+        <div className="grid gap-1.5" data-own-kind-field>
+          <FieldLabel htmlFor={otherId}>¿Cuál?</FieldLabel>
+          <Input
+            id={otherId}
+            required
+            autoComplete="off"
+            maxLength={120}
+            placeholder={other.placeholder}
+            className="h-11 text-base sm:h-9 sm:text-sm"
+            value={other.value}
+            onChange={(event) => other.onChange(event.target.value)}
+          />
+          <FieldDescription>Así se imprime en lugar de «{options.find((option) => option.id.toString() === value)?.label ?? "Otro"}».</FieldDescription>
+        </div>
+      ) : null}
     </Field>
   );
 }

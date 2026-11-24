@@ -29,6 +29,7 @@ import type { CaratulaPayload, SectionPayload, Tx } from "./types";
 import { initializeWorkingVersionStructure } from "./working-version";
 import { exclusionKey, recomputeConclusion, reportExclusionsOf } from "@/features/valuations/calculation/conclusion.service";
 import { excludedReportApproaches } from "@/features/valuations/services/report-approaches";
+import { INTANGIBLE_REFUSAL_MESSAGE, intangibleConclusiveName } from "@/features/valuations/services/intangible-labels";
 
 /**
  * A full valuation writes hundreds of rows (blocks, concepts, tables, cells);
@@ -43,6 +44,8 @@ export async function saveValuationSections(input: {
   user: AuthUser;
   caratula?: CaratulaPayload;
 }) {
+  // The names of the concluded values may not conclude on intangibles (24 Nov 2026); the editor refuses them first.
+  if (intangibleConclusiveName(input.sections)) throw new ValuationWorkflowError(INTANGIBLE_REFUSAL_MESSAGE, 400);
   return prisma.$transaction(async (tx) => {
     const debug = process.env.VALUATION_SAVE_DEBUG === "1";
     const stats = createPersistenceStats(input.sections);

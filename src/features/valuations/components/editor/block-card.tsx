@@ -26,6 +26,8 @@ type BlockCardProps = {
     disabled: boolean;
     value: string;
     onChange: (value: string) => void;
+    /** Why a title is refused (a concluded value named after intangibles); refused, it is not written. */
+    refusal?: (value: string) => string | null;
   };
 
   // Structural actions (passed to StructuralActions)

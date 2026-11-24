@@ -113,7 +113,8 @@ test("the rows of the resumen de valores take their values, and one written by h
   const rows = withSummaryRowConcepts(template(), dto);
   const synced = sync(rows, dto);
   assert.equal(valueOf(synced, "conclusion-resumen-1"), "8580000.00");
-  assert.equal(valueOf(synced, "conclusion-resumen-2"), "1528000.00");
+  // The rows print with the rounding of the conclusion, «A decenas de miles» by default (FAL-03).
+  assert.equal(valueOf(synced, "conclusion-resumen-2"), "1530000.00");
 
   const written = edit(synced, "conclusion-resumen-2", "1600000.00");
   const next = sync(withSummaryRowConcepts(written, dto), { ...dto, available: { costos: 8580000, "mercado-terrenos": 1700000 } });

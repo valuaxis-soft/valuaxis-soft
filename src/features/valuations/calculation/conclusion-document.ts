@@ -11,10 +11,11 @@
  * as the calculation's on every sync).
  */
 import type { ConclusionResult } from "../engine/conclusion";
+import { roundIfSet } from "../engine/rounding";
 import type { AppSection, Block, Concept, ConceptValueFormat } from "../model";
 import { appraisedGoodWording } from "../services/appraised-good-wording";
 import type { ValuationSignature } from "../services/valuation-signatures";
-import { summaryRowValues, type ConclusionCalculationDto } from "./conclusion-types";
+import { conclusionEngineConfig, summaryRowValues, type ConclusionCalculationDto } from "./conclusion-types";
 import { MACHINERY_PROPERTY_TYPE } from "./machinery-types";
 
 const NOT_APPLICABLE = "NO APLICA";
@@ -114,13 +115,19 @@ export function withManualConclusionEdit(sectionKey: string, concept: Concept, p
   return { ...keyed, calculationUnlinked: true };
 }
 
-/** Key → value of the conclusion section concepts (the rows of the resumen go by their id). */
+/**
+ * Key → value of the conclusion section concepts (the rows of the resumen go
+ * by their id). Every value of the resumen prints with the rounding of the
+ * conclusion, the rows the appraiser chose too (FAL-03, FAL-45: they printed
+ * $3,148,754.45 under «A decenas de miles»).
+ */
 export function conclusionValues(calculation: ConclusionCalculationDto, result: ConclusionResult): Record<string, ConclusionConceptValue> {
   const approach = (value: number | null | undefined) => (value === null || value === undefined ? NOT_APPLICABLE : amount(value, "mxn"));
+  const rounding = conclusionEngineConfig(calculation).rounding.conclusion;
   const rows = summaryRowValues(calculation);
   return {
     ...(rows.length
-      ? Object.fromEntries(rows.map((row, index) => [summaryConceptId(index), approach(row.value)]))
+      ? Object.fromEntries(rows.map((row, index) => [summaryConceptId(index), approach(row.value === null ? null : roundIfSet(row.value, rounding))]))
       : {
           [CONCLUSION_KEYS.costos]: approach(result.summary.costos ?? calculation.values.costos),
           [CONCLUSION_KEYS.mercado]: approach(result.summary.mercado ?? calculation.values.mercado),
@@ -153,7 +160,7 @@ export function signatureConceptValues(signatures: ReadonlyArray<Pick<ValuationS
  */
 export function withSummaryRowConcepts(section: AppSection, calculation: Pick<ConclusionCalculationDto, "summaryRows" | "available" | "concludedNameFromRow">): AppSection {
   const rows = summaryRowValues(calculation);
-  if (!rows.length) return section;
+  if (!rows.length) return withApproachConcepts(section);
   const concludedName = rows.length === 1 && calculation.concludedNameFromRow ? rows[0].label : null;
   let changed = false;
   const blocks = section.blocks.map((block): Block => {
@@ -174,6 +181,40 @@ export function withSummaryRowConcepts(section: AppSection, calculation: Pick<Co
     if (same) return { ...block, concepts: kept };
     const at = kept.findIndex(isConcludedConcept);
     return { ...block, concepts: [...kept.slice(0, at), ...next, ...kept.slice(at)] };
+  });
+  return changed ? { ...section, blocks } : section;
+}
+
+/** The three approaches as the template lists them, for a block that lost them to the rows of the resumen. */
+const APPROACH_CONCEPTS: ReadonlyArray<{ key: ConclusionKey; label: string }> = [
+  { key: CONCLUSION_KEYS.costos, label: "Valor por enfoque de costos" },
+  { key: CONCLUSION_KEYS.mercado, label: "Valor por enfoque de mercado" },
+  { key: CONCLUSION_KEYS.ingresos, label: "Valor por enfoque de ingresos" },
+];
+
+/**
+ * Without rows in the resumen, the block of the concluded value lists the
+ * three approaches as always: the rows the appraiser removed go, and the
+ * approaches they had replaced come back before the concluded value (FAL-03:
+ * removing the last row left the block without them). An approach the block
+ * still has stays as it is, under the name he gave it.
+ */
+function withApproachConcepts(section: AppSection): AppSection {
+  let changed = false;
+  const blocks = section.blocks.map((block): Block => {
+    if (!block.concepts.some(isConcludedConcept) || !block.concepts.some((concept) => concept.id.startsWith(SUMMARY_CONCEPT_PREFIX))) return block;
+    changed = true;
+    const kept = block.concepts.filter((concept) => !concept.id.startsWith(SUMMARY_CONCEPT_PREFIX));
+    const present = new Set(kept.map((concept) => conceptCalculationKey(concept)));
+    const restored = APPROACH_CONCEPTS.filter((approach) => !present.has(approach.key)).map((approach): Concept => ({
+      id: `${block.id}-${approach.key.replace(/[^a-z]+/g, "-")}`,
+      label: approach.label,
+      value: "",
+      enabled: true,
+      calculationKey: approach.key,
+    }));
+    const at = kept.findIndex(isConcludedConcept);
+    return { ...block, concepts: [...kept.slice(0, at), ...restored, ...kept.slice(at)] };
   });
   return changed ? { ...section, blocks } : section;
 }

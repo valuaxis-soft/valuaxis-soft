@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import type { AuthUser } from "@/features/auth/model";
 import { canEditProject, canViewProjects } from "@/features/auth/permissions";
 import { prisma } from "@/infrastructure/database/prisma-client";
@@ -295,6 +296,57 @@ const defaultDependencies: CoverImageServiceDependencies = {
   },
   createPublicId: randomUUID,
 };
+
+/**
+ * The file of a valuation's carátula image, by its public id: «Guardar como
+ * plantilla» with «Incluir imágenes» keeps it (24 Nov 2026: the photos of
+ * the sections went with the template, the carátula's did not).
+ */
+export async function principalCoverFileId(client: Prisma.TransactionClient, valuationPublicId: string, organizationId: number): Promise<string | null> {
+  const relation = await client.relacionArchivo.findFirst({
+    where: {
+      SEntidad: COVER_IMAGE_ENTITY,
+      SIdentificadorEntidad: valuationPublicId,
+      BPrincipal: true,
+      tipoRelacionArchivo: { SClave: COVER_IMAGE_RELATION_TYPE, BActivo: true },
+      archivo: { IdOrganizacion: organizationId, BActivo: true, DFechaEliminacion: null },
+    },
+    orderBy: { DFechaCreacion: "desc" },
+    select: { archivo: { select: { UIdentificadorPublico: true } } },
+  });
+  return relation?.archivo.UIdentificadorPublico ?? null;
+}
+
+/**
+ * A new valuation made from a template takes its carátula image: the same
+ * stored file, related to the new valuation as its principal image (files of
+ * the firm are never deleted while a valuation shows them). A file that is
+ * gone, or of another firm, is skipped.
+ */
+export async function relateTemplateCoverImage(
+  tx: Prisma.TransactionClient,
+  input: { fileId: string; valuationPublicId: string; organizationId: number },
+): Promise<boolean> {
+  const [file, relationType] = await Promise.all([
+    tx.archivo.findFirst({
+      where: { UIdentificadorPublico: input.fileId, IdOrganizacion: input.organizationId, BActivo: true, DFechaEliminacion: null },
+      select: { IdArchivo: true },
+    }),
+    tx.tipoRelacionArchivo.findFirst({ where: { SClave: COVER_IMAGE_RELATION_TYPE, BActivo: true }, select: { IdTipoRelacionArchivo: true } }),
+  ]);
+  if (!file || !relationType) return false;
+  await tx.relacionArchivo.create({
+    data: {
+      IdArchivo: file.IdArchivo,
+      IdTipoRelacionArchivo: relationType.IdTipoRelacionArchivo,
+      SEntidad: COVER_IMAGE_ENTITY,
+      SIdentificadorEntidad: input.valuationPublicId,
+      BPrincipal: true,
+      IOrden: 0,
+    },
+  });
+  return true;
+}
 
 function mapStoredCoverImage(file: {
   UIdentificadorPublico: string;

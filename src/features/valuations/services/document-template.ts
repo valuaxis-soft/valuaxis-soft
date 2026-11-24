@@ -40,7 +40,21 @@ export type DocumentTemplateContent = {
    * kind of valuation is the template's own column. Absent: any kind.
    */
   propertyTypeKey?: string | null;
+  /**
+   * The carátula's principal image, saved «con imágenes» (24 Nov 2026): the
+   * stored file (Archivo's public id) a valuation made from the template takes.
+   */
+  coverImage?: TemplateCoverImage;
 };
+
+export type TemplateCoverImage = { fileId: string };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The carátula image a template keeps, read back; anything else is none. */
+function readCoverImage(value: unknown): TemplateCoverImage | undefined {
+  return isRecord(value) && typeof value.fileId === "string" && UUID.test(value.fileId) ? { fileId: value.fileId } : undefined;
+}
 
 /** `includeData` is accepted for the API's sake but no longer keeps the client's data: see `stripClientData`. */
 export type TemplateOptions = Required<Pick<CopyOptions, "includeImages">> & Pick<CopyOptions, "includeData">;
@@ -148,6 +162,7 @@ export function readDocumentTemplate(value: unknown): DocumentTemplateContent | 
     includeImages: value.includeImages === true,
     sections: value.sections as AppSection[],
     ...(typeof value.propertyTypeKey === "string" && value.propertyTypeKey ? { propertyTypeKey: value.propertyTypeKey } : {}),
+    ...(readCoverImage(value.coverImage) ? { coverImage: readCoverImage(value.coverImage) } : {}),
   };
 }
 

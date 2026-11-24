@@ -53,8 +53,23 @@ export function normalizeValuationKind(key: string | null | undefined): string {
   return VALUATION_KIND_ALIASES[lower] ?? (lower || "venta");
 }
 
-/** The names of the appraiser's own kinds, as the subject property keeps them in JCaracteristicas. */
-export type OwnKindNames = { tipoBienOtro?: string; tipoAvaluoOtro?: string };
+/**
+ * A catalog entry that takes a name of the appraiser's own: «Otro» of «Tipo
+ * de bien» and «Tipo de avalúo», «Otra» of «Tipo de operación» (24 Nov 2026:
+ * «si especifico otro… que otro»).
+ */
+export function isOwnKindKey(key: string | null | undefined): boolean {
+  const lower = (key ?? "").trim().toLowerCase();
+  return lower === OTHER_PROPERTY_KIND || lower === OTHER_VALUATION_KIND;
+}
+
+/**
+ * The names of the appraiser's own kinds, as the subject property keeps them
+ * in JCaracteristicas: of the property (`tipoBienOtro`), of the operation the
+ * carátula calls «Tipo de avalúo» (`tipoAvaluoOtro`) and of the kind of
+ * valuation of the catalog, Comercial, Hipotecario… (`claseAvaluoOtro`).
+ */
+export type OwnKindNames = { tipoBienOtro?: string; tipoAvaluoOtro?: string; claseAvaluoOtro?: string };
 
 export function readOwnKindNames(characteristics: unknown): OwnKindNames {
   if (typeof characteristics !== "object" || characteristics === null || Array.isArray(characteristics)) return {};
@@ -62,5 +77,17 @@ export function readOwnKindNames(characteristics: unknown): OwnKindNames {
   return {
     ...(typeof record.tipoBienOtro === "string" && record.tipoBienOtro.trim() ? { tipoBienOtro: record.tipoBienOtro.trim() } : {}),
     ...(typeof record.tipoAvaluoOtro === "string" && record.tipoAvaluoOtro.trim() ? { tipoAvaluoOtro: record.tipoAvaluoOtro.trim() } : {}),
+    ...(typeof record.claseAvaluoOtro === "string" && record.claseAvaluoOtro.trim() ? { claseAvaluoOtro: record.claseAvaluoOtro.trim() } : {}),
   };
+}
+
+/** Why a new valuation is refused: a kind chosen as «Otro» without saying which; null when every one says. */
+export function missingOwnKindName(kinds: ReadonlyArray<{ key: string; name: string | undefined; label: string }>): string | null {
+  const missing = kinds.find((kind) => isOwnKindKey(kind.key) && !kind.name?.trim());
+  return missing ? `Elegiste «Otro» en ${missing.label}: escribe cuál es.` : null;
+}
+
+/** The name a kind prints with: the appraiser's own for «Otro», the catalog's otherwise. */
+export function ownKindName(catalog: { SClave: string; SNombre: string }, own: string | undefined): string {
+  return isOwnKindKey(catalog.SClave) && own ? own : catalog.SNombre;
 }

@@ -6,6 +6,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { ownKindName, readOwnKindNames } from "@/features/valuations/services/property-kinds";
 import type { ValuationDateField, ValuationSortDirection, ValuationSortKey } from "@/features/dashboard/valuation-list-params";
 
 /** Days a deleted valuation stays in the trash; after them it is deleted for good on the next look at the trash. */
@@ -78,13 +79,15 @@ const valuationPageSelect = Prisma.validator<Prisma.AvaluoSelect>()({
   DFechaEliminacion: true,
   DFechaRevisionAprobada: true,
   estadoAvaluo: { select: { SClave: true, SNombre: true } },
-  tipoAvaluo: { select: { SNombre: true } },
+  tipoAvaluo: { select: { SClave: true, SNombre: true } },
   tipoInmueble: { select: { SClave: true, SNombre: true } },
   tipoOperacion: { select: { SClave: true } },
   usuarioCreador: { select: { SNombre: true, SApellidoPaterno: true, SApellidoMaterno: true } },
   usuarioResponsable: { select: { SNombre: true, SApellidoPaterno: true, SApellidoMaterno: true } },
   propiedadSujeto: {
     select: {
+      // The names of the kinds chosen as «Otro» (tipoBienOtro, claseAvaluoOtro).
+      JCaracteristicas: true,
       direccionesPropiedad: {
         where: { BEsDireccionActual: true },
         select: { SDireccionCompleta: true },
@@ -160,6 +163,7 @@ function valuationPageOrder(sort: ValuationSortKey = "modificacion", direction: 
 }
 
 function mapPageRow(row: PageRow): ValuationPageItem {
+  const own = readOwnKindNames(row.propiedadSujeto?.JCaracteristicas);
   return {
     id: row.UIdentificadorPublico,
     folio: row.SFolio,
@@ -168,8 +172,8 @@ function mapPageRow(row: PageRow): ValuationPageItem {
     location: row.propiedadSujeto?.direccionesPropiedad[0]?.SDireccionCompleta ?? "",
     valuationKind: row.tipoOperacion.SClave.toLowerCase(),
     propertyKind: row.tipoInmueble.SClave.toLowerCase(),
-    propertyKindName: row.tipoInmueble.SNombre,
-    appraisalKindName: row.tipoAvaluo.SNombre,
+    propertyKindName: ownKindName(row.tipoInmueble, own.tipoBienOtro),
+    appraisalKindName: ownKindName(row.tipoAvaluo, own.claseAvaluoOtro),
     status: row.estadoAvaluo.SClave.toLowerCase(),
     statusName: row.estadoAvaluo.SNombre,
     appraiserName: personName(row.usuarioResponsable) || personName(row.usuarioCreador),

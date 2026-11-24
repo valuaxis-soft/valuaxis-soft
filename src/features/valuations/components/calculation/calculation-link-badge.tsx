@@ -38,6 +38,8 @@ export function CalculationLinkBadge({
   return (
     <Popover>
       <PopoverTrigger
+        // The badge is a <span>: it opens the popover without a native button's semantics.
+        nativeButton={false}
         render={<Badge variant={linked ? "secondary" : "outline"} className="cursor-pointer" data-calculation-link={linked ? "linked" : "unlinked"} />}
       >
         <Link2 /> {linked ? labels.linked : labels.unlinked}

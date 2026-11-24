@@ -73,6 +73,11 @@ export type ConceptMenuTarget = {
   canLink?: boolean;
   /** The concept shares its title or its datum with another: «Desvincular» applies. */
   linked?: boolean;
+  /**
+   * The calculation writes the concept and it is still linked to it (the
+   * conclusion's values): «Desvincular» unlinks it from the calculation (FAL-16).
+   */
+  calculationLinked?: boolean;
   canDelete: boolean;
 };
 
@@ -115,7 +120,9 @@ export function conceptContextMenu(target: ConceptMenuTarget): ConceptMenuGroup[
     ],
     [
       own({ action: "link-to", label: "Vincular con…" }, Boolean(target.canLink), NO_LINK_HINT),
-      own({ action: "unlink", label: "Desvincular" }, Boolean(target.canLink && target.linked), target.canLink ? NOT_LINKED_HINT : NO_LINK_HINT),
+      target.calculationLinked && !target.linked
+        ? presentation({ action: "unlink", label: "Desvincular del cálculo" })
+        : own({ action: "unlink", label: "Desvincular" }, Boolean(target.canLink && target.linked), target.canLink ? NOT_LINKED_HINT : NO_LINK_HINT),
     ],
     [own({ action: "delete", label: "Eliminar concepto…", destructive: true }, target.canDelete, "", GENERATED_CONCEPT_DELETE_HINT)],
   ];
