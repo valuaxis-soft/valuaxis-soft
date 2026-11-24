@@ -158,6 +158,29 @@ Lo que pidió el valuador: describir lo que busca («terrenos de 5,000 a 7,000 m
 - No lee portales desde el servidor ni evade sus protecciones: usa solo la búsqueda web del proveedor de IA. Qué garantiza y qué no, límites, costo y cómo encenderla: [IA.md](IA.md).
 - No es una fuente del registro (`registry.ts`): esas responden en 8 s con comparables completos; esta tarda hasta 2.5 minutos, corre aparte y devuelve anuncios por verificar (`web-search.service.ts`, `web-listings.ts`).
 
+## Anuncio completo, captura y fotos (23 nov 2026)
+
+De la videollamada con el valuador del 23 nov 2026: «¿entra toda la información del anuncio? ¿pueden venir las fotos, o al menos una captura?». Sin migración: todo vive en los snapshots (`JDireccionSnapshot`, `JPropiedadSnapshot`, `JPublicacionSnapshot`).
+
+- **Toda la información:** «Pegar anuncio» y «Buscar con IA» llenan ahora cada campo de la ficha que el anuncio publica: ubicación por partes (con C.P., fraccionamiento, calle y número), superficie de terreno de los construidos, tipo de construcción, recámaras, baños, estacionamientos, niveles, edad, conservación, frentes, frente, fondo, forma, zona, uso de suelo, topografía, servicios, contacto, teléfono e ID de publicación. Lo que no tiene campo (amenidades, orientación, vigilancia…) va a Observaciones tal como está escrito; nunca se estima ni se completa. Detalle y reglas en [IA.md](IA.md).
+
+| Campo de la ficha | Pegar anuncio (antes → ahora) | Buscar con IA (antes → ahora) |
+|---|---|---|
+| Estado, municipio, colonia | sí, en una línea → por partes | sí → sí |
+| Calle, número, C.P., fraccionamiento | calle en la línea → por partes | no → calle y C.P. |
+| Precio, superficie del tipo | sí → sí | sí → sí |
+| Superficie de terreno (construidos), tipo de construcción | aviso → campo | sí → sí |
+| Recámaras, baños (medios = .5) | no → sí | no → sí |
+| Estacionamientos, niveles, edad | no → sí (en la ficha) | no → sí (en la ficha) |
+| Conservación, forma, zona, N. frentes | no → sí | no → conservación, forma, frentes |
+| Frente, fondo, uso de suelo, topografía, servicios | sí → sí | no (en notas) → sí |
+| Contacto, teléfono | sí → sí | no → sí |
+| Fuente, liga, fecha de la oferta | sí → sí | sí → sí |
+| ID de publicación | no → sí | no → sí |
+| Amenidades y otros datos | no → Observaciones | notas → Observaciones |
+
+- **Captura y fotos:** no se descargan páginas ni imágenes de los portales (no se hace scraping ni se evaden sus protecciones). El valuador abre el anuncio en su navegador con «Abrir anuncio», toma la captura y la pega: en «Buscar con IA», con «Pegar captura y fotos» bajo cada renglón antes de «Crear fichas»; en «Pegar anuncio», en «Captura del anuncio y fotos». Pegar (Ctrl/⌘+V), soltar o elegir; la primera imagen es la pantalla de referencia y las demás fotos (hasta 10), con «Usar como pantalla de referencia» y «Quitar» en cada una (`listing-images-picker.tsx`, reglas puras en `comparable-search/listing-images.ts`). Se suben por las rutas de siempre de la ficha (pantalla y fotos, con su tipo, peso y límite de subidas) en cuanto la ficha existe.
+
 ## Pendiente
 
 - Coordenadas: `DireccionPropiedad` exige latitud y longitud, así que la dirección capturada (ahora por partes, con latitud y longitud a mano) se guarda solo en el snapshot hasta tener mapa y geocodificación.

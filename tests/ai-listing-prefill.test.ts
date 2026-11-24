@@ -30,15 +30,21 @@ test("a listing in hectares fills the form in m² and says so; dollars are never
   assert.equal(price?.value, "", "the form is in pesos");
   assert.equal(price?.evidence, "USD 150,000");
   assert.match(price?.note ?? "", /dólares.*no se convirtió/);
-  assert.deepEqual(row(rows, "location"), { field: "location", label: "Ubicación", value: "Arandas, Jalisco", evidence: "Arandas · Jalisco" });
+  // The location goes by parts, as the card captures it; the line the dictamen prints is built from them.
+  assert.deepEqual(row(rows, "municipality"), { field: "municipality", label: "Municipio o alcaldía", value: "Arandas", evidence: "Arandas" });
+  assert.deepEqual(row(rows, "state"), { field: "state", label: "Estado", value: "Jalisco", evidence: "Jalisco" });
+  // A land has no field for its construction: it goes to «Observaciones», as written.
+  assert.equal(row(rows, "notes")?.value, "Construcción: 90 m2.");
+  assert.equal(row(rows, "notes")?.evidence, "90 m2");
+  assert.equal(row(rows, "bedrooms"), undefined);
   // The source comes from the link when the text names no portal.
   assert.deepEqual(row(rows, "sourceName"), { field: "sourceName", label: "Fuente", value: "lamudi.com.mx", evidence: "https://www.lamudi.com.mx/predio-123" });
   // What the listing does not say stays empty, with no evidence.
   assert.deepEqual(row(rows, "frontage"), { field: "frontage", label: "Frente (m)", value: "", evidence: null });
   assert.deepEqual(row(rows, "contactName"), { field: "contactName", label: "Contacto", value: "", evidence: null });
   assert.deepEqual(notices, [
-    "El anuncio también indica superficie construida («90 m2»); este comparable no tiene campo para ella.",
     "Tipo de inmueble según el anuncio: «predio rústico».",
+    "El anuncio también indica superficie construida («90 m2»): un terreno no tiene campo para ella y va en Observaciones.",
   ]);
 });
 
@@ -52,13 +58,73 @@ test("a price per hectare is shown but never used as the price of the offer, and
   const { rows } = listingRows(messy, "TERRENO_VENTA", "Precio de oferta ($)");
   assert.equal(row(rows, "price")?.value, "");
   assert.match(row(rows, "price")?.note ?? "", /por hectárea, no el de la oferta completa: no se calculó/);
-  assert.equal(row(rows, "location")?.value, "arandas");
+  assert.equal(row(rows, "municipality")?.value, "Arandas");
+  assert.equal(row(rows, "neighborhood")?.value, "", "the same place is not written twice");
 });
 
 test("a built comparable takes the built surface, and a sale listing among rents is pointed out", () => {
   const { rows, notices } = listingRows(proposal, "INMUEBLE_RENTA", "Renta mensual ($)");
-  assert.deepEqual(row(rows, "area"), { field: "area", label: "Superficie construida (m²)", value: "90", evidence: "90 m2", note: undefined });
+  assert.deepEqual(row(rows, "area"), { field: "area", label: "Superficie rentable (m²)", value: "90", evidence: "90 m2", note: undefined });
+  // The land of a building has its own field now, converted from hectares with its notice.
+  assert.equal(row(rows, "landArea")?.value, "125000");
+  assert.match(row(rows, "landArea")?.note ?? "", /12\.5 ha; se convirtió a m²/);
+  assert.equal(row(rows, "constructionType")?.value, "predio rústico");
   assert.ok(notices.includes("El anuncio es de venta («Venta de predio rústico») y estás capturando comparables en renta."));
+});
+
+const HOME = `Casa en venta, Fraccionamiento Valle Inventado, Av. Ficticia 245, C.P. 47600, Villa Ejemplo, Jalisco.
+3 recámaras, 2 baños completos y 1 medio baño, 2 cajones de estacionamiento, 2 plantas, 12 años de antigüedad, en buen estado.
+Terreno 160 m2, construcción 185 m2. Forma regular, 1 frente. Zona habitacional.
+Amenidades: jardín, cocina integral, cuarto de servicio. Orientación norte. Vigilancia 24 horas.
+$2,350,000. ID: EB-XX0001. Gran oportunidad de inversión.`;
+
+test("everything the listing publishes lands in its field of the card; the rest goes to the observations, as written", () => {
+  const read = verifyListingExtraction(HOME, null, {
+    ...EMPTY_EXTRACTION,
+    operation: "venta", operationEvidence: "Casa en venta", price: "$2,350,000", landArea: "Terreno 160 m2", builtArea: "construcción 185 m2",
+    street: "Av. Ficticia", streetNumber: "245", subdivision: "Fraccionamiento Valle Inventado", municipality: "Villa Ejemplo", state: "Jalisco",
+    postalCode: "C.P. 47600", propertyType: "Casa", bedrooms: "3 recámaras", bathrooms: "2 baños completos", halfBaths: "1 medio baño",
+    parking: "2 cajones de estacionamiento", levels: "2 plantas", age: "12 años de antigüedad", conservation: "en buen estado",
+    frontCount: "1 frente", shape: "Forma regular", zone: "Zona habitacional", publicationId: "ID: EB-XX0001",
+    amenities: ["jardín", "cocina integral", "cuarto de servicio", "alberca"],
+    otherFacts: ["Orientación norte", "Vigilancia 24 horas"],
+  });
+  // Not in the text: dropped, like any other field.
+  assert.ok(read.discarded.includes("amenities"));
+  assert.deepEqual(read.bedrooms, { value: 3, evidence: "3 recámaras" });
+  assert.deepEqual(read.age, { value: 12, evidence: "12 años de antigüedad" });
+  assert.deepEqual(read.postalCode, { value: "47600", evidence: "C.P. 47600" });
+  assert.deepEqual(read.publicationId, { value: "EB-XX0001", evidence: "ID: EB-XX0001" });
+
+  const { rows } = listingRows(read, "INMUEBLE_VENTA", "Precio de oferta ($)");
+  const values = Object.fromEntries(rows.filter((item) => item.value).map((item) => [item.field, item.value]));
+  assert.deepEqual(values, {
+    state: "Jalisco", municipality: "Villa Ejemplo", postalCode: "47600", subdivision: "Fraccionamiento Valle Inventado", street: "Av. Ficticia", number: "245",
+    price: "2350000", area: "185", landArea: "160", constructionType: "Casa", bedrooms: "3", bathrooms: "2.5", parking: "2", levels: "2", age: "12",
+    conservation: "en buen estado", frontCount: "1", shape: "Forma regular", zone: "Zona habitacional",
+    notes: "Amenidades: jardín, cocina integral, cuarto de servicio. Orientación norte. Vigilancia 24 horas.",
+    publicationId: "EB-XX0001",
+  });
+  assert.match(row(rows, "bathrooms")?.note ?? "", /2 baños y 1 medio baño: cada medio baño se captura como 0\.5/);
+  // A sales phrase is not a fact of the property: the model is told so, and nothing the code adds says it.
+  assert.doesNotMatch(row(rows, "notes")?.value ?? "", /oportunidad/i);
+});
+
+test("counts are read in code: a year of construction is not an age, and a bare half bathroom is half", () => {
+  const text = "Casa construida en 1998, medio baño en planta baja, dos recámaras.";
+  const read = verifyListingExtraction(text, null, {
+    ...EMPTY_EXTRACTION, age: "construida en 1998", halfBaths: "medio baño", bedrooms: "dos recámaras",
+  });
+  assert.equal(read.age, null);
+  assert.ok(read.discarded.includes("age"));
+  assert.deepEqual(read.bedrooms, { value: 2, evidence: "dos recámaras" });
+  // «medio baño» without a number is one half bathroom: 0.5, with its note.
+  assert.deepEqual(read.halfBaths, { value: 1, evidence: "medio baño" });
+  const { rows } = listingRows(read, "INMUEBLE_VENTA", "Precio de oferta ($)");
+  assert.equal(row(rows, "bathrooms")?.value, "0.5");
+  // On a land, the rooms the listing names go to «Observaciones», as written.
+  const land = listingRows(read, "TERRENO_VENTA", "Precio de oferta ($)").rows;
+  assert.equal(row(land, "notes")?.value, "dos recámaras. medio baño.");
 });
 
 test("a draft is written only from the other concepts of the same container that have something captured", () => {

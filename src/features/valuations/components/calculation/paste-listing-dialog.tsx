@@ -4,6 +4,7 @@ import { ClipboardPaste, Info, Loader2 } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,9 @@ import { AI_NOTICE } from "@/features/ai/ai-assist-context";
 import { LISTING_TEXT_MAX, LISTING_TEXT_MIN } from "@/features/ai/listing-extraction";
 import { listingRows, type ComparablePrefill, type ListingRow } from "@/features/ai/listing-prefill";
 import type { ComparableType } from "@/features/valuations/calculation/market-types";
+import { imageCount, NO_IMAGES, type PendingImages } from "@/features/valuations/comparable-search/listing-images";
 import { api, SessionExpiredError } from "@/lib/api-client";
+import { ListingImagesPicker } from "./listing-images-picker";
 
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudieron leer los datos del anuncio.";
@@ -33,15 +36,22 @@ export function PasteListingDialog({
   valuationId: string;
   type: ComparableType;
   priceLabel: string;
-  /** Opens the comparable form with these values and the pasted text, kept as evidence; the appraiser still saves it. */
-  onUse: (values: ComparablePrefill, listingText: string) => void;
+  /**
+   * Opens the comparable form with these values, the pasted text (kept as
+   * evidence) and the screenshot and photos pasted for the listing, which go
+   * up when the appraiser saves it.
+   */
+  onUse: (values: ComparablePrefill, listingText: string, images: PendingImages) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
+  const [images, setImages] = useState<PendingImages>(NO_IMAGES);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<Review | null>(null);
+  // With many fields, only those the listing gave can be shown.
+  const [onlyFound, setOnlyFound] = useState(false);
   // Only the answer to the last request is shown.
   const lastRequest = useRef(0);
 
@@ -49,9 +59,11 @@ export function PasteListingDialog({
     lastRequest.current += 1;
     setText("");
     setUrl("");
+    setImages(NO_IMAGES);
     setBusy(false);
     setError(null);
     setReview(null);
+    setOnlyFound(false);
   };
 
   const extract = async (event: FormEvent) => {
@@ -83,12 +95,26 @@ export function PasteListingDialog({
 
   const use = () => {
     if (!review) return;
-    onUse(Object.fromEntries(review.rows.filter((row) => row.value.trim()).map((row) => [row.field, row.value.trim()])), text.trim());
+    onUse(Object.fromEntries(review.rows.filter((row) => row.value.trim()).map((row) => [row.field, row.value.trim()])), text.trim(), images);
     setOpen(false);
     reset();
   };
 
   const found = review?.rows.filter((row) => row.evidence).length ?? 0;
+  const shownRows = review ? review.rows.filter((row) => !onlyFound || row.evidence || row.value.trim()) : [];
+  const picker = (
+    <Field>
+      <FieldLabel>Captura del anuncio y fotos (opcional)</FieldLabel>
+      <ListingImagesPicker
+        images={images}
+        onChange={setImages}
+        label="Captura del anuncio y fotos"
+        baseName="anuncio"
+        disabled={busy}
+        hint={imageCount(images) ? "Se guardan con el comparable al guardarlo." : "Ábrelo en tu navegador y toma la captura; Valuaxis no descarga nada del portal."}
+      />
+    </Field>
+  );
 
   return (
     <>
@@ -125,31 +151,57 @@ export function PasteListingDialog({
                 <FieldLabel htmlFor="paste-listing-url">Liga del anuncio (opcional)</FieldLabel>
                 <Input id="paste-listing-url" type="url" placeholder="https://" maxLength={1000} disabled={busy} value={url} onChange={(event) => setUrl(event.target.value)} />
               </Field>
+              {picker}
               {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
             </form>
           ) : (
             <div className="grid gap-3">
-              <p className="text-sm" aria-live="polite">
-                <span className="font-medium">{found} dato{found === 1 ? "" : "s"} leído{found === 1 ? "" : "s"} del anuncio.</span>
-                {review.discarded ? (
-                  <span className="text-muted-foreground"> Se descart{review.discarded === 1 ? "ó 1 dato" : `aron ${review.discarded} datos`} que no se pudo{review.discarded === 1 ? "" : "ieron"} comprobar en el texto.</span>
-                ) : null}
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm" aria-live="polite">
+                  <span className="font-medium" data-listing-found>
+                    {found} de {review.rows.length} campos de la ficha leídos del anuncio.
+                  </span>
+                  {review.discarded ? (
+                    <span className="text-muted-foreground"> Se descart{review.discarded === 1 ? "ó 1 dato" : `aron ${review.discarded} datos`} que no se pudo{review.discarded === 1 ? "" : "ieron"} comprobar en el texto.</span>
+                  ) : null}
+                </p>
+                <label className="flex items-center gap-1.5 text-xs">
+                  <Checkbox checked={onlyFound} onCheckedChange={(checked) => setOnlyFound(checked === true)} />
+                  Ver solo los que trae el anuncio
+                </label>
+              </div>
               {review.notices.map((notice) => (
                 <p key={notice} className="flex items-start gap-1.5 text-xs text-highlight-strong">
                   <Info className="mt-0.5 size-3.5 shrink-0" /> {notice}
                 </p>
               ))}
               <div className="grid gap-2">
-                {review.rows.map((row) => (
-                  <div key={row.field} className="grid gap-1 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)_minmax(0,1fr)] sm:items-start sm:gap-3" data-listing-field={row.field}>
+                {shownRows.map((row) => (
+                  <div
+                    key={row.field}
+                    className="grid gap-1 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)_minmax(0,1fr)] sm:items-start sm:gap-3"
+                    data-listing-field={row.field}
+                    data-listing-found={row.evidence ? "" : undefined}
+                  >
                     <label htmlFor={`listing-${row.field}`} className="pt-1.5 text-sm">{row.label}</label>
-                    <Input
-                      id={`listing-${row.field}`}
-                      type={row.field === "offerDate" ? "date" : "text"}
-                      value={row.value}
-                      onChange={(event) => edit(row.field, event.target.value)}
-                    />
+                    {row.field === "notes" ? (
+                      <Textarea
+                        id={`listing-${row.field}`}
+                        rows={3}
+                        maxLength={1000}
+                        className="max-h-40 text-sm"
+                        value={row.value}
+                        onChange={(event) => edit(row.field, event.target.value)}
+                      />
+                    ) : (
+                      <Input
+                        id={`listing-${row.field}`}
+                        type={row.field === "offerDate" ? "date" : "text"}
+                        autoComplete="off"
+                        value={row.value}
+                        onChange={(event) => edit(row.field, event.target.value)}
+                      />
+                    )}
                     <div className="pt-1.5 text-xs text-muted-foreground">
                       {row.evidence ? <q className="break-words" data-evidence>{row.evidence}</q> : <span>El anuncio no lo dice.</span>}
                       {row.note ? <p className="mt-0.5 text-highlight-strong">{row.note}</p> : null}
@@ -157,6 +209,7 @@ export function PasteListingDialog({
                   </div>
                 ))}
               </div>
+              {picker}
             </div>
           )}
 

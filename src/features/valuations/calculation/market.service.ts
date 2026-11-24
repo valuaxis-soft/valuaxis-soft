@@ -839,6 +839,18 @@ export async function syncPublication(tx: Tx, input: {
   if (!payload.url) return null;
   const sourceName = (payload.sourceName ?? "Captura manual").slice(0, 180);
   const source = await tx.fuenteInmobiliaria.upsert({ where: { SNombre: sourceName }, create: { SNombre: sourceName }, update: {} });
+  // A portal's id is unique per source across every firm: the same listing captured again (another valuation,
+  // another firm) keeps its id in the comparable's snapshot, and the column stays with the publication that has it.
+  const externalId = payload.listingDetails?.publicationId?.slice(0, 220) || null;
+  const idTaken = externalId
+    ? await tx.publicacionPropiedad.findFirst({
+      where: {
+        IdFuenteInmobiliaria: source.IdFuenteInmobiliaria, SIdentificadorExterno: externalId,
+        ...(input.current ? { NOT: { IdPublicacionPropiedad: input.current } } : {}),
+      },
+      select: { IdPublicacionPropiedad: true },
+    })
+    : null;
   const data = {
     IdFuenteInmobiliaria: source.IdFuenteInmobiliaria,
     SURL: payload.url,
@@ -848,7 +860,7 @@ export async function syncPublication(tx: Tx, input: {
     STelefonoContacto: payload.contactPhone,
     DFechaPublicacion: payload.offerDate ? new Date(`${payload.offerDate}T12:00:00Z`) : null,
     // The listing's id in the portal and its currency, when the master workbook brings them.
-    ...(payload.listingDetails?.publicationId ? { SIdentificadorExterno: payload.listingDetails.publicationId.slice(0, 220) } : {}),
+    ...(externalId && !idTaken ? { SIdentificadorExterno: externalId } : {}),
     ...(payload.listingDetails?.currency ? { SMoneda: payload.listingDetails.currency } : {}),
     // The pasted listing is the publication's text as the appraiser saw it.
     ...(payload.listingText === undefined ? {} : { SDescripcion: payload.listingText }),
@@ -1111,9 +1123,15 @@ export type ImportEntry =
  * and recomputes once; all or none. A found comparable may bring its photos.
  */
 export async function importComparables(publicId: string, user: AuthUser, type: ComparableType, payloads: ImportEntry[]) {
+  return (await importComparableIds(publicId, user, type, payloads)).length;
+}
+
+/** The same, answering the id of the comparable each entry became, in order: «Crear fichas» attaches its images to them. */
+export async function importComparableIds(publicId: string, user: AuthUser, type: ComparableType, payloads: ImportEntry[]) {
   return prisma.$transaction(async (tx) => {
     const { avaluo, versionId } = await writableVersion(tx, publicId, user);
     const typeId = await comparableTypeId(tx, type);
+    const ids: string[] = [];
     for (const entry of payloads) {
       // A row of an import the appraiser answered with "Usar el existente" or "Es el mismo".
       const { payload, reused, review } = "reuseFrom" in entry
@@ -1121,10 +1139,10 @@ export async function importComparables(publicId: string, user: AuthUser, type: 
         : "mergeInto" in entry
           ? { ...await mergedInput(tx, user.organizationId, entry.mergeInto, entry.payload), review: entry.review ?? null }
           : (({ reused: evidence, review: brought, ...captured }) => ({ payload: captured, reused: evidence, review: brought ?? null }))(entry);
-      await insertComparable(tx, { kind: "valuation", avaluo, versionId, typeId }, user, type, payload, reused, review);
+      ids.push(await insertComparable(tx, { kind: "valuation", avaluo, versionId, typeId }, user, type, payload, reused, review));
     }
     await recompute(tx, versionId, type);
-    return payloads.length;
+    return ids;
   }, { timeout: 60_000 });
 }
 

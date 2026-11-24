@@ -1,7 +1,7 @@
 "use client";
 
-import { AlertTriangle, ArrowDown, ArrowUp, ExternalLink, Loader2, RotateCcw, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { AlertTriangle, ArrowDown, ArrowUp, ExternalLink, ImagePlus, Loader2, RotateCcw, Sparkles } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -14,14 +14,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError, SessionExpiredError } from "@/lib/api-client";
 import { formatComparableId } from "@/features/valuations/calculation/comparable-card";
 import { isLandComparableType, isRentComparableType, type ComparableType, type MarketCalculationDto } from "@/features/valuations/calculation/market-types";
+import { imageCount, NO_IMAGES, uploadListingImages, type PendingImages } from "@/features/valuations/comparable-search/listing-images";
 import {
+  WEB_LISTING_DETAIL_LABELS,
   WEB_SEARCH_FEW_RESULTS,
   WEB_SEARCH_MAX_KNOWN,
   WEB_SEARCH_MAX_PREVIOUS,
   WEB_SEARCH_TEXT_MAX,
   WEB_SEARCH_TEXT_MIN,
+  candidateInputOf,
+  publishedDetails,
+  type WebListingDetails,
 } from "@/features/valuations/comparable-search/web-listings";
 import type { WebSearchCandidateDto, WebSearchStatusDto } from "@/features/valuations/comparable-search/web-search.service";
+import { ListingImagesPicker } from "./listing-images-picker";
 
 const POLL_MS = 2500;
 const number = (value: number) => value.toLocaleString("es-MX", { maximumFractionDigits: 2 });
@@ -34,6 +40,14 @@ type Running = { searches: number; query: string | null; elapsedSeconds: number 
 type Round = { found: number; discarded: number; marketNote: string | null; searches: number; elapsedSeconds: number };
 type SortKey = "area" | "price" | "unitValue" | "zone" | "portal";
 type Sort = { key: SortKey; direction: "asc" | "desc" };
+
+/** «Recámaras 3», «Frente 12 m», «Edad 10 años»: a detail the listing published, as the table lists it. */
+function detailText(candidate: WebListingDetails, key: keyof WebListingDetails) {
+  const value = candidate[key];
+  const shown = typeof value === "number" ? number(value) : value ?? "";
+  const unit = key === "frontage" || key === "depth" ? " m" : key === "age" ? ` año${value === 1 ? "" : "s"}` : "";
+  return `${WEB_LISTING_DETAIL_LABELS[key]} ${shown}${unit}`;
+}
 
 const zoneOf = (candidate: WebSearchCandidateDto) =>
   [candidate.neighborhood, candidate.reference].filter(Boolean).join(" · ") || [candidate.municipality, candidate.state].filter(Boolean).join(", ");
@@ -55,6 +69,8 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
   const [round, setRound] = useState<Round | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // The appraiser's own screenshot and photos of each listing, by its key, until its comparable is created.
+  const [images, setImages] = useState<Record<string, PendingImages>>({});
   const requested = useRef(false);
   // Bumped on unmount and on «Nueva búsqueda»: an answer of before is not applied.
   const generation = useRef(0);
@@ -134,43 +150,76 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
     setRunning(null);
     setRound(null);
     setError(null);
+    setImages({});
     setText(setup?.suggestion ?? "");
   }, [setup]);
+
+  /** The screenshot and photos the appraiser pasted for a listing; adding some chooses it. */
+  const setImagesFor = useCallback((key: string, next: PendingImages) => {
+    setImages((current) => ({ ...current, [key]: next }));
+    if (imageCount(next)) setSelected((current) => (current.has(key) ? current : new Set([...current, key])));
+  }, []);
 
   const create = useCallback(async (): Promise<MarketCalculationDto | null> => {
     const chosen = candidates.filter((candidate) => selected.has(candidate.key) && !candidate.existing?.inValuation);
     if (!chosen.length) return null;
     setCreating(true);
     try {
-      const result = await api.ai.addWebListings(valuationId, type, chosen.map((candidate) => ({
-        title: candidate.title, propertyType: candidate.propertyType, landArea: candidate.landArea, builtArea: candidate.builtArea,
-        price: candidate.price, currency: candidate.currency, neighborhood: candidate.neighborhood, municipality: candidate.municipality,
-        state: candidate.state, reference: candidate.reference, portal: candidate.portal, url: candidate.url,
-        listingDate: candidate.listingDate, notes: candidate.notes,
-      })));
+      const result = await api.ai.addWebListings(valuationId, type, chosen.map(candidateInputOf));
       const keys = new Set(chosen.map((candidate) => candidate.key));
       // They are in the valuation now: shown as such, and not offered again.
       setCandidates((previous) => previous.map((candidate) => (keys.has(candidate.key)
         ? { ...candidate, existing: { comparableId: candidate.existing?.comparableId ?? "", folio: candidate.existing?.folio ?? null, inValuation: true } }
         : candidate)));
       setSelected(new Set());
+      // The images pasted for each listing go to the comparable it became, through the routes of the form.
+      let calculation = result.calculation;
+      let uploaded = 0;
+      let failed = 0;
+      let firstError: unknown = null;
+      let notAttached = 0;
+      for (const [index, candidate] of chosen.entries()) {
+        const pending = images[candidate.key];
+        const item = result.items[index];
+        if (!imageCount(pending) || !pending || !item) continue;
+        // One brought from the base keeps the evidence it has there; one skipped is not new.
+        if (item.outcome !== "CREATED" || !item.comparableId) {
+          notAttached += imageCount(pending);
+          continue;
+        }
+        const comparableId = item.comparableId;
+        const outcome = await uploadListingImages(pending, {
+          screenshot: (file) => api.market.uploadScreenshot(valuationId, type, comparableId, file),
+          photo: (file) => api.market.uploadPhoto(valuationId, type, comparableId, file),
+        });
+        uploaded += outcome.uploaded;
+        failed += outcome.failed;
+        firstError ??= outcome.firstError;
+        if (outcome.latest) calculation = outcome.latest;
+      }
+      setImages((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.has(key))));
       const made = result.created + result.reused;
       const parts = [
         `${made} ficha${made === 1 ? "" : "s"} en el mercado`,
         ...(result.reused ? [`${result.reused} ya estaba${result.reused === 1 ? "" : "n"} en tu base y se usó la existente`] : []),
         ...(result.skipped ? [`${result.skipped} ya estaba${result.skipped === 1 ? "" : "n"} en el avalúo`] : []),
+        ...(uploaded ? [`${uploaded} imagen${uploaded === 1 ? "" : "es"} adjunta${uploaded === 1 ? "" : "s"}`] : []),
       ];
-      toast.success(`${parts.join("; ")}. Quedan «Sin revisar»: verifica cada una contra su anuncio y agrega fotos y pantalla de referencia.`);
-      return result.calculation;
+      toast.success(`${parts.join("; ")}. Quedan «Sin revisar»: verifica cada una contra su anuncio${uploaded ? "" : " y agrega fotos y pantalla de referencia"}.`);
+      if (failed) toast.error(`${failed === 1 ? "Una imagen no se pudo" : `${failed} imágenes no se pudieron`} guardar: ${errorMessage(firstError)} Agrégala${failed === 1 ? "" : "s"} desde la ficha.`);
+      if (notAttached) toast.info(`${notAttached === 1 ? "Una imagen no se adjuntó" : `${notAttached} imágenes no se adjuntaron`}: su anuncio ya estaba en tu base y se usó esa ficha con su evidencia.`);
+      return calculation;
     } catch (failure) {
       toast.error(errorMessage(failure));
       return null;
     } finally {
       setCreating(false);
     }
-  }, [candidates, selected, type, valuationId]);
+  }, [candidates, images, selected, type, valuationId]);
 
-  return { setup, setupError, text, setText, asked, candidates, selected, setSelected, running, round, error, creating, search, restart, create };
+  return {
+    setup, setupError, text, setText, asked, candidates, selected, setSelected, images, setImagesFor, running, round, error, creating, search, restart, create,
+  };
 }
 
 type AiSearch = ReturnType<typeof useAiComparableSearch>;
@@ -214,6 +263,8 @@ export function AiComparableSearchPanel({
   const land = isLandComparableType(type);
   const rent = isRentComparableType(type);
   const [sort, setSort] = useState<Sort | null>(null);
+  // The listing whose screenshot and photos are being pasted, under its row.
+  const [openImages, setOpenImages] = useState<string | null>(null);
   const areaOf = useCallback((candidate: WebSearchCandidateDto) => (land ? candidate.landArea : candidate.builtArea), [land]);
 
   const rows = useMemo(() => {
@@ -390,8 +441,14 @@ export function AiComparableSearchPanel({
                   {rows.map((candidate) => {
                     const area = areaOf(candidate);
                     const folio = formatComparableId(candidate.existing?.folio);
+                    const details = publishedDetails(candidate);
+                    const pending = search.images[candidate.key] ?? NO_IMAGES;
+                    // Images go to a comparable created from this listing: not to one already in the valuation or brought from the base.
+                    const takesImages = !readOnly && !candidate.existing;
+                    const imagesOpen = openImages === candidate.key;
                     return (
-                      <tr key={candidate.key} className="border-t align-top" data-selected={selected.has(candidate.key) || undefined}>
+                      <Fragment key={candidate.key}>
+                      <tr className="border-t align-top" data-selected={selected.has(candidate.key) || undefined}>
                         {!readOnly ? (
                           <td className="px-2 py-1.5">
                             <Checkbox
@@ -417,6 +474,25 @@ export function AiComparableSearchPanel({
                             {candidate.listingDate ? <span>· Publicado {candidate.listingDate.split("-").reverse().join("/")}</span> : null}
                           </span>
                           {candidate.notes ? <span className="mt-0.5 block text-muted-foreground">{candidate.notes}</span> : null}
+                          {details.length ? (
+                            <span className="mt-0.5 block" data-listing-details>
+                              <span className="font-medium">Datos del anuncio ({details.length}):</span>{" "}
+                              <span className="text-muted-foreground">{details.map((key) => detailText(candidate, key)).join(" · ")}</span>
+                            </span>
+                          ) : null}
+                          {takesImages ? (
+                            <Button
+                              type="button" size="xs" variant={imageCount(pending) ? "secondary" : "ghost"} className="mt-1"
+                              aria-expanded={imagesOpen}
+                              onClick={() => setOpenImages(imagesOpen ? null : candidate.key)}
+                              data-listing-images-toggle
+                            >
+                              <ImagePlus data-icon="inline-start" />
+                              {imageCount(pending)
+                                ? `Captura y fotos (${imageCount(pending)})`
+                                : "Pegar captura y fotos"}
+                            </Button>
+                          ) : null}
                         </td>
                         <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">
                           {area ? `${number(area)} m²` : <span className="text-muted-foreground">Superficie no publicada</span>}
@@ -449,6 +525,22 @@ export function AiComparableSearchPanel({
                           {candidate.listingPage ? <span className="block text-muted-foreground">Liga al listado del portal: busca ahí el anuncio.</span> : null}
                         </td>
                       </tr>
+                      {takesImages && imagesOpen ? (
+                        <tr className="bg-muted/30" data-listing-images-row>
+                          <td colSpan={7} className="px-2 py-2">
+                            <ListingImagesPicker
+                              images={pending}
+                              onChange={(next) => search.setImagesFor(candidate.key, next)}
+                              label={`Captura y fotos de «${candidate.title}»`}
+                              baseName="anuncio"
+                              disabled={busy}
+                              autoFocus
+                              hint="Abre el anuncio, toma la captura y pégala. Se guardan con la ficha al crearla."
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -458,8 +550,8 @@ export function AiComparableSearchPanel({
               <p className="text-xs text-muted-foreground">El avalúo es de solo lectura: puedes buscar y abrir los anuncios, pero no crear fichas.</p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                «Crear fichas» agrega los anuncios elegidos a este mercado y a la base del despacho, con su liga y su fuente, como «Sin revisar».
-                Después completa en cada ficha las fotos, la pantalla de referencia y la lista de verificación.
+                «Crear fichas» agrega los anuncios elegidos a este mercado y a la base del despacho, con su liga, su fuente y los datos que publica, como «Sin revisar».
+                Con «Pegar captura y fotos» pegas la captura del anuncio que abriste y sus fotos: se guardan como pantalla de referencia y fotografías de la ficha.
               </p>
             )}
           </>

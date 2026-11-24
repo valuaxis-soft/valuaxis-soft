@@ -9,8 +9,10 @@ import type { ListingExtraction } from "../../src/features/ai/listing-extraction
 
 export const EMPTY_EXTRACTION: ListingExtraction = {
   operation: "no_indicado", operationEvidence: "", price: "", landArea: "", builtArea: "", frontage: "", depth: "",
-  street: "", neighborhood: "", municipality: "", state: "", propertyType: "", landUse: "", topography: "", services: "",
-  portal: "", listingDate: "", contactName: "", contactPhone: "",
+  street: "", streetNumber: "", neighborhood: "", subdivision: "", municipality: "", state: "", postalCode: "", propertyType: "",
+  bedrooms: "", bathrooms: "", halfBaths: "", parking: "", levels: "", age: "", conservation: "", frontCount: "", shape: "", zone: "",
+  landUse: "", topography: "", services: "", portal: "", publicationId: "", listingDate: "", contactName: "", contactPhone: "",
+  amenities: [], otherFacts: [],
 };
 
 const usage = (model: string): AiUsage => ({ model, inputTokens: 900, outputTokens: 150, cacheReadTokens: 0, cacheWriteTokens: 0 });

@@ -8,6 +8,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, afterEach, test } from "node:test";
+import sharp from "sharp";
+import { POST as postPhoto } from "../../src/app/api/avaluos/[id]/mercado/comparables/[comparableId]/fotos/route";
+import { POST as postScreenshot } from "../../src/app/api/avaluos/[id]/mercado/comparables/[comparableId]/pantalla/route";
 import { POST as postListings } from "../../src/app/api/avaluos/[id]/mercado/comparables/buscar-ia/fichas/route";
 import { GET as getStatus } from "../../src/app/api/avaluos/[id]/mercado/comparables/buscar-ia/[jobId]/route";
 import { GET as getSetup, POST as postSearch } from "../../src/app/api/avaluos/[id]/mercado/comparables/buscar-ia/route";
@@ -102,6 +105,9 @@ const listing = (path: string, overrides: Record<string, unknown> = {}) => ({
   title: `Terreno ${path}`, propertyType: "terreno", operation: "venta", landArea: 6000, builtArea: null, price: 3_000_000, currency: "MXN",
   neighborhood: "Las Lomas", municipality: "Villa Ejemplo", state: "Jalisco", addressOrReference: "", portal: "Portal Ejemplo",
   url: `${site}/anuncio/${path}`, urlKind: "anuncio", listingDate: "", notes: "",
+  // What else a listing may publish; here, nothing.
+  street: "", postalCode: "", bedrooms: null, bathrooms: null, halfBaths: null, parking: null, levels: null, age: null, frontage: null, depth: null,
+  frontCount: null, landUse: "", topography: "", services: "", shape: "", conservation: "", amenities: "", contactName: "", contactPhone: "", publicationId: "",
   ...overrides,
 });
 const ANSWER = {
@@ -377,6 +383,83 @@ test("«Crear fichas» adds the chosen listings to the market and to the firm's 
   const otherMarket = await getMarketCalculation(other.UIdentificadorPublico, fixture.organizationId, "TERRENO_VENTA");
   assert.deepEqual(otherMarket.comparables.map((comparable) => comparable.url), [`${site}/anuncio/uno`, `${site}/anuncio/de-memoria`]);
   assert.equal(otherMarket.comparables[0].folio, one.folio);
+});
+
+test("«Crear fichas» fills the card with everything the listing published and says which comparable each listing became, to attach the appraiser's images", async () => {
+  turnOn({
+    marketNote: "",
+    candidates: [
+      listing("casa", {
+        title: "Casa en Fraccionamiento Inventado", propertyType: "Casa", landArea: 160, builtArea: 185, price: 2_350_000,
+        street: "Av. Ficticia 245", postalCode: "47600", bedrooms: 3, bathrooms: 2, halfBaths: 1, parking: 2, levels: 2, age: 12,
+        frontage: 8, depth: 20, landUse: "Habitacional", services: "Todos los servicios", conservation: "Buen estado",
+        amenities: "jardín, cocina integral", contactName: "Asesora Ficticia", contactPhone: "33 0000 0000", publicationId: "EB-XX0001",
+      }),
+      listing("otra", { title: "Casa sin más datos", propertyType: "Casa", landArea: null, builtArea: 120 }),
+    ],
+  });
+  const fixture = await createValuationFixture();
+  const jar = await signIn(fixture, "VALUADOR");
+  const started = await start(jar, fixture.publicId, { text: "Casas en venta en Villa Ejemplo, Jalisco, de 150 a 220 m²" }, "INMUEBLE_VENTA");
+  assert.equal(started.status, 202, started.body.error);
+  const found = await finished(jar, fixture.publicId, String(started.body.data?.jobId));
+  assert.equal(found.status, "done");
+  if (found.status !== "done") return;
+  assert.equal(found.candidates[0].bathrooms, 2.5);
+
+  const created = await createCards(jar, fixture.publicId, found.candidates, "INMUEBLE_VENTA");
+  assert.equal(created.status, 201, created.body.error);
+  const items = created.body.data?.items as Array<{ url: string; outcome: string; comparableId: string | null }>;
+  assert.deepEqual(items.map((item) => [item.url, item.outcome]), [[`${site}/anuncio/casa`, "CREATED"], [`${site}/anuncio/otra`, "CREATED"]]);
+
+  const calculation = await getMarketCalculation(fixture.publicId, fixture.organizationId, "INMUEBLE_VENTA");
+  const house = calculation.comparables.find((item) => item.id === items[0].comparableId);
+  assert.ok(house, "the id answered is the comparable of the valuation");
+  assert.equal(house.area, 185);
+  assert.equal(house.landArea, 160);
+  assert.equal(house.bedrooms, 3);
+  assert.equal(house.bathrooms, 2.5);
+  assert.equal(house.conservation, "Buen estado");
+  assert.deepEqual(house.propertyDetails && { age: house.propertyDetails.age, levels: house.propertyDetails.levels, parking: house.propertyDetails.parking }, { age: 12, levels: 2, parking: 2 });
+  assert.equal(house.frontage, 8);
+  assert.equal(house.depth, 20);
+  assert.equal(house.landUse, "Habitacional");
+  assert.equal(house.services, "Todos los servicios");
+  assert.equal(house.contactName, "Asesora Ficticia");
+  assert.equal(house.contactPhone, "33 0000 0000");
+  assert.equal(house.address?.street, "Av. Ficticia 245");
+  assert.equal(house.address?.postalCode, "47600");
+  assert.equal(house.listingDetails?.publicationId, "EB-XX0001");
+  assert.match(house.notes ?? "", /Amenidades: jardín, cocina integral/);
+  // Nothing invented for the listing that published little.
+  const plain = calculation.comparables.find((item) => item.id === items[1].comparableId);
+  assert.equal(plain?.bedrooms ?? null, null);
+  assert.equal(plain?.landArea ?? null, null);
+  assert.equal(plain?.contactPhone ?? null, null);
+
+  // The browser uploads the pasted screenshot and photos to that comparable, through the routes of the form.
+  const image = async () => new File([new Uint8Array(await sharp({ create: { width: 60, height: 40, channels: 3, background: "#3366cc" } }).png().toBuffer())], "anuncio.png", { type: "image/png" });
+  const comparableId = String(items[0].comparableId);
+  const upload = async (path: "pantalla" | "fotos") => {
+    const form = new FormData();
+    form.set("file", await image());
+    const request = new Request(`${BASE}/${fixture.publicId}/mercado/comparables/${comparableId}/${path}?tipo=INMUEBLE_VENTA`, { method: "POST", body: form });
+    const params = Promise.resolve({ id: fixture.publicId, comparableId });
+    return withCookies(jar, () => (path === "pantalla" ? postScreenshot(request, { params }) : postPhoto(request, { params }))).then(json);
+  };
+  assert.equal((await upload("pantalla")).status, 201);
+  assert.equal((await upload("fotos")).status, 201);
+  const withImages = (await getMarketCalculation(fixture.publicId, fixture.organizationId, "INMUEBLE_VENTA")).comparables.find((item) => item.id === items[0].comparableId);
+  assert.ok(withImages?.screenshot);
+  assert.equal(withImages?.photos.length, 1);
+
+  // The same listing, with the same id in the same portal, captured by another firm: its card is created and keeps the id.
+  const otherFirm = await createValuationFixture();
+  const otherJar = await signIn(otherFirm, "VALUADOR");
+  const again = await createCards(otherJar, otherFirm.publicId, found.candidates.slice(0, 1), "INMUEBLE_VENTA");
+  assert.equal(again.status, 201, again.body.error);
+  const copy = (await getMarketCalculation(otherFirm.publicId, otherFirm.organizationId, "INMUEBLE_VENTA")).comparables[0];
+  assert.equal(copy.listingDetails?.publicationId, "EB-XX0001");
 });
 
 test("a concluded valuation can search but not create comparables, and a made-up address is rejected", async () => {

@@ -1,18 +1,30 @@
 /**
  * A verified listing proposal laid out for the comparable form: one row per
- * field the form has, with the value as the form takes it and the fragment
- * of the listing it came from. Runs in the browser.
+ * field of the card the listing can fill, with the value as the form takes it
+ * and the fragment of the listing it came from. What the card has no field
+ * for (amenities, other facts, rooms of a land) goes to «Observaciones», as
+ * written. Runs in the browser.
  */
 import { isBuiltComparableType, isRentComparableType, type ComparableType } from "@/features/valuations/calculation/market-types";
 import type { ListingProposal } from "./listing-extraction";
 import { plainText } from "./text-figures";
 
-/** The fields of the comparable form a listing can fill, as the form's inputs hold them. */
+/** The fields of the comparable card a listing can fill, as the form's inputs hold them. */
 export const LISTING_FORM_FIELDS = [
-  "location", "area", "price", "sourceName", "contactName", "contactPhone", "url", "offerDate", "frontage", "depth", "landUse", "topography", "services",
+  // Ubicación, by parts.
+  "state", "municipality", "postalCode", "neighborhood", "subdivision", "street", "number",
+  // Oferta y construcción.
+  "price", "area", "landArea", "constructionType", "bedrooms", "bathrooms", "parking", "levels", "age", "conservation",
+  // Terreno y características.
+  "frontCount", "frontage", "depth", "shape", "zone", "landUse", "topography", "services", "notes",
+  // Fuente.
+  "sourceName", "contactName", "contactPhone", "url", "offerDate", "publicationId",
 ] as const;
 export type ListingFormField = (typeof LISTING_FORM_FIELDS)[number];
 export type ComparablePrefill = Partial<Record<ListingFormField, string>>;
+
+/** The longest «Observaciones» the card keeps. */
+const NOTES_MAX = 1000;
 
 export type ListingRow = {
   field: ListingFormField;
@@ -26,38 +38,47 @@ export type ListingRow = {
 };
 
 const number = (value: number) => value.toLocaleString("es-MX", { maximumFractionDigits: 6 });
+type Item = { value: string; evidence: string } | null;
+type Figure = { value: number; evidence: string } | null;
 
-/** The rows of the form, and what the listing says that the form has no field for. */
+/** The rows of the card, and what the listing says that the appraiser must know. */
 export function listingRows(proposal: ListingProposal, type: ComparableType, priceLabel: string): { rows: ListingRow[]; notices: string[] } {
   const notices: string[] = [];
   const built = isBuiltComparableType(type);
-  const text = (field: ListingFormField, label: string, item: { value: string; evidence: string } | null): ListingRow =>
+  const text = (field: ListingFormField, label: string, item: Item): ListingRow =>
     ({ field, label, value: item?.value ?? "", evidence: item?.evidence ?? null });
-  const figure = (field: ListingFormField, label: string, item: { value: number; evidence: string } | null): ListingRow =>
+  const figure = (field: ListingFormField, label: string, item: Figure): ListingRow =>
     ({ field, label, value: item ? String(item.value) : "", evidence: item?.evidence ?? null });
 
-  // A messy listing names the same place for two parts: once is enough.
-  const parts = [proposal.street, proposal.neighborhood, proposal.municipality, proposal.state]
-    .filter((part) => part !== null)
-    .filter((part, index, all) => all.findIndex((other) => plainText(other.value) === plainText(part.value)) === index);
-  const location: ListingRow = {
-    field: "location", label: "Ubicación",
-    value: parts.map((part) => part.value).join(", "),
-    evidence: parts.length ? parts.map((part) => part.evidence).join(" · ") : null,
+  // A messy listing names the same place for two parts: the first one keeps it.
+  const places = new Set<string>();
+  const place = (item: Item): Item => {
+    if (!item) return null;
+    const key = plainText(item.value);
+    if (places.has(key)) return null;
+    places.add(key);
+    return item;
   };
+  const address = [
+    text("state", "Estado", place(proposal.state)),
+    text("municipality", "Municipio o alcaldía", place(proposal.municipality)),
+    text("postalCode", "Código postal", proposal.postalCode),
+    text("neighborhood", "Colonia", place(proposal.neighborhood)),
+    text("subdivision", "Fraccionamiento", place(proposal.subdivision)),
+    text("street", "Vialidad", place(proposal.street)),
+    text("number", "Número", proposal.streetNumber),
+  ];
 
   const surface = built ? proposal.builtArea : proposal.landArea;
+  const hectares = (item: ListingProposal["landArea"]) =>
+    // Never a silent conversion: the form is in m², and the listing said hectares.
+    (item?.unit === "ha" ? `El anuncio dice ${number(item.value)} ha; se convirtió a m² (1 ha = 10,000 m²). Revísalo.` : undefined);
   const area: ListingRow = {
-    field: "area", label: built ? "Superficie construida (m²)" : "Superficie de terreno (m²)",
+    field: "area", label: built ? (isRentComparableType(type) ? "Superficie rentable (m²)" : "Superficie construida (m²)") : "Superficie de terreno (m²)",
     value: surface ? String(surface.squareMeters) : "",
     evidence: surface?.evidence ?? null,
-    // Never a silent conversion: the form is in m², and the listing said hectares.
-    note: surface?.unit === "ha" ? `El anuncio dice ${number(surface.value)} ha; se convirtió a m² (1 ha = 10,000 m²). Revísalo.` : undefined,
+    note: hectares(surface),
   };
-  const other = built ? proposal.landArea : proposal.builtArea;
-  if (other) {
-    notices.push(`El anuncio también indica ${built ? "superficie de terreno" : "superficie construida"} («${other.evidence}»); este comparable no tiene campo para ella.`);
-  }
 
   const dollars = proposal.price?.currency === "USD";
   const perUnit = proposal.price?.per ?? null;
@@ -78,7 +99,55 @@ export function listingRows(proposal: ListingProposal, type: ComparableType, pri
       notices.push(`El anuncio es de ${proposal.operation.value} («${proposal.operation.evidence}») y estás capturando comparables en ${rent ? "renta" : "venta"}.`);
     }
   }
-  if (proposal.propertyType) notices.push(`Tipo de inmueble según el anuncio: «${proposal.propertyType.evidence}».`);
+
+  // Whole bathrooms and half ones are captured as one number: 2 and a half is 2.5.
+  const full = proposal.bathrooms;
+  const halves = proposal.halfBaths;
+  const bathrooms: ListingRow = full && !Number.isInteger(full.value)
+    ? figure("bathrooms", "Baños", full)
+    : full || halves
+      ? {
+        field: "bathrooms", label: "Baños",
+        value: String((full?.value ?? 0) + (halves?.value ?? 0) / 2),
+        evidence: [full?.evidence, halves?.evidence].filter(Boolean).join(" · "),
+        note: halves?.value
+          ? `${full ? `${number(full.value)} baño${full.value === 1 ? "" : "s"} y ` : ""}${number(halves.value)} medio${halves.value === 1 ? "" : "s"} baño${halves.value === 1 ? "" : "s"}: cada medio baño se captura como 0.5.`
+          : undefined,
+      }
+      : figure("bathrooms", "Baños", null);
+
+  // The construction of a land has no field in its card: what the listing says of it goes to «Observaciones», as written.
+  const asNotes: string[] = [];
+  const building: ListingRow[] = [];
+  if (built) {
+    const land = proposal.landArea;
+    building.push(
+      { field: "landArea", label: "Superficie de terreno (m²)", value: land ? String(land.squareMeters) : "", evidence: land?.evidence ?? null, note: hectares(land) },
+      text("constructionType", "Tipo de construcción", proposal.propertyType),
+      figure("bedrooms", "Recámaras", proposal.bedrooms),
+      bathrooms,
+      figure("parking", "Estacionamientos", proposal.parking),
+      figure("levels", "Niveles", proposal.levels),
+      figure("age", "Edad (años)", proposal.age),
+      text("conservation", "Conservación", proposal.conservation),
+    );
+  } else {
+    if (proposal.propertyType) notices.push(`Tipo de inmueble según el anuncio: «${proposal.propertyType.evidence}».`);
+    asNotes.push(...landRooms(proposal, true));
+    if (proposal.builtArea) notices.push(`El anuncio también indica superficie construida («${proposal.builtArea.evidence}»): un terreno no tiene campo para ella y va en Observaciones.`);
+  }
+
+  if (proposal.amenities.length) asNotes.push(`Amenidades: ${proposal.amenities.map((item) => item.value).join(", ")}`);
+  asNotes.push(...proposal.otherFacts.map((item) => item.value));
+  const notesValue = asNotes.map((item) => item.replace(/[.;\s]+$/, "")).join(". ");
+  const notesEvidence = [...(built ? [] : landRooms(proposal)), ...proposal.amenities, ...proposal.otherFacts]
+    .map((item) => (typeof item === "string" ? item : item.evidence));
+  const notes: ListingRow = {
+    field: "notes", label: "Observaciones",
+    value: notesValue ? `${notesValue}.`.slice(0, NOTES_MAX) : "",
+    evidence: notesEvidence.length ? notesEvidence.join(" · ") : null,
+    note: notesValue ? "Lo que el anuncio dice y la ficha no tiene campo para ello, tal como está escrito. El dictamen imprime las observaciones: edítalas a tu gusto." : undefined,
+  };
 
   // Without a portal named in the text, the site of the link is the source.
   let source = proposal.portal;
@@ -93,18 +162,34 @@ export function listingRows(proposal: ListingProposal, type: ComparableType, pri
 
   return {
     rows: [
-      location, area, price,
+      ...address,
+      price, area,
+      ...building,
+      figure("frontCount", "Número de frentes", proposal.frontCount),
       figure("frontage", "Frente (m)", proposal.frontage),
       figure("depth", "Fondo (m)", proposal.depth),
+      text("shape", "Forma", proposal.shape),
+      text("zone", "Zona", proposal.zone),
       text("landUse", "Uso de suelo (descripción)", proposal.landUse),
       text("topography", "Topografía", proposal.topography),
       text("services", "Servicios", proposal.services),
+      notes,
       text("sourceName", "Fuente", source),
       text("contactName", "Contacto", proposal.contactName),
       text("contactPhone", "Teléfono", proposal.contactPhone),
       text("url", "Liga del anuncio", proposal.url),
       text("offerDate", "Fecha de la oferta", proposal.listingDate),
+      text("publicationId", "ID de publicación", proposal.publicationId),
     ],
     notices,
   };
+}
+
+/** The fragments of the construction of a land, which travel in its «Observaciones». */
+function landRooms(proposal: ListingProposal, labeled = false) {
+  // «90 m2» alone does not say what it measures: in the notes it says it is the construction.
+  const built = proposal.builtArea && labeled && !/constru/i.test(proposal.builtArea.evidence)
+    ? { evidence: `Construcción: ${proposal.builtArea.evidence}` } : proposal.builtArea;
+  return [built, proposal.bedrooms, proposal.bathrooms, proposal.halfBaths, proposal.parking, proposal.levels, proposal.age, proposal.conservation]
+    .flatMap((item) => (item ? [item.evidence] : []));
 }

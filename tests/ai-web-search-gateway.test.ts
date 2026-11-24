@@ -17,6 +17,9 @@ const LISTING = {
   title: "Terreno en Las Lomas", propertyType: "terreno", operation: "venta" as const, landArea: 6000, builtArea: null, price: 3_000_000,
   currency: "MXN" as const, neighborhood: "Las Lomas", municipality: "Villa Ejemplo", state: "Jalisco", addressOrReference: "",
   portal: "Portal Ejemplo", url: "https://portal.example/anuncio/1", urlKind: "anuncio", listingDate: "", notes: "",
+  street: "", postalCode: "", bedrooms: null, bathrooms: null, halfBaths: null, parking: null, levels: null, age: null, frontage: 40, depth: null,
+  frontCount: null, landUse: "Habitacional", topography: "", services: "", shape: "", conservation: "", amenities: "", contactName: "", contactPhone: "",
+  publicationId: "",
 };
 const REPORT = { candidates: [LISTING], marketNote: "" };
 
