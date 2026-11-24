@@ -150,10 +150,10 @@ Se probó leer anuncios desde el servidor el 29 de septiembre de 2026. Inmuebles
 
 ## Buscar con IA en la web (22 nov 2026)
 
-Lo que pidió el valuador: describir lo que busca («terrenos de 5,000 a 7,000 m² en la mancha urbana de Arandas») y recibir varios comparables en una tabla, como en un chat. Dentro de «Buscar comparables» hay dos modos: **En la base del despacho** (la búsqueda de siempre) y **Buscar con IA en la web** (`ai-comparable-search.tsx`).
+Lo que pidió el valuador: describir lo que busca («terrenos de 5,000 a 7,000 m² en la mancha urbana de Arandas») y recibir comparables en una tabla, como en un chat (desde el 24 nov 2026, cinco por búsqueda; ver más abajo). Dentro de «Buscar comparables» hay dos modos: **En la base del despacho** (la búsqueda de siempre) y **Buscar con IA en la web** (`ai-comparable-search.tsx`).
 
 - El cuadro «Describe lo que buscas» llega lleno con los datos del sujeto y del mercado abierto (`suggestedWebSearchText`); se edita, se busca, y después se afina («también los libramientos norte y sur») conservando lo ya encontrado.
-- Resultados en tabla (Superficie · Precio · $/m² · Zona · Fuente), ordenable, con casillas; cada renglón dice «Sin verificar» y trae «Abrir anuncio». Lo que el anuncio no publica dice «Precio no publicado» / «Superficie no publicada». Con menos de 4 anuncios se avisa que el mercado publicado puede ser reducido.
+- Resultados en tabla (Superficie · Precio · $/m² · Zona · Fuente), ordenable, con casillas; cada renglón dice «Sin verificar» y trae «Abrir anuncio». Lo que el anuncio no publica dice «Precio no publicado» / «Superficie no publicada». Con menos de 3 anuncios (o menos de los pedidos, si fueron menos) se avisa que el mercado publicado puede ser reducido.
 - «Crear fichas» agrega los elegidos al mercado y a la base del despacho como «Sin revisar», con su liga, su portal y «Datos verificados: No»; respeta duplicados (misma liga).
 - No lee portales desde el servidor ni evade sus protecciones: usa solo la búsqueda web del proveedor de IA. Qué garantiza y qué no, límites, costo y cómo encenderla: [IA.md](IA.md).
 - No es una fuente del registro (`registry.ts`): esas responden en 8 s con comparables completos; esta tarda hasta 2.5 minutos, corre aparte y devuelve anuncios por verificar (`web-search.service.ts`, `web-listings.ts`).
@@ -180,6 +180,16 @@ De la videollamada con el valuador del 23 nov 2026: «¿entra toda la informaci�
 | Amenidades y otros datos | no → Observaciones | notas → Observaciones |
 
 - **Captura y fotos:** no se descargan páginas ni imágenes de los portales (no se hace scraping ni se evaden sus protecciones). El valuador abre el anuncio en su navegador con «Abrir anuncio», toma la captura y la pega: en «Buscar con IA», con «Pegar captura y fotos» bajo cada renglón antes de «Crear fichas»; en «Pegar anuncio», en «Captura del anuncio y fotos». Pegar (Ctrl/⌘+V), soltar o elegir; la primera imagen es la pantalla de referencia y las demás fotos (hasta 10), con «Usar como pantalla de referencia» y «Quitar» en cada una (`listing-images-picker.tsx`, reglas puras en `comparable-search/listing-images.ts`). Se suben por las rutas de siempre de la ficha (pantalla y fotos, con su tipo, peso y límite de subidas) en cuanto la ficha existe.
+
+## Buscar con IA de cinco en cinco (24 nov 2026)
+
+De los videos 8.1 y 8.2 del valuador. Sin migración: el conteo sale de los comparables mismos.
+
+- **Cinco por búsqueda:** cada búsqueda propone hasta 5 anuncios («Buscar 5 anuncios»; la descripción sugerida dice «Necesito cinco», no «varios»). Con resultados en pantalla, «Buscar N más» (1 a 5) pide solo esos, sin repetir los que están en pantalla ni los que ya son comparables del avalúo. Cada búsqueda se cobra al correr, se usen o no sus anuncios.
+- **Tope de 25 por avalúo:** un avalúo incluye hasta 25 comparables encontrados con IA, sumando todos sus mercados. Se cuentan los comparables incluidos de la versión actual cuyo «Origen del dato» es «Búsqueda con IA» (`aiComparableQuota`); quitar uno libera su lugar. El diálogo muestra «3 de 25 con IA» y la nota de que se elija bien dónde buscar y el resto se capture a mano. El servidor lo exige: con 25 no corre la búsqueda (409, «Este avalúo ya tiene los 25…») y «Crear fichas» rechaza la elección completa que pase del tope, diciendo cuántos quedan.
+- **Liga individual y vigente:** se descarta el anuncio cuya liga es un listado o una búsqueda general, y el que su página dice que ya no está publicado. Cada renglón dice si la página del anuncio se abrió («Página abierta: sigue publicado · N datos confirmados en ella») o no («No se pudo abrir el anuncio: confirma que siga publicado»).
+- **Todos los datos:** vialidad, número, fraccionamiento, C.P., frente y fondo («12 x 30», «M² de frente: 12»), forma, recámaras, baños y medios baños, estacionamientos, piso (a Observaciones), anunciante e inmobiliaria. Lo que la página abierta confirma se comprueba como en «Pegar anuncio». Detalle en [IA.md](IA.md).
+- **Fechas:** sin fecha en el anuncio, la fecha de la oferta es la de consulta; la vigencia nace en 6 meses. El valuador las cambia en la ficha.
 
 ## Pendiente
 

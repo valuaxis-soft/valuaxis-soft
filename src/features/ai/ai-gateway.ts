@@ -46,8 +46,28 @@ export type AiPrompt = {
   user: string;
 };
 
-/** How far a web search has gone: the searches run so far and what the last one asked. */
-export type AiWebSearchProgress = { searches: number; query: string | null };
+/**
+ * How far a web search has gone: the searches run so far, what the last one
+ * asked, the pages opened, and what the model is doing now: searching,
+ * opening pages or writing its answer.
+ */
+export type AiWebSearchProgress = { searches: number; query: string | null; fetches?: number; phase?: "searching" | "fetching" | "reporting" };
+
+/** A page the provider opened during a search, as text: the server never downloads it itself. */
+export type AiFetchedPage = { url: string; text: string };
+
+/** Where the time of a web search went, in milliseconds from its start: for the usage record, never shown. */
+export type AiWebSearchTimings = {
+  /** The first search the model asked for: what it thought before searching. */
+  firstSearchMs: number | null;
+  /** The last search or page opened. */
+  lastToolMs: number | null;
+  /** The model started writing its answer. */
+  reportStartMs: number | null;
+  totalMs: number;
+  /** Requests sent: more than one when the provider paused the turn. */
+  turns: number;
+};
 
 export type AiWebSearchOptions = {
   /** Searches the provider may run for this call. */
@@ -57,6 +77,10 @@ export type AiWebSearchOptions = {
   /** The whole call, searches included. */
   timeoutMs: number;
   onProgress?: (progress: AiWebSearchProgress) => void;
+  /** Each page the provider opened, as soon as it arrives, so it can be read while the search goes on. */
+  onPage?: (page: AiFetchedPage) => void;
+  /** The most of the answer the model may write, thinking included. */
+  maxTokens?: number;
 };
 
 export interface AiGateway {
@@ -69,5 +93,12 @@ export interface AiGateway {
    * schema. `resultUrls` are the addresses the provider's search returned,
    * so the caller can tell a page that was found from one that was written.
    */
-  searchWeb<T>(prompt: AiPrompt, schema: z.ZodType<T>, options: AiWebSearchOptions): Promise<{ data: T; usage: AiUsage; resultUrls: string[] }>;
+  searchWeb<T>(prompt: AiPrompt, schema: z.ZodType<T>, options: AiWebSearchOptions): Promise<{
+    data: T;
+    usage: AiUsage;
+    resultUrls: string[];
+    /** The pages the provider opened and returned as text. */
+    pages: AiFetchedPage[];
+    timings?: AiWebSearchTimings;
+  }>;
 }
