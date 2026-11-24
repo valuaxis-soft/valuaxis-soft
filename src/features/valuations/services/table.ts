@@ -163,7 +163,8 @@ export type TableSummaryBox = {
  * under the table, before its boxes ("table"), or under the boxes ("bottom").
  * A heading prints as a small bold title of its own, before the notes after it.
  */
-export type TableNote = { position: "top" | "table" | "bottom"; label?: string; text: string; heading?: boolean };
+/** `small`: a source note, printed smaller than the table («Fuente: …»). */
+export type TableNote = { position: "top" | "table" | "bottom"; label?: string; text: string; heading?: boolean; small?: boolean };
 
 /**
  * A column the appraiser adds to a table the calculation writes: text or
@@ -300,6 +301,12 @@ export type TableSchema = {
   capture?: TableCaptureMarker;
   /** Notes printed as written: above the table and its boxes, or under them. */
   notes?: TableNote[];
+  /**
+   * The only rows printed with the alternate color of the table, by id; the
+   * others print white. Absent, the rows alternate as in every table (the
+   * «calificación» rows of the rate table, 24 nov 2026).
+   */
+  shadedRows?: string[];
   /**
    * A grid of labels and marks printed as written, like the offer level of the
    * appraiser's format: no header row, no rules or shading, in bold.

@@ -13,7 +13,7 @@ import { canConclude, conclusionEngineConfig, conclusionInput, type ConclusionCa
 import { COST_TEMPLATE_BLOCK_IDS, costDocumentBlocks } from "@/features/valuations/calculation/cost-document";
 import { FACTOR_ANNEX_PREFIX, FACTOR_ANNEX_TEMPLATE_BLOCK_IDS, factorJustificationBlocks, marketsInReport } from "@/features/valuations/calculation/factor-justification-document";
 import { costEngineConfig, toCostEngineInput, type CostCalculationDto } from "@/features/valuations/calculation/cost-types";
-import { INCOME_BLOCK_PREFIX, INCOME_TEMPLATE_BLOCK_IDS, incomeDocumentBlocks } from "@/features/valuations/calculation/income-document";
+import { INCOME_BLOCK_PREFIX, INCOME_TEMPLATE_BLOCK_IDS, incomeDocumentBlocks, incomeTemplateUntouched } from "@/features/valuations/calculation/income-document";
 import { incomeEngineConfig, toIncomeEngineInput, type IncomeCalculationDto } from "@/features/valuations/calculation/income-types";
 import { isMachineryCostBlock, isMachineryMarketBlock, machineryCostBlocks, machineryMarketBlocks } from "@/features/valuations/calculation/machinery-document";
 import { toMachineryCostEngineInput, toMachineryMarketEngineInput, type MachineryCalculationDto } from "@/features/valuations/calculation/machinery-types";
@@ -156,15 +156,23 @@ export function useCalculationDocumentSync({
           : section);
   };
 
-  const applyIncome = (calculation: IncomeCalculationDto) => {
-    if (!canEdit || calculation.locked || !calculation.configured) return;
+  /**
+   * `shown`: the income panel is open. An approach never saved writes its
+   * pages then, in place of the template's blocks, as long as nothing was
+   * written in those (24 nov 2026: «Bloques de la plantilla», «Por capturar»
+   * and «tasa adoptada» confused the appraiser, and its tables could not be
+   * formatted before the first result).
+   */
+  const applyIncome = (calculation: IncomeCalculationDto, options: { shown?: boolean } = {}) => {
+    if (!canEdit || calculation.locked) return;
+    if (!calculation.configured && (!options.shown || machinery)) return;
     const input = toIncomeEngineInput(calculation);
     // Without a result the blocks print what was captured and why the value is not there yet, instead of a dash in every line.
     const blocks = input.ok
       ? incomeDocumentBlocks(calculation, computeIncomeApproach(input.input, incomeEngineConfig(calculation)))
       : incomeDocumentBlocks(calculation, null, input.reason);
     updateBySection("motor-ingresos", (key, section) =>
-      key === "INGRESOS"
+      key === "INGRESOS" && (calculation.configured || incomeTemplateUntouched(section))
         ? replaceGeneratedBlocks(section, (block) => block.id.startsWith(INCOME_BLOCK_PREFIX), blocks, { placeholderIds: INCOME_TEMPLATE_BLOCK_IDS })
         : section);
   };
@@ -228,7 +236,7 @@ export function useCalculationDocumentSync({
     void refresh({ conclusion: true });
   };
   const onIncomeCalculation = (calculation: IncomeCalculationDto) => {
-    applyIncome(calculation);
+    applyIncome(calculation, { shown: true });
     void refresh({ conclusion: true });
   };
   const onMachineryCalculation = (calculation: MachineryCalculationDto) => {

@@ -13,7 +13,6 @@ import {
   DEDUCTIONS_BY_METHOD,
   DEFAULT_DEDUCTIONS,
   INCOME_METHOD_LABELS,
-  RATE_TABLE_OPTIONS,
   rentMarketStats,
   toIncomeEngineInput,
   type IncomeCalculationDto,
@@ -22,6 +21,8 @@ import {
   incomeEngineConfig,
 } from "@/features/valuations/calculation/income-types";
 import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, computeIncomeApproach, type IncomeMethod } from "@/features/valuations/engine/income";
+import type { RoundingDigits } from "@/features/valuations/engine/config";
+import { RoundingSelect } from "./calculation-controls";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts } from "@/features/valuations/calculation/captured-formulas";
 import { FormulaInput } from "./formula-input";
@@ -56,7 +57,11 @@ type Draft = {
   /** Deduction rates are edited as percentages ("10" for 10 %). */
   deductions: { concept: string; rate: string }[];
   ratingColumns: (number | null)[];
+  /** The rates of «Tasa a utilizar», as percentages. */
   appliedRate: string;
+  rateFromMarket: string;
+  weightedRate: string;
+  rounding: RoundingDigits;
 };
 
 /** The draft of what the server holds; a field typed as a formula reads back as typed. */
@@ -87,7 +92,10 @@ const plainDraftOf = (input: IncomeInputDto): Draft => ({
     rate: deduction.rate === null ? "" : String(Number((deduction.rate * 100).toFixed(6))),
   })),
   ratingColumns: input.ratingColumns,
-  appliedRate: input.appliedRate === null ? "" : String(Number((input.appliedRate * 100).toFixed(6))),
+  appliedRate: asPercent(input.appliedRate),
+  rateFromMarket: asPercent(input.rateFromMarket),
+  weightedRate: asPercent(input.weightedRate),
+  rounding: input.rounding,
 });
 
 /** What the panel saves, with the formulas typed in its numeric fields (deductions without a concept are not saved). */
@@ -99,6 +107,8 @@ function inputOf(draft: Draft): IncomeInputDto {
     rentableUnits: draft.units,
     deductions: draft.deductions.filter((deduction) => deduction.concept.trim()),
     appliedRate: draft.appliedRate,
+    rateFromMarket: draft.rateFromMarket,
+    weightedRate: draft.weightedRate,
   };
   return { ...input, formulas: collectFormulas(typed, input) };
 }
@@ -127,7 +137,10 @@ const valuesOf = (draft: Draft): IncomeInputDto => ({
       return { concept: deduction.concept.trim(), rate: rate === null ? null : rate / 100 };
     }),
   ratingColumns: draft.ratingColumns,
-  appliedRate: (() => { const rate = parseDecimal(draft.appliedRate); return rate === null ? null : rate / 100; })(),
+  appliedRate: fromPercent(draft.appliedRate),
+  rateFromMarket: fromPercent(draft.rateFromMarket),
+  weightedRate: fromPercent(draft.weightedRate),
+  rounding: draft.rounding,
 });
 
 const savedInputOf = (calculation: IncomeCalculationDto): IncomeInputDto => ({
@@ -138,6 +151,9 @@ const savedInputOf = (calculation: IncomeCalculationDto): IncomeInputDto => ({
   deductions: calculation.deductions,
   ratingColumns: calculation.ratingColumns,
   appliedRate: calculation.appliedRate,
+  rateFromMarket: calculation.rateFromMarket,
+  weightedRate: calculation.weightedRate,
+  rounding: calculation.rounding,
   formulas: calculation.formulas ?? {},
 });
 
@@ -257,8 +273,11 @@ export function IncomeCalculationPanel(props: {
   const cellInput = "h-7 text-xs";
   const unitRowIds = INCOME_CAPTURE.rows(INCOME_CAPTURE.units.table, draft.units.length);
   const deductionRowIds = INCOME_CAPTURE.rows(INCOME_CAPTURE.deductions.table, draft.deductions.length);
-  const ratingRowIds = INCOME_CAPTURE.rows(INCOME_CAPTURE.rating.table, RATE_TABLE_CRITERIA.length);
   const adopted = calculation.rentMarket.adoptedUnitRent;
+  // What a rentable surface inherits while it is not typed (FAL-13): the rent adopted in the rent market, and its subject's area when there is one surface.
+  const inheritedRent = adopted && adopted > 0 ? adopted : null;
+  const subjectArea = calculation.rentMarket.subjectArea;
+  const inheritedArea = draft.units.length === 1 && subjectArea && subjectArea > 0 ? subjectArea : null;
   const method = draft.method;
   const setAnnuity = (key: keyof Draft["annuity"]) => (event: { target: { value: string } }) =>
     update({ annuity: { ...draft.annuity, [key]: event.target.value } });
@@ -307,8 +326,8 @@ export function IncomeCalculationPanel(props: {
         {method !== "mercado" ? (
         <div className="grid gap-2" data-income-in-tables="">
           <p className="text-xs text-muted-foreground">
-            Las superficies rentables, las deducciones{method === "tabla" ? " y la calificación de cada criterio de la tasa" : ""} se capturan abajo, en las tablas de sus bloques:
-            las celdas en blanco son tuyas y las grises las calcula el sistema.
+            Las superficies rentables y las deducciones se capturan abajo, en las tablas de sus bloques: las celdas en blanco son tuyas y las grises las calcula el sistema.
+            {method === "tabla" ? " En «Cálculo de tasa» haz clic en la columna que corresponde a cada criterio, en su renglón «calificación»; en «Tasa a utilizar» escribe la tasa aplicada (vacía, se usa la tasa resultante con todos sus decimales)." : ""}
           </p>
           {/* Adding a row goes under its table; while the page has no such table on screen, here. */}
           <div className="flex flex-wrap gap-2 empty:hidden">
@@ -426,19 +445,10 @@ export function IncomeCalculationPanel(props: {
         </div>
         ) : null}
 
-        {method === "tabla" ? (
-        <div className="grid gap-2">
-          <Field className="max-w-60">
-            <FieldLabel htmlFor="income-applied-rate">Tasa aplicada (%, opcional)</FieldLabel>
-            <FormulaInput
-              id="income-applied-rate"
-              value={draft.appliedRate}
-              placeholder={result?.tableRate ? `De la tabla: ${(result.tableRate * 100).toFixed(4)}` : undefined}
-              onChange={(event) => update({ appliedRate: event.target.value })}
-            />
-          </Field>
-        </div>
-        ) : null}
+        <Field className="max-w-60">
+          <FieldLabel htmlFor="income-rounding">Redondeo del valor por ingresos</FieldLabel>
+          <RoundingSelect id="income-rounding" label="Redondeo del valor por ingresos" value={draft.rounding} onChange={(rounding) => commit({ rounding })} />
+        </Field>
       </fieldset>
 
       {rentStats && method === "mercado" ? (
@@ -506,22 +516,26 @@ export function IncomeCalculationPanel(props: {
             <CaptureSlot at={cellAt(INCOME_CAPTURE.units.area)}>
               <FormulaInput
                 aria-label="Superficie (m²)"
-                className={cellInput}
+                className={cn(cellInput, !unit.area && inheritedArea !== null && "text-muted-foreground")}
                 disabled={readOnly}
-                value={unit.area}
-                placeholder={draft.units.length === 1 && calculation.rentMarket.subjectArea ? String(calculation.rentMarket.subjectArea) : undefined}
-                data-no-fill={draft.units.length === 1 && calculation.rentMarket.subjectArea ? "computed" : undefined}
+                // The subject's area of the rent market, as a value and not a hint: written over, the typed one rules.
+                value={unit.area || (inheritedArea === null ? "" : String(inheritedArea))}
+                title={!unit.area && inheritedArea !== null ? "Superficie del sujeto del mercado de rentas. Escribe otra para usarla aquí." : undefined}
+                data-inherited={!unit.area && inheritedArea !== null ? "mercado-rentas" : undefined}
+                data-no-fill={inheritedArea !== null ? "computed" : undefined}
                 onChange={(event) => update({ units: draft.units.map((item, i) => i === index ? { ...item, area: event.target.value } : item) })}
               />
             </CaptureSlot>
             <CaptureSlot at={cellAt(INCOME_CAPTURE.units.unitRent)}>
               <FormulaInput
                 aria-label="Renta ($/m²/mes)"
-                className={cellInput}
+                className={cn(cellInput, !unit.unitRent && inheritedRent !== null && "text-muted-foreground")}
                 disabled={readOnly}
-                value={unit.unitRent}
-                placeholder={adopted ? `Mercado: ${adopted}` : undefined}
-                data-no-fill={adopted ? "computed" : undefined}
+                // The rent adopted in the rent market, the one the calculation uses: one rent, not a hint beside an empty cell.
+                value={unit.unitRent || (inheritedRent === null ? "" : String(inheritedRent))}
+                title={!unit.unitRent && inheritedRent !== null ? "Renta adoptada en el mercado de rentas. Escribe otra para usarla en esta superficie." : undefined}
+                data-inherited={!unit.unitRent && inheritedRent !== null ? "mercado-rentas" : undefined}
+                data-no-fill={inheritedRent !== null ? "computed" : undefined}
                 onChange={(event) => update({ units: draft.units.map((item, i) => i === index ? { ...item, unitRent: event.target.value } : item) })}
               />
             </CaptureSlot>
@@ -554,23 +568,49 @@ export function IncomeCalculationPanel(props: {
           </Fragment>
         );
       }) : null}
-      {method === "tabla" ? RATE_TABLE_CRITERIA.map((criterion, index) => (
-        <CaptureSlot key={criterion} at={{ table: INCOME_CAPTURE.rating.table, row: ratingRowIds[index], column: INCOME_CAPTURE.rating.option }}>
-          <NativeSelect
-            aria-label={criterion}
-            size="sm"
-            className="w-full"
-            disabled={readOnly}
-            value={draft.ratingColumns[index] === null ? "" : String(draft.ratingColumns[index])}
-            onChange={(event) => commit({
-              ratingColumns: draft.ratingColumns.map((column, i) => i === index ? (event.target.value === "" ? null : Number(event.target.value)) : column),
-            })}
-          >
-            <NativeSelectOption value="">Sin calificar</NativeSelectOption>
-            {RATE_TABLE_OPTIONS[criterion].map((option, column) => (
-              <NativeSelectOption key={option} value={String(column)}>{option} ({percent(RATE_TABLE_RATES[column], 0)})</NativeSelectOption>
-            ))}
-          </NativeSelect>
+      {/* TCH: the 1 of each criterion, clicked in its «calificación» row of «Cálculo de tasa»; a second click takes it away. */}
+      {method === "tabla" ? RATE_TABLE_CRITERIA.flatMap((criterion, index) => RATE_TABLE_RATES.map((rate, column) => {
+        const marked = draft.ratingColumns[index] === column;
+        return (
+          <CaptureSlot key={`${criterion}-${column}`} at={{ table: INCOME_CAPTURE.rating.table, row: INCOME_CAPTURE.rating.row(index), column: INCOME_CAPTURE.rating.column(column) }}>
+            <button
+              type="button"
+              aria-label={`${criterion}: calificar en ${percent(rate, 0)}`}
+              aria-pressed={marked}
+              title={marked ? "Quitar la calificación" : `Calificar ${criterion.toLowerCase()} en ${percent(rate, 0)}`}
+              disabled={readOnly}
+              className={cn(
+                "h-7 w-full rounded-sm border border-dashed border-input bg-background text-center text-xs font-semibold tabular-nums transition-colors hover:border-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:border-transparent disabled:bg-transparent",
+                marked && "border-solid border-primary bg-primary/10 text-primary",
+              )}
+              data-rating-mark={marked ? "" : undefined}
+              onClick={() => commit({ ratingColumns: draft.ratingColumns.map((chosen, i) => (i === index ? (marked ? null : column) : chosen)) })}
+            >
+              {marked ? "1" : ""}
+            </button>
+          </CaptureSlot>
+        );
+      })) : null}
+      {/* «Tasa a utilizar»: the market and weighted rates (printed for reference) and the rate applied, in their cells. */}
+      {method === "tabla" ? ([
+        ["rateFromMarket", "Tasa obtenida de mercado (%)", undefined],
+        ["weightedRate", "Tasa ponderada (%)", undefined],
+        ["appliedRate", "Tasa aplicada (%)", result?.tableRate ?? null],
+      ] as const).map(([key, label, fromTable]) => (
+        <CaptureSlot key={key} at={{ table: INCOME_CAPTURE.rateToUse.table, row: INCOME_CAPTURE.rateToUse.rows[key], column: INCOME_CAPTURE.rateToUse.column }}>
+          <span className="flex items-center gap-0.5">
+            <FormulaInput
+              aria-label={label}
+              className={cellInput}
+              disabled={readOnly}
+              value={draft[key]}
+              // Empty, the rate applied is the table's, with every decimal.
+              placeholder={fromTable ? `${(fromTable * 100).toFixed(4)} (de la tabla)` : undefined}
+              data-no-fill={fromTable ? "computed" : undefined}
+              onChange={(event) => update({ [key]: event.target.value })}
+            />
+            <span className="text-muted-foreground">%</span>
+          </span>
         </CaptureSlot>
       )) : null}
     </section>

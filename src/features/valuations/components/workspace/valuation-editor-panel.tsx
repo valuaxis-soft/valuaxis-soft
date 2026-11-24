@@ -61,6 +61,7 @@ import { ValuationSettingsPanel } from "../editor/valuation-settings-panel";
 import { ReportInclusionBadge, SectionDocumentSettings } from "../editor/section-document-settings";
 import { SignaturesEditor } from "../editor/signatures-editor";
 import { GeneratedTableEditor } from "../editor/generated-table-editor";
+import { GeneratedBlockTables, PENDING_TABLE_NOTICE } from "../editor/generated-block-tables";
 import { GeneratedConcepts } from "../editor/generated-concepts";
 
 import { Check, Eye, EyeOff, GripVertical, PencilLine, Plus, Trash2, X } from "lucide-react";
@@ -400,6 +401,10 @@ export function ValuationEditorPanel(props: {
       onMoveBlock={props.onMoveBlock}
       onUpdateBlock={(patch) => props.onUpdateBlock(section.id, block.id, patch)}
       onUpdateTable={(tableId, updater, apartadoId) => props.onUpdateTable(section.id, block.id, tableId, updater, apartadoId)}
+      onAddTable={() => props.onAddTable(section.id, block.id)}
+      onAddTableColumn={(tableId) => props.onAddTableColumn(section.id, block.id, tableId)}
+      onAddTableRow={(tableId) => props.onAddTableRow(section.id, block.id, tableId)}
+      onRemoveTable={(tableId) => props.onRemoveTable(section.id, block.id, tableId)}
     />
   ) : (
     <SortableBlockEditor
@@ -602,8 +607,8 @@ export function ValuationEditorPanel(props: {
                 {hasPlaceholders ? (
                   <details className="grid gap-3 rounded-lg border border-dashed p-3" data-template-placeholders="">
                     <summary className="cursor-pointer text-sm font-medium">
-                      Bloques de la plantilla ({displayBlocks.filter((item) => item.placeholder).length})
-                      <span className="ml-2 text-xs font-normal text-muted-foreground">Se imprimen mientras el cálculo no tenga resultado; después, sus páginas los sustituyen. El cálculo no se captura aquí.</span>
+                      Texto de la plantilla que se sustituirá ({displayBlocks.filter((item) => item.placeholder).length})
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">Los bloques que la plantilla trae para esta sección. Se imprimen hasta que el cálculo tenga resultado; después los sustituyen las tablas del cálculo, arriba.</span>
                     </summary>
                     <div className="mt-3 space-y-4">
                       {displayBlocks.filter((item) => item.placeholder).map(({ block }) => renderBlockEditor(block, editableBlocks.findIndex((item) => item.id === block.id), editableBlocks.length))}
@@ -1206,7 +1211,10 @@ function valueFormatPatch(valueFormat: ConceptValueFormat, customUnit?: string):
  * content, copying it, deleting it) is disabled and says why. Its tables
  * show as any table of the editor (video 5.3), its figures locked.
  */
-function GeneratedBlockEditor({ block, blockCount, blockIndex, capture, readOnly: sectionReadOnly, section, onMoveBlock, onUpdateBlock, onUpdateTable }: {
+function GeneratedBlockEditor({
+  block, blockCount, blockIndex, capture, readOnly: sectionReadOnly, section, onMoveBlock, onUpdateBlock, onUpdateTable,
+  onAddTable, onAddTableColumn, onAddTableRow, onRemoveTable,
+}: {
   block: Block;
   blockCount: number;
   blockIndex: number;
@@ -1217,11 +1225,16 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, capture, readOnly
   onMoveBlock: (sectionId: string, blockId: string, direction: -1 | 1) => void;
   onUpdateBlock: (patch: Partial<Block>) => void;
   onUpdateTable: (tableId: string, updater: (table: TableContent) => TableContent, apartadoId?: string) => void;
+  /** «Agregar → Tabla»: a table of the appraiser's own in the block, kept when the calculation writes it again. */
+  onAddTable: () => void;
+  onAddTableColumn: (tableId: string) => void;
+  onAddTableRow: (tableId: string) => void;
+  onRemoveTable: (tableId: string) => void;
 }) {
-  const tables = [
-    ...block.tables.map((table) => ({ table, apartadoId: undefined as string | undefined, apartadoTitle: undefined as string | undefined })),
-    ...block.apartados.flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id, apartadoTitle: apartado.title }))),
-  ].filter(({ table }) => !ensureTableV2(table).schema?.plain);
+  // The block's own tables are laid out as they print (GeneratedBlockTables); a subbloque's, one after another.
+  const tables = block.apartados
+    .flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id as string | undefined, apartadoTitle: apartado.title as string | undefined })))
+    .filter(({ table }) => !ensureTableV2(table).schema?.plain);
   // A block the dictamen does not have yet is only captured in: hiding, moving and formatting it come with its first result.
   const pending = Boolean(capture?.pending);
   const readOnly = sectionReadOnly || pending;
@@ -1251,7 +1264,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, capture, readOnly
       cardRef={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn("rounded-xl border border-dashed bg-muted/20", market && cn("border-l-4", MARKET_ACCENT[market.type].border), !block.enabled && "opacity-65")}
-      badge={pending ? "Por capturar" : block.enabled ? (block.sectionLabel ? `${block.sectionLabel.replace(/\.+$/, "")}.` : titlePrints(block) ? "Fijo" : "Sin título") : "Oculto"}
+      badge={pending ? "Aún no se imprime" : block.enabled ? (block.sectionLabel ? `${block.sectionLabel.replace(/\.+$/, "")}.` : titlePrints(block) ? "Fijo" : "Sin título") : "Oculto"}
       dragHandle={
         <Button type="button" size="icon-sm" variant="ghost" aria-label={`Mover ${block.title}`} title="Arrastrar para reordenar" disabled={readOnly} {...attributes} {...listeners}>
           <GripVertical />
@@ -1308,13 +1321,13 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, capture, readOnly
       }}
     >
       <ActionStrip
-        capabilities={{}}
+        capabilities={{ tables: true }}
         locks={{ add: locks.add, subblock: locks.subblock }}
         readOnly={readOnly}
         conceptControl={null}
         onAddImage={() => undefined}
         onAddApartado={() => undefined}
-        onAddTable={() => undefined}
+        onAddTable={onAddTable}
         subBlockLabel={ADD_SUBBLOCK_LABEL}
       />
       {market ? (
@@ -1331,6 +1344,19 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, capture, readOnly
       </p>
       {block.enabled ? <GeneratedConcepts block={block} readOnly={readOnly} onChange={onUpdateBlock} /> : null}
       {/* A hidden block still takes its capture: it leaves the dictamen, not the calculation. */}
+      {block.enabled || capture ? (
+        <GeneratedBlockTables
+          block={block}
+          capture={Boolean(capture)}
+          pending={pending}
+          readOnly={sectionReadOnly}
+          onLayoutChange={(contentLayout) => onUpdateBlock({ contentLayout })}
+          onUpdateTable={(tableId, updater) => onUpdateTable(tableId, updater)}
+          onAddTableColumn={onAddTableColumn}
+          onAddTableRow={onAddTableRow}
+          onRemoveTable={onRemoveTable}
+        />
+      ) : null}
       {block.enabled || capture ? tables.map(({ table, apartadoId, apartadoTitle }, index) => (
         <div key={table.id} className="grid min-w-0 gap-1.5">
           {/* The apartado's title over its first table, as the dictamen prints it. */}
@@ -1341,7 +1367,7 @@ function GeneratedBlockEditor({ block, blockCount, blockIndex, capture, readOnly
             capture={Boolean(capture)}
             onUpdate={(updater) => {
               if (pending) {
-                toast.info("Esta tabla todavía no está en el dictamen.", { id: "capture-pending-table", description: "Captura sus datos: en cuanto el cálculo tenga resultado podrás darle formato, renombrar sus encabezados y agregarle columnas." });
+                toast.info(PENDING_TABLE_NOTICE.title, { id: "capture-pending-table", description: PENDING_TABLE_NOTICE.description });
                 return;
               }
               onUpdateTable(table.id, updater, apartadoId);

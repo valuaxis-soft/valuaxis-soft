@@ -1208,7 +1208,8 @@ function SortableRow({
 
   return (
     <TableRow ref={setNodeRef} style={style} className={cn(
-      rowIndex % 2 === 1 && "bg-primary/[0.03]",
+      // The rows the dictamen shades (the «calificación» of the rate table) are shaded here too; otherwise they alternate.
+      tableV2.schema?.shadedRows ? tableV2.schema.shadedRows.includes(row.id) && "bg-muted" : rowIndex % 2 === 1 && "bg-primary/[0.03]",
       isOver && !isDragging && "bg-blue-50 dark:bg-blue-500/15",
     )} data-row-hidden={hidden ? "" : undefined}>
       <TableCell className={cn("w-6 select-none p-0 text-center font-mono text-[10px] text-muted-foreground/70", hidden && "line-through")} title={hidden ? `Fila ${rowIndex + 1}: oculta en el dictamen` : `Fila ${rowIndex + 1} en las fórmulas`}>

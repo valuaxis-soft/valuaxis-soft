@@ -28,7 +28,7 @@ import { CaptureStore, CaptureStoreProvider, captureSlotKey } from "../src/featu
 import { GeneratedTableEditor } from "../src/features/valuations/components/editor/generated-table-editor";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeCostApproach } from "../src/features/valuations/engine/costs";
-import { computeIncomeApproach } from "../src/features/valuations/engine/income";
+import { RATE_TABLE_CRITERIA, computeIncomeApproach } from "../src/features/valuations/engine/income";
 import { computeMarketApproach } from "../src/features/valuations/engine/market";
 import { Trace } from "../src/features/valuations/engine/trace";
 import type { Block, TableContent } from "../src/features/valuations/model";
@@ -224,8 +224,11 @@ test("ingresos: the rentable surfaces, the deductions and the ratings of the rat
   const deductions = tableOf(captured, INCOME_CAPTURE.deductions.table);
   assert.deepEqual([INCOME_CAPTURE.deductions.concept, INCOME_CAPTURE.deductions.rate].map((column) => place(deductions, column)), ["Concepto", "Porcentaje"]);
   const rating = tableOf(captured, INCOME_CAPTURE.rating.table);
-  assert.equal(rating.rows.length, 7, "the seven criteria, to rate each in its row");
-  assert.equal(place(rating, INCOME_CAPTURE.rating.option), "Calificación");
+  // The seven «calificación» rows of the book's rate table, each with a cell per rate to mark.
+  assert.deepEqual(RATE_TABLE_CRITERIA.map((_, index) => rating.rows.some((row) => row.id === INCOME_CAPTURE.rating.row(index))), RATE_TABLE_CRITERIA.map(() => true));
+  assert.deepEqual([0, 5].map((rate) => rating.columns.find((column) => column.id === INCOME_CAPTURE.rating.column(rate))?.name), ["7%", "12%"]);
+  const toUse = tableOf(captured, INCOME_CAPTURE.rateToUse.table);
+  assert.equal(cellText(toUse, INCOME_CAPTURE.rateToUse.rows.appliedRate, INCOME_CAPTURE.rateToUse.column), "10.0000%");
   // What the dictamen prints of those tables is what the capture shows.
   const text = (table: ReturnType<typeof ensureTableV2>) => table.rows.map((row) => table.columns.map((column) => { const cell = row.cells[column.id]; return cell?.kind === "value" ? cell.value : ""; }));
   assert.deepEqual(text(units), text(tableOf(printed, INCOME_CAPTURE.units.table)));
@@ -234,7 +237,7 @@ test("ingresos: the rentable surfaces, the deductions and the ratings of the rat
   // A surface and a deduction being written have their rows before there is a result; the value typed is the one shown.
   const writing = income({ rentableUnits: [{ description: "", area: null, unitRent: null }, { description: "Local", area: 40, unitRent: 120 }], deductions: [{ concept: "", rate: null }], appliedRate: null });
   const pending = incomeCaptureBlocks(writing, null);
-  assert.deepEqual(pending.map((block) => block.id), ["motor-ingresos-rentas", "motor-ingresos-deducciones", "motor-ingresos-tasa"]);
+  assert.deepEqual(pending.map((block) => block.id), ["motor-ingresos-rentas", "motor-ingresos-deducciones", "motor-ingresos-tasa", "motor-ingresos-resultado"]);
   assert.equal(tableOf(pending, INCOME_CAPTURE.units.table).rows.length, 2);
   assert.equal(tableOf(pending, INCOME_CAPTURE.units.table).rows[1].cells["col-2"].kind === "value" && cellText(tableOf(pending, INCOME_CAPTURE.units.table), INCOME_CAPTURE.rows(INCOME_CAPTURE.units.table, 2)[1], "col-2"), "40.00 m²");
   assert.equal(tableOf(pending, INCOME_CAPTURE.deductions.table).rows.length, 1);

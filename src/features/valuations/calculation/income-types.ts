@@ -9,29 +9,12 @@ import { homologate, type HomologationInput, type HomologationStats } from "../e
 import { Trace } from "../engine/trace";
 import type { CapturedFormulas, PercentFields } from "./captured-formulas";
 import { withPrecision, type CalculationPrecision } from "./calculation-precision";
-import { DEFAULT_ENGINE_CONFIG, type EngineConfig } from "../engine/config";
+import { DEFAULT_ENGINE_CONFIG, type EngineConfig, type RoundingDigits } from "../engine/config";
 
 export const INCOME_METHOD_LABELS: Record<IncomeMethod, string> = {
   tabla: "Tabla de tasa (formato TCH)",
   anualidad: "Anualidad con TIIE (formato TU)",
   mercado: "Tasa de mercado venta / renta (formato TR)",
-};
-
-/** What each column of the rate table means for each criterion (docs/fase0/metodologia/03-rentas-ingresos.md, 2.b). */
-export const RATE_TABLE_OPTIONS: Record<(typeof RATE_TABLE_CRITERIA)[number], readonly string[]> = {
-  "Edad": ["0 a 5 años", "5 a 20", "20 a 40", "40 a 50", "50 a 60", "Más de 60"],
-  "Vida útil remanente": ["Más de 60 años", "50 a 60", "40 a 50", "20 a 40", "5 a 20", "Terminada"],
-  "Estado de conservación": ["Nueva", "Muy bueno", "Bueno", "Regular", "Malo", "Ruinoso"],
-  "Proyecto": ["Muy bueno", "Bueno", "Adecuado", "Regular", "Deficiente", "Malo"],
-  "Relación terreno / construcción": [
-    "Construcción mayor, más de 3 a 1", "Construcción mayor, hasta 3 a 1", "Construcción mayor, hasta 2 a 1",
-    "1 a 1", "Terreno mayor, hasta 3 a 1", "Terreno mayor, más de 3 a 1",
-  ],
-  "Uso del inmueble": [
-    "Casa unifamiliar", "Edificio de productos habitacional y comercial", "Departamento o casa en condominio",
-    "Oficina o local en condominio", "Oficina o local unifamiliar", "Bodega o industria",
-  ],
-  "Clasificación de zona": ["Lujo", "Primer orden", "Segundo orden", "Tercer orden", "Proletaria con servicios completos", "Proletaria con servicios incompletos"],
 };
 
 /** Deductions of the TCH book with their default rates. */
@@ -91,15 +74,21 @@ export type IncomeInputDto = {
   deductions: IncomeDeductionDto[];
   /** Column chosen for each criterion of the rate table, or null while not chosen. */
   ratingColumns: (number | null)[];
-  /** The rate the appraiser applies; the rate from the table when empty. */
+  /** IV) Tasa aplicada: the rate the appraiser applies; the rate from the table when empty. */
   appliedRate: number | null;
+  /** II) Tasa obtenida de mercado, of the books' «Tasa a utilizar»: printed for reference, it does not enter the calculation. */
+  rateFromMarket: number | null;
+  /** III) Tasa ponderada: printed for reference, it does not enter the calculation. */
+  weightedRate: number | null;
+  /** How the capitalized value is rounded (Excel ROUND digits); null, not rounded, as the books. */
+  rounding: RoundingDigits;
   /** Formulas typed in the numeric fields, by path ("rentableUnits.0.area"); absent keeps the stored ones whose value did not change. */
   formulas?: CapturedFormulas;
 };
 
 /** Rates typed as percentages ("7.92" for 0.0792). */
 export const INCOME_PERCENT_FIELDS: PercentFields = (path) =>
-  /^(annuity\.(tiie|inflation)|marketRate\.(negotiation|vacancy)|deductions\.\d+\.rate|appliedRate)$/.test(path);
+  /^(annuity\.(tiie|inflation)|marketRate\.(negotiation|vacancy)|deductions\.\d+\.rate|appliedRate|rateFromMarket|weightedRate)$/.test(path);
 
 export type IncomeCalculationDto = IncomeInputDto & {
   /**
@@ -153,6 +142,9 @@ export const DEFAULT_INCOME: IncomeInputDto = {
   deductions: DEFAULT_DEDUCTIONS,
   ratingColumns: RATE_TABLE_CRITERIA.map(() => null),
   appliedRate: null,
+  rateFromMarket: null,
+  weightedRate: null,
+  rounding: null,
 };
 
 type EngineInputResult = { ok: true; input: IncomeApproachInput } | { ok: false; reason: string };
@@ -160,8 +152,10 @@ type EngineInputResult = { ok: true; input: IncomeApproachInput } | { ok: false;
 const positive = (value: number | null | undefined): value is number => typeof value === "number" && value > 0;
 
 export function toIncomeEngineInput(
-  calculation: Pick<IncomeCalculationDto, "method" | "annuity" | "marketRate" | "rentableUnits" | "deductions" | "ratingColumns" | "appliedRate" | "rentMarket">,
+  calculation: Pick<IncomeCalculationDto, "method" | "annuity" | "marketRate" | "rentableUnits" | "deductions" | "ratingColumns" | "appliedRate" | "rentMarket">
+    & Partial<Pick<IncomeCalculationDto, "rounding">>,
 ): EngineInputResult {
+  const rounding = calculation.rounding === undefined || calculation.rounding === null ? {} : { rounding: calculation.rounding };
   const deductions = calculation.deductions.map((deduction) => ({ concept: deduction.concept, rate: deduction.rate ?? 0 }));
   if (calculation.method === "mercado") {
     const homologation = calculation.rentMarket.homologation;
@@ -172,6 +166,7 @@ export function toIncomeEngineInput(
       ok: true,
       input: {
         method: "mercado",
+        ...rounding,
         rentMarket: homologation,
         rentableUnits: [],
         deductions: [],
@@ -196,6 +191,7 @@ export function toIncomeEngineInput(
     return { ok: false, reason: "Captura la renta unitaria, o el mercado de rentas." };
   }
   const rentInput = {
+    ...rounding,
     ...(adopted ? { adoptedUnitRent: adopted } : {}),
     rentableUnits: units.map((unit) => ({
       description: unit.description || "Superficie rentable",
