@@ -32,6 +32,18 @@ import { COMPARABLE_PIN_COLORS, DEFAULT_CROQUIS_SETTINGS, croquisKind, type Comp
 import type { GeneratedCroquis } from "../croquis-document";
 import type { CroquisImageMarker, CroquisLabelPlacement } from "../croquis-marker";
 import { croquisStreets } from "../croquis-streets";
+import {
+  DEFAULT_FREE_LINE_STYLE,
+  addDraftPoint,
+  finishFreeLine,
+  newFreeLineId,
+  undoDraftPoint,
+  withLinePoints,
+  withLineStyle,
+  withoutLine,
+  type FreeLine,
+  type FreeLineStyle,
+} from "../free-lines";
 import { loadGoogleMaps } from "../google-maps-loader";
 import {
   HIGHLIGHT_TITLES,
@@ -56,10 +68,11 @@ import {
   type MapType,
   type NorthArrowStyle,
 } from "../map-styles";
-import { detectStreets, type StreetWay } from "../streets";
+import { detectStreets, metersPerPixel, type StreetWay } from "../streets";
 import { OSM_ATTRIBUTION } from "../streets-osm";
 import type { LatLon } from "../types";
 import { CroquisLabelEditor } from "./croquis-label-editor";
+import { FreeLinesPanel } from "./free-lines-panel";
 import { NorthArrow } from "./north-arrow";
 import { StreetHighlightsPanel } from "./street-highlights";
 import type { MapView } from "./subject-map";
@@ -71,6 +84,8 @@ const SubjectMap = dynamic(() => import("./subject-map").then((module) => module
 const MEXICO_VIEW: MapView = { center: [23.6, -102.5], zoom: 5 };
 const PLACED_ZOOM = 17;
 const NO_STREETS: readonly StreetWay[] = [];
+/** Two clicks closer than this many screen pixels are one vertex (a double click's two clicks). */
+const SAME_VERTEX_PIXELS = 4;
 
 type MapMode = "loading" | "google" | "failed";
 
@@ -203,6 +218,11 @@ export function CroquisGeneratorBody({
 
   const subject = data?.location?.point ?? null;
   const settings = data?.croquis ?? DEFAULT_CROQUIS_SETTINGS;
+  /** The settings as last changed, so changes made one right after another (or from a toast's «Deshacer») build on each other. */
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
   const highlights = settings.streets;
   // V7.1-22: the map of comparables has its streets too, as the croquis.
   const withStreets = captures.length > 0;
@@ -245,7 +265,8 @@ export function CroquisGeneratorBody({
   };
 
   const updateSettings = (patch: Partial<CroquisSettings>) => {
-    const next = { ...settings, ...patch };
+    const next = { ...settingsRef.current, ...patch };
+    settingsRef.current = next;
     setData((current) => (current ? { ...current, croquis: next } : current));
     void save({ croquis: next });
   };
@@ -280,6 +301,7 @@ export function CroquisGeneratorBody({
 
   // MAP-04: without streets loaded a click on a street did nothing at all; now it says why.
   const onMapClick = () => {
+    if (draftRef.current) return;
     if (!canEdit || !withStreets || !subject || streets.length) return;
     if (streetsLoading) toast("Las calles todavía se están cargando; espera unos segundos para marcarlas.");
     else if (streetsFailed) toast.warning("No hay calles cargadas para marcar.", { description: loaded.problem ?? undefined, action: { label: "Reintentar", onClick: retryStreets } });
@@ -314,6 +336,93 @@ export function CroquisGeneratorBody({
     const painted = next.get(name);
     toast(painted ? `${name}: ${HIGHLIGHT_TITLES[painted].toLowerCase()}` : `${name}: ya no se resalta`);
   };
+
+  /* «Trazo libre»: the line being drawn lives here until it is finished; the finished lines save with the settings. */
+  const [draft, setDraftState] = useState<LatLon[] | null>(null);
+  /** The same line, read by the map's double click right after its two clicks, before the panel renders again. */
+  const draftRef = useRef<LatLon[] | null>(null);
+  const setDraft = (next: LatLon[] | null) => {
+    draftRef.current = next;
+    setDraftState(next);
+  };
+  const [selectedLine, setSelectedLine] = useState<string | null>(null);
+  const [lineStyle, setLineStyle] = useState<FreeLineStyle>(DEFAULT_FREE_LINE_STYLE);
+  const freeLines = settings.lines;
+  const updateLines = (next: FreeLine[]) => updateSettings({ lines: next });
+  const sameVertexMeters = () => metersPerPixel(liveView.current.zoom, liveView.current.center[0]) * SAME_VERTEX_PIXELS;
+
+  const startLine = () => {
+    if (!canEdit) return;
+    setSelectedLine(null);
+    setDraft([]);
+  };
+  const addLinePoint = (point: LatLon) => {
+    if (draftRef.current) setDraft(addDraftPoint(draftRef.current, point, sameVertexMeters()));
+  };
+  const undoLinePoint = () => {
+    if (draftRef.current) setDraft(undoDraftPoint(draftRef.current));
+  };
+  const cancelLine = () => setDraft(null);
+  const finishLine = () => {
+    const current = draftRef.current;
+    if (!current) return;
+    const lines = settingsRef.current.lines;
+    const id = newFreeLineId(lines);
+    const next = finishFreeLine(lines, current, lineStyle, id, sameVertexMeters());
+    if (!next) {
+      toast("Un trazo necesita al menos dos puntos distintos; sigue tocando el mapa o pulsa «Cancelar».");
+      return;
+    }
+    updateLines(next);
+    setDraft(null);
+    setSelectedLine(id);
+    toast.success(`Trazo ${next.length} agregado`, { description: "Arrastra sus puntos para ajustarlo, o cambia su color y grosor." });
+  };
+  const removeLine = (id: string) => {
+    const lines = settingsRef.current.lines;
+    const index = lines.findIndex((line) => line.id === id);
+    if (index < 0) return;
+    const removed = lines[index];
+    updateLines(withoutLine(lines, id));
+    if (selectedLine === id) setSelectedLine(null);
+    toast(`Trazo ${index + 1} quitado`, {
+      action: {
+        label: "Deshacer",
+        onClick: () => {
+          const current = settingsRef.current.lines.filter((line) => line.id !== removed.id);
+          updateLines([...current.slice(0, index), removed, ...current.slice(index)]);
+        },
+      },
+    });
+  };
+
+  // Enter finishes the line being drawn, Esc cancels it (and not the window), Retroceso takes its last vertex back.
+  const drawing = draft !== null;
+  const keyActions = useRef({ finishLine, cancelLine, undoLinePoint });
+  useEffect(() => {
+    keyActions.current = { finishLine, cancelLine, undoLinePoint };
+  });
+  useEffect(() => {
+    if (!drawing) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = Boolean(target?.closest("input, textarea, select, [contenteditable='true']"));
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        keyActions.current.cancelLine();
+      } else if (event.key === "Enter" && !typing && !target?.closest("button")) {
+        event.preventDefault();
+        keyActions.current.finishLine();
+      } else if (event.key === "Backspace" && !typing) {
+        event.preventDefault();
+        keyActions.current.undoLinePoint();
+      }
+    };
+    // Capture on the window runs before the dialog's own Esc, which would close the generator.
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, [drawing]);
 
   const removeStreet = (name: string) => updateHighlights({ streets: highlights.streets.filter((street) => street.name !== name) });
 
@@ -384,6 +493,7 @@ export function CroquisGeneratorBody({
           streets: highlights,
           mapType: settings.mapType,
           labels: labelPlacements,
+          lines: settings.lines,
         });
         generated.push({ kind, src: image.url, marker: { kind, frame, ...(labelPlacements.length ? { labels: labelPlacements } : {}) } });
         if (omittedStreets.length) omitted.push(`${croquisKind(kind).title}: ${omittedStreets.join(", ")}`);
@@ -437,11 +547,19 @@ export function CroquisGeneratorBody({
             clean={settings.clean}
             mapType={settings.mapType}
             pins={shownPins}
-            streets={canEdit && withStreets ? streets : NO_STREETS}
+            streets={canEdit && withStreets && !drawing ? streets : NO_STREETS}
             highlights={highlightedItems}
             labels={labels}
             onStreetClick={onStreetClick}
             onMapClick={onMapClick}
+            freeLines={freeLines}
+            draft={draft}
+            draftStyle={lineStyle}
+            selectedLineId={selectedLine}
+            onDrawPoint={addLinePoint}
+            onDrawFinish={finishLine}
+            onLineSelect={setSelectedLine}
+            onLinePointsChange={canEdit ? (id, points) => updateLines(withLinePoints(settingsRef.current.lines, id, points)) : undefined}
             view={view}
             onViewChange={(next) => {
               liveView.current = next;
@@ -626,6 +744,22 @@ export function CroquisGeneratorBody({
           />
         ) : null}
 
+        <FreeLinesPanel
+          lines={freeLines}
+          draft={draft}
+          nextStyle={lineStyle}
+          selectedId={selectedLine}
+          onStart={startLine}
+          onUndoPoint={undoLinePoint}
+          onFinish={finishLine}
+          onCancel={cancelLine}
+          onSelect={setSelectedLine}
+          onNextStyleChange={(patch) => setLineStyle((current) => ({ ...current, ...patch }))}
+          onLineStyleChange={(id, patch) => updateLines(withLineStyle(settingsRef.current.lines, id, patch))}
+          onRemove={removeLine}
+          disabled={!canEdit || !subject || mode !== "google"}
+        />
+
         {subject && withStreets
           ? captures
               .map((kind) => {
@@ -640,6 +774,7 @@ export function CroquisGeneratorBody({
                     subject={subject}
                     streets={croquisStreets(kind, center, frame.zoom, highlights, streets, subject)}
                     placements={placements[kind] ?? []}
+                    lines={freeLines}
                     disabled={!canEdit}
                     onChange={(next) => setPlacements((current) => ({ ...current, [kind]: next }))}
                   />

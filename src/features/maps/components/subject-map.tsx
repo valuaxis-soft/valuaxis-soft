@@ -5,10 +5,13 @@
 import { useEffect, useRef } from "react";
 
 import { COMPARABLE_PIN_COLORS, SUBJECT_PIN_COLOR, type ComparablePin } from "../croquis";
+import { FREE_LINE_OPACITY, type FreeLine, type FreeLineStyle } from "../free-lines";
 import { isMacroZoom, isMainRoad, type HighlightedWay, type StreetLabel } from "../highlights";
 import { CLEAN_MAP_STYLES, type MapType } from "../map-styles";
 import type { StreetWay } from "../streets";
 import type { LatLon } from "../types";
+
+const NO_LINES: readonly FreeLine[] = [];
 
 const toLatLng = (p: LatLon): google.maps.LatLngLiteral => ({ lat: p[0], lng: p[1] });
 
@@ -53,6 +56,21 @@ export interface SubjectMapProps {
   onStreetClick?: (name: string) => void;
   /** A click on the map that hit no street (nor a pin): the panel says why, when the streets did not load. */
   onMapClick?: () => void;
+  /** «Trazo libre»: the lines drawn by hand, in the order they were drawn. */
+  freeLines?: readonly FreeLine[];
+  /** The line being drawn, vertex by vertex; null when not drawing. While drawing, a click on the map adds a vertex. */
+  draft?: readonly LatLon[] | null;
+  /** The color and width of the line being drawn. */
+  draftStyle?: FreeLineStyle;
+  /** The line whose vertices can be dragged. */
+  selectedLineId?: string | null;
+  onDrawPoint?: (point: LatLon) => void;
+  /** A double click while drawing: the line is finished. */
+  onDrawFinish?: () => void;
+  /** A click on a line selects it; a click on the map, null. */
+  onLineSelect?: (id: string | null) => void;
+  /** A vertex of the selected line was dragged, added or removed. Absent, the lines cannot be changed (a concluded valuation). */
+  onLinePointsChange?: (id: string, points: LatLon[]) => void;
   /** A new key moves the map to this center and zoom. */
   view: MapView & { key: number };
   /** The map reports where the user left it, for "Tomar del mapa". */
@@ -80,8 +98,10 @@ export function SubjectMap(props: SubjectMapProps) {
     latest.current = props;
   });
 
-  const { subject, onSubjectMove, clean, mapType, pins, streets, highlights, labels, view } = props;
+  const { subject, onSubjectMove, clean, mapType, pins, streets, highlights, labels, view, freeLines = NO_LINES, draft = null, draftStyle, selectedLineId = null } = props;
   const draggable = Boolean(onSubjectMove);
+  const drawing = draft !== null;
+  const linesEditable = Boolean(props.onLinePointsChange);
 
   // Created once; the effects below run after this one in the same commit.
   useEffect(() => {
@@ -110,7 +130,19 @@ export function SubjectMap(props: SubjectMapProps) {
       const position = marker.getPosition();
       if (position) latest.current.onSubjectMove?.([position.lat(), position.lng()]);
     });
-    map.addListener("click", () => latest.current.onMapClick?.());
+    map.addListener("click", (event: google.maps.MapMouseEvent) => {
+      if (latest.current.draft) {
+        if (event.latLng) latest.current.onDrawPoint?.([event.latLng.lat(), event.latLng.lng()]);
+        return;
+      }
+      latest.current.onLineSelect?.(null);
+      latest.current.onMapClick?.();
+    });
+    map.addListener("dblclick", (event: google.maps.MapMouseEvent) => {
+      if (!latest.current.draft) return;
+      event.stop();
+      latest.current.onDrawFinish?.();
+    });
     map.addListener("idle", () => {
       const center = map.getCenter();
       const zoom = map.getZoom();
@@ -237,6 +269,94 @@ export function SubjectMap(props: SubjectMapProps) {
       for (const chip of chips) chip.setMap(null);
     };
   }, [highlights, labels]);
+
+  // «Trazo libre»: while drawing, the cursor is a cross and a double click finishes the line instead of zooming.
+  useEffect(() => {
+    const map = partsRef.current?.map;
+    if (!map) return;
+    map.setOptions({ draggableCursor: drawing ? "crosshair" : null });
+    if (drawing) {
+      map.setOptions({ disableDoubleClickZoom: true });
+      return;
+    }
+    // The double click that finished the line is still being handled: the zoom comes back a moment later, or it would zoom in.
+    const timer = window.setTimeout(() => map.setOptions({ disableDoubleClickZoom: false }), 500);
+    return () => window.clearTimeout(timer);
+  }, [drawing]);
+
+  // The lines drawn by hand, over the highlighted streets and under their names; the selected one shows its vertices to drag them.
+  useEffect(() => {
+    const parts = partsRef.current;
+    if (!parts) return;
+    const items = freeLines.map((line, index) => {
+      const editable = !drawing && linesEditable && line.id === selectedLineId;
+      const polyline = new google.maps.Polyline({
+        map: parts.map,
+        path: line.points.map(toLatLng),
+        strokeColor: line.color,
+        strokeWeight: line.weight,
+        strokeOpacity: FREE_LINE_OPACITY,
+        clickable: !drawing,
+        editable,
+        zIndex: 3 + index / 1000,
+      });
+      polyline.addListener("click", () => latest.current.onLineSelect?.(line.id));
+      if (editable) {
+        const path = polyline.getPath();
+        const report = () => latest.current.onLinePointsChange?.(line.id, path.getArray().map((point) => [point.lat(), point.lng()] as LatLon));
+        for (const name of ["set_at", "insert_at", "remove_at"]) path.addListener(name, report);
+        // A right click (or a long press) on a vertex removes it, as long as the line keeps two.
+        polyline.addListener("contextmenu", (event: google.maps.PolyMouseEvent) => {
+          if (event.vertex !== undefined && path.getLength() > 2) path.removeAt(event.vertex);
+        });
+      }
+      return polyline;
+    });
+    return () => {
+      for (const polyline of items) {
+        google.maps.event.clearInstanceListeners(polyline);
+        google.maps.event.clearInstanceListeners(polyline.getPath());
+        polyline.setMap(null);
+      }
+    };
+  }, [freeLines, drawing, selectedLineId, linesEditable]);
+
+  // The line being drawn: its vertices, and a dashed piece from the last one to the cursor (none on a touch screen, which has no cursor).
+  useEffect(() => {
+    const parts = partsRef.current;
+    if (!parts || !draft) return;
+    const color = draftStyle?.color ?? HIT_LINE_COLOR;
+    const weight = draftStyle?.weight ?? 4;
+    const line = new google.maps.Polyline({ map: parts.map, path: draft.map(toLatLng), strokeColor: color, strokeWeight: weight, strokeOpacity: FREE_LINE_OPACITY, clickable: false, zIndex: 6 });
+    const vertices = draft.map(
+      (point) =>
+        new google.maps.Marker({
+          map: parts.map,
+          position: toLatLng(point),
+          clickable: false,
+          zIndex: 7,
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 4.5, fillColor: "#ffffff", fillOpacity: 1, strokeColor: color, strokeWeight: 2 },
+        }),
+    );
+    const rubber = new google.maps.Polyline({
+      map: parts.map,
+      path: [],
+      strokeOpacity: 0,
+      clickable: false,
+      zIndex: 6,
+      icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 0.85, strokeColor: color, strokeWeight: Math.max(2, weight - 1), scale: 3 }, offset: "0", repeat: "14px" }],
+    });
+    const last = draft[draft.length - 1];
+    const listener = parts.map.addListener("mousemove", (event: google.maps.MapMouseEvent) => {
+      if (last && event.latLng) rubber.setPath([toLatLng(last), event.latLng]);
+    });
+    return () => {
+      listener.remove();
+      line.setMap(null);
+      rubber.setMap(null);
+      for (const vertex of vertices) vertex.setMap(null);
+    };
+  }, [draft, draftStyle]);
 
   useEffect(() => {
     const map = partsRef.current?.map;

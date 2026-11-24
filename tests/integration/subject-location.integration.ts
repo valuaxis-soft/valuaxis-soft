@@ -14,7 +14,8 @@ import { withAddedBlockContent } from "../../src/features/valuations/components/
 import { composeCroquisImage, storeCroquisImage } from "../../src/features/maps/server/croquis-image.service";
 import { getSubjectLocation, saveSubjectLocation } from "../../src/features/maps/server/subject-location.service";
 import { readSubjectLocation } from "../../src/features/maps/subject-location";
-import { STATIC_MAP_SCALE, STATIC_MAP_SIZE } from "../../src/features/maps/static-map";
+import type { FreeLine } from "../../src/features/maps/free-lines";
+import { STATIC_MAP_SCALE, STATIC_MAP_SIZE, imagePixel } from "../../src/features/maps/static-map";
 import { createComparable } from "../../src/features/valuations/calculation/market.service";
 import type { ComparableInputPayload } from "../../src/features/valuations/calculation/market-schemas";
 import { initialSectionsFor } from "../../src/features/valuations/components/workspace/model/initial-hydration";
@@ -203,5 +204,42 @@ test("the pin and the croquis settings saved at the same time both stay (MAP-01:
     const reloaded = await getSubjectLocation(fixture.publicId, fixture.organizationId);
     assert.deepEqual(reloaded.location?.point, point, `round ${round}: the pin is where it was dropped`);
     assert.equal(reloaded.croquis.micro.zoom, 16 + (round % 3), `round ${round}: the settings stay`);
+  }
+});
+
+test("«Trazo libre»: the lines drawn by hand save with the croquis settings and the image draws them where they were drawn, on the macro and the micro", async () => {
+  const fixture = await createValuationFixture();
+  const user = editor(fixture);
+  const lines: FreeLine[] = [
+    { id: "trazo-1", color: "#0055aa", weight: 8, points: [[20.6348, -103.4031], [20.6341, -103.4022], [20.6347, -103.4012]] },
+    { id: "trazo-2", color: "#d35400", weight: 5, points: [[20.6336, -103.403], [20.6352, -103.403]] },
+  ];
+  await saveSubjectLocation(fixture.publicId, user, { location: { point: SUBJECT, source: "pin" }, croquis: { ...DEFAULT_CROQUIS_SETTINGS, lines } });
+  // Reopened: the same lines, with their vertices, colors and widths.
+  const reopened = await getSubjectLocation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual(reopened.croquis.lines, lines);
+  // Another setting changed later keeps them.
+  const recolored = { ...reopened.croquis, clean: false, lines: reopened.croquis.lines.map((line) => (line.id === "trazo-2" ? { ...line, color: "#2f8a4f" } : line)) };
+  await saveSubjectLocation(fixture.publicId, user, { croquis: recolored });
+  assert.equal((await getSubjectLocation(fixture.publicId, fixture.organizationId)).croquis.lines[1].color, "#2f8a4f");
+
+  const width = STATIC_MAP_SIZE.width * STATIC_MAP_SCALE;
+  const height = STATIC_MAP_SIZE.height * STATIC_MAP_SCALE;
+  const base = await sharp({ create: { width, height, channels: 3, background: "#ffffff" } }).png().toBuffer();
+  for (const zoom of [17, 15]) {
+    const jpeg = await composeCroquisImage(base, { center: SUBJECT, zoom, northArrow: { style: "flecha", corner: "top-right" }, pins: [], lines });
+    const pixel = async (point: readonly [number, number]) => {
+      const at = imagePixel(SUBJECT, zoom, point);
+      const { data } = await sharp(jpeg).extract({ left: Math.round(at.x * STATIC_MAP_SCALE) - 1, top: Math.round(at.y * STATIC_MAP_SCALE) - 1, width: 3, height: 3 }).raw().toBuffer({ resolveWithObject: true });
+      return [data[12], data[13], data[14]] as const;
+    };
+    // At the turn of the blue line, its blue; between its vertices too (it is one line); away from both lines, the plain map.
+    const [r, g, b] = await pixel(lines[0].points[1]);
+    assert.ok(b > 120 && r < 90, `zoom ${zoom}: the vertex is blue (${r},${g},${b})`);
+    const middle: [number, number] = [(lines[0].points[0][0] + lines[0].points[1][0]) / 2, (lines[0].points[0][1] + lines[0].points[1][1]) / 2];
+    const [mr, , mb] = await pixel(middle);
+    assert.ok(mb > 120 && mr < 90, `zoom ${zoom}: the segment between vertices is drawn`);
+    const [er, eg, eb] = await pixel([20.6355, -103.4005]);
+    assert.ok(er > 235 && eg > 235 && eb > 235, `zoom ${zoom}: nothing where no line passes`);
   }
 });

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { STREET_LABEL_FONT_FAMILY, streetLabelBox } from "../croquis";
 import type { CroquisLabelPlacement } from "../croquis-marker";
 import type { CroquisStreets } from "../croquis-streets";
+import { FREE_LINE_OPACITY, freeLinePixels, type FreeLine } from "../free-lines";
 import { placedStreetLabels, uprightAngle, type StreetLabel } from "../highlights";
 import { STATIC_MAP_SIZE, imagePixel, pointAtPixel } from "../static-map";
 import type { LatLon } from "../types";
@@ -32,6 +33,7 @@ export function CroquisLabelEditor({
   subject,
   streets,
   placements,
+  lines = [],
   disabled,
   onChange,
 }: {
@@ -42,6 +44,8 @@ export function CroquisLabelEditor({
   /** What the image will draw: the same pure function the server uses. */
   streets: CroquisStreets;
   placements: readonly CroquisLabelPlacement[];
+  /** «Trazo libre»: the lines drawn by hand, as the image draws them. */
+  lines?: readonly FreeLine[];
   disabled: boolean;
   onChange: (next: CroquisLabelPlacement[]) => void;
 }) {
@@ -133,6 +137,18 @@ export function CroquisLabelEditor({
         onPointerUp={() => setDrag(null)}
         onPointerLeave={() => setDrag(null)}
       >
+        {lines.map((line) => (
+          <polyline
+            key={line.id}
+            points={freeLinePixels(center, zoom, line.points)}
+            fill="none"
+            stroke={line.color}
+            strokeOpacity={FREE_LINE_OPACITY}
+            strokeWidth={line.weight}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
         {streets.paths.map((item, index) => (
           <path key={index} d={path(item.points)} fill="none" stroke={item.color} strokeOpacity={0.85} strokeWidth={item.weight} strokeLinecap="round" strokeLinejoin="round" />
         ))}

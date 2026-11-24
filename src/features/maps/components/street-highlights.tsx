@@ -171,7 +171,7 @@ function StyleCard({ title, names, style, disabled, onChange, selected, onSelect
 }
 
 /** «Grosor» as a small number box; what is typed applies once it is a valid width, and the box shows the stored one when it loses focus. */
-function WeightInput({ label, value, disabled, onChange }: { label: string; value: number; disabled: boolean; onChange: (weight: number) => void }) {
+export function WeightInput({ label, value, disabled, onChange }: { label: string; value: number; disabled: boolean; onChange: (weight: number) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <span className="inline-flex items-center gap-1">
