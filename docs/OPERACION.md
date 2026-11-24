@@ -394,3 +394,21 @@ Cada usuario verifica su celular en «Mi cuenta» → «Teléfono» con un códi
 **Límites y costo:** cada código es un mensaje que Twilio cobra (SMS a México o conversación de WhatsApp, más la verificación). La app permite 5 envíos por hora por persona y por número, y 10 intentos de código cada 15 minutos; Twilio además corta a los 5 envíos en 10 minutos y a los 5 intentos por código. El código vence a los 10 minutos.
 
 **Si falla:** `docker logs valuos-app 2>&1 | grep "\[PHONE\]"`. Las líneas traen el código HTTP y el de Twilio, nunca el código enviado ni el número completo (`+52 ••••••1234`). `20003` es SID o token inválidos; `20404` al enviar, Service SID equivocado; `60223`, canal no habilitado (WhatsApp sin remitente); `60410` o `60605`, bloqueado por Fraud Guard o por los permisos de país; `21608`, cuenta de prueba. Los envíos y las verificaciones quedan en la auditoría con las acciones `TELEFONO_CODIGO_ENVIADO` y `TELEFONO_VERIFICADO`.
+
+## 16. Avalúos al día con el formato (`VALUATION_LAYOUT_REFRESH`)
+
+Durante la afinación, lo que se despliega debe verse en los avalúos que el valuador ya trabajó, no solo en los nuevos (video 8.3 de Álvaro, 24 nov 2026). Cómo funciona y qué conserva: [VALUATION_SECTIONS.md](VALUATION_SECTIONS.md#avalúos-al-día-con-el-formato).
+
+- `VALUATION_LAYOUT_REFRESH=all` (o sin definir; es lo de ahora): al abrir en el editor un avalúo **no concluido**, toma los cambios de formato que le falten.
+- `VALUATION_LAYOUT_REFRESH=new` (para cuando ya esté en operación): solo los avalúos creados desde el día en que salió cada cambio lo toman solos; los anteriores conservan su formato y el valuador lo trae con «Actualizar al formato más reciente» (renglón del estado, junto a «Historial»).
+- Los avalúos concluidos no cambian nunca, con cualquier valor.
+
+Se cambia en `production.env` y se recrea la app (paso 2). Para ver antes qué cambiaría, por folio y sin datos del cliente (no escribe nada; no hay `--apply`: el cambio lo hace el editor al abrir, con «Deshacer»):
+
+```bash
+docker exec valuos-app node --import tsx scripts/ops/actualizar-formato.ts --dry-run
+docker exec valuos-app node --import tsx scripts/ops/actualizar-formato.ts --dry-run --org <id>
+docker exec valuos-app node --import tsx scripts/ops/actualizar-formato.ts --dry-run --policy new
+```
+
+En local es `pnpm valuations:refresh-layout --dry-run`. Cada renglón dice el folio, la versión de formato que tiene, si cambiaría «al abrirlo» o «solo con «Actualizar formato»» y cuántos conceptos o bloques se agregarían o ligarían al cálculo.

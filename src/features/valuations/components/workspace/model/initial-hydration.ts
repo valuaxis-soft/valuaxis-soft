@@ -214,6 +214,7 @@ function normalizeInitialSections(initialValuation: Pick<ValuationDetail, "secti
     ...(section.titleBand ? { titleBand: section.titleBand } : {}),
     ...(section.palette ? { palette: section.palette } : {}),
     ...(section.freeBlockOrder ? { freeBlockOrder: true } : {}),
+    ...(section.layoutVersion ? { layoutVersion: section.layoutVersion } : {}),
     ...(section.documentRole ? { documentRole: section.documentRole } : {}),
     ...(section.annexTitle ? { annexTitle: section.annexTitle } : {}),
     ...(section.pageBreak ? { pageBreak: section.pageBreak } : {}),

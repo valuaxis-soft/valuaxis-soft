@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck, History, Loader2, Send, Undo2 } from "lucide-react";
+import { CircleCheck, History, Loader2, RefreshCw, Send, Undo2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -71,7 +71,10 @@ export function ValuationReviewBar({
   saveStatus,
   hasUnsavedChanges,
   onSave,
+  layoutRefresh,
 }: {
+  /** «Actualizar formato»: brings the valuation up to the current format; absent for those who cannot edit it. */
+  layoutRefresh?: { pending: boolean; onRefresh: () => Promise<void> };
   valuationId: string;
   folio: string;
   initialStatus: string;
@@ -93,6 +96,16 @@ export function ValuationReviewBar({
   const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshLayout = async () => {
+    if (!layoutRefresh || refreshing) return;
+    setRefreshing(true);
+    try {
+      await layoutRefresh.onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // The first save moves the valuation from «Nuevo» to «En edición» in the server; the line follows it.
   if (saveStatus !== previousSave) {
@@ -164,6 +177,23 @@ export function ValuationReviewBar({
           <Button type="button" size="sm" variant="outline" className="h-8" onClick={() => open("regresar")} data-review-action="regresar">
             <Undo2 data-icon="inline-start" />
             Regresar a edición
+          </Button>
+        ) : null}
+        {layoutRefresh ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={layoutRefresh.pending ? "outline" : "ghost"}
+            className="h-8"
+            disabled={refreshing}
+            onClick={() => void refreshLayout()}
+            title={layoutRefresh.pending
+              ? "Este avalúo no tiene todos los cambios recientes del formato. Actualízalo: lo que capturaste y editaste se conserva, y se puede deshacer."
+              : "Actualizar al formato más reciente: las páginas del cálculo se escriben otra vez con el formato actual; lo que capturaste y editaste se conserva."}
+            data-layout-refresh={layoutRefresh.pending ? "pending" : "current"}
+          >
+            {refreshing ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
+            {layoutRefresh.pending ? "Actualizar al formato más reciente" : "Actualizar formato"}
           </Button>
         ) : null}
         <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setHistoryOpen(true)} data-history-open="">
