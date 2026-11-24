@@ -20,6 +20,10 @@ export const createValuationSchema = z.object({
   operationTypeId: positiveId,
   templateId: positiveId.nullish(),
   responsibleUserId: positiveId.nullish(),
+  /** «¿Cuál?» of a kind chosen as «Otro»: required then, checked on creation. */
+  appraisalTypeOther: z.string().trim().max(120).optional(),
+  propertyTypeOther: z.string().trim().max(120).optional(),
+  operationTypeOther: z.string().trim().max(120).optional(),
 });
 
 const valuationMetaShape = {

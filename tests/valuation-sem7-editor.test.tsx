@@ -12,6 +12,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import type { AppSection, Block, Concept } from "../src/features/valuations/model";
 import { CaratulaBlockHeading } from "../src/features/valuations/components/caratula-preview-modules";
+import { PagePresentationProvider } from "../src/features/valuations/components/page-presentation-context";
+import { DEFAULT_PAGE_PRESENTATION } from "../src/features/valuations/services/page-presentation";
 import { DocumentBlockTitleBar, formatDocumentBlockTitle } from "../src/features/valuations/components/document-block-title-bar";
 import { documentBlockFlowItems } from "../src/features/valuations/components/document-block-renderer";
 import { resequenceSections } from "../src/features/valuations/components/workspace/model/section-numbering";
@@ -95,12 +97,21 @@ test("V7.1-02: the right-click menu of a block's title offers «Imprimir título
   assert.equal(items(false).find((item) => item.action === "block-print-title")?.checked, false);
 });
 
-test("V7.1-03: the carátula's block title is boxed in a frame, not over a rule from edge to edge", () => {
+test("V7.1-03 and 24 Nov 2026: the carátula's block title follows «Títulos de las secciones», never over a rule from edge to edge", () => {
+  // As every other title: the bar of the strong colour by default («CONCLUSIÓN» printed hollow).
   const html = renderToStaticMarkup(createElement(CaratulaBlockHeading, { title: "DATOS DEL BIEN" }));
   assert.match(html, /data-caratula-block-title/);
-  assert.match(html, /class="[^"]*\bborder border-\[var\(--caratula-blue\)\]/);
+  assert.match(html, /data-title-style="filled"/);
+  assert.match(html, /bg-\[var\(--caratula-dark-blue,#00285A\)\]/);
+  assert.match(html, /text-\[color:var\(--doc-on-strong,#fff\)\]/);
   assert.doesNotMatch(html, /border-b-2/);
   assert.match(html, />DATOS DEL BIEN</);
+  // «Fondo blanco (título con marco)»: the letters of the strong colour inside a thin frame.
+  const outline = renderToStaticMarkup(createElement(PagePresentationProvider, { presentation: { ...DEFAULT_PAGE_PRESENTATION, titleBars: "outline" } },
+    createElement(CaratulaBlockHeading, { title: "CONCLUSIÓN" })));
+  assert.match(outline, /data-title-style="outline"/);
+  assert.match(outline, /bg-white/);
+  assert.match(outline, /text-\[color:var\(--caratula-dark-blue,#00285A\)\]/);
 });
 
 test("V7.3-03: every field of a concept turns Chrome's suggestions off", () => {

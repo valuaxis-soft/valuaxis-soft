@@ -13,6 +13,7 @@ import { Prisma } from "@prisma/client";
 import type { AuthUser } from "@/features/auth/model";
 import { getFirmDocumentPalette, withFirmDocumentPalette } from "@/features/firm/document-palette.service";
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { principalCoverFileId } from "@/features/files/services/valuation-cover-image";
 import { initialSectionsFor } from "@/features/valuations/components/workspace/model/initial-hydration";
 import { getValuationByPublicId, newValuationSections } from "@/features/valuations/repositories/valuation.repository";
 import type { AppSection } from "@/features/valuations/model";
@@ -24,6 +25,7 @@ import {
   readDocumentTemplate,
   templateContainsData,
   type DocumentTemplateContent,
+  type TemplateCoverImage,
 } from "./document-template";
 import { ValuationWorkflowError } from "./valuation-workflow/errors";
 import type { Tx } from "./valuation-workflow/types";
@@ -115,7 +117,7 @@ function toSummary(
     description: row.SDescripcion,
     includeData: content.includeData,
     containsData: templateContainsData(content.sections),
-    includeImages: content.includeImages,
+    includeImages: content.includeImages || Boolean(content.coverImage),
     sections: visible.length,
     blocks: visible.reduce((total, section) => total + section.blocks.length, 0),
     version: version?.INumeroVersion ?? 1,
@@ -201,10 +203,15 @@ export async function createValuationTemplate(input: {
   ]);
   if (!valuation || !detail) throw new ValuationWorkflowError("Avaluo no encontrado", 404);
 
-  const content = buildDocumentTemplate(initialSectionsFor(detail), {
-    includeData: input.includeData,
-    includeImages: input.includeImages,
-  });
+  // «Incluir imágenes» takes the carátula's principal image too, by its stored file.
+  const coverFileId = input.includeImages ? await principalCoverFileId(prisma, input.valuationId, organizationId) : null;
+  const content: DocumentTemplateContent = {
+    ...buildDocumentTemplate(initialSectionsFor(detail), {
+      includeData: input.includeData,
+      includeImages: input.includeImages,
+    }),
+    ...(coverFileId ? { coverImage: { fileId: coverFileId } } : {}),
+  };
   const existing = await templateNamed(organizationId, input.name);
   if (existing) {
     if (!input.replace) throw nameTaken();
@@ -376,9 +383,11 @@ export async function saveValuationTemplateDocument(input: {
       409,
     );
   }
+  // The editor does not show the carátula's image: the one the template kept stays.
   const content: DocumentTemplateContent = {
     ...editedTemplate(input.sections),
     ...(stored.propertyTypeKey ? { propertyTypeKey: stored.propertyTypeKey } : {}),
+    ...(stored.coverImage ? { coverImage: stored.coverImage } : {}),
   };
   if (!input.sameSession) return replaceTemplateDocument(row.IdPlantillaAvaluo, row.IdTipoAvaluo, content, { user: input.user });
   return prisma.$transaction(async (tx) => {
@@ -449,12 +458,16 @@ export async function deleteValuationTemplate(organizationId: number, publicId: 
 
 /**
  * The document a template (by its database id) starts a new valuation with,
- * or null for a template without one (the system's template, older rows).
+ * and the carátula image it kept, or null for a template without one (the
+ * system's template, older rows).
  */
-export async function templateSectionsForCreation(client: Tx, templateId: number, organizationId: number): Promise<AppSection[] | null> {
+export async function templateDocumentForCreation(
+  client: Tx, templateId: number, organizationId: number,
+): Promise<{ sections: AppSection[]; coverImage: TemplateCoverImage | null } | null> {
   const row = await client.plantillaAvaluo.findFirst({
     where: { ...activeTemplateWhere(organizationId), IdPlantillaAvaluo: templateId },
     include: { versiones: latestVersion },
   });
-  return readDocumentTemplate(row?.versiones[0]?.JConfiguracionGeneral)?.sections ?? null;
+  const content = readDocumentTemplate(row?.versiones[0]?.JConfiguracionGeneral);
+  return content ? { sections: content.sections, coverImage: content.coverImage ?? null } : null;
 }

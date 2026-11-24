@@ -190,7 +190,7 @@ export function SaveAsTemplateDialog({
           </Field>
           {/* A line sets the options apart from what the template is called. */}
           <div className="border-t pt-4" data-template-options="">
-            <OptionCheckbox id="template-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" description="Las imágenes de los bloques (no las fotografías de Datos generales, que son del avalúo)." />
+            <OptionCheckbox id="template-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" description="La imagen principal de la carátula y las imágenes de los bloques (no las fotografías de Datos generales, que son del avalúo)." />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={pending} onClick={() => close(false)}>Cancelar</Button>

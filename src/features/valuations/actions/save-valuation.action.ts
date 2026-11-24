@@ -24,11 +24,15 @@ import { stripClientDataFromSections } from "@/features/valuations/services/docu
 import {
   OTHER_PROPERTY_KIND,
   OTHER_VALUATION_KIND,
+  isOwnKindKey,
+  missingOwnKindName,
   normalizePropertyKind,
   normalizeValuationKind,
+  ownKindName,
   type OwnKindNames,
 } from "@/features/valuations/services/property-kinds";
-import { templateSectionsForCreation } from "@/features/valuations/services/valuation-template.service";
+import { templateDocumentForCreation } from "@/features/valuations/services/valuation-template.service";
+import { relateTemplateCoverImage } from "@/features/files/services/valuation-cover-image";
 import { writeVersionSections } from "@/features/valuations/services/valuation-workflow/save-sections";
 import type { SectionPayload } from "@/features/valuations/services/valuation-workflow/types";
 import { buildSectionsPayload } from "@/features/valuations/components/workspace/model/save-payload";
@@ -51,6 +55,8 @@ export type SaveValuationInput = {
   propertyKind?: string;
   propertyKindOther?: string;
   valuationKindOther?: string;
+  /** «¿Cuál?» of the kind of valuation of the catalog chosen as «Otro» (Comercial, Hipotecario…): on creation only. */
+  appraisalKindOther?: string;
   appraisalTypeId?: number;
   propertyTypeId?: number;
   operationTypeId?: number;
@@ -197,15 +203,24 @@ export async function saveValuation(input: SaveValuationInput) {
     if (!tipoOperacion) return missingCatalog("CATALOG_OPERATION_TYPE_MISSING", "Tipo de operacion");
     if (input.templateId && !plantilla) return missingCatalog("TEMPLATE_MISSING", "Plantilla");
     // A template of the firm's own carries a whole document: it starts valuations of any type.
-    const templateSections = plantilla && !plantilla.BEsSistema
-      ? await templateSectionsForCreation(prisma, plantilla.IdPlantillaAvaluo, user.organizationId)
+    const templateDocument = plantilla && !plantilla.BEsSistema
+      ? await templateDocumentForCreation(prisma, plantilla.IdPlantillaAvaluo, user.organizationId)
       : null;
+    const templateSections = templateDocument?.sections ?? null;
     if (input.templateId && !templateSections && plantilla?.IdTipoAvaluo !== tipoAvaluo.IdTipoAvaluo) {
       return missingCatalog("TEMPLATE_NOT_APPLICABLE", "Plantilla aplicable al tipo seleccionado");
     }
     if (input.responsibleUserId && !responsable) {
       return missingCatalog("RESPONSIBLE_USER_INVALID", "Usuario responsable");
     }
+    // A kind chosen as «Otro» says which (24 Nov 2026); that name prints wherever the kind does.
+    const ownKindError = missingOwnKindName([
+      { key: tipoAvaluo.SClave, name: input.appraisalKindOther, label: "«Tipo de avalúo»" },
+      { key: tipoInmueble.SClave, name: input.propertyKindOther, label: "«Tipo de bien»" },
+      { key: tipoOperacion.SClave, name: input.valuationKindOther, label: "«Tipo de operación»" },
+    ]);
+    if (ownKindError) return { ok: false, error: ownKindError, code: "OWN_KIND_NAME_MISSING" };
+    const operationName = ownKindName(tipoOperacion, input.valuationKindOther?.trim());
 
     const valuation = await prisma.$transaction(async (tx) => {
       // Datos del despacho: folio prefix, signatures, date and validity.
@@ -240,7 +255,7 @@ export async function saveValuation(input: SaveValuationInput) {
       const generalCaratulaDefaults: GeneralCaratulaDefaults = {
         title: input.title,
         clientName: input.clientName ?? input.client,
-        operationName: tipoOperacion.SNombre,
+        operationName,
         responsibleName,
         valuationDate: defaults.valuationDate,
         validity: formatValidityMonths(defaults.validityMonths),
@@ -257,8 +272,21 @@ export async function saveValuation(input: SaveValuationInput) {
       if (templateSections) {
         await writeVersionSections(tx, versionId, templateDocumentPayload(templateSections, generalCaratulaDefaults));
       }
+      // A template saved «con imágenes» brings its carátula image too.
+      if (templateDocument?.coverImage) {
+        await relateTemplateCoverImage(tx, { fileId: templateDocument.coverImage.fileId, valuationPublicId: created.UIdentificadorPublico, organizationId: user.organizationId });
+      }
       // The firm's colours, unless the template brought its own.
       await applyFirmDocumentPalette(tx, versionId, user.organizationId);
+      await saveOwnKindNames(tx, created.IdAvaluo, user.organizationId, tipoInmueble.IdTipoInmueble, {
+        title: input.title,
+        location: input.location,
+        propertyKind: tipoInmueble.SClave,
+        valuationKind: tipoOperacion.SClave,
+        propertyKindOther: input.propertyKindOther ?? "",
+        valuationKindOther: input.valuationKindOther ?? "",
+        appraisalKindOther: isOwnKindKey(tipoAvaluo.SClave) ? input.appraisalKindOther ?? "" : undefined,
+      });
       await saveCaratula({
         versionId,
         tx,
@@ -268,7 +296,7 @@ export async function saveValuation(input: SaveValuationInput) {
           solicitante: input.clientName ?? input.client ?? null,
           propietario: input.clientName ?? input.client ?? null,
           objeto: null,
-          proposito: tipoOperacion.SNombre,
+          proposito: operationName,
           // The firm's signatures; without them the appraiser adds who signs in the carátula.
           firmas: defaults.signers,
           fechaAvaluo: defaults.valuationDate,
@@ -389,12 +417,13 @@ async function saveOwnKindNames(
   valuationId: number,
   organizationId: number,
   propertyTypeId: number,
-  input: Pick<SaveValuationInput, "propertyKind" | "valuationKind" | "propertyKindOther" | "valuationKindOther" | "title" | "location">,
+  input: Pick<SaveValuationInput, "propertyKind" | "valuationKind" | "propertyKindOther" | "valuationKindOther" | "appraisalKindOther" | "title" | "location">,
 ) {
   if (input.propertyKindOther === undefined && input.valuationKindOther === undefined) return;
   const names: OwnKindNames = {
     ...(normalizePropertyKind(input.propertyKind) === OTHER_PROPERTY_KIND && input.propertyKindOther?.trim() ? { tipoBienOtro: input.propertyKindOther.trim() } : {}),
     ...(normalizeValuationKind(input.valuationKind) === OTHER_VALUATION_KIND && input.valuationKindOther?.trim() ? { tipoAvaluoOtro: input.valuationKindOther.trim() } : {}),
+    ...(input.appraisalKindOther?.trim() ? { claseAvaluoOtro: input.appraisalKindOther.trim() } : {}),
   };
   // The croquis panel merges the pin into the same characteristics; both lock the valuation's row first (subject-location.service.ts).
   await tx.$queryRaw(Prisma.sql`SELECT 1 FROM "devpware_avaluos" WHERE "IdAvaluo" = ${valuationId} FOR UPDATE`);

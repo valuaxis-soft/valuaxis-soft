@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * The conclusion as the despacho's book prints it (video 7.1, 16:52–19:23):
- * the resumen de valores in shaded rows, the concluded value large in its box
- * with the amount in words under it, an optional chart of the values, and
- * the signatures of the carátula under FIRMAS.
+ * The conclusion as the despacho's book prints it (video 7.1, 16:52–19:23;
+ * 24 Nov 2026): the resumen de valores as his Excel, an optional chart of the
+ * values at its left, the concluded value in the carátula's box with the
+ * amount in words, and the signatures of the carátula under FIRMAS.
  */
 import type { Block, CaratulaFormData, Concept } from "../model";
 import {
@@ -14,10 +14,15 @@ import {
   isSummaryConcept,
 } from "@/features/valuations/calculation/conclusion-document";
 import type { ValuationSignature } from "@/features/valuations/services/valuation-signatures";
-import { SignatureLines } from "./caratula-preview-modules";
+import { appraisedGoodWording } from "@/features/valuations/services/appraised-good-wording";
+import { formatMoneyForDocument } from "@/features/valuations/services/concept-value-format";
+import { ConcludedValueBox, SignatureLines } from "./caratula-preview-modules";
 import type { DocumentFlowItem } from "./document-preview-page";
 
 const keyOf = (concept: Concept) => conceptCalculationKey(concept);
+const REAL_ESTATE_WORDING = appraisedGoodWording(null);
+const REAL_ESTATE_CONCLUDED_LABEL = REAL_ESTATE_WORDING.concludedValueLabel.toLowerCase();
+const REAL_ESTATE_COMMERCIAL_TITLE = REAL_ESTATE_WORDING.commercialValueTitle;
 const visible = (concept: Concept) => concept.enabled !== false;
 
 /** "8530000.00" (or "$8,530,000.00" written by hand) as a number; null for a text such as "NO APLICA". */
@@ -48,35 +53,93 @@ function Amount({ value, className }: { value: string; className?: string }) {
   );
 }
 
-/** The chart of the values (V7.1-26, «extra»): one horizontal bar each, the concluded value last. */
-function ValueChart({ rows }: { rows: Array<{ id: string; label: string; value: number; concluded?: boolean }> }) {
+type ChartRow = { id: string; label: string; value: number };
+
+/** What a bar is called under it: «VALOR POR ENFOQUE DE COSTOS» reads «COSTOS». */
+export function chartLabel(label: string) {
+  const short = label.trim().replace(/:$/, "").replace(/^valor\s+(estimado\s+)?(por|de)\s+(el\s+)?(enfoque\s+de\s+)?/i, "");
+  return (short || label).toUpperCase();
+}
+
+/** A label in lines of about `width` letters, at most two: the second one ends in «…» when it does not fit. */
+function labelLines(label: string, width = 14): string[] {
+  const lines: string[] = [];
+  for (const word of label.split(/\s+/)) {
+    const last = lines.at(-1);
+    if (last !== undefined && `${last} ${word}`.length <= width) lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  }
+  return lines.length > 2 ? [lines[0], `${lines[1]}…`] : lines;
+}
+
+/** «$8,530,000»; with more than three bars, «$8.53 M» so the figures fit over them. */
+const barFigure = (value: number, compact: boolean) =>
+  compact ? `$${(value / 1_000_000).toLocaleString("es-MX", { maximumFractionDigits: 2 })} M` : `$${value.toLocaleString("es-MX", { maximumFractionDigits: 0 })}`;
+
+const CHART = { width: 240, height: 168, top: 18, bottom: 30, side: 8 };
+
+/**
+ * The chart of the values (V7.1-26; 24 Nov 2026: «una gráfica vertical… con
+ * los tres valores… a un costado»): one vertical bar per value of the
+ * resumen, small, at the left of the values. Drawn inline (SVG) in the
+ * strong colour of the palette: it prints in the PDF with nothing to load.
+ */
+function ValueChart({ rows }: { rows: ChartRow[] }) {
   const max = Math.max(...rows.map((row) => row.value));
   if (!(max > 0)) return null;
+  const plot = { left: CHART.side, right: CHART.width - CHART.side, top: CHART.top, bottom: CHART.height - CHART.bottom };
+  const slot = (plot.right - plot.left) / rows.length;
+  const barWidth = Math.min(44, slot * 0.58);
+  const compact = rows.length > 3;
   return (
-    <figure className="mx-auto mt-3 w-[88%] break-inside-avoid" data-conclusion-chart>
-      <figcaption className="pb-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-600">Gráfica de valores</figcaption>
-      <div className="grid gap-1">
-        {rows.map((row) => (
-          <div key={row.id} className="grid grid-cols-[38%_1fr] items-center gap-2 text-[9.5px] text-slate-700">
-            <span className="truncate text-right font-semibold uppercase">{row.label}</span>
-            <span className="flex items-center gap-1.5">
-              <span
-                className={`block h-3 [-webkit-print-color-adjust:exact] [print-color-adjust:exact] ${row.concluded ? "bg-[var(--caratula-blue)]" : "bg-[var(--doc-strong-soft,#8EA9D1)]"}`}
-                style={{ width: `${Math.max(1, (row.value / max) * 78)}%` }}
-              />
-              <span className="whitespace-nowrap tabular-nums">${figure(row.value)}</span>
-            </span>
-          </div>
-        ))}
-      </div>
+    <figure className="m-0 break-inside-avoid" data-conclusion-chart>
+      <figcaption className="pb-0.5 text-center text-[9.5px] font-bold uppercase tracking-wide text-[color:var(--caratula-dark-blue,#00285A)]">Gráfica de valores</figcaption>
+      <svg viewBox={`0 0 ${CHART.width} ${CHART.height}`} className="block h-auto w-full" role="img" aria-label="Gráfica de los valores del resumen">
+        {rows.map((row, index) => {
+          const height = Math.max(1, ((plot.bottom - plot.top) * Math.max(0, row.value)) / max);
+          const center = plot.left + slot * index + slot / 2;
+          return (
+            <g key={row.id} data-chart-bar={row.label}>
+              <rect x={center - barWidth / 2} y={plot.bottom - height} width={barWidth} height={height} rx={1.5} className="fill-[var(--caratula-dark-blue,#00285A)]" />
+              <text x={center} y={plot.bottom - height - 4} textAnchor="middle" fontSize={8.5} fontWeight={700} className="fill-[#1A1A1A] tabular-nums">{barFigure(row.value, compact)}</text>
+              <text x={center} y={plot.bottom + 11} textAnchor="middle" fontSize={7.5} fontWeight={700} className="fill-[#333333]">
+                {labelLines(row.label).map((line, lineIndex) => <tspan key={lineIndex} x={center} dy={lineIndex ? 9 : 0}>{line}</tspan>)}
+              </text>
+            </g>
+          );
+        })}
+        <line x1={plot.left} x2={plot.right} y1={plot.bottom + 0.5} y2={plot.bottom + 0.5} strokeWidth={1} className="stroke-[var(--doc-rule,#8EA9D1)]" />
+      </svg>
     </figure>
   );
+}
+
+/** A label as it prints in the box: in capitals, without the colon the rows carry. */
+const boxTitle = (label: string) => label.trim().replace(/:$/, "").toUpperCase();
+
+/**
+ * The title of the box: the name the appraiser gave the concluded value
+ * (V7.3-28); the template's «Valor concluido» reads as the carátula's
+ * «VALOR COMERCIAL DEL INMUEBLE» (24 Nov 2026).
+ */
+function concludedTitle(label: string) {
+  return label.trim().toLowerCase() === REAL_ESTATE_CONCLUDED_LABEL ? REAL_ESTATE_COMMERCIAL_TITLE : boxTitle(label);
+}
+
+/** The concluded amount as the carátula prints it: «$8,260,000.00 M.N.»; a text written by hand as it is. */
+function concludedAmount(concept: Concept) {
+  const number = amountOf(concept.value);
+  if (number === null) return concept.value.trim() || "—";
+  return formatMoneyForDocument(number, { legalTender: concept.valueFormat !== "mxn" });
 }
 
 /**
  * The resumen de valores, the concluded value in its box and its amount in
  * words, from the concepts of the block (linked to the calculation or
- * written by hand): the book's «RESUMEN DE VALORES» and «VALOR DE MERCADO:».
+ * written by hand), as the appraiser's Excel prints them (24 Nov 2026): each
+ * name right-aligned on the pastel of the palette and its value in a white
+ * box, «$» at the left; the chart, when chosen, at the left of the values;
+ * and the concluded value in the box of the carátula.
  */
 export function ConclusionValueModule({ block }: { block: Block }) {
   const concepts = block.concepts.filter(visible);
@@ -84,33 +147,44 @@ export function ConclusionValueModule({ block }: { block: Block }) {
   const concluded = concepts.find((concept) => keyOf(concept) === CONCLUSION_KEYS.value);
   const words = concepts.find((concept) => keyOf(concept) === CONCLUSION_KEYS.words);
   const chartRows = block.valueChart
-    ? [
-        ...summary.map((concept) => ({ id: concept.id, label: concept.label, value: amountOf(concept.value) })),
-        ...(concluded ? [{ id: concluded.id, label: concluded.label, value: amountOf(concluded.value), concluded: true }] : []),
-      ].filter((row): row is { id: string; label: string; value: number; concluded?: boolean } => row.value !== null)
+    ? summary
+        .map((concept) => ({ id: concept.id, label: chartLabel(concept.label), value: amountOf(concept.value) }))
+        .filter((row): row is ChartRow => row.value !== null)
     : [];
+  const chart = chartRows.length ? <ValueChart rows={chartRows} /> : null;
+  const values = summary.length ? (
+    <table className="w-full border-separate border-spacing-x-[4px] border-spacing-y-[3px] text-[11px] font-bold" data-conclusion-summary-rows>
+      <tbody>
+        {summary.map((concept) => (
+          <tr key={concept.id}>
+            <td className="bg-[var(--doc-pastel,#BDD7EE)] px-2 py-0.5 text-right uppercase text-[color:var(--doc-ink-on-pastel,#1A1A1A)] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" data-summary-label>
+              {printedLabel(concept.label)}
+            </td>
+            <td className="w-[34%] border border-[var(--caratula-dark-blue,#00285A)] bg-white px-2 py-0.5 text-slate-900" data-summary-value>
+              <Amount value={concept.value} />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ) : null;
   return (
     <section className="pt-1 text-slate-800" data-conclusion-value-module>
-      {summary.length ? (
-        <table className="ml-auto w-[88%] border-separate border-spacing-y-[3px] text-[11px] font-bold" data-conclusion-summary-rows>
-          <tbody>
-            {summary.map((concept) => (
-              <tr key={concept.id} className="bg-[var(--doc-pastel,#B4C6E7)] text-[color:var(--doc-ink-on-pastel,inherit)] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
-                <td className="px-2 py-0.5 text-right uppercase">{printedLabel(concept.label)}</td>
-                <td className="w-[30%] py-0.5 pr-2 pl-3"><Amount value={concept.value} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
-      {chartRows.length ? <ValueChart rows={chartRows} /> : null}
-      {concluded ? (
-        <div className="mx-auto mt-4 flex w-[80%] border border-[var(--caratula-blue)] text-[15px] font-bold [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" data-concluded-value-box>
-          <div className="flex-1 bg-[var(--caratula-blue)] px-3 py-1 text-right uppercase text-[color:var(--doc-on-strong,#fff)]" data-concluded-value-label>{printedLabel(concluded.label)}</div>
-          <div className="w-[42%] bg-[var(--doc-zebra-strong,#E2E8F0)] px-3 py-1 text-slate-900"><Amount value={concluded.value} /></div>
+      {chart && values ? (
+        <div className="grid grid-cols-[36%_minmax(0,1fr)] items-center gap-3 break-inside-avoid" data-conclusion-values-with-chart>
+          {chart}
+          {values}
         </div>
+      ) : values ? (
+        <div className="ml-auto w-[88%]">{values}</div>
+      ) : chart ? (
+        <div className="mx-auto w-[40%]">{chart}</div>
       ) : null}
-      {words?.value.trim() ? (
+      {concluded ? (
+        <div className="mx-auto mt-4 w-[86%] break-inside-avoid">
+          <ConcludedValueBox title={concludedTitle(concluded.label)} amount={concludedAmount(concluded)} words={words?.value.trim() ?? ""} />
+        </div>
+      ) : words?.value.trim() ? (
         <p className="pt-2 text-center text-[11px] font-bold uppercase text-slate-700" data-concluded-value-words>{words.value}</p>
       ) : null}
     </section>

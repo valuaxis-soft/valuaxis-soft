@@ -12,6 +12,7 @@ import { formatNumericValue } from "@/features/valuations/services/concept-value
 import { coverImageLayout, normalizeCoverImageSize } from "@/features/valuations/services/cover-image-focus";
 import { appraisedGoodWording } from "@/features/valuations/services/appraised-good-wording";
 import { titlePrints } from "@/features/valuations/services/block-title";
+import { usePagePresentation } from "./page-presentation-context";
 
 // Module 1: Cover (title, location, principal image)
 export function CaratulaCoverModule({
@@ -64,19 +65,43 @@ export function CaratulaCoverModule({
   );
 }
 
+/** «Títulos de las secciones»: the bar of the strong colour, or its letters on white inside a thin frame. */
+const CARATULA_HEADING_CLASS = {
+  filled: "border border-[var(--caratula-dark-blue,#00285A)] bg-[var(--caratula-dark-blue,#00285A)] text-[color:var(--doc-on-strong,#fff)] [-webkit-print-color-adjust:exact] [print-color-adjust:exact]",
+  outline: "border border-[var(--caratula-dark-blue,#00285A)] bg-white text-[color:var(--caratula-dark-blue,#00285A)]",
+} as const;
+
 /**
  * The title of a block of the carátula: its own blocks, the assumptions and the
  * conclusion print it alike (videos 5.2 and 5.6: "DATOS DEL BIEN" was missing),
- * boxed in a thin frame like the bars of the other sections, not over a rule
- * from edge to edge (video 7.1, 2:08: «encajonado, con su marco»). An empty
- * title, or one with «Imprimir título» off, prints nothing.
+ * as the titles of every other section: the bar of the strong colour, or its
+ * letters inside a thin frame when «Títulos de las secciones» says so (24 Nov
+ * 2026: «CONCLUSIÓN» printed hollow while every other title was filled). An
+ * empty title, or one with «Imprimir título» off, prints nothing.
  */
 export function CaratulaBlockHeading({ title, hidden = false }: { title: string; hidden?: boolean }) {
+  const { titleBars } = usePagePresentation();
   if (!titlePrints({ title, titleHidden: hidden })) return null;
   return (
-    <h2 className="border border-[var(--caratula-blue)] px-2 py-0.5 text-center text-[12px] font-black uppercase leading-tight text-[var(--caratula-blue)]" data-caratula-block-title>
+    <h2 className={`px-2 py-0.5 text-center text-[12px] font-black uppercase leading-tight ${CARATULA_HEADING_CLASS[titleBars]}`} data-title-style={titleBars} data-caratula-block-title>
       {title}
     </h2>
+  );
+}
+
+/**
+ * The concluded value in its box, as the carátula prints it and the
+ * conclusion repeats it (24 Nov 2026: «replicarlo en la conclusión»): its
+ * title, the amount large and the amount in words under it, on the tint of
+ * the palette inside the strong colour's frame.
+ */
+export function ConcludedValueBox({ title, amount, words }: { title: string; amount: string; words: string }) {
+  return (
+    <div className="border-2 border-[var(--caratula-blue)] bg-[var(--doc-zebra-strong,#E2E8F0CC)] px-4 py-1.5 text-center [-webkit-print-color-adjust:exact] [print-color-adjust:exact]" data-concluded-value-box>
+      <h3 className="text-sm font-black uppercase leading-tight text-[var(--caratula-blue)]" data-concluded-value-label>{title}</h3>
+      <p className="pt-1 text-3xl font-medium leading-tight tabular-nums text-[var(--caratula-blue)]" data-concluded-value-amount>{amount}</p>
+      {words ? <p className="pt-1 text-sm font-medium uppercase leading-tight text-slate-600" data-concluded-value-words>{words}</p> : null}
+    </div>
   );
 }
 
@@ -141,13 +166,15 @@ export function CaratulaConclusionModule({
           ))}
         </div>
       ) : null}
-      {showValue ? <div className="mt-1 border-2 border-[var(--caratula-blue)] bg-[var(--doc-zebra-strong,#E2E8F0CC)] px-4 py-1.5 text-center">
-        <h3 className="text-sm font-black leading-tight text-[var(--caratula-blue)]">{appraisedGoodWording(meta.propertyKind).commercialValueTitle}</h3>
-        <p className="pt-1 text-3xl font-medium leading-tight text-[var(--caratula-blue)]">{caratula.valorTotal ? formatNumericValue(caratula.valorTotal, { valueFormat: "mxn-mn" }) : "Sin calcular"}</p>
-        <p className="pt-1 text-sm font-medium uppercase leading-tight text-slate-600">
-          {caratula.valorConLetra || "Valor con letra pendiente"}
-        </p>
-      </div> : null}
+      {showValue ? (
+        <div className="mt-1">
+          <ConcludedValueBox
+            title={appraisedGoodWording(meta.propertyKind).commercialValueTitle}
+            amount={caratula.valorTotal ? formatNumericValue(caratula.valorTotal, { valueFormat: "mxn-mn" }) : "Sin calcular"}
+            words={caratula.valorConLetra || "Valor con letra pendiente"}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

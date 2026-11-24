@@ -77,6 +77,8 @@ import type { ContainerAddress } from "@/features/valuations/services/structure-
 import { CONCEPT_CREATION_OPTIONS, conceptDataTypePatch, conceptDataTypeValue } from "@/features/valuations/services/concept-types";
 
 import { ValueFormatSelect, firmUnitOptionValue } from "./value-format-select";
+import { useRefusedDraft } from "./refused-draft";
+import { conclusiveLabelRefusal } from "@/features/valuations/services/intangible-labels";
 
 import { Textarea } from "@/components/ui/textarea";
 import { DraftAssist } from "./draft-assist";
@@ -167,14 +169,17 @@ export function ConceptCalculationLinkScope({ children, value }: { children: Rea
   return <ConceptCalculationLinkContext.Provider value={value}>{children}</ConceptCalculationLinkContext.Provider>;
 }
 
+/** "Desvincular" of a concept the calculation writes, asking first: the badge's and the ⋮ and right-click menus'. */
+function unlinkFromCalculation(link: ConceptCalculationLink, conceptId: string) {
+  if (!window.confirm("¿Desvincular este dato del cálculo? Conservará el valor que tiene y el cálculo dejará de cambiarlo hasta que lo vuelvas a vincular.")) return;
+  link.onSetLinked(conceptId, false);
+}
+
 function ConceptCalculationLinkBadge({ concept, readOnly }: { concept: Concept; readOnly: boolean }) {
   const link = useContext(ConceptCalculationLinkContext);
   if (!link?.isCalculated(concept)) return null;
   const linked = !concept.calculationUnlinked;
-  const unlink = () => {
-    if (!window.confirm("¿Desvincular este dato del cálculo? Conservará el valor que tiene y el cálculo dejará de cambiarlo hasta que lo vuelvas a vincular.")) return;
-    link.onSetLinked(concept.id, false);
-  };
+  const unlink = () => unlinkFromCalculation(link, concept.id);
   return (
     <CalculationLinkBadge
       linked={linked}
@@ -954,7 +959,7 @@ export function ConceptOptionsMenu({
           ) : null}
           {moveSource ? <MoveConceptMenuItem source={moveSource} conceptId={concept.id} disabled={readOnly} /> : null}
           {/* The same «Vincular con…» and «Desvincular» as the right-click menu. */}
-          {onLinkTo || lockedReason ? (
+          {onLinkTo || lockedReason || (linked && onUnlink) ? (
             <>
               <Button
                 type="button"
@@ -1194,7 +1199,17 @@ export function ConceptEditorRow({
   // «Vincular con…» and «Desvincular», in the ⋮ and the right-click menus; the notice «Este dato ya existe…» when a field is left.
   const linkState = conceptLinkIndicator(concept, allConcepts);
   const linkTo = onChangeRelation && !readOnly ? (sourceId: string) => onChangeRelation(concept.id, "value", sourceId) : undefined;
-  const unlink = onUnlink && !readOnly ? () => onUnlink(concept.id) : undefined;
+  // A concept the conclusion writes is linked to the calculation: «Desvincular» of its menus unlinks it from it
+  // (FAL-16: it said «Vinculado con el cálculo» and the menu's «Desvincular» was disabled).
+  const calculationLink = useContext(ConceptCalculationLinkContext);
+  const calculated = Boolean(calculationLink?.isCalculated(concept));
+  const calculationLinked = calculated && !concept.calculationUnlinked;
+  const unlink = readOnly ? undefined
+    : linkState === "none" && calculationLinked && calculationLink ? () => unlinkFromCalculation(calculationLink, concept.id)
+      : onUnlink ? () => onUnlink(concept.id) : undefined;
+  const menuLinked = linkState !== "none" || calculationLinked;
+  // The name of a concluded value never speaks of intangibles (24 Nov 2026): refused as it is typed.
+  const title = useRefusedDraft(calculated ? conclusiveLabelRefusal : null);
   const suggestLinkAfter = useLinkSuggestion(concept.id, linkTo);
   const onFieldBlur = (event: FocusEvent<HTMLDivElement>) => {
     const field = event.target;
@@ -1220,6 +1235,7 @@ export function ConceptEditorRow({
             : undefined,
           canDuplicate: Boolean(onDuplicate),
           linked: linkState !== "none",
+          calculationLinked,
           canDelete: true,
         }}
         onPatch={(patch) => onUpdate(concept.id, patch)}
@@ -1262,6 +1278,7 @@ export function ConceptEditorRow({
       ) : field(unmarkedField(effectiveConcept.value));
     const handleTitleBlur = () => {
       setIsTitleFocused(false);
+      if (title.leave()) return;
       if (titleMissing) {
         handleLinkedAwareUpdate({ label: UNTITLED_CARATULA_CONCEPT });
         return;
@@ -1300,17 +1317,18 @@ export function ConceptEditorRow({
         {conceptType === "paragraph" ? null : (
         <Field className="min-w-0" data-invalid={titleMissing}>
           <Input autoComplete="off"
-            aria-invalid={titleMissing}
+            aria-invalid={titleMissing || Boolean(title.reason)}
             className={cn("h-10 min-w-0", CONCEPT_TITLE_CLASS)}
             data-concept-title
             disabled={readOnly}
             placeholder="Título"
-            value={isTitleFocused ? concept.label : cleanConceptLabel}
+            value={title.draft ?? (isTitleFocused ? concept.label : cleanConceptLabel)}
             onBlur={handleTitleBlur}
-            onChange={(event) => handleLinkedAwareUpdate({ label: event.target.value })}
+            onChange={(event) => title.change(event.target.value, (label) => handleLinkedAwareUpdate({ label }))}
             onFocus={() => setIsTitleFocused(true)}
           />
           {titleMissing ? <FieldError>Escribe un título para este campo.</FieldError> : null}
+          {title.reason ? <FieldError data-label-refused>{title.reason}</FieldError> : null}
         </Field>
         )}
         {conceptType === "list" ? (
@@ -1389,7 +1407,7 @@ export function ConceptEditorRow({
             moveSource={moveSource}
             readOnly={readOnly}
             valueFormatReadOnly={formatIsSourceOwned}
-            linked={linkState !== "none"}
+            linked={menuLinked}
             onLinkTo={linkTo}
             onUnlink={unlink}
             onDuplicate={onDuplicate}
@@ -1464,23 +1482,25 @@ export function ConceptEditorRow({
         <div className="min-w-0 space-y-1">
           <Field data-invalid={titleMissing}>
             <Input autoComplete="off"
-              aria-invalid={titleMissing}
+              aria-invalid={titleMissing || Boolean(title.reason)}
               className={cn("w-full", CONCEPT_TITLE_CLASS)}
               data-concept-title
               disabled={readOnly}
-              value={isTitleFocused ? concept.label : cleanConceptLabel}
+              value={title.draft ?? (isTitleFocused ? concept.label : cleanConceptLabel)}
               onBlur={() => {
                 setIsTitleFocused(false);
+                if (title.leave()) return;
                 if (titleMissing) {
                   onUpdate(concept.id, { label: UNTITLED_CARATULA_CONCEPT });
                   return;
                 }
                 if (cleanConceptLabel !== concept.label) onUpdate(concept.id, { label: cleanConceptLabel });
               }}
-              onChange={(event) => onUpdate(concept.id, { label: event.target.value })}
+              onChange={(event) => title.change(event.target.value, (label) => onUpdate(concept.id, { label }))}
               onFocus={() => setIsTitleFocused(true)}
             />
             {titleMissing ? <FieldError>Escribe un título para este campo.</FieldError> : null}
+            {title.reason ? <FieldError data-label-refused>{title.reason}</FieldError> : null}
           </Field>
           {withTextMarks((marked) => (
             <Textarea autoComplete="off" className="w-full" disabled={readOnly} value={marked.text} onChange={(event) => onUpdate(concept.id, { value: marked.valueOf(event.target.value) })} />
@@ -1491,23 +1511,25 @@ export function ConceptEditorRow({
         <>
           <Field className="min-w-0" data-invalid={titleMissing}>
             <Input autoComplete="off"
-              aria-invalid={titleMissing}
+              aria-invalid={titleMissing || Boolean(title.reason)}
               className={cn("h-10 min-w-0", CONCEPT_TITLE_CLASS)}
               data-concept-title
               disabled={readOnly}
-              value={isTitleFocused ? concept.label : cleanConceptLabel}
+              value={title.draft ?? (isTitleFocused ? concept.label : cleanConceptLabel)}
               onBlur={() => {
                 setIsTitleFocused(false);
+                if (title.leave()) return;
                 if (titleMissing) {
                   onUpdate(concept.id, { label: UNTITLED_CARATULA_CONCEPT });
                   return;
                 }
                 if (cleanConceptLabel !== concept.label) onUpdate(concept.id, { label: cleanConceptLabel });
               }}
-              onChange={(event) => onUpdate(concept.id, { label: event.target.value })}
+              onChange={(event) => title.change(event.target.value, (label) => onUpdate(concept.id, { label }))}
               onFocus={() => setIsTitleFocused(true)}
             />
             {titleMissing ? <FieldError>Escribe un título para este campo.</FieldError> : null}
+            {title.reason ? <FieldError data-label-refused>{title.reason}</FieldError> : null}
           </Field>
           {conceptType === "list" ? (
             <ConceptListValueSelect concept={effectiveConcept} readOnly={readOnly} onChange={(value) => onUpdate(concept.id, { value })} />
@@ -1573,7 +1595,7 @@ export function ConceptEditorRow({
           moveSource={moveSource}
           readOnly={readOnly}
           valueFormatReadOnly={formatIsSourceOwned}
-          linked={linkState !== "none"}
+          linked={menuLinked}
           onLinkTo={linkTo}
           onUnlink={unlink}
           onDuplicate={onDuplicate}

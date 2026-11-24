@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { conclusionValues, signatureConceptValues, withConceptValues, withValueChart } from "../src/features/valuations/calculation/conclusion-document";
 import { conclusionInput, type ConclusionCalculationDto } from "../src/features/valuations/calculation/conclusion-types";
-import { conclusionBlockFlowItems } from "../src/features/valuations/components/conclusion-preview-modules";
+import { chartLabel, conclusionBlockFlowItems } from "../src/features/valuations/components/conclusion-preview-modules";
 import { documentBlockFlowItems } from "../src/features/valuations/components/document-block-renderer";
 import { concludeValue } from "../src/features/valuations/engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
@@ -53,8 +53,8 @@ test("V7.1-23: the resumen in its rows, the concluded value in its box under his
   assert.equal(ids[1], `${block.id}:conclusion-value`, "right under the title");
   for (const label of ["VALOR POR ENFOQUE DE COSTOS:", "VALOR POR ENFOQUE DE MERCADO:", "VALOR POR ENFOQUE DE INGRESOS:"]) assert.ok(html.includes(label), label);
   assert.ok(html.includes("8,530,000.00") && html.includes("3,700,000.00"));
-  assert.match(html, /data-concluded-value-label[^>]*>VALOR DE MERCADO:</);
-  assert.ok(html.includes("8,260,000.00"));
+  assert.match(html, /data-concluded-value-label[^>]*>VALOR DE MERCADO</);
+  assert.ok(html.includes("$8,260,000.00 M.N."), "the amount as the carátula prints it");
   assert.ok(html.includes("(OCHO MILLONES DOSCIENTOS SESENTA MIL PESOS 00/100 M.N.)"));
   // The values print once, in the module: not again as rows of concepts.
   assert.ok(!html.includes("Valor concluido con letra"));
@@ -64,11 +64,60 @@ test("V7.1-23: the resumen in its rows, the concluded value in its box under his
   assert.ok(!html.includes("data-conclusion-chart"), "the chart is off unless chosen");
 });
 
-test("V7.1-26: chosen, the chart draws a bar per value of the resumen and the concluded value", () => {
+test("V7.1-26 and 24 Nov 2026: chosen, the chart draws a vertical bar per value of the resumen, at the left of the values", () => {
   const section = withValueChart(synced(), true);
   const { html } = render(section.blocks[0]);
   assert.ok(html.includes("data-conclusion-chart"));
-  assert.equal(html.split("grid-cols-[38%_1fr]").length - 1, 4);
+  // The three approaches, not only one, each under its short name.
+  const bars = [...html.matchAll(/data-chart-bar="([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(bars, ["COSTOS", "MERCADO", "INGRESOS"]);
+  // Vertical: the tallest bar is the largest value, the bars grow up from the same line.
+  const heights = [...html.matchAll(/<rect [^>]*height="([\d.]+)"/g)].map((match) => Number(match[1]));
+  assert.equal(heights.length, 3);
+  assert.equal(Math.max(...heights), heights[0], "costos, the largest value, is the tallest");
+  assert.ok(heights[2] < heights[1] && heights[1] < heights[0]);
+  // In the same row as the values, at their left.
+  const row = html.slice(html.indexOf("data-conclusion-values-with-chart"));
+  assert.ok(row.indexOf("data-conclusion-chart") < row.indexOf("data-conclusion-summary-rows"));
+  // Drawn inline in the palette's strong colour: it prints in the PDF with nothing to load.
+  assert.ok(html.includes("<svg") && !/<img|https?:\/\//.test(html));
+  assert.ok(html.includes("fill-[var(--caratula-dark-blue,#00285A)]"));
+});
+
+test("off, the chart does not print and the values keep their place at the right", () => {
+  const { html } = render(synced().blocks[0]);
+  assert.ok(!html.includes("data-conclusion-chart") && !html.includes("data-conclusion-values-with-chart"));
+  assert.ok(html.includes("ml-auto w-[88%]"));
+});
+
+test("24 Nov 2026: the values by approach print as his Excel, each name on the pastel and its value in a white box with «$» at the left", () => {
+  const { html } = render(synced().blocks[0]);
+  const labels = [...html.matchAll(/<td class="([^"]*)" data-summary-label/g)].map((match) => match[1]);
+  const values = [...html.matchAll(/<td class="([^"]*)" data-summary-value/g)].map((match) => match[1]);
+  assert.equal(labels.length, 3);
+  for (const label of labels) {
+    assert.ok(label.includes("bg-[var(--doc-pastel,#BDD7EE)]") && label.includes("text-right"), label);
+    assert.ok(!label.includes("caratula-blue"), "not in solid blue");
+  }
+  for (const value of values) assert.ok(value.includes("bg-white") && value.includes("border border-[var(--caratula-dark-blue,#00285A)]"), value);
+  assert.match(html, /<span>\$<\/span><span>8,530,000\.00<\/span>/);
+});
+
+test("24 Nov 2026: the concluded value prints in the carátula's box: «VALOR COMERCIAL DEL INMUEBLE», the amount large and its words", () => {
+  const { html } = render(synced().blocks[0]);
+  assert.match(html, /data-concluded-value-label[^>]*>VALOR COMERCIAL DEL INMUEBLE</);
+  assert.match(html, /data-concluded-value-amount[^>]*>\$8,260,000\.00 M\.N\.</);
+  const box = html.slice(html.indexOf("data-concluded-value-box") - 300);
+  assert.ok(box.includes("border-2 border-[var(--caratula-blue)] bg-[var(--doc-zebra-strong,#E2E8F0CC)]"));
+  assert.ok(box.indexOf("data-concluded-value-amount") < box.indexOf("(OCHO MILLONES DOSCIENTOS SESENTA MIL PESOS 00/100 M.N.)"), "the words under the amount");
+});
+
+test("the short name of a bar drops «Valor por enfoque de»", () => {
+  assert.equal(chartLabel("Valor por enfoque de costos"), "COSTOS");
+  assert.equal(chartLabel("VALOR POR EL ENFOQUE DE INGRESOS:"), "INGRESOS");
+  assert.equal(chartLabel("Valor de terreno por enfoque de mercado"), "TERRENO POR ENFOQUE DE MERCADO");
+  assert.equal(chartLabel("Valor estimado por regresión"), "REGRESIÓN");
+  assert.equal(chartLabel("Valor físico"), "VALOR FÍSICO");
 });
 
 test("V7.1-24: FIRMAS prints the carátula's signatures, not «Valuador: —»", () => {

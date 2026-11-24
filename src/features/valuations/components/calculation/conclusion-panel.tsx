@@ -18,6 +18,7 @@ import {
   conclusionEngineConfig,
   conclusionInput,
   summaryRowValues,
+  summaryRowsWith,
   type ConclusionCalculationDto,
   type ConclusionMethod,
   type ConclusionSummaryRow,
@@ -34,6 +35,7 @@ import { useSerializedSave } from "./use-serialized-save";
 import { marketLeftOut } from "@/features/valuations/services/report-approaches";
 import { formatMoneyForDocument } from "@/features/valuations/services/concept-value-format";
 import { SaveRefusedNotice, saveRefusedMessage } from "./save-refused";
+import { conclusiveLabelRefusal } from "@/features/valuations/services/intangible-labels";
 
 const APPROACHES: Approach[] = ["costos", "mercado", "ingresos"];
 const weightPath = (approach: Approach) => `method.weights.${approach}`;
@@ -95,7 +97,7 @@ function ConclusionSummaryEditor({
             onChange={(event) => {
               const source = event.target.value as SummarySource | "";
               if (!source) return;
-              onChange([...rows, { source, label: SUMMARY_SOURCE_LABELS[source] }]);
+              onChange(summaryRowsWith(calculation, source));
             }}
           >
             <NativeSelectOption value="">Agregar un valor…</NativeSelectOption>
@@ -116,9 +118,16 @@ function ConclusionSummaryEditor({
                 value={draft[index] ?? row.label}
                 maxLength={200}
                 onChange={(event) => setDraft((current) => ({ ...current, [index]: event.target.value }))}
+                aria-invalid={draft[index] !== undefined && conclusiveLabelRefusal(draft[index]) ? true : undefined}
                 onBlur={() => {
                   const label = (draft[index] ?? row.label).trim() || SUMMARY_SOURCE_LABELS[row.source];
                   setDraft((current) => { const next = { ...current }; delete next[index]; return next; });
+                  // A value of the resumen never concludes on intangibles (24 Nov 2026): the name goes back.
+                  const refusal = conclusiveLabelRefusal(label);
+                  if (refusal) {
+                    toast.error(refusal);
+                    return;
+                  }
                   if (label !== row.label) onChange(rows.map((item, position) => (position === index ? { ...item, label } : item)));
                 }}
               />
@@ -131,7 +140,7 @@ function ConclusionSummaryEditor({
         </ul>
       ) : (
         <FieldDescription>
-          Sin filas, el dictamen lista los tres enfoques como siempre. Agrega los valores que concluyes (mercado de inmuebles, terrenos, rentas, costos, ingresos, regresión o programación por metas) y nómbralos como deben leerse.
+          Sin filas, el dictamen lista los tres enfoques como siempre. Al agregar un valor (mercado de inmuebles, terrenos, rentas, costos, ingresos, regresión o programación por metas), el resumen parte de esos tres enfoques y le suma el nuevo: quita los que no concluyas y nombra cada uno como debe leerse.
         </FieldDescription>
       )}
       {rows.length === 1 ? <FieldDescription>Con un solo valor en el resumen, el valor concluido es ese valor.</FieldDescription> : null}

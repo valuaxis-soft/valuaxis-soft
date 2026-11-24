@@ -9,6 +9,7 @@ import { COMPARABLE_TYPE_LABELS } from "@/features/valuations/calculation/market
 import { MARKET_ACCENT } from "@/features/valuations/components/calculation/market-accent";
 import { generatedMarketOf, shownForActiveMarket, type ActiveMarket } from "@/features/valuations/components/workspace/model/active-market";
 import { isConclusionCalculatedConcept } from "@/features/valuations/calculation/conclusion-document";
+import { conclusiveLabelRefusal } from "@/features/valuations/services/intangible-labels";
 import {
   ConceptCalculationLinkScope,
   ConceptValueFormatEverywhere,
@@ -864,6 +865,8 @@ function SortableBlockEditor(props: {
         disabled: readOnly,
         value: block.title,
         onChange: (title) => props.onUpdateBlock(section.id, block.id, { title: title.toUpperCase() }),
+        // The titles of the conclusion name the concluded value: never after intangibles (24 Nov 2026).
+        ...(getCanonicalSectionKey(section.id) === "CONCLUSIONES" || caratulaBlockKind === "conclusion" ? { refusal: conclusiveLabelRefusal } : {}),
       }}
       structuralActions={{
         conceptPresentation: block.conceptPresentation,

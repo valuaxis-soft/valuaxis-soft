@@ -88,6 +88,29 @@ export function summaryRowValues(calculation: Pick<ConclusionCalculationDto, "su
 }
 
 /**
+ * The resumen with a value added: the first one added starts from the three
+ * approaches the conclusion listed until then, so adding a value never takes
+ * the others away (FAL-03: costos and mercado disappeared from the
+ * dictamen). The market is the one the conclusion takes (buildings, else
+ * land). A machinery valuation, whose values are not among these, starts
+ * from the value alone.
+ */
+export function summaryRowsWith(
+  calculation: Pick<ConclusionCalculationDto, "summaryRows" | "marketSource">,
+  source: SummarySource,
+): ConclusionSummaryRow[] {
+  const current = calculation.summaryRows ?? [];
+  const starting: ConclusionSummaryRow[] = current.length || calculation.marketSource === "MAQUINARIA_VENTA"
+    ? current
+    : [
+        { source: "costos", label: SUMMARY_SOURCE_LABELS.costos },
+        { source: calculation.marketSource === "TERRENO_VENTA" ? "mercado-terrenos" : "mercado-inmuebles", label: SUMMARY_SOURCE_LABELS["mercado-inmuebles"] },
+        { source: "ingresos", label: SUMMARY_SOURCE_LABELS.ingresos },
+      ];
+  return starting.some((row) => row.source === source) ? starting : [...starting, { source, label: SUMMARY_SOURCE_LABELS[source] }];
+}
+
+/**
  * What the engine concludes with: the method over the approach values as
  * always, except when the resumen lists one value only: then that value is
  * the concluded one, through the approach slot it belongs to.
