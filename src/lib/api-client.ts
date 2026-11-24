@@ -78,6 +78,8 @@ export type CroquisRequest = {
   mapType: CroquisSettings["mapType"];
   /** The street names placed by hand in the generator. */
   labels?: CroquisLabelPlacement[];
+  /** «Trazo libre»: the lines drawn by hand. */
+  lines?: CroquisSettings["lines"];
 };
 
 /** What "Generar croquis de localización" returns: the stored image and the streets that did not fit the croquis. */

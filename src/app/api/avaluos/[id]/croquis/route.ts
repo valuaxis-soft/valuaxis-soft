@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { CROQUIS_KINDS, croquisSettingsSchema, latLonSchema, northArrowSchema, pinsForCroquis, type CroquisKind } from "@/features/maps/croquis";
 import { MAX_LABEL_PLACEMENTS, croquisLabelPlacementSchema } from "@/features/maps/croquis-marker";
+import { freeLinesSchema } from "@/features/maps/free-lines";
 import { streetHighlightsSchema } from "@/features/maps/highlights";
 import { renderAndStoreCroquis } from "@/features/maps/server/croquis-image.service";
 import { getSubjectLocation } from "@/features/maps/server/subject-location.service";
@@ -26,6 +27,8 @@ const bodySchema = z.object({
   mapType: croquisSettingsSchema.shape.mapType,
   /** V5.7-14: the names placed by hand (where and at what angle); the others follow their street. */
   labels: z.array(croquisLabelPlacementSchema).max(MAX_LABEL_PLACEMENTS).optional(),
+  /** «Trazo libre»: the lines drawn by hand. */
+  lines: freeLinesSchema.optional(),
 });
 
 /**
@@ -50,7 +53,7 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     const stored = await getSubjectLocation(id, auth.user.organizationId);
     if (!stored.location) throw new ValuationWorkflowError("Primero ubica el inmueble sujeto en el mapa.", 400);
 
-    const { kind, center, zoom, clean, mapType, northArrow, includeComparables, streets, labels } = body.data;
+    const { kind, center, zoom, clean, mapType, northArrow, includeComparables, streets, labels, lines } = body.data;
     const result = await renderAndStoreCroquis(auth.user, {
       kind,
       center,
@@ -62,6 +65,7 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
       pins: pinsForCroquis(kind, { includeComparables }, stored.comparables),
       streets,
       labels,
+      lines,
     });
     return NextResponse.json({ data: result }, { status: 201 });
   } catch (error) {

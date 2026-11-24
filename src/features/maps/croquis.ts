@@ -2,7 +2,7 @@
  * The croquis of a valuation (etapa 1 of the maps quote): what the appraiser
  * sets (the frames of the macro and micro croquis and of the map of
  * comparables, the clean map, the north arrow, whether the comparables show,
- * the highlighted streets of etapa 2), the numbered pins of the comparables
+ * the highlighted streets of etapa 2, the free lines), the numbered pins of the comparables
  * and the overlays the server composes over the Maps Static API image. Pure values and functions, tested without
  * a browser; the settings persist with the subject property
  * (subject-location.ts).
@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { COMPARABLE_TYPES, type ComparableType } from "@/features/valuations/calculation/market-types";
 
+import { freeLinesSchema, readFreeLines } from "./free-lines";
 import { DEFAULT_STREET_HIGHLIGHTS, streetHighlightsSchema, type StreetLabel } from "./highlights";
 import { DEFAULT_NORTH_ARROW, MACRO_FRAME, MAP_CORNERS, MAP_TYPES, MICRO_FRAME, NORTH_ARROW_STYLES, type CroquisFrame, type MapCorner, type MapType, type NorthArrow } from "./map-styles";
 import { STATIC_MAP_SIZE, imagePixel, imagePosition } from "./static-map";
@@ -73,6 +74,8 @@ export const croquisSettingsSchema = z.object({
   streets: streetHighlightsSchema,
   /** Settings stored before 12 nov 2026 have none: the street map. */
   mapType: mapTypeSchema.default("roadmap"),
+  /** «Trazo libre» (23 nov 2026): the lines drawn by hand; settings stored before have none. */
+  lines: freeLinesSchema.default([]),
 });
 
 export type CroquisSettings = z.infer<typeof croquisSettingsSchema>;
@@ -86,6 +89,7 @@ export const DEFAULT_CROQUIS_SETTINGS: CroquisSettings = {
   includeComparables: false,
   streets: DEFAULT_STREET_HIGHLIGHTS,
   mapType: "roadmap",
+  lines: [],
 };
 
 /** Settings as stored, completed with the defaults; invalid or missing pieces take the default. */
@@ -106,6 +110,8 @@ export function readCroquisSettings(value: unknown): CroquisSettings {
     includeComparables: pick(z.boolean(), "includeComparables", DEFAULT_CROQUIS_SETTINGS.includeComparables),
     streets: pick(streetHighlightsSchema, "streets", DEFAULT_CROQUIS_SETTINGS.streets),
     mapType: pick(mapTypeSchema, "mapType", DEFAULT_CROQUIS_SETTINGS.mapType),
+    // One damaged line never loses the others.
+    lines: readFreeLines(record.lines),
   };
 }
 

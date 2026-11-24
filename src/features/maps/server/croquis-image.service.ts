@@ -1,7 +1,7 @@
 /**
  * "Generar croquis de localización": the croquis as an image stored with the valuation.
  * The server fetches the Maps Static API image with its key (the highlighted
- * streets of etapa 2 as its paths), composes the street names, the numbered
+ * streets of etapa 2 as its paths), composes the free lines, the street names, the numbered
  * pins of the comparables and the north arrow over it with sharp, and stores
  * the result like any image the editor uploads. The dictamen, its
  * PDF and the deliverables then show it without asking Google for anything.
@@ -14,6 +14,7 @@ import { ValuationWorkflowError } from "@/features/valuations/services/valuation
 
 import { CROQUIS_IMAGE_IDS, croquisLegend, legendOverlaySvg, pinsOverlaySvg, streetLabelsOverlaySvg, type ComparablePin, type CroquisKind } from "../croquis";
 import { croquisStreets, type CroquisStreets } from "../croquis-streets";
+import { freeLinesOverlaySvg, type FreeLine } from "../free-lines";
 import { hasHighlights, placedStreetLabels, type StreetHighlights } from "../highlights";
 import type { CroquisLabelPlacement } from "../croquis-marker";
 import type { MapType, NorthArrow } from "../map-styles";
@@ -41,6 +42,8 @@ export interface CroquisRenderInput {
   streets: StreetHighlights;
   /** V5.7-14: the street names the appraiser moved or turned in the generator. */
   labels?: readonly CroquisLabelPlacement[];
+  /** «Trazo libre»: the lines drawn by hand, drawn where they were drawn on every framing. */
+  lines?: readonly FreeLine[];
 }
 
 const NO_STREETS: CroquisStreets = { paths: [], labels: [], omitted: [] };
@@ -70,8 +73,8 @@ export async function fetchStaticMap(input: Pick<CroquisRenderInput, "center" | 
   return Buffer.from(await response.arrayBuffer());
 }
 
-/** The base image with the street names, the comparables' pins and their legend, and the north arrow over it, as JPEG. */
-export async function composeCroquisImage(base: Buffer, input: Pick<CroquisRenderInput, "center" | "zoom" | "northArrow" | "pins">, streets: CroquisStreets = NO_STREETS) {
+/** The base image with the free lines, the street names, the comparables' pins and their legend, and the north arrow over it, as JPEG. */
+export async function composeCroquisImage(base: Buffer, input: Pick<CroquisRenderInput, "center" | "zoom" | "northArrow" | "pins" | "lines">, streets: CroquisStreets = NO_STREETS) {
   const image = sharp(base);
   const metadata = await image.metadata();
   const width = metadata.width ?? STATIC_MAP_SIZE.width * STATIC_MAP_SCALE;
@@ -84,6 +87,8 @@ export async function composeCroquisImage(base: Buffer, input: Pick<CroquisRende
   const symbol = { width: arrowSize.width ?? arrowHeight, height: arrowSize.height ?? arrowHeight };
   const placement = northArrowPlacement(input.northArrow.corner, { width, height }, symbol, Math.round(NORTH_ARROW_MARGIN * scale));
   const layers: sharp.OverlayOptions[] = [];
+  // Drawn on the server, not as paths of the Static API: no URL budget can leave a line out. Under the names and the pins, as on the map.
+  if (input.lines?.length) layers.push({ input: Buffer.from(freeLinesOverlaySvg(input.center, input.zoom, input.lines, scale)), left: 0, top: 0 });
   if (streets.labels.length) {
     const labels = Buffer.from(streetLabelsOverlaySvg(input.center, input.zoom, streets.labels, scale));
     layers.push({ input: labels, left: 0, top: 0 });
