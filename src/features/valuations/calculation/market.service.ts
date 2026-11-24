@@ -103,6 +103,21 @@ type PropertySnapshot = {
   constructionType?: string | null;
   /** The master workbook's property facts. */
   details?: ComparablePropertyDetails | null;
+  /**
+   * The firm's own factors of the comparable («custom:fondo»), each with its
+   * key. They are all of type OTRO and devpware_factores_homologacion keeps one
+   * factor per type and comparable (its unique key, which is not altered), so
+   * a comparable with two of them could not be saved (FAL-04, 23 Nov 2026).
+   * Absent in comparables saved before: their own factor is still a row there.
+   */
+  ownFactors?: StoredOwnFactor[];
+};
+type StoredOwnFactor = {
+  key: string;
+  value: number | null;
+  subjectRating: number | null;
+  comparableRating: number | null;
+  justification: string | null;
 };
 /** JDireccionSnapshot: the line the dictamen prints and, when captured, its parts. */
 type AddressSnapshot = { location: string } & ComparableAddress;
@@ -268,7 +283,39 @@ export async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean
     folio: row.propiedad.IFolioComparable ?? null,
     screenshot: screenshot ? { id: screenshot.id, title: screenshot.title, url: await imageUrl(screenshot.key, withPhotoUrls) } : null,
     review: reviewOf(row.JRevision),
-    factors: row.factoresHomologacion.map((factor) => ({
+    factors: comparableFactors(row, property),
+  };
+}
+
+/** The firm's own factors kept in the property snapshot, the well-formed ones. */
+function storedOwnFactors(property: Partial<PropertySnapshot>): StoredOwnFactor[] | null {
+  if (!Array.isArray(property.ownFactors)) return null;
+  const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+  return property.ownFactors.flatMap((item) => {
+    const record = asRecord(item);
+    return typeof record.key === "string" && CUSTOM_FACTOR_KEY.test(record.key)
+      ? [{
+          key: record.key,
+          value: number(record.value),
+          subjectRating: number(record.subjectRating),
+          comparableRating: number(record.comparableRating),
+          justification: typeof record.justification === "string" ? record.justification : null,
+        }]
+      : [];
+  });
+}
+
+/**
+ * The factors of a comparable: its rows in devpware_factores_homologacion and
+ * the firm's own factors of its snapshot. A comparable saved before keeps its
+ * own factor as a row, named by its key, until it is saved again.
+ */
+function comparableFactors(row: Pick<ComparableRow, "factoresHomologacion">, property: Partial<PropertySnapshot>): ComparableDto["factors"] {
+  const own = storedOwnFactors(property);
+  const rows = row.factoresHomologacion
+    // Once the snapshot holds the firm's own factors, a row of before is not one of them any more.
+    .filter((factor) => !(own && CUSTOM_FACTOR_KEY.test(factor.SNombre)))
+    .map((factor) => ({
       type: factor.tipoFactorHomologacion.SClave as FactorType,
       // A factor the firm created keeps its key in the name; the others are named by their type.
       ...(CUSTOM_FACTOR_KEY.test(factor.SNombre) ? { key: factor.SNombre } : {}),
@@ -276,9 +323,24 @@ export async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean
       subjectRating: decimal(factor.NCalificacionSujeto),
       comparableRating: decimal(factor.NCalificacionComparable),
       justification: factor.SJustificacion,
-    })),
-  };
+    }));
+  return [...rows, ...(own ?? []).map((factor) => ({ type: "OTRO" as const, ...factor }))];
 }
+
+/** The firm's own factors of a payload as the snapshot keeps them, with the value they count as. */
+function ownFactorsOf(payload: ComparableInputPayload): StoredOwnFactor[] {
+  return payload.factors.filter((factor) => factor.key).map((factor) => ({
+    key: factor.key!,
+    value: factorValueOf(factor),
+    subjectRating: factor.subjectRating,
+    comparableRating: factor.comparableRating,
+    justification: factor.justification,
+  }));
+}
+
+/** What a captured factor is worth: the ratio of its ratings, or the value typed (1 when none). */
+const factorValueOf = (factor: ComparableInputPayload["factors"][number]) =>
+  factor.subjectRating && factor.comparableRating ? factor.subjectRating / factor.comparableRating : factor.value ?? 1;
 
 async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, withPhotoUrls: boolean) {
   const typeId = await comparableTypeId(tx, type);
@@ -779,6 +841,7 @@ export function snapshots(payload: ComparableInputPayload, formulas: CapturedFor
     bathrooms: unlessOmitted(payload.bathrooms, stored.bathrooms),
     constructionType: unlessOmitted(payload.constructionType, stored.constructionType),
     details: unlessOmitted(payload.propertyDetails, stored.details),
+    ownFactors: ownFactorsOf(payload),
   };
   const publication: PublicationSnapshot = {
     sourceName: payload.sourceName,
@@ -891,7 +954,8 @@ export async function syncPublication(tx: Tx, input: {
 export async function replaceFactors(tx: Tx, comparableId: bigint, payload: ComparableInputPayload) {
   await tx.factorHomologacion.deleteMany({ where: { IdComparableAvaluo: comparableId } });
   // A surface factor is stored only when the appraiser typed one; otherwise the formula computes it.
-  const captured = payload.factors.filter((factor) => factor.type !== "SUPERFICIE" || (factor.value ?? 0) > 0);
+  // The firm's own factors go in the property snapshot (`ownFactors`): one row per type fits only one of them.
+  const captured = payload.factors.filter((factor) => !factor.key && (factor.type !== "SUPERFICIE" || (factor.value ?? 0) > 0));
   if (!captured.length) return;
   const [types, origin] = await Promise.all([
     tx.tipoFactorHomologacion.findMany({ where: { SClave: { in: captured.map((factor) => factor.type) } } }),
@@ -902,15 +966,11 @@ export async function replaceFactors(tx: Tx, comparableId: bigint, payload: Comp
     data: captured.map((factor, index) => {
       const typeId = typeIds.get(factor.type);
       if (!typeId) throw new ValuationWorkflowError(`Falta el factor ${factor.type} en el catálogo.`, 500);
-      const value = factor.subjectRating && factor.comparableRating
-        ? factor.subjectRating / factor.comparableRating
-        : factor.value ?? 1;
       return {
         IdComparableAvaluo: comparableId,
         IdTipoFactorHomologacion: typeId,
-        // The firm's own factors are of type OTRO; the name keeps which one.
         SNombre: factorKey(factor),
-        NValor: value,
+        NValor: factorValueOf(factor),
         NCalificacionSujeto: factor.subjectRating,
         NCalificacionComparable: factor.comparableRating,
         SJustificacion: factor.justification,

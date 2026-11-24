@@ -1177,16 +1177,21 @@ export function numericCellProblem(table: TableV2, columnId: string, cell: Table
   return readTypedNumber(written) === null ? NUMERIC_CELL_MESSAGE : null;
 }
 
+/** Units written right after a figure, without a space: «150m²», «20años». */
+const GLUED_UNIT = /^(?:m|m2|m²|m3|m³|ml|mts?|km|km2|km²|cm|mm|ha|in|ft|kg|g|l|lts?|mxn|usd|pesos?|m\.?\s?n\.?|años?|meses?|d[ií]as?)\.?$/iu;
+
 /**
  * The number a value typed in a cell stands for: "$ 9,000.00" is 9000,
  * "169.78 m²" is 169.78, "10%" and "10 %" are 0.1 and "-5%" is -0.05. Text
  * that is not a number with a unit is null.
  */
 export function readTypedNumber(written: string): number | null {
-  const match = /^(-?)\s*\$?\s*(-?)\s*(\d[\d,]*\.?\d*|\.\d+)\s*(.*)$/.exec(written);
+  const match = /^(-?)\s*\$?\s*(-?)\s*(\d[\d,]*\.?\d*|\.\d+)(\s*)(.*)$/.exec(written);
   if (!match) return null;
-  const [, signBefore, signAfter, digits, suffix] = match;
-  if (suffix.length > 16 || /\d/.test(suffix)) return null;
+  const [, signBefore, signAfter, digits, space, suffix] = match;
+  if (suffix.length > 16 || /\d/.test(suffix.replace(/^(m|km)[23]\b/i, ""))) return null;
+  // Letters glued to the figure are a typo ("12a"), unless they are a unit ("150m²", "20años"); after a space, any word is its unit.
+  if (!space && /^\p{L}/u.test(suffix) && !GLUED_UNIT.test(suffix)) return null;
   const magnitude = Number(digits.replace(/,/g, ""));
   if (!Number.isFinite(magnitude)) return null;
   const signed = signBefore || signAfter ? -magnitude : magnitude;

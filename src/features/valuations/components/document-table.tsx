@@ -23,7 +23,7 @@ import {
   type FormulaResult,
   type TableV2,
 } from "../services/table";
-import { evaluateTableFormulas, getCellDisplayValue } from "../services/table-formula-engine";
+import { evaluateTableFormulas, getCellPrintedValue } from "../services/table-formula-engine";
 import { TITLE_STYLE_KEY, cellStyleCss, cellStyleKey, headerStyleKey, tableCellStyle } from "../services/table-cell-style";
 import type { DocumentTableFragment } from "../services/table-pagination";
 import { TABLE_FIT_STEPS, canvasTextMeasure, planTablePrintFit, printFitColumns, type TablePrintFit } from "../services/table-print-fit";
@@ -191,7 +191,9 @@ function SummaryBoxes({ tableV2, position }: { tableV2: TableV2; position: Table
   return (
     <div className={cn("flex flex-col gap-1.5 leading-snug", TABLE_TEXT_SIZE, TABLE_TEXT, position === "top" ? "mb-1.5" : "mt-1.5")} data-table-summary={position}>
       {lines.map((line) => (
-        <div className="flex items-start gap-3" key={line[0].id}>
+        // Boxes that do not fit side by side go down a line, the last one still at the right: never cut at the margin
+        // («B) Valor de las Construcciones» beside «Superficie valuada» and «Valor Unitario Medio», FAL-17).
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5" data-table-summary-line="" key={line[0].id}>
           {line.map((box) => {
             const marked = box.rows.some((row) => row.mark !== undefined);
             return (
@@ -381,7 +383,7 @@ function DefaultDocumentTable({ table }: { table: TableContent }) {
             {printableRows(tableV2).length ? printableRows(tableV2).map((row) => (
               <tr className="border-t border-slate-300 odd:bg-[var(--doc-zebra,#F8FAFC)]" key={row.id}>
                 {columns.map((column) => {
-                  const displayValue = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
+                  const displayValue = getCellPrintedValue(tableV2, row.id, column.id, formulaResults, presentation);
                   return (
                     <td className="border-r border-slate-300 px-1.5 py-1 align-top text-wrap break-words last:border-r-0" style={cellStyleCss(tableCellStyle(tableV2, cellStyleKey(row.id, column.id)))} key={column.id}>
                       {displayValue || EMPTY_VALUE}
@@ -495,7 +497,7 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
             // A table that names its shaded rows (the «calificación» rows of the rate table) shades only those.
             <TableRow className={cn(plain ? "border-0" : "border-slate-300", !plain && (shaded ? shaded.has(row.id) : (firstRow + index) % 2 === 0) && "bg-[var(--doc-zebra,#F1F5F9)]")} data-split-table-row="" data-shaded-row={shaded?.has(row.id) ? "" : undefined} key={row.id}>
               {columns.map((column) => {
-                const value = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
+                const value = getCellPrintedValue(tableV2, row.id, column.id, formulaResults, presentation);
                 return (
                   <TableCell
                     className={cn(many ? "px-1.5 py-1" : "px-2 py-1", cellPresentation(tableV2, column.id, row.id, fitted?.fits === false), !plain && isMarkedCell(value) && MARKED)}
@@ -625,7 +627,7 @@ function CompactDocumentTable({ table }: { table: TableContent }) {
           <tr key={row.id}>
             {columns.map((column) => (
               <td className="overflow-hidden break-words border border-slate-300 px-1 py-0.5" key={column.id}>
-                {getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation)}
+                {getCellPrintedValue(tableV2, row.id, column.id, formulaResults, presentation)}
               </td>
             ))}
           </tr>

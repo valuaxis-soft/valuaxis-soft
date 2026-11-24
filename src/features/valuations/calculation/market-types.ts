@@ -3,7 +3,7 @@
  * conversion to the engine input. Shared by the browser (live results) and the
  * server (stored results and trace), so both compute the same thing.
  */
-import { SURFACE_SLOT, surfaceFactorFormula, type CapturedFactor, type FactorSlot } from "../engine/factors";
+import { SURFACE_SLOT, marketSurfaceFormulaText, surfaceFactorFormula, type CapturedFactor, type FactorSlot } from "../engine/factors";
 import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig } from "../engine/config";
 import type { ComparableInput, MarketApproachInput } from "../engine/market";
 import { formulaOfText, type CapturedFormulas } from "./captured-formulas";
@@ -97,8 +97,8 @@ export type FactorSlotConfig = {
   key?: string | null;
 };
 
-/** At most six factors per homologation, as the columns of the appraiser's format; FRe is not one of them. */
-export const MAX_FACTOR_SLOTS = 6;
+/** At most eight factors per homologation; the appraiser's Excel uses seven and the FRe, which is not one of them (FAL-12, 23 Nov 2026). */
+export const MAX_FACTOR_SLOTS = 8;
 
 /** What identifies a factor in a homologation: the firm's own key, or its type. */
 export const factorKey = (item: { type: FactorType; key?: string | null }) => item.key ?? item.type;
@@ -522,6 +522,15 @@ export function surfaceFactorFormulas(dto: Pick<MarketCalculationDto, "settings"
   return new Map(comparables
     .filter((comparable) => comparable.surfaceFactor === undefined)
     .map((comparable) => [comparable.id, surfaceFactorFormula(comparable.area, baseArea ?? subjectArea, surfacePower, orientation)]));
+}
+
+/**
+ * The surface factor of a market in the appraiser's words, the same text the
+ * editor shows, the dictamen prints and the memoria writes: against the
+ * subject or against the lote tipo, as the market homologates.
+ */
+export function marketSurfaceFormula(settings: Pick<MarketSettingsDto, "homologationBasis" | "baseArea" | "rounding">): string {
+  return marketSurfaceFormulaText(marketEngineConfig(settings).surfaceOrientation.market, homologationBasisOf(settings) === "LOTE_TIPO");
 }
 
 export function marketEngineConfig(settings: Pick<MarketSettingsDto, "rounding">, precision?: CalculationPrecision | null): EngineConfig {

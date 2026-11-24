@@ -17,7 +17,8 @@ export function printableSectionGroups(sections: AppSection[], options: { unaccr
   const excluded = excludedReportApproaches(sections);
   const source = options.unaccreditedNotice ? withNoticeSections(sections) : sections;
   const printed = source
-    .filter((section) => section.enabled !== false)
+    // A section deleted from the tab strip has no tab: it never prints (FAL-18).
+    .filter((section) => section.enabled !== false && !section.removed)
     .map((section) => sectionForReport(section, excluded))
     .filter((section): section is AppSection => section !== null);
   return groupSectionsForPrint(printed);

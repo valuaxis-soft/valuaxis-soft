@@ -13,7 +13,15 @@
  *
  * Pure TypeScript — no React, no side effects.
  */
-import { FORMULA_FUNCTION_NAMES, formulaReferenceSpans, parseFormula, type CellPosition, type FormulaFunctionName, type FormulaSyntax } from "../calculation/free-formula";
+import {
+  FORMULA_FUNCTION_NAMES,
+  formulaReferenceSpans,
+  parseFormula,
+  type CellPosition,
+  type FormulaComparison,
+  type FormulaFunctionName,
+  type FormulaSyntax,
+} from "../calculation/free-formula";
 import { isGeneratedBlock } from "../calculation/market-document";
 import type { Apartado, AppSection, Block, Concept, TableContent } from "../model";
 import { resolveBlockFlowV2 } from "./block-flow";
@@ -24,6 +32,7 @@ import {
   getDisplayColumns,
   type FormulaBinaryOp,
   type FormulaCellCorner,
+  type FormulaCompareOp,
   type FormulaExpression,
   type FormulaOperand,
   type TableFormula,
@@ -285,6 +294,19 @@ const BINARY_OPERATORS: Record<"+" | "-" | "*" | "/" | "^", FormulaBinaryOp> = {
   "^": "POWER",
 };
 
+const COMPARE_OPERATORS: Record<FormulaComparison, FormulaCompareOp> = {
+  "=": "EQUAL",
+  "<>": "NOT_EQUAL",
+  "<": "LESS_THAN",
+  ">": "GREATER_THAN",
+  "<=": "LESS_OR_EQUAL",
+  ">=": "GREATER_OR_EQUAL",
+};
+const COMPARISON_TEXT = Object.fromEntries(Object.entries(COMPARE_OPERATORS).map(([text, operator]) => [operator, text])) as Record<FormulaCompareOp, FormulaComparison>;
+
+/** The criterion of CONTAR.SI (">5"), stored as a function of its value named by the comparison: CRITERION_GREATER_THAN(5). */
+export const CRITERION_PREFIX = "CRITERION_";
+
 function resolveSyntax(node: FormulaSyntax, scope: FormulaScope): FormulaExpression {
   /** The table a reference reads, and how the stored reference names it. */
   const tableFor = (name: string | undefined): { table: TableV2; tableId?: string } => {
@@ -313,6 +335,10 @@ function resolveSyntax(node: FormulaSyntax, scope: FormulaScope): FormulaExpress
       return { type: "function", name: node.operator === "-" ? "NEG" : "PERCENT", args: [resolveSyntax(node.operand, scope)] };
     case "binary":
       return { type: "binary", operator: BINARY_OPERATORS[node.operator], left: resolveSyntax(node.left, scope), right: resolveSyntax(node.right, scope) };
+    case "compare":
+      return { type: "compare", operator: COMPARE_OPERATORS[node.operator], left: resolveSyntax(node.left, scope), right: resolveSyntax(node.right, scope) };
+    case "criteria":
+      return { type: "function", name: `${CRITERION_PREFIX}${COMPARE_OPERATORS[node.operator]}`, args: [{ type: "constant", value: node.value }] };
     case "call":
       return { type: "function", name: node.name, args: node.args.map((arg) => resolveSyntax(arg, scope)) };
     case "group":
@@ -359,7 +385,11 @@ function resolveSyntax(node: FormulaSyntax, scope: FormulaScope): FormulaExpress
 /** What follows the "=" of a formula: without the spaces around it nor the extra "=" of "==B2". */
 export const formulaSource = (text: string) => text.trim().replace(/^(=\s*)+/, "").trim();
 
-const FUNCTION_LIST = "SUMA, PROMEDIO, PRODUCTO, MIN, MAX, ABS, RAIZ, POTENCIA, REDONDEAR, LN y LOG";
+/** The functions a formula takes, by their Spanish names: what an unknown one is answered with. */
+const FUNCTION_LIST = (() => {
+  const names = Object.values(FORMULA_FUNCTION_NAMES).map((aliases) => aliases[0]);
+  return `${names.slice(0, -1).join(", ")} y ${names.at(-1)}`;
+})();
 
 /** Why a formula cannot be read, as precisely as the text tells. */
 function formulaSyntaxProblem(source: string): string {
@@ -371,7 +401,7 @@ function formulaSyntaxProblem(source: string): string {
   }
   if (depth > 0) return `Falta ${depth === 1 ? "un paréntesis de cierre «)»" : `cerrar ${depth} paréntesis «)»`}.`;
   if (/\[[^\]]*$/.test(source)) return "Falta el corchete de cierre «]» del nombre.";
-  const unknown = [...source.matchAll(/([A-Za-zÁÉÍÓÚÜÑáéíóúüñ_]{2,})\s*\(/g)]
+  const unknown = [...source.matchAll(/([A-Za-zÁÉÍÓÚÜÑáéíóúüñ_]+(?:\.[A-Za-zÁÉÍÓÚÜÑáéíóúüñ_]+)*)\s*\(/g)]
     .map((match) => match[1])
     .find((name) => !Object.values(FORMULA_FUNCTION_NAMES).flat().includes(name.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase()));
   if (unknown) return `La función «${unknown}» no existe. Puedes usar ${FUNCTION_LIST}.`;
@@ -595,9 +625,18 @@ function write(expression: FormulaExpression, scope: FormulaScope, depth: number
       // Operators of the same level are read from the left, so the right side keeps its parentheses.
       return { text: `${grouped(expression.left, precedence)}${operator}${grouped(expression.right, precedence + 1)}`, precedence };
     }
+    case "compare": {
+      const operator = COMPARISON_TEXT[expression.operator];
+      if (!operator) return { text: MISSING_REFERENCE_TEXT, precedence: PRIMARY_PRECEDENCE };
+      return { text: `${grouped(expression.left, 1)}${operator}${grouped(expression.right, 1)}`, precedence: 0 };
+    }
     case "function": {
       const args = Array.isArray(expression.args) ? expression.args : [];
       const name = String(expression.name ?? "").toUpperCase();
+      if (name.startsWith(CRITERION_PREFIX) && args.length === 1) {
+        const operator = COMPARISON_TEXT[name.slice(CRITERION_PREFIX.length) as FormulaCompareOp] ?? "=";
+        return { text: `"${operator === "=" ? "" : operator}${write(args[0], scope, depth + 1).text}"`, precedence: PRIMARY_PRECEDENCE };
+      }
       if (name === "NEG" && args.length === 1) return { text: `-${grouped(args[0], SIGN_PRECEDENCE)}`, precedence: SIGN_PRECEDENCE };
       if (name === "PERCENT" && args.length === 1) return { text: `${grouped(args[0], PRIMARY_PRECEDENCE)}%`, precedence: PRIMARY_PRECEDENCE };
       if (name === GROUP_FUNCTION && args.length === 1) return { text: `(${write(args[0], scope, depth + 1).text})`, precedence: PRIMARY_PRECEDENCE };

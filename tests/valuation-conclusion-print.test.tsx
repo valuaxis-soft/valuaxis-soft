@@ -45,7 +45,9 @@ const renamed = (block: Block, label: string): Block => ({
 });
 
 test("V7.1-23: the resumen in its rows, the concluded value in its box under his name, and the amount in words", () => {
-  const block = renamed(synced().blocks[0], "Valor de mercado");
+  const named = renamed(synced().blocks[0], "Valor de mercado");
+  // The appraiser's own text, written: an empty concept prints nothing (FAL-31).
+  const block = { ...named, concepts: named.concepts.map((concept) => (concept.label === "Observaciones finales" ? { ...concept, value: "Sin observaciones." } : concept)) };
   const { ids, html } = render(block);
   assert.equal(ids[0], `${block.id}:title`);
   assert.equal(ids[1], `${block.id}:conclusion-value`, "right under the title");

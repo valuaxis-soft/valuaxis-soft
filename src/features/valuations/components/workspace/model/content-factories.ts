@@ -96,7 +96,7 @@ export function createTable(preset?: "homologation"): TableContent {
     columns: [
       { id: colConcepto, name: "Concepto" },
       { id: colDato, name: "Dato" },
-      { id: colObservacion, name: "Observacion" },
+      { id: colObservacion, name: "Observación" },
     ],
     rows: [{
       id: `row-${id}-1`,

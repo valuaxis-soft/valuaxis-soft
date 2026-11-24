@@ -5,6 +5,7 @@ import {
   formatConceptValueForDocument,
   getConceptUrlHref,
 } from "@/features/valuations/services/concept-value-format";
+import { isFormulaErrorLabel, PRINTED_FORMULA_ERROR } from "@/features/valuations/services/table-formula-engine";
 import { hasTextMarks, parseTextMarks } from "@/features/valuations/services/text-marks";
 import { useNumberPresentation } from "./number-presentation-context";
 
@@ -23,7 +24,8 @@ export function markedRuns(value: string): ReactNode {
  * A concept's value as printed. Its unit, currency, date or phone format
  * belongs to the value, so every section prints it, whatever its layout.
  * Bold, italic and underline marks render; a value without them prints as
- * one text node, as before.
+ * one text node, as before. A formula without a number (#DIV/0!, #REF!)
+ * prints «—»: the dictamen never prints a spreadsheet error.
  */
 export function DocumentConceptValue({
   concept,
@@ -32,7 +34,9 @@ export function DocumentConceptValue({
   concept: Concept;
   fallback?: string;
 }) {
-  const value = formatConceptValueForDocument(concept, useNumberPresentation());
+  const presentation = useNumberPresentation();
+  if (isFormulaErrorLabel(concept.value)) return PRINTED_FORMULA_ERROR;
+  const value = formatConceptValueForDocument(concept, presentation);
   const href = getConceptUrlHref(concept);
 
   if (href && value) {

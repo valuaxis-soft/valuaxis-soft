@@ -33,6 +33,14 @@ export type EngineConfig = {
     market: { comparativeValue: RoundingDigits };
     /** Each approach value in the summary and the concluded value. */
     conclusion: RoundingDigits;
+    /**
+     * Whether the summary rounds again, with the conclusion's digits, the
+     * value of an approach that rounds its own (costs and market), as the
+     * books do (933,000 in the cost sheet, 930,000 in the summary). The
+     * appraiser asked for one figure per value across the dictamen (audit of
+     * 23 Nov 2026, FAL-14): off in the system's default; missing, as the books.
+     */
+    summaryRoundsApproaches?: boolean;
   };
   /**
    * "Calcular con la precisión mostrada", as Excel's precision as displayed:
@@ -100,8 +108,8 @@ export const ADOPTED_VALUE_TOLERANCE = 0.3;
  */
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   ...ARANDAS,
-  // The appraiser adopts the unit value; the land takes it as it is.
-  rounding: { ...ARANDAS.rounding, costs: { ...ARANDAS.rounding.costs, marketUnitValue: null } },
+  // The appraiser adopts the unit value; the land takes it as it is. One figure per value: the summary does not round again.
+  rounding: { ...ARANDAS.rounding, costs: { ...ARANDAS.rounding.costs, marketUnitValue: null }, summaryRoundsApproaches: false },
   ageFactor: { exponent: 1.4, floor: 0, extendUsefulLife: true },
   surfaceOrientation: { costs: "reference-over-subject", market: "subject-over-reference", income: "subject-over-reference" },
 };
@@ -118,6 +126,7 @@ export function withRounding(config: EngineConfig, overrides: RoundingOverrides 
   return {
     ...config,
     rounding: {
+      ...config.rounding,
       costs: { ...config.rounding.costs, ...overrides.costs },
       market: { comparativeValue: overrides.market === undefined ? config.rounding.market.comparativeValue : overrides.market },
       conclusion: overrides.conclusion === undefined ? config.rounding.conclusion : overrides.conclusion,

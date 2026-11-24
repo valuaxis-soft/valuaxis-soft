@@ -200,7 +200,7 @@ test("what is not a formula is rejected, never run and never a crash", () => {
     "SUMA(", "SUMA()", "SUMA(1;)", "NOEXISTE(1)", "alert(1)", "constructor(1)", "__proto__", "toString()", "hasOwnProperty(1)",
     "[", "[]", "[sin cerrar", "[]!A1", "[Tabla]!", "[Tabla]!1", "Tabla!", "'", "''", "1;2", "1,2", "A1!B2", "#REF!", "#REF!*2",
     "process.exit(1)", "require('fs')", "this", "globalThis", "`x`", "${1}", "1e309", "\u0000", "😀", "A1 B1", "2(3)",
-    "eval(1)", "Function(1)", "import(1)", "a=1", "1==1", "1<2", "&&", "{}", "[1,2][0]", "x=>x",
+    "eval(1)", "Function(1)", "import(1)", "a=1", "1==1", "1<", "<2", "1<>", "&&", "{}", "[1,2][0]", "x=>x", "SI(1>\"a\"; 1; 2)",
   ];
   for (const text of garbage) {
     assert.equal(parseFormula(text), null, JSON.stringify(text));

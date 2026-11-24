@@ -487,7 +487,7 @@ async function syncSubjectPropertyAndAddress(input: {
   });
   const addressData = {
     IdOrigenDato: origin.IdOrigenDato,
-    SDireccionCompleta: location ?? `Codigo postal ${postalCode}`,
+    SDireccionCompleta: location ?? `Código postal ${postalCode}`,
     SCodigoPostal: postalCode,
     BEsDireccionActual: true,
     BConfirmada: false,

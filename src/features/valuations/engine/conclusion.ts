@@ -28,10 +28,16 @@ export type ConclusionResult = {
   valueInWords: string;
 };
 
+/** The approaches that round their own value (the physical value, the comparative value), in the system and in the books. */
+const ROUNDS_ITS_OWN: ReadonlySet<Approach> = new Set(["costos", "mercado"]);
+
 export function concludeValue(input: ConclusionInput, config: EngineConfig, trace = new Trace()): ConclusionResult {
   const digits = config.rounding.conclusion;
+  // One figure per value (FAL-14): the cost and market values are listed as their approach printed them.
+  const roundsAgain = (approach: Approach) => config.rounding.summaryRoundsApproaches !== false || !ROUNDS_ITS_OWN.has(approach);
   const summary: Partial<Record<Approach, number | null>> = {};
   for (const [approach, value] of Object.entries(input.values) as [Approach, number | null][]) {
+    const rounding = roundsAgain(approach) ? digits : null;
     summary[approach] = value === null
       ? null
       : trace.record({
@@ -39,18 +45,19 @@ export function concludeValue(input: ConclusionInput, config: EngineConfig, trac
           label: `Valor por ${APPROACH_LABELS[approach].toLowerCase()}`,
           formula: "valor del enfoque",
           inputs: { valor: value },
-          value: roundIfSet(value, digits),
-          ...(digits === null ? {} : { rounding: digits }),
+          value: roundIfSet(value, rounding),
+          ...(rounding === null ? {} : { rounding }),
         });
   }
 
   const value = input.method.kind === "single"
-    ? selectApproach(summary, input.method.approach, trace)
+    ? selectApproach(summary, input.method.approach, roundsAgain(input.method.approach) ? null : digits, trace)
     : weightApproaches(summary, input.method.weights, digits, trace);
   return { summary, value, valueInWords: amountInWords(value) };
 }
 
-function selectApproach(summary: Partial<Record<Approach, number | null>>, approach: Approach, trace: Trace): number {
+/** The value of the approach concluded with; `digits`, the conclusion's rounding when the summary did not apply it. */
+function selectApproach(summary: Partial<Record<Approach, number | null>>, approach: Approach, digits: number | null, trace: Trace): number {
   const value = summary[approach];
   if (value === null || value === undefined) {
     throw new Error(`El ${APPROACH_LABELS[approach].toLowerCase()} no tiene valor para concluir.`);
@@ -60,7 +67,8 @@ function selectApproach(summary: Partial<Record<Approach, number | null>>, appro
     label: "Valor concluido",
     formula: `valor por ${APPROACH_LABELS[approach].toLowerCase()}`,
     inputs: { [approach]: value },
-    value,
+    value: roundIfSet(value, digits),
+    ...(digits === null ? {} : { rounding: digits }),
   });
 }
 

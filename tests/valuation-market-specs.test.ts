@@ -230,14 +230,14 @@ test("a factor the firm creates is kept once, however it is written, and offered
   assert.deepEqual(resolveCustomFactors(null), []);
 });
 
-test("at most six factors per homologation, each once; the firm's factors go by their key", () => {
-  const slots = (count: number) => [{ type: "SUPERFICIE", label: "Sup." }, ...["NEGOCIACION", "UBICACION", "ZONA", "FRENTE", "USO_SUELO", "FORMA"]
+test("at most eight factors per homologation (FAL-12), each once; the firm's factors go by their key", () => {
+  const slots = (count: number) => [{ type: "SUPERFICIE", label: "Sup." }, ...["NEGOCIACION", "UBICACION", "ZONA", "FRENTE", "USO_SUELO", "FORMA", "TOPOGRAFIA", "SERVICIOS"]
     .slice(0, count - 1).map((type) => ({ type, label: type }))];
   const base = { ...land.settings };
-  assert.ok(marketSettingsSchema.safeParse({ ...base, factorSlots: slots(6) }).success);
-  const seven = marketSettingsSchema.safeParse({ ...base, factorSlots: slots(7) });
-  assert.equal(seven.success, false);
-  assert.match(seven.error?.issues[0].message ?? "", /hasta 6 factores \(sin contar el FRe\)/);
+  assert.ok(marketSettingsSchema.safeParse({ ...base, factorSlots: slots(8) }).success);
+  const nine = marketSettingsSchema.safeParse({ ...base, factorSlots: slots(9) });
+  assert.equal(nine.success, false);
+  assert.match(nine.error?.issues[0].message ?? "", /hasta 8 factores \(sin contar el FRe\)/);
   const own = [{ type: "SUPERFICIE", label: "Sup." }, { type: "OTRO", key: "custom:vista", label: "Vista" }, { type: "OTRO", key: "custom:acceso", label: "Acceso" }];
   assert.ok(marketSettingsSchema.safeParse({ ...base, factorSlots: own }).success, "two own factors, both of type OTRO");
   assert.equal(marketSettingsSchema.safeParse({ ...base, factorSlots: [...own, own[1]] }).success, false);

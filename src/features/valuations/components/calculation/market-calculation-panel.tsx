@@ -30,6 +30,7 @@ import {
   isLandComparableType,
   isRentComparableType,
   marketEngineConfig,
+  marketSurfaceFormula,
   surfaceFactorFormulas,
   offerLabelsOf,
   offerMarkOf,
@@ -857,6 +858,7 @@ function MarketTypePanel(props: {
             />
           </Field>
           <p className="text-xs text-muted-foreground sm:col-span-4">
+            <span className="font-medium text-foreground" data-surface-formula="">{marketSurfaceFormula(liveSettings)}</span>.{" "}
             En cada comparable puedes escribir otro valor o usar otra fórmula para el factor de superficie. Los campos numéricos aceptan
             cálculos: =5*10000, =(1345*235)^(1/6).
           </p>

@@ -92,11 +92,12 @@ test("the concluded value fills the conclusion and carátula concepts and leaves
   };
   const filled = withConceptValues(section, conclusionValues(calculation, result));
   assert.deepEqual(filled.blocks[0].concepts.map((item) => item.value), [
-    "8580000.00", "1530000.00", "NO APLICA", "8580000.00", "(OCHO MILLONES QUINIENTOS OCHENTA MIL PESOS 00/100 M.N.)", "Texto del perito",
+    // The market value as its approach rounded it: one figure per value (FAL-14).
+    "8580000.00", "1528000.00", "NO APLICA", "8580000.00", "(OCHO MILLONES QUINIENTOS OCHENTA MIL PESOS 00/100 M.N.)", "Texto del perito",
   ]);
   // The amounts print with their format: the approaches as money, the concluded value with "M.N.".
   assert.deepEqual(filled.blocks[0].concepts.slice(0, 4).map((item) => formatConceptValueForDocument(item)), [
-    "$8,580,000.00", "$1,530,000.00", "NO APLICA", "$8,580,000.00 M.N.",
+    "$8,580,000.00", "$1,528,000.00", "NO APLICA", "$8,580,000.00 M.N.",
   ]);
   assert.deepEqual(filled.blocks[0].concepts.slice(0, 4).map((item) => [item.type, item.valueFormat]), [
     ["currency", "mxn"], ["currency", "mxn"], [undefined, undefined], ["currency", "mxn-mn"],

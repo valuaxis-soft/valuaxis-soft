@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import type { TableContent } from "@/features/valuations/model";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { LIVE_WARNING_CLASS } from "@/features/valuations/components/calculation/live-cell";
 import {
   ensureTableV2,
   type TableV2,
@@ -769,9 +770,10 @@ function EditableTableCell({
     },
   });
   const reference = useFormulaReferenceTarget(fieldKey, (homeTableId) => cellReferenceText(index, tableId, tableV2, row.id, column.id, homeTableId));
-  const failed = (result && !result.ok) || unreadFormula;
+  // A formula without a number (it divides by zero, reads an empty or deleted cell): an amber warning; the dictamen prints «—».
+  const noNumber = Boolean(result && !result.ok);
   const title = result && !result.ok
-    ? `${formulaErrorMessage(result.error)} ${formulaText ?? ""}`
+    ? `${formulaErrorMessage(result.error)} En el dictamen se imprime «—». ${formulaText ?? ""}`
     : unreadFormula ? "Esta fórmula no se pudo leer: corrígela o bórrala."
     : numericProblem ? `${numericProblem}: lo escrito no entra en los cálculos.`
     : formulaText ?? (hidden ? "Oculta en el dictamen" : undefined);
@@ -1033,7 +1035,8 @@ function EditableTableCell({
                 data-row={rowIndex}
                 data-col={columnIndex}
                 data-calculated={locked ? "" : undefined}
-                aria-invalid={numericProblem ? true : undefined}
+                aria-invalid={numericProblem || noNumber ? true : undefined}
+                data-formula-warning={noNumber ? title : undefined}
                 onChange={(event) => {
                   if (locked) return;
                   if (change(event.target.value)) {
@@ -1065,7 +1068,8 @@ function EditableTableCell({
                   "h-7 w-full min-w-0 border-0 bg-transparent px-1 text-xs box-border",
                   (isFormula || writingFormula) && "font-mono text-blue-600 dark:text-blue-400",
                   writingFormula && references.length > 0 && "text-transparent caret-blue-600 dark:text-transparent dark:caret-blue-400",
-                  failed && draftText === null && "text-destructive dark:text-red-400",
+                  unreadFormula && draftText === null && "text-destructive dark:text-red-400",
+                  noNumber && draftText === null && cn(LIVE_WARNING_CLASS, "rounded-sm"),
                   (factor || formatted) && "tabular-nums",
                   // A numeric cell with letters: a red border, and the reason when hovered.
                   numericProblem && draftText === null && "border border-destructive ring-1 ring-destructive/40 text-destructive dark:text-red-400",

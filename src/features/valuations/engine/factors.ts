@@ -50,6 +50,21 @@ export function surfaceFactor(
 }
 
 /**
+ * The surface factor of a homologation in the appraiser's words, the same in
+ * the editor, the dictamen and the memoria (audit of 23 nov 2026: «superficie
+ * base» meant nothing to him): «Fsup = (superficie del sujeto / superficie
+ * del comparable)^(1/n)» against the subject (direct), with «superficie del
+ * lote tipo» against the lote tipo (indirect). `subject-over-reference`, the
+ * system's default, is his rule (answers of 30 Sep 2026); the other
+ * orientation only reproduces the books that invert it.
+ */
+export function marketSurfaceFormulaText(orientation: SurfaceOrientation, againstLoteTipo: boolean): string {
+  const base = againstLoteTipo ? "superficie del lote tipo" : "superficie del sujeto";
+  const [top, bottom] = orientation === "subject-over-reference" ? [base, "superficie del comparable"] : ["superficie del comparable", base];
+  return `Fsup = (${top} / ${bottom})^(1/n)`;
+}
+
+/**
  * The surface factor written as the formula it computes, with its numbers
  * ("=(408/360)^(1/3)"): what the homologation cell shows while it is edited,
  * as any other cell with a formula (video 6.2, 02:36).

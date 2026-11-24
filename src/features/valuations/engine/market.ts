@@ -3,7 +3,7 @@
  * market. Formulas follow docs/fase0/metodologia/02-mercado-homologacion.md.
  */
 import { ADOPTED_VALUE_TOLERANCE, type EngineConfig, type SurfaceOrientation } from "./config";
-import { productInOrder, resolveFactorSlots, surfaceFactor, type FactorSlot } from "./factors";
+import { marketSurfaceFormulaText, productInOrder, resolveFactorSlots, surfaceFactor, type FactorSlot } from "./factors";
 import { roundIfSet, shownAmount, shownFactor } from "./rounding";
 import { Trace } from "./trace";
 
@@ -89,10 +89,12 @@ export function homologate(
       : trace.record({
           key: `${key}.factorSuperficie`,
           label: `Factor de superficie, comparable ${comparable.id}`,
-          formula: orientation === "reference-over-subject"
-            ? "(superficie del comparable / superficie base)^(1/n)"
-            : "(superficie base / superficie del comparable)^(1/n)",
-          inputs: { superficieComparable: comparable.area, superficieBase: baseArea, n: input.surfacePower },
+          formula: marketSurfaceFormulaText(orientation, input.baseArea !== undefined),
+          inputs: {
+            ...(input.baseArea !== undefined ? { superficieDelLoteTipo: baseArea } : { superficieDelSujeto: baseArea }),
+            superficieDelComparable: comparable.area,
+            n: input.surfacePower,
+          },
           ...shownFactor(surfaceFactor(comparable.area, baseArea, input.surfacePower, orientation), precision),
         });
     // Each factor as it is shown, when the valuation calculates with the precision shown (0.9683 is 0.97).

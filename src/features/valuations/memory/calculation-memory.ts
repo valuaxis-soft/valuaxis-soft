@@ -56,7 +56,7 @@ import { formulaWithLastValues, hasLiveReferences, readableFormulaText } from ".
 import { DEFAULT_NUMBER_PRESENTATION, documentNumberPresentation, type NumberPresentation } from "../services/number-presentation";
 import { formulaNumber, formulaWithValues } from "../services/formula-reference-values";
 import { getDisplayColumns, type TableFormula, type TableV2 } from "../services/table";
-import { evaluateTableFormulas, getCellDisplayValue } from "../services/table-formula-engine";
+import { evaluateTableFormulas, getCellPrintedValue } from "../services/table-formula-engine";
 import { conceptTakesFormula } from "../services/valuation-formulas";
 import { getBlockFlowApartadoOrder } from "../services/visible-numbering";
 
@@ -278,7 +278,7 @@ function memoryTable(table: TableContent, location: string[], index: FormulaInde
       cells: columns.map((column): MemoryCell => {
         const cell = row.cells[column.id];
         const address = cellAddress(canonical, row.id, column.id) ?? "";
-        const text = cell ? getCellDisplayValue(canonical, row.id, column.id, results, presentation) : "";
+        const text = cell ? getCellPrintedValue(canonical, row.id, column.id, results, presentation) : "";
         if (cell?.kind !== "formula") return { address, text, computed: false };
         return { address, text, computed: true, ...writtenFormula(cell.formula, index, canonical) };
       }),

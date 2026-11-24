@@ -16,6 +16,7 @@ import {
   FACTOR_TYPE_LABELS,
   factorKey,
   findFactor,
+  marketSurfaceFormula,
   type ComparableType,
   type FactorSlotConfig,
   type MarketCalculationDto,
@@ -82,7 +83,7 @@ function factorRows(market: Market) {
   return market.settings.factorSlots.flatMap((slot) => {
     const name = slotName(slot);
     if (slot.type === "SUPERFICIE") {
-      return [[name, approach, EMPTY, "Calculado: superficie de la base entre la del comparable, a la potencia 1/n."]];
+      return [[name, approach, EMPTY, `Calculado: ${marketSurfaceFormula(market.settings)}.`]];
     }
     const factors = market.comparables.flatMap((comparable) => {
       const factor = findFactor(comparable, slot);

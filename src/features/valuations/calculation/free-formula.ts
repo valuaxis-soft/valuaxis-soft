@@ -1,9 +1,12 @@
 /**
  * Free calculations, as in a spreadsheet: a value that starts with "=" is
- * computed. Operators + − * / ^ and %, parentheses, and the functions
- * SUMA, PROMEDIO, PRODUCTO, MIN, MAX, ABS, RAIZ(x), RAIZ(x; n), POTENCIA(x; n),
- * REDONDEAR(x; decimales), LN(x) and LOG(x) (base 10, or LOG(x; base)), also
- * by their English names. Parentheses are kept as written: the formula reads
+ * computed. Operators + − * / ^ and %, comparisons (= <> < > <= >=, true
+ * is 1 and false 0), parentheses, and the functions SUMA, PROMEDIO,
+ * PRODUCTO, MIN, MAX, ABS, RAIZ(x), RAIZ(x; n), POTENCIA(x; n),
+ * REDONDEAR(x; decimales), REDONDEAR.MAS, REDONDEAR.MENOS, ENTERO, LN(x),
+ * LOG(x) (base 10, or LOG(x; base)), MEDIANA, MODA, CONTAR, CONTAR.SI,
+ * SUMAR.SI, PROMEDIO.SI (a range and a criterion: 5 or ">5"), SI, SI.ERROR,
+ * Y, O and NO, also by their English names. Parentheses are kept as written: the formula reads
  * back with the ones the appraiser typed, no more and no fewer. Precedence follows
  * Excel: a sign binds first, then ^ (left to right), then * /, then + −.
  * So =(1345*235)^1/6 is the product divided by six; the sixth root is
@@ -31,13 +34,26 @@ export type CellAnchors = { fixedColumn?: true; fixedRow?: true };
 /** Zero-based position of a cell in its table as shown: column A row 1 is { column: 0, row: 0 }. */
 export type CellPosition = { column: number; row: number } & CellAnchors;
 
-export type FormulaFunctionName = "SUM" | "AVERAGE" | "PRODUCT" | "MIN" | "MAX" | "ABS" | "SQRT" | "POWER" | "ROUND" | "LN" | "LOG";
+export type FormulaFunctionName =
+  | "SUM" | "AVERAGE" | "PRODUCT" | "MIN" | "MAX" | "ABS" | "SQRT" | "POWER" | "ROUND" | "LN" | "LOG"
+  | "MEDIAN" | "MODE" | "COUNT" | "COUNTIF" | "SUMIF" | "AVERAGEIF" | "IF" | "IFERROR" | "AND" | "OR" | "NOT"
+  | "ROUNDUP" | "ROUNDDOWN" | "INT";
+
+/** A comparison as written: =, <>, <, >, <= or >=. */
+export type FormulaComparison = "=" | "<>" | "<" | ">" | "<=" | ">=";
+
+/** Functions over a range and a criterion: CONTAR.SI(A1:A5; ">5"). */
+export const CRITERIA_FUNCTIONS: ReadonlySet<FormulaFunctionName> = new Set(["COUNTIF", "SUMIF", "AVERAGEIF"]);
 
 /** A formula as written, before its references are resolved. */
 export type FormulaSyntax =
   | { type: "number"; value: number }
   | { type: "unary"; operator: "-" | "%"; operand: FormulaSyntax }
   | { type: "binary"; operator: "+" | "-" | "*" | "/" | "^"; left: FormulaSyntax; right: FormulaSyntax }
+  /** A comparison: 1 when it holds, 0 when it does not. */
+  | { type: "compare"; operator: FormulaComparison; left: FormulaSyntax; right: FormulaSyntax }
+  /** The criterion of CONTAR.SI and its kin, written between quotes: ">5". */
+  | { type: "criteria"; operator: FormulaComparison; value: number }
   | { type: "call"; name: FormulaFunctionName; args: FormulaSyntax[] }
   /** Parentheses the appraiser wrote, kept so the formula reads back as typed. */
   | { type: "group"; inner: FormulaSyntax }
@@ -66,6 +82,49 @@ export function roundDecimal(value: number, decimals: number): number {
   return Math.sign(value) * Number(`${rounded}e${-decimals}`);
 }
 
+/** Rounds away from zero (`up`) or toward it, at `decimals`, as REDONDEAR.MAS and REDONDEAR.MENOS of Excel. */
+function roundDirected(value: number, decimals: number, up: boolean) {
+  if (!Number.isFinite(value) || !Number.isInteger(decimals)) return Number.NaN;
+  const scaled = Number((Math.abs(value) * 10 ** decimals).toPrecision(15));
+  return Math.sign(value) * Number(`${up ? Math.ceil(scaled) : Math.floor(scaled)}e${-decimals}`);
+}
+
+/** The middle value; the mean of the two middle ones when they are even. */
+function medianOf(args: number[]) {
+  if (!args.length) return Number.NaN;
+  const sorted = [...args].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+/** The value that repeats most, the first of them on a tie; none repeated has no mode (#N/A in Excel). */
+function modeOf(args: number[]) {
+  const counts = new Map<number, number>();
+  for (const value of args) counts.set(value, (counts.get(value) ?? 0) + 1);
+  let best = Number.NaN;
+  let times = 1;
+  for (const value of args) {
+    const count = counts.get(value) ?? 0;
+    if (count > times) {
+      best = value;
+      times = count;
+    }
+  }
+  return best;
+}
+
+/** Whether `value` meets a comparison with `against`. */
+export function compareValues(operator: FormulaComparison, value: number, against: number) {
+  switch (operator) {
+    case "=": return value === against;
+    case "<>": return value !== against;
+    case "<": return value < against;
+    case ">": return value > against;
+    case "<=": return value <= against;
+    default: return value >= against;
+  }
+}
+
 /** What each function computes from its numbers; NaN when the arguments do not fit. */
 export const FORMULA_FUNCTIONS: Record<FormulaFunctionName, (args: number[]) => number> = {
   SUM: (args) => args.reduce((total, value) => total + value, 0),
@@ -81,6 +140,22 @@ export const FORMULA_FUNCTIONS: Record<FormulaFunctionName, (args: number[]) => 
   // Base 10, as LOG of Excel; a second argument is the base.
   LOG: (args) => (args.length === 1 && args[0] > 0 ? Math.log10(args[0])
     : args.length === 2 && args[0] > 0 && args[1] > 0 && args[1] !== 1 ? Math.log(args[0]) / Math.log(args[1]) : Number.NaN),
+  MEDIAN: medianOf,
+  MODE: modeOf,
+  COUNT: (args) => args.length,
+  // A criterion needs the cells of a range: the tables compute these (table-formula-engine.ts).
+  COUNTIF: () => Number.NaN,
+  SUMIF: () => Number.NaN,
+  AVERAGEIF: () => Number.NaN,
+  // SI without its third argument gives 0 when the condition does not hold, as FALSO counts in Excel.
+  IF: (args) => (args.length === 2 || args.length === 3 ? (args[0] !== 0 ? args[1] : args[2] ?? 0) : Number.NaN),
+  IFERROR: (args) => (args.length === 2 ? (Number.isFinite(args[0]) ? args[0] : args[1]) : Number.NaN),
+  AND: (args) => (args.length ? (args.every((value) => value !== 0) ? 1 : 0) : Number.NaN),
+  OR: (args) => (args.length ? (args.some((value) => value !== 0) ? 1 : 0) : Number.NaN),
+  NOT: (args) => (args.length === 1 ? (args[0] === 0 ? 1 : 0) : Number.NaN),
+  ROUNDUP: (args) => (args.length === 2 ? roundDirected(args[0], args[1], true) : args.length === 1 ? roundDirected(args[0], 0, true) : Number.NaN),
+  ROUNDDOWN: (args) => (args.length === 2 ? roundDirected(args[0], args[1], false) : args.length === 1 ? roundDirected(args[0], 0, false) : Number.NaN),
+  INT: (args) => (args.length === 1 ? Math.floor(args[0]) : Number.NaN),
 };
 
 /** The names a function is written with; the first one is how a formula is shown back. */
@@ -96,6 +171,20 @@ export const FORMULA_FUNCTION_NAMES: Record<FormulaFunctionName, string[]> = {
   ROUND: ["REDONDEAR", "ROUND"],
   LN: ["LN"],
   LOG: ["LOG"],
+  MEDIAN: ["MEDIANA", "MEDIAN"],
+  MODE: ["MODA", "MODA.UNO", "MODE", "MODE.SNGL"],
+  COUNT: ["CONTAR", "COUNT"],
+  COUNTIF: ["CONTAR.SI", "COUNTIF"],
+  SUMIF: ["SUMAR.SI", "SUMIF"],
+  AVERAGEIF: ["PROMEDIO.SI", "AVERAGEIF"],
+  IF: ["SI", "IF"],
+  IFERROR: ["SI.ERROR", "IFERROR"],
+  AND: ["Y", "AND"],
+  OR: ["O", "OR"],
+  NOT: ["NO", "NOT"],
+  ROUNDUP: ["REDONDEAR.MAS", "ROUNDUP"],
+  ROUNDDOWN: ["REDONDEAR.MENOS", "ROUNDDOWN"],
+  INT: ["ENTERO", "INT"],
 };
 
 const FUNCTION_BY_NAME = new Map<string, FormulaFunctionName>(
@@ -111,6 +200,8 @@ type Token =
   | { kind: "columns"; from: number; to: number }
   /** A name between brackets or quotes: a concept, or a table when "!" follows. */
   | { kind: "quoted"; value: string }
+  /** Text between double quotes: the criterion of CONTAR.SI (">5"). */
+  | { kind: "text"; value: string }
   | { kind: "symbol"; value: string };
 
 const withoutAccents = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -172,10 +263,24 @@ function tokenize(source: string): Token[] | null {
       index += 1;
       continue;
     }
-    const name = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ_]+/.exec(rest);
+    // A function's name may have parts joined by dots: CONTAR.SI, REDONDEAR.MAS.
+    const name = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ_]+(?:\.[A-Za-zÁÉÍÓÚÜÑáéíóúüñ_]+)*/.exec(rest);
     if (name) {
       tokens.push({ kind: "name", value: name[0] });
       index += name[0].length;
+      continue;
+    }
+    if (rest[0] === '"') {
+      const end = rest.indexOf('"', 1);
+      if (end === -1) return null;
+      tokens.push({ kind: "text", value: rest.slice(1, end).trim() });
+      index += end + 1;
+      continue;
+    }
+    const comparison = /^(<>|<=|>=|<|>|=)/.exec(rest);
+    if (comparison) {
+      tokens.push({ kind: "symbol", value: comparison[0] });
+      index += comparison[0].length;
       continue;
     }
     if (rest[0] === "[" || rest[0] === "'") {
@@ -263,6 +368,8 @@ export function formulaReferenceSpans(text: string): FormulaReferenceSpan[] {
   return spans;
 }
 
+const COMPARISONS = new Set<string>(["=", "<>", "<", ">", "<=", ">="]);
+
 /** Reads a formula without its "=". Null when it is not a valid one. */
 export function parseFormula(source: string): FormulaSyntax | null {
   const tokens = tokenize(source);
@@ -282,7 +389,17 @@ export function parseFormula(source: string): FormulaSyntax | null {
     }
   };
 
+  /** A comparison is the loosest: =A1+1>5 compares the sum. */
   const expression = (): FormulaSyntax => {
+    const left = additive();
+    const token = tokens[position];
+    if (token?.kind === "symbol" && COMPARISONS.has(token.value)) {
+      position += 1;
+      return { type: "compare", operator: token.value as FormulaComparison, left, right: additive() };
+    }
+    return left;
+  };
+  const additive = (): FormulaSyntax => {
     let left = term();
     for (;;) {
       if (take("+")) left = { type: "binary", operator: "+", left, right: term() };
@@ -326,6 +443,17 @@ export function parseFormula(source: string): FormulaSyntax | null {
     position += 1;
     return { type: "range", ...qualifier, from: from.position, to: to.position };
   };
+  /** The criterion of CONTAR.SI: a value (equal to it) or a comparison between quotes, ">5". */
+  const criterion = (): FormulaSyntax => {
+    const token = tokens[position];
+    if (token?.kind !== "text") return expression();
+    position += 1;
+    const match = /^(<>|<=|>=|<|>|=)?\s*(-?(?:\d[\d,]*\.?\d*|\.\d+))$/.exec(token.value);
+    if (!match) return fail();
+    const value = Number(match[2].replace(/,/g, ""));
+    if (!Number.isFinite(value)) return fail();
+    return { type: "criteria", operator: (match[1] ?? "=") as FormulaComparison, value };
+  };
   const primary = (): FormulaSyntax => {
     const token = tokens[position];
     if (!token) return fail();
@@ -343,7 +471,7 @@ export function parseFormula(source: string): FormulaSyntax | null {
         const name = FUNCTION_BY_NAME.get(withoutAccents(token.value).toUpperCase());
         if (!name || !take("(")) return fail();
         const args = [expression()];
-        while (take(";") || take(",")) args.push(expression());
+        while (take(";") || take(",")) args.push(CRITERIA_FUNCTIONS.has(name) && args.length === 1 ? criterion() : expression());
         if (!take(")")) return fail();
         return { type: "call", name, args };
       }
@@ -380,6 +508,8 @@ function computePlain(node: FormulaSyntax): number {
       if (node.operator === "/") return left / right;
       return left ** right;
     }
+    case "compare":
+      return compareValues(node.operator, computePlain(node.left), computePlain(node.right)) ? 1 : 0;
     case "call":
       return FORMULA_FUNCTIONS[node.name](node.args.map(computePlain));
     case "group":

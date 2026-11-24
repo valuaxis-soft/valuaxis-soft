@@ -221,7 +221,8 @@ test("each approach prints the engine's steps in the order of the calculation, w
   assert.deepEqual(first.inputs, [{ name: "Precio", value: "1,260,000" }, { name: "Superficie", value: "140" }]);
   assert.equal(first.value, "9,000");
   const surface = market.steps.find((step) => step.key.endsWith("1.factorSuperficie"));
-  assert.ok(surface?.inputs.some((item) => item.name === "Superficie comparable"), "input names read as words");
+  assert.ok(surface?.inputs.some((item) => item.name === "Superficie del comparable"), "input names read as words");
+  assert.equal(surface?.formula, "Fsup = (superficie del sujeto / superficie del comparable)^(1/n)", "the appraiser's words, as the editor and the dictamen");
   const last = market.steps.at(-1)!;
   assert.equal(last.key, "mercado.valor");
   assert.equal(last.value, formatEngineValue(trace.find("mercado.valor")!.value));

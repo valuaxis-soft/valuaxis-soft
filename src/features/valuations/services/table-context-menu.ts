@@ -339,7 +339,7 @@ export function fillReplaceConfirmation(replaced: number, along: "row" | "column
   const one = replaced === 1;
   return {
     title: one ? `¿Reemplazar 1 celda de la ${place}?` : `¿Reemplazar ${replaced} celdas de la ${place}?`,
-    description: `${one ? "Tiene" : "Tienen"} un valor o una fórmula y ${one ? "se sustituye" : "se sustituyen"} por la ${copies} copiada. Puedes deshacerlo con «Deshacer». Para no tocar lo capturado, usa «Copiar ${copies} solo a las vacías».`,
+    description: `${one ? "Tiene" : "Tienen"} un valor o una fórmula y ${one ? "se sustituye" : "se sustituyen"} por ${copies === "fórmula" ? "la fórmula copiada" : "el valor copiado"}. Puedes deshacerlo con «Deshacer». Para no tocar lo capturado, usa «Copiar ${copies} solo a las vacías».`,
     confirmLabel: "Reemplazar",
   };
 }

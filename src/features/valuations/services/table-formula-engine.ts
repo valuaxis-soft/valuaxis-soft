@@ -9,7 +9,7 @@
  * Pure TypeScript — no React, no side effects.
  */
 
-import { FORMULA_FUNCTIONS, roundDecimal } from "../calculation/free-formula";
+import { FORMULA_FUNCTIONS, compareValues, roundDecimal, type FormulaComparison } from "../calculation/free-formula";
 import { NUMERIC_VALUE_FORMAT_OPTIONS } from "./concept-value-format";
 import { DEFAULT_NUMBER_PRESENTATION, withoutThousandsSeparator, type NumberPresentation } from "./number-presentation";
 import {
@@ -364,9 +364,22 @@ const NUMERIC_FUNCTIONS: Record<string, (args: number[]) => number> = {
 };
 
 /** Functions whose result is an amount when what they read is one. */
-const KEEPS_MONEY = new Set<string>(["SUM", "AVERAGE", "PRODUCT", "MIN", "MAX", "ABS", "ROUND", "NEG", "PERCENT", "MEDIAN", "ROUND_UP", "ROUND_DOWN", "FLOOR", "CEIL", "CLAMP"]);
+const KEEPS_MONEY = new Set<string>([
+  "SUM", "AVERAGE", "PRODUCT", "MIN", "MAX", "ABS", "ROUND", "NEG", "PERCENT", "MEDIAN", "MODE",
+  "ROUND_UP", "ROUND_DOWN", "ROUNDUP", "ROUNDDOWN", "INT", "FLOOR", "CEIL", "CLAMP",
+]);
 /** Of these, the ones that take the kind of their first argument only. */
-const MONEY_OF_FIRST = new Set<string>(["ROUND", "CLAMP"]);
+const MONEY_OF_FIRST = new Set<string>(["ROUND", "ROUNDUP", "ROUNDDOWN", "CLAMP"]);
+
+/** The comparison of a stored criterion (CRITERION_GREATER_THAN), as formula-references.ts writes it. */
+const CRITERION_COMPARISONS: Record<string, FormulaComparison> = {
+  CRITERION_EQUAL: "=",
+  CRITERION_NOT_EQUAL: "<>",
+  CRITERION_LESS_THAN: "<",
+  CRITERION_GREATER_THAN: ">",
+  CRITERION_LESS_OR_EQUAL: "<=",
+  CRITERION_GREATER_OR_EQUAL: ">=",
+};
 
 function evaluateFunction(ctx: Context, rawName: string, args: FormulaExpression[], depth: number): FormulaResult {
   const name = rawName.toUpperCase();
@@ -380,10 +393,38 @@ function evaluateFunction(ctx: Context, rawName: string, args: FormulaExpression
       return evaluate(args[0]);
     }
     case "IF": {
-      if (args.length !== 3) return failure("INVALID_OPERATION", "IF needs 3 args (condition, true, false)");
+      if (args.length !== 2 && args.length !== 3) return failure("INVALID_OPERATION", "IF needs 2 or 3 args (condition, true, false)");
       const condition = evaluate(args[0]);
       if (!condition.ok) return condition;
+      // Without the third argument, a condition that does not hold gives 0, as FALSO counts in Excel.
+      if (condition.value === 0 && args.length === 2) return { ok: true, value: 0 };
       return evaluate(condition.value !== 0 ? args[1] : args[2]);
+    }
+    // CONTAR.SI, SUMAR.SI and PROMEDIO.SI: the numbers of a range that meet the criterion (5, or ">5").
+    case "COUNTIF":
+    case "SUMIF":
+    case "AVERAGEIF": {
+      if (args.length !== 2) return failure("INVALID_OPERATION", `${name} needs 2 args (range, criterion)`);
+      const [range, criterion] = args;
+      let values: Value[];
+      if (range?.type === "operand" && range.operand && isList(range.operand)) {
+        const list = listValues(ctx, range.operand);
+        if (!Array.isArray(list)) return list;
+        values = list;
+      } else {
+        const single = evaluate(range);
+        if (!single.ok) return single;
+        values = [{ value: single.value, money: single.money === true }];
+      }
+      const comparison = criterion?.type === "function" ? CRITERION_COMPARISONS[String(criterion.name).toUpperCase()] : undefined;
+      const against = evaluate(comparison && criterion.type === "function" && Array.isArray(criterion.args) ? criterion.args[0] : criterion);
+      if (!against.ok) return against;
+      const met = values.filter((item) => compareValues(comparison ?? "=", item.value, against.value));
+      if (name === "COUNTIF") return { ok: true, value: met.length };
+      const total = met.reduce((sum, item) => sum + item.value, 0);
+      const money = met.some((item) => item.money);
+      if (name === "SUMIF") return number(total, money);
+      return met.length ? number(total / met.length, money) : failure("DIVIDE_BY_ZERO", "AVERAGEIF met nothing");
     }
     case "IFERROR": {
       if (args.length !== 2) return failure("INVALID_OPERATION", "IFERROR needs 2 args (expression, fallback)");
@@ -612,6 +653,32 @@ export function formulaErrorLabel(error: FormulaError): string {
     case "UNKNOWN_FUNCTION": return "#NOMBRE?";
     default: return "#ERROR";
   }
+}
+
+/** What the dictamen prints where a formula has no number: never a spreadsheet error. */
+export const PRINTED_FORMULA_ERROR = "—";
+
+const ERROR_LABELS = new Set(["#DIV/0!", "#VALOR!", "#REF!", "#CIRCULAR", "#NOMBRE?", "#ERROR", "#PENDING"]);
+
+/** Whether a value is the mark of a formula that has no number (#DIV/0!, #REF!…), as a computed concept stores it. */
+export function isFormulaErrorLabel(value: string) {
+  return ERROR_LABELS.has(value.trim());
+}
+
+/**
+ * A cell as the dictamen and the memoria print it: as the editor shows it,
+ * except that a formula without a number (it divides by zero, reads an
+ * empty or deleted cell) prints «—», never «#DIV/0!». The editor marks it.
+ */
+export function getCellPrintedValue(
+  table: TableV2,
+  rowId: string,
+  columnId: string,
+  formulaResults: Map<string, FormulaResult>,
+  presentation: NumberPresentation = DEFAULT_NUMBER_PRESENTATION,
+): string {
+  const shown = getCellDisplayValue(table, rowId, columnId, formulaResults, presentation);
+  return isFormulaErrorLabel(shown) ? PRINTED_FORMULA_ERROR : shown;
 }
 
 /** The same error, explained to whoever wrote the formula. */
