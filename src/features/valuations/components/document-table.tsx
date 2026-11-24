@@ -191,7 +191,9 @@ function SummaryBoxes({ tableV2, position }: { tableV2: TableV2; position: Table
   return (
     <div className={cn("flex flex-col gap-1.5 leading-snug", TABLE_TEXT_SIZE, TABLE_TEXT, position === "top" ? "mb-1.5" : "mt-1.5")} data-table-summary={position}>
       {lines.map((line) => (
-        <div className="flex items-start gap-3" key={line[0].id}>
+        // Boxes that do not fit side by side go down a line, the last one still at the right: never cut at the margin
+        // («B) Valor de las Construcciones» beside «Superficie valuada» and «Valor Unitario Medio», FAL-17).
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5" data-table-summary-line="" key={line[0].id}>
           {line.map((box) => {
             const marked = box.rows.some((row) => row.mark !== undefined);
             return (

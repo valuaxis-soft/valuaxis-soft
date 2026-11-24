@@ -2,6 +2,7 @@
 
 import type { Concept, ContentLayout, ImageContent, TableContent } from "@/features/valuations/model";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
+import { conceptPrints } from "@/features/valuations/services/hidden-content";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
 import { labelGuideColumns, resolveConceptLabelGuide } from "@/features/valuations/services/concept-presentation";
 import { useDocumentTheme } from "@/features/valuations/components/document-theme";
@@ -59,7 +60,7 @@ export function DocumentTechnicalList({
           column.items.map((itemRef) => {
             if (itemRef.type === "concept") {
               const concept = conceptsById.get(itemRef.id);
-              if (!concept || concept.enabled === false) return null;
+              if (!concept || !conceptPrints(concept)) return null;
               if (concept.type === "paragraph") {
                 return <DocumentParagraph key={itemRef.id} concept={concept} style={conceptSpacingStyle(concept)} />;
               }

@@ -126,7 +126,7 @@ import { cn, countLabel } from "@/lib/utils";
 import { stripLeadingRomanNumeral } from "../datos-generales-display";
 import { pinFullLinkResolution, type ExistingConceptRelationMode } from "@/features/valuations/concept-links";
 import { canRemoveSection, SECTION_TITLE_MAX } from "@/features/valuations/services/section-edit-operations";
-import { blockContentHidden } from "@/features/valuations/services/hidden-content";
+import { blockContentHidden, blockPrintsNothing } from "@/features/valuations/services/hidden-content";
 import { pageBreakPatch, resolvePageBreak, resolvePageOrientation } from "@/features/valuations/services/document-structure";
 import { isNumericConcept, supportsValueFormat } from "@/features/valuations/services/concept-value-format";
 import { setConceptRowsTagStyle } from "@/features/valuations/services/content-layout";
@@ -814,11 +814,12 @@ function SortableBlockEditor(props: {
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn("rounded-xl", hasSectionBoundary && "border bg-muted/20", !block.enabled && "border-dashed opacity-65")}
       badge={showStructuralNumbering
-        ? block.enabled && !blockContentHidden(block)
+        ? block.enabled && !blockPrintsNothing(block)
           ? displayBlockLabel
             ? `${displayBlockLabel.replace(/\.+$/, "")}.`
             : titlePrints(block) ? "Fijo" : "Sin título"
-          : "Oculto"
+          // Empty, it does not print nor take a number until something is written in it.
+          : block.enabled && !blockContentHidden(block) ? "Vacío" : "Oculto"
         : null}
       dragHandle={dragHandle}
       extraActions={

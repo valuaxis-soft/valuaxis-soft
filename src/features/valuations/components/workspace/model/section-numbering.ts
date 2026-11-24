@@ -1,6 +1,6 @@
 import type { AppSection, Block } from "@/features/valuations/model";
 import { ensureTerrenoSections } from "@/features/valuations/sections/terreno";
-import { blockContentHidden } from "@/features/valuations/services/hidden-content";
+import { blockPrintsNothing } from "@/features/valuations/services/hidden-content";
 import { annexLabel, sectionDocumentRole } from "@/features/valuations/services/document-structure";
 import { titlePrints } from "@/features/valuations/services/block-title";
 import {
@@ -48,11 +48,14 @@ export function resequenceSections(sections: AppSection[]) {
   let globalBlockIndex = 0;
   return sections.map((section) => {
     if (section.enabled === false) return section;
+    // A section deleted from the tab strip never prints nor numbers, even if something turned it on again (FAL-18).
+    if (section.removed) return { ...section, label: "", blocks: section.blocks.map((block) => ({ ...asChapterBlock(block), sectionLabel: "" })) };
     // A blank number is not printed: the section is not in the dictamen.
     if (sectionLeftOutOfReport(section)) {
       return { ...section, label: "", blocks: section.blocks.map((block) => ({ ...asChapterBlock(block), sectionLabel: "" })) };
     }
-    const prints = (block: Block) => block.enabled && !blockContentHidden(block) && !blockLeftOutOfReport(block, excluded);
+    // The same rule the dictamen prints by (document-block-renderer.tsx): hidden or empty, no number.
+    const prints = (block: Block) => block.enabled && !blockPrintsNothing(block) && !blockLeftOutOfReport(block, excluded);
 
     if (sectionDocumentRole(section, sections) === "annex") {
       annexIndex += 1;

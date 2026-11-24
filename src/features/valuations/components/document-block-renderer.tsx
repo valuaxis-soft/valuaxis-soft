@@ -9,7 +9,7 @@ import { printedImageCaptions } from "@/features/valuations/services/image-capti
 import { PAIRED_APARTADOS_CLASS_NAME, useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { formatConceptTitleWithColon } from "@/features/valuations/services/concept-title";
 import { labelGuideColumns, resolveCellConceptGuide } from "@/features/valuations/services/concept-presentation";
-import { apartadoContentHidden, blockContentHidden } from "@/features/valuations/services/hidden-content";
+import { apartadoPrintsNothing, blockPrintsNothing, conceptPrints, tablePrints } from "@/features/valuations/services/hidden-content";
 import { MIN_ROWS_BEFORE_BREAK, MIN_ROWS_WITH_TAIL, type DocumentTableFragment } from "@/features/valuations/services/table-pagination";
 import { ensureTableV2, tablePrintLayout } from "@/features/valuations/services/table";
 import { cn } from "@/lib/utils";
@@ -62,9 +62,9 @@ export function documentBlockFlowItems(
     pairedApartadosClassName?: string;
   },
 ): DocumentFlowItem[] {
-  // A block whose content is all hidden prints nothing: not its title either, nor the room
+  // A block whose content is all hidden or empty prints nothing: not its title either, nor the room
   // between its bands. A block with no content at all still prints its title, as a heading.
-  if (blockContentHidden(block)) return [];
+  if (blockPrintsNothing(block)) return [];
   const applyConceptLayout = options?.applyConceptLayout ?? false;
   const renderTitleBar = options?.renderTitleBar ?? true;
   const renderBlockTitle = options?.renderBlockTitle;
@@ -191,7 +191,7 @@ export function documentBlockFlowItems(
     // instead of being cut at the end of this one.
     if (firstItem.type === "apartado" && structuralRow.items.length === 1) {
       const subBlock = subBlocksById.get(firstItem.apartadoId);
-      if (!subBlock || subBlock.enabled === false || apartadoContentHidden(subBlock)) continue;
+      if (!subBlock || subBlock.enabled === false || apartadoPrintsNothing(subBlock)) continue;
       const apId = `ap-${block.id}-${structuralRow.id}`;
       // The first apartado sits right under the block's title bar.
       const underTitle = previous === "title" ? true : undefined;
@@ -286,7 +286,7 @@ export function documentBlockFlowItems(
       const item1 = structuralRow.items[1];
       if (item0.type !== "apartado" || item1.type !== "apartado") continue;
       const shown = (subBlock: Apartado | undefined) =>
-        subBlock && subBlock.enabled !== false && !apartadoContentHidden(subBlock) ? subBlock : undefined;
+        subBlock && subBlock.enabled !== false && !apartadoPrintsNothing(subBlock) ? subBlock : undefined;
       const sb1 = shown(subBlocksById.get(item0.apartadoId));
       const sb2 = shown(subBlocksById.get(item1.apartadoId));
       if (!sb1 && !sb2) continue;
@@ -335,11 +335,13 @@ export type ApartadoHead = { node: React.ReactNode; rows: ContentLayoutRowV2[] }
  */
 type ContentContainer = Pick<Block, "concepts" | "images" | "tables">;
 
-/** The items of the row that print: the ones that exist and are not hidden. */
+/** The items of the row that print: the ones that exist, are not hidden and have something written (FAL-31). */
 function visibleRowItems(layoutRow: ContentLayoutRowV2, container: ContentContainer, columns = layoutRow.columns) {
-  const shown = (list: Array<{ id: string; enabled?: boolean }>, id: string) => list.some((entry) => entry.id === id && entry.enabled !== false);
-  return columns.flatMap((column) => column.items).filter((itemRef) =>
-    shown(itemRef.type === "concept" ? container.concepts : itemRef.type === "image" ? container.images : container.tables, itemRef.id));
+  return columns.flatMap((column) => column.items).filter((itemRef) => {
+    if (itemRef.type === "concept") return container.concepts.some((entry) => entry.id === itemRef.id && conceptPrints(entry));
+    if (itemRef.type === "image") return container.images.some((entry) => entry.id === itemRef.id && entry.enabled !== false);
+    return container.tables.some((entry) => entry.id === itemRef.id && tablePrints(entry));
+  });
 }
 
 function hasVisibleItems(layoutRow: ContentLayoutRowV2, container: ContentContainer): boolean {
@@ -452,7 +454,8 @@ function DocumentContentRow({
             {column.items.map((itemRef) => {
               if (itemRef.type === "concept") {
                 const concept = conceptsById.get(itemRef.id);
-                if (!concept || concept.enabled === false) return null;
+                // An empty concept prints nothing: no «Nuevo concepto:» and «—» (FAL-31).
+                if (!concept || !conceptPrints(concept)) return null;
                 if (concept.type === "paragraph") {
                   // A paragraph has no title: its text alone goes in the label.
                   return <DocumentParagraph key={itemRef.id} concept={concept} className={conceptTagClassName(tagStyle)} tagStyle={tagStyle} style={conceptSpacingStyle(concept)} />;
@@ -480,7 +483,8 @@ function DocumentContentRow({
               }
               if (itemRef.type === "table") {
                 const table = tablesById.get(itemRef.id);
-                if (!table || table.enabled === false) return null;
+                // A table with only its headers prints nothing (FAL-17).
+                if (!table || !tablePrints(table)) return null;
                 return <DocumentTable key={itemRef.id} table={table} variant="report" fragment={tableFragment} />;
               }
               return null;

@@ -48,12 +48,13 @@ const ROMAN: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100 };
 const fromRoman = (label: string) => [...label].reduce((total, char, index, all) =>
   total + (ROMAN[char] < (ROMAN[all[index + 1]] ?? 0) ? -ROMAN[char] : ROMAN[char]), 0);
 
-test("the first comparable renumbers the chapters after the market because its page stands in for the three template pages; tabs and dictamen read the same", () => {
+test("the first comparable renumbers only after its photos' page: the empty template pages took no numeral; tabs and dictamen read the same", () => {
   const before = resequenceSections(createInitialSections());
   const after = resequenceSections(withFirstComparable(before));
 
-  // Before: the three template pages of the market (comparables, homologation, summary) print, one numeral each.
-  assert.equal(numerals(before, "MERCADO_VENTA"), 3);
+  // Before: of the three template pages of the market only the summary prints; the comparables and the
+  // homologation are tables with nothing written, which print nothing and take no numeral (FAL-17/18).
+  assert.equal(numerals(before, "MERCADO_VENTA"), 1);
   // After: the calculation's page stands in for the three, one block with its apartados;
   // the comparable's photo adds a page to «Croquis y fotografías de comparables».
   assert.equal(numerals(after, "MERCADO_VENTA"), 1);
@@ -61,12 +62,10 @@ test("the first comparable renumbers the chapters after the market because its p
 
   const shift = (key: string) => fromRoman(tabs(before)[key]) - fromRoman(tabs(after)[key]);
   assert.equal(shift("MERCADO_VENTA"), 0);
-  // Two numerals fewer from the market on…
-  assert.equal(shift("MERCADO_RENTAS"), 2);
-  assert.equal(shift("CROQUIS_COMPARABLES"), 2);
-  // …and one back after the page of the comparable's photos.
-  assert.equal(shift("HOMOLOGACION"), 1);
-  assert.equal(shift("CONCLUSIONES"), 1);
+  assert.equal(shift("MERCADO_RENTAS"), 0);
+  assert.equal(shift("CROQUIS_COMPARABLES"), 0);
+  // One more after the page of the comparable's photos.
+  assert.equal(shift("CONCLUSIONES"), -1);
 
   // The tabs read exactly what the dictamen prints, before and after.
   assert.deepEqual(tabs(before), printed(before));

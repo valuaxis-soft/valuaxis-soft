@@ -169,8 +169,9 @@ test("a paragraph prints its text edge to edge, with no label and no label colum
   const prose = renderItems(block({ concepts: [concept("a", "Valor comercial", LONG), { ...paragraph, value: LONG }] }));
   assert.doesNotMatch(prose, /text-\[12px\]/, "a long paragraph prints at the size of the rest of the document");
 
+  // An empty paragraph prints nothing, not a «—» (FAL-31).
   const empty = renderItems(block({ concepts: [{ ...paragraph, value: "" }] }));
-  assert.match(empty, /<p class="[^"]*">—<\/p>/);
+  assert.doesNotMatch(empty, /—|<p /);
 });
 
 test("bold, italic and underline marks render in the document and in the cover's assumptions", () => {
@@ -387,7 +388,7 @@ test("summary boxes print with their table: the basis above, subtotals and the f
   assert.match(top, /<strong>Obtención del valor unitario\. <\/strong>Comparables de terrenos en venta\./);
 
   // The subject's area and the adopted value share a line; the final box starts another.
-  const lines = bottom.match(/<div class="flex items-start gap-3">/g);
+  const lines = bottom.match(/<div class="flex flex-wrap items-start gap-x-3 gap-y-1\.5" data-table-summary-line="">/g);
   assert.equal(lines?.length, 2);
   assert.ok(bottom.indexOf("Sup. de Sujeto") < bottom.indexOf("Valor homologado a utilizar"));
   assert.match(bottom, /<tr class="[^"]*bg-\[var\(--doc-zebra-strong,#E2E8F0\)\] font-bold[^"]*"><th[^>]*>Valor homologado a utilizar/);

@@ -823,7 +823,8 @@ function mapConceptNode(node: {
   const value = node.valores[0];
   return {
     id: node.SClave,
-    label: node.STitulo,
+    // A title the appraiser deleted is stored as «Campo sin título» (the column takes no empty text): it reads back empty (FAL-31).
+    label: savedTitle(node.STitulo),
     value: value ? stringifyValue(value) : "",
     ...hydrateConceptMetadata(node.JConfiguracion),
   };
