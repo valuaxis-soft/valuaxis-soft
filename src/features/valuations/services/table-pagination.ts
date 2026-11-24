@@ -45,6 +45,8 @@ export type MeasuredTable = {
   columnWidths?: number[];
   /** The step the measured table took to fit the page's width, so its fragments print with the same letter. */
   fitStep?: number;
+  /** Printed whole when it fits a page: it starts on the next page rather than break (`TableSchema.keepTogether`). */
+  keepTogether?: boolean;
 };
 
 export type TableRowsFragment = {
@@ -75,6 +77,14 @@ export function splitTableRows(
     atPageTop: boolean;
   },
 ): TableSplit {
+  // A table kept together moves whole to the next page when it fits one; taller than a page, it breaks as any.
+  if (table.keepTogether) {
+    const height = table.leadHeight + table.rowHeights.reduce((sum, row) => sum + row, 0) + table.tailHeight;
+    if (height <= space.pageHeight) {
+      const startsOnNewPage = !space.atPageTop && height > space.remainingHeight;
+      return { startsOnNewPage, fragments: [{ from: 0, to: table.rowHeights.length, height, clipped: false }], oversizedRows: [] };
+    }
+  }
   const startsHere = planFragments(table, space.remainingHeight, space.pageHeight, space.atPageTop);
   const startsFresh = () => ({ startsOnNewPage: true, ...planFragments(table, space.pageHeight, space.pageHeight, true)! });
   if (!startsHere) return startsFresh();

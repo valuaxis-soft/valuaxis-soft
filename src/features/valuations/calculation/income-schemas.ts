@@ -32,7 +32,12 @@ export const incomeInputSchema = z.object({
   })).max(20),
   ratingColumns: z.array(z.number().int().min(0).max(RATE_TABLE_RATES.length - 1).nullable()).length(RATE_TABLE_CRITERIA.length),
   appliedRate: z.number().finite().positive().max(1).nullable(),
+  rateFromMarket: z.number().finite().positive().max(1).nullable().default(null),
+  weightedRate: z.number().finite().positive().max(1).nullable().default(null),
+  // Excel ROUND digits: 2 (cents) to -5 (hundreds of thousands); null, not rounded.
+  rounding: z.number().int().min(-5).max(2).nullable().default(null),
   formulas: capturedFormulasSchema.optional(),
 });
 
-export type IncomeInputPayload = z.infer<typeof incomeInputSchema>;
+/** What a save sends; the rates of «Tasa a utilizar» and the rounding may be left out (clients of before), and are then empty. */
+export type IncomeInputPayload = z.input<typeof incomeInputSchema>;

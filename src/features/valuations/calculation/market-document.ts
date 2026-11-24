@@ -55,8 +55,9 @@ import {
   type MarketCalculationDto,
   type MarketStatistic,
 } from "./market-types";
+import { GENERATED_ID_PREFIX, withAppraiserLayout } from "./generated-block-layout";
 
-export const GENERATED_BLOCK_PREFIX = "motor-";
+export const GENERATED_BLOCK_PREFIX = GENERATED_ID_PREFIX;
 
 /** Template blocks of the market sections that the generated blocks stand in for. */
 export const MARKET_TEMPLATE_BLOCK_IDS = [
@@ -623,11 +624,12 @@ export function replaceGeneratedBlocks(
   const placeholders = new Set((blocks.length ? options.placeholderIds ?? [] : []).map((id) => id.toLowerCase()));
   const isPlaceholder = (item: Block) => placeholders.has(item.id.toLowerCase());
   const current = section.blocks.filter(owns);
-  // The columns the appraiser hid, renamed or added stay on the tables the calculation writes again.
-  const laidOut = withTableLayouts(blocks, current);
+  const previous = new Map(current.map((item) => [item.id.toLowerCase(), item]));
+  // The columns the appraiser hid, renamed or added stay on the tables the calculation writes again,
+  // and so do his own tables in the block and how its tables are laid out (side by side, their order).
+  const laidOut = withTableLayouts(blocks, current).map((item) => withAppraiserLayout(item, previous.get(item.id.toLowerCase())));
   if (sameContent(current, laidOut) && !section.blocks.some(isPlaceholder)) return section;
   // What the appraiser chose for a block stays when the calculation writes it again: hidden, its page break and orientation.
-  const previous = new Map(current.map((item) => [item.id.toLowerCase(), item]));
   const written = laidOut.map((item) => withBlockPresentation(item, previous.get(item.id.toLowerCase())));
   const firstIndex = section.blocks.findIndex((item) => owns(item) || isPlaceholder(item));
   const kept = section.blocks.filter((item) => !owns(item) && !isPlaceholder(item));

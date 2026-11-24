@@ -91,6 +91,10 @@ export function GeneratedTableEditor(props: {
             <>
               {/* Under the grid, what the calculation's capture adds to the table (a row more). */}
               <CaptureSlotTarget address={{ table: source.id, part: "footer" }} className="mt-2 flex flex-wrap items-center gap-2 empty:hidden" />
+              {/* Its source, as it prints under it («Fuente: tabla de Bravo Armejo…»). */}
+              {source.schema?.notes?.filter((note) => note.small).map((note) => (
+                <p key={note.text} className="mt-2 text-xs italic text-muted-foreground" data-table-source-note="">{note.text}</p>
+              ))}
               <GeneratedBoxLabels table={props.table} readOnly={props.readOnly} onUpdate={props.onUpdate} />
             </>
           )}

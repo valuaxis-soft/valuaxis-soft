@@ -46,13 +46,14 @@ test("a block the calculation writes keeps its controls disabled with the reason
   assert.equal(state.move.enabled, true);
   assert.equal(state.pageBreak.enabled, true);
   assert.equal(state.alignment.enabled, true);
-  assert.equal(state.add.enabled, false);
-  assert.equal(state.add.reason, GENERATED_BLOCK_REASON);
+  // «Agregar» a table of his own, as in any block (24 nov 2026: «no me deja agregar otra tabla»).
+  assert.equal(state.add.enabled, true);
+  assert.equal(state.subblock.reason, GENERATED_BLOCK_REASON);
   assert.equal(state.delete.enabled, false);
   assert.ok(state.delete.reason?.includes("ocúltalo"));
   assert.equal(state.transfer.enabled, false);
   const locks = blockToolbarLocks(state);
-  assert.deepEqual(Object.keys(locks), ["transfer", "add", "subblock", "delete"]);
+  assert.deepEqual(Object.keys(locks), ["transfer", "subblock", "delete"]);
 });
 
 test("a content block locked for transfer says why on the ··· menu only", () => {

@@ -242,7 +242,7 @@ function TableNotes({ tableV2, position }: { tableV2: TableV2; position: TableNo
       {notes.map((note, index) => (note.heading ? (
         <p className="mt-1 font-bold first:mt-0" key={index}>{note.text}</p>
       ) : (
-        <p className="text-justify" key={index}>
+        <p className={cn("text-justify", note.small && "text-[0.85em] italic")} data-table-note-source={note.small ? "" : undefined} key={index}>
           {note.label ? <strong>{note.label} </strong> : null}
           {note.text}
         </p>
@@ -414,6 +414,7 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
   const caption = tableV2.schema?.hideCaption || title === DEFAULT_TABLE_TITLE ? "" : title;
   // A grid of labels and marks: printed as written, to the left, without header, rules or shading.
   const plain = tableV2.schema?.plain === true;
+  const shaded = tableV2.schema?.shadedRows ? new Set(tableV2.schema.shadedRows) : null;
   // A table that breaks across pages prints some of its rows on each: what
   // opens it goes with the first ones, what closes it with the last, and the
   // caption and the header repeat on every page.
@@ -468,10 +469,13 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
           (plain || (contentWidth && !fitted)) && print.align === "center" && "mx-auto",
           (plain || (contentWidth && !fitted)) && print.align === "right" && "ml-auto",
           (columnWidths || fitted) && "table-fixed",
+          tableV2.schema?.keepTogether && "break-inside-avoid",
         )}
         // Only this table takes the smaller letter it needs to fit the page.
         style={fitted ? { fontSize: `${fitted.fontPx}px` } : undefined}
         data-split-table=""
+        // Kept whole on one page when it fits: the pagination moves it, and the print engine does not break it either.
+        data-keep-together={tableV2.schema?.keepTogether ? "" : undefined}
         data-table-width={tableV2.schema?.widthMode === "content" ? "content" : undefined}
         data-table-fit-step={fitted ? fitted.step : undefined}
         data-table-fits={fitted ? String(fitted.fits) : undefined}
@@ -488,7 +492,8 @@ function ReportDocumentTable({ table, fragment }: { table: TableContent; fragmen
           {rows.map((row, index) => (
             // Gray and white rows alternate, first one gray, as in the appraiser's own format;
             // by the row's place in the whole table, so a continuation follows on.
-            <TableRow className={cn(plain ? "border-0" : "border-slate-300", !plain && (firstRow + index) % 2 === 0 && "bg-[var(--doc-zebra,#F1F5F9)]")} data-split-table-row="" key={row.id}>
+            // A table that names its shaded rows (the «calificación» rows of the rate table) shades only those.
+            <TableRow className={cn(plain ? "border-0" : "border-slate-300", !plain && (shaded ? shaded.has(row.id) : (firstRow + index) % 2 === 0) && "bg-[var(--doc-zebra,#F1F5F9)]")} data-split-table-row="" data-shaded-row={shaded?.has(row.id) ? "" : undefined} key={row.id}>
               {columns.map((column) => {
                 const value = getCellDisplayValue(tableV2, row.id, column.id, formulaResults, presentation);
                 return (

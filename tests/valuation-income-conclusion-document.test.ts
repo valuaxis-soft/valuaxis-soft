@@ -17,6 +17,9 @@ const tch: IncomeCalculationDto = {
   deductions: DEFAULT_DEDUCTIONS,
   ratingColumns: [1, 3, 1, 2, 2, 0, 4],
   appliedRate: 0.0886,
+  rateFromMarket: null,
+  weightedRate: null,
+  rounding: null,
   rentMarket: { adoptedUnitRent: 30, subjectArea: 250, comparables: [], homologation: null },
   configured: true,
   locked: false,
@@ -27,9 +30,10 @@ test("the income blocks show rents, deductions, the rate table and the value", (
   assert.ok(input.ok);
   const blocks = incomeDocumentBlocks(tch, computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG));
   assert.deepEqual(blocks.map((block) => block.id), ["motor-ingresos-rentas", "motor-ingresos-deducciones", "motor-ingresos-tasa", "motor-ingresos-resultado"]);
-  const rate = blocks[2].tables[0] as unknown as { rows: string[][] };
-  assert.deepEqual(rate.rows[0], ["Edad", "5 a 20", "8 %"]);
-  assert.equal(blocks[3].concepts[0].value, "$700,902.93");
+  // «XII.3 Cálculo de tasa» and «XII.4 Tasa a utilizar», as the TCH book.
+  assert.deepEqual(blocks[2].tables.map((table) => table.title), ["Cálculo de tasa", "Tasa a utilizar"]);
+  // The capitalized value with the legal tender mark (FAL-45).
+  assert.equal(blocks[3].concepts[0].value, "$700,902.93 M.N.");
 });
 
 test("the income approach waits for the rate: the whole table or a captured rate", () => {
@@ -55,12 +59,16 @@ test("without the rate the blocks print what was captured and «Sin tasa de capi
   assert.equal(values["motor-ingresos-rentas-deducciones"], "31.00 %");
   assert.equal(values["motor-ingresos-rentas-neta-mensual"], "$6,900.00");
   assert.equal(values["motor-ingresos-rentas-neta-anual"], "$82,800.00");
-  assert.equal(values["motor-ingresos-tasa-aplicada"], `${NO_CAPITALIZATION_RATE}: califica los siete criterios de la tabla o captura la tasa`);
   assert.equal(values["motor-ingresos-resultado-valor"], "Califica los siete criterios de la tabla de tasa, o captura la tasa.");
-  // Without any rent the rents say so; without anything captured the template stays.
+  // The rate table prints with nothing rated yet: «Tasa a utilizar» says the rate is missing.
+  const toUse = blocks[2].tables[1] as unknown as { rows: Array<{ cells: Record<string, { value: string }> }> };
+  assert.equal(toUse.rows[0].cells["col-2"].value, "—");
+  assert.ok(!NO_CAPITALIZATION_RATE.includes("—"));
+  // Without any rent the rents say so; without anything captured the pages still print, with dashes, instead of the template's.
   const noRent = incomeDocumentBlocks({ ...partial, rentableUnits: [{ description: "Local", area: 100, unitRent: null }] }, null, "Captura la renta unitaria, o el mercado de rentas.");
   assert.equal(noRent[0].concepts[0].value, NO_UNIT_RENT);
-  assert.deepEqual(incomeDocumentBlocks({ ...partial, rentableUnits: [{ description: "", area: null, unitRent: null }] }, null, "Captura la superficie rentable."), []);
+  const nothing = incomeDocumentBlocks({ ...partial, rentableUnits: [{ description: "", area: null, unitRent: null }] }, null, "Captura la superficie rentable.");
+  assert.deepEqual(nothing.map((block) => block.id), ["motor-ingresos-rentas", "motor-ingresos-deducciones", "motor-ingresos-tasa", "motor-ingresos-resultado"]);
   assert.deepEqual(incomeDocumentBlocks(partial, null), [], "without the reason nothing partial prints, as before");
 });
 

@@ -87,3 +87,35 @@ test("TR market-rate method stores the value from sale prices of the rent compar
   assert.ok(expected > 0);
   assert.ok(Math.abs((await stored(fixture.publicId)) - expected) < 0.01);
 });
+
+test("TCH: «Tasa a utilizar» and the rounding are kept, the rent comes from the rent market and the value is rounded as chosen", async () => {
+  // The book's rent market: 250 m² at $30 adopted; the book's ratings (8.857142 %), no rate typed.
+  const fixture = await rentMarket(250, 30, [
+    rent("Renta 1", 260, 7800, false), rent("Renta 2", 250, 7600, false),
+    rent("Renta 3", 240, 7000, true), rent("Renta 4", 230, 6900, true),
+  ]);
+  const payload = {
+    ...DEFAULT_INCOME,
+    rentableUnits: [{ description: "Casa habitación", area: null, unitRent: null }],
+    ratingColumns: [1, 3, 1, 2, 2, 0, 4],
+    rateFromMarket: 0.09,
+    rounding: -4,
+  };
+  await saveIncomeCalculation(fixture.publicId, fixture.user, payload);
+  const back = await getIncomeCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual([back.rateFromMarket, back.weightedRate, back.rounding], [0.09, null, -4]);
+  // 250 m² × $30 inherited, less 31 %, over 8.857142…% with every decimal: 701,129.03, rounded to tens of thousands.
+  const input = toIncomeEngineInput(back);
+  assert.ok(input.ok);
+  const result = computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG);
+  assert.equal(result.grossMonthlyRent, 7500);
+  assert.equal(Math.round(result.unroundedValue * 100) / 100, 701129.03);
+  assert.equal(result.value, 700000);
+  assert.equal(await stored(fixture.publicId), 700000);
+  // A client of before, without those fields, saves as always.
+  const { rateFromMarket: _market, rounding: _rounding, weightedRate: _weighted, ...older } = payload;
+  await saveIncomeCalculation(fixture.publicId, fixture.user, older);
+  const again = await getIncomeCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual([again.rateFromMarket, again.weightedRate, again.rounding], [null, null, null]);
+  assert.ok(Math.abs((await stored(fixture.publicId)) - 701129.03) < 0.01);
+});

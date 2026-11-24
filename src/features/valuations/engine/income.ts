@@ -10,8 +10,9 @@
  *   comparables; value = subject net income / mean rate.
  * Every method fills the same result fields; the detail of B and C is apart.
  */
-import type { EngineConfig } from "./config";
+import type { EngineConfig, RoundingDigits } from "./config";
 import { homologate, type HomologationInput, type HomologationResult } from "./market";
+import { roundIfSet } from "./rounding";
 import { Trace } from "./trace";
 
 /** Rates of the six columns of the rate table: 7 % … 12 %. */
@@ -64,6 +65,8 @@ export type IncomeApproachInput = {
   adoptedUnitRent?: number;
   rentableUnits: { description: string; area: number; unitRent?: number }[];
   deductions: { concept: string; rate: number }[];
+  /** How the capitalized value is rounded (Excel ROUND digits); absent or null, as the books: not rounded. */
+  rounding?: RoundingDigits;
   capitalization: {
     /** Column index (0-based) chosen for each criterion of the rate table. */
     ratingColumns?: number[];
@@ -100,6 +103,8 @@ export type IncomeApproachResult = {
   netAnnualRent: number;
   tableRate: number | null;
   appliedRate: number;
+  /** The value before its rounding; the same as `value` when the approach is not rounded. */
+  unroundedValue: number;
   value: number;
 };
 
@@ -181,14 +186,16 @@ export function computeIncomeApproach(input: IncomeApproachInput, config: Engine
     inputs: { tasaTabla: tableRate, capturada: input.capitalization.appliedRate ?? null },
     value: input.capitalization.appliedRate ?? requireValue(tableRate, "Falta la tasa de capitalización."),
   });
-  const value = trace.record({
+  // With every decimal of the rate (FAL-13): the table's 8.428571 %, not the figure printed.
+  const unroundedValue = trace.record({
     key: "ingresos.valor",
     label: "Valor por capitalización de rentas",
     formula: "renta neta anual / tasa aplicada",
     inputs: { rentaNetaAnual: netAnnualRent, tasa: appliedRate },
     value: netAnnualRent / appliedRate,
   });
-  return { method, annuity: null, marketRate: null, rentMarket, unitRent, grossMonthlyRent, deductionsRate, netMonthlyRent, netAnnualRent, tableRate, appliedRate, value };
+  const value = roundedValue(unroundedValue, input.rounding, trace);
+  return { method, annuity: null, marketRate: null, rentMarket, unitRent, grossMonthlyRent, deductionsRate, netMonthlyRent, netAnnualRent, tableRate, appliedRate, unroundedValue, value };
 }
 
 /** Method B (TU): vacancy in cascade, then deductions; two ways to capitalize. */
@@ -265,13 +272,14 @@ function annuityMethod(
   });
 
   const option = annuity.option;
-  const value = trace.record({
+  const unroundedValue = trace.record({
     key: "ingresos.valor",
     label: "Valor por capitalización de rentas",
     formula: `opción ${option}`,
     inputs: { opcion1: option1Value, opcion2: option2Value },
     value: option === 1 ? option1Value : option2Value,
   });
+  const value = roundedValue(unroundedValue, input.rounding, trace);
   return {
     method: "anualidad",
     annuity: {
@@ -290,6 +298,7 @@ function annuityMethod(
     netAnnualRent,
     tableRate: null,
     appliedRate: option === 1 ? option1Rate : option2Rate,
+    unroundedValue,
     value,
   };
 }
@@ -353,13 +362,14 @@ function marketRateMethod(input: IncomeApproachInput, rentMarket: HomologationRe
     inputs: { ingresoUnitario: meanUnitIncome, superficie: market.subjectArea },
     value: meanUnitIncome * market.subjectArea,
   });
-  const value = trace.record({
+  const unroundedValue = trace.record({
     key: "ingresos.valor",
     label: "Valor por capitalización de rentas",
     formula: "ingreso neto anual del sujeto / tasa de mercado",
     inputs: { ingresoNeto: netAnnualRent, tasa: meanRate },
     value: netAnnualRent / meanRate,
   });
+  const value = roundedValue(unroundedValue, input.rounding, trace);
   const retained = (1 - market.negotiation) * (1 - market.vacancy) * (1 - expensesRate);
   return {
     method: "mercado",
@@ -373,22 +383,52 @@ function marketRateMethod(input: IncomeApproachInput, rentMarket: HomologationRe
     netAnnualRent,
     tableRate: null,
     appliedRate: meanRate,
+    unroundedValue,
     value,
   };
 }
 
+/** The rate table worked out as the books print it, rows 47 to 50 of «XII.3 CÁLCULO DE TASA». */
+export type RateTableBreakdown = {
+  /** SUMA CALIFICACIONES: how many criteria are rated in each column. */
+  sums: number[];
+  /** CAPITALIZACIÓN: each column's rate / 7 × 100 (H48 = H29/7*100). */
+  capitalization: number[];
+  /** TASAS PARCIALES: sum × capitalization (H49 = H47*H48). */
+  partials: number[];
+  /** TASA RESULTANTE: Σ partial rates / 100 (U50 = SUM(H49:W49)/100); null until every criterion is rated. */
+  resultant: number | null;
+};
+
 /**
- * Same arithmetic as the books (row 47 to U50): per column, count × rate /
- * criteria × 100, summed left to right and divided by 100.
+ * Same arithmetic as the books (Bravo Armejo's table, rows 47 to U50): per
+ * column, count × (rate / criteria × 100), summed left to right and divided
+ * by 100. `columns` holds the column rated for each criterion, null while it
+ * is not; the capitalization divides by the number of criteria (7), as the books.
  */
-function rateFromTable(columns: number[], rates: readonly number[]): number {
+export function rateTableBreakdown(columns: ReadonlyArray<number | null>, rates: readonly number[] = RATE_TABLE_RATES): RateTableBreakdown {
   const criteria = columns.length;
-  let total = 0;
-  rates.forEach((rate, column) => {
-    const count = columns.filter((chosen) => chosen === column).length;
-    total += count * ((rate / criteria) * 100);
+  const sums = rates.map((_, column) => columns.filter((chosen) => chosen === column).length);
+  const capitalization = rates.map((rate) => (rate / criteria) * 100);
+  const partials = sums.map((count, column) => count * capitalization[column]);
+  const complete = criteria > 0 && columns.every((chosen) => chosen !== null);
+  return { sums, capitalization, partials, resultant: complete ? partials.reduce((sum, partial) => sum + partial, 0) / 100 : null };
+}
+
+function rateFromTable(columns: number[], rates: readonly number[]): number {
+  return rateTableBreakdown(columns, rates).resultant as number;
+}
+
+/** The value rounded as the appraiser chose, recorded when it is. */
+function roundedValue(value: number, digits: RoundingDigits | undefined, trace: Trace): number {
+  if (digits === undefined || digits === null) return value;
+  return trace.record({
+    key: "ingresos.valorRedondeado",
+    label: "Valor por capitalización de rentas, redondeado",
+    formula: `REDONDEAR(valor, ${digits})`,
+    inputs: { valor: value },
+    value: roundIfSet(value, digits),
   });
-  return total / 100;
 }
 
 function requireValue(value: number | null | undefined, message: string): number {

@@ -159,7 +159,7 @@ test("the dictamen shows the annuity and market-rate detail", () => {
   const tuBlocks = incomeDocumentBlocks(tu, computeIncomeApproach(tuInputOk.input, EXCEL_PROFILES.TU));
   const tuRate = tuBlocks.find((block) => block.id === "motor-ingresos-tasa")!;
   assert.ok(tuRate.concepts.some((concept) => concept.label === "Valor que se concluye" && concept.value === "Valor presente (anualidad)"));
-  assert.equal(tuBlocks.at(-1)!.concepts[0].value, "$110,689.59");
+  assert.equal(tuBlocks.at(-1)!.concepts[0].value, "$110,689.59 M.N.");
 
   const tr = dto({
     method: "mercado",
@@ -179,7 +179,7 @@ test("the dictamen shows the annuity and market-rate detail", () => {
   const rows = (trBlocks[1].tables[0] as unknown as { rows: string[][] }).rows;
   assert.equal(rows.length, 4);
   assert.equal(rows[0][0], "1. Parcela 1");
-  assert.equal(trBlocks[2].concepts[1].value, "$5,090,678.68");
+  assert.equal(trBlocks[2].concepts[1].value, "$5,090,678.68 M.N.");
 });
 
 test("sin mercado de rentas, cada tipo con su renta: la adoptada es el promedio ponderado", () => {

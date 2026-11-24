@@ -39,6 +39,8 @@ async function rentMarket(tx: Tx, versionId: number): Promise<IncomeCalculationD
   };
 }
 
+const optionalRate = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+
 async function loadInput(tx: Tx, versionId: number) {
   const approach = await tx.enfoqueIngreso.findUnique({
     where: { IdVersionAvaluo: versionId },
@@ -56,6 +58,9 @@ async function loadInput(tx: Tx, versionId: number) {
       deductions: approach.deduccionesIngreso.map((row) => ({ concept: row.SConcepto, rate: decimal(row.NPorcentaje) })),
       ratingColumns: configuration.ratingColumns ?? DEFAULT_INCOME.ratingColumns,
       appliedRate: decimal(approach.NTasaMercado),
+      rateFromMarket: optionalRate(configuration.rateFromMarket),
+      weightedRate: optionalRate(configuration.weightedRate),
+      rounding: typeof configuration.rounding === "number" ? configuration.rounding : null,
       formulas: storedFormulas(configuration.formulas),
     } satisfies IncomeInputDto,
   };
@@ -83,8 +88,11 @@ export async function saveIncomeCalculation(publicId: string, user: AuthUser, pa
       marketRate: payload.marketRate,
       rentableUnits: payload.rentableUnits,
       ratingColumns: payload.ratingColumns,
+      rateFromMarket: payload.rateFromMarket ?? null,
+      weightedRate: payload.weightedRate ?? null,
+      rounding: payload.rounding ?? null,
       formulas: formulasOrThrow({
-        next: payload,
+        next: { ...payload, rateFromMarket: payload.rateFromMarket ?? null, weightedRate: payload.weightedRate ?? null },
         sent: payload.formulas,
         previous,
         previousFormulas: previous.formulas ?? {},

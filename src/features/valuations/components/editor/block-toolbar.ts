@@ -102,7 +102,8 @@ export function blockToolbarState(input: {
           visibility: enabled(),
           pageBreak: enabled(),
           alignment: enabled(),
-          add: locked(GENERATED_BLOCK_REASON),
+          // A table of the appraiser's own beside the calculation's (24 nov 2026: «no me deja agregar otra tabla»); it prints and is kept when the calculation writes the block again.
+          add: enabled(),
           subblock: locked(GENERATED_BLOCK_REASON),
           delete: locked(GENERATED_BLOCK_DELETE_REASON),
         };
