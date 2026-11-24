@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError, type ComparableFormValues } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
+import { cn, countLabel } from "@/lib/utils";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { useAiAssist } from "@/features/ai/ai-assist-context";
@@ -921,7 +921,7 @@ function MarketTypePanel(props: {
                     <td className="max-w-64 px-2 py-1.5" title={comparable.location}>
                       <span className="block truncate">
                         {comparable.location}
-                        {comparable.photos.length ? <span className="ml-1 text-xs text-muted-foreground">({comparable.photos.length} fotos)</span> : null}
+                        {comparable.photos.length ? <span className="ml-1 text-xs text-muted-foreground">({countLabel(comparable.photos.length, "foto")})</span> : null}
                       </span>
                       {warnings.length ? (
                         <span className="flex items-start gap-1 text-xs text-highlight-strong" data-comparable-warnings title={warnings.map((warning) => warning.message).join("\n")}>

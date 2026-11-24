@@ -10,6 +10,7 @@ import {
   amountPerUnit,
   appearsIn,
   firstUrl,
+  labelBefore,
   parseAmount,
   parseCount,
   parseListingDate,
@@ -106,9 +107,9 @@ Campos:
 - conservation: el estado de conservación como lo dice el anuncio («a estrenar», «buen estado», «para remodelar»).
 - frontCount: el número de frentes («2 frentes»). shape: la forma del terreno («regular», «rectangular»). zone: la zona como la describe el anuncio («zona habitacional», «zona industrial»).
 - landUse: el uso de suelo. topography: la topografía. services: los servicios con que cuenta.
-- portal: el portal o la inmobiliaria que publica el anuncio. publicationId: el número, clave o ID del anuncio en el portal, con su etiqueta («ID: 145-998», «Clave EB-XK1234»).
+- portal: el portal o la inmobiliaria que publica el anuncio. publicationId: el número, clave, folio o ID del anuncio en el portal, con su etiqueta tal como está escrita («ID: 145-998», «Clave EB-XK1234», «Publicación No. 998877», «Folio 4521»).
 - listingDate: la fecha de publicación del anuncio, solo si está escrita como fecha.
-- contactName: el nombre del anunciante o asesor. contactPhone: su teléfono.
+- contactName: el nombre del anunciante o asesor. contactPhone: su teléfono, solo los dígitos como están escritos, sin «tel.» («33 1234 5678»).
 - amenities: cada amenidad o equipamiento que el anuncio menciona («alberca», «jardín», «cocina integral»), un fragmento por elemento, hasta ${LISTING_MAX_FACTS}.
 - otherFacts: otros datos del inmueble que el anuncio dice y no caben en los campos anteriores (orientación, vigilancia, cuota de mantenimiento, régimen de propiedad, a qué distancia está algo), un fragmento literal por dato, hasta ${LISTING_MAX_FACTS}. No repitas lo que ya va en otro campo y no incluyas frases de venta («gran oportunidad», «excelente inversión»).`;
 
@@ -118,7 +119,8 @@ export function buildListingPrompt(text: string): AiPrompt {
   return { system: SYSTEM_PROMPT, user: `<anuncio>\n${safe}\n</anuncio>` };
 }
 
-type Evidenced<T> = (T & { evidence: string }) | null;
+/** `label` is what the text writes right before the fragment ("Estado: excelente" → "Estado"), when it writes one. */
+type Evidenced<T> = (T & { evidence: string; label?: string }) | null;
 
 /** What is proposed for the form: each value next to the fragment of the listing it was read from. */
 export type ListingProposal = {
@@ -177,30 +179,47 @@ export function verifyListingExtraction(text: string, url: string | null, extrac
     return value === null ? null : { value };
   };
 
+  /** The label the text writes before the fragment, when it writes one. */
+  const labeled = <T extends { evidence: string }>(item: T): T & { label?: string } => {
+    const label = labelBefore(text, item.evidence);
+    return label ? { ...item, label } : item;
+  };
+  const withLabel = <T extends { evidence: string }>(item: T | null) => (item ? labeled(item) : null);
+
   const texts = Object.fromEntries(TEXT_FIELDS.map((field) => {
     const evidence = literal(field, extraction[field]);
-    return [field, evidence ? { value: evidence, evidence } : null];
+    return [field, evidence ? labeled({ value: evidence, evidence }) : null];
   })) as Record<TextField, Evidenced<{ value: string }>>;
-  // A phone is digits: anything else under that field is not one.
-  if (texts.contactPhone && !/^\+?[\d\s().-]{7,25}$/.test(texts.contactPhone.value)) {
-    discarded.push("contactPhone");
-    texts.contactPhone = null;
+  // A phone is digits, maybe after its label («tel. 33 1234 5678»): anything else under that field is not one.
+  if (texts.contactPhone) {
+    const phone = texts.contactPhone.value.replace(/^(?:tel[eé]fono|tel|cel(?:ular)?|whats?app|m[oó]vil)\.?\s*:?\s*/i, "");
+    if (/^\+?[\d\s().-]{7,25}$/.test(phone)) texts.contactPhone = { ...texts.contactPhone, value: phone };
+    else {
+      discarded.push("contactPhone");
+      texts.contactPhone = null;
+    }
   }
 
   const operation = extraction.operation === "no_indicado" ? null : figure("operation", extraction.operationEvidence, (evidence) =>
     (OPERATION_WORDS[extraction.operation as "venta" | "renta"].test(evidence) ? { value: extraction.operation as "venta" | "renta" } : null));
 
   const link = url?.trim() || firstUrl(text);
-  /** Each fact of a list, if it really is in the text; repeated ones once. */
-  const facts = (field: string, values: string[]) => {
+  /**
+   * Each fact of a list, if it really is in the text; repeated ones once.
+   * With `keepLabel`, the value keeps the label the text writes before it
+   * («Estado: excelente»), so it reads on its own in the observations.
+   */
+  const facts = (field: string, values: string[], keepLabel = false) => {
     const kept: Array<{ value: string; evidence: string }> = [];
     for (const value of values.slice(0, LISTING_MAX_FACTS)) {
       const evidence = literal(field, value);
-      if (evidence && !kept.some((item) => item.evidence.toLowerCase() === evidence.toLowerCase())) kept.push({ value: evidence, evidence });
+      if (!evidence || kept.some((item) => item.evidence.toLowerCase() === evidence.toLowerCase())) continue;
+      const label = keepLabel ? labelBefore(text, evidence) : null;
+      kept.push({ value: label ? `${label}: ${evidence}` : evidence, evidence });
     }
     return kept;
   };
-  const counts = Object.fromEntries(COUNT_FIELDS.map((field) => [field, figure(field, extraction[field], wrap((evidence) => {
+  const counts = Object.fromEntries(COUNT_FIELDS.map((field) => [field, withLabel(figure(field, extraction[field], wrap((evidence) => {
     // Bathrooms go in wholes or halves ("2.5 baños"); the rest are whole numbers. An age is in years, never a year of construction.
     // «medio baño», without a number, is one half bathroom.
     const count = parseCount(evidence, { halves: field === "bathrooms" }) ?? (field === "halfBaths" && /\bmedio\b/i.test(evidence) ? 1 : null);
@@ -208,7 +227,7 @@ export function verifyListingExtraction(text: string, url: string | null, extrac
     if (field === "age" && count > 200) return null;
     if (field === "frontCount" && count < 1) return null;
     return count;
-  }))])) as Record<CountField, Evidenced<{ value: number }>>;
+  })))])) as Record<CountField, Evidenced<{ value: number }>>;
 
   return {
     operation,
@@ -227,7 +246,7 @@ export function verifyListingExtraction(text: string, url: string | null, extrac
     ...counts,
     ...texts,
     amenities: facts("amenities", extraction.amenities),
-    otherFacts: facts("otherFacts", extraction.otherFacts),
+    otherFacts: facts("otherFacts", extraction.otherFacts, true),
     discarded,
   };
 }

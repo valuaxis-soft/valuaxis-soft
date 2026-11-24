@@ -67,6 +67,14 @@ test("counts, postal codes and listing ids are read in code from what the listin
   assert.equal(parsePublicationId("Clave EB-XK1234"), "EB-XK1234");
   assert.equal(parsePublicationId("Código de propiedad: 88123"), "88123");
   assert.equal(parsePublicationId("ID del anuncio"), null);
+  // The ways a listing labels its id: the label goes, the id stays.
+  assert.equal(parsePublicationId("Publicación No. 998877"), "998877");
+  assert.equal(parsePublicationId("No. de publicación: 998877"), "998877");
+  assert.equal(parsePublicationId("Anuncio #A-5521"), "A-5521");
+  assert.equal(parsePublicationId("Folio 4521"), "4521");
+  assert.equal(parsePublicationId("Clave: TX-0099"), "TX-0099");
+  assert.equal(parsePublicationId("ID-145998"), "145998");
+  assert.equal(parsePublicationId("Publicación reciente"), null);
 });
 
 test("a road read from a listing keeps the type its name already says", () => {

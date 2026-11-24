@@ -163,10 +163,27 @@ export function formatAddress(address: ComparableAddress | null | undefined) {
   if (!address) return "";
   const corner = normalizeCrossing(part(address.crossStreet)).replace(/^esquina con\s+/i, "");
   const street = [streetWithType(address), part(address.number), corner ? `esquina con ${corner}` : ""].filter(Boolean).join(" ");
-  const neighborhood = part(address.neighborhood) ? `col. ${part(address.neighborhood)}` : "";
-  const subdivision = part(address.subdivision) ? `fracc. ${part(address.subdivision)}` : "";
-  const postalCode = part(address.postalCode) ? `C.P. ${part(address.postalCode)}` : "";
-  return [street, neighborhood, subdivision, postalCode, part(address.municipality), part(address.state)].filter(Boolean).join(", ");
+  // A part captured with its own prefix («Col. Centro», «Fracc. Valle Real», «C.P. 47180») prints it once.
+  const neighborhood = withoutNeighborhoodPrefix(part(address.neighborhood));
+  const subdivision = part(address.subdivision).replace(SUBDIVISION_PREFIX, "").trim();
+  const postalCode = part(address.postalCode).replace(POSTAL_CODE_PREFIX, "").trim();
+  return [
+    street,
+    neighborhood ? `col. ${neighborhood}` : "",
+    subdivision ? `fracc. ${subdivision}` : "",
+    postalCode ? `C.P. ${postalCode}` : "",
+    part(address.municipality),
+    part(address.state),
+  ].filter(Boolean).join(", ");
+}
+
+const NEIGHBORHOOD_PREFIX = /^(?:colonia(?!\p{L})|col\.|col(?=\s))\s*/iu;
+const SUBDIVISION_PREFIX = /^(?:fraccionamiento(?!\p{L})|fracc?\.|fracc?(?=\s))\s*/iu;
+const POSTAL_CODE_PREFIX = /^(?:c\.\s?p\.?|cp(?!\p{L}))\s*:?\s*/iu;
+
+/** «Col. Centro», «col Centro» or «Colonia Centro» → «Centro». «Colonial» is a name, not the prefix. */
+export function withoutNeighborhoodPrefix(value: string) {
+  return value.trim().replace(NEIGHBORHOOD_PREFIX, "").trim();
 }
 
 /** The parts of a stored address (a snapshot read as a record); null when none is captured. */

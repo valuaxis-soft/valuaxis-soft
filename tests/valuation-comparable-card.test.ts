@@ -7,6 +7,7 @@ import {
   parseComparableId,
   todayInMexico,
 } from "../src/features/valuations/calculation/comparable-card";
+import { countLabel } from "../src/lib/utils";
 import {
   addressKey,
   duplicateReasons,
@@ -46,6 +47,29 @@ test("the address parts make the line the dictamen prints", () => {
   );
   assert.equal(formatAddress({ municipality: "Arandas", state: " " }), "Arandas");
   assert.equal(formatAddress(null), "");
+});
+
+test("a part captured with its own prefix prints it once: «Col. Centro» is not «col. Col. Centro»", () => {
+  assert.equal(
+    formatAddress({ street: "Calle Hidalgo", number: "245", neighborhood: "Col. Centro", postalCode: "C.P. 47180", municipality: "Arandas", state: "Jalisco" }),
+    "Calle Hidalgo 245, col. Centro, C.P. 47180, Arandas, Jalisco",
+  );
+  for (const neighborhood of ["col. Centro", "COL Centro", "Colonia Centro", "colonia  Centro", "Col.Centro"]) {
+    assert.equal(formatAddress({ neighborhood }), "col. Centro", neighborhood);
+  }
+  // A name that only starts like the prefix is the name.
+  assert.equal(formatAddress({ neighborhood: "Colonial Inventada" }), "col. Colonial Inventada");
+  assert.equal(formatAddress({ neighborhood: "Colinas del Ejemplo" }), "col. Colinas del Ejemplo");
+  assert.equal(formatAddress({ neighborhood: "Col." }), "");
+  assert.equal(formatAddress({ subdivision: "Fracc. Valle Inventado" }), "fracc. Valle Inventado");
+  assert.equal(formatAddress({ subdivision: "Fraccionamiento Valle Inventado" }), "fracc. Valle Inventado");
+  assert.equal(formatAddress({ postalCode: "CP 47180" }), "C.P. 47180");
+});
+
+test("a count says «1 foto» and «2 fotos»", () => {
+  assert.equal(countLabel(1, "foto"), "1 foto");
+  assert.equal(countLabel(2, "foto"), "2 fotos");
+  assert.equal(countLabel(0, "foto"), "0 fotos");
 });
 
 test("addresses are compared without accents, abbreviations or the words that name their parts", () => {
