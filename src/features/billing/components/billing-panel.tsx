@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, CreditCard, Download, Info, Loader2, RotateCw, ShoppingCart } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CreditCard, Download, Info, Landmark, Loader2, Minus, Plus, RotateCw, ShoppingCart } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -9,14 +9,18 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api, SessionExpiredError } from "@/lib/api-client";
-import type { BillingOverviewDto, BillingPlanDto, CreditPackageDto, CreditsOverviewDto } from "../billing.service";
+import type { BillingOverviewDto, BillingPlanDto, CreditsOverviewDto } from "../billing.service";
 import type { CreditMovementDto } from "../credits.service";
 import type { MovementInvoiceDto } from "../invoicing.service";
+import type { UnitPriceDto } from "../unit-price.service";
+import { PriceChangeAlert } from "./price-change-alert";
 import { FiscalDataCard } from "./fiscal-data-card";
 
-/** The words next to the balance; a negative balance counts valuations concluded without paying. */
+/** The words next to the balance; a negative balance counts valuations created without paying. */
 function balanceWords(balance: number) {
   const one = Math.abs(balance) === 1;
   if (balance < 0) return one ? "avalúo pendiente de pago" : "avalúos pendientes de pago";
@@ -50,12 +54,12 @@ const NOTICES: Record<Exclude<BillingNotice, null>, { title: string; text: strin
   },
   purchased: {
     title: "Compra confirmada",
-    text: "Stripe confirmó tu pago y los avalúos ya están en tu saldo. Stripe te envía el recibo por correo; la factura aparece en Movimientos en cuanto se emite.",
+    text: "Stripe confirmó tu pago y los avalúos ya están en tu saldo. Te enviamos la confirmación por correo; la factura aparece en Movimientos en cuanto se emite.",
     tone: "ok",
   },
   "purchase-confirming": {
     title: "Estamos confirmando tu pago",
-    text: "Stripe todavía no confirma el pago del paquete. Suele tardar unos segundos: vuelve a cargar la página.",
+    text: "Stripe todavía no confirma el pago. Suele tardar unos segundos: vuelve a cargar la página.",
     tone: "info",
   },
   cancelled: { title: "No se realizó ningún cargo", text: "Saliste del pago antes de terminar. Puedes comprar cuando quieras.", tone: "info" },
@@ -96,39 +100,46 @@ export function BillingPanel({
     }
   };
   const openPortal = () => leaveTo("portal", api.billing.portal, "No se pudo abrir el portal de pago.");
-  const buyPackage = (packageId: string) => leaveTo(packageId, () => api.billing.buyPackage(packageId), "No se pudo iniciar el pago.");
+  const buyCredits = (quantity: number) => leaveTo("comprar", () => api.billing.buyCredits(quantity), "No se pudo iniciar el pago.");
   const shown = notice ? NOTICES[notice] : null;
 
   return (
     <div className="grid gap-6">
       {shown ? (
-        <Alert variant={shown.tone === "warning" ? "destructive" : "default"}>
+        <Alert variant={shown.tone === "warning" ? "destructive" : "default"} data-billing-notice={notice}>
           {shown.tone === "ok" ? <CheckCircle2 /> : shown.tone === "warning" ? <AlertTriangle /> : <Info />}
           <AlertTitle>{shown.title}</AlertTitle>
-          <AlertDescription>{shown.text}</AlertDescription>
+          <AlertDescription>
+            {shown.text}
+            {notice === "purchased" ? (
+              <span className="mt-1 block font-medium text-foreground">
+                Tu saldo: {credits.balance} {balanceWords(credits.balance)}.
+              </span>
+            ) : null}
+          </AlertDescription>
         </Alert>
       ) : null}
 
+      {overview.priceNotice ? <PriceChangeAlert notice={overview.priceNotice} /> : null}
+
       <CreditsCard credits={credits} canManage={canManage} enabled={overview.enabled} hasCustomer={overview.hasCustomer} busy={busy} onPortal={openPortal} />
 
-      {!overview.enabled ? (
+      {!credits.unitPrice ? (
         <Alert>
           <Info />
-          <AlertTitle>Los pagos en línea no están habilitados</AlertTitle>
-          <AlertDescription>Por ahora no es posible comprar paquetes desde aquí. Tu organización sigue funcionando con normalidad.</AlertDescription>
-        </Alert>
-      ) : credits.packages.length === 0 ? (
-        <Alert>
-          <Info />
-          <AlertTitle>Todavía no hay paquetes publicados</AlertTitle>
-          <AlertDescription>Cuando haya paquetes de avalúos disponibles aparecerán aquí para comprarlos.</AlertDescription>
+          <AlertTitle>Todavía no hay precio publicado</AlertTitle>
+          <AlertDescription>Cuando el precio por avalúo esté publicado podrás comprar avalúos disponibles aquí.</AlertDescription>
         </Alert>
       ) : (
-        <section aria-label="Paquetes de avalúos" className="grid gap-4 sm:grid-cols-2">
-          {credits.packages.map((pkg) => (
-            <PackageCard key={pkg.id} pkg={pkg} canManage={canManage} busy={busy} onBuy={() => buyPackage(pkg.id)} />
-          ))}
-        </section>
+        <BuyCard
+          maxQuantity={credits.maxQuantity}
+          unitPrice={credits.unitPrice}
+          cardEnabled={overview.enabled}
+          canManage={canManage}
+          busy={busy}
+          bankTransfer={overview.bankTransfer}
+          onPay={buyCredits}
+        />
       )}
 
       <MovementsCard credits={credits} invoicingEnabled={overview.invoicing.enabled} canRetry={canManageInvoicing && overview.invoicing.enabled} />
@@ -148,8 +159,8 @@ export function BillingPanel({
         </Alert>
       ) : null}
 
-      {/* Subscriptions (the comparables database, later) coexist with the packages; without plans on sale only a paid one shows. */}
-      {current?.paid || plans.length > 0 ? (
+      {/* No plans on offer while the commercial policies rule out subscriptions (7.2); one already paid would still show. */}
+      {current?.paid || (overview.subscriptionsOffered && plans.length > 0) ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center gap-2">
@@ -172,7 +183,7 @@ export function BillingPanel({
             ) : (
               <p className="text-sm text-muted-foreground">Tu organización no tiene una suscripción de pago.</p>
             )}
-            {overview.enabled && plans.length > 0 ? (
+            {overview.enabled && overview.subscriptionsOffered && plans.length > 0 ? (
               <section aria-label="Planes disponibles" className="grid gap-4 sm:grid-cols-2">
                 {plans.map((plan) => (
                   <PlanCard
@@ -211,6 +222,7 @@ function CreditsCard({
   onPortal: () => void;
 }) {
   const negative = credits.balance < 0;
+  const trial = credits.trial;
   return (
     <Card>
       <CardHeader>
@@ -219,26 +231,35 @@ function CreditsCard({
           {credits.enforced ? <Badge variant="secondary">Cobro por avalúo activo</Badge> : null}
           {negative ? <Badge variant="destructive">Pendiente de pago</Badge> : null}
         </CardTitle>
-        <CardDescription>Cada avalúo descuenta un crédito al concluirse.</CardDescription>
+        <CardDescription>Se usa uno al crear cada avalúo. Concluirlo, cancelarlo o reabrirlo no usa otro.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
-        <p>
-          <span className={`text-4xl font-bold tracking-tight ${negative ? "text-destructive" : ""}`}>{Math.abs(credits.balance)}</span>{" "}
+        <p data-credit-balance={credits.balance}>
+          <span className={`text-4xl font-bold tracking-tight tabular-nums ${negative ? "text-destructive" : ""}`}>{Math.abs(credits.balance)}</span>{" "}
           <span className="text-sm text-muted-foreground">{balanceWords(credits.balance)}</span>
         </p>
+        {trial ? (
+          <dl className="grid gap-2 text-sm sm:grid-cols-2" data-credit-trial>
+            <Detail label="Pagados (no vencen)" value={String(Math.max(credits.paid, 0))} />
+            <Detail
+              label={trial.expired ? "Prueba gratuita" : `De prueba gratuita (vencen el ${formatDate(trial.expiresAt)})`}
+              value={trial.expired ? `Venció el ${formatDate(trial.expiresAt)}` : `${trial.available} de ${trial.granted}`}
+            />
+          </dl>
+        ) : null}
         {negative ? (
           <Alert variant="destructive">
             <AlertTriangle />
             <AlertTitle>Avalúos pendientes de pago</AlertTitle>
             <AlertDescription>
-              Se concluyeron {Math.abs(credits.balance)} {Math.abs(credits.balance) === 1 ? "avalúo" : "avalúos"} sin saldo. Compra un paquete para ponerte al corriente.
+              Se usaron {Math.abs(credits.balance)} {Math.abs(credits.balance) === 1 ? "avalúo" : "avalúos"} sin saldo. Compra avalúos para ponerte al corriente.
             </AlertDescription>
           </Alert>
         ) : credits.enforced && credits.balance === 0 ? (
           <Alert>
             <Info />
             <AlertTitle>Sin avalúos disponibles</AlertTitle>
-            <AlertDescription>Para concluir un avalúo es necesario comprar un paquete.</AlertDescription>
+            <AlertDescription>Para crear un avalúo es necesario comprar al menos uno.</AlertDescription>
           </Alert>
         ) : null}
         {canManage && hasCustomer && enabled ? (
@@ -255,34 +276,155 @@ function CreditsCard({
   );
 }
 
-function PackageCard({ pkg, canManage, busy, onBuy }: { pkg: CreditPackageDto; canManage: boolean; busy: string | null; onBuy: () => void }) {
+/** Centavos, so the browser adds what Stripe will charge without floating point. */
+const cents = (amount: number) => Math.round(amount * 100);
+
+/**
+ * «Comprar avalúos»: by unit (commercial policies 3.1), with the total to pay,
+ * taxes and every charge in sight before the pay button, and the payment terms
+ * and forms (LFPC 7 Bis and 76 Bis V).
+ */
+function BuyCard({
+  maxQuantity,
+  unitPrice,
+  cardEnabled,
+  canManage,
+  busy,
+  bankTransfer,
+  onPay,
+}: {
+  maxQuantity: number;
+  unitPrice: UnitPriceDto;
+  cardEnabled: boolean;
+  canManage: boolean;
+  busy: string | null;
+  bankTransfer: BillingOverviewDto["bankTransfer"];
+  onPay: (quantity: number) => void;
+}) {
+  const [text, setText] = useState("1");
+  const parsed = Number(text);
+  const valid = Number.isInteger(parsed) && parsed >= 1 && parsed <= maxQuantity;
+  const quantity = valid ? parsed : 1;
+  const totalCents = cents(unitPrice.total) * quantity;
+  const subtotalCents = cents(unitPrice.subtotal) * quantity;
+  const total = money.format(totalCents / 100);
+  const step = (delta: number) => setText(String(Math.min(maxQuantity, Math.max(1, quantity + delta))));
+
   return (
-    <Card>
+    <Card aria-labelledby="comprar-title">
       <CardHeader>
-        <CardTitle>{pkg.name}</CardTitle>
+        <CardTitle id="comprar-title">Comprar avalúos</CardTitle>
         <CardDescription>
-          {pkg.credits} {pkg.credits === 1 ? "avalúo" : "avalúos"} · {money.format(pkg.perCredit)} por avalúo más IVA
-          {pkg.description ? `. ${pkg.description}` : ""}
+          Cada avalúo disponible cuesta {money.format(unitPrice.total)} MXN con IVA incluido. Se compran por unidad: no hay paquetes, membresía ni suscripción.
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-2">
-        <p>
-          <span className="text-2xl font-bold tracking-tight">{money.format(pkg.total)}</span> <span className="text-sm text-muted-foreground">MXN</span>
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {pkg.tax > 0
-            ? `${money.format(pkg.subtotal)} + ${money.format(pkg.tax)} de IVA (${pkg.taxPercent}%). IVA incluido en el cobro.`
-            : "Es el importe total que se cobra una sola vez."}
-        </p>
+      <CardContent className="grid gap-5">
+        <div className="grid gap-2">
+          <Label htmlFor="cantidad-avaluos">¿Cuántos avalúos?</Label>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="icon" aria-label="Uno menos" onClick={() => step(-1)} disabled={quantity <= 1}>
+              <Minus />
+            </Button>
+            <Input
+              id="cantidad-avaluos"
+              inputMode="numeric"
+              autoComplete="off"
+              className="w-24 text-center tabular-nums"
+              value={text}
+              onChange={(event) => setText(event.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+              aria-invalid={!valid}
+              aria-describedby="cantidad-ayuda"
+            />
+            <Button type="button" variant="outline" size="icon" aria-label="Uno más" onClick={() => step(1)} disabled={quantity >= maxQuantity}>
+              <Plus />
+            </Button>
+          </div>
+          <p id="cantidad-ayuda" className={`text-xs ${valid ? "text-muted-foreground" : "text-destructive"}`}>
+            {valid ? `De 1 a ${maxQuantity} por pago.` : `Escribe una cantidad de 1 a ${maxQuantity}.`}
+          </p>
+        </div>
+
+        <section aria-label="Total a pagar" className="rounded-xl border-2 border-primary/40 bg-primary/5 p-4" data-purchase-total={totalCents / 100}>
+          <dl className="grid gap-1 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">
+                {quantity} × {money.format(unitPrice.total)}
+              </dt>
+              <dd className="tabular-nums">{total}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Subtotal antes de IVA</dt>
+              <dd className="tabular-nums">{money.format(subtotalCents / 100)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">IVA ({unitPrice.taxPercent} %), incluido</dt>
+              <dd className="tabular-nums">{money.format((totalCents - subtotalCents) / 100)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Comisiones y otros cargos</dt>
+              <dd className="tabular-nums">{money.format(0)}</dd>
+            </div>
+          </dl>
+          <p className="mt-3 flex flex-wrap items-baseline justify-between gap-2 border-t border-primary/20 pt-3">
+            <span className="text-base font-semibold">Total a pagar</span>
+            <span className="text-3xl font-bold tracking-tight tabular-nums">
+              {total} <span className="text-sm font-medium text-muted-foreground">MXN</span>
+            </span>
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Un solo cargo con IVA incluido. No hay comisiones ni cobros adicionales.</p>
+        </section>
+
+        <div className="grid gap-2 text-sm">
+          <p className="font-medium">Términos y formas de pago</p>
+          <ul className="grid list-disc gap-1 pl-5 text-muted-foreground">
+            <li>Tarjeta de crédito o débito, en la página segura de Stripe. Valuaxis no ve ni guarda tu tarjeta.</li>
+            <li>Pago único: no es suscripción y no hay cobros automáticos recurrentes.</li>
+            <li>Los avalúos se abonan a tu saldo en cuanto Stripe confirma el pago; recibes la confirmación en pantalla y por correo.</li>
+            <li>Los avalúos pagados no vencen. Los de la prueba gratuita vencen al mes del registro.</li>
+            <li>Puedes revocar la compra de los avalúos que no hayas usado dentro de los cinco días hábiles siguientes (Políticas comerciales, sección 6.1).</li>
+            <li>También puedes pagar por transferencia o depósito en efectivo con los datos de abajo.</li>
+          </ul>
+        </div>
+
         {canManage ? (
-          <Button className="w-fit" onClick={onBuy} disabled={busy !== null}>
-            {busy === pkg.id ? <Loader2 className="animate-spin" /> : <ShoppingCart />}
-            Comprar
-          </Button>
-        ) : null}
+          cardEnabled ? (
+            <Button className="w-fit" size="lg" onClick={() => onPay(quantity)} disabled={busy !== null || !valid} data-pay-button>
+              {busy === "comprar" ? <Loader2 className="animate-spin" /> : <ShoppingCart />}
+              Pagar {total} con tarjeta
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">El pago con tarjeta todavía no está habilitado. Puedes pagar por transferencia o depósito.</p>
+          )
+        ) : (
+          <p className="text-sm text-muted-foreground">Solo quien administra el despacho puede comprar avalúos.</p>
+        )}
+
+        <section aria-labelledby="transferencia-title" className="grid gap-2 rounded-xl border p-4">
+          <h3 id="transferencia-title" className="flex items-center gap-2 text-sm font-semibold">
+            <Landmark className="size-4" aria-hidden="true" />
+            Transferencia o depósito en efectivo
+          </h3>
+          <dl className="grid gap-2 text-sm sm:grid-cols-2">
+            {bankTransfer.rows.map((row) => (
+              <Detail key={row.label} label={row.label} value={row.value} />
+            ))}
+          </dl>
+          <p className="text-xs text-muted-foreground">
+            {bankTransfer.ready
+              ? `Transfiere o deposita el total (${total} por ${quantity} ${quantity === 1 ? "avalúo" : "avalúos"}) y envía tu comprobante con el nombre de tu despacho. Al confirmarlo te avisamos por correo con tu saldo.`
+              : "Los datos bancarios se publicarán aquí. Mientras tanto, paga con tarjeta."}
+          </p>
+        </section>
       </CardContent>
     </Card>
   );
+}
+
+/** «3 × $170.00 = $510.00 · Tarjeta (Stripe) · cs_…»: what a purchase cost and how it was paid. */
+function purchaseDetail(purchase: NonNullable<CreditMovementDto["purchase"]>) {
+  const parts = [`${purchase.quantity} × ${money.format(purchase.unitPrice)} = ${money.format(purchase.amount)}`, purchase.methodLabel];
+  if (purchase.reference) parts.push(`Ref. ${purchase.reference}`);
+  return parts.join(" · ");
 }
 
 function MovementsCard({ credits, invoicingEnabled, canRetry }: { credits: CreditsOverviewDto; invoicingEnabled: boolean; canRetry: boolean }) {
@@ -309,7 +451,7 @@ function MovementsCard({ credits, invoicingEnabled, canRetry }: { credits: Credi
     <Card>
       <CardHeader>
         <CardTitle>Movimientos</CardTitle>
-        <CardDescription>Compras, avalúos concluidos y ajustes, del más reciente al más antiguo (se muestran hasta 50).</CardDescription>
+        <CardDescription>Compras, avalúos creados, prueba gratuita y ajustes, del más reciente al más antiguo (se muestran hasta 50).</CardDescription>
       </CardHeader>
       <CardContent>
         {movements.length === 0 ? (
@@ -330,11 +472,13 @@ function MovementsCard({ credits, invoicingEnabled, canRetry }: { credits: Credi
                 <TableRow key={movement.id}>
                   <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(movement.createdAt)}</TableCell>
                   <TableCell>{movement.typeLabel}</TableCell>
-                  <TableCell>
+                  <TableCell className="whitespace-normal">
                     {movement.valuation ? (
                       <Link href={`/workspace?id=${movement.valuation.id}`} className="underline underline-offset-2">
                         {movement.valuation.folio}
                       </Link>
+                    ) : movement.purchase ? (
+                      <span className="tabular-nums">{purchaseDetail(movement.purchase)}</span>
                     ) : (
                       movement.description
                     )}

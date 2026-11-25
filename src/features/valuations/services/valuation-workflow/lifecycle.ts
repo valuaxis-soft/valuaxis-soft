@@ -80,12 +80,14 @@ export async function concludeValuation(input: {
     const adoptedError = adoptedValueConcludeError(marketsWithAdoptedValueOutside(markets, excluded));
     if (adoptedError) throw new ValuationWorkflowError(adoptedError, 409);
 
-    // Pay per appraisal: the first conclusion of this valuation consumes one credit (see docs/COBRO.md).
+    // Pay per appraisal: a valuation consumes at its creation. Only one created before that rule, never
+    // charged and never concluded, consumes now; reopening never consumes (see docs/COBRO.md).
     const credit = await consumeCreditForValuation(tx, {
       organizationId: input.organizationId,
       valuationId: avaluo.IdAvaluo,
       folio: avaluo.SFolio,
       userId: input.user.id,
+      previouslyConcluded: avaluo.IdVersionFinal !== null || avaluo.DFechaConclusion !== null,
     });
     if (credit.action === "blocked") throw new ValuationWorkflowError(credit.message, 409, { link: credit.link });
 

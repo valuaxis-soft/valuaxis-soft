@@ -1,6 +1,6 @@
 import { AUTH_PERMISSIONS, type AuthUser } from "@/features/auth/model";
 import { buildAuthorizationContext } from "@/features/auth/services/authorization-context.service";
-import { getCreditBalance } from "@/features/billing/credits.service";
+import { getCreditSummary } from "@/features/billing/credits.service";
 import type { AttentionItem } from "@/features/dashboard/attention";
 import { listAttentionValuations, listRecentActivity, type ActivityItem } from "@/features/dashboard/services/dashboard-activity.service";
 import { listValuationsPage } from "@/features/valuations/repositories/valuation-list.repository";
@@ -57,17 +57,21 @@ export type DashboardSummary = {
   attention: AttentionItem[];
   /** The last status changes; empty without AVALUO_VER. */
   activity: ActivityItem[];
-  /** The credit balance, only for who sees the billing and only while the firm pays per valuation. */
-  credits: { balance: number } | null;
+  /** The credit balance, only for who sees the billing and only while the firm pays per valuation or has its free trial. */
+  credits: { balance: number; trialAvailable: number; trialExpiresAt: string | null } | null;
   /** When the summary was read: the dashboard words its dates against it. */
   generatedAt: Date;
 };
 
-/** The balance when the per-valuation charge is on (BCobroPorAvaluo); null when it is off. */
+/** The balance when the per-valuation charge is on (BCobroPorAvaluo) or the free trial is running; null otherwise. */
 async function enforcedCreditBalance(organizationId: number) {
-  const organization = await prisma.organizacion.findUnique({ where: { IdOrganizacion: organizationId }, select: { BCobroPorAvaluo: true } });
-  if (!organization?.BCobroPorAvaluo) return null;
-  return { balance: await getCreditBalance(organizationId) };
+  const [organization, summary] = await Promise.all([
+    prisma.organizacion.findUnique({ where: { IdOrganizacion: organizationId }, select: { BCobroPorAvaluo: true } }),
+    getCreditSummary(organizationId),
+  ]);
+  const trialAvailable = summary.trial?.available ?? 0;
+  if (!organization?.BCobroPorAvaluo && trialAvailable === 0) return null;
+  return { balance: summary.balance, trialAvailable, trialExpiresAt: trialAvailable > 0 ? summary.trial!.expiresAt.toISOString() : null };
 }
 
 export async function getDashboardSummary(user: AuthUser): Promise<DashboardSummary> {

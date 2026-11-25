@@ -43,7 +43,7 @@ export function landingStructuredData({ name, description, url }: SiteInfo) {
           priceCurrency: "MXN",
           availability: "https://schema.org/InStock",
           url: `${url}/registro`,
-          description: "Precio por avalúo concluido, IVA incluido.",
+          description: "Precio por avalúo, IVA incluido.",
           priceSpecification: {
             "@type": "UnitPriceSpecification",
             price: PRICE_PER_VALUATION_MXN.toFixed(2),

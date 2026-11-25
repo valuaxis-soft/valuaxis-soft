@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ValuationHistoryDialog } from "@/features/valuations/components/history/valuation-history-dialog";
-import { api } from "@/lib/api-client";
+import { api, ApiError } from "@/lib/api-client";
 
 const errorText = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
 
@@ -67,7 +67,9 @@ export function ValuationRowActions({ id, folio, view, permissions }: { id: stri
       await action();
       refresh();
     } catch (error) {
-      toast.error(errorText(error, "No pudimos completar la acción. Inténtalo de nuevo."));
+      // The server names where to fix it (no Avalúos Disponibles: buy them): offer the way there.
+      const link = error instanceof ApiError ? error.link : null;
+      toast.error(errorText(error, "No pudimos completar la acción. Inténtalo de nuevo."), link ? { action: { label: "Ir a Plan y facturación", onClick: () => window.location.assign(link) } } : undefined);
     } finally {
       setPending(false);
     }

@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { notifyLowCredits } from "@/features/notifications/notification-events";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { phoneRequiredResponse } from "@/features/account/phone/phone-http";
@@ -47,14 +48,17 @@ export async function POST(request: Request) {
     });
 
     if (!result.ok) {
+      // Without Avalúos Disponibles (and the charge on) the answer carries the page to buy them.
       return NextResponse.json(
-        { error: result.error, code: result.code, missingCatalog: result.missingCatalog },
-        { status: 400 },
+        { error: result.error, code: result.code, missingCatalog: result.missingCatalog, ...(result.link ? { link: result.link } : {}) },
+        { status: result.code === "NO_CREDITS" ? 409 : 400 },
       );
     }
 
     const publicId = result.data?.id;
     if (publicId) await auditValuation({ action: "CREATE", user: auth.user, valuationPublicId: publicId, request });
+    // Creating consumed an Avalúo Disponible: with few left, whoever sees the billing hears about it.
+    after(() => notifyLowCredits(auth.user.organizationId));
     return NextResponse.json(
       { data: { ok: true, publicId, valuationId: publicId, workspaceUrl: `/workspace?id=${publicId}` } },
       { status: 201 },

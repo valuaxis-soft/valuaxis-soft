@@ -2,6 +2,7 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { appendConsentLog } from "@/features/legal/consent-log.repository";
 import { documentRefs, registrationFormRecord, type ConsentRequestContext } from "@/features/legal/consent.service";
 import type { LegalVersion } from "@/features/legal/legal-document.repository";
+import { grantTrialCredits } from "@/features/billing/credits.service";
 import { hashPassword } from "./password.service";
 import { createEmailVerificationToken } from "./email-verification.service";
 import { buildOrganizationSlug, buildPersonalOrganizationName } from "../rules/registration.rules";
@@ -101,6 +102,8 @@ export async function registerLocalUser(input: RegisterInput, legal: { versions:
         IdRol: adminRole.IdRol,
       },
     });
+    // The free trial of a new account: three Avalúos Disponibles for a month (docs/COBRO.md).
+    await grantTrialCredits(tx, organization.IdOrganizacion);
 
     return createdUser;
   });

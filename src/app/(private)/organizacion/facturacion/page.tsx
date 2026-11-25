@@ -57,7 +57,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       <DashboardHeader user={user} active="facturacion" />
       <PageContainer width="narrow">
         <OrganizationTabs user={user} active="facturacion" />
-        <PageHeader eyebrow="Despacho" title="Plan y facturación" description={`Los avalúos disponibles de ${user.organizationName}, los paquetes para comprar más y la forma de pago.`} />
+        <PageHeader eyebrow="Despacho" title="Plan y facturación" description={`Los avalúos disponibles de ${user.organizationName}, cómo comprar más y tus movimientos.`} />
         <BillingPanel overview={overview} canManage={canManage} canManageInvoicing={canManageInvoicing} notice={notice} />
       </PageContainer>
     </div>

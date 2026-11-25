@@ -198,5 +198,5 @@ test("credits show only while the firm pays per valuation, to who sees the billi
 
   await prisma.organizacion.update({ where: { IdOrganizacion: fixture.organizationId }, data: { BCobroPorAvaluo: true } });
   await adjustCredits({ organizationId: fixture.organizationId, credits: 5, reason: "Prueba" });
-  assert.deepEqual((await getDashboardSummary(admin)).credits, { balance: 5 });
+  assert.deepEqual((await getDashboardSummary(admin)).credits, { balance: 5, trialAvailable: 0, trialExpiresAt: null });
 });

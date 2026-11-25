@@ -1,5 +1,6 @@
 import { SendEmailCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import {
+  billingNoticeContent,
   dictamenEmailContent,
   dictamenSenderName,
   formatFromAddress,
@@ -14,6 +15,7 @@ import {
 import { EmailDeliveryError } from "./email.errors";
 import { buildMimeMessage } from "./mime-message";
 import type {
+  BillingNoticeInput,
   DictamenEmailInput,
   EmailService,
   InvoiceEmailInput,
@@ -92,6 +94,10 @@ export class AmazonSesEmailService implements EmailService {
 
   async sendSupportReport(input: SupportReportInput) {
     await this.sendEmail(input.to, supportReportContent(input));
+  }
+
+  async sendBillingNotice(input: BillingNoticeInput) {
+    await this.sendEmail(input.to, billingNoticeContent(input));
   }
 
   /** Raw MIME, as the dictamen: SES only attaches files that way. */

@@ -441,9 +441,9 @@ export default async function Home() {
         {/* Price */}
         <section id="precio" aria-labelledby="precio-title" className="scroll-mt-20 border-y bg-secondary/60">
           <div className={cn(container, "grid items-center gap-12 py-20 lg:grid-cols-[1fr_1.05fr] lg:py-28")}>
-            <SectionHeading id="precio-title" eyebrow="Precio" title="Pagas por avalúo concluido. Nada más.">
-              Crear tu cuenta, invitar a tu equipo y capturar no cuesta. El avalúo se descuenta al concluirlo por primera vez; reabrirlo
-              para corregir y volver a concluirlo no se cobra de nuevo.
+            <SectionHeading id="precio-title" eyebrow="Precio" title="Pagas por avalúo. Nada más.">
+              Crear tu cuenta e invitar a tu equipo no cuesta, y al registrarte tienes tres avalúos de prueba para tu primer mes. Cada
+              avalúo se descuenta al crearlo; concluirlo, cancelarlo o reabrirlo para corregir no descuenta otro.
             </SectionHeading>
             <div data-vx="in" className="vx-reveal relative rounded-3xl bg-card p-7 shadow-float ring-1 ring-border sm:p-10">
               <p className="text-sm font-semibold text-muted-foreground">Por avalúo</p>
@@ -501,7 +501,7 @@ export default async function Home() {
                 Tu próximo avalúo, en Valuaxis Soft.
               </h2>
               <p className="max-w-xl text-lg text-ink-foreground/80">
-                Crea la cuenta de tu despacho y captura tu primer avalúo hoy. Pagas solo cuando lo concluyes.
+                Crea la cuenta de tu despacho y captura tu primer avalúo hoy. Tus primeros tres avalúos van por nuestra cuenta.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">

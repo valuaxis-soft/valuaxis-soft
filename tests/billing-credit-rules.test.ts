@@ -3,13 +3,23 @@ import { test } from "node:test";
 import { decideEvent, priceSyncDecision, type BillingEvent } from "../src/features/billing/billing-rules";
 import {
   CREDIT_MOVEMENT_TYPES,
+  MAX_PURCHASE_QUANTITY,
+  TRIAL_CREDITS,
+  addOneMonth,
   concludeCreditDecision,
+  consumptionSource,
+  createCreditDecision,
   creditMovementLabel,
+  creditSummary,
   isValidMovement,
   packagePricing,
+  preTaxAmountFor,
+  purchaseTotals,
   stripePackageLookupKey,
   stripePackageProductId,
 } from "../src/features/billing/credit-rules";
+import { bankTransferForDisplay } from "../src/features/billing/payment-instructions";
+import { buildBillingNoticeHtml, buildBillingNoticeText } from "../src/features/notifications/templates/billing-notice";
 
 test("each movement type has the sign the database enforces", () => {
   assert.equal(isValidMovement("COMPRA", 10), true);
@@ -74,9 +84,119 @@ test("a checkout event without a subscription is a package purchase; one with a 
   assert.deepEqual(decideEvent({ ...base, checkoutSessionId: null }), { action: "ignore", reason: "NO_SUBSCRIPTION" });
 });
 
-test("movement labels are Spanish for the three types", () => {
-  assert.equal(creditMovementLabel("COMPRA"), "Compra de paquete");
-  assert.equal(creditMovementLabel("CONSUMO"), "Avalúo concluido");
+test("movement labels are Spanish for the three types, and say what the tags in JMetadatos mean", () => {
+  assert.equal(creditMovementLabel("COMPRA"), "Compra");
+  assert.equal(creditMovementLabel("CONSUMO"), "Avalúo concluido", "a consumption from before the policies, without tags");
+  assert.equal(creditMovementLabel("CONSUMO", { moment: "CREATION", source: "PAID" }), "Avalúo creado");
+  assert.equal(creditMovementLabel("CONSUMO", { moment: "CREATION", source: "TRIAL" }), "Avalúo creado (prueba)");
+  assert.equal(creditMovementLabel("CONSUMO", { moment: "CONCLUSION", source: "PAID" }), "Avalúo concluido");
   assert.equal(creditMovementLabel("AJUSTE"), "Ajuste manual");
+  assert.equal(creditMovementLabel("AJUSTE", { kind: "TRIAL_GRANT" }), "Prueba gratuita");
+  assert.equal(creditMovementLabel("AJUSTE", { kind: "TRIAL_EXPIRY" }), "Vencimiento de la prueba");
   assert.equal(creditMovementLabel("OTRO"), "OTRO");
+});
+
+test("the trial lasts until the same day of the next month; a missing day is the month's last", () => {
+  assert.equal(TRIAL_CREDITS, 3);
+  assert.equal(addOneMonth(new Date("2026-11-25T18:30:00Z")).toISOString(), "2026-12-25T18:30:00.000Z");
+  assert.equal(addOneMonth(new Date("2026-12-15T06:00:00Z")).toISOString(), "2027-01-15T06:00:00.000Z");
+  assert.equal(addOneMonth(new Date("2027-01-31T12:00:00Z")).toISOString(), "2027-02-28T12:00:00.000Z");
+  assert.equal(addOneMonth(new Date("2028-01-31T12:00:00Z")).toISOString(), "2028-02-29T12:00:00.000Z");
+});
+
+const trialLedger = (overrides: Partial<{ granted: number; usedFromTrial: number; expiredWritten: number }> = {}) => ({
+  granted: 3,
+  usedFromTrial: 0,
+  expiredWritten: 0,
+  expiresAt: new Date("2026-12-25T00:00:00Z"),
+  ...overrides,
+});
+const beforeExpiry = new Date("2026-12-24T23:59:59Z");
+const afterExpiry = new Date("2026-12-25T00:00:00Z");
+
+test("an account without trial: the balance is the ledger's sum, all of it paid", () => {
+  assert.deepEqual(creditSummary(7, null), { balance: 7, paid: 7, trial: null });
+  assert.deepEqual(creditSummary(-2, null), { balance: -2, paid: -2, trial: null });
+});
+
+test("trial credits count until their month ends and are consumed before paid ones", () => {
+  // 3 of trial + 2 bought; one valuation created from the trial.
+  const during = creditSummary(4, trialLedger({ usedFromTrial: 1 }), beforeExpiry);
+  assert.deepEqual([during.balance, during.paid, during.trial?.available, during.trial?.expired], [4, 2, 2, false]);
+  assert.equal(consumptionSource(during), "TRIAL", "trial first");
+
+  const trialSpent = creditSummary(2, trialLedger({ usedFromTrial: 3 }), beforeExpiry);
+  assert.deepEqual([trialSpent.balance, trialSpent.paid, trialSpent.trial?.available], [2, 2, 0]);
+  assert.equal(consumptionSource(trialSpent), "PAID");
+});
+
+test("unused trial credits stop counting at expiry, before and after their expiry movement is written; paid ones never expire", () => {
+  // 3 of trial + 2 bought, one trial used: 2 trial credits expire.
+  const pending = creditSummary(4, trialLedger({ usedFromTrial: 1 }), afterExpiry);
+  assert.deepEqual([pending.balance, pending.paid, pending.trial?.available, pending.trial?.pendingExpiry, pending.trial?.expired], [2, 2, 0, 2, true]);
+  assert.equal(consumptionSource(pending), "PAID");
+
+  // Once the TRIAL_EXPIRY of −2 is in the ledger, the sum is 2 and nothing is pending.
+  const written = creditSummary(2, trialLedger({ usedFromTrial: 1, expiredWritten: 2 }), new Date("2027-06-01T00:00:00Z"));
+  assert.deepEqual([written.balance, written.paid, written.trial?.pendingExpiry], [2, 2, 0]);
+});
+
+test("creating consumes; with the charge on, no balance blocks; off, nothing is blocked", () => {
+  assert.deepEqual(createCreditDecision({ balance: 1, enforced: true }), { action: "consume" });
+  assert.deepEqual(createCreditDecision({ balance: 0, enforced: true }), { action: "block", reason: "NO_BALANCE" });
+  assert.deepEqual(createCreditDecision({ balance: -3, enforced: true }), { action: "block", reason: "NO_BALANCE" });
+  assert.deepEqual(createCreditDecision({ balance: 0, enforced: false }), { action: "consume" });
+  assert.deepEqual(createCreditDecision({ balance: -3, enforced: false }), { action: "consume" });
+});
+
+test("transition: a valuation concluded before the ledger is never charged on a later conclusion", () => {
+  assert.deepEqual(
+    concludeCreditDecision({ alreadyConsumed: false, previouslyConcluded: true, balance: 0, enforced: true }),
+    { action: "skip", reason: "PREVIOUSLY_CONCLUDED" },
+  );
+  assert.deepEqual(concludeCreditDecision({ alreadyConsumed: false, previouslyConcluded: false, balance: 2, enforced: true }), { action: "consume" }, "created before, never concluded: charged now");
+});
+
+test("buying by unit: the total is the unit price times the quantity, with its IVA", () => {
+  const unit = packagePricing({ ICreditos: 1, NImporte: "146.55", NImpuestoPorcentaje: "16" });
+  assert.equal(unit.total, 170);
+  assert.deepEqual(purchaseTotals(unit, 1), { quantity: 1, unitTotal: 170, subtotal: 146.55, tax: 23.45, total: 170 });
+  assert.deepEqual(purchaseTotals(unit, 3), { quantity: 3, unitTotal: 170, subtotal: 439.65, tax: 70.35, total: 510 });
+  assert.equal(MAX_PURCHASE_QUANTITY, 100);
+});
+
+test("a price with IVA is stored before tax so that the total rounds back to it exactly", () => {
+  assert.equal(preTaxAmountFor("170", "16"), "146.55");
+  assert.equal(preTaxAmountFor("190", "16"), "163.79");
+  assert.equal(preTaxAmountFor("200.00", "0"), "200.00");
+  for (const price of ["99.99", "185.50", "1234.56"]) {
+    const preTax = preTaxAmountFor(price, "16")!;
+    assert.equal(packagePricing({ ICreditos: 1, NImporte: preTax, NImpuestoPorcentaje: "16" }).total, Number(price));
+  }
+});
+
+test("transfer data are «Por definir» until the owner fills them; complete, they are ready", () => {
+  const empty = bankTransferForDisplay();
+  assert.equal(empty.ready, false);
+  assert.ok(empty.rows.every((row) => row.value === "Por definir"));
+  const filled = bankTransferForDisplay({ bank: "Banco Inventado", clabe: "000000000000000000", holder: "Titular de prueba", creditTerm: "2 días hábiles", receiptsEmail: "pagos@example.test" });
+  assert.equal(filled.ready, true);
+  assert.equal(filled.rows[3].value, "Dentro de 2 días hábiles siguientes a que se confirme el pago");
+});
+
+test("the billing notice email lays out the lines, the details and the link, escaped", () => {
+  const content = {
+    subject: "Confirmación",
+    greeting: "Hola, Despacho <Prueba>:",
+    lines: ["Recibimos tu pago."],
+    details: [{ label: "Total pagado", value: "$510.00 MXN" }],
+    link: { label: "Ver", url: "https://example.test/organizacion/facturacion" },
+  };
+  const text = buildBillingNoticeText(content);
+  assert.match(text, /Recibimos tu pago\./);
+  assert.match(text, /Total pagado: \$510\.00 MXN/);
+  assert.match(text, /https:\/\/example\.test\/organizacion\/facturacion/);
+  const html = buildBillingNoticeHtml(content);
+  assert.match(html, /Despacho &lt;Prueba&gt;/);
+  assert.match(html, /<strong>\$510\.00 MXN<\/strong>/);
 });

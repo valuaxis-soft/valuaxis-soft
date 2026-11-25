@@ -267,7 +267,7 @@ export function createStripeGateway(secretKey: string): BillingGateway {
           mode: "payment",
           customer: input.customerId,
           client_reference_id: input.clientReferenceId,
-          line_items: [{ price: input.priceId, quantity: 1 }],
+          line_items: [{ price: input.priceId, quantity: input.quantity }],
           locale: "es-419",
           success_url: input.successUrl,
           cancel_url: input.cancelUrl,

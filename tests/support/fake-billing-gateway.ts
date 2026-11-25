@@ -120,7 +120,7 @@ export function createFakeBillingGateway() {
         subscriptionId: null,
         paymentStatus: "unpaid",
         paymentIntentId: null,
-        amountTotal: prices.get(input.priceId)?.unitAmount ?? null,
+        amountTotal: (prices.get(input.priceId)?.unitAmount ?? 0) * input.quantity || null,
         clientReferenceId: input.clientReferenceId,
         metadata: input.metadata,
         pending: { priceId: input.priceId, trialDays: null, metadata: input.metadata },

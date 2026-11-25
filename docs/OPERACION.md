@@ -217,10 +217,29 @@ Es idempotente y no llama a Stripe.
 
 **Stripe está conectado en producción desde el 5 nov 2026**: clave restringida en vivo de la cuenta del cliente (compartida con su tienda: no tocar sus llaves ni su configuración), webhook en `https://valuaxissoft.com/api/stripe/webhook`, configuración propia del portal de clientes y el paquete `AVALUO_1` sincronizado. Las variables (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PORTAL_CONFIGURATION`) viven solo en `production.env`. Un administrador ya puede comprar avalúos en `/organizacion/facturacion`. Si cambia el importe del paquete, correr `docker exec -it valuos-app node --import tsx scripts/stripe-sync.ts`: crea el precio nuevo y archiva el anterior (detalle en [COBRO.md](COBRO.md)).
 
-**Lo que sigue apagado por omisión es el bloqueo al concluir sin saldo** (`BCobroPorAvaluo`): concluir sin avalúos disponibles registra el consumo y deja el saldo en negativo, mostrado como pendiente de pago. Se enciende por organización solo cuando el cliente lo decida:
+**Cobro al crear (Políticas comerciales, 23 nov 2026).** Un avalúo disponible se descuenta al oprimir «Crear avalúo» (o «Duplicar»); concluir, cancelar o reabrir no descuenta otro. Las cuentas nuevas reciben tres avalúos de prueba por un mes. Antes de desplegarlo, y después para confirmar, revisar qué ve cada organización (no escribe nada):
+
+```bash
+docker exec -it valuos-app node --import tsx scripts/billing-policies-report.ts
+```
+
+**Lo que sigue apagado por omisión es el bloqueo sin saldo** (`BCobroPorAvaluo`): crear un avalúo sin avalúos disponibles registra el consumo y deja el saldo en negativo, mostrado como pendiente de pago. Se enciende por organización solo cuando el cliente lo decida; con él encendido, «Crear avalúo» se bloquea con un enlace para comprar:
 
 ```bash
 docker exec -it valuos-app node --import tsx scripts/billing-credits.ts enforce <slug|uuid> on
+```
+
+Un pago por transferencia o depósito confirmado en el banco se abona así (al precio vigente, una vez por referencia, con el correo de confirmación):
+
+```bash
+docker exec -it valuos-app node --import tsx scripts/billing-credits.ts payment <slug|uuid> <avalúos> transferencia|deposito "<referencia>"
+```
+
+Un cambio de precio se anuncia con al menos un mes de anticipación, solo cuando el cliente lo pida (aviso en la plataforma y correo a todos los usuarios; detalle en [COBRO.md](COBRO.md), «Cambio de precio»):
+
+```bash
+docker exec -it valuos-app node --import tsx scripts/billing-price-notice.ts announce <precio con IVA> <AAAA-MM-DD>           # simulación
+docker exec -it valuos-app node --import tsx scripts/billing-price-notice.ts announce <precio con IVA> <AAAA-MM-DD> --apply   # registra y envía
 ```
 
 ### 8.1 Facturación CFDI con Facturapi (`FACTURAPI_KEY`)

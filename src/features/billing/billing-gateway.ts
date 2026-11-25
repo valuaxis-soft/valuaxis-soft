@@ -108,8 +108,8 @@ export interface BillingGateway {
 
   /** Hosted Checkout in subscription mode. */
   createCheckoutSession(input: CheckoutUrls & { customerId: string; priceId: string; trialDays: number | null }): Promise<GatewayCheckoutSession>;
-  /** Hosted Checkout in payment mode: one charge for a credit package, with a Stripe invoice/receipt. */
-  createPaymentCheckoutSession(input: CheckoutUrls & { customerId: string; priceId: string; description: string }): Promise<GatewayCheckoutSession>;
+  /** Hosted Checkout in payment mode: one charge of `quantity` units of a one-time price, with a Stripe invoice/receipt. */
+  createPaymentCheckoutSession(input: CheckoutUrls & { customerId: string; priceId: string; quantity: number; description: string }): Promise<GatewayCheckoutSession>;
   retrieveCheckoutSession(id: string): Promise<GatewayCheckoutSession | null>;
 
   retrieveSubscription(id: string): Promise<GatewaySubscription | null>;

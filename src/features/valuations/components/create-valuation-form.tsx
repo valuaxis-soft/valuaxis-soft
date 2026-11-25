@@ -276,6 +276,10 @@ export function CreateValuationForm({
                 <Link href={errorLink} className="mt-2 inline-block font-medium text-primary underline underline-offset-4" data-phone-required-link>
                   Verificar mi teléfono en «Mi cuenta»
                 </Link>
+              ) : errorLink === "/organizacion/facturacion" ? (
+                <Link href={errorLink} className="mt-2 inline-block font-medium text-primary underline underline-offset-4" data-buy-credits-link>
+                  Comprar avalúos en «Plan y facturación»
+                </Link>
               ) : null}
             </div>
           </div>
