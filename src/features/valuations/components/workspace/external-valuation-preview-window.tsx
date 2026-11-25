@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ReportPreview } from "@/features/valuations/components/report-preview";
 import { DEFAULT_NUMBER_PRESENTATION } from "@/features/valuations/services/number-presentation";
 import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
+import { PrintVersionProvider } from "@/features/valuations/components/print-version-context";
+import { CURRENT_PRINT_VERSION } from "@/features/valuations/services/print-version";
 import { DEFAULT_PAGE_PRESENTATION } from "@/features/valuations/services/page-presentation";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { revealBlockInPreview } from "@/features/valuations/components/workspace/model/preview-follow";
@@ -255,6 +257,7 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
       ) : (
         <NumberPresentationProvider presentation={payload.numberPresentation ?? DEFAULT_NUMBER_PRESENTATION}>
         <PagePresentationProvider presentation={payload.pagePresentation ?? DEFAULT_PAGE_PRESENTATION}>
+        <PrintVersionProvider version={payload.printVersion ?? CURRENT_PRINT_VERSION}>
           <ReportPreview
             navigation={navigation}
             caratula={payload.caratula}
@@ -265,6 +268,7 @@ export function ExternalValuationPreviewWindow({ valuationId }: { valuationId: s
             section={payload.activeSection}
             group={payload.group}
           />
+        </PrintVersionProvider>
         </PagePresentationProvider>
         </NumberPresentationProvider>
       )}

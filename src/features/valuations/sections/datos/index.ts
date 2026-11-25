@@ -12,21 +12,21 @@ export const datosSection = defineSection({
       concepts: [
         ["Solicitante"],
         ["Propietario"],
-        ["Finalidad del avaluo", "Estimar el valor comercial"],
-        ["Uso del avaluo", "Para posible compra-venta"],
+        ["Finalidad del avalúo", "Estimar el valor comercial"],
+        ["Uso del avalúo", "Para posible compra-venta"],
       ],
     },
     {
-      title: "INFORMACION GENERAL DEL BIEN",
+      title: "INFORMACIÓN GENERAL DEL BIEN",
       concepts: [
-        ["Bien que se valua", "Terreno urbano con construccion habitacional de 2 niveles."],
-        ["Fecha de inspeccion", "12 de Diciembre 2024"],
-        ["Fecha del avaluo", "12 de Febrero de 2024"],
+        ["Bien que se valúa", "Terreno urbano con construccion habitacional de 2 niveles."],
+        ["Fecha de inspección", "12 de Diciembre 2024"],
+        ["Fecha del avalúo", "12 de Febrero de 2024"],
         ["Perito valuador", "Mtro. Ing. Alvaro Gutierrez"],
       ],
     },
     {
-      title: "UBICACION DEL BIEN",
+      title: "UBICACIÓN DEL BIEN",
       concepts: [
         ["Calle", "Camino a los Sauces"],
         ["Número exterior / interior", "340 / 2"],
@@ -37,9 +37,9 @@ export const datosSection = defineSection({
     {
       title: "CARACTERÍSTICAS URBANAS DE LA ZONA",
       concepts: [
-        ["Clasificacion de la zona", "Habitacional - Comercial mixto"],
-        ["Indice de saturacion", "70%"],
-        ["Nivel socioeconomico", "Medio (c)"],
+        ["Clasificación de la zona", "Habitacional - Comercial mixto"],
+        ["Índice de saturación", "70%"],
+        ["Nivel socioeconómico", "Medio (c)"],
       ],
       subBlocks: [
         {

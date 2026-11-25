@@ -29,6 +29,7 @@ import { COVER_IMAGE_FOCUS_CENTER, normalizeCoverImageFocus, type CoverImageFocu
 import { readOwnKindNames } from "@/features/valuations/services/property-kinds";
 import { readAppraisalSubject, type AppraisalClass } from "@/features/valuations/services/appraisal-subject";
 import { savedTitle } from "@/features/valuations/services/block-title";
+import { printVersionOf, printsWith } from "@/features/valuations/services/print-version";
 
 export type ValuationListItem = {
   id: string;
@@ -57,6 +58,8 @@ export type ValuationListItem = {
 export type ValuationDetail = ValuationListItem & {
   /** Concluded valuations are locked until they are reopened. */
   locked: boolean;
+  /** The print rules its dictamen follows: a concluded one keeps those it was concluded with (services/print-version.ts). */
+  printVersion: number;
   /** The reviewer approved it «En revisión» (migration 059); null otherwise. */
   reviewApprovedAt?: Date | null;
   sections: ValuationSectionDto[];
@@ -394,7 +397,7 @@ export async function getValuationByPublicId(
         })
       : null);
 
-  return mapValuationDetail(valuation, content);
+  return mapValuationDetail(valuation, content, valuation.BBloqueado);
 }
 
 /**
@@ -419,7 +422,8 @@ export async function getValuationVersionByPublicId(
     include: versionContentInclude,
   });
   if (!version) return null;
-  return { ...(await mapValuationDetail(valuation, version)), locked: true };
+  // A version prints with the rules it was concluded with; one never concluded, with the current ones.
+  return { ...(await mapValuationDetail(valuation, version, version.DFechaFinalizacion !== null)), locked: true };
 }
 
 /** The names of the appraiser's own kinds, the class and what is valued, as the meta carries them. */
@@ -442,9 +446,11 @@ function ownKindNamesOf(
 async function mapValuationDetail(
   valuation: AvaluoWithRelations,
   content: VersionTrabajo | null,
+  concluded: boolean,
 ): Promise<ValuationDetail> {
   const { essence } = readAppraisalSubject(valuation.propiedadSujeto?.JCaracteristicas, valuation.tipoInmueble.SClave);
-  const sections = buildCanonicalValuationSections(content?.seccionesDocumentos ?? [], valuation.tipoInmueble.SClave, essence);
+  const printVersion = printVersionOf(content?.JConfiguracionCalculo, concluded);
+  const sections = buildCanonicalValuationSections(content?.seccionesDocumentos ?? [], valuation.tipoInmueble.SClave, essence, { fullTexts: printsWith(printVersion, 1) });
   const comparables = content?.comparables.map(mapComparable) ?? [];
 
   // Resolve all image URLs to fresh signed URLs (handles expired S3 URLs)
@@ -462,6 +468,7 @@ async function mapValuationDetail(
     ...ownKindNamesOf(valuation.propiedadSujeto?.JCaracteristicas, valuation.tipoInmueble.SClave),
     status: valuation.estadoAvaluo.SClave.toLowerCase(),
     locked: valuation.BBloqueado,
+    printVersion,
     reviewApprovedAt: valuation.DFechaRevisionAprobada,
     createdAt: valuation.DFechaCreacion,
     updatedAt: valuation.DFechaModificacion,
@@ -543,7 +550,18 @@ const DEFAULT_DOCUMENT_TEMPLATE_KEYS = new Set([
   "CONCLUSIONES",
 ]);
 
-export function buildCanonicalValuationSections(sections: DbSection[], propertyKind?: string | null, essence?: string | null): ValuationSectionDto[] {
+/**
+ * `fullTexts`: a title or label longer than its column is read whole from its
+ * `JConfiguracion` (B-14; the column keeps 180 or 250 characters). Off, as
+ * read before, for a dictamen concluded with print rules 0 (print-version.ts).
+ */
+export function buildCanonicalValuationSections(
+  sections: DbSection[],
+  propertyKind?: string | null,
+  essence?: string | null,
+  { fullTexts = true }: { fullTexts?: boolean } = {},
+): ValuationSectionDto[] {
+  const read: TextReader = fullTexts ? storedFullText : (_row, stored) => stored;
   const byCanonical = new Map<string, DbSection[]>();
   for (const section of sections) {
     if (isCustomSectionId(section.SClave)) continue;
@@ -561,7 +579,7 @@ export function buildCanonicalValuationSections(sections: DbSection[], propertyK
   const placed: { order: number; rank: number; section: ValuationSectionDto }[] = getOrderedValuationSections().map((definition, index) => {
     const persisted = selectCanonicalSection(byCanonical.get(definition.key) ?? []);
     return persisted
-      ? { order: persisted.IOrden, rank: index, section: mapSection(persisted, definition, propertyKind, essence) }
+      ? { order: persisted.IOrden, rank: index, section: mapSection(persisted, definition, read, propertyKind, essence) }
       : { order: index, rank: index, section: createEmptySection(definition, propertyKind, essence) };
   });
   const registryCount = placed.length;
@@ -569,7 +587,7 @@ export function buildCanonicalValuationSections(sections: DbSection[], propertyK
     .filter((section) => isCustomSectionId(section.SClave) && !isRemovedSectionConfig(section.JConfiguracion))
     .sort((a, b) => a.IOrden - b.IOrden || a.IdSeccionDocumento - b.IdSeccionDocumento);
   custom.forEach((section, index) => {
-    placed.push({ order: section.IOrden, rank: registryCount + index, section: mapCustomSection(section) });
+    placed.push({ order: section.IOrden, rank: registryCount + index, section: mapCustomSection(section, read) });
   });
   // On a tie (older saves), the sections the appraiser added go before the registry section at that place.
   return placed
@@ -588,12 +606,12 @@ function sectionStructureDto(metadata: SectionMetadata) {
   };
 }
 
-function mapCustomSection(section: DbSection): ValuationSectionDto {
+function mapCustomSection(section: DbSection, read: TextReader): ValuationSectionDto {
   const sectionMetadata = hydrateSectionMetadata(section.JConfiguracion);
   const blocks = section.nodos
     .filter((node) => node.IdNodoPadre === null && node.DFechaEliminacion === null)
     .sort((a, b) => a.IOrden - b.IOrden)
-    .map((node) => mapNodeToBlock(node, section.SClave));
+    .map((node) => mapNodeToBlock(node, section.SClave, read));
   return {
     id: section.SClave,
     label: section.SClave,
@@ -654,7 +672,7 @@ function createEmptySection(definition: ValuationSectionDefinition, propertyKind
   };
 }
 
-function mapSection(section: DbSection, definition: ValuationSectionDefinition, propertyKind?: string | null, essence?: string | null): ValuationSectionDto {
+function mapSection(section: DbSection, definition: ValuationSectionDefinition, read: TextReader, propertyKind?: string | null, essence?: string | null): ValuationSectionDto {
   const sectionMetadata = hydrateSectionMetadata(section.JConfiguracion);
   const rootNodes = section.nodos
     .filter((node) => node.IdNodoPadre === null && node.DFechaEliminacion === null)
@@ -663,7 +681,7 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition, 
   const blocks = DEFAULT_DOCUMENT_TEMPLATE_KEYS.has(definition.key)
     && isEmptySectionPlaceholder(section, rootNodes, definition.label)
     ? templateBlocks(definition.key, propertyKind, essence)
-    : rootNodes.map((node) => mapNodeToBlock(node, definition.key));
+    : rootNodes.map((node) => mapNodeToBlock(node, definition.key, read));
 
   // The registry's label, unless the appraiser renamed the tab; its name is then what was saved.
   const renamed = sectionMetadata.titleEdited === true && section.SNombre.trim().length > 0;
@@ -786,7 +804,7 @@ function mapTemplateTable(table: TableContent): ValuationTableDto {
   };
 }
 
-function mapNodeToBlock(node: DbNode, label: string): ValuationBlockDto {
+function mapNodeToBlock(node: DbNode, label: string, read: TextReader): ValuationBlockDto {
   const children = node.nodosHijos
     .filter((child) => child.DFechaEliminacion === null)
     .sort((a, b) => a.IOrden - b.IOrden);
@@ -799,7 +817,7 @@ function mapNodeToBlock(node: DbNode, label: string): ValuationBlockDto {
   return {
     id: node.SClave,
     label,
-    title: savedTitle(node.STitulo),
+    title: savedTitle(read(node, node.STitulo)),
     ...(blockMetadata.titleHidden ? { titleHidden: true } : {}),
     enabled: node.BVisible,
     required: node.BObligatorio,
@@ -814,23 +832,23 @@ function mapNodeToBlock(node: DbNode, label: string): ValuationBlockDto {
     ...(blockMetadata.headerFields ? { headerFields: blockMetadata.headerFields } : {}),
     ...(blockMetadata.coverImageSize ? { coverImageSize: blockMetadata.coverImageSize } : {}),
     ...(blockMetadata.valueChart ? { valueChart: true } : {}),
-    concepts: conceptNodes.map(mapConceptNode),
+    concepts: conceptNodes.map((child) => mapConceptNode(child, read)),
     subBlocks: subBlockNodes.map((child) => {
       const subChildren = child.nodosHijos
         .filter((grandChild) => grandChild.DFechaEliminacion === null)
         .sort((a, b) => a.IOrden - b.IOrden);
       return {
         id: child.SClave,
-        title: savedTitle(child.STitulo),
+        title: savedTitle(read(child, child.STitulo)),
         ...hydrateApartadoMetadata(child.JConfiguracion),
         sortOrder: child.IOrden,
-        concepts: subChildren.filter((grandChild) => nodeKind(grandChild) === "concept").map(mapConceptNode),
-        tables: mapNodeTables(child),
-        images: subChildren.filter((grandChild) => nodeKind(grandChild) === "image").map(mapImageNode),
+        concepts: subChildren.filter((grandChild) => nodeKind(grandChild) === "concept").map((grandChild) => mapConceptNode(grandChild, read)),
+        tables: mapNodeTables(child, read),
+        images: subChildren.filter((grandChild) => nodeKind(grandChild) === "image").map((grandChild) => mapImageNode(grandChild, read)),
       };
     }),
-    tables: mapNodeTables(node),
-    images: imageNodes.map(mapImageNode),
+    tables: mapNodeTables(node, read),
+    images: imageNodes.map((child) => mapImageNode(child, read)),
   };
 }
 
@@ -840,12 +858,12 @@ function mapConceptNode(node: {
   STitulo: string;
   JConfiguracion: Prisma.JsonValue | null;
   valores: Prisma.ValorNodoDocumentoGetPayload<object>[];
-}): ValuationConceptDto {
+}, read: TextReader): ValuationConceptDto {
   const value = node.valores[0];
   return {
     id: node.SClave,
     // A title the appraiser deleted is stored as «Campo sin título» (the column takes no empty text): it reads back empty (FAL-31).
-    label: savedTitle(node.STitulo),
+    label: savedTitle(read(node, node.STitulo)),
     value: value ? stringifyValue(value) : "",
     ...hydrateConceptMetadata(node.JConfiguracion),
   };
@@ -857,11 +875,11 @@ function mapImageNode(node: {
   STitulo: string;
   JConfiguracion: Prisma.JsonValue | null;
   valores: Prisma.ValorNodoDocumentoGetPayload<object>[];
-}): ValuationImageDto {
+}, read: TextReader): ValuationImageDto {
   const value = node.valores[0];
   return {
     id: node.SClave,
-    title: node.STitulo,
+    title: read(node, node.STitulo),
     url: value ? stringifyValue(value) : "",
     ...hydrateImageMetadata(node.JConfiguracion),
   };
@@ -889,7 +907,7 @@ async function resolveImageUrl(rawSrc: string): Promise<string> {
   return rawSrc;
 }
 
-function mapNodeTables(node: Pick<DbNode, "tablasDocumentos">): ValuationTableDto[] {
+function mapNodeTables(node: Pick<DbNode, "tablasDocumentos">, read: TextReader): ValuationTableDto[] {
   return node.tablasDocumentos
     .filter((table) => !jsonRecord(table.JConfiguracion)?.removed)
     .slice()
@@ -918,7 +936,7 @@ function mapNodeTables(node: Pick<DbNode, "tablasDocumentos">): ValuationTableDt
         .sort((a, b) => a.IOrden - b.IOrden);
       const stored = decodeStoredTable({
         id: tableId,
-        title: table.SNombre,
+        title: read(table, table.SNombre),
         enabled: jsonRecord(table.JConfiguracion)?.enabled !== false,
         schema,
         columns: columns.map((column) => {
@@ -927,7 +945,7 @@ function mapNodeTables(node: Pick<DbNode, "tablasDocumentos">): ValuationTableDt
           const sourceKey = typeof config?.sourceKey === "string" ? config.sourceKey : null;
           return {
             id: clientId ?? sourceKey ?? column.SClave,
-            name: column.SNombre,
+            name: read(column, column.SNombre, "fullLabel"),
             ...(jsonRecord(config?.format) ? { format: config!.format as TableCellFormat } : {}),
           };
         }),
@@ -954,8 +972,8 @@ function mapNodeTables(node: Pick<DbNode, "tablasDocumentos">): ValuationTableDt
       return {
         table: stored,
         id: tableId,
-        title: table.SNombre,
-        columns: JSON.stringify(columns.map((column) => column.SNombre)),
+        title: read(table, table.SNombre),
+        columns: JSON.stringify(columns.map((column) => read(column, column.SNombre, "fullLabel"))),
         columnKeys: JSON.stringify(columns.map((column) => column.SClave)),
         rows: JSON.stringify(rows),
         boundaryDistanceFormats: boundaryDistanceFormats.length ? JSON.stringify(boundaryDistanceFormats) : undefined,
@@ -972,6 +990,15 @@ function nodeKind(node: { JConfiguracion: Prisma.JsonValue | null }) {
   const value = (node.JConfiguracion as { kind?: unknown }).kind;
   return typeof value === "string" ? value : null;
 }
+
+/** How a title or label is read: as stored, or whole (B-14). */
+type TextReader = (row: { JConfiguracion: Prisma.JsonValue | null }, stored: string, key?: "fullTitle" | "fullLabel") => string;
+
+/** A text longer than its column is saved cut, with the whole of it in `fullTitle` (`fullLabel` for a column) of its JConfiguracion. */
+const storedFullText: TextReader = (row, stored, key = "fullTitle") => {
+  const full = jsonRecord(row.JConfiguracion)?.[key];
+  return typeof full === "string" && full.trim() ? full : stored;
+};
 
 function jsonRecord(value: Prisma.JsonValue | null | undefined): Record<string, Prisma.JsonValue> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, Prisma.JsonValue>) : null;

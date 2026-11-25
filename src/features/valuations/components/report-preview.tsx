@@ -26,6 +26,8 @@ import { DatosPreview, datosFlowItems } from "./datos-generales-preview";
 import { TerrenoPreview, terrenoFlowItems } from "./terreno-preview";
 import { isTerrenoSection } from "@/features/valuations/sections/terreno";
 import { ConstruccionPreview, construccionFlowItemsInFlow, isConstruccionSection } from "./construccion-preview";
+import { usePrintVersion } from "./print-version-context";
+import { CURRENT_PRINT_VERSION } from "@/features/valuations/services/print-version";
 import { documentBlockFlowItems, inPhotoGrid } from "./document-block-renderer";
 import { DocumentPreviewHeader } from "./document-preview-header";
 import {
@@ -98,9 +100,10 @@ export function ReportPreview({
   const isCaratula = props.section.id === "caratula";
   const sharedWith = group && group.length > 1 ? group.filter((section) => section.id !== props.section.id) : [];
   const unaccreditedNotice = useUnaccreditedNotice();
+  const printVersion = usePrintVersion();
   // A section printed after another on the same pages opens where it starts, not on the group's first page (video 7.1, 2:46).
   const startItemId = sharedWith.length && group && group[0]?.id !== props.section.id
-    ? sectionFlowItems(props.section, unaccreditedNotice)[0]?.id ?? null
+    ? sectionFlowItems(props.section, unaccreditedNotice, undefined, printVersion)[0]?.id ?? null
     : null;
   const documentRef = useRef<HTMLDivElement>(null);
   useScrollToSectionStart(documentRef, startItemId, props.section.id);
@@ -266,10 +269,15 @@ const isDatosSection = (section: AppSection) => section.id === "datos" || getCan
  * The printed items of a section other than the carátula, as its own pages
  * lay them out: to print it on the pages of the section before.
  */
-export function sectionFlowItems(section: AppSection, unaccreditedNotice = false, caratula?: Pick<CaratulaFormData, "firmas">): DocumentFlowItem[] {
+export function sectionFlowItems(
+  section: AppSection,
+  unaccreditedNotice = false,
+  caratula?: Pick<CaratulaFormData, "firmas">,
+  printVersion = CURRENT_PRINT_VERSION,
+): DocumentFlowItem[] {
   if (isDatosSection(section)) return datosFlowItems(section);
   if (isTerrenoSection(section)) return terrenoFlowItems(section);
-  if (isConstruccionSection(section)) return construccionFlowItemsInFlow(section);
+  if (isConstruccionSection(section)) return construccionFlowItemsInFlow(section, printVersion);
   const applyConceptLayout = PRE_MARKET_LAYOUT_SECTION_KEYS.has(getCanonicalSectionKey(section.id));
   return withUnaccreditedNotice(section, sectionBlockItems(section, applyConceptLayout, caratula), unaccreditedNotice);
 }
@@ -330,7 +338,8 @@ export function ContinuousSectionsDocument({
 function ContinuousSectionsFlow({ caratula, header, sections }: { caratula: CaratulaFormData; header: ReactNode; sections: AppSection[] }) {
   const theme = useDocumentTheme();
   const unaccreditedNotice = useUnaccreditedNotice();
-  const items = sections.flatMap((section) => sectionFlowItems(section, unaccreditedNotice, caratula));
+  const printVersion = usePrintVersion();
+  const items = sections.flatMap((section) => sectionFlowItems(section, unaccreditedNotice, caratula, printVersion));
   const contentLayoutKey = useMemo(() => sections.map(computeDocumentLayoutKey).join(":"), [sections]);
   return (
     <AutoPaginatedDocumentFlow

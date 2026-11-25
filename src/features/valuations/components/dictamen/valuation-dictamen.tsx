@@ -14,6 +14,7 @@ import { DocumentPageFooterProvider, numberDocumentPages } from "@/features/valu
 import { printableSectionGroups } from "@/features/valuations/services/printable-sections";
 import { documentNumberPresentation } from "@/features/valuations/services/number-presentation";
 import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
+import { PrintVersionProvider } from "@/features/valuations/components/print-version-context";
 import { documentPagePresentation } from "@/features/valuations/services/page-presentation";
 import {
   caratulaFromValuation,
@@ -127,6 +128,7 @@ export function ValuationDictamen({
         <UnaccreditedNoticeProvider show={unaccreditedNotice}>
         <NumberPresentationProvider presentation={documentNumberPresentation(sections)}>
         <PagePresentationProvider presentation={documentPagePresentation(sections)}>
+        <PrintVersionProvider version={initialValuation.printVersion}>
           <DictamenPages>
             {printableGroups.map((group) => group.length === 1 ? (
               <SectionDocument
@@ -149,6 +151,7 @@ export function ValuationDictamen({
               />
             ))}
           </DictamenPages>
+        </PrintVersionProvider>
         </PagePresentationProvider>
         </NumberPresentationProvider>
         </UnaccreditedNoticeProvider>

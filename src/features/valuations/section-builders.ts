@@ -1,8 +1,8 @@
 import { AppSection, Block, Concept, ConceptCreationKind, ConceptValueFormat, ImageContent, ImageLayoutWidth, Apartado, TableContent } from "./model";
 import { conceptCreationPreset } from "./services/concept-types";
 
-/** `kind`: the type the concept is born with, as "+ Concepto" would make it; a text when left out. */
-type ConceptInput = [label: string, value?: string, kind?: ConceptCreationKind] | { id: string; label: string; value?: string };
+/** `kind`: the type the concept is born with, as "+ Concepto" would make it; a text when left out. `unit`: the unit it prints with. */
+type ConceptInput = [label: string, value?: string, kind?: ConceptCreationKind, unit?: ConceptValueFormat] | { id: string; label: string; value?: string };
 type ImageInput = { id?: string; title: string; src?: string; layoutWidth?: ImageLayoutWidth; layoutWidthPercent?: number };
 type TableInput = {
   id?: string;
@@ -45,13 +45,14 @@ const slug = (value: string) =>
     .toLowerCase();
 
 const makeConcept = (prefix: string, input: ConceptInput, index: number): Concept => {
-  const [label, value = "", kind] = Array.isArray(input) ? input : [input.label, input.value ?? ""];
+  const [label, value = "", kind, unit] = Array.isArray(input) ? input : [input.label, input.value ?? ""];
   return {
     id: Array.isArray(input) ? `${prefix}-concept-${index + 1}` : input.id,
     label,
     value,
     enabled: true,
     ...(kind ? conceptCreationPreset(kind) : {}),
+    ...(unit ? { valueFormat: unit } : {}),
   };
 };
 

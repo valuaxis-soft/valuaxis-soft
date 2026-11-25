@@ -55,7 +55,7 @@ const sectionTemplates = getOrderedValuationSections().map((definition) => {
     sourceFile: `${definition.label}.pdf`,
     enabled: true,
     required: definition.required,
-    blocks: [{ title: definition.label.toUpperCase(), concepts: [["Descripcion"]] }],
+    blocks: [{ title: definition.label.toUpperCase(), concepts: [["Descripción"]] }],
   });
 });
 
