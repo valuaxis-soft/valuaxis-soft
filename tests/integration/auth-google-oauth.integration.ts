@@ -530,3 +530,50 @@ test("ensuring a membership reuses the first active one and never duplicates the
   );
   assert.equal(again.IdOrganizacion, fresh.IdOrganizacion);
 });
+
+// ------------------------------------------------------------ «Crear cuenta» with Google (docs/LEGAL.md)
+
+test("signing up with Google from «Crear cuenta» records the boxes, the profile and the ALTA entry when the account is created", async () => {
+  const registration = {
+    profile: { phone: "+523300001111", cedula: "1234567", specialty: "Maquinaria y equipo" },
+    optional: { comercial: true, boletin: false, estadistica: false },
+    documents: [
+      { documento: "terminos" as const, version: 1, publicable: false, hash: "a".repeat(64), id: 1 },
+      { documento: "textos-de-pantalla" as const, version: 1, publicable: true, hash: null, id: null },
+    ],
+    ip: "198.51.100.30",
+    userAgent: "Chrome/129",
+    cookieHash: "huella-de-registro",
+  };
+  const browser = new TestCookieJar();
+  const ip = testIp();
+  const url = await withCookies(browser, () => startGoogleOAuth({ request: browserRequest(ip), returnTo: null, registration }));
+  const started = { ip, url, state: url.searchParams.get("state")!, nonce: url.searchParams.get("nonce")!, codeChallenge: url.searchParams.get("code_challenge")! };
+  const stored = await prisma.solicitudOAuth.findUniqueOrThrow({ where: { SStateHash: hashToken(started.state) } });
+  assert.deepEqual(stored.JRegistro, registration);
+
+  const claims = googleAccount();
+  await callback(browser, { code: consent(started, claims), state: started.state, ip });
+  const user = await prisma.usuario.findUniqueOrThrow({ where: { SCorreo: claims.email } });
+  assert.equal(user.STelefono, "+523300001111");
+  assert.deepEqual(user.JPerfilProfesional, { cedula: "1234567", especialidad: "Maquinaria y equipo" });
+  const entries = await prisma.bitacoraConsentimiento.findMany({ where: { IdUsuario: user.IdUsuario } });
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].SEvento, "ALTA");
+  assert.equal(entries[0].SMetodo, "GOOGLE");
+  assert.equal(entries[0].SCorreo, claims.email);
+  // The IP, browser and cookie of the act of accepting, on «Crear cuenta».
+  assert.equal(entries[0].SDireccionIP, "198.51.100.30");
+  assert.equal(entries[0].SCookieSesionHash, "huella-de-registro");
+  assert.deepEqual(entries[0].JDocumentos, registration.documents);
+  assert.deepEqual(entries[0].JCasillas, { privacidad: true, terminos: true, mayorDeEdad: true, comercial: true, boletin: false, estadistica: false });
+  assert.equal((entries[0].JFormulario as Record<string, unknown>).telefono, "+523300001111");
+});
+
+test("signing in with Google from the login page records no acceptance: the account sees the documents later", async () => {
+  const claims = googleAccount();
+  await signInWithGoogle(claims);
+  const user = await prisma.usuario.findUniqueOrThrow({ where: { SCorreo: claims.email } });
+  assert.equal(await prisma.bitacoraConsentimiento.count({ where: { IdUsuario: user.IdUsuario } }), 0);
+  assert.equal(user.JPerfilProfesional, null);
+});

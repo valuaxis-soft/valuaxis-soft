@@ -440,3 +440,39 @@ where a."SEntidad" = 'ReporteFalla' order by a."DFechaEvento" desc limit 50;
 - **Avalúos:** cada acción (crear, guardar —una vez cada 10 minutos por persona—, cambiar datos, concluir, reabrir, exportar, enviar por correo, archivar, papelera) queda en `devpware_auditorias` con fecha y hora, usuario, IP, navegador y, desde el 25 nov 2026, la versión del avalúo en `JMetadatos.versionAvaluo`. Los cambios de estado guardan además su versión en el historial de estados.
 - **IA:** cada uso de «Pegar anuncio», «Redactar borrador» y «Buscar con IA» queda con quién, cuándo, IP, avalúo, modelo y tokens (acciones `AI_LISTING_EXTRACT`, `AI_DRAFT_WRITE`, `AI_COMPARABLE_SEARCH`); el costo se obtiene de los tokens (ver [IA.md](IA.md#costo-por-uso)).
 - La auditoría es inmutable (un disparador impide cambiar o borrar renglones, migración 017).
+
+## 19. Documentos legales (`pnpm legal:publish`, `LEGAL_ACCEPTANCE_REQUIRED`)
+
+Los textos del abogado viven por versión en la base, con su SHA-256, y una versión nunca se cambia ni se borra. Cómo se muestran, qué se acepta y qué guarda la bitácora: [LEGAL.md](LEGAL.md). La migración 064 deja la versión 1 de cada documento como **borrador** (sin publicar, con sus espacios en blanco).
+
+**Ver el estado** (qué versiones hay, cuáles están publicadas y cuántos espacios en blanco les quedan):
+
+```bash
+docker exec valuos-app node --import tsx scripts/ops/publicar-legal.ts estado
+```
+
+**Publicar una versión** cuando We Law la libere y Álvaro haya llenado los datos (domicilio, correos, teléfono y WhatsApp, sitio web; en las Políticas comerciales, banco, CLABE, titular y plazo de abono):
+
+1. Prepara el archivo con el modelo de `docs/legal/<documento>.md` (el encabezado `---` es opcional; el cuerpo se guarda tal cual) y cópialo al contenedor: `docker cp terminos.md valuos-app:/tmp/terminos.md`.
+2. Simulación (no escribe nada; dice la versión, la fecha, la huella y si le quedan espacios en blanco):
+   ```bash
+   docker exec valuos-app node --import tsx scripts/ops/publicar-legal.ts terminos /tmp/terminos.md --fecha 2026-12-01 --por "Brandon"
+   ```
+3. Si está bien, lo mismo con `--apply`. **Se rechaza cualquier texto con «______»**. Un cambio que no toca derechos ni obligaciones de los usuarios lleva `--sin-nueva-aceptacion` (no detiene a nadie). `--borrador` guarda un borrador en lugar de publicar.
+4. Orden: primero `privacidad-simplificado` y `privacidad-integral` (se publican desde que se recaban datos); los demás cuando la plataforma ya hace lo que describen (regla 1 de la matriz).
+
+**Pedir la aceptación a las cuentas previas:** con los seis documentos de la aceptación publicados (`terminos`, `licencia`, `politicas-comerciales`, `anexo-ia`, `privacidad-simplificado`, `privacidad-integral`), en `production.env`:
+
+```
+LEGAL_ACCEPTANCE_REQUIRED=true
+```
+
+y recrear la app (paso 2). Desde entonces, quien no haya aceptado la versión publicada más reciente que lo pide ve `/aceptar-documentos` antes de cualquier página privada. Para apagarlo, `false` y recrear. El registro guarda la bitácora con o sin la variable.
+
+**Consultar la bitácora de una cuenta** (evidencia de aceptación; se conserva diez años, no se borra):
+
+```bash
+docker exec valuos-database-migrated psql -U devpware_avaluos_user -d devpware_avaluos_local -c "SELECT \"SEvento\", \"SMetodo\", \"DFechaEvento\", \"SZonaHoraria\", \"SDireccionIP\", \"JCasillas\", \"JDocumentos\" FROM devpware_bitacora_consentimientos WHERE \"SCorreo\" = '<correo>' ORDER BY \"DFechaEvento\";"
+```
+
+Los avisos por correo de un cambio (Términos 15.2, aviso integral 9.2) todavía se mandan a mano.

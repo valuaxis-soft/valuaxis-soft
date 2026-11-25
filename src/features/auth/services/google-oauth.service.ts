@@ -10,6 +10,9 @@ import { recordAuditEvent } from "../repositories/audit.repository";
 import { resolveDefaultOrganization } from "./organization-access.service";
 import { createSecureSession } from "./session.service";
 import { createGoogleUserWithOnboarding, ensureUserOrganizationMembership } from "./oauth-onboarding.service";
+import { parseGoogleRegistration, type GoogleRegistration } from "../oauth/google-registration";
+import { appendConsentLog } from "@/features/legal/consent-log.repository";
+import { registrationFormRecord } from "@/features/legal/consent.service";
 
 export type OAuthErrorCode =
   | "oauth_cancelled"
@@ -33,11 +36,16 @@ export class OAuthFlowError extends Error {
   }
 }
 
-export function getRequestIp(request: Request) {
+export function getRequestIp(request: { headers: Pick<Headers, "get"> }) {
   return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip");
 }
 
-export async function startGoogleOAuth(input: { request: Request; returnTo?: string | null }) {
+export async function startGoogleOAuth(input: {
+  request: { headers: Pick<Headers, "get"> };
+  returnTo?: string | null;
+  /** From «Crear cuenta»: recorded with the account if Google creates one. */
+  registration?: GoogleRegistration;
+}) {
   const config = loadGoogleOAuthConfig();
   const providerRecord = await prisma.proveedorIdentidad.findFirst({
     where: {
@@ -72,6 +80,7 @@ export async function startGoogleOAuth(input: { request: Request; returnTo?: str
     ip,
     userAgent,
     expiresAt,
+    registration: input.registration ?? null,
   });
 
   await recordAuditEvent({
@@ -146,6 +155,7 @@ export async function completeGoogleOAuth(input: {
     profile,
     providerId: requestRecord.IdProveedorIdentidad,
     requestId: requestRecord.IdSolicitudOAuth,
+    registration: parseGoogleRegistration(requestRecord.JRegistro),
     ip,
     userAgent,
   }).catch(async (error) => {
@@ -230,6 +240,7 @@ async function linkOrCreateGoogleUser(input: {
   profile: GoogleOAuthProfile;
   providerId: number;
   requestId: bigint;
+  registration: GoogleRegistration | null;
   ip?: string | null;
   userAgent?: string | null;
 }) {
@@ -319,6 +330,34 @@ async function linkOrCreateGoogleUser(input: {
     }
 
     const created = await createGoogleUserWithOnboarding(tx, input.profile, input.providerId);
+    if (input.registration) {
+      // Signed up from «Crear cuenta»: the profile and the log entry of what was accepted there (matrix 3.2).
+      const { registration } = input;
+      await tx.usuario.update({
+        where: { IdUsuario: created.user.IdUsuario },
+        data: {
+          STelefono: registration.profile.phone,
+          JPerfilProfesional: { cedula: registration.profile.cedula ?? null, especialidad: registration.profile.specialty },
+        },
+      });
+      await appendConsentLog(tx, {
+        userId: created.user.IdUsuario,
+        email: created.user.SCorreo,
+        event: "ALTA",
+        method: "GOOGLE",
+        documents: registration.documents,
+        boxes: { privacidad: true, terminos: true, mayorDeEdad: true, ...registration.optional },
+        form: registrationFormRecord({
+          name: created.user.SNombre,
+          paternalLastName: created.user.SApellidoPaterno,
+          email: created.user.SCorreo,
+          ...registration.profile,
+        }),
+        ip: registration.ip,
+        userAgent: registration.userAgent,
+        cookieHash: registration.cookieHash,
+      });
+    }
     await tx.solicitudOAuth.update({
       where: { IdSolicitudOAuth: input.requestId },
       data: { IdUsuario: created.user.IdUsuario },

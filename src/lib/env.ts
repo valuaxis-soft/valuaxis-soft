@@ -111,6 +111,12 @@ const envObject = z.object({
   /** "true": creating a valuation requires a verified phone. Ignored while the Twilio keys are missing. */
   PHONE_VERIFICATION_REQUIRED: z.string().optional(),
   /**
+   * "true" once the lawyer released the legal documents (docs/LEGAL.md): an account that has not
+   * accepted the published versions that ask for it sees them before any private page. Off by
+   * default: sign-up records the boxes either way, and drafts are never required.
+   */
+  LEGAL_ACCEPTANCE_REQUIRED: z.string().optional(),
+  /**
    * Who takes a change of the valuation's format on opening (src/features/valuations/services/layout-refresh.ts):
    * "all" (default, the tuning phase) every valuation not concluded; "new" only those created since the
    * change shipped, the others with «Actualizar formato». Concluded valuations never change.

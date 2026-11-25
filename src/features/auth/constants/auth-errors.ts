@@ -32,6 +32,7 @@ export const authErrorMessages = {
   EMAIL_VERIFICATION_SENT: "Enviaremos un enlace de verificación si la cuenta puede recibirlo.",
   GOOGLE_NOT_CONFIGURED: "El acceso con Google todavía no está configurado.",
   RATE_LIMITED: "Demasiados intentos. Espera unos minutos antes de volver a intentarlo.",
+  LEGAL_DOCUMENTS_CHANGED: "Los documentos legales se actualizaron mientras llenabas el formulario. Revisa la versión nueva y vuelve a marcar las casillas.",
 } as const;
 
 export type AuthErrorCode = keyof typeof authErrorMessages;
@@ -72,4 +73,5 @@ export const authErrorSeverity = {
   EMAIL_VERIFICATION_SENT: "success",
   GOOGLE_NOT_CONFIGURED: "warning",
   RATE_LIMITED: "warning",
+  LEGAL_DOCUMENTS_CHANGED: "warning",
 } satisfies Record<AuthErrorCode, AuthFeedbackSeverity>;

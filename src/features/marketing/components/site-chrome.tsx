@@ -1,15 +1,17 @@
 import Link from "next/link";
 import { ValuaxisLogo } from "@/components/brand/valuaxis-logo";
 import { buttonVariants } from "@/components/ui/button";
+import { LEGAL_FOOTER_LINKS } from "@/features/legal/legal-links";
 import { cn } from "@/lib/utils";
 import { NAV_LINKS } from "../content";
 
 /**
  * Sticky header of the public page: anchors and links. `LandingMotion` adds
  * `data-scrolled` (the bar compacts with transforms, so nothing below moves)
- * and marks the link of the section in view with `aria-current`.
+ * and marks the link of the section in view with `aria-current`. Pages other
+ * than the landing (the legal documents) leave out its section anchors.
  */
-export function SiteHeader() {
+export function SiteHeader({ sectionLinks = true }: { sectionLinks?: boolean } = {}) {
   return (
     <header data-vx-header="" className="pointer-events-none sticky top-0 z-40 isolate">
       <div aria-hidden="true" className="vx-header-shadow absolute inset-0 -z-20 origin-top shadow-lift" />
@@ -21,7 +23,7 @@ export function SiteHeader() {
         <Link href="/" aria-label="Valuaxis Soft, inicio" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
           <ValuaxisLogo className="vx-header-logo h-10 origin-left" />
         </Link>
-        <nav data-vx-nav="" aria-label="Principal" className="hidden items-center gap-1 text-sm lg:flex">
+        <nav data-vx-nav="" aria-label="Principal" className={cn("hidden items-center gap-1 text-sm", sectionLinks && "lg:flex")}>
           {NAV_LINKS.map((link) => (
             <a
               key={link.href}
@@ -49,7 +51,7 @@ export function SiteHeader() {
 export function SiteFooter() {
   return (
     <footer className="border-t bg-background">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 sm:grid-cols-2 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div className="grid content-start gap-3">
           <ValuaxisLogo className="h-11" />
           <p className="max-w-xs text-sm text-muted-foreground">
@@ -75,6 +77,14 @@ export function SiteFooter() {
           <Link href="/recuperar-contrasena" className="w-fit py-1.5 text-muted-foreground hover:text-foreground">
             Recuperar contraseña
           </Link>
+        </nav>
+        <nav aria-label="Legal" className="grid content-start gap-1 text-sm" data-legal-footer="">
+          <p className="mb-1 font-semibold">Legal</p>
+          {LEGAL_FOOTER_LINKS.map((link) => (
+            <Link key={link.href} href={link.href} className="w-fit py-1.5 text-muted-foreground hover:text-foreground">
+              {link.label}
+            </Link>
+          ))}
         </nav>
       </div>
       <div className="border-t">

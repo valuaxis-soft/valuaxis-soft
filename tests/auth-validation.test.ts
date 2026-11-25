@@ -39,7 +39,6 @@ test("register validation reports required fields, password policy and mismatche
       email: "bad",
       password: "short",
       confirmPassword: "different",
-      acceptedTerms: false,
     }),
   );
 
@@ -49,7 +48,11 @@ test("register validation reports required fields, password policy and mismatche
   assert.deepEqual(parsed.fieldErrors.email, ["Escribe un correo electrónico válido."]);
   assert.match(parsed.fieldErrors.password?.join(" "), /10 caracteres/);
   assert.deepEqual(parsed.fieldErrors.confirmPassword, ["Las contraseñas no coinciden."]);
-  assert.deepEqual(parsed.fieldErrors.acceptedTerms, ["Debes aceptar los terminos para continuar."]);
+  assert.deepEqual(parsed.fieldErrors.phone, ["Escribe tu teléfono."]);
+  assert.deepEqual(parsed.fieldErrors.specialty, ["Escribe tu especialidad."]);
+  assert.deepEqual(parsed.fieldErrors.adultDeclaration, ["Solo pueden registrarse personas mayores de edad."]);
+  assert.deepEqual(parsed.fieldErrors.consentPrivacy, ["Marca la casilla del aviso de privacidad para continuar."]);
+  assert.deepEqual(parsed.fieldErrors.consentTerms, ["Marca la casilla de los términos y condiciones para continuar."]);
 });
 
 test("forgot password validation distinguishes missing and invalid email", () => {
