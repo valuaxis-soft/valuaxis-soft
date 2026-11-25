@@ -374,7 +374,7 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
         factorSlots: configuration.factorSlots?.length ? configuration.factorSlots : defaults.factorSlots,
         ...(configuration.rounding === undefined ? {} : { rounding: configuration.rounding }),
         ...offerCaptures(configuration),
-        homologationBasis: homologationBasisOf({ homologationBasis: configuration.homologationBasis, baseArea: decimal(approach.NSuperficieBase) }),
+        homologationBasis: homologationBasisOf({ comparableType: type, homologationBasis: configuration.homologationBasis, baseArea: decimal(approach.NSuperficieBase) }),
         typicalFrontage: configuration.typicalFrontage ?? null,
         typicalDepth: configuration.typicalDepth ?? null,
         characteristicFields: configuration.characteristicFields ?? null,
@@ -664,7 +664,7 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
     const previousSlots = stored.factorSlots ?? [];
     await followSubjectRatings(tx, { versionId, typeId, organizationId: user.organizationId, previous: previousSlots, next: payload.factorSlots });
     const homologationBasis = unlessOmitted(payload.homologationBasis, stored.homologationBasis);
-    const againstBase = homologationBasisOf({ homologationBasis, baseArea: payload.baseArea }) === "LOTE_TIPO";
+    const againstBase = homologationBasisOf({ comparableType: payload.comparableType, homologationBasis, baseArea: payload.baseArea }) === "LOTE_TIPO";
     const data = {
       NSuperficieSujeto: payload.subjectArea,
       // Against the subject the lote tipo is kept aside, and neither this market nor the cost approach uses it.

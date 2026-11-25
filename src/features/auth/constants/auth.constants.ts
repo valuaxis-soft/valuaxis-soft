@@ -1,4 +1,11 @@
-export const AUTH_SESSION_COOKIE = "devpware_session";
+/**
+ * The session cookie, by the product's name (the lawyer's cookies section,
+ * 25 Nov 2026). Until then it was "devpware_session": a browser that still
+ * carries that one stays signed in, is read from it, and gets the new name on
+ * its next page (src/lib/auth/session-cookie.ts).
+ */
+export const AUTH_SESSION_COOKIE = "valuaxis_session";
+export const LEGACY_AUTH_SESSION_COOKIE = "devpware_session";
 /** Idle timeout: a session expires 8 hours after the last renewal. */
 export const SESSION_TTL_SECONDS = 60 * 60 * 8;
 /** Absolute lifetime: no session is renewed past 7 days from login. */

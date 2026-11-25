@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import ExcelJS from "exceljs";
 import { isPlatformOperator, parseOperatorEmails } from "../src/features/operator/operator-access";
-import { parseUserDirectoryParams, searchTerms, userDirectoryQuery } from "../src/features/operator/user-directory-params";
+import { parseUserDirectoryParams, searchTerms, specialtyText, userDirectoryQuery, userKindLabel } from "../src/features/operator/user-directory-params";
 import { buildUserDirectoryWorkbook } from "../src/features/operator/user-directory-workbook";
 import type { UserDirectoryEntry } from "../src/features/operator/user-directory.repository";
 
@@ -55,6 +55,7 @@ const entry: UserDirectoryEntry = {
   ],
   accreditation: "ACREDITADO",
   accreditationLevel: "Maestría",
+  accreditationProgram: "Maestría en Valuación Inmobiliaria",
   signedUpAt: new Date("2026-10-01T18:00:00Z"),
   lastAccessAt: null,
   valuationsCreated: 7,
@@ -70,20 +71,31 @@ test("the export carries who the person is and two counts, nothing else", async 
   const header = (sheet.getRow(1).values as unknown[]).slice(1);
   assert.deepEqual(header, [
     "Nombre", "Correo", "Correo verificado", "Teléfono (sin verificar)", "Cuenta", "Despachos y rol",
-    "Acreditación", "Alta", "Último acceso", "Avalúos creados", "Avalúos concluidos",
+    "Tipo de usuario", "Acreditación", "Especialidad (grado)", "Alta", "Último acceso", "Avalúos creados", "Avalúos concluidos",
   ]);
   const row = (sheet.getRow(2).values as unknown[]).slice(1);
   assert.equal(row[0], "Persona Inventada Uno");
   assert.equal(row[2], "Sí");
   assert.equal(row[5], "Despacho Ficticio (Valuador); Personal de Persona (Administrador)");
-  assert.equal(row[6], "Acreditado · Maestría");
-  assert.ok(row[7] instanceof Date);
-  assert.equal(row[8], undefined);
-  assert.equal(row[9], 7);
-  assert.equal(row[10], 3);
+  assert.equal(row[6], "Acreditado");
+  assert.equal(row[7], "Acreditado");
+  assert.equal(row[8], "Maestría · Maestría en Valuación Inmobiliaria");
+  assert.ok(row[9] instanceof Date);
+  assert.equal(row[10], undefined);
+  assert.equal(row[11], 7);
+  assert.equal(row[12], 3);
+  // No address of any kind: the platform keeps no municipality or state.
+  assert.ok(!header.some((name) => /direcci|municipio|estado|c[oó]digo postal/i.test(String(name))));
   assert.equal(sheet.rowCount, 2, "no truncation note when everything fits");
 
   const truncated = new ExcelJS.Workbook();
   await truncated.xlsx.load((await buildUserDirectoryWorkbook({ items: [entry], truncatedFrom: 12 })) as unknown as ArrayBuffer);
   assert.match(String(truncated.getWorksheet("Usuarios")?.getRow(3).getCell(1).value), /Se exportaron 1 de 12 usuarios/);
+});
+
+test("two kinds of user: «Acreditado» with the cédula verified, «No acreditado» everyone else (25 Nov 2026)", () => {
+  assert.equal(userKindLabel("ACREDITADO"), "Acreditado");
+  for (const state of ["NO_ACREDITADO", "EN_REVISION", "RECHAZADO"]) assert.equal(userKindLabel(state), "No acreditado", state);
+  assert.equal(specialtyText({ accreditationLevel: "Especialidad", accreditationProgram: null }), "Especialidad");
+  assert.equal(specialtyText({ accreditationLevel: null, accreditationProgram: null }), null);
 });

@@ -205,30 +205,18 @@ test("a concluded version keeps its signatures and validity after reopening and 
   assert.equal(final.DFechaVigencia?.toISOString().slice(0, 10), "2028-03-28");
 });
 
-test("a signature image is saved as a key, comes back as an address, and stays with the concluded version", async () => {
+test("no electronic signature: an image sent with a signature is not kept, and one stored before is never sent back (25 Nov 2026)", async () => {
   const fixture = await createValuationFixture();
   const key = "uploads/2026-10/firma-ana.jpg";
   const address = "/api/archivos/imagen?key=uploads%2F2026-10%2Ffirma-ana.jpg";
-  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 6, firmas: [{ ...ana, image: address }, beto] });
+  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 6, firmas: [{ ...ana, image: address, imageSize: "grande" } as typeof ana, beto] });
+  assert.deepEqual((await caratulaRow(fixture)).JFirmas, [ana, beto], "only the name, the cédula and the role");
 
+  // A signature stored with its image before the change: the row keeps it (its file is not touched), the editor never gets it.
   const row = await caratulaRow(fixture);
-  assert.deepEqual(row.JFirmas, [{ ...ana, image: key }, beto], "in the database, the key and nothing that expires");
-  assert.deepEqual((await read(fixture)).firmas, [{ ...ana, image: address }, beto]);
-
-  // The editor sends back what it read: nothing changes.
-  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 6, firmas: (await read(fixture)).firmas });
-  assert.deepEqual((await caratulaRow(fixture)).JFirmas, [{ ...ana, image: key }, beto]);
-
-  await concludeValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user: fixture.user });
-  const concluded = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
-  await reopenValuation({ publicId: fixture.publicId, organizationId: fixture.organizationId, user: fixture.user, reason: "Quitar la imagen", acceptedText: "Acepto reabrir el avalúo" });
-  assert.deepEqual((await read(fixture)).firmas, [{ ...ana, image: address }, beto], "the reopened version starts with the image");
-
-  // Removing it in the new version leaves the concluded one signed.
-  await save(fixture, { fechaAvaluo: "2027-09-28", mesesVigencia: 6, firmas: [ana, beto] });
-  assert.deepEqual((await caratulaRow(fixture)).JFirmas, [ana, beto]);
-  const final = await prisma.caratulaAvaluo.findUniqueOrThrow({ where: { IdVersionAvaluo: concluded.IdVersionFinal! } });
-  assert.deepEqual(final.JFirmas, [{ ...ana, image: key }, beto]);
+  await prisma.caratulaAvaluo.update({ where: { IdCaratulaAvaluo: row.IdCaratulaAvaluo }, data: { JFirmas: [{ ...ana, image: key, imageSize: "chica" }, beto] } });
+  assert.deepEqual((await read(fixture)).firmas, [ana, beto]);
+  assert.deepEqual((await caratulaRow(fixture)).JFirmas, [{ ...ana, image: key, imageSize: "chica" }, beto]);
 });
 
 test("a valuation whose date is earlier than today cannot be concluded; dated today or later, it can", async () => {
@@ -246,7 +234,7 @@ test("a valuation whose date is earlier than today cannot be concluded; dated to
   assert.equal((await getValuationByPublicId(fixture.publicId, fixture.organizationId))!.locked, true);
 });
 
-test("the firm's default signatures keep their image and seed new valuations with it", async () => {
+test("the firm's default signatures keep no image, and an old one does not reach new valuations", async () => {
   const fixture = await createValuationFixture();
   const address = "/api/archivos/imagen?key=uploads%2F2026-10%2Ffirma-despacho.jpg";
   const current = await getFirmSettings(fixture.organizationId);
@@ -254,9 +242,10 @@ test("the firm's default signatures keep their image and seed new valuations wit
     legalName: current.legalName, rfc: current.rfc, address: current.address, phone: current.phone, email: current.email,
     validityMonths: 6, folioPrefix: current.folioPrefix, signers: [{ ...ana, image: address }],
   }));
-  assert.deepEqual((await getFirmSettings(fixture.organizationId)).signers, [{ ...ana, image: address }]);
+  assert.deepEqual((await getFirmSettings(fixture.organizationId)).signers, [ana]);
   const organization = await prisma.organizacion.findUniqueOrThrow({ where: { IdOrganizacion: fixture.organizationId } });
-  assert.deepEqual(organization.JFirmas, [{ ...ana, image: "uploads/2026-10/firma-despacho.jpg" }]);
+  assert.deepEqual(organization.JFirmas, [ana]);
+  await prisma.organizacion.update({ where: { IdOrganizacion: fixture.organizationId }, data: { JFirmas: [{ ...ana, image: "uploads/2026-10/firma-despacho.jpg" }] } });
   const defaults = await prisma.$transaction((tx) => getValuationDefaults(tx, fixture.organizationId));
-  assert.deepEqual(defaults.signers, [{ ...ana, image: address }]);
+  assert.deepEqual(defaults.signers, [ana]);
 });

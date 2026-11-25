@@ -12,7 +12,7 @@ import { GET as exportRoute } from "../../src/app/api/operador/usuarios/exportar
 import { AUTH_SESSION_COOKIE } from "../../src/features/auth/constants/auth.constants";
 import { USER_DIRECTORY_AUDIT } from "../../src/features/operator/user-directory-audit";
 import { parseUserDirectoryParams } from "../../src/features/operator/user-directory-params";
-import { listUserDirectoryPage } from "../../src/features/operator/user-directory.repository";
+import { countUserDirectoryKinds, listUserDirectoryPage } from "../../src/features/operator/user-directory.repository";
 import { createSecureToken, hashToken } from "../../src/security/tokens/token-hashing";
 import { createValuationFixture, prisma, TestCookieJar, withCookies } from "./support";
 
@@ -77,7 +77,7 @@ test("the operator's registry: 404 for anyone else, people of every firm, no val
   await prisma.avaluo.update({ where: { UIdentificadorPublico: firmA.publicId }, data: { DFechaConclusion: new Date() } });
   await prisma.usuario.update({ where: { IdUsuario: firmA.user.id }, data: { SNombre: `Ana ${tag}`, SApellidoPaterno: "Inventada" } });
   await prisma.usuario.update({ where: { IdUsuario: firmB.user.id }, data: { SNombre: `Beto ${tag}`, STelefono: `33${tag.slice(3)}` } });
-  await prisma.acreditacionUsuario.create({ data: { IdUsuario: firmA.user.id, SEstado: "ACREDITADO", SNivelAcademico: "MAESTRIA", BProgramaValuacion: true } });
+  await prisma.acreditacionUsuario.create({ data: { IdUsuario: firmA.user.id, SEstado: "ACREDITADO", SNivelAcademico: "MAESTRIA", SProgramaAcademico: "Maestría en Valuación", BProgramaValuacion: true } });
   const jarA = await signIn(firmA.user.id, firmA.organizationId, "VALUADOR");
   await signIn(firmB.user.id, firmB.organizationId);
 
@@ -105,11 +105,15 @@ test("the operator's registry: 404 for anyone else, people of every firm, no val
   assert.deepEqual(ana.memberships, [{ organization: firmA.user.organizationName, kind: "PERSONAL", role: "Valuador" }]);
   assert.equal(ana.accreditation, "ACREDITADO");
   assert.equal(ana.accreditationLevel, "Maestría");
+  assert.equal(ana.accreditationProgram, "Maestría en Valuación");
   assert.equal(ana.emailVerified, true);
   assert.deepEqual([ana.valuationsCreated, ana.valuationsConcluded], [1, 1]);
   assert.deepEqual([beto.valuationsCreated, beto.valuationsConcluded], [1, 0]);
   assert.equal(beto.accreditation, "NO_ACREDITADO");
   assert.equal(beto.memberships[0]?.organization, firmB.user.organizationName);
+
+  // The two kinds of user, counted over the search whatever the filter.
+  assert.deepEqual(await countUserDirectoryKinds({ q: tag }), { accredited: 1, unaccredited: 1 });
 
   // Search by phone and by email; filter by accreditation; sort by sign-up date.
   assert.deepEqual((await listUserDirectoryPage(parseUserDirectoryParams({ q: `33${tag.slice(3)}` }), 25)).items.map((item) => item.email), [firmB.user.email]);

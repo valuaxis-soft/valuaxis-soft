@@ -151,9 +151,16 @@ export const isBuiltComparableType = (type: ComparableType) => !isLandComparable
 export const HOMOLOGATION_BASES = ["LOTE_TIPO", "SUJETO"] as const;
 export type HomologationBasis = (typeof HOMOLOGATION_BASES)[number];
 
+/**
+ * Only land markets (terrenos en venta y en renta) choose between the lote tipo
+ * and the subject; every other market homologates against the subject
+ * (Álvaro, 25 Nov 2026), whatever an earlier capture stored.
+ */
+export const homologatesAgainstLotOrSubject = (type: ComparableType) => isLandComparableType(type);
+
 /** A homologation captured before the choice existed is against the lote tipo when it has one. */
-export const homologationBasisOf = (settings: Pick<MarketSettingsDto, "homologationBasis" | "baseArea">): HomologationBasis =>
-  settings.homologationBasis ?? (settings.baseArea ? "LOTE_TIPO" : "SUJETO");
+export const homologationBasisOf = (settings: Pick<MarketSettingsDto, "comparableType" | "homologationBasis" | "baseArea">): HomologationBasis =>
+  !homologatesAgainstLotOrSubject(settings.comparableType) ? "SUJETO" : settings.homologationBasis ?? (settings.baseArea ? "LOTE_TIPO" : "SUJETO");
 
 /**
  * The characteristics of the comparables: a list of fields the appraiser may
@@ -535,7 +542,7 @@ export function surfaceFactorFormulas(dto: Pick<MarketCalculationDto, "settings"
  * editor shows, the dictamen prints and the memoria writes: against the
  * subject or against the lote tipo, as the market homologates.
  */
-export function marketSurfaceFormula(settings: Pick<MarketSettingsDto, "homologationBasis" | "baseArea" | "rounding">): string {
+export function marketSurfaceFormula(settings: Pick<MarketSettingsDto, "comparableType" | "homologationBasis" | "baseArea" | "rounding">): string {
   return marketSurfaceFormulaText(marketEngineConfig(settings).surfaceOrientation.market, homologationBasisOf(settings) === "LOTE_TIPO");
 }
 

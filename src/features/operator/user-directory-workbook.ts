@@ -1,10 +1,11 @@
 /**
  * «Exportar a Excel» of /operador/usuarios: every row of the search (every
  * page), the same columns as the screen. Dates are real Excel dates. No
- * content of any valuation: only the two counts.
+ * content of any valuation: only the two counts. No address either: the
+ * platform keeps no municipality or state of a person or a firm.
  */
 import ExcelJS from "exceljs";
-import { ACCREDITATION_LABELS } from "./user-directory-params";
+import { ACCREDITATION_LABELS, specialtyText, userKindLabel } from "./user-directory-params";
 import type { UserDirectoryEntry } from "./user-directory.repository";
 
 /** Excel has no time zone: the moments are written as Mexico City's wall clock. */
@@ -14,8 +15,8 @@ const asMexicoWallClock = (date: Date) => new Date(date.getTime() - MEXICO_OFFSE
 export const membershipsText = (entry: Pick<UserDirectoryEntry, "memberships">) =>
   entry.memberships.map((member) => `${member.organization} (${member.role})`).join("; ");
 
-export const accreditationText = (entry: Pick<UserDirectoryEntry, "accreditation" | "accreditationLevel">) =>
-  `${ACCREDITATION_LABELS[entry.accreditation] ?? entry.accreditation}${entry.accreditationLevel ? ` · ${entry.accreditationLevel}` : ""}`;
+/** The state of the request: «Acreditado», «En revisión», «Rechazado» or «No acreditado»; the grado goes in its own column. */
+const accreditationText = (entry: Pick<UserDirectoryEntry, "accreditation">) => ACCREDITATION_LABELS[entry.accreditation] ?? entry.accreditation;
 
 const COLUMNS: { header: string; width: number; date?: boolean; value: (entry: UserDirectoryEntry) => ExcelJS.CellValue }[] = [
   { header: "Nombre", width: 30, value: (entry) => entry.name },
@@ -24,7 +25,9 @@ const COLUMNS: { header: string; width: number; date?: boolean; value: (entry: U
   { header: "Teléfono (sin verificar)", width: 18, value: (entry) => entry.phone },
   { header: "Cuenta", width: 10, value: (entry) => (entry.active ? "Activa" : "Inactiva") },
   { header: "Despachos y rol", width: 44, value: membershipsText },
+  { header: "Tipo de usuario", width: 16, value: (entry) => userKindLabel(entry.accreditation) },
   { header: "Acreditación", width: 24, value: accreditationText },
+  { header: "Especialidad (grado)", width: 40, value: (entry) => specialtyText(entry) },
   { header: "Alta", width: 18, date: true, value: (entry) => asMexicoWallClock(entry.signedUpAt) },
   { header: "Último acceso", width: 18, date: true, value: (entry) => (entry.lastAccessAt ? asMexicoWallClock(entry.lastAccessAt) : null) },
   { header: "Avalúos creados", width: 10, value: (entry) => entry.valuationsCreated },

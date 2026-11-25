@@ -4,7 +4,7 @@ Valuaxis Soft es una herramienta de trabajo para valuadores: se usa horas seguid
 
 ## Marca
 
-El nombre es **Valuaxis Soft** (`SITE_NAME`, `src/app/_lib/site.ts`); el dominio sigue siendo valuaxissoft.com y los nombres internos (código, tablas, cookies, variables) no cambian. El logo es el del cliente (noviembre de 2026, video 6.3): una «V» facetada en degradado de cian a marino, «VALUA» en marino, «XIS» en azul y «SOFT» espaciado entre dos líneas. No se redibuja ni se recolorea fuera de las variantes de abajo.
+El nombre es **Valuaxis Soft** (`SITE_NAME`, `src/app/_lib/site.ts`); el dominio sigue siendo valuaxissoft.com y los nombres internos (código, tablas, variables) no cambian; las cookies sí llevan el nombre del producto (`valuaxis_session`, ver SECURITY.md). El logo es el del cliente (noviembre de 2026, video 6.3): una «V» facetada en degradado de cian a marino, «VALUA» en marino, «XIS» en azul y «SOFT» espaciado entre dos líneas. No se redibuja ni se recolorea fuera de las variantes de abajo.
 
 | Archivo | Qué es | Dónde se usa |
 |---|---|---|

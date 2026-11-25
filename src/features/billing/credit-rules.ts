@@ -21,6 +21,14 @@ const MOVEMENT_LABELS: Record<CreditMovementType, string> = {
 
 export const creditMovementLabel = (type: string) => MOVEMENT_LABELS[type as CreditMovementType] ?? type;
 
+/**
+ * What closing or disabling an account says about its balance (the lawyer's
+ * commercial policies, 25 Nov 2026): the ledger is never zeroed, the balance
+ * waits without expiry and there are no refunds.
+ */
+export const ACCOUNT_CLOSURE_BALANCE_NOTICE =
+  "El saldo pagado o no usado se conserva sin vencimiento en tu cuenta conforme a las políticas comerciales (sección 3.2). No hay devoluciones; podrás usarlo si reactivas tu cuenta.";
+
 /** At this many credits or fewer, the dashboard card and a notification say it is time to buy more. */
 export const LOW_CREDIT_BALANCE = 3;
 
