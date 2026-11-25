@@ -3948,6 +3948,29 @@ model CfdiPago {
   @@map("devpware_cfdis_pagos")
 }
 
+/// A future price of one Avalúo Disponible, announced ahead (commercial policies 7.1, migration 065). Prices with IVA included.
+model AvisoPrecio {
+  IdAvisoPrecio         Int       @id @default(autoincrement()) @map("IdAvisoPrecio")
+  UIdentificadorPublico String    @unique(map: "devpware_avisos_precios_publico_key") @default(dbgenerated("gen_random_uuid()")) @map("UIdentificadorPublico") @db.Uuid
+  /// The package whose price changes (AVALUO_1).
+  SClavePaquete         String    @map("SClavePaquete") @db.VarChar(120)
+  NPrecioAnterior       Decimal   @map("NPrecioAnterior") @db.Decimal(24, 2)
+  NPrecioNuevo          Decimal   @map("NPrecioNuevo") @db.Decimal(24, 2)
+  NImpuestoPorcentaje   Decimal   @default(16) @map("NImpuestoPorcentaje") @db.Decimal(8, 4)
+  DFechaAnuncio         DateTime  @default(now()) @map("DFechaAnuncio") @db.Timestamptz(3)
+  DFechaVigencia        DateTime  @map("DFechaVigencia") @db.Timestamptz(3)
+  /// When the emails went out; each one is also in the audit log.
+  DFechaCorreos         DateTime? @map("DFechaCorreos") @db.Timestamptz(3)
+  ICorreosEnviados      Int       @default(0) @map("ICorreosEnviados")
+  /// When the package took the new price (the first purchase or visit after DFechaVigencia).
+  DFechaAplicacion      DateTime? @map("DFechaAplicacion") @db.Timestamptz(3)
+  DFechaCancelacion     DateTime? @map("DFechaCancelacion") @db.Timestamptz(3)
+  DFechaCreacion        DateTime  @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+
+  @@index([DFechaVigencia], map: "devpware_avisos_precios_vigencia_idx")
+  @@map("devpware_avisos_precios")
+}
+
 /// Named streets of Mexico copied from OpenStreetMap (ODbL), one row per way; filled by scripts/ops/importar-calles.ts.
 /// The GiST index over GLinea lives in migration 061 (Prisma does not model it).
 model CalleOsm {

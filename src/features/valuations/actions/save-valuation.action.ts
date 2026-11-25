@@ -2,6 +2,7 @@
 
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { Prisma } from "@prisma/client";
+import { consumeCreditOnCreation, NoCreditsError } from "@/features/billing/credits.service";
 import { getCurrentUser } from "@/features/auth/session";
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
 import { getCanonicalSectionKey, initiallyHiddenSections } from "@/features/valuations/sections/section-registry";
@@ -277,6 +278,8 @@ export async function saveValuation(input: SaveValuationInput) {
           SNombreCliente: input.clientName ?? input.client ?? null,
         },
       });
+      // «Crear avalúo» consumes one Avalúo Disponible (docs/COBRO.md); with the charge on and no balance nothing is created.
+      await consumeCreditOnCreation(tx, { organizationId: user.organizationId, valuationId: created.IdAvaluo, folio, userId: user.id });
       await syncSubjectPropertyAndAddress({
         tx,
         valuationId: created.IdAvaluo,
@@ -356,6 +359,7 @@ export async function saveValuation(input: SaveValuationInput) {
       data: await getValuationByPublicId(valuation.UIdentificadorPublico, user.organizationId),
     };
   } catch (error) {
+    if (error instanceof NoCreditsError) return { ok: false, error: error.message, code: "NO_CREDITS", link: error.link, status: 409 };
     return { ok: false, error: `Error al guardar: ${String(error)}` };
   }
 }

@@ -33,10 +33,10 @@ export function valuationEventText(event: ValuationEvent, input: { folio: string
 /** Title and text of the low balance notice. Pure. */
 export function lowCreditsText(balance: number) {
   if (balance <= 0) {
-    return { title: "Se agotaron los avalúos disponibles", body: "Para concluir otro avalúo, compra un paquete en Plan y facturación." };
+    return { title: "Se agotaron los avalúos disponibles", body: "Para crear otro avalúo, compra avalúos en Plan y facturación." };
   }
   return {
     title: balance === 1 ? "Queda 1 avalúo disponible" : `Quedan ${balance} avalúos disponibles`,
-    body: "Compra un paquete en Plan y facturación antes de que se agoten para seguir concluyendo.",
+    body: "Compra avalúos en Plan y facturación antes de que se agoten para seguir creando.",
   };
 }

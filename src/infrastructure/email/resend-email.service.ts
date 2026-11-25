@@ -4,6 +4,7 @@
  * in the Authorization header and is never logged.
  */
 import {
+  billingNoticeContent,
   dictamenEmailContent,
   dictamenSenderName,
   formatFromAddress,
@@ -17,6 +18,7 @@ import {
 } from "./email-content";
 import { EmailDeliveryError } from "./email.errors";
 import type {
+  BillingNoticeInput,
   DictamenEmailInput,
   EmailService,
   InvoiceEmailInput,
@@ -94,6 +96,10 @@ export class ResendEmailService implements EmailService {
 
   async sendSupportReport(input: SupportReportInput) {
     await this.sendSystemEmail(input.to, supportReportContent(input));
+  }
+
+  async sendBillingNotice(input: BillingNoticeInput) {
+    await this.sendSystemEmail(input.to, billingNoticeContent(input));
   }
 
   async sendInvoiceEmail(input: InvoiceEmailInput) {

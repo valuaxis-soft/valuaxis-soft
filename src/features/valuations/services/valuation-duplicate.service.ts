@@ -3,11 +3,12 @@
  * own folio, "Nuevo", that starts with a copy of the document, the tables,
  * the carátula and the comparables of the original (its working version, or
  * its final one once concluded). The subject property and its address are
- * copied too; the exports, the credits and the history are not.
+ * copied too; the exports and the history are not; the copy consumes its own Avalúo Disponible.
  */
 import { Prisma } from "@prisma/client";
 
 import type { AuthUser } from "@/features/auth/model";
+import { consumeCreditOnCreation, NoCreditsError } from "@/features/billing/credits.service";
 import { getValuationDefaults } from "@/features/firm/firm.service";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { reserveNextValuationFolio } from "./valuation-folio.service";
@@ -72,6 +73,10 @@ export async function duplicateValuation(user: AuthUser, publicId: string) {
         SNombreCliente: source.SNombreCliente,
       },
       select: { IdAvaluo: true, UIdentificadorPublico: true, SFolio: true },
+    });
+    // A copy is a new valuation: it consumes one Avalúo Disponible like «Crear avalúo» (docs/COBRO.md).
+    await consumeCreditOnCreation(tx, { organizationId: user.organizationId, valuationId: created.IdAvaluo, folio, userId: user.id }).catch((error: unknown) => {
+      throw error instanceof NoCreditsError ? new ValuationWorkflowError(error.message, 409, { link: error.link }) : error;
     });
     const toVersionId = await ensureWorkingVersion({ avaluoId: created.IdAvaluo, userId: user.id, tx });
     const copied = await copyVersionContent(tx, { fromVersionId, toVersionId });

@@ -128,12 +128,12 @@ export const FAQS = [
   {
     question: "¿Cuánto cuesta Valuaxis Soft?",
     answer:
-      `Crear tu cuenta no tiene costo. Pagas $${PRICE_PER_VALUATION_MXN} MXN, IVA incluido, por cada avalúo que concluyes. El pago se hace con tarjeta en la página segura de Stripe; Valuaxis Soft no ve ni guarda tus tarjetas.`,
+      `Crear tu cuenta no tiene costo. Pagas $${PRICE_PER_VALUATION_MXN} MXN, IVA incluido, por cada avalúo que creas, y al registrarte recibes tres avalúos de prueba sin costo para usar en tu primer mes. Pagas con tarjeta en la página segura de Stripe (Valuaxis Soft no ve ni guarda tus tarjetas) o por transferencia; no hay suscripción ni cobros recurrentes.`,
   },
   {
     question: "¿Cuándo se descuenta un avalúo?",
     answer:
-      "Al concluirlo por primera vez. Si después lo reabres para corregir algo y lo vuelves a concluir, no se cobra de nuevo.",
+      "Al crearlo. Concluirlo, cancelarlo o reabrirlo para corregir algo no descuenta otro. Los de prueba se usan antes que los pagados, y los pagados no vencen.",
   },
   {
     question: "¿Necesito instalar algo?",

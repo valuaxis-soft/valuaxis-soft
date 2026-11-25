@@ -3,9 +3,11 @@ import { z } from "zod";
 import { internalError } from "@/lib/api-response";
 import { createRateLimiter } from "@/security/rate-limit/rate-limiter";
 import { BillingError } from "./billing-errors";
+import { MAX_PURCHASE_QUANTITY } from "./credit-rules";
 
 export const checkoutSchema = z.object({ priceId: z.uuid() });
-export const packageCheckoutSchema = z.object({ packageId: z.uuid() });
+/** «Pagar con tarjeta»: how many Avalúos Disponibles, at the unit price (no packages). */
+export const unitPurchaseSchema = z.object({ quantity: z.number().int().min(1).max(MAX_PURCHASE_QUANTITY) });
 
 /** Each call creates a session in Stripe: at most 20 per organization every 10 minutes. */
 export const billingSessionLimiter = createRateLimiter({ limit: 20, windowMs: 10 * 60 * 1000 });

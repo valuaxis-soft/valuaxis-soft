@@ -1,6 +1,6 @@
 # Cobro (Stripe)
 
-El cobro es **por avalúo**: cada organización compra paquetes de avalúos prepagados y cada avalúo descuenta uno al concluirse (decisión del cliente, 9 oct 2026). Además existe la venta de **suscripciones** mensuales, hoy sin uso, pensada para la base de datos de comparables más adelante. Todo el pago ocurre en páginas de Stripe (Checkout y portal de clientes): Valuaxis nunca ve ni guarda tarjetas.
+El cobro es **por avalúo**: cada organización compra «Avalúos Disponibles» por unidad y cada avalúo descuenta uno **al crearse** (Políticas comerciales del abogado, 15 nov 2026; decisión del cliente del 23 nov 2026, que reemplaza el «descuento al concluir» del 9 oct). Las cuentas nuevas reciben tres de prueba por un mes. Existe además la venta de **suscripciones**, apagada mientras las Políticas no las permitan (sección 7.2). Todo el pago con tarjeta ocurre en páginas de Stripe (Checkout y portal de clientes): Valuaxis nunca ve ni guarda tarjetas.
 
 El cobro es **opcional**. Sin `STRIPE_SECRET_KEY` la app funciona igual que antes y la página "Plan y facturación" avisa que los pagos no están habilitados.
 
@@ -13,18 +13,38 @@ La cuenta en vivo del cliente también la usa su tienda en línea (WooCommerce).
 - **Nunca lista la cuenta.** Solo lee objetos por id (los ids de producto y las `lookup_key` de precio se derivan de nuestros propios ids) y se niega a modificar un objeto sin la etiqueta.
 - Una suscripción solo se aplica a una organización si la etiqueta, la organización y el cliente de Stripe guardado para esa organización coinciden.
 
-## Cobro por avalúo (paquetes de créditos)
+## Cobro por avalúo (Políticas comerciales)
 
-1. **Paquetes.** Se venden los paquetes de `devpware_paquetes_creditos` activos y públicos: nombre, número de avalúos (`ICreditos`), precio en MXN antes de IVA (`NImporte`) e IVA (`NImpuestoPorcentaje`). Ninguna migración inserta paquetes; los reales los captura el cliente (ver "Publicar o cambiar un paquete").
-2. **Comprar.** Un administrador pulsa "Comprar" en `/organizacion/facturacion`. El servidor crea (o reutiliza) el cliente de Stripe de la organización y una sesión de Checkout en modo **pago único** (`POST /api/organizacion/facturacion/creditos/checkout`), con factura de Stripe para que el recibo aparezca en el portal, metadatos `app = valuaxis`, `organizacion` y `paquete`, y el sufijo `VALUAXIS` en el estado de cuenta (en pagos únicos Stripe sí acepta sufijo; se agrega al nombre de la cuenta).
-3. **Abono, por dos caminos.** Al volver, la página consulta la sesión en Stripe y abona los créditos; el webhook (`checkout.session.completed`, `checkout.session.async_payment_succeeded`) hace lo mismo. El abono es **una sola vez por sesión de pago**: la fila de `devpware_movimientos_creditos` lleva la referencia de la sesión y un índice único la protege, así que el orden y las repeticiones no importan.
-4. **Consumo.** Al **concluir un avalúo por primera vez** se registra un movimiento `CONSUMO` de −1 ligado al avalúo (índice único por avalúo: reabrir y volver a concluir no cuesta). El saldo es la suma de los movimientos (`COMPRA`, `CONSUMO`, `AJUSTE`).
-5. **Bloqueo, apagado por omisión.** `devpware_organizaciones.BCobroPorAvaluo` decide qué pasa al concluir sin saldo: `false` (valor inicial de todas las organizaciones) registra el consumo y el saldo queda negativo, mostrado como pendiente de pago; `true` impide concluir con el mensaje "Tu organización no tiene avalúos disponibles…" y un enlace a comprar. Se enciende por organización con `pnpm billing:credits enforce <slug|uuid> on`.
-6. **Ajustes manuales.** Hasta que existan reglas de créditos y referidos, `pnpm billing:credits adjust <slug|uuid> <créditos> "<motivo>"` abona o retira créditos; `pnpm billing:credits balance <slug|uuid>` muestra saldo y movimientos.
+Las reglas salen de las **Políticas comerciales** del abogado (15 nov 2026) y de la decisión del cliente del 23 nov 2026 («cobro al crear»). Cada «Avalúo Disponible» permite elaborar y concluir un avalúo; se compran por unidad, sin paquetes, membresía ni suscripción.
+
+1. **Consumo al crear.** Un avalúo disponible se descuenta cuando se oprime «Crear avalúo» (`POST /api/avaluos`) o «Duplicar» (`POST /api/avaluos/[id]/duplicar`): un movimiento `CONSUMO` de −1 ligado al avalúo, escrito en la misma transacción que lo crea (`consumeCreditOnCreation`). Concluir, cancelar (archivar o mandar a la papelera) o reabrir no descuentan otro. El índice único por avalúo (migración 040) impide un segundo consumo pase lo que pase.
+2. **Prueba gratuita.** Una cuenta nueva (registro con correo o con Google) recibe **3 avalúos disponibles de prueba**, que vencen **al mes** del registro (el mismo día del mes siguiente; si ese mes no tiene el día, el último). Es un `AJUSTE` de +3 con `JMetadatos.kind = "TRIAL_GRANT"` y la fecha de vencimiento (`grantTrialCredits`). Los de prueba se usan **antes** que los pagados (cada consumo guarda `source: "TRIAL"` o `"PAID"`). Al vencer, los no usados dejan de contar de inmediato aunque el movimiento de baja todavía no esté escrito; la siguiente escritura del libro escribe un `AJUSTE` negativo con `kind = "TRIAL_EXPIRY"` (o `pnpm billing:policies-report --apply`). Los pagados **no vencen nunca**. Quien entra a un despacho por invitación no recibe otra prueba: la prueba es de la cuenta (la organización) que se registra.
+3. **Bloqueo, apagado por omisión.** `devpware_organizaciones.BCobroPorAvaluo` decide qué pasa al crear sin saldo: `false` (valor inicial de todas las organizaciones, también las nuevas) registra el consumo y el saldo queda negativo, mostrado como pendiente de pago: **nada se bloquea**, como antes. `true` impide crear (y duplicar) con 409 `{ code: "NO_CREDITS", link: "/organizacion/facturacion" }` y el mensaje «Tu organización no tiene avalúos disponibles. Compra avalúos en Plan y facturación para crear uno nuevo.»; el formulario muestra el enlace «Comprar avalúos en «Plan y facturación»» y el menú «Duplicar» ofrece «Ir a Plan y facturación». No se crea nada. Se enciende por organización con `pnpm billing:credits enforce <slug|uuid> on`.
+4. **Compra por unidad.** En «Plan y facturación» se elige cuántos avalúos (1 a 100) y, **antes del botón de pago**, se ven el precio por avalúo, el subtotal, el IVA incluido, «Comisiones y otros cargos: $0.00» y el **total a pagar** destacado (LFPC 7 Bis), junto con los términos y formas de pago (LFPC 76 Bis V): tarjeta en Stripe, pago único sin cobros recurrentes, abono al confirmar, vigencia (pagados sin vencimiento, prueba a un mes), revocación en 5 días hábiles de lo no usado y transferencia o depósito. «Pagar $X con tarjeta» crea una sesión de Checkout de pago único con `quantity` unidades del precio de Stripe del paquete por unidad (`AVALUO_1`) y etiquetas `creditos`, `cantidad` y `precio_unitario` (`POST /api/organizacion/facturacion/creditos/checkout` con `{ quantity }`). Los paquetes de varios avalúos ya no se ofrecen; siguen en la tabla por si existen compras viejas.
+5. **Abono y confirmación.** Al volver, la página consulta la sesión y abona; el webhook hace lo mismo; el abono es **una sola vez por pago** (índice único por proveedor y referencia). Quien abona envía el **correo de confirmación** con el saldo resultante (al correo de la organización o, sin él, al de su propietario) y lo deja en la auditoría (`BILLING_PURCHASE_CONFIRMATION_SENT`, destinatario y fecha). La pantalla dice «Compra confirmada» con el saldo.
+6. **Transferencia o depósito.** Los datos (banco, CLABE, titular, plazo de abono y correo para el comprobante) viven en `src/features/billing/payment-instructions.ts`; mientras el cliente no los dé, la página dice «Por definir» en cada uno. Un pago confirmado en el banco se abona con `pnpm billing:credits payment <org> <avalúos> transferencia|deposito "<referencia>"`: al precio vigente, una vez por referencia, con el mismo correo de confirmación. No se factura automáticamente (el CFDI se pide por correo, Políticas 5.2).
+7. **Registro de cada movimiento (matriz 3.4).** Cada `COMPRA` guarda en `JMetadatos.purchase` el precio por avalúo mostrado, la cantidad, el monto pagado y la forma de pago (`TARJETA`, `TRANSFERENCIA`, `DEPOSITO`), y en `SProveedorPago`/`SReferenciaExterna` el proveedor y la referencia (sesión de Stripe o folio del banco), con su fecha. Cada `CONSUMO` está ligado a su avalúo y dice si fue al crear o al concluir y si usó prueba o pagado. «Movimientos» lo muestra («3 × $170.00 = $510.00 · Tarjeta (Stripe) · Ref. cs_…»). El libro es solo de inserción: nada se edita ni se borra; el vencimiento de la prueba y las correcciones son movimientos nuevos.
+8. **Sin suscripciones.** `SUBSCRIPTIONS_OFFERED = false` (`billing-rules.ts`): la página no ofrece planes y `POST /api/organizacion/facturacion/checkout` responde 409. El código de suscripciones se conserva para cuando las Políticas cambien (sección 7.2).
+9. **Ajustes manuales.** `pnpm billing:credits adjust <slug|uuid> <créditos> "<motivo>"` abona o retira créditos; `pnpm billing:credits balance <slug|uuid>` muestra saldo, prueba y movimientos.
+
+### Transición: avalúos creados antes del cambio
+
+El cambio no abona ni quita avalúos a nadie. Lo que decide si un avalúo se cobra al concluir es **si ya tiene su consumo**, no la fecha:
+
+| Avalúo | Al crear | Al concluir | Al reabrir y volver a concluir |
+|---|---|---|---|
+| Creado después del cambio | Descuenta 1 | Nada | Nada |
+| Creado antes, nunca concluido (sin consumo) | — | Descuenta 1, como antes (con bloqueo encendido y sin saldo no se concluye: «Este avalúo se creó antes del cobro al crear…») | Nada |
+| Concluido antes, con su consumo | — | Nada | Nada |
+| Concluido antes de que existiera el libro (migración 040, sin consumo) | — | — | Nada (`previouslyConcluded`: reabrir nunca cobra) |
+
+Así no hay doble cobro (el índice único y la regla de arriba) ni pase gratis (lo creado antes y no concluido se cobra al concluirlo). Las organizaciones existentes **no reciben la prueba**: conservan su saldo tal cual; la prueba es solo para registros nuevos.
+
+Antes de desplegar, y después para confirmar, `pnpm billing:policies-report` (simulación, no escribe) lista por organización el cobro activo o no, el saldo, la prueba, cuántos avalúos abiertos sin cobrar se cobrarán al concluirse y cuántos concluidos antes del libro ya no se cobrarán. Con `--apply` solo escribe los vencimientos de pruebas ya vencidas.
 
 ### Precio acordado: $170 MXN con IVA por avalúo
 
-El cliente fijó el precio por avalúo en **$170.00 MXN finales, IVA incluido** (video 5.2 del 2 nov 2026; antes se había entendido $170 + IVA). Se guarda como $146.55 antes de IVA (16 %), que con el redondeo a centavos da $170.00. Lo publica el paquete `AVALUO_1` ("1 avalúo", 1 crédito, activo y público), que crea o corrige un script idempotente; no toca Stripe ni los demás paquetes:
+El precio por avalúo es **$170.00 MXN finales, IVA incluido** (Políticas comerciales 1.2; video 5.2 del 2 nov 2026). Se guarda como $146.55 antes de IVA (16 %), que con el redondeo a centavos da $170.00. Lo publica el paquete `AVALUO_1` ("1 avalúo", 1 crédito, activo y público), que crea o corrige un script idempotente; no toca Stripe ni los demás paquetes:
 
 ```bash
 pnpm billing:set-unit-price            # simulación: muestra qué crearía o cambiaría
@@ -34,17 +54,33 @@ docker exec -it valuos-app node --import tsx scripts/billing-set-unit-price.ts  
 docker exec -it valuos-app node --import tsx scripts/billing-set-unit-price.ts --apply
 ```
 
-El precio de Stripe **no** lo crea este script: lo crea `pnpm stripe:sync` (o la primera compra, que sincroniza el paquete elegido) cuando existan las llaves; si el importe cambia después, la sincronización crea un precio nuevo y archiva el anterior. El estado en producción está en [OPERACION.md](OPERACION.md), sección 8.
+El precio de Stripe **no** lo crea este script: lo crea `pnpm stripe:sync` (o la primera compra, que sincroniza el paquete) cuando existan las llaves; si el importe cambia después, la sincronización crea un precio nuevo y archiva el anterior. La página vende el paquete `AVALUO_1` (o, si no está, el primer paquete público de 1 crédito). El estado en producción está en [OPERACION.md](OPERACION.md), sección 8.
 
-Para probar en local: `pnpm billing:example-packages` inserta los cuatro paquetes tentativos (1 × $150, 10 × $140, 30 × $125, 100 × $110, antes de IVA) marcados como de prueba; solo corre contra una base local.
+Para probar en local: `pnpm billing:example-packages` inserta paquetes tentativos marcados como de prueba (el de 1 avalúo es el que vende la página); solo corre contra una base local.
+
+### Cambio de precio (Políticas 7.1)
+
+Un precio nuevo se **anuncia con al menos un mes de anticipación**, solo cuando el cliente lo pida, y no afecta lo ya pagado (el libro cuenta avalúos, no dinero):
+
+```bash
+pnpm billing:price-notice announce 190 2027-02-01            # simulación: el texto del aviso y a cuántos usuarios llegaría
+pnpm billing:price-notice announce 190 2027-02-01 --apply    # registra (devpware_avisos_precios, migración 065) y envía los correos
+pnpm billing:price-notice list
+pnpm billing:price-notice send <id> --apply                  # reintenta los correos si no salieron
+pnpm billing:price-notice cancel <id> --apply
+```
+
+- El precio va con IVA; la fecha es el inicio de ese día en la Ciudad de México y debe ser al menos un mes después de hoy. Solo puede haber un cambio pendiente.
+- Desde el anuncio hasta la fecha, el tablero y «Plan y facturación» muestran «Aviso de cambio de precio» con el precio nuevo, el de hoy y la fecha; el correo («Aviso de cambio de precio de Valuaxis Soft») llega a cada usuario activo de una organización activa, una vez, y cada envío queda en la auditoría con su destinatario y fecha (`BILLING_PRICE_NOTICE_EMAILED`).
+- Al llegar la fecha, la siguiente visita a «Plan y facturación» o la siguiente compra pone el precio nuevo en `AVALUO_1` (antes de IVA, para que con IVA dé exactamente el anunciado) y sella `DFechaAplicacion`; la sincronización con Stripe crea el precio nuevo y archiva el anterior. Una sesión de pago abierta antes de la fecha se cobra al precio que mostró.
 
 ### Publicar o cambiar un paquete
 
-1. Insertar o editar la fila en `devpware_paquetes_creditos` (`SClave` única, `SNombre`, `ICreditos`, `NImporte` antes de IVA, `NImpuestoPorcentaje`, `BActivo`, `BEsPublico`, `IOrden`).
-2. `pnpm stripe:sync` crea el producto y el precio en Stripe (etiquetados `app = valuaxis`) y guarda el id del precio en `SIdentificadorExterno`. Un precio de Stripe nunca se edita: si cambia el importe, se crea uno nuevo y el anterior se archiva. Antes de cada compra se sincroniza el paquete elegido.
+1. Insertar o editar la fila en `devpware_paquetes_creditos` (`SClave` única, `SNombre`, `ICreditos`, `NImporte` antes de IVA, `NImpuestoPorcentaje`, `BActivo`, `BEsPublico`, `IOrden`). La página solo vende el de 1 avalúo; un cambio de su precio va por «Cambio de precio».
+2. `pnpm stripe:sync` crea el producto y el precio en Stripe (etiquetados `app = valuaxis`) y guarda el id del precio en `SIdentificadorExterno`. Un precio de Stripe nunca se edita: si cambia el importe, se crea uno nuevo y el anterior se archiva. Antes de cada compra se sincroniza el paquete.
 3. Para retirar un paquete: `BEsPublico = false` o `BActivo = false`.
 
-## Suscripciones (para la base de datos, más adelante)
+## Suscripciones (apagadas; para la base de datos, más adelante)
 
 1. **Planes.** Se venden los planes de la base (`devpware_planes`) activos, públicos y no gratuitos que tengan un precio (`devpware_precios_planes`) activo, recurrente, en MXN y vigente hoy. Nada está escrito en el código.
 2. **Sincronización.** `pnpm stripe:sync` crea en Stripe un producto por plan y un precio por `PrecioPlan`, y guarda el id del precio en `SIdentificadorExterno`. Es idempotente. Un precio de Stripe nunca se edita: si cambia el importe, el impuesto o el periodo, se crea uno nuevo y el anterior se archiva (quien ya lo paga lo conserva). Antes de cada Checkout se sincroniza el plan elegido.
@@ -67,7 +103,7 @@ Para probar en local: `pnpm billing:example-packages` inserta los cuatro paquete
 
 ### Qué se bloquea y qué no
 
-**Hoy no se bloquea nada.** Ninguna organización pierde acceso por su plan, su estado o un pago vencido; los límites de `devpware_funcionalidades_planes` tampoco se aplican. La función `allowsPaidUse` (`src/features/billing/billing-rules.ts`) responde "¿esta suscripción permite uso de pago ahora?" (con gracia) y solo decide qué aviso muestra la página. Aplicar los bloqueos queda para después.
+Las suscripciones no bloquean nada: ningún plan, estado ni pago vencido quita acceso, y los límites de `devpware_funcionalidades_planes` no se aplican. `allowsPaidUse` (`src/features/billing/billing-rules.ts`) solo decide qué aviso muestra la página. Lo único que bloquea es el cobro por avalúo con `BCobroPorAvaluo` encendido y sin saldo (arriba).
 
 ### Impuestos
 
@@ -196,7 +232,7 @@ Para probar en local hay dos planes de ejemplo: `pnpm billing:example-plans` (so
 3. Crear el endpoint del webhook con sus eventos → `STRIPE_WEBHOOK_SECRET`.
 4. `pnpm stripe:sync` en producción → copiar `STRIPE_PORTAL_CONFIGURATION` y reiniciar la app.
 5. Revisar en el panel: portal activo, zona horaria, reintentos, correos y marca.
-6. Con una tarjeta real, comprar el paquete más barato desde una organización de prueba: confirmar el abono en "Avalúos disponibles", el evento entregado (200) en el panel del webhook y `VALUAXIS` en el cargo; concluir un avalúo y ver el consumo. Reembolsar el cargo en el panel (el reembolso no retira créditos: usar `pnpm billing:credits adjust`).
+6. Con una tarjeta real, comprar un avalúo desde una organización de prueba: confirmar el abono en "Avalúos disponibles", el correo de confirmación, el evento entregado (200) en el panel del webhook y `VALUAXIS` en el cargo; crear un avalúo y ver el consumo. Reembolsar el cargo en el panel (el reembolso no retira créditos: usar `pnpm billing:credits adjust`).
 7. Encender el cobro organización por organización con `pnpm billing:credits enforce <slug> on` cuando el cliente lo decida; hasta entonces nadie queda bloqueado.
 8. Confirmar que una compra de la tienda sigue llegando a su propio webhook y que el de Valuaxis la contesta con 200 sin registrarla.
 
@@ -208,13 +244,18 @@ Para probar en local hay dos planes de ejemplo: `pnpm billing:example-plans` (so
 | Interfaz del proveedor y su implementación (único lugar que importa el SDK) | `src/features/billing/billing-gateway.ts`, `src/infrastructure/payments/stripe-gateway.ts` |
 | Catálogo y sincronización | `src/features/billing/billing-catalog.service.ts`, `scripts/stripe-sync.ts` |
 | Checkout, portal y resumen | `src/features/billing/billing.service.ts` |
-| Reglas puras de créditos (signos, consumo, bloqueo) | `src/features/billing/credit-rules.ts` |
-| Libro de créditos (saldo, movimientos, consumo al concluir, ajustes, bandera) | `src/features/billing/credits.service.ts`, `scripts/billing-credits.ts` |
-| Paquetes: sincronización, compra y abono | `src/features/billing/credit-packages.service.ts`, `scripts/billing-example-packages.ts` |
-| Consumo al concluir | `src/features/valuations/services/valuation-workflow/lifecycle.ts` |
+| Reglas puras de créditos (signos, consumo al crear, prueba y vencimiento, transición, totales por unidad) | `src/features/billing/credit-rules.ts` |
+| Libro de créditos (saldo con prueba, movimientos, consumo al crear y al concluir, prueba, ajustes, bandera) | `src/features/billing/credits.service.ts`, `scripts/billing-credits.ts` |
+| Paquetes y compra por unidad: sincronización, Checkout, abono, confirmación por correo, transferencias | `src/features/billing/credit-packages.service.ts`, `scripts/billing-example-packages.ts` |
+| Precio por unidad y cambio de precio (aviso, correos, aplicación) | `src/features/billing/unit-price.service.ts`, `scripts/billing-price-notice.ts`, `src/features/billing/components/price-change-alert.tsx` |
+| Datos de transferencia o depósito | `src/features/billing/payment-instructions.ts` |
+| Reporte de la transición por organización | `scripts/billing-policies-report.ts` |
+| Consumo al crear y duplicar | `src/features/valuations/actions/save-valuation.action.ts`, `src/features/valuations/services/valuation-duplicate.service.ts` |
+| Prueba al registrarse | `src/features/auth/services/registration.service.ts`, `src/features/auth/services/oauth-onboarding.service.ts` |
+| Consumo al concluir (solo transición) | `src/features/valuations/services/valuation-workflow/lifecycle.ts` |
 | Conciliación | `src/features/billing/subscription-sync.service.ts` |
 | Webhook | `src/features/billing/billing-webhook.service.ts`, `src/app/api/stripe/webhook/route.ts` |
 | Facturación CFDI: reglas puras (catálogos, RFC, importes, cuerpos para Facturapi) | `src/features/billing/invoice-rules.ts` |
 | Facturación CFDI: datos fiscales, emisión, reintento, descarga y factura global | `src/features/billing/invoicing.service.ts`, `scripts/invoices-global.ts` |
 | Interfaz del proveedor de CFDI y su implementación con `fetch` | `src/features/billing/invoicing-gateway.ts`, `src/infrastructure/invoicing/facturapi-gateway.ts` |
-| Pruebas | `tests/billing-*.test.ts`, `tests/integration/billing.integration.ts`, `tests/integration/billing-credits.integration.ts`, `tests/integration/invoicing.integration.ts`, `tests/support/fake-billing-gateway.ts`, `tests/support/fake-facturapi-server.ts` |
+| Pruebas | `tests/billing-*.test.ts`, `tests/integration/billing.integration.ts`, `tests/integration/billing-credits.integration.ts`, `tests/integration/billing-policies.integration.ts`, `tests/integration/invoicing.integration.ts`, `tests/support/fake-billing-gateway.ts`, `tests/support/fake-facturapi-server.ts` |

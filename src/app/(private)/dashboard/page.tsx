@@ -7,6 +7,8 @@ import { hasPermission } from "@/features/auth/permissions";
 import { greetingFor } from "@/features/dashboard/attention";
 import { ActivityFeed } from "@/features/dashboard/components/activity-feed";
 import { AttentionPanel } from "@/features/dashboard/components/attention-panel";
+import { PriceChangeAlert } from "@/features/billing/components/price-change-alert";
+import { getActivePriceNotice } from "@/features/billing/unit-price.service";
 import { CreditsCard } from "@/features/dashboard/components/credits-card";
 import { DashboardHeader } from "@/features/dashboard/components/header";
 import { PageContainer } from "@/features/dashboard/components/page-header";
@@ -32,7 +34,7 @@ function summarySentence(active: number, toConclude: number, total: number) {
 
 export default async function DashboardPage() {
   const user = await requireSession("/dashboard");
-  const [summary, invitations] = await Promise.all([getDashboardSummary(user), listMyInvitations(user)]);
+  const [summary, invitations, priceNotice] = await Promise.all([getDashboardSummary(user), listMyInvitations(user), getActivePriceNotice()]);
   const canCreate = hasPermission(user, AUTH_PERMISSIONS.createValuations);
   const canView = hasPermission(user, AUTH_PERMISSIONS.viewValuations);
   const firstName = user.name.split(" ")[0];
@@ -74,6 +76,12 @@ export default async function DashboardPage() {
 
         <PendingInvitations invitations={invitations} />
 
+        {priceNotice ? (
+          <div className="mb-6">
+            <PriceChangeAlert notice={priceNotice} withLink />
+          </div>
+        ) : null}
+
         <div className="mb-6">
           <StatsCards stats={{ total: summary.valuations.total, byStatus: summary.valuations.byStatus }} />
         </div>
@@ -84,7 +92,7 @@ export default async function DashboardPage() {
             <RecentValuations valuations={summary.valuations.recent} now={now} canCreate={canCreate} />
           </div>
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6">
-            {summary.credits ? <CreditsCard balance={summary.credits.balance} /> : null}
+            {summary.credits ? <CreditsCard balance={summary.credits.balance} trialAvailable={summary.credits.trialAvailable} trialExpiresAt={summary.credits.trialExpiresAt} /> : null}
             <QuickActions
               canCreateValuation={canCreate}
               canViewValuations={canView}

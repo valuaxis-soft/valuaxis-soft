@@ -627,8 +627,9 @@ export const api = {
       request<{ url: string; destination: "checkout" | "portal" }>(`/organizacion/facturacion/checkout`, { method: "POST", body: JSON.stringify({ priceId }) }),
     portal: () => request<{ url: string }>(`/organizacion/facturacion/portal`, { method: "POST" }),
     /** Buys a credit package: answers the Stripe page to send the browser to. */
-    buyPackage: (packageId: string) =>
-      request<{ url: string }>(`/organizacion/facturacion/creditos/checkout`, { method: "POST", body: JSON.stringify({ packageId }) }),
+    /** Pays `quantity` Avalúos Disponibles by card at the unit price. */
+    buyCredits: (quantity: number) =>
+      request<{ url: string }>(`/organizacion/facturacion/creditos/checkout`, { method: "POST", body: JSON.stringify({ quantity }) }),
     /** The organization's fiscal data for its CFDI. */
     saveFiscalData: (data: FiscalData) => request<FiscalDataDto>(`/organizacion/facturacion/datos-fiscales`, { method: "PUT", body: JSON.stringify(data) }),
     /** «Reintentar factura» of a purchase. */

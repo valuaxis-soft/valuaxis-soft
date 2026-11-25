@@ -18,7 +18,7 @@ import { prisma } from "../src/infrastructure/database/prisma-client";
 const UNIT_PACKAGE = {
   SClave: "AVALUO_1",
   SNombre: "1 avalúo",
-  SDescripcion: "Un avalúo: se descuenta al concluirlo por primera vez. $170.00 MXN, IVA incluido.",
+  SDescripcion: "Un avalúo disponible: se descuenta al crear el avalúo. $170.00 MXN, IVA incluido.",
   ICreditos: 1,
   SMoneda: "MXN",
   NImporte: new Prisma.Decimal("146.55"),

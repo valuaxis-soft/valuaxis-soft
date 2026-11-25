@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { notifyLowCredits } from "@/features/notifications/notification-events";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { phoneRequiredResponse } from "@/features/account/phone/phone-http";
@@ -17,6 +18,8 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     const { id } = await params;
     const result = await duplicateValuation(auth.user, id);
     await auditValuation({ action: "DUPLICATE", user: auth.user, valuationPublicId: result.id, request, metadata: { source: id, folio: result.folio } });
+    // The copy consumed an Avalúo Disponible: with few left, whoever sees the billing hears about it.
+    after(() => notifyLowCredits(auth.user.organizationId));
 
     return NextResponse.json({ data: result }, { status: 201 });
   } catch (error) {

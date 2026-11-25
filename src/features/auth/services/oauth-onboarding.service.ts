@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { grantTrialCredits } from "@/features/billing/credits.service";
 import { buildOrganizationSlug, buildPersonalOrganizationName } from "../rules/registration.rules";
 import type { GoogleOAuthProfile } from "../providers/google-oauth.provider";
 
@@ -99,6 +100,8 @@ export async function ensureUserOrganizationMembership(
       IdRol: adminRole.IdRol,
     },
   });
+  // The free trial of a new account: three Avalúos Disponibles for a month (docs/COBRO.md).
+  await grantTrialCredits(tx, organization.IdOrganizacion);
 
   return organization;
 }

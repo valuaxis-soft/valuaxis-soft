@@ -18,6 +18,7 @@ import type { BillingGateway } from "./billing-gateway";
 import {
   BILLING_PAGE_PATH,
   BILLING_PROVIDER,
+  SUBSCRIPTIONS_OFFERED,
   allowsPaidUse,
   billingPeriodLabel,
   isValuaxisObject,
@@ -26,8 +27,10 @@ import {
   valuaxisMetadata,
 } from "./billing-rules";
 import { findSellablePackages } from "./credit-packages.service";
-import { packagePricing } from "./credit-rules";
-import { getCreditBalance, listCreditMovements, type CreditMovementDto } from "./credits.service";
+import { MAX_PURCHASE_QUANTITY, packagePricing } from "./credit-rules";
+import { getCreditSummary, listCreditMovements, type CreditMovementDto } from "./credits.service";
+import { bankTransferForDisplay } from "./payment-instructions";
+import { getActivePriceNotice, getUnitPrice, unitPriceDto, type PriceNoticeDto, type UnitPriceDto } from "./unit-price.service";
 import { getFiscalData, type InvoicingOverviewDto } from "./invoicing.service";
 import { findBillingCustomer, refreshOrganizationSubscription } from "./subscription-sync.service";
 
@@ -66,12 +69,20 @@ export type CreditPackageDto = {
 };
 
 export type CreditsOverviewDto = {
-  /** Credits left (one per concluded valuation); negative when concluding went on without balance. */
+  /** Avalúos Disponibles left (paid and trial); negative when creating went on without balance. */
   balance: number;
-  /** The organization's BCobroPorAvaluo: concluding without balance is blocked. */
+  /** The paid part: it never expires. */
+  paid: number;
+  /** The free trial of an account registered since the policies; null for every older one. */
+  trial: { granted: number; used: number; available: number; expiresAt: string; expired: boolean } | null;
+  /** The organization's BCobroPorAvaluo: creating without balance is blocked. */
   enforced: boolean;
   movements: CreditMovementDto[];
+  /** Every sellable package, as the catalog has it; the page sells only the unit price. */
   packages: CreditPackageDto[];
+  /** The price of one Avalúo Disponible (commercial policies 1.2); null when none is published. */
+  unitPrice: UnitPriceDto | null;
+  maxQuantity: number;
 };
 
 export type BillingOverviewDto = {
@@ -80,6 +91,12 @@ export type BillingOverviewDto = {
   /** The organization has paid something through Stripe at least once: the portal has receipts to show. */
   hasCustomer: boolean;
   credits: CreditsOverviewDto;
+  /** False while the commercial policies rule out subscriptions (7.2): the page offers no plan. */
+  subscriptionsOffered: boolean;
+  /** A future price announced and not in force yet (commercial policies 7.1). */
+  priceNotice: PriceNoticeDto | null;
+  /** How to pay by transfer or deposit; «Por definir» until the owner gives the data. */
+  bankTransfer: ReturnType<typeof bankTransferForDisplay>;
   /** CFDI invoicing: on with FACTURAPI_KEY; the fiscal data its admins capture either way. */
   invoicing: InvoicingOverviewDto;
   current: {
@@ -121,15 +138,18 @@ async function trialDaysFor(organizationId: number, plan: { BPermitePrueba: bool
 }
 
 export async function getBillingOverview(organizationId: number, gateway: BillingGateway | null, now = new Date()): Promise<BillingOverviewDto> {
-  const [subscription, plans, organization, balance, movements, packages, customer, fiscalData] = await Promise.all([
+  // A price change whose date arrived takes effect before the price is shown.
+  const unit = await getUnitPrice(now);
+  const [subscription, plans, organization, summary, movements, packages, customer, fiscalData, priceNotice] = await Promise.all([
     findCurrentSubscription(organizationId),
     findSellablePlans({}, now),
     prisma.organizacion.findUniqueOrThrow({ where: { IdOrganizacion: organizationId }, select: { BCobroPorAvaluo: true } }),
-    getCreditBalance(organizationId),
+    getCreditSummary(organizationId, prisma, now),
     listCreditMovements(organizationId),
     findSellablePackages(),
     findBillingCustomer(organizationId),
     getFiscalData(organizationId),
+    getActivePriceNotice(now),
   ]);
   const paid = isLiveStripeSubscription(subscription);
   const cancelsAt = (subscription?.JMetadatos as { stripe?: { cancelAt?: string | null } } | null)?.stripe?.cancelAt ?? null;
@@ -139,9 +159,22 @@ export async function getBillingOverview(organizationId: number, gateway: Billin
     enabled: gateway !== null,
     hasCustomer: customer !== null,
     invoicing: { enabled: Boolean(env.FACTURAPI_KEY?.trim()), fiscalData },
+    subscriptionsOffered: SUBSCRIPTIONS_OFFERED,
+    priceNotice,
+    bankTransfer: bankTransferForDisplay(),
     credits: {
-      balance,
+      balance: summary.balance,
+      paid: summary.paid,
+      trial: summary.trial && {
+        granted: summary.trial.granted,
+        used: summary.trial.used,
+        available: summary.trial.available,
+        expiresAt: summary.trial.expiresAt.toISOString(),
+        expired: summary.trial.expired,
+      },
       enforced: organization.BCobroPorAvaluo,
+      unitPrice: unit ? unitPriceDto(unit) : null,
+      maxQuantity: MAX_PURCHASE_QUANTITY,
       movements,
       packages: packages.map((pkg) => ({
         id: pkg.UIdentificadorPublico,

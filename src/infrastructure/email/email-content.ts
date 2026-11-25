@@ -34,7 +34,9 @@ import {
   buildInvoiceEmailSubject,
   buildInvoiceEmailText,
 } from "@/features/notifications/templates/invoice-email";
+import { buildBillingNoticeHtml, buildBillingNoticeText } from "@/features/notifications/templates/billing-notice";
 import type {
+  BillingNoticeInput,
   DictamenEmailInput,
   InvoiceEmailInput,
   PasswordResetEmailInput,
@@ -86,6 +88,12 @@ export const invoiceEmailContent = (input: InvoiceEmailInput): EmailContent => (
   subject: buildInvoiceEmailSubject(input),
   text: buildInvoiceEmailText(input),
   html: buildInvoiceEmailHtml(input),
+});
+
+export const billingNoticeContent = (input: BillingNoticeInput): EmailContent => ({
+  subject: input.subject,
+  text: buildBillingNoticeText(input),
+  html: buildBillingNoticeHtml(input),
 });
 
 /** The two files of a CFDI, as every provider attaches them. */

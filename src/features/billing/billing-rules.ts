@@ -9,6 +9,15 @@ export const BILLING_PROVIDER = "STRIPE";
 /** Plan y facturación: where Checkout and the portal send the browser back to. */
 export const BILLING_PAGE_PATH = "/organizacion/facturacion";
 export const BILLING_CURRENCY = "MXN";
+
+/**
+ * The commercial policies (sections 1.1 and 7.2): no membership, subscription
+ * or recurring charge. The subscription code stays for the comparables
+ * database, but the page offers no plan and the checkout route refuses one
+ * until the policies are updated and this turns true.
+ */
+export const SUBSCRIPTIONS_OFFERED = false;
+export const NO_SUBSCRIPTIONS_MESSAGE = "Valuaxis Soft no ofrece suscripciones ni cobros recurrentes: se paga por avalúo.";
 export const BILLING_APP_TAG = "valuaxis";
 /** Shown on the card statement of subscription charges (set on the Stripe Product). */
 export const BILLING_STATEMENT_DESCRIPTOR = "VALUAXIS";
