@@ -579,6 +579,18 @@ export const api = {
   accreditation: {
     upload: (file: File) => uploadForm<AccreditationView>(`/cuenta/acreditacion`, { file }),
   },
+  /** «Reportar una falla» and the operator's response (docs/OPERACION.md, «Soporte y reportes de fallas»). */
+  support: {
+    reportFailure: (input: { valuationId: string | null; happenedOn: string; description: string; screenshot: File | null }) =>
+      uploadForm<{ id: string }>(`/soporte/fallas`, {
+        valuationId: input.valuationId ?? undefined,
+        happenedOn: input.happenedOn,
+        description: input.description,
+        screenshot: input.screenshot ?? undefined,
+      }),
+    respond: (reportId: string, input: { status: string; response: string }) =>
+      request<{ id: string }>(`/operador/fallas/${reportId}/respuesta`, { method: "POST", body: JSON.stringify(input) }),
+  },
   /** The signed-in user's phone, verified with a code (Twilio Verify). */
   phone: {
     sendCode: (input: { phone: string; channel: PhoneChannel }) =>

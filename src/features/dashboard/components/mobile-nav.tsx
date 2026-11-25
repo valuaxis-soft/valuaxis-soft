@@ -2,7 +2,7 @@
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import Link from "next/link";
-import { LogOut, Menu, Plus, UsersRound, X } from "lucide-react";
+import { Bug, LifeBuoy, LogOut, Menu, Plus, UsersRound, X } from "lucide-react";
 import { useState } from "react";
 
 import { ValuaxisLogo } from "@/components/brand/valuaxis-logo";
@@ -11,6 +11,7 @@ import { logoutAction } from "@/features/auth/actions/logout.action";
 import { NAV_ICONS } from "@/features/dashboard/components/nav-icons";
 import { Avatar, roleLabel } from "@/features/dashboard/components/user-menu";
 import { OPERATOR_USER_DIRECTORY_HREF } from "@/features/operator/operator-access";
+import { OPERATOR_FAILURE_REPORTS_HREF, SUPPORT_HREF } from "@/features/support/support-contact";
 import { NEW_VALUATION_HREF, type AppNavigation, type NavItem, type NavKey } from "@/features/dashboard/navigation";
 import { cn } from "@/lib/utils";
 
@@ -105,6 +106,30 @@ export function MobileNav({
             <p className="mt-5 mb-1 px-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">Tu cuenta</p>
             <div className="grid gap-1">
               {link(navigation.account)}
+              <Link
+                href={SUPPORT_HREF}
+                onClick={() => setOpen(false)}
+                className="flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium text-foreground transition-colors duration-150 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <LifeBuoy className="size-5 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block">Ayuda y soporte</span>
+                  <span className="block truncate text-xs font-normal text-muted-foreground">Correo, WhatsApp y reportar una falla</span>
+                </span>
+              </Link>
+              {operator ? (
+                <Link
+                  href={OPERATOR_FAILURE_REPORTS_HREF}
+                  onClick={() => setOpen(false)}
+                  className="flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium text-foreground transition-colors duration-150 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <Bug className="size-5 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block">Reportes de fallas</span>
+                    <span className="block truncate text-xs font-normal text-muted-foreground">Lo que reportan los usuarios y su respuesta</span>
+                  </span>
+                </Link>
+              ) : null}
               {operator ? (
                 <Link
                   href={OPERATOR_USER_DIRECTORY_HREF}

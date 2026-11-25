@@ -207,7 +207,7 @@ function conclusionSignatures(block: Block, caratula: Pick<CaratulaFormData, "fi
   const name = block.concepts.find((concept) => keyOf(concept) === CONCLUSION_KEYS.signerName);
   const cedula = block.concepts.find((concept) => keyOf(concept) === CONCLUSION_KEYS.signerCedula);
   if (!name?.calculationUnlinked && !cedula?.calculationUnlinked) return caratula.firmas;
-  return [{ name: name?.value.trim() ?? "", cedula: cedula?.value.trim() ?? "", role: "" }];
+  return [{ name: name?.value.trim() ?? "", cedula: cedula?.value.trim() ?? "", role: "", specialty: "" }];
 }
 
 /** The flow items of a block with a module of its own put right after its title (or first, without one). */

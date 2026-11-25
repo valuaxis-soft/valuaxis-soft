@@ -89,6 +89,10 @@ export type SectionMetadata = {
   palette?: DocumentPalette;
   /** The carátula prints its blocks in the editor's order. */
   freeBlockOrder?: boolean;
+  /** The document prints the advertisers' name and phone (matrix 1.5 bis), carried by its carátula section. */
+  advertiserData?: boolean;
+  /** The document prints the legend of software and AI tools (matrix 1.7), carried by its carátula section. */
+  aiToolsLegend?: boolean;
   /** The document's format version, carried by its carátula section (services/layout-refresh.ts). */
   layoutVersion?: number;
   /** Chapter or annex, as the appraiser chose. */
@@ -268,6 +272,8 @@ export function sectionMetadataFromContent(content: SectionMetadataContent): Sec
     titleBand: content.titleBand,
     ...(palette ? { palette } : {}),
     ...(content.freeBlockOrder ? { freeBlockOrder: true } : {}),
+    ...(content.advertiserData ? { advertiserData: true } : {}),
+    ...(content.aiToolsLegend ? { aiToolsLegend: true } : {}),
     ...(isLayoutVersion(content.layoutVersion) ? { layoutVersion: content.layoutVersion } : {}),
     ...(content.documentRole ? { documentRole: content.documentRole } : {}),
     ...(content.annexTitle?.trim() ? { annexTitle: content.annexTitle.trim() } : {}),
@@ -296,6 +302,8 @@ export function hydrateSectionMetadata(config: unknown): SectionMetadata {
     titleBand: readConfigMetadata(config, (value) => (isRecord(value) && isTitleBandStyle(value.titleBand) ? value.titleBand : undefined)),
     palette: readConfigMetadata(config, (value) => (isRecord(value) ? readDocumentPalette(value.palette) : undefined)),
     freeBlockOrder: sectionBooleanMetadata(config, "freeBlockOrder"),
+    advertiserData: sectionBooleanMetadata(config, "advertiserData"),
+    aiToolsLegend: sectionBooleanMetadata(config, "aiToolsLegend"),
     layoutVersion: readConfigMetadata(config, (value) => (isRecord(value) && isLayoutVersion(value.layoutVersion) ? value.layoutVersion : undefined)),
     documentRole: readConfigMetadata(config, (value) => (isRecord(value) && isSectionDocumentRole(value.documentRole) ? value.documentRole : undefined)),
     annexTitle: readConfigMetadata(config, (value) => (isRecord(value) && typeof value.annexTitle === "string" && value.annexTitle.trim() ? value.annexTitle.trim().slice(0, 60) : undefined)),
@@ -459,7 +467,7 @@ function isLayoutVersion(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0 && value < 10_000;
 }
 
-function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "custom" | "titleEdited" | "removed" | "titleHidden") {
+function sectionBooleanMetadata(config: unknown, key: "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "advertiserData" | "aiToolsLegend" | "custom" | "titleEdited" | "removed" | "titleHidden") {
   return readConfigMetadata(config, (value) => readBooleanMetadata(value, key));
 }
 
@@ -591,7 +599,7 @@ function readStringMetadata(value: unknown, key: "labelKey" | "valueKey" | "cust
   return typeof metadata === "string" ? metadata : undefined;
 }
 
-function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "custom" | "titleEdited" | "removed" | "calculationUnlinked" | "valueChart" | "titleHidden") {
+function readBooleanMetadata(value: unknown, key: "enabled" | "startOnNewPage" | "thousandsSeparator" | "freeBlockOrder" | "advertiserData" | "aiToolsLegend" | "custom" | "titleEdited" | "removed" | "calculationUnlinked" | "valueChart" | "titleHidden") {
   if (!isRecord(value)) return undefined;
   const metadata = value[key];
   return typeof metadata === "boolean" ? metadata : undefined;

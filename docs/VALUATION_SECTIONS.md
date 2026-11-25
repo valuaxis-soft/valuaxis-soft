@@ -169,7 +169,7 @@ Cada enfoque (costos, mercado de venta de inmuebles, de terrenos, de rentas, ing
 
 ## Configuración que no se imprime
 
-La carátula abre con "Configuración del avalúo" (separador de miles, margen, barras de título, banda, colores del dictamen y precisión del cálculo) y cada sección con "Configuración de la sección": paneles de borde punteado con el rótulo "Configuración — no se imprime".
+La carátula abre con "Configuración del avalúo" (separador de miles, margen, barras de título, banda, colores del dictamen, «Qué más imprime el reporte» y precisión del cálculo) y cada sección con "Configuración de la sección": paneles de borde punteado con el rótulo "Configuración — no se imprime".
 
 ### Colores del dictamen
 
@@ -180,3 +180,13 @@ Cada avalúo elige su paleta en «Carátula › Configuración del avalúo › C
 - **Cómo se aplica:** la raíz de cada documento (`DocumentRoot` en `report-preview.tsx`, `main[data-print-memory]` en la memoria) pone la paleta como variables CSS (`documentPaletteVars`): `--caratula-blue`, `--caratula-dark-blue`, `--doc-apartado`, `--doc-on-strong`, `--doc-strong-soft`, `--doc-rule`, `--doc-pastel`, `--doc-on-pastel`, `--doc-ink-on-pastel`, `--doc-pastel-soft` y `--doc-on-pastel-soft`. Cada clase del documento lleva el color de siempre como respaldo (`bg-[var(--doc-pastel,#BDD7EE)]`). La paleta viaja en `PagePresentation.palette`, así que la vista previa, la ventana externa, la vista previa de plantillas, el dictamen y el PDF del servidor leen la misma. El editor pone las mismas variables en `[data-valuation-workspace]` para que las tablas de captura (`CALC_HEAD`) coincidan con lo impreso en modo claro; el resto de la interfaz no las lee.
 - **Contraste:** el sistema avisa y no impide. Si el blanco sobre el color fuerte o el texto oscuro sobre el pastel no llegan a 4.5:1 (AA), el selector lo dice, y el documento pone solo el texto que mejor se lee sobre cada color (`--doc-on-strong`, `--doc-on-pastel`, `--doc-ink-on-pastel`: blanco u oscuro según la luminancia).
 - **Lo que no cambia:** los grises de renglones y reglas, los avisos, los enlaces, el azul de los valores calculados de la memoria, los colores por mercado de los mapas y el croquis, y las tablas de la memoria de cálculo (grises).
+
+## Reporte: firmantes, logotipo, leyenda y avisos (matriz de We Law, 25 nov 2026)
+
+- **Quién firma (1.7):** cada firma imprime nombre, cédula profesional y **especialidad** (campo nuevo «Especialidad» en las firmas de la carátula y de Datos del despacho, guardado en `JFirmas`, sin migración). Un avalúo nuevo la toma de la acreditación **verificada** (`ACREDITADO`) de un miembro del despacho con la misma cédula: el programa de su constancia (`withAccreditedSpecialties`, `getValuationDefaults`); lo que el valuador escriba se conserva. Firma autógrafa: no hay imagen de firma.
+- **Logotipo (1.7):** el encabezado imprime solo la imagen del encabezado del avalúo o el logotipo del despacho. Sin ninguno, no imprime logotipo (antes salía un recuadro azul con «VA»). El logotipo de Valuaxis nunca se imprime.
+- **Leyenda de herramientas e IA (1.7):** «Configuración del avalúo › Qué más imprime el reporte › Imprimir la leyenda de uso de herramientas e inteligencia artificial», apagada por omisión. Encendida, la carátula imprime antes de las firmas: «En la elaboración de este avalúo se usaron herramientas de software, incluida inteligencia artificial, bajo la revisión y responsabilidad del valuador que lo firma.» Se guarda en el `JConfiguracion` de la carátula (`aiToolsLegend`).
+- **Datos del anunciante (1.5 bis):** en el mismo panel, «Incluir datos del anunciante en la memoria», apagado por omisión (`advertiserData`; ver [COMPARABLES.md](COMPARABLES.md#avisos-y-datos-del-anunciante-matriz-de-we-law-25-nov-2026)).
+- **Datos de terceros (1.4):** arriba de la carátula y de Datos generales, una línea con el aviso literal de la matriz sobre los datos del solicitante y del propietario. No bloquea ni se repite por campo.
+- **Imágenes (1.5):** junto a la imagen principal de la carátula, el recordatorio de que el valuador declara tener derecho a usar la imagen (texto propuesto, pendiente de We Law); las imágenes del editor lo muestran como aviso al subirse.
+- **Envío por correo (1.7 y 3.4), verificado:** cada envío queda en la auditoría con destinatarios, fecha y hora, quién lo ordenó, su IP y la versión, y el historial del avalúo lo muestra («Envió el dictamen por correo · A: …»).

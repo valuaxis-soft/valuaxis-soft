@@ -58,6 +58,7 @@ import {
 } from "../editor/content-creation-control";
 
 import { CaratulaEditor, CalculatedValuesEditor } from "../editor/caratula-editor";
+import { ThirdPartyDataNotice } from "../legal-notice";
 import { ValuationSettingsPanel } from "../editor/valuation-settings-panel";
 import { ReportInclusionBadge, SectionDocumentSettings } from "../editor/section-document-settings";
 import { SignaturesEditor } from "../editor/signatures-editor";
@@ -513,6 +514,8 @@ export function ValuationEditorPanel(props: {
         ) : (
           <SectionDocumentSettings section={section} allSections={props.allSections} readOnly={props.readOnly} onUpdateSection={props.onUpdateSection} />
         )}
+        {/* Matrix 1.4: where the solicitante and the propietario are captured, once per tab (a template has no third parties). */}
+        {props.valuationId && (isCaratula || isDatosGenerales) ? <ThirdPartyDataNotice /> : null}
         {/* The calculation panels save on their own: Ctrl+Z in their fields is the browser's (or the panel's) own. */}
         {props.calculationPanel ? <div data-native-undo="">{props.calculationPanel}</div> : null}
         {isCaratula && props.caratula && props.meta && props.onUpdateCaratula && props.onUpdateMeta ? (

@@ -19,6 +19,7 @@ import { COMPARABLE_TYPES } from "../calculation/market-types";
 import { getStatisticalCalculation } from "../calculation/statistical.service";
 import { caratulaFromValuation, initialMetaFor, initialSectionsFor, mergeDocumentHeaderImage } from "../components/workspace/model/initial-hydration";
 import { getValuationByPublicId } from "../repositories/valuation.repository";
+import { printsAdvertiserData } from "../services/advertiser-data";
 import { excludedReportApproaches } from "../services/report-approaches";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { buildCalculationMemory, memoryComparableCards, type StoredRun } from "./calculation-memory";
@@ -81,6 +82,7 @@ export async function loadCalculationMemory(user: AuthUser, publicId: string, ge
   // A market left out of the dictamen ("Agregar al informe") has no sheets in the memoria técnica.
   const comparables = memoryComparableCards(
     marketsInReport(markets, excludedReportApproaches(sections)), { id: publicId, folio: memory.folio, title: null }, todayInMexico(generatedAt),
+    { advertiserData: printsAdvertiserData(sections) },
   );
   return { memory, sections, caratula, letterhead, propertyKind: valuation.propertyKind, comparables };
 }

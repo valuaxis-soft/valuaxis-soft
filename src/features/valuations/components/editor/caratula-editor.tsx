@@ -61,6 +61,7 @@ import {
 import type { HeaderExtraField } from "@/features/valuations/model";
 import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
 import { UploadButton } from "./image-upload-control";
+import { ImageRightsNotice } from "../legal-notice";
 import { ImageFramingControl } from "./image-framing-control";
 
 /** 1 to 12 whole months, at the appraiser's discretion. */
@@ -318,6 +319,8 @@ function PrincipalImageEditor({
           {onUpload ? (
             <PasteImageButton baseName="imagen-principal" disabled={disabled} onFiles={(files) => onUpload(filesAsChangeEvent(files))} />
           ) : null}
+          {/* Matrix 1.5, «Fotografías y textos». */}
+          {!readOnly ? <ImageRightsNotice /> : null}
         </div>
       </div>
       {image?.url ? (

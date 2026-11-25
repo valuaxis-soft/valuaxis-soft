@@ -6,6 +6,7 @@
  * are rewritten on every calculation; the appraiser edits the data in the
  * calculation panel.
  */
+import { printableAdvertiser } from "../services/advertiser-data";
 import type { MarketApproachResult } from "../engine/market";
 import type { AppSection, Block, TableContent } from "../model";
 import { ensureTableV2, type GeneratedTableLayout, type TableNote, type TableSummaryBox, type TableSummaryRow } from "../services/table";
@@ -327,10 +328,14 @@ export function withComparableRowIds(blocks: Block[], comparables: ReadonlyArray
 export function marketDocumentBlocks(
   calculation: MarketCalculationDto,
   result: MarketApproachResult | null,
-  /** `capture`: the page as the editor captures in it, with the homologation table though the dictamen leaves it out; never saved. */
-  options: { capture?: boolean } = {},
+  /**
+   * `capture`: the page as the editor captures in it, with the homologation table though the dictamen leaves it out; never saved.
+   * `advertiserData`: the offers print the advertiser's name and phone (the carátula's «Incluir datos del anunciante…»; off by default).
+   */
+  options: { capture?: boolean; advertiserData?: boolean } = {},
 ): Block[] {
-  const { settings, comparables } = calculation;
+  const { settings } = calculation;
+  const comparables = calculation.comparables.map((comparable) => printableAdvertiser(comparable, options.advertiserData === true));
   if (!comparables.length) return [];
   const prefix = `${prefixFor(settings.comparableType)}-enfoque`;
   const page = PAGE[settings.comparableType];

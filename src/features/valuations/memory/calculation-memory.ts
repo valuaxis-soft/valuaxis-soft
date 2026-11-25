@@ -18,6 +18,7 @@
 import { valueAtPath, type CapturedFormulas, type PercentFields } from "../calculation/captured-formulas";
 import type { ComparableCardDto } from "../calculation/comparable-card.service";
 import { comparableValidity } from "../calculation/comparable-validity";
+import { printableAdvertiser } from "../services/advertiser-data";
 import type { CostCalculationDto } from "../calculation/cost-types";
 import { COST_PERCENT_FIELDS, costEngineConfig, toCostEngineInput } from "../calculation/cost-types";
 import type { ConclusionCalculationDto } from "../calculation/conclusion-types";
@@ -752,17 +753,19 @@ const PRINT_ORDER: ComparableType[] = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUE
  * "Memoria técnica de comparables": the sheet of every comparable the
  * valuation uses, market by market as the dictamen prints them, with the
  * data, photos and source captured. A sheet of the memory carries no uses
- * in other valuations, review or warnings.
+ * in other valuations, review or warnings, and no advertiser's name or phone
+ * unless the appraiser includes them (`advertiserData`, matrix 1.5 bis).
  */
 export function memoryComparableCards(
   markets: Array<Pick<MarketCalculationDto, "settings" | "comparables" | "comparableValidityMonths">>,
   valuation: { id: string; folio: string; title: string | null },
   today: string,
+  options: { advertiserData?: boolean } = {},
 ): ComparableCardDto[] {
   return [...markets]
     .sort((a, b) => PRINT_ORDER.indexOf(a.settings.comparableType) - PRINT_ORDER.indexOf(b.settings.comparableType))
     .flatMap((market) => [...market.comparables].sort((a, b) => a.reference - b.reference).map((comparable): ComparableCardDto => ({
-      comparable,
+      comparable: printableAdvertiser(comparable, options.advertiserData === true),
       type: market.settings.comparableType,
       valuation,
       validity: comparableValidity(comparable.updatedOn ?? today, today, comparable.validityMonths ?? market.comparableValidityMonths),

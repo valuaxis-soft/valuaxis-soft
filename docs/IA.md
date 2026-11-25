@@ -57,6 +57,13 @@ No se envía el nombre del cliente, el folio, la organización, el usuario ni ni
 
 De cada uso se registra en auditoría (`EXPORTACION`, acciones `AI_LISTING_EXTRACT` y `AI_DRAFT_WRITE`) quién, en qué avalúo, desde qué IP, el modelo, los tokens de entrada y salida, y conteos (caracteres, datos propuestos y descartados, datos, tablas y celdas enviadas, intentos). Los registros del servidor solo llevan el tipo de falla.
 
+## Avisos en pantalla (matriz de We Law, 25 nov 2026)
+
+- **Pegar anuncio:** antes del cuadro, el recordatorio de pegar solo el texto del anuncio, sin datos del solicitante, del propietario ni de otras personas (texto propuesto, pendiente de redacción de We Law); junto al resultado, el aviso literal de la matriz 1.5: «Los datos que propone esta función pueden contener errores. Revíselos y corríjalos antes de guardarlos; usted responde de los datos que usa en su avalúo.» Lo propuesto no se guarda hasta «Guardar comparable».
+- **Buscar con IA:** el mismo aviso junto a la lista de anuncios encontrados. No cambia lo que hace la búsqueda.
+- Los textos están en `src/features/valuations/legal-notices.ts`; el detalle, en [COMPARABLES.md](COMPARABLES.md#avisos-y-datos-del-anunciante-matriz-de-we-law-25-nov-2026).
+- **Registro de uso (matriz 3.3):** cada uso queda en la auditoría con quién, cuándo, desde qué IP, el avalúo, el modelo y los tokens (el consumo); el costo en pesos se calcula con la tabla de «Costo por uso», no se guarda por registro.
+
 ## Buscar con IA (comparables en la web)
 
 Desde el 22 de noviembre de 2026, a petición del valuador («en ChatGPT le describo el terreno y me manda comparables»). Dentro de **Buscar comparables**, la opción **Buscar con IA en la web**:

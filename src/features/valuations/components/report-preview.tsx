@@ -34,6 +34,7 @@ import {
   type DocumentFlowItem,
 } from "./document-preview-page";
 import {
+  AiToolsLegend,
   CaratulaCoverModule,
   CaratulaAssumptionsModule,
   CaratulaBlockHeading,
@@ -408,6 +409,8 @@ function CaratulaPreview({
     ...blockItems,
     // With its conclusion hidden, the commercial value still prints, as it always did.
     ...(valueConclusionId ? [] : [{ id: "caratula-conclusion", node: <CaratulaConclusionModule blocks={[]} caratula={caratula} meta={meta} /> }]),
+    // Matrix 1.7: only when the appraiser adds it in «Configuración del avalúo», right before who signs.
+    ...(section.aiToolsLegend ? [{ id: "caratula-ai-tools-legend", node: <AiToolsLegend /> }] : []),
   ];
   const items: DocumentFlowItem[] = [
     // What prints last goes with the signatures to a next page, so they never print there alone (24 Nov 2026).

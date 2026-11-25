@@ -13,8 +13,9 @@ import {
 } from "@/features/valuations/services/valuation-signatures";
 
 /**
- * Who signs: one row per signature with name, cédula profesional and an
- * optional title, printed under the line where each one signs by hand. Rows
+ * Who signs: one row per signature with name, cédula profesional, an
+ * optional title and the specialty, printed under the line where each one
+ * signs by hand. Rows
  * are added, removed and reordered; they print in this order. There is no
  * scanned signature: a pasted image has no legal validity (observations of
  * 27 Oct 2026).
@@ -57,7 +58,7 @@ export function SignaturesEditor({
         const id = `${idPrefix}-${index}`;
         return (
           // Rows have no identity of their own: the position is the key.
-          <div className="grid gap-3 rounded-md border bg-background p-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.5fr)_auto] md:items-start" key={index}>
+          <div className="grid gap-3 rounded-md border bg-background p-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,2fr)_auto] md:items-start" key={index}>
             <Field data-invalid={Boolean(errors.name)}>
               <FieldLabel htmlFor={`${id}-name`}>Nombre de quien firma</FieldLabel>
               <Input id={`${id}-name`} aria-invalid={Boolean(errors.name)} disabled={readOnly} value={signature.name} maxLength={180}
@@ -74,6 +75,13 @@ export function SignaturesEditor({
               <FieldLabel htmlFor={`${id}-role`}>Cargo (opcional)</FieldLabel>
               <Input id={`${id}-role`} disabled={readOnly} value={signature.role} maxLength={120} placeholder="Perito valuador"
                 onChange={(event) => update(index, { role: event.target.value })} />
+            </Field>
+            {/* Matrix 1.7: the report prints name, cédula and specialty; a verified accreditation of that cédula fills it in. */}
+            <Field data-invalid={Boolean(errors.specialty)}>
+              <FieldLabel htmlFor={`${id}-specialty`}>Especialidad</FieldLabel>
+              <Input id={`${id}-specialty`} aria-invalid={Boolean(errors.specialty)} disabled={readOnly} value={signature.specialty ?? ""} maxLength={300}
+                placeholder="Maestría en Valuación Inmobiliaria" onChange={(event) => update(index, { specialty: event.target.value })} />
+              {errors.specialty ? <FieldError>{errors.specialty}</FieldError> : null}
             </Field>
             <div className="flex gap-1 md:pt-6">
               <Button type="button" size="icon-sm" variant="ghost" aria-label={`Mover la firma ${index + 1} arriba`} title="Mover arriba"

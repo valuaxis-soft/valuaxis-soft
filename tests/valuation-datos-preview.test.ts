@@ -180,8 +180,10 @@ test("ReportPreview reconoce el identificador actual datosGenerales", () => {
   assert.match(html, /No se proporcionó/);
   assert.doesNotMatch(html, /Datos generales desde la sección/);
   assert.match(html, /data-document-preview-header="true"/);
-  assert.match(html, /sm:grid-cols-\[190px_minmax\(0,1fr\)\]/);
-  assert.match(html, /h-24/);
+  // Without the firm's logo or a header image, the header prints no logo (matrix 1.7: no «VA» box).
+  assert.doesNotMatch(html, /sm:grid-cols-\[190px_minmax\(0,1fr\)\]/);
+  assert.doesNotMatch(html, /data-header-logo/);
+  assert.doesNotMatch(html, />VA</);
   assert.match(html, /bg-\[var\(--caratula-dark-blue\)\][^>]*>DICTAMEN VALUATORIO/);
   assert.match(html, /px-5 pb-10 pt-3 sm:px-8/);
 });

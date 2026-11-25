@@ -10,6 +10,7 @@ const allowedInternalPrefixes = [
   // Unlisted demonstrations: after signing in, the link sent to the client opens again.
   "/demo",
   "/organizacion",
+  "/soporte",
   "/suscripcion",
   "/workspace",
 ] as const;

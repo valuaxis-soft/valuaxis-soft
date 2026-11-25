@@ -6,6 +6,7 @@
  * book does: the same tables, with its use in km where a machine's is in
  * hours.
  */
+import { printableMachineryContact } from "../services/advertiser-data";
 import { amountInWords } from "../engine/amount-in-words";
 import type { MachineryCostResult, MachineryMarketResult } from "../engine/machinery";
 import type { Apartado, Block } from "../model";
@@ -61,7 +62,11 @@ const closingBox = (label: string, value: number): TableSummaryBox => ({
 });
 
 /** Whether the valuation is of a vehicle (appraisal-subject.ts, `isVehicleEssence`): its use is read in km. */
-export type MachineryDocumentOptions = { vehicle?: boolean };
+export type MachineryDocumentOptions = {
+  vehicle?: boolean;
+  /** The contact table prints the advertiser's name, phone and email (the carátula's «Incluir datos del anunciante…»; off by default). */
+  advertiserData?: boolean;
+};
 
 /** The book's names of the use of the good: hours of a machine; km of a vehicle (automobile book, H18, U22 and B63). */
 export function machineryUseLabels(options: MachineryDocumentOptions = {}) {
@@ -210,7 +215,8 @@ export function machineryMarketBlocks(market: MachineryMarketDto, subject: Machi
         { notes: [{ position: "top", label: "Obtención del valor unitario.", text: "Comparables de bienes en venta semejantes en uso al sujeto que se valúa." }] }),
       generatedTable(`${MARKET_PREFIX}-tabla-contacto`, "Información de contacto",
         [figureColumn("REF."), textColumn("Contacto"), textColumn("Empresa"), figureColumn("Teléfono"), textColumn("Correo"), textColumn("Link"), textColumn("Ubicación"), textColumn("Observaciones")],
-        offers.map((row) => [row.ref, cell(row.contact), cell(row.company), cell(row.phone), cell(row.email), cell(row.link), cell(row.location), cell(row.notes)])),
+        offers.map((offer) => printableMachineryContact(offer, options.advertiserData === true))
+          .map((row) => [row.ref, cell(row.contact), cell(row.company), cell(row.phone), cell(row.email), cell(row.link), cell(row.location), cell(row.notes)])),
     ],
   }));
 

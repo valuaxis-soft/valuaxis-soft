@@ -69,6 +69,7 @@ import { COMPARABLE_VALIDITY_MONTHS, addMonths, validityMonthsOf } from "@/featu
 import { FormulaInput } from "./formula-input";
 import { useExpandableDialog } from "./expandable-dialog";
 import { ScreenshotSlot } from "./screenshot-slot";
+import { AiResultReviewNotice, ImageRightsNotice, ThirdPartyDataNotice } from "../legal-notice";
 import { previewUrl } from "./listing-images-picker";
 import { ComparablePhotoFraming } from "./comparable-photo-framing";
 import type { ImageFraming } from "@/features/valuations/services/image-framing";
@@ -1289,6 +1290,10 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         <ComparableCardHeader id={id ?? (comparable ? null : "Nuevo")} type={props.comparableType} assetClass={machinery ? "MAQUINARIA" : "INMUEBLE"} reference={comparable?.reference ?? null} review={comparable?.review} where={where} />
         {comparable?.updatedOn ? <ComparableValidityLine updatedOn={comparable.updatedOn} months={comparable.validityMonths ?? props.defaultValidityMonths} /> : null}
         {card ? <ComparableCardWarnings warnings={card.warnings} /> : null}
+        {/* Matrix 1.5: the data «Pegar anuncio» proposed are not saved until «Guardar comparable». */}
+        {!comparable && props.prefill && !readOnly ? <AiResultReviewNotice /> : null}
+        {/* Matrix 1.4: the advertiser's name and phone are third parties' data. */}
+        {!readOnly ? <ThirdPartyDataNotice /> : null}
 
         {duplicates ? (
           <section className="grid gap-3 rounded-md border border-highlight/50 bg-highlight/10 p-3" aria-label="Posibles duplicados" data-duplicates>
@@ -1424,6 +1429,8 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
               />
             </SheetFormSection>
           </div>
+          {/* Matrix 1.5, «Fotografías y textos»: beside where the photos and the screenshot go up. */}
+          {!readOnly ? <ImageRightsNotice /> : null}
 
           <fieldset disabled={readOnly || saving} className="grid min-w-0 gap-3">
             <SheetSection title="Oferta"><SheetFieldTable items={offer} /></SheetSection>

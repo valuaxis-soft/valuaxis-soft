@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useRef } from "react";
 
 import { api } from "@/lib/api-client";
+import { printsAdvertiserData } from "@/features/valuations/services/advertiser-data";
 import {
   caratulaConclusionValues,
   conclusionValues,
@@ -105,6 +106,10 @@ export function useCalculationDocumentSync({
 
   // The last calculation of each market, for the annex that sums up their justifications.
   const marketsByType = useRef(new Map<ComparableType, MarketCalculationDto>());
+  // And its result, to write its pages again when the advertisers' data are included or left out.
+  const marketResults = useRef(new Map<ComparableType, MarketApproachResult | null>());
+  // The carátula's «Incluir datos del anunciante en la memoria» (matrix 1.5 bis): off, the offers print without them.
+  const advertiserData = printsAdvertiserData(sections);
   const applyFactorAnnex = () => {
     // A market left out of the dictamen ("Agregar al informe") is left out of the annex too.
     const blocks = factorJustificationBlocks(marketsInReport([...marketsByType.current.values()], excludedReportApproaches(sections)));
@@ -117,7 +122,7 @@ export function useCalculationDocumentSync({
   const applyMarket = (calculation: MarketCalculationDto, result: MarketApproachResult | null, annex = true) => {
     if (!canEdit || calculation.locked) return;
     const type = calculation.settings.comparableType;
-    const mainBlocks = marketDocumentBlocks(calculation, result);
+    const mainBlocks = marketDocumentBlocks(calculation, result, { advertiserData });
     const photoBlocks = marketPhotoBlocks(calculation);
     // Every market writes its own pages: land and buildings, for sale in the market section and for rent in the rent market.
     const [sectionKey, placeholders] = isRentComparableType(type)
@@ -130,6 +135,7 @@ export function useCalculationDocumentSync({
           ? withGeneratedBlocks(section, type, photoBlocks, { kind: "fotos", position: "end" })
           : section);
     marketsByType.current.set(type, calculation);
+    marketResults.current.set(type, result);
     if (annex) applyFactorAnnex();
   };
 
@@ -189,7 +195,7 @@ export function useCalculationDocumentSync({
     const costBlocks = machineryCostBlocks(calculation.cost, costInput?.ok ? computeMachineryCost(costInput.input) : null, { vehicle });
     const marketInput = calculation.configured.market ? toMachineryMarketEngineInput(calculation.market) : null;
     const marketBlocks = calculation.configured.market
-      ? machineryMarketBlocks(calculation.market, calculation.cost.item, marketInput?.ok ? computeMachineryMarket(marketInput.input) : null, { vehicle })
+      ? machineryMarketBlocks(calculation.market, calculation.cost.item, marketInput?.ok ? computeMachineryMarket(marketInput.input) : null, { vehicle, advertiserData })
       : [];
     updateBySection("motor-maquinaria", (key, section) =>
       key === "COSTOS"
@@ -299,6 +305,18 @@ export function useCalculationDocumentSync({
   useEffect(() => {
     reapplyMachinery();
   }, [vehicle]);
+
+  // The advertisers' data turned on or off: every market and the machinery write their pages again.
+  const reapplyAdvertiserData = useEffectEvent(() => {
+    for (const [type, calculation] of marketsByType.current) applyMarket(calculation, marketResults.current.get(type) ?? null, false);
+    if (lastMachinery.current) applyMachinery(lastMachinery.current);
+  });
+  const advertiserDataShown = useRef(advertiserData);
+  useEffect(() => {
+    if (advertiserDataShown.current === advertiserData) return;
+    advertiserDataShown.current = advertiserData;
+    reapplyAdvertiserData();
+  }, [advertiserData]);
 
   useEffect(() => {
     if (canEdit && valuationId) void syncOnOpen(valuationId);

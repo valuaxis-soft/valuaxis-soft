@@ -7,6 +7,7 @@ import {
   invoiceEmailContent,
   passwordResetEmailContent,
   teamInvitationEmailContent,
+  supportReportContent,
   valuationNoticeContent,
   verificationEmailContent,
 } from "./email-content";
@@ -18,6 +19,7 @@ import type {
   InvoiceEmailInput,
   PasswordResetEmailInput,
   TeamInvitationEmailInput,
+  SupportReportInput,
   ValuationNoticeInput,
   VerificationEmailInput,
 } from "./email.service";
@@ -86,6 +88,10 @@ export class AmazonSesEmailService implements EmailService {
 
   async sendValuationNotice(input: ValuationNoticeInput) {
     await this.sendEmail(input.to, valuationNoticeContent(input));
+  }
+
+  async sendSupportReport(input: SupportReportInput) {
+    await this.sendEmail(input.to, supportReportContent(input));
   }
 
   /** Raw MIME, as the dictamen: SES only attaches files that way. */

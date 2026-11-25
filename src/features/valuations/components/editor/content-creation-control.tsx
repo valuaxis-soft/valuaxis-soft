@@ -13,6 +13,7 @@ import { Columns3, MapPinned, Plus, Rows3 } from "lucide-react";
 
 import type { EditorCapabilities } from "./editor-capabilities";
 import { UploadButton } from "./image-upload-control";
+import { remindImageRights } from "../legal-notice";
 import { usePopoverDragGuard } from "./popover-drag-guard";
 import { DOCUMENT_IMAGE_ACCEPT } from "@/features/valuations/services/document-image-upload";
 import { filesAsChangeEvent } from "@/features/files/clipboard-image";
@@ -103,7 +104,7 @@ export function ContentCreationControl({
               variant="ghost"
               className="w-full justify-start"
               disabled={readOnly}
-              onFiles={(files) => onAddImage(filesAsChangeEvent(files))}
+              onFiles={(files) => { remindImageRights(); onAddImage(filesAsChangeEvent(files)); }}
             />
           ) : null}
           {canAddImage && onAddCroquis ? (

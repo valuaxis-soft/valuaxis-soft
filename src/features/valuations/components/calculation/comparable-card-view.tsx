@@ -131,8 +131,11 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
   ];
   const source: SheetItem[] = [
     { label: "Fuente o portal", value: orDash(comparable.sourceName) },
-    { label: "Anunciante", value: orDash(comparable.contactName) },
-    { label: "Teléfono", value: orDash(comparable.contactPhone) },
+    // Printed without them (the memoria leaves them out unless the appraiser includes them), the rows go too.
+    ...(printable && !comparable.contactName && !comparable.contactPhone ? [] : [
+      { label: "Anunciante", value: orDash(comparable.contactName) },
+      { label: "Teléfono", value: orDash(comparable.contactPhone) },
+    ]),
     { label: "Fecha de consulta", value: dayText(comparable.consultedOn) },
     { label: "Vigencia de la oferta", value: dayText(comparable.validUntil) },
     { label: "ID de publicación", value: orDash(comparable.listingDetails?.publicationId) },
