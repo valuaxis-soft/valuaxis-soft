@@ -1,5 +1,6 @@
 import type {
   BillingNoticeInput,
+  AccountNoticeEmailInput,
   DictamenEmailInput,
   EmailService,
   InvoiceEmailInput,
@@ -77,6 +78,12 @@ export class DevelopmentEmailService implements EmailService {
         invoice: input.invoiceLabel,
         attachments: [`${input.pdf.filename} (${input.pdf.content.length} bytes)`, `${input.xml.filename} (${input.xml.content.length} bytes)`],
       });
+    }
+  }
+
+  async sendAccountNotice(input: AccountNoticeEmailInput) {
+    if (process.env.NODE_ENV !== "production") {
+      console.info("Development account notice prepared", { to: input.to, subject: input.subject });
     }
   }
 }

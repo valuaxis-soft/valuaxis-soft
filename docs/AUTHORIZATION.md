@@ -82,6 +82,7 @@ Por indicación del abogado del cliente, el operador puede saber **quién** es c
 | Ruta | Permiso |
 |---|---|
 | `/operador/usuarios`, `GET /api/operador/usuarios/exportar` | Operador (`OPERATOR_EMAILS`); cualquier otra persona, 404 |
+| `/operador/cuentas`, `POST /api/operador/cuentas` (bajas y suspensiones, [CUENTAS.md](CUENTAS.md)) | Operador (`OPERATOR_EMAILS`); cualquier otra persona, 404 |
 
 ## Pendiente
 

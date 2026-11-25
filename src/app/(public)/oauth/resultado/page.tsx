@@ -46,6 +46,12 @@ const oauthMessages: Record<string, { title: string; description: string; severi
     description: "La cuenta existe, pero no puede acceder al sistema en este momento.",
     severity: "warning",
   },
+  oauth_account_closed: {
+    title: "Cuenta dada de baja",
+    description:
+      "Esta cuenta está dada de baja, o su acceso está bloqueado mientras se verifica la identidad de su titular. Para reactivarla, escríbenos por correo: tu saldo a favor se conserva.",
+    severity: "warning",
+  },
   oauth_account_conflict: {
     title: "Cuenta en conflicto",
     description: "No pudimos vincular esta cuenta de Google porque existe una configuración incompatible.",

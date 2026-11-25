@@ -599,6 +599,14 @@ export const api = {
     verify: (input: { phone: string; code: string }) =>
       request<PhoneVerificationView>(`/cuenta/telefono/verificar`, { method: "POST", body: JSON.stringify(input) }),
   },
+  /** «Dar de baja mi cuenta» (docs/CUENTAS.md): records the request and ends the session. */
+  accountClosure: {
+    request: () => request<{ requestedAt: string }>(`/cuenta/baja`, { method: "POST", body: JSON.stringify({ confirm: true }) }),
+  },
+  /** The operator's closures and suspensions (/operador/cuentas). */
+  operatorAccounts: {
+    act: (input: JsonRecord) => request<JsonRecord>(`/operador/cuentas`, { method: "POST", body: JSON.stringify(input) }),
+  },
   /** The signed-in user's own preferences, such as the editor's autosave interval. */
   preferences: {
     update: (patch: {

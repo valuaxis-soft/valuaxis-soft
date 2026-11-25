@@ -3,6 +3,7 @@ import { notifyLowCredits } from "@/features/notifications/notification-events";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { phoneRequiredResponse } from "@/features/account/phone/phone-http";
+import { accountSuspendedResponse } from "@/features/account/standing/account-standing-http";
 import { duplicateValuation } from "@/features/valuations/services/valuation-duplicate.service";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
 import { requireApiUser } from "@/security/guards/api-guard";
@@ -14,6 +15,8 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     if (!auth.ok) return auth.response;
     const phoneRequired = await phoneRequiredResponse(auth.user.id);
     if (phoneRequired) return phoneRequired;
+    const suspended = await accountSuspendedResponse(auth.user.id);
+    if (suspended) return suspended;
 
     const { id } = await params;
     const result = await duplicateValuation(auth.user, id);

@@ -10,7 +10,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DashboardHeader } from "@/features/dashboard/components/header";
 import { PageContainer, PageHeader } from "@/features/dashboard/components/page-header";
-import { OPERATOR_USER_DIRECTORY_HREF } from "@/features/operator/operator-access";
+import { OPERATOR_ACCOUNTS_HREF, OPERATOR_USER_DIRECTORY_HREF } from "@/features/operator/operator-access";
 import { auditUserDirectory } from "@/features/operator/user-directory-audit";
 import {
   ACCREDITATION_LABELS,
@@ -86,14 +86,19 @@ export default async function OperatorUsersPage({
           title="Usuarios de la plataforma"
           description="Quién es cada persona registrada, si está acreditada y en qué despachos trabaja. No muestra ni da acceso al contenido de sus avalúos: solo cuántos creó y concluyó. Cada consulta y cada exportación quedan registradas."
           actions={
-            <a
-              href={`/api/operador/usuarios/exportar${exportQuery ? `?${exportQuery}` : ""}`}
-              className={cn(buttonVariants({ variant: "outline" }), "h-11 gap-2 px-4 sm:h-10")}
-              download
-            >
-              <Download className="size-4" aria-hidden="true" />
-              Exportar a Excel
-            </a>
+            <div className="flex flex-wrap gap-2">
+              <Link href={OPERATOR_ACCOUNTS_HREF} className={cn(buttonVariants({ variant: "outline" }), "h-11 px-4 sm:h-10")}>
+                Bajas y suspensiones
+              </Link>
+              <a
+                href={`/api/operador/usuarios/exportar${exportQuery ? `?${exportQuery}` : ""}`}
+                className={cn(buttonVariants({ variant: "outline" }), "h-11 gap-2 px-4 sm:h-10")}
+                download
+              >
+                <Download className="size-4" aria-hidden="true" />
+                Exportar a Excel
+              </a>
+            </div>
           }
         />
 

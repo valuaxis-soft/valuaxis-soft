@@ -3,6 +3,7 @@ import { notifyLowCredits } from "@/features/notifications/notification-events";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { phoneRequiredResponse } from "@/features/account/phone/phone-http";
+import { accountSuspendedResponse } from "@/features/account/standing/account-standing-http";
 import { saveValuation } from "@/features/valuations/actions/save-valuation.action";
 import { listValuations } from "@/features/valuations/repositories/valuation.repository";
 import { createValuationSchema } from "@/features/valuations/validations/valuation-api.schemas";
@@ -26,6 +27,8 @@ export async function POST(request: Request) {
     if (!auth.ok) return auth.response;
     const phoneRequired = await phoneRequiredResponse(auth.user.id);
     if (phoneRequired) return phoneRequired;
+    const suspended = await accountSuspendedResponse(auth.user.id);
+    if (suspended) return suspended;
 
     const body = await readJsonBody(request, createValuationSchema);
     if (!body.ok) return body.response;

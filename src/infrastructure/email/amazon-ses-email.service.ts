@@ -16,6 +16,7 @@ import { EmailDeliveryError } from "./email.errors";
 import { buildMimeMessage } from "./mime-message";
 import type {
   BillingNoticeInput,
+  AccountNoticeEmailInput,
   DictamenEmailInput,
   EmailService,
   InvoiceEmailInput,
@@ -98,6 +99,10 @@ export class AmazonSesEmailService implements EmailService {
 
   async sendBillingNotice(input: BillingNoticeInput) {
     await this.sendEmail(input.to, billingNoticeContent(input));
+  }
+
+  async sendAccountNotice(input: AccountNoticeEmailInput) {
+    await this.sendEmail(input.to, { subject: input.subject, text: input.text, html: input.html });
   }
 
   /** Raw MIME, as the dictamen: SES only attaches files that way. */

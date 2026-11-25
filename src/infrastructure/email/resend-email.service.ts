@@ -19,6 +19,7 @@ import {
 import { EmailDeliveryError } from "./email.errors";
 import type {
   BillingNoticeInput,
+  AccountNoticeEmailInput,
   DictamenEmailInput,
   EmailService,
   InvoiceEmailInput,
@@ -100,6 +101,10 @@ export class ResendEmailService implements EmailService {
 
   async sendBillingNotice(input: BillingNoticeInput) {
     await this.sendSystemEmail(input.to, billingNoticeContent(input));
+  }
+
+  async sendAccountNotice(input: AccountNoticeEmailInput) {
+    await this.sendSystemEmail(input.to, { subject: input.subject, text: input.text, html: input.html });
   }
 
   async sendInvoiceEmail(input: InvoiceEmailInput) {

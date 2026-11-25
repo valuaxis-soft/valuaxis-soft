@@ -9,6 +9,7 @@ import { recordAccessAttempt } from "../repositories/security-event.repository";
 import { recordAuditEvent } from "../repositories/audit.repository";
 import { resolveDefaultOrganization } from "./organization-access.service";
 import { createSecureSession } from "./session.service";
+import { accountAccessBlocked } from "@/features/account/standing/account-standing.service";
 import { createGoogleUserWithOnboarding, ensureUserOrganizationMembership } from "./oauth-onboarding.service";
 import { parseGoogleRegistration, type GoogleRegistration } from "../oauth/google-registration";
 import { appendConsentLog } from "@/features/legal/consent-log.repository";
@@ -21,6 +22,7 @@ export type OAuthErrorCode =
   | "oauth_provider_error"
   | "oauth_email_unverified"
   | "oauth_account_blocked"
+  | "oauth_account_closed"
   | "oauth_account_conflict"
   | "oauth_session_error"
   | "oauth_unknown_error";
@@ -168,6 +170,12 @@ export async function completeGoogleOAuth(input: {
     await auditOAuthFailure("oauth_unknown_error", ip, userAgent, requestRecord.IdSolicitudOAuth.toString());
     throw new OAuthFlowError("oauth_unknown_error", "Could not resolve Google account.", { cause: error });
   });
+  // A closed account (or one under an identity check) does not sign in, as with a password (docs/CUENTAS.md).
+  if (await accountAccessBlocked(result.userId)) {
+    await recordAccessAttempt({ userId: result.userId, email: profile.email, success: false, reason: "ACCOUNT_CLOSED", ip });
+    await auditOAuthFailure("oauth_account_closed", ip, userAgent, requestRecord.IdSolicitudOAuth.toString(), result.userId);
+    throw new OAuthFlowError("oauth_account_closed", "The account is closed or its access is blocked.");
+  }
   // The account's last access, as a password sign-in writes it: the identity keeps its own, and the registry reads the account's.
   await prisma.usuario.update({ where: { IdUsuario: result.userId }, data: { DFechaUltimoAcceso: new Date() } });
 

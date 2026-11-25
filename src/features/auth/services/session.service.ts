@@ -39,6 +39,7 @@ export async function getCurrentSession() {
   const session = await findActiveSessionByHash(tokenHash);
   if (!session || !session.usuario.BActivo || session.usuario.DFechaEliminacion) return null;
   if (!session.usuario.estadoUsuario.BPermiteAcceso) return null;
+  if (session.usuario.suspensionesCuenta.some((row) => row.DFechaInicio && row.DFechaInicio.getTime() <= Date.now())) return null;
   if (!session.organizacion.BActivo || session.organizacion.DFechaEliminacion) return null;
 
   const activeOrganization = await resolveActiveOrganization(session.usuario.IdUsuario, session.IdOrganizacion);

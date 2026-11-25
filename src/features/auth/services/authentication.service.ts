@@ -6,10 +6,12 @@ import { recordAccessAttempt } from "../repositories/security-event.repository";
 import { isTemporarilyLocked, nextLockDate } from "../rules/authentication.rules";
 import { rateLimits } from "@/security/rate-limit/rate-limiter";
 import { recordAuditEvent } from "../repositories/audit.repository";
+import { accountAccessBlocked } from "@/features/account/standing/account-standing.service";
 
 export type PasswordAuthenticationFailureReason =
   | "INVALID_CREDENTIALS"
   | "ACCOUNT_INACTIVE"
+  | "ACCOUNT_CLOSED"
   | "ACCOUNT_BLOCKED"
   | "ACCOUNT_USES_GOOGLE"
   | "EMAIL_NOT_VERIFIED"
@@ -71,6 +73,12 @@ export async function authenticateWithPassword(input: {
   if (!user.BCorreoVerificado) {
     await recordAccessAttempt({ userId: user.IdUsuario, email: input.email, success: false, reason: "EMAIL_NOT_VERIFIED", ip: input.ip });
     return { ok: false, reason: "EMAIL_NOT_VERIFIED" };
+  }
+
+  // Only after the right password, so a closed account is not revealed to anyone who types its email.
+  if (await accountAccessBlocked(user.IdUsuario)) {
+    await recordAccessAttempt({ userId: user.IdUsuario, email: input.email, success: false, reason: "ACCOUNT_CLOSED", ip: input.ip });
+    return { ok: false, reason: "ACCOUNT_CLOSED" };
   }
 
   const organization = await resolveDefaultOrganization(user.IdUsuario);

@@ -25,3 +25,5 @@ export function isPlatformOperator(email: string | null | undefined, raw: string
 }
 
 export const OPERATOR_USER_DIRECTORY_HREF = "/operador/usuarios";
+/** Closures and suspensions of accounts (docs/CUENTAS.md). */
+export const OPERATOR_ACCOUNTS_HREF = "/operador/cuentas";

@@ -399,11 +399,80 @@ model Usuario {
   invitacionesAceptadas        InvitacionOrganizacion[]      @relation("InvitacionAceptante")
   movimientosCreditos          MovimientoCreditos[]
   acreditacion                 AcreditacionUsuario?
+  suspensionesCuenta           SuspensionCuenta[]            @relation("SuspensionCuentaUsuario")
+  suspensionesOperadas         SuspensionCuenta[]            @relation("SuspensionCuentaOperador")
+  suspensionesTerminadas       SuspensionCuenta[]            @relation("SuspensionCuentaOperadorFin")
+  avisosCorreo                 AvisoCorreo[]
 
   @@index([IdEstadoUsuario])
   @@index([BActivo])
   @@index([DFechaEliminacion])
   @@map("devpware_usuarios")
+}
+
+/// A closure or a suspension of an account, with its whole story (migration 066, docs/CUENTAS.md).
+/// Without DFechaInicio it is a notice not yet in effect; with DFechaInicio and without DFechaFin it is in effect.
+/// Rows are never deleted: the end is written in DFechaFin.
+model SuspensionCuenta {
+  IdSuspensionCuenta        Int       @id @default(autoincrement()) @map("IdSuspensionCuenta")
+  UIdentificadorPublico     String    @unique(map: "devpware_suspensiones_cuentas_UIdentificadorPublico_key") @default(dbgenerated("gen_random_uuid()")) @map("UIdentificadorPublico") @db.Uuid
+  IdUsuario                 Int       @map("IdUsuario")
+  /// BAJA, INACTIVIDAD or OTRA (src/features/account/standing/account-standing-rules.ts).
+  STipo                     String    @map("STipo") @db.VarChar(20)
+  /// For OTRA: SUPLANTACION, PRESTAMO, USO_ILICITO or CONTRACARGO (Terms, section 14.1).
+  SCausa                    String?   @map("SCausa") @db.VarChar(40)
+  SDetalle                  String?   @map("SDetalle") @db.VarChar(2000)
+  /// USUARIO, CORREO, OPERADOR or PROCESO.
+  SOrigen                   String    @map("SOrigen") @db.VarChar(20)
+  /// No access to the account at all (closure, identity check); the others still let consult and download.
+  BBloqueaAcceso            Boolean   @default(false) @map("BBloqueaAcceso")
+  BUrgente                  Boolean   @default(false) @map("BUrgente")
+  DFechaSolicitud           DateTime  @default(now()) @map("DFechaSolicitud") @db.Timestamptz(3)
+  DFechaAviso               DateTime? @map("DFechaAviso") @db.Timestamptz(3)
+  DFechaLimiteAclaracion    DateTime? @map("DFechaLimiteAclaracion") @db.Timestamptz(3)
+  SRespuesta                String?   @map("SRespuesta") @db.VarChar(2000)
+  DFechaRespuesta           DateTime? @map("DFechaRespuesta") @db.Timestamptz(3)
+  DFechaInicio              DateTime? @map("DFechaInicio") @db.Timestamptz(3)
+  DFechaFin                 DateTime? @map("DFechaFin") @db.Timestamptz(3)
+  /// REACTIVACION, ACLARADA or ACTIVIDAD.
+  SMotivoFin                String?   @map("SMotivoFin") @db.VarChar(40)
+  /// Closure: end of the blocking of the account's data, when it would be suppressed (privacy notice, 7.3 and 8.3).
+  DFechaSupresionProgramada DateTime? @map("DFechaSupresionProgramada") @db.Timestamptz(3)
+  IdUsuarioOperador         Int?      @map("IdUsuarioOperador")
+  IdUsuarioOperadorFin      Int?      @map("IdUsuarioOperadorFin")
+  SDireccionIP              String?   @map("SDireccionIP") @db.VarChar(80)
+  DFechaModificacion        DateTime  @default(now()) @updatedAt @map("DFechaModificacion") @db.Timestamptz(3)
+
+  usuario            Usuario  @relation("SuspensionCuentaUsuario", fields: [IdUsuario], references: [IdUsuario], onDelete: Restrict, onUpdate: Cascade)
+  usuarioOperador    Usuario? @relation("SuspensionCuentaOperador", fields: [IdUsuarioOperador], references: [IdUsuario], onDelete: SetNull, onUpdate: Cascade)
+  usuarioOperadorFin Usuario? @relation("SuspensionCuentaOperadorFin", fields: [IdUsuarioOperadorFin], references: [IdUsuario], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([IdUsuario, DFechaSolicitud(sort: Desc)], map: "devpware_suspensiones_cuentas_IdUsuario_idx")
+  @@map("devpware_suspensiones_cuentas")
+}
+
+/// Every notice sent by email (inactivity, retention, suspension, closure, reactivation) with its date,
+/// recipient and the text sent (migration 066). Rows are only inserted: no code updates or deletes them.
+model AvisoCorreo {
+  IdAvisoCorreo         Int      @id @default(autoincrement()) @map("IdAvisoCorreo")
+  IdUsuario             Int?     @map("IdUsuario")
+  STipo                 String   @map("STipo") @db.VarChar(40)
+  /// Version of the wording the person received.
+  SVersion              String   @map("SVersion") @db.VarChar(40)
+  SDestinatario         String   @map("SDestinatario") @db.VarChar(180)
+  SAsunto               String   @map("SAsunto") @db.VarChar(300)
+  STexto                String   @map("STexto")
+  SEntidad              String?  @map("SEntidad") @db.VarChar(60)
+  SIdentificadorEntidad String?  @map("SIdentificadorEntidad") @db.VarChar(80)
+  BEnviado              Boolean  @map("BEnviado")
+  SError                String?  @map("SError") @db.VarChar(500)
+  DFechaEnvio           DateTime @default(now()) @map("DFechaEnvio") @db.Timestamptz(3)
+
+  usuario Usuario? @relation(fields: [IdUsuario], references: [IdUsuario], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([IdUsuario, DFechaEnvio(sort: Desc)], map: "devpware_avisos_correo_IdUsuario_idx")
+  @@index([STipo, SIdentificadorEntidad], map: "devpware_avisos_correo_entidad_idx")
+  @@map("devpware_avisos_correo")
 }
 
 /// Professional accreditation of a user (migration 054, docs/ACREDITACION.md). No CURP in clear,
@@ -643,6 +712,8 @@ model Avaluo {
   DFechaEliminacionDefinitiva DateTime? @map("DFechaEliminacionDefinitiva") @db.Timestamptz(3)
   /// El revisor aprobó el avalúo «En revisión»: listo para concluir (059).
   DFechaRevisionAprobada      DateTime? @map("DFechaRevisionAprobada") @db.Timestamptz(3)
+  /// Its content was suppressed when its retention expired (066, docs/CUENTAS.md): only the row remains.
+  DFechaSupresion             DateTime? @map("DFechaSupresion") @db.Timestamptz(3)
 
   organizacion       Organizacion     @relation(fields: [IdOrganizacion], references: [IdOrganizacion], onDelete: Restrict, onUpdate: Cascade)
   usuarioCreador     Usuario          @relation("AvaluoUsuarioCreador", fields: [IdUsuarioCreador], references: [IdUsuario], onDelete: Restrict, onUpdate: Cascade)
