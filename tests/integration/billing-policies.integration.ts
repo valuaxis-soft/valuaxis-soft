@@ -18,6 +18,7 @@ import { overridePhoneVerificationRequired } from "../../src/features/account/ph
 import { AUTH_SESSION_COOKIE } from "../../src/features/auth/constants/auth.constants";
 import type { AuthUser } from "../../src/features/auth/model";
 import { registerLocalUser } from "../../src/features/auth/services/registration.service";
+import { getLegalAcceptanceContext } from "../../src/features/legal/consent.service";
 import { parseRegisterInput } from "../../src/features/auth/validations/register.schema";
 import { getBillingOverview } from "../../src/features/billing/billing.service";
 import { addOneMonth } from "../../src/features/billing/credit-rules";
@@ -278,12 +279,25 @@ describe("free trial", () => {
   test("a new registration gets three Avalúos Disponibles until the same day of the next month", async (t) => {
     t.mock.method(getEmailService(), "sendVerificationEmail", async () => undefined);
     const form = new FormData();
-    const fields = { name: "Prueba", paternalLastName: "Gratuita", email: `prueba-${randomUUID().slice(0, 8)}@example.test`, password: "Clave-Segura-2026!", confirmPassword: "Clave-Segura-2026!", acceptedTerms: "on" };
+    const fields = {
+      name: "Prueba",
+      paternalLastName: "Gratuita",
+      email: `prueba-${randomUUID().slice(0, 8)}@example.test`,
+      password: "Clave-Segura-2026!",
+      confirmPassword: "Clave-Segura-2026!",
+      phone: "3312345678",
+      specialty: "Inmuebles",
+      adultDeclaration: "on",
+      consentPrivacy: "on",
+      consentTerms: "on",
+    };
     for (const [key, value] of Object.entries(fields)) form.set(key, value);
     const parsed = parseRegisterInput(form);
     assert.ok(parsed.ok);
     const startedAt = new Date();
-    const result = await registerLocalUser(parsed.data);
+    // As the registration action calls it: with the legal versions in force and where the acceptance came from.
+    const legal = await getLegalAcceptanceContext();
+    const result = await registerLocalUser(parsed.data, { versions: legal.versions, context: { ip: "203.0.113.72", userAgent: "pruebas", cookieHash: "hash-de-prueba" } });
     assert.ok(result.ok);
     const membership = await prisma.miembroOrganizacion.findFirstOrThrow({ where: { IdUsuario: result.userId } });
     const summary = await getCreditSummary(membership.IdOrganizacion);
