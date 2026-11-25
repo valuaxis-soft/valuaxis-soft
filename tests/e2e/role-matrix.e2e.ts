@@ -254,22 +254,27 @@ const teamCases: Case[] = [
 
 /**
  * Stripe is optional: with it the administrator's calls reach the business
- * rule (no such plan: 404; nothing to manage yet: 409), without it they say
- * payments are not enabled (503). Neither creates anything in Stripe.
+ * rule (nothing to manage yet: 409), without it they say payments are not
+ * enabled (503). Subscriptions are closed by the commercial policies (7.2):
+ * a well-formed plan checkout answers 409 whatever Stripe says; a malformed
+ * one is still a 400. Avalúos Disponibles are bought by quantity; only
+ * invalid quantities are sent, so nothing is created in Stripe.
  */
 const billingCases: Case[] = [
   { name: "read the plan and billing", method: "GET", path: () => "/api/organizacion/facturacion",
     expected: { ADMINISTRADOR: 200, VALUADOR: 403, REVISOR: 403, CONSULTA: 200 } },
-  { name: "start the checkout of a plan that does not exist", method: "POST", path: () => "/api/organizacion/facturacion/checkout",
-    body: () => ({ priceId: randomUUID() }), expected: adminOnly([404, 503]) },
+  { name: "start the checkout of a plan while subscriptions are closed", method: "POST", path: () => "/api/organizacion/facturacion/checkout",
+    body: () => ({ priceId: randomUUID() }), expected: adminOnly(409) },
   { name: "start a checkout without a valid plan id", method: "POST", path: () => "/api/organizacion/facturacion/checkout",
     body: () => ({ priceId: "no-es-un-id" }), expected: adminOnly(400) },
   { name: "open the payment portal without a paid subscription", method: "POST", path: () => "/api/organizacion/facturacion/portal",
     expected: adminOnly([409, 503]) },
-  { name: "buy a credit package that does not exist", method: "POST", path: () => "/api/organizacion/facturacion/creditos/checkout",
-    body: () => ({ packageId: randomUUID() }), expected: adminOnly([404, 503]) },
-  { name: "buy a credit package without a valid id", method: "POST", path: () => "/api/organizacion/facturacion/creditos/checkout",
-    body: () => ({ packageId: "no-es-un-id" }), expected: adminOnly(400) },
+  { name: "buy zero Avalúos Disponibles", method: "POST", path: () => "/api/organizacion/facturacion/creditos/checkout",
+    body: () => ({ quantity: 0 }), expected: adminOnly(400) },
+  { name: "buy more Avalúos Disponibles than one payment allows", method: "POST", path: () => "/api/organizacion/facturacion/creditos/checkout",
+    body: () => ({ quantity: 101 }), expected: adminOnly(400) },
+  { name: "buy a package by id (no packages: only a quantity is accepted)", method: "POST", path: () => "/api/organizacion/facturacion/creditos/checkout",
+    body: () => ({ packageId: randomUUID() }), expected: adminOnly(400) },
 ];
 
 /** A template of organization A saved from `valuation` by its administrator; returns its id. */

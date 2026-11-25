@@ -16,9 +16,10 @@ export async function POST(request: Request) {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.manageSubscription);
     if (!auth.ok) return auth.response;
-    if (!SUBSCRIPTIONS_OFFERED) return NextResponse.json({ error: NO_SUBSCRIPTIONS_MESSAGE }, { status: 409 });
     const body = await readJsonBody(request, checkoutSchema);
     if (!body.ok) return body.response;
+    // A well-formed request still finds the door closed: 409, before Stripe or the catalog are asked.
+    if (!SUBSCRIPTIONS_OFFERED) return NextResponse.json({ error: NO_SUBSCRIPTIONS_MESSAGE }, { status: 409 });
     const limit = billingSessionLimiter.consume(`billing:${auth.user.organizationId}`);
     if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
     return NextResponse.json({ data: await startCheckout(auth.user, body.data.priceId, await getBillingGateway()) }, { status: 201 });
