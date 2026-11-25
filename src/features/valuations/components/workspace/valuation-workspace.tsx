@@ -46,6 +46,7 @@ import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { isMachineryPropertyKind } from "@/features/valuations/calculation/machinery-types";
+import { isVehicleEssence } from "@/features/valuations/services/appraisal-subject";
 import { ConclusionPanel } from "@/features/valuations/components/calculation/conclusion-panel";
 import { LiveFormulaOwnerProvider } from "@/features/valuations/components/calculation/formula-input";
 import { sectionLiveFormulaOwner } from "@/features/valuations/services/live-formulas";
@@ -434,7 +435,9 @@ export function ValuationWorkspace({
   const tables = useTableMutations(editor);
   // A machinery valuation captures its cost and market approaches with the panels of the MEH format.
   const machinery = isMachineryPropertyKind(initialValuation?.propertyKind);
-  const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, machinery, valuationId });
+  // An automobile, a truck…: its machinery panels and pages read its use in km, as the automobile book.
+  const vehicle = machinery && isVehicleEssence(meta.essence);
+  const calculationSync = useCalculationDocumentSync({ ...editor, canEdit, machinery, vehicle, valuationId });
   // Valuations worked before a change of format take it (video 8.3); concluded ones never (canEdit).
   const layoutRefreshState = useLayoutRefresh({
     canEdit,
@@ -516,9 +519,9 @@ export function ValuationWorkspace({
           <ValuationEditorPanel
             section={section}
             calculationPanel={withLiveFormulaOwner(section, !valuationId ? (template ? <TemplateCalculationNote section={section} /> : undefined) : machinery && getCanonicalSectionKey(section.id) === "COSTOS" ? (
-              <MachineryCostPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} />
+              <MachineryCostPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} vehicle={vehicle} />
             ) : machinery && getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
-              <MachineryMarketPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} />
+              <MachineryMarketPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onMachineryCalculation} vehicle={vehicle} />
             ) : getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
               <MarketCalculationPanel
                 valuationId={valuationId}

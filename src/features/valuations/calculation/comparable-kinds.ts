@@ -51,7 +51,14 @@ const BUILT_IN: ReadonlyArray<ComparableKind & { legacy?: string }> = [
   { key: OTHER_MACHINERY_KIND, label: "Otro", class: "MAQUINARIA" },
 ];
 
-export const BUILT_IN_KINDS: readonly ComparableKind[] = BUILT_IN.map(({ key, label, class: kindClass }) => ({ key, label, class: kindClass }));
+/**
+ * The kinds of machinery that are vehicles: their card asks for the fields of
+ * the firm's automobile book (comparable-machinery.ts, `vehicleCardRows`).
+ */
+const VEHICLE_KIND_KEYS: ReadonlySet<string> = new Set(["AUTOMOVIL", "CAMIONETA", "CAMION", "MOTOCICLETA"]);
+export const isVehicleKind = (key: string | null | undefined) => VEHICLE_KIND_KEYS.has(key ?? "");
+
+export const BUILT_IN_KINDS: readonly ComparableKind[] =BUILT_IN.map(({ key, label, class: kindClass }) => ({ key, label, class: kindClass }));
 
 /** The kinds of comparables of before, by the type of construction they were captured with: [kind key, pattern]. */
 export const LEGACY_KIND_PATTERNS: ReadonlyArray<[string, string]> = BUILT_IN.flatMap((kind) => (kind.legacy ? [[kind.key, kind.legacy] as [string, string]] : []));

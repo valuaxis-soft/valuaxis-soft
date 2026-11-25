@@ -13,7 +13,9 @@ import { PUT as putValuation } from "../../src/app/api/avaluos/[id]/route";
 import { DELETE as deleteListItem, GET as getLists, POST as postListItem } from "../../src/app/api/organizacion/despacho/listas/route";
 import { AUTH_SESSION_COOKIE } from "../../src/features/auth/constants/auth.constants";
 import { addCustomUnit, getCustomUnits, getFirmLists } from "../../src/features/firm/firm.service";
+import { getComparableCard } from "../../src/features/valuations/calculation/comparable-card.service";
 import { createComparable, getMarketCalculation, updateComparable } from "../../src/features/valuations/calculation/market.service";
+import { createBaseComparable } from "../../src/features/valuations/comparable-base/comparable-base-write.service";
 import type { ComparableInputPayload } from "../../src/features/valuations/calculation/market-schemas";
 import { comparableFormValues } from "../../src/features/valuations/calculation/market-types";
 import { getValuationByPublicId } from "../../src/features/valuations/repositories/valuation.repository";
@@ -224,4 +226,45 @@ test("the machine's data of a comparable are kept in its snapshot, and a client 
   const [edited] = (await getMarketCalculation(owner.publicId, owner.organizationId, "INMUEBLE_VENTA")).comparables;
   assert.equal(edited.machinery?.meterKind, "ODOMETRO");
   assert.equal(edited.machinery?.meterReading, 2145);
+});
+
+test("a vehicle is created with the automobile book's carátula, and its comparable keeps the vehicle's data", async () => {
+  const fixture = await createValuationFixture();
+  const jar = await signIn(fixture);
+  const { catalogs: _catalogs, ...base } = await creationBase(fixture);
+  const created = await call(jar, postValuation as Handler, "POST", "/api/avaluos", { ...base, title: "Automóvil de prueba", appraisalClass: "MAQUINARIA", essence: "Automóvil" });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const detail = (await getValuationByPublicId(created.body!.data!.publicId!, fixture.organizationId))!;
+  assert.equal(detail.propertyKind, "maquinaria_equipo");
+  const caratula = detail.sections.find((section) => section.label === "CARATULA")!;
+  const data = caratula.blocks.find((block) => block.title === "DATOS DEL BIEN A VALUAR")!;
+  assert.deepEqual(data.concepts.map((concept) => concept.label), [
+    "Tipo de máquina / equipo", "Marca", "Modelo", "Matrícula", "No. de serie chasis", "No. de serie motor",
+    "Año de fabricación", "País de origen", "Potencia (HP/kW)", "Odómetro", "Ubicación del bien",
+  ]);
+  assert.equal(data.concepts[0].value, "Automóvil");
+  const labels = caratula.blocks.flatMap((block) => block.concepts.map((concept) => concept.label));
+  assert.ok(labels.includes("Tipo de transmisión") && labels.includes("Combustible"));
+  assert.ok(!labels.includes("Horas de uso (horómetro)"));
+
+  // A comparable of the firm's base of kind «Automóvil» keeps the automobile book's fields in its snapshot.
+  const vehicle = {
+    brand: "Marca Inventada", model: "Sedán GT", year: 2022, condition: "Bueno", maintenance: "Preventivo", origin: "México", color: "Gris",
+    meterKind: "ODOMETRO" as const, meterReading: 58_420, engine: "1.6 L turbo", doors: "4", spareTire: "Sí", serviceHistory: "Completo",
+    repairs: "Ninguna", operatingState: "Activo", attachments: "Ninguno",
+  };
+  const payload: ComparableInputPayload = {
+    location: "Colonia inventada, Guadalajara, Jalisco", area: null, price: 379_000, factors: [],
+    landUse: null, shape: null, zone: null, frontage: null, depth: null, topography: null, services: null,
+    notes: null, sourceName: "Portal de prueba", contactName: null, contactPhone: null, url: null, offerDate: "2026-11-20",
+    propertyDetails: { kind: "AUTOMOVIL", assetClass: "MAQUINARIA" },
+    machinery: vehicle,
+  };
+  const stored = await createBaseComparable(fixture.user, "INMUEBLE_VENTA", payload);
+  const row = await prisma.comparableAvaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: stored.id }, select: { JPropiedadSnapshot: true } });
+  const snapshot = row.JPropiedadSnapshot as { machinery?: unknown; details?: { kind?: unknown } };
+  assert.deepEqual(snapshot.machinery, vehicle);
+  assert.equal(snapshot.details?.kind, "AUTOMOVIL");
+  const card = await getComparableCard(stored.id, fixture.organizationId);
+  assert.deepEqual(card.comparable.machinery, vehicle);
 });

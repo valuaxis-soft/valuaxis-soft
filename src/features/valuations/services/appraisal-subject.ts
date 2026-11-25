@@ -36,9 +36,10 @@ export const MAX_ESSENCE_LENGTH = 80;
  * An essence the system proposes. `propertyKind`: the catalog's «Tipo de
  * bien» it stands for (an essence of a real estate valuation that is none of
  * them is «otro» with its name). `feminine`: «DE LA RETROEXCAVADORA», not
- * «DEL…».
+ * «DEL…». `vehicle`: a machine on wheels measured in km, whose carátula and
+ * comparables take the automobile book's fields (vehicle-fields.ts).
  */
-export type EssenceProposal = { name: string; propertyKind?: string; feminine?: boolean };
+export type EssenceProposal = { name: string; propertyKind?: string; feminine?: boolean; vehicle?: boolean };
 
 /**
  * The common ones of each class, as the portals list them (Mercado Libre,
@@ -59,10 +60,10 @@ export const ESSENCE_PROPOSALS: Record<AppraisalClass, readonly EssenceProposal[
     { name: "Inmueble de uso mixto", propertyKind: "mixto" },
   ],
   MAQUINARIA: [
-    { name: "Automóvil" },
-    { name: "Camioneta", feminine: true },
-    { name: "Camión" },
-    { name: "Motocicleta", feminine: true },
+    { name: "Automóvil", vehicle: true },
+    { name: "Camioneta", feminine: true, vehicle: true },
+    { name: "Camión", vehicle: true },
+    { name: "Motocicleta", feminine: true, vehicle: true },
     { name: "Retroexcavadora", feminine: true },
     { name: "Maquinaria de construcción", feminine: true },
     { name: "Maquinaria industrial", feminine: true },
@@ -184,6 +185,16 @@ function isFeminine(essence: string) {
   if (proposal) return proposal.feminine === true;
   const first = essenceKey(essence).split(/[\s/]+/)[0] ?? "";
   return first.endsWith("a");
+}
+
+/**
+ * Whether what is valued is a vehicle (Automóvil, Camioneta, Camión,
+ * Motocicleta): its carátula and its comparables take the fields of the
+ * firm's automobile book instead of the generic machine's. Only machinery
+ * has vehicles.
+ */
+export function isVehicleEssence(essence: string | null | undefined): boolean {
+  return proposalOf("MAQUINARIA", essence ?? "")?.vehicle === true;
 }
 
 /** «de la retroexcavadora», «del automóvil»: the essence after a «de», lowercase, with its article. */

@@ -1,6 +1,6 @@
 import type { AppSection } from "@/features/valuations/model";
 import { formatDateValue } from "@/features/valuations/services/concept-value-format";
-import { MACHINERY_CARATULA_KIND_CONCEPT_ID } from "@/features/valuations/sections/caratula";
+import { MACHINERY_CARATULA_KIND_CONCEPT_ID, VEHICLE_CARATULA_KIND_CONCEPT_ID } from "@/features/valuations/sections/caratula";
 
 const GENERAL_VALUATION_TEMPLATE_NAME = "Plantilla general de avaluo";
 
@@ -12,8 +12,8 @@ const GENERAL_CARATULA_CONCEPT_DEFAULTS = {
   validity: "caratula-block-4-datos-del-avaluo-concept-2",
   purpose: "caratula-block-4-datos-del-avaluo-concept-4",
   valuator: "caratula-block-6-conclusion-concept-3",
-  /** «Tipo de máquina / equipo» of a machinery carátula. */
-  essence: MACHINERY_CARATULA_KIND_CONCEPT_ID,
+  /** «Tipo de máquina / equipo» of a machinery carátula and of a vehicle's. */
+  essence: [MACHINERY_CARATULA_KIND_CONCEPT_ID, VEHICLE_CARATULA_KIND_CONCEPT_ID],
 } as const;
 
 type ValuationTemplateIdentity = {
@@ -69,7 +69,7 @@ export function hydrateGeneralCaratulaTemplate(
   if (defaults.valuationDate) valuesByConceptId.set(GENERAL_CARATULA_CONCEPT_DEFAULTS.valuationDate, formatDateValue(defaults.valuationDate));
   if (defaults.validity) valuesByConceptId.set(GENERAL_CARATULA_CONCEPT_DEFAULTS.validity, defaults.validity);
   const essence = cleanDefault(defaults.essence);
-  if (essence) valuesByConceptId.set(GENERAL_CARATULA_CONCEPT_DEFAULTS.essence, essence);
+  if (essence) for (const id of GENERAL_CARATULA_CONCEPT_DEFAULTS.essence) valuesByConceptId.set(id, essence);
 
   return {
     ...template,

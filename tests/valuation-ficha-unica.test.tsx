@@ -295,7 +295,7 @@ test("V8.2: among the geocoder's answers, the one in the captured postal code an
 });
 
 test("24 Nov 2026: a machine's card by its class, one «Año» (its data's), and its age to the valuation's day", () => {
-  const machine = { ...comparable(), constructionType: null, propertyDetails: { kind: "CAMION", kindLabel: "Camión", assetClass: "MAQUINARIA" as const }, machinery: { year: 2018 } };
+  const machine = { ...comparable(), constructionType: null, propertyDetails: { kind: "MAQUINARIA_CONSTRUCCION", kindLabel: "Maquinaria de construcción", assetClass: "MAQUINARIA" as const }, machinery: { year: 2018 } };
   const html = renderToStaticMarkup(<ComparableSheetForm {...props({ comparable: machine, valuationDate: "2026-11-24" })} />);
   assert.match(html, /Datos de la máquina/, "the machine's data instead of the land");
   assert.doesNotMatch(html, /aria-label="Construcción"/);

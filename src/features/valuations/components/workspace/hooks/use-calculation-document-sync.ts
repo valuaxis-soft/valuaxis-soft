@@ -69,11 +69,14 @@ export function useCalculationDocumentSync({
   sections,
   updateCaratula,
   updateSections,
+  vehicle = false,
   valuationId,
 }: Pick<EditorState, "caratula" | "saveStatus" | "sections" | "updateCaratula" | "updateSections"> & {
   canEdit: boolean;
   /** The valuation is of machinery and equipment. */
   machinery: boolean;
+  /** What is valued is a vehicle: its machinery pages read its use in km (machinery-document.ts). */
+  vehicle?: boolean;
   valuationId: string | null;
 }) {
   const updateBySection = (groupKey: string, update: (key: string, section: AppSection) => AppSection) => {
@@ -177,13 +180,16 @@ export function useCalculationDocumentSync({
         : section);
   };
 
+  // The last machinery calculation, to write its pages again when what is valued becomes a vehicle or stops being one.
+  const lastMachinery = useRef<MachineryCalculationDto | null>(null);
   const applyMachinery = (calculation: MachineryCalculationDto) => {
+    lastMachinery.current = calculation;
     if (!canEdit || calculation.locked || !calculation.applies) return;
     const costInput = calculation.configured.cost ? toMachineryCostEngineInput(calculation.cost) : null;
-    const costBlocks = machineryCostBlocks(calculation.cost, costInput?.ok ? computeMachineryCost(costInput.input) : null);
+    const costBlocks = machineryCostBlocks(calculation.cost, costInput?.ok ? computeMachineryCost(costInput.input) : null, { vehicle });
     const marketInput = calculation.configured.market ? toMachineryMarketEngineInput(calculation.market) : null;
     const marketBlocks = calculation.configured.market
-      ? machineryMarketBlocks(calculation.market, calculation.cost.item, marketInput?.ok ? computeMachineryMarket(marketInput.input) : null)
+      ? machineryMarketBlocks(calculation.market, calculation.cost.item, marketInput?.ok ? computeMachineryMarket(marketInput.input) : null, { vehicle })
       : [];
     updateBySection("motor-maquinaria", (key, section) =>
       key === "COSTOS"
@@ -286,6 +292,13 @@ export function useCalculationDocumentSync({
     await refresh({ costs: true, income: true, conclusion: true });
   };
   const syncOnOpen = useEffectEvent(syncAll);
+
+  const reapplyMachinery = useEffectEvent(() => {
+    if (lastMachinery.current) applyMachinery(lastMachinery.current);
+  });
+  useEffect(() => {
+    reapplyMachinery();
+  }, [vehicle]);
 
   useEffect(() => {
     if (canEdit && valuationId) void syncOnOpen(valuationId);

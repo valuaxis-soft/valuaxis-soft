@@ -18,10 +18,10 @@ import {
 } from "@/features/valuations/calculation/comparable-card";
 import type { ComparableCardDto } from "@/features/valuations/calculation/comparable-card.service";
 import { REVIEW_STATUS_LABELS } from "@/features/valuations/calculation/comparable-review";
-import { isMachineryComparable, machineryCardRows } from "@/features/valuations/calculation/comparable-machinery";
+import { isMachineryComparable, machineryCardRows, vehicleCardRows } from "@/features/valuations/calculation/comparable-machinery";
 import { comparableClassOf } from "@/features/valuations/calculation/comparable-classes";
 import { exchangeNote } from "@/features/valuations/calculation/comparable-currency";
-import { kindOfComparable } from "@/features/valuations/calculation/comparable-kinds";
+import { isVehicleKind, kindOfComparable } from "@/features/valuations/calculation/comparable-kinds";
 import { reviewCheckLabel } from "@/features/valuations/calculation/comparable-review-checklist";
 import {
   COMPARABLE_TYPE_LABELS,
@@ -95,6 +95,8 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
   // A machine's card by its class (comparable-classes), or by the machine's data it carries.
   const machinery = isMachineryComparable(comparable, machineryHint
     ?? comparableClassOf({ assetClass: comparable.propertyDetails?.assetClass, constructionType: comparable.constructionType }) === "MAQUINARIA");
+  // An automobile, a truck…: the fields of the automobile book.
+  const vehicle = machinery && isVehicleKind(kind?.key);
   // An offer in dollars shows the dollars, the rate and the pesos the calculation uses.
   const exchange = exchangeNote(comparable);
 
@@ -150,7 +152,7 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
     { label: "Pavimento / acceso", value: orDash(comparable.propertyDetails?.paving) },
     { label: "Posición en manzana", value: orDash(comparable.propertyDetails?.blockPosition) },
   ];
-  const machine: SheetItem[] = machinery ? machineryCardRows(comparable.machinery).map((row) => ({ label: row.label, value: row.value })) : [];
+  const machine: SheetItem[] = machinery ? (vehicle ? vehicleCardRows : machineryCardRows)(comparable.machinery).map((row) => ({ label: row.label, value: row.value })) : [];
   const construction: SheetItem[] = built && !machinery ? [
     { label: "Tipo de construcción", value: orDash(comparable.constructionType) },
     { label: "Calidad", value: orDash(comparable.quality) },
@@ -226,7 +228,7 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
         ) : null}
       </SheetSection>
       {machinery ? (
-        <SheetSection title="Datos de la máquina o equipo" printable={printable}><div data-machinery-card><SheetTable items={machine} printable={printable} /></div></SheetSection>
+        <SheetSection title={vehicle ? "Datos del vehículo" : "Datos de la máquina o equipo"} printable={printable}><div data-machinery-card data-vehicle-card={vehicle ? "" : undefined}><SheetTable items={machine} printable={printable} /></div></SheetSection>
       ) : (
         <SheetSection title="Terreno" printable={printable}><SheetTable items={land} printable={printable} /></SheetSection>
       )}

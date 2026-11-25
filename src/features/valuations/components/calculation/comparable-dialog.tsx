@@ -59,7 +59,7 @@ import { DUPLICATE_REASON_LABELS, duplicateProbeOf, type DuplicateProbe } from "
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { comparableClassOf, type ComparableClass } from "@/features/valuations/calculation/comparable-classes";
 import { defaultExchangeRateSource, exchangeNote, pesosOf } from "@/features/valuations/calculation/comparable-currency";
-import { defaultKindOfType, kindOfComparable } from "@/features/valuations/calculation/comparable-kinds";
+import { defaultKindOfType, isVehicleKind, kindOfComparable } from "@/features/valuations/calculation/comparable-kinds";
 import { ComparableKindField, kindFieldLabel } from "./comparable-kind-field";
 import { ComparableLocationPicker } from "@/features/valuations/comparable-base/components/comparable-location-picker";
 import { ComparableCardButton } from "./comparable-card-dialog";
@@ -550,6 +550,8 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     ?? (comparable ? comparableClassOf({ assetClass: comparable.propertyDetails?.assetClass, constructionType: comparable.constructionType }) : "INMUEBLE");
   // A machine's sheet (comparable-machinery-fields) by its class, or by the machine's data it already carries.
   const machinery = isMachineryComparable(comparable ?? {}, props.machinery ?? kindClass === "MAQUINARIA");
+  // An automobile, a truck…: the automobile book's fields, in km.
+  const vehicle = machinery && isVehicleKind(draft.kindKey);
   // A machine's age follows its model year («Año» of «Datos de la máquina») to the valuation's day, while not typed.
   const referenceDay = props.valuationDate ?? todayInMexico();
   const machineAge = machinery ? ageFromYear(parseDecimal(machineryDraft.year), referenceDay) : null;
@@ -589,7 +591,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     }
     const coordinatesProblem = coordinatesError(latitude, longitude);
     if (coordinatesProblem) return { field: latitude === null ? "latitude" : "longitude", error: coordinatesProblem };
-    const machine = machinery ? machineryDetailsFromDraft(machineryDraft) : null;
+    const machine = machinery ? machineryDetailsFromDraft(machineryDraft, { vehicle }) : null;
     if (machine && "error" in machine) return { field: machine.field as ComparableFormField, error: machine.error };
     const building = built && !machinery ? buildingValues() : null;
     if (building && "error" in building) return building;
@@ -1439,7 +1441,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
             </SheetSection>
             <SheetSection title="Fuente de información"><SheetFieldTable items={source} /></SheetSection>
             {machinery ? (
-              <MachineryDetailsFields draft={machineryDraft} onChange={setMachineryDraft} invalidField={error?.field} autoComplete={NO_BROWSER_AUTOFILL} />
+              <MachineryDetailsFields draft={machineryDraft} onChange={setMachineryDraft} invalidField={error?.field} autoComplete={NO_BROWSER_AUTOFILL} vehicle={vehicle} />
             ) : (
               <SheetSection title="Terreno"><SheetFieldTable items={land} /></SheetSection>
             )}
