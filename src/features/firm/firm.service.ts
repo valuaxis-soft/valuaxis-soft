@@ -17,6 +17,7 @@ import { resolveFactorCatalog, type FactorCatalog } from "@/features/valuations/
 import { resolveSignatures, signatureErrors } from "@/features/valuations/services/valuation-signatures";
 import { addCustomFactorTo, resolveCustomFactors, type CustomFactor } from "./custom-factors";
 import { addCustomUnitTo, removeCustomUnitFrom, renameCustomUnitIn, resolveCustomUnits } from "./custom-units";
+import { addFirmListItemTo, removeFirmListItemFrom, resolveFirmLists, withUnits, type FirmListItem, type FirmLists } from "./firm-lists";
 import { todayInMexico } from "./firm-rules";
 import type { FirmSettingsInput } from "./firm-schemas";
 
@@ -280,7 +281,7 @@ export async function addCustomUnit(user: AuthUser, unit: string): Promise<strin
   if (!next.added) return next.units;
   await prisma.organizacion.update({
     where: { IdOrganizacion: organization.IdOrganizacion },
-    data: { JUnidadesPersonalizadas: next.units },
+    data: { JUnidadesPersonalizadas: withUnits(organization.JUnidadesPersonalizadas, next.units) as Prisma.InputJsonValue },
   });
   await recordAuditEvent({
     typeKey: "MODIFICACION",
@@ -302,7 +303,7 @@ export async function renameCustomUnit(user: AuthUser, unit: string, nextUnit: s
   if (!next.renamed) return next.units;
   await prisma.organizacion.update({
     where: { IdOrganizacion: organization.IdOrganizacion },
-    data: { JUnidadesPersonalizadas: next.units },
+    data: { JUnidadesPersonalizadas: withUnits(organization.JUnidadesPersonalizadas, next.units) as Prisma.InputJsonValue },
   });
   await recordAuditEvent({
     typeKey: "MODIFICACION",
@@ -324,7 +325,7 @@ export async function removeCustomUnit(user: AuthUser, unit: string): Promise<st
   if (!next.removed) return next.units;
   await prisma.organizacion.update({
     where: { IdOrganizacion: organization.IdOrganizacion },
-    data: { JUnidadesPersonalizadas: next.units },
+    data: { JUnidadesPersonalizadas: withUnits(organization.JUnidadesPersonalizadas, next.units) as Prisma.InputJsonValue },
   });
   await recordAuditEvent({
     typeKey: "MODIFICACION",
@@ -337,6 +338,63 @@ export async function removeCustomUnit(user: AuthUser, unit: string): Promise<st
     metadata: { unit },
   });
   return next.units;
+}
+
+/** What the firm values of each class and its kinds of valuation of its own (firm-lists.ts). */
+export async function getFirmLists(organizationId: number): Promise<FirmLists> {
+  const organization = await findOrganization(organizationId);
+  return resolveFirmLists(organization.JUnidadesPersonalizadas);
+}
+
+/**
+ * Keeps an item in one of the firm's lists («¿Qué se está valuando?», «Tipo
+ * de avalúo»); one already kept (however it was written) changes nothing.
+ * `tx`: inside the creation of the valuation that ticked it.
+ */
+export async function addFirmListItem(user: AuthUser, item: FirmListItem, tx: Prisma.TransactionClient = prisma): Promise<FirmLists> {
+  const organization = await tx.organizacion.findUniqueOrThrow({
+    where: { IdOrganizacion: user.organizationId },
+    select: { IdOrganizacion: true, JUnidadesPersonalizadas: true },
+  });
+  const next = addFirmListItemTo(organization.JUnidadesPersonalizadas, item);
+  if (!next.added) return resolveFirmLists(next.stored);
+  await tx.organizacion.update({
+    where: { IdOrganizacion: organization.IdOrganizacion },
+    data: { JUnidadesPersonalizadas: next.stored as Prisma.InputJsonValue },
+  });
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    organizationId: organization.IdOrganizacion,
+    userId: user.id,
+    entity: "Organizacion",
+    entityId: String(organization.IdOrganizacion),
+    action: "FIRM_LIST_ITEM_ADD",
+    result: "EXITOSO",
+    metadata: { list: item.list, appraisalClass: item.appraisalClass ?? null, name: item.name },
+  });
+  return resolveFirmLists(next.stored);
+}
+
+/** Takes an item out of one of the firm's lists; the valuations that use it keep its name. */
+export async function removeFirmListItem(user: AuthUser, item: FirmListItem): Promise<FirmLists> {
+  const organization = await findOrganization(user.organizationId);
+  const next = removeFirmListItemFrom(organization.JUnidadesPersonalizadas, item);
+  if (!next.removed) return resolveFirmLists(next.stored);
+  await prisma.organizacion.update({
+    where: { IdOrganizacion: organization.IdOrganizacion },
+    data: { JUnidadesPersonalizadas: next.stored as Prisma.InputJsonValue },
+  });
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    organizationId: organization.IdOrganizacion,
+    userId: user.id,
+    entity: "Organizacion",
+    entityId: String(organization.IdOrganizacion),
+    action: "FIRM_LIST_ITEM_REMOVE",
+    result: "EXITOSO",
+    metadata: { list: item.list, appraisalClass: item.appraisalClass ?? null, name: item.name },
+  });
+  return resolveFirmLists(next.stored);
 }
 
 /** The homologation factors the firm created, in the order they were added. */

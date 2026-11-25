@@ -9,6 +9,10 @@ export function valuationMetaFromDb(v: {
   propertyKind: string;
   propertyKindOther?: string;
   valuationKindOther?: string;
+  appraisalClass?: ValuationMeta["appraisalClass"];
+  essence?: string;
+  appraisalKind?: string;
+  appraisalKindOther?: string;
 }): ValuationMeta {
   return {
     folio: v.folio,
@@ -19,5 +23,9 @@ export function valuationMetaFromDb(v: {
     propertyKind: v.propertyKind,
     ...(v.propertyKindOther ? { propertyKindOther: v.propertyKindOther } : {}),
     ...(v.valuationKindOther ? { valuationKindOther: v.valuationKindOther } : {}),
+    ...(v.appraisalClass ? { appraisalClass: v.appraisalClass } : {}),
+    ...(v.essence ? { essence: v.essence } : {}),
+    ...(v.appraisalKind ? { appraisalKind: v.appraisalKind } : {}),
+    ...(v.appraisalKindOther ? { appraisalKindOther: v.appraisalKindOther } : {}),
   };
 }

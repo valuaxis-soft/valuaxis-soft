@@ -1,9 +1,13 @@
 /**
- * "Tipo de bien" and "Tipo de avalúo" of the carátula: the catalogs of the
- * database (devpware_tipos_inmuebles, devpware_tipos_operaciones) by their
- * lowercase keys, as the valuation's meta carries them, with the names the
- * appraiser reads. "Otro" takes a name of the appraiser's own, kept on the
- * subject property (2 Nov 2026: the list was closed to four kinds).
+ * "Tipo de bien", "Tipo de operación" and "Tipo de avalúo": the catalogs of
+ * the database (devpware_tipos_inmuebles, devpware_tipos_operaciones,
+ * devpware_tipos_avaluos) by their lowercase keys, as the valuation's meta
+ * carries them, with the names the appraiser reads. "Otro" takes a name of
+ * the appraiser's own, kept on the subject property (2 Nov 2026: the list was
+ * closed to four kinds). Since 24 Nov 2026 the «Tipo de bien» follows from
+ * «Clase de avalúo» and «¿Qué se está valuando?» (appraisal-subject.ts) and is
+ * no longer chosen apart; the carátula's «Tipo de avalúo» of before (venta,
+ * renta…) is the «Tipo de operación».
  *
  * Pure TypeScript — no React, no database.
  */
@@ -14,22 +18,6 @@ export type KindOption = { key: string; label: string };
 export const OTHER_PROPERTY_KIND = "otro";
 export const OTHER_VALUATION_KIND = "otra";
 
-/** In the order they are offered; machinery is chosen when the valuation is created. */
-export const PROPERTY_KIND_OPTIONS: readonly KindOption[] = [
-  { key: "casa_habitacion", label: "Casa" },
-  { key: "departamento", label: "Departamento" },
-  { key: "oficina", label: "Oficina" },
-  { key: "terreno", label: "Terreno" },
-  { key: "edificio", label: "Edificio" },
-  { key: "industrial", label: "Nave industrial" },
-  { key: "local_comercial", label: "Local comercial" },
-  { key: "bodega", label: "Bodega" },
-  { key: "rural", label: "Rural" },
-  { key: "mixto", label: "Mixto" },
-  { key: "maquinaria_equipo", label: "Equipo y maquinaria" },
-  { key: OTHER_PROPERTY_KIND, label: "Otro…" },
-];
-
 export const VALUATION_KIND_OPTIONS: readonly KindOption[] = [
   { key: "venta", label: "Venta" },
   { key: "renta", label: "Renta" },
@@ -38,6 +26,67 @@ export const VALUATION_KIND_OPTIONS: readonly KindOption[] = [
   { key: "fiscal", label: "Fiscal" },
   { key: OTHER_VALUATION_KIND, label: "Otro…" },
 ];
+
+/**
+ * «Tipo de avalúo» (devpware_tipos_avaluos) by its lowercase keys. «Otro»
+ * holds every kind of the firm's own, with its name (`claseAvaluoOtro`): the
+ * ones it saved in its list and the ones the system proposes beyond the
+ * catalog (24 Nov 2026: «que si son de catastro… comerciales»).
+ */
+export const OTHER_APPRAISAL_KIND = "otro";
+export const APPRAISAL_KIND_OPTIONS: readonly KindOption[] = [
+  { key: "comercial", label: "Comercial" },
+  { key: "hipotecario", label: "Hipotecario" },
+  { key: "fiscal", label: "Fiscal" },
+  { key: "judicial", label: "Judicial" },
+];
+export const APPRAISAL_KIND_PROPOSALS: readonly string[] = ["Catastral"];
+
+export function normalizeAppraisalKind(key: string | null | undefined): string {
+  return (key ?? "").trim().toLowerCase() || "comercial";
+}
+
+/** A choice of a list the firm makes longer: a catalog key, a name of its own (`own:Catastral`) or a new one to type. */
+export const NEW_OWN_CHOICE = "__nuevo";
+const OWN_PREFIX = "own:";
+export type ExtendableChoice = { value: string; label: string };
+
+/**
+ * The choices of «Tipo de avalúo»: the catalog's, then the proposals and the
+ * firm's own (each once, however it was written), the name a valuation has
+ * even when nobody saved it, and «Otro…» to type a new one.
+ */
+export function appraisalKindChoices(firmOwn: readonly string[], current?: string, catalog: readonly KindOption[] = APPRAISAL_KIND_OPTIONS): ExtendableChoice[] {
+  const own: string[] = [];
+  const seen = new Set(catalog.map((option) => plain(option.label)));
+  for (const name of [...APPRAISAL_KIND_PROPOSALS, ...firmOwn, current ?? ""]) {
+    const kept = name.replace(/\s+/g, " ").trim();
+    if (!kept || seen.has(plain(kept))) continue;
+    seen.add(plain(kept));
+    own.push(kept);
+  }
+  return [
+    ...catalog.map((option) => ({ value: option.key, label: option.label })),
+    ...own.map((name) => ({ value: `${OWN_PREFIX}${name}`, label: name })),
+    { value: NEW_OWN_CHOICE, label: "Otro… (escribir uno nuevo)" },
+  ];
+}
+
+/** The choice a kind and its name stand for. */
+export function appraisalKindChoiceOf(key: string | null | undefined, ownName: string | undefined): string {
+  const kind = normalizeAppraisalKind(key);
+  if (kind !== OTHER_APPRAISAL_KIND) return kind;
+  return ownName?.trim() ? `${OWN_PREFIX}${ownName.trim()}` : NEW_OWN_CHOICE;
+}
+
+/** The kind and the name of the firm's own a choice stands for; a new one takes the name typed. */
+export function appraisalKindOfChoice(choice: string, typed = ""): { key: string; ownName: string } {
+  if (choice.startsWith(OWN_PREFIX)) return { key: OTHER_APPRAISAL_KIND, ownName: choice.slice(OWN_PREFIX.length) };
+  if (choice === NEW_OWN_CHOICE) return { key: OTHER_APPRAISAL_KIND, ownName: typed.trim() };
+  return { key: normalizeAppraisalKind(choice), ownName: "" };
+}
+
+const plain = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
 
 /** Keys saved before the list opened ("casa") read as the catalog's. */
 const PROPERTY_KIND_ALIASES: Record<string, string> = { casa: "casa_habitacion", nave: "industrial", nave_industrial: "industrial", local: "local_comercial" };

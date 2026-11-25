@@ -92,7 +92,13 @@ function cellOf(column: ValuationColumn, item: ValuationPageItem, now: Date | un
         <p className="text-muted-foreground/70">Sin ubicación</p>
       );
     case "tipo":
-      return <p className="truncate">{item.propertyKindName}</p>;
+      // What is valued, and its class under it (24 Nov 2026: «es un avalúo tipo maquinaria y equipo, y es una retroexcavadora»).
+      return (
+        <div className="min-w-0" data-valuation-subject>
+          <p className="truncate">{item.propertyKindName}</p>
+          <p className="truncate text-xs text-muted-foreground">{item.appraisalClassName}</p>
+        </div>
+      );
     case "tipoAvaluo":
       return <p className="truncate">{item.appraisalKindName}</p>;
     case "estado":
@@ -313,7 +319,7 @@ export function ValuationsTable({ items, params, permissions, initialLayout, now
               <p className="mt-1 truncate text-sm font-medium">{item.title || "Sin título"}</p>
               <p className="truncate text-sm text-muted-foreground">{item.client || "Sin cliente"}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {item.propertyKindName} · {item.deletedAt ? <>Eliminado <Moment date={item.deletedAt} now={now} /></> : <Moment date={item.updatedAt} now={now} />}
+                {item.appraisalClassName} · {item.propertyKindName} · {item.deletedAt ? <>Eliminado <Moment date={item.deletedAt} now={now} /></> : <Moment date={item.updatedAt} now={now} />}
               </p>
             </div>
             <div className="relative z-10 -mt-1 -mr-1">

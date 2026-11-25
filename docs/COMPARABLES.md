@@ -201,6 +201,14 @@ Sin migración: todo vive en los snapshots del comparable.
 - **El mercado no se pierde:** el mercado abierto (y la altura del editor) se guarda por pestaña del navegador, avalúo y sección (`market-tab-memory.ts`, `sessionStorage`); cambiar de vista o recargar vuelve al mismo mercado y, en cuanto la página lo permite, a la misma altura.
 - **«Estás en»:** la barra se rellena con el pastel de su mercado (tokens `market-land`, `market-building`, `market-rent`, `market-land-rent` de `globals.css`), con la tinta encima (13:1 o más).
 
+## Ficha de maquinaria y equipo (24 nov 2026)
+
+Sin migración: los datos viven en el snapshot del comparable (`JPropiedadSnapshot.machinery`, `calculation/comparable-machinery.ts`).
+
+- Cuando el comparable es de maquinaria y equipo, la ficha muestra «Datos de la máquina o equipo» en lugar de Terreno y Construcción, y la oferta no lleva superficie ni $/m². Los campos salen del libro MEH («V. ENF. MERCADO»): marca, modelo, año, número de serie, capacidad / potencia, horómetro (horas) u odómetro (km) —el valuador elige cuál tiene la máquina—, conservación, estado operativo, mantenimiento, aditamentos, procedencia y flete / costo de envío. La ubicación y el precio son los del comparable. El cálculo no los lee: la homologación de maquinaria se captura en su panel.
+- Se guardan y se leen con el resto del comparable (`machinery` en `comparableInputSchema`); un cliente que no los manda (la plantilla maestra, uno de antes) los conserva.
+- **Clase del comparable:** el catálogo de tipos de comparable con su clase (`comparable-classes.ts`, «MAQUINARIA») lo trae otra rama; mientras tanto la ficha es de maquinaria cuando el comparable ya tiene datos de máquina o quien la abre lo dice (`machinery` en `ComparableDialog` y `ComparableCardView`, `isMachineryComparable`). Al fusionar, esa propiedad se llena con la clase del catálogo.
+
 ## Pendiente
 
 - Coordenadas: `DireccionPropiedad` exige latitud y longitud, así que la dirección capturada (ahora por partes, con latitud y longitud a mano) se guarda solo en el snapshot hasta tener mapa y geocodificación.

@@ -33,6 +33,14 @@ import {
   type OwnKindNames,
 } from "@/features/valuations/services/property-kinds";
 import { templateDocumentForCreation } from "@/features/valuations/services/valuation-template.service";
+import {
+  classOfPropertyKind,
+  essenceKey,
+  normalizeEssence,
+  propertyKindFor,
+  readAppraisalSubject,
+  type AppraisalClass,
+} from "@/features/valuations/services/appraisal-subject";
 import { relateTemplateCoverImage } from "@/features/files/services/valuation-cover-image";
 import { writeVersionSections } from "@/features/valuations/services/valuation-workflow/save-sections";
 import type { SectionPayload } from "@/features/valuations/services/valuation-workflow/types";
@@ -56,8 +64,13 @@ export type SaveValuationInput = {
   propertyKind?: string;
   propertyKindOther?: string;
   valuationKindOther?: string;
-  /** «¿Cuál?» of the kind of valuation of the catalog chosen as «Otro» (Comercial, Hipotecario…): on creation only. */
+  /** «¿Cuál?» of the kind of valuation of the catalog chosen as «Otro» (Comercial, Hipotecario…). */
   appraisalKindOther?: string;
+  /** «Tipo de avalúo» of the carátula by its lowercase catalog key («comercial», «otro»…). */
+  appraisalKind?: string;
+  /** «Clase de avalúo» and «¿Qué se está valuando?»: with them, the «Tipo de bien» follows from what is valued. */
+  appraisalClass?: AppraisalClass;
+  essence?: string;
   appraisalTypeId?: number;
   propertyTypeId?: number;
   operationTypeId?: number;
@@ -86,9 +99,10 @@ export async function saveValuation(input: SaveValuationInput) {
           DFechaEliminacion: null,
         },
         select: {
-          IdAvaluo: true, IdPropiedadSujeto: true, IdTipoInmueble: true, IdTipoOperacion: true, SFolio: true, STitulo: true, SNombreCliente: true,
+          IdAvaluo: true, IdPropiedadSujeto: true, IdTipoInmueble: true, IdTipoOperacion: true, IdTipoAvaluo: true, SFolio: true, STitulo: true, SNombreCliente: true,
           BBloqueado: true, IdEstadoAvaluo: true, IdVersionTrabajo: true, estadoAvaluo: { select: { BEsInicial: true } },
-          tipoInmueble: { select: { SNombre: true } }, tipoOperacion: { select: { SNombre: true } },
+          tipoInmueble: { select: { SNombre: true, SClave: true } }, tipoOperacion: { select: { SNombre: true } }, tipoAvaluo: { select: { SNombre: true } },
+          propiedadSujeto: { select: { JCaracteristicas: true } },
         },
       });
 
@@ -100,11 +114,15 @@ export async function saveValuation(input: SaveValuationInput) {
       }
 
       const changes: ValuationDataChange[] = [];
+      // «¿Qué se está valuando?» decides the «Tipo de bien»; the class of machinery is fixed at creation.
+      const subject = subjectToSave(input, existing.tipoInmueble.SClave, existing.propiedadSujeto?.JCaracteristicas);
+      const sent = subject ? { ...input, propertyKind: subject.propertyKind, propertyKindOther: subject.propertyKindOther } : input;
       await prisma.$transaction(async (tx) => {
         // The kinds the carátula chose, by their catalog keys; an unknown key keeps the current kind.
-        const [propertyType, operationType] = await Promise.all([
-          input.propertyKind ? tx.tipoInmueble.findFirst({ where: { BActivo: true, SClave: { equals: normalizePropertyKind(input.propertyKind), mode: "insensitive" } }, select: { IdTipoInmueble: true } }) : null,
+        const [propertyType, operationType, appraisalType] = await Promise.all([
+          sent.propertyKind ? tx.tipoInmueble.findFirst({ where: { BActivo: true, SClave: { equals: normalizePropertyKind(sent.propertyKind), mode: "insensitive" } }, select: { IdTipoInmueble: true } }) : null,
           input.valuationKind ? tx.tipoOperacion.findFirst({ where: { BActivo: true, SClave: { equals: normalizeValuationKind(input.valuationKind), mode: "insensitive" } }, select: { IdTipoOperacion: true } }) : null,
+          input.appraisalKind ? tx.tipoAvaluo.findFirst({ where: { BActivo: true, SClave: { equals: input.appraisalKind.trim(), mode: "insensitive" } }, select: { IdTipoAvaluo: true } }) : null,
         ]);
         const propertyTypeId = input.propertyTypeId ?? propertyType?.IdTipoInmueble ?? existing.IdTipoInmueble;
         // Only what the appraiser edits changes the title and the client: a save that does not send them keeps them
@@ -112,7 +130,11 @@ export async function saveValuation(input: SaveValuationInput) {
         const title = input.title?.trim() || existing.STitulo;
         const sentClient = input.clientName ?? input.client;
         const clientName = sentClient === undefined ? existing.SNombreCliente : sentClient.trim() || null;
-        changes.push(...await dataChanges(tx, existing, { title, clientName, propertyTypeId, operationTypeId: operationType?.IdTipoOperacion ?? existing.IdTipoOperacion }));
+        changes.push(...await dataChanges(tx, existing, {
+          title, clientName, propertyTypeId,
+          operationTypeId: operationType?.IdTipoOperacion ?? existing.IdTipoOperacion,
+          appraisalTypeId: appraisalType?.IdTipoAvaluo ?? existing.IdTipoAvaluo,
+        }));
         await tx.avaluo.update({
           where: { IdAvaluo: existing.IdAvaluo },
           data: {
@@ -120,6 +142,7 @@ export async function saveValuation(input: SaveValuationInput) {
             SNombreCliente: clientName,
             IdTipoInmueble: propertyTypeId,
             ...(operationType ? { IdTipoOperacion: operationType.IdTipoOperacion } : {}),
+            ...(appraisalType ? { IdTipoAvaluo: appraisalType.IdTipoAvaluo } : {}),
           },
         });
 
@@ -133,7 +156,12 @@ export async function saveValuation(input: SaveValuationInput) {
           location: input.location,
           postalCode: input.postalCode,
         });
-        await saveOwnKindNames(tx, existing.IdAvaluo, user.organizationId, propertyTypeId, input);
+        await saveOwnKindNames(tx, existing.IdAvaluo, user.organizationId, propertyTypeId, {
+          ...sent,
+          ...(subject ? { appraisalClass: subject.appraisalClass, essence: subject.essence } : { appraisalClass: undefined, essence: undefined }),
+          // The name of «Otro» of «Tipo de avalúo» goes only with that kind.
+          ...(appraisalType ? { appraisalKindOther: isOwnKindKey(input.appraisalKind) ? input.appraisalKindOther ?? "" : "" } : { appraisalKindOther: undefined }),
+        });
         // The first edit moves the valuation from "Nuevo" to "En edición" (2 Nov 2026: every valuation stayed "Nuevo").
         if (existing.estadoAvaluo.BEsInicial) await advanceToEditing(tx, existing, user.id);
       });
@@ -156,6 +184,11 @@ export async function saveValuation(input: SaveValuationInput) {
       return { ok: false, error: catalogError.message, code: catalogError.code, missingCatalog: catalogError.label };
     }
 
+    // What is valued decides the «Tipo de bien» (an essence of the firm's own is «Otro» with its name).
+    const essence = normalizeEssence(input.essence ?? "");
+    if (input.appraisalClass && !essence) return { ok: false, error: "Escribe qué se está valuando.", code: "ESSENCE_MISSING" };
+    const subjectKind = input.appraisalClass ? propertyKindFor(input.appraisalClass, essence) : null;
+    const propertyKindOther = subjectKind ? (isOwnKindKey(subjectKind) ? essence : "") : input.propertyKindOther;
     const [estadoAvaluo, tipoAvaluo, tipoInmueble, tipoOperacion, plantilla, responsable] = await Promise.all([
       prisma.estadoAvaluo.findFirst({
         where: {
@@ -166,7 +199,9 @@ export async function saveValuation(input: SaveValuationInput) {
       }),
       prisma.tipoAvaluo.findFirst({ where: { IdTipoAvaluo: input.appraisalTypeId, BActivo: true } }),
       prisma.tipoInmueble.findFirst({
-        where: { IdTipoInmueble: input.propertyTypeId, BActivo: true },
+        where: subjectKind
+          ? { BActivo: true, SClave: { equals: subjectKind, mode: "insensitive" } }
+          : { IdTipoInmueble: input.propertyTypeId, BActivo: true },
       }),
       prisma.tipoOperacion.findFirst({
         where: { IdTipoOperacion: input.operationTypeId, BActivo: true },
@@ -217,7 +252,7 @@ export async function saveValuation(input: SaveValuationInput) {
     // A kind chosen as «Otro» says which (24 Nov 2026); that name prints wherever the kind does.
     const ownKindError = missingOwnKindName([
       { key: tipoAvaluo.SClave, name: input.appraisalKindOther, label: "«Tipo de avalúo»" },
-      { key: tipoInmueble.SClave, name: input.propertyKindOther, label: "«Tipo de bien»" },
+      { key: tipoInmueble.SClave, name: propertyKindOther, label: input.appraisalClass ? "«¿Qué se está valuando?»" : "«Tipo de bien»" },
       { key: tipoOperacion.SClave, name: input.valuationKindOther, label: "«Tipo de operación»" },
     ]);
     if (ownKindError) return { ok: false, error: ownKindError, code: "OWN_KIND_NAME_MISSING" };
@@ -260,6 +295,8 @@ export async function saveValuation(input: SaveValuationInput) {
         responsibleName,
         valuationDate: defaults.valuationDate,
         validity: formatValidityMonths(defaults.validityMonths),
+        // A machinery carátula prints the kind of machine.
+        essence: classOfPropertyKind(tipoInmueble.SClave) === "MAQUINARIA" ? essence : null,
       };
       const versionId = await initializeWorkingVersionStructure({
         avaluoId: created.IdAvaluo,
@@ -269,6 +306,7 @@ export async function saveValuation(input: SaveValuationInput) {
         // A machinery valuation starts without the real estate sections in view.
         initiallyHidden: initiallyHiddenSections(tipoInmueble.SClave),
         generalCaratulaDefaults,
+        propertyKind: tipoInmueble.SClave,
       });
       if (templateSections) {
         await writeVersionSections(tx, versionId, templateDocumentPayload(templateSections, generalCaratulaDefaults));
@@ -284,9 +322,10 @@ export async function saveValuation(input: SaveValuationInput) {
         location: input.location,
         propertyKind: tipoInmueble.SClave,
         valuationKind: tipoOperacion.SClave,
-        propertyKindOther: input.propertyKindOther ?? "",
+        propertyKindOther: propertyKindOther ?? "",
         valuationKindOther: input.valuationKindOther ?? "",
         appraisalKindOther: isOwnKindKey(tipoAvaluo.SClave) ? input.appraisalKindOther ?? "" : undefined,
+        ...(input.appraisalClass ? { appraisalClass: classOfPropertyKind(tipoInmueble.SClave) === "MAQUINARIA" ? "MAQUINARIA" : input.appraisalClass, essence } : {}),
       });
       await saveCaratula({
         versionId,
@@ -374,8 +413,11 @@ export type ValuationDataChange = { field: string; from: string; to: string };
 /** The title, client and kinds a save changes, by name, to record them in the valuation's history. */
 async function dataChanges(
   tx: Prisma.TransactionClient,
-  existing: { STitulo: string; SNombreCliente: string | null; IdTipoInmueble: number; IdTipoOperacion: number; tipoInmueble: { SNombre: string }; tipoOperacion: { SNombre: string } },
-  next: { title: string; clientName: string | null; propertyTypeId: number; operationTypeId: number },
+  existing: {
+    STitulo: string; SNombreCliente: string | null; IdTipoInmueble: number; IdTipoOperacion: number; IdTipoAvaluo: number;
+    tipoInmueble: { SNombre: string }; tipoOperacion: { SNombre: string }; tipoAvaluo: { SNombre: string };
+  },
+  next: { title: string; clientName: string | null; propertyTypeId: number; operationTypeId: number; appraisalTypeId: number },
 ): Promise<ValuationDataChange[]> {
   const changes: ValuationDataChange[] = [];
   if (next.title !== existing.STitulo) changes.push({ field: "Título", from: existing.STitulo, to: next.title });
@@ -386,7 +428,11 @@ async function dataChanges(
   }
   if (next.operationTypeId !== existing.IdTipoOperacion) {
     const kind = await tx.tipoOperacion.findUnique({ where: { IdTipoOperacion: next.operationTypeId }, select: { SNombre: true } });
-    changes.push({ field: "Tipo de avalúo", from: existing.tipoOperacion.SNombre, to: kind?.SNombre ?? "" });
+    changes.push({ field: "Tipo de operación", from: existing.tipoOperacion.SNombre, to: kind?.SNombre ?? "" });
+  }
+  if (next.appraisalTypeId !== existing.IdTipoAvaluo) {
+    const kind = await tx.tipoAvaluo.findUnique({ where: { IdTipoAvaluo: next.appraisalTypeId }, select: { SNombre: true } });
+    changes.push({ field: "Tipo de avalúo", from: existing.tipoAvaluo.SNombre, to: kind?.SNombre ?? "" });
   }
   return changes;
 }
@@ -421,13 +467,15 @@ async function saveOwnKindNames(
   valuationId: number,
   organizationId: number,
   propertyTypeId: number,
-  input: Pick<SaveValuationInput, "propertyKind" | "valuationKind" | "propertyKindOther" | "valuationKindOther" | "appraisalKindOther" | "title" | "location">,
+  input: Pick<SaveValuationInput, "propertyKind" | "valuationKind" | "propertyKindOther" | "valuationKindOther" | "appraisalKindOther" | "appraisalClass" | "essence" | "title" | "location">,
 ) {
-  if (input.propertyKindOther === undefined && input.valuationKindOther === undefined) return;
-  const names: OwnKindNames = {
+  if (input.propertyKindOther === undefined && input.valuationKindOther === undefined && input.appraisalKindOther === undefined && input.appraisalClass === undefined) return;
+  const names: OwnKindNames & { claseAvaluo?: AppraisalClass; queSeValua?: string } = {
     ...(normalizePropertyKind(input.propertyKind) === OTHER_PROPERTY_KIND && input.propertyKindOther?.trim() ? { tipoBienOtro: input.propertyKindOther.trim() } : {}),
     ...(normalizeValuationKind(input.valuationKind) === OTHER_VALUATION_KIND && input.valuationKindOther?.trim() ? { tipoAvaluoOtro: input.valuationKindOther.trim() } : {}),
     ...(input.appraisalKindOther?.trim() ? { claseAvaluoOtro: input.appraisalKindOther.trim() } : {}),
+    ...(input.appraisalClass ? { claseAvaluo: input.appraisalClass } : {}),
+    ...(input.appraisalClass && input.essence?.trim() ? { queSeValua: normalizeEssence(input.essence) } : {}),
   };
   // The croquis panel merges the pin into the same characteristics; both lock the valuation's row first (subject-location.service.ts).
   await tx.$queryRaw(Prisma.sql`SELECT 1 FROM "devpware_avaluos" WHERE "IdAvaluo" = ${valuationId} FOR UPDATE`);
@@ -447,8 +495,35 @@ async function saveOwnKindNames(
   const current = property?.JCaracteristicas && typeof property.JCaracteristicas === "object" && !Array.isArray(property.JCaracteristicas)
     ? (property.JCaracteristicas as Record<string, unknown>)
     : {};
-  const { tipoBienOtro: _bien, tipoAvaluoOtro: _avaluo, ...rest } = current;
+  // A field that was sent replaces what was kept; one not sent (the class from an old client) stays.
+  const sentKeys = new Set([
+    ...(input.propertyKindOther !== undefined ? ["tipoBienOtro"] : []),
+    ...(input.valuationKindOther !== undefined ? ["tipoAvaluoOtro"] : []),
+    ...(input.appraisalKindOther !== undefined ? ["claseAvaluoOtro"] : []),
+    ...(input.appraisalClass !== undefined ? ["claseAvaluo", "queSeValua"] : []),
+  ]);
+  const rest = Object.fromEntries(Object.entries(current).filter(([key]) => !sentKeys.has(key)));
   await tx.propiedad.update({ where: { IdPropiedad: propertyId }, data: { JCaracteristicas: { ...rest, ...names } as Prisma.InputJsonObject } });
+}
+
+/**
+ * What the carátula's «Clase de avalúo» and «¿Qué se está valuando?» save:
+ * the class (machinery is fixed when the valuation is created, since its
+ * panels and sections depend on it, and nothing else becomes machinery), the
+ * essence and the «Tipo de bien» they stand for. Null when the save sends
+ * neither.
+ */
+function subjectToSave(input: SaveValuationInput, currentKind: string, characteristics: unknown) {
+  if (input.appraisalClass === undefined && input.essence === undefined) return null;
+  const current = readAppraisalSubject(characteristics, currentKind);
+  const machinery = classOfPropertyKind(currentKind) === "MAQUINARIA";
+  const requested = input.appraisalClass ?? current.appraisalClass;
+  const appraisalClass: AppraisalClass = machinery ? "MAQUINARIA" : requested === "MAQUINARIA" ? current.appraisalClass : requested;
+  const essence = normalizeEssence(input.essence ?? current.essence);
+  // Unchanged, it saves nothing: a valuation of before keeps its kind («industrial» reads as «Bodega / Nave industrial»).
+  if (appraisalClass === current.appraisalClass && essenceKey(essence) === essenceKey(current.essence)) return null;
+  const propertyKind = propertyKindFor(appraisalClass, essence);
+  return { appraisalClass, essence, propertyKind, propertyKindOther: isOwnKindKey(propertyKind) ? essence : "" };
 }
 
 function missingCatalog(code: string, label: string) {

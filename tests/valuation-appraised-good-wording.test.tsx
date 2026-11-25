@@ -67,7 +67,8 @@ test("the conclusion template of a machinery valuation names the concluded value
   ]);
   // Only that label changes: same blocks, same concept ids.
   assert.deepEqual(template.blocks.map((block) => block.concepts.map((concept) => concept.id)), real?.blocks.map((block) => block.concepts.map((concept) => concept.id)));
-  for (const key of ["CARATULA", "COSTOS", "MERCADO_VENTA"]) assert.deepEqual(getInitialSectionTemplate(key, MACHINERY), getInitialSectionTemplate(key), key);
+  // The carátula asks for the machine's data (valuation-appraisal-subject.test.tsx); the rest are the same.
+  for (const key of ["COSTOS", "MERCADO_VENTA"]) assert.deepEqual(getInitialSectionTemplate(key, MACHINERY), getInitialSectionTemplate(key), key);
 
   // A valuation that never saved its conclusion section loads the template of its type.
   const labels = (kind: string) => buildCanonicalValuationSections([], kind).find((section) => section.label === "CONCLUSIONES")?.blocks[0].concepts.map((concept) => concept.label);

@@ -16,6 +16,7 @@ import {
 } from "@/features/valuations/calculation/comparable-card";
 import type { ComparableCardDto } from "@/features/valuations/calculation/comparable-card.service";
 import { REVIEW_STATUS_LABELS } from "@/features/valuations/calculation/comparable-review";
+import { isMachineryComparable, machineryCardRows } from "@/features/valuations/calculation/comparable-machinery";
 import { reviewCheckLabel } from "@/features/valuations/calculation/comparable-review-checklist";
 import {
   COMPARABLE_TYPE_LABELS,
@@ -64,13 +65,17 @@ function ListingLink({ href, printable }: { href: string; printable: boolean }) 
  * the photos and the screenshot of the listing, the offer, where it is, who
  * offers it, its land and construction, and the valuations it was used in.
  * Grouped as the tables of the dictamen. In the calculation memory
- * (`printable`) it leaves out the review, the warnings and the uses.
+ * (`printable`) it leaves out the review, the warnings and the uses. A
+ * machine's card shows the machine's data instead of the land and the
+ * construction, and no price per m² (24 Nov 2026).
  */
-export function ComparableCardView({ card, printable = false, map }: {
+export function ComparableCardView({ card, printable = false, map, machinery: machineryHint }: {
   card: ComparableCardDto;
   printable?: boolean;
   /** The map with the comparable's pin, under its location (V8.2); the printed memory has none. */
   map?: ReactNode;
+  /** The comparable is of machinery and equipment (its class); without it, one that carries a machine's data is. */
+  machinery?: boolean;
 }) {
   const { comparable, type } = card;
   const rent = isRentComparableType(type);
@@ -81,12 +86,15 @@ export function ComparableCardView({ card, printable = false, map }: {
   const extra = Object.entries(comparable.extra ?? {});
   const review = comparable.review;
   const built = isBuiltComparableType(type);
+  const machinery = isMachineryComparable(comparable, machineryHint);
 
   const offer: SheetItem[] = [
     { label: rent ? "Renta mensual" : "Precio de oferta", value: <span className="font-semibold tabular-nums">{money(comparable.price)}</span> },
     ...(rent ? [{ label: "Renta anual", value: <span className="tabular-nums">{money(comparable.price === null ? null : comparable.price * 12)}</span> }] : []),
-    { label: rent ? "$/m²/mes" : "$/m²", value: <span className="tabular-nums">{money(unitValue)}</span> },
-    { label: AREA_LABELS[type], value: <span className="tabular-nums">{number(comparable.area)}</span> },
+    ...(machinery ? [] : [
+      { label: rent ? "$/m²/mes" : "$/m²", value: <span className="tabular-nums">{money(unitValue)}</span> },
+      { label: AREA_LABELS[type], value: <span className="tabular-nums">{number(comparable.area)}</span> },
+    ]),
     { label: "Operación", value: OPERATION_TYPE_LABELS[operation] },
     { label: "Fecha de la oferta", value: dayText(comparable.offerDate) },
   ];
@@ -127,7 +135,8 @@ export function ComparableCardView({ card, printable = false, map }: {
     { label: "Pavimento / acceso", value: orDash(comparable.propertyDetails?.paving) },
     { label: "Posición en manzana", value: orDash(comparable.propertyDetails?.blockPosition) },
   ];
-  const construction: SheetItem[] = built ? [
+  const machine: SheetItem[] = machinery ? machineryCardRows(comparable.machinery).map((row) => ({ label: row.label, value: row.value })) : [];
+  const construction: SheetItem[] = built && !machinery ? [
     { label: "Tipo de construcción", value: orDash(comparable.constructionType) },
     { label: "Calidad", value: orDash(comparable.quality) },
     { label: "Conservación", value: orDash(comparable.conservation) },
@@ -200,7 +209,11 @@ export function ComparableCardView({ card, printable = false, map }: {
           </details>
         ) : null}
       </SheetSection>
-      <SheetSection title="Terreno" printable={printable}><SheetTable items={land} printable={printable} /></SheetSection>
+      {machinery ? (
+        <SheetSection title="Datos de la máquina o equipo" printable={printable}><div data-machinery-card><SheetTable items={machine} printable={printable} /></div></SheetSection>
+      ) : (
+        <SheetSection title="Terreno" printable={printable}><SheetTable items={land} printable={printable} /></SheetSection>
+      )}
       {construction.length ? (
         <SheetSection title="Construcción" printable={printable}><SheetTable items={construction} printable={printable} /></SheetSection>
       ) : null}

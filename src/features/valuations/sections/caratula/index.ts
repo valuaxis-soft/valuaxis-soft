@@ -1,12 +1,49 @@
 import { defineSection } from "../../section-builders";
 import { createCompanyHeaderBlock } from "../../services/caratula-company-header";
 
+const SECTION = { id: "caratula", title: "CARATULA", sourceFile: "CARATULA.pdf", enabled: true, required: true } as const;
+
+const APPLICANT_BLOCK = {
+  id: "caratula-block-2-datos-del-solicitante",
+  title: "DATOS DEL SOLICITANTE",
+  concepts: [
+    ["Propietario"],
+    ["Solicitante"],
+    ["Telefono"],
+    ["Correo"],
+  ] as [string][],
+};
+
+const VALUATION_BLOCKS = [
+  {
+    id: "caratula-block-4-datos-del-avaluo",
+    title: "DATOS DEL AVALUO",
+    concepts: [
+      ["Fecha de avaluo"],
+      ["Vigencia de avaluo"],
+      ["Uso del avaluo"],
+      ["Proposito del avaluo"],
+      ["Lugar y fecha de solicitud"],
+    ] as [string][],
+  },
+  {
+    id: "caratula-block-5-supuestos-y-condiciones-limitantes-que-influyen-en-el-valor-dictaminado",
+    title: "SUPUESTOS Y CONDICIONES LIMITANTES QUE INFLUYEN EN EL VALOR DICTAMINADO",
+    concepts: [["Descripcion"]] as [string][],
+  },
+  {
+    id: "caratula-block-6-conclusion",
+    title: "CONCLUSION",
+    concepts: [
+      ["Valor comercial del bien"],
+      ["Cifra en letras"],
+      ["Perito valuador"],
+    ] as [string][],
+  },
+];
+
 export const caratulaSection = defineSection({
-  id: "caratula",
-  title: "CARATULA",
-  sourceFile: "CARATULA.pdf",
-  enabled: true,
-  required: true,
+  ...SECTION,
   blocks: [
     createCompanyHeaderBlock(),
     {
@@ -21,16 +58,7 @@ export const caratulaSection = defineSection({
         ["Entidad federativa"],
       ],
     },
-    {
-      id: "caratula-block-2-datos-del-solicitante",
-      title: "DATOS DEL SOLICITANTE",
-      concepts: [
-        ["Propietario"],
-        ["Solicitante"],
-        ["Telefono"],
-        ["Correo"],
-      ],
-    },
+    APPLICANT_BLOCK,
     {
       id: "caratula-block-3-caracteristicas",
       title: "CARACTERÍSTICAS",
@@ -41,30 +69,50 @@ export const caratulaSection = defineSection({
         ["Numero de niveles"],
       ],
     },
+    ...VALUATION_BLOCKS,
+  ],
+});
+
+/** The block of the machine's data in a machinery carátula; its first concept is «Tipo de máquina / equipo». */
+export const MACHINERY_CARATULA_DATA_BLOCK_ID = "caratula-block-1-datos-del-bien-mueble";
+export const MACHINERY_CARATULA_KIND_CONCEPT_ID = `${MACHINERY_CARATULA_DATA_BLOCK_ID}-concept-1`;
+
+/**
+ * The carátula of a machinery and equipment valuation, as the MEH book's
+ * «l. CARATULA» (B28–C40): the machine's data instead of the street, the
+ * postal code, the land and the levels of a property, which a machinery
+ * carátula printed as «—» (FAL-21). Horómetro and odómetro are both offered:
+ * the appraiser keeps the one the machine has (a car is measured in km, a
+ * backhoe in hours). Every concept stays editable.
+ */
+export const machineryCaratulaSection = defineSection({
+  ...SECTION,
+  blocks: [
+    createCompanyHeaderBlock(),
     {
-      id: "caratula-block-4-datos-del-avaluo",
-      title: "DATOS DEL AVALUO",
+      id: MACHINERY_CARATULA_DATA_BLOCK_ID,
+      title: "DATOS DEL BIEN A VALUAR",
       concepts: [
-        ["Fecha de avaluo"],
-        ["Vigencia de avaluo"],
-        ["Uso del avaluo"],
-        ["Proposito del avaluo"],
-        ["Lugar y fecha de solicitud"],
+        ["Tipo de máquina / equipo"],
+        ["Marca"],
+        ["Modelo"],
+        ["Número de serie"],
+        ["Año de fabricación"],
+        ["País de origen"],
+        ["Ubicación del bien"],
       ],
     },
+    APPLICANT_BLOCK,
     {
-      id: "caratula-block-5-supuestos-y-condiciones-limitantes-que-influyen-en-el-valor-dictaminado",
-      title: "SUPUESTOS Y CONDICIONES LIMITANTES QUE INFLUYEN EN EL VALOR DICTAMINADO",
-      concepts: [["Descripcion"]],
-    },
-    {
-      id: "caratula-block-6-conclusion",
-      title: "CONCLUSION",
+      id: "caratula-block-3-caracteristicas-del-bien-mueble",
+      title: "CARACTERÍSTICAS",
       concepts: [
-        ["Valor comercial del bien"],
-        ["Cifra en letras"],
-        ["Perito valuador"],
+        ["Capacidad / potencia"],
+        ["Horas de uso (horómetro)"],
+        ["Kilometraje (odómetro)"],
+        ["Estado de conservación"],
       ],
     },
+    ...VALUATION_BLOCKS,
   ],
 });

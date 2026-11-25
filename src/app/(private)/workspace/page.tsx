@@ -9,7 +9,7 @@ import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { requireSession } from "@/security/guards/require-session";
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
-import { getCustomUnits, getLetterhead } from "@/features/firm/firm.service";
+import { getCustomUnits, getFirmLists, getLetterhead } from "@/features/firm/firm.service";
 import { isAiEnabled } from "@/features/ai/ai-gateway-provider";
 import { getValuationCreationCatalogs } from "@/features/valuations/services/valuation-catalogs.service";
 import { getUserPreferences } from "@/features/account/user-preferences.service";
@@ -35,10 +35,11 @@ export default async function WorkspacePage({
 
   if (!valuationId || !hasPermission(user, AUTH_PERMISSIONS.viewValuations)) redirect("/dashboard");
 
-  const [initialValuation, letterhead, customUnits, preferences] = await Promise.all([
+  const [initialValuation, letterhead, customUnits, firmLists, preferences] = await Promise.all([
     getValuationByPublicId(valuationId, user.organizationId),
     getLetterhead(user.organizationId),
     getCustomUnits(user.organizationId),
+    getFirmLists(user.organizationId),
     getUserPreferences(user.id),
   ]);
   if (!initialValuation) redirect("/dashboard");
@@ -55,6 +56,7 @@ export default async function WorkspacePage({
         currentUser={user}
         letterhead={letterhead}
         customUnits={customUnits}
+        firmLists={firmLists}
         autosaveSeconds={preferences.autosaveSeconds}
         layoutRefresh={layoutRefreshPolicy(env.VALUATION_LAYOUT_REFRESH)}
         valuationId={valuationId}

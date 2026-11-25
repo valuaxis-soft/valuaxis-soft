@@ -4,6 +4,7 @@
  * the editor shows (working version, or the final one once concluded).
  */
 import { randomUUID } from "node:crypto";
+import { machineryDetailsOf, type ComparableMachineryDetails } from "./comparable-machinery";
 import { Prisma } from "@prisma/client";
 
 import type { AuthUser } from "@/features/auth/model";
@@ -103,6 +104,8 @@ type PropertySnapshot = {
   constructionType?: string | null;
   /** The master workbook's property facts. */
   details?: ComparablePropertyDetails | null;
+  /** The machine's data of a machinery comparable (comparable-machinery.ts). */
+  machinery?: ComparableMachineryDetails | null;
   /**
    * The firm's own factors of the comparable («custom:fondo»), each with its
    * key. They are all of type OTRO and devpware_factores_homologacion keeps one
@@ -270,6 +273,7 @@ export async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean
     constructionType: stringOrNull(property.constructionType),
     propertyDetails: detailsOf(property.details),
     listingDetails: detailsOf(publication.details),
+    machinery: machineryDetailsOf(property.machinery),
     updatedOn: todayInMexico(row.DFechaActualizacionDatos),
     photos: await Promise.all(photos.map(async (photo) => {
       const framing = readStoredImageFraming(photo.framing);
@@ -841,6 +845,8 @@ export function snapshots(payload: ComparableInputPayload, formulas: CapturedFor
     bathrooms: unlessOmitted(payload.bathrooms, stored.bathrooms),
     constructionType: unlessOmitted(payload.constructionType, stored.constructionType),
     details: unlessOmitted(payload.propertyDetails, stored.details),
+    // A client that does not send them (the master workbook, a client of before) keeps the stored ones.
+    machinery: unlessOmitted(payload.machinery, stored.machinery),
     ownFactors: ownFactorsOf(payload),
   };
   const publication: PublicationSnapshot = {

@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import { documentPaletteSchema } from "@/features/valuations/services/document-palette";
+import { APPRAISAL_CLASSES, MAX_ESSENCE_LENGTH } from "@/features/valuations/services/appraisal-subject";
 
 const id = z.string().trim().min(1).max(200);
 const shortText = z.string().max(250);
@@ -24,6 +25,9 @@ export const createValuationSchema = z.object({
   appraisalTypeOther: z.string().trim().max(120).optional(),
   propertyTypeOther: z.string().trim().max(120).optional(),
   operationTypeOther: z.string().trim().max(120).optional(),
+  /** «Clase de avalúo» and «¿Qué se está valuando?»; with them, the «Tipo de bien» follows from what is valued. */
+  appraisalClass: z.enum(APPRAISAL_CLASSES).optional(),
+  essence: z.string().trim().max(MAX_ESSENCE_LENGTH).optional(),
 });
 
 const valuationMetaShape = {
@@ -38,6 +42,11 @@ const valuationMetaShape = {
   /** The name of a kind of the appraiser's own ("Otro…"). */
   propertyKindOther: z.string().trim().max(120).optional(),
   valuationKindOther: z.string().trim().max(120).optional(),
+  /** «Clase de avalúo», «¿Qué se está valuando?» and «Tipo de avalúo» (Comercial…, «otro» with its name) of the carátula. */
+  appraisalClass: z.enum(APPRAISAL_CLASSES).optional(),
+  essence: z.string().trim().max(MAX_ESSENCE_LENGTH).optional(),
+  appraisalKind: z.string().max(64).optional(),
+  appraisalKindOther: z.string().trim().max(120).optional(),
   status: z.string().max(64).optional(),
 };
 

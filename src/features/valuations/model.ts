@@ -22,6 +22,12 @@ export type ValuationMeta = {
   /** The name of a kind of the appraiser's own, when the kind is "otro"/"otra". */
   propertyKindOther?: string;
   valuationKindOther?: string;
+  /** «Clase de avalúo» and «¿Qué se está valuando?» (services/appraisal-subject.ts); a valuation of before reads them from its kind. */
+  appraisalClass?: "INMUEBLE" | "MAQUINARIA" | "AGROPECUARIO";
+  essence?: string;
+  /** «Tipo de avalúo» (Comercial, Hipotecario…) by its lowercase key, and the name of its «Otro». */
+  appraisalKind?: string;
+  appraisalKindOther?: string;
 };
 
 export type CaratulaFormData = {

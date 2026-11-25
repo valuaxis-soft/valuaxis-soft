@@ -8,6 +8,8 @@ import { ReadOnlyValuationAlert } from "@/features/valuations/components/feedbac
 import { UnaccreditedEditorAlert, UnaccreditedNoticeProvider } from "@/features/accreditation/components/unaccredited-notice";
 import { FormulaEditingProvider } from "@/features/valuations/components/editor/formula-editing";
 import { CustomUnitsProvider } from "@/features/valuations/components/editor/custom-units-context";
+import { FirmListsProvider } from "@/features/valuations/components/editor/firm-lists-context";
+import type { FirmLists } from "@/features/firm/firm-lists";
 import { DeleteConfirmProvider } from "@/features/valuations/components/editor/delete-confirm";
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
 import { documentNumberPresentation } from "@/features/valuations/services/number-presentation";
@@ -120,6 +122,7 @@ export function ValuationWorkspace({
   aiEnabled = false,
   googleMaps = { apiKey: null },
   customUnits = [],
+  firmLists,
   unaccreditedNotice = null,
   autosaveSeconds = DEFAULT_AUTOSAVE_SECONDS,
   template = null,
@@ -148,6 +151,8 @@ export function ValuationWorkspace({
   googleMaps?: GoogleMapsPageConfig;
   /** The firm's own units, offered in "Formato del valor". */
   customUnits?: string[];
+  /** The firm's own «¿Qué se está valuando?» and «Tipo de avalúo», offered in the carátula. */
+  firmLists?: FirmLists;
 }) {
   const router = useRouter();
   // Chrome offers no history under the fields of the editor (video 7.3).
@@ -641,6 +646,7 @@ export function ValuationWorkspace({
     <NumberPresentationProvider presentation={numberPresentation}>
     <PagePresentationProvider presentation={pagePresentation}>
     <CustomUnitsProvider initialUnits={customUnits}>
+    <FirmListsProvider initialLists={firmLists}>
     {/* A template has no header dates: its dates are not compared with anything. */}
     <HeaderDatesProvider dates={template ? null : headerDates}>
     <StructureTransferProvider
@@ -845,6 +851,7 @@ export function ValuationWorkspace({
     </DeleteConfirmProvider>
     </StructureTransferProvider>
     </HeaderDatesProvider>
+    </FirmListsProvider>
     </CustomUnitsProvider>
     </PagePresentationProvider>
     </NumberPresentationProvider>

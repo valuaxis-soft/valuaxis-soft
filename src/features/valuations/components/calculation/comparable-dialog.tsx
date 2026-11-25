@@ -68,6 +68,8 @@ import { ComparablePhotoFraming } from "./comparable-photo-framing";
 import type { ImageFraming } from "@/features/valuations/services/image-framing";
 import { SheetFieldTable, SheetFormSection, SheetSection, SheetTable, type SheetField } from "./comparable-sheet";
 import { SuggestInput, type SuggestFieldProps } from "./suggest-input";
+import { isMachineryComparable } from "@/features/valuations/calculation/comparable-machinery";
+import { MachineryDetailsFields, machineryDetailsFromDraft, machineryDraftOf } from "./comparable-machinery-fields";
 import {
   SUGGESTED_CHARACTERISTICS,
   emptySuggestions,
@@ -278,7 +280,8 @@ export const openableUrl = (value: string) => {
 
 /** Fields of the form an error points to, so the appraiser sees which one to correct. */
 export type ComparableFormField =
-  | "location" | "postalCode" | "frontCount" | "latitude" | "longitude" | "landArea" | "bedrooms" | "bathrooms" | "age" | "levels" | "parking";
+  | "location" | "postalCode" | "frontCount" | "latitude" | "longitude" | "landArea" | "bedrooms" | "bathrooms" | "age" | "levels" | "parking"
+  | "machinery-year" | "machinery-meter" | "machinery-freight";
 
 /** «Superficie de terreno (m²) dice «México»»: what was typed, so an autofill by the browser is seen at once. */
 const typedIn = (label: string, typed: string) => `${label} dice «${typed.trim()}»`;
@@ -368,6 +371,12 @@ export type ComparableDialogProps = {
   attributesHint?: string;
   /** In the firm's base the comparable is not in a market: its type is chosen in the form. */
   onTypeChange?: (type: ComparableType) => void;
+  /**
+   * The comparable is of machinery and equipment (its class): the sheet asks
+   * for the machine's data instead of the land and the construction. Without
+   * it, one that already carries a machine's data is (comparable-machinery.ts).
+   */
+  machinery?: boolean;
 };
 
 /**
@@ -429,6 +438,9 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
   const [characteristics, setCharacteristics] = useState<Record<string, string>>(() =>
     initialCharacteristics(comparable, fields, props.prefill));
   const [freeText, setFreeText] = useState(comparable?.characteristicsText ?? "");
+  // A machine's data instead of the land and the construction (24 Nov 2026).
+  const machinery = isMachineryComparable(comparable ?? {}, props.machinery);
+  const [machineryDraft, setMachineryDraft] = useState(() => machineryDraftOf(comparable?.machinery));
   // Characteristics of this comparable only: a name and a value each, to capture and to filter the firm's base.
   const [attributes, setAttributes] = useState(() => comparable?.attributes?.map((item) => ({ ...item })) ?? []);
   // A rent can be typed as the year: the month (what is stored) is a twelfth of it.
@@ -531,9 +543,11 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     }
     const coordinatesProblem = coordinatesError(latitude, longitude);
     if (coordinatesProblem) return { field: latitude === null ? "latitude" : "longitude", error: coordinatesProblem };
-    const building = built ? buildingValues() : null;
+    const machine = machinery ? machineryDetailsFromDraft(machineryDraft) : null;
+    if (machine && "error" in machine) return { field: machine.field as ComparableFormField, error: machine.error };
+    const building = built && !machinery ? buildingValues() : null;
     if (building && "error" in building) return building;
-    const construction = built ? constructionDetailsOf(draft) : null;
+    const construction = built && !machinery ? constructionDetailsOf(draft) : null;
     if (construction && "error" in construction) return construction;
     // What is not in the form (the factors, characteristics out of the list) stays as stored.
     const {
@@ -567,6 +581,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         ...(construction ?? {}),
       }),
       listingDetails: withDetails(stored.listingDetails, { publicationId: draft.publicationId.trim().slice(0, 120) || null }),
+      ...(machine ? { machinery: machine.details } : {}),
     };
     for (const key of ["area", "price"] as const) values = withCharacteristic(values, key, draft[key], parseDecimal(draft[key]));
     for (const field of fields) {
@@ -679,7 +694,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     return () => { active = false; clearTimeout(timer); };
   }, [checkWhileTyping, probeKey]);
 
-  const current = snapshotOf(draft, characteristics, freeText, attributes, pendingScreenshot, pendingPhotos.map((photo) => photo.file));
+  const current = snapshotOf(draft, characteristics, freeText, attributes, pendingScreenshot, pendingPhotos.map((photo) => photo.file), machineryDraft);
   const [initial] = useState(current);
   // A new comparable from a pasted listing already holds data worth asking about.
   const dirty = !readOnly && (current !== initial || (!comparable && Boolean(props.prefill)));
@@ -1240,8 +1255,12 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
               />
             </SheetSection>
             <SheetSection title="Fuente de información"><SheetFieldTable items={source} /></SheetSection>
-            <SheetSection title="Terreno"><SheetFieldTable items={land} /></SheetSection>
-            {built ? (
+            {machinery ? (
+              <MachineryDetailsFields draft={machineryDraft} onChange={setMachineryDraft} invalidField={error?.field} autoComplete={NO_BROWSER_AUTOFILL} />
+            ) : (
+              <SheetSection title="Terreno"><SheetFieldTable items={land} /></SheetSection>
+            )}
+            {built && !machinery ? (
               <SheetSection title="Construcción">
                 <SheetFieldTable items={construction} />
                 <p className="border-t px-2 py-1 text-[11px] text-muted-foreground">

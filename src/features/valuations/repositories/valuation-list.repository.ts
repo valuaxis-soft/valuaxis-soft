@@ -7,6 +7,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { ownKindName, readOwnKindNames } from "@/features/valuations/services/property-kinds";
+import { APPRAISAL_CLASS_LABELS, readAppraisalSubject } from "@/features/valuations/services/appraisal-subject";
 import type { ValuationDateField, ValuationSortDirection, ValuationSortKey } from "@/features/dashboard/valuation-list-params";
 
 /** Days a deleted valuation stays in the trash; after them it is deleted for good on the next look at the trash. */
@@ -24,7 +25,10 @@ export type ValuationPageItem = {
   valuationKind: string;
   /** Lowercase SClave of the property type. */
   propertyKind: string;
+  /** «¿Qué se está valuando?» (Casa habitación, Retroexcavadora…); the «Tipo de bien» when a valuation has none. */
   propertyKindName: string;
+  /** «Clase de avalúo»: Inmueble, Maquinaria y equipo, Agropecuario. */
+  appraisalClassName: string;
   appraisalKindName: string;
   /** Lowercase SClave of the status. */
   status: string;
@@ -164,6 +168,7 @@ function valuationPageOrder(sort: ValuationSortKey = "modificacion", direction: 
 
 function mapPageRow(row: PageRow): ValuationPageItem {
   const own = readOwnKindNames(row.propiedadSujeto?.JCaracteristicas);
+  const subject = readAppraisalSubject(row.propiedadSujeto?.JCaracteristicas, row.tipoInmueble.SClave);
   return {
     id: row.UIdentificadorPublico,
     folio: row.SFolio,
@@ -172,7 +177,8 @@ function mapPageRow(row: PageRow): ValuationPageItem {
     location: row.propiedadSujeto?.direccionesPropiedad[0]?.SDireccionCompleta ?? "",
     valuationKind: row.tipoOperacion.SClave.toLowerCase(),
     propertyKind: row.tipoInmueble.SClave.toLowerCase(),
-    propertyKindName: ownKindName(row.tipoInmueble, own.tipoBienOtro),
+    propertyKindName: subject.essence || ownKindName(row.tipoInmueble, own.tipoBienOtro),
+    appraisalClassName: APPRAISAL_CLASS_LABELS[subject.appraisalClass],
     appraisalKindName: ownKindName(row.tipoAvaluo, own.claseAvaluoOtro),
     status: row.estadoAvaluo.SClave.toLowerCase(),
     statusName: row.estadoAvaluo.SNombre,
