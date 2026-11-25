@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 import { ValuaxisLogo } from "@/components/brand/valuaxis-logo";
 import { ContourLines } from "@/components/brand/contour-lines";
+import { LEGAL_FOOTER_LINKS } from "@/features/legal/legal-links";
 
 const highlights = [
   "Mercado, costos e ingresos con las fórmulas de tus libros",
@@ -72,6 +73,13 @@ export function AuthShell({ children }: { children: ReactNode }) {
             <p className="text-sm text-muted-foreground">Software de avalúos inmobiliarios en línea</p>
           </div>
           {children}
+          <nav aria-label="Legal" data-legal-footer="" className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {LEGAL_FOOTER_LINKS.map((link) => (
+              <Link key={link.href} href={link.href} className="py-1 hover:text-foreground">
+                {link.label}
+              </Link>
+            ))}
+          </nav>
         </div>
       </main>
     </div>

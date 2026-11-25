@@ -42,6 +42,7 @@ import type { AccreditationView } from "@/features/accreditation/accreditation.s
 import type { PhoneVerificationView } from "@/features/account/phone/phone-verification.service";
 import type { PhoneChannel } from "@/features/account/phone/phone-verification-gateway";
 import type { AccountPreferences, UserPreferences } from "@/features/account/user-preferences";
+import type { OptionalConsents } from "@/features/legal/consent-rules";
 import type { NotificationListDto, NotificationPreferences } from "@/features/notifications/notification-types";
 import type { FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 import type { CustomFactor } from "@/features/firm/custom-factors";
@@ -605,6 +606,13 @@ export const api = {
       valuationListColumns?: { columns: UserPreferences["valuationListColumns"] };
       notifications?: Partial<NotificationPreferences>;
     }) => request<AccountPreferences>(`/cuenta/preferencias`, { method: "PATCH", body: JSON.stringify(patch) }),
+  },
+  /** The person's legal acceptances (docs/LEGAL.md): accepting the versions in force and casillas 2 to 4. */
+  consents: {
+    accept: (body: { privacidad: true; terminos: true; mayorDeEdad?: boolean; versionIds: number[] }) =>
+      request<{ accepted: true }>(`/cuenta/consentimientos/aceptar`, { method: "POST", body: JSON.stringify(body) }),
+    update: (patch: Partial<OptionalConsents>) =>
+      request<OptionalConsents>(`/cuenta/consentimientos`, { method: "PATCH", body: JSON.stringify(patch) }),
   },
   /** The bell: the person's latest notices in the open firm, and marking them read. */
   notifications: {

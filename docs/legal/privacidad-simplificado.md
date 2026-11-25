@@ -1,0 +1,52 @@
+---
+documento: privacidad-simplificado
+titulo: Aviso de privacidad simplificado
+version: 1
+fecha: 2026-11-15
+---
+# Parte I. Aviso de privacidad simplificado de la plataforma Valuaxis Soft
+
+Este aviso se presenta en el formulario de registro, con el enlace al aviso de privacidad integral, y su aceptación se da por separado de la de los términos y condiciones (los Términos y condiciones de uso, sección 3.1).
+
+1. Responsable. Álvaro Gutiérrez Navarro, persona física, con nombre comercial Valuaxis Soft (el «Proveedor»), con domicilio en ______, es responsable del tratamiento de los datos personales que usted proporciona al registrarse y al usar la plataforma Valuaxis Soft (la «Plataforma»), conforme al artículo 15, fracción I, y al artículo 2, fracción XIV, de la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (la «Ley»). El nombre comercial identifica el servicio; la persona obligada frente a usted es siempre el Proveedor.
+
+Contacto en materia de datos personales: el correo electrónico para privacidad y derechos ARCO, ______.
+
+2. Datos personales que tratamos.
+
+Tratamos los siguientes datos de usted como persona usuaria (art. 15, fracción II, de la Ley): su nombre, correo electrónico y teléfono, y una foto opcional; datos profesionales (cédula profesional y, en su caso, datos del despacho); datos de acreditación profesional (folio, cédula, nombre según la SEP y, si se obtiene la constancia, solo la huella (hash) de la CURP, que es un dato personal seudonimizado; la CURP no se guarda); datos de las personas que el administrador de un despacho invita a su cuenta; datos de pago y facturación; el registro de su aceptación de los términos y de este aviso, con la versión aceptada, la fecha y la hora, la dirección IP, el identificador de su cuenta y la cookie de la sesión de registro, que se guarda en la base de datos propia del Proveedor (los Términos y condiciones de uso, sección 3.2); datos de uso de la Plataforma; registros de seguridad (sesiones, intentos de acceso y bitácora, con IP); datos del inicio con Google, cuando elija esa opción; y los mensajes que nos envía al pedir soporte. El detalle está en el aviso integral, secciones 2.1 a 2.3. No solicitamos datos personales sensibles. La Plataforma está dirigida a personas mayores de edad que la usan con fines profesionales. Si usted usa «Pegar anuncio», el texto y la liga del anuncio que pega se envían al proveedor de inteligencia artificial (Anthropic, en los Estados Unidos) para proponer datos de un Comparable; los datos pueden ser incompletos y requieren revisión. La Plataforma no entra por sí misma a portales de anuncios. Los Comparables pueden incluir URL, portal, fechas y, solo cuando sirvan para verificar el Comparable, el contacto y el teléfono del Anunciante. Las funciones «Redactar borrador» y «Redactar resumen del apartado» están en pausa. Los avalúos que usted elabora pueden contener datos de terceros (el solicitante, el propietario y los anunciantes de comparables), incluidos datos patrimoniales del propietario. Respecto de esos datos, usted o, en la cuenta de un despacho, el despacho decide qué se captura y para qué, y es el responsable de ellos; el Proveedor solo los almacena y procesa por su cuenta para que la Plataforma funcione, como persona encargada (art. 2, fracción XII, de la Ley), según el instrumento del encargo. A usted le corresponde informar a esas personas con su propio aviso de privacidad y, cuando proceda, recabar su consentimiento, incluido el consentimiento expreso para datos patrimoniales, salvo las excepciones de los artículos 9 y 36 (art. 7 de la Ley), según los Términos y condiciones de uso (sección 7.2). El Proveedor y quienes trabajan por su cuenta solo acceden a la información de las Cuentas y al Contenido del Usuario en la medida necesaria para dar soporte, para el mantenimiento y la seguridad de la Plataforma o para cumplir un mandato legal (los Términos y condiciones de uso, secciones 7.2 y 13).
+
+3. Para qué usamos sus datos. Finalidades necesarias para el servicio (art. 15, fracción III, de la Ley). Las finalidades 1 a 7 derivan de la relación jurídica entre usted y el Proveedor y no requieren su consentimiento (art. 9, fracción IV). La finalidad 8 se apoya en el cumplimiento de disposiciones jurídicas y de mandatos de autoridad (art. 9, fracciones I y VII), en el ejercicio de los derechos que derivan de la relación con usted (art. 9, fracción IV) y, cuando implique comunicar datos a una autoridad o en un proceso judicial, en el artículo 36, fracciones V y VI.
+1. Crear, administrar y mantener su cuenta y, en su caso, la de su equipo.
+2. Darle acceso a la Plataforma y a sus funciones.
+3. Verificar su cédula profesional cuando usted lo pida.
+4. Cobrar los avalúos que adquiera y registrar sus pagos y saldo a favor; la facturación se rige por las Políticas comerciales.
+5. Atender sus solicitudes de soporte.
+6. Enviarle comunicaciones de servicio.
+7. Mantener la seguridad de la Plataforma y prevenir accesos no autorizados, suplantaciones o préstamo de cuentas.
+8. Conservar el registro de su aceptación y atender requerimientos de autoridad o la defensa de los derechos del Proveedor.
+
+Finalidades secundarias. Solo si usted lo autoriza marcando la casilla correspondiente, que nunca aparece premarcada, usaremos su nombre y correo para: (a) enviarle información comercial sobre nuevas funciones y promociones de la Plataforma; (b) enviarle un boletín informativo, y (c) incluir su estado y municipio en estadísticas agregadas sobre el uso de la Plataforma por ubicación, que no lo identifican. Cada finalidad tiene su propia casilla. Si no las marca, o retira después su autorización, conserva el acceso a la Plataforma y al servicio contratado. Datos de pago. Sus datos de pago y facturación se tratan porque son necesarios para cumplir la compra que usted solicita, que es una de las excepciones al consentimiento expreso que prevé el artículo 7 (art. 9, fracción IV, de la Ley); por ello no le pediremos una casilla adicional. Fuera de las estadísticas agregadas del inciso (c), no usamos sus datos para formar bases de datos con fines estadísticos o comerciales, no los usamos para entrenar modelos de inteligencia artificial y no los vendemos ni los cedemos a terceros. Si en el futuro se pretende usar información derivada de los avalúos para otros fines, incluida una base de información disociada, se actualizará este aviso antes (la Política de información disociada).
+
+4. Transferencias.
+
+Los datos de la tarjeta y del pago que usted captura al comprar con tarjeta los trata Stripe, la pasarela de pago, como responsable por cuenta propia. Esa transferencia no requiere su consentimiento porque es precisa para el cumplimiento de la relación jurídica entre usted y el Proveedor (art. 36, fracción VII, de la Ley). Fuera de ese caso, no transferimos sus datos a instituciones financieras, autoridades ni compradores de bases de datos, salvo en los supuestos del artículo 36 de la Ley que no requieren su consentimiento. Si en el futuro pretendemos hacer transferencias que requieran su consentimiento, actualizaremos este aviso y le pediremos que las acepte o las rechace (art. 35 de la Ley). El envío del reporte a sus clientes desde la Plataforma lo decide y lo ordena usted; el Proveedor solo lo ejecuta técnicamente (los Términos y condiciones de uso, sección 10.1). Para operar la Plataforma intervienen Hostinger (alojamiento de la aplicación y de la base de datos), Amazon Web Services (archivos, imágenes y correo), Anthropic (inteligencia artificial), Stripe (pagos), Google Maps y OpenStreetMap (mapas), Google (inicio de sesión opcional) y WhatsApp (soporte); algunos tratan los datos fuera de México. El papel de cada tercero y el detalle de remisiones y transferencias están en el aviso integral (secciones 2.5 y 6.1).
+
+5. Cómo negarse, revocar su consentimiento o limitar el uso de sus datos. Usted puede limitar el uso o la divulgación de sus datos (art. 15, fracción IV, de la Ley):
+1. Desmarcando en su cuenta las casillas de finalidades secundarias.
+2. Pidiendo, por el correo para privacidad y derechos ARCO, su inscripción en nuestro listado de exclusión, con lo que dejará de recibir comunicaciones no necesarias para el servicio.
+
+Puede revocar en cualquier momento el consentimiento que haya otorgado, sin efectos retroactivos (art. 7 de la Ley). La revocación se solicita por el mismo medio y con los mismos requisitos que una solicitud de acceso, rectificación, cancelación u oposición (derechos ARCO), que se describen en el aviso integral. Si la revocación se refiere a datos indispensables para el servicio, le informaremos que no podremos seguir prestándolo.
+
+6. Aviso de privacidad integral. Puede consultar el aviso de privacidad integral, que incluye la lista de proveedores, el procedimiento para ejercer sus derechos ARCO, los plazos de conservación y la forma en que le comunicaremos cambios, en el sitio web de la Plataforma, ______. Este aviso simplificado se presenta conforme al artículo 16, fracción II, de la Ley.
+
+Fecha de última actualización: la de su publicación en la Plataforma. Versión: la misma del aviso integral, que se indique al publicarse en la Plataforma.
+
+## PARTE II. TEXTOS DE LAS CASILLAS DEL FORMULARIO DE REGISTRO
+
+Cada casilla aparece por separado y sin marcar. La casilla 1 se presenta junto al aviso simplificado y separada de la casilla de aceptación de los términos y condiciones (los Términos y condiciones de uso, sección 3.1). Las casillas 2, 3 y 4 pueden consultarse y cambiarse después en la sección de privacidad de la cuenta (el Aviso de privacidad integral, sección 4.3). No hay casilla para datos de pago (sección 3, «Datos de pago»).
+
+1. Aviso de privacidad (obligatoria para registrarse): «He leído el aviso de privacidad simplificado y el aviso de privacidad integral de Álvaro Gutiérrez Navarro, persona física, con nombre comercial Valuaxis Soft.»
+2. Información comercial, opcional: «Acepto recibir información comercial sobre nuevas funciones y promociones de la plataforma Valuaxis Soft por parte de Álvaro Gutiérrez Navarro, persona física, con nombre comercial Valuaxis Soft.»
+3. Boletín, opcional: «Acepto recibir el boletín informativo de Álvaro Gutiérrez Navarro, persona física, con nombre comercial Valuaxis Soft.»
+4. Estadística por ubicación, opcional: «Acepto que mi estado y municipio se incluyan en estadísticas agregadas sobre el uso de la plataforma Valuaxis Soft, que no me identifican.»

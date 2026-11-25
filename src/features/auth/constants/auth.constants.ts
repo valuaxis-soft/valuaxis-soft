@@ -33,4 +33,6 @@ export const AUTH_PUBLIC_PATHS = [
   "/restablecer-contrasena",
   "/oauth",
   "/login",
+  // The legal documents and «Avisos de terceros»: public, before and after signing up.
+  "/legal",
 ] as const;

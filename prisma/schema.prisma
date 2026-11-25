@@ -351,6 +351,8 @@ model Usuario {
   /// index on STelefono WHERE BTelefonoVerificado, only in the migration (Prisma cannot express it).
   BTelefonoVerificado        Boolean   @default(false) @map("BTelefonoVerificado")
   DFechaVerificacionTelefono DateTime? @map("DFechaVerificacionTelefono") @db.Timestamptz(3)
+  /// What the person gave at sign-up besides name, email and phone (migration 064): `{ cedula?, especialidad }`.
+  JPerfilProfesional         Json?     @map("JPerfilProfesional") @db.JsonB
 
   estadoUsuario                EstadoUsuario                 @relation(fields: [IdEstadoUsuario], references: [IdEstadoUsuario], onDelete: Restrict, onUpdate: Cascade)
   identidades                  IdentidadUsuario[]
@@ -3579,6 +3581,8 @@ model SolicitudOAuth {
   DFechaCreacion       DateTime  @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
   DFechaExpiracion     DateTime  @map("DFechaExpiracion") @db.Timestamptz(3)
   DFechaFinalizacion   DateTime? @map("DFechaFinalizacion") @db.Timestamptz(3)
+  /// Sign-up started from «Crear cuenta» (migration 064): the boxes ticked and the fields filled before going to Google.
+  JRegistro            Json?     @map("JRegistro") @db.JsonB
 
   proveedorIdentidad ProveedorIdentidad @relation(fields: [IdProveedorIdentidad], references: [IdProveedorIdentidad], onDelete: Restrict, onUpdate: Cascade)
   usuario            Usuario?           @relation(fields: [IdUsuario], references: [IdUsuario], onDelete: SetNull, onUpdate: Cascade)
@@ -3957,4 +3961,60 @@ model CalleOsm {
   DFechaCarga DateTime                                  @default(now()) @map("DFechaCarga") @db.Timestamptz(3)
 
   @@map("devpware_calles_osm")
+}
+
+/// Each version of each legal document (migration 064, docs/LEGAL.md). Insert only: a row is never
+/// changed or deleted; a new version is a new row. Published versions of a document have unique
+/// numbers (a partial unique index only in the migration).
+model DocumentoLegal {
+  IdDocumentoLegal    Int      @id @default(autoincrement()) @map("IdDocumentoLegal")
+  /// terminos, licencia, privacidad-integral, privacidad-simplificado, politicas-comerciales, anexo-ia, informacion-disociada.
+  SDocumento          String   @map("SDocumento") @db.VarChar(40)
+  IVersion            Int      @map("IVersion")
+  STitulo             String   @map("STitulo") @db.VarChar(200)
+  DFechaActualizacion DateTime @map("DFechaActualizacion") @db.Date
+  /// The full text (markdown), exactly as published.
+  TTexto              String   @map("TTexto")
+  /// SHA-256 of TTexto (UTF-8), hex.
+  SHashSha256         String   @map("SHashSha256") @db.Char(64)
+  /// The lawyer released it. False: a draft, never required for acceptance.
+  BPublicable         Boolean  @default(false) @map("BPublicable")
+  /// A published version that people who accepted an earlier one must accept again.
+  BRequiereAceptacion Boolean  @default(true) @map("BRequiereAceptacion")
+  SRegistradoPor      String?  @map("SRegistradoPor") @db.VarChar(180)
+  DFechaCreacion      DateTime @default(now()) @map("DFechaCreacion") @db.Timestamptz(3)
+
+  @@index([SDocumento, IVersion])
+  @@map("devpware_documentos_legales")
+}
+
+/// The log of acceptances and consents (migration 064, docs/LEGAL.md): one row per acceptance or
+/// change of an optional box. Insert only, kept ten years; no foreign key, so no account removal takes it along.
+model BitacoraConsentimiento {
+  IdBitacoraConsentimiento BigInt   @id @default(autoincrement()) @map("IdBitacoraConsentimiento")
+  UIdentificadorPublico    String   @unique(map: "devpware_bitacora_consentimientos_UIdentificadorPublico_key") @default(dbgenerated("gen_random_uuid()")) @map("UIdentificadorPublico") @db.Uuid
+  IdUsuario                Int      @map("IdUsuario")
+  /// The account's email when the event happened.
+  SCorreo                  String   @map("SCorreo") @db.VarChar(180)
+  /// ALTA, ACEPTACION_USUARIO_PREVIO, NUEVA_ACEPTACION or CAMBIO_CASILLAS.
+  SEvento                  String   @map("SEvento") @db.VarChar(40)
+  /// LOCAL (email and password), GOOGLE or CUENTA (signed in).
+  SMetodo                  String   @map("SMetodo") @db.VarChar(20)
+  /// [{ documento, version, publicable, hash, id }] of each document accepted or shown.
+  JDocumentos              Json     @map("JDocumentos") @db.JsonB
+  /// Every box, ticked or not: { privacidad, terminos, mayorDeEdad, comercial, boletin, estadistica }.
+  JCasillas                Json     @map("JCasillas") @db.JsonB
+  /// The sign-up form's contact and identification data (no password).
+  JFormulario              Json?    @map("JFormulario") @db.JsonB
+  SDireccionIP             String?  @map("SDireccionIP") @db.VarChar(64)
+  SAgenteUsuario           String?  @map("SAgenteUsuario")
+  /// SHA-256 (base64url) of the registration or session cookie.
+  SCookieSesionHash        String?  @map("SCookieSesionHash") @db.VarChar(128)
+  /// The database server's clock.
+  DFechaEvento             DateTime @default(now()) @map("DFechaEvento") @db.Timestamptz(3)
+  /// The database server's time zone when the row was written.
+  SZonaHoraria             String   @default(dbgenerated("current_setting('TimeZone'::text)")) @map("SZonaHoraria") @db.VarChar(64)
+
+  @@index([IdUsuario, DFechaEvento(sort: Desc)], map: "devpware_bitacora_consentimientos_IdUsuario_DFechaEvento_idx")
+  @@map("devpware_bitacora_consentimientos")
 }

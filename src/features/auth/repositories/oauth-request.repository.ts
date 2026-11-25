@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma-client";
 
 export function createOAuthRequest(input: {
@@ -9,6 +10,8 @@ export function createOAuthRequest(input: {
   ip?: string | null;
   userAgent?: string | null;
   expiresAt: Date;
+  /** «Crear cuenta» with Google: the boxes and profile to record when the account is created. */
+  registration?: Prisma.InputJsonValue | null;
 }) {
   return prisma.solicitudOAuth.create({
     data: {
@@ -20,6 +23,7 @@ export function createOAuthRequest(input: {
       SDireccionIP: input.ip ?? null,
       SAgenteUsuario: input.userAgent ?? null,
       DFechaExpiracion: input.expiresAt,
+      JRegistro: input.registration ?? undefined,
     },
   });
 }

@@ -1,10 +1,18 @@
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { appendConsentLog } from "@/features/legal/consent-log.repository";
+import { documentRefs, registrationFormRecord, type ConsentRequestContext } from "@/features/legal/consent.service";
+import type { LegalVersion } from "@/features/legal/legal-document.repository";
 import { hashPassword } from "./password.service";
 import { createEmailVerificationToken } from "./email-verification.service";
 import { buildOrganizationSlug, buildPersonalOrganizationName } from "../rules/registration.rules";
 import type { RegisterInput } from "../validations/register.schema";
 
-export async function registerLocalUser(input: RegisterInput) {
+/**
+ * Creates the account with its personal space and, in the same transaction,
+ * the log entry of its acceptance (event ALTA, matrix 3.2): no account exists
+ * without the evidence of what it accepted.
+ */
+export async function registerLocalUser(input: RegisterInput, legal: { versions: readonly LegalVersion[]; context: ConsentRequestContext }) {
   const existing = await prisma.usuario.findFirst({
     // Deleted accounts included: the email stays unique, so it cannot be registered again.
     where: { SCorreo: input.email },
@@ -46,7 +54,20 @@ export async function registerLocalUser(input: RegisterInput) {
         SApellidoMaterno: input.maternalLastName ?? null,
         SCorreo: input.email,
         SContrasenaHash: passwordHash,
+        STelefono: input.phone,
+        JPerfilProfesional: { cedula: input.cedula ?? null, especialidad: input.specialty },
       },
+    });
+
+    await appendConsentLog(tx, {
+      userId: createdUser.IdUsuario,
+      email: input.email,
+      event: "ALTA",
+      method: "LOCAL",
+      documents: documentRefs(legal.versions),
+      boxes: { privacidad: true, terminos: true, mayorDeEdad: true, ...input.consents.optional },
+      form: registrationFormRecord(input),
+      ...legal.context,
     });
 
     await tx.identidadUsuario.create({

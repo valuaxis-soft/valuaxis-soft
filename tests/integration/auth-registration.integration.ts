@@ -8,8 +8,9 @@ import {
   createEmailVerificationToken,
 } from "../../src/features/auth/services/email-verification.service";
 import { verifyPassword } from "../../src/features/auth/services/password.service";
-import { registerLocalUser } from "../../src/features/auth/services/registration.service";
-import { parseRegisterInput } from "../../src/features/auth/validations/register.schema";
+import { registerLocalUser as registerWithConsent } from "../../src/features/auth/services/registration.service";
+import { parseRegisterInput, type RegisterInput } from "../../src/features/auth/validations/register.schema";
+import { getLegalAcceptanceContext } from "../../src/features/legal/consent.service";
 import { hashToken } from "../../src/security/tokens/token-hashing";
 import {
   TestCookieJar,
@@ -27,6 +28,12 @@ before(() => assertLocalDatabase());
 
 const PASSWORD = "Clave-Segura-2026!";
 
+/** The service as the action calls it: with the versions in force and where the acceptance came from. */
+async function registerLocalUser(input: RegisterInput) {
+  const legal = await getLegalAcceptanceContext();
+  return registerWithConsent(input, { versions: legal.versions, context: { ip: "203.0.113.7", userAgent: "pruebas", cookieHash: "hash-de-prueba" } });
+}
+
 function newEmail(label = "registro") {
   return `${label}-${randomUUID().slice(0, 8)}@example.test`;
 }
@@ -40,7 +47,11 @@ function registrationForm(values: Partial<Record<string, string>> = {}) {
     email: newEmail(),
     password: PASSWORD,
     confirmPassword: values.password ?? PASSWORD,
-    acceptedTerms: "on",
+    phone: "3312345678",
+    specialty: "Inmuebles",
+    adultDeclaration: "on",
+    consentPrivacy: "on",
+    consentTerms: "on",
     ...values,
   };
   for (const [key, value] of Object.entries(fields)) if (value !== undefined) form.set(key, value);
@@ -162,9 +173,9 @@ test("the registration form rejects weak passwords and a mismatched confirmation
   const mismatch = registrationForm({ password: PASSWORD, confirmPassword: `${PASSWORD}x` });
   assert.equal(mismatch.ok, false);
   assert.deepEqual(mismatch.fieldErrors.confirmPassword, ["Las contraseñas no coinciden."]);
-  const noTerms = registrationForm({ acceptedTerms: "" });
+  const noTerms = registrationForm({ consentTerms: "" });
   assert.equal(noTerms.ok, false);
-  assert.ok(noTerms.fieldErrors.acceptedTerms);
+  assert.ok(noTerms.fieldErrors.consentTerms);
 });
 
 test("registration succeeds even when the verification email cannot be sent", async (t) => {
