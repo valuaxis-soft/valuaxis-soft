@@ -5,6 +5,8 @@
  * and the server.
  */
 
+import type { ComparableClass } from "./comparable-classes";
+
 /** "C-00123": the comparable's number in the firm's base; copies of it keep the number. */
 export function formatComparableId(folio: number | null | undefined) {
   return folio && folio > 0 ? `C-${String(folio).padStart(5, "0")}` : null;
@@ -345,7 +347,7 @@ export function todayInMexico(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
-/** Currencies of an offer: kept as captured, never converted. */
+/** Currencies of an offer; one in dollars keeps its amount and rate, and its price is the pesos (comparable-currency). */
 export const CURRENCIES = ["MXN", "USD"] as const;
 export type Currency = (typeof CURRENCIES)[number];
 
@@ -365,7 +367,14 @@ export const DATA_VERIFIED_LABELS: Record<DataVerified, string> = { SI: "Sí", N
 
 /** The property facts of the master workbook that the homologation does not use. */
 export type ComparablePropertyDetails = {
+  /** «Tipo de inmueble» / «Tipo de bien» (comparable-kinds): its key, its name and its class. */
+  kind?: string | null;
+  kindLabel?: string | null;
+  assetClass?: ComparableClass | null;
+  /** Years; for machinery it may come from the model year and the valuation date, and stays editable. */
   age?: number | null;
+  /** «Año» (model year) of a machine or vehicle. */
+  year?: number | null;
   levels?: number | null;
   parking?: number | null;
   paving?: string | null;
@@ -377,6 +386,11 @@ export type ComparablePropertyDetails = {
 export type ComparableListingDetails = {
   publicationId?: string | null;
   currency?: Currency | null;
+  /** An offer in dollars: its amount in dollars, and the rate (pesos per dollar) with its day and source; its price is the pesos. */
+  priceInCurrency?: number | null;
+  exchangeRate?: number | null;
+  exchangeRateDate?: string | null;
+  exchangeRateSource?: string | null;
   photoUrl?: string | null;
   priceChangedOn?: string | null;
   dataOrigin?: string | null;
@@ -393,4 +407,16 @@ export function unitPriceByBasis(price: number | null, basis: UnitBasis, areas: 
   const area = basis === "CONSTRUCCION_M2" ? areas.builtArea : areas.landArea;
   if (!area || area <= 0) return null;
   return basis === "TERRENO_HA" ? price / (area / 10_000) : price / area;
+}
+
+/**
+ * «Edad (años)» from «Año» (the model year of a machine or vehicle) on a day
+ * YYYY-MM-DD, the valuation's: 2018 on 2026-11-24 is 8. Null for a year
+ * after that day or out of range. The card fills it and the appraiser may
+ * change it.
+ */
+export function ageFromYear(year: number | null | undefined, onDay: string): number | null {
+  const current = Number(onDay.slice(0, 4));
+  if (!year || !Number.isInteger(year) || !Number.isInteger(current) || year > current || year < 1800) return null;
+  return current - year;
 }

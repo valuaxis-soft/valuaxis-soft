@@ -7,6 +7,7 @@
  */
 import { buildComparableListHref } from "../comparable-base/comparable-list-params";
 import type { StreetType } from "../calculation/comparable-card";
+import { comparableClassOfType } from "../calculation/comparable-classes";
 import type { ComparableType } from "../calculation/market-types";
 import { SEARCH_KINDS, SEARCH_OPERATIONS, searchedTypes } from "./schemas";
 
@@ -34,6 +35,8 @@ export type SearchMapFilters = {
   bathrooms?: number | null;
   landUse?: string;
   constructionType?: string;
+  /** «Tipo de inmueble» of the card (comparable-kinds), apart from `kind` (land, built or both). */
+  propertyKind?: string;
 };
 
 const oneOf = <T extends string>(value: string | undefined, allowed: readonly T[]) =>
@@ -53,6 +56,9 @@ export function searchMapQuery(type: ComparableType, filters: SearchMapFilters |
   const landMarket = types.every((item) => item.startsWith("TERRENO"));
   const href = buildComparableListHref({
     types,
+    // The market's class only: a valuation's map never shows machinery among its real estate.
+    assetClass: comparableClassOfType(type),
+    kind: filters?.propertyKind?.trim() || "",
     q: filters?.text.trim(),
     state: filters?.state?.trim(),
     municipality: filters?.municipality?.trim(),

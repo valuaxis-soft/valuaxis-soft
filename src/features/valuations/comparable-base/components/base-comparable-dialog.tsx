@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { formatComparableId } from "@/features/valuations/calculation/comparable-card";
 import type { ComparableCardDto } from "@/features/valuations/calculation/comparable-card.service";
+import { comparableClassOf, type ComparableClass } from "@/features/valuations/calculation/comparable-classes";
 import { MARKET_LABELS, defaultCharacteristicFields, type ComparableDto, type ComparableType } from "@/features/valuations/calculation/market-types";
 import { ComparableDialog, type PendingImages } from "@/features/valuations/components/calculation/comparable-dialog";
 import { api, SessionExpiredError, type ComparableFormValues } from "@/lib/api-client";
@@ -32,6 +33,10 @@ export function BaseComparableDialog(props: {
 }) {
   const router = useRouter();
   const [type, setType] = useState<ComparableType>(props.card?.type ?? "INMUEBLE_VENTA");
+  // Real estate or machinery: a new comparable chooses it; a stored one keeps its own.
+  const [kindClass, setKindClass] = useState<ComparableClass>(() => (props.card
+    ? comparableClassOf({ assetClass: props.card.comparable.propertyDetails?.assetClass, constructionType: props.card.comparable.constructionType })
+    : "INMUEBLE"));
   // The card as the dialog last saved it, so photos added while editing show at once.
   const [card, setCard] = useState<ComparableCardDto | null>(props.card);
   const comparable: ComparableDto | null = card?.comparable ?? null;
@@ -83,6 +88,12 @@ export function BaseComparableDialog(props: {
       characteristicFields={defaultCharacteristicFields(type)}
       comparableType={type}
       onTypeChange={setType}
+      comparableClass={kindClass}
+      onClassChange={(next) => {
+        setKindClass(next);
+        // A machine is not land: it is offered for sale or for rent.
+        if (next === "MAQUINARIA") setType((current) => (current === "TERRENO_RENTA" ? "INMUEBLE_RENTA" : current === "TERRENO_VENTA" ? "INMUEBLE_VENTA" : current));
+      }}
       unitLabel={MARKET_LABELS[type].price}
       readOnly={false}
       onSubmit={submit}

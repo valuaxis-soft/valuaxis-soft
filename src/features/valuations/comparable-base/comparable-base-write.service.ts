@@ -65,7 +65,7 @@ export async function updateBaseComparable(user: AuthUser, comparableId: string,
       await updateBaseCapture(tx, source, { type, typeId, payload, renew: false });
       return { id: source.UIdentificadorPublico, created: false };
     }
-    const propertyTypeId = await basePropertyTypeId(tx, type, payload.constructionType ?? null);
+    const propertyTypeId = await basePropertyTypeId(tx, type, payload);
     const { dataUpdatedAt: _kept, ...evidence } = reusedEvidenceOf(source);
     const id = await insertComparable(tx, { kind: "base", typeId, propertyTypeId }, user, type, payload, evidence);
     return { id, created: true };
@@ -85,7 +85,7 @@ export async function duplicateBaseComparable(user: AuthUser, comparableId: stri
     };
     const { folio: _folio, dataUpdatedAt: _kept, ...evidence } = reusedEvidenceOf(source);
     const typeId = await comparableTypeId(tx, type);
-    const propertyTypeId = await basePropertyTypeId(tx, type, payload.constructionType ?? null);
+    const propertyTypeId = await basePropertyTypeId(tx, type, payload);
     const id = await insertComparable(tx, { kind: "base", typeId, propertyTypeId }, user, type, payload, evidence);
     const created = await tx.comparableAvaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: id }, select: { propiedad: { select: { IFolioComparable: true } } } });
     return { id, folio: created.propiedad.IFolioComparable };

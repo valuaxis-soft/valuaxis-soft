@@ -13,7 +13,6 @@
  */
 import {
   CONSERVATION_OPTIONS,
-  CONSTRUCTION_TYPE_SUGGESTIONS,
   DATA_VERIFIED_LABELS,
   OPERATION_TYPE_LABELS,
   QUALITY_OPTIONS,
@@ -33,6 +32,8 @@ import {
   type UnitBasis,
 } from "./comparable-card";
 import { canonicalUrlKey } from "./comparable-duplicates";
+import { offerInPesos, priceInPesos } from "./comparable-currency";
+import { BUILT_IN_KINDS, isOtherKind, kindDetails, kindFromText, kindOfComparable, type ComparableKind } from "./comparable-kinds";
 import { isVerifiedStatus } from "./comparable-review";
 import { cellDate, cellNumber, cellText, friendlyMessage, MAX_IMPORT_ROWS, normalizeHeader, type CellValue } from "./comparable-import";
 import { comparableInputSchema, type ComparableInputPayload } from "./market-schemas";
@@ -83,11 +84,19 @@ export const RENT_PERIODS = ["NO_APLICA", "MENSUAL", "ANUAL"] as const;
 export type RentPeriod = (typeof RENT_PERIODS)[number];
 export const RENT_PERIOD_LABELS: Record<RentPeriod, string> = { NO_APLICA: "No aplica", MENSUAL: "Mensual", ANUAL: "Anual" };
 
-/** "Terreno" for land; the rest are Valuaxis's types of construction, so a row maps 1:1 to a comparable type. */
-export const PROPERTY_TYPE_OPTIONS = ["Terreno", ...CONSTRUCTION_TYPE_SUGGESTIONS, "Otro"];
+/**
+ * «Tipo de inmueble / de bien»: the kinds the card offers (comparable-kinds),
+ * real estate and machinery, and «Otro». Any other word is kept: a kind of
+ * the firm by its name, anything else as «Otro» with the text as its name
+ * (FAL-20: the template listed twelve types the app did not have).
+ */
+export const PROPERTY_TYPE_OPTIONS = [...BUILT_IN_KINDS.filter((kind) => !isOtherKind(kind.key)).map((kind) => kind.label), "Otro"];
 
 /** A type of inmueble that is land: "Terreno", "Terreno rústico", "Lote", "Predio", "Rancho", "Parcela". */
 export const isLandPropertyType = (text: string) => /^(terreno|lote|predio|rancho|parcela)/.test(normalizeHeader(text));
+
+/** A row's kind is land: «Terreno / Lote» or a word of land. */
+const isLandKind = (kind: ComparableKind | null, text: string) => kind?.key === "TERRENO" || (Boolean(text) && isLandPropertyType(text));
 
 const MEXICAN_STATES = [
   "Aguascalientes", "Baja California", "Baja California Sur", "Campeche", "Chiapas", "Chihuahua", "Ciudad de México", "Coahuila",
@@ -172,7 +181,7 @@ export const MASTER_COLUMNS: MasterColumn[] = [
   column("ref", "REF / ID", 0, "comparable_id", "text", "No", "El número del comparable en Valuaxis Soft (C-00123). Vacío en uno nuevo: Valuaxis Soft le da uno al importarlo. Si trae el número, se ofrece unirlo con ese comparable.", { width: 11, aliases: ["ref", "id", "referencia"] }),
   column("valuationFolio", "Folio avalúo", 0, "avaluo_folio", "text", "No", "Folio del avalúo al que se asocia el comparable. Importando desde Comparables con destino «Ambos» o «Solo avalúo», el renglón se agrega a ese avalúo.", { width: 14, aliases: ["folio", "foliodelavaluo"] }),
   column("useStatus", "Estado de uso", 0, "estado_uso", "catalog", "Sí", "Pendiente se importa por revisar; Aceptado con datos verificados «Sí» se importa verificado si quien importa puede revisar comparables; Descartado no se importa.", { catalog: "useStatus", width: 13 }),
-  column("propertyType", "Tipo de inmueble", 0, "tipo_inmueble", "catalog", "Cond.", "Terreno, o el tipo de construcción. Con la operación decide el mercado: terrenos o inmuebles, en venta o en renta. Importando desde un mercado, vacío es el de ese mercado.", { catalog: "propertyType", width: 18, aliases: ["tipodecomparable"] }),
+  column("propertyType", "Tipo de inmueble / de bien", 0, "tipo_inmueble", "catalog", "Cond.", "Terreno / Lote, Casa habitación, Oficina… o, en maquinaria y equipo, Automóvil, Camión, Maquinaria de construcción… Con la operación decide el mercado: terrenos o inmuebles, en venta o en renta. Uno que no está en la lista entra como «Otro» con el nombre escrito; uno que el despacho agregó, con su nombre. Importando desde un mercado, vacío es el de ese mercado.", { catalog: "propertyType", width: 22, aliases: ["tipodecomparable", "tipodeinmueble", "tipodebien"] }),
   column("operation", "Operación", 0, "operacion", "catalog", "Cond.", "Venta o Renta.", { catalog: "operation", width: 11, aliases: ["tipodeoperacion"] }),
   column("dataOrigin", "Origen de dato", 0, "origen_dato", "catalog", "No", "Procedencia del registro. Si es «Portal inmobiliario», avisa cuando falta la URL.", { catalog: "dataOrigin", width: 16, advanced: true }),
   column("sourceName", "Portal / fuente", 0, "portal_fuente", "catalog", "No", "Portal, inmobiliaria o persona. Con el ID de publicación identifica el anuncio.", { catalog: "sourceName", width: 18, aliases: ["fuente", "portal"] }),
@@ -202,7 +211,8 @@ export const MASTER_COLUMNS: MasterColumn[] = [
   column("paving", "Pavimento / acceso", 2, "pavimento", "catalog", "No", "", { catalog: "paving", advanced: true }),
   column("blockPosition", "Posición en manzana", 2, "posicion_manzana", "catalog", "No", "", { catalog: "blockPosition", advanced: true }),
   column("builtArea", "Sup. construcción (m²)", 3, "superficie_construccion_m2", "number", "Cond.", "Requerida cuando el unitario es por construcción; en inmuebles es la superficie del cálculo (en rentas, la rentable).", { aliases: ["superficieconstruidam2", "superficierentablem2", "supconstruccion"] }),
-  column("age", "Edad (años)", 3, "edad_anos", "number", "No", "Declarada o estimada; no es la edad efectiva.", { aliases: ["edad"] }),
+  column("age", "Edad (años)", 3, "edad_anos", "number", "No", "Declarada o estimada; no es la edad efectiva. En maquinaria, vacía con «Año» se calcula al capturar la ficha.", { aliases: ["edad"] }),
+  column("year", "Año", 3, "anio_modelo", "integer", "No", "Año del modelo de un vehículo, máquina o equipo (maquinaria y equipo).", { width: 9, aliases: ["anio", "aniomodelo", "modelo_anio"], advanced: true }),
   column("quality", "Calidad", 3, "calidad_construccion", "catalog", "No", "", { catalog: "quality" }),
   column("conservation", "Conservación", 3, "estado_conservacion", "catalog", "No", "", { catalog: "conservation", aliases: ["estadodeconservacion"] }),
   column("levels", "Niveles", 3, "niveles", "integer", "No", "Entero.", { width: 10, advanced: true }),
@@ -212,7 +222,10 @@ export const MASTER_COLUMNS: MasterColumn[] = [
   column("price", "Precio de oferta", 4, "precio_oferta", "number", "Sí", "Solo el número. En rentas, puedes usar «Renta mensual» o «Renta anual» en su lugar; si solo llenas este, es la renta del periodo indicado. Sin precio se importa, pero no entra al cálculo hasta completarlo (aviso).", { width: 16, aliases: ["precio", "preciodeoferta", "oferta"] }),
   column("monthlyRent", "Renta mensual", 4, "renta_mensual", "number", "Cond.", "En rentas: la renta de un mes. Si falta y hay renta anual, Valuaxis Soft la calcula (anual entre 12). Es la que se guarda.", { width: 14, aliases: ["rentamensual"] }),
   column("annualRent", "Renta anual", 4, "renta_anual", "number", "Cond.", "En rentas: la renta de un año. Si falta y hay renta mensual, se calcula (mensual por 12). Si traen las dos y no cuadran, manda la mensual (aviso).", { width: 14, aliases: ["rentaanual"] }),
-  column("currency", "Moneda", 4, "moneda", "catalog", "No", "MXN o USD; vacía es MXN. Se guarda como está, sin convertir; un precio en USD lleva aviso.", { catalog: "currency", width: 9, advanced: true }),
+  column("currency", "Moneda", 4, "moneda", "catalog", "No", "MXN o USD; vacía es MXN. En USD, «Precio de oferta» va en dólares y con «Tipo de cambio» se guarda su equivalente en pesos, que es el que usa el cálculo; sin tipo de cambio no entra al cálculo (aviso).", { catalog: "currency", width: 9, advanced: true }),
+  column("exchangeRate", "Tipo de cambio", 4, "tipo_cambio", "number", "Cond.", "Pesos por dólar, en una oferta en USD (por ejemplo, el FIX que publica el DOF).", { width: 12, aliases: ["tipodecambio", "tc"], advanced: true }),
+  column("exchangeRateDate", "Fecha del tipo de cambio", 4, "fecha_tipo_cambio", "date", "No", "Día del tipo de cambio (dd/mm/aaaa).", { aliases: ["fechadeltipodecambio", "fechatc"], advanced: true }),
+  column("exchangeRateSource", "Fuente del tipo de cambio", 4, "fuente_tipo_cambio", "text", "No", "Vacía: «Tipo de cambio FIX publicado en el DOF del dd/mm/aaaa» con la fecha del tipo de cambio.", { width: 30, aliases: ["fuentedeltipodecambio"], advanced: true }),
   column("rentPeriod", "Periodo renta", 4, "periodicidad_renta", "catalog", "Cond.", "En rentas, cuando la renta va en «Precio de oferta»: mensual o anual. Valuaxis Soft guarda la renta mensual: una anual se divide entre 12 (aviso).", { catalog: "rentPeriod", width: 12, aliases: ["periododerenta"], advanced: true }),
   column("unitBasis", "Base del unitario", 4, "base_unitario", "catalog", "No", "Terreno m², Construcción m² o Terreno ha. Vacía: terreno m² en terrenos, construcción m² en inmuebles.", { catalog: "unitBasis", width: 15, advanced: true }),
   column("unitPrice", "Precio unitario (auto)", 4, "precio_unitario", "formula", "Auto", "Precio entre el área de la base. Es una ayuda: Valuaxis Soft lo vuelve a calcular y no lee esta columna. No es homologación.", { width: 16 }),
@@ -383,7 +396,9 @@ const postalCodeOf = (text: string) => (/^\d{4}$/.test(text) ? `0${text}` : text
  * Reads the master workbook's rows (from the header row on). `defaultType`
  * is the market imported from: rows without type or operation take it.
  */
-export function parseMasterRows(sheet: CellValue[][], headerIndex: number, options: { defaultType: ComparableType | null }): MasterParse {
+export function parseMasterRows(
+  sheet: CellValue[][], headerIndex: number, options: { defaultType: ComparableType | null; customKinds?: readonly ComparableKind[] },
+): MasterParse {
   const positions = masterPositions(sheet[headerIndex] ?? []);
   const header = (key: string) => MASTER_COLUMNS.find((item) => item.key === key)?.header ?? key;
   const formulaKeys = new Set(MASTER_COLUMNS.filter((item) => item.kind === "formula").map((item) => item.key));
@@ -444,13 +459,17 @@ export function parseMasterRows(sheet: CellValue[][], headerIndex: number, optio
     }
 
     const propertyType = textOf("propertyType");
+    const typedKind = propertyType ? kindFromText(propertyType, null, options.customKinds) : null;
     const operation = strict<OperationType>("operation", OPERATION_TYPE_LABELS, OPERATION_EXTRA);
-    const type = resolveComparableType(propertyType, operation, options.defaultType);
+    const type = resolveComparableType(isLandKind(typedKind, propertyType) ? "Terreno" : propertyType, operation, options.defaultType);
     if (!type) {
       if (!propertyType) errors.push("Falta el tipo de inmueble (Terreno, Casa habitación, Departamento…).");
       if (!operation && !textOf("operation")) errors.push("Falta la operación (Venta o Renta).");
     }
-    const land = type ? isLandComparableType(type) : propertyType ? isLandPropertyType(propertyType) : false;
+    const land = type ? isLandComparableType(type) : isLandKind(typedKind, propertyType);
+    // A row of a land market without a kind is «Terreno / Lote», as the card would say.
+    const kind = typedKind ?? (land ? kindFromText("Terreno", "INMUEBLE") : null);
+    if (typedKind && isOtherKind(typedKind.key)) warnings.push(`«${propertyType}» no está en la lista de tipos: se guarda como «Otro» con ese nombre.`);
     const currency = strict<Currency>("currency", { MXN: "MXN", USD: "USD" } as Record<Currency, string>, { pesos: "MXN", dolares: "USD" });
     const rentPeriod = strict<RentPeriod>("rentPeriod", RENT_PERIOD_LABELS, { mes: "MENSUAL", ano: "ANUAL" });
     const statedBasis = strict<UnitBasis>("unitBasis", UNIT_BASIS_LABELS, { terrenom2: "TERRENO_M2", construccionm2: "CONSTRUCCION_M2", terrenoha: "TERRENO_HA", ha: "TERRENO_HA" });
@@ -468,12 +487,14 @@ export function parseMasterRows(sheet: CellValue[][], headerIndex: number, optio
     const longitude = numberOf("longitude");
     const values = {
       frontage: numberOf("frontage"), depth: numberOf("depth"), frontCount: numberOf("frontCount", true),
-      age: numberOf("age"), levels: numberOf("levels", true), bedrooms: numberOf("bedrooms", true), bathrooms: numberOf("bathrooms"),
+      age: numberOf("age"), year: numberOf("year", true), levels: numberOf("levels", true), bedrooms: numberOf("bedrooms", true), bathrooms: numberOf("bathrooms"),
       parking: numberOf("parking", true),
     };
     const dates = {
       consultedOn: dateOf("consultedOn"), offerDate: dateOf("offerDate"), priceChangedOn: dateOf("priceChangedOn"), reviewedOn: dateOf("reviewedOn"),
+      exchangeRateDate: dateOf("exchangeRateDate"),
     };
+    const exchangeRate = numberOf("exchangeRate");
     const coordinates = coordinatesError(latitude, longitude);
     if (coordinates) errors.push(coordinates);
 
@@ -487,7 +508,17 @@ export function parseMasterRows(sheet: CellValue[][], headerIndex: number, optio
     } else if (monthlyRent || annualRent) {
       warnings.push("Trae renta mensual o anual, pero la operación es venta: se tomó el precio de oferta.");
     }
-    if (currency === "USD") warnings.push("Precio en dólares (USD): se guarda sin convertir y el cálculo lo toma como está.");
+    // In dollars, the price of the row is the amount in dollars; the comparable keeps it and, with a rate, its pesos.
+    const offer = offerInPesos({
+      currency, price, exchangeRate, exchangeRateDate: dates.exchangeRateDate, exchangeRateSource: textOf("exchangeRateSource") || null,
+    });
+    if (currency === "USD") {
+      warnings.push(offer.price === null
+        ? "Precio en dólares (USD) sin tipo de cambio: se guarda en dólares y no entra al cálculo hasta capturar el tipo de cambio."
+        : `Precio en dólares (USD): se guarda con su equivalente en pesos al tipo de cambio ${offer.listing.exchangeRate}.`);
+    } else if (exchangeRate) {
+      warnings.push("Trae tipo de cambio, pero la moneda no es USD: no se usó.");
+    }
     const basis: UnitBasis = statedBasis ?? (land ? "TERRENO_M2" : "CONSTRUCCION_M2");
     if (!statedBasis && type) warnings.push(`Sin base del unitario: se tomó «${UNIT_BASIS_LABELS[basis]}».`);
     if (type && !land && basis !== "CONSTRUCCION_M2") {
@@ -516,15 +547,15 @@ export function parseMasterRows(sheet: CellValue[][], headerIndex: number, optio
       else seen.set(key, row);
     }
 
-    const unitPrice = unitPriceByBasis(price, basis, { landArea, builtArea });
-    const summary = { location, area, price, unitPrice, currency: currency ?? null };
+    const unitPrice = unitPriceByBasis(offer.price, basis, { landArea, builtArea });
+    const summary = { location, area, price: offer.price, unitPrice, currency: currency ?? null };
     const review = { verified, reviewedBy: textOf("reviewedBy") || null, reviewedOn: dates.reviewedOn };
     if (errors.length || !type) return { ...base, ...review, type, payload: null, errors, warnings, summary };
 
     const parsed = comparableInputSchema.safeParse({
       location,
       area,
-      price,
+      price: offer.price,
       landUse: textOf("landUse") || null,
       landUseKey: textOf("landUseKey") || null,
       shape: textOf("shape") || null,
@@ -552,14 +583,16 @@ export function parseMasterRows(sheet: CellValue[][], headerIndex: number, optio
       landArea: land ? null : landArea,
       bedrooms: values.bedrooms,
       bathrooms: values.bathrooms,
-      // "Terreno" says the market; any other type is kept as the type of construction (or of land: "Terreno rústico").
-      constructionType: propertyType && plain(propertyType) !== "terreno" ? propertyType : null,
+      // "Terreno" says the market; any other type of real estate is kept as the type of construction (or of land: "Terreno rústico").
+      constructionType: propertyType && !isLandKind(typedKind, propertyType) && kind?.class !== "MAQUINARIA" && plain(propertyType) !== "terreno" ? propertyType : null,
       propertyDetails: {
-        age: values.age, levels: values.levels, parking: values.parking,
+        ...kindDetails(kind),
+        // A machine's «Año» is moved to its data (`machinery.year`) when it is saved (market.service snapshots).
+        age: values.age, year: values.year, levels: values.levels, parking: values.parking,
         paving: textOf("paving") || null, blockPosition: textOf("blockPosition") || null, unitBasis: basis,
       },
       listingDetails: {
-        publicationId, currency: currency ?? null, photoUrl: textOf("photoUrl", true) || null, priceChangedOn: dates.priceChangedOn,
+        publicationId, ...offer.listing, currency: currency ?? null, photoUrl: textOf("photoUrl", true) || null, priceChangedOn: dates.priceChangedOn,
         dataOrigin: textOf("dataOrigin") || null, extractionConfidence: textOf("extractionConfidence") || null, dataVerified: verified,
       },
       factors: [],
@@ -608,13 +641,17 @@ export function masterRowValues(
   const basis = property.unitBasis ?? (land ? "TERRENO_M2" : "CONSTRUCCION_M2");
   const street = [address.street, address.number].filter(Boolean).join(" ") || null;
   const reviewed = review && review.status !== "POR_REVISAR";
+  const kind = kindOfComparable({ type, constructionType: comparable.constructionType ?? null, propertyDetails: property });
+  // In dollars the row carries the dollars and the rate, and imports back the same.
+  const usd = listing.currency === "USD";
+  const offerPrice = usd ? listing.priceInCurrency ?? comparable.price : comparable.price;
+  const monthly = usd ? offerPrice : priceInPesos(comparable) ?? comparable.price;
   return {
     ref: formatComparableId(comparable.folio),
     valuationFolio: extras.valuationFolio,
     useStatus: USE_STATUS_LABELS[useStatus],
-    propertyType: land
-      ? (comparable.constructionType ?? "Terreno")
-      : (comparable.constructionType ?? "Otro"),
+    // Its kind by name («Otro» keeps the name written); one of before without a kind, its type of construction.
+    propertyType: kind?.label ?? (land ? comparable.constructionType ?? "Terreno" : comparable.constructionType ?? "Otro"),
     operation: OPERATION_TYPE_LABELS[comparable.operationType ?? (rent ? "RENTA" : "VENTA")],
     dataOrigin: listing.dataOrigin ?? null,
     sourceName: comparable.sourceName,
@@ -645,17 +682,22 @@ export function masterRowValues(
     blockPosition: property.blockPosition ?? null,
     builtArea: land ? null : comparable.area,
     age: property.age ?? null,
+    // One «Año» per comparable: a machine's is the one of its data.
+    year: comparable.machinery?.year ?? property.year ?? null,
     quality: comparable.quality ?? null,
     conservation: comparable.conservation ?? null,
     levels: property.levels ?? null,
     bedrooms: comparable.bedrooms ?? null,
     bathrooms: comparable.bathrooms ?? null,
     parking: property.parking ?? null,
-    price: comparable.price,
+    price: offerPrice,
     currency: listing.currency ?? "MXN",
-    // Valuaxis keeps the monthly rent; the year is twelve of them.
-    monthlyRent: rent ? comparable.price : null,
-    annualRent: rent && comparable.price !== null ? Number((comparable.price * 12).toFixed(2)) : null,
+    exchangeRate: usd ? listing.exchangeRate ?? null : null,
+    exchangeRateDate: usd ? listing.exchangeRateDate ?? null : null,
+    exchangeRateSource: usd ? listing.exchangeRateSource ?? null : null,
+    // Valuaxis keeps the monthly rent; the year is twelve of them (in the offer's currency).
+    monthlyRent: rent ? monthly : null,
+    annualRent: rent && monthly !== null ? Number((monthly * 12).toFixed(2)) : null,
     rentPeriod: rent ? RENT_PERIOD_LABELS.MENSUAL : RENT_PERIOD_LABELS.NO_APLICA,
     unitBasis: UNIT_BASIS_LABELS[basis],
     priceChangedOn: listing.priceChangedOn ?? null,

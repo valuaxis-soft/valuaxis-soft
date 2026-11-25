@@ -4,6 +4,8 @@ import { SURFACE_POWERS } from "../engine/config";
 import { MAX_REGRESSION_VARIABLES } from "../engine/regression";
 import { capturedFormulasSchema } from "./captured-formulas";
 import { CURRENCIES, DATA_VERIFIED, OPERATION_TYPES, STREET_TYPES, UNIT_BASES, URBAN_PROXIMITIES } from "./comparable-card";
+import { COMPARABLE_CLASSES } from "./comparable-classes";
+import { MAX_KIND_LABEL_LENGTH, isKnownKindKey } from "./comparable-kinds";
 import { REVIEW_STATUSES } from "./comparable-review";
 import { MAX_REVIEW_CHECKS, reviewCheckKeySchema } from "./comparable-review-checklist";
 import { MAX_SCALE_LEVELS, REGRESSION_DEPENDENTS } from "./market-regression";
@@ -79,6 +81,11 @@ const count = (label: string) => z.number(`${label} es un número.`).int(`${labe
 
 /** What the master workbook captures of the property beyond the homologation fields; the calculation does not read it. */
 const propertyDetailsSchema = z.object({
+  // «Tipo de inmueble» / «Tipo de bien» (comparable-kinds): Valuaxis's key or the firm's, its name and its class.
+  kind: z.string().trim().max(80).refine((key) => !key || isKnownKindKey(key), "Tipo de inmueble inválido.").nullable().transform((value) => value || null).optional(),
+  kindLabel: text(MAX_KIND_LABEL_LENGTH).optional(),
+  assetClass: z.enum(COMPARABLE_CLASSES, "La clase es Inmuebles o Maquinaria y equipo.").nullable().optional(),
+  year: z.number("El año es un número.").int("El año es un número entero.").min(1800, "El año va de 1800 en adelante.").max(2200, "Año inválido.").nullable().optional(),
   age: z.number("La edad es un número.").finite().min(0, "La edad no puede ser negativa.").max(1000).nullable().optional(),
   levels: count("Niveles"),
   parking: count("Estacionamientos"),
@@ -91,6 +98,11 @@ const propertyDetailsSchema = z.object({
 const listingDetailsSchema = z.object({
   publicationId: text(120).optional(),
   currency: z.enum(CURRENCIES, "La moneda es MXN o USD.").nullable().optional(),
+  // An offer in dollars: the amount, and the rate (pesos per dollar) with its day and source; the price is the pesos.
+  priceInCurrency: z.number("El precio en dólares es un número.").finite().positive("El precio en dólares es mayor que cero.").max(1e12).nullable().optional(),
+  exchangeRate: z.number("El tipo de cambio es un número.").finite().positive("El tipo de cambio es mayor que cero.").max(1e6).nullable().optional(),
+  exchangeRateDate: day.optional(),
+  exchangeRateSource: text(200).optional(),
   photoUrl: z.string().trim().max(1000).nullable()
     .refine((value) => !value || /^https?:\/\//i.test(value), "La URL de la fotografía debe empezar con http:// o https://.")
     .transform((value) => value || null).optional(),
@@ -284,6 +296,8 @@ export const duplicateProbeSchema = z.object({
   area: z.number().finite().positive().max(1e12).nullable().default(null),
   sourceName: z.string().trim().max(180).nullable().optional(),
   publicationId: z.string().trim().max(120).nullable().optional(),
+  // Real estate or machinery: only the same class is compared (a client of before is real estate).
+  assetClass: z.enum(COMPARABLE_CLASSES).nullable().optional(),
 });
 
 /** "Usar el existente": the comparable of the firm's base to bring. */

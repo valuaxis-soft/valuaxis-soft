@@ -10,6 +10,8 @@
  * and "Solo base general" keeps it in the base without one.
  */
 import { COMPARABLE_TYPE_LABELS, type ComparableType } from "./market-types";
+import { comparableClassOf } from "./comparable-classes";
+import type { ComparableKind } from "./comparable-kinds";
 import { parseComparableRows, type CellValue, type ImportTargetDto } from "./comparable-import";
 import {
   IMPORT_DESTINATION_LABELS,
@@ -35,7 +37,9 @@ export type ParsedSheet = {
  * Reads either template: the master workbook (by its headers) or the
  * template of one market (`defaultType` is its type; without one it cannot be read).
  */
-export function parseComparableSheet(sheet: CellValue[][], options: { defaultType: ComparableType | null }): ParsedSheet {
+export function parseComparableSheet(
+  sheet: CellValue[][], options: { defaultType: ComparableType | null; customKinds?: readonly ComparableKind[] },
+): ParsedSheet {
   const header = findMasterHeader(sheet);
   if (header >= 0) {
     const parsed = parseMasterRows(sheet, header, options);
@@ -81,6 +85,21 @@ const sameFolio = (a: string, b: string) => a.trim().toLowerCase() === b.trim().
 
 /** The target of one row and the warnings of its destination. */
 export function planRow(
+  row: Pick<SheetRow, "type" | "payload" | "useStatus" | "valuationFolio">,
+  origin: ImportOrigin,
+  destination: ImportDestination,
+  resolve: (folio: string) => ResolvedValuation | null,
+): PlannedRow {
+  const planned = planRowByMarket(row, origin, destination, resolve);
+  // The markets of a valuation are of real estate: a row of machinery and equipment stays in the base (24 Nov 2026).
+  const machinery = row.payload && comparableClassOf({ assetClass: row.payload.propertyDetails?.assetClass, constructionType: row.payload.constructionType }) === "MAQUINARIA";
+  if (!machinery || planned.target.kind !== "valuation" || !row.type) return planned;
+  return includesBase(destination)
+    ? { target: { kind: "base", type: row.type }, warnings: [...planned.warnings, "Es de maquinaria y equipo: se guarda en la base general; los mercados del avalúo son de inmuebles."] }
+    : { target: { kind: "skip" }, warnings: [...planned.warnings, "Es de maquinaria y equipo: los mercados del avalúo son de inmuebles; no se importa."] };
+}
+
+function planRowByMarket(
   row: Pick<SheetRow, "type" | "payload" | "useStatus" | "valuationFolio">,
   origin: ImportOrigin,
   destination: ImportDestination,

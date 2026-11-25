@@ -5,6 +5,8 @@
  */
 import { Prisma } from "@prisma/client";
 
+import type { ComparableClass } from "../calculation/comparable-classes";
+import { LEGACY_KIND_PATTERNS } from "../calculation/comparable-kinds";
 import { searchTokens } from "./normalize";
 
 /**
@@ -101,3 +103,36 @@ const coordinate = (name: string) =>
  */
 export const COMPARABLE_POINT = Prisma.sql`CASE WHEN ${coordinate("latitude")} BETWEEN -90 AND 90 AND ${coordinate("longitude")} BETWEEN -180 AND 180
   THEN ST_SetSRID(ST_MakePoint(${coordinate("longitude")}, ${coordinate("latitude")}), 4326)::geography END`;
+
+/** The type of construction of the snapshot, unaccented, in lowercase and trimmed: what the kinds of before are read from. */
+const CONSTRUCTION_TYPE_TEXT = Prisma.sql`unaccent(lower(btrim(COALESCE(c."JPropiedadSnapshot"->>'constructionType', ''))))`;
+const KIND = Prisma.sql`(c."JPropiedadSnapshot"->'details'->>'kind')`;
+
+/**
+ * The class of a comparable (comparable-classes.comparableClassOf): the one
+ * kept with its kind; else machinery when its type of construction said so,
+ * real estate otherwise. Needs `c`.
+ */
+export const COMPARABLE_CLASS = Prisma.sql`(CASE
+  WHEN c."JPropiedadSnapshot"->'details'->>'assetClass' IN ('INMUEBLE', 'MAQUINARIA') THEN c."JPropiedadSnapshot"->'details'->>'assetClass'
+  WHEN ${CONSTRUCTION_TYPE_TEXT} ~ '^(equipo|maquinaria)' THEN 'MAQUINARIA'
+  ELSE 'INMUEBLE' END)`;
+
+/** Only comparables of that class: real estate and machinery never mix (24 Nov 2026). */
+export const classCondition = (kindClass: ComparableClass | null | undefined) =>
+  (kindClass ? [Prisma.sql`${COMPARABLE_CLASS} = ${kindClass}`] : []);
+
+/**
+ * «Tipo de inmueble / de bien» (comparable-kinds.kindOfComparable): the kind
+ * captured; a comparable of before, without one, by its market (land) or the
+ * type of construction it was captured with. Needs `c` and `t`.
+ */
+export function kindCondition(kind: string | null | undefined) {
+  if (!kind) return [];
+  const legacy = LEGACY_KIND_PATTERNS.find(([key]) => key === kind)?.[1];
+  const land = Prisma.sql`t."SClave" IN ('TERRENO_VENTA', 'TERRENO_RENTA')`;
+  const ofBefore = kind === "TERRENO"
+    ? land
+    : legacy ? Prisma.sql`(NOT ${land} AND ${CONSTRUCTION_TYPE_TEXT} ~ ${legacy})` : null;
+  return [ofBefore ? Prisma.sql`(${KIND} = ${kind} OR (${KIND} IS NULL AND ${ofBefore}))` : Prisma.sql`${KIND} = ${kind}`];
+}

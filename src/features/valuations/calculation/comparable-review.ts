@@ -4,7 +4,8 @@
  * the checklist, and the warnings the system raises. The appraiser's
  * judgement rules: nothing here blocks or changes a calculation.
  */
-import { formatDay, hasAddress, type ComparableAddress } from "./comparable-card";
+import { formatDay, hasAddress, type ComparableAddress, type ComparableListingDetails } from "./comparable-card";
+import { missingExchangeRate } from "./comparable-currency";
 import type { ComparableValidity } from "./comparable-validity";
 import { isBuiltComparableType, type ComparableType } from "./market-types";
 
@@ -135,7 +136,7 @@ export function isPortalName(value: string | null | undefined) {
   return Boolean(name) && PORTALS.includes(name);
 }
 
-export type ComparableWarningKey = "BUILT_AREA" | "NO_NUMBER" | "PORTAL_CONTACT" | "NO_SCREENSHOT" | "OLD_OFFER" | "EXPIRED" | "DUPLICATE";
+export type ComparableWarningKey = "BUILT_AREA" | "NO_NUMBER" | "PORTAL_CONTACT" | "NO_SCREENSHOT" | "OLD_OFFER" | "EXPIRED" | "DUPLICATE" | "NO_EXCHANGE_RATE";
 export type ComparableWarning = { key: ComparableWarningKey; message: string };
 
 /** What each warning means and what to do about it, for the help next to it. None blocks anything. */
@@ -146,6 +147,7 @@ export const WARNING_HELP: Record<ComparableWarningKey, string> = {
   NO_SCREENSHOT: "Falta pantalla de referencia: es la captura del anuncio como estaba el día de la consulta, la evidencia si el anuncio cambia o se borra. Pégala con Ctrl+V o súbela en la ficha del comparable.",
   OLD_OFFER: "La fecha de la oferta (o la de consulta) tiene más meses que la vigencia: el precio puede ya no ser el de mercado. Confirma la oferta o actualiza la fecha de consulta.",
   EXPIRED: "Pasó la vigencia desde la fecha de alta o actualización de sus datos. Revisa el anuncio y actualiza el comparable para renovarla.",
+  NO_EXCHANGE_RATE: "El precio está en dólares y falta el tipo de cambio: sin él no hay precio en pesos y el comparable no entra al cálculo. Escribe el tipo de cambio, su fecha y su fuente en la ficha (por omisión, el FIX que publica el DOF).",
   DUPLICATE: "Coincide con otro comparable de la base del despacho (misma liga, dirección, teléfono, número o lugar y superficie). Revisa si es el mismo inmueble antes de usarlo dos veces.",
 };
 
@@ -161,6 +163,8 @@ export type WarningInput = {
   hasScreenshot: boolean;
   /** Its validity in the firm's base, from the date of its data (comparableValidity). */
   validity?: ComparableValidity | null;
+  /** Its currency and exchange rate: an offer in dollars without a rate is warned. */
+  listingDetails?: ComparableListingDetails | null;
 };
 
 /** Built area difference against the subject's, as a fraction (0.25 = 25 %); null when either is missing. */
@@ -214,6 +218,9 @@ export function comparableWarnings(
     warnings.push({ key: "PORTAL_CONTACT", message: "El contacto es solo el portal: anota el nombre o el teléfono del anunciante." });
   }
   if (!comparable.hasScreenshot) warnings.push({ key: "NO_SCREENSHOT", message: "Sin pantalla de referencia." });
+  if (missingExchangeRate(comparable)) {
+    warnings.push({ key: "NO_EXCHANGE_RATE", message: "Precio en dólares sin tipo de cambio: no entra al cálculo hasta capturarlo." });
+  }
   const date = comparable.offerDate ?? comparable.consultedOn ?? null;
   const maxAge = context.offerMaxAgeMonths ?? OFFER_MAX_AGE_MONTHS;
   if (date && monthsBetween(date, context.today) >= maxAge) {

@@ -11,11 +11,13 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
 import { asRecord, decimal, firmComparableMonths } from "../calculation/access";
 import { addressFromRecord, parseComparableId, todayInMexico, type ComparableAddress, type OperationType } from "../calculation/comparable-card";
+import { comparableClassOf, isComparableClass, type ComparableClass } from "../calculation/comparable-classes";
+import { kindOfComparable, type ComparableKind } from "../calculation/comparable-kinds";
 import { comparableValidity, type ComparableValidity } from "../calculation/comparable-validity";
 import { isRentComparableType, type ComparableType } from "../calculation/market-types";
 import { searchTokens } from "../comparable-search/normalize";
 import {
-  AREA, BUILT_AREA, COMPARABLE_POINT, CONSULTED, FIRM_BASE_FROM, HAYSTACK, LAND_AREA, constructionTypeCondition, firmBaseCondition, jsonNumber,
+  AREA, BUILT_AREA, COMPARABLE_POINT, CONSULTED, FIRM_BASE_FROM, HAYSTACK, LAND_AREA, classCondition, constructionTypeCondition, firmBaseCondition, jsonNumber, kindCondition,
   landUseCondition, likePattern, placeCondition, postalCodeCondition, rangeCondition, streetTypeCondition, wordsIn,
 } from "../comparable-search/own-base-sql";
 import { suggestionsFrom, type ComparableSuggestions } from "./comparable-suggestions";
@@ -40,6 +42,16 @@ export type ComparableBaseItem = {
   unitValue: number | null;
   landUse: string | null;
   constructionType: string | null;
+  /** «Tipo de inmueble / de bien» and its class (comparable-kinds); null when nothing says it. */
+  kind: ComparableKind | null;
+  assetClass: ComparableClass;
+  /** «Edad (años)» and, for machinery, «Año». */
+  age: number | null;
+  year: number | null;
+  /** «USD» for an offer in dollars (its price is the pesos at its rate); null in pesos. */
+  currency: "USD" | null;
+  priceInCurrency: number | null;
+  exchangeRate: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
   sourceName: string | null;
@@ -224,6 +236,8 @@ export function comparableBaseConditions(params: ComparableListParams, today: st
     ...postalCodeCondition(params.postalCode || undefined),
     ...(params.types.length ? [Prisma.sql`t."SClave" IN (${Prisma.join(params.types)})`] : []),
     ...(params.operation ? [Prisma.sql`${OPERATION} = ${params.operation}`] : []),
+    ...classCondition(params.assetClass),
+    ...kindCondition(params.kind),
     ...constructionTypeCondition(params.constructionType),
     ...landUseCondition(params.landUse),
     ...wordsIn(Prisma.sql`unaccent(lower(COALESCE(c."JPublicacionSnapshot"->>'sourceName', '')))`, params.source || undefined),
@@ -305,6 +319,10 @@ export async function listComparableBase(
     const price = decimal(row.price);
     const photo = firstPhotoKey(row.photos);
     const operation = text(property.operationType);
+    const details = asRecord((property.details ?? null) as Prisma.JsonValue);
+    const listing = asRecord((publication.details ?? null) as Prisma.JsonValue);
+    const kindDetails = { kind: text(details.kind), kindLabel: text(details.kindLabel), assetClass: isComparableClass(details.assetClass) ? details.assetClass : null };
+    const usd = listing.currency === "USD";
     return {
       id: row.id,
       folio: row.folio,
@@ -319,6 +337,14 @@ export async function listComparableBase(
       unitValue: area && price ? price / area : null,
       landUse: text(property.landUse) ?? text(property.landUseKey),
       constructionType: text(property.constructionType),
+      kind: kindOfComparable({ type, constructionType: text(property.constructionType), propertyDetails: kindDetails }),
+      assetClass: comparableClassOf({ assetClass: kindDetails.assetClass, constructionType: text(property.constructionType) }),
+      age: finite(details.age),
+      // A machine's «Año» is the one of its data (comparable-machinery); a property's, its own.
+      year: finite(asRecord((property.machinery ?? null) as Prisma.JsonValue).year) ?? finite(details.year),
+      currency: usd ? "USD" : null,
+      priceInCurrency: usd ? finite(listing.priceInCurrency) : null,
+      exchangeRate: usd ? finite(listing.exchangeRate) : null,
       bedrooms: finite(property.bedrooms),
       bathrooms: finite(property.bathrooms),
       sourceName: text(publication.sourceName),

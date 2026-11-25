@@ -8,8 +8,10 @@
  */
 import type { AuthUser } from "@/features/auth/model";
 import { canReviewComparables } from "@/features/auth/permissions";
+import { getCustomComparableKinds } from "@/features/firm/comparable-kinds.service";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { todayInMexico } from "../calculation/comparable-card";
+import { comparableClassOf } from "../calculation/comparable-classes";
 import { EXACT_DUPLICATE_REASONS } from "../calculation/comparable-duplicates";
 import type { ComparableImportPreview, ImportBaseCounts } from "../calculation/comparable-import";
 import {
@@ -70,7 +72,8 @@ async function analyze(
   file: ComparableFile,
   options: { destination: ImportDestination | null; defaultType: ComparableType | null },
 ): Promise<Analysis> {
-  const parsed = parseComparableSheet(file.rows, { defaultType: options.defaultType });
+  // The firm's own kinds are read by their names («Retroexcavadora»), not as «Otro».
+  const parsed = parseComparableSheet(file.rows, { defaultType: options.defaultType, customKinds: await getCustomComparableKinds(user.organizationId) });
   if (parsed.needsType) throw new ImportFileError("Es la plantilla de un solo mercado: elige el tipo de comparable antes de subirla, o usa la plantilla maestra.");
   if (parsed.missingColumns.length) throw new ImportFileError(`Falta la columna ${parsed.missingColumns.join(", ")}. Usa la plantilla de Valuaxis Soft.`);
   const destination = options.destination ?? file.destination ?? "AMBOS";
@@ -88,6 +91,7 @@ async function analyze(
         publicationId: row.payload.listingDetails?.publicationId ?? null,
         sourceName: row.payload.sourceName,
         folio: row.folio,
+        assetClass: comparableClassOf({ assetClass: row.payload.propertyDetails?.assetClass, constructionType: row.payload.constructionType }),
       })
       : [];
     // The same number, publication or URL first: they are the listing itself.

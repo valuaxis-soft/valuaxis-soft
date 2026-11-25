@@ -50,11 +50,17 @@ import {
   STREET_TYPE_LABELS,
   streetTypeOf,
   streetTypeOfName,
+  ageFromYear,
+  CURRENCIES,
 } from "@/features/valuations/calculation/comparable-card";
 import type { ComparableCardDto, DuplicateMatchDto } from "@/features/valuations/calculation/comparable-card.service";
 import { geocodingQueryOf } from "@/features/valuations/calculation/comparable-geocoding";
 import { DUPLICATE_REASON_LABELS, duplicateProbeOf, type DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
+import { comparableClassOf, type ComparableClass } from "@/features/valuations/calculation/comparable-classes";
+import { defaultExchangeRateSource, exchangeNote, pesosOf } from "@/features/valuations/calculation/comparable-currency";
+import { defaultKindOfType, kindOfComparable } from "@/features/valuations/calculation/comparable-kinds";
+import { ComparableKindField, kindFieldLabel } from "./comparable-kind-field";
 import { ComparableLocationPicker } from "@/features/valuations/comparable-base/components/comparable-location-picker";
 import { ComparableCardButton } from "./comparable-card-dialog";
 import { ComparableCardHeader, ComparableCardReview, ComparableCardUses, ComparableCardWarnings, listingDetailItems } from "./comparable-card-view";
@@ -103,7 +109,9 @@ type DraftKey =
   | "consultedOn" | "validUntil" | "validityMonths" | "urbanProximity" | "operationType" | "latitude" | "longitude" | "listingText"
   | "landArea" | "bedrooms" | "bathrooms" | "constructionType"
   // The facts of the card the form did not ask for before (V8.2: «una sola ventana»).
-  | "age" | "levels" | "parking" | "paving" | "blockPosition" | "publicationId";
+  | "age" | "levels" | "parking" | "paving" | "blockPosition" | "publicationId"
+  // «Tipo de inmueble / de bien», «Año», and an offer in dollars with its rate (24 Nov 2026).
+  | "kindKey" | "kindLabel" | "year" | "currency" | "exchangeRate" | "exchangeRateDate" | "exchangeRateSource";
 type Draft = Record<DraftKey, string> & { address: Record<AddressPart, string>; streetType: StreetType; streetTypeOther: string };
 
 /**
@@ -128,6 +136,7 @@ const FIELD_IDS = {
   type: "cmp-tipo", operation: "cmp-operacion", constructionType: "cmp-construccion", offerDate: "cmp-fecha-oferta",
   consultedOn: "cmp-fecha-consulta", validity: "cmp-vigencia", landUse: "cmp-uso", paving: "cmp-pavimento", blockPosition: "cmp-pos-manzana",
   bedrooms: "cmp-recamaras", bathrooms: "cmp-banos", age: "cmp-edad", levels: "cmp-niveles", parking: "cmp-estac",
+  kind: "cmp-tipo-bien", year: "cmp-anio", currency: "cmp-moneda", exchangeRate: "cmp-tc", exchangeRateDate: "cmp-tc-fecha", exchangeRateSource: "cmp-tc-fuente",
   characteristicsText: "cmp-texto-libre",
 } satisfies Record<string, string>;
 
@@ -179,12 +188,16 @@ function initialDraft(
   // A road read from a listing that already says its type («Av. Hidalgo») takes it, so it is not printed «Calle Av. Hidalgo».
   const prefilledStreetType = !comparable && prefill.street ? streetTypeOfName(prefill.street) : null;
   const details = comparable?.propertyDetails;
+  const listing = comparable?.listingDetails;
+  // Its kind as the card reads it: the one captured; one of before, by its market or its type of construction.
+  const kind = comparable ? kindOfComparable({ type, constructionType: comparable.constructionType, propertyDetails: details }) : defaultKindOfType(type);
+  const dollars = listing?.currency === "USD";
   return {
     // The line stored as the parts assemble it is not a text of the appraiser's: it keeps following the fields.
     location: customLocationText(comparable?.location, comparable?.address),
-    // A number typed as a formula reads back as typed.
+    // A number typed as a formula reads back as typed; an offer in dollars shows its dollars.
     area: comparable?.formulas?.area ?? text(comparable?.area),
-    price: comparable?.formulas?.price ?? text(comparable?.price),
+    price: dollars ? text(listing?.priceInCurrency ?? comparable?.price) : comparable?.formulas?.price ?? text(comparable?.price),
     sourceName: comparable?.sourceName ?? "",
     contactName: comparable?.contactName ?? "",
     contactPhone: comparable?.contactPhone ?? "",
@@ -211,6 +224,13 @@ function initialDraft(
     paving: details?.paving ?? "",
     blockPosition: details?.blockPosition ?? "",
     publicationId: comparable?.listingDetails?.publicationId ?? "",
+    kindKey: kind?.key ?? "",
+    kindLabel: kind?.label ?? "",
+    year: text(details?.year),
+    currency: dollars ? "USD" : "MXN",
+    exchangeRate: text(listing?.exchangeRate),
+    exchangeRateDate: listing?.exchangeRateDate ?? "",
+    exchangeRateSource: listing?.exchangeRateSource ?? "",
     address,
     // A comparable of before has no type of road: it reads as «Calle».
     streetType: prefilledStreetType ?? streetTypeOf(comparable?.address),
@@ -281,7 +301,8 @@ export const openableUrl = (value: string) => {
 /** Fields of the form an error points to, so the appraiser sees which one to correct. */
 export type ComparableFormField =
   | "location" | "postalCode" | "frontCount" | "latitude" | "longitude" | "landArea" | "bedrooms" | "bathrooms" | "age" | "levels" | "parking"
-  | "machinery-year" | "machinery-meter" | "machinery-freight";
+  | "machinery-year" | "machinery-meter" | "machinery-freight"
+  | "year" | "exchangeRate";
 
 /** «Superficie de terreno (m²) dice «México»»: what was typed, so an autofill by the browser is seen at once. */
 const typedIn = (label: string, typed: string) => `${label} dice «${typed.trim()}»`;
@@ -328,6 +349,12 @@ function withDetails<T extends object>(stored: T | null | undefined, edited: Par
   const next = { ...(stored ?? {}), ...edited } as T;
   return stored || Object.values(next).some((value) => value !== null && value !== undefined && value !== "") ? next : null;
 }
+
+const withoutKey = <T extends object>(record: T | undefined, key: string): T | undefined => {
+  if (!record || !(key in record)) return record;
+  const { [key as keyof T]: _removed, ...rest } = record;
+  return rest as T;
+};
 
 /** What the appraiser captured, to tell whether closing the form would lose something. */
 const snapshotOf = (...parts: unknown[]) => JSON.stringify(parts, (_key, value: unknown) => (value instanceof File ? `${value.name}:${value.size}` : value));
@@ -377,6 +404,15 @@ export type ComparableDialogProps = {
    * it, one that already carries a machine's data is (comparable-machinery.ts).
    */
   machinery?: boolean;
+  /**
+   * Real estate or machinery: the kinds the card offers. A market of a
+   * valuation is of real estate; in the firm's base it is chosen
+   * (`onClassChange`) or it is the stored comparable's.
+   */
+  comparableClass?: ComparableClass;
+  onClassChange?: (kindClass: ComparableClass) => void;
+  /** The valuation's day (YYYY-MM-DD), for the age from «Año»; missing, today. */
+  valuationDate?: string;
 };
 
 /**
@@ -439,7 +475,6 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     initialCharacteristics(comparable, fields, props.prefill));
   const [freeText, setFreeText] = useState(comparable?.characteristicsText ?? "");
   // A machine's data instead of the land and the construction (24 Nov 2026).
-  const machinery = isMachineryComparable(comparable ?? {}, props.machinery);
   const [machineryDraft, setMachineryDraft] = useState(() => machineryDraftOf(comparable?.machinery));
   // Characteristics of this comparable only: a name and a value each, to capture and to filter the firm's base.
   const [attributes, setAttributes] = useState(() => comparable?.attributes?.map((item) => ({ ...item })) ?? []);
@@ -511,6 +546,17 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
 
   const built = isBuiltComparableType(props.comparableType);
   const rent = isRentComparableType(props.comparableType);
+  const kindClass: ComparableClass = props.comparableClass
+    ?? (comparable ? comparableClassOf({ assetClass: comparable.propertyDetails?.assetClass, constructionType: comparable.constructionType }) : "INMUEBLE");
+  // A machine's sheet (comparable-machinery-fields) by its class, or by the machine's data it already carries.
+  const machinery = isMachineryComparable(comparable ?? {}, props.machinery ?? kindClass === "MAQUINARIA");
+  // A machine's age follows its model year («Año» of «Datos de la máquina») to the valuation's day, while not typed.
+  const referenceDay = props.valuationDate ?? todayInMexico();
+  const machineAge = machinery ? ageFromYear(parseDecimal(machineryDraft.year), referenceDay) : null;
+  const dollars = draft.currency === "USD";
+  // An offer in dollars: the pesos at the rate written, the price the calculation uses.
+  const exchangeRate = parseDecimal(draft.exchangeRate);
+  const pesos = dollars ? pesosOf(parseDecimal(draft.price), exchangeRate) : null;
   const setAttribute = (index: number, key: "name" | "value", value: string) =>
     setAttributes((current) => current.map((item, position) => (position === index ? { ...item, [key]: value } : item)));
   // The validity: the day of consultation plus its months; a comparable of before without months keeps its day.
@@ -549,6 +595,18 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     if (building && "error" in building) return building;
     const construction = built && !machinery ? constructionDetailsOf(draft) : null;
     if (construction && "error" in construction) return construction;
+    // A machine has one «Año», the one of its data; the field of the construction is of real estate.
+    const year = machinery ? null : numberOf(draft.year);
+    const typedAge = machinery ? numberOf(draft.age) : null;
+    if (typedAge !== null && !(typedAge >= 0 && typedAge <= 1000)) {
+      return { field: "age", error: `${typedIn("Edad (años)", draft.age)}: es un número de años, o queda vacía.` };
+    }
+    if (year !== null && !(Number.isInteger(year) && year >= 1800 && year <= 2200)) {
+      return { field: "year", error: `${typedIn("Año", draft.year)}: es el año del modelo (por ejemplo, 2018), o queda vacío.` };
+    }
+    if (dollars && draft.exchangeRate.trim() && !(exchangeRate && exchangeRate > 0)) {
+      return { field: "exchangeRate", error: `${typedIn("Tipo de cambio", draft.exchangeRate)}: son los pesos por dólar (por ejemplo, 18.3456), o queda vacío.` };
+    }
     // What is not in the form (the factors, characteristics out of the list) stays as stored.
     const {
       id: _id, reference: _reference, photos: _photos, folio: _folio, screenshot: _screenshot, review: _review, updatedOn: _updatedOn, ...stored
@@ -579,11 +637,26 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         paving: draft.paving.trim() || null,
         blockPosition: draft.blockPosition.trim() || null,
         ...(construction ?? {}),
+        kind: draft.kindKey || null,
+        kindLabel: draft.kindKey ? draft.kindLabel.trim() || null : null,
+        assetClass: draft.kindKey ? kindClass : stored.propertyDetails?.assetClass ?? null,
+        year,
+        ...(machinery ? { age: typedAge ?? machineAge } : {}),
       }),
-      listingDetails: withDetails(stored.listingDetails, { publicationId: draft.publicationId.trim().slice(0, 120) || null }),
+      listingDetails: withDetails(stored.listingDetails, {
+        publicationId: draft.publicationId.trim().slice(0, 120) || null,
+        // In pesos nothing of a rate is kept; in dollars, the dollars and the rate with its day and source.
+        currency: dollars ? "USD" : stored.listingDetails?.currency ? "MXN" : null,
+        priceInCurrency: dollars ? parseDecimal(draft.price) : null,
+        exchangeRate: dollars ? exchangeRate : null,
+        exchangeRateDate: dollars ? draft.exchangeRateDate || null : null,
+        exchangeRateSource: dollars ? draft.exchangeRateSource.trim() || null : null,
+      }),
       ...(machine ? { machinery: machine.details } : {}),
     };
-    for (const key of ["area", "price"] as const) values = withCharacteristic(values, key, draft[key], parseDecimal(draft[key]));
+    values = withCharacteristic(values, "area", draft.area, parseDecimal(draft.area));
+    // The price the calculation uses is in pesos: in dollars, the dollars at the rate (none without a rate).
+    values = dollars ? { ...values, price: pesos, formulas: withoutKey(values.formulas, "price") } : withCharacteristic(values, "price", draft.price, parseDecimal(draft.price));
     for (const field of fields) {
       const typed = characteristics[field.key] ?? "";
       values = withCharacteristic(values, field.key, typed, NUMERIC_CHARACTERISTICS.has(field.key) ? parseDecimal(typed) : null);
@@ -670,7 +743,8 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
   };
 
   const area = parseDecimal(draft.area);
-  const price = parseDecimal(draft.price);
+  // The unit value and the duplicates read the pesos.
+  const price = dollars ? pesos : parseDecimal(draft.price);
   const id = formatComparableId(comparable?.folio);
 
   // A new comparable is checked against the firm's base while it is typed, from its first fields
@@ -678,6 +752,8 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
   const probe: DuplicateProbe = {
     url: draft.url.trim() || null, location, address: hasAddress(address) ? address : null, contactPhone: draft.contactPhone.trim() || null,
     price, area, sourceName: draft.sourceName.trim() || null,
+    // Only comparables of its class: a backhoe is not the duplicate of a house.
+    assetClass: kindClass,
   };
   const probeKey = JSON.stringify(probe);
   // Something to compare: an area, a listing, a phone or a street number.
@@ -779,15 +855,44 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
   const offer: SheetField[] = [
     ...(props.onTypeChange ? [field("type", "Tipo de comparable", (
       <NativeSelect id={FIELD_IDS.type} className="w-full" value={props.comparableType} onChange={(event) => props.onTypeChange?.(event.target.value as ComparableType)}>
-        {COMPARABLE_TYPES.map((item) => <NativeSelectOption key={item} value={item}>{COMPARABLE_TYPE_LABELS[item]}</NativeSelectOption>)}
+        {/* Machinery is offered for sale or rent, never as land. */}
+        {COMPARABLE_TYPES.filter((item) => !machinery || isBuiltComparableType(item)).map((item) => (
+          <NativeSelectOption key={item} value={item}>{machinery ? (isRentComparableType(item) ? "En renta" : "En venta") : COMPARABLE_TYPE_LABELS[item]}</NativeSelectOption>
+        ))}
       </NativeSelect>
     ), { htmlFor: FIELD_IDS.type })] : []),
+    ...(props.onClassChange && !comparable ? [field("assetClass", "Clase", (
+      <NativeSelect
+        id="cmp-clase"
+        className="w-full"
+        value={kindClass}
+        onChange={(event) => {
+          const next = event.target.value as ComparableClass;
+          props.onClassChange?.(next);
+          // A kind of the other class does not stay.
+          setDraft((current) => ({ ...current, kindKey: "", kindLabel: "" }));
+        }}
+      >
+        <NativeSelectOption value="INMUEBLE">Inmuebles</NativeSelectOption>
+        <NativeSelectOption value="MAQUINARIA">Maquinaria y equipo</NativeSelectOption>
+      </NativeSelect>
+    ), { htmlFor: "cmp-clase" })] : []),
+    field("kind", kindFieldLabel(kindClass), (
+      <ComparableKindField
+        id={FIELD_IDS.kind}
+        kindClass={kindClass}
+        disabled={readOnly}
+        value={{ key: draft.kindKey, label: draft.kindLabel }}
+        onChange={(next) => setDraft((current) => ({ ...current, kindKey: next.key, kindLabel: next.label }))}
+      />
+    ), { htmlFor: FIELD_IDS.kind }),
     field("operation", "Tipo de operación", (
       <NativeSelect id={FIELD_IDS.operation} className="w-full" value={draft.operationType} onChange={set("operationType")}>
         {OPERATION_TYPES.map((item) => <NativeSelectOption key={item} value={item}>{OPERATION_TYPE_LABELS[item]}</NativeSelectOption>)}
       </NativeSelect>
     ), { htmlFor: FIELD_IDS.operation }),
-    ...(built ? [field("constructionType", "Tipo de construcción", (
+    // A machine has no type of construction: its kind says what it is.
+    ...(built && !machinery ? [field("constructionType", "Tipo de construcción", (
       <SuggestInput
         value={draft.constructionType}
         options={mergeOptions(suggestions.characteristics.constructionType, CONSTRUCTION_TYPE_SUGGESTIONS)}
@@ -806,7 +911,12 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         )}
       </SuggestInput>
     ), { htmlFor: FIELD_IDS.constructionType })] : []),
-    field("price", props.unitLabel, (
+    field("currency", "Moneda", (
+      <NativeSelect id={FIELD_IDS.currency} className="w-full" value={draft.currency} onChange={set("currency")}>
+        {CURRENCIES.map((item) => <NativeSelectOption key={item} value={item}>{item === "USD" ? "USD (dólares)" : "MXN (pesos)"}</NativeSelectOption>)}
+      </NativeSelect>
+    ), { htmlFor: FIELD_IDS.currency }),
+    field("price", dollars ? `${props.unitLabel} en dólares (USD)` : props.unitLabel, (
       <FormulaInput
         id={FIELD_IDS.price}
         autoComplete={NO_BROWSER_AUTOFILL}
@@ -815,6 +925,41 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         onChange={(event) => { setAnnualRent(null); set("price")(event); }}
       />
     ), { htmlFor: FIELD_IDS.price }),
+    ...(dollars ? [
+      field("exchangeRate", "Tipo de cambio (pesos por dólar)", (
+        <Input
+          id={FIELD_IDS.exchangeRate}
+          data-field="exchangeRate"
+          aria-invalid={invalid("exchangeRate")}
+          autoComplete={NO_BROWSER_AUTOFILL}
+          inputMode="decimal"
+          placeholder="18.3456"
+          value={draft.exchangeRate}
+          onChange={set("exchangeRate")}
+        />
+      ), { htmlFor: FIELD_IDS.exchangeRate }),
+      field("exchangeRateDate", "Fecha del tipo de cambio", (
+        <Input id={FIELD_IDS.exchangeRateDate} type="date" value={draft.exchangeRateDate} onChange={set("exchangeRateDate")} />
+      ), { htmlFor: FIELD_IDS.exchangeRateDate }),
+      field("exchangeRateSource", "Fuente del tipo de cambio", (
+        <Input
+          id={FIELD_IDS.exchangeRateSource}
+          autoComplete={NO_BROWSER_AUTOFILL}
+          maxLength={200}
+          placeholder={defaultExchangeRateSource(draft.exchangeRateDate || null)}
+          value={draft.exchangeRateSource}
+          onChange={set("exchangeRateSource")}
+        />
+      ), { htmlFor: FIELD_IDS.exchangeRateSource }),
+      field("pesos", "Equivalente en pesos (MXN)", (
+        <p className="flex min-h-7 items-center px-1 font-medium tabular-nums" data-price-pesos="">
+          {pesos === null ? "Escribe el tipo de cambio: sin él no entra al cálculo." : (exchangeNote({ price: pesos, listingDetails: {
+            currency: "USD", priceInCurrency: parseDecimal(draft.price), exchangeRate,
+            exchangeRateDate: draft.exchangeRateDate || null, exchangeRateSource: draft.exchangeRateSource.trim() || null,
+          } }) ?? "—")}
+        </p>
+      ), { wide: true }),
+    ] : []),
     ...(rent ? [field("annualRent", "Renta anual", (
       <>
         <Input
@@ -832,7 +977,8 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         <p className="text-[11px] text-muted-foreground">Captura la mensual o la anual: la otra se calcula. Se guarda la mensual.</p>
       </>
     ), { htmlFor: FIELD_IDS.annualRent })] : []),
-    ...(built ? [field("landArea", "Superficie de terreno (m²)", (
+    // A machine has no areas nor price per m² (its card neither, #160).
+    ...(built && !machinery ? [field("landArea", "Superficie de terreno (m²)", (
       <Input
         id={FIELD_IDS.landArea}
         data-field="landArea"
@@ -843,17 +989,33 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         onChange={set("landArea")}
       />
     ), { htmlFor: FIELD_IDS.landArea })] : []),
-    field("area", AREA_FIELD_LABELS[props.comparableType], (
+    ...(machinery ? [] : [field("area", AREA_FIELD_LABELS[props.comparableType], (
       <FormulaInput id={FIELD_IDS.area} autoComplete={NO_BROWSER_AUTOFILL} grouping value={draft.area} onChange={set("area")} />
     ), { htmlFor: FIELD_IDS.area }),
     field("unitValue", rent ? "$/m²/mes" : "$/m²", (
       <p className="flex h-7 items-center px-1 font-medium tabular-nums" data-unit-value="">
         {area && price ? (price / area).toLocaleString("es-MX", { style: "currency", currency: "MXN" }) : "—"}
       </p>
-    )),
+    ))]),
     field("offerDate", "Fecha de la oferta", (
       <Input id={FIELD_IDS.offerDate} type="date" value={draft.offerDate} onChange={set("offerDate")} />
     ), { htmlFor: FIELD_IDS.offerDate }),
+    // A machine's age: from its «Año» to the valuation's day unless typed (the construction, where it goes for real estate, is not shown).
+    ...(machinery ? [field("age", "Edad (años)", (
+      <>
+        <Input
+          id={FIELD_IDS.age}
+          data-field="age"
+          aria-invalid={invalid("age")}
+          autoComplete={NO_BROWSER_AUTOFILL}
+          inputMode="decimal"
+          placeholder={machineAge === null ? "Escribe el año en «Datos de la máquina»" : String(machineAge)}
+          value={draft.age}
+          onChange={set("age")}
+        />
+        {machineAge !== null && !draft.age.trim() ? <p className="text-[11px] text-muted-foreground">Del año {machineryDraft.year} al {formatDay(referenceDay)}.</p> : null}
+      </>
+    ), { htmlFor: FIELD_IDS.age })] : []),
   ];
 
   const place: SheetField[] = [
@@ -1056,7 +1218,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     ), { htmlFor: FIELD_IDS.blockPosition }),
   ];
 
-  const countField = (key: "bedrooms" | "bathrooms" | "age" | "levels" | "parking", label: string, extra: Partial<ComponentProps<typeof Input>> = {}) =>
+  const countField = (key: "bedrooms" | "bathrooms" | "age" | "levels" | "parking" | "year", label: string, extra: Partial<ComponentProps<typeof Input>> = {}) =>
     field(key, label, (
       <Input
         id={FIELD_IDS[key]}
@@ -1072,6 +1234,27 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
   const construction: SheetField[] = built ? [
     ...fields.filter((item) => CONSTRUCTION_FIELDS.has(item.key)).map((item) => characteristicField(item)),
     countField("age", "Edad (años)", { inputMode: "decimal" }),
+    // «Año» of the model: the age follows it, from the valuation's day, while the age is empty (24 Nov 2026).
+    field("year", "Año", (
+      <Input
+        id={FIELD_IDS.year}
+        data-field="year"
+        aria-invalid={invalid("year")}
+        autoComplete={NO_BROWSER_AUTOFILL}
+        inputMode="numeric"
+        maxLength={4}
+        placeholder={machinery ? "2018" : "Año de construcción"}
+        value={draft.year}
+        onChange={(event) => {
+          const typed = event.target.value;
+          setDraft((current) => {
+            const age = ageFromYear(parseDecimal(typed), referenceDay);
+            const followed = !current.age.trim() || String(ageFromYear(parseDecimal(current.year), referenceDay)) === current.age.trim();
+            return { ...current, year: typed, ...(followed ? { age: age === null ? "" : String(age) } : {}) };
+          });
+        }}
+      />
+    ), { htmlFor: FIELD_IDS.year }),
     countField("levels", "Niveles"),
     countField("bedrooms", "Recámaras"),
     countField("bathrooms", "Baños", { inputMode: "decimal", placeholder: "2.5" }),

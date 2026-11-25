@@ -9,6 +9,10 @@ import { z } from "zod";
 
 import type { AiPrompt } from "@/features/ai/ai-gateway";
 import { formatAddress, streetTypeOfName, type Currency } from "../calculation/comparable-card";
+import { offerInPesos } from "../calculation/comparable-currency";
+import {
+  CUSTOM_KIND_PREFIX, comparableKindSchema, defaultKindOfType, isOtherKind, kindDetails, kindFromText, kindPlural, type ComparableKind,
+} from "../calculation/comparable-kinds";
 import { isLandComparableType, isRentComparableType, type ComparableType } from "../calculation/market-types";
 import { urlKey } from "./normalize";
 import type { FoundComparable } from "./types";
@@ -46,7 +50,7 @@ const NUMBER_WORDS = ["", "un", "dos", "tres", "cuatro", "cinco"];
 /** «cinco anuncios», «un anuncio»: how many the request asks for, in words, as the appraiser would say it. */
 export const listingsWanted = (count: number) => `${NUMBER_WORDS[count] ?? String(count)} anuncio${count === 1 ? "" : "s"}`;
 
-const SYSTEM = `Trabajas para un despacho de valuación inmobiliaria en México. Buscas en la web anuncios de inmuebles en oferta que puedan servir de comparables en un avalúo y reportas únicamente lo que los anuncios dicen. Los avalúos tienen valor legal: un dato inventado es peor que un dato vacío.
+const SYSTEM = `Trabajas para un despacho de valuación en México. Buscas en la web anuncios de inmuebles (o de maquinaria y equipo, cuando la solicitud lo pide) en oferta que puedan servir de comparables en un avalúo y reportas únicamente lo que los anuncios dicen. Los avalúos tienen valor legal: un dato inventado es peor que un dato vacío.
 
 Cuántos: la solicitud dice cuántos anuncios reportar. Reporta como máximo ese número, nunca más; cada búsqueda se cobra, así que no busques de más. Si no encuentras tantos, reporta los que haya y dilo en marketNote.
 
@@ -54,7 +58,7 @@ Cómo buscar, sin perder tiempo:
 - Usa web_search con consultas en español que lleven el tipo de inmueble, la operación, el municipio y el estado (portales como Inmuebles24, Propiedades.com, Lamudi, Vivanuncios, Mercado Libre Inmuebles, EasyBroker, y sitios de inmobiliarias de la zona). Lanza a la vez las búsquedas que no dependan una de otra y no repitas una consulta.
 - Cada anuncio se reporta con la dirección web de SU PROPIA página (la de ese anuncio en particular), nunca la de una página de resultados, de un listado del portal o de una búsqueda general. La página propia de un anuncio suele llevar en su dirección una clave o un número del anuncio (…/propiedades/terreno-en-venta-en-bugambilias-145998.html, …/listings/terreno-en-venta-ciudad-bugambilia); la de un listado lleva solo filtros (…/terrenos/venta/zapopan/). Busca con consultas que den con anuncios sueltos (con la superficie, la calle o el fraccionamiento), no solo con listados. Si un anuncio solo lo viste en un listado, haz una búsqueda dirigida con sus datos (título entre comillas, calle, superficie) y el nombre del portal para dar con su página propia; si no la encuentras, no lo reportes y busca otro. Reporta los que sí tengan página propia aunque sean menos de los pedidos.
 - Abre con web_fetch la página propia de cada anuncio que vayas a reportar (solo direcciones que aparecieron en tus resultados), para confirmar que sigue publicado y leer sus datos. Abre las páginas a la vez. Si la página dice que el anuncio ya no está publicado, ya no está disponible, se vendió, está pausado o fue dado de baja, no lo reportes. Varios portales no dejan abrir sus páginas: si una falla, no insistas con ese sitio; ese anuncio se reporta con pageStatus "sin_abrir".
-- No rellenes con anuncios de otra ciudad ni de otro tipo de inmueble.
+- No rellenes con anuncios de otra ciudad ni de otro tipo de inmueble o de bien que el pedido.
 
 Qué reportar de cada anuncio:
 - url es la dirección exacta del resultado o de la página que abriste. Nunca escribas, completes ni corrijas una dirección web de memoria. urlKind es "anuncio" cuando es la página de ese anuncio y "listado" cuando es una página con varios anuncios.
@@ -78,6 +82,8 @@ const KIND_WORDS: Record<ComparableType, string> = {
 
 export type WebListingSearchInput = {
   type: ComparableType;
+  /** «Tipo de inmueble / de bien» chosen in the dialog (comparable-kinds); missing, the market's words. */
+  kind?: ComparableKind | null;
   /** What the appraiser asks for now. */
   text: string;
   /** What was asked before in the same search, oldest first. */
@@ -88,12 +94,29 @@ export type WebListingSearchInput = {
   count: number;
 };
 
+/**
+ * What a machinery search adds to the request: a movable good is not real
+ * estate, and its listings live in other portals, in Mexico and abroad.
+ */
+const MACHINERY_NOTE = "Clase de bien: maquinaria y equipo (bienes muebles, no inmuebles). Busca en portales de maquinaria, vehículos y equipo (Mercado Libre, Facebook Marketplace, sitios de distribuidores y de subastas, y de Estados Unidos si la solicitud lo pide). Las superficies no aplican: landArea y builtArea van en null. Copia en notes la marca, el modelo, el año, las horas de uso (horómetro) o el kilometraje (odómetro) que publique el anuncio.";
+
+/** «oficinas en renta», «retroexcavadoras en venta»: the kind chosen and the market's operation; without a kind, the market's words. */
+export function searchedKindWords(type: ComparableType, kind: ComparableKind | null | undefined) {
+  if (!kind) return KIND_WORDS[type];
+  const plural = kindPlural(kind);
+  // A name of the firm keeps its capitals; a word of Valuaxis reads in lowercase in a sentence.
+  return `${isOwnKindName(kind) ? plural : plural.toLowerCase()} en ${isRentComparableType(type) ? "renta" : "venta"}`;
+}
+
+const isOwnKindName = (kind: Pick<ComparableKind, "key">) => kind.key.startsWith(CUSTOM_KIND_PREFIX) || isOtherKind(kind.key);
+
 /** The request as the model reads it. The appraiser's words go delimited: they say what to look for, they do not change the rules. */
 export function webListingSearchPrompt(input: WebListingSearchInput, today: string): AiPrompt {
   const more = input.previous.length > 0;
   const parts = [
     `Fecha de hoy: ${today}.`,
-    `Tipo de comparable que se busca: ${KIND_WORDS[input.type]}.`,
+    `Tipo de comparable que se busca: ${searchedKindWords(input.type, input.kind)}.`,
+    ...(input.kind?.class === "MAQUINARIA" ? [MACHINERY_NOTE] : []),
     `Cuántos: reporta como máximo ${listingsWanted(input.count)}${more ? " más, distintos de los ya encontrados" : ""}.`,
     ...(input.previous.length
       ? [`Solicitudes anteriores de esta misma búsqueda (contexto):\n${input.previous.map((text) => `<solicitud_anterior>\n${text}\n</solicitud_anterior>`).join("\n")}`]
@@ -486,11 +509,15 @@ export const webSearchRequestSchema = z.object({
     .transform((urls) => urls.flatMap((url) => listingUrl(url) ?? [])),
   /** «Buscar N más»: 1 to 5; a client of before asks for the whole batch. */
   count: z.number().int().min(1, "Pide al menos un anuncio.").max(WEB_SEARCH_BATCH, `Una búsqueda propone hasta ${WEB_SEARCH_BATCH} anuncios.`).default(WEB_SEARCH_BATCH),
+  /** «Tipo de inmueble / de bien» chosen in the dialog; a client of before searches the market's words. */
+  kind: comparableKindSchema.nullable().optional(),
 });
 
 /** «Crear fichas»: the listings chosen. */
 export const addWebListingsSchema = z.object({
   candidates: z.array(webListingCandidateSchema).min(1, "Elige al menos un anuncio.").max(WEB_SEARCH_MAX_CANDIDATES),
+  /** The kind the search was for: the cards take it. */
+  kind: comparableKindSchema.nullable().optional(),
 });
 
 const money = (value: number, currency: Currency) => `${currency} ${value.toLocaleString("es-MX", { maximumFractionDigits: 2 })}`;
@@ -500,8 +527,12 @@ const money = (value: number, currency: Currency) => `${currency} ${value.toLoca
  * filled; a price in dollars is not written as the price (the calculation is
  * in pesos) and stays in the notes as published.
  */
-export function comparableFromWebListing(type: ComparableType, candidate: WebListingCandidateInput, today: string): FoundComparable {
+export function comparableFromWebListing(
+  type: ComparableType, candidate: WebListingCandidateInput, today: string, chosenKind: ComparableKind | null = null,
+): FoundComparable {
   const land = isLandComparableType(type);
+  // The kind asked for in the dialog; else the one the listing says, or the market's (a land market is «Terreno / Lote»).
+  const kind = chosenKind ?? (land ? defaultKindOfType(type) : candidate.propertyType ? kindFromText(candidate.propertyType, "INMUEBLE") : null);
   const streetType = candidate.street ? streetTypeOfName(candidate.street) : null;
   const address = {
     state: candidate.state, municipality: candidate.municipality, neighborhood: candidate.neighborhood,
@@ -539,7 +570,7 @@ export function comparableFromWebListing(type: ComparableType, candidate: WebLis
     // The agency once: as the contact when the listing names no person, in the notes beside the person otherwise.
     candidate.agency && candidate.contactName ? `Inmobiliaria: ${candidate.agency}` : null,
     ...construction,
-    dollars ? `Precio publicado en dólares: ${money(candidate.price ?? 0, "USD")}; no se convirtió a pesos` : null,
+    dollars ? `Precio publicado en dólares: ${money(candidate.price ?? 0, "USD")}; no se convirtió a pesos: escribe el tipo de cambio en la ficha` : null,
   ].filter(Boolean).map((part) => String(part).replace(/[.\s]+$/, "")).join(". ");
   const building = land ? null : {
     landArea: candidate.landArea,
@@ -551,6 +582,9 @@ export function comparableFromWebListing(type: ComparableType, candidate: WebLis
       ? { propertyDetails: { age: candidate.age, levels: candidate.levels, parking: candidate.parking } }
       : {}),
   };
+  const propertyDetails = kind || building?.propertyDetails ? { ...building?.propertyDetails, ...(kind ? kindDetails(kind) : {}) } : null;
+  // A price in dollars is kept in dollars, without a rate: the appraiser writes the rate in the card and the pesos follow.
+  const offer = dollars ? offerInPesos({ currency: "USD", price: candidate.price }) : null;
   return {
     location: (place || candidate.title).slice(0, 500),
     area: land ? candidate.landArea : candidate.builtArea,
@@ -575,7 +609,11 @@ export function comparableFromWebListing(type: ComparableType, candidate: WebLis
     address,
     operationType: isRentComparableType(type) ? "RENTA" : "VENTA",
     ...(building ?? {}),
-    listingDetails: { currency: candidate.currency, dataOrigin: WEB_SEARCH_SOURCE_LABEL, dataVerified: "NO", publicationId: candidate.publicationId },
+    ...(propertyDetails ? { propertyDetails } : {}),
+    listingDetails: {
+      currency: candidate.currency, dataOrigin: WEB_SEARCH_SOURCE_LABEL, dataVerified: "NO", publicationId: candidate.publicationId,
+      ...(offer ? { priceInCurrency: offer.listing.priceInCurrency } : {}),
+    },
   };
 }
 
@@ -600,14 +638,18 @@ export type WebSearchSubject = {
  * The request the box starts with, written from what the valuation already
  * knows of the subject. The appraiser edits it at will.
  */
-export function suggestedWebSearchText(type: ComparableType, subject: WebSearchSubject) {
-  const land = isLandComparableType(type);
+export function suggestedWebSearchText(type: ComparableType, subject: WebSearchSubject, chosenKind: ComparableKind | null = null) {
+  const land = isLandComparableType(type) || chosenKind?.key === "TERRENO";
   const operation = isRentComparableType(type) ? "renta" : "venta";
-  const kind = land ? "Terrenos" : (subject.propertyType?.trim() || "Inmuebles construidos");
+  const kind = chosenKind ? kindPlural(chosenKind) : land ? "Terrenos" : (subject.propertyType?.trim() || "Inmuebles construidos");
   const town = [subject.municipality, subject.state].filter(Boolean).join(", ");
   const where = town
-    ? ` en ${town}${subject.neighborhood ? `, en la colonia ${subject.neighborhood} o cerca de ella` : ""}`
+    ? ` en ${town}${subject.neighborhood && chosenKind?.class !== "MAQUINARIA" ? `, en la colonia ${subject.neighborhood} o cerca de ella` : ""}`
     : subject.address ? ` cerca de ${subject.address}` : "";
+  // A machine is not measured in m²: its listings are asked for by what sells it (24 Nov 2026, «si tú pones retroexcavadoras…»).
+  if (chosenKind?.class === "MAQUINARIA") {
+    return `${kind} en ${operation}${where}. Necesito cinco, con precio, marca, modelo, año, horas de uso o kilometraje, ubicación y la liga de cada anuncio.`;
+  }
   const number = (value: number) => value.toLocaleString("es-MX", { maximumFractionDigits: 0 });
   const areaWord = land ? "m² de terreno" : "m² de construcción";
   const range = subject.area

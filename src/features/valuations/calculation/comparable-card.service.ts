@@ -21,7 +21,7 @@ import { comparableWarnings, type ComparableWarning } from "./comparable-review"
 import { comparableValidity, type ComparableValidity } from "./comparable-validity";
 import { comparableInclude, toComparableDto } from "./market.service";
 import { COMPARABLE_TYPES, type ComparableDto, type ComparableType } from "./market-types";
-import { AREA, FIRM_BASE_FROM, firmBaseCondition, likePattern } from "../comparable-search/own-base-sql";
+import { AREA, FIRM_BASE_FROM, classCondition, firmBaseCondition, likePattern } from "../comparable-search/own-base-sql";
 
 /** A valuation a comparable of the base was used in. */
 export type ComparableUseDto = {
@@ -323,6 +323,8 @@ export async function findDuplicates(
       c."DFechaActualizacionDatos" AS "dataUpdatedAt"
     ${FIRM_BASE_FROM}
     WHERE ${firmBaseCondition(organizationId)}
+      -- Real estate and machinery never mix: a backhoe is not the duplicate of a house.
+      AND ${Prisma.join(classCondition(probe.assetClass ?? "INMUEBLE"), " AND ")}
       AND (${Prisma.join(hints, " OR ")})
     ORDER BY c."DFechaActualizacionDatos" DESC, c."DFechaSeleccion" DESC, c."IdComparableAvaluo" DESC
     LIMIT ${MAX_CANDIDATES}

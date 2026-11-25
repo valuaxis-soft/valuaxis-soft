@@ -11,6 +11,7 @@
  */
 import { searchText } from "../comparable-search/normalize";
 import { hasAddress, type ComparableAddress } from "./comparable-card";
+import { comparableClassOf, type ComparableClass } from "./comparable-classes";
 
 export type DuplicateProbe = {
   url: string | null;
@@ -25,6 +26,8 @@ export type DuplicateProbe = {
   sourceName?: string | null;
   /** Its number in the firm's base ("REF / ID" of the master workbook): the same number is the same comparable. */
   folio?: number | null;
+  /** Real estate or machinery: only comparables of the same class are compared; missing, real estate. */
+  assetClass?: ComparableClass | null;
 };
 
 export const DUPLICATE_REASONS = ["FOLIO", "PUBLICATION", "URL", "ADDRESS", "PHONE_PRICE", "PHONE_AREA", "SIMILAR", "PLACE_AREA"] as const;
@@ -168,6 +171,7 @@ export function samePrice(a: number | null, b: number | null, tolerance = PRICE_
 export function duplicateProbeOf(comparable: {
   url: string | null; location: string; address?: ComparableAddress | null; contactPhone: string | null; price: number | null;
   area: number | null; sourceName: string | null; listingDetails?: { publicationId?: string | null } | null;
+  constructionType?: string | null; propertyDetails?: { assetClass?: ComparableClass | null } | null;
 }): DuplicateProbe {
   return {
     url: comparable.url,
@@ -178,6 +182,7 @@ export function duplicateProbeOf(comparable: {
     area: comparable.area,
     sourceName: comparable.sourceName,
     publicationId: comparable.listingDetails?.publicationId ?? null,
+    assetClass: comparableClassOf({ assetClass: comparable.propertyDetails?.assetClass, constructionType: comparable.constructionType }),
   };
 }
 

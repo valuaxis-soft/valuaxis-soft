@@ -64,7 +64,7 @@ test("V8.2: a house's bedrooms, whole and half bathrooms, parking, floor and pos
   }));
   assert.equal(card.bedrooms, 4);
   assert.equal(card.bathrooms, 4.5, "«4 baños, 1 medio» is 4.5, as the card keeps it");
-  assert.deepEqual(card.propertyDetails, { age: null, levels: null, parking: 2 });
+  assert.deepEqual(card.propertyDetails, { age: null, levels: null, parking: 2, kind: "DEPARTAMENTO", kindLabel: "Departamento", assetClass: "INMUEBLE" });
   assert.equal(card.address?.number, "1200");
   assert.match(card.notes ?? "", /Piso: 3/);
   assert.equal(card.address?.postalCode, "45238");

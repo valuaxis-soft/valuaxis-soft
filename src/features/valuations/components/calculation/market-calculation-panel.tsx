@@ -1407,6 +1407,9 @@ function MarketTypePanel(props: {
           onCheckDuplicates={(probe) => api.market.duplicates(valuationId, probe)}
           onReuse={(comparableId) => run(() => api.market.reuseComparable(valuationId, type, comparableId), "Comparable existente agregado. Califica sus factores.")}
           defaultValidityMonths={calculation.comparableValidityMonths}
+          valuationDate={calculation.valuationDate}
+          // A market of the valuation is of real estate: its cards are never a machine's.
+          comparableClass="INMUEBLE"
           attributeNames={[...new Set(comparables.flatMap((item) => (item.attributes ?? []).map((attribute) => attribute.name)))]}
           attributesHint="Lo que agregues aquí se vuelve una característica de este mercado: aparece en todas sus fichas y en la tabla 2.1, y se imprime. Una superficie con su nombre («Sup. común», 12) se imprime en m²."
         />

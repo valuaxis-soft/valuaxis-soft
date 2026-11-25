@@ -22,7 +22,7 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     const body = await readJsonBody(request, addWebListingsSchema);
     if (!body.ok) return body.response;
     const { id } = await params;
-    const result = await addWebListings(id, auth.user, type.data, body.data.candidates);
+    const result = await addWebListings(id, auth.user, type.data, body.data.candidates, body.data.kind ?? null);
     if (result.created || result.reused) {
       await recordAuditEvent({
         typeKey: "CREACION",

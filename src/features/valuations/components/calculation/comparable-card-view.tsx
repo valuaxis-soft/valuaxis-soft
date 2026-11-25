@@ -13,10 +13,15 @@ import {
   streetTypeText,
   characteristicLabelOf,
   formatComparableId,
+  ageFromYear,
+  todayInMexico,
 } from "@/features/valuations/calculation/comparable-card";
 import type { ComparableCardDto } from "@/features/valuations/calculation/comparable-card.service";
 import { REVIEW_STATUS_LABELS } from "@/features/valuations/calculation/comparable-review";
 import { isMachineryComparable, machineryCardRows } from "@/features/valuations/calculation/comparable-machinery";
+import { comparableClassOf } from "@/features/valuations/calculation/comparable-classes";
+import { exchangeNote } from "@/features/valuations/calculation/comparable-currency";
+import { kindOfComparable } from "@/features/valuations/calculation/comparable-kinds";
 import { reviewCheckLabel } from "@/features/valuations/calculation/comparable-review-checklist";
 import {
   COMPARABLE_TYPE_LABELS,
@@ -86,17 +91,27 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
   const extra = Object.entries(comparable.extra ?? {});
   const review = comparable.review;
   const built = isBuiltComparableType(type);
-  const machinery = isMachineryComparable(comparable, machineryHint);
+  const kind = kindOfComparable({ type, constructionType: comparable.constructionType, propertyDetails: comparable.propertyDetails });
+  // A machine's card by its class (comparable-classes), or by the machine's data it carries.
+  const machinery = isMachineryComparable(comparable, machineryHint
+    ?? comparableClassOf({ assetClass: comparable.propertyDetails?.assetClass, constructionType: comparable.constructionType }) === "MAQUINARIA");
+  // An offer in dollars shows the dollars, the rate and the pesos the calculation uses.
+  const exchange = exchangeNote(comparable);
 
   const offer: SheetItem[] = [
+    { label: machinery ? "Tipo de bien" : "Tipo de inmueble", value: kind?.label ?? "—" },
     { label: rent ? "Renta mensual" : "Precio de oferta", value: <span className="font-semibold tabular-nums">{money(comparable.price)}</span> },
     ...(rent ? [{ label: "Renta anual", value: <span className="tabular-nums">{money(comparable.price === null ? null : comparable.price * 12)}</span> }] : []),
+    ...(exchange ? [{ label: "Precio en dólares", value: <span className="tabular-nums" data-exchange-note="">{exchange}</span>, wide: true }] : []),
     ...(machinery ? [] : [
       { label: rent ? "$/m²/mes" : "$/m²", value: <span className="tabular-nums">{money(unitValue)}</span> },
       { label: AREA_LABELS[type], value: <span className="tabular-nums">{number(comparable.area)}</span> },
     ]),
     { label: "Operación", value: OPERATION_TYPE_LABELS[operation] },
     { label: "Fecha de la oferta", value: dayText(comparable.offerDate) },
+    // A machine shows its age here: its «Construcción» is not shown, and its «Año» is in «Datos de la máquina».
+    // Not captured, the age of its «Año» to today (the card has no valuation's day).
+    ...(machinery ? [{ label: "Edad (años)", value: number(comparable.propertyDetails?.age ?? ageFromYear(comparable.machinery?.year, todayInMexico())) }] : []),
   ];
   const location: SheetItem[] = [
     { label: "Ubicación", value: orDash(comparable.location), wide: true },
@@ -141,6 +156,7 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
     { label: "Calidad", value: orDash(comparable.quality) },
     { label: "Conservación", value: orDash(comparable.conservation) },
     { label: "Edad (años)", value: number(comparable.propertyDetails?.age) },
+    ...(comparable.propertyDetails?.year ? [{ label: "Año", value: String(comparable.propertyDetails.year) }] : []),
     { label: "Niveles", value: number(comparable.propertyDetails?.levels) },
     { label: "Recámaras", value: number(comparable.bedrooms) },
     { label: "Baños", value: number(comparable.bathrooms) },
