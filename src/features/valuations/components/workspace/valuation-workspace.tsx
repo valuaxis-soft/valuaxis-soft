@@ -16,6 +16,7 @@ import { documentNumberPresentation } from "@/features/valuations/services/numbe
 import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
 import { documentPagePresentation } from "@/features/valuations/services/page-presentation";
 import { documentPaletteVars } from "@/features/valuations/services/document-palette";
+import { printsAdvertiserData } from "@/features/valuations/services/advertiser-data";
 import { AiAssistProvider } from "@/features/ai/ai-assist-context";
 import { ValuationEditorPanel } from "@/features/valuations/components/workspace/valuation-editor-panel";
 import type { SplitLayout, WorkspaceMode } from "@/features/valuations/components/workspace/valuation-workspace-layout";
@@ -525,6 +526,7 @@ export function ValuationWorkspace({
             ) : getCanonicalSectionKey(section.id) === "MERCADO_VENTA" ? (
               <MarketCalculationPanel
                 valuationId={valuationId}
+                advertiserData={printsAdvertiserData(sections)}
                 readOnly={!canEdit}
                 canReview={canReview}
                 suggestedSubjectAreas={calculationSync.suggestedSubjectAreas}
@@ -554,6 +556,7 @@ export function ValuationWorkspace({
             ) : getCanonicalSectionKey(section.id) === "MERCADO_RENTAS" ? (
               <MarketCalculationPanel
                 valuationId={valuationId}
+                advertiserData={printsAdvertiserData(sections)}
                 types={RENT_COMPARABLE_TYPES}
                 readOnly={!canEdit}
                 canReview={canReview}

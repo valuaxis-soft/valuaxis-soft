@@ -64,10 +64,11 @@ test("the first forwarded address is used without x-real-ip, and 'unknown' witho
 
   const [exported, deleted] = await entries(fixture.publicId);
   assert.equal(exported.SDireccionIP, "198.51.100.1");
-  assert.deepEqual(exported.JMetadatos, { format: "pdf", channel: "email", recipients: "cliente@example.test", bytes: 1234 });
+  // Every action carries the version the valuation was in (matrix 3.3).
+  assert.deepEqual(exported.JMetadatos, { format: "pdf", channel: "email", recipients: "cliente@example.test", bytes: 1234, versionAvaluo: 1 });
   assert.equal(deleted.SDireccionIP, "unknown");
   assert.equal(deleted.SAgenteUsuario, null);
-  assert.equal(deleted.JMetadatos, null);
+  assert.deepEqual(deleted.JMetadatos, { versionAvaluo: 1 });
 });
 
 test("an audit that cannot be written never breaks the action it records", async (t) => {

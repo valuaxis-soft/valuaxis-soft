@@ -422,3 +422,21 @@ docker exec valuos-app node --import tsx scripts/ops/actualizar-formato.ts --dry
 ```
 
 En local es `pnpm valuations:refresh-layout --dry-run`. Cada renglón dice el folio, la versión de formato que tiene, si cambiaría «al abrirlo» o «solo con «Actualizar formato»» y cuántos conceptos o bloques se agregarían o ligarían al cálculo.
+
+## 17. Soporte y reportes de fallas (matriz de We Law 1.9)
+
+- **Correo y WhatsApp de soporte:** se escriben en `src/features/support/support-contact.ts` (`SUPPORT_CONTACT.email` y `SUPPORT_CONTACT.whatsapp`, a 10 dígitos o con +52). Mientras estén vacíos, «Ayuda y soporte» (`/soporte`, en el menú de la cuenta) dice «Por publicar». Cambiarlos requiere un PR y desplegar.
+- **Reportar una falla:** el usuario elige el avalúo (opcional), la fecha, describe lo que pasó y puede subir una captura. Se guarda en la auditoría (acción `SUPPORT_FAILURE_REPORT`, entidad `ReporteFalla`, con cuenta, avalúo, fecha y descripción; la captura en el almacenamiento del despacho, carpeta `compartidos/soporte`) y llega un correo a cada `OPERATOR_EMAILS` con la liga a `/operador/fallas`.
+- **Responder:** en `/operador/fallas` el operador elige el estado («En revisión», «Corregido», «Cerrado») y escribe la respuesta; queda como otro renglón de la auditoría (`SUPPORT_FAILURE_RESPONSE`) y el usuario la ve en «Mis reportes». Control de la matriz: cada reporte debe tener respuesta registrada; los que siguen en «Recibido» no la tienen. La plataforma no ofrece ni calcula ningún remedio por fallas.
+
+```sql
+select a."DFechaEvento", u."SCorreo", a."SAccion", a."SIdentificadorEntidad", a."JMetadatos"
+from devpware_auditorias a left join devpware_usuarios u on u."IdUsuario" = a."IdUsuario"
+where a."SEntidad" = 'ReporteFalla' order by a."DFechaEvento" desc limit 50;
+```
+
+## 18. Registro de actividad (matriz de We Law 3.3)
+
+- **Avalúos:** cada acción (crear, guardar —una vez cada 10 minutos por persona—, cambiar datos, concluir, reabrir, exportar, enviar por correo, archivar, papelera) queda en `devpware_auditorias` con fecha y hora, usuario, IP, navegador y, desde el 25 nov 2026, la versión del avalúo en `JMetadatos.versionAvaluo`. Los cambios de estado guardan además su versión en el historial de estados.
+- **IA:** cada uso de «Pegar anuncio», «Redactar borrador» y «Buscar con IA» queda con quién, cuándo, IP, avalúo, modelo y tokens (acciones `AI_LISTING_EXTRACT`, `AI_DRAFT_WRITE`, `AI_COMPARABLE_SEARCH`); el costo se obtiene de los tokens (ver [IA.md](IA.md#costo-por-uso)).
+- La auditoría es inmutable (un disparador impide cambiar o borrar renglones, migración 017).

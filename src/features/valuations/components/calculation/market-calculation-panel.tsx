@@ -187,6 +187,8 @@ export function MarketCalculationPanel(props: {
   onShowBlocks?: (type: ComparableType) => void;
   /** The subject's data already captured in the document, for the subject's column of the characteristics (V7.1-13). */
   subjectFacts?: SubjectFacts;
+  /** The offers show the advertiser's name and phone as the dictamen prints them (the carátula's choice; off by default). */
+  advertiserData?: boolean;
 }) {
   const { valuationId } = props;
   const types = props.types ?? SALE_COMPARABLE_TYPES;
@@ -404,8 +406,9 @@ function MarketTypePanel(props: {
   /** Takes this market out (it can be undone); absent while it is the only market, or for a reader. */
   onRemoveMarket?: (type: ComparableType, snapshot: MarketCalculationDto) => void;
   subjectFacts?: SubjectFacts;
+  advertiserData?: boolean;
 }) {
-  const { valuationId, type } = props;
+  const { valuationId, type, advertiserData = false } = props;
   const labels = MARKET_LABELS[type];
   const { thousandsSeparator } = useNumberPresentation();
   const rent = isRentComparableType(type);
@@ -555,10 +558,10 @@ function MarketTypePanel(props: {
     const settings = settingsFrom(calculation.settings, prefilled ? { ...pagesDraft, subjectArea: String(suggestedArea) } : pagesDraft);
     const computed = compute({ settings, comparables: calculation.comparables, precision: calculation.precision });
     return {
-      blocks: marketDocumentBlocks({ ...calculation, settings }, computed.result, { capture: true }),
+      blocks: marketDocumentBlocks({ ...calculation, settings }, computed.result, { capture: true, advertiserData }),
       placeholderIds: isRentComparableType(calculation.settings.comparableType) ? RENT_TEMPLATE_BLOCK_IDS : MARKET_TEMPLATE_BLOCK_IDS,
     };
-  }, [calculation, pagesDraft, prefilled, suggestedArea]);
+  }, [calculation, pagesDraft, prefilled, suggestedArea, advertiserData]);
   usePublishCapturePages(capturePages);
 
   const snapshotOf = (view: MarketCalculationDto): MarketSnapshot => ({ settings: view.settings, comparables: view.comparables });

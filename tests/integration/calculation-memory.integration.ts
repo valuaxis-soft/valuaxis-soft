@@ -253,7 +253,7 @@ test("every role that exports prints the memory with its own session and page nu
     assert.equal(opened[0].options.displayHeaderFooter, true, "page numbers at the foot");
 
     const audit = await prisma.auditoria.findFirstOrThrow({ where: { SIdentificadorEntidad: fixture.publicId, SAccion: "VALUATION_EXPORT" } });
-    assert.deepEqual(audit.JMetadatos, { format: "memoria-calculo-pdf", final: true, bytes: FAKE_PDF.length });
+    assert.deepEqual(audit.JMetadatos, { format: "memoria-calculo-pdf", final: true, bytes: FAKE_PDF.length, versionAvaluo: 1 });
   }
 });
 

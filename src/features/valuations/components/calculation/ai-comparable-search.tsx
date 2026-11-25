@@ -34,6 +34,7 @@ import {
 import type { AiComparableQuota, WebSearchCandidateDto, WebSearchPhase, WebSearchStatusDto } from "@/features/valuations/comparable-search/web-search.service";
 import { ListingImagesPicker } from "./listing-images-picker";
 import { ComparableKindField } from "./comparable-kind-field";
+import { AiResultReviewNotice } from "../legal-notice";
 import { comparableClassOfType } from "@/features/valuations/calculation/comparable-classes";
 import type { ComparableKind } from "@/features/valuations/calculation/comparable-kinds";
 
@@ -523,6 +524,8 @@ export function AiComparableSearchPanel({
                 antes de usarlo; lo que el anuncio no publica queda vacío.
               </span>
             </p>
+            {/* Matrix 1.5: the same review notice as «Pegar anuncio», next to the results. */}
+            <AiResultReviewNotice />
             <div className="max-h-96 overflow-auto rounded-md border">
               <table className="w-full min-w-[760px] text-xs">
                 <thead className="sticky top-0 z-10 bg-muted">

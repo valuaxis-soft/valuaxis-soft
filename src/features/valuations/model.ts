@@ -386,6 +386,14 @@ export type AppSection = {
    */
   freeBlockOrder?: boolean;
   /**
+   * Carátula section only: the dictamen and the memoria de cálculo print the
+   * advertisers' name and phone (matrix 1.5 bis). Absent means they do not:
+   * they are seen only by who edits the valuation.
+   */
+  advertiserData?: boolean;
+  /** Carátula section only: the report prints the legend of software and AI tools (matrix 1.7). Absent means it does not. */
+  aiToolsLegend?: boolean;
+  /**
    * Carátula section only: the version of the format the document was last
    * brought up to (`LAYOUT_VERSION`, services/layout-refresh.ts). Absent on a
    * document never refreshed.

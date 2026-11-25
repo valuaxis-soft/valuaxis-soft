@@ -49,19 +49,18 @@ export function DocumentPreviewHeader({
 
   return (
     <header className="px-5 pt-5 sm:px-8 sm:pt-7" data-document-preview-header>
-      <div className="grid gap-3 sm:grid-cols-[190px_minmax(0,1fr)]">
-        <div className={`flex h-24 items-center justify-center  text-3xl font-black tracking-tight shadow-sm ${image?.src ? "bg-white text-[var(--caratula-blue)]" : "bg-gradient-to-br from-[var(--caratula-blue)] to-[var(--caratula-dark-blue)] text-[color:var(--doc-on-strong,#fff)]"}`}>
-          {image?.src ? (
-            // eslint-disable-next-line @next/next/no-img-element
+      {/* Matrix 1.7: only the firm's own logo or image prints; without one the header has no logo (it printed a «VA» box). */}
+      <div className={image?.src ? "grid gap-3 sm:grid-cols-[190px_minmax(0,1fr)]" : "grid gap-3"}>
+        {image?.src ? (
+          <div className="flex h-24 items-center justify-center bg-white shadow-sm" data-header-logo>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               className="max-h-full max-w-full object-contain"
               src={image.src}
               alt={image.title || "Imagen del encabezado"}
             />
-          ) : (
-            "VA"
-          )}
-        </div>
+          </div>
+        ) : null}
         <div className="min-w-0 text-center sm:text-left">
           <p className="text-sm font-black tracking-wide text-[var(--caratula-blue)]">
             {firmName || "Empresa valuadora pendiente"}

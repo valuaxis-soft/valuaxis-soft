@@ -141,7 +141,9 @@ function describeDataChanges(metadata: Record<string, unknown> | null) {
 
 /** An audit row as an event; null for the actions the status history already tells (or that are not the valuation's). */
 export function describeAudit(row: AuditRow): HistoryEvent | null {
-  const base = { id: `auditoria-${row.id}`, at: row.at.toISOString(), actor: row.actor, version: null };
+  // The version the action happened in, recorded since the activity log of 25 Nov 2026 (matrix 3.3).
+  const recorded = row.metadata?.versionAvaluo;
+  const base = { id: `auditoria-${row.id}`, at: row.at.toISOString(), actor: row.actor, version: typeof recorded === "number" && Number.isInteger(recorded) ? recorded : null };
   switch (row.action) {
     case "VALUATION_CREATE":
       return { ...base, kind: "creation", title: "Creó el avalúo", detail: null };

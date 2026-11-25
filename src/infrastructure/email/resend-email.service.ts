@@ -11,6 +11,7 @@ import {
   invoiceEmailContent,
   passwordResetEmailContent,
   teamInvitationEmailContent,
+  supportReportContent,
   valuationNoticeContent,
   verificationEmailContent,
 } from "./email-content";
@@ -21,6 +22,7 @@ import type {
   InvoiceEmailInput,
   PasswordResetEmailInput,
   TeamInvitationEmailInput,
+  SupportReportInput,
   ValuationNoticeInput,
   VerificationEmailInput,
 } from "./email.service";
@@ -88,6 +90,10 @@ export class ResendEmailService implements EmailService {
 
   async sendValuationNotice(input: ValuationNoticeInput) {
     await this.sendSystemEmail(input.to, valuationNoticeContent(input));
+  }
+
+  async sendSupportReport(input: SupportReportInput) {
+    await this.sendSystemEmail(input.to, supportReportContent(input));
   }
 
   async sendInvoiceEmail(input: InvoiceEmailInput) {

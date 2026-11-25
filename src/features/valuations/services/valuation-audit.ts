@@ -24,14 +24,31 @@ const TYPE_BY_ACTION: Record<ValuationAuditAction, string> = {
   REVIEW_RETURN: "CAMBIO_ESTADO",
 };
 
-/** Records who did what to which valuation, from where. */
-export function auditValuation(input: {
+/** The version the valuation is in now, for the activity log (matrix 3.3); null when it cannot be read. */
+async function currentVersionNumber(valuationPublicId: string, organizationId: number) {
+  try {
+    const valuation = await prisma.avaluo.findFirst({
+      where: { UIdentificadorPublico: valuationPublicId, IdOrganizacion: organizationId },
+      select: { INumeroVersionActual: true },
+    });
+    return valuation?.INumeroVersionActual ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Records who did what to which valuation, from where (IP and browser) and in
+ * which version of it (`versionAvaluo`): the activity log of the matrix, 3.3.
+ */
+export async function auditValuation(input: {
   action: ValuationAuditAction;
   user: AuthUser;
   valuationPublicId: string;
   request: Request;
   metadata?: Record<string, string | number | boolean | null>;
 }) {
+  const versionAvaluo = await currentVersionNumber(input.valuationPublicId, input.user.organizationId);
   return recordAuditEvent({
     typeKey: TYPE_BY_ACTION[input.action],
     organizationId: input.user.organizationId,
@@ -42,7 +59,7 @@ export function auditValuation(input: {
     result: "EXITOSO",
     ip: clientIp(input.request.headers),
     userAgent: input.request.headers.get("user-agent"),
-    metadata: input.metadata,
+    metadata: versionAvaluo === null ? input.metadata : { ...input.metadata, versionAvaluo },
   });
 }
 

@@ -4,6 +4,7 @@ import type {
   InvoiceEmailInput,
   PasswordResetEmailInput,
   TeamInvitationEmailInput,
+  SupportReportInput,
   ValuationNoticeInput,
   VerificationEmailInput,
 } from "./email.service";
@@ -53,6 +54,12 @@ export class DevelopmentEmailService implements EmailService {
   async sendValuationNotice(input: ValuationNoticeInput) {
     if (process.env.NODE_ENV !== "production") {
       console.info("Development valuation notice prepared", { to: input.to, kind: input.kind, folio: input.folio });
+    }
+  }
+
+  async sendSupportReport(input: SupportReportInput) {
+    if (process.env.NODE_ENV !== "production") {
+      console.info("Development support report prepared", { to: input.to, valuation: input.valuation, happenedOn: input.happenedOn });
     }
   }
 

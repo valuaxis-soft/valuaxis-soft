@@ -10,6 +10,7 @@ import { DocumentPaletteControl } from "./document-palette-control";
 import { EditorConfigPanel } from "./editor-config-panel";
 import { DocumentNumberFormatControl } from "./number-format-control";
 import { DocumentPageFormatControl } from "./page-format-control";
+import { ReportPrintChoicesControl } from "./report-print-choices-control";
 
 /**
  * "Configuración del avalúo", at the top of the carátula: the choices that
@@ -36,6 +37,7 @@ export function ValuationSettingsPanel({
       <DocumentNumberFormatControl section={section} readOnly={readOnly} onUpdateSection={onUpdateSection} />
       <DocumentPageFormatControl section={section} readOnly={readOnly} onUpdateSection={onUpdateSection} />
       <DocumentPaletteControl section={section} readOnly={readOnly} onUpdateSection={onUpdateSection} />
+      {valuationId ? <ReportPrintChoicesControl section={section} readOnly={readOnly} onUpdateSection={onUpdateSection} /> : null}
       {valuationId ? <PrecisionAccess valuationId={valuationId} readOnly={readOnly} /> : null}
     </EditorConfigPanel>
   );

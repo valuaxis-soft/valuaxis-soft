@@ -25,6 +25,11 @@ import {
   buildValuationNoticeText,
 } from "@/features/notifications/templates/valuation-notice";
 import {
+  buildSupportReportHtml,
+  buildSupportReportSubject,
+  buildSupportReportText,
+} from "@/features/notifications/templates/support-report";
+import {
   buildInvoiceEmailHtml,
   buildInvoiceEmailSubject,
   buildInvoiceEmailText,
@@ -33,6 +38,7 @@ import type {
   DictamenEmailInput,
   InvoiceEmailInput,
   PasswordResetEmailInput,
+  SupportReportInput,
   TeamInvitationEmailInput,
   ValuationNoticeInput,
   VerificationEmailInput,
@@ -68,6 +74,12 @@ export const valuationNoticeContent = (input: ValuationNoticeInput): EmailConten
   subject: buildValuationNoticeSubject(input),
   text: buildValuationNoticeText(input),
   html: buildValuationNoticeHtml(input),
+});
+
+export const supportReportContent = (input: SupportReportInput): EmailContent => ({
+  subject: buildSupportReportSubject(input),
+  text: buildSupportReportText(input),
+  html: buildSupportReportHtml(input),
 });
 
 export const invoiceEmailContent = (input: InvoiceEmailInput): EmailContent => ({

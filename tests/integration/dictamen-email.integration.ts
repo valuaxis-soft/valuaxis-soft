@@ -335,7 +335,7 @@ test("an appraiser emails the dictamen through the route; the export is audited 
   const audit = await prisma.auditoria.findFirstOrThrow({ where: { SIdentificadorEntidad: fixture.publicId, SAccion: "VALUATION_EXPORT" } });
   assert.equal(audit.IdUsuario, fixture.user.id);
   assert.equal(audit.SDireccionIP, "203.0.113.9");
-  assert.deepEqual(audit.JMetadatos, { format: "pdf", channel: "email", recipients: "cliente@example.test, otro@example.test", bytes: FAKE_PDF.length });
+  assert.deepEqual(audit.JMetadatos, { format: "pdf", channel: "email", recipients: "cliente@example.test, otro@example.test", bytes: FAKE_PDF.length, versionAvaluo: 1 });
 });
 
 test("through the route, another organization's valuation is not found", async (t) => {

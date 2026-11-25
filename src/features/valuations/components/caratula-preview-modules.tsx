@@ -12,6 +12,7 @@ import { formatNumericValue } from "@/features/valuations/services/concept-value
 import { coverImageLayout, normalizeCoverImageSize } from "@/features/valuations/services/cover-image-focus";
 import { appraisedGoodWording } from "@/features/valuations/services/appraised-good-wording";
 import { titlePrints } from "@/features/valuations/services/block-title";
+import { AI_TOOLS_LEGEND } from "@/features/valuations/legal-notices";
 import { usePagePresentation } from "./page-presentation-context";
 
 // Module 1: Cover (title, location, principal image)
@@ -179,6 +180,15 @@ export function CaratulaConclusionModule({
   );
 }
 
+/** The legend of software and AI tools (matrix 1.7), when the appraiser adds it: quiet, before who signs. */
+export function AiToolsLegend() {
+  return (
+    <p className="mt-2 text-center text-[10px] italic leading-snug text-slate-600" data-ai-tools-legend="">
+      {AI_TOOLS_LEGEND}
+    </p>
+  );
+}
+
 /** The room over each signature's line, to sign by hand. */
 const HAND_SIGNATURE_ROOM_PX = 36;
 
@@ -192,7 +202,7 @@ export function CaratulaSignaturesModule({ caratula }: { caratula: CaratulaFormD
  * role: the carátula's, and the conclusion's FIRMAS (V7.1-24).
  */
 export function SignatureLines({ signatures: given }: { signatures: readonly ValuationSignature[] }) {
-  const signatures: readonly ValuationSignature[] = given.length ? given : [{ name: "", cedula: "", role: "" }];
+  const signatures: readonly ValuationSignature[] = given.length ? given : [{ name: "", cedula: "", role: "", specialty: "" }];
 
   return (
     <section className="mb-2 flex flex-wrap justify-center gap-x-6" data-caratula-signatures>
@@ -209,6 +219,10 @@ export function SignatureLines({ signatures: given }: { signatures: readonly Val
           <p className="mt-0.5 break-words text-[10px] leading-tight text-slate-600">
             {signature.cedula ? `Cédula profesional ${signature.cedula}` : "Cédula profesional pendiente"}
           </p>
+          {/* Matrix 1.7: name, cédula and specialty. */}
+          {signature.specialty ? (
+            <p className="mt-0.5 break-words text-[10px] leading-tight text-slate-600" data-signature-specialty>{signature.specialty}</p>
+          ) : null}
           {signature.role ? (
             <p className="mt-0.5 break-words text-[9px] font-semibold uppercase tracking-wide text-slate-500">{signature.role}</p>
           ) : null}

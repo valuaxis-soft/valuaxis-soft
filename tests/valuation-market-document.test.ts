@@ -80,7 +80,10 @@ test("the market page is one block with the comparables data and the homologatio
 
   const offers = printed(data.tables[1]);
   assert.deepEqual(offers.columns, ["REF.", "CONTACTO", "TELÉFONO", "FECHA", "SUPERFICIE DE TERRENO (m²)", "OFERTA $ (TERRENO)", "$/m²"]);
-  assert.deepEqual(offers.rows[0], ["1", "Altos 360", "348 249 3129", "04/05/2026", "140.00", "$ 1,260,000.00", "$ 9,000.00"]);
+  // The advertiser's name and phone print only when the appraiser includes them (matrix 1.5 bis): off by default.
+  assert.deepEqual(offers.rows[0], ["1", "Altos 360", "—", "04/05/2026", "140.00", "$ 1,260,000.00", "$ 9,000.00"]);
+  const included = printed(marketDocumentBlocks(calculation, result(), { advertiserData: true })[0].apartados[0].tables[1]);
+  assert.deepEqual(included.rows[0].slice(0, 3), ["1", "Altos 360", "348 249 3129"]);
   assert.equal(offers.rows[1][3], "—", "no offer date");
   assert.deepEqual(offers.align.slice(-2), ["right", "right"], "amounts are right-aligned");
 

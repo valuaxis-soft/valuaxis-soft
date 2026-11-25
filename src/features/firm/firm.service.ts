@@ -14,7 +14,7 @@ import { buildOrganizationAssetKey } from "@/infrastructure/storage/storage-keys
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { Prisma } from "@prisma/client";
 import { resolveFactorCatalog, type FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
-import { resolveSignatures, signatureErrors } from "@/features/valuations/services/valuation-signatures";
+import { accreditedSpecialty, resolveSignatures, signatureErrors, withAccreditedSpecialties } from "@/features/valuations/services/valuation-signatures";
 import { addCustomFactorTo, resolveCustomFactors, type CustomFactor } from "./custom-factors";
 import { addCustomUnitTo, removeCustomUnitFrom, renameCustomUnitIn, resolveCustomUnits } from "./custom-units";
 import { addFirmListItemTo, removeFirmListItemFrom, resolveFirmLists, withUnits, type FirmListItem, type FirmLists } from "./firm-lists";
@@ -139,10 +139,25 @@ export async function getValuationDefaults(tx: Prisma.TransactionClient, organiz
     select: { SPrefijoFolio: true, JFirmas: true, SNombrePerito: true, SRegistroPerito: true, IMesesVigencia: true },
   });
   const valuationDate = todayInMexico(now);
+  // Only complete signatures: one without cédula would stop the valuation from saving.
+  const signers = firmSigners(organization).filter((signer) => Object.keys(signatureErrors(signer)).length === 0);
+  // The specialty the report prints (matrix 1.7) comes from the verified accreditation of a member with that cédula.
+  const accreditations = signers.length
+    ? await tx.acreditacionUsuario.findMany({
+        where: {
+          SEstado: "ACREDITADO",
+          SNumeroCedula: { not: null },
+          usuario: { miembros: { some: { IdOrganizacion: organizationId, BActivo: true } } },
+        },
+        select: { SEstado: true, SNumeroCedula: true, SProgramaAcademico: true },
+      })
+    : [];
   return {
     folioPrefix: organization.SPrefijoFolio,
-    // Only complete signatures: one without cédula would stop the valuation from saving.
-    signers: firmSigners(organization).filter((signer) => Object.keys(signatureErrors(signer)).length === 0),
+    signers: withAccreditedSpecialties(signers, accreditations.flatMap((row) => {
+      const specialty = accreditedSpecialty(row);
+      return specialty && row.SNumeroCedula ? [{ cedula: row.SNumeroCedula, specialty }] : [];
+    })),
     valuationDate,
     validityMonths: organization.IMesesVigencia,
   };

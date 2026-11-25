@@ -16,6 +16,7 @@ export const MAX_VALIDITY_MONTHS = 12;
 const NAME_MAX = 180;
 const CEDULA_MAX = 60;
 const ROLE_MAX = 120;
+const SPECIALTY_MAX = 300;
 
 export type ValuationSignature = {
   name: string;
@@ -23,6 +24,12 @@ export type ValuationSignature = {
   cedula: string;
   /** Optional title shown under the name ("Perito valuador"); empty when none. */
   role: string;
+  /**
+   * The specialty the report prints with the name and the cédula (matrix 1.7):
+   * «Maestría en Valuación Inmobiliaria». Taken from the signer's accreditation
+   * when it is verified, and editable; empty or absent when none.
+   */
+  specialty?: string;
 };
 
 export type SignatureErrors = Partial<Record<keyof ValuationSignature, string>>;
@@ -50,6 +57,7 @@ export function signatureErrors(signature: ValuationSignature, rules: SignatureR
     if (!rules.draft) errors.cedula = "Escribe la cédula profesional de quien firma.";
   } else if (cedula.length > CEDULA_MAX) errors.cedula = `Máximo ${CEDULA_MAX} caracteres.`;
   if (signature.role.trim().length > ROLE_MAX) errors.role = `Máximo ${ROLE_MAX} caracteres.`;
+  if ((signature.specialty ?? "").trim().length > SPECIALTY_MAX) errors.specialty = `Máximo ${SPECIALTY_MAX} caracteres.`;
   return errors;
 }
 
@@ -64,13 +72,16 @@ export function signatureListError(signatures: ValuationSignature[], rules: Sign
 }
 
 /**
- * Only the name, the cédula and the role: there is no electronic signature,
+ * Only the name, the cédula, the role and the specialty: there is no electronic signature,
  * and the software neither takes nor keeps an image of one (the lawyer's
  * review, 25 Nov 2026). The dictamen prints the line; the appraiser prints,
  * signs by hand and scans. An image saved with a signature before 27 Oct 2026
  * is ignored here (never sent nor printed) and its file stays where it is.
  */
-const signatureOf = (row: Record<string, unknown>): ValuationSignature => ({ name: text(row.name), cedula: text(row.cedula), role: text(row.role) });
+const signatureOf = (row: Record<string, unknown>): ValuationSignature => {
+  const specialty = text(row.specialty);
+  return { name: text(row.name), cedula: text(row.cedula), role: text(row.role), ...(specialty ? { specialty } : {}) };
+};
 
 /** Validates what a client sent and returns the trimmed signatures in the same order. */
 export function parseSignatures(input: unknown, rules: SignatureRules = {}): Parsed<ValuationSignature[]> {
@@ -101,7 +112,35 @@ export function resolveSignatures(
   return name ? [{ name, cedula: text(legacy.registration), role: "" }] : [];
 }
 
-export const isValidityMonths = (value: unknown): value is number =>
+/**
+ * The specialty of a verified accreditation, as the report prints it: the
+ * program of the constancia («Maestría en Valuación Inmobiliaria»). Null for
+ * an accreditation that is not ACREDITADO or recorded no program.
+ */
+export function accreditedSpecialty(row: { SEstado: string; SProgramaAcademico: string | null }): string | null {
+  if (row.SEstado !== "ACREDITADO") return null;
+  return row.SProgramaAcademico?.trim().slice(0, SPECIALTY_MAX) || null;
+}
+
+const cedulaKey = (cedula: string) => cedula.replace(/\s+/g, "").toUpperCase();
+
+/**
+ * Signatures with the specialty of the verified accreditation of the same
+ * cédula filled in where they have none; what the appraiser wrote is kept.
+ */
+export function withAccreditedSpecialties(
+  signatures: ValuationSignature[],
+  accredited: ReadonlyArray<{ cedula: string; specialty: string }>,
+): ValuationSignature[] {
+  const byCedula = new Map(accredited.map((row) => [cedulaKey(row.cedula), row.specialty]));
+  return signatures.map((signature) => {
+    if (signature.specialty?.trim() || !signature.cedula.trim()) return signature;
+    const specialty = byCedula.get(cedulaKey(signature.cedula));
+    return specialty ? { ...signature, specialty } : signature;
+  });
+}
+
+export const isValidityMonths =(value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= MIN_VALIDITY_MONTHS && value <= MAX_VALIDITY_MONTHS;
 
 export const VALIDITY_MONTHS_ERROR = `La vigencia debe ser de ${MIN_VALIDITY_MONTHS} a ${MAX_VALIDITY_MONTHS} meses completos.`;
