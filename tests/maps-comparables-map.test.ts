@@ -103,7 +103,7 @@ test("FAL-10: the legend takes the free corner: not the north arrow's, and not o
   assert.equal(legendCorner(legend, "top-right", SUBJECT, 15, topLeft), "bottom-left");
   assert.equal(legendCorner(legend, "top-right", SUBJECT, 15, []), "top-left");
   assert.equal(legendCorner(legend, "top-left", SUBJECT, 15, []), "top-right");
-  // A legend at the bottom sits above Google's logo and credits.
+  // A legend at the bottom sits above the credit to OpenStreetMap.
   const bottom = legendBox(legend, "bottom-left");
   assert.ok(bottom.y + bottom.height <= STATIC_MAP_SIZE.height - 20);
   assert.equal(croquisLegendPlacement(SUBJECT, 21, pins, "top-right"), null, "no comparable in frame, no legend");

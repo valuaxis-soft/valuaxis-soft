@@ -25,9 +25,8 @@ interface GeocodingResponse {
   results?: { formatted_address: string; geometry: { location: { lat: number; lng: number }; location_type: string } }[];
 }
 
-/** The Geocoding API's answer for a query, Mexico first; empty when nothing matches. */
-export async function geocodeAddress(query: string, fetchImpl: typeof fetch = fetch): Promise<GeocodingResult[]> {
-  const key = googleMapsServerKey();
+/** The Geocoding API's answer for a query, Mexico first; empty when nothing matches. Only the typed address goes to Google: no data of the valuation, its owner or its solicitante. */
+export async function geocodeAddress(query: string, fetchImpl: typeof fetch = fetch, key = googleMapsServerKey()): Promise<GeocodingResult[]> {
   if (!key) throw new ValuationWorkflowError(MAPS_NOT_CONFIGURED, 503);
   const text = query.trim().slice(0, MAX_QUERY_LENGTH);
   if (!text) return [];

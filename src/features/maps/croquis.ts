@@ -3,7 +3,7 @@
  * sets (the frames of the macro and micro croquis and of the map of
  * comparables, the clean map, the north arrow, whether the comparables show,
  * the highlighted streets of etapa 2, the free lines), the numbered pins of the comparables
- * and the overlays the server composes over the Maps Static API image. Pure values and functions, tested without
+ * and the overlays the server composes over the OpenStreetMap base (osm-base-map.ts). Pure values and functions, tested without
  * a browser; the settings persist with the subject property
  * (subject-location.ts).
  */
@@ -386,7 +386,7 @@ const LEGEND_PADDING = 8;
 const LEGEND_FONT = 11;
 const LEGEND_CHAR_WIDTH = 5.9;
 const LEGEND_MARGIN = 10;
-/** Google prints its logo and its credits along the bottom: a legend there sits above them. */
+/** The credit to OpenStreetMap runs along the bottom (osm-base-map.ts): a legend there sits above it. */
 const LEGEND_BOTTOM_ROOM = 26;
 
 /** The legend's box on the image, in map pixels, in a corner. */

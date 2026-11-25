@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DEFAULT_CROQUIS_SETTINGS, croquisSettingsSchema, readCroquisSettings, streetLabelBox, streetLabelsOverlaySvg } from "../src/features/maps/croquis";
-import { MAX_CROQUIS_WAYS, STREET_PATHS_BUDGET, croquisStreets, frameBounds } from "../src/features/maps/croquis-streets";
+import { MAX_CROQUIS_WAYS, croquisStreets, frameBounds } from "../src/features/maps/croquis-streets";
 import {
   DEFAULT_HIGHLIGHT_STYLES,
   DEFAULT_STREET_HIGHLIGHTS,
@@ -23,7 +23,7 @@ import {
   streetsFromPaint,
   type StreetHighlights,
 } from "../src/features/maps/highlights";
-import { STATIC_MAP_SIZE, imagePosition, staticMapUrl } from "../src/features/maps/static-map";
+import { STATIC_MAP_SIZE, imagePosition } from "../src/features/maps/static-map";
 import { detectStreets, metersPerPixel, simplifyPolyline, wayInBounds, type StreetWay } from "../src/features/maps/streets";
 import { DEFAULT_STREETS_RADIUS, MAX_STREET_WAYS, highwayRank, overpassQuery, parseOverpassWays, streetsCacheKey, type OverpassElement } from "../src/features/maps/streets-osm";
 import { fetchStreetsFromOverpass, getStreetsAround, type StoredStreets } from "../src/features/maps/server/streets.service";
@@ -336,17 +336,17 @@ test("what each croquis draws: the micro and the map of comparables every street
   ].sort());
   assert.ok(comparables.labels.some((label) => label.name === "Frente"));
   assert.deepEqual(croquisStreets("micro", PIN, 17, { ...highlights, names: false }, GRID).labels, []);
-  // The image URL carries them as encoded paths and stays short.
-  const url = staticMapUrl({ apiKey: "k".repeat(39), center: PIN, zoom: 17, subject: PIN, clean: true, paths: micro.paths });
-  assert.equal(new URL(url).searchParams.getAll("path").length, 3);
-  assert.ok(url.length < 2000);
 });
 
-test("the URL budget: a long street is simplified, the pieces farthest from the center are omitted first and named, the rest draw", () => {
-  // A hundred pieces of a winding street, each with many vertices, around the pin.
-  const pieces: StreetWay[] = Array.from({ length: 100 }, (_, i) => {
-    const lat = 20.6301 + (i % 2 === 0 ? 1 : -1) * Math.ceil(i / 2) * 0.0001;
-    const g: [number, number][] = Array.from({ length: 200 }, (_, j) => [lat + (j % 2) * 0.00004, -103.402 + j * 0.00002]);
+test("the cap: a long street is simplified, the pieces farthest from the center are omitted first and named, the rest draw", () => {
+  // Since 25 nov 2026 the image is drawn by us: the hundred pieces that overflowed the Static API URL all draw now.
+  const hundred = croquisStreets("micro", PIN, 17, { front: null, streets: [{ name: "Ramal", category: "cuarta" }], styles: DEFAULT_HIGHLIGHT_STYLES, names: false }, Array.from({ length: 100 }, (_, i): StreetWay => ({ id: i, n: "Ramal", r: 4, g: [[20.6301 + i * 0.00001, -103.402], [20.6301 + i * 0.00001, -103.401]] })));
+  assert.equal(hundred.paths.length, 100);
+  assert.deepEqual(hundred.omitted, []);
+  // Past the cap, many pieces of a winding street, each with many vertices, around the pin.
+  const pieces: StreetWay[] = Array.from({ length: MAX_CROQUIS_WAYS + 60 }, (_, i) => {
+    const lat = 20.6301 + (i % 2 === 0 ? 1 : -1) * Math.ceil(i / 2) * 0.000005;
+    const g: [number, number][] = Array.from({ length: 40 }, (_, j) => [lat + (j % 2) * 0.00004, -103.402 + j * 0.0001]);
     return { id: i, n: i % 3 === 0 ? "Serpentina" : `Ramal ${i}`, r: 4, g };
   });
   const highlights: StreetHighlights = {
@@ -356,13 +356,10 @@ test("the URL budget: a long street is simplified, the pieces farthest from the 
     names: true,
   };
   const result = croquisStreets("micro", PIN, 17, highlights, pieces);
-  assert.ok(result.paths.length > 0 && result.paths.length <= MAX_CROQUIS_WAYS);
+  assert.equal(result.paths.length, MAX_CROQUIS_WAYS);
   assert.ok(result.omitted.length > 0, "not everything fits");
   assert.ok(result.omitted.every((name) => name.startsWith("Ramal")), "the front street, closest to the center, is never the one omitted");
-  assert.ok(result.paths.every((path) => path.points.length <= 200));
-  const url = staticMapUrl({ apiKey: "k".repeat(39), center: PIN, zoom: 17, subject: PIN, clean: true, paths: result.paths });
-  assert.equal(new URL(url).searchParams.getAll("path").length, result.paths.length, "the builder drops nothing more");
-  assert.ok(url.length <= STREET_PATHS_BUDGET + 1500, `the URL is ${url.length} characters`);
+  assert.ok(result.paths.every((path) => path.points.length <= 40));
   // Names go only on streets that draw.
   const drawn = new Set(result.labels.map((label) => label.name));
   for (const name of result.omitted) assert.equal(drawn.has(name), false);

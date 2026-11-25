@@ -12,14 +12,19 @@ import type { CroquisLabelPlacement } from "../highlights";
 import type { CroquisStreets } from "../croquis-streets";
 import { FREE_LINE_OPACITY, freeLinePixels, type FreeLine } from "../free-lines";
 import { placedStreetLabels, uprightAngle, type StreetLabel } from "../highlights";
+import { OSM_CROQUIS_ATTRIBUTION } from "../osm-base-map";
 import { STATIC_MAP_SIZE, imagePixel, pointAtPixel } from "../static-map";
 import type { LatLon } from "../types";
 
 type Drag = { name: string; mode: "move" | "turn"; grab: { x: number; y: number } };
 
+/** The base map of the frame as the server draws it for the stored croquis (GET /api/mapas/base-croquis). */
+const croquisBaseUrl = (center: LatLon, zoom: number) => `/api/mapas/base-croquis?lat=${center[0].toFixed(6)}&lon=${center[1].toFixed(6)}&zoom=${zoom}`;
+
 /**
  * «Letreros» of one croquis (V5.7-14): the frame of the image as a sketch
- * (the highlighted streets and the pin, at the image's size) with the street
+ * (the OpenStreetMap base the stored image is drawn on, the highlighted
+ * streets and the pin, at the image's size) with the street
  * names where the image prints them. Each name follows its street; dragging
  * it moves it, dragging its round handle turns it, and the arrow keys and
  * [ ] do the same from the keyboard. What is placed here is sent with
@@ -121,7 +126,9 @@ export function CroquisLabelEditor({
   return (
     <div className="grid gap-2" data-croquis-labels={title}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-muted-foreground">Letreros · {title}</span>
+        <span className="text-xs font-semibold text-muted-foreground">
+          Letreros · {title} <span className="font-normal">(así se imprime, con el mapa de OpenStreetMap)</span>
+        </span>
         <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" disabled={disabled || !placements.length} onClick={() => onChange([])}>
           <RotateCcw data-icon="inline-start" />
           Todos siguen su calle
@@ -137,6 +144,8 @@ export function CroquisLabelEditor({
         onPointerUp={() => setDrag(null)}
         onPointerLeave={() => setDrag(null)}
       >
+        {/* The base the stored croquis is drawn on (OpenStreetMap, not Google), so this sketch is what prints. */}
+        <image href={croquisBaseUrl(center, zoom)} x={0} y={0} width={STATIC_MAP_SIZE.width} height={STATIC_MAP_SIZE.height} preserveAspectRatio="none" />
         {lines.map((line) => (
           <polyline
             key={line.id}
@@ -150,9 +159,12 @@ export function CroquisLabelEditor({
           />
         ))}
         {streets.paths.map((item, index) => (
-          <path key={index} d={path(item.points)} fill="none" stroke={item.color} strokeOpacity={0.85} strokeWidth={item.weight} strokeLinecap="round" strokeLinejoin="round" />
+          <path key={index} d={path(item.points)} fill="none" stroke={item.color} strokeOpacity={0.9} strokeWidth={item.weight} strokeLinecap="round" strokeLinejoin="round" />
         ))}
         <circle cx={pin.x} cy={pin.y} r={7} className="fill-destructive stroke-background" strokeWidth={2} />
+        <text x={STATIC_MAP_SIZE.width - 4} y={STATIC_MAP_SIZE.height - 4} textAnchor="end" fontSize={9.5} className="fill-foreground">
+          {OSM_CROQUIS_ATTRIBUTION}
+        </text>
         {labels.map((label) => {
           const box = streetLabelBox(center, zoom, label);
           if (!box.inside) return null;

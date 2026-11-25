@@ -18,7 +18,13 @@ const GENERIC_UPLOAD_FILE_TYPE = "OTRO";
 
 export type EditorImageDto = UploadResult & { url: string; id: string };
 
-export async function storeEditorImage(user: Pick<AuthUser, "id" | "organizationId">, file: File, usage = "IMAGEN_EDITOR"): Promise<EditorImageDto> {
+export async function storeEditorImage(
+  user: Pick<AuthUser, "id" | "organizationId">,
+  file: File,
+  usage = "IMAGEN_EDITOR",
+  /** More of the file's metadata (a croquis says what it was drawn on). */
+  metadata: Record<string, string> = {},
+): Promise<EditorImageDto> {
   const result = await saveUpload(file, { generateDownloadUrl: false });
 
   // A completed upload must point to its file (check constraint from
@@ -43,7 +49,7 @@ export async function storeEditorImage(user: Pick<AuthUser, "id" | "organization
         ITamanoBytes: BigInt(result.size),
         SChecksum: result.checksum,
         BPrivado: true,
-        JMetadatos: { uso: usage },
+        JMetadatos: { ...metadata, uso: usage },
       },
     });
     return tx.cargaArchivo.create({

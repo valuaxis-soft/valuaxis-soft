@@ -10,7 +10,7 @@ export function googleMapsBrowserKey() {
   return env.GOOGLE_MAPS_API_KEY?.trim() || null;
 }
 
-/** The key the server calls the Static and Geocoding APIs with; the browser key when there is no separate one. */
+/** The key the server calls the Geocoding API with; the browser key when there is no separate one. */
 export function googleMapsServerKey() {
   return env.GOOGLE_MAPS_SERVER_KEY?.trim() || googleMapsBrowserKey();
 }
