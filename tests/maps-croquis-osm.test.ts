@@ -14,11 +14,12 @@ import sharp from "sharp";
 import { SUBJECT_PIN_COLOR, comparablePins } from "../src/features/maps/croquis";
 import { DEFAULT_HIGHLIGHT_STYLES, type StreetHighlights } from "../src/features/maps/highlights";
 import { BASE_MAP_BACKGROUND, OSM_CROQUIS_ATTRIBUTION, attributionBox, attributionSvg, baseMapHighways, baseMapSvg, type BaseMapWay } from "../src/features/maps/osm-base-map";
-import { renderCroquisImage, type CroquisRenderInput, type CroquisSources } from "../src/features/maps/server/croquis-image.service";
+import { renderCroquisImage, resolveCroquisStreets, type CroquisRenderInput, type CroquisSources } from "../src/features/maps/server/croquis-image.service";
 import { baseMapWays, type BaseMapSource } from "../src/features/maps/server/osm-base.service";
 import { STATIC_MAP_SCALE, STATIC_MAP_SIZE, imagePixel } from "../src/features/maps/static-map";
+import { spellingKey, withUnifiedSpellings } from "../src/features/maps/street-names";
 import type { StreetWay } from "../src/features/maps/streets";
-import { OSM_ATTRIBUTION } from "../src/features/maps/streets-osm";
+import { OSM_ATTRIBUTION, parseOverpassWays } from "../src/features/maps/streets-osm";
 import type { LatLon } from "../src/features/maps/types";
 
 const SUBJECT: LatLon = [20.63442, -103.40239];
@@ -168,4 +169,35 @@ test("the base map's streets come from our copy; the named streets around the fr
   const fallback = await baseMapWays(SUBJECT, 17, { inBox: async () => [], loaded: async () => false, around: async (_point, radius) => (radius <= 2000 ? AROUND : []) });
   assert.deepEqual(fallback.map((way) => [way.name, way.highway]), [["Avenida Inventada", "primary"], ["Calle Ficticia", "residential"], ["Calle Cruzada", "residential"]]);
   assert.deepEqual(asked, ["box:" + baseMapHighways(17).length]);
+});
+
+test("one street spelled with and without accents gets one name, the accented one, on the croquis and its base map", async () => {
+  // Two carriageways of one avenue as OpenStreetMap names them, and a lower-case variant.
+  const north: LatLon[] = [[SUBJECT[0] + 30 * METER, SUBJECT[1] - east(500)], [SUBJECT[0] + 30 * METER, SUBJECT[1] + east(500)]];
+  const south: LatLon[] = [[SUBJECT[0] + 22 * METER, SUBJECT[1] + east(500)], [SUBJECT[0] + 22 * METER, SUBJECT[1] - east(500)]];
+  const geometry = (line: LatLon[]) => line.map(([lat, lon]) => ({ lat, lon }));
+  const ways = parseOverpassWays([
+    { type: "way", id: 1, tags: { name: "Circunvalacion Agustin Yañez", highway: "primary" }, geometry: geometry(north) },
+    { type: "way", id: 2, tags: { name: "Circunvalación Agustín Yáñez", highway: "primary" }, geometry: geometry(south) },
+    { type: "way", id: 3, tags: { name: "circunvalación agustín yáñez.", highway: "primary_link" }, geometry: geometry(south) },
+  ]);
+  assert.deepEqual([...new Set(ways.map((way) => way.n))], ["Circunvalación Agustín Yáñez"]);
+  assert.equal(spellingKey("Circunvalacion  Agustin Yañez"), spellingKey("circunvalación agustín yáñez."));
+  assert.deepEqual(withUnifiedSpellings([{ n: "Calle Hidalgo", r: 4, g: north }, { n: "Calle Morelos", r: 4, g: south }]).map((way) => way.n), ["Calle Hidalgo", "Calle Morelos"], "different streets stay apart");
+
+  // Highlighted with the variant without accents (as stored before), from pieces still spelled both ways: one band, accented.
+  const streets = await resolveCroquisStreets(
+    input({ streets: { front: null, streets: [{ name: "Circunvalacion Agustin Yañez", category: "principal" }, { name: "Circunvalación Agustín Yáñez", category: "secundaria" }], styles: DEFAULT_HIGHLIGHT_STYLES, names: true } }),
+    async () => ({ ways: [{ id: 1, n: "Circunvalacion Agustin Yañez", r: 1, g: north }, { id: 2, n: "Circunvalación Agustín Yáñez", r: 1, g: south }], radius: 1000, attribution: OSM_ATTRIBUTION }),
+  );
+  assert.deepEqual(streets.labels.map((label) => label.name), ["Circunvalación Agustín Yáñez"]);
+  assert.equal(streets.paths.length, 2, "both carriageways are highlighted");
+  assert.ok(streets.paths.every((path) => path.color === DEFAULT_HIGHLIGHT_STYLES.principal.color), "in the first paint");
+
+  // The base map: one name for both spellings, and none when the band already names it in another spelling.
+  const base: BaseMapWay[] = [{ name: "Circunvalacion Agustin Yañez", highway: "primary", g: north }, { name: "Circunvalación Agustín Yáñez", highway: "primary", g: south }];
+  const svg = baseMapSvg(SUBJECT, 17, base);
+  assert.equal((svg.match(/>Circunvalación Agustín Yáñez</g) ?? []).length, 2, "one name, drawn as halo and letters");
+  assert.doesNotMatch(svg, /Circunvalacion Agustin/);
+  assert.doesNotMatch(baseMapSvg(SUBJECT, 17, base, { namedElsewhere: new Set(["Circunvalacion Agustin Yañez"]) }), /<text/);
 });

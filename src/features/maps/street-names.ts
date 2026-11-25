@@ -89,7 +89,68 @@ export function renamedHighlights<T extends Pick<StreetHighlights, "front" | "st
  * The streets around the subject and the stored highlights with the
  * address's spelling of its street. Unchanged when no street matches.
  */
-export function withPreferredStreetNames<T extends Pick<StreetHighlights, "front" | "streets">>(ways: readonly StreetWay[], highlights: T, address: string): { ways: readonly StreetWay[]; highlights: T } {
+export function withPreferredStreetNames<T extends Pick<StreetHighlights, "front" | "streets">>(osmWays: readonly StreetWay[], stored: T, address: string): { ways: readonly StreetWay[]; highlights: T } {
+  // One spelling per street first, so a highlight stored with another variant stays highlighted.
+  const ways = withUnifiedSpellings(osmWays);
+  const highlights = unifiedHighlights(stored, ways);
   const rename = preferredStreetName(new Set(ways.map((way) => way.n)), address);
   return { ways: renamedWays(ways, rename), highlights: renamedHighlights(highlights, rename) };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Spelling variants of one street                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Two OpenStreetMap pieces of one street can carry its name with and
+ * without accents («Circunvalación Agustín Yáñez», «Circunvalacion Agustin
+ * Yañez»): the croquis highlighted and named it twice (25 nov 2026). Names
+ * equal but for accents, case and punctuation are one street.
+ */
+export function spellingKey(name: string) {
+  return plain(name).replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** How well a variant is written: its accents, then its capitals. */
+const spellingScore = (name: string) => [(name.normalize("NFD").match(/[̀-ͯ]/g) ?? []).length, (name.match(/\p{Lu}/gu) ?? []).length] as const;
+
+/** Each name → the best-written variant of its street among `names` (the most accents, then capitals; on a tie, the first seen). */
+export function bestSpellings(names: readonly string[]): Map<string, string> {
+  const best = new Map<string, string>();
+  for (const name of names) {
+    const key = spellingKey(name);
+    const current = best.get(key);
+    if (current === undefined) {
+      best.set(key, name);
+      continue;
+    }
+    const [accents, capitals] = spellingScore(name);
+    const [currentAccents, currentCapitals] = spellingScore(current);
+    if (accents > currentAccents || (accents === currentAccents && capitals > currentCapitals)) best.set(key, name);
+  }
+  return new Map(names.map((name) => [name, best.get(spellingKey(name))!]));
+}
+
+/** The pieces with one spelling per street, the best-written; the same list when every street has one already. */
+export function withUnifiedSpellings<T extends readonly StreetWay[]>(ways: T): T {
+  const best = bestSpellings(ways.map((way) => way.n));
+  if (ways.every((way) => best.get(way.n) === way.n)) return ways;
+  return ways.map((way) => (best.get(way.n) === way.n ? way : { ...way, n: best.get(way.n)! })) as unknown as T;
+}
+
+/** The front and painted streets stored with another variant take the spelling the pieces carry, so they stay highlighted; two variants painted apart become one. */
+export function unifiedHighlights<T extends Pick<StreetHighlights, "front" | "streets">>(highlights: T, ways: readonly StreetWay[]): T {
+  const byKey = new Map(ways.map((way) => [spellingKey(way.n), way.n]));
+  const name = (value: string) => byKey.get(spellingKey(value)) ?? value;
+  const seen = new Set<string>();
+  return {
+    ...highlights,
+    front: highlights.front === null ? null : name(highlights.front),
+    streets: highlights.streets.flatMap((street) => {
+      const unified = name(street.name);
+      if (seen.has(unified)) return [];
+      seen.add(unified);
+      return [{ ...street, name: unified }];
+    }),
+  };
 }

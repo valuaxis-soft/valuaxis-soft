@@ -12,6 +12,7 @@
 import { STREET_LABEL_FONT_FAMILY } from "./croquis";
 import type { MapCorner } from "./map-styles";
 import { STATIC_MAP_SIZE, imagePixel } from "./static-map";
+import { bestSpellings, spellingKey } from "./street-names";
 import { metersPerPixel, simplifyPolyline } from "./streets";
 import { uprightAngle } from "./highlights";
 import type { LatLon } from "./types";
@@ -184,9 +185,10 @@ function bend(run: readonly RunPoint[], from: number, to: number) {
  */
 function placeNames(byName: Map<string, { kind: RoadClass; pieces: BaseMapWay[] }>, center: LatLon, zoom: number, options: BaseMapOptions) {
   const taken: BaseMapObstacle[] = [...(options.obstacles ?? [])];
+  const elsewhere = new Set([...(options.namedElsewhere ?? [])].map(spellingKey));
   const placed: { name: string; x: number; y: number; angle: number }[] = [];
   const ordered = [...byName.entries()]
-    .filter(([name, { kind }]) => zoom >= NAME_MIN_ZOOM[kind] && !options.namedElsewhere?.has(name))
+    .filter(([name, { kind }]) => zoom >= NAME_MIN_ZOOM[kind] && !elsewhere.has(spellingKey(name)))
     .map(([name, entry]) => ({ name, ...entry, runs: visibleRuns(entry.pieces, center, zoom) }))
     .filter((entry) => entry.runs.length)
     .sort((a, b) => ROAD_CLASSES.indexOf(a.kind) - ROAD_CLASSES.indexOf(b.kind) || b.runs[0][b.runs[0].length - 1].along - a.runs[0][a.runs[0].length - 1].along);
@@ -230,6 +232,8 @@ export function baseMapSvg(center: LatLon, zoom: number, ways: readonly BaseMapW
   const tolerance = metersPerPixel(zoom, center[0]) * 0.4;
   const byClass = new Map<RoadClass, { link: boolean; d: string }[]>();
   const byName = new Map<string, { kind: RoadClass; pieces: BaseMapWay[] }>();
+  // One street, one name: pieces spelled with and without accents take the best-written spelling.
+  const spelling = bestSpellings(ways.map((way) => way.name.trim()));
   for (const way of ways) {
     const kind = roadClass(way.highway);
     if (!kind || way.g.length < 2 || zoom < MIN_ZOOM[kind]) continue;
@@ -242,7 +246,7 @@ export function baseMapSvg(center: LatLon, zoom: number, ways: readonly BaseMapW
     const list = byClass.get(kind) ?? [];
     list.push({ link: way.highway.endsWith("_link"), d });
     byClass.set(kind, list);
-    const name = way.name.trim();
+    const name = spelling.get(way.name.trim()) ?? way.name.trim();
     if (!name) continue;
     const entry = byName.get(name) ?? { kind, pieces: [] };
     // A street named on several classes keeps its most important one.

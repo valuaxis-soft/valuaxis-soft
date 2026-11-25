@@ -86,7 +86,7 @@ import {
 } from "../map-styles";
 import { detectStreets, metersPerPixel, type StreetWay } from "../streets";
 import { OSM_ATTRIBUTION } from "../streets-osm";
-import { preferredStreetName, renamedHighlights, renamedWays } from "../street-names";
+import { preferredStreetName, renamedHighlights, renamedWays, unifiedHighlights } from "../street-names";
 import type { LatLon } from "../types";
 import { CroquisLabelEditor } from "./croquis-label-editor";
 import { FreeLinesPanel } from "./free-lines-panel";
@@ -333,7 +333,7 @@ export function CroquisGeneratorBody({
   const savedAddress = data?.address ?? "";
   const streetRename = useMemo(() => preferredStreetName(new Set(osmStreets.map((way) => way.n)), savedAddress), [osmStreets, savedAddress]);
   const streets = useMemo(() => renamedWays(osmStreets, streetRename), [osmStreets, streetRename]);
-  const highlights = useMemo(() => renamedHighlights(settings.streets, streetRename), [settings.streets, streetRename]);
+  const highlights = useMemo(() => renamedHighlights(unifiedHighlights(settings.streets, osmStreets), streetRename), [settings.streets, osmStreets, streetRename]);
   const updateHighlights = (patch: Partial<StreetHighlights>) => updateSettings({ streets: { ...highlights, ...patch } });
   const streetsLoading = Boolean(subject) && loaded.key !== subjectKey;
   const streetsStatus = !subject ? null : streetsLoading ? "Buscando las calles alrededor del inmueble…" : loaded.problem;
