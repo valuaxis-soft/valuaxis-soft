@@ -17,16 +17,23 @@ export type ThirdPartyNotice = {
 export const THIRD_PARTY_NOTICES: readonly ThirdPartyNotice[] = [
   {
     name: "OpenStreetMap",
-    use: "Mapa base del croquis y calles cercanas al inmueble.",
-    notice: "© colaboradores de OpenStreetMap. Datos disponibles bajo la Open Database License (ODbL).",
+    use: "Mapa base y calles resaltadas de los croquis (copia interna de las calles, extracto de Geofabrik) y mapa de la ficha de un comparable.",
+    notice:
+      "© colaboradores de OpenStreetMap. Datos disponibles bajo la Open Database License (ODbL) 1.0. Cada croquis guardado es una obra producida con estos datos y lleva impreso el crédito.",
     url: "https://www.openstreetmap.org/copyright",
   },
   {
     name: "Google Maps",
-    use: "Mapas para ubicar el bien, geocodificación e imágenes de mapa.",
+    use: "Mapas para ubicar el bien en pantalla y búsqueda de la dirección escrita. Ninguna imagen de Google se guarda.",
     notice:
       "Su uso está sujeto a los Términos de Servicio Adicionales de Google Maps/Google Earth y a la Política de Privacidad de Google.",
     url: "https://maps.google.com/help/terms_maps/",
+  },
+  {
+    name: "Leaflet",
+    use: "Mapa en pantalla de la ficha de un comparable.",
+    notice: "Leaflet se distribuye bajo la licencia BSD de 2 cláusulas. © Volodymyr Agafonkin y colaboradores de Leaflet.",
+    url: "https://leafletjs.com/",
   },
   {
     name: "PostGIS",
