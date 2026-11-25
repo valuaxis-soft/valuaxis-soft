@@ -8,7 +8,7 @@
  * Shared by the comparables (kinds, base, AI search) and the machinery
  * valuations (terms, card characteristics). Pure TypeScript.
  */
-import type { ComparableType } from "./market-types";
+import { COMPARABLE_TYPE_LABELS, isRentComparableType, type ComparableType } from "./market-types";
 import { isMachineryPropertyKind } from "./machinery-types";
 
 export const COMPARABLE_CLASSES = ["INMUEBLE", "MAQUINARIA"] as const;
@@ -58,4 +58,15 @@ export const MACHINERY_CONSTRUCTION_TYPE = /^(equipo|maquinaria)/;
 export function comparableClassOf(comparable: { assetClass?: unknown; constructionType?: string | null }): ComparableClass {
   if (isComparableClass(comparable.assetClass)) return comparable.assetClass;
   return MACHINERY_CONSTRUCTION_TYPE.test(plain(comparable.constructionType ?? "")) ? "MAQUINARIA" : DEFAULT_COMPARABLE_CLASS;
+}
+
+/**
+ * How a comparable's market is named where the comparable is shown (its
+ * card, the base's list, the map): a machine or a vehicle is never «Inmuebles
+ * en venta», whatever row of the catalog of comparable types it is filed
+ * under; it is «Maquinaria y equipo en venta» (or «en renta»).
+ */
+export function comparableMarketLabel(type: ComparableType, assetClass?: ComparableClass | null): string {
+  if (assetClass !== "MAQUINARIA") return COMPARABLE_TYPE_LABELS[type];
+  return `${COMPARABLE_CLASS_LABELS.MAQUINARIA} ${isRentComparableType(type) ? "en renta" : "en venta"}`;
 }

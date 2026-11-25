@@ -19,7 +19,7 @@ import {
 import type { ComparableCardDto } from "@/features/valuations/calculation/comparable-card.service";
 import { REVIEW_STATUS_LABELS } from "@/features/valuations/calculation/comparable-review";
 import { isMachineryComparable, machineryCardRows, vehicleCardRows } from "@/features/valuations/calculation/comparable-machinery";
-import { comparableClassOf } from "@/features/valuations/calculation/comparable-classes";
+import { comparableClassOf, comparableMarketLabel, type ComparableClass } from "@/features/valuations/calculation/comparable-classes";
 import { exchangeNote } from "@/features/valuations/calculation/comparable-currency";
 import { isVehicleKind, kindOfComparable } from "@/features/valuations/calculation/comparable-kinds";
 import { reviewCheckLabel } from "@/features/valuations/calculation/comparable-review-checklist";
@@ -177,6 +177,7 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
       <ComparableCardHeader
         id={id}
         type={type}
+        assetClass={machinery ? "MAQUINARIA" : "INMUEBLE"}
         reference={comparable.reference}
         review={printable ? null : review}
         where={card.valuation ? `Capturado en el avalúo ${card.valuation.folio}` : "En la base general, sin avalúo"}
@@ -251,6 +252,8 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
 export function ComparableCardHeader(props: {
   id: string | null;
   type: ComparableType;
+  /** A machine's or a vehicle's card never names a real estate market. */
+  assetClass?: ComparableClass | null;
   reference: number | null;
   review?: ComparableDto["review"];
   where: string;
@@ -258,7 +261,7 @@ export function ComparableCardHeader(props: {
   return (
     <header className="flex flex-wrap items-center gap-2 rounded-sm bg-[var(--caratula-blue,#003B73)] px-3 py-2 text-[color:var(--doc-on-strong,#fff)]" data-card-header="">
       <span className="font-mono text-base font-semibold">{props.id ?? "Sin número"}</span>
-      <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs">{COMPARABLE_TYPE_LABELS[props.type]}</span>
+      <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs" data-card-market="">{comparableMarketLabel(props.type, props.assetClass)}</span>
       {props.reference ? <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs">Comparable {props.reference}</span> : null}
       {props.review ? (
         <span className={cn("rounded-sm px-1.5 py-0.5 text-xs font-medium", REVIEW_STATUS_STYLES[props.review.status].solid)}>{REVIEW_STATUS_LABELS[props.review.status]}</span>

@@ -10,6 +10,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { comparablePinCardHtml } from "../src/features/maps/base-map/pin-card";
+import type { ComparablePinDto } from "../src/features/maps/base-map/types";
+import { comparableMarketLabel } from "../src/features/valuations/calculation/comparable-classes";
+import type { ComparableBaseItem } from "../src/features/valuations/comparable-base/comparable-base.service";
+import { cellOf } from "../src/features/valuations/comparable-base/components/comparable-base-table";
+
 import type { ComparableCardDto } from "../src/features/valuations/calculation/comparable-card.service";
 import { isVehicleKind } from "../src/features/valuations/calculation/comparable-kinds";
 import { machineryDetailsOf, vehicleCardRows } from "../src/features/valuations/calculation/comparable-machinery";
@@ -208,6 +214,44 @@ test("a vehicle's sheet asks for its fields, saves them in km, and keeps what it
   assert.ok(parsed.success);
   assert.deepEqual(parsed.data.machinery, vehicleData);
   assert.deepEqual(machineryDetailsOf(vehicleData), vehicleData);
+});
+
+test("a machine or a vehicle is never labelled with a real estate market: card header, sheet, base list and map pin", () => {
+  assert.equal(comparableMarketLabel("INMUEBLE_VENTA", "MAQUINARIA"), "Maquinaria y equipo en venta");
+  assert.equal(comparableMarketLabel("INMUEBLE_RENTA", "MAQUINARIA"), "Maquinaria y equipo en renta");
+  assert.equal(comparableMarketLabel("INMUEBLE_VENTA", "INMUEBLE"), "Inmuebles en venta");
+  assert.equal(comparableMarketLabel("TERRENO_VENTA"), "Terrenos en venta", "real estate as before");
+
+  const card: ComparableCardDto = {
+    comparable: vehicleComparable(), type: "INMUEBLE_VENTA", valuation: null, validity: comparableValidity("2026-12-01", "2026-12-16"), warnings: [], uses: [], history: [],
+  };
+  const header = (html: string) => /data-card-market="">([^<]*)</.exec(html)?.[1];
+  assert.equal(header(renderToStaticMarkup(<ComparableCardView card={card} />)), "Maquinaria y equipo en venta");
+  const house = { ...card, comparable: vehicleComparable({ machinery: null, area: 180, propertyDetails: { kind: "CASA_HABITACION", assetClass: "INMUEBLE" } }) };
+  assert.equal(header(renderToStaticMarkup(<ComparableCardView card={house} />)), "Inmuebles en venta");
+
+  const props: ComparableDialogProps = {
+    open: true, onOpenChange: () => undefined, comparable: vehicleComparable(), card: null, characteristicFields: defaultCharacteristicFields("INMUEBLE_VENTA"),
+    comparableType: "INMUEBLE_VENTA", unitLabel: "Precio de oferta ($)", readOnly: false, onSubmit: async () => true, comparableClass: "MAQUINARIA",
+    onUploadPhoto: async () => undefined, onRemovePhoto: async () => undefined, onUploadScreenshot: async () => undefined, onRemoveScreenshot: async () => undefined,
+    onCheckDuplicates: async () => [], onReuse: async () => true,
+  };
+  const sheet = renderToStaticMarkup(<ComparableSheetForm {...props} />);
+  assert.equal(header(sheet), "Maquinaria y equipo en venta");
+  assert.ok(!sheet.includes("Inmuebles en venta"));
+
+  // The base's «Tipo» column.
+  const item = { type: "INMUEBLE_VENTA", operationType: "VENTA", assetClass: "MAQUINARIA" } as ComparableBaseItem;
+  assert.match(renderToStaticMarkup(<>{cellOf("tipo", item)}</>), /<p>Maquinaria y equipo en venta<\/p>/);
+  assert.match(renderToStaticMarkup(<>{cellOf("tipo", { ...item, assetClass: "INMUEBLE" })}</>), /<p>Inmuebles en venta<\/p>/);
+
+  // The pin of the base's map.
+  const pin = {
+    id: "c1", folio: 12, type: "INMUEBLE_VENTA", operationType: "VENTA", location: "Colonia inventada", lat: 20.6, lon: -103.4, area: null, landArea: null, builtArea: null,
+    price: 379_000, bedrooms: null, bathrooms: null, sourceName: null, url: null, thumbnailUrl: null, updatedOn: "2026-11-20", validUntil: "2027-05-20", expired: false,
+  } satisfies ComparablePinDto;
+  assert.match(comparablePinCardHtml({ ...pin, assetClass: "MAQUINARIA" }), /C-00012 · Maquinaria y equipo en venta/);
+  assert.match(comparablePinCardHtml(pin), /C-00012 · Inmuebles en venta/);
 });
 
 /* ------------------------------------------------------------------ */

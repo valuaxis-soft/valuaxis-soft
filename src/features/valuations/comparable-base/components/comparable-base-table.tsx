@@ -23,8 +23,8 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { OPERATION_TYPE_LABELS, formatComparableId, formatDay } from "@/features/valuations/calculation/comparable-card";
-import { COMPARABLE_TYPE_LABELS, isRentComparableType } from "@/features/valuations/calculation/market-types";
-import { COMPARABLE_CLASS_LABELS } from "@/features/valuations/calculation/comparable-classes";
+import { isRentComparableType } from "@/features/valuations/calculation/market-types";
+import { COMPARABLE_CLASS_LABELS, comparableMarketLabel } from "@/features/valuations/calculation/comparable-classes";
 import { ValidityBadge } from "@/features/valuations/components/calculation/comparable-validity-badge";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -72,7 +72,8 @@ const subscribeToNothing = () => () => {};
 /** The width of the selection and actions columns, which are not in the layout. */
 const FIXED_WIDTH = 44;
 
-function cellOf(column: ComparableColumn, item: ComparableBaseItem): ReactNode {
+/** One cell of the base's list, by its column. */
+export function cellOf(column: ComparableColumn, item: ComparableBaseItem): ReactNode {
   const id = formatComparableId(item.folio);
   switch (column) {
     case "numero":
@@ -103,7 +104,7 @@ function cellOf(column: ComparableColumn, item: ComparableBaseItem): ReactNode {
     case "tipo":
       return (
         <>
-          <p>{COMPARABLE_TYPE_LABELS[item.type]}</p>
+          <p>{comparableMarketLabel(item.type, item.assetClass)}</p>
           <p className="text-xs text-muted-foreground">{OPERATION_TYPE_LABELS[item.operationType]}</p>
         </>
       );

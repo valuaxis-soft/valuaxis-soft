@@ -11,6 +11,7 @@ import { readSubjectLocation } from "@/features/maps/subject-location";
 import type { LatLon } from "@/features/maps/types";
 import { asRecord, decimal, firmComparableMonths } from "@/features/valuations/calculation/access";
 import { todayInMexico } from "@/features/valuations/calculation/comparable-card";
+import { comparableClassOf } from "@/features/valuations/calculation/comparable-classes";
 import { comparableValidity } from "@/features/valuations/calculation/comparable-validity";
 import { isRentComparableType, type ComparableType } from "@/features/valuations/calculation/market-types";
 import { LATEST_FROM, comparableBaseConditions, latestCapturesCte } from "@/features/valuations/comparable-base/comparable-base.service";
@@ -91,6 +92,7 @@ async function pinOf(row: PinRow, today: string, firmMonths: number, withThumbna
     id: row.id,
     folio: row.folio,
     type,
+    assetClass: comparableClassOf({ assetClass: asRecord(property.details as Prisma.JsonValue).assetClass, constructionType: text(property.constructionType) }),
     operationType: operation === "VENTA" || operation === "RENTA" ? operation : isRentComparableType(type) ? "RENTA" : "VENTA",
     location: text(asRecord(row.address).location) ?? row.propertyName ?? "",
     lat: row.lat,
