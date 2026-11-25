@@ -10,6 +10,7 @@ import type { MarketApproachResult } from "../engine/market";
 import type { AppSection, Block, TableContent } from "../model";
 import { ensureTableV2, type GeneratedTableLayout, type TableNote, type TableSummaryBox, type TableSummaryRow } from "../services/table";
 import { factorDecimals } from "./calculation-precision";
+import { exchangeNote } from "./comparable-currency";
 import { parseDecimal } from "./free-formula";
 import {
   EMPTY,
@@ -349,6 +350,11 @@ export function marketDocumentBlocks(
       })]
     : [];
 
+  // An offer in dollars prints its dollars, the rate and its source under the offers; the table shows the pesos (24 Nov 2026).
+  const exchangeNotes: TableNote[] = comparables.flatMap((comparable) => {
+    const note = exchangeNote(comparable);
+    return note ? [{ position: "bottom" as const, small: true, text: `Ref. ${reference(comparable)}: ${note}.` }] : [];
+  });
   // The appraiser may leave the homologation table out of the dictamen: the offers then carry the statistics and the value.
   const homologationShown = options.capture ? homologatesOf(settings) : printsHomologationTable(settings);
   const data = generatedApartado(`${prefix}-datos`, `DATOS DE COMPARABLES ${page.scope}`, {
@@ -378,11 +384,11 @@ export function marketDocumentBlocks(
           comparable.area && comparable.price ? money(comparable.price / comparable.area) : EMPTY,
         ]),
         homologationShown
-          ? { rowKeys }
+          ? { rowKeys, ...(exchangeNotes.length ? { notes: exchangeNotes } : {}) }
           : {
               rowKeys,
               summaryBoxes: homologationBoxes(calculation, result).filter((box) => box.position === "bottom"),
-              notes: justificationNotes(calculation),
+              notes: [...exchangeNotes, ...justificationNotes(calculation)],
             }),
     ],
   });

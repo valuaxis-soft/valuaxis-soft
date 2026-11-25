@@ -249,6 +249,8 @@ test("a chosen listing becomes the payload of a comparable with only what the li
     validityMonths: 6,
     address: { state: "Jalisco", municipality: "Villa Ejemplo", neighborhood: "Las Lomas", street: null, number: null, subdivision: null, postalCode: null },
     operationType: "VENTA",
+    // A land market's card is «Terreno / Lote».
+    propertyDetails: { kind: "TERRENO", kindLabel: "Terreno / Lote", assetClass: "INMUEBLE" },
     listingDetails: { currency: "MXN", dataOrigin: "Búsqueda con IA", dataVerified: "NO", publicationId: null },
   });
 });
@@ -275,7 +277,7 @@ test("everything else a listing publishes lands in its field of the card; what i
   assert.equal(comparable.bedrooms, 3);
   assert.equal(comparable.bathrooms, 2.5);
   assert.equal(comparable.conservation, "Buen estado");
-  assert.deepEqual(comparable.propertyDetails, { age: 10, levels: 2, parking: 2 });
+  assert.deepEqual(comparable.propertyDetails, { age: 10, levels: 2, parking: 2, kind: "CASA_HABITACION", kindLabel: "Casa habitación", assetClass: "INMUEBLE" });
   assert.equal(comparable.frontage, 8);
   assert.equal(comparable.depth, 20);
   assert.equal(comparable.frontCount, 1);
@@ -330,8 +332,10 @@ test("an unpublished price stays empty and a price in dollars is not written as 
   assert.equal(unpublished.area, null);
   const dollars = comparableFromWebListing("TERRENO_VENTA", { ...base, price: 250_000, currency: "USD" }, "2026-11-22");
   assert.equal(dollars.price, null);
-  assert.match(dollars.notes ?? "", /Precio publicado en dólares: USD 250,000; no se convirtió a pesos\./);
+  assert.match(dollars.notes ?? "", /Precio publicado en dólares: USD 250,000; no se convirtió a pesos: escribe el tipo de cambio en la ficha\./);
   assert.equal(dollars.listingDetails?.currency, "USD");
+  // The dollars are kept, waiting for the rate the appraiser writes in the card.
+  assert.equal(dollars.listingDetails?.priceInCurrency, 250_000);
 });
 
 test("a built comparable takes the built area as its area and keeps the land apart", () => {

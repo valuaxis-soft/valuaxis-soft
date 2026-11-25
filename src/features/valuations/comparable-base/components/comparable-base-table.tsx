@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { OPERATION_TYPE_LABELS, formatComparableId, formatDay } from "@/features/valuations/calculation/comparable-card";
 import { COMPARABLE_TYPE_LABELS, isRentComparableType } from "@/features/valuations/calculation/market-types";
+import { COMPARABLE_CLASS_LABELS } from "@/features/valuations/calculation/comparable-classes";
 import { ValidityBadge } from "@/features/valuations/components/calculation/comparable-validity-badge";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -106,12 +107,33 @@ function cellOf(column: ComparableColumn, item: ComparableBaseItem): ReactNode {
           <p className="text-xs text-muted-foreground">{OPERATION_TYPE_LABELS[item.operationType]}</p>
         </>
       );
+    case "bien":
+      return (
+        <>
+          <p>{item.kind?.label ?? "—"}</p>
+          <p className="text-xs text-muted-foreground">{COMPARABLE_CLASS_LABELS[item.assetClass]}</p>
+        </>
+      );
     case "superficies":
       return <span className="text-xs text-muted-foreground">{sizeLine(item)}</span>;
+    case "edad":
+      return (
+        <div className="tabular-nums">
+          <p>{item.age === null ? "—" : `${item.age.toLocaleString("es-MX")} ${item.age === 1 ? "año" : "años"}`}</p>
+          {item.year ? <p className="text-xs text-muted-foreground">Año {item.year}</p> : null}
+        </div>
+      );
     case "precio":
       return (
         <div className="text-right tabular-nums">
           <p className="font-medium">{money(item.price)}</p>
+          {/* An offer in dollars: its dollars and the rate the pesos come from. */}
+          {item.currency === "USD" ? (
+            <p className="text-xs text-muted-foreground" data-usd="">
+              {item.priceInCurrency !== null ? `US$${item.priceInCurrency.toLocaleString("es-MX", { maximumFractionDigits: 2 })}` : "USD"}
+              {item.exchangeRate ? ` × ${item.exchangeRate.toLocaleString("es-MX", { minimumFractionDigits: 4 })}` : " sin tipo de cambio"}
+            </p>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             {item.unitValue !== null ? `${money(item.unitValue)}/m²${isRentComparableType(item.type) ? "/mes" : ""}` : ""}
           </p>

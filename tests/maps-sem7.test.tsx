@@ -33,8 +33,9 @@ test("V7.3-10: the map of «Buscar comparables» gets the search's filters, not 
   assert.equal(params.municipality, "Zapopan");
   assert.equal(params.consultedFrom, "2026-01-01");
   assert.equal(params.streetType, "AVENIDA");
-  // Before a search, the market's own types; «Cualquiera» widens them.
-  assert.equal(searchMapQuery("INMUEBLE_VENTA", null), "tipo=INMUEBLE_VENTA");
+  // Before a search, the market's own types, and only real estate (24 Nov 2026); «Cualquiera» widens the types.
+  assert.equal(searchMapQuery("INMUEBLE_VENTA", null), "tipo=INMUEBLE_VENTA&clase=inmueble");
+  assert.equal(params.assetClass, "INMUEBLE");
   assert.deepEqual(new URLSearchParams(searchMapQuery("TERRENO_VENTA", { text: "", priceMin: null, priceMax: null, kind: "TODOS" })).getAll("tipo").sort(), ["INMUEBLE_VENTA", "TERRENO_VENTA"]);
   // An old single «Superficie» goes as the area of the market's own kind.
   assert.equal(new URLSearchParams(searchMapQuery("INMUEBLE_VENTA", { text: "", priceMin: null, priceMax: null, areaMax: 150 })).get("construidaMax"), "150");

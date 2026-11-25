@@ -36,6 +36,8 @@ export type ComparableSearchFilters = {
   bathrooms?: number;
   landUse?: string;
   constructionType?: string;
+  /** «Tipo de inmueble» (comparable-kinds): a key of Valuaxis or of the firm. */
+  kind?: string;
 };
 
 export type ComparableSearchQuery = {

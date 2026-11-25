@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { STREET_TYPES } from "../calculation/comparable-card";
+import { isKnownKindKey } from "../calculation/comparable-kinds";
 import { comparableInputSchema } from "../calculation/market-schemas";
 import { COMPARABLE_TYPES, isLandComparableType, isRentComparableType, type ComparableType } from "../calculation/market-types";
 import { SEARCH_TEXT_MIN, searchText } from "./normalize";
@@ -65,6 +66,8 @@ export const comparableSearchQuerySchema = z.object({
   banos: bound,
   uso: place(100),
   construccion: place(100),
+  // «Tipo de inmueble» of the card (comparable-kinds): a key of Valuaxis or of the firm.
+  tipoBien: z.preprocess((value) => (empty(value) ? undefined : value), z.string().trim().max(80).refine(isKnownKindKey, "Tipo de inmueble inválido.").optional()),
   limite: z.preprocess(
     (value) => (empty(value) ? SEARCH_LIMIT_DEFAULT : Number(value)),
     z.number().int("El límite debe ser un entero.").min(1).max(SEARCH_LIMIT_MAX, `Se devuelven hasta ${SEARCH_LIMIT_MAX} resultados.`),
@@ -73,7 +76,7 @@ export const comparableSearchQuerySchema = z.object({
   .superRefine((value, context) => {
     const filtered = [value.supMin, value.supMax, value.precioMin, value.precioMax, value.terrenoMin, value.terrenoMax, value.construidaMin, value.construidaMax, value.recamaras, value.banos]
       .some((item) => item !== null)
-      || [value.estado, value.municipio, value.colonia, value.cp, value.inmueble, value.operacion, value.consultaDesde, value.consultaHasta, value.vialidad, value.uso, value.construccion]
+      || [value.estado, value.municipio, value.colonia, value.cp, value.inmueble, value.operacion, value.consultaDesde, value.consultaHasta, value.vialidad, value.uso, value.construccion, value.tipoBien]
         .some((item) => item !== undefined);
     if (value.q === undefined || !value.q) {
       if (!filtered) context.addIssue({ code: "custom", path: ["q"], message: NO_TEXT });
@@ -110,6 +113,7 @@ export const comparableSearchQuerySchema = z.object({
       ...(value.banos !== null ? { bathrooms: value.banos } : {}),
       ...(value.uso ? { landUse: value.uso } : {}),
       ...(value.construccion ? { constructionType: value.construccion } : {}),
+      ...(value.tipoBien ? { kind: value.tipoBien } : {}),
     };
     return {
       text: value.q ?? "",
@@ -125,7 +129,7 @@ export const comparableSearchQuerySchema = z.object({
 
 const FILTER_PARAMS = [
   "estado", "municipio", "colonia", "cp", "inmueble", "operacion", "consultaDesde", "consultaHasta", "vialidad",
-  "terrenoMin", "terrenoMax", "construidaMin", "construidaMax", "recamaras", "banos", "uso", "construccion",
+  "terrenoMin", "terrenoMax", "construidaMin", "construidaMax", "recamaras", "banos", "uso", "construccion", "tipoBien",
 ] as const;
 
 /** Reads the query from a URL; the first problem comes back in words. */

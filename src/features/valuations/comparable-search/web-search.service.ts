@@ -28,6 +28,8 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { consumeAiWebSearchRateLimit } from "@/security/rate-limit/ai-limit";
 import { decimal, findValuation, type Tx } from "../calculation/access";
 import { todayInMexico } from "../calculation/comparable-card";
+import { comparableClassOfType } from "../calculation/comparable-classes";
+import { defaultKindOfType, isOtherKind, kindFromText, type ComparableKind } from "../calculation/comparable-kinds";
 import { findDuplicates } from "../calculation/comparable-card.service";
 import { getMarketCalculation, importComparableIds, type ImportEntry } from "../calculation/market.service";
 import { isLandComparableType, type ComparableType, type MarketCalculationDto } from "../calculation/market-types";
@@ -50,6 +52,7 @@ import {
   type WebListingCandidateInput,
   type WebListingDiscards,
   type WebListingSearchInput,
+  type WebSearchSubject,
 } from "./web-listings";
 
 /**
@@ -166,6 +169,16 @@ async function valuationUrls(valuation: Valuation): Promise<string[]> {
   });
 }
 
+/**
+ * A kind of the other class is not searched for in a market: the markets of a
+ * valuation are of real estate, and machinery never mixes with them.
+ */
+function assertKindOfMarket(type: ComparableType, kind: ComparableKind | null | undefined) {
+  if (kind && kind.class !== comparableClassOfType(type)) {
+    throw new ValuationWorkflowError("Ese tipo de bien es de otra clase: en este mercado se buscan inmuebles.", 400);
+  }
+}
+
 /** What the dialog needs before a search: whether it can run, the request its box starts with and how many comparables found with AI are left. */
 export async function webSearchSetup(publicId: string, user: Pick<AuthUser, "organizationId">, type: ComparableType) {
   const valuation = await findValuation(prisma, publicId, user.organizationId);
@@ -196,19 +209,26 @@ export async function webSearchSetup(publicId: string, user: Pick<AuthUser, "org
   const subject = avaluo.propiedadSujeto;
   const address = subject?.direccionesPropiedad[0];
   const ownArea = decimal(isLandComparableType(type) ? subject?.NSuperficieTerreno : subject?.NSuperficieConstruccion);
+  const searchSubject: WebSearchSubject = {
+    propertyType: avaluo.tipoInmueble.SNombre,
+    neighborhood: address?.SColonia?.trim() || null,
+    municipality: address?.SMunicipio?.trim() || null,
+    state: address?.SEstado?.trim() || null,
+    // The «Ubicación» of the valuation as captured; without it, the address its pin was found with.
+    address: address?.SDireccionCompleta?.trim() || readSubjectLocation(subject?.JCaracteristicas ?? null)?.address?.trim() || null,
+    area: calculation.settings.subjectArea ?? ownArea,
+    landUse: subject?.SUsoSuelo?.trim() || null,
+  };
+  // The kind the box starts with: «Terreno / Lote» in a land market, the subject's in the others (Casa → Casa habitación).
+  const kind = defaultKindOfType(type) ?? (avaluo.tipoInmueble.SNombre ? kindFromText(avaluo.tipoInmueble.SNombre, "INMUEBLE") : null);
+  const startKind = kind && !isOtherKind(kind.key) ? kind : null;
   return {
     enabled: availability.enabled,
     disabledReason: availability.enabled ? null : WEB_SEARCH_DISABLED[availability.reason],
-    suggestion: suggestedWebSearchText(type, {
-      propertyType: avaluo.tipoInmueble.SNombre,
-      neighborhood: address?.SColonia?.trim() || null,
-      municipality: address?.SMunicipio?.trim() || null,
-      state: address?.SEstado?.trim() || null,
-      // The «Ubicación» of the valuation as captured; without it, the address its pin was found with.
-      address: address?.SDireccionCompleta?.trim() || readSubjectLocation(subject?.JCaracteristicas ?? null)?.address?.trim() || null,
-      area: calculation.settings.subjectArea ?? ownArea,
-      landUse: subject?.SUsoSuelo?.trim() || null,
-    }),
+    suggestion: suggestedWebSearchText(type, searchSubject, startKind),
+    // The dialog writes the request again when another kind is chosen.
+    subject: searchSubject,
+    kind: startKind,
     maxSearches: webSearchLimits(WEB_SEARCH_BATCH).searches,
     batch: WEB_SEARCH_BATCH,
     quota,
@@ -368,6 +388,7 @@ export async function startWebSearch(
   origin: RequestOrigin,
 ): Promise<{ jobId: string; count: number }> {
   const valuation = await findValuation(prisma, publicId, user.organizationId);
+  assertKindOfMarket(input.type, input.kind);
   const availability = aiWebSearchAvailability();
   if (!availability.enabled) throw new AiAssistError(WEB_SEARCH_DISABLED[availability.reason], 503);
   const quota = await aiComparableQuota(prisma, valuation);
@@ -434,7 +455,9 @@ export async function addWebListings(
   user: AuthUser,
   type: ComparableType,
   candidates: WebListingCandidateInput[],
+  kind: ComparableKind | null = null,
 ): Promise<{ created: number; reused: number; skipped: number; items: WebListingOutcome[]; calculation: MarketCalculationDto; quota: AiComparableQuota }> {
+  assertKindOfMarket(type, kind);
   const current = await getMarketCalculation(publicId, user.organizationId, type);
   if (current.locked) throw new ValuationWorkflowError("El avalúo está concluido; reábrelo para editarlo.", 409);
   const today = todayInMexico();
@@ -444,7 +467,7 @@ export async function addWebListings(
   // The item of each entry, so the ids the import answers land on their listing.
   const itemOfEntry: number[] = [];
   for (const candidate of candidates) {
-    const comparable = foundComparableSchema.parse(withProvenance(comparableFromWebListing(type, candidate, today), WEB_SEARCH_SOURCE_LABEL, candidate.portal));
+    const comparable = foundComparableSchema.parse(withProvenance(comparableFromWebListing(type, candidate, today, kind), WEB_SEARCH_SOURCE_LABEL, candidate.portal));
     const keys = identityKeys(comparable);
     if (keys.some((key) => seen.has(key))) {
       items.push({ url: candidate.url, outcome: "SKIPPED", comparableId: null });

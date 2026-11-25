@@ -4,9 +4,11 @@ import type { ReactNode } from "react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
 import { CONSTRUCTION_TYPE_SUGGESTIONS, OPERATION_TYPES, OPERATION_TYPE_LABELS } from "@/features/valuations/calculation/comparable-card";
 import { VALIDITY_STATUSES, VALIDITY_STATUS_LABELS } from "@/features/valuations/calculation/comparable-validity";
+import { COMPARABLE_CLASSES, COMPARABLE_CLASS_LABELS } from "@/features/valuations/calculation/comparable-classes";
+import { isOtherKind, kindOptions, type ComparableKind } from "@/features/valuations/calculation/comparable-kinds";
 import { COMPARABLE_TYPES, COMPARABLE_TYPE_LABELS } from "@/features/valuations/calculation/market-types";
 import { cn } from "@/lib/utils";
 import {
@@ -36,8 +38,10 @@ function Filter({ label, htmlFor, children, className }: { label: string; htmlFo
  * The filters of the firm's base, as a plain GET form: it works without
  * JavaScript, every search goes back to page 1, and the URL can be shared.
  */
-export function ComparableBaseFilters({ params, attributeNames = [], sourceNames = [] }: {
+export function ComparableBaseFilters({ params, attributeNames = [], sourceNames = [], customKinds = [] }: {
   params: ComparableListParams;
+  /** The kinds the firm added to the lists of the card. */
+  customKinds?: ComparableKind[];
   /** Names of the characteristics added to the firm's comparables, to offer while typing. */
   attributeNames?: string[];
   /** Sources or portals of the firm's comparables, to offer while typing. */
@@ -94,6 +98,25 @@ export function ComparableBaseFilters({ params, attributeNames = [], sourceNames
           </Filter>
           <Filter label="Código postal" htmlFor="filtro-cp">
             <Input id="filtro-cp" name="cp" inputMode="numeric" pattern="\d{5}" maxLength={5} defaultValue={params.postalCode} className="h-9" />
+          </Filter>
+          {/* Real estate and machinery are never mixed in a valuation; here the base shows both unless one is chosen. */}
+          <Filter label="Clase" htmlFor="filtro-clase">
+            <NativeSelect id="filtro-clase" name="clase" defaultValue={params.assetClass?.toLowerCase() ?? ""} className="w-full [&_select]:h-9">
+              <NativeSelectOption value="">Inmuebles y maquinaria</NativeSelectOption>
+              {COMPARABLE_CLASSES.map((item) => <NativeSelectOption key={item} value={item.toLowerCase()}>{COMPARABLE_CLASS_LABELS[item]}</NativeSelectOption>)}
+            </NativeSelect>
+          </Filter>
+          <Filter label="Tipo de inmueble o de bien" htmlFor="filtro-tipo-bien">
+            <NativeSelect id="filtro-tipo-bien" name="tipoBien" defaultValue={params.kind} className="w-full [&_select]:h-9">
+              <NativeSelectOption value="">Cualquiera</NativeSelectOption>
+              {COMPARABLE_CLASSES.map((item) => (
+                <NativeSelectOptGroup key={item} label={COMPARABLE_CLASS_LABELS[item]}>
+                  {kindOptions(item, customKinds).map((kind) => (
+                    <NativeSelectOption key={kind.key} value={kind.key}>{isOtherKind(kind.key) ? `Otro (${COMPARABLE_CLASS_LABELS[item].toLowerCase()})` : kind.label}</NativeSelectOption>
+                  ))}
+                </NativeSelectOptGroup>
+              ))}
+            </NativeSelect>
           </Filter>
           <Filter label="Operación" htmlFor="filtro-operacion">
             <NativeSelect id="filtro-operacion" name="operacion" defaultValue={params.operation?.toLowerCase() ?? ""} className="w-full [&_select]:h-9">

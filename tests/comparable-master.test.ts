@@ -31,7 +31,7 @@ function masterSheet(rows: Array<Record<string, CellValue>>): CellValue[][] {
 }
 
 const land = {
-  "Estado de uso": "Aceptado", "Tipo de inmueble": "Terreno", "Operación": "Venta", "Portal / fuente": "Inmuebles24",
+  "Estado de uso": "Aceptado", "Tipo de inmueble / de bien": "Terreno", "Operación": "Venta", "Portal / fuente": "Inmuebles24",
   "ID publicación": "145-998", "Calle y número": "Hidalgo 12", "Colonia / localidad": "Centro", "Municipio": "Arandas",
   "Estado": "Jalisco", "Código postal": 1000, "Sup. terreno (m²)": 250, "Precio de oferta": "$1,250,000", "Moneda": "MXN",
   "Base del unitario": "Terreno m²", "URL de publicación": "https://www.inmuebles24.com/propiedades/145-998.html?utm=x#fotos",
@@ -105,7 +105,7 @@ test("conditional rules: errors skip the row, warnings never do", () => {
     { "Calle y número": "Sin tipo 1", "Precio de oferta": 100 },
     { ...land, "Operación": "Permuta" },
     { ...land, "Latitud": 20.7 },
-    { "Tipo de inmueble": "Casa habitación", "Operación": "Renta", "Calle y número": "Juárez 4", "Municipio": "Arandas", "Precio de oferta": 240_000,
+    { "Tipo de inmueble / de bien": "Casa habitación", "Operación": "Renta", "Calle y número": "Juárez 4", "Municipio": "Arandas", "Precio de oferta": 240_000,
       "Periodo renta": "Anual", "Moneda": "USD", "Origen de dato": "Portal inmobiliario", "Sup. construcción (m²)": 120 },
     { ...land, "Estado de uso": "Descartado" },
     { ...land, "Sup. terreno (m²)": null, "Precio de oferta": null },
@@ -116,7 +116,9 @@ test("conditional rules: errors skip the row, warnings never do", () => {
   const rent = rows[3];
   assert.deepEqual(rent.errors, []);
   assert.equal(rent.type, "INMUEBLE_RENTA");
-  assert.equal(rent.payload?.price, 20_000, "an annual rent is stored monthly");
+  // In dollars without a rate: the monthly rent is kept in dollars and has no pesos yet (it does not enter the calculation).
+  assert.equal(rent.payload?.listingDetails?.priceInCurrency, 20_000, "an annual rent is stored monthly");
+  assert.equal(rent.payload?.price, null);
   assert.equal(rent.payload?.listingDetails?.currency, "USD");
   assert.equal(rent.payload?.constructionType, "Casa habitación");
   const warnings = rent.warnings.join(" ");
@@ -236,7 +238,10 @@ test("round trip: an exported comparable reads back to the same data", async () 
   }
   assert.equal(payload.address?.street, "Hidalgo 12");
   assert.equal(payload.address?.postalCode, "47180");
-  assert.deepEqual(payload.propertyDetails, comparable.propertyDetails);
+  // The kind travels by name: a comparable of before with «Casa habitación» as its construction reads back as that kind.
+  assert.deepEqual(payload.propertyDetails, {
+    ...comparable.propertyDetails, kind: "CASA_HABITACION", kindLabel: "Casa habitación", assetClass: "INMUEBLE", year: null,
+  });
   assert.equal(payload.listingDetails?.publicationId, "P-1");
   assert.equal(payload.listingDetails?.photoUrl, "https://inmuebles24.com/f/1.jpg");
   assert.equal(row.summary.unitPrice, 20_000);
@@ -261,8 +266,8 @@ test("rent: monthly or annual, the other computed; with both the month rules", (
   assert.equal(monthlyAndAnnualRent({ monthly: null, annual: null, price: 240_000, period: "ANUAL" }).monthly, 20_000, "the price by its period, as before");
 
   const { rows } = parseComparableSheet(masterSheet([
-    { "Tipo de inmueble": "Local comercial", "Operación": "Renta", "Calle y número": "Juárez 4", "Municipio": "Arandas", "Renta anual": 180_000, "Sup. construcción (m²)": 60 },
-    { "Tipo de inmueble": "Local comercial", "Operación": "Renta", "Calle y número": "Juárez 6", "Municipio": "Arandas", "Renta mensual": 12_000, "Sup. construcción (m²)": 60 },
+    { "Tipo de inmueble / de bien": "Local comercial", "Operación": "Renta", "Calle y número": "Juárez 4", "Municipio": "Arandas", "Renta anual": 180_000, "Sup. construcción (m²)": 60 },
+    { "Tipo de inmueble / de bien": "Local comercial", "Operación": "Renta", "Calle y número": "Juárez 6", "Municipio": "Arandas", "Renta mensual": 12_000, "Sup. construcción (m²)": 60 },
   ]), { defaultType: null });
   assert.equal(rows[0].payload?.price, 15_000);
   assert.equal(rows[1].payload?.price, 12_000);

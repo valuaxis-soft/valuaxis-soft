@@ -22,6 +22,7 @@ import {
 } from "@/features/valuations/comparable-base/comparable-list-params";
 import { ComparableBaseActions } from "@/features/valuations/comparable-base/components/comparable-base-actions";
 import { ComparableBaseFilters } from "@/features/valuations/comparable-base/components/comparable-base-filters";
+import { getCustomComparableKinds } from "@/features/firm/comparable-kinds.service";
 import { ComparableBaseMap } from "@/features/valuations/comparable-base/components/comparable-base-map";
 import { ComparableBaseTable } from "@/features/valuations/comparable-base/components/comparable-base-table";
 import { cn } from "@/lib/utils";
@@ -50,11 +51,12 @@ export default async function ComparablesPage({
   const canEdit = hasPermission(user, AUTH_PERMISSIONS.editValuations);
   const mapView = params.view === "mapa";
   // The map loads its pins through the API, with these same filters; the list is not read for it.
-  const [{ items, total }, months, attributeNames, sourceNames] = await Promise.all([
+  const [{ items, total }, months, attributeNames, sourceNames, customKinds] = await Promise.all([
     mapView ? Promise.resolve({ items: [], total: 0 }) : listComparableBase(user.organizationId, params),
     firmValidityMonths(user.organizationId),
     comparableAttributeNames(user.organizationId),
     comparableSourceNames(user.organizationId),
+    getCustomComparableKinds(user.organizationId),
   ]);
   const pages = Math.max(1, Math.ceil(total / COMPARABLE_LIST_PAGE_SIZE));
   if (total > 0 && params.page > pages) redirect(buildComparableListHref({ ...params, page: pages }));
@@ -91,7 +93,7 @@ export default async function ComparablesPage({
         <section aria-label="Base de comparables" className="grid gap-4 rounded-2xl border border-border bg-card p-3 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">
-              <ComparableBaseFilters params={params} attributeNames={attributeNames} sourceNames={sourceNames} />
+              <ComparableBaseFilters params={params} attributeNames={attributeNames} sourceNames={sourceNames} customKinds={customKinds} />
             </div>
             <ViewToggle params={params} />
           </div>

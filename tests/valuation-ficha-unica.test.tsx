@@ -293,3 +293,16 @@ test("V8.2: among the geocoder's answers, the one in the captured postal code an
   const picker = readFileSync("src/features/valuations/comparable-base/components/comparable-location-picker.tsx", "utf8");
   assert.match(picker, /bestGeocodingResult\(await api\.maps\.geocode\(text\.trim\(\)\), parts\)/);
 });
+
+test("24 Nov 2026: a machine's card by its class, one «Año» (its data's), and its age to the valuation's day", () => {
+  const machine = { ...comparable(), constructionType: null, propertyDetails: { kind: "CAMION", kindLabel: "Camión", assetClass: "MAQUINARIA" as const }, machinery: { year: 2018 } };
+  const html = renderToStaticMarkup(<ComparableSheetForm {...props({ comparable: machine, valuationDate: "2026-11-24" })} />);
+  assert.match(html, /Datos de la máquina/, "the machine's data instead of the land");
+  assert.doesNotMatch(html, /aria-label="Construcción"/);
+  assert.doesNotMatch(html, /id="cmp-anio"/, "no second «Año»");
+  assert.match(html, /id="cmp-edad"[^>]*placeholder="8"|placeholder="8"[^>]*id="cmp-edad"/, "2018 to the valuation's day is 8");
+  // In a market of the valuation (real estate) a comparable without the machine's data is a property's card.
+  const property = renderToStaticMarkup(<ComparableSheetForm {...props({ comparableClass: "INMUEBLE" })} />);
+  assert.match(property, /id="cmp-anio"/);
+  assert.doesNotMatch(property, /Datos de la máquina/);
+});

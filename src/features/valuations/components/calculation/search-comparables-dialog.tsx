@@ -29,6 +29,7 @@ import { ComparableBaseMap } from "@/features/valuations/comparable-base/compone
 import { searchMapQuery } from "@/features/valuations/comparable-search/map-query";
 import { AiComparableSearchPanel, useAiComparableSearch } from "./ai-comparable-search";
 import { useExpandableDialog } from "./expandable-dialog";
+import { ComparableKindField } from "./comparable-kind-field";
 
 const number = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: 2 }));
 const money = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" }));
@@ -39,6 +40,7 @@ const errorMessage = (error: unknown) =>
 
 const PLACE_KEYS = [
   "state", "municipality", "neighborhood", "postalCode", "kind", "operation", "consultedFrom", "consultedTo", "streetType", "landUse", "constructionType",
+  "propertyKind",
 ] as const;
 type PlaceKey = (typeof PLACE_KEYS)[number];
 /** V7.3-12: the land and the built area apart, as in /comparables («Superficie» alone did not say which). */
@@ -48,6 +50,7 @@ type Draft = Record<"text" | RangeKey | PlaceKey, string>;
 const emptyDraft = (type: ComparableType): Draft => ({
   text: "", landAreaMin: "", landAreaMax: "", builtAreaMin: "", builtAreaMax: "", priceMin: "", priceMax: "", bedrooms: "", bathrooms: "",
   state: "", municipality: "", neighborhood: "", postalCode: "", consultedFrom: "", consultedTo: "", streetType: "", landUse: "", constructionType: "",
+  propertyKind: "",
   kind: isLandComparableType(type) ? "TERRENO" : "CONSTRUIDO",
   operation: isRentComparableType(type) ? "RENTA" : "VENTA",
 });
@@ -366,6 +369,18 @@ export function SearchComparablesDialog({
               <Field>
                 <FieldLabel htmlFor="comparable-search-land-use">Uso de suelo</FieldLabel>
                 <Input id="comparable-search-land-use" autoComplete="off" placeholder="Habitacional, H-3…" {...field("landUse")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="comparable-search-property-kind">Tipo de inmueble</FieldLabel>
+                {/* Only real estate: the markets of a valuation never show machinery (24 Nov 2026). */}
+                <ComparableKindField
+                  id="comparable-search-property-kind"
+                  kindClass="INMUEBLE"
+                  filter
+                  emptyLabel="Cualquiera"
+                  value={{ key: draft.propertyKind, label: "" }}
+                  onChange={(next) => setDraft((current) => ({ ...current, propertyKind: next.key }))}
+                />
               </Field>
               <Field>
                 <FieldLabel htmlFor="comparable-search-construction">Tipo de construcción</FieldLabel>

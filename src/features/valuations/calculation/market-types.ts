@@ -13,6 +13,7 @@ import type { ComparableAddress, ComparableListingDetails, ComparablePropertyDet
 import type { ComparableReviewDto } from "./comparable-review";
 import { withPrecision, type CalculationPrecision } from "./calculation-precision";
 import type { ImageFraming } from "../services/image-framing";
+import { priceInPesos } from "./comparable-currency";
 
 export const COMPARABLE_TYPES = ["TERRENO_VENTA", "INMUEBLE_VENTA", "INMUEBLE_RENTA", "TERRENO_RENTA"] as const;
 export type ComparableType = (typeof COMPARABLE_TYPES)[number];
@@ -482,6 +483,8 @@ export type MarketCalculationDto = {
   comparableValidityMonths?: number;
   /** The market has stored settings: its tab shows even without comparables. */
   configured?: boolean;
+  /** «Fecha del avalúo» (YYYY-MM-DD), once captured: the age of a comparable from its year counts to it. */
+  valuationDate?: string;
 };
 
 export function defaultMarketSettings(comparableType: ComparableType): MarketSettingsDto {
@@ -583,9 +586,12 @@ export const additionalAmountOf = (settings: Pick<MarketSettingsDto, "additional
 export const printsAdditionalAmount = (settings: Pick<MarketSettingsDto, "additionalAmount" | "additionalAmountInCalculation" | "showAdditionalAmount">) =>
   settings.additionalAmountInCalculation !== false && (settings.showAdditionalAmount ?? settings.additionalAmount > 0);
 
-/** A comparable enters the calculation once it has a positive area and price. */
-export function isComparableComplete(comparable: Pick<ComparableDto, "area" | "price">) {
-  return (comparable.area ?? 0) > 0 && (comparable.price ?? 0) > 0;
+/**
+ * A comparable enters the calculation once it has a positive area and price
+ * in pesos: one in dollars needs its exchange rate (comparable-currency).
+ */
+export function isComparableComplete(comparable: Pick<ComparableDto, "area" | "price" | "listingDetails">) {
+  return (comparable.area ?? 0) > 0 && (priceInPesos(comparable) ?? 0) > 0;
 }
 
 /** The comparable's capture of a factor of the homologation. */
@@ -627,7 +633,8 @@ export function toMarketEngineInput(dto: Pick<MarketCalculationDto, "settings" |
   const homologated = homologatesOf(settings);
   const comparables: ComparableInput[] = complete.map((comparable) => ({
     id: String(comparable.reference),
-    price: comparable.price as number,
+    // An offer in dollars enters with its pesos at the rate the appraiser wrote.
+    price: priceInPesos(comparable) as number,
     area: comparable.area as number,
     factors: homologated
       ? settings.factorSlots.map((slot): FactorSlot => (slot.type === "SUPERFICIE" ? SURFACE_SLOT : capturedFactor(slot, findFactor(comparable, slot))))

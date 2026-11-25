@@ -6,14 +6,16 @@
  */
 import type { ComparableSort } from "./comparable-list-params";
 
-export const COMPARABLE_COLUMNS = ["numero", "ubicacion", "tipo", "superficies", "precio", "fuente", "fecha", "vigencia", "usado"] as const;
+export const COMPARABLE_COLUMNS = ["numero", "ubicacion", "tipo", "bien", "superficies", "edad", "precio", "fuente", "fecha", "vigencia", "usado"] as const;
 export type ComparableColumn = (typeof COMPARABLE_COLUMNS)[number];
 
 export const COMPARABLE_COLUMN_LABELS: Record<ComparableColumn, string> = {
   numero: "Número",
   ubicacion: "Ubicación",
   tipo: "Tipo",
+  bien: "Tipo de inmueble / bien",
   superficies: "Superficies",
+  edad: "Edad",
   precio: "Precio",
   fuente: "Fuente",
   fecha: "Alta / actualización",
@@ -26,7 +28,7 @@ export const MIN_COLUMN_WIDTH = 72;
 export const MAX_COLUMN_WIDTH = 720;
 
 const DEFAULT_WIDTHS: Record<ComparableColumn, number> = {
-  numero: 110, ubicacion: 360, tipo: 150, superficies: 230, precio: 150, fuente: 140, fecha: 150, vigencia: 140, usado: 220,
+  numero: 110, ubicacion: 360, tipo: 150, bien: 170, superficies: 230, edad: 90, precio: 150, fuente: 140, fecha: 150, vigencia: 140, usado: 220,
 };
 
 export type ColumnSetting = { key: ComparableColumn; visible: boolean; width: number };

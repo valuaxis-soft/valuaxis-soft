@@ -27,10 +27,15 @@ import {
   WEB_SEARCH_TEXT_MIN,
   candidateInputOf,
   publishedDetails,
+  suggestedWebSearchText,
+  type WebSearchSubject,
   type WebListingDetails,
 } from "@/features/valuations/comparable-search/web-listings";
 import type { AiComparableQuota, WebSearchCandidateDto, WebSearchPhase, WebSearchStatusDto } from "@/features/valuations/comparable-search/web-search.service";
 import { ListingImagesPicker } from "./listing-images-picker";
+import { ComparableKindField } from "./comparable-kind-field";
+import { comparableClassOfType } from "@/features/valuations/calculation/comparable-classes";
+import type { ComparableKind } from "@/features/valuations/calculation/comparable-kinds";
 
 const POLL_MS = 2500;
 const number = (value: number) => value.toLocaleString("es-MX", { maximumFractionDigits: 2 });
@@ -38,7 +43,10 @@ const pesos = (value: number) => value.toLocaleString("es-MX", { style: "currenc
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudo buscar.";
 
-type Setup = { enabled: boolean; disabledReason: string | null; suggestion: string; maxSearches: number; batch: number; quota: AiComparableQuota };
+type Setup = {
+  enabled: boolean; disabledReason: string | null; suggestion: string; maxSearches: number; batch: number; quota: AiComparableQuota;
+  subject: WebSearchSubject; kind: ComparableKind | null;
+};
 type Running = { searches: number; maxSearches: number; fetches: number; phase: WebSearchPhase; query: string | null; elapsedSeconds: number };
 type Round = Pick<Extract<WebSearchStatusDto, { status: "done" }>, "discarded" | "discards" | "marketNote" | "searches" | "elapsedSeconds" | "count"> & { found: number };
 
@@ -90,6 +98,8 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
   const [setup, setSetup] = useState<Setup | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [text, setText] = useState("");
+  /** «Tipo de inmueble» searched for (24 Nov 2026): the request and the cards take it. */
+  const [kind, setKind] = useState<ComparableKind | null>(null);
   /** What was asked so far in this search, oldest first. */
   const [asked, setAsked] = useState<string[]>([]);
   const [candidates, setCandidates] = useState<WebSearchCandidateDto[]>([]);
@@ -115,6 +125,7 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
       .then((loaded) => {
         setSetup(loaded);
         setQuota(loaded.quota);
+        setKind(loaded.kind);
         setText((current) => current || loaded.suggestion);
       })
       .catch((failure) => {
@@ -141,6 +152,7 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
         previous: asked.slice(-WEB_SEARCH_MAX_PREVIOUS),
         knownUrls: candidates.slice(-WEB_SEARCH_MAX_KNOWN).map((candidate) => candidate.url),
         count,
+        kind,
       });
       let missed = 0;
       for (;;) {
@@ -182,7 +194,18 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
     } finally {
       if (current === generation.current) setRunning(null);
     }
-  }, [asked, candidates, count, setup, text, type, valuationId]);
+  }, [asked, candidates, count, kind, setup, text, type, valuationId]);
+
+  /**
+   * Another kind: the request the box starts with is written again for it,
+   * unless the appraiser already wrote one of their own.
+   */
+  const chooseKind = useCallback((next: ComparableKind | null) => {
+    setKind(next);
+    if (!setup) return;
+    const before = suggestedWebSearchText(type, setup.subject, kind);
+    setText((current) => (!current.trim() || current === before || current === setup.suggestion ? suggestedWebSearchText(type, setup.subject, next) : current));
+  }, [kind, setup, type]);
 
   const restart = useCallback(() => {
     generation.current += 1;
@@ -207,7 +230,7 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
     if (!chosen.length) return null;
     setCreating(true);
     try {
-      const result = await api.ai.addWebListings(valuationId, type, chosen.map(candidateInputOf));
+      const result = await api.ai.addWebListings(valuationId, type, chosen.map(candidateInputOf), kind);
       setQuota(result.quota);
       const keys = new Set(chosen.map((candidate) => candidate.key));
       // They are in the valuation now: shown as such, and not offered again.
@@ -258,11 +281,11 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
     } finally {
       setCreating(false);
     }
-  }, [candidates, images, selected, type, valuationId]);
+  }, [candidates, images, kind, selected, type, valuationId]);
 
   return {
     setup, setupError, text, setText, asked, candidates, selected, setSelected, images, setImagesFor, running, round, error, creating, search, restart, create,
-    count, setCount, quota,
+    count, setCount, quota, kind, chooseKind,
   };
 }
 
@@ -391,6 +414,18 @@ export function AiComparableSearchPanel({
             {search.asked.map((request, index) => <li key={index}><span className="font-medium">Búsqueda {index + 1}:</span> {request}</li>)}
           </ol>
         ) : null}
+        {/* What is searched for: the default request is written for it, and the cards take it. Only real estate in a market. */}
+        <Field className="max-w-sm">
+          <FieldLabel htmlFor="ai-search-kind">Tipo de inmueble</FieldLabel>
+          <ComparableKindField
+            id="ai-search-kind"
+            kindClass={comparableClassOfType(type)}
+            disabled={busy}
+            emptyLabel="El del mercado"
+            value={{ key: search.kind?.key ?? "", label: search.kind?.label ?? "" }}
+            onChange={(next) => search.chooseKind(next.key ? { key: next.key, label: next.label || "Otro", class: comparableClassOfType(type) } : null)}
+          />
+        </Field>
         <Field>
           <FieldLabel htmlFor="ai-search-text">{refining ? "Afina la búsqueda o pide más" : "Describe lo que buscas"}</FieldLabel>
           <Textarea

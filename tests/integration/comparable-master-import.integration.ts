@@ -46,7 +46,7 @@ async function anotherValuation(base: Fixture, folio: string, locked = false) {
 }
 
 const listing = (marker: string, id: string, extra: Record<string, CellValue> = {}): Record<string, CellValue> => ({
-  "Estado de uso": "Aceptado", "Tipo de inmueble": "Terreno", "Operación": "Venta", "Portal / fuente": "Inmuebles24",
+  "Estado de uso": "Aceptado", "Tipo de inmueble / de bien": "Terreno", "Operación": "Venta", "Portal / fuente": "Inmuebles24",
   "ID publicación": `${marker}-${id}`, "Calle y número": `Hidalgo ${id}`, "Colonia / localidad": `Centro ${marker}`, "Municipio": `Arandas${marker}`,
   "Estado": "Jalisco", "Sup. terreno (m²)": 200 + Number(id), "Precio de oferta": 1_000_000 + Number(id) * 1000, "Base del unitario": "Terreno m²",
   "URL de publicación": `https://www.inmuebles24.com/propiedades/${marker}-${id}.html?utm_source=x`, "Contacto / anunciante": "Ana López",
@@ -142,7 +142,7 @@ test("Ambos from the Comparables page adds each row to the valuation of its foli
     listing(marker, "2", { "Folio avalúo": "NO-EXISTE" }),
     listing(marker, "3", { "Folio avalúo": locked }),
     listing(marker, "4", { "Folio avalúo": theirs.SFolio }),
-    listing(marker, "5", { "Tipo de inmueble": "Casa habitación", "Sup. construcción (m²)": 120, "Base del unitario": "Construcción m²", "Folio avalúo": open }),
+    listing(marker, "5", { "Tipo de inmueble / de bien": "Casa habitación", "Sup. construcción (m²)": 120, "Base del unitario": "Construcción m²", "Folio avalúo": open }),
   ], "AMBOS");
   const preview = await previewComparableImport(fixture.user, { kind: "base" }, sheet, { destination: null, defaultType: null });
   assert.deepEqual(preview.rows.map((row) => row.target?.kind), ["valuation", "base", "base", "base", "valuation"]);
@@ -172,8 +172,8 @@ test("from a valuation's market: other types go to the base with Ambos, the foli
   const folio = (await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId }, select: { SFolio: true } })).SFolio;
   const origin = { kind: "valuation" as const, valuationId: fixture.publicId, valuationFolio: folio, type: "TERRENO_VENTA" as const };
   const sheet = file([
-    listing(marker, "1", { "Tipo de inmueble": null, "Operación": null, "Folio avalúo": "OTRO-1" }),
-    listing(marker, "2", { "Tipo de inmueble": "Departamento", "Operación": "Renta", "Sup. construcción (m²)": 80, "Base del unitario": "Construcción m²" }),
+    listing(marker, "1", { "Tipo de inmueble / de bien": null, "Operación": null, "Folio avalúo": "OTRO-1" }),
+    listing(marker, "2", { "Tipo de inmueble / de bien": "Departamento", "Operación": "Renta", "Sup. construcción (m²)": 80, "Base del unitario": "Construcción m²" }),
   ]);
   const viewer: AuthUser = { ...fixture.user, permissions: ["AVALUO_VER", "AVALUO_EDITAR"].filter((key) => key !== "AVALUO_EDITAR") };
   // Without review permission, "Aceptado + Sí" imports por revisar (the route itself requires editing; the rule is the review's).

@@ -219,11 +219,11 @@ test("«Mover a la izquierda/derecha» passes the next visible column and is kep
   assert.equal(canMoveColumnBy(layout, "usado", 1), false, "the last one goes no further right");
   const right = moveColumnBy(layout, "precio", 1);
   // "fuente" is hidden: the column passes "fecha", the next one shown.
-  assert.deepEqual(keys(right), ["numero", "ubicacion", "tipo", "superficies", "fecha", "precio", "vigencia", "usado"]);
+  assert.deepEqual(keys(right), ["numero", "ubicacion", "tipo", "bien", "superficies", "edad", "fecha", "precio", "vigencia", "usado"]);
   assert.deepEqual(keys(moveColumnBy(right, "precio", -1)), keys(layout));
   assert.deepEqual(moveColumnBy(layout, "numero", -1), layout);
   // Shown again, the hidden column keeps its place among the others.
-  assert.deepEqual(keys(toggleColumn(right, "fuente")), ["numero", "ubicacion", "tipo", "superficies", "fuente", "fecha", "precio", "vigencia", "usado"]);
+  assert.deepEqual(keys(toggleColumn(right, "fuente")), ["numero", "ubicacion", "tipo", "bien", "superficies", "edad", "fuente", "fecha", "precio", "vigencia", "usado"]);
   // The order is saved as the rest of the view.
   assert.deepEqual(parseColumnLayout(serializeColumnLayout(right)), right);
 });

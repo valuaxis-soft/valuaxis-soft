@@ -22,6 +22,9 @@ import {
   asRecord, catalogId, decimal, findValuation, firmComparableMonths, formulasOrThrow, inFirmBase, versionPrecision, writableVersion, type Tx,
 } from "./access";
 import { propertyTypeKeyOf } from "./comparable-master";
+import { withOfferInPesos } from "./comparable-currency";
+import { kindOfComparable, propertyTypeKeyOfKind, withKindDetails } from "./comparable-kinds";
+import { COMPARABLE_CLASS_LABELS, comparableClassOf } from "./comparable-classes";
 import { storedFormulas, type CapturedFormulas } from "./captured-formulas";
 import { matchOption, optionJustification, optionsFor, resolveFactorCatalog } from "./factor-catalog";
 import { recomputeCosts } from "./cost.service";
@@ -438,11 +441,16 @@ export async function getMarketCalculation(publicId: string, organizationId: num
     const avaluo = await findValuation(tx, publicId, organizationId);
     const versionId = avaluo.IdVersionTrabajo ?? avaluo.IdVersionFinal;
     if (!versionId) return { settings: defaultMarketSettings(type), comparables: [], locked: avaluo.BBloqueado, configured: false };
-    const [{ settings, comparables, configured, precision }, comparableValidityMonths] = await Promise.all([
+    const [{ settings, comparables, configured, precision }, comparableValidityMonths, cover] = await Promise.all([
       loadCalculation(tx, versionId, type, true),
       firmComparableMonths(tx, organizationId),
+      tx.caratulaAvaluo.findUnique({ where: { IdVersionAvaluo: versionId }, select: { DFechaAvaluo: true } }),
     ]);
-    return { settings, comparables, locked: avaluo.BBloqueado, configured, precision, comparableValidityMonths };
+    return {
+      settings, comparables, locked: avaluo.BBloqueado, configured, precision, comparableValidityMonths,
+      // The day of the valuation, for the age of a comparable from its year; missing, the card counts to today.
+      ...(cover?.DFechaAvaluo ? { valuationDate: todayInMexico(cover.DFechaAvaluo) } : {}),
+    };
   });
 }
 
@@ -844,9 +852,7 @@ export function snapshots(payload: ComparableInputPayload, formulas: CapturedFor
     bedrooms: unlessOmitted(payload.bedrooms, stored.bedrooms),
     bathrooms: unlessOmitted(payload.bathrooms, stored.bathrooms),
     constructionType: unlessOmitted(payload.constructionType, stored.constructionType),
-    details: unlessOmitted(payload.propertyDetails, stored.details),
-    // A client that does not send them (the master workbook, a client of before) keeps the stored ones.
-    machinery: unlessOmitted(payload.machinery, stored.machinery),
+    ...machineYear(unlessOmitted(payload.propertyDetails, stored.details), unlessOmitted(payload.machinery, stored.machinery)),
     ownFactors: ownFactorsOf(payload),
   };
   const publication: PublicationSnapshot = {
@@ -1032,6 +1038,8 @@ export async function insertComparable(
   reused: ReusedComparableEvidence = {},
   review: ReviewSnapshot | null = null,
 ) {
+  payload = savedPayload(payload);
+  if (target.kind === "valuation") assertRealEstate(payload);
   const screenshot = reused.screenshot ? { id: randomUUID(), key: reused.screenshot.key, title: reused.screenshot.title } : null;
   const captured = snapshots(payload, comparableFormulas(payload, null), screenshot ? { publication: { screenshot } } : {});
   const last = target.kind === "valuation"
@@ -1246,7 +1254,7 @@ export async function importToFirmBase(user: AuthUser, entries: BaseImportEntry[
     };
     for (const entry of entries) {
       const typeId = await typeIdOf(entry.type);
-      const propertyTypeId = await basePropertyTypeId(tx, entry.type, entry.payload.constructionType ?? null);
+      const propertyTypeId = await basePropertyTypeId(tx, entry.type, entry.payload);
       const review = entry.review ?? null;
       if (!entry.mergeInto) {
         const id = await insertComparable(tx, { kind: "base", typeId, propertyTypeId }, user, entry.type, entry.payload, {}, review);
@@ -1275,13 +1283,48 @@ export async function importToFirmBase(user: AuthUser, entries: BaseImportEntry[
   }, { timeout: 60_000 });
 }
 
-/** The type of inmueble a comparable of the base is filed under: what its kind of construction says. */
-export const basePropertyTypeId = (tx: Tx, type: ComparableType, constructionType: string | null) =>
-  catalogId(
+/** The type of inmueble a comparable of the base is filed under: what its kind says, or its kind of construction. */
+export const basePropertyTypeId = (tx: Tx, type: ComparableType, payload: Pick<ComparableInputPayload, "constructionType" | "propertyDetails">) => {
+  const kind = kindOfComparable({ type, constructionType: payload.constructionType ?? null, propertyDetails: withKindDetails(payload.propertyDetails ?? {}) });
+  return catalogId(
     (key) => tx.tipoInmueble.findUnique({ where: { SClave: key } }),
-    propertyTypeKeyOf(type, constructionType),
+    kind ? propertyTypeKeyOfKind(kind) : propertyTypeKeyOf(type, payload.constructionType ?? null),
     (row) => row.IdTipoInmueble,
   );
+};
+
+/**
+ * A comparable as it is stored: an offer in dollars takes its price in pesos
+ * (comparable-currency) and a kind takes its class (comparable-kinds).
+ */
+export function savedPayload(payload: ComparableInputPayload): ComparableInputPayload {
+  const offer = withOfferInPesos(payload);
+  return offer.propertyDetails ? { ...offer, propertyDetails: withKindDetails(offer.propertyDetails) } : offer;
+}
+
+/**
+ * A machine has one «Año», the one of its data (`machinery.year`, #160): a
+ * year that comes with the property's details (the master workbook) goes
+ * there, keeping the rest of the machine's data. A client that does not send
+ * the machine's data (the master workbook, a client of before) keeps the
+ * stored ones.
+ */
+function machineYear(details: PropertySnapshot["details"], machinery: PropertySnapshot["machinery"]) {
+  const machine = comparableClassOf({ assetClass: details?.assetClass }) === "MAQUINARIA";
+  if (!machine || !details?.year) return { details, machinery };
+  return { details: { ...details, year: null }, machinery: { ...(machinery ?? {}), year: details.year } };
+}
+
+/**
+ * The markets of a valuation are of real estate: a comparable of machinery
+ * and equipment never goes into one (24 Nov 2026, «no se van a mezclar»).
+ */
+function assertRealEstate(payload: ComparableInputPayload) {
+  const kindClass = comparableClassOf({ assetClass: payload.propertyDetails?.assetClass, constructionType: payload.constructionType });
+  if (kindClass !== "INMUEBLE") {
+    throw new ValuationWorkflowError(`Un comparable de ${COMPARABLE_CLASS_LABELS[kindClass].toLowerCase()} no va en un mercado de inmuebles.`, 400);
+  }
+}
 
 /**
  * Replaces in place the data of a comparable kept in the base without a
@@ -1293,7 +1336,8 @@ export async function updateBaseCapture(
   source: ComparableRow,
   input: { type: ComparableType; typeId: number; payload: ComparableInputPayload; review?: ReviewSnapshot | null; renew?: boolean },
 ) {
-  const { type, typeId, payload, review } = input;
+  const { type, typeId, review } = input;
+  const payload = savedPayload(input.payload);
   const previous = await toComparableDto(source, false);
   const formulas = comparableFormulas(payload, previous);
   await tx.propiedad.update({ where: { IdPropiedad: source.IdPropiedad }, data: propertyColumns(type, payload) });
@@ -1340,7 +1384,9 @@ async function ownPropertyRows(tx: Tx, comparable: { IdComparableAvaluo: bigint;
   return { propertyId, publicationId };
 }
 
-export async function updateComparable(publicId: string, user: AuthUser, comparableId: string, payload: ComparableInputPayload) {
+export async function updateComparable(publicId: string, user: AuthUser, comparableId: string, sent: ComparableInputPayload) {
+  const payload = savedPayload(sent);
+  assertRealEstate(payload);
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
     const current = await findComparable(tx, versionId, comparableId);

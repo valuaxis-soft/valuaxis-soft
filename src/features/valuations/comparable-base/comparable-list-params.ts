@@ -4,6 +4,8 @@
  * does not parse is left out rather than rejected.
  */
 import { OPERATION_TYPES, STREET_TYPES, type OperationType, type StreetType } from "../calculation/comparable-card";
+import { COMPARABLE_CLASSES, type ComparableClass } from "../calculation/comparable-classes";
+import { isKnownKindKey } from "../calculation/comparable-kinds";
 import { VALIDITY_STATUSES, type ValidityStatus } from "../calculation/comparable-validity";
 import { COMPARABLE_TYPES, type ComparableType } from "../calculation/market-types";
 
@@ -62,6 +64,10 @@ export type ComparableListParams = {
   /** Empty: every type. */
   types: ComparableType[];
   operation: OperationType | null;
+  /** Real estate or machinery (`clase=`); null, both. They never mix in a valuation's search or map. */
+  assetClass: ComparableClass | null;
+  /** «Tipo de inmueble / de bien» (`tipoBien=`), a key of Valuaxis or of the firm; empty, every kind. */
+  kind: string;
   constructionType: string;
   landUse: string;
   /** Words of the source or portal of the listing ("Inmuebles24"). */
@@ -146,6 +152,8 @@ export function parseComparableListParams(searchParams: Record<string, RawParam>
     types: [...new Set(all(searchParams.tipo).map((item) => item.trim().toUpperCase()))]
       .filter((item): item is ComparableType => (COMPARABLE_TYPES as readonly string[]).includes(item)),
     operation: oneOf(searchParams.operacion, OPERATION_TYPES, (raw) => raw.toUpperCase()),
+    assetClass: oneOf(searchParams.clase, COMPARABLE_CLASSES, (raw) => raw.toUpperCase()),
+    kind: isKnownKindKey(textOf(searchParams.tipoBien)) ? textOf(searchParams.tipoBien) : "",
     constructionType: textOf(searchParams.construccion),
     landUse: textOf(searchParams.uso),
     source: textOf(searchParams.fuente),
@@ -175,7 +183,7 @@ export function parseComparableListParams(searchParams: Record<string, RawParam>
 /** Whether any filter beyond the text and the order is set: the page opens its "Más filtros" then. */
 export function hasAdvancedFilters(params: ComparableListParams) {
   return Boolean(params.client || params.state || params.municipality || params.neighborhood || params.subdivision || params.postalCode
-    || params.types.length || params.operation || params.constructionType || params.landUse || params.source || params.attribute || params.attributeValue
+    || params.types.length || params.operation || params.assetClass || params.kind || params.constructionType || params.landUse || params.source || params.attribute || params.attributeValue
     || [params.landAreaMin, params.landAreaMax, params.builtAreaMin, params.builtAreaMax, params.bedrooms, params.bathrooms, params.priceMin, params.priceMax]
       .some((value) => value !== null)
     || params.from || params.to || params.validity || params.located || params.consultedFrom || params.consultedTo || params.streetType);
@@ -198,6 +206,8 @@ export function buildComparableListHref(params: Partial<ComparableListParams>) {
   set("cp", params.postalCode);
   for (const type of params.types ?? []) query.append("tipo", type);
   set("operacion", params.operation?.toLowerCase());
+  set("clase", params.assetClass?.toLowerCase());
+  set("tipoBien", params.kind);
   set("construccion", params.constructionType);
   set("uso", params.landUse);
   set("fuente", params.source);

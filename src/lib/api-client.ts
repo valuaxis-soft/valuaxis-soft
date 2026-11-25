@@ -11,6 +11,9 @@ import type { ComparableCardDto, DuplicateMatchDto, ReviewRowDto } from "@/featu
 import type { BaseImportResult } from "@/features/valuations/calculation/market.service";
 import type { DeleteBaseOutcome } from "@/features/valuations/comparable-base/comparable-base-write.service";
 import type { ComparableSuggestions } from "@/features/valuations/comparable-base/comparable-suggestions";
+import type { ComparableClass } from "@/features/valuations/calculation/comparable-classes";
+import type { ComparableKind } from "@/features/valuations/calculation/comparable-kinds";
+import type { WebSearchSubject } from "@/features/valuations/comparable-search/web-listings";
 import type { DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
 import type { CalculationPrecision } from "@/features/valuations/calculation/calculation-precision";
 import type { CalculationPrecisionDto } from "@/features/valuations/calculation/calculation-precision.service";
@@ -163,11 +166,14 @@ export type ComparableSearchFilters = {
   bathrooms?: number | null;
   landUse?: string;
   constructionType?: string;
+  /** «Tipo de inmueble» of the card (comparable-kinds); empty, any. */
+  propertyKind?: string;
 };
 
 const SEARCH_FILTER_PARAMS = {
   state: "estado", municipality: "municipio", neighborhood: "colonia", postalCode: "cp", kind: "inmueble", operation: "operacion",
   consultedFrom: "consultaDesde", consultedTo: "consultaHasta", streetType: "vialidad", landUse: "uso", constructionType: "construccion",
+  propertyKind: "tipoBien",
 } as const;
 
 /** The server answered 401: the session expired or was revoked. */
@@ -455,19 +461,22 @@ export const api = {
       request<{ text: string }>(`/avaluos/${id}/ia/redaccion`, { method: "POST", body: JSON.stringify(input) }),
     /** «Buscar con IA»: whether it can run and the request its box starts with. */
     webSearchSetup: (id: ApiId, type: ComparableType) =>
-      request<{ enabled: boolean; disabledReason: string | null; suggestion: string; maxSearches: number; batch: number; quota: AiComparableQuota }>(
+      request<{
+        enabled: boolean; disabledReason: string | null; suggestion: string; maxSearches: number; batch: number; quota: AiComparableQuota;
+        subject: WebSearchSubject; kind: ComparableKind | null;
+      }>(
         `/avaluos/${id}/mercado/comparables/buscar-ia?tipo=${type}`,
       ),
     /** Starts a search; its progress and results are asked for with `webSearchStatus`. */
-    startWebSearch: (id: ApiId, type: ComparableType, input: { text: string; previous: string[]; knownUrls: string[]; count: number }) =>
+    startWebSearch: (id: ApiId, type: ComparableType, input: { text: string; previous: string[]; knownUrls: string[]; count: number; kind?: ComparableKind | null }) =>
       request<{ jobId: string; count: number }>(`/avaluos/${id}/mercado/comparables/buscar-ia?tipo=${type}`, { method: "POST", body: JSON.stringify(input) }),
     webSearchStatus: (id: ApiId, jobId: string) =>
       request<WebSearchStatusDto>(`/avaluos/${id}/mercado/comparables/buscar-ia/${jobId}`, { cache: "no-store" }),
     /** «Crear fichas» of the listings chosen. */
-    addWebListings: (id: ApiId, type: ComparableType, candidates: WebListingCandidateInput[]) =>
+    addWebListings: (id: ApiId, type: ComparableType, candidates: WebListingCandidateInput[], kind: ComparableKind | null = null) =>
       request<{ created: number; reused: number; skipped: number; items: WebListingOutcome[]; calculation: MarketCalculationDto; quota: AiComparableQuota }>(
         `/avaluos/${id}/mercado/comparables/buscar-ia/fichas?tipo=${type}`,
-        { method: "POST", body: JSON.stringify({ candidates }) },
+        { method: "POST", body: JSON.stringify({ candidates, kind }) },
       ),
   },
   /** Decimals shown and "calcular con la precisión mostrada" of the valuation; saving recomputes every approach. */
@@ -542,6 +551,13 @@ export const api = {
     documentPalette: () => request<FirmDocumentPaletteDto>(`/organizacion/despacho/paleta`),
     saveDocumentPalette: (palette: DocumentPalette | null) =>
       request<FirmDocumentPaletteDto>(`/organizacion/despacho/paleta`, { method: "PUT", body: JSON.stringify({ palette }) }),
+    comparableKinds: () => request<{ kinds: ComparableKind[] }>(`/organizacion/despacho/tipos-comparable`),
+    addComparableKind: (label: string, kindClass: ComparableClass) =>
+      request<{ kinds: ComparableKind[]; kind: ComparableKind | null }>(`/organizacion/despacho/tipos-comparable`, {
+        method: "POST", body: JSON.stringify({ label, class: kindClass }),
+      }),
+    removeComparableKind: (key: string) =>
+      request<{ kinds: ComparableKind[] }>(`/organizacion/despacho/tipos-comparable`, { method: "DELETE", body: JSON.stringify({ key }) }),
     customUnits: () => request<{ units: string[] }>(`/organizacion/despacho/unidades`),
     addCustomUnit: (unit: string) =>
       request<{ units: string[] }>(`/organizacion/despacho/unidades`, { method: "POST", body: JSON.stringify({ unit }) }),

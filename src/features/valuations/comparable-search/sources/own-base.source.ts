@@ -11,10 +11,11 @@ import { addressFromRecord, parseComparableId, type ComparableAddress, type Oper
 import { reusedEvidenceOf, type ReusedComparableEvidence } from "../../calculation/market.service";
 import { searchTokens } from "../normalize";
 import {
-  AREA, BUILT_AREA, CONSULTED, FIRM_BASE_FROM, HAYSTACK, LAND_AREA, constructionTypeCondition, firmBaseCondition, jsonNumber, landUseCondition, likePattern,
-  placeCondition, postalCodeCondition, rangeCondition, streetTypeCondition,
+  AREA, BUILT_AREA, CONSULTED, FIRM_BASE_FROM, HAYSTACK, LAND_AREA, classCondition, constructionTypeCondition, firmBaseCondition, jsonNumber, kindCondition,
+  landUseCondition, likePattern, placeCondition, postalCodeCondition, rangeCondition, streetTypeCondition,
 } from "../own-base-sql";
-import type { ComparableSearchContext, ComparableSearchQuery, ComparableSearchResult, ComparableSearchSource } from "../types";
+import { comparableClassOfType } from "../../calculation/comparable-classes";
+import type { ComparableSearchContext, ComparableSearchQuery, ComparableSearchResult, ComparableSearchSource, FoundComparable } from "../types";
 
 /** Rows read before ranking: the same offer repeats across valuations, and the most relevant may not be the newest. */
 const CANDIDATES = 200;
@@ -98,9 +99,14 @@ async function toResult(row: Row): Promise<ComparableSearchResult> {
       bedrooms: coordinate(property.bedrooms),
       bathrooms: coordinate(property.bathrooms),
       constructionType: text(property.constructionType),
+      // Its kind, age, currency and exchange rate travel with it into the valuation.
+      ...(isRecord(property.details) ? { propertyDetails: property.details as FoundComparable["propertyDetails"] } : {}),
+      ...(isRecord(publication.details) ? { listingDetails: publication.details as FoundComparable["listingDetails"] } : {}),
     },
   };
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 async function search(query: ComparableSearchQuery, context: ComparableSearchContext): Promise<ComparableSearchResult[]> {
   const filters = query.filters ?? {};
@@ -116,6 +122,9 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
     firmBaseCondition(context.organizationId),
     Prisma.sql`c."IdAvaluo" IS DISTINCT FROM ${context.valuationId}`,
     Prisma.sql`t."SClave" IN (${Prisma.join(types)})`,
+    // The markets of a valuation are of real estate: machinery never shows in them, and vice versa.
+    ...classCondition(comparableClassOfType(query.type)),
+    ...kindCondition(filters.kind),
     ...(wantedFolio ? [Prisma.sql`p."IFolioComparable" = ${wantedFolio}`] : []),
     ...tokens.map((token) => Prisma.sql`${HAYSTACK} LIKE ${likePattern(token)}`),
     ...placeCondition("state", filters.state),
