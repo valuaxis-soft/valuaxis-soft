@@ -66,6 +66,8 @@ export async function initializeWorkingVersionStructure(input: {
   generalCaratulaDefaults?: GeneralCaratulaDefaults;
   /** Sections a new valuation starts with hidden. Only the sections created here take it. */
   initiallyHidden?: ReadonlySet<string>;
+  /** The valuation's «Tipo de bien»: a machinery carátula starts with the machine's data. */
+  propertyKind?: string | null;
 }) {
   const client = input.tx ?? prisma;
   const versionId = await ensureWorkingVersion(input);
@@ -132,7 +134,7 @@ export async function initializeWorkingVersionStructure(input: {
     const shouldPersistInitialBlocks = definition.key === "CONSTRUCCION"
       || (definition.key === "CARATULA" && input.initializeGeneralCaratula === true);
     const sectionTemplate = shouldPersistInitialBlocks
-      ? getInitialSectionTemplate(definition.key)
+      ? getInitialSectionTemplate(definition.key, input.propertyKind, input.generalCaratulaDefaults?.essence)
       : null;
     // The construction tables are stored already as the capture of the cost approach: opening the
     // valuation untouched must not change its document (it asked to save, and «¿Salir del sitio?»).

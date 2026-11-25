@@ -21,7 +21,7 @@ function cellValue(column: ValuationColumn, item: ValuationPageItem): ExcelJS.Ce
     case "titulo": return item.title;
     case "cliente": return item.client;
     case "ubicacion": return item.location;
-    case "tipo": return item.propertyKindName;
+    case "tipo": return `${item.propertyKindName} (${item.appraisalClassName})`;
     case "tipoAvaluo": return item.appraisalKindName;
     case "estado": {
       const label = getStatusPresentation(item.status, item.statusName).label;

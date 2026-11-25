@@ -14,7 +14,25 @@ import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/compon
 import { cn } from "@/lib/utils";
 import type { ValuationCreationCatalogs } from "@/features/valuations/services/valuation-catalogs.service";
 import { PHONE_ACCOUNT_LINK } from "@/features/account/phone/phone-link";
-import { isOwnKindKey } from "@/features/valuations/services/property-kinds";
+import {
+  NEW_OWN_CHOICE,
+  appraisalKindChoices,
+  appraisalKindOfChoice,
+  isOwnKindKey,
+  normalizePropertyKind,
+} from "@/features/valuations/services/property-kinds";
+import {
+  APPRAISAL_CLASSES,
+  APPRAISAL_CLASS_LABELS,
+  classOfPropertyKind,
+  defaultEssence,
+  essenceChoices,
+  propertyKindFor,
+  type AppraisalClass,
+} from "@/features/valuations/services/appraisal-subject";
+import type { FirmLists } from "@/features/firm/firm-lists";
+import { api } from "@/lib/api-client";
+import { ExtendableSelect } from "./extendable-select";
 
 type CatalogMissing = {
   code: string;
@@ -53,6 +71,28 @@ export function typesOfTemplate(templates: TemplateOption[], templateId: string)
   };
 }
 
+/**
+ * The class and essence a «Tipo de bien» of the catalog stands for (a firm's
+ * template says which it is meant for): machinery, or the real estate essence
+ * of that kind; «Otro» starts on the class's first essence.
+ */
+export function subjectOfPropertyType(catalog: ReadonlyArray<{ id: number; key?: string; label: string }>, propertyTypeId: string | undefined) {
+  const key = normalizePropertyKind(catalog.find((option) => option.id.toString() === propertyTypeId)?.key);
+  const appraisalClass = classOfPropertyKind(key);
+  const essence = appraisalClass === "INMUEBLE"
+    ? essenceChoices("INMUEBLE", []).find((choice) => choice.value !== NEW_OWN_CHOICE && propertyKindFor("INMUEBLE", choice.value) === key)?.value
+    : undefined;
+  return { appraisalClass, essence: essence ?? defaultEssence(appraisalClass) };
+}
+
+/** The «Tipo de bien» of the catalog a class and essence stand for, by its id; the first one when the catalog lacks it. */
+export function propertyTypeIdFor(catalog: ReadonlyArray<{ id: number; key?: string }>, appraisalClass: AppraisalClass, essence: string) {
+  const key = propertyKindFor(appraisalClass, essence);
+  return (catalog.find((option) => normalizePropertyKind(option.key) === key) ?? catalog[0])?.id;
+}
+
+const EMPTY_FIRM_LISTS: FirmLists = { essences: { INMUEBLE: [], MAQUINARIA: [], AGROPECUARIO: [] }, appraisalKinds: [] };
+
 export function CreateValuationForm({
   catalogs,
   preselectedTemplate = null,
@@ -70,8 +110,11 @@ export function CreateValuationForm({
   /** A page where the person can fix the error, as the server offers it. */
   const [errorLink, setErrorLink] = useState<string | null>(phoneRequired ? PHONE_ACCOUNT_LINK : null);
   const [missingCatalog, setMissingCatalog] = useState<string | null>(null);
+  const [firmLists, setFirmLists] = useState<FirmLists>(catalogs.firmLists ?? EMPTY_FIRM_LISTS);
   const [form, setForm] = useState(() => {
     const preselected = preselectedTemplateId(catalogs.templates, preselectedTemplate);
+    const templateTypes = preselected ? typesOfTemplate(catalogs.templates, preselected) : {};
+    const subject = subjectOfPropertyType(catalogs.propertyTypes, templateTypes.propertyTypeId);
     return {
       title: "",
       clientName: "",
@@ -81,9 +124,11 @@ export function CreateValuationForm({
       templateId: preselected ?? defaultTemplateId(catalogs.templates, catalogs.appraisalTypes[0]?.id?.toString() ?? ""),
       responsibleUserId: catalogs.responsibleUsers[0]?.id?.toString() ?? "",
       appraisalTypeOther: "",
-      propertyTypeOther: "",
       operationTypeOther: "",
-      ...(preselected ? typesOfTemplate(catalogs.templates, preselected) : null),
+      appraisalClass: subject.appraisalClass as AppraisalClass,
+      essence: subject.essence,
+      essenceOther: "",
+      ...templateTypes,
     };
   });
 
@@ -100,21 +145,52 @@ export function CreateValuationForm({
   const firmTemplates = templatesForType.filter((template) => !template.system);
   const chosenTemplate = catalogs.templates.find((template) => template.id.toString() === form.templateId);
   const ownKinds = {
-    appraisal: choosesOwnKind(catalogs.appraisalTypes, form.appraisalTypeId),
-    property: choosesOwnKind(catalogs.propertyTypes, form.propertyTypeId),
     operation: choosesOwnKind(catalogs.operationTypes, form.operationTypeId),
+  };
+  // «Tipo de avalúo»: the catalog's, the firm's own and «Otro…»; a name of its own is the catalog's «Otro» with that name.
+  const appraisalCatalog = catalogs.appraisalTypes.filter((option) => !isOwnKindKey(option.key)).map((option) => ({ key: (option.key ?? "").toLowerCase(), label: option.label }));
+  const appraisalOther = catalogs.appraisalTypes.find((option) => isOwnKindKey(option.key));
+  const appraisalChoices = appraisalKindChoices(firmLists.appraisalKinds, undefined, appraisalCatalog);
+  const chosenAppraisalType = catalogs.appraisalTypes.find((option) => option.id.toString() === form.appraisalTypeId);
+  const appraisalChoice = !chosenAppraisalType ? "" : isOwnKindKey(chosenAppraisalType.key)
+    ? (form.appraisalTypeOther && appraisalChoices.some((choice) => choice.value === `own:${form.appraisalTypeOther}`) ? `own:${form.appraisalTypeOther}` : NEW_OWN_CHOICE)
+    : (chosenAppraisalType.key ?? "").toLowerCase();
+  const chooseAppraisalKind = (choice: string, typed = "") => {
+    const { key, ownName } = appraisalKindOfChoice(choice, typed);
+    const option = isOwnKindKey(key) ? appraisalOther : catalogs.appraisalTypes.find((item) => (item.key ?? "").toLowerCase() === key);
+    if (!option) return;
+    setForm((current) => ({ ...current, appraisalTypeOther: ownName }));
+    update("appraisalTypeId", option.id.toString());
+  };
+  const essences = essenceChoices(form.appraisalClass, firmLists.essences[form.appraisalClass]);
+  const essenceName = form.essence === NEW_OWN_CHOICE ? form.essenceOther.trim() : form.essence;
+
+  const keepInFirmList = async (item: Parameters<typeof api.firm.addFirmListItem>[0]) => {
+    try {
+      const saved = await api.firm.addFirmListItem(item);
+      setFirmLists(saved.lists);
+      toast.success(`«${item.name}» quedó en la lista del despacho.`);
+      return true;
+    } catch {
+      toast.error("No se pudo guardar en la lista del despacho. Intenta de nuevo.");
+      return false;
+    }
   };
 
   const update = (key: keyof typeof form, value: string) => {
     setForm((current) => {
       // A firm's document serves any type, so changing the type keeps it chosen.
       const keepsTemplate = catalogs.templates.some((template) => template.document && template.id.toString() === current.templateId);
+      const templateTypes = key === "templateId" ? typesOfTemplate(catalogs.templates, value) : null;
       return {
         ...current,
         [key]: value,
         ...(key === "appraisalTypeId" && !keepsTemplate ? { templateId: defaultTemplateId(catalogs.templates, value) } : null),
         // Choosing a firm's template sets the kinds of valuation and property it is meant for; they still change.
-        ...(key === "templateId" ? typesOfTemplate(catalogs.templates, value) : null),
+        ...templateTypes,
+        ...(templateTypes?.propertyTypeId ? { ...subjectOfPropertyType(catalogs.propertyTypes, templateTypes.propertyTypeId), essenceOther: "" } : null),
+        // Another class proposes its own essences.
+        ...(key === "appraisalClass" ? { essence: defaultEssence(value as AppraisalClass), essenceOther: "" } : null),
       };
     });
   };
@@ -140,13 +216,15 @@ export function CreateValuationForm({
           title: form.title,
           clientName: form.clientName,
           appraisalTypeId: Number(form.appraisalTypeId),
-          propertyTypeId: Number(form.propertyTypeId),
+          // The catalog's «Tipo de bien» follows from what is valued; the server checks it again.
+          propertyTypeId: propertyTypeIdFor(catalogs.propertyTypes, form.appraisalClass, essenceName),
           operationTypeId: Number(form.operationTypeId),
+          appraisalClass: form.appraisalClass,
+          essence: essenceName,
           templateId: form.templateId ? Number(form.templateId) : null,
           responsibleUserId: form.responsibleUserId ? Number(form.responsibleUserId) : null,
           // «¿Cuál?» goes only with a kind chosen as «Otro».
-          ...(ownKinds.appraisal ? { appraisalTypeOther: form.appraisalTypeOther.trim() } : null),
-          ...(ownKinds.property ? { propertyTypeOther: form.propertyTypeOther.trim() } : null),
+          ...(isOwnKindKey(chosenAppraisalType?.key) ? { appraisalTypeOther: form.appraisalTypeOther.trim() } : null),
           ...(ownKinds.operation ? { operationTypeOther: form.operationTypeOther.trim() } : null),
         }),
       });
@@ -228,21 +306,68 @@ export function CreateValuationForm({
           <fieldset className="rounded-2xl border border-border bg-card p-4 sm:p-6">
             <legend className="px-1 text-sm font-semibold">El bien y el propósito</legend>
             <FieldGroup className="mt-2">
-              <div className="grid gap-4 md:grid-cols-3">
-                <SelectField
-                  label="Tipo de avalúo"
-                  value={form.appraisalTypeId}
-                  onChange={(value) => update("appraisalTypeId", value)}
-                  options={catalogs.appraisalTypes}
-                  other={ownKinds.appraisal ? { value: form.appraisalTypeOther, onChange: (value) => update("appraisalTypeOther", value), placeholder: "Ej. Arbitraje" } : undefined}
-                />
-                <SelectField
-                  label="Tipo de bien"
-                  value={form.propertyTypeId}
-                  onChange={(value) => update("propertyTypeId", value)}
-                  options={catalogs.propertyTypes}
-                  other={ownKinds.property ? { value: form.propertyTypeOther, onChange: (value) => update("propertyTypeOther", value), placeholder: "Ej. Hotel boutique" } : undefined}
-                />
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor="create-valuation-class">Clase de avalúo</FieldLabel>
+                  <NativeSelect
+                    id="create-valuation-class"
+                    className="w-full [&_select]:h-11 sm:[&_select]:h-9"
+                    value={form.appraisalClass}
+                    onChange={(event) => update("appraisalClass", event.target.value)}
+                    data-appraisal-class
+                  >
+                    {APPRAISAL_CLASSES.map((appraisalClass) => (
+                      <NativeSelectOption key={appraisalClass} value={appraisalClass}>{APPRAISAL_CLASS_LABELS[appraisalClass]}</NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                  <FieldDescription>
+                    {form.appraisalClass === "MAQUINARIA"
+                      ? "El dictamen habla de un bien mueble y la carátula pide los datos de la máquina. Se elige al crear el avalúo."
+                      : form.appraisalClass === "AGROPECUARIO"
+                        ? "Cultivos, ganado y forestales."
+                        : "Casas, departamentos, oficinas, locales, bodegas, edificios y terrenos."}
+                  </FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="create-valuation-essence">¿Qué se está valuando?</FieldLabel>
+                  <ExtendableSelect
+                    id="create-valuation-essence"
+                    selectClassName="w-full [&_select]:h-11 sm:[&_select]:h-9"
+                    inputClassName="h-11 text-base sm:h-9 sm:text-sm"
+                    required
+                    choices={essences}
+                    value={form.essence}
+                    onChange={(value) => update("essence", value)}
+                    typed={form.essenceOther}
+                    onTypedChange={(value) => update("essenceOther", value)}
+                    placeholder={form.appraisalClass === "MAQUINARIA" ? "Ej. Grúa" : form.appraisalClass === "AGROPECUARIO" ? "Ej. Huerta de aguacate" : "Ej. Hotel boutique"}
+                    onKeep={async (name) => {
+                      const kept = await keepInFirmList({ list: "queSeValua", appraisalClass: form.appraisalClass, name });
+                      if (kept) setForm((current) => ({ ...current, essence: name, essenceOther: "" }));
+                      return kept;
+                    }}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="create-valuation-appraisal-kind">Tipo de avalúo</FieldLabel>
+                  <ExtendableSelect
+                    id="create-valuation-appraisal-kind"
+                    selectClassName="w-full [&_select]:h-11 sm:[&_select]:h-9"
+                    inputClassName="h-11 text-base sm:h-9 sm:text-sm"
+                    required
+                    choices={appraisalChoices}
+                    value={appraisalChoice}
+                    onChange={(value) => chooseAppraisalKind(value)}
+                    typed={appraisalChoice === NEW_OWN_CHOICE ? form.appraisalTypeOther : ""}
+                    onTypedChange={(value) => setForm((current) => ({ ...current, appraisalTypeOther: value }))}
+                    placeholder="Ej. Arbitraje"
+                    onKeep={async (name) => {
+                      const kept = await keepInFirmList({ list: "tipoAvaluo", name });
+                      if (kept) chooseAppraisalKind(`own:${name}`);
+                      return kept;
+                    }}
+                  />
+                </Field>
                 <SelectField
                   label="Tipo de operación"
                   value={form.operationTypeId}

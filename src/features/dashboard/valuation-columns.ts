@@ -17,7 +17,7 @@ export const VALUATION_COLUMN_LABELS: Record<ValuationColumn, string> = {
   titulo: "Título",
   cliente: "Cliente",
   ubicacion: "Ubicación",
-  tipo: "Tipo de bien",
+  tipo: "Qué se valúa",
   tipoAvaluo: "Tipo de avalúo",
   estado: "Estado",
   valuador: "Valuador",

@@ -4,6 +4,7 @@
  * server (stored results and trace), so both compute the same thing.
  */
 import { SURFACE_SLOT, marketSurfaceFormulaText, surfaceFactorFormula, type CapturedFactor, type FactorSlot } from "../engine/factors";
+import type { ComparableMachineryDetails } from "./comparable-machinery";
 import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig } from "../engine/config";
 import type { ComparableInput, MarketApproachInput } from "../engine/market";
 import { formulaOfText, type CapturedFormulas } from "./captured-formulas";
@@ -364,6 +365,8 @@ export type ComparableDto = {
   propertyDetails?: ComparablePropertyDetails | null;
   /** The master workbook's listing facts (id in the portal, currency, photo link, verification). */
   listingDetails?: ComparableListingDetails | null;
+  /** The machine's data of a machinery comparable (marca, modelo, horómetro…); the calculation does not read them. */
+  machinery?: ComparableMachineryDetails | null;
   photos: ComparablePhotoDto[];
   /** Read only: the comparable's number in the firm's base (formatComparableId), its screenshot and its review. */
   folio?: number | null;

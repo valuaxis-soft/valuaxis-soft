@@ -1,6 +1,7 @@
 import { cloneSections, defineSection } from "../section-builders";
 import { appraisedGoodWording } from "../services/appraised-good-wording";
-import { caratulaSection } from "./caratula";
+import { isMachineryPropertyKind } from "../calculation/machinery-types";
+import { caratulaSection, machineryCaratulaSection } from "./caratula";
 import { conclusionesSection } from "./conclusiones";
 import { consideracionesSection } from "./consideraciones";
 import { construccionSection } from "./construccion";
@@ -61,16 +62,19 @@ export const createInitialSections = () => cloneSections(sectionTemplates);
 
 /**
  * The template of a section. The conclusion's names the concluded value as the
- * book of the valuation's property type does; the rest are the same for all.
+ * book of the valuation's property type does (with what is valued, `essence`,
+ * in a machinery valuation); a machinery carátula asks for the machine's data
+ * instead of the property's; the rest are the same for all.
  */
-export function getInitialSectionTemplate(sectionKey: string, propertyKind?: string | null) {
+export function getInitialSectionTemplate(sectionKey: string, propertyKind?: string | null, essence?: string | null) {
   const canonical = getCanonicalSectionKey(sectionKey);
-  const template = sectionTemplates.find(
-    (section) => getCanonicalSectionKey(section.id) === canonical,
-  );
+  const machineryCaratula = canonical === "CARATULA" && isMachineryPropertyKind(propertyKind);
+  const template = machineryCaratula
+    ? { ...sectionTemplates.find((section) => getCanonicalSectionKey(section.id) === canonical), ...machineryCaratulaSection }
+    : sectionTemplates.find((section) => getCanonicalSectionKey(section.id) === canonical);
   if (!template) return null;
   const clone = structuredClone(template);
-  const { concludedValueLabel } = appraisedGoodWording(propertyKind);
+  const { concludedValueLabel } = appraisedGoodWording(propertyKind, essence);
   if (canonical !== "CONCLUSIONES" || concludedValueLabel === CONCLUDED_VALUE_LABEL) return clone;
   return {
     ...clone,

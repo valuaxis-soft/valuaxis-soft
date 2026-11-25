@@ -28,6 +28,7 @@ import type { TeamRole } from "@/features/team/team-rules";
 import type { MyInvitationDto, SentInvitationDto, TeamDto } from "@/features/team/team.service";
 import type { ComparableReviewSettingsInput, FirmSettingsInput } from "@/features/firm/firm-schemas";
 import type { FirmSettingsDto } from "@/features/firm/firm.service";
+import type { FirmListItem, FirmLists } from "@/features/firm/firm-lists";
 import type { ComparableReviewSettingsDto } from "@/features/firm/comparable-review-settings.service";
 import type { FirmDocumentPaletteDto } from "@/features/firm/document-palette.service";
 import type { DocumentPalette } from "@/features/valuations/services/document-palette";
@@ -548,6 +549,9 @@ export const api = {
       request<{ units: string[] }>(`/organizacion/despacho/unidades`, { method: "PATCH", body: JSON.stringify({ unit, nextUnit }) }),
     removeCustomUnit: (unit: string) =>
       request<{ units: string[] }>(`/organizacion/despacho/unidades`, { method: "DELETE", body: JSON.stringify({ unit }) }),
+    /** «¿Qué se está valuando?» and «Tipo de avalúo» of the firm's own: a name typed and ticked joins its list. */
+    addFirmListItem: (item: FirmListItem) =>
+      request<{ lists: FirmLists }>(`/organizacion/despacho/listas`, { method: "POST", body: JSON.stringify(item) }),
     customFactors: () => request<{ factors: CustomFactor[] }>(`/organizacion/despacho/factores/personalizados`),
     addCustomFactor: (label: string) =>
       request<{ factors: CustomFactor[]; factor: CustomFactor | null }>(`/organizacion/despacho/factores/personalizados`, {

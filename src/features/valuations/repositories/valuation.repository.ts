@@ -27,6 +27,7 @@ import { extractStorageKey, isS3Source } from "@/features/valuations/services/im
 import { resolveSignatures, validityMonthsBetween, type ValuationSignature } from "@/features/valuations/services/valuation-signatures";
 import { COVER_IMAGE_FOCUS_CENTER, normalizeCoverImageFocus, type CoverImageFocus, type CoverImageSize } from "@/features/valuations/services/cover-image-focus";
 import { readOwnKindNames } from "@/features/valuations/services/property-kinds";
+import { readAppraisalSubject, type AppraisalClass } from "@/features/valuations/services/appraisal-subject";
 import { savedTitle } from "@/features/valuations/services/block-title";
 
 export type ValuationListItem = {
@@ -40,6 +41,12 @@ export type ValuationListItem = {
   /** The name of a kind of the appraiser's own, when the kind is "otro"/"otra" (property-kinds.ts). */
   propertyKindOther?: string;
   valuationKindOther?: string;
+  /** «Clase de avalúo» and «¿Qué se está valuando?» (appraisal-subject.ts). */
+  appraisalClass?: AppraisalClass;
+  essence?: string;
+  /** Lowercase SClave of «Tipo de avalúo» (Comercial…), and the name of its «Otro». */
+  appraisalKind?: string;
+  appraisalKindOther?: string;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -412,12 +419,19 @@ export async function getValuationVersionByPublicId(
   return { ...(await mapValuationDetail(valuation, version)), locked: true };
 }
 
-/** The names of the appraiser's own kinds, as the meta carries them. */
-function ownKindNamesOf(characteristics: unknown): Pick<ValuationListItem, "propertyKindOther" | "valuationKindOther"> {
+/** The names of the appraiser's own kinds, the class and what is valued, as the meta carries them. */
+function ownKindNamesOf(
+  characteristics: unknown,
+  propertyKind: string,
+): Pick<ValuationListItem, "propertyKindOther" | "valuationKindOther" | "appraisalKindOther" | "appraisalClass" | "essence"> {
   const names = readOwnKindNames(characteristics);
+  const subject = readAppraisalSubject(characteristics, propertyKind);
   return {
     ...(names.tipoBienOtro ? { propertyKindOther: names.tipoBienOtro } : {}),
     ...(names.tipoAvaluoOtro ? { valuationKindOther: names.tipoAvaluoOtro } : {}),
+    ...(names.claseAvaluoOtro ? { appraisalKindOther: names.claseAvaluoOtro } : {}),
+    appraisalClass: subject.appraisalClass,
+    essence: subject.essence,
   };
 }
 
@@ -426,7 +440,8 @@ async function mapValuationDetail(
   valuation: AvaluoWithRelations,
   content: VersionTrabajo | null,
 ): Promise<ValuationDetail> {
-  const sections = buildCanonicalValuationSections(content?.seccionesDocumentos ?? [], valuation.tipoInmueble.SClave);
+  const { essence } = readAppraisalSubject(valuation.propiedadSujeto?.JCaracteristicas, valuation.tipoInmueble.SClave);
+  const sections = buildCanonicalValuationSections(content?.seccionesDocumentos ?? [], valuation.tipoInmueble.SClave, essence);
   const comparables = content?.comparables.map(mapComparable) ?? [];
 
   // Resolve all image URLs to fresh signed URLs (handles expired S3 URLs)
@@ -440,7 +455,8 @@ async function mapValuationDetail(
     postalCode: currentPostalCode(valuation.propiedadSujeto?.direccionesPropiedad),
     valuationKind: valuation.tipoOperacion.SClave.toLowerCase(),
     propertyKind: valuation.tipoInmueble.SClave.toLowerCase(),
-    ...ownKindNamesOf(valuation.propiedadSujeto?.JCaracteristicas),
+    appraisalKind: valuation.tipoAvaluo.SClave.toLowerCase(),
+    ...ownKindNamesOf(valuation.propiedadSujeto?.JCaracteristicas, valuation.tipoInmueble.SClave),
     status: valuation.estadoAvaluo.SClave.toLowerCase(),
     locked: valuation.BBloqueado,
     reviewApprovedAt: valuation.DFechaRevisionAprobada,
@@ -524,7 +540,7 @@ const DEFAULT_DOCUMENT_TEMPLATE_KEYS = new Set([
   "CONCLUSIONES",
 ]);
 
-export function buildCanonicalValuationSections(sections: DbSection[], propertyKind?: string | null): ValuationSectionDto[] {
+export function buildCanonicalValuationSections(sections: DbSection[], propertyKind?: string | null, essence?: string | null): ValuationSectionDto[] {
   const byCanonical = new Map<string, DbSection[]>();
   for (const section of sections) {
     if (isCustomSectionId(section.SClave)) continue;
@@ -542,8 +558,8 @@ export function buildCanonicalValuationSections(sections: DbSection[], propertyK
   const placed: { order: number; rank: number; section: ValuationSectionDto }[] = getOrderedValuationSections().map((definition, index) => {
     const persisted = selectCanonicalSection(byCanonical.get(definition.key) ?? []);
     return persisted
-      ? { order: persisted.IOrden, rank: index, section: mapSection(persisted, definition, propertyKind) }
-      : { order: index, rank: index, section: createEmptySection(definition, propertyKind) };
+      ? { order: persisted.IOrden, rank: index, section: mapSection(persisted, definition, propertyKind, essence) }
+      : { order: index, rank: index, section: createEmptySection(definition, propertyKind, essence) };
   });
   const registryCount = placed.length;
   const custom = sections
@@ -618,9 +634,9 @@ export function newValuationSections(propertyKind?: string | null): ValuationSec
   return getOrderedValuationSections().map((definition) => createEmptySection(definition, propertyKind));
 }
 
-function createEmptySection(definition: ValuationSectionDefinition, propertyKind?: string | null): ValuationSectionDto {
+function createEmptySection(definition: ValuationSectionDefinition, propertyKind?: string | null, essence?: string | null): ValuationSectionDto {
   const blocks = DEFAULT_DOCUMENT_TEMPLATE_KEYS.has(definition.key)
-    ? templateBlocks(definition.key, propertyKind)
+    ? templateBlocks(definition.key, propertyKind, essence)
     : [];
   return {
     id: sectionKeyToWorkspaceId(definition.key),
@@ -635,7 +651,7 @@ function createEmptySection(definition: ValuationSectionDefinition, propertyKind
   };
 }
 
-function mapSection(section: DbSection, definition: ValuationSectionDefinition, propertyKind?: string | null): ValuationSectionDto {
+function mapSection(section: DbSection, definition: ValuationSectionDefinition, propertyKind?: string | null, essence?: string | null): ValuationSectionDto {
   const sectionMetadata = hydrateSectionMetadata(section.JConfiguracion);
   const rootNodes = section.nodos
     .filter((node) => node.IdNodoPadre === null && node.DFechaEliminacion === null)
@@ -643,7 +659,7 @@ function mapSection(section: DbSection, definition: ValuationSectionDefinition, 
 
   const blocks = DEFAULT_DOCUMENT_TEMPLATE_KEYS.has(definition.key)
     && isEmptySectionPlaceholder(section, rootNodes, definition.label)
-    ? templateBlocks(definition.key, propertyKind)
+    ? templateBlocks(definition.key, propertyKind, essence)
     : rootNodes.map((node) => mapNodeToBlock(node, definition.key));
 
   // The registry's label, unless the appraiser renamed the tab; its name is then what was saved.
@@ -701,8 +717,8 @@ function normalizeTemplateIdentity(value: string) {
     .toUpperCase();
 }
 
-function templateBlocks(sectionKey: string, propertyKind?: string | null): ValuationBlockDto[] {
-  const template = getInitialSectionTemplate(sectionKey, propertyKind);
+function templateBlocks(sectionKey: string, propertyKind?: string | null, essence?: string | null): ValuationBlockDto[] {
+  const template = getInitialSectionTemplate(sectionKey, propertyKind, essence);
   return (template?.blocks ?? []).map((block, index) =>
     mapTemplateBlock(block, index, sectionKey),
   );

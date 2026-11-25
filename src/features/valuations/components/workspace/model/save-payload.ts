@@ -75,5 +75,8 @@ export function valuationMetaPayload(meta: ValuationMeta) {
     propertyKind: meta.propertyKind,
     propertyKindOther: meta.propertyKindOther ?? "",
     valuationKindOther: meta.valuationKindOther ?? "",
+    // Sent only once the carátula has them: a valuation of before keeps reading them from its kind.
+    ...(meta.appraisalClass ? { appraisalClass: meta.appraisalClass, essence: meta.essence ?? "" } : {}),
+    ...(meta.appraisalKind ? { appraisalKind: meta.appraisalKind, appraisalKindOther: meta.appraisalKindOther ?? "" } : {}),
   };
 }

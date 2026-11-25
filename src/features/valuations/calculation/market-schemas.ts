@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { machineryDetailsSchema } from "./comparable-machinery";
 import { SURFACE_POWERS } from "../engine/config";
 import { MAX_REGRESSION_VARIABLES } from "../engine/regression";
 import { capturedFormulasSchema } from "./captured-formulas";
@@ -150,6 +151,8 @@ export const comparableInputSchema = z.object({
   // The master workbook's other columns (comparable-master); a client of before leaves them out and they stay as stored.
   propertyDetails: propertyDetailsSchema.nullable().optional(),
   listingDetails: listingDetailsSchema.nullable().optional(),
+  // The machine's data of a machinery comparable; left out, they stay as stored.
+  machinery: machineryDetailsSchema.nullable().optional(),
   // Built-in factors once each, plus the firm's own: at most the six of the homologation and as many own ones.
   factors: z.array(factorSchema).max(FACTOR_TYPES.length + MAX_FACTOR_SLOTS)
     .refine((factors) => new Set(factors.map(factorKey)).size === factors.length, "Cada tipo de factor va una sola vez."),

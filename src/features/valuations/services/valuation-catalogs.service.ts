@@ -1,5 +1,6 @@
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { readDocumentTemplate } from "./document-template";
+import { resolveFirmLists, type FirmLists } from "@/features/firm/firm-lists";
 
 export type CatalogOption = {
   id: number;
@@ -26,10 +27,12 @@ export type ValuationCreationCatalogs = {
     propertyTypeId: number | null;
   })[];
   responsibleUsers: CatalogOption[];
+  /** «¿Qué se está valuando?» of each class and «Tipo de avalúo» the firm added (firm-lists.ts). */
+  firmLists?: FirmLists;
 };
 
 export async function getValuationCreationCatalogs(organizationId: number) {
-  const [appraisalTypes, propertyTypes, operationTypes, templates, responsibleUsers] =
+  const [appraisalTypes, propertyTypes, operationTypes, templates, responsibleUsers, organization] =
     await Promise.all([
       prisma.tipoAvaluo.findMany({
         where: { BActivo: true },
@@ -85,6 +88,7 @@ export async function getValuationCreationCatalogs(organizationId: number) {
           },
         },
       }),
+      prisma.organizacion.findUnique({ where: { IdOrganizacion: organizationId }, select: { JUnidadesPersonalizadas: true } }),
     ]);
 
   return {
@@ -120,6 +124,7 @@ export async function getValuationCreationCatalogs(organizationId: number) {
       id: item.usuario.IdUsuario,
       label: fullName(item.usuario) || item.usuario.SCorreo,
     })),
+    firmLists: resolveFirmLists(organization?.JUnidadesPersonalizadas),
   } satisfies ValuationCreationCatalogs;
 }
 

@@ -39,6 +39,8 @@ export async function POST(request: Request) {
       appraisalKindOther: input.appraisalTypeOther,
       propertyKindOther: input.propertyTypeOther,
       valuationKindOther: input.operationTypeOther,
+      appraisalClass: input.appraisalClass,
+      essence: input.essence,
       templateId: input.templateId ?? null,
       responsibleUserId: input.responsibleUserId ?? auth.user.id,
       status: "NUEVO",

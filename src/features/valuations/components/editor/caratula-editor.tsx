@@ -33,15 +33,7 @@ import {
   validateCaratula,
 } from "@/features/valuations/services/caratula-validation";
 
-import { isMachineryPropertyKind } from "@/features/valuations/calculation/machinery-types";
-import {
-  OTHER_PROPERTY_KIND,
-  OTHER_VALUATION_KIND,
-  PROPERTY_KIND_OPTIONS,
-  VALUATION_KIND_OPTIONS,
-  normalizePropertyKind,
-  normalizeValuationKind,
-} from "@/features/valuations/services/property-kinds";
+import { CaratulaSubjectFields } from "./caratula-subject-fields";
 import { formatDateValue } from "@/features/valuations/services/concept-value-format";
 import {
   DEFAULT_COVER_IMAGE_SIZE,
@@ -238,68 +230,7 @@ export function CaratulaEditor({
               onChange={(postalCode) => onUpdateMeta({ postalCode: sanitizePostalCode(postalCode) })}
             />
           </div>
-          <div className="min-w-0 md:col-span-3 xl:col-span-3">
-            <Field>
-              <FieldLabel>Tipo de bien</FieldLabel>
-            {isMachineryPropertyKind(meta.propertyKind) ? (
-              // Machinery is chosen when the valuation is created: its panels and wordings depend on it.
-              <NativeSelect className="w-full" disabled value={meta.propertyKind}>
-                <NativeSelectOption value={meta.propertyKind}>Maquinaria y equipo</NativeSelectOption>
-              </NativeSelect>
-            ) : (
-            <NativeSelect
-              className="w-full"
-              disabled={readOnly}
-              value={normalizePropertyKind(meta.propertyKind)}
-              onChange={(event) => onUpdateMeta({ propertyKind: event.target.value })}
-            >
-              {PROPERTY_KIND_OPTIONS.map((option) => (
-                // Machinery is chosen when the valuation is created: its panels and wordings depend on it.
-                <NativeSelectOption key={option.key} value={option.key} disabled={isMachineryPropertyKind(option.key)}>
-                  {option.label}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-            )}
-            {normalizePropertyKind(meta.propertyKind) === OTHER_PROPERTY_KIND ? (
-              <Input
-                aria-label="Nombre del tipo de bien"
-                className="mt-1"
-                placeholder="Escribe el tipo de bien"
-                maxLength={120}
-                readOnly={readOnly}
-                value={meta.propertyKindOther ?? ""}
-                onChange={(event) => onUpdateMeta({ propertyKindOther: event.target.value })}
-              />
-            ) : null}
-            </Field>
-          </div>
-          <div className="min-w-0 md:col-span-3 xl:col-span-3">
-            <Field>
-              <FieldLabel>Tipo de avalúo</FieldLabel>
-            <NativeSelect
-              className="w-full"
-              disabled={readOnly}
-              value={normalizeValuationKind(meta.valuationKind)}
-              onChange={(event) => onUpdateMeta({ valuationKind: event.target.value })}
-            >
-              {VALUATION_KIND_OPTIONS.map((option) => (
-                <NativeSelectOption key={option.key} value={option.key}>{option.label}</NativeSelectOption>
-              ))}
-            </NativeSelect>
-            {normalizeValuationKind(meta.valuationKind) === OTHER_VALUATION_KIND ? (
-              <Input
-                aria-label="Nombre del tipo de avalúo"
-                className="mt-1"
-                placeholder="Escribe el tipo de avalúo"
-                maxLength={120}
-                readOnly={readOnly}
-                value={meta.valuationKindOther ?? ""}
-                onChange={(event) => onUpdateMeta({ valuationKindOther: event.target.value })}
-              />
-            ) : null}
-            </Field>
-          </div>
+          <CaratulaSubjectFields meta={meta} readOnly={readOnly} onUpdateMeta={onUpdateMeta} />
         </div>
         <PrincipalImageEditor
           focus={normalizeCoverImageFocus(caratula.enfoqueImagenPrincipal)}

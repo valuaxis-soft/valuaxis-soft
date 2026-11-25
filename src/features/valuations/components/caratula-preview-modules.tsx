@@ -169,7 +169,7 @@ export function CaratulaConclusionModule({
       {showValue ? (
         <div className="mt-1">
           <ConcludedValueBox
-            title={appraisedGoodWording(meta.propertyKind).commercialValueTitle}
+            title={appraisedGoodWording(meta.propertyKind, meta.essence).commercialValueTitle}
             amount={caratula.valorTotal ? formatNumericValue(caratula.valorTotal, { valueFormat: "mxn-mn" }) : "Sin calcular"}
             words={caratula.valorConLetra || "Valor con letra pendiente"}
           />

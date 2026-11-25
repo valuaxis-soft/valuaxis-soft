@@ -25,6 +25,7 @@ function item(overrides: Partial<ValuationPageItem> = {}): ValuationPageItem {
     valuationKind: "compraventa",
     propertyKind: "casa_habitacion",
     propertyKindName: "Casa habitación",
+    appraisalClassName: "Inmueble",
     appraisalKindName: "Fiscal",
     status: "en_revision",
     statusName: "En revision",
