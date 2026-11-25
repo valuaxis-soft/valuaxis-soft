@@ -4,6 +4,7 @@
  * like the map's popups; the same look as the demonstration.
  */
 import { formatComparableId, formatDay } from "@/features/valuations/calculation/comparable-card";
+import { comparableMarketLabel } from "@/features/valuations/calculation/comparable-classes";
 import { isLandComparableType, isRentComparableType } from "@/features/valuations/calculation/market-types";
 
 import { baseMapLayer } from "./layers";
@@ -47,7 +48,7 @@ export function comparablePinCardHtml(pin: ComparablePinDto) {
   const layer = baseMapLayer(pin.type);
   const features = pinFeatures(pin);
   return `<div style="width:240px;display:grid;color:#12212f;font-family:inherit;white-space:normal">${photo(pin)}<div style="padding:8px 10px 10px;display:grid;gap:3px">`
-    + `<span style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:${layer.color};font-weight:600">${escapeHtml(`${formatComparableId(pin.folio) ?? "Sin número"} · ${layer.title}`)}</span>`
+    + `<span style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:${layer.color};font-weight:600">${escapeHtml(`${formatComparableId(pin.folio) ?? "Sin número"} · ${comparableMarketLabel(pin.type, pin.assetClass)}`)}</span>`
     + `<span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums">${escapeHtml(pinPriceLine(pin))}</span>`
     + (features ? line(features) : "")
     + line(pin.location)

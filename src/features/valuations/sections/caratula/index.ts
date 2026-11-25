@@ -116,3 +116,57 @@ export const machineryCaratulaSection = defineSection({
     ...VALUATION_BLOCKS,
   ],
 });
+
+/** The block of the vehicle's data in a vehicle carátula; its first concept is «Tipo de máquina / equipo», as the book has it. */
+export const VEHICLE_CARATULA_DATA_BLOCK_ID = "caratula-block-1-datos-del-vehiculo";
+export const VEHICLE_CARATULA_KIND_CONCEPT_ID = `${VEHICLE_CARATULA_DATA_BLOCK_ID}-concept-1`;
+
+/**
+ * The carátula of a vehicle (an automobile, a pickup, a truck, a motorcycle),
+ * as the firm's automobile book prints it (25 Nov 2026, «FORMATO AVALUO
+ * AUTOMOVIL»): its «l. CARATULA» (B29–B40) in that order and with those
+ * names — the plate and both serial numbers, the power, the odómetro instead
+ * of the horómetro — and, as «CARACTERÍSTICAS», what its «I.3 DATOS DE
+ * IDENTIFICACIÓN DEL BIEN» adds (color, submarca, tracción, transmisión,
+ * motor, combustible, componentes) with the «Estado de conservación» of its
+ * inspection. Every concept stays editable.
+ */
+export const vehicleCaratulaSection = defineSection({
+  ...SECTION,
+  blocks: [
+    createCompanyHeaderBlock(),
+    {
+      id: VEHICLE_CARATULA_DATA_BLOCK_ID,
+      title: "DATOS DEL BIEN A VALUAR",
+      concepts: [
+        ["Tipo de máquina / equipo"],
+        ["Marca"],
+        ["Modelo"],
+        ["Matrícula"],
+        ["No. de serie chasis"],
+        ["No. de serie motor"],
+        ["Año de fabricación"],
+        ["País de origen"],
+        ["Potencia (HP/kW)"],
+        ["Odómetro"],
+        ["Ubicación del bien"],
+      ],
+    },
+    APPLICANT_BLOCK,
+    {
+      id: "caratula-block-3-caracteristicas-del-vehiculo",
+      title: "CARACTERÍSTICAS",
+      concepts: [
+        ["Color"],
+        ["Submarca"],
+        ["Tracción"],
+        ["Tipo de transmisión"],
+        ["Tipo de motor"],
+        ["Combustible"],
+        ["Componentes principales"],
+        ["Estado de conservación"],
+      ],
+    },
+    ...VALUATION_BLOCKS,
+  ],
+});

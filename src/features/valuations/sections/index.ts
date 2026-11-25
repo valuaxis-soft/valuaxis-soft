@@ -1,7 +1,8 @@
 import { cloneSections, defineSection } from "../section-builders";
 import { appraisedGoodWording } from "../services/appraised-good-wording";
 import { isMachineryPropertyKind } from "../calculation/machinery-types";
-import { caratulaSection, machineryCaratulaSection } from "./caratula";
+import { isVehicleEssence } from "../services/appraisal-subject";
+import { caratulaSection, machineryCaratulaSection, vehicleCaratulaSection } from "./caratula";
 import { conclusionesSection } from "./conclusiones";
 import { consideracionesSection } from "./consideraciones";
 import { construccionSection } from "./construccion";
@@ -64,13 +65,14 @@ export const createInitialSections = () => cloneSections(sectionTemplates);
  * The template of a section. The conclusion's names the concluded value as the
  * book of the valuation's property type does (with what is valued, `essence`,
  * in a machinery valuation); a machinery carátula asks for the machine's data
- * instead of the property's; the rest are the same for all.
+ * instead of the property's, a vehicle's (an automobile, a truck…) for those
+ * of the automobile book; the rest are the same for all.
  */
 export function getInitialSectionTemplate(sectionKey: string, propertyKind?: string | null, essence?: string | null) {
   const canonical = getCanonicalSectionKey(sectionKey);
   const machineryCaratula = canonical === "CARATULA" && isMachineryPropertyKind(propertyKind);
   const template = machineryCaratula
-    ? { ...sectionTemplates.find((section) => getCanonicalSectionKey(section.id) === canonical), ...machineryCaratulaSection }
+    ? { ...sectionTemplates.find((section) => getCanonicalSectionKey(section.id) === canonical), ...(isVehicleEssence(essence) ? vehicleCaratulaSection : machineryCaratulaSection) }
     : sectionTemplates.find((section) => getCanonicalSectionKey(section.id) === canonical);
   if (!template) return null;
   const clone = structuredClone(template);

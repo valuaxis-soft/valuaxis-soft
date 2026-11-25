@@ -4,6 +4,7 @@
  * hits of a radius search and the subject of each valuation of the firm.
  */
 import type { OperationType } from "@/features/valuations/calculation/comparable-card";
+import type { ComparableClass } from "@/features/valuations/calculation/comparable-classes";
 import type { ComparableType } from "@/features/valuations/calculation/market-types";
 
 export interface ComparablePinDto {
@@ -11,6 +12,8 @@ export interface ComparablePinDto {
   id: string;
   folio: number | null;
   type: ComparableType;
+  /** Real estate or machinery: a machine's pin never names a real estate market. */
+  assetClass?: ComparableClass;
   operationType: OperationType;
   location: string;
   lat: number;

@@ -57,9 +57,9 @@ import type { ComparableCardDto, DuplicateMatchDto } from "@/features/valuations
 import { geocodingQueryOf } from "@/features/valuations/calculation/comparable-geocoding";
 import { DUPLICATE_REASON_LABELS, duplicateProbeOf, type DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
-import { comparableClassOf, type ComparableClass } from "@/features/valuations/calculation/comparable-classes";
+import { comparableClassOf, comparableMarketLabel, type ComparableClass } from "@/features/valuations/calculation/comparable-classes";
 import { defaultExchangeRateSource, exchangeNote, pesosOf } from "@/features/valuations/calculation/comparable-currency";
-import { defaultKindOfType, kindOfComparable } from "@/features/valuations/calculation/comparable-kinds";
+import { defaultKindOfType, isVehicleKind, kindOfComparable } from "@/features/valuations/calculation/comparable-kinds";
 import { ComparableKindField, kindFieldLabel } from "./comparable-kind-field";
 import { ComparableLocationPicker } from "@/features/valuations/comparable-base/components/comparable-location-picker";
 import { ComparableCardButton } from "./comparable-card-dialog";
@@ -550,6 +550,8 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     ?? (comparable ? comparableClassOf({ assetClass: comparable.propertyDetails?.assetClass, constructionType: comparable.constructionType }) : "INMUEBLE");
   // A machine's sheet (comparable-machinery-fields) by its class, or by the machine's data it already carries.
   const machinery = isMachineryComparable(comparable ?? {}, props.machinery ?? kindClass === "MAQUINARIA");
+  // An automobile, a truck…: the automobile book's fields, in km.
+  const vehicle = machinery && isVehicleKind(draft.kindKey);
   // A machine's age follows its model year («Año» of «Datos de la máquina») to the valuation's day, while not typed.
   const referenceDay = props.valuationDate ?? todayInMexico();
   const machineAge = machinery ? ageFromYear(parseDecimal(machineryDraft.year), referenceDay) : null;
@@ -589,7 +591,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     }
     const coordinatesProblem = coordinatesError(latitude, longitude);
     if (coordinatesProblem) return { field: latitude === null ? "latitude" : "longitude", error: coordinatesProblem };
-    const machine = machinery ? machineryDetailsFromDraft(machineryDraft) : null;
+    const machine = machinery ? machineryDetailsFromDraft(machineryDraft, { vehicle }) : null;
     if (machine && "error" in machine) return { field: machine.field as ComparableFormField, error: machine.error };
     const building = built && !machinery ? buildingValues() : null;
     if (building && "error" in building) return building;
@@ -1284,7 +1286,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
   return (
     <>
       <div className="grid gap-3 text-sm" data-comparable-sheet={comparable ? "editar" : "nuevo"}>
-        <ComparableCardHeader id={id ?? (comparable ? null : "Nuevo")} type={props.comparableType} reference={comparable?.reference ?? null} review={comparable?.review} where={where} />
+        <ComparableCardHeader id={id ?? (comparable ? null : "Nuevo")} type={props.comparableType} assetClass={machinery ? "MAQUINARIA" : "INMUEBLE"} reference={comparable?.reference ?? null} review={comparable?.review} where={where} />
         {comparable?.updatedOn ? <ComparableValidityLine updatedOn={comparable.updatedOn} months={comparable.validityMonths ?? props.defaultValidityMonths} /> : null}
         {card ? <ComparableCardWarnings warnings={card.warnings} /> : null}
 
@@ -1300,6 +1302,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
             </p>
             <DuplicateMatchList
               matches={duplicates}
+              assetClass={machinery ? "MAQUINARIA" : "INMUEBLE"}
               busy={saving}
               onSame={(comparableId) => void save(false, comparableId)}
               onReuse={(comparableId) => void reuse(comparableId)}
@@ -1326,6 +1329,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
               </p>
               <DuplicateMatchList
                 matches={liveMatches}
+                assetClass={machinery ? "MAQUINARIA" : "INMUEBLE"}
                 busy={saving}
                 onSame={(comparableId) => void save(false, comparableId)}
                 onReuse={(comparableId) => void reuse(comparableId)}
@@ -1439,7 +1443,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
             </SheetSection>
             <SheetSection title="Fuente de información"><SheetFieldTable items={source} /></SheetSection>
             {machinery ? (
-              <MachineryDetailsFields draft={machineryDraft} onChange={setMachineryDraft} invalidField={error?.field} autoComplete={NO_BROWSER_AUTOFILL} />
+              <MachineryDetailsFields draft={machineryDraft} onChange={setMachineryDraft} invalidField={error?.field} autoComplete={NO_BROWSER_AUTOFILL} vehicle={vehicle} />
             ) : (
               <SheetSection title="Terreno"><SheetFieldTable items={land} /></SheetSection>
             )}
@@ -1554,6 +1558,8 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
 /** The comparables of the base a capture matches, with what they match on and the answers. */
 function DuplicateMatchList(props: {
   matches: DuplicateMatchDto[];
+  /** The sheet's class: the base only offers duplicates of the same one. */
+  assetClass: ComparableClass;
   busy: boolean;
   onSame: (comparableId: string) => void;
   onReuse: (comparableId: string) => void;
@@ -1571,7 +1577,7 @@ function DuplicateMatchList(props: {
               Coincide con <span className="font-mono">{formatComparableId(match.folio) ?? "un comparable sin número"}</span> · {match.location}
             </p>
             <p className="text-xs text-muted-foreground">
-              {COMPARABLE_TYPE_LABELS[match.type]} · {money(match.price)}
+              {comparableMarketLabel(match.type, props.assetClass)} · {money(match.price)}
               {match.area ? ` · ${match.area.toLocaleString("es-MX", { maximumFractionDigits: 2 })} m²` : ""}
               {match.contactPhone ? ` · tel. ${match.contactPhone}` : ""} · {match.valuation ? `avalúo ${match.valuation.folio}` : "base general"}
               {match.sameValuation ? " (este avalúo)" : ""} · datos del {formatDay(match.updatedOn)}

@@ -2,7 +2,9 @@
  * Turns the machinery and equipment calculation into the dictamen: one
  * generated block in the cost section and one in the market section, laid out
  * as the sheets «IV. ENF. COSTOS» and «V. ENF. MERCADO» of the firm's MEH book
- * print them.
+ * print them. A vehicle (an automobile, a truck…) prints as the automobile
+ * book does: the same tables, with its use in km where a machine's is in
+ * hours.
  */
 import { amountInWords } from "../engine/amount-in-words";
 import type { MachineryCostResult, MachineryMarketResult } from "../engine/machinery";
@@ -58,8 +60,18 @@ const closingBox = (label: string, value: number): TableSummaryBox => ({
   rows: [{ label, value: money(value), emphasis: "total" }, { label: "Cifra en letras:", value: amountInWords(value) }],
 });
 
+/** Whether the valuation is of a vehicle (appraisal-subject.ts, `isVehicleEssence`): its use is read in km. */
+export type MachineryDocumentOptions = { vehicle?: boolean };
+
+/** The book's names of the use of the good: hours of a machine; km of a vehicle (automobile book, H18, U22 and B63). */
+export function machineryUseLabels(options: MachineryDocumentOptions = {}) {
+  return options.vehicle
+    ? { cost: "Kilometraje", summary: "Kms", characteristic: "Kilómetros" }
+    : { cost: "Horas", summary: "Horas", characteristic: "Horas" };
+}
+
 /** The block of the cost section. None while the item cannot be computed. */
-export function machineryCostBlocks(cost: MachineryCostDto, result: MachineryCostResult | null): Block[] {
+export function machineryCostBlocks(cost: MachineryCostDto, result: MachineryCostResult | null, options: MachineryDocumentOptions = {}): Block[] {
   if (!result) return [];
   const { item } = cost;
   // With the conservation applied once, the FCo of the item is not part of its resulting factor.
@@ -78,7 +90,7 @@ export function machineryCostBlocks(cost: MachineryCostDto, result: MachineryCos
           [textColumn("Nombre del Bien"), textColumn("Marca", "center"), textColumn("Modelo", "center"), textColumn("No. Serie", "center"), textColumn("No. Motor", "center"), textColumn("No. Matrícula", "center")],
           [[cell(item.name), cell(item.brand), cell(item.model), cell(item.serial), cell(item.engineNumber), cell(item.plate)]]),
         generatedTable(`${COST_PREFIX}-tabla-estado`, "Estado del bien",
-          [textColumn("Otro"), textColumn("Horas", "center"), textColumn("Estado Físico", "center"), textColumn("Deficiencias"), textColumn("Piezas Especiales / Aditamentos"), textColumn("Notas")],
+          [textColumn("Otro"), textColumn(machineryUseLabels(options).cost, "center"), textColumn("Estado Físico", "center"), textColumn("Deficiencias"), textColumn("Piezas Especiales / Aditamentos"), textColumn("Notas")],
           [[cell(item.other), cell(item.hours), cell(item.physicalState), cell(item.deficiencies), cell(item.attachmentsNote), cell(item.notes)]]),
       ],
     }),
@@ -173,7 +185,8 @@ export function machineryCostBlocks(cost: MachineryCostDto, result: MachineryCos
  * The block of the market section, with the subject of the cost capture next
  * to the offers. None while there are no offers.
  */
-export function machineryMarketBlocks(market: MachineryMarketDto, subject: MachineryCostDto["item"], result: MachineryMarketResult | null): Block[] {
+export function machineryMarketBlocks(market: MachineryMarketDto, subject: MachineryCostDto["item"], result: MachineryMarketResult | null, options: MachineryDocumentOptions = {}): Block[] {
+  const use = machineryUseLabels(options);
   // Each offer keeps its place in the capture: the free characteristics carry one value per place.
   const places = market.offers.map((row, place) => ({ row, place })).filter(({ row }) => row.ref.trim());
   const offers = places.map(({ row }) => row);
@@ -191,7 +204,7 @@ export function machineryMarketBlocks(market: MachineryMarketDto, subject: Machi
       generatedTable(`${MARKET_PREFIX}-tabla-resumen`, "Resumen de comparables",
         [
           figureColumn("REF."), textColumn("Descripción"), textColumn("Marca", "center"), textColumn("Modelo", "center"), figureColumn("Año"),
-          figureColumn("Horas"), textColumn("Aditamentos"), figureColumn("Fecha"), moneyColumn("Valor de Oferta"),
+          figureColumn(use.summary), textColumn("Aditamentos"), figureColumn("Fecha"), moneyColumn("Valor de Oferta"),
         ],
         offers.map((row) => [row.ref, cell(row.description), cell(row.brand), cell(row.model), cell(row.year), cell(row.hours), cell(row.attachments), cell(row.date), money(row.price ?? 0)]),
         { notes: [{ position: "top", label: "Obtención del valor unitario.", text: "Comparables de bienes en venta semejantes en uso al sujeto que se valúa." }] }),
@@ -209,7 +222,7 @@ export function machineryMarketBlocks(market: MachineryMarketDto, subject: Machi
     ["Marca", cell(subject.brand), (row) => cell(row.brand)],
     ["Modelo", cell(subject.model), (row) => cell(row.model)],
     ["Año", cell(subject.year), (row) => cell(row.year)],
-    ["Horas", cell(subject.hours), (row) => cell(row.hours)],
+    [use.characteristic, cell(subject.hours), (row) => cell(row.hours)],
     ["Ubicación", EMPTY, (row) => cell(row.location)],
   ];
   const figures: Characteristic[] = [

@@ -30,6 +30,7 @@ import {
   type MachineryMarketDto,
   type MachineryOfferDto,
 } from "@/features/valuations/calculation/machinery-types";
+import { machineryUseLabels } from "@/features/valuations/calculation/machinery-document";
 import { OFFER_LEVELS, OFFER_LEVEL_LABELS, type OfferLevel } from "@/features/valuations/calculation/market-types";
 import type { RoundingDigits } from "@/features/valuations/engine/config";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
@@ -313,6 +314,8 @@ type PanelProps = {
   valuationId: string;
   readOnly: boolean;
   onCalculation: (calculation: MachineryCalculationDto) => void;
+  /** What is valued is a vehicle: its use is captured in km, as the automobile book (machinery-document.ts). */
+  vehicle?: boolean;
 };
 
 /**
@@ -323,12 +326,13 @@ type PanelProps = {
 export function MachineryCostPanel(props: PanelProps) {
   const { calculation, setCalculation, loadError } = useMachineryCalculation(props.valuationId, props.readOnly, props.onCalculation);
   if (!calculation) return <PanelStatus loadError={loadError} />;
-  return <CostForm valuationId={props.valuationId} readOnly={props.readOnly || calculation.locked} calculation={calculation} onSaved={setCalculation} />;
+  return <CostForm valuationId={props.valuationId} readOnly={props.readOnly || calculation.locked} calculation={calculation} onSaved={setCalculation} vehicle={props.vehicle} />;
 }
 
-type FormProps = { valuationId: string; readOnly: boolean; calculation: MachineryCalculationDto; onSaved: (calculation: MachineryCalculationDto) => void };
+type FormProps = { valuationId: string; readOnly: boolean; calculation: MachineryCalculationDto; onSaved: (calculation: MachineryCalculationDto) => void; vehicle?: boolean };
 
-function CostForm({ valuationId, readOnly, calculation, onSaved }: FormProps) {
+function CostForm({ valuationId, readOnly, calculation, onSaved, vehicle = false }: FormProps) {
+  const useLabel = machineryUseLabels({ vehicle }).cost;
   const { conservationTwice } = calculation.cost;
   const [draft, setDraft] = useState(() => costDraftOf(calculation.cost));
   const { saving, saveError, enqueueSave } = useMachinerySave("cost", valuationId, costPayloadOf(costOf(costDraftOf(calculation.cost), conservationTwice)), onSaved);
@@ -378,7 +382,7 @@ function CostForm({ valuationId, readOnly, calculation, onSaved }: FormProps) {
         <div className="grid gap-3">
           <h4 className={heading}>Identificación del bien</h4>
           <div className="grid gap-3 sm:grid-cols-3">
-            {IDENTIFICATION.map((field) => itemField(field.key, field.label, { className: field.wide ? "sm:col-span-3" : undefined }))}
+            {IDENTIFICATION.map((field) => itemField(field.key, field.key === "hours" ? useLabel : field.label, { className: field.wide ? "sm:col-span-3" : undefined }))}
           </div>
         </div>
 
@@ -662,10 +666,13 @@ function CharacteristicsTable(props: {
 export function MachineryMarketPanel(props: PanelProps) {
   const { calculation, setCalculation, loadError } = useMachineryCalculation(props.valuationId, props.readOnly, props.onCalculation);
   if (!calculation) return <PanelStatus loadError={loadError} />;
-  return <MarketForm valuationId={props.valuationId} readOnly={props.readOnly || calculation.locked} calculation={calculation} onSaved={setCalculation} />;
+  return <MarketForm valuationId={props.valuationId} readOnly={props.readOnly || calculation.locked} calculation={calculation} onSaved={setCalculation} vehicle={props.vehicle} />;
 }
 
-function MarketForm({ valuationId, readOnly, calculation, onSaved }: FormProps) {
+function MarketForm({ valuationId, readOnly, calculation, onSaved, vehicle = false }: FormProps) {
+  const use = machineryUseLabels({ vehicle });
+  // The automobile book's «Kms» where the MEH book's «Horas».
+  const summaryColumns = OFFER_SUMMARY_COLUMNS.map((column) => (column.key === "hours" ? { ...column, label: use.summary } : column));
   const [draft, setDraft] = useState(() => marketDraftOf(calculation.market));
   const { saving, saveError, enqueueSave } = useMachinerySave("market", valuationId, marketPayloadOf(marketOf(marketDraftOf(calculation.market))), onSaved);
 
@@ -731,7 +738,7 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved }: FormProps) 
           <CaptureTable
             caption="Resumen de comparables"
             minWidth="980px"
-            columns={OFFER_SUMMARY_COLUMNS}
+            columns={summaryColumns}
             rows={draft.offers}
             readOnly={readOnly}
             onChange={setOffer}
@@ -768,8 +775,8 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved }: FormProps) 
             <div className="grid gap-2">
               <h4 className={heading}>Características técnicas</h4>
               <p className="text-xs text-muted-foreground">
-                Renglones libres del cuadro (Cabina, Kilómetros, Procedencia, Nivel de demanda…), con lo que tiene el sujeto y cada comparable. Son descriptivos:
-                no entran al cálculo. Marca, Modelo, Año, Horas, Ubicación, Edad, V.U.T., V.U.R. y Precio de oferta se imprimen solos.
+                Renglones libres del cuadro ({vehicle ? "Color, Motor, Puertas, Llanta repuesto, Historial servicios" : "Cabina, Kilómetros, Procedencia, Nivel de demanda"}…), con lo que tiene el sujeto y cada comparable. Son descriptivos:
+                no entran al cálculo. Marca, Modelo, Año, {use.characteristic}, Ubicación, Edad, V.U.T., V.U.R. y Precio de oferta se imprimen solos.
               </p>
               <CharacteristicsTable
                 rows={draft.characteristics}
