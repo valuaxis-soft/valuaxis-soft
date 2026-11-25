@@ -86,7 +86,7 @@ import {
 } from "../map-styles";
 import { detectStreets, metersPerPixel, type StreetWay } from "../streets";
 import { OSM_ATTRIBUTION } from "../streets-osm";
-import { preferredStreetName, renamedHighlights, renamedWays } from "../street-names";
+import { preferredStreetName, renamedHighlights, renamedWays, unifiedHighlights } from "../street-names";
 import type { LatLon } from "../types";
 import { CroquisLabelEditor } from "./croquis-label-editor";
 import { FreeLinesPanel } from "./free-lines-panel";
@@ -333,7 +333,7 @@ export function CroquisGeneratorBody({
   const savedAddress = data?.address ?? "";
   const streetRename = useMemo(() => preferredStreetName(new Set(osmStreets.map((way) => way.n)), savedAddress), [osmStreets, savedAddress]);
   const streets = useMemo(() => renamedWays(osmStreets, streetRename), [osmStreets, streetRename]);
-  const highlights = useMemo(() => renamedHighlights(settings.streets, streetRename), [settings.streets, streetRename]);
+  const highlights = useMemo(() => renamedHighlights(unifiedHighlights(settings.streets, osmStreets), streetRename), [settings.streets, osmStreets, streetRename]);
   const updateHighlights = (patch: Partial<StreetHighlights>) => updateSettings({ streets: { ...highlights, ...patch } });
   const streetsLoading = Boolean(subject) && loaded.key !== subjectKey;
   const streetsStatus = !subject ? null : streetsLoading ? "Buscando las calles alrededor del inmueble…" : loaded.problem;
@@ -754,8 +754,8 @@ export function CroquisGeneratorBody({
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
           <span className="inline-flex items-center gap-1.5">
-            <Label htmlFor={`${valuationId}-map-type`} className="text-xs text-muted-foreground">
-              Vista
+            <Label htmlFor={`${valuationId}-map-type`} className="text-xs text-muted-foreground" title="Solo cambia el mapa en pantalla; el croquis se imprime con el mapa de calles de OpenStreetMap.">
+              Vista en pantalla
             </Label>
             <NativeSelect id={`${valuationId}-map-type`} size="sm" value={settings.mapType} disabled={!canEdit} onChange={(event) => updateSettings({ mapType: event.target.value as MapType })}>
               {MAP_TYPES.map((type) => (
@@ -924,7 +924,7 @@ export function CroquisGeneratorBody({
         <div className="sticky bottom-0 -mx-4 grid gap-2 border-t bg-background p-4">
           <p className="text-xs text-muted-foreground">
             {subject
-              ? "Cada croquis se guarda como imagen del avalúo y se coloca en su lugar; después edítalo como cualquier imagen o vuelve a abrir este generador desde ella."
+              ? "Cada croquis se dibuja con el mapa de OpenStreetMap (el de Google solo se ve aquí, en pantalla), se guarda como imagen del avalúo y se coloca en su lugar; después edítalo como cualquier imagen o vuelve a abrir este generador desde ella."
               : "Ubica el inmueble (busca la dirección o arrastra el pin) para poder generar los croquis."}
           </p>
           <Button type="button" disabled={!canEdit || !subject || applying} onClick={applyToCroquis}>

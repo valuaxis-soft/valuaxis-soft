@@ -6,6 +6,7 @@
  * fetching (server/streets.service.ts). The data is ODbL: the panel credits
  * OpenStreetMap wherever the streets show.
  */
+import { withUnifiedSpellings } from "./street-names";
 import { simplifyPolyline, type StreetWay } from "./streets";
 import type { LatLon } from "./types";
 
@@ -61,7 +62,8 @@ export function parseOverpassWays(elements: readonly OverpassElement[]): StreetW
     if (points.length < 2) continue;
     ways.push({ id: element.id, n: name, r: rank, g: simplifyPolyline(points, SOURCE_TOLERANCE_METERS) });
   }
-  return ways.slice(0, MAX_STREET_WAYS);
+  // One spelling per street: pieces named with and without accents are one street (street-names.ts).
+  return withUnifiedSpellings(ways.slice(0, MAX_STREET_WAYS));
 }
 
 /** Coordinates rounded to about 110 m, so nearby pins share one answer. */

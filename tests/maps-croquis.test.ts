@@ -1,6 +1,6 @@
 /**
  * Etapa 1 of the maps: the croquis model (settings, numbered pins, the
- * overlay of the image), the shared Static API URL, the north arrow the
+ * overlay of the image), the on-screen view setting, the north arrow the
  * server composes, where the croquis images go in the document, how the pin
  * persists with the subject property and which pages get Google's sources
  * in the CSP.
@@ -30,7 +30,7 @@ import { withAddedBlockContent } from "../src/features/valuations/components/wor
 import { DEFAULT_STREET_HIGHLIGHTS, WEIGHT_RANGE, weightFromInput } from "../src/features/maps/highlights";
 import { MACRO_FRAME, MICRO_FRAME, sameFraming } from "../src/features/maps/map-styles";
 import { NORTH_ARROW_BOX, northArrowPlacement, northArrowSvg } from "../src/features/maps/north-arrow-symbols";
-import { STATIC_MAP_SIZE, imagePosition, staticColor, staticMapUrl } from "../src/features/maps/static-map";
+import { STATIC_MAP_SIZE, imagePosition } from "../src/features/maps/static-map";
 import { readSubjectCroquisSettings, readSubjectLocation, subjectLocationInputSchema, withSubjectLocation } from "../src/features/maps/subject-location";
 import { googleMapsPage } from "../src/security/headers/security-headers";
 
@@ -116,20 +116,7 @@ test("the pin and the settings persist in the subject property's characteristics
   assert.ok(subjectLocationInputSchema.safeParse({}).success);
 });
 
-test("the shared Static API URL: center, zoom, size at scale 2, colored markers, the red pin and clean styles", () => {
-  const url = new URL(staticMapUrl({ apiKey: "k", center: [20.6354, -103.4034], zoom: 15, subject: SUBJECT, clean: true, markers: [{ color: "#1f7ac2", points: [[20.635, -103.403]] }, { color: "#2f8a4f", points: [] }] }));
-  assert.equal(url.searchParams.get("center"), "20.635400,-103.403400");
-  assert.equal(url.searchParams.get("scale"), "2");
-  assert.deepEqual(url.searchParams.getAll("markers"), ["size:tiny|color:0x1f7ac2|20.635000,-103.403000", "color:red|20.634420,-103.402390"]);
-  assert.equal(url.searchParams.getAll("style").length, 6);
-  assert.equal(staticColor("#C0392B", "e6"), "0xc0392be6");
-  // Without a subject there is no red pin (the map of comparables of another feature could use it).
-  assert.equal(new URL(staticMapUrl({ apiKey: "k", center: SUBJECT, zoom: 15, subject: null })).searchParams.has("markers"), false);
-  // V6.3-08: the satellite photo, without the clean-map styles (nothing to hide on a photo); the street map stays the default.
-  const satellite = new URL(staticMapUrl({ apiKey: "k", center: SUBJECT, zoom: 17, clean: true, mapType: "satellite" })).searchParams;
-  assert.equal(satellite.get("maptype"), "satellite");
-  assert.equal(satellite.getAll("style").length, 0);
-  assert.equal(new URL(staticMapUrl({ apiKey: "k", center: SUBJECT, zoom: 17 })).searchParams.get("maptype"), "roadmap");
+test("V6.3-08: the on-screen view (map, satellite) is kept with the settings; the stored croquis no longer depends on it", () => {
   assert.equal(readCroquisSettings({ ...DEFAULT_CROQUIS_SETTINGS, mapType: undefined }).mapType, "roadmap", "settings stored before keep the street map");
   assert.equal(readCroquisSettings({ ...DEFAULT_CROQUIS_SETTINGS, mapType: "hybrid" }).mapType, "hybrid");
 });

@@ -29,7 +29,7 @@ const asRecord = (value: unknown) => (typeof value === "object" && value !== nul
 const numberOrNull = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
 /** The comparables of the version the editor shows, as pins; those without coordinates are left out. */
-async function valuationPins(versionId: number | null) {
+export async function valuationPins(versionId: number | null) {
   if (!versionId) return [];
   const rows = await prisma.comparableAvaluo.findMany({
     where: { IdVersionAvaluo: versionId, BIncluido: true },

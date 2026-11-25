@@ -94,7 +94,7 @@ test("a croquis is composed with the pins and the north arrow, stored as an imag
   const user = editor(fixture);
   const width = STATIC_MAP_SIZE.width * STATIC_MAP_SCALE;
   const height = STATIC_MAP_SIZE.height * STATIC_MAP_SCALE;
-  // Stands in for the Maps Static API's answer: a plain image of the size it returns.
+  // Stands in for the base map: a plain image of the stored size.
   const base = await sharp({ create: { width, height, channels: 3, background: "#eef1ea" } }).png().toBuffer();
   const pins = comparablePins([{ type: "INMUEBLE_VENTA", comparable: { id: "a", reference: 1, latitude: 20.6349, longitude: -103.4019, location: "Calle Perla 40" } }]);
 
@@ -114,7 +114,7 @@ test("a croquis is composed with the pins and the north arrow, stored as an imag
   assert.equal(stored.mimeType, "image/jpeg");
   const file = await prisma.archivo.findFirst({ where: { SClaveObjeto: stored.key } });
   assert.equal(file?.IdOrganizacion, fixture.organizationId);
-  assert.deepEqual(file?.JMetadatos, { uso: "CROQUIS" });
+  assert.deepEqual(file?.JMetadatos, { uso: "CROQUIS", base: "openstreetmap" });
 
   // Placed in the Croquis section and saved with the document, it reads back as any image of the valuation.
   const sections = initialSectionsFor((await getValuationByPublicId(fixture.publicId, fixture.organizationId))!);

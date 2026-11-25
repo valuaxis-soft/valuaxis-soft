@@ -1,8 +1,7 @@
 /**
  * The highlighted streets as the croquis image carries them: which pieces
  * fall in the frame, simplified to what the image can show, capped so the
- * Maps Static API URL stays short, with the name labels of the streets that
- * made it. Pure functions, tested without a browser; the server builds the
+ * image stays legible, with the name labels of the streets that made it. Pure functions, tested without a browser; the server builds the
  * image from them (croquis-image.service.ts).
  */
 import type { CroquisKind } from "./croquis";
@@ -18,27 +17,32 @@ import {
   type StreetHighlights,
   type StreetLabel,
 } from "./highlights";
-import { STATIC_MAP_SIZE, encodePolyline, imagePixel, pointAtPixel, type StaticMapPath } from "./static-map";
+import { STATIC_MAP_SIZE, imagePixel, pointAtPixel } from "./static-map";
 import { distanceMeters, metersPerPixel, simplifyPolyline, wayInBounds, type StreetWay } from "./streets";
 import type { LatLon } from "./types";
 
 /**
- * What the `path` parameters may add to the URL. Google accepts up to 16 KB,
- * but long URLs fail in some proxies, so the streets keep within about 8 KB
- * with the rest of the URL (key, styles, markers) under 1.5 KB.
+ * Pieces of street on one image beyond this add nothing legible. Until 25 nov
+ * 2026 the streets went in the Maps Static API URL and only about 40 pieces
+ * fit; the image is drawn by us now (osm-base-map.ts), so only legibility caps them.
  */
-export const STREET_PATHS_BUDGET = 6500;
-/** Pieces of street on one image beyond this add nothing legible. */
-export const MAX_CROQUIS_WAYS = 40;
+export const MAX_CROQUIS_WAYS = 400;
 /** A vertex closer than this to the line is not visible: half a map pixel. */
 const SIMPLIFY_PIXELS = 0.5;
 /** The frame plus a margin, so a piece that only crosses the edge still draws. */
 const FRAME_MARGIN = 1.15;
 
+/** A highlighted street as the image draws it: its color and width (map pixels) over its points. */
+export interface CroquisPath {
+  color: string;
+  weight: number;
+  points: readonly LatLon[];
+}
+
 export interface CroquisStreets {
-  paths: StaticMapPath[];
+  paths: CroquisPath[];
   labels: StreetLabel[];
-  /** Names of streets with highlighted pieces in the frame that did not fit the URL. */
+  /** Names of streets with highlighted pieces in the frame that did not fit the image. */
   omitted: string[];
 }
 
@@ -58,18 +62,13 @@ function wayProximity(way: StreetWay, point: LatLon) {
   return Math.min(...way.g.map((vertex) => distanceMeters(vertex, point)));
 }
 
-/** The encoded `path` parameter's size in the URL, as URLSearchParams writes it. */
-function pathUrlLength(path: StaticMapPath) {
-  return encodeURIComponent(`color:0x${path.color.slice(1)}e6|weight:${path.weight}|enc:${encodePolyline(path.points)}`).length + "&path=".length;
-}
-
 /**
  * The streets a croquis draws: the macro croquis the avenues only, the micro
  * and the map of comparables every highlighted street (the map of comparables
  * drew none until V7.1-22, 16 nov 2026: the appraiser wants the streets
  * there too). Pieces outside the
  * frame are left out, the rest simplified for the zoom; the closest pieces to
- * the center go first, so when the URL budget runs out the farthest are the
+ * the center go first, so when the cap is reached the farthest are the
  * ones omitted. The names only go on streets that are drawn.
  */
 export function croquisStreets(
@@ -91,15 +90,11 @@ export function croquisStreets(
     .sort((a, b) => a.proximity - b.proximity);
   const kept: typeof inFrame = [];
   const omitted = new Set<string>();
-  let used = 0;
   for (const entry of inFrame) {
-    const path: StaticMapPath = { color: entry.item.style.color, weight: entry.item.style.weight, points: entry.way.g };
-    const length = pathUrlLength(path);
-    if (kept.length >= MAX_CROQUIS_WAYS || used + length > STREET_PATHS_BUDGET) {
+    if (kept.length >= MAX_CROQUIS_WAYS) {
       omitted.add(entry.way.n);
       continue;
     }
-    used += length;
     kept.push(entry);
   }
   // Back to drawing order: avenues at the bottom, the front street on top.

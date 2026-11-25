@@ -6,6 +6,7 @@
  */
 import { prisma } from "@/infrastructure/database/prisma-client";
 
+import type { BaseMapWay } from "../osm-base-map";
 import type { StreetWay } from "../streets";
 import { MAX_STREET_WAYS, parseOverpassWays, type OverpassElement } from "../streets-osm";
 import type { LatLon } from "../types";
@@ -39,6 +40,35 @@ export async function streetsFromDatabase(point: LatLon, radiusMeters: number): 
   });
   return parseOverpassWays(elements);
 }
+
+/** Pieces of street the base map of one croquis draws, at most; past this a frame is a whole city and the farthest classes thin out first. */
+const MAX_BASE_MAP_WAYS = 12_000;
+
+/**
+ * The streets of the given classes that cross the box [south, west]–[north,
+ * east], simplified on the database to what the image can show
+ * (`toleranceDegrees`), the most important classes first when the box holds
+ * more than the cap. The base map of the croquis (osm-base-map.ts).
+ */
+export async function streetsInBox(bounds: readonly [LatLon, LatLon], highways: readonly string[], toleranceDegrees: number): Promise<BaseMapWay[]> {
+  const [[south, west], [north, east]] = bounds;
+  const rows = await prisma.$queryRaw<Omit<StreetRow, "id">[]>`
+    SELECT c."SNombre" AS "name", c."STipoVia" AS "highway",
+           ST_AsGeoJSON(ST_Simplify(c."GLinea"::geometry, ${toleranceDegrees}::float8, true), 6) AS "line"
+    FROM "devpware_calles_osm" c
+    WHERE c."GLinea" && ST_MakeEnvelope(${west}::float8, ${south}::float8, ${east}::float8, ${north}::float8, 4326)::geography
+      AND c."STipoVia" = ANY(${[...highways]}::text[])
+    ORDER BY array_position(${BASE_MAP_PRIORITY}::text[], regexp_replace(c."STipoVia", '_link$', '')) ASC NULLS LAST, c."IdViaOsm" ASC
+    LIMIT ${MAX_BASE_MAP_WAYS}
+  `;
+  return rows.flatMap((row) => {
+    if (!row.line) return [];
+    const { coordinates } = JSON.parse(row.line) as { coordinates: [number, number][] };
+    return coordinates.length >= 2 ? [{ name: row.name, highway: row.highway, g: coordinates.map(([lon, lat]): LatLon => [lat, lon]) }] : [];
+  });
+}
+
+const BASE_MAP_PRIORITY = ["motorway", "trunk", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "pedestrian"];
 
 /** Whether the table was ever loaded: an empty answer then means "no named streets here", not "no data". */
 export async function hasStoredStreets() {

@@ -6,3 +6,7 @@ allowBuilds:
   prisma: true
   sharp: true
   unrs-resolver: true
+
+# exceljs 4.4.0 pins unzipper 0.10, whose «binary» pulls «buffers» (no declared license). 0.12 drops both and keeps Parse, the only part exceljs uses.
+overrides:
+  unzipper: 0.12.3

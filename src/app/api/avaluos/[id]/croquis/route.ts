@@ -20,6 +20,7 @@ const bodySchema = z.object({
   kind: z.enum(CROQUIS_KINDS.map((item) => item.kind) as [CroquisKind, ...CroquisKind[]]),
   center: latLonSchema,
   zoom: z.number().int().min(1).max(21),
+  /** Options of the on-screen map: the stored croquis is always the OpenStreetMap street drawing (no businesses, no photo), so they are accepted and not used. */
   clean: z.boolean(),
   northArrow: northArrowSchema,
   /** Whether this croquis carries the comparables (the map of comparables' own «Incluir comparables», or the macro and micro's). */
@@ -35,7 +36,8 @@ const bodySchema = z.object({
 /**
  * "Generar croquis de localización": renders one croquis (macro, micro or the map of
  * comparables) with the stored pin of the subject and stores it as an image
- * of the valuation, with the highlighted streets of etapa 2 drawn on it.
+ * of the valuation, with the highlighted streets of etapa 2 drawn on it,
+ * over a base map drawn from OpenStreetMap (never a Google image).
  * The editor then puts it in its section and saves the document as usual.
  * Counts against the upload limit, like any image.
  */
@@ -54,14 +56,12 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     const stored = await getSubjectLocation(id, auth.user.organizationId);
     if (!stored.location) throw new ValuationWorkflowError("Primero ubica el inmueble sujeto en el mapa.", 400);
 
-    const { kind, center, zoom, clean, mapType, northArrow, includeComparables, streets, labels, lines } = body.data;
+    const { kind, center, zoom, northArrow, includeComparables, streets, labels, lines } = body.data;
     const result = await renderAndStoreCroquis(auth.user, {
       kind,
       center,
       zoom,
       subject: stored.location.point,
-      clean,
-      mapType,
       northArrow,
       pins: includeComparables ? stored.comparables : [],
       streets,

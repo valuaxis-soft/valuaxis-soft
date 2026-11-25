@@ -84,7 +84,7 @@ export interface CroquisFrame {
 export const MACRO_FRAME: CroquisFrame = { offset: [0, 0], zoom: 15 };
 export const MICRO_FRAME: CroquisFrame = { offset: [0, 0], zoom: 17 };
 
-/** The map's current center and zoom, as a frame around the subject. The Static API only takes whole zooms. */
+/** The map's current center and zoom, as a frame around the subject, in whole zooms (as the croquis were framed since the Static API days). */
 export function frameFromView(view: { center: LatLon; zoom: number }, subject: LatLon): CroquisFrame {
   return { offset: [view.center[0] - subject[0], view.center[1] - subject[1]], zoom: Math.round(view.zoom) };
 }
