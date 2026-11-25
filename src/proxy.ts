@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { AUTH_PUBLIC_PATHS, AUTH_SESSION_COOKIE } from "@/features/auth/constants/auth.constants";
+import { AUTH_PUBLIC_PATHS } from "@/features/auth/constants/auth.constants";
+import { moveLegacySessionCookie, sessionTokenOf } from "@/lib/auth/session-cookie";
 import { buildPublicAppUrl, getPublicAppUrl } from "@/lib/public-url";
 import { NONCE_HEADER, contentSecurityPolicy, createNonce, googleMapsPage } from "@/security/headers/security-headers";
 import { isSameOriginRequest } from "@/security/validation/origin";
@@ -56,7 +57,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const isProtected = !isPublicPath(pathname) && !pathname.startsWith("/_next");
-  if (isProtected && !request.cookies.get(AUTH_SESSION_COOKIE)?.value) {
+  if (isProtected && !sessionTokenOf(request.cookies)) {
     const loginUrl = buildPublicAppUrl("/iniciar-sesion");
     loginUrl.searchParams.set("reason", "required");
     loginUrl.searchParams.set("redirectTo", safeRedirectPath(pathname));
@@ -64,7 +65,10 @@ export async function proxy(request: NextRequest) {
   }
 
   // Only the pages that render Google Maps get Google's sources in the CSP.
-  return withContentSecurityPolicy(request, googleMapsPage(pathname));
+  const response = withContentSecurityPolicy(request, googleMapsPage(pathname));
+  // Only a page being read, never an API call or a server action (a POST): those may sign in or out themselves.
+  if (request.method === "GET") moveLegacySessionCookie(request.cookies, response.cookies);
+  return response;
 }
 
 /**

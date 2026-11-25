@@ -117,8 +117,8 @@ test("land and buildings for sale write their own pages side by side in the mark
 /* ------------------------------------------------------------------ */
 
 test("homologation against the subject leaves the lote tipo out; a capture of before keeps its basis and its numbers", () => {
-  assert.equal(homologationBasisOf({ baseArea: 140 }), "LOTE_TIPO", "before the choice, a lote tipo means against it");
-  assert.equal(homologationBasisOf({ baseArea: null }), "SUJETO");
+  assert.equal(homologationBasisOf({ comparableType: "TERRENO_VENTA", baseArea: 140 }), "LOTE_TIPO", "before the choice, a lote tipo means against it");
+  assert.equal(homologationBasisOf({ comparableType: "TERRENO_VENTA", baseArea: null }), "SUJETO");
   const withLote = { ...land, settings: { ...land.settings, baseArea: 140 } };
   const before = compute(withLote);
   assert.deepEqual(compute({ ...withLote, settings: { ...withLote.settings, homologationBasis: "LOTE_TIPO" } }), before);
@@ -137,6 +137,23 @@ test("the box of the basis marks the option chosen, with both printed as in the 
   assert.equal(subject?.caption, "Homologación de acuerdo a:");
   assert.deepEqual(subject?.rows.map((row) => [row.label, row.value, row.mark]), [["Lote Tipo:", "140.00 m²", false], ["Lote Sujeto:", "169.78 m²", true]]);
   assert.deepEqual(rows({ baseArea: 140 })?.rows.map((row) => row.mark), [true, false]);
+});
+
+test("only land markets choose lote tipo or subject; the others always homologate against the subject (25 Nov 2026)", () => {
+  for (const type of ["TERRENO_VENTA", "TERRENO_RENTA"] as const) {
+    assert.equal(homologationBasisOf({ comparableType: type, homologationBasis: "LOTE_TIPO", baseArea: 140 }), "LOTE_TIPO", type);
+  }
+  for (const type of ["INMUEBLE_VENTA", "INMUEBLE_RENTA"] as const) {
+    // A basis stored before stays harmless: the market homologates against the subject and prints no box of the basis.
+    const stored = { ...land.settings, comparableType: type, baseArea: 140, homologationBasis: "LOTE_TIPO" as const };
+    assert.equal(homologationBasisOf(stored), "SUJETO", type);
+    const target = { ...land, settings: stored };
+    const input = toMarketEngineInput(target);
+    assert.ok(input.ok && input.input.baseArea === undefined, "the lote tipo stays out of the surface factor");
+    const tables = marketDocumentBlocks(target, compute(target)).flatMap((block) => block.apartados.flatMap((apartado) => apartado.tables));
+    const captions = tables.flatMap((table) => printed(table).schema?.summaryBoxes ?? []).map((box) => box.caption);
+    assert.ok(!captions.includes("Homologación de acuerdo a:"), `${type} prints no «Homologación de acuerdo a»`);
+  }
 });
 
 /* ------------------------------------------------------------------ */

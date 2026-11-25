@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DownloadDictamenPdfButton } from "./download-dictamen-pdf-button";
+import { ExportPrintButton } from "./export-notice";
 import { UnaccreditedNoticeProvider } from "@/features/accreditation/components/unaccredited-notice";
 import { SendDictamenEmailDialog } from "./send-dictamen-email-dialog";
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
@@ -96,10 +97,7 @@ export function ValuationDictamen({
             : concluded ? undefined : "Así se verá el dictamen. Regresa al editor para cambiar algo."}
         >
           {concluded ? (
-            <Button variant="outline" onClick={() => window.print()}>
-              <Printer data-icon="inline-start" />
-              Imprimir
-            </Button>
+            <ExportPrintButton />
           ) : null}
           {readOnlyVersion || !concluded ? null : (
             <>

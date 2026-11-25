@@ -26,6 +26,7 @@ import {
   comparableFormValues,
   homologatesOf,
   homologationBasisOf,
+  homologatesAgainstLotOrSubject,
   isComparableComplete,
   isLandComparableType,
   isRentComparableType,
@@ -864,7 +865,8 @@ function MarketTypePanel(props: {
               </p>
             ) : null}
           </Field>
-          <Field className="sm:col-span-3">
+          {homologatesAgainstLotOrSubject(type) ? (
+          <Field className="sm:col-span-3" data-homologation-basis="">
             <FieldLabel id="market-basis-label">Homologación de acuerdo a</FieldLabel>
             <div role="radiogroup" aria-labelledby="market-basis-label" className="flex flex-wrap items-center gap-4 text-sm">
               {([["LOTE_TIPO", "Lote tipo"], ["SUJETO", "Sujeto"]] as Array<[HomologationBasis, string]>).map(([value, label]) => (
@@ -883,6 +885,7 @@ function MarketTypePanel(props: {
               Sujeto: homologación directa; lote tipo: homologación indirecta. Aplica a todos los factores, no solo al de superficie.
             </p>
           </Field>
+          ) : null}
           {againstBase ? (
             <Field>
               <FieldLabel htmlFor="market-base-area">Lote tipo (m²)</FieldLabel>

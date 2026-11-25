@@ -177,7 +177,7 @@ export function ValuationWorkspace({
   const canExport = canExportProject(currentUser);
   // Reviewing comparables is open to reviewers too, while the valuation is not concluded.
   const canReview = canReviewComparables(currentUser) && !locked;
-  useDeliverablesAfterConclude(valuationId, locked);
+  const deliverablesNotice = useDeliverablesAfterConclude(valuationId, locked);
   const canConclude = !locked && Boolean(valuationId) && hasPermission(currentUser, AUTH_PERMISSIONS.concludeValuations);
   const canReopen = CONCLUDED_VALUATIONS_CAN_BE_REOPENED && locked && Boolean(valuationId) && hasPermission(currentUser, AUTH_PERMISSIONS.reopenValuations);
 
@@ -801,6 +801,7 @@ export function ValuationWorkspace({
           </ResizablePanelGroup>
         )}
       </div>
+      {deliverablesNotice}
       <ConcludeValuationDialog
         open={concludeOpen}
         onOpenChange={setConcludeOpen}

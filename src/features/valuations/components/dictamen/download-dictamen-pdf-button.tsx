@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { useExportNotice } from "./export-notice";
 
 const DOCUMENTS = {
   dictamen: { path: "dictamen/pdf", label: "Descargar PDF", filename: "Dictamen.pdf", generating: "Generando el dictamen…", done: "Dictamen descargado." },
@@ -13,7 +14,11 @@ const DOCUMENTS = {
   entregables: { path: "entregables", label: "Informe y memoria (.zip)", filename: "Entregables.zip", generating: "Generando el informe y la memoria…", done: "Informe y memoria descargados." },
 } as const;
 
-/** Asks the server for one of the documents and saves it, with a notice while it is generated and when it is done. */
+/**
+ * Asks the server for one of the documents and saves it, with a notice while it
+ * is generated and when it is done. Callers show the export notice first
+ * (export-notice.tsx).
+ */
 export async function downloadValuationDocument(valuationId: string, kind: keyof typeof DOCUMENTS = "dictamen") {
   const target = DOCUMENTS[kind];
   // The download gives no sign of its own: the toast says it is generating and when it is saved.
@@ -57,6 +62,7 @@ export function DownloadDictamenPdfButton({
 }) {
   const [pending, setPending] = useState(false);
   const target = DOCUMENTS[kind];
+  const notice = useExportNotice();
 
   const download = async () => {
     setPending(true);
@@ -65,9 +71,12 @@ export function DownloadDictamenPdfButton({
   };
 
   return (
-    <Button variant={variant} onClick={() => void download()} disabled={pending}>
+    <>
+    <Button variant={variant} onClick={() => notice.ask(() => void download())} disabled={pending}>
       {pending ? <Loader2 data-icon="inline-start" className="animate-spin" /> : kind === "entregables" ? <FileArchive data-icon="inline-start" /> : <FileDown data-icon="inline-start" />}
       {pending ? (kind === "entregables" ? "Generando los dos PDF…" : "Generando PDF…") : label ?? target.label}
     </Button>
+    {notice.dialog}
+    </>
   );
 }

@@ -207,7 +207,7 @@ test("the notice text is the one agreed, word for word", () => {
   assert.equal(UNACCREDITED_NOTICE_TITLE, "AVISO: DOCUMENTO SIN VALIDEZ OFICIAL");
   assert.equal(
     UNACCREDITED_NOTICE_BODY,
-    "El presente documento constituye únicamente una estimación u opinión de valor, debido a que no se ha acreditado una cédula profesional o registro oficial vigente que respalde la facultad de su emisor para realizar avalúos. Por lo tanto, carece de validez oficial y no deberá considerarse como un avalúo certificado ni como una determinación acreditada del valor de mercado del inmueble.",
+    "El presente documento constituye únicamente una estimación u opinión de valor, debido a que no se ha acreditado una cédula profesional o registro oficial vigente que respalde la facultad de su emisor para realizar avalúos. Por lo tanto, carece de validez oficial y no deberá considerarse como un avalúo certificado ni como una determinación acreditada del valor de mercado del bien sujeto.",
   );
 });
 

@@ -31,6 +31,8 @@ export type UserDirectoryEntry = {
   accreditation: AccreditationStatus;
   /** «Maestría», «Especialidad»… as the reviewer recorded it, when there is one. */
   accreditationLevel: string | null;
+  /** The program of the constancia ("Maestría en Valuación Inmobiliaria"), when the reviewer recorded it. */
+  accreditationProgram: string | null;
   signedUpAt: Date;
   lastAccessAt: Date | null;
   valuationsCreated: number;
@@ -78,7 +80,7 @@ const directorySelect = {
   // the latest of the three is when the person was last here.
   identidades: { select: { DFechaUltimoAcceso: true }, orderBy: { DFechaUltimoAcceso: { sort: "desc", nulls: "last" } }, take: 1 },
   sesiones: { select: { DFechaUltimaActividad: true }, orderBy: { DFechaUltimaActividad: { sort: "desc", nulls: "last" } }, take: 1 },
-  acreditacion: { select: { SEstado: true, SNivelAcademico: true } },
+  acreditacion: { select: { SEstado: true, SNivelAcademico: true, SProgramaAcademico: true } },
   miembros: {
     where: { BActivo: true },
     orderBy: { DFechaIngreso: "asc" },
@@ -123,6 +125,7 @@ function toEntry(row: DirectoryRow, concluded: Map<number, number>): UserDirecto
     })),
     accreditation: toAccreditationStatus(row.acreditacion?.SEstado),
     accreditationLevel: level ? ACADEMIC_LEVEL_LABELS[level] ?? null : null,
+    accreditationProgram: row.acreditacion?.SProgramaAcademico?.trim() || null,
     signedUpAt: row.DFechaCreacion,
     lastAccessAt: latestDate(row.DFechaUltimoAcceso, row.identidades[0]?.DFechaUltimoAcceso, row.sesiones[0]?.DFechaUltimaActividad),
     valuationsCreated: row._count.avaluosCreados,
@@ -138,6 +141,18 @@ async function readDirectory(params: Omit<UserDirectoryParams, "page">, skip: nu
   ]);
   const concluded = await concludedCounts(rows.map((row) => row.IdUsuario));
   return { items: rows.map((row) => toEntry(row, concluded)), total };
+}
+
+/**
+ * How many people of the search are «Acreditado» (cédula verified) and how
+ * many «No acreditado» (everyone else), whatever the accreditation filter.
+ */
+export async function countUserDirectoryKinds(params: Pick<UserDirectoryParams, "q">) {
+  const [accredited, unaccredited] = await Promise.all([
+    prisma.usuario.count({ where: whereFor({ q: params.q, accredited: "si" }) }),
+    prisma.usuario.count({ where: whereFor({ q: params.q, accredited: "no" }) }),
+  ]);
+  return { accredited, unaccredited };
 }
 
 export function listUserDirectoryPage(params: UserDirectoryParams, pageSize: number) {

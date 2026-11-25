@@ -49,7 +49,20 @@ export function userDirectoryQuery(params: Partial<UserDirectoryParams>): string
   return search.toString();
 }
 
-/** The accreditation as the directory and its export show it. */
+/**
+ * The two kinds of user of the registry (Álvaro, 25 Nov 2026): «Acreditado»
+ * has the cédula verified; everyone else, whatever the state of a request, is
+ * «No acreditado».
+ */
+export const userKindLabel = (accreditation: string) => (accreditation === "ACREDITADO" ? "Acreditado" : "No acreditado");
+
+/** Grado and program of the accreditation: «Maestría · Maestría en Valuación Inmobiliaria»; null when none was recorded. */
+export function specialtyText(entry: { accreditationLevel: string | null; accreditationProgram?: string | null }): string | null {
+  const parts = [entry.accreditationLevel, entry.accreditationProgram].filter((part): part is string => Boolean(part));
+  return parts.length ? parts.join(" · ") : null;
+}
+
+/** The detail of the accreditation as the directory and its export show it. */
 export const ACCREDITATION_LABELS: Record<string, string> = {
   NO_ACREDITADO: "No acreditado",
   EN_REVISION: "En revisión",

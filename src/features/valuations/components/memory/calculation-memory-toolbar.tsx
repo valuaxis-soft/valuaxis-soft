@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { DownloadDictamenPdfButton } from "../dictamen/download-dictamen-pdf-button";
+import { ExportPrintButton } from "../dictamen/export-notice";
 import { DELIVERABLES_NEED_CONCLUSION } from "@/features/valuations/lifecycle-rules";
 
 /** Above the memory on screen; it does not print. */
@@ -27,10 +28,7 @@ export function CalculationMemoryToolbar({ concluded, folio, valuationId }: {
         </div>
         {concluded ? (
           <>
-            <Button variant="outline" onClick={() => window.print()}>
-              <Printer data-icon="inline-start" />
-              Imprimir
-            </Button>
+            <ExportPrintButton />
             <DownloadDictamenPdfButton kind="memoria" label="Descargar PDF" valuationId={valuationId} />
             <DownloadDictamenPdfButton kind="entregables" variant="outline" valuationId={valuationId} />
           </>

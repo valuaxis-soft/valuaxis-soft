@@ -5,23 +5,11 @@
  * profesional. Validity: whole months chosen by the appraiser, 12 at most,
  * counted from the valuation date.
  */
-import { storedImageUrl } from "@/features/files/services/stored-image-url";
 import { addMonthsToIsoDate } from "@/features/firm/firm-rules";
-import { extractStorageKey } from "@/features/valuations/services/image-source";
 
 /** Who realizes, who reviews and who authorizes: the appraiser asked for three at most (15 Oct 2026). */
 export const MAX_SIGNATURES = 3;
 
-/**
- * Printed size of a scanned signature, as signatures saved before 27 Oct 2026
- * carry it. Scanned signatures are no longer uploaded nor printed (a pasted
- * image has no legal validity); what was saved is kept as it was.
- */
-const SIGNATURE_IMAGE_SIZES = ["chica", "mediana", "grande"] as const;
-type SignatureImageSize = (typeof SIGNATURE_IMAGE_SIZES)[number];
-
-const readImageSize = (value: unknown): SignatureImageSize | undefined =>
-  (SIGNATURE_IMAGE_SIZES as readonly string[]).includes(String(value)) ? (value as SignatureImageSize) : undefined;
 export const MIN_VALIDITY_MONTHS = 1;
 export const MAX_VALIDITY_MONTHS = 12;
 
@@ -35,13 +23,6 @@ export type ValuationSignature = {
   cedula: string;
   /** Optional title shown under the name ("Perito valuador"); empty when none. */
   role: string;
-  /**
-   * The scanned signature, printed over the line. In the editor it is the
-   * address of the image; it is stored as its storage key.
-   */
-  image?: string;
-  /** Printed size of the image; "mediana" when absent. */
-  imageSize?: SignatureImageSize;
 };
 
 export type SignatureErrors = Partial<Record<keyof ValuationSignature, string>>;
@@ -82,23 +63,21 @@ export function signatureListError(signatures: ValuationSignature[], rules: Sign
   return null;
 }
 
-const STORAGE_KEY = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)+$/;
+/**
+ * Only the name, the cédula and the role: there is no electronic signature,
+ * and the software neither takes nor keeps an image of one (the lawyer's
+ * review, 25 Nov 2026). The dictamen prints the line; the appraiser prints,
+ * signs by hand and scans. An image saved with a signature before 27 Oct 2026
+ * is ignored here (never sent nor printed) and its file stays where it is.
+ */
+const signatureOf = (row: Record<string, unknown>): ValuationSignature => ({ name: text(row.name), cedula: text(row.cedula), role: text(row.role) });
 
-/** The storage key of a signature image, from the address the editor holds or the key itself; "" when it is neither. */
-export function signatureImageKey(value: unknown): string {
-  const key = extractStorageKey(text(value));
-  return key.length <= 1024 && STORAGE_KEY.test(key) && !key.split("/").includes("..") ? key : "";
-}
-
-const withImage = (signature: ValuationSignature, key: string, asAddress: boolean, size?: SignatureImageSize): ValuationSignature =>
-  key ? { ...signature, image: asAddress ? storedImageUrl(key) : key, ...(size ? { imageSize: size } : {}) } : signature;
-
-/** Validates what a client sent and returns the trimmed signatures in the same order, images as storage keys. */
+/** Validates what a client sent and returns the trimmed signatures in the same order. */
 export function parseSignatures(input: unknown, rules: SignatureRules = {}): Parsed<ValuationSignature[]> {
   if (!Array.isArray(input)) return { ok: false, error: "Las firmas no son válidas." };
   const signatures = input.map((item): ValuationSignature => {
     const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-    return withImage({ name: text(row.name), cedula: text(row.cedula), role: text(row.role) }, signatureImageKey(row.image), false, readImageSize(row.imageSize));
+    return signatureOf(row);
   });
   const error = signatureListError(signatures, rules);
   return error ? { ok: false, error } : { ok: true, value: signatures };
@@ -115,8 +94,7 @@ export function resolveSignatures(
   if (Array.isArray(stored)) {
     return stored.slice(0, MAX_SIGNATURES).map((item) => {
       const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-      // The browser gets an address that does not expire; the key stays in the database.
-      return withImage({ name: text(row.name), cedula: text(row.cedula), role: text(row.role) }, signatureImageKey(row.image), true, readImageSize(row.imageSize));
+      return signatureOf(row);
     });
   }
   const name = text(legacy.name);

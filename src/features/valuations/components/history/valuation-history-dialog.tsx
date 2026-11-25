@@ -4,13 +4,14 @@ import {
   Archive, CircleCheck, Copy, Download, Eye, FilePlus2, FileText, History, Loader2, Pencil, RotateCcw, Save, Send, Trash2, Undo2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api-client";
+import { useExportNotice } from "@/features/valuations/components/dictamen/export-notice";
 import type { HistoryEvent, HistoryKind, ValuationHistory } from "@/features/valuations/services/valuation-history";
 import { cn } from "@/lib/utils";
 
@@ -145,8 +146,12 @@ function EventList({ events }: { events: HistoryEvent[] }) {
 }
 
 function VersionList({ history, valuationId, canExport }: { history: ValuationHistory; valuationId: string; canExport: boolean }) {
+  // A saved PDF is an export too: the notice comes first (export-notice.tsx).
+  const notice = useExportNotice();
   if (!history.versions.length) return <p className="py-6 text-sm text-muted-foreground">El avalúo aún no tiene versiones guardadas.</p>;
   return (
+    <>
+    {notice.dialog}
     <ul className="grid max-h-[55vh] gap-3 overflow-y-auto pr-1" aria-label="Versiones del avalúo">
       {history.versions.map((version) => (
         <li key={version.number} className="grid gap-2 rounded-lg border p-3" data-history-version={version.number}>
@@ -190,6 +195,11 @@ function VersionList({ history, valuationId, canExport }: { history: ValuationHi
                   nativeButton={false}
                   title={`${pdf.label}${pdf.by ? ` · generado por ${pdf.by}` : ""}`}
                   render={<a href={`/api/avaluos/${valuationId}/historial/pdf/${pdf.fileId}`} target="_blank" rel="noopener" />}
+                  onClick={(event: MouseEvent<HTMLElement>) => {
+                    event.preventDefault();
+                    const href = `/api/avaluos/${valuationId}/historial/pdf/${pdf.fileId}`;
+                    notice.ask(() => window.open(href, "_blank", "noopener"));
+                  }}
                 >
                   <Download data-icon="inline-start" />
                   PDF {pdf.final ? "final" : "borrador"} · {formatAt(pdf.at)}
@@ -201,5 +211,6 @@ function VersionList({ history, valuationId, canExport }: { history: ValuationHi
         </li>
       ))}
     </ul>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getAccreditation } from "@/features/accreditation/accreditation.service";
 import { AccreditationSection } from "@/features/accreditation/components/accreditation-section";
+import { AccountClosureSection } from "@/features/account/components/account-closure-section";
 import { AutosavePreferenceSection } from "@/features/account/components/autosave-preference-section";
 import { NotificationPreferencesSection } from "@/features/account/components/notification-preferences-section";
 import { PhoneVerificationSection } from "@/features/account/components/phone-verification-section";
@@ -12,7 +13,7 @@ import { requireSession } from "@/security/guards/require-session";
 
 export const metadata: Metadata = { title: "Mi cuenta" };
 
-/** The signed-in person's own account: the verified phone, the professional accreditation, the editor's autosave and the notifications. Any role. */
+/** The signed-in person's own account: the verified phone, the professional accreditation, the editor's autosave, the notifications and what closing it means for the balance. Any role. */
 export default async function AccountPage() {
   const user = await requireSession("/cuenta");
   const [accreditation, preferences, phone] = await Promise.all([
@@ -31,6 +32,7 @@ export default async function AccountPage() {
           <AccreditationSection initial={accreditation} />
           <AutosavePreferenceSection initialSeconds={preferences.autosaveSeconds} />
           <NotificationPreferencesSection initial={preferences.notifications} />
+          <AccountClosureSection />
         </div>
       </PageContainer>
     </div>

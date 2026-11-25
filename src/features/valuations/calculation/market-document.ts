@@ -38,6 +38,7 @@ import {
   factorValue,
   findFactor,
   homologationBasisOf,
+  homologatesAgainstLotOrSubject,
   isBuiltinCharacteristic,
   isLandComparableType,
   offerLabelsOf,
@@ -511,8 +512,8 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
     ],
   };
   const boxes: TableSummaryBox[] = [
-    // As the format: both options, with an x on the one the homologation is made against.
-    ...(subjectArea ? [{
+    // As the format: both options, with an x on the one the homologation is made against; only land markets choose.
+    ...(subjectArea && homologatesAgainstLotOrSubject(settings.comparableType) ? [{
       id: "base",
       position: "top" as const,
       align: "start" as const,

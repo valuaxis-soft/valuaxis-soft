@@ -5,6 +5,7 @@ Estado real del código al 23 de septiembre de 2026. Este documento describe lo 
 ## Lo que sí está bien
 
 - **Sesiones opacas en base de datos.** Token de 256 bits, en la base solo se guarda su hash SHA-256. Cookie `httpOnly`, `sameSite=lax`, `secure` en producción, 8 horas.
+- **Cookies de la app** (para la sección de cookies del aviso legal): `valuaxis_session` (la sesión, `AUTH_SESSION_COOKIE`) y `valuaxis_oauth` (solo durante el inicio de sesión con Google, ruta `/api/auth/google`, 10 minutos). Ninguna es de terceros ni de publicidad. Hasta el 25 nov 2026 la sesión se llamaba `devpware_session`: se sigue leyendo como respaldo para no cerrar la sesión de nadie, solo se escribe `valuaxis_session` y la vieja se borra en la siguiente página que se abre (`src/lib/auth/session-cookie.ts`, `src/proxy.ts`).
 - **Contraseñas con bcrypt** de costo 12. La política pide 10 caracteres, mayúscula, minúscula, número y símbolo.
 - **Bloqueo por cuenta e IP:** 5 contraseñas fallidas desde una IP bloquean esa cuenta solo para esa IP durante 15 minutos; el dueño entra desde su conexión. El bloqueo global de la cuenta queda como respaldo a los 50 fallos consecutivos, contra ataques distribuidos.
 - **Sesión deslizante:** se renueva a 8 horas cuando le quedan menos de 4, con tope de 7 días desde el inicio de sesión. El editor envía una señal cada 10 minutos; si la sesión expira, conserva los cambios y permite iniciar sesión en otra pestaña y volver a guardar. Cerrar la pestaña con cambios pide confirmación.

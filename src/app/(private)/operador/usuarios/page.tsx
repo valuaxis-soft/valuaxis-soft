@@ -17,10 +17,12 @@ import {
   USER_DIRECTORY_PAGE_SIZE,
   USER_DIRECTORY_SEARCH_MAX_LENGTH,
   parseUserDirectoryParams,
+  specialtyText,
   userDirectoryQuery,
+  userKindLabel,
   type UserDirectoryParams,
 } from "@/features/operator/user-directory-params";
-import { listUserDirectoryPage, type UserDirectoryEntry } from "@/features/operator/user-directory.repository";
+import { countUserDirectoryKinds, listUserDirectoryPage, type UserDirectoryEntry } from "@/features/operator/user-directory.repository";
 import { cn } from "@/lib/utils";
 import { requireOperatorPage } from "@/security/guards/operator-guard";
 import { clientIp } from "@/security/rate-limit/rate-limiter";
@@ -52,7 +54,10 @@ export default async function OperatorUsersPage({
 }) {
   const user = await requireOperatorPage(OPERATOR_USER_DIRECTORY_HREF);
   const params = parseUserDirectoryParams(await searchParams);
-  const { items, total } = await listUserDirectoryPage(params, USER_DIRECTORY_PAGE_SIZE);
+  const [{ items, total }, kinds] = await Promise.all([
+    listUserDirectoryPage(params, USER_DIRECTORY_PAGE_SIZE),
+    countUserDirectoryKinds(params),
+  ]);
   const pages = Math.max(1, Math.ceil(total / USER_DIRECTORY_PAGE_SIZE));
   if (total > 0 && params.page > pages) redirect(href({ ...params, page: pages }));
 
@@ -79,7 +84,7 @@ export default async function OperatorUsersPage({
         <PageHeader
           eyebrow="Operación de la plataforma"
           title="Usuarios de la plataforma"
-          description="Quién es cada persona registrada y en qué despachos trabaja. No muestra ni da acceso al contenido de sus avalúos: solo cuántos creó y concluyó. Cada consulta y cada exportación quedan registradas."
+          description="Quién es cada persona registrada, si está acreditada y en qué despachos trabaja. No muestra ni da acceso al contenido de sus avalúos: solo cuántos creó y concluyó. Cada consulta y cada exportación quedan registradas."
           actions={
             <a
               href={`/api/operador/usuarios/exportar${exportQuery ? `?${exportQuery}` : ""}`}
@@ -91,6 +96,24 @@ export default async function OperatorUsersPage({
             </a>
           }
         />
+
+        <nav aria-label="Tipo de usuario" className="mb-4 grid gap-3 sm:grid-cols-3" data-user-kinds="">
+          <KindLink href={href({ ...params, accredited: "todos", page: 1 })} active={params.accredited === "todos"} label="Todos" count={kinds.accredited + kinds.unaccredited} />
+          <KindLink
+            href={href({ ...params, accredited: "si", page: 1 })}
+            active={params.accredited === "si"}
+            label="Acreditados"
+            hint="Cédula verificada"
+            count={kinds.accredited}
+          />
+          <KindLink
+            href={href({ ...params, accredited: "no", page: 1 })}
+            active={params.accredited === "no"}
+            label="No acreditados"
+            hint="Sin cédula verificada"
+            count={kinds.unaccredited}
+          />
+        </nav>
 
         <section aria-label="Usuarios" className="grid gap-4 rounded-2xl border border-border bg-card p-3 sm:p-5">
           <form method="get" action={OPERATOR_USER_DIRECTORY_HREF} className="flex flex-col gap-3 md:flex-row md:items-end" role="search">
@@ -110,7 +133,7 @@ export default async function OperatorUsersPage({
               </span>
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
-              Acreditación
+              Tipo de usuario
               <NativeSelect name="acreditado" defaultValue={params.accredited} className="w-full md:w-44 [&_select]:h-11 sm:[&_select]:h-9">
                 <NativeSelectOption value="todos">Todos</NativeSelectOption>
                 <NativeSelectOption value="si">Acreditados</NativeSelectOption>
@@ -154,7 +177,8 @@ export default async function OperatorUsersPage({
                   <TableHead>Persona</TableHead>
                   <TableHead>Teléfono</TableHead>
                   <TableHead>Despachos y rol</TableHead>
-                  <TableHead>Acreditación</TableHead>
+                  <TableHead>Tipo de usuario</TableHead>
+                  <TableHead>Especialidad</TableHead>
                   <TableHead>Alta</TableHead>
                   <TableHead>Último acceso</TableHead>
                   <TableHead className="text-right">Creados</TableHead>
@@ -229,10 +253,14 @@ function DirectoryRow({ entry }: { entry: UserDirectoryEntry }) {
         )}
       </TableCell>
       <TableCell className="whitespace-nowrap">
-        <Badge variant={entry.accreditation === "ACREDITADO" ? "default" : entry.accreditation === "EN_REVISION" ? "secondary" : "outline"}>
-          {ACCREDITATION_LABELS[entry.accreditation] ?? entry.accreditation}
-        </Badge>
-        {entry.accreditationLevel ? <p className="mt-0.5 text-xs text-muted-foreground">{entry.accreditationLevel}</p> : null}
+        <Badge variant={entry.accreditation === "ACREDITADO" ? "default" : "outline"}>{userKindLabel(entry.accreditation)}</Badge>
+        {/* The state of a request that is not yet the cédula verified: «En revisión», «Rechazado». */}
+        {entry.accreditation !== "ACREDITADO" && entry.accreditation !== "NO_ACREDITADO" ? (
+          <p className="mt-0.5 text-xs text-muted-foreground">{ACCREDITATION_LABELS[entry.accreditation] ?? entry.accreditation}</p>
+        ) : null}
+      </TableCell>
+      <TableCell className="min-w-44 whitespace-normal">
+        {specialtyText(entry) ?? <span className="text-muted-foreground">—</span>}
       </TableCell>
       <TableCell className="whitespace-nowrap tabular-nums">{dayFormatter.format(entry.signedUpAt)}</TableCell>
       <TableCell className="whitespace-nowrap tabular-nums">
@@ -241,6 +269,23 @@ function DirectoryRow({ entry }: { entry: UserDirectoryEntry }) {
       <TableCell className="text-right tabular-nums">{entry.valuationsCreated}</TableCell>
       <TableCell className="text-right tabular-nums">{entry.valuationsConcluded}</TableCell>
     </TableRow>
+  );
+}
+
+function KindLink({ href: target, active, label, hint, count }: { href: string; active: boolean; label: string; hint?: string; count: number }) {
+  return (
+    <Link
+      href={target}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "grid gap-0.5 rounded-2xl border bg-card px-4 py-3 transition-colors hover:border-primary/40",
+        active ? "border-primary ring-1 ring-primary/30" : "border-border",
+      )}
+    >
+      <span className="text-sm font-medium">{label}</span>
+      <span className="font-display text-2xl font-semibold tabular-nums text-primary">{count}</span>
+      {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
+    </Link>
   );
 }
 

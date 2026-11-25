@@ -12,7 +12,6 @@ import {
   isValidityMonths,
   MAX_SIGNATURES,
   parseSignatures,
-  signatureImageKey,
   resolveSignatures,
   signatureErrors,
   signatureListError,
@@ -161,39 +160,23 @@ test("the dictamen prints every signature, one or ten, with its cédula and titl
   assert.match(none, /Cédula profesional pendiente/);
 });
 
-test("a signature image is stored as its storage key and read back as an address that does not expire", () => {
+test("no electronic signature: an image saved with a signature is neither kept nor sent (25 Nov 2026)", () => {
   const key = "uploads/2026-10/7a1c.jpg";
   const address = "/api/archivos/imagen?key=uploads%2F2026-10%2F7a1c.jpg";
-  // Whatever the editor holds: the stable address, the key, a local path or an old signed URL.
-  for (const image of [address, key, `/${key}`, `https://bucket.s3.amazonaws.com/${key}?X-Amz-Signature=abc`]) {
-    assert.deepEqual(parseSignatures([{ ...ana, image }]), { ok: true, value: [{ ...ana, image: key }] }, image);
+  // Whatever a client sends as the image, only the name, the cédula and the role are kept.
+  for (const image of [address, key, `https://bucket.s3.amazonaws.com/${key}?X-Amz-Signature=abc`, "data:image/png;base64,AAAA"]) {
+    assert.deepEqual(parseSignatures([{ ...ana, image, imageSize: "grande" }]), { ok: true, value: [ana] }, image);
   }
-  assert.deepEqual(resolveSignatures([{ ...ana, image: key }], {}), [{ ...ana, image: address }]);
-  // No image, or something that is not one of our files, leaves the signature without it.
-  for (const image of [undefined, "", "   ", "data:image/png;base64,AAAA", "https://evil.test/firma.png", "../secretos/x.jpg", "firma.jpg", 7]) {
-    assert.deepEqual(parseSignatures([{ ...ana, image }]), { ok: true, value: [ana] }, String(image));
-    assert.deepEqual(resolveSignatures([{ ...ana, image }], {}), [ana], String(image));
-  }
-  assert.equal(signatureImageKey(address), key);
+  // A signature stored with an image before reads back without it: the browser never gets its address.
+  assert.deepEqual(resolveSignatures([{ ...ana, image: key, imageSize: "chica" }], {}), [ana]);
 });
 
 test("the dictamen prints no scanned signature, even a saved one: every signature leaves the room to sign by hand", () => {
   const render = (firmas: CaratulaFormData["firmas"]) => renderToStaticMarkup(createElement(CaratulaSignaturesModule, { caratula: { ...caratula, firmas } }));
-  const signed = render([{ ...ana, image: "/api/archivos/imagen?key=uploads%2F2026-10%2F7a1c.jpg", imageSize: "grande" }, beto]);
+  const signed = render([{ ...ana, image: "/api/archivos/imagen?key=uploads%2F2026-10%2F7a1c.jpg", imageSize: "grande" } as typeof ana, beto]);
   assert.doesNotMatch(signed, /<img /, "a pasted signature has no legal validity");
   assert.equal(signed.match(/border-t/g)?.length, 2, "the line, the name and the cédula of each one");
   assert.equal(signed.match(/style="height:36px"/g)?.length, 2, "the same room over every line");
   assert.match(signed, /Arq\. Ana Ruiz/);
   assert.match(signed, /Ing\. Beto Díaz/);
-});
-
-test("the size of a signature image travels with the signature and only its three values are read", () => {
-  const parsed = parseSignatures([{ ...ana, image: "uploads/2026-10/7a1c.jpg", imageSize: "grande" }, { ...beto, imageSize: "enorme" }]);
-  assert.equal(parsed.ok, true);
-  if (parsed.ok) {
-    assert.equal(parsed.value[0].imageSize, "grande");
-    assert.equal(parsed.value[1].imageSize, undefined, "sin imagen no hay tamaño; un valor desconocido se ignora");
-  }
-  const shown = resolveSignatures([{ ...ana, image: "uploads/2026-10/7a1c.jpg", imageSize: "chica" }], {});
-  assert.equal(shown[0].imageSize, "chica");
 });

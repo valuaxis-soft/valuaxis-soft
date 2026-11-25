@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useExportNotice } from "./export-notice";
 import { defaultDictamenMessage, defaultDictamenSubject } from "@/features/notifications/templates/dictamen-email";
 
 const splitEmails = (value: string) => value.split(/[,;\s]+/).map((item) => item.trim()).filter(Boolean);
@@ -20,6 +21,8 @@ export function SendDictamenEmailDialog({ valuationId, folio, firmName }: { valu
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState(() => defaultDictamenSubject(folio, firmName));
   const [message, setMessage] = useState(() => defaultDictamenMessage(firmName));
+  // Sending is an export too: the notice comes first, every time.
+  const notice = useExportNotice();
 
   const send = async (event: FormEvent) => {
     event.preventDefault();
@@ -48,10 +51,11 @@ export function SendDictamenEmailDialog({ valuationId, folio, firmName }: { valu
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
+      <Button variant="outline" onClick={() => notice.ask(() => setOpen(true))}>
         <Mail data-icon="inline-start" />
         Enviar por correo
       </Button>
+      {notice.dialog}
       <Dialog open={open} onOpenChange={(next) => { if (!pending) setOpen(next); }}>
         <DialogContent className="sm:max-w-lg">
           <form onSubmit={send} className="grid gap-4">
