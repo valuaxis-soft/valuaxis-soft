@@ -122,6 +122,16 @@ const envObject = z.object({
    * change shipped, the others with «Actualizar formato». Concluded valuations never change.
    */
   VALUATION_LAYOUT_REFRESH: z.enum(["all", "new"]).optional().or(z.literal("")),
+  /**
+   * "true" lets `pnpm accounts:inactivity --apply` email and disable the accounts without valuations for
+   * three months (src/features/account/standing/inactivity.service.ts). Off: the script only counts.
+   */
+  ACCOUNT_INACTIVITY_ENABLED: z.string().optional(),
+  /**
+   * "true" lets `pnpm valuations:retention --apply` email before a concluded valuation's retention expires
+   * and suppress it once expired (src/features/valuations/retention/retention.service.ts). Off: it only counts.
+   */
+  VALUATION_RETENTION_ENABLED: z.string().optional(),
 });
 
 const envSchema = envObject.superRefine((value, context) => {

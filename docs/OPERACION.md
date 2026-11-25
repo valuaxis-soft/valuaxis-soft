@@ -495,3 +495,57 @@ docker exec valuos-database-migrated psql -U devpware_avaluos_user -d devpware_a
 ```
 
 Los avisos por correo de un cambio (Términos 15.2, aviso integral 9.2) todavía se mandan a mano.
+
+## 20. Inactividad de las cuentas (`ACCOUNT_INACTIVITY_ENABLED`)
+
+Tras tres meses sin generar avalúos, la persona recibe un correo para que descargue sus reportes; 15 días después, si sigue sin avalúos, su cuenta queda inhabilitada (entra a consultar y descargar sus concluidos, pero no elabora ni concluye) hasta que el operador la reactiva a su solicitud. Cómo funciona: [CUENTAS.md](CUENTAS.md#inactividad). **Apagada por omisión:** sin la variable en `true`, el script solo cuenta, aun con `--apply`.
+
+Simulación (no envía ni escribe; imprime solo conteos, nunca quién):
+
+```bash
+docker exec valuos-app node --import tsx scripts/ops/inactividad-cuentas.ts --dry-run
+```
+
+En local: `pnpm accounts:inactivity --dry-run`. Responde cuántas cuentas revisó y cuántos correos de inactividad, inhabilitaciones y avisos retirados haría.
+
+**Encenderla (cuando el cliente lo decida):**
+
+1. Correr la simulación y revisar los números con el cliente: la primera vez, todas las cuentas registradas hace más de tres meses sin avalúos recibirían el correo el mismo día.
+2. En `production.env`: `ACCOUNT_INACTIVITY_ENABLED=true`. `pnpm env:check` y recrear la app (paso 2). La variable la lee el script al correr.
+3. Tarea diaria (la instala una persona en el servidor; los agentes no la instalan). Corre después del respaldo de las 3:30, en la hora del servidor:
+
+   ```bash
+   echo '30 4 * * * root docker exec valuos-app node --import tsx scripts/ops/inactividad-cuentas.ts --apply >> /var/log/valuos-inactividad.log 2>&1' > /etc/cron.d/valuos-inactividad
+   ```
+
+   Se puede instalar antes de encender la variable: con la variable apagada solo escribe conteos en el log.
+4. **Reactivar:** cuando la persona pida por correo la reactivación, el operador abre `/operador/cuentas` y pulsa «Reactivar» en su renglón (máximo doce horas, Términos 14.1). El saldo no cambia.
+
+Para apagarla: `ACCOUNT_INACTIVITY_ENABLED=false` y recrear la app; las cuentas ya inhabilitadas siguen así hasta reactivarlas.
+
+## 21. Guarda de los avalúos concluidos (`VALUATION_RETENTION_ENABLED`)
+
+Un avalúo concluido se conserva durante su vigencia, máximo doce meses desde su conclusión; 30 días antes se avisa por correo para descargar o respaldar el reporte y, vencido el plazo, el avalúo se suprime con sus datos de terceros y de anunciantes. Qué se borra y qué se conserva: [CUENTAS.md](CUENTAS.md#guarda-de-los-avalúos-concluidos). **Apagada por omisión:** sin la variable en `true`, el script solo cuenta, aun con `--apply`; **nada se borra sin la variable encendida y una corrida con `--apply`.**
+
+Simulación (no envía ni borra; imprime solo conteos, nunca folios ni nombres):
+
+```bash
+docker exec valuos-app node --import tsx scripts/ops/guarda-avaluos.ts --dry-run
+```
+
+En local: `pnpm valuations:retention --dry-run`. Responde cuántos avalúos concluidos hay en guarda, cuántos correos «descarga o respalda tu reporte» y cuántas supresiones haría.
+
+**Encenderla (cuando el cliente lo decida):**
+
+1. Respaldo manual (`/opt/apps/valuos/scripts/backup-db.sh`): la supresión no se deshace.
+2. Correr la simulación. La primera corrida solo manda correos: ningún avalúo se suprime antes de 30 días después de su aviso, aunque su plazo ya haya vencido.
+3. En `production.env`: `VALUATION_RETENTION_ENABLED=true`. `pnpm env:check` y recrear la app (paso 2).
+4. Tarea diaria (la instala una persona en el servidor), después del respaldo:
+
+   ```bash
+   echo '15 4 * * * root docker exec valuos-app node --import tsx scripts/ops/guarda-avaluos.ts --apply >> /var/log/valuos-guarda.log 2>&1' > /etc/cron.d/valuos-guarda
+   ```
+
+5. Revisar el log los primeros días: «No se pudieron suprimir» debe ser 0 (si no, el avalúo quedó como estaba; `docker logs valuos-app 2>&1 | grep "\[RETENTION\]"` dice el motivo, sin datos del avalúo) y «con error» en archivos, 0 (un objeto de S3 que no se pudo borrar; su renglón ya no existe).
+
+Los avisos enviados (de este script, de la inactividad, de las suspensiones y de las bajas) quedan en `devpware_avisos_correo`; la consulta está en [CUENTAS.md](CUENTAS.md#bitácora-de-avisos-por-correo). Los respaldos diarios conservan 14 días: un avalúo suprimido sigue en ellos hasta que rotan.

@@ -3,6 +3,7 @@ import { notifyLowCredits, notifyValuationEvent } from "@/features/notifications
 import { notifyResponsible } from "@/features/notifications/valuation-notices";
 import { auditValuation } from "@/features/valuations/services/valuation-audit";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
+import { accountSuspendedResponse } from "@/features/account/standing/account-standing-http";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
 import { concludeValuation } from "@/features/valuations/services/valuation-workflow.service";
 import { requireApiUser } from "@/security/guards/api-guard";
@@ -11,6 +12,8 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.concludeValuations);
     if (!auth.ok) return auth.response;
+    const suspended = await accountSuspendedResponse(auth.user.id);
+    if (suspended) return suspended;
 
     const { id } = await params;
     const result = await concludeValuation({ publicId: id, organizationId: auth.user.organizationId, user: auth.user });

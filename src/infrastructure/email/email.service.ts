@@ -1,4 +1,5 @@
 import type { BillingNoticeContent } from "@/features/notifications/templates/billing-notice";
+import type { AccountNoticeContent } from "@/features/notifications/templates/account-notice";
 import type { DictamenEmailContent } from "@/features/notifications/templates/dictamen-email";
 import type { InvoiceEmailContent } from "@/features/notifications/templates/invoice-email";
 import type { TeamInvitationEmailContent } from "@/features/notifications/templates/team-invitation";
@@ -35,6 +36,8 @@ export type SupportReportInput = SupportReportContent & { to: string };
 
 /** A purchase confirmation or a price change notice (features/billing). */
 export type BillingNoticeInput = BillingNoticeContent & { to: string };
+/** A notice about the person's account or the retention of a valuation, already worded (docs/CUENTAS.md). */
+export type AccountNoticeEmailInput = AccountNoticeContent & { to: string };
 
 /** A CFDI for the organization that bought a package: its PDF and XML attached. */
 export type InvoiceEmailInput = InvoiceEmailContent & {
@@ -54,6 +57,7 @@ export interface EmailService {
   sendSupportReport(input: SupportReportInput): Promise<void>;
   sendInvoiceEmail(input: InvoiceEmailInput): Promise<void>;
   sendBillingNotice(input: BillingNoticeInput): Promise<void>;
+  sendAccountNotice(input: AccountNoticeEmailInput): Promise<void>;
 }
 
 let instance: EmailService | null = null;

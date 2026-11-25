@@ -31,7 +31,16 @@ export function findActiveSessionByHash(tokenHash: string) {
       DFechaExpiracion: { gt: new Date() },
     },
     include: {
-      usuario: { include: { estadoUsuario: true } },
+      usuario: {
+        include: {
+          estadoUsuario: true,
+          // A closure or an identity check in effect closes the door (docs/CUENTAS.md); a mere suspension does not.
+          suspensionesCuenta: {
+            where: { DFechaFin: null, DFechaInicio: { not: null }, OR: [{ STipo: "BAJA" }, { BBloqueaAcceso: true }] },
+            select: { DFechaInicio: true },
+          },
+        },
+      },
       organizacion: true,
     },
   });

@@ -13,6 +13,8 @@ export const authErrorMessages = {
   EMAIL_NOT_VERIFIED: "Tu correo todavía no ha sido verificado. Revisa tu bandeja o solicita un nuevo enlace.",
   ACCOUNT_BLOCKED: "Esta cuenta está temporalmente bloqueada. Inténtalo más tarde.",
   ACCOUNT_INACTIVE: "Esta cuenta está inactiva. Solicita apoyo a un administrador.",
+  ACCOUNT_CLOSED:
+    "Esta cuenta está dada de baja, o su acceso está bloqueado mientras se verifica la identidad de su titular. Para reactivarla, escríbenos por correo: tu saldo a favor se conserva.",
   ORGANIZATION_INACTIVE: "Tu organización no está activa. Solicita apoyo a un administrador.",
   SESSION_CREATION_FAILED: "No pudimos crear la sesión. Intenta nuevamente.",
   OAUTH_ACCOUNT_CONFLICT: "No pudimos vincular esta cuenta de Google porque existe una configuración incompatible.",
@@ -54,6 +56,7 @@ export const authErrorSeverity = {
   EMAIL_NOT_VERIFIED: "warning",
   ACCOUNT_BLOCKED: "warning",
   ACCOUNT_INACTIVE: "warning",
+  ACCOUNT_CLOSED: "warning",
   ORGANIZATION_INACTIVE: "warning",
   SESSION_CREATION_FAILED: "error",
   OAUTH_ACCOUNT_CONFLICT: "warning",
