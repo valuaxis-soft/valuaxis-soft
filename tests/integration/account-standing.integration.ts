@@ -272,7 +272,8 @@ async function concludedValuationFixture(concludedAt: Date) {
     prisma.tipoArchivo.findUniqueOrThrow({ where: { SClave: "OTRO" } }),
     prisma.tipoRelacionArchivo.findUniqueOrThrow({ where: { SClave: "AVALUO" } }),
     prisma.tipoComparable.findUniqueOrThrow({ where: { SClave: "TERRENO_VENTA" } }),
-    prisma.fuenteInmobiliaria.findFirstOrThrow(),
+    // No migration seeds the listing sources; the app creates them as it captures (market.service), and so does the test.
+    prisma.fuenteInmobiliaria.upsert({ where: { SNombre: "Anuncio de prueba" }, create: { SNombre: "Anuncio de prueba" }, update: {} }),
     prisma.tipoOperacion.findFirstOrThrow({ where: { BActivo: true } }),
     prisma.estadoPublicacion.findUniqueOrThrow({ where: { SClave: "ACTIVA" } }),
   ]);
