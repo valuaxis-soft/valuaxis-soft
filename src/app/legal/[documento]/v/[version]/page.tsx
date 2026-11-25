@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { LegalDocumentView } from "@/features/legal/components/legal-document-view";
+import { LegalComingSoon, LegalDocumentView } from "@/features/legal/components/legal-document-view";
 import { findLegalVersion, listPublishedLegalVersions } from "@/features/legal/legal-document.repository";
-import { LEGAL_DOCUMENT_TITLES, isLegalDocumentKey } from "@/features/legal/legal-documents";
+import { LEGAL_DOCUMENT_TITLES, canShowDraftPublicly, isLegalDocumentKey } from "@/features/legal/legal-documents";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 /**
  * A given version of a legal document: every published one stays available
- * (Terms 15.2; matrix 3.1). A draft only while nothing of the document is published.
+ * (Terms 15.2; matrix 3.1). A draft only while nothing of the document is published, and
+ * only of a privacy notice; any other document says «Se publicará próximamente».
  */
 export default async function LegalDocumentVersionPage({ params }: Params) {
   const { documento, version } = await params;
@@ -30,5 +31,6 @@ export default async function LegalDocumentVersionPage({ params }: Params) {
   if (!isLegalDocumentKey(documento) || number === null) notFound();
   const [found, history] = await Promise.all([findLegalVersion(documento, number), listPublishedLegalVersions(documento)]);
   if (!found) notFound();
+  if (!found.published && !canShowDraftPublicly(documento)) return <LegalComingSoon title={LEGAL_DOCUMENT_TITLES[documento]} />;
   return <LegalDocumentView version={found} history={history} />;
 }

@@ -17,25 +17,28 @@ Los documentos del abogado (We Law, 15 nov 2026) y lo que la plataforma hace con
 - **Fuente:** `docs/legal/<clave>.md`, el texto literal del PDF (sin portada, encabezados, pies ni números de página) en markdown, con un encabezado `---` (documento, título, versión, fecha). Tres tablas del aviso integral se pasaron a tablas de markdown. Una prueba revisa que el texto de cada archivo sea, palabra por palabra, el que siembra la migración 064.
 - **Almacén:** `devpware_documentos_legales` (migración 064). Cada versión es una fila con el texto íntegro y su SHA-256; **nunca se cambia ni se borra** (CCom art. 49; Términos 15.2): una corrección es otra versión. `BPublicable` distingue la versión liberada por el abogado de un borrador. `BRequiereAceptacion` dice si quien aceptó una versión anterior debe aceptar esta (Términos 15.2: solo los cambios que afectan sus derechos u obligaciones).
 - **Borradores:** la migración 064 siembra la versión 1 de cada documento **sin publicar**. Todavía tienen espacios en blanco («______»): domicilio, correos, teléfono y WhatsApp, sitio web, banco, CLABE, titular y plazo de abono. En pantalla se ven marcados.
-- **Versión vigente:** la publicada más reciente. Mientras un documento nunca se ha publicado, su borrador más reciente ocupa su lugar **marcado como borrador** (aviso arriba del texto, «borrador» junto a cada enlace, `noindex`), para que el registro tenga a qué enlazar y los avisos de privacidad estén disponibles desde que se recaban datos (regla 1 de la matriz). En cuanto un documento tiene una versión publicada, sus borradores ya no se muestran.
+- **Versión vigente:** la publicada más reciente. Mientras un documento nunca se ha publicado (regla 1 de la matriz: nada se publica hasta que el abogado lo libere, salvo los avisos de privacidad, que deben estar disponibles desde que se recaban datos):
+  - **Avisos de privacidad** (`privacidad-simplificado`, `privacidad-integral`): su borrador más reciente se muestra **marcado como borrador** (aviso arriba del texto, «borrador» junto a cada enlace, `noindex`). El simplificado aparece completo en el registro.
+  - **Todos los demás** (`terminos`, `licencia`, `politicas-comerciales`, `anexo-ia`, `informacion-disociada`): su página dice **«Se publicará próximamente»**, sin nada del texto, tanto en `/legal/<clave>` como en `/legal/<clave>/v/<n>`. Los enlaces del pie y los cuatro de la casilla T abren esa página hasta que se publiquen (`canShowDraftPublicly`, `legal-documents.ts`).
+  - En cuanto un documento tiene una versión publicada, sus borradores ya no se muestran.
 
 ### Páginas
 
 - `/legal/<clave>`: la versión vigente, con su número, su fecha de actualización, la huella SHA-256 y la lista de versiones publicadas.
-- `/legal/<clave>/v/<n>`: la versión publicada `n` (las anteriores siguen disponibles). Un borrador solo mientras el documento no tiene ninguna publicada.
+- `/legal/<clave>/v/<n>`: la versión publicada `n` (las anteriores siguen disponibles). Un borrador solo mientras el documento no tiene ninguna publicada, y solo de los avisos de privacidad; los demás dicen «Se publicará próximamente».
 - `/legal/avisos-de-terceros`: atribuciones y licencias (`src/features/legal/third-party-notices.ts`).
 - El pie de la página pública, de los documentos y de las pantallas de acceso enlaza Términos, Aviso de privacidad, Políticas comerciales, Anexo de IA, Información disociada y Avisos de terceros (`legal-links.ts`).
 
 ## Registro (matriz 1.1 y 2)
 
-«Crear cuenta» pide nombre, apellidos, correo, teléfono, cédula profesional (si la tiene), especialidad, organización y contraseña. Debajo, el **aviso simplificado, Parte I, completo** (en un recuadro con desplazamiento, con su versión y el enlace al integral), y las casillas, todas **sin marcar** al cargar y cada una por separado:
+«Crear cuenta» pide nombre, apellidos, correo, teléfono, cédula profesional (si la tiene), especialidad, organización y contraseña. Debajo, el **aviso simplificado, Parte I, completo** (el borrador marcado, mientras no se publique) (en un recuadro con desplazamiento, con su versión y el enlace al integral), y las casillas, todas **sin marcar** al cargar y cada una por separado:
 
 1. «Declaro que soy mayor de edad.» (Términos 4.1; texto de pantalla, versión 1).
 2. **Casilla 1**: el texto literal de la Parte II, casilla 1, de la versión mostrada, con enlace al aviso integral.
 3. **Casilla T**: «He leído y acepto los Términos y condiciones de uso, que incluyen la Licencia de uso del software, las Políticas comerciales y el Anexo de inteligencia artificial y uso de comparables.», con los cuatro enlaces. **La matriz deja su redacción a We Law**: es un texto provisional (texto de pantalla, versión 1) hasta que lo manden.
 4. **Casillas 2, 3 y 4** (opcionales, en un recuadro aparte): los textos literales de la Parte II.
 
-«Crear cuenta» y «Continuar con Google» se activan solo con la edad, la casilla 1 y la casilla T; pulsar uno es el acto de aceptación. Si una versión cambió mientras se llenaba el formulario, se rechaza y se pide revisar la nueva. Con Google, las casillas y el perfil viajan con la solicitud OAuth (`devpware_solicitudes_oauth.JRegistro`) y se registran al crearse la cuenta. Entrar con Google desde «Iniciar sesión» sin cuenta previa no registra aceptación: esa cuenta pasa por `/aceptar-documentos` en cuanto la aceptación sea obligatoria.
+«Crear cuenta» y «Continuar con Google» se activan solo con la edad, la casilla 1 y la casilla T; pulsar uno es el acto de aceptación. Mientras un documento de la casilla T no está publicado, su enlace abre «Se publicará próximamente» y la aceptación se registra con esa versión como borrador (`publicable: false`). Si una versión cambió mientras se llenaba el formulario, se rechaza y se pide revisar la nueva. Con Google, las casillas y el perfil viajan con la solicitud OAuth (`devpware_solicitudes_oauth.JRegistro`) y se registran al crearse la cuenta. Entrar con Google desde «Iniciar sesión» sin cuenta previa no registra aceptación: esa cuenta pasa por `/aceptar-documentos` en cuanto la aceptación sea obligatoria.
 
 El registro siempre pide las casillas 1 y T, haya o no documentos publicados: no bloquea a nadie y deja la constancia. Lo que cambia con la publicación es solo si las cuentas que no aceptaron las versiones publicadas quedan detenidas (abajo).
 

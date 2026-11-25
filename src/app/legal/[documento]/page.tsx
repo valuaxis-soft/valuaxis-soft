@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { LegalDocumentView } from "@/features/legal/components/legal-document-view";
+import { LegalComingSoon, LegalDocumentView } from "@/features/legal/components/legal-document-view";
 import { findCurrentLegalVersion, listPublishedLegalVersions } from "@/features/legal/legal-document.repository";
-import { LEGAL_DOCUMENT_TITLES, isLegalDocumentKey } from "@/features/legal/legal-documents";
+import { LEGAL_DOCUMENT_TITLES, canShowDraftPublicly, isLegalDocumentKey } from "@/features/legal/legal-documents";
 
 // Read on each visit: a version published with `pnpm legal:publish` shows at once.
 export const dynamic = "force-dynamic";
@@ -21,11 +21,15 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   };
 }
 
-/** The version in force of a legal document; while it has never been published, its draft, marked as such. */
+/**
+ * The version in force of a legal document. While it has never been published: the
+ * privacy notices show their draft, marked; any other document, «Se publicará próximamente».
+ */
 export default async function LegalDocumentPage({ params }: Params) {
   const { documento } = await params;
   if (!isLegalDocumentKey(documento)) notFound();
   const [current, history] = await Promise.all([findCurrentLegalVersion(documento), listPublishedLegalVersions(documento)]);
   if (!current) notFound();
+  if (!current.published && !canShowDraftPublicly(documento)) return <LegalComingSoon title={LEGAL_DOCUMENT_TITLES[documento]} />;
   return <LegalDocumentView version={current} history={history} />;
 }

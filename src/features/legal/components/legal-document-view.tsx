@@ -5,6 +5,26 @@ import { formatLegalDate, hasLegalBlanks, legalDocumentHref } from "../legal-doc
 import { LegalText } from "./legal-text";
 
 /**
+ * A document not published yet whose draft may not be shown (matrix rule 1):
+ * its title and nothing of its text. The links of sign-up open this until the
+ * document is published.
+ */
+export function LegalComingSoon({ title }: { title: string }) {
+  return (
+    <article className="grid gap-4" data-legal-coming-soon="">
+      <header className="grid gap-2">
+        <p className="text-sm font-medium text-muted-foreground">Valuaxis Soft · Documentos legales</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-primary text-balance sm:text-4xl">{title}</h1>
+      </header>
+      <Alert>
+        <AlertTitle>Se publicará próximamente</AlertTitle>
+        <AlertDescription>Este documento todavía no está publicado. Aquí aparecerá, con su número de versión y su fecha, en cuanto se publique.</AlertDescription>
+      </Alert>
+    </article>
+  );
+}
+
+/**
  * One version of a legal document (matrix rule 3 and 3.1): its number and
  * update date in sight, the text exactly as stored with its SHA-256, and the
  * earlier published versions, which stay available (Terms 15.2).

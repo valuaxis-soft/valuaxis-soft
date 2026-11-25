@@ -35,6 +35,14 @@ export const TERMS_DOCUMENTS = ["terminos", "licencia", "politicas-comerciales",
 /** What an account accepts; the dissociated-information policy is only published (matrix, section 0). */
 export const ACCEPTANCE_DOCUMENTS: readonly LegalDocumentKey[] = [...PRIVACY_DOCUMENTS, ...TERMS_DOCUMENTS];
 
+/**
+ * Matrix rule 1: nothing is published until the lawyer releases it, except the
+ * two privacy notices, which must be available as soon as personal data is
+ * collected. Only their drafts are ever shown publicly (marked); any other
+ * unpublished document shows «Se publicará próximamente», without its text.
+ */
+export const canShowDraftPublicly = (key: LegalDocumentKey) => (PRIVACY_DOCUMENTS as readonly LegalDocumentKey[]).includes(key);
+
 export function isLegalDocumentKey(value: string): value is LegalDocumentKey {
   return (LEGAL_DOCUMENT_KEYS as readonly string[]).includes(value);
 }

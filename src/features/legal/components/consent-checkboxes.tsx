@@ -3,7 +3,7 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { ADULT_DECLARATION_TEXT, TERMS_BOX_SEGMENTS } from "../consent-rules";
-import { legalDocumentHref, type LegalDocumentKey } from "../legal-documents";
+import { canShowDraftPublicly, legalDocumentHref, type LegalDocumentKey } from "../legal-documents";
 
 /**
  * The boxes of the simplified notice, Part II, and casilla T (matrix 1.1 and
@@ -36,7 +36,7 @@ function DocumentLink({ document, label, links }: { document: LegalDocumentKey; 
       className="font-medium text-brand underline underline-offset-2"
     >
       {label}
-      {target && !target.published ? " (borrador)" : null}
+      {target && !target.published ? (canShowDraftPublicly(document) ? " (borrador)" : " (se publicará próximamente)") : null}
     </a>
   );
 }

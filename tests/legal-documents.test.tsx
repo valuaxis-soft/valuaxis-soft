@@ -14,6 +14,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AUTH_SESSION_COOKIE } from "../src/features/auth/constants/auth.constants";
 import { parseRegisterInput } from "../src/features/auth/validations/register.schema";
 import { ConsentCheckboxes, EMPTY_CONSENT_BOXES, requiredBoxesTicked } from "../src/features/legal/components/consent-checkboxes";
+import { LegalComingSoon } from "../src/features/legal/components/legal-document-view";
 import { LegalText } from "../src/features/legal/components/legal-text";
 import {
   FALLBACK_BOX_TEXTS,
@@ -30,6 +31,7 @@ import {
   LEGAL_DOCUMENT_KEYS,
   PRIVACY_DOCUMENTS,
   TERMS_DOCUMENTS,
+  canShowDraftPublicly,
   hasLegalBlanks,
   parseLegalSource,
   splitSimplifiedNotice,
@@ -118,6 +120,20 @@ test("the markdown keeps the documents' own numbering, their tables and their bo
   ]);
 });
 
+test("matrix rule 1: before publication only the privacy notices show their draft; the rest, «Se publicará próximamente» without text", () => {
+  assert.deepEqual(
+    LEGAL_DOCUMENT_KEYS.filter((key) => canShowDraftPublicly(key)),
+    ["privacidad-integral", "privacidad-simplificado"],
+  );
+  const html = renderToStaticMarkup(<LegalComingSoon title="Términos y condiciones de uso" />);
+  assert.match(html, /Se publicará próximamente/);
+  // Not a word of the draft.
+  assert.doesNotMatch(html, /QUIÉNES SOMOS|Proveedor|______/);
+  for (const page of ["src/app/legal/[documento]/page.tsx", "src/app/legal/[documento]/v/[version]/page.tsx"]) {
+    assert.match(readFileSync(page, "utf8"), /!(current|found)\.published && !canShowDraftPublicly\(documento\)\) return <LegalComingSoon/, page);
+  }
+});
+
 test("the boxes load unticked; casilla T links its four documents; a draft link says so", () => {
   const html = renderToStaticMarkup(
     <ConsentCheckboxes
@@ -134,7 +150,8 @@ test("the boxes load unticked; casilla T links its four documents; a draft link 
   for (const text of Object.values(FALLBACK_BOX_TEXTS)) assert.ok(html.includes(text), text);
   const termsLinks = TERMS_BOX_SEGMENTS.filter((segment) => typeof segment !== "string");
   assert.deepEqual(termsLinks.map((link) => link.document), [...TERMS_DOCUMENTS]);
-  assert.match(html, /href="\/legal\/terminos\/v\/1"[^>]*>Términos y condiciones de uso \(borrador\)<\/a>/);
+  // Unpublished: the privacy notice says «borrador»; the Terms, that they will be published.
+  assert.match(html, /href="\/legal\/terminos\/v\/1"[^>]*>Términos y condiciones de uso \(se publicará próximamente\)<\/a>/);
   assert.match(html, /href="\/legal\/licencia\/v\/2"[^>]*>Licencia de uso del software<\/a>/);
   assert.match(html, /href="\/legal\/politicas-comerciales"/);
   assert.match(html, /href="\/legal\/anexo-ia"/);
