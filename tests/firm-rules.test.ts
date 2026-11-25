@@ -59,8 +59,8 @@ test("a new valuation shows its date and validity in the carátula's DATOS DEL A
   const hydrated = hydrateGeneralCaratulaTemplate(structuredClone(caratulaSection), { valuationDate: "2026-09-28", validity: "6 meses" });
   const block = hydrated.blocks.find((item) => item.id === "caratula-block-4-datos-del-avaluo");
   const values = Object.fromEntries(block!.concepts.map((concept) => [concept.label, concept.value]));
-  assert.match(String(values["Fecha de avaluo"]), /28 de septiembre de 2026/i);
-  assert.equal(values["Vigencia de avaluo"], "6 meses");
+  assert.match(String(values["Fecha de avalúo"]), /28 de septiembre de 2026/i);
+  assert.equal(values["Vigencia de avalúo"], "6 meses");
 });
 
 test("the firm's signers are trimmed, optional, and each needs a name and a cédula", () => {

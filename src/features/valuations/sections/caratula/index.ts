@@ -9,7 +9,7 @@ const APPLICANT_BLOCK = {
   concepts: [
     ["Propietario"],
     ["Solicitante"],
-    ["Telefono"],
+    ["Teléfono"],
     ["Correo"],
   ] as [string][],
 };
@@ -17,19 +17,19 @@ const APPLICANT_BLOCK = {
 const VALUATION_BLOCKS = [
   {
     id: "caratula-block-4-datos-del-avaluo",
-    title: "DATOS DEL AVALUO",
+    title: "DATOS DEL AVALÚO",
     concepts: [
-      ["Fecha de avaluo"],
-      ["Vigencia de avaluo"],
-      ["Uso del avaluo"],
-      ["Proposito del avaluo"],
+      ["Fecha de avalúo"],
+      ["Vigencia de avalúo"],
+      ["Uso del avalúo"],
+      ["Propósito del avalúo"],
       ["Lugar y fecha de solicitud"],
     ] as [string][],
   },
   {
     id: "caratula-block-5-supuestos-y-condiciones-limitantes-que-influyen-en-el-valor-dictaminado",
     title: "SUPUESTOS Y CONDICIONES LIMITANTES QUE INFLUYEN EN EL VALOR DICTAMINADO",
-    concepts: [["Descripcion"]] as [string][],
+    concepts: [["Descripción"]] as [string][],
   },
   {
     id: "caratula-block-6-conclusion",
@@ -53,7 +53,7 @@ export const caratulaSection = defineSection({
         ["Calle"],
         ["Número exterior / interior"],
         ["Ejido o poblado"],
-        ["Delegacion o municipio"],
+        ["Delegación o municipio"],
         ["Código postal"],
         ["Entidad federativa"],
       ],
@@ -63,10 +63,11 @@ export const caratulaSection = defineSection({
       id: "caratula-block-3-caracteristicas",
       title: "CARACTERÍSTICAS",
       concepts: [
-        ["Superficie total terreno"],
-        ["Superficie total de construccion"],
+        // Surfaces are measured in m² (B-12: «205» printed with no unit).
+        ["Superficie total terreno", "", "number", "m2"],
+        ["Superficie total de construcción", "", "number", "m2"],
         ["Uso actual del bien"],
-        ["Numero de niveles"],
+        ["Número de niveles"],
       ],
     },
     ...VALUATION_BLOCKS,

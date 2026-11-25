@@ -85,7 +85,7 @@ test("the carátula prints the title of each of its blocks (videos 5.2 and 5.6: 
     "DATOS DEL BIEN",
     "DATOS DEL SOLICITANTE",
     "CARACTERÍSTICAS",
-    "DATOS DEL AVALUO",
+    "DATOS DEL AVALÚO",
     "SUPUESTOS Y CONDICIONES LIMITANTES QUE INFLUYEN EN EL VALOR DICTAMINADO",
     "CONCLUSIÓN",
   ]);

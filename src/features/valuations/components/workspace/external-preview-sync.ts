@@ -20,6 +20,8 @@ export type ExternalPreviewPayload = {
   numberPresentation?: NumberPresentation;
   /** How the document lays out its pages; a main tab on an older version sends none. */
   pagePresentation?: PagePresentation;
+  /** The print rules of the dictamen (services/print-version.ts); a main tab on an older version sends none, and the window shows the current ones. */
+  printVersion?: number;
   /** Where the section shown is in the document, so the window browses it too; absent from an older main tab. */
   navigation?: ExternalPreviewNavigation;
   /**

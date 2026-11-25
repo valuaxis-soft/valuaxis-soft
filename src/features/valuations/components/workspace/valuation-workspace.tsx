@@ -12,6 +12,8 @@ import { FirmListsProvider } from "@/features/valuations/components/editor/firm-
 import type { FirmLists } from "@/features/firm/firm-lists";
 import { DeleteConfirmProvider } from "@/features/valuations/components/editor/delete-confirm";
 import { NumberPresentationProvider } from "@/features/valuations/components/number-presentation-context";
+import { PrintVersionProvider } from "@/features/valuations/components/print-version-context";
+import { CURRENT_PRINT_VERSION } from "@/features/valuations/services/print-version";
 import { documentNumberPresentation } from "@/features/valuations/services/number-presentation";
 import { PagePresentationProvider } from "@/features/valuations/components/page-presentation-context";
 import { documentPagePresentation } from "@/features/valuations/services/page-presentation";
@@ -309,6 +311,8 @@ export function ValuationWorkspace({
   };
   // One choice for the whole document: the editor, the preview and the external window write numbers the same way.
   const numberPresentation = useMemo(() => documentNumberPresentation(sections), [sections]);
+  // The previews show a concluded valuation with the print rules it was concluded with, as its dictamen prints it.
+  const printVersion = initialValuation?.printVersion ?? CURRENT_PRINT_VERSION;
   const pagePresentationChoice = documentPagePresentation(sections);
   const paletteStrong = pagePresentationChoice.palette?.strong;
   const palettePastel = pagePresentationChoice.palette?.pastel;
@@ -342,6 +346,7 @@ export function ValuationWorkspace({
     principalCoverImage,
     numberPresentation,
     pagePresentation,
+    printVersion,
     // The window browses the document too: it asks this editor for the previous or next section.
     navigation: {
       label: navigationLabel,
@@ -368,6 +373,7 @@ export function ValuationWorkspace({
     meta,
     numberPresentation,
     pagePresentation,
+    printVersion,
     principalCoverImage,
   ]);
 
@@ -651,6 +657,7 @@ export function ValuationWorkspace({
     <FormulaEditingProvider sections={sections}>
     <NumberPresentationProvider presentation={numberPresentation}>
     <PagePresentationProvider presentation={pagePresentation}>
+    <PrintVersionProvider version={printVersion}>
     <CustomUnitsProvider initialUnits={customUnits}>
     <FirmListsProvider initialLists={firmLists}>
     {/* A template has no header dates: its dates are not compared with anything. */}
@@ -860,6 +867,7 @@ export function ValuationWorkspace({
     </HeaderDatesProvider>
     </FirmListsProvider>
     </CustomUnitsProvider>
+    </PrintVersionProvider>
     </PagePresentationProvider>
     </NumberPresentationProvider>
     </FormulaEditingProvider>

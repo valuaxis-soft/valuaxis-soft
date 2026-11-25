@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { consumeCreditForValuation } from "@/features/billing/credits.service";
 import { adoptedValueConcludeError, marketsWithAdoptedValueOutside } from "@/features/valuations/calculation/adopted-value-check";
@@ -8,6 +9,7 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import type { AuthUser } from "@/features/auth/model";
 import { copyVersionContent } from "@/features/valuations/services/valuation-version-copy.service";
 import { isRequiredSectionKey } from "@/features/valuations/sections/section-registry";
+import { withPrintVersion } from "@/features/valuations/services/print-version";
 import { ValuationWorkflowError } from "./errors";
 
 /** Today's date in Mexico, "YYYY-MM-DD", to compare with the valuation date. */
@@ -102,6 +104,8 @@ export async function concludeValuation(input: {
         IdUsuarioFinalizador: input.user.id,
         DFechaFinalizacion: new Date(),
         SHashContenido: contentHash,
+        // It prints with today's rules from now on, whatever later updates change (print-version.ts).
+        JConfiguracionCalculo: withPrintVersion(avaluo.versionTrabajo.JConfiguracionCalculo) as Prisma.InputJsonValue,
       },
     });
 

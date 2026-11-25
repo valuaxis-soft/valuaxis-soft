@@ -1,8 +1,9 @@
 import { useMemo, type ReactNode } from "react";
-import type { AppSection, TableContent } from "../model";
+import type { AppSection, Block, TableContent } from "../model";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { useDocumentTheme } from "@/features/valuations/components/document-theme";
 import { captureKindOf, isCaptureMarked } from "../calculation/construction-capture";
+import { CURRENT_PRINT_VERSION, printsWith } from "../services/print-version";
 import { ensureTableV2, tablePrintLayout } from "../services/table";
 import type { DocumentTableFragment } from "../services/table-pagination";
 import {
@@ -12,30 +13,40 @@ import {
 } from "./document-preview-page";
 import { documentBlockFlowItems } from "./document-block-renderer";
 import { DocumentTable } from "./document-table";
+import { usePrintVersion } from "./print-version-context";
 
 export function isConstruccionSection(section: AppSection) {
   return section.id === "construccion" || getCanonicalSectionKey(section.id) === "CONSTRUCCION";
 }
 
+/** The type a dictamen concluded with print rules 0 gave its construction section; it reprints with it (print-version.ts). */
 const CONSTRUCTION_TEXT_CLASS = "text-[#222]";
 const CONSTRUCTION_FONT = { fontFamily: "Arial, Calibri, sans-serif" };
 
-/** The printed items of the construction section, with its own tables. */
-export function construccionFlowItems(section: AppSection): DocumentFlowItem[] {
-  return section.blocks
-    .filter((block) => block.enabled)
-    .flatMap((block) => documentBlockFlowItems(block, {
+/**
+ * The printed items of the construction section. Its blocks print as in every
+ * section, their concepts and images included (B-01: III and IV printed only
+ * their titles and tables). With print rules 0, as it was concluded: only the
+ * tables of a block's own rows.
+ */
+export function construccionFlowItems(section: AppSection, printVersion = CURRENT_PRINT_VERSION): DocumentFlowItem[] {
+  const blocks = section.blocks.filter((block) => block.enabled);
+  if (!printsWith(printVersion, 1)) {
+    return blocks.flatMap((block) => documentBlockFlowItems(block, {
       renderContentRow: (props) => <ConstructionContentRow {...props} />,
     }));
+  }
+  return blocks.flatMap((block) => documentBlockFlowItems(withoutLegacyCaptureCaptions(block), { applyConceptLayout: true }));
 }
 
 /**
- * The same items printed after another section, on its pages: each carries
- * the type and color the section's own pages give their content.
+ * The same items printed after another section, on its pages. With print
+ * rules 0 each carries the type and color of the section's own pages then.
  */
-export function construccionFlowItemsInFlow(section: AppSection): DocumentFlowItem[] {
+export function construccionFlowItemsInFlow(section: AppSection, printVersion = CURRENT_PRINT_VERSION): DocumentFlowItem[] {
+  if (printsWith(printVersion, 1)) return construccionFlowItems(section, printVersion);
   const styled = (node: ReactNode) => <div className={CONSTRUCTION_TEXT_CLASS} style={CONSTRUCTION_FONT}>{node}</div>;
-  return construccionFlowItems(section).map((item) => ({
+  return construccionFlowItems(section, printVersion).map((item) => ({
     ...item,
     node: styled(item.node),
     ...(item.renderTableFragment ? { renderTableFragment: (fragment: DocumentTableFragment) => styled(item.renderTableFragment!(fragment)) } : {}),
@@ -50,15 +61,17 @@ export function ConstruccionPreview({
   section: AppSection;
 }) {
   const theme = useDocumentTheme();
-  const items = construccionFlowItems(section);
+  const printVersion = usePrintVersion();
+  const items = construccionFlowItems(section, printVersion);
   const contentLayoutKey = useMemo(() => computeDocumentLayoutKey(section), [section]);
+  const ownType = !printsWith(printVersion, 1);
 
   return (
     <AutoPaginatedDocumentFlow
-      contentClassName={`${theme.sectionGap} ${theme.pagePadding} ${CONSTRUCTION_TEXT_CLASS}`}
+      contentClassName={`${theme.sectionGap} ${theme.pagePadding}${ownType ? ` ${CONSTRUCTION_TEXT_CLASS}` : ""}`}
       contentProps={{ "data-construccion-preview": true }}
       contentLayoutKey={contentLayoutKey}
-      contentStyle={CONSTRUCTION_FONT}
+      contentStyle={ownType ? CONSTRUCTION_FONT : undefined}
       header={header}
       items={items}
       pageKeyPrefix="construccion"
@@ -130,8 +143,15 @@ function ConstructionContentRow({
  */
 function ConstructionTable({ table, fragment }: { table: TableContent; fragment?: DocumentTableFragment }) {
   if (table.enabled === false) return null;
-  const legacyCapture = captureKindOf(table) !== null && !isCaptureMarked(table);
-  return <DocumentTable table={legacyCapture ? withoutCaption(table) : table} variant="report" fragment={fragment} />;
+  return <DocumentTable table={isLegacyCapture(table) ? withoutCaption(table) : table} variant="report" fragment={fragment} />;
+}
+
+const isLegacyCapture = (table: TableContent) => captureKindOf(table) !== null && !isCaptureMarked(table);
+
+/** The block with its old capture tables printed without their title, as the section always printed them. */
+function withoutLegacyCaptureCaptions(block: Block): Block {
+  if (!block.tables.some(isLegacyCapture)) return block;
+  return { ...block, tables: block.tables.map((table) => (isLegacyCapture(table) ? withoutCaption(table) : table)) };
 }
 
 function withoutCaption(table: TableContent): TableContent {
