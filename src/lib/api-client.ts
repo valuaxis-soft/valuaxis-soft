@@ -5,6 +5,7 @@ import type {
   MarketCalculationDto,
   MarketSettingsDto,
 } from "@/features/valuations/calculation/market-types";
+import { trackMutation } from "./pending-mutations";
 import type { ComparableImportPreview, ImportBaseCounts } from "@/features/valuations/calculation/comparable-import";
 import type { ImportDestination } from "@/features/valuations/calculation/comparable-master";
 import type { ComparableCardDto, DuplicateMatchDto, ReviewRowDto } from "@/features/valuations/calculation/comparable-card.service";
@@ -210,10 +211,10 @@ export function failedRequestMessage(status: number) {
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
+  const res = await trackMutation(options?.method, () => fetch(`${BASE}${url}`, {
     headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
-  });
+  }));
 
   if (res.status === 401) throw new SessionExpiredError();
   if (!res.ok) {
@@ -231,7 +232,7 @@ async function uploadForm<T>(url: string, fields: Record<string, string | Blob |
   for (const [key, value] of Object.entries(fields)) {
     if (value !== undefined) formData.append(key, value);
   }
-  const res = await fetch(`${BASE}${url}`, { method: "POST", body: formData });
+  const res = await trackMutation("POST", () => fetch(`${BASE}${url}`, { method: "POST", body: formData }));
   if (res.status === 401) throw new SessionExpiredError();
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));

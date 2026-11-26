@@ -142,6 +142,8 @@ export type ValuationBlockDto = {
   coverImageSize?: CoverImageSize;
   /** The block of the concluded value: it prints the chart of the values. */
   valueChart?: boolean;
+  /** The carátula's conclusion: the title of the value's box written by hand. */
+  valueTitle?: string;
   concepts: ValuationConceptDto[];
   subBlocks: ValuationApartadoDto[];
   tables: ValuationTableDto[];
@@ -832,6 +834,7 @@ function mapNodeToBlock(node: DbNode, label: string, read: TextReader): Valuatio
     ...(blockMetadata.headerFields ? { headerFields: blockMetadata.headerFields } : {}),
     ...(blockMetadata.coverImageSize ? { coverImageSize: blockMetadata.coverImageSize } : {}),
     ...(blockMetadata.valueChart ? { valueChart: true } : {}),
+    ...(blockMetadata.valueTitle ? { valueTitle: blockMetadata.valueTitle } : {}),
     concepts: conceptNodes.map((child) => mapConceptNode(child, read)),
     subBlocks: subBlockNodes.map((child) => {
       const subChildren = child.nodosHijos

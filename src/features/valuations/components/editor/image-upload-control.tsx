@@ -6,7 +6,6 @@ import { FieldLabel } from "@/components/ui/field";
 import { buttonVariants } from "@/components/ui/button";
 import { ImagePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { remindImageRights } from "../legal-notice";
 
 export function UploadButton({
   accept = "image/*",
@@ -42,11 +41,7 @@ export function UploadButton({
         accept={accept}
         disabled={disabled}
         multiple={multiple || undefined}
-        onChange={(event) => {
-          // Matrix 1.5, «Fotografías y textos»: each upload reminds that the image must be the appraiser's to use.
-          if (event.target.files?.length) remindImageRights();
-          onChange(event);
-        }}
+        onChange={onChange}
       />
     </FieldLabel>
   );

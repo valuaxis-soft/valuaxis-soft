@@ -2,8 +2,8 @@
  * Closing and suspending accounts and the retention of concluded valuations
  * (docs/CUENTAS.md) against the local database, with the emails captured in
  * memory: the voluntary closure, a suspension with its notice, inactivity,
- * and the matrix's acceptance test (a fictitious expired valuation gets the
- * warning email first and then is suppressed). Every flow checks that the
+ * and the retention (a concluded valuation is never deleted; after twelve
+ * months only the stored copies of its exports go). Every flow checks that the
  * balance never changes; with the flags off nothing is sent or deleted.
  */
 import assert from "node:assert/strict";
@@ -28,7 +28,6 @@ import { runInactivity } from "../../src/features/account/standing/inactivity.se
 import { authenticateWithPassword } from "../../src/features/auth/services/authentication.service";
 import { adjustCredits, getCreditBalance } from "../../src/features/billing/credits.service";
 import { runRetention } from "../../src/features/valuations/retention/retention.service";
-import { SUPPRESSED_VALUATION_TITLE } from "../../src/features/valuations/retention/valuation-suppression";
 import { getEmailService, type AccountNoticeEmailInput } from "../../src/infrastructure/email/email.service";
 import { createAuthUserFixture, createValuationFixture, prisma, testIp } from "./support";
 
@@ -224,7 +223,7 @@ describe("inactivity", () => {
       reviewed: 1, notices: 0, disabled: 0, withdrawn: 0, failedEmails: 0, applied: true,
     });
 
-    const later = addDays(now, 15);
+    const later = addDays(now, 30);
     assert.equal((await runInactivity({ apply: true, userIds: [fixture.userId], now: later })).disabled, 1);
     const row = await prisma.suspensionCuenta.findFirstOrThrow({ where: { IdUsuario: fixture.userId } });
     assert.equal(row.STipo, "INACTIVIDAD");
@@ -336,6 +335,18 @@ async function concludedValuationFixture(concludedAt: Date) {
       IdPropiedadSujeto: subject.IdPropiedad, SNombreCliente: "Cliente Inventado",
     },
   });
+  // The PDF kept in storage when the dictamen was downloaded: the heavy copy the retention removes.
+  const exportKey = `organizaciones/${avaluo.organizacion.UIdentificadorPublico}/avaluos/${avaluo.UIdentificadorPublico}/exportaciones/pdf/${randomUUID()}.pdf`;
+  const exportFile = await file(exportKey);
+  await prisma.relacionArchivo.create({
+    data: { IdArchivo: exportFile.IdArchivo, IdTipoRelacionArchivo: relationType.IdTipoRelacionArchivo, SEntidad: "AVALUO_DICTAMEN_PDF", SIdentificadorEntidad: avaluo.UIdentificadorPublico },
+  });
+  const exportRow = await prisma.exportacionAvaluo.create({
+    data: {
+      IdAvaluo: avaluo.IdAvaluo, IdVersionAvaluo: versionId, IdUsuario: user.id, IdArchivo: exportFile.IdArchivo,
+      STipoExportacion: "DICTAMEN", SFormato: "PDF", SEstado: "COMPLETADA", DFechaSolicitud: concludedAt, DFechaInicio: concludedAt, DFechaFinalizacion: concludedAt,
+    },
+  });
   await adjustCredits({ organizationId, credits: 5, reason: "Saldo de prueba" });
   await prisma.movimientoCreditos.create({
     data: { IdOrganizacion: organizationId, STipo: "CONSUMO", ICreditos: -1, IdAvaluo: avaluo.IdAvaluo, IdUsuario: user.id, SDescripcion: "Avalúo de prueba concluido" },
@@ -344,11 +355,12 @@ async function concludedValuationFixture(concludedAt: Date) {
     valuationId: avaluo.IdAvaluo, publicId: avaluo.UIdentificadorPublico, organizationId, userId: user.id, versionId,
     editorKey, coverKey, listedPropertyId: listed.IdPropiedad, publicationId: publication.IdPublicacionPropiedad,
     sharedPropertyId: shared.IdPropiedad, subjectPropertyId: subject.IdPropiedad,
+    exportKey, exportId: exportRow.IdExportacionAvaluo,
   };
 }
 
-describe("retention of concluded valuations (matrix 1.12)", () => {
-  test("acceptance: a fictitious expired valuation gets the warning email first and then is suppressed", async (t) => {
+describe("retention of concluded valuations (matrix 1.12; client, 26 Nov 2026)", () => {
+  test("a concluded valuation is never deleted: after twelve months only its stored export copies go", async (t) => {
     const sent = captureNotices(t);
     const deleted: string[] = [];
     const storage = { deleteObject: async (key: string) => void deleted.push(key) };
@@ -358,102 +370,48 @@ describe("retention of concluded valuations (matrix 1.12)", () => {
     const balance = await getCreditBalance(fixture.organizationId);
     assert.equal(balance, 4);
 
-    // Flag off: --apply only counts; nothing sent, nothing deleted.
+    // Flag off: --apply only counts; nothing deleted.
     withFlag(t, "VALUATION_RETENTION_ENABLED", undefined);
     assert.deepEqual(await runRetention({ apply: true, now, ...scope }), {
-      reviewed: 1, warnings: 1, suppressed: 0, blocked: 0, failedEmails: 0, filesDeleted: 0, fileErrors: 0, applied: false,
+      reviewed: 1, pruned: 1, blocked: 0, filesDeleted: 0, fileErrors: 0, applied: false,
     });
-    assert.equal(sent.length, 0);
-    assert.equal(await prisma.versionAvaluo.count({ where: { IdAvaluo: fixture.valuationId } }), 1);
+    assert.equal(await prisma.archivo.count({ where: { SClaveObjeto: fixture.exportKey } }), 1);
 
-    // On: the warning first, even though the retention already expired; nothing suppressed yet.
     withFlag(t, "VALUATION_RETENTION_ENABLED", "true");
-    const warned = await runRetention({ apply: true, now, ...scope });
-    assert.equal(warned.warnings, 1);
-    assert.equal(warned.suppressed, 0);
-    assert.equal(sent.length, 1);
-    assert.match(sent[0].subject, /Descarga o respalda el reporte del avalúo TEST-/);
-    assert.doesNotMatch(sent[0].text, /Cliente Inventado/);
-    const [log] = await noticesOf(fixture.userId);
-    assert.equal(log.STipo, "GUARDA_POR_VENCER");
-    assert.equal(log.SIdentificadorEntidad, fixture.publicId);
-    assert.equal(await prisma.versionAvaluo.count({ where: { IdAvaluo: fixture.valuationId } }), 1);
+    const result = await runRetention({ apply: true, now, ...scope });
+    assert.deepEqual({ pruned: result.pruned, blocked: result.blocked, filesDeleted: result.filesDeleted }, { pruned: 1, blocked: 0, filesDeleted: 1 });
+    assert.deepEqual(deleted, [fixture.exportKey]);
+    assert.equal(sent.length, 0, "no email: nothing of the valuation is lost");
 
-    // Thirty days after the warning: suppressed, without a second email.
-    const later = addDays(now, 30);
-    const dry = await runRetention({ apply: false, now: later, ...scope });
-    assert.equal(dry.suppressed, 1);
-    assert.equal(await prisma.versionAvaluo.count({ where: { IdAvaluo: fixture.valuationId } }), 1);
-    const result = await runRetention({ apply: true, now: later, ...scope });
-    assert.deepEqual({ suppressed: result.suppressed, blocked: result.blocked, warnings: result.warnings }, { suppressed: 1, blocked: 0, warnings: 0 });
-    assert.equal(sent.length, 1);
+    // The copy is gone; its export row stays as history, without a file.
+    assert.equal(await prisma.archivo.count({ where: { SClaveObjeto: fixture.exportKey } }), 0);
+    const exportRow = await prisma.exportacionAvaluo.findUniqueOrThrow({ where: { IdExportacionAvaluo: fixture.exportId } });
+    assert.equal(exportRow.IdArchivo, null);
+    assert.equal(exportRow.DFechaExpiracion?.toISOString(), now.toISOString());
 
+    // The valuation, its content, its comparables, its images and its ledger stay as they were.
     const row = await prisma.avaluo.findUniqueOrThrow({ where: { IdAvaluo: fixture.valuationId } });
-    assert.equal(row.DFechaSupresion?.toISOString(), later.toISOString());
-    assert.equal(row.STitulo, SUPPRESSED_VALUATION_TITLE);
-    assert.equal(row.SNombreCliente, null);
-    assert.equal(row.BActivo, false);
-    assert.match(row.SFolio, /^TEST-/);
-    assert.equal(await prisma.versionAvaluo.count({ where: { IdAvaluo: fixture.valuationId } }), 0);
-    assert.equal(await prisma.seccionDocumento.count({ where: { IdVersionAvaluo: fixture.versionId } }), 0);
-    assert.equal(await prisma.comparableAvaluo.count({ where: { IdAvaluo: fixture.valuationId } }), 0);
-    assert.equal(await prisma.publicacionPropiedad.count({ where: { IdPublicacionPropiedad: fixture.publicationId } }), 0);
-    assert.equal(await prisma.propiedad.count({ where: { IdPropiedad: { in: [fixture.listedPropertyId, fixture.subjectPropertyId] } } }), 0);
-    assert.equal(await prisma.propiedad.count({ where: { IdPropiedad: fixture.sharedPropertyId } }), 1, "the firm's base keeps its property");
-    assert.equal(await prisma.archivo.count({ where: { SClaveObjeto: { in: [fixture.editorKey, fixture.coverKey] } } }), 0);
-    assert.deepEqual([...deleted].sort(), [fixture.coverKey, fixture.editorKey].sort());
-    // The ledger and the email log stay as they were.
+    assert.equal(row.DFechaSupresion, null);
+    assert.equal(row.BActivo, true);
+    assert.equal(row.SNombreCliente, "Cliente Inventado");
+    assert.equal(await prisma.versionAvaluo.count({ where: { IdAvaluo: fixture.valuationId } }), 1);
+    assert.equal(await prisma.seccionDocumento.count({ where: { IdVersionAvaluo: fixture.versionId } }), 1);
+    assert.equal(await prisma.comparableAvaluo.count({ where: { IdAvaluo: fixture.valuationId } }), 2);
+    assert.equal(await prisma.propiedad.count({ where: { IdPropiedad: { in: [fixture.listedPropertyId, fixture.subjectPropertyId] } } }), 2);
+    assert.equal(await prisma.archivo.count({ where: { SClaveObjeto: { in: [fixture.editorKey, fixture.coverKey] } } }), 2);
     assert.equal(await prisma.movimientoCreditos.count({ where: { IdAvaluo: fixture.valuationId } }), 1);
     assert.equal(await getCreditBalance(fixture.organizationId), balance);
-    assert.equal((await noticesOf(fixture.userId)).length, 1);
 
-    // Done once: the next run has nothing to do.
-    assert.equal((await runRetention({ apply: true, now: addDays(later, 1), ...scope })).reviewed, 0);
+    // Done once: the next run has nothing to remove.
+    assert.equal((await runRetention({ apply: true, now: addDays(now, 1), ...scope })).pruned, 0);
   });
 
-  test("a valuation within its retention is left alone", async (t) => {
-    const sent = captureNotices(t);
+  test("a valuation concluded less than twelve months ago keeps its copies", async (t) => {
     withFlag(t, "VALUATION_RETENTION_ENABLED", "true");
     const now = new Date();
-    const fixture = await concludedValuationFixture(addMonths(now, -2));
+    const fixture = await concludedValuationFixture(addMonths(now, -11));
     const result = await runRetention({ apply: true, now, valuationIds: [fixture.valuationId], storage: { deleteObject: async () => undefined } });
-    assert.deepEqual({ warnings: result.warnings, suppressed: result.suppressed }, { warnings: 0, suppressed: 0 });
-    assert.equal(sent.length, 0);
-    assert.equal(await prisma.versionAvaluo.count({ where: { IdAvaluo: fixture.valuationId } }), 1);
-  });
-
-  test("an image another valuation of the firm still uses is kept, in the database and in storage", async (t) => {
-    captureNotices(t);
-    withFlag(t, "VALUATION_RETENTION_ENABLED", "true");
-    const deleted: string[] = [];
-    const now = new Date();
-    const fixture = await concludedValuationFixture(addMonths(now, -13));
-    // A copy of the valuation (as «Duplicar» leaves it) whose content points to the same image.
-    const copy = await prisma.avaluo.findUniqueOrThrow({ where: { IdAvaluo: fixture.valuationId } });
-    const copyRow = await prisma.avaluo.create({
-      data: {
-        IdOrganizacion: copy.IdOrganizacion, IdUsuarioCreador: copy.IdUsuarioCreador, IdEstadoAvaluo: copy.IdEstadoAvaluo, IdTipoAvaluo: copy.IdTipoAvaluo,
-        IdTipoInmueble: copy.IdTipoInmueble, IdTipoOperacion: copy.IdTipoOperacion, SFolio: `${copy.SFolio}-C`, STitulo: "Copia", IdAvaluoOrigen: copy.IdAvaluo,
-      },
-    });
-    const version = await prisma.versionAvaluo.create({
-      data: { IdAvaluo: copyRow.IdAvaluo, IdUsuarioCreador: copy.IdUsuarioCreador, IdEstadoVersionAvaluo: (await prisma.estadoVersionAvaluo.findFirstOrThrow({ where: { BActivo: true } })).IdEstadoVersionAvaluo, INumeroVersion: 1 },
-    });
-    const section = await prisma.seccionDocumento.create({ data: { IdVersionAvaluo: version.IdVersionAvaluo, SClave: "DATOS", SNombre: "Datos generales" } });
-    await prisma.nodoDocumento.create({
-      data: {
-        IdSeccionDocumento: section.IdSeccionDocumento,
-        IdTipoNodoDocumento: (await prisma.tipoNodoDocumento.findFirstOrThrow({ where: { BActivo: true } })).IdTipoNodoDocumento,
-        SClave: "foto",
-        STitulo: "Fotografía",
-        JConfiguracion: { kind: "image", src: `/api/archivos/imagen?key=${encodeURIComponent(fixture.editorKey)}` },
-      },
-    });
-
-    await runRetention({ apply: true, now, valuationIds: [fixture.valuationId] , storage: { deleteObject: async (key) => void deleted.push(key) } });
-    const result = await runRetention({ apply: true, now: addDays(now, 30), valuationIds: [fixture.valuationId], storage: { deleteObject: async (key) => void deleted.push(key) } });
-    assert.equal(result.suppressed, 1);
-    assert.equal(await prisma.archivo.count({ where: { SClaveObjeto: fixture.editorKey } }), 1);
-    assert.deepEqual(deleted, [fixture.coverKey]);
+    assert.equal(result.pruned, 0);
+    assert.equal(await prisma.archivo.count({ where: { SClaveObjeto: fixture.exportKey } }), 1);
   });
 });

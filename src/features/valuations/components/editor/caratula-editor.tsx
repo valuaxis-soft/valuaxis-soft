@@ -59,9 +59,9 @@ import {
   MAX_HEADER_EXTRA_FIELDS,
 } from "@/features/valuations/services/caratula-company-header";
 import type { HeaderExtraField } from "@/features/valuations/model";
+import { VALUE_TITLE_MAX } from "@/features/valuations/metadata";
 import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
 import { UploadButton } from "./image-upload-control";
-import { ImageRightsNotice } from "../legal-notice";
 import { ImageFramingControl } from "./image-framing-control";
 
 /** 1 to 12 whole months, at the appraiser's discretion. */
@@ -320,7 +320,6 @@ function PrincipalImageEditor({
             <PasteImageButton baseName="imagen-principal" disabled={disabled} onFiles={(files) => onUpload(filesAsChangeEvent(files))} />
           ) : null}
           {/* Matrix 1.5, «Fotografías y textos». */}
-          {!readOnly ? <ImageRightsNotice /> : null}
         </div>
       </div>
       {image?.url ? (
@@ -408,13 +407,37 @@ export function CalculatedValuesEditor({
   caratula,
   onUpdate,
   readOnly,
+  valueTitle,
 }: {
   caratula: CaratulaFormData;
   onUpdate: (patch: Partial<CaratulaFormData>) => void;
   readOnly: boolean;
+  /**
+   * The title of the value's box, written by hand in the carátula (26 Nov
+   * 2026): empty, the one of the kind of property («VALOR COMERCIAL DEL
+   * INMUEBLE», «… DE LA RETROEXCAVADORA») prints.
+   */
+  valueTitle?: { value: string; automatic: string; onChange: (value: string) => void };
 }) {
   return (
     <div className="rounded-lg border bg-muted/20 p-4">
+      {valueTitle ? (
+        <Field className="mb-3" data-value-title-field="">
+          <FieldLabel htmlFor="caratula-value-title">Título del valor</FieldLabel>
+          <Input
+            id="caratula-value-title"
+            autoComplete="off"
+            disabled={readOnly}
+            maxLength={VALUE_TITLE_MAX}
+            placeholder={valueTitle.automatic}
+            value={valueTitle.value}
+            onChange={(event) => valueTitle.onChange(event.target.value)}
+          />
+          <FieldDescription>
+            Se imprime en el recuadro del valor de la carátula. Vacío, dice «{valueTitle.automatic}».
+          </FieldDescription>
+        </Field>
+      ) : null}
       <div className="grid gap-3 md:grid-cols-2">
         <CaratulaField
           description="Este valor será calculado automáticamente por el sistema."

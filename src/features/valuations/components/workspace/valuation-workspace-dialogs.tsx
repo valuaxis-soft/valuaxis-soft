@@ -1,5 +1,6 @@
 "use client";
 
+import { EXIT_DIALOG_TITLE } from "./model/navigation-guard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -73,7 +74,7 @@ export function UnsavedChangesExitDialog({
       {/* Wide enough for its three choices in one row. */}
       <AlertDialogContent data-unsaved-exit-dialog="" className="data-[size=default]:sm:max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle>Hay cambios sin guardar</AlertDialogTitle>
+          <AlertDialogTitle>{EXIT_DIALOG_TITLE}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -1,5 +1,6 @@
 "use client";
 
+import { leaveIntercepted } from "@/features/valuations/components/workspace/model/navigation-guard";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type { LucideIcon } from "lucide-react";
 import { CornerDownLeft, Keyboard, Plus, Search } from "lucide-react";
@@ -121,6 +122,8 @@ export function CommandPalette({ navigation }: { navigation: AppNavigation }) {
   const go = useCallback(
     (href: string) => {
       setOpen(false);
+      // An open editor with work to save asks first («¿Deseas guardar antes de salir?»).
+      if (leaveIntercepted(href)) return;
       if (router) router.push(href);
       else window.location.assign(href);
     },

@@ -314,8 +314,8 @@ async function insertTemplate(input: {
  * same cleaning as «Guardar como plantilla»). The images put there are the
  * template's own and stay; «Con imágenes» says whether it has any.
  */
-function editedTemplate(sections: AppSection[]): DocumentTemplateContent {
-  const content = buildDocumentTemplate(sections, { includeImages: true });
+function editedTemplate(sections: AppSection[], includeData = false): DocumentTemplateContent {
+  const content = buildDocumentTemplate(sections, { includeImages: true, includeData });
   return { ...content, includeImages: documentHasImages(content.sections) };
 }
 
@@ -385,7 +385,8 @@ export async function saveValuationTemplateDocument(input: {
   }
   // The editor does not show the carátula's image: the one the template kept stays.
   const content: DocumentTemplateContent = {
-    ...editedTemplate(input.sections),
+    // A template saved «con datos del inmueble» keeps them when edited.
+    ...editedTemplate(input.sections, stored.includeData),
     ...(stored.propertyTypeKey ? { propertyTypeKey: stored.propertyTypeKey } : {}),
     ...(stored.coverImage ? { coverImage: stored.coverImage } : {}),
   };

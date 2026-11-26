@@ -2,9 +2,9 @@
 
 Lo que pide la matriz de implementación del abogado (secciones 1.11, 1.12 y 3.4, «Avisos por correo») con base en los Términos y condiciones de uso (14.1, 14.2 y 14.3), las Políticas comerciales (3.2, 6.4 y 7.2), la Licencia de uso del software (17.10) y el Aviso de privacidad integral (7.3 y 8.3), en sus versiones del 15 de noviembre de 2026. Los textos que ve la persona y los correos siguen la redacción de esos documentos.
 
-**Nada de esto toca el saldo.** Ni la baja ni la suspensión ni la supresión de un avalúo escriben en `devpware_movimientos_creditos`; una prueba revisa que el código de estas funciones no lo mencione. **Todo lo automático está apagado** (`ACCOUNT_INACTIVITY_ENABLED`, `VALUATION_RETENTION_ENABLED`) y sin `--apply` los scripts solo cuentan.
+**Nada de esto toca el saldo.** Ni la baja ni la suspensión ni la guarda de los avalúos escriben en `devpware_movimientos_creditos`; una prueba revisa que el código de estas funciones no lo mencione. **Todo lo automático está apagado** (`ACCOUNT_INACTIVITY_ENABLED`, `VALUATION_RETENTION_ENABLED`) y sin `--apply` los scripts solo cuentan.
 
-Código: `src/features/account/standing/` (reglas, servicio, correos con bitácora, inactividad) y `src/features/valuations/retention/` (guarda y supresión). Migración 066.
+Código: `src/features/account/standing/` (reglas, servicio, correos con bitácora, inactividad) y `src/features/valuations/retention/` (guarda). Migración 066.
 
 ## Estados de una cuenta
 
@@ -13,7 +13,7 @@ Una cuenta puede tener abiertos renglones en `devpware_suspensiones_cuentas`. Ca
 | Tipo | Qué impide | Entra | Sale |
 |---|---|---|---|
 | `BAJA` | **Todo el acceso** («si da de baja su Cuenta, deja de tener acceso a ella», Términos 14.3) | Al confirmar «Dar de baja mi cuenta» o cuando el operador registra una baja pedida por correo | «Reactivar» del operador, a solicitud por correo |
-| `INACTIVIDAD` | Elaborar y concluir avalúos. Sigue entrando a consultar y descargar sus concluidos | La tarea diaria, 15 días después del correo de inactividad | «Reactivar» del operador (Términos: máximo doce horas naturales) |
+| `INACTIVIDAD` | Elaborar y concluir avalúos. Sigue entrando a consultar y descargar sus concluidos | La tarea diaria, 30 días después del correo de inactividad | «Reactivar» del operador (Términos: máximo doce horas naturales) |
 | `OTRA` | Elaborar y concluir. Con suplantación y «bloquear el acceso», todo el acceso mientras se verifica la identidad | El operador, con aviso previo y cinco días hábiles para aclarar; en casos urgentes, al avisar | «Levantar» (aclarada) o «Reactivar» |
 
 Un renglón sin `DFechaInicio` es solo un aviso: la cuenta funciona igual.
@@ -37,7 +37,7 @@ Al confirmar (`POST /api/cuenta/baja`):
 3. Se programa el trámite de los datos: la baja se tramita como solicitud de cancelación (Aviso de privacidad 7.3); `DFechaSupresionProgramada` es el fin del bloqueo (hoy, diez años: `ACCOUNT_DATA_BLOCKING_YEARS`, **por confirmar con el abogado**). **Nada borra los datos de la cuenta**: es un estado que el operador ve. Los datos necesarios para respetar el saldo y reactivar la cuenta se conservan (art. 25 de la Ley).
 4. Se manda el correo `BAJA` con los efectos.
 
-Los avalúos concluidos siguen su guarda normal (abajo): si la persona reactiva su cuenta antes de que venza, los vuelve a consultar.
+Los avalúos concluidos se conservan (abajo): si la persona reactiva su cuenta, los vuelve a consultar.
 
 Una baja pedida por correo la registra el operador en `/operador/cuentas` con «Registrar la baja»: mismo efecto, `SOrigen = CORREO`.
 
@@ -46,7 +46,7 @@ Una baja pedida por correo la registra el operador en `/operador/cuentas` con «
 `pnpm accounts:inactivity` (OPERACION.md §20), una vez al día:
 
 1. **Aviso.** Cuenta activa, con el correo verificado y que no es del operador, sin avalúos creados en tres meses (desde el último avalúo que creó, su alta o su última reactivación, lo más reciente): se manda el correo `INACTIVIDAD` para que descargue sus reportes y se abre un renglón `INACTIVIDAD` sin inicio. Si el correo falla no se abre el renglón y se intenta al día siguiente.
-2. **Inhabilitación.** 15 días después del aviso (`INACTIVITY_DISABLE_AFTER_NOTICE_DAYS`, plazo nuestro: los Términos solo dicen «puede inhabilitar»), si no creó avalúos, el renglón toma su inicio y se manda el correo `INHABILITACION` con la forma de pedir la reactivación.
+2. **Inhabilitación.** 30 días después del aviso (`INACTIVITY_DISABLE_AFTER_NOTICE_DAYS`; eran 15, el cliente pidió 30 el 26 nov 2026 y el abogado actualiza los Términos, que solo dicen «puede inhabilitar»), si no creó avalúos, el renglón toma su inicio y se manda el correo `INHABILITACION` con la forma de pedir la reactivación.
 3. **Retiro.** Si crea un avalúo después del aviso, el renglón se cierra con `SMotivoFin = ACTIVIDAD`, sin correo.
 
 La reactivación la hace el operador con «Reactivar» cuando la persona la pide por correo (máximo doce horas). Se registran la fecha del aviso (`DFechaAviso`), de la inhabilitación (`DFechaInicio`) y de la reactivación (`DFechaFin`).
@@ -64,35 +64,18 @@ Cada paso queda además en la auditoría (`ACCOUNT_SUSPENSION_NOTICE`, `ACCOUNT_
 
 ## Guarda de los avalúos concluidos
 
-`pnpm valuations:retention` (OPERACION.md §21), una vez al día.
+**Un avalúo concluido nunca se borra** (decisión del cliente del 26 nov 2026: «los avalúos concluidos nunca se borran»; antes la tarea suprimía el avalúo al vencer su vigencia). El abogado actualiza los Términos 14.3 y el Aviso de privacidad 8.3, y **debe confirmar esta regla antes de encender la tarea**.
 
-- **Plazo:** la vigencia del avalúo (la fecha de vigencia de su carátula), nunca más de doce meses desde la conclusión. Una vigencia anterior o igual a la conclusión no cuenta: aplican los doce meses (`retentionExpiry`).
-- **Aviso:** 30 días naturales antes del vencimiento, correo `GUARDA_POR_VENCER` al responsable del avalúo (o a quien lo creó) para que descargue o respalde su reporte. Solo dice el folio, nunca el título ni el cliente. Un avalúo en la papelera no recibe aviso (nadie puede descargarlo).
-- **Supresión:** al vencer, y nunca antes de 30 días después del aviso, aunque la tarea se haya encendido tarde. Sin aviso enviado no se suprime nada (salvo los de la papelera, que se suprimen al vencer).
+`pnpm valuations:retention` (OPERACION.md §21), una vez al día, apagada por omisión:
 
-### Qué se suprime
-
-En una sola transacción (`valuation-suppression.ts`); si algo no previsto lo impide, el avalúo queda como estaba y cuenta como «no se pudo»:
-
-- Todas sus versiones con sus secciones, bloques, valores, tablas, cálculos, carátula, conclusión, enfoques y bloqueos.
-- Sus comparables, con la copia del anuncio (`JPublicacionSnapshot`, donde va el contacto del anunciante), sus factores y ajustes.
-- Las propiedades de sus comparables, de sus búsquedas y el inmueble valuado, con sus anuncios (`devpware_publicaciones_propiedades`: nombre, teléfono y correo del anunciante), direcciones, características e historial de ubicación, **si nada más las usa**. Una propiedad que la base de comparables del despacho u otro avalúo usa se queda.
-- Sus búsquedas de comparables, capturas de mapa, exportaciones (PDF), reaperturas, historial de uso de comparables, valores de campos personalizados, etiquetas y las notificaciones que lo enlazan.
-- Sus archivos, en la base y en el almacenamiento (S3): los de su carpeta (`organizaciones/<despacho>/avaluos/<avalúo>/…`), las imágenes del editor que su contenido cita (`uploads/…`), las ligadas a él o a sus comparables y las fotos de los anuncios suprimidos. **Un archivo que otro avalúo del despacho (por ejemplo, una copia con «Duplicar»), una plantilla, la base de comparables o el propio despacho todavía usan se queda.** Los objetos de S3 se borran después de confirmar la transacción; un error al borrar se cuenta y se reporta.
-
-### Qué se conserva
-
-- El renglón del avalúo (`devpware_avaluos`) con folio, despacho, quién lo creó y fechas: lo citan los movimientos de saldo (la llave foránea no permite borrarlo) y el operador debe poder decir quién hizo un folio. Queda sin título («Avalúo suprimido al vencer su guarda»), sin cliente, fuera de las listas y con `DFechaSupresion`.
-- Los movimientos de saldo (`devpware_movimientos_creditos`) y las facturas.
-- El historial de estados del avalúo (fechas y quién; sin contenido).
-- La auditoría (`devpware_auditorias`), inmutable por una regla de la base desde la migración 017, y la bitácora de avisos por correo.
-- Los respaldos diarios de la base (OPERACION.md §1) guardan 14 días: un avalúo suprimido sigue en los respaldos hasta que rotan.
-
-Un avalúo con una instantánea (`devpware_snapshots_versiones_avaluos`, inmutable) no se puede suprimir y se reporta como «no se pudo»; el código actual no crea instantáneas.
+- **Qué se quita:** doce meses después de la conclusión (sin importar la vigencia de la carátula; `exportCopiesDue`), solo las copias pesadas: los PDF del dictamen y de la memoria que se guardaron en el almacenamiento al descargarlos (`devpware_exportaciones_avaluos` con su archivo). Se borran el archivo en la base y en S3 (después de confirmar la transacción). El renglón de la exportación se queda como historial, sin archivo y con `DFechaExpiracion` (el día en que se quitó la copia).
+- **Qué se conserva:** todo lo demás: el avalúo con sus versiones, secciones, cálculos, comparables, imágenes, carátula y conclusión; su historial de estados, la auditoría, los movimientos de saldo y las facturas. El avalúo se sigue consultando y su PDF y su .zip se vuelven a generar cuando se piden (el .zip se arma al descargarlo y no se guarda).
+- **Sin correo:** como no se pierde nada del avalúo, ya no se manda el aviso «descarga o respalda tu reporte» 30 días antes.
+- El código que suprimía el avalúo completo (`valuation-suppression.ts`, PR #168) se quitó; si el abogado pidiera volver a suprimir, está en el historial de git.
 
 ## Bitácora de avisos por correo
 
-`devpware_avisos_correo` (matriz 3.4): cada aviso de baja, inactividad, inhabilitación, suspensión, reactivación y vencimiento de la guarda, con fecha de envío, destinatario, asunto, el texto tal como se envió, la versión de la redacción (`ACCOUNT_NOTICE_VERSION`), a qué se refiere (`SEntidad`, `SIdentificadorEntidad`) y si salió o el error. Solo se insertan renglones; una prueba revisa que ningún código los modifique o borre. Al cambiar un texto de `account-notice.ts`, cambiar también la versión.
+`devpware_avisos_correo` (matriz 3.4): cada aviso de baja, inactividad, inhabilitación, suspensión y reactivación (y los de vencimiento de la guarda que se hubieran mandado antes del 26 nov 2026), con fecha de envío, destinatario, asunto, el texto tal como se envió, la versión de la redacción (`ACCOUNT_NOTICE_VERSION`), a qué se refiere (`SEntidad`, `SIdentificadorEntidad`) y si salió o el error. Solo se insertan renglones; una prueba revisa que ningún código los modifique o borre. Al cambiar un texto de `account-notice.ts`, cambiar también la versión.
 
 ```sql
 select "DFechaEnvio", "STipo", "SVersion", "SDestinatario", "BEnviado", "SError"
@@ -103,8 +86,7 @@ from devpware_avisos_correo order by "DFechaEnvio" desc limit 50;
 
 - El correo de atención de los Términos 1.1 está en blanco; la app usa `EMAIL_REPLY_TO`.
 - El plazo de bloqueo de los datos de una cuenta dada de baja (prescripción): hoy diez años, por confirmar con el abogado.
-- Los 15 días entre el correo de inactividad y la inhabilitación.
+- Los 30 días entre el correo de inactividad y la inhabilitación (pedidos por el cliente el 26 nov 2026; el abogado actualiza los Términos).
+- Que un avalúo concluido nunca se borre y a los doce meses solo se quiten las copias de PDF: lo confirma el abogado antes de encender la guarda. Los correos de baja, inactividad y suspensión todavía dicen «mientras dure su guarda» (texto del abogado; se cambia cuando mande el nuevo y con `ACCOUNT_NOTICE_VERSION`).
 - «Elaborar» avalúos: hoy la suspensión impide crear, duplicar y concluir; editar un avalúo ya abierto sigue permitido para no perder trabajo a medias.
-- La vigencia de la carátula decide la guarda: con la vigencia por omisión del despacho (6 meses) un avalúo se suprime a los 6 meses de su fecha, no a los 12.
-- Los avalúos que nunca se concluyen no tienen guarda: no se suprimen.
-- La auditoría guarda los cambios de título y cliente de un avalúo y es inmutable: no se suprime con el avalúo.
+- Los avalúos que nunca se concluyen no tienen guarda: sus copias de PDF no se quitan.

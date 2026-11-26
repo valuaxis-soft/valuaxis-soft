@@ -498,7 +498,7 @@ Los avisos por correo de un cambio (Términos 15.2, aviso integral 9.2) todavía
 
 ## 20. Inactividad de las cuentas (`ACCOUNT_INACTIVITY_ENABLED`)
 
-Tras tres meses sin generar avalúos, la persona recibe un correo para que descargue sus reportes; 15 días después, si sigue sin avalúos, su cuenta queda inhabilitada (entra a consultar y descargar sus concluidos, pero no elabora ni concluye) hasta que el operador la reactiva a su solicitud. Cómo funciona: [CUENTAS.md](CUENTAS.md#inactividad). **Apagada por omisión:** sin la variable en `true`, el script solo cuenta, aun con `--apply`.
+Tras tres meses sin generar avalúos, la persona recibe un correo para que descargue sus reportes; 30 días después, si sigue sin avalúos, su cuenta queda inhabilitada (entra a consultar y descargar sus concluidos, pero no elabora ni concluye) hasta que el operador la reactiva a su solicitud. Cómo funciona: [CUENTAS.md](CUENTAS.md#inactividad). **Apagada por omisión:** sin la variable en `true`, el script solo cuenta, aun con `--apply`.
 
 Simulación (no envía ni escribe; imprime solo conteos, nunca quién):
 
@@ -525,20 +525,20 @@ Para apagarla: `ACCOUNT_INACTIVITY_ENABLED=false` y recrear la app; las cuentas 
 
 ## 21. Guarda de los avalúos concluidos (`VALUATION_RETENTION_ENABLED`)
 
-Un avalúo concluido se conserva durante su vigencia, máximo doce meses desde su conclusión; 30 días antes se avisa por correo para descargar o respaldar el reporte y, vencido el plazo, el avalúo se suprime con sus datos de terceros y de anunciantes. Qué se borra y qué se conserva: [CUENTAS.md](CUENTAS.md#guarda-de-los-avalúos-concluidos). **Apagada por omisión:** sin la variable en `true`, el script solo cuenta, aun con `--apply`; **nada se borra sin la variable encendida y una corrida con `--apply`.**
+**Un avalúo concluido nunca se borra** (decisión del cliente del 26 nov 2026; el abogado actualiza los Términos 14.3 y **debe confirmarlo antes de encender la tarea**). Doce meses después de su conclusión solo se quitan las copias pesadas: los PDF del dictamen y de la memoria que se guardaron en el almacenamiento al descargarlos. El avalúo, su contenido, sus comparables, sus imágenes y su historial se quedan, y el PDF se vuelve a generar cuando se pide. Detalle: [CUENTAS.md](CUENTAS.md#guarda-de-los-avalúos-concluidos). **Apagada por omisión:** sin la variable en `true`, el script solo cuenta, aun con `--apply`.
 
-Simulación (no envía ni borra; imprime solo conteos, nunca folios ni nombres):
+Simulación (no borra; imprime solo conteos, nunca folios ni nombres):
 
 ```bash
 docker exec valuos-app node --import tsx scripts/ops/guarda-avaluos.ts --dry-run
 ```
 
-En local: `pnpm valuations:retention --dry-run`. Responde cuántos avalúos concluidos hay en guarda, cuántos correos «descarga o respalda tu reporte» y cuántas supresiones haría.
+En local: `pnpm valuations:retention --dry-run`. Responde cuántos avalúos concluidos revisó y a cuántos les quitaría copias de PDF.
 
-**Encenderla (cuando el cliente lo decida):**
+**Encenderla (cuando el cliente y el abogado lo confirmen):**
 
-1. Respaldo manual (`/opt/apps/valuos/scripts/backup-db.sh`): la supresión no se deshace.
-2. Correr la simulación. La primera corrida solo manda correos: ningún avalúo se suprime antes de 30 días después de su aviso, aunque su plazo ya haya vencido.
+1. Respaldo manual (`/opt/apps/valuos/scripts/backup-db.sh`).
+2. Correr la simulación.
 3. En `production.env`: `VALUATION_RETENTION_ENABLED=true`. `pnpm env:check` y recrear la app (paso 2).
 4. Tarea diaria (la instala una persona en el servidor), después del respaldo:
 
@@ -546,6 +546,6 @@ En local: `pnpm valuations:retention --dry-run`. Responde cuántos avalúos conc
    echo '15 4 * * * root docker exec valuos-app node --import tsx scripts/ops/guarda-avaluos.ts --apply >> /var/log/valuos-guarda.log 2>&1' > /etc/cron.d/valuos-guarda
    ```
 
-5. Revisar el log los primeros días: «No se pudieron suprimir» debe ser 0 (si no, el avalúo quedó como estaba; `docker logs valuos-app 2>&1 | grep "\[RETENTION\]"` dice el motivo, sin datos del avalúo) y «con error» en archivos, 0 (un objeto de S3 que no se pudo borrar; su renglón ya no existe).
+5. Revisar el log los primeros días: «No se pudieron quitar» debe ser 0 (si no, las copias quedaron como estaban; `docker logs valuos-app 2>&1 | grep "\[RETENTION\]"` dice el motivo, sin datos del avalúo) y «con error» en archivos, 0 (un objeto de S3 que no se pudo borrar; su renglón ya no existe).
 
-Los avisos enviados (de este script, de la inactividad, de las suspensiones y de las bajas) quedan en `devpware_avisos_correo`; la consulta está en [CUENTAS.md](CUENTAS.md#bitácora-de-avisos-por-correo). Los respaldos diarios conservan 14 días: un avalúo suprimido sigue en ellos hasta que rotan.
+Los avisos enviados (de la inactividad, de las suspensiones y de las bajas) quedan en `devpware_avisos_correo`; la consulta está en [CUENTAS.md](CUENTAS.md#bitácora-de-avisos-por-correo).

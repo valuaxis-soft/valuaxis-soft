@@ -49,6 +49,7 @@ import { contentMoveRulesForSection } from "./content-move-rules";
 import { getCaratulaBlockKind } from "./caratula-blocks";
 import { COMPANY_HEADER_BLOCK_ID } from "./caratula-company-header";
 import { isRelationManagedImageSection } from "./image-source";
+import { isPersonalDataTitle, withoutContactData } from "./personal-data";
 import type { FormulaExpression, FormulaOperand, TableFormula, TableRow, TableSchema } from "./table";
 import { withLegacyCroquisMarker } from "@/features/maps/croquis-marker";
 
@@ -390,6 +391,12 @@ export type CopyOptions = {
   includeData?: boolean;
   /** Keep the images. */
   includeImages?: boolean;
+  /**
+   * With the data, leave out the names of people, the phones and the emails
+   * (personal-data.ts): what «Importar» and a template «con datos» bring
+   * from another valuation. Copies inside the valuation keep everything.
+   */
+  withoutPersonalData?: boolean;
 };
 
 type CopyContext = {
@@ -403,7 +410,7 @@ type CopyContext = {
   keepIds: boolean;
 };
 
-const COPY_ALL: Required<CopyOptions> = { includeData: true, includeImages: true };
+const COPY_ALL: Required<CopyOptions> = { includeData: true, includeImages: true, withoutPersonalData: false };
 
 function containersOf(item: Block | Apartado): Array<Block | Apartado> {
   return "apartados" in item ? [item, ...item.apartados] : [item];
@@ -491,6 +498,7 @@ function copyConcept(concept: Concept, context: CopyContext): Concept {
   };
   if (concept.formula) copy.formula = remapFormula(concept.formula, context);
   if (!context.options.includeData) copy.value = "";
+  else if (context.options.withoutPersonalData) copy.value = isPersonalDataTitle(concept.label) ? "" : withoutContactData(concept.value);
   if (!copy.labelKey) delete copy.labelKey;
   if (!copy.valueKey) delete copy.valueKey;
   return copy;
@@ -501,10 +509,19 @@ const rowHasFormula = (row: TableRow) => Object.values(row.cells ?? {}).some((ce
 
 function copyTable(table: TableContent, context: CopyContext): TableContent {
   const id = context.tables.get(table.id) ?? `tbl-${newId()}`;
+  const personal = context.options.includeData && context.options.withoutPersonalData;
   if (table.version !== 2) {
-    const rows = context.options.includeData ? table.rows : table.rows.slice(0, 1).map((row) => row.map(() => ""));
+    // A column titled as a person's datum comes blank; any other cell without the emails and phones in it.
+    const blankColumns = new Set(personal ? table.columns.flatMap((title, index) => (isPersonalDataTitle(title) ? [index] : [])) : []);
+    const rows = !context.options.includeData
+      ? table.rows.slice(0, 1).map((row) => row.map(() => ""))
+      : personal ? table.rows.map((row) => row.map((cell, index) => (blankColumns.has(index) ? "" : withoutContactData(cell)))) : table.rows;
     return { ...table, id, rows };
   }
+  const blankColumns = new Set(personal
+    ? ((table as unknown as { columns?: Array<{ id: string; name?: string }> }).columns ?? []).filter((column) => isPersonalDataTitle(column.name ?? "")).map((column) => column.id)
+    : []);
+  const keptValue = (columnId: string, value: string) => (!personal ? value : blankColumns.has(columnId) ? "" : withoutContactData(value));
   const rows = table.rows as unknown as TableRow[];
   const remapped = rows.map((row) => ({
     ...row,
@@ -512,7 +529,7 @@ function copyTable(table: TableContent, context: CopyContext): TableContent {
       columnId,
       cell.kind === "formula"
         ? { ...cell, formula: remapFormula(cell.formula, context) }
-        : context.options.includeData ? cell : { ...cell, value: "" },
+        : context.options.includeData ? { ...cell, value: keptValue(columnId, cell.value) } : { ...cell, value: "" },
     ])),
   }));
   // Without data the table keeps its headers, its formula rows and one empty row to start from.
@@ -548,10 +565,16 @@ function copyContent<T extends Block | Apartado>(container: T, context: CopyCont
     : [];
   const refId = (type: "concept" | "image" | "table", id: string) =>
     (type === "concept" ? context.concepts : type === "table" ? context.tables : images).get(id);
-  const contentLayout = container.contentLayout
+  // The layout as the source shows it, resolved against its own content before its ids change: one never
+  // saved (a valuation of before) or with refs of its own gone stale would otherwise be rebuilt from the
+  // copy, with its images and tables side by side where the source had them apart (video 8.5, 3:35).
+  const sourceLayout = container.contentLayout || container.concepts.length || container.tables.length || container.images.length
+    ? resolveContentLayout(container)
+    : undefined;
+  const contentLayout = sourceLayout
     ? {
         version: 2 as const,
-        rows: container.contentLayout.rows.map((row) => ({
+        rows: sourceLayout.rows.map((row) => ({
           ...row,
           columns: row.columns
             .map((column) => ({
@@ -611,10 +634,12 @@ function copyBlockWith(block: Block, context: CopyContext): Block {
     return copy;
   });
   const content = copyContent(block, context);
-  const blockFlow = isBlockFlowV2(block.blockFlow)
+  // The order of the source as it shows it (its flow resolved against its own content), with the copy's ids.
+  const sourceFlow = isBlockFlowV2(block.blockFlow) ? resolveBlockFlowV2(block) : undefined;
+  const blockFlow = sourceFlow
     ? {
         version: 2 as const,
-        rows: block.blockFlow.rows.map((row) => ({
+        rows: sourceFlow.rows.map((row) => ({
           ...row,
           id: context.keepIds ? row.id : newId(),
           items: row.items.map((item) => item.type === "apartado"

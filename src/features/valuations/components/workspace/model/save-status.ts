@@ -36,3 +36,15 @@ export const mustSaveBeforeDocument = (input: { saving: boolean; hasUnsavedChang
 
 /** «… Código: G-7KX3QF.» → "G-7KX3QF": the reference the server logged a failed save with, to copy it. */
 export const errorCodeOf = (message: string) => /Código: (G-[A-Z0-9]{6})/.exec(message)?.[1] ?? null;
+
+/**
+ * The comparables of a market changed since the editor last heard of it (one
+ * added, deleted or reordered): the dictamen drawn from them is to be saved,
+ * so «Cambios pendientes» shows (video 8.12, 10:48). The first report of a
+ * market is the editor opening it: nothing changed then.
+ */
+export function comparablesChanged(previous: { comparables: ReadonlyArray<{ id: string }> } | undefined, next: { comparables: ReadonlyArray<{ id: string }> }) {
+  if (!previous) return false;
+  const ids = (calculation: { comparables: ReadonlyArray<{ id: string }> }) => calculation.comparables.map((comparable) => comparable.id).join(",");
+  return ids(previous) !== ids(next);
+}

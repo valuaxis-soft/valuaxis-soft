@@ -32,6 +32,27 @@ export function leavingLinkHref(event: ClickLike, anchor: AnchorLike | null, loc
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+/** The open editor's question before leaving; null when no editor is open. */
+let leaveGuard: ((href: string) => boolean) | null = null;
+
+/** The editor registers its question while it is open; the returned function takes it away. */
+export function setLeaveGuard(guard: (href: string) => boolean) {
+  leaveGuard = guard;
+  return () => {
+    if (leaveGuard === guard) leaveGuard = null;
+  };
+}
+
+/**
+ * For a page of the app that navigates from code (the command palette): true
+ * when the open editor has work to save and asked instead; then the caller
+ * does not navigate, the editor's dialog goes on from there.
+ */
+export const leaveIntercepted = (href: string) => leaveGuard?.(href) ?? false;
+
+/** The question of the exit dialog, in the appraiser's words (video 8.12, 11:05). */
+export const EXIT_DIALOG_TITLE = "¿Deseas guardar antes de salir?";
+
 /** What the exit dialog says it does with the changes, by where the appraiser was going. */
 export function exitDialogDescription(exit: PendingExit | null): string {
   const destination = exit?.kind === "push" && exit.href.startsWith("/dashboard") ? "volver al dashboard" : "salir del avalúo";

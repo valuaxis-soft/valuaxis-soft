@@ -19,9 +19,6 @@ import { comparableWarnings } from "../src/features/valuations/calculation/compa
 import {
   AI_RESULT_REVIEW_NOTICE,
   AI_TOOLS_LEGEND,
-  IMAGE_RIGHTS_NOTICE,
-  NOTICES_PENDING_WE_LAW,
-  PASTE_LISTING_REMINDER,
   THIRD_PARTY_DATA_NOTICE,
 } from "../src/features/valuations/legal-notices";
 import { hydrateSectionMetadata, sectionMetadataFromContent } from "../src/features/valuations/metadata";
@@ -67,12 +64,20 @@ test("the texts the matrix quotes are copied word for word", () => {
   );
 });
 
-test("the texts the matrix only describes are drafts marked as pending the lawyer's wording", () => {
-  assert.deepEqual([...NOTICES_PENDING_WE_LAW], [PASTE_LISTING_REMINDER, IMAGE_RIGHTS_NOTICE]);
+test("pasting a listing and uploading images show no notice each time: the Terms accepted at sign-up declare it (26 Nov 2026)", () => {
   const notices = source("src/features/valuations/legal-notices.ts");
-  assert.equal(notices.match(/Texto propuesto, pendiente de redacción de We Law\./g)?.length, 2);
-  assert.match(PASTE_LISTING_REMINDER, /solo el texto del anuncio, sin datos del solicitante, del propietario ni de otras personas/);
-  assert.match(IMAGE_RIGHTS_NOTICE, /derecho a usarla/);
+  assert.doesNotMatch(notices, /Pegue solo el texto|derecho a usarla|pendiente de redacción/);
+  for (const path of [
+    "src/features/valuations/components/legal-notice.tsx",
+    "src/features/valuations/components/calculation/paste-listing-dialog.tsx",
+    "src/features/valuations/components/calculation/listing-images-picker.tsx",
+    "src/features/valuations/components/calculation/comparable-dialog.tsx",
+    "src/features/valuations/components/editor/caratula-editor.tsx",
+    "src/features/valuations/components/editor/image-upload-control.tsx",
+    "src/features/valuations/components/editor/content-creation-control.tsx",
+  ]) {
+    assert.doesNotMatch(source(path), /PasteListingReminder|ImageRightsNotice|remindImageRights|image-rights/, path);
+  }
 });
 
 test("the third parties' notice shows once where the solicitante, the propietario and the comparables are captured", () => {
@@ -85,22 +90,13 @@ test("the third parties' notice shows once where the solicitante, the propietari
   assert.doesNotMatch(source("src/features/valuations/components/legal-notice.tsx"), /Checkbox|AlertDialog|disabled/);
 });
 
-test("«Pegar anuncio» reminds before the box and warns next to the result; «Buscar con IA» warns too", () => {
+test("«Pegar anuncio» warns next to the result; «Buscar con IA» warns too", () => {
   const paste = source("src/features/valuations/components/calculation/paste-listing-dialog.tsx");
-  assert.ok(paste.indexOf("<PasteListingReminder />") < paste.indexOf('id="paste-listing-text"'), "the reminder comes before the text box");
   assert.match(paste, /<AiResultReviewNotice \/>\s*<div className="flex flex-wrap items-center justify-between gap-2">/, "next to the result");
   // Nothing is saved in the dialog: «Usar estos datos» only opens the comparable form.
   assert.doesNotMatch(paste, /api\.market\.|saveComparable|createComparable/);
   assert.match(source("src/features/valuations/components/calculation/comparable-dialog.tsx"), /!comparable && props\.prefill && !readOnly \? <AiResultReviewNotice \/>/);
   assert.match(source("src/features/valuations/components/calculation/ai-comparable-search.tsx"), /<AiResultReviewNotice \/>/);
-});
-
-test("uploading or pasting images reminds the appraiser that he must have the right to use them", () => {
-  assert.match(source("src/features/valuations/components/calculation/listing-images-picker.tsx"), /<ImageRightsNotice \/>/);
-  assert.match(source("src/features/valuations/components/calculation/comparable-dialog.tsx"), /<ImageRightsNotice \/>/);
-  assert.match(source("src/features/valuations/components/editor/caratula-editor.tsx"), /<ImageRightsNotice \/>/);
-  assert.match(source("src/features/valuations/components/editor/image-upload-control.tsx"), /if \(event\.target\.files\?\.length\) remindImageRights\(\)/);
-  assert.match(source("src/features/valuations/components/editor/content-creation-control.tsx"), /remindImageRights\(\); onAddImage/);
 });
 
 /* ------------------------------------------------------------------ */

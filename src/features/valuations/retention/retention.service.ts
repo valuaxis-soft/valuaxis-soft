@@ -1,37 +1,34 @@
-import { sendLoggedAccountNotice } from "@/features/account/standing/account-notice-log";
-import { retentionExpiry, retentionSuppressionDue, retentionWarningDue } from "@/features/account/standing/account-standing-rules";
+import { exportCopiesDue } from "@/features/account/standing/account-standing-rules";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
-import { buildPublicAppUrl } from "@/lib/public-url";
-import { SuppressionBlockedError, suppressValuationContent } from "./valuation-suppression";
 
 /**
  * The retention of concluded valuations (matrix 1.12; Terms 14.3), run once a
- * day by `pnpm valuations:retention` (docs/OPERACION.md). A concluded
- * valuation is kept during its validity, at most twelve months from its
- * conclusion; thirty calendar days before, its appraiser gets an email to
- * download or back up the report; once expired (and thirty days after that
- * email), its content is suppressed (valuation-suppression.ts).
+ * day by `pnpm valuations:retention` (docs/OPERACION.md §21).
  *
- * Off unless VALUATION_RETENTION_ENABLED=true; even then nothing is sent or
- * deleted without `apply`. The result has counts only, never folios or names.
+ * A concluded valuation is never deleted: its content, its comparables and its
+ * history stay, and it can be consulted and printed again at any time (client,
+ * 26 Nov 2026). Twelve months after its conclusion only the heavy copies go:
+ * the PDF kept in storage at each download of the dictamen or the memoria
+ * (`devpware_exportaciones_avaluos`), which can be generated again from the
+ * valuation. Each export row stays, as history, with its file emptied and the
+ * day it went (`DFechaExpiracion`). The lawyer has to confirm this in Terms
+ * 14.3 before it is turned on.
+ *
+ * Off unless VALUATION_RETENTION_ENABLED=true; even then nothing is deleted
+ * without `apply`. The result has counts only, never folios or names.
  */
 
 export const isValuationRetentionEnabled = (environment: Record<string, string | undefined> = process.env) =>
   environment.VALUATION_RETENTION_ENABLED?.trim().toLowerCase() === "true";
 
-export const RETENTION_WARNING_KIND = "GUARDA_POR_VENCER";
-
 export type RetentionRunResult = {
-  /** Concluded valuations still kept. */
+  /** Concluded valuations reviewed. */
   reviewed: number;
-  /** Warning emails that are (or would be) sent. */
-  warnings: number;
-  /** Valuations whose content is (or would be) suppressed. */
-  suppressed: number;
-  /** Suppressions that could not be done (left as they were). */
+  /** Valuations whose stored export copies are (or would be) removed. */
+  pruned: number;
+  /** Prunings that could not be done (left as they were). */
   blocked: number;
-  failedEmails: number;
   /** Storage objects deleted, and those that could not be. */
   filesDeleted: number;
   fileErrors: number;
@@ -39,6 +36,34 @@ export type RetentionRunResult = {
 };
 
 type ObjectDeleter = { deleteObject(key: string): Promise<void> };
+
+/**
+ * Removes the stored copies of the valuation's exports in one transaction:
+ * the files (database rows) go and the export rows stay with no file. Returns
+ * the storage keys to delete once committed.
+ */
+async function pruneExportCopies(valuationId: number, now: Date): Promise<string[]> {
+  return prisma.$transaction(async (tx) => {
+    const exports = await tx.exportacionAvaluo.findMany({
+      where: { IdAvaluo: valuationId, IdArchivo: { not: null } },
+      select: { IdExportacionAvaluo: true, IdArchivo: true },
+    });
+    const fileIds = [...new Set(exports.map((row) => row.IdArchivo as bigint))];
+    if (!fileIds.length) return [];
+    const files = await tx.archivo.findMany({
+      where: { IdArchivo: { in: fileIds } },
+      select: { IdArchivo: true, SClaveObjeto: true, versionesArchivo: { select: { SClaveObjeto: true } } },
+    });
+    await tx.exportacionAvaluo.updateMany({
+      where: { IdExportacionAvaluo: { in: exports.map((row) => row.IdExportacionAvaluo) } },
+      data: { IdArchivo: null, DFechaExpiracion: now },
+    });
+    await tx.relacionArchivo.deleteMany({ where: { IdArchivo: { in: fileIds } } });
+    await tx.cargaArchivo.deleteMany({ where: { IdArchivo: { in: fileIds } } });
+    await tx.archivo.deleteMany({ where: { IdArchivo: { in: fileIds } } });
+    return [...new Set(files.flatMap((file) => [file.SClaveObjeto, ...file.versionesArchivo.map((version) => version.SClaveObjeto)]))];
+  });
+}
 
 export async function runRetention(options: {
   apply: boolean;
@@ -53,91 +78,35 @@ export async function runRetention(options: {
     where: {
       BBloqueado: true,
       DFechaConclusion: { not: null },
-      DFechaSupresion: null,
       ...(options.valuationIds ? { IdAvaluo: { in: [...options.valuationIds] } } : {}),
     },
     select: {
       IdAvaluo: true,
-      UIdentificadorPublico: true,
-      SFolio: true,
-      BActivo: true,
-      DFechaEliminacion: true,
       DFechaConclusion: true,
-      versionFinal: { select: { caratula: { select: { DFechaVigencia: true } } } },
-      usuarioCreador: { select: { IdUsuario: true, SNombre: true, SApellidoPaterno: true, SCorreo: true } },
-      usuarioResponsable: { select: { IdUsuario: true, SNombre: true, SApellidoPaterno: true, SCorreo: true } },
+      _count: { select: { exportacionesAvaluos: { where: { IdArchivo: { not: null } } } } },
     },
   });
-  const warnings = await prisma.avisoCorreo.findMany({
-    where: { STipo: RETENTION_WARNING_KIND, BEnviado: true, SIdentificadorEntidad: { in: valuations.map((row) => row.UIdentificadorPublico) } },
-    select: { SIdentificadorEntidad: true, DFechaEnvio: true },
-    orderBy: { DFechaEnvio: "asc" },
-  });
-  const warnedAt = new Map<string, Date>();
-  for (const warning of warnings) if (warning.SIdentificadorEntidad && !warnedAt.has(warning.SIdentificadorEntidad)) warnedAt.set(warning.SIdentificadorEntidad, warning.DFechaEnvio);
 
-  const result: RetentionRunResult = { reviewed: 0, warnings: 0, suppressed: 0, blocked: 0, failedEmails: 0, filesDeleted: 0, fileErrors: 0, applied: apply };
+  const result: RetentionRunResult = { reviewed: 0, pruned: 0, blocked: 0, filesDeleted: 0, fileErrors: 0, applied: apply };
   for (const valuation of valuations) {
     result.reviewed += 1;
-    const concludedAt = valuation.DFechaConclusion as Date;
-    const expiry = retentionExpiry({ concludedAt, validUntil: valuation.versionFinal?.caratula?.DFechaVigencia ?? null });
-    const warned = warnedAt.get(valuation.UIdentificadorPublico) ?? null;
-    // In the trash nobody can download it: no email, and it goes at its expiry.
-    const visible = valuation.BActivo && !valuation.DFechaEliminacion;
-
-    const due = visible ? retentionSuppressionDue(expiry, warned, now) : expiry.getTime() <= now.getTime();
-    if (due) {
-      result.suppressed += 1;
-      if (!apply) continue;
-      try {
-        const outcome = await suppressValuationContent(valuation.IdAvaluo, now);
-        for (const key of outcome.storageKeys) {
-          try {
-            await storage.deleteObject(key);
-            result.filesDeleted += 1;
-          } catch {
-            result.fileErrors += 1;
-          }
-        }
-      } catch (error) {
-        result.suppressed -= 1;
-        result.blocked += 1;
-        console.error(
-          "[RETENTION] A valuation could not be suppressed",
-          error instanceof SuppressionBlockedError ? error.reason : error instanceof Error ? error.name : "unknown",
-        );
-      }
-      continue;
-    }
-
-    if (!visible || warned || !retentionWarningDue(expiry, now)) continue;
-    result.warnings += 1;
+    if (!valuation._count.exportacionesAvaluos || !exportCopiesDue(valuation.DFechaConclusion as Date, now)) continue;
+    result.pruned += 1;
     if (!apply) continue;
-    const person = valuation.usuarioResponsable ?? valuation.usuarioCreador;
-    const { sent } = await sendLoggedAccountNotice({
-      userId: person.IdUsuario,
-      to: person.SCorreo,
-      notice: {
-        kind: "GUARDA_POR_VENCER",
-        recipientName: `${person.SNombre} ${person.SApellidoPaterno ?? ""}`.trim(),
-        email: person.SCorreo,
-        folio: valuation.SFolio,
-        concludedAt,
-        expiresAt: expiry,
-        valuationUrl: valuationLink(valuation.UIdentificadorPublico),
-      },
-      entity: { name: "Avaluo", id: valuation.UIdentificadorPublico },
-      at: now,
-    });
-    if (!sent) result.failedEmails += 1;
+    try {
+      for (const key of await pruneExportCopies(valuation.IdAvaluo, now)) {
+        try {
+          await storage.deleteObject(key);
+          result.filesDeleted += 1;
+        } catch {
+          result.fileErrors += 1;
+        }
+      }
+    } catch (error) {
+      result.pruned -= 1;
+      result.blocked += 1;
+      console.error("[RETENTION] The export copies of a valuation could not be removed", error instanceof Error ? error.name : "unknown");
+    }
   }
   return result;
-}
-
-function valuationLink(publicId: string) {
-  try {
-    return buildPublicAppUrl(`/workspace?id=${publicId}`).toString();
-  } catch {
-    return `/workspace?id=${publicId}`;
-  }
 }

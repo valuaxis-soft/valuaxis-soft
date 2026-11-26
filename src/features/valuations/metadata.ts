@@ -131,6 +131,8 @@ export type BlockMetadata = {
   coverImageSize?: CoverImageSize;
   /** The block of the concluded value only: it prints the chart of the values (V7.1-26). */
   valueChart?: boolean;
+  /** The carátula's conclusion only: the title of the value's box written by hand. */
+  valueTitle?: string;
 };
 
 export type ApartadoMetadata = {
@@ -172,6 +174,9 @@ export function resolveFlowSpacingBeforePx(
 type ConceptMetadataContent = Partial<Omit<ConceptMetadata, "enabled">> & { enabled?: boolean };
 type ImageMetadataContent = Partial<Omit<ImageMetadata, "enabled">> & { enabled?: boolean };
 type SectionMetadataContent = Partial<Omit<SectionMetadata, "enabled">> & { enabled?: boolean };
+/** The longest title of the carátula value box written by hand. */
+export const VALUE_TITLE_MAX = 200;
+
 type BlockMetadataContent = Partial<Omit<BlockMetadata, "enabled">> & { enabled?: boolean };
 type ApartadoMetadataContent = Partial<Omit<ApartadoMetadata, "enabled">> & { enabled?: boolean };
 
@@ -334,6 +339,7 @@ export function blockMetadataFromContent(content: BlockMetadataContent): BlockMe
     headerFields: content.headerFields,
     coverImageSize: content.coverImageSize,
     valueChart: content.valueChart || undefined,
+    ...(content.valueTitle?.trim() ? { valueTitle: content.valueTitle.trim().slice(0, VALUE_TITLE_MAX) } : {}),
   };
 }
 
@@ -342,6 +348,7 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
   const coverImageSize = readConfigMetadata(config, (value) => (isRecord(value) && isRecord(value.coverImageSize) ? normalizeCoverImageSize(value.coverImageSize) : undefined));
   const pageBreak = readPageBreak(config);
   const pageOrientation = readConfigMetadata(config, (value) => (isRecord(value) && isPageOrientation(value.pageOrientation) ? value.pageOrientation : undefined));
+  const valueTitle = readConfigMetadata(config, (value) => (isRecord(value) && typeof value.valueTitle === "string" && value.valueTitle.trim() ? value.valueTitle.trim().slice(0, VALUE_TITLE_MAX) : undefined));
   return {
     enabled: true,
     ...(sectionBooleanMetadata(config, "titleHidden") ? { titleHidden: true } : {}),
@@ -355,6 +362,7 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
     ...(headerFields?.length ? { headerFields } : {}),
     ...(coverImageSize && !isDefaultCoverImageSize(coverImageSize) ? { coverImageSize } : {}),
     ...(readConfigMetadata(config, (value) => readBooleanMetadata(value, "valueChart")) ? { valueChart: true } : {}),
+    ...(valueTitle ? { valueTitle } : {}),
   };
 }
 

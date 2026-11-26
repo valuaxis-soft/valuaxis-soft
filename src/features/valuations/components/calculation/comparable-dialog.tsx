@@ -69,7 +69,7 @@ import { COMPARABLE_VALIDITY_MONTHS, addMonths, validityMonthsOf } from "@/featu
 import { FormulaInput } from "./formula-input";
 import { useExpandableDialog } from "./expandable-dialog";
 import { ScreenshotSlot } from "./screenshot-slot";
-import { AiResultReviewNotice, ImageRightsNotice, ThirdPartyDataNotice } from "../legal-notice";
+import { AiResultReviewNotice, ThirdPartyDataNotice } from "../legal-notice";
 import { previewUrl } from "./listing-images-picker";
 import { ComparablePhotoFraming } from "./comparable-photo-framing";
 import type { ImageFraming } from "@/features/valuations/services/image-framing";
@@ -1430,7 +1430,6 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
             </SheetFormSection>
           </div>
           {/* Matrix 1.5, «Fotografías y textos»: beside where the photos and the screenshot go up. */}
-          {!readOnly ? <ImageRightsNotice /> : null}
 
           <fieldset disabled={readOnly || saving} className="grid min-w-0 gap-3">
             <SheetSection title="Oferta"><SheetFieldTable items={offer} /></SheetSection>

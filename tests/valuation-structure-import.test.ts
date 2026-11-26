@@ -87,6 +87,8 @@ const allConcepts = (sections: AppSection[]) => sections.flatMap((item) => item.
 const byLabel = (sections: AppSection[], label: string, sectionId: string) =>
   sections.find((item) => item.id === sectionId)!.blocks.flatMap((b) => [...b.concepts, ...b.apartados.flatMap((a) => a.concepts)]).filter((c) => comparableTitle(c.label) === comparableTitle(label));
 
+const datosIn = (tree: ReturnType<typeof importTree>) => tree.find((item) => item.section.id === "datos")!;
+
 function select(tree: ReturnType<typeof importTree>, keys: string[], wholeSection?: string): ImportSelection {
   if (wholeSection) {
     const item = tree.find((entry) => entry.section.id === wholeSection)!;
@@ -99,10 +101,11 @@ function select(tree: ReturnType<typeof importTree>, keys: string[], wholeSectio
 /*  The tree                                                           */
 /* ------------------------------------------------------------------ */
 
-test("the tree lists Sección › Bloque › Subbloque, without the carátula", () => {
+test("the tree lists Sección › Bloque › Subbloque, the carátula's blocks too (video 8.5, 0:12)", () => {
   const tree = importTree(sourceDocument());
-  assert.deepEqual(tree.map((item) => item.title), ["DATOS", "Anexo de prueba"]);
-  const [generales, zona] = tree[0].blocks;
+  assert.deepEqual(tree.map((item) => item.title), ["Carátula", "DATOS", "Anexo de prueba"]);
+  assert.deepEqual(tree[0].blocks.map((item) => item.block.id), ["src-car"]);
+  const [generales, zona] = datosIn(tree).blocks;
   // A Block with no concepts of its own offers only its subbloques; one with its own concepts offers them as a box too.
   assert.deepEqual(blockLeaves(generales), ["datos/generales/antecedentes", "datos/generales/informacion"]);
   assert.deepEqual(blockLeaves(zona), ["datos/zona#own", "datos/zona/servicios"]);
@@ -110,16 +113,16 @@ test("the tree lists Sección › Bloque › Subbloque, without the carátula", 
 
 test("several Blocks and subbloques are chosen at once; a Block's box is checked, unchecked or partly", () => {
   const tree = importTree(sourceDocument());
-  const [generales, zona] = tree[0].blocks;
+  const [generales, zona] = datosIn(tree).blocks;
   let selection = toggleLeaves(EMPTY_SELECTION, tree, [apartadoKey(generales, generales.block.apartados[0])], true);
   selection = toggleLeaves(selection, tree, blockLeaves(zona), true);
   assert.equal(checkState(selection, blockLeaves(generales)), "indeterminate");
   assert.equal(checkState(selection, blockLeaves(zona)), true);
-  assert.equal(checkState(selection, sectionLeaves(tree[0])), "indeterminate");
+  assert.equal(checkState(selection, sectionLeaves(datosIn(tree))), "indeterminate");
   assert.equal(selection.wholeSections.size, 0);
   // Checking every Block one by one is not the same as choosing the section.
   selection = toggleLeaves(selection, tree, blockLeaves(generales), true);
-  assert.equal(checkState(selection, sectionLeaves(tree[0])), true);
+  assert.equal(checkState(selection, sectionLeaves(datosIn(tree))), true);
   assert.equal(selection.wholeSections.size, 0);
 });
 
@@ -138,7 +141,7 @@ test("a section's own box chooses it whole; unchecking a subbloque inside makes 
 test("several Blocks and a loose subbloque go at the end of this section, each subbloque inside its Block", () => {
   const source = sourceDocument();
   const tree = importTree(source);
-  const [generales, zona] = tree[0].blocks;
+  const [generales, zona] = datosIn(tree).blocks;
   const selection = select(tree, [apartadoKey(generales, generales.block.apartados[0]), ...blockLeaves(zona)]);
   const destination = destinationDocument([block("existente", [concept("d-x", "Algo", "valor")])]);
   const result = importStructure(destination, "datos", planImport(tree, selection, destination));
@@ -159,7 +162,7 @@ test("several Blocks and a loose subbloque go at the end of this section, each s
 
 test("a Block's own concepts alone come without its subbloques", () => {
   const tree = importTree(sourceDocument());
-  const zona = tree[0].blocks[1];
+  const zona = datosIn(tree).blocks[1];
   const destination = destinationDocument();
   const result = importStructure(destination, "datos", planImport(tree, select(tree, [ownContentKey(zona)]), destination), { includeData: true });
   const imported = result.sections.find((item) => item.id === "datos")!.blocks[0];
@@ -221,10 +224,11 @@ test("a section this valuation does not have comes as a new section, an annex at
   assert.equal(result.summary?.focusSectionId, added.id);
 });
 
-test("a section is matched by its title when the ids differ, never the carátula", () => {
-  const destination = [...destinationDocument(), section("custom-x", "Anexo  de PRUEBA", [])];
+test("a section is matched by its title when the ids differ; the carátula only from a carátula", () => {
+  const destination = [...destinationDocument(), section("custom-x", "Anexo  de PRUEBA", []), section("custom-y", "Carátula", [])];
   assert.equal(destinationSectionFor(destination, { id: "custom-otra", title: "Anexo de prueba", label: "" })?.id, "custom-x");
-  assert.equal(destinationSectionFor(destination, { id: "caratula", title: "Carátula", label: "" }), null);
+  assert.equal(destinationSectionFor(destination, { id: "caratula", title: "Carátula", label: "" })?.id, "caratula");
+  assert.equal(destinationSectionFor(destination.filter((item) => item.id !== "custom-y"), { id: "custom-z", title: "Carátula", label: "" }), null);
 });
 
 /* ------------------------------------------------------------------ */
@@ -233,7 +237,7 @@ test("a section is matched by its title when the ids differ, never the carátula
 
 test("«Incluir datos y autovincular»: a concept called like one of the valuation is linked to it; the rest bring their value", () => {
   const tree = importTree(sourceDocument());
-  const generales = tree[0].blocks[0];
+  const generales = datosIn(tree).blocks[0];
   const destination = destinationDocument();
   const plan = planImport(tree, select(tree, blockLeaves(generales)), destination);
   const result = importStructure(destination, "datos", plan, { includeData: true, autoLink: true });
@@ -253,7 +257,7 @@ test("«Incluir datos y autovincular»: a concept called like one of the valuati
 
 test("without «autovincular» the import keeps the source's values; without data, they come blank", () => {
   const tree = importTree(sourceDocument());
-  const generales = tree[0].blocks[0];
+  const generales = datosIn(tree).blocks[0];
   const destination = destinationDocument();
   const plan = planImport(tree, select(tree, blockLeaves(generales)), destination);
   const withData = importStructure(destination, "datos", plan, { includeData: true });
@@ -362,16 +366,16 @@ test("from a template, «autovincular» fills the concepts called like the valua
   const template = stripClientDataFromSections(sourceDocument(), { includeImages: false });
   const tree = importTree(template);
   const destination = destinationDocument();
-  const result = importStructure(destination, "datos", planImport(tree, select(tree, blockLeaves(tree[0].blocks[0])), destination), { includeData: true, autoLink: true });
+  const result = importStructure(destination, "datos", planImport(tree, select(tree, blockLeaves(datosIn(tree).blocks[0])), destination), { includeData: true, autoLink: true });
   assert.equal(result.summary?.linked, 1);
   assert.equal(byLabel(result.sections, "Solicitante", "datos")[0].value, "Persona Inventada Dos");
   assert.equal(byLabel(result.sections, "Propietario", "datos")[0].value, "");
   assert.ok(!allConcepts(result.sections).some((item) => item.value.includes("Cliente Inventado Uno")));
 });
 
-test("the dialog does not promise a template's data: it says templates keep only the appraiser's texts", () => {
+test("the dialog does not promise a template's data: a template saved without them keeps only the appraiser's texts", () => {
   const template = importDataOptionTexts("template");
-  assert.match(template.includeData, /no guardan datos del cliente/);
+  assert.match(template.includeData, /se guardó sin datos del inmueble/);
   assert.match(template.autoLink, /llegan vacíos/);
   assert.doesNotMatch(template.autoLink, /traen el valor/);
   assert.match(importDataOptionTexts("valuation").autoLink, /traen el valor del avalúo de origen/);

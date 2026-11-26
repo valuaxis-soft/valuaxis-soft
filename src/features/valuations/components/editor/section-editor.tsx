@@ -75,19 +75,21 @@ export function BlockEditorHeader({
       aria-label="Título de la sección"
       aria-invalid={draft.reason ? true : undefined}
       title={draft.reason ?? undefined}
-      className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-bold uppercase leading-tight tracking-wide text-primary shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background"
+      className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-bold uppercase leading-tight tracking-wide text-[color:var(--doc-on-pastel-soft,#00285A)] shadow-none hover:bg-background/70 focus-visible:border-ring focus-visible:bg-background"
       disabled={titleEdit.disabled}
       value={draft.draft ?? titleEdit.value}
       onChange={(event) => draft.change(event.target.value, titleEdit.onChange)}
       onBlur={() => draft.leave()}
     />
   ) : (
-    <span className="min-w-0 flex-1 text-sm font-bold uppercase leading-tight tracking-wide text-primary">
+    <span className="min-w-0 flex-1 text-sm font-bold uppercase leading-tight tracking-wide text-[color:var(--doc-on-pastel-soft,#00285A)]">
       {title}
     </span>
   );
   return (
-    <CardHeader className="items-center border-b border-brand/15 bg-brand/[0.05] py-2 [.border-b]:pb-2 dark:bg-brand/10">
+    // The band of the block's title in the valuation's palette, as the dictamen prints its titles (video 8.12, 25:50):
+    // green and white when the appraiser chose green. Without a palette, the blue of always.
+    <CardHeader className="items-center border-b border-[color:var(--doc-rule,#C9D6E6)] bg-[var(--doc-pastel-soft,#E7EEF7)] py-2 [.border-b]:pb-2" data-block-title-band="">
       <CardTitle className="flex min-w-0 items-center gap-2">
         {dragHandle}
         {badge ? <Badge>{badge}</Badge> : null}

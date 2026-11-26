@@ -348,6 +348,12 @@ export type Block = {
   headerFields?: HeaderExtraField[];
   /** Only the block of the concluded value: it prints the chart of the values (V7.1-26, off unless chosen). */
   valueChart?: boolean;
+  /**
+   * Only the carátula's company header block: the title
+   * of its box written by hand («VALOR COMERCIAL DE LA RETROEXCAVADORA»);
+   * absent, the one of the kind of property (26 Nov 2026).
+   */
+  valueTitle?: string;
   /** Only the carátula's company header block: the size of the principal cover image. */
   coverImageSize?: CoverImageSize;
 };

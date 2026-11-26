@@ -125,7 +125,7 @@ import {
   useCaptureDeclared,
 } from "./capture-host";
 import { writeCaptureCell } from "../calculation/calc-table-context-menu";
-import { CALC_HEAD } from "../calculation/calculation-table-style";
+import { CALC_HEAD, EDITOR_SHADED_ROW, EDITOR_ZEBRA_ROW } from "../calculation/calculation-table-style";
 import { captureColumnPlace } from "@/features/valuations/calculation/capture-display";
 import {
   CALCULATED_CELL_HINT,
@@ -536,9 +536,9 @@ function SortableColumnHeader({
         <ContextMenuTrigger>
           <div
             className={cn(
-              "flex min-w-0 items-start gap-1 rounded-sm border border-border bg-muted/50 px-1.5 py-1 transition-colors",
-              // A table the calculation is captured in shows its headers as the dictamen prints them: in the palette of the valuation.
-              calculated?.inPlace && cn(CALC_HEAD, "border-transparent [&_textarea]:text-inherit"),
+              "flex min-w-0 items-start gap-1 rounded-sm border px-1.5 py-1 transition-colors",
+              // Every table shows its headers as the dictamen prints them: in the palette of the valuation (video 8.12, 25:50).
+              CALC_HEAD, "border-transparent [&_textarea]:text-inherit",
               isOver && !isDragging && "border-blue-400 bg-blue-50 dark:bg-blue-500/15",
               formulaMode && "opacity-60",
               hidden && "opacity-50",
@@ -1213,7 +1213,8 @@ function SortableRow({
   return (
     <TableRow ref={setNodeRef} style={style} className={cn(
       // The rows the dictamen shades (the «calificación» of the rate table) are shaded here too; otherwise they alternate.
-      tableV2.schema?.shadedRows ? tableV2.schema.shadedRows.includes(row.id) && "bg-muted" : rowIndex % 2 === 1 && "bg-primary/[0.03]",
+      // In the valuation's palette, as the dictamen: the first row shaded, then every other one (video 8.12, 26:35).
+      tableV2.schema?.shadedRows ? tableV2.schema.shadedRows.includes(row.id) && EDITOR_SHADED_ROW : rowIndex % 2 === 0 && EDITOR_ZEBRA_ROW,
       isOver && !isDragging && "bg-blue-50 dark:bg-blue-500/15",
     )} data-row-hidden={hidden ? "" : undefined}>
       <TableCell className={cn("w-6 select-none p-0 text-center font-mono text-[10px] text-muted-foreground/70", hidden && "line-through")} title={hidden ? `Fila ${rowIndex + 1}: oculta en el dictamen` : `Fila ${rowIndex + 1} en las fórmulas`}>
@@ -1836,7 +1837,7 @@ export function TableEditorItem({
                           <TableHead
                             key={cell.group.id}
                             colSpan={cell.colSpan}
-                            className={cn("p-0 text-center bg-muted", calculated?.inPlace && CALC_HEAD)}
+                            className={cn("p-0 text-center", CALC_HEAD)}
                           >
                             <ContextMenu>
                               <ContextMenuTrigger>

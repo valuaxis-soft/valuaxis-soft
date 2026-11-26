@@ -15,7 +15,6 @@ import { isAccountInactivityEnabled } from "../src/features/account/standing/ina
 import { ACCOUNT_CLOSURE_BALANCE_NOTICE } from "../src/features/billing/credit-rules";
 import { ACCOUNT_NOTICE_KINDS, ACCOUNT_NOTICE_VERSION, buildAccountNotice, type AccountNoticeInput } from "../src/features/notifications/templates/account-notice";
 import { isValuationRetentionEnabled } from "../src/features/valuations/retention/retention.service";
-import { storageKeysIn } from "../src/features/valuations/retention/valuation-suppression";
 
 const common = { recipientName: "Perito Inventado", email: "perito@example.test", supportEmail: "contacto@example.test", appUrl: "https://app.example.test" };
 const day = new Date("2026-11-25T18:00:00Z");
@@ -26,7 +25,6 @@ const samples: Record<(typeof ACCOUNT_NOTICE_KINDS)[number], AccountNoticeInput>
   SUSPENSION_AVISO: { ...common, kind: "SUSPENSION_AVISO", cause: "CONTRACARGO", detail: null, deadline: day, blocksAccess: false },
   SUSPENSION: { ...common, kind: "SUSPENSION", cause: "USO_ILICITO", detail: "Detalle", startedAt: day, urgent: false, noticedAt: day, deadline: day, blocksAccess: false },
   REACTIVACION: { ...common, kind: "REACTIVACION", reactivatedAt: day },
-  GUARDA_POR_VENCER: { ...common, kind: "GUARDA_POR_VENCER", folio: "VLO-0001", concludedAt: day, expiresAt: day, valuationUrl: "https://app.example.test/workspace?id=1" },
 };
 
 test("every notice is worded, dated in Mexico City and keeps the balance in view", () => {
@@ -43,7 +41,6 @@ test("every notice is worded, dated in Mexico City and keeps the balance in view
   assert.match(buildAccountNotice(samples.INACTIVIDAD).text, /25 de noviembre de 2026/);
   assert.match(buildAccountNotice(samples.SUSPENSION_AVISO).text, /Cancelación o contracargo de un pago ya cobrado\./);
   assert.match(buildAccountNotice(samples.SUSPENSION).text, /nunca|no suprime ningún dato/);
-  assert.match(buildAccountNotice(samples.GUARDA_POR_VENCER).text, /datos de terceros y de anunciantes/);
 });
 
 test("a person's text in a notice is escaped in the HTML", () => {
@@ -103,14 +100,9 @@ test("the email log and the restrictions are never deleted, and nothing here tou
   }
 });
 
-test("the keys of stored files are found in saved content, raw or inside the image route", () => {
-  const text = JSON.stringify({
-    src: "/api/archivos/imagen?key=uploads%2F2026-11%2F0b6f2b56-2a4c-4f0a-9a43-2b0d1c7e9f10.jpg",
-    cover: "organizaciones/abc/avaluos/def/caratula/imagen-principal/123.jpg",
-    other: "https://example.test/not-a-key.jpg",
-  });
-  assert.deepEqual(storageKeysIn(text).sort(), [
-    "organizaciones/abc/avaluos/def/caratula/imagen-principal/123.jpg",
-    "uploads/2026-11/0b6f2b56-2a4c-4f0a-9a43-2b0d1c7e9f10.jpg",
-  ]);
+test("the retention never deletes a concluded valuation: it only removes the stored copies of its exports (26 Nov 2026)", () => {
+  const retention = readFileSync("src/features/valuations/retention/retention.service.ts", "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.doesNotMatch(retention, /avaluo\.(delete|deleteMany|update|updateMany)\(|versionAvaluo\.|comparableAvaluo\.|seccionDocumento\./);
+  assert.match(retention, /exportacionAvaluo\.updateMany\(/);
+  assert.match(retention, /data: \{ IdArchivo: null, DFechaExpiracion: now \}/, "the export row stays, as history");
 });

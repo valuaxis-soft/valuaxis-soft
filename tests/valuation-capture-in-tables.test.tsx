@@ -312,7 +312,8 @@ test("a cell the calculation captures is one field: the table leaves its place t
   assert.match(withCapture, /var\(--doc-pastel/);
   assert.match(withCapture, /data-capture-slot\]_input\]:bg-background/);
   const plainTable = renderToStaticMarkup(createElement(CaptureStoreProvider, { value: new CaptureStore() }, createElement(GeneratedTableEditor, { table, readOnly: false, onUpdate: () => {} })));
-  assert.doesNotMatch(plainTable, /var\(--doc-pastel/, "a table that is not the capture keeps the editor's own header");
+  // Since video 8.12 (25:50) every table of the editor takes the palette too, not only the capture.
+  assert.match(plainTable, /var\(--doc-pastel/, "a table that is not the capture shows the palette's header as well");
 });
 
 test("costos: the reference of an installation typed in its cell is one truth with its table of INF. CONSTRUCCIONES, and is never repeated", () => {
