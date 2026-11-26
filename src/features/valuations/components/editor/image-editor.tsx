@@ -46,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { useCroquisGenerator } from "@/features/maps/components/croquis-generator";
 import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
 import { UploadButton } from "./image-upload-control";
+import { ImageThumbnail } from "./image-lightbox";
 import { ImageFramingControl } from "./image-framing-control";
 import { DOCUMENT_IMAGE_ACCEPT } from "@/features/valuations/services/document-image-upload";
 import {
@@ -172,12 +173,11 @@ export function ImageEditorItem({
       <div className="flex items-center gap-3">
         {/* Empty resource: placeholder icon. Resource present: image thumbnail. */}
         {hasResource ? (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
+          <ImageThumbnail
             className="size-16 rounded-md object-cover"
             style={image.rotation ? { transform: `rotate(${image.rotation}deg)` } : undefined}
             src={image.src}
-            alt={image.title}
+            title={image.title}
           />
         ) : (
           <div className="flex size-16 items-center justify-center rounded-md border border-dashed border-muted-foreground/40 bg-background">

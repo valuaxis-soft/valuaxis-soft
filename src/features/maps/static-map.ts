@@ -8,8 +8,14 @@
  */
 import type { LatLon } from "./types";
 
-/** Size of the image in map pixels; it is stored at scale 2 for print. */
-export const STATIC_MAP_SIZE = { width: 640, height: 400 } as const;
+/**
+ * Size of the image in map pixels; it is stored at scale 2 for print. 16:9
+ * since 26 nov 2026 (it was 640 × 400): the macro and the micro croquis
+ * print side by side in the 16:9 frame of a pair (document-image.tsx), and a
+ * 16:10 image left a white band at each side of it (video 8.5, 11:34). The
+ * generator shows this same box over its map, so what it frames is the image.
+ */
+export const STATIC_MAP_SIZE = { width: 640, height: 360 } as const;
 export const STATIC_MAP_SCALE = 2;
 
 const project = ([lat, lon]: LatLon, world: number) => {

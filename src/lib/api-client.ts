@@ -322,6 +322,12 @@ export const api = {
     geocode: (query: string) => request<GeocodingResult[]>(`/mapas/geocodificar?q=${encodeURIComponent(query)}`),
     /** The streets around a point, from OpenStreetMap through the server (etapa 2). */
     streets: (point: readonly [number, number]) => request<StreetsAroundDto>(`/mapas/calles?lat=${point[0]}&lon=${point[1]}`),
+    /** The named streets of what the generator's map shows, the classes that read at its zoom. */
+    streetsInView: (bounds: readonly [readonly [number, number], readonly [number, number]], zoom: number, highlighted: readonly string[] = []) => {
+      const search = new URLSearchParams({ sur: String(bounds[0][0]), oeste: String(bounds[0][1]), norte: String(bounds[1][0]), este: String(bounds[1][1]), zoom: String(Math.round(zoom)) });
+      for (const name of highlighted) search.append("resaltada", name);
+      return request<StreetsAroundDto>(`/mapas/calles?${search}`);
+    },
     /** The pins of the map of comparables; `query` is the query string of /comparables (its filters). */
     comparables: (query: string) => request<ComparablePinsDto>(`/mapas/comparables${query ? `?${query}` : ""}`),
     /** "Buscar alrededor de": the comparables of the filters within the radius, closest first. */

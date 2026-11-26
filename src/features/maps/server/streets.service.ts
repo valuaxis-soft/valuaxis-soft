@@ -10,10 +10,24 @@
  */
 import { ValuationWorkflowError } from "@/features/valuations/services/valuation-workflow/errors";
 
-import type { StreetWay } from "../streets";
-import { DEFAULT_STREETS_RADIUS, OSM_ATTRIBUTION, overpassQuery, parseOverpassWays, streetsCacheKey, type OverpassElement, type StreetsAroundDto } from "../streets-osm";
+import { distanceMeters, metersPerPixel, type StreetWay } from "../streets";
+import {
+  DEFAULT_STREETS_RADIUS,
+  OSM_ATTRIBUTION,
+  STREETS_RADIUS_RANGE,
+  overpassQuery,
+  parseOverpassWays,
+  streetsCacheKey,
+  mergedStreetWays,
+  viewStreetHighways,
+  viewStreetsCacheKey,
+  type OverpassElement,
+  type StreetsAroundDto,
+  type ViewBounds,
+} from "../streets-osm";
 import type { LatLon } from "../types";
-import { hasStoredStreets, streetsFromDatabase } from "./streets-db";
+import { spellingKey } from "../street-names";
+import { hasStoredStreets, streetsFromDatabase, streetsInView, streetsNamedInBox } from "./streets-db";
 
 /** Public Overpass instances, in the order they are tried. */
 const OVERPASS_MIRRORS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
@@ -200,4 +214,64 @@ export async function getStreetsAround(
   })();
   inFlight.set(key, request);
   return request;
+}
+
+/** Where the streets of a view come from; the tests replace it. */
+export interface ViewStreetsSource {
+  inView: (bounds: ViewBounds, highways: readonly string[], toleranceDegrees: number) => Promise<StreetWay[]>;
+  /** Every piece of these streets (by `spellingKey`) crossing the box, whatever their class. */
+  named: (bounds: ViewBounds, spellingKeys: readonly string[]) => Promise<StreetWay[]>;
+  loaded: () => Promise<boolean>;
+  /** The streets around the view's center when our copy cannot answer (Overpass, 2 km at most). */
+  around: (point: LatLon, radiusMeters: number) => Promise<StreetsAroundDto>;
+}
+
+const DATABASE_VIEW_STREETS: ViewStreetsSource = {
+  inView: streetsInView,
+  named: streetsNamedInBox,
+  loaded: hasStoredStreets,
+  around: (point, radius) => getStreetsAround(point, radius),
+};
+
+const viewCache = new Map<string, CacheEntry>();
+
+/**
+ * The named streets of the map's view (video 8.5, 4:01): the box already
+ * snapped and grown (`viewStreetsBox`) and the classes that read at the
+ * zoom, from our copy, cached for a day like the streets around the pin.
+ * The highlighted streets (`highlighted`, by name) come whole, whatever
+ * their class, so the map shows them as the croquis prints them. While the
+ * copy is empty or unreadable, the streets around the view's center through
+ * Overpass, as far as it reaches.
+ */
+export async function getStreetsInView(
+  box: ViewBounds,
+  zoom: number,
+  highlighted: readonly string[] = [],
+  source: ViewStreetsSource = DATABASE_VIEW_STREETS,
+): Promise<StreetsAroundDto> {
+  const keys = [...new Set(highlighted.map(spellingKey).filter(Boolean))].sort();
+  const key = `${viewStreetsCacheKey(box, zoom)}|${keys.join("|")}`;
+  const cached = viewCache.get(key);
+  if (cached && Date.now() - cached.storedAt < FRESH_MS) return cached.dto;
+  const center: LatLon = [(box[0][0] + box[1][0]) / 2, (box[0][1] + box[1][1]) / 2];
+  // Half a pixel of the screen at that zoom: what the map could not show anyway.
+  const tolerance = (metersPerPixel(zoom, center[0]) * 0.5) / 111_320;
+  let ways: StreetWay[] | null = null;
+  try {
+    const [inView, named] = await Promise.all([source.inView(box, viewStreetHighways(zoom), tolerance), keys.length ? source.named(box, keys) : []]);
+    ways = mergedStreetWays(named, inView);
+    if (!ways.length && !(await source.loaded())) ways = null;
+  } catch (error) {
+    console.error(`[STREETS] view from db failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!ways) {
+    const radius = Math.min(STREETS_RADIUS_RANGE.max, Math.max(STREETS_RADIUS_RANGE.min, Math.ceil(distanceMeters(center, box[1]))));
+    return source.around(center, radius);
+  }
+  const dto: StreetsAroundDto = { ways, radius: Math.ceil(distanceMeters(center, box[1])), attribution: OSM_ATTRIBUTION };
+  for (const [entry, value] of viewCache) if (Date.now() - value.storedAt > FRESH_MS) viewCache.delete(entry);
+  while (viewCache.size >= MAX_CACHE_ENTRIES) viewCache.delete(viewCache.keys().next().value as string);
+  viewCache.set(key, { storedAt: Date.now(), dto });
+  return dto;
 }

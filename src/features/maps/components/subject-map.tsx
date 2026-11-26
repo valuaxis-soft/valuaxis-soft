@@ -6,9 +6,10 @@ import { useEffect, useRef } from "react";
 
 import { COMPARABLE_PIN_COLORS, SUBJECT_PIN_COLOR, type ComparablePin } from "../croquis";
 import { FREE_LINE_OPACITY, type FreeLine, type FreeLineStyle } from "../free-lines";
-import { isMacroZoom, isMainRoad, type HighlightedWay, type StreetLabel } from "../highlights";
+import { touchableRank, type HighlightedWay, type StreetLabel } from "../highlights";
 import { CLEAN_MAP_STYLES, type MapType } from "../map-styles";
 import type { StreetWay } from "../streets";
+import type { ViewBounds } from "../streets-osm";
 import type { LatLon } from "../types";
 
 const NO_LINES: readonly FreeLine[] = [];
@@ -23,25 +24,38 @@ const SUBJECT_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
 const PIN_LABEL_CLASS =
   "rounded-sm! border-0! bg-white/95! px-1! py-px! text-[11px]! leading-4! font-bold! text-[#12212f]! whitespace-nowrap! shadow-[0_0_0_1px_rgba(0,0,0,.18)]!";
 /**
- * A street name next to a highlighted street: a white chip edged with its
- * street's color, drawn as the marker's own icon so the whole chip can be
- * grabbed and dragged (FAL-35: as a label of an invisible marker, dragging
- * it moved the map).
+ * A street name next to a highlighted street (or a free line's): a white chip
+ * edged with its color, centered on its point and turned to its angle, as
+ * the croquis prints it (video 8.5, 5:28: turning a name in «Letreros» did
+ * not show on the map). Drawn as the marker's own icon so the whole chip can
+ * be grabbed and dragged (FAL-35: as a label of an invisible marker,
+ * dragging it moved the map).
  */
-function streetLabelIcon(name: string, color: string): google.maps.Icon {
+function streetLabelChip(name: string, color: string, angle = 0) {
   const width = Math.round(name.length * 6.4 + 14);
   const height = 18;
+  const radians = (angle * Math.PI) / 180;
+  // The turned chip's box, so none of it is cut.
+  const boxWidth = Math.ceil(Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians))) + 2;
+  const boxHeight = Math.ceil(Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians))) + 2;
   const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${boxWidth}" height="${boxHeight}" viewBox="0 0 ${boxWidth} ${boxHeight}">` +
+    `<g transform="translate(${boxWidth / 2} ${boxHeight / 2}) rotate(${angle.toFixed(1)}) translate(${-width / 2} ${-height / 2})">` +
     `<rect x="0.75" y="0.75" width="${width - 1.5}" height="${height - 1.5}" rx="8.25" fill="#ffffff" fill-opacity="0.95" stroke="${escapeHtml(color)}" stroke-width="1.5"/>` +
     `<text x="${width / 2}" y="12.6" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" fill="#12212f">${escapeHtml(name)}</text>` +
-    `</svg>`;
+    `</g></svg>`;
+  return { svg, width: boxWidth, height: boxHeight };
+}
+
+function streetLabelIcon(name: string, color: string, angle: number): google.maps.Icon {
+  const chip = streetLabelChip(name, color, angle);
   return {
-    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    scaledSize: new google.maps.Size(width, height),
-    anchor: new google.maps.Point(width / 2, height + 6),
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(chip.svg)}`,
+    scaledSize: new google.maps.Size(chip.width, chip.height),
+    anchor: new google.maps.Point(chip.width / 2, chip.height / 2),
   };
 }
+
 /** The invisible, wide line that catches the click on a street. */
 const HIT_LINE_COLOR = "#1f7ac2";
 
@@ -92,8 +106,8 @@ export interface SubjectMapProps {
   onLinePointsChange?: (id: string, points: LatLon[]) => void;
   /** A new key moves the map to this center and zoom. */
   view: MapView & { key: number };
-  /** The map reports where the user left it, for "Tomar del mapa". */
-  onViewChange: (view: MapView) => void;
+  /** The map reports where the user left it (the frame of the croquis it is framing) and the box it shows (the streets to load). */
+  onViewChange: (view: MapView & { bounds?: ViewBounds }) => void;
   /** Height of the map; the expanded view fills the screen. */
   className?: string;
 }
@@ -166,7 +180,14 @@ export function SubjectMap(props: SubjectMapProps) {
     map.addListener("idle", () => {
       const center = map.getCenter();
       const zoom = map.getZoom();
-      if (center && zoom !== undefined) latest.current.onViewChange({ center: [center.lat(), center.lng()], zoom });
+      const box = map.getBounds();
+      const bounds: ViewBounds | undefined = box
+        ? [
+            [box.getSouthWest().lat(), box.getSouthWest().lng()],
+            [box.getNorthEast().lat(), box.getNorthEast().lng()],
+          ]
+        : undefined;
+      if (center && zoom !== undefined) latest.current.onViewChange({ center: [center.lat(), center.lng()], zoom, bounds });
     });
     partsRef.current = { map, subject: marker, hover: new google.maps.InfoWindow({ disableAutoPan: true }) };
     return () => {
@@ -228,7 +249,7 @@ export function SubjectMap(props: SubjectMapProps) {
     };
   }, [pins]);
 
-  // Etapa 2: every named street can be touched to paint it; at macro zoom, only the avenues.
+  // Etapa 2: every named street can be touched to paint it; further out, only the classes that read there (`touchableRank`).
   useEffect(() => {
     const parts = partsRef.current;
     if (!parts || !streets.length) return;
@@ -250,8 +271,8 @@ export function SubjectMap(props: SubjectMapProps) {
         return { way, line };
       });
     const sync = () => {
-      const macro = isMacroZoom(parts.map.getZoom() ?? 17);
-      for (const { way, line } of lines) line.setVisible(!macro || isMainRoad(way));
+      const rank = touchableRank(parts.map.getZoom() ?? 17);
+      for (const { way, line } of lines) line.setVisible(way.r <= rank);
     };
     const listener = parts.map.addListener("zoom_changed", sync);
     sync();
@@ -282,7 +303,7 @@ export function SubjectMap(props: SubjectMapProps) {
         cursor: labelsMovable ? "move" : undefined,
         title: labelsMovable ? `${label.name}: arrástralo para acomodarlo` : label.name,
         zIndex: 8,
-        icon: streetLabelIcon(label.name, label.color),
+        icon: streetLabelIcon(label.name, label.color, label.angle),
       });
       chip.addListener("dragend", () => {
         const position = chip.getPosition();

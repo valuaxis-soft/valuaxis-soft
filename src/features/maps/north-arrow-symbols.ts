@@ -5,6 +5,7 @@
  * croquis image with sharp, so both draw exactly the same symbol.
  */
 import type { MapCorner, NorthArrowStyle } from "./map-styles";
+import { STATIC_MAP_SIZE } from "./static-map";
 
 export const NORTH_ARROW_BOX = { width: 40, height: 64 } as const;
 
@@ -38,6 +39,18 @@ export function northArrowSvg(style: NorthArrowStyle, height: number) {
 }
 
 /** Where a symbol of `symbol` pixels goes over an image of `image` pixels, `margin` pixels from the chosen corner. */
+/** Height of the north arrow on the croquis image, in map pixels (the image is at scale 2), and its margin from the corner. */
+export const NORTH_ARROW_HEIGHT = 44;
+export const NORTH_ARROW_MARGIN = 10;
+
+/** The north arrow's box on the croquis image, in map pixels, as the server places it (its card overflows the symbol by 4 of its 64 units a side). */
+export function northArrowBox(corner: MapCorner) {
+  const unit = NORTH_ARROW_HEIGHT / NORTH_ARROW_BOX.height;
+  const size = { width: NORTH_ARROW_BOX.width * unit + 8 * unit, height: NORTH_ARROW_HEIGHT + 8 * unit };
+  const { left, top } = northArrowPlacement(corner, STATIC_MAP_SIZE, size, NORTH_ARROW_MARGIN);
+  return { x: left, y: top, ...size };
+}
+
 export function northArrowPlacement(corner: MapCorner, image: { width: number; height: number }, symbol: { width: number; height: number }, margin: number) {
   return {
     left: corner.endsWith("left") ? margin : image.width - symbol.width - margin,

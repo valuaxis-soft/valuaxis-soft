@@ -54,8 +54,8 @@ export function StreetHighlightsPanel({ value, category, onCategoryChange, onCha
       <div>
         <span className="text-xs font-semibold text-muted-foreground">Calles resaltadas</span>
         <p className="text-xs text-muted-foreground">
-          Elige una categoría y toca las calles del mapa para pintarlas con ella; tócalas de nuevo para quitarlas. Con el encuadre macro solo se tocan las
-          avenidas, y en el croquis macro solo salen ellas.
+          Elige una categoría y toca las calles del mapa para pintarlas con ella; tócalas de nuevo para quitarlas. Se pueden tocar las calles de todo lo que
+          muestra el mapa (de lejos, solo las avenidas; acerca el mapa para las calles), y cada croquis lleva todas las que resaltes.
         </p>
       </div>
       {status ? (

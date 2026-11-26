@@ -92,7 +92,7 @@ test("the image carries the base map, the overlays and the credit to OpenStreetM
   const { jpeg } = await renderCroquisImage(input({ lines, pins }), sources);
   const at = await pixels(jpeg);
   // The land, away from every street.
-  const land = imagePixel(SUBJECT, 17, [SUBJECT[0] + 130 * METER, SUBJECT[1] - east(300)]);
+  const land = imagePixel(SUBJECT, 17, [SUBJECT[0] - 130 * METER, SUBJECT[1] - east(300)]);
   assert.ok(near(at(land.x, land.y), hex(BASE_MAP_BACKGROUND), 12), "the OpenStreetMap land color");
   // A street of the base map that is not highlighted: its white fill.
   const cross = imagePixel(SUBJECT, 17, [SUBJECT[0] + 200 * METER, SUBJECT[1] + east(80)]);

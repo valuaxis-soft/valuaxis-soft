@@ -314,7 +314,7 @@ test("simplification keeps the shape within the tolerance and drops the vertices
   assert.equal(wayInBounds(GRID[4], bounds), false, "the ring road 2 km away is outside the micro frame");
 });
 
-test("what each croquis draws: the micro and the map of comparables every street in frame, the macro the avenues; names only on drawn streets", () => {
+test("what each croquis draws: every highlighted street in its frame, the macro too (video 8.7, 0:39); names only on drawn streets", () => {
   const detection = detectStreets(PIN, GRID);
   const highlights: StreetHighlights = { front: detection.front, streets: streetsFromPaint(paintStreet(seedPaint(detection, GRID), "Lejos", "secundaria", detection.front)), styles: DEFAULT_HIGHLIGHT_STYLES, names: true };
   const micro = croquisStreets("micro", PIN, 17, highlights, GRID);
@@ -323,12 +323,16 @@ test("what each croquis draws: the micro and the map of comparables every street
     [DEFAULT_HIGHLIGHT_STYLES.terciaria.color, 4, 2],
     [DEFAULT_HIGHLIGHT_STYLES.front.color, 8, 2],
   ]);
-  assert.deepEqual(micro.labels.map((label) => label.name).sort(), ["Frente", "Lado", "Lejos"]);
+  // «Lejos», 210 m north, lies just past the top of the 16:9 micro image (26 nov 2026): a piece of it draws in the margin, its name does not.
+  assert.deepEqual(micro.labels.map((label) => label.name).sort(), ["Frente", "Lado"]);
   assert.deepEqual(micro.omitted, []);
-  // The avenue at 540 m is outside the micro frame but inside the macro one, which draws it alone.
+  // The avenue at 540 m is outside the micro frame but inside the macro one. Until 26 nov 2026 the macro drew the rank 1–2 avenues alone,
+  // and the appraiser's highlighted streets went missing from it; it now draws every one, as on screen.
   const macro = croquisStreets("macro", PIN, 15, highlights, GRID);
-  assert.deepEqual(macro.paths.map((path) => path.color), [DEFAULT_HIGHLIGHT_STYLES.principal.color]);
-  assert.deepEqual(macro.labels.map((label) => label.name), ["Avenida"]);
+  assert.deepEqual(macro.paths.map((path) => path.color).sort(), [
+    DEFAULT_HIGHLIGHT_STYLES.front.color, DEFAULT_HIGHLIGHT_STYLES.principal.color, DEFAULT_HIGHLIGHT_STYLES.secundaria.color, DEFAULT_HIGHLIGHT_STYLES.terciaria.color,
+  ].sort());
+  assert.ok(["Avenida", "Frente"].every((name) => macro.labels.some((label) => label.name === name)));
   // V7.1-22: the map of comparables drew no street at all; it now draws every highlighted one in its wider frame.
   const comparables = croquisStreets("comparables", PIN, 15, highlights, GRID);
   assert.deepEqual(comparables.paths.map((path) => path.color).sort(), [

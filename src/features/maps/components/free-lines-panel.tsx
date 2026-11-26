@@ -1,11 +1,13 @@
 "use client";
 
 import { Check, PenLine, Undo2, X } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-import type { FreeLine, FreeLineStyle } from "../free-lines";
+import { MAX_LINE_NAME, type FreeLine, type FreeLineStyle } from "../free-lines";
 import type { LatLon } from "../types";
 import { WeightInput } from "./street-highlights";
 
@@ -23,6 +25,8 @@ export interface FreeLinesPanelProps {
   onSelect: (id: string | null) => void;
   onNextStyleChange: (patch: Partial<FreeLineStyle>) => void;
   onLineStyleChange: (id: string, patch: Partial<FreeLineStyle>) => void;
+  /** The name of the street the line stands for; empty takes it away. */
+  onLineNameChange: (id: string, name: string) => void;
   onRemove: (id: string) => void;
   disabled: boolean;
 }
@@ -48,6 +52,7 @@ export function FreeLinesPanel({
   onSelect,
   onNextStyleChange,
   onLineStyleChange,
+  onLineNameChange,
   onRemove,
   disabled,
 }: FreeLinesPanelProps) {
@@ -63,7 +68,8 @@ export function FreeLinesPanel({
         <span className="text-xs font-semibold text-muted-foreground">Trazo libre</span>
         <p className="text-xs text-muted-foreground">
           Toca el mapa para poner cada punto: la línea da vuelta donde pongas el siguiente. Termina con doble clic, Enter o «Terminar trazo»; Esc la cancela y
-          Retroceso quita el último punto. Selecciona un trazo para cambiar su color y grosor o arrastrar sus puntos.
+          Retroceso quita el último punto. Selecciona un trazo para cambiar su color y grosor, arrastrar sus puntos o ponerle el nombre de su calle: sale en un
+          letrero con el color del trazo, que se mueve y gira como los de las calles.
         </p>
       </div>
 
@@ -112,6 +118,15 @@ export function FreeLinesPanel({
         <WeightInput key={selected?.id ?? "next"} label={`Grosor del ${styleOf}`} value={style.weight} disabled={disabled} onChange={(weight) => changeStyle({ weight })} />
       </div>
 
+      {selected ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <label htmlFor={`trazo-nombre-${selected.id}`} className="min-w-28">
+            Nombre de la calle
+          </label>
+          <LineNameInput key={selected.id} line={selected} disabled={disabled} onChange={(name) => onLineNameChange(selected.id, name)} />
+        </div>
+      ) : null}
+
       {lines.length ? (
         <ul className="grid gap-0.5 text-xs" aria-label="Trazos libres">
           {lines.map((line, index) => {
@@ -127,6 +142,7 @@ export function FreeLinesPanel({
                 >
                   <span className="inline-block h-1 w-5 shrink-0 rounded-sm" style={{ background: line.color }} />
                   <span className="font-semibold text-foreground">Trazo {index + 1}</span>
+                  {line.name ? <span className="min-w-0 truncate text-foreground">«{line.name}»</span> : null}
                   <span className="text-muted-foreground tabular-nums">
                     · {line.points.length} puntos · grosor {line.weight}
                   </span>
@@ -141,5 +157,26 @@ export function FreeLinesPanel({
         </ul>
       ) : null}
     </div>
+  );
+}
+
+/** The name as typed: the saved one comes back trimmed, and a space at the end must not vanish while typing. */
+function LineNameInput({ line, disabled, onChange }: { line: FreeLine; disabled: boolean; onChange: (name: string) => void }) {
+  const [text, setText] = useState(line.name ?? "");
+  return (
+    <Input
+      id={`trazo-nombre-${line.id}`}
+      className="h-7 min-w-40 flex-1 text-xs"
+      placeholder="Ej. Av. Adolfo López Mateos Sur"
+      autoComplete="off"
+      maxLength={MAX_LINE_NAME}
+      disabled={disabled}
+      value={text}
+      onChange={(event) => {
+        setText(event.target.value);
+        onChange(event.target.value);
+      }}
+      data-free-line-name={line.id}
+    />
   );
 }

@@ -60,12 +60,26 @@ export interface NorthArrow {
   corner: MapCorner;
 }
 
-/** The base of the map and of the croquis (V6.3-08): streets, the satellite photo, or the photo with street names. */
+/**
+ * The base of the generator's map on screen (V6.3-08): streets, the
+ * satellite photo, or the photo with street names. The stored croquis is
+ * always the OpenStreetMap street drawing: Google does not allow keeping its
+ * images (terms 3.2.3), so the satellite photo is only a reference on
+ * screen, and the options say so (video 8.7, 0:00: «Generar y reemplazar»
+ * with the satellite view seemed to do nothing).
+ */
 export const MAP_TYPES = [
-  { key: "roadmap", title: "Mapa" },
-  { key: "satellite", title: "Satélite" },
-  { key: "hybrid", title: "Satélite con nombres" },
+  { key: "roadmap", title: "Mapa de calles" },
+  { key: "satellite", title: "Satélite (solo en pantalla)" },
+  { key: "hybrid", title: "Satélite con nombres (solo en pantalla)" },
 ] as const;
+
+/** What the generator says while the satellite photo is on screen: the image it stores is the street map. */
+export const SATELLITE_NOTICE =
+  "La vista satélite de Google solo se ve aquí, como referencia: Google no permite guardar sus imágenes, así que el croquis se genera siempre con el mapa de calles de OpenStreetMap, con tus calles resaltadas, trazos y letreros.";
+
+/** Whether the map on screen is not the drawing the croquis is stored with. */
+export const isScreenOnlyMapType = (mapType: MapType) => mapType !== "roadmap";
 export type MapType = (typeof MAP_TYPES)[number]["key"];
 
 export const DEFAULT_NORTH_ARROW: NorthArrow = { style: "flecha", corner: "top-right" };

@@ -27,7 +27,7 @@ import {
 } from "../src/features/maps/croquis-document";
 import { readCroquisMarker, withLegacyCroquisMarker } from "../src/features/maps/croquis-marker";
 import { DEFAULT_HIGHLIGHT_STYLES, placedStreetLabels, streetAngle, streetLabels, uprightAngle } from "../src/features/maps/highlights";
-import { imagePixel, pointAtPixel } from "../src/features/maps/static-map";
+import { STATIC_MAP_SIZE, imagePixel, pointAtPixel } from "../src/features/maps/static-map";
 
 const sections = (): AppSection[] => normalizeEditorSections(createInitialSections());
 const terreno = (all: readonly AppSection[]) => all.find((section) => section.id === "terreno")!;
@@ -198,7 +198,7 @@ test("V5.7-14: a name dragged in «Letreros» lands on the map point under it (p
     const back = imagePixel(center, zoom, point);
     assert.ok(Math.abs(back.x - 123.5) < 1e-6 && Math.abs(back.y - 345.25) < 1e-6);
   }
-  const middle = pointAtPixel(center, 17, 320, 200);
+  const middle = pointAtPixel(center, 17, STATIC_MAP_SIZE.width / 2, STATIC_MAP_SIZE.height / 2);
   assert.ok(Math.abs(middle[0] - center[0]) < 1e-9 && Math.abs(middle[1] - center[1]) < 1e-9);
 });
 

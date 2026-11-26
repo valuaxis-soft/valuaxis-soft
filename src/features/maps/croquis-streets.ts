@@ -6,9 +6,9 @@
  */
 import type { CroquisKind } from "./croquis";
 import { streetLabelBox } from "./croquis";
+import type { FreeLine } from "./free-lines";
 import {
   highlightedWays,
-  macroHighlights,
   paintFromStreets,
   streetAngle,
   uprightAngle,
@@ -17,6 +17,9 @@ import {
   type StreetHighlights,
   type StreetLabel,
 } from "./highlights";
+import type { MapCorner } from "./map-styles";
+import { northArrowBox } from "./north-arrow-symbols";
+import { attributionBox } from "./osm-base-map";
 import { STATIC_MAP_SIZE, imagePixel, pointAtPixel } from "./static-map";
 import { distanceMeters, metersPerPixel, simplifyPolyline, wayInBounds, type StreetWay } from "./streets";
 import type { LatLon } from "./types";
@@ -63,16 +66,19 @@ function wayProximity(way: StreetWay, point: LatLon) {
 }
 
 /**
- * The streets a croquis draws: the macro croquis the avenues only, the micro
- * and the map of comparables every highlighted street (the map of comparables
- * drew none until V7.1-22, 16 nov 2026: the appraiser wants the streets
- * there too). Pieces outside the
+ * The streets a croquis draws: every highlighted street, on every croquis
+ * (the macro croquis drew the rank 1–2 avenues only until 26 nov 2026, and
+ * an avenue OpenStreetMap ranks tertiary, as Prolongación Mariano Otero near
+ * the subject, never showed on it: video 8.5, 10:18; the map of comparables
+ * drew none until V7.1-22, 16 nov 2026). Pieces outside the
  * frame are left out, the rest simplified for the zoom; the closest pieces to
  * the center go first, so when the cap is reached the farthest are the
- * ones omitted. The names only go on streets that are drawn.
+ * ones omitted. The names only go on streets that are drawn, plus the names
+ * of the free lines that have one. `kind` no longer changes what is drawn;
+ * it stays so every croquis is asked for the same way.
  */
 export function croquisStreets(
-  kind: CroquisKind,
+  _kind: CroquisKind,
   center: LatLon,
   zoom: number,
   highlights: StreetHighlights,
@@ -80,8 +86,7 @@ export function croquisStreets(
   subject: LatLon = center,
   avoid: LabelObstacles = {},
 ): CroquisStreets {
-  const items = highlightedWays({ front: highlights.front, paint: paintFromStreets(highlights.streets) }, highlights.styles, ways);
-  const shown = kind === "macro" ? macroHighlights(items) : items;
+  const shown = highlightedWays({ front: highlights.front, paint: paintFromStreets(highlights.streets) }, highlights.styles, ways);
   const bounds = frameBounds(center, zoom);
   const tolerance = metersPerPixel(zoom, center[0]) * SIMPLIFY_PIXELS;
   const inFrame = shown
@@ -101,11 +106,25 @@ export function croquisStreets(
   kept.sort((a, b) => a.order - b.order);
   const drawn = kept.map(({ item, way }): HighlightedWay => ({ ...item, way }));
   const drawnNames = new Set(drawn.map((entry) => entry.way.n));
+  // «Mostrar nombres» is the highlighted streets'; a free line with a name always prints it.
+  const named = [...(highlights.names ? drawn : []), ...namedLines(avoid.lines ?? [])];
   return {
     paths: drawn.map(({ way, style }) => ({ color: style.color, weight: style.weight, points: way.g })),
-    labels: highlights.names ? frameLabels(drawn, center, zoom, subject, avoid) : [],
+    labels: named.length ? frameLabels(named, center, zoom, subject, avoid) : [],
     omitted: [...omitted].filter((name) => !drawnNames.has(name)),
   };
+}
+
+/**
+ * Video 8.5, 4:30: the free lines with the name of their street, as pieces of
+ * a street in the line's color, so their name is placed, kept clear of the
+ * pin and of the other names, moved and turned like a highlighted street's.
+ */
+function namedLines(lines: readonly FreeLine[]): HighlightedWay[] {
+  return lines.flatMap((line): HighlightedWay[] => {
+    const name = line.name?.trim();
+    return name && line.points.length >= 2 ? [{ way: { n: name, r: 4, g: line.points }, key: "cuarta", style: { on: true, color: line.color, weight: line.weight } }] : [];
+  });
 }
 
 /** A name keeps this far from the subject's pin, in map pixels. */
@@ -115,7 +134,7 @@ const LABEL_SPOTS = [0.5, 0.32, 0.68, 0.18, 0.82, 0.08, 0.92];
 /** Runs of a street tried for its name, the longest first. */
 const LABEL_RUNS = 3;
 /** How far beside its street a name may sit when no spot on it is free, in map pixels (a band is 20 high). */
-const LABEL_SIDE_OFFSETS = [0, -15, 15];
+const LABEL_SIDE_OFFSETS = [0, -15, 15, -30, 30];
 
 /**
  * FAL-35: what the street names keep clear of, besides the subject's pin and
@@ -124,6 +143,10 @@ const LABEL_SIDE_OFFSETS = [0, -15, 15];
  */
 export interface LabelObstacles {
   placements?: readonly CroquisLabelPlacement[];
+  /** «Trazo libre»: the lines whose name prints too, placed like a street's. */
+  lines?: readonly FreeLine[];
+  /** The corner of the north arrow: the names keep clear of it and of the credit to OpenStreetMap. */
+  corner?: MapCorner;
   pins?: readonly LatLon[];
   /** In map pixels of the image. */
   legend?: { x: number; y: number; width: number; height: number } | null;
@@ -202,7 +225,8 @@ export function frameLabels(drawn: readonly HighlightedWay[], center: LatLon, zo
     byName.set(way.n, entry);
   }
   const pin = imagePixel(center, zoom, subject);
-  const taken: Box[] = [{ x: pin.x, y: pin.y, halfX: LABEL_MARGIN, halfY: LABEL_MARGIN * 1.5 }];
+  // The subject's drop stands above its point (subjectPinSvg: 30 × 38 map pixels); a name keeps off all of it.
+  const taken: Box[] = [{ x: pin.x, y: pin.y - 17, halfX: LABEL_MARGIN + 3, halfY: 21 }];
   // A comparable's circle with its number to the right («C-12»).
   for (const point of avoid.pins ?? []) {
     const at = imagePixel(center, zoom, point);
@@ -211,6 +235,9 @@ export function frameLabels(drawn: readonly HighlightedWay[], center: LatLon, zo
   if (avoid.legend) {
     const { x, y, width, height } = avoid.legend;
     taken.push({ x: x + width / 2, y: y + height / 2, halfX: width / 2 + 4, halfY: height / 2 + 4 });
+  }
+  if (avoid.corner) {
+    for (const { x, y, width, height } of [northArrowBox(avoid.corner), attributionBox(avoid.corner)]) taken.push({ x: x + width / 2, y: y + height / 2, halfX: width / 2 + 2, halfY: height / 2 + 2 });
   }
   const placed = new Map((avoid.placements ?? []).map((placement) => [placement.name, placement]));
   const labels = new Map<string, StreetLabel>();
