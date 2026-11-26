@@ -361,12 +361,14 @@ test("«Crear fichas» adds the chosen listings to the market and to the firm's 
   assert.deepEqual({ created: again.body.data?.created, reused: again.body.data?.reused, skipped: again.body.data?.skipped }, { created: 0, reused: 0, skipped: 2 });
   assert.equal((await market(fixture)).comparables.length, 2);
 
-  // A new search does not propose again what this very valuation has (V8.2): the model is told, and what it repeats is left out.
+  // A new search does not propose again what this very valuation has (V8.2), nor what its searches already found and are kept (V8.8):
+  // the model is told, and what it repeats is left out.
   const later = await searchAndWait(jar, fixture.publicId);
   assert.equal(later.status, "done");
   if (later.status !== "done") return;
-  assert.deepEqual(later.candidates.map((candidate) => candidate.url), [`${site}/anuncio/de-memoria`]);
+  assert.deepEqual(later.candidates.map((candidate) => candidate.url), []);
   assert.match(fake.prompts.at(-1)?.prompt.user ?? "", new RegExp(`<ya_encontrados>[\\s\\S]*${site.replace(/[.]/g, "\\.")}/anuncio/uno`));
+  assert.match(fake.prompts.at(-1)?.prompt.user ?? "", new RegExp(`<ya_encontrados>[\\s\\S]*${site.replace(/[.]/g, "\\.")}/anuncio/de-memoria`));
 
   // In another valuation of the same firm the listing is brought from the base, with its number: one comparable, not two.
   const source = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
@@ -530,24 +532,25 @@ test("V8.2: a search proposes five at most, and «Buscar 2 más» asks for two t
   assert.deepEqual(more.candidates.map((candidate) => candidate.url), numbered(8, 9).map((item) => item.url));
   assert.equal(more.count, 2);
   assert.equal(fake.searchOptions[1].maxSearches, 6);
-  assert.deepEqual(more.quota, { used: 3, cap: 25 });
+  // V8.8: the listings found count, used or not: five and two; three of them are comparables.
+  assert.deepEqual(more.quota, { used: 7, cap: 25, cards: 3 });
   const records = await usageOf(fixture, "AI_COMPARABLE_SEARCH");
   assert.deepEqual(records.map((record) => (record.JMetadatos as { requested: number }).requested), [5, 2]);
 });
 
-test("V8.1: a valuation includes 25 comparables found with AI at most, across its markets, and the server holds it", async () => {
+test("V8.1 and V8.8: a valuation has 25 listings found with AI at most, across its markets, used or not, and the server holds it", async () => {
   const fake = turnOn({ marketNote: "", candidates: numbered(1, 5) });
   const fixture = await createValuationFixture();
   const jar = await signIn(fixture, "VALUADOR");
   const before = await setup(jar, fixture.publicId);
-  assert.deepEqual(before.body.data?.quota, { used: 0, cap: 25 });
+  assert.deepEqual(before.body.data?.quota, { used: 0, cap: 25, cards: 0 });
   assert.equal(before.body.data?.batch, 5);
 
-  // 20 land listings and 4 houses: 24 of 25, counted across both markets.
+  // 20 land listings and 4 houses created before the searches were kept: 24 of 25, counted across both markets.
   assert.equal((await createCards(jar, fixture.publicId, inputsOf(numbered(101, 120)))).status, 201);
   const houses = inputsOf(numbered(201, 205).map((item, index) => ({ ...item, propertyType: "Casa", builtArea: 150 + index })));
   assert.equal((await createCards(jar, fixture.publicId, houses.slice(0, 4), "INMUEBLE_VENTA")).status, 201);
-  assert.deepEqual((await setup(jar, fixture.publicId)).body.data?.quota, { used: 24, cap: 25 });
+  assert.deepEqual((await setup(jar, fixture.publicId)).body.data?.quota, { used: 24, cap: 25, cards: 24 });
 
   // A search asks only for the one place left.
   const started = await start(jar, fixture.publicId, { text: REQUEST, count: 5 });
@@ -563,25 +566,27 @@ test("V8.1: a valuation includes 25 comparables found with AI at most, across it
   const tooMany = await createCards(jar, fixture.publicId, inputsOf(numbered(301, 302)));
   assert.equal(tooMany.status, 409);
   assert.match(tooMany.body.error ?? "", /tiene 24 de 25 comparables encontrados con IA: solo puedes agregar uno más/);
-  const last = await createCards(jar, fixture.publicId, inputsOf(numbered(301, 301)));
+  // The listing found becomes a card: it was already counted when it was found.
+  const last = await createCards(jar, fixture.publicId, found.candidates);
   assert.equal(last.status, 201, last.body.error);
-  assert.deepEqual(last.body.data?.quota, { used: 25, cap: 25 });
+  assert.deepEqual(last.body.data?.quota, { used: 25, cap: 25, cards: 25 });
 
   // Full: no search runs, in this market or another, and no card is created.
   const calls = fake.prompts.length;
   const refused = await start(jar, fixture.publicId, { text: REQUEST });
   assert.equal(refused.status, 409);
-  assert.match(refused.body.error ?? "", /ya tiene los 25 comparables encontrados con IA que puede incluir/);
+  assert.match(refused.body.error ?? "", /ya tiene los 25 anuncios encontrados con IA que puede tener/);
   assert.equal((await start(jar, fixture.publicId, { text: REQUEST }, "INMUEBLE_VENTA")).status, 409);
   assert.equal(fake.prompts.length, calls, "the provider was not called");
   const fifth = await createCards(jar, fixture.publicId, houses.slice(4), "INMUEBLE_VENTA");
   assert.equal(fifth.status, 409);
   assert.equal((await getMarketCalculation(fixture.publicId, fixture.organizationId, "INMUEBLE_VENTA")).comparables.length, 4);
 
-  // Taking one found with AI out of the valuation frees its place.
-  const [removed] = (await market(fixture)).comparables;
-  await prisma.comparableAvaluo.update({ where: { UIdentificadorPublico: removed.id }, data: { BIncluido: false, DFechaExclusion: new Date(), SMotivoExclusion: "Prueba" } });
-  assert.deepEqual((await setup(jar, fixture.publicId)).body.data?.quota, { used: 24, cap: 25 });
+  // V8.8: taking out of the valuation a listing a search found does not free its place («se contabilizan aunque no uses ninguno»).
+  const searched = (await market(fixture)).comparables.find((item) => item.url === found.candidates[0].url);
+  assert.ok(searched);
+  await prisma.comparableAvaluo.update({ where: { UIdentificadorPublico: searched.id }, data: { BIncluido: false, DFechaExclusion: new Date(), SMotivoExclusion: "Prueba" } });
+  assert.deepEqual((await setup(jar, fixture.publicId)).body.data?.quota, { used: 25, cap: 25, cards: 24 });
 });
 
 test("V8.1: a card created from a listing without a date is dated the day of consultation and valid six months", async () => {
@@ -637,8 +642,9 @@ test("V8.2: the page the provider opened is read again, verified as written, and
   assert.deepEqual(found.discards, { listingPage: 1, unpublished: 1, extra: 0, other: 0 });
   const [read] = found.candidates;
   assert.equal(read.pageRead, true);
-  assert.equal(read.street, "Paseo de los Leones");
-  assert.equal(read.subdivision, "Ciudad Bugambilias");
+  // V8.11: a page lists other listings too; the address is never filled from it.
+  assert.equal(read.street, null);
+  assert.equal(read.subdivision, null);
   assert.equal(read.frontage, 10);
   assert.equal(read.depth, 39.1);
   assert.equal(read.shape, "forma irregular");
@@ -657,8 +663,9 @@ test("V8.2: the page the provider opened is read again, verified as written, and
   const created = await createCards(jar, fixture.publicId, found.candidates);
   assert.equal(created.status, 201, created.body.error);
   const [card] = (await market(fixture)).comparables;
-  assert.equal(card.address?.street, "Paseo de los Leones");
-  assert.equal(card.address?.subdivision, "Ciudad Bugambilias");
+  // Only what the search model read of this listing: never another listing's street (V8.11, «Callejón del Iris»).
+  assert.equal(card.address?.street ?? null, null);
+  assert.equal(card.address?.subdivision ?? null, null);
   assert.equal(card.frontage, 10);
   assert.equal(card.depth, 39.1);
   assert.equal(card.shape, "forma irregular");

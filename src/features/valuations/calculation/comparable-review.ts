@@ -15,14 +15,54 @@ import { isBuiltComparableType, type ComparableType } from "./market-types";
  * so no review changes its meaning.
  */
 export const REVIEW_STATUSES = ["POR_REVISAR", "VERIFICADO", "VERIFICADO_NO_VIGENTE", "CON_OBSERVACIONES", "RECHAZADO"] as const;
-export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
-export const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
+export type BuiltInReviewStatus = (typeof REVIEW_STATUSES)[number];
+/**
+ * A state of the review: a built-in one or one the firm added («custom-…»,
+ * V8.12: «la lista de los estados de revisión… la pueden editar»). Its key
+ * never changes, so a review keeps reading after the list is edited.
+ */
+export type ReviewStatus = string;
+export const REVIEW_STATUS_LABELS: Record<BuiltInReviewStatus, string> = {
   POR_REVISAR: "Sin revisar",
   VERIFICADO: "Verificado y vigente",
   VERIFICADO_NO_VIGENTE: "Verificado y no vigente",
   CON_OBSERVACIONES: "Con observaciones",
   RECHAZADO: "Rechazado",
 };
+
+/** The colours a state can take, the five the review always had (docs/DISENO.md): its look does not change. */
+export const REVIEW_TONES = ["gris", "verde", "azul", "ocre", "rojo"] as const;
+export type ReviewTone = (typeof REVIEW_TONES)[number];
+export const REVIEW_TONE_LABELS: Record<ReviewTone, string> = { gris: "Gris", verde: "Verde", azul: "Azul", ocre: "Ocre", rojo: "Rojo" };
+const BUILT_IN_TONES: Record<BuiltInReviewStatus, ReviewTone> = {
+  POR_REVISAR: "gris", VERIFICADO: "verde", VERIFICADO_NO_VIGENTE: "azul", CON_OBSERVACIONES: "ocre", RECHAZADO: "rojo",
+};
+
+/** A state of the firm's list: its key, its name and its colour. */
+export type ReviewStatusItem = { key: string; label: string; tone: ReviewTone };
+
+/** The list every firm starts with: the five states of before, with their names and colours. */
+export const DEFAULT_REVIEW_STATUS_LIST: ReviewStatusItem[] = REVIEW_STATUSES.map((key) => ({ key, label: REVIEW_STATUS_LABELS[key], tone: BUILT_IN_TONES[key] }));
+
+export const isBuiltInStatus = (key: string | null | undefined): key is BuiltInReviewStatus => (REVIEW_STATUSES as readonly string[]).includes(key ?? "");
+
+/**
+ * How a state reads and looks: as the firm's list says it today, else as it
+ * was saved with the review (a state the firm deleted keeps its name on the
+ * comparables that have it), else the built-in one, else its key.
+ */
+export function reviewStatusOf(
+  key: string | null | undefined,
+  list: readonly ReviewStatusItem[] | null | undefined,
+  saved?: { statusLabel?: string | null; statusTone?: ReviewTone | null } | null,
+): ReviewStatusItem {
+  const status = key || "POR_REVISAR";
+  const listed = list?.find((item) => item.key === status);
+  if (listed) return listed;
+  const tone = saved?.statusTone && (REVIEW_TONES as readonly string[]).includes(saved.statusTone) ? saved.statusTone : null;
+  if (isBuiltInStatus(status)) return { key: status, label: saved?.statusLabel || REVIEW_STATUS_LABELS[status], tone: tone ?? BUILT_IN_TONES[status] };
+  return { key: status, label: saved?.statusLabel || status, tone: tone ?? "ocre" };
+}
 
 /** Verified against its listing, whether the listing is still published or not. */
 export const isVerifiedStatus = (status: ReviewStatus | null | undefined) => status === "VERIFICADO" || status === "VERIFICADO_NO_VIGENTE";
@@ -37,7 +77,8 @@ export const isVerifiedStatus = (status: ReviewStatus | null | undefined) => sta
  * not undo that.
  */
 export function statusAfterLinkCheck(status: ReviewStatus, linkValid: boolean): ReviewStatus {
-  if (status === "CON_OBSERVACIONES" || status === "RECHAZADO") return status;
+  // A state of the firm's own is the appraiser's word: the link does not move it.
+  if (status === "CON_OBSERVACIONES" || status === "RECHAZADO" || !isBuiltInStatus(status)) return status;
   if (!linkValid) return "VERIFICADO_NO_VIGENTE";
   return isVerifiedStatus(status) ? "VERIFICADO" : status;
 }
@@ -72,7 +113,7 @@ export const REVIEW_CHECK_HINTS: Partial<Record<ReviewCheck, string>> = {
 export function markAllChecks(
   checks: readonly string[], status: ReviewStatus,
 ): { checks: ReviewChecks; status: ReviewStatus } {
-  const linkMarked = checks.includes("link") && status !== "CON_OBSERVACIONES" && status !== "RECHAZADO";
+  const linkMarked = checks.includes("link") && isBuiltInStatus(status) && status !== "CON_OBSERVACIONES" && status !== "RECHAZADO";
   return {
     checks: Object.fromEntries(checks.map((check) => [check, true])),
     status: linkMarked ? "VERIFICADO" : status,
@@ -95,6 +136,9 @@ export type ReviewChecks = Partial<Record<string, boolean>>;
 
 export type ComparableReviewDto = {
   status: ReviewStatus;
+  /** The name and colour the state had when the review was saved: a state the firm renames or deletes keeps reading. */
+  statusLabel?: string | null;
+  statusTone?: ReviewTone | null;
   /** Each check marked; a check left out is not reviewed yet. */
   checks: ReviewChecks;
   /**

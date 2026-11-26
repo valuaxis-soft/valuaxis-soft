@@ -173,7 +173,8 @@ test("after concluding and reopening, each comparable is offered once, as its va
     "16 de Septiembre 8, Arandas", "Calle Juárez 12, col. Centro, Arandas", "Virreyes 30, Arandas",
   ]);
 
-  // Edited and deleted in the working version: the search follows it, not the concluded one.
+  // Edited and deleted in the working version: the search follows it, not the concluded one. A comparable taken out of
+  // the market stays in the firm's base with its number (V8.8, 14:23), once.
   const working = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
   const virreyes = working.comparables.find((item) => item.location.startsWith("Virreyes"))!;
   const juarez = working.comparables.find((item) => item.location.includes("Juárez"))!;
@@ -181,12 +182,13 @@ test("after concluding and reopening, each comparable is offered once, as its va
   await deleteComparable(fixture.publicId, fixture.user, juarez.id);
   const response = await searchComparables(current, fixture.user, query("arandas"));
   assert.deepEqual(response.results.map((result) => [result.comparable.location, result.comparable.price]).sort(), [
-    ["16 de Septiembre 8, Arandas", 2_032_590], ["Virreyes 30, Arandas", 1_300_000],
+    ["16 de Septiembre 8, Arandas", 2_032_590], ["Calle Juárez 12, col. Centro, Arandas", 1_260_000], ["Virreyes 30, Arandas", 1_300_000],
   ]);
+  assert.equal(response.results.find((result) => result.comparable.location.includes("Juárez"))?.folio, juarez.folio, "with the number it had");
 
   // A second round of versions does not multiply them either.
   await concludeAndReopen(fixture.publicId, fixture);
-  assert.equal((await locations(current, fixture, query("arandas"))).length, 2);
+  assert.equal((await locations(current, fixture, query("arandas"))).length, 3);
 });
 
 test("the search never returns comparables of another organization", async () => {

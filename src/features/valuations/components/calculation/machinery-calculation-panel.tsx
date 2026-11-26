@@ -43,6 +43,8 @@ import { numbersOf, textsOf, type Texts } from "./draft-texts";
 import { FormulaInput } from "./formula-input";
 import { useSerializedSave } from "./use-serialized-save";
 import { SaveRefusedNotice, saveRefusedMessage } from "./save-refused";
+import { MachineryAiSearch } from "./machinery-ai-search";
+import { offerFromListing } from "@/features/valuations/comparable-search/machinery-offers";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 const factor = (value: number | undefined) => (value === undefined ? "—" : value.toFixed(4));
@@ -763,6 +765,18 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved, vehicle = fal
             >
               <Plus data-icon="inline-start" /> Oferta
             </Button>
+          ) : null}
+          {/* Audio of 26 nov 2026: the AI search also for machinery, for sale and for rent; its listings come in as offers. */}
+          {!readOnly ? (
+            <MachineryAiSearch
+              valuationId={valuationId}
+              readOnly={readOnly}
+              onOffers={(chosen) => {
+                const offers = [...draft.offers, ...chosen.map((choice, index) => textsOf(offerFromListing(choice.candidate, choice.item.folio, draft.offers.length + index)))];
+                change({ ...draft, offers, characteristics: draft.characteristics.map((row) => ({ ...row, values: offers.map((_, at) => row.values[at] ?? "") })) });
+                toast.success(`${chosen.length} oferta${chosen.length === 1 ? "" : "s"} agregada${chosen.length === 1 ? "" : "s"}; sus fichas quedan en la base del despacho. Captura edad, V.U.T. y calificación.`);
+              }}
+            />
           ) : null}
         </div>
 

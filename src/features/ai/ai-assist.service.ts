@@ -17,6 +17,10 @@ import { countProposed, extractListing, LISTING_TEXT_MIN, type ListingProposal }
 
 export const AI_NOT_ENABLED = "La asistencia con IA no está habilitada en esta instalación.";
 
+/** Twice an answer that could not be read: what the appraiser can do, in words. */
+export const LISTING_UNREADABLE = "No se pudieron leer los datos de este anuncio en este intento. Vuelve a intentarlo en un momento; "
+  + "si sigue sin leerse, pega solo la parte del anuncio con sus datos (precio, superficies, ubicación) o captúralos a mano.";
+
 /** A failure of the assisted features the user can read, with its HTTP status. */
 export class AiAssistError extends Error {
   constructor(message: string, readonly status: 422 | 429 | 503, readonly retryAfterSeconds?: number) {
@@ -98,7 +102,14 @@ export async function proposeComparableFromListing(
   }
   const gateway = await gatewayFor(user);
   try {
-    const { proposal, usage } = await extractListing(gateway, input);
+    const { proposal, usage } = await extractListing(gateway, input).catch((error: unknown) => {
+      // An answer that came cut or unreadable is asked once more: pasting the same listing again failed now and then (V8.12).
+      if (!(error instanceof AiGatewayError && error.kind === "invalid_output")) throw error;
+      return extractListing(gateway, input).catch((again: unknown) => {
+        if (again instanceof AiGatewayError && again.kind === "invalid_output") throw new AiAssistError(LISTING_UNREADABLE, 422);
+        throw again;
+      });
+    });
     await recordUsage({
       feature: "LISTING_EXTRACT", publicId, user, origin, usage: [usage], result: "EXITOSO",
       detail: { characters: input.text.length, proposed: countProposed(proposal), discarded: proposal.discarded.length },

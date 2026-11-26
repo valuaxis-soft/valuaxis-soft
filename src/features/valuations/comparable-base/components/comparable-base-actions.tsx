@@ -8,6 +8,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { ImportComparablesDialog } from "@/features/valuations/components/calculation/import-comparables-dialog";
 import { cn } from "@/lib/utils";
 import { BaseComparableDialog } from "./base-comparable-dialog";
+import { ComparableTrashDialog } from "./comparable-trash-dialog";
 
 /** The names of the buttons of the Comparables page, as the client decided them (29 oct 2026). */
 export const BASE_ACTION_LABELS = {
@@ -57,6 +58,7 @@ export function ComparableBaseActions({ exportHref, canEdit, validityMonths, att
         </Button>
       ) : null}
       {canEdit ? <ImportComparablesDialog scope={{ kind: "base", onImported: () => router.refresh() }} /> : null}
+      {canEdit ? <ComparableTrashDialog /> : null}
       <ComparableBaseLinks exportHref={exportHref} />
       {creating ? (
         <BaseComparableDialog

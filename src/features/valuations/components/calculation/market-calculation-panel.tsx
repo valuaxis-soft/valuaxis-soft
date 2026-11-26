@@ -13,7 +13,7 @@ import { cn, countLabel } from "@/lib/utils";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { useAiAssist } from "@/features/ai/ai-assist-context";
-import type { ComparablePrefill } from "@/features/ai/listing-prefill";
+import type { ListingReading } from "@/features/ai/listing-prefill";
 import type { CustomFactor } from "@/features/firm/custom-factors";
 import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
 import { computeMarketApproach, type MarketApproachResult } from "@/features/valuations/engine/market";
@@ -75,7 +75,7 @@ import { collectFormulas, withFormulaTexts } from "@/features/valuations/calcula
 import { FormulaInput, LiveFormulaOwnerProvider } from "./formula-input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { formatComparableId, todayInMexico } from "@/features/valuations/calculation/comparable-card";
-import { REVIEW_STATUS_LABELS, comparableWarnings, isVerifiedStatus } from "@/features/valuations/calculation/comparable-review";
+import { comparableWarnings, isVerifiedStatus, reviewStatusOf, type ReviewStatusItem } from "@/features/valuations/calculation/comparable-review";
 import { builtAreaToleranceOf } from "@/features/valuations/calculation/comparable-review-checklist";
 import { changesList, comparableListSteps } from "./market-comparable-undo";
 import { marketMemoryKey, sessionStore, storeMarketScroll, storeMarketType, storedMarketScroll, storedMarketType } from "./market-tab-memory";
@@ -97,7 +97,7 @@ import { MarketHomologationCapture } from "./market-homologation-table";
 /** A datum of a comparable in its cell of the table of the dictamen: framed as a field, the appraiser's among the gray figures. */
 const CAPTURE_TEXT_CELL = "border-input bg-background text-xs";
 import { MarketOfferLevel } from "./market-offer-level";
-import { PasteListingDialog } from "./paste-listing-dialog";
+import { AddComparableMenu } from "./add-comparable-menu";
 import { SearchComparablesDialog } from "./search-comparables-dialog";
 import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { CALCULATION_REDO_LABEL, CALCULATION_UNDO_LABEL, useDraftHistory } from "./use-draft-history";
@@ -423,11 +423,11 @@ function MarketTypePanel(props: {
   const [savingSettings, setSavingSettings] = useState(false);
   const [editing, setEditing] = useState<ComparableDto | "nuevo" | null>(null);
   // Data read from a pasted listing, waiting in the form of a new comparable.
-  const [prefill, setPrefill] = useState<{ values: ComparablePrefill; listingText: string; images: PendingImages } | null>(null);
+  const [prefill, setPrefill] = useState<{ reading: ListingReading; listingText: string; images: PendingImages } | null>(null);
   const ai = useAiAssist();
   const [catalog, setCatalog] = useState<FactorCatalog>(EMPTY_FACTOR_CATALOG);
   const [customFactors, setCustomFactors] = useState<CustomFactor[]>([]);
-  const [reviewThresholds, setReviewThresholds] = useState<{ builtAreaTolerance?: number; offerMaxAgeMonths?: number }>({});
+  const [reviewThresholds, setReviewThresholds] = useState<{ builtAreaTolerance?: number; offerMaxAgeMonths?: number; statuses?: ReviewStatusItem[] }>({});
   // Every change of the panel goes through the session: shown at once, saved in order (V7.2-11, -13, -15).
   const session = useRef<MarketEditSession | null>(null);
   // The settings the fields being typed were read from.
@@ -451,7 +451,7 @@ function MarketTypePanel(props: {
       .catch(() => undefined);
     // The warnings of the list use the firm's thresholds, as the review does (Despacho → Revisión de comparables).
     api.firm.reviewChecklist()
-      .then((next) => { if (active) setReviewThresholds({ builtAreaTolerance: builtAreaToleranceOf(next), offerMaxAgeMonths: next.validityMonths }); })
+      .then((next) => { if (active) setReviewThresholds({ builtAreaTolerance: builtAreaToleranceOf(next), offerMaxAgeMonths: next.validityMonths, statuses: next.statuses }); })
       .catch(() => undefined);
     return () => { active = false; };
   }, []);
@@ -972,7 +972,7 @@ function MarketTypePanel(props: {
                     <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">
                       {formatComparableId(comparable.folio) ?? "—"}
                       <span className={cn("ml-1 font-sans", isVerifiedStatus(status) ? "text-success-strong" : status === "POR_REVISAR" ? "text-muted-foreground" : "text-highlight-strong")}>
-                        · {REVIEW_STATUS_LABELS[status]}
+                        · {reviewStatusOf(status, reviewThresholds.statuses, comparable.review).label}
                       </span>
                     </td>
                     <td className="max-w-64 px-2 py-1.5" title={comparable.location}>
@@ -1033,19 +1033,17 @@ function MarketTypePanel(props: {
           <div className="flex flex-wrap gap-2">
             {!readOnly ? (
               <>
-                <Button type="button" size="sm" onClick={() => setEditing("nuevo")}>
-                  <Plus data-icon="inline-start" /> Agregar comparable
-                </Button>
+                {/* V8.12: «Pegar anuncio» is one way to add a comparable, inside «Agregar comparable». */}
+                <AddComparableMenu
+                  key={type}
+                  valuationId={valuationId}
+                  type={type}
+                  priceLabel={priceLabel}
+                  pasteListing={ai.enabled}
+                  onByHand={() => { setPrefill(null); setEditing("nuevo"); }}
+                  onListing={(reading, listingText, images) => { setPrefill({ reading, listingText, images }); setEditing("nuevo"); }}
+                />
                 <ImportComparablesDialog scope={{ kind: "valuation", valuationId, type, onImported: applyServerState }} />
-                {ai.enabled ? (
-                  <PasteListingDialog
-                    key={type}
-                    valuationId={valuationId}
-                    type={type}
-                    priceLabel={priceLabel}
-                    onUse={(values, listingText, images) => { setPrefill({ values, listingText, images }); setEditing("nuevo"); }}
-                  />
-                ) : null}
               </>
             ) : null}
             {/* Searching only reads: a concluded valuation can still look, but not add. */}
@@ -1346,6 +1344,8 @@ function MarketTypePanel(props: {
               ariaLabel={`Ubicación, comparable ${comparable.reference}`}
               className={CAPTURE_TEXT_CELL}
               disabled={readOnly}
+              // Each comparable has its own address: «Copiar valor a toda la columna» never writes one over the others (V8.11).
+              noFill
               value={comparable.location}
               onCommit={(text) => {
                 // A comparable is known by where it is: an emptied cell keeps the one it had.
@@ -1386,7 +1386,8 @@ function MarketTypePanel(props: {
           key={editingComparable?.id ?? "nuevo"}
           open
           onOpenChange={(open) => { if (!open) { setEditing(null); setPrefill(null); } }}
-          prefill={prefill?.values}
+          prefill={prefill?.reading.values}
+          listingEvidence={prefill?.reading}
           listingText={prefill?.listingText}
           initialImages={prefill?.images}
           comparable={editingComparable ? cardOf(comparables.find((item) => item.id === editingComparable.id) ?? editingComparable) : null}

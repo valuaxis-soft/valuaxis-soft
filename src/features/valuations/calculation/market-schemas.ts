@@ -6,8 +6,7 @@ import { capturedFormulasSchema } from "./captured-formulas";
 import { CURRENCIES, DATA_VERIFIED, OPERATION_TYPES, STREET_TYPES, UNIT_BASES, URBAN_PROXIMITIES } from "./comparable-card";
 import { COMPARABLE_CLASSES } from "./comparable-classes";
 import { MAX_KIND_LABEL_LENGTH, isKnownKindKey } from "./comparable-kinds";
-import { REVIEW_STATUSES } from "./comparable-review";
-import { MAX_REVIEW_CHECKS, reviewCheckKeySchema } from "./comparable-review-checklist";
+import { MAX_REVIEW_CHECKS, reviewCheckKeySchema, reviewStatusKeySchema } from "./comparable-review-checklist";
 import { MAX_SCALE_LEVELS, REGRESSION_DEPENDENTS } from "./market-regression";
 import { COVER_IMAGE_SCALE } from "../services/cover-image-focus";
 import {
@@ -267,7 +266,8 @@ export const reorderComparablesSchema = z.object({
 
 /** The review of a comparable in a valuation: it changes no calculation. */
 export const comparableReviewSchema = z.object({
-  status: z.enum(REVIEW_STATUSES, "Estado de revisión inválido."),
+  // A built-in state or one the firm added (V8.12).
+  status: reviewStatusKeySchema,
   // The firm's checklist (built-in keys and the ones it added); the server keeps their names with the review.
   checks: z.record(reviewCheckKeySchema, z.boolean())
     .refine((checks) => Object.keys(checks).length <= MAX_REVIEW_CHECKS * 2, "Demasiadas verificaciones.")

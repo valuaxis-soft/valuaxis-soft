@@ -224,7 +224,7 @@ test("the request of a search has a minimum, a maximum and keeps only real addre
   assert.equal(webSearchRequestSchema.safeParse({ text: "x".repeat(2001) }).success, false);
   assert.equal(webSearchRequestSchema.safeParse({ text: "terrenos en Villa Ejemplo", previous: Array(6).fill("antes") }).success, false);
   const parsed = webSearchRequestSchema.parse({ text: "  terrenos en Villa Ejemplo  ", knownUrls: ["https://portal.example/a", "no es una liga"] });
-  assert.deepEqual(parsed, { text: "terrenos en Villa Ejemplo", previous: [], knownUrls: ["https://portal.example/a"], count: 5 });
+  assert.deepEqual(parsed, { text: "terrenos en Villa Ejemplo", previous: [], knownUrls: ["https://portal.example/a"], count: 5, target: "market" });
   // «Buscar N más»: one to five.
   assert.equal(webSearchRequestSchema.parse({ text: "terrenos en Villa Ejemplo", count: 2 }).count, 2);
   assert.equal(webSearchRequestSchema.safeParse({ text: "terrenos en Villa Ejemplo", count: 0 }).success, false);

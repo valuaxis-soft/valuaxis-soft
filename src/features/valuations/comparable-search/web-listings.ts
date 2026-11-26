@@ -92,6 +92,8 @@ export type WebListingSearchInput = {
   knownUrls: string[];
   /** Listings wanted, 1 to WEB_SEARCH_BATCH. */
   count: number;
+  /** From the machinery panel: machinery and equipment, whatever the kind. */
+  target?: "market" | "machinery";
 };
 
 /**
@@ -113,10 +115,11 @@ const isOwnKindName = (kind: Pick<ComparableKind, "key">) => kind.key.startsWith
 /** The request as the model reads it. The appraiser's words go delimited: they say what to look for, they do not change the rules. */
 export function webListingSearchPrompt(input: WebListingSearchInput, today: string): AiPrompt {
   const more = input.previous.length > 0;
+  const machinery = input.kind?.class === "MAQUINARIA" || input.target === "machinery";
   const parts = [
     `Fecha de hoy: ${today}.`,
-    `Tipo de comparable que se busca: ${searchedKindWords(input.type, input.kind)}.`,
-    ...(input.kind?.class === "MAQUINARIA" ? [MACHINERY_NOTE] : []),
+    `Tipo de comparable que se busca: ${machinery && !input.kind ? `maquinaria y equipo en ${isRentComparableType(input.type) ? "renta" : "venta"}` : searchedKindWords(input.type, input.kind)}.`,
+    ...(machinery ? [MACHINERY_NOTE] : []),
     `Cuántos: reporta como máximo ${listingsWanted(input.count)}${more ? " más, distintos de los ya encontrados" : ""}.`,
     ...(input.previous.length
       ? [`Solicitudes anteriores de esta misma búsqueda (contexto):\n${input.previous.map((text) => `<solicitud_anterior>\n${text}\n</solicitud_anterior>`).join("\n")}`]
@@ -511,6 +514,8 @@ export const webSearchRequestSchema = z.object({
   count: z.number().int().min(1, "Pide al menos un anuncio.").max(WEB_SEARCH_BATCH, `Una búsqueda propone hasta ${WEB_SEARCH_BATCH} anuncios.`).default(WEB_SEARCH_BATCH),
   /** «Tipo de inmueble / de bien» chosen in the dialog; a client of before searches the market's words. */
   kind: comparableKindSchema.nullable().optional(),
+  /** A market of the valuation, or the market approach of a machinery valuation (machinery kinds, sale or rent). */
+  target: z.enum(["market", "machinery"]).default("market"),
 });
 
 /** «Crear fichas»: the listings chosen. */
@@ -518,6 +523,8 @@ export const addWebListingsSchema = z.object({
   candidates: z.array(webListingCandidateSchema).min(1, "Elige al menos un anuncio.").max(WEB_SEARCH_MAX_CANDIDATES),
   /** The kind the search was for: the cards take it. */
   kind: comparableKindSchema.nullable().optional(),
+  /** From the machinery panel: the cards go to the firm's base and the panel adds them as offers. */
+  target: z.enum(["market", "machinery"]).default("market"),
 });
 
 const money = (value: number, currency: Currency) => `${currency} ${value.toLocaleString("es-MX", { maximumFractionDigits: 2 })}`;
@@ -657,4 +664,21 @@ export function suggestedWebSearchText(type: ComparableType, subject: WebSearchS
     : "";
   const use = subject.landUse ? `, con uso ${subject.landUse}` : "";
   return `${kind} en ${operation}${where}${range}${use}. Necesito cinco, con superficie, precio, zona, características y la liga de cada anuncio.`;
+}
+
+/** The machine of a machinery valuation, as its cost approach names it. */
+export type MachinerySearchItem = { name: string; brand: string; model: string; year: string };
+
+/**
+ * The request the machinery panel starts with (audio of 26 nov 2026: «buscar
+ * con IA comparables de maquinaria, así como venta y renta»): the machine by
+ * its name, brand, model and year, in the subject's town, for sale or for rent.
+ */
+export function suggestedMachinerySearchText(type: ComparableType, subject: WebSearchSubject, item: MachinerySearchItem, chosenKind: ComparableKind | null = null) {
+  const operation = isRentComparableType(type) ? "renta" : "venta";
+  const machine = [item.name, item.brand, item.model, item.year ? `año ${item.year}` : ""].map((part) => part.trim()).filter(Boolean).join(" ")
+    || (chosenKind ? kindPlural(chosenKind) : "Maquinaria y equipo");
+  const town = [subject.municipality, subject.state].filter(Boolean).join(", ");
+  const where = town ? ` en ${town} o en el resto de México` : subject.address ? ` cerca de ${subject.address} o en el resto de México` : " en México";
+  return `${machine} en ${operation}${where}, iguales o parecidos. Necesito cinco, con precio, marca, modelo, año, horas de uso o kilometraje, ubicación y la liga de cada anuncio.`;
 }

@@ -8,12 +8,19 @@
  * browser asks `webSearchStatus` every few seconds. The searches in course
  * live in the memory of the process (production runs one app container, as
  * the rate limiter assumes); a restart ends them and the appraiser searches
- * again. Nothing of a search is stored: only who ran it and what it cost.
+ * again.
  *
- * A search proposes at most five listings, and a valuation includes at most
- * 25 comparables found with AI, across all its markets (V8.1 and V8.2, 24 nov
- * 2026). The count is read from the comparables themselves: those whose
- * «Origen del dato» is «Búsqueda con IA».
+ * A finished search is kept with the valuation, what was asked and the
+ * listings it found (web-search-history.ts, V8.8): they stay on screen, can be
+ * turned into cards later without searching again, and count against the 25
+ * listings found with AI a valuation may have, across all its markets, used or
+ * not («se contabilizan aunque no uses ninguno»). A search proposes at most
+ * five listings (V8.1 and V8.2, 24 nov 2026).
+ *
+ * The search also runs from the market approach of a machinery valuation
+ * (`target: "machinery"`, audio of 26 nov 2026): kinds of the machinery
+ * catalog, for sale or for rent; its cards go to the firm's base and its
+ * listings become offers of the panel.
  */
 import { randomUUID } from "node:crypto";
 
@@ -28,11 +35,12 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { consumeAiWebSearchRateLimit } from "@/security/rate-limit/ai-limit";
 import { decimal, findValuation, type Tx } from "../calculation/access";
 import { todayInMexico } from "../calculation/comparable-card";
-import { comparableClassOfType } from "../calculation/comparable-classes";
+import { comparableClassOfType, type ComparableClass } from "../calculation/comparable-classes";
 import { defaultKindOfType, isOtherKind, kindFromText, type ComparableKind } from "../calculation/comparable-kinds";
 import { findDuplicates } from "../calculation/comparable-card.service";
-import { getMarketCalculation, importComparableIds, type ImportEntry } from "../calculation/market.service";
-import { isLandComparableType, type ComparableType, type MarketCalculationDto } from "../calculation/market-types";
+import { getMachineryCalculation } from "../calculation/machinery.service";
+import { getMarketCalculation, importComparableIds, importToFirmBase, type ImportEntry } from "../calculation/market.service";
+import { isLandComparableType, isRentComparableType, type ComparableType, type MarketCalculationDto } from "../calculation/market-types";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { identityKeys, urlKey, withProvenance } from "./normalize";
 import { foundComparableSchema } from "./schemas";
@@ -45,6 +53,7 @@ import {
   comparableFromWebListing,
   listingUrl,
   normalizeWebListings,
+  suggestedMachinerySearchText,
   suggestedWebSearchText,
   webListingSearchPrompt,
   webListingSearchSchema,
@@ -54,6 +63,7 @@ import {
   type WebListingSearchInput,
   type WebSearchSubject,
 } from "./web-listings";
+import { recordWebSearch, webListingsFound, webSearchHistory, webSearchKnownUrls, type WebSearchRound, type WebSearchTarget } from "./web-search-history";
 
 /**
  * What the provider may do for a request of `count` listings: a few general
@@ -78,8 +88,8 @@ export const WEB_SEARCH_DISABLED: Record<"no_key" | "off", string> = {
   off: "La búsqueda con IA está apagada en esta instalación. El administrador la enciende con AI_COMPARABLE_SEARCH_ENABLED.",
 };
 
-/** What the appraiser reads when the valuation already has its comparables found with AI. */
-export const AI_CAP_REACHED = `Este avalúo ya tiene los ${AI_COMPARABLES_PER_VALUATION} comparables encontrados con IA que puede incluir. Captura los demás a mano o búscalos en la base del despacho.`;
+/** What the appraiser reads when the valuation already has its listings found with AI. */
+export const AI_CAP_REACHED = `Este avalúo ya tiene los ${AI_COMPARABLES_PER_VALUATION} anuncios encontrados con IA que puede tener. Usa los que ya encontraste (siguen en el historial), captura los demás a mano o búscalos en la base del despacho.`;
 
 /** What «Crear fichas» did with one listing, and the comparable of the valuation it is now. */
 export type WebListingOutcome = { url: string; outcome: "CREATED" | "REUSED" | "SKIPPED"; comparableId: string | null };
@@ -89,8 +99,15 @@ export type WebSearchCandidateDto = WebListingCandidate & {
   existing: { comparableId: string; folio: number | null; inValuation: boolean } | null;
 };
 
-/** Comparables found with AI the valuation includes, and how many it may. */
-export type AiComparableQuota = { used: number; cap: number };
+/** A search of the history with its listings marked as the dialog shows them. */
+export type WebSearchRoundDto = Omit<WebSearchRound, "candidates"> & { candidates: WebSearchCandidateDto[] };
+
+/**
+ * Listings found with AI in the valuation (`used`, of `cap`), across all its
+ * markets, and how many of them are comparables of it now (`cards`). A
+ * listing found counts whether it is used or not (V8.8).
+ */
+export type AiComparableQuota = { used: number; cap: number; cards: number };
 
 /** What the model is doing, as the dialog says it: searching, opening pages, writing its answer, or the server reading the pages. */
 export type WebSearchPhase = NonNullable<AiWebSearchProgress["phase"]> | "reading";
@@ -100,6 +117,8 @@ export type WebSearchStatusDto =
   | {
     status: "done";
     candidates: WebSearchCandidateDto[];
+    /** The search as the history keeps it; null when it could not be kept. */
+    round: WebSearchRoundDto | null;
     /** Candidates of the model left out, and why. */
     discarded: number;
     discards: WebListingDiscards;
@@ -146,16 +165,26 @@ const currentComparables = (valuation: Valuation) => {
 };
 
 /**
- * Comparables found with AI the valuation includes now, across all its
- * markets: those whose «Origen del dato» is «Búsqueda con IA». Taking one
- * out of the valuation frees its place.
+ * The listings found with AI in the valuation (its searches kept, V8.8), used
+ * or not, plus its comparables found with AI («Origen del dato» «Búsqueda con
+ * IA») that no kept search found: those of before the searches were kept.
  */
 export async function aiComparableQuota(tx: Tx, valuation: Valuation): Promise<AiComparableQuota> {
   const where = currentComparables(valuation);
-  const used = where
-    ? await tx.comparableAvaluo.count({ where: { ...where, JPublicacionSnapshot: { path: ["details", "dataOrigin"], equals: WEB_SEARCH_SOURCE_LABEL } } })
-    : 0;
-  return { used, cap: AI_COMPARABLES_PER_VALUATION };
+  const [cards, found, history] = await Promise.all([
+    where
+      ? tx.comparableAvaluo.findMany({ where: { ...where, JPublicacionSnapshot: { path: ["details", "dataOrigin"], equals: WEB_SEARCH_SOURCE_LABEL } }, select: { JPublicacionSnapshot: true } })
+      : Promise.resolve([]),
+    webListingsFound(tx, valuation.IdAvaluo),
+    webSearchKnownUrls(valuation.IdAvaluo),
+  ]);
+  const searched = new Set(history.flatMap((url) => urlKey(url) ?? []));
+  const untracked = cards.filter((row) => {
+    const url = (row.JPublicacionSnapshot as { url?: unknown } | null)?.url;
+    const key = typeof url === "string" ? urlKey(url) : null;
+    return !key || !searched.has(key);
+  }).length;
+  return { used: found + untracked, cap: AI_COMPARABLES_PER_VALUATION, cards: cards.length };
 }
 
 /** The addresses on the web of the valuation's comparables, so a search does not propose them again. */
@@ -169,21 +198,75 @@ async function valuationUrls(valuation: Valuation): Promise<string[]> {
   });
 }
 
+/** The class searched for: real estate in a market of a valuation, machinery in the machinery panel. */
+const classOfTarget = (type: ComparableType, target: WebSearchTarget): ComparableClass => (target === "machinery" ? "MAQUINARIA" : comparableClassOfType(type));
+
 /**
- * A kind of the other class is not searched for in a market: the markets of a
- * valuation are of real estate, and machinery never mixes with them.
+ * A kind of the other class is not searched for: the markets of a valuation
+ * are of real estate, the machinery panel of machinery, and they never mix.
+ * The machinery panel searches sales or rents, never land.
  */
-function assertKindOfMarket(type: ComparableType, kind: ComparableKind | null | undefined) {
-  if (kind && kind.class !== comparableClassOfType(type)) {
-    throw new ValuationWorkflowError("Ese tipo de bien es de otra clase: en este mercado se buscan inmuebles.", 400);
+function assertKindOfTarget(type: ComparableType, kind: ComparableKind | null | undefined, target: WebSearchTarget) {
+  if (target === "machinery" && isLandComparableType(type)) {
+    throw new ValuationWorkflowError("La maquinaria y el equipo se buscan en venta o en renta, no como terreno.", 400);
+  }
+  if (kind && kind.class !== classOfTarget(type, target)) {
+    throw new ValuationWorkflowError(target === "machinery"
+      ? "Ese tipo de bien es un inmueble: en el panel de maquinaria se buscan maquinaria y equipo."
+      : "Ese tipo de bien es de otra clase: en este mercado se buscan inmuebles.", 400);
   }
 }
 
-/** What the dialog needs before a search: whether it can run, the request its box starts with and how many comparables found with AI are left. */
-export async function webSearchSetup(publicId: string, user: Pick<AuthUser, "organizationId">, type: ComparableType) {
+/** «Código postal 47180»: what the address keeps when the valuation was created with its C.P. only. */
+const BARE_POSTAL_CODE = /^c[oó]digo postal\s*\d{5}$/i;
+
+/**
+ * Where the subject is, in words a search understands. The town of its
+ * address; the line captured as its «Ubicación»; and when that line is only
+ * the C.P. it was created with, the address its pin was found with (V8.8:
+ * the request said «cerca de Código postal 47180», of Arandas, for a
+ * valuation in Guadalajara).
+ */
+export function searchPlaceOf(
+  address: { SColonia: string | null; SMunicipio: string | null; SEstado: string | null; SDireccionCompleta: string | null } | undefined,
+  pinAddress: string | null | undefined,
+): Pick<WebSearchSubject, "neighborhood" | "municipality" | "state" | "address"> {
+  const captured = address?.SDireccionCompleta?.trim() || null;
+  const pin = pinAddress?.trim() || null;
+  const line = captured && BARE_POSTAL_CODE.test(captured) ? pin ?? captured.replace(/^c[oó]digo postal\s*/i, "C.P. ") : captured ?? pin;
+  return {
+    neighborhood: address?.SColonia?.trim() || null,
+    municipality: address?.SMunicipio?.trim() || null,
+    state: address?.SEstado?.trim() || null,
+    address: line,
+  };
+}
+
+/** The comparable of the firm's base with the same address on the web as each candidate. */
+async function withExisting(publicId: string, organizationId: number, candidates: WebListingCandidate[]): Promise<WebSearchCandidateDto[]> {
+  const marked: WebSearchCandidateDto[] = [];
+  // One at a time: a search brings five at most, and the pool of connections is small.
+  for (const candidate of candidates) {
+    const matches = await findDuplicates(publicId, organizationId, { url: candidate.url, location: "", contactPhone: null, price: null });
+    const same = matches.find((match) => match.reasons.includes("URL"));
+    marked.push({ ...candidate, existing: same ? { comparableId: same.comparableId, folio: same.folio, inValuation: same.sameValuation } : null });
+  }
+  return marked;
+}
+
+const markedRound = async (publicId: string, organizationId: number, round: WebSearchRound): Promise<WebSearchRoundDto> =>
+  ({ ...round, candidates: await withExisting(publicId, organizationId, round.candidates) });
+
+/** What the dialog needs before a search: whether it can run, the request its box starts with, the searches made and how many listings are left. */
+export async function webSearchSetup(
+  publicId: string,
+  user: Pick<AuthUser, "organizationId">,
+  type: ComparableType,
+  target: WebSearchTarget = "market",
+) {
   const valuation = await findValuation(prisma, publicId, user.organizationId);
   const availability = aiWebSearchAvailability();
-  const [avaluo, calculation, quota] = await Promise.all([
+  const [avaluo, quota, history] = await Promise.all([
     prisma.avaluo.findUniqueOrThrow({
       where: { IdAvaluo: valuation.IdAvaluo },
       select: {
@@ -203,48 +286,51 @@ export async function webSearchSetup(publicId: string, user: Pick<AuthUser, "org
         },
       },
     }),
-    getMarketCalculation(publicId, user.organizationId, type),
     aiComparableQuota(prisma, valuation),
+    webSearchHistory(valuation.IdAvaluo, { type, target }),
   ]);
   const subject = avaluo.propiedadSujeto;
-  const address = subject?.direccionesPropiedad[0];
-  const ownArea = decimal(isLandComparableType(type) ? subject?.NSuperficieTerreno : subject?.NSuperficieConstruccion);
-  const searchSubject: WebSearchSubject = {
-    propertyType: avaluo.tipoInmueble.SNombre,
-    neighborhood: address?.SColonia?.trim() || null,
-    municipality: address?.SMunicipio?.trim() || null,
-    state: address?.SEstado?.trim() || null,
-    // The «Ubicación» of the valuation as captured; without it, the address its pin was found with.
-    address: address?.SDireccionCompleta?.trim() || readSubjectLocation(subject?.JCaracteristicas ?? null)?.address?.trim() || null,
-    area: calculation.settings.subjectArea ?? ownArea,
-    landUse: subject?.SUsoSuelo?.trim() || null,
-  };
-  // The kind the box starts with: «Terreno / Lote» in a land market, the subject's in the others (Casa → Casa habitación).
-  const kind = defaultKindOfType(type) ?? (avaluo.tipoInmueble.SNombre ? kindFromText(avaluo.tipoInmueble.SNombre, "INMUEBLE") : null);
-  const startKind = kind && !isOtherKind(kind.key) ? kind : null;
+  const place = searchPlaceOf(subject?.direccionesPropiedad[0], readSubjectLocation(subject?.JCaracteristicas ?? null)?.address);
+  let searchSubject: WebSearchSubject;
+  let startKind: ComparableKind | null;
+  let suggestion: string;
+  if (target === "machinery") {
+    // What the valuation appraises: the machine of its cost approach, by name, brand, model and year.
+    const machinery = await getMachineryCalculation(publicId, user.organizationId);
+    const item = machinery.cost.item;
+    const kind = item.name ? kindFromText(item.name, "MAQUINARIA") : null;
+    startKind = kind && !isOtherKind(kind.key) ? kind : null;
+    searchSubject = { propertyType: item.name || null, ...place, area: null, landUse: null };
+    suggestion = suggestedMachinerySearchText(type, searchSubject, { name: item.name, brand: item.brand, model: item.model, year: item.year }, startKind);
+  } else {
+    const calculation = await getMarketCalculation(publicId, user.organizationId, type);
+    const ownArea = decimal(isLandComparableType(type) ? subject?.NSuperficieTerreno : subject?.NSuperficieConstruccion);
+    searchSubject = {
+      propertyType: avaluo.tipoInmueble.SNombre,
+      ...place,
+      area: calculation.settings.subjectArea ?? ownArea,
+      landUse: subject?.SUsoSuelo?.trim() || null,
+    };
+    // The kind the box starts with: «Terreno / Lote» in a land market, the subject's in the others (Casa → Casa habitación).
+    const kind = defaultKindOfType(type) ?? (avaluo.tipoInmueble.SNombre ? kindFromText(avaluo.tipoInmueble.SNombre, "INMUEBLE") : null);
+    startKind = kind && !isOtherKind(kind.key) ? kind : null;
+    suggestion = suggestedWebSearchText(type, searchSubject, startKind);
+  }
+  const rounds: WebSearchRoundDto[] = [];
+  for (const round of history) rounds.push(await markedRound(publicId, user.organizationId, round));
   return {
     enabled: availability.enabled,
     disabledReason: availability.enabled ? null : WEB_SEARCH_DISABLED[availability.reason],
-    suggestion: suggestedWebSearchText(type, searchSubject, startKind),
+    suggestion,
     // The dialog writes the request again when another kind is chosen.
     subject: searchSubject,
     kind: startKind,
     maxSearches: webSearchLimits(WEB_SEARCH_BATCH).searches,
     batch: WEB_SEARCH_BATCH,
     quota,
+    // Every search of this market, with its listings: they are shown again, and turned into cards without searching again.
+    history: rounds,
   };
-}
-
-/** The comparable of the firm's base with the same address on the web as each candidate. */
-async function withExisting(publicId: string, organizationId: number, candidates: WebListingCandidate[]): Promise<WebSearchCandidateDto[]> {
-  const marked: WebSearchCandidateDto[] = [];
-  // One at a time: a search brings five at most, and the pool of connections is small.
-  for (const candidate of candidates) {
-    const matches = await findDuplicates(publicId, organizationId, { url: candidate.url, location: "", contactPhone: null, price: null });
-    const same = matches.find((match) => match.reasons.includes("URL"));
-    marked.push({ ...candidate, existing: same ? { comparableId: same.comparableId, folio: same.folio, inValuation: same.sameValuation } : null });
-  }
-  return marked;
 }
 
 function recordSearch(job: Job, origin: RequestOrigin, usage: AiUsage, detail: Record<string, number | string | null>) {
@@ -294,7 +380,9 @@ function pageReader(gateway: AiGateway, maxPages: number) {
   };
 }
 
-async function runJob(job: Job, input: WebListingSearchInput, origin: RequestOrigin) {
+type SearchInput = WebListingSearchInput & { target: WebSearchTarget };
+
+async function runJob(job: Job, input: SearchInput, origin: RequestOrigin) {
   try {
     const gateway = await getAiGateway();
     if (!gateway) throw new AiAssistError(AI_NOT_ENABLED, 503);
@@ -352,9 +440,28 @@ async function runJob(job: Job, input: WebListingSearchInput, origin: RequestOri
       turns: timings?.turns ?? null,
       characters: input.text.length,
     });
+    // Kept with the valuation, so its listings can be used later without searching again (V8.8).
+    const searchedAt = new Date();
+    const roundId = await recordWebSearch({
+      valuation,
+      organizationId: job.organizationId,
+      userId: job.userId,
+      search: {
+        type: input.type, target: input.target, request: input.text, previous: input.previous, kind: input.kind ?? null, count: input.count,
+        marketNote: normalized.marketNote, discards: normalized.discards, searches, elapsedSeconds, candidates,
+      },
+    }).catch((error: unknown) => {
+      console.error("[AI] COMPARABLE_SEARCH history not kept", error);
+      return null;
+    });
+    const marked = await withExisting(job.valuationId, job.organizationId, candidates);
     job.outcome = {
       status: "done",
-      candidates: await withExisting(job.valuationId, job.organizationId, candidates),
+      candidates: marked,
+      round: roundId ? {
+        id: roundId, type: input.type, target: input.target, request: input.text, kind: input.kind ?? null, searchedAt: searchedAt.toISOString(),
+        count: input.count, found: candidates.length, marketNote: normalized.marketNote, candidates: marked,
+      } : null,
       discarded: normalized.discarded,
       discards: normalized.discards,
       marketNote: normalized.marketNote,
@@ -378,17 +485,18 @@ async function runJob(job: Job, input: WebListingSearchInput, origin: RequestOri
 /**
  * Starts a search and answers with its id. Reading the valuation is enough,
  * as with the search of the firm's base; another organization's is not found.
- * A valuation with its 25 comparables found with AI is not searched for, and
- * a search asks for no more than the places left.
+ * A valuation with its 25 listings found with AI is not searched for, and a
+ * search asks for no more than the places left.
  */
 export async function startWebSearch(
   publicId: string,
   user: Pick<AuthUser, "id" | "organizationId">,
-  input: WebListingSearchInput,
+  input: WebListingSearchInput & { target?: WebSearchTarget },
   origin: RequestOrigin,
 ): Promise<{ jobId: string; count: number }> {
   const valuation = await findValuation(prisma, publicId, user.organizationId);
-  assertKindOfMarket(input.type, input.kind);
+  const target = input.target ?? "market";
+  assertKindOfTarget(input.type, input.kind, target);
   const availability = aiWebSearchAvailability();
   if (!availability.enabled) throw new AiAssistError(WEB_SEARCH_DISABLED[availability.reason], 503);
   const quota = await aiComparableQuota(prisma, valuation);
@@ -405,8 +513,8 @@ export async function startWebSearch(
     throw new AiAssistError("Llegaste al límite de búsquedas con IA por ahora. Espera unos minutos antes de volver a buscar.", 429, limit.retryAfterSeconds);
   }
   const count = Math.min(input.count, left, WEB_SEARCH_BATCH);
-  // The listings on screen and those already in the valuation are not proposed again.
-  const known = [...new Set([...input.knownUrls, ...await valuationUrls(valuation)])].slice(0, WEB_SEARCH_MAX_KNOWN * 2);
+  // The listings on screen, those found before in this valuation and those already in it are not proposed again.
+  const known = [...new Set([...input.knownUrls, ...await webSearchKnownUrls(valuation.IdAvaluo), ...await valuationUrls(valuation)])].slice(0, WEB_SEARCH_MAX_KNOWN * 2);
   const jobId = randomUUID();
   const job: Job = {
     organizationId: user.organizationId, userId: user.id, valuationId: publicId, startedAt: now, finishedAt: null,
@@ -414,7 +522,7 @@ export async function startWebSearch(
   };
   jobs.set(jobId, job);
   // Not awaited: the request that started it has already answered when the search ends.
-  void runJob(job, { ...input, count, knownUrls: known }, origin);
+  void runJob(job, { ...input, target, count, knownUrls: known }, origin);
   return { jobId, count };
 }
 
@@ -435,20 +543,25 @@ export function webSearchStatus(publicId: string, user: Pick<AuthUser, "id" | "o
   };
 }
 
+/** The listing as a capture of a comparable, «Sin revisar», with where it came from. */
+const capturedListing = (type: ComparableType, candidate: WebListingCandidateInput, today: string, kind: ComparableKind | null) =>
+  foundComparableSchema.parse(withProvenance(comparableFromWebListing(type, candidate, today, kind), WEB_SEARCH_SOURCE_LABEL, candidate.portal));
+
 /**
  * «Crear fichas»: each chosen listing becomes a comparable of the market,
  * filled with what the listing gave and left «Sin revisar», so it goes
  * through the firm's checklist like any other. A listing the firm's base
  * already has (same address on the web, same market) is brought from the base
  * with its number and its evidence instead of captured twice; one the
- * valuation already has is skipped.
+ * valuation already has is skipped. Every card stays in the firm's base,
+ * also once it is taken out of the market (`deleteComparable`, V8.8).
  *
  * `items` says, in the order the listings came, what became of each and the
  * comparable it is now: the browser uploads to it the screenshot and photos
  * the appraiser pasted for that listing, through the same routes as the form.
  *
- * The valuation includes at most 25 comparables found with AI: a choice that
- * would pass them is rejected whole, saying how many are left.
+ * The listings were counted when they were found; the cards found with AI a
+ * valuation includes are still never more than 25.
  */
 export async function addWebListings(
   publicId: string,
@@ -457,7 +570,7 @@ export async function addWebListings(
   candidates: WebListingCandidateInput[],
   kind: ComparableKind | null = null,
 ): Promise<{ created: number; reused: number; skipped: number; items: WebListingOutcome[]; calculation: MarketCalculationDto; quota: AiComparableQuota }> {
-  assertKindOfMarket(type, kind);
+  assertKindOfTarget(type, kind, "market");
   const current = await getMarketCalculation(publicId, user.organizationId, type);
   if (current.locked) throw new ValuationWorkflowError("El avalúo está concluido; reábrelo para editarlo.", 409);
   const today = todayInMexico();
@@ -467,7 +580,7 @@ export async function addWebListings(
   // The item of each entry, so the ids the import answers land on their listing.
   const itemOfEntry: number[] = [];
   for (const candidate of candidates) {
-    const comparable = foundComparableSchema.parse(withProvenance(comparableFromWebListing(type, candidate, today, kind), WEB_SEARCH_SOURCE_LABEL, candidate.portal));
+    const comparable = capturedListing(type, candidate, today, kind);
     const keys = identityKeys(comparable);
     if (keys.some((key) => seen.has(key))) {
       items.push({ url: candidate.url, outcome: "SKIPPED", comparableId: null });
@@ -486,10 +599,10 @@ export async function addWebListings(
   }
   const valuation = await findValuation(prisma, publicId, user.organizationId);
   const quota = await aiComparableQuota(prisma, valuation);
-  if (quota.used + entries.length > quota.cap) {
-    const left = Math.max(0, quota.cap - quota.used);
+  if (quota.cards + entries.length > quota.cap) {
+    const left = Math.max(0, quota.cap - quota.cards);
     throw new ValuationWorkflowError(left
-      ? `Este avalúo tiene ${quota.used} de ${quota.cap} comparables encontrados con IA: solo puedes agregar ${left === 1 ? "uno más" : `${left} más`}. Elige menos anuncios o captura los demás a mano.`
+      ? `Este avalúo tiene ${quota.cards} de ${quota.cap} comparables encontrados con IA: solo puedes agregar ${left === 1 ? "uno más" : `${left} más`}. Elige menos anuncios o captura los demás a mano.`
       : AI_CAP_REACHED, 409);
   }
   if (entries.length) {
@@ -505,4 +618,41 @@ export async function addWebListings(
     calculation: entries.length ? await getMarketCalculation(publicId, user.organizationId, type) : current,
     quota: entries.length ? await aiComparableQuota(prisma, valuation) : quota,
   };
+}
+
+/** A listing chosen in the machinery panel: its card in the firm's base and the offer the panel adds. */
+export type MachineryListingOutcome = { url: string; outcome: "CREATED" | "REUSED"; comparableId: string; folio: number | null };
+
+/**
+ * «Crear ofertas» of the machinery panel: each chosen listing becomes a card
+ * of the firm's base («Maquinaria y equipo», «Sin revisar»), so it stays to
+ * be used again, and the panel adds it as an offer (machinery never enters a
+ * market of a valuation). A listing the base already has (same address on the
+ * web) is not captured twice: its card is used.
+ */
+export async function addWebListingsToMachinery(
+  publicId: string,
+  user: AuthUser,
+  type: ComparableType,
+  candidates: WebListingCandidateInput[],
+  kind: ComparableKind | null,
+): Promise<{ items: MachineryListingOutcome[]; quota: AiComparableQuota }> {
+  assertKindOfTarget(type, kind, "machinery");
+  const valuation = await findValuation(prisma, publicId, user.organizationId);
+  if (valuation.BBloqueado) throw new ValuationWorkflowError("El avalúo está concluido; reábrelo para editarlo.", 409);
+  const today = todayInMexico();
+  const items: MachineryListingOutcome[] = [];
+  for (const candidate of candidates) {
+    const matches = await findDuplicates(publicId, user.organizationId, { url: listingUrl(candidate.url), location: "", contactPhone: null, price: null, assetClass: "MAQUINARIA" });
+    const same = matches.find((match) => match.reasons.includes("URL"));
+    if (same) {
+      items.push({ url: candidate.url, outcome: "REUSED", comparableId: same.comparableId, folio: same.folio });
+      continue;
+    }
+    const payload = capturedListing(type, candidate, today, kind ?? { key: "EQUIPO", label: "Equipo", class: "MAQUINARIA" });
+    const [result] = await importToFirmBase(user, [{ type, payload: { ...payload, operationType: isRentComparableType(type) ? "RENTA" : "VENTA", factors: [] } }]);
+    const created = await prisma.comparableAvaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: result.id }, select: { propiedad: { select: { IFolioComparable: true } } } });
+    items.push({ url: candidate.url, outcome: "CREATED", comparableId: result.id, folio: created.propiedad.IFolioComparable });
+  }
+  return { items, quota: await aiComparableQuota(prisma, valuation) };
 }

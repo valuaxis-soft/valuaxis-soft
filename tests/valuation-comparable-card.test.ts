@@ -190,7 +190,9 @@ test("the capture takes the new fields, optional, and checks them", () => {
 
   assert.deepEqual(comparableReviewSchema.parse({ status: "CON_OBSERVACIONES", checks: { photo: true, price: false } }),
     { status: "CON_OBSERVACIONES", checks: { photo: true, price: false }, notes: null });
-  assert.equal(comparableReviewSchema.safeParse({ status: "APROBADO" }).success, false);
+  // V8.12: the firm adds its own states («custom-…»); a key that is not one is refused.
+  assert.equal(comparableReviewSchema.safeParse({ status: "custom-aprobado" }).success, true);
+  assert.equal(comparableReviewSchema.safeParse({ status: "no válido" }).success, false);
   // The firm adds its own checks (Despacho → Revisión de comparables): any key of letters, digits and dashes.
   assert.equal(comparableReviewSchema.safeParse({ status: "VERIFICADO", checks: { "custom-color": true } }).success, true);
   assert.equal(comparableReviewSchema.safeParse({ status: "VERIFICADO", checks: { "no válida": true } }).success, false);

@@ -1,10 +1,11 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Copy, FileDown, FileSpreadsheet, Loader2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Copy, FileDown, FileSpreadsheet, FolderOpen, Loader2, XCircle } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { formatComparableId, formatDay } from "@/features/valuations/calculation/comparable-card";
 import { DUPLICATE_REASON_LABELS } from "@/features/valuations/calculation/comparable-duplicates";
@@ -74,6 +75,9 @@ export const IMPORT_TEMPLATE_WORDING = {
   baseTitle: "La plantilla de comparables (Excel): a la base del despacho y a los avalúos de sus folios",
   howTo: "Usa la plantilla general (cualquier tipo de comparable, a un avalúo, a la base general o a los dos) o la plantilla de un mercado.",
   download: "Descargar plantilla",
+  /** V8.12 (03:31): «descargar plantilla de este mercado o elegir archivo», in the menu of «Importar Excel». */
+  downloadMarket: "Descargar plantilla de este mercado",
+  choose: "Elegir archivo",
   general: "Plantilla general",
   market: "Plantilla de un mercado",
   typeFromFile: "(la plantilla general trae el tipo)",
@@ -158,15 +162,48 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
 
   return (
     <>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        title={scope.kind === "valuation" ? IMPORT_TEMPLATE_WORDING.valuationTitle : IMPORT_TEMPLATE_WORDING.baseTitle}
-        onClick={() => setOpen(true)}
-      >
-        <FileSpreadsheet data-icon="inline-start" /> {IMPORT_MASTER_LABEL}
-      </Button>
+      {/* V8.12: «Importar Excel» is a menu: download the template (general or of this market) or choose the file. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={(
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              title={scope.kind === "valuation" ? IMPORT_TEMPLATE_WORDING.valuationTitle : IMPORT_TEMPLATE_WORDING.baseTitle}
+              data-import-menu
+            >
+              <FileSpreadsheet data-icon="inline-start" /> {IMPORT_MASTER_LABEL} <ChevronDown data-icon="inline-end" />
+            </Button>
+          )}
+        />
+        <DropdownMenuContent align="start" className="w-64">
+          <DropdownMenuItem className="min-h-9" render={<a href={templateHref} download />}>
+            <FileDown /> {IMPORT_TEMPLATE_WORDING.download}
+          </DropdownMenuItem>
+          {scope.kind === "valuation" ? (
+            <DropdownMenuItem className="min-h-9" render={<a href={`/api/comparables/plantilla?tipo=${scope.type}`} download />}>
+              <FileDown /> {IMPORT_TEMPLATE_WORDING.downloadMarket}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem className="min-h-9" onClick={() => input.current?.click()}>
+            <FolderOpen /> {IMPORT_TEMPLATE_WORDING.choose}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <input
+        ref={input}
+        type="file"
+        accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+        className="hidden"
+        aria-label="Archivo de Excel con comparables"
+        onChange={(event) => {
+          const next = event.target.files?.[0];
+          if (!next) return;
+          setOpen(true);
+          void choose(next);
+        }}
+      />
       <Dialog open={open} onOpenChange={(next) => { if (busy === null) { setOpen(next); if (!next) reset(); } }}>
         <DialogContent className="sm:max-w-5xl">
           <DialogHeader>
@@ -187,7 +224,7 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
             </a>
             {scope.kind === "valuation" ? (
               <a className={cn(buttonVariants({ variant: "ghost", size: "sm" }))} href={`/api/comparables/plantilla?tipo=${scope.type}`} download>
-                Plantilla de este mercado
+                {IMPORT_TEMPLATE_WORDING.downloadMarket}
               </a>
             ) : (
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -207,16 +244,9 @@ export function ImportComparablesDialog({ scope }: { scope: ImportScope }) {
                 </NativeSelect>
               </label>
             )}
-            <input
-              ref={input}
-              type="file"
-              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-              className="hidden"
-              onChange={(event) => void choose(event.target.files?.[0])}
-            />
             <Button type="button" size="sm" disabled={busy !== null} onClick={() => input.current?.click()}>
               {busy === "preview" ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <FileSpreadsheet data-icon="inline-start" />}
-              {file ? "Elegir otro archivo" : "Elegir archivo"}
+              {file ? "Elegir otro archivo" : IMPORT_TEMPLATE_WORDING.choose}
             </Button>
             {file ? <span className="truncate text-xs text-muted-foreground">{file.name}</span> : null}
           </div>

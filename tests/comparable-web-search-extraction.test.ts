@@ -113,7 +113,7 @@ const READING: ListingExtraction = {
   shape: "forma irregular", contactName: "Manuel Flores", contactPhone: "Ver teléfono", publicationId: "ID 998877",
 };
 
-test("V8.2: the page the provider opened fills, verified as written, what the search model left empty", () => {
+test("V8.2: the page the provider opened fills, verified as written, what the search model left empty; never the address (V8.11)", () => {
   const proposal = verifyListingExtraction(PAGE, "https://portal.example/propiedades/terreno-145998.html", READING);
   // Not in the page, or not a phone: dropped, never filled.
   assert.ok(proposal.discarded.includes("publicationId"));
@@ -123,9 +123,10 @@ test("V8.2: the page the provider opened fills, verified as written, what the se
   }).candidates;
   assert.equal(candidate.pageRead, true);
   const read = withPageReading("TERRENO_VENTA", candidate, proposal);
-  assert.equal(read.street, "Paseo de los Leones");
-  assert.equal(read.subdivision, "Ciudad Bugambilias");
-  assert.equal(read.postalCode, "45238");
+  // A page lists other listings too: a card took another one's street and number (V8.11). The address is not filled from it.
+  assert.equal(read.street, null);
+  assert.equal(read.subdivision, null);
+  assert.equal(read.postalCode, null);
   assert.equal(read.frontage, 10);
   assert.equal(read.depth, 39.1);
   assert.equal(read.shape, "forma irregular");
@@ -134,9 +135,13 @@ test("V8.2: the page the provider opened fills, verified as written, what the se
   assert.equal(read.publicationId, null);
   assert.deepEqual(
     [...read.verifiedFields].sort(),
-    ["contactName", "depth", "frontage", "landArea", "municipality", "postalCode", "price", "shape", "street", "subdivision"],
+    ["contactName", "depth", "frontage", "landArea", "municipality", "price", "shape"],
   );
   assert.equal(read.unitValue, 10_000);
+  // What the search model gave and the page says the same is still confirmed.
+  const given = withPageReading("TERRENO_VENTA", { ...candidate, street: "Paseo de los Leones", postalCode: "45238" }, proposal);
+  assert.equal(given.street, "Paseo de los Leones");
+  assert.ok(given.verifiedFields.includes("street") && given.verifiedFields.includes("postalCode"));
 });
 
 test("where the page and the search model disagree, the search model's value stays and is not marked as verified", () => {

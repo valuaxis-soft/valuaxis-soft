@@ -17,7 +17,7 @@ import {
   todayInMexico,
 } from "@/features/valuations/calculation/comparable-card";
 import type { ComparableCardDto } from "@/features/valuations/calculation/comparable-card.service";
-import { REVIEW_STATUS_LABELS } from "@/features/valuations/calculation/comparable-review";
+import { reviewStatusOf } from "@/features/valuations/calculation/comparable-review";
 import { isMachineryComparable, machineryCardRows, vehicleCardRows } from "@/features/valuations/calculation/comparable-machinery";
 import { comparableClassOf, comparableMarketLabel, type ComparableClass } from "@/features/valuations/calculation/comparable-classes";
 import { exchangeNote } from "@/features/valuations/calculation/comparable-currency";
@@ -34,7 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ComparableValidityLine } from "./comparable-validity-badge";
 import { SheetSection, SheetTable, type SheetItem } from "./comparable-sheet";
-import { REVIEW_STATUS_STYLES } from "./review-status-style";
+import { REVIEW_TONE_STYLES } from "./review-status-style";
 
 const money = (value: number | null | undefined) =>
   value === null || value === undefined ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -267,7 +267,9 @@ export function ComparableCardHeader(props: {
       <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs" data-card-market="">{comparableMarketLabel(props.type, props.assetClass)}</span>
       {props.reference ? <span className="rounded-sm bg-white/15 px-1.5 py-0.5 text-xs">Comparable {props.reference}</span> : null}
       {props.review ? (
-        <span className={cn("rounded-sm px-1.5 py-0.5 text-xs font-medium", REVIEW_STATUS_STYLES[props.review.status].solid)}>{REVIEW_STATUS_LABELS[props.review.status]}</span>
+        <span className={cn("rounded-sm px-1.5 py-0.5 text-xs font-medium", REVIEW_TONE_STYLES[reviewStatusOf(props.review.status, null, props.review).tone].solid)}>
+          {reviewStatusOf(props.review.status, null, props.review).label}
+        </span>
       ) : null}
       <span className="ml-auto text-xs text-[color:color-mix(in_oklab,var(--doc-on-strong,#fff)_80%,transparent)]">{props.where}</span>
     </header>
@@ -307,7 +309,7 @@ export function ComparableCardReview({ review }: { review: ComparableDto["review
     <SheetSection title="Revisión">
       <div className="grid gap-2 p-2 text-xs">
         <p>
-          {REVIEW_STATUS_LABELS[review.status]}
+          {reviewStatusOf(review.status, null, review).label}
           {review.reviewedBy ? ` por ${review.reviewedBy}` : ""}
           {review.reviewedAt ? ` el ${new Date(review.reviewedAt).toLocaleString("es-MX")}` : ""}
         </p>

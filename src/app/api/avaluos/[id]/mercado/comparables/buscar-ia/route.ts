@@ -10,9 +10,13 @@ import { clientIp } from "@/security/rate-limit/rate-limiter";
 
 const badType = () => NextResponse.json({ error: "Tipo de comparable inválido" }, { status: 400 });
 
+/** ?destino=maquinaria: the search of the machinery panel; anything else, a market of the valuation. */
+const targetOf = (request: Request) => (new URL(request.url).searchParams.get("destino") === "maquinaria" ? "machinery" as const : "market" as const);
+
 /**
- * «Buscar con IA» (?tipo=): whether it can run in this installation and the
- * request its box starts with, written from the subject of the valuation.
+ * «Buscar con IA» (?tipo=, ?destino=maquinaria): whether it can run in this
+ * installation, the request its box starts with, written from the subject of
+ * the valuation, and the searches already made with their listings (V8.8).
  */
 export async function GET(request: Request, { params }: RouteContext<"/api/avaluos/[id]/mercado/comparables/buscar-ia">) {
   try {
@@ -21,7 +25,7 @@ export async function GET(request: Request, { params }: RouteContext<"/api/avalu
     const type = comparableTypeSchema.safeParse(new URL(request.url).searchParams.get("tipo"));
     if (!type.success) return badType();
     const { id } = await params;
-    return NextResponse.json({ data: await webSearchSetup(id, auth.user, type.data) });
+    return NextResponse.json({ data: await webSearchSetup(id, auth.user, type.data, targetOf(request)) });
   } catch (error) {
     return aiErrorResponse("AI_COMPARABLE_SEARCH", error, "No se pudo preparar la búsqueda con IA.");
   }
