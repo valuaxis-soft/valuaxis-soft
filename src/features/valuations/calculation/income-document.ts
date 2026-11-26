@@ -126,6 +126,7 @@ const RATE_TABLE_ROWS: { key: string; rows: string[][] }[] = [
 
 const RATE_TABLE_ID = `${INCOME_BLOCK_PREFIX}-tabla-calculo-tasa`;
 const RATE_TO_USE_TABLE_ID = `${INCOME_BLOCK_PREFIX}-tabla-tasa-utilizar`;
+const RATE_RESULT_TABLE_ID = `${INCOME_BLOCK_PREFIX}-tabla-resultado-tasa`;
 /** The rated row of each criterion: «calificación», as the books. */
 const RATING_LABEL = "calificación";
 
@@ -146,51 +147,81 @@ function rateTableRows(ratingColumns: ReadonlyArray<number | null>): { rows: str
     rows.push([RATING_LABEL, ...RATE_TABLE_RATES.map((_, column) => (column === chosen ? "1" : ""))]);
     keys.push(ratingKey(criterion.key));
   });
-  const breakdown = rateTableBreakdown(RATE_TABLE_CRITERIA.map((_, index) => ratingColumns[index] ?? null));
-  rows.push(["SUMA CALIFICACIONES", ...breakdown.sums.map((sum) => String(sum))]);
-  keys.push("suma");
-  rows.push(["CAPITALIZACIÓN", ...breakdown.capitalization.map((value) => figure(value, 4))]);
-  keys.push("capitalizacion");
-  rows.push(["TASAS PARCIALES", ...breakdown.partials.map((value) => figure(value, 4))]);
-  keys.push("parciales");
-  rows.push(["", "", "", "", "", "TASA RESULTANTE:", breakdown.resultant === null ? EMPTY : bookPercent(breakdown.resultant, 4)]);
-  keys.push("resultante");
   return { rows, keys };
 }
 
+/** What the ratings give: the sums, the capitalization, the partial rates and the resultant rate, as the books close the table. */
+function rateResultRows(ratingColumns: ReadonlyArray<number | null>): { rows: string[][]; keys: string[] } {
+  const breakdown = rateTableBreakdown(RATE_TABLE_CRITERIA.map((_, index) => ratingColumns[index] ?? null));
+  return {
+    rows: [
+      ["SUMA CALIFICACIONES", ...breakdown.sums.map((sum) => String(sum))],
+      ["CAPITALIZACIÓN", ...breakdown.capitalization.map((value) => figure(value, 4))],
+      ["TASAS PARCIALES", ...breakdown.partials.map((value) => figure(value, 4))],
+      // The label in the column of the concepts, as the other results; the rate under the last rate (a word among figures read as a mistake).
+      ["TASA RESULTANTE", "", "", "", "", "", breakdown.resultant === null ? EMPTY : bookPercent(breakdown.resultant, 4)],
+    ],
+    keys: ["suma", "capitalizacion", "parciales", "resultante"],
+  };
+}
+
+/** Every cell of a table centered (video 8.10, 23:40: «centrado todo»), with the style of each row on its concept. */
+function centeredCells(table: TableV2, conceptStyle: (key: string, index: number) => TableCellStyle): Record<string, TableCellStyle> {
+  const styles: Record<string, TableCellStyle> = {};
+  table.rows.forEach((row, index) => {
+    const key = row.id;
+    table.columns.forEach((column, columnIndex) => {
+      styles[cellStyleKey(key, column.id)] = columnIndex === 0 ? { align: "center", ...conceptStyle(key, index) } : { align: "center" };
+    });
+  });
+  return styles;
+}
+
 /**
- * «XII.3 CÁLCULO DE TASA» exactly as the books: CONCEPTO and the six rates
- * under TASAS, each criterion's descriptors and its «calificación» row, the
- * sums, the capitalization (rate / 7 × 100), the partial rates and the
- * resultant rate. The «calificación» rows are shaded with the palette's
- * alternate table color, the others white (24 nov 2026), and Bravo Armejo is
- * cited under it.
+ * «XII.3 CÁLCULO DE TASA» as the book reads (video 8.10, 23:20): CONCEPTO and
+ * the six rates under TASAS, each criterion in bold with its second row
+ * («RELACIÓN», «INMUEBLE») under it in italics and its «calificación» row,
+ * every cell centered. The «calificación» rows are shaded with the palette's
+ * alternate table color, the others white (24 nov 2026).
  */
 function rateTable(ratingColumns: ReadonlyArray<number | null>): TableContent {
   const { rows, keys } = rateTableRows(ratingColumns);
   const columns = [textColumn("CONCEPTO"), ...RATE_TABLE_RATES.map((rate) => figureColumn(bookPercent(rate), { group: "TASAS" }))];
-  const generated = ensureV2(generatedTable(RATE_TABLE_ID, "Cálculo de tasa", columns, rows, {
+  const generated = ensureV2(generatedTable(RATE_TABLE_ID, "Cálculo de tasa", columns, rows, { rowKeys: keys }));
+  const rowIds = generated.rows.map((row) => row.id);
+  const shaded = keys.flatMap((key, index) => (key.startsWith("calificacion-") ? [rowIds[index]] : []));
+  // The criteria in bold, as the books; their second rows in italics; «calificación» plain.
+  const styles = centeredCells(generated, (_, index) => {
+    const key = keys[index];
+    if (key.startsWith("calificacion-")) return {};
+    return /-\d+$/.test(key) ? { italic: true } : { bold: true };
+  });
+  return {
+    ...generated,
+    schema: { ...generated.schema!, shadedRows: shaded, cellStyles: styles, keepTogether: true },
+  } as unknown as TableContent;
+}
+
+/**
+ * What the ratings give, as a table of its own under the criteria (video
+ * 8.10, 24:30: «una tablita aparte… esto hasta aquí termina y esto es
+ * resultado de esto»): SUMA CALIFICACIONES, CAPITALIZACIÓN (rate / 7 × 100),
+ * TASAS PARCIALES and TASA RESULTANTE, in bold and centered, with Bravo
+ * Armejo cited under it.
+ */
+function rateResultTable(ratingColumns: ReadonlyArray<number | null>): TableContent {
+  const { rows, keys } = rateResultRows(ratingColumns);
+  const columns = [textColumn("RESULTADO"), ...RATE_TABLE_RATES.map((rate) => figureColumn(bookPercent(rate), { group: "TASAS" }))];
+  const generated = ensureV2(generatedTable(RATE_RESULT_TABLE_ID, "Resultado del cálculo de tasa", columns, rows, {
     rowKeys: keys,
     notes: [{ position: "bottom", text: BRAVO_ARMEJO_SOURCE, small: true }],
   }));
-  const rowIds = generated.rows.map((row) => row.id);
-  const bold: Record<string, TableCellStyle> = {};
-  keys.forEach((key, index) => {
-    // The criteria and the totals in bold, as the books; «calificación» and the second rows of a criterion are not.
-    if (!key.startsWith("calificacion-") && !/-\d+$/.test(key)) bold[cellStyleKey(rowIds[index], generatedColumnId(0))] = { bold: true, align: "center" };
-  });
-  const last = rowIds.at(-1) as string;
-  bold[cellStyleKey(last, generatedColumnId(5))] = { bold: true, align: "right" };
-  bold[cellStyleKey(last, generatedColumnId(6))] = { bold: true };
+  const styles = centeredCells(generated, () => ({ bold: true }));
+  const last = generated.rows.at(-1)!.id;
+  styles[cellStyleKey(last, generatedColumnId(6))] = { bold: true, align: "center" };
   return {
     ...generated,
-    schema: {
-      ...generated.schema!,
-      shadedRows: keys.flatMap((key, index) => (key.startsWith("calificacion-") ? [rowIds[index]] : [])),
-      cellStyles: bold,
-      // Read as one grid, as the book prints it: never broken between pages when it fits one.
-      keepTogether: true,
-    },
+    schema: { ...generated.schema!, cellStyles: styles, keepTogether: true },
   } as unknown as TableContent;
 }
 
@@ -302,7 +333,7 @@ function rentBlocks(calculation: IncomeCalculationDto, result: IncomeApproachRes
     const tableRate = result?.tableRate ?? rateTableBreakdown(RATE_TABLE_CRITERIA.map((_, index) => calculation.ratingColumns[index] ?? null)).resultant;
     const appliedRate = result?.appliedRate ?? calculation.appliedRate ?? tableRate;
     blocks.push(block(`${prefix}-tasa`, "TASA DE CAPITALIZACIÓN", {
-      tables: [rateTable(calculation.ratingColumns), rateToUseTable(calculation, tableRate, appliedRate)],
+      tables: [rateTable(calculation.ratingColumns), rateResultTable(calculation.ratingColumns), rateToUseTable(calculation, tableRate, appliedRate)],
     }));
   }
 
@@ -355,6 +386,8 @@ export const INCOME_CAPTURE = {
   units: { table: `${INCOME_BLOCK_PREFIX}-tabla-rentas`, description: captureColumnPlace(0), area: captureColumnPlace(1), unitRent: captureColumnPlace(2) },
   deductions: { table: `${INCOME_BLOCK_PREFIX}-tabla-deducciones`, concept: captureColumnPlace(0), rate: captureColumnPlace(1) },
   /** The «calificación» row of each criterion, and the column of each rate (7 % … 12 %). */
+  /** The table of what the ratings give, under the criteria. */
+  rateResult: { table: RATE_RESULT_TABLE_ID },
   rating: {
     table: RATE_TABLE_ID,
     row: (criterion: number) => rowIdOf(RATE_TABLE_ID, ratingKey(RATE_TABLE_ROWS[criterion].key)),

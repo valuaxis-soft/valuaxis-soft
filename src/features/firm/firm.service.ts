@@ -15,6 +15,7 @@ import { storageProvider } from "@/infrastructure/storage/storage-provider";
 import { Prisma } from "@prisma/client";
 import { resolveFactorCatalog, type FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 import { accreditedSpecialty, resolveSignatures, signatureErrors, withAccreditedSpecialties } from "@/features/valuations/services/valuation-signatures";
+import { removeCriterionFrom, resolveSavedCriteria, saveCriterionTo, type CriterionScope, type SavedConservationCriterion } from "./conservation-criteria";
 import { addCustomFactorTo, resolveCustomFactors, type CustomFactor } from "./custom-factors";
 import { addCustomUnitTo, removeCustomUnitFrom, renameCustomUnitIn, resolveCustomUnits } from "./custom-units";
 import { addFirmListItemTo, removeFirmListItemFrom, resolveFirmLists, withUnits, type FirmListItem, type FirmLists } from "./firm-lists";
@@ -438,4 +439,53 @@ export async function addCustomFactor(user: AuthUser, label: string): Promise<{ 
     metadata: { factor: next.factor?.label ?? null },
   });
   return { factors: next.factors, factor: next.factor };
+}
+
+/** The conservation criteria the user sees: the firm's and his own (conservation-criteria.ts). */
+export async function getSavedCriteria(user: AuthUser): Promise<SavedConservationCriterion[]> {
+  const organization = await findOrganization(user.organizationId);
+  return resolveSavedCriteria(organization.JUnidadesPersonalizadas, user.id);
+}
+
+/** Keeps a «Criterio propio» for the firm (its team) or for the user alone; one of the same name and scope is replaced. */
+export async function saveCriterion(user: AuthUser, criterion: SavedConservationCriterion): Promise<SavedConservationCriterion[]> {
+  const organization = await findOrganization(user.organizationId);
+  const stored = saveCriterionTo(organization.JUnidadesPersonalizadas, criterion, user.id);
+  await prisma.organizacion.update({
+    where: { IdOrganizacion: organization.IdOrganizacion },
+    data: { JUnidadesPersonalizadas: stored as Prisma.InputJsonValue },
+  });
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    organizationId: organization.IdOrganizacion,
+    userId: user.id,
+    entity: "Organizacion",
+    entityId: String(organization.IdOrganizacion),
+    action: "CONSERVATION_CRITERION_SAVE",
+    result: "EXITOSO",
+    metadata: { name: criterion.name, scope: criterion.scope },
+  });
+  return resolveSavedCriteria(stored, user.id);
+}
+
+/** Takes a kept criterion out; the valuations that use it keep their states and factors. */
+export async function removeCriterion(user: AuthUser, name: string, scope: CriterionScope): Promise<SavedConservationCriterion[]> {
+  const organization = await findOrganization(user.organizationId);
+  const next = removeCriterionFrom(organization.JUnidadesPersonalizadas, name, scope, user.id);
+  if (!next.removed) return resolveSavedCriteria(next.stored, user.id);
+  await prisma.organizacion.update({
+    where: { IdOrganizacion: organization.IdOrganizacion },
+    data: { JUnidadesPersonalizadas: next.stored as Prisma.InputJsonValue },
+  });
+  await recordAuditEvent({
+    typeKey: "MODIFICACION",
+    organizationId: organization.IdOrganizacion,
+    userId: user.id,
+    entity: "Organizacion",
+    entityId: String(organization.IdOrganizacion),
+    action: "CONSERVATION_CRITERION_REMOVE",
+    result: "EXITOSO",
+    metadata: { name, scope },
+  });
+  return resolveSavedCriteria(next.stored, user.id);
 }

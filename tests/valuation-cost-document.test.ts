@@ -106,14 +106,17 @@ test("the cost page is one block with land, constructions and installations, eac
   assert.deepEqual(items.rows[0], ["P", "1", "Instalación 1", "—", "6.00", "2", "30", "28", "0.98", "0.98", "1.00", "0.95", "100%", "100%"]);
   assert.equal(items.rows.length, 8);
   assert.deepEqual(itemValues.rows[0], ["P", "1", "Instalación 1", "—", "6.00", "$ 9,000.00", "$ 54,000.00", "0.95", "$ 8,576.98", "$ 51,461.85"]);
+  // Video 8.7, 11:55: the total of the VRN column, the sums and the VNR (it said «Subtotal»), as his book.
+  const newValue = arandas.installations.reduce((sum, row) => sum + (row.quantity ?? 0) * (row.unitReplacementCost ?? 0), 0);
+  assert.equal(Math.round(newValue * 100) / 100, 548314.43, "Σ cantidad × valor unitario of the eight installations");
   assert.deepEqual(itemValues.boxes, {
-    "bottom:sumas": [["Suma Privativa (P):", "$ 516,865.31"], ["Suma Común (C):", "$ 0.00"], ["Subtotal:", "$ 516,865.31"]],
+    "bottom:vrn": [["Valor de Reposición Nuevo (V.R.N.):", "$ 548,314.43"]],
+    "bottom:sumas": [["Suma Privativa (P):", "$ 516,865.31"], ["Suma Común (C):", "$ 0.00"], ["Valor Neto de Reposición (V.N.R.):", "$ 516,865.31"]],
     "bottom:valor": [["C) Valor de Instalaciones Especiales, Elementos Accesorios y Obras Complementarias:", "$ 517,000.00"]],
-    // The physical value closes the page under the last table.
+    // The physical value closes the page under the last table; C), right above it in its own box, is not written twice (video 8.7, 11:40).
     "bottom:valor-fisico": [
       ["A) Valor del Terreno:", "$ 1,528,000.00"],
       ["B) Valor de las Construcciones:", "$ 6,530,000.00"],
-      ["C) Valor de Instalaciones Especiales:", "$ 517,000.00"],
       ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 8,580,000.00"],
     ],
   });
@@ -145,7 +148,7 @@ test("the land block prints the book's A) TERRENO: lote tipo, market value, the 
     "bottom:superficie": [["Superficie valuada:", "160.00 m²"]],
     "bottom:medio": [["Valor Unitario Medio ($/m²):", "$ 4,293.33"]],
     "bottom:valor": [["A) Valor del Terreno:", "$ 690,000.00"]],
-    "bottom:valor-fisico": [["A) Valor del Terreno:", "$ 690,000.00"], ["VALOR FÍSICO DE REPOSICIÓN (A):", "$ 690,000.00"]],
+    "bottom:valor-fisico": [["VALOR FÍSICO DE REPOSICIÓN (A):", "$ 690,000.00"]],
   });
 
   // Direct homologation: no lote tipo anywhere, the table shows the subject and Sup. = 1.
@@ -181,7 +184,6 @@ test("indirects print only when there are any, and the physical value adds only 
   const [block] = costDocumentBlocks(landOnly, land.result, land.trace);
   assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["A) TERRENO EN ESTUDIO"]);
   assert.deepEqual(printed(block.apartados[0].tables[0]).boxes["bottom:valor-fisico"], [
-    ["A) Valor del Terreno:", "$ 1,528,000.00"],
     ["VALOR FÍSICO DE REPOSICIÓN (A):", "$ 1,530,000.00"],
   ]);
   assert.deepEqual(costDocumentBlocks({ ...arandas, installations: [] }, null, null), [], "nothing computed, no page");

@@ -84,6 +84,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { DraftAssist } from "./draft-assist";
 import { ConceptContextMenu } from "./concept-context-menu";
 import { LinkConceptDialog, useLinkSuggestion } from "./concept-link-actions";
+import { useStructureTransfer } from "../workspace/structure-transfer-context";
+import { linkedPlaces } from "@/features/valuations/services/concept-link-suggestions";
+import { openValuationPlace } from "../calculation/calculation-precision-control";
 import { applyTextMark } from "@/features/valuations/services/text-marks";
 
 import {
@@ -370,22 +373,28 @@ function ConceptDragOverlay({ concept }: { concept: Concept }) {
 }
 
 function ConceptLinkStatus({
+  conceptId,
   state,
   onChangeRelation,
   onUnlink,
 }: {
+  conceptId: string;
   state: ConceptLinkIndicator;
   onChangeRelation?: (mode: ExistingConceptRelationMode) => void;
   onUnlink?: () => void;
 }) {
+  const transfer = useStructureTransfer();
+  const [open, setOpen] = useState(false);
   if (state === "none") return null;
+  // Where else the datum is, read when the popover opens (video 8.5, 13:20).
+  const places = open && transfer ? linkedPlaces(transfer.latestSections(), conceptId) : [];
 
   const isFull = state === "full";
   const title = isFull
     ? "Vínculo completo: título y dato se actualizan en todos lados."
     : "Vínculo parcial: solo el campo vinculado se actualiza en todos lados.";
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
           <Button
@@ -400,8 +409,27 @@ function ConceptLinkStatus({
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-64 p-2">
+      <PopoverContent align="end" className="w-80 p-2">
         <div className="space-y-2">
+          <div className="grid gap-1" data-linked-places="">
+            <p className="text-xs font-medium text-muted-foreground">Este dato también está en</p>
+            {places.length ? places.map((place) => (
+              <button
+                key={place.concept.id}
+                type="button"
+                className="grid gap-0.5 rounded-md border bg-card px-2 py-1.5 text-left text-xs hover:bg-muted"
+                data-linked-place={place.concept.id}
+                onClick={() => {
+                  setOpen(false);
+                  openValuationPlace({ sectionId: place.sectionId, selector: `[data-concept-id="${window.CSS.escape(place.concept.id)}"]` });
+                }}
+              >
+                <span className="font-medium">{normalizeConceptTitle(place.concept.label) || "Sin título"}</span>
+                <span className="text-muted-foreground">{place.location} · comparte {place.shares}</span>
+              </button>
+            )) : <p className="text-xs text-muted-foreground">No se encontró otro concepto con este dato.</p>}
+            <p className="text-[11px] text-muted-foreground">Al cambiarlo aquí o allá, cambia en todos estos lugares. «Desvincular» lo separa.</p>
+          </div>
           <p className="text-xs font-medium text-muted-foreground">Relación</p>
           <div className="flex items-center gap-1">
             <Button
@@ -1392,6 +1420,7 @@ export function ConceptEditorRow({
         <div className="flex shrink-0 items-center justify-end gap-1">
           <ConceptCalculationLinkBadge concept={concept} readOnly={readOnly} />
           <ConceptLinkStatus
+            conceptId={concept.id}
             state={linkState}
             onChangeRelation={onChangeRelation ? (mode) => onChangeRelation(concept.id, mode) : undefined}
             onUnlink={onUnlink ? () => onUnlink(concept.id) : undefined}

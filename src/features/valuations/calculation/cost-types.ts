@@ -10,6 +10,7 @@ import { DEFAULT_ENGINE_CONFIG, withRounding, type EngineConfig, type RoundingDi
 import { withPrecision, type CalculationPrecision } from "./calculation-precision";
 import type { CostApproachInput } from "../engine/costs";
 import type { CapturedFormulas, PercentFields } from "./captured-formulas";
+import { parseDecimal } from "./free-formula";
 
 /** Land factor columns of the books (J..O): Neg., Ubic., Sup., Serv., Clas., Top. */
 export const LAND_FACTORS = [
@@ -135,6 +136,61 @@ export function conservationOfState(criterion: ConservationCriterionDto, label: 
   const key = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
   if (!label?.trim()) return null;
   return criterion.options.find((option) => key(option.label) === key(label))?.factor ?? null;
+}
+
+/**
+ * The Cons. cell as it is written (video 8.12, 29:30): a factor («0.98»), a
+ * state of the criterion with its factor («Nuevo = 0.98», what picking it in
+ * the list beside the cell writes) or a state alone («Nuevo», which takes its
+ * factor from the criterion). The calculation uses the number; the word is
+ * what the construction section prints. A text that is neither leaves the
+ * row without Cons. (marked, nothing refused).
+ */
+export function readConservationText(text: string, criterion: ConservationCriterionDto): { conservation: number | null; state: string | null } {
+  const typed = text.trim();
+  if (!typed) return { conservation: null, state: null };
+  const equals = typed.indexOf("=");
+  if (equals > 0) {
+    const state = typed.slice(0, equals).trim();
+    const factor = parseDecimal(typed.slice(equals + 1));
+    return { conservation: factor ?? conservationOfState(criterion, state), state: state || null };
+  }
+  const factor = parseDecimal(typed);
+  if (factor !== null) return { conservation: factor, state: null };
+  // A state of the criterion written alone takes its factor, and its name as the criterion writes it.
+  const listed = criterion.options.find((option) => conservationOfState({ ...criterion, options: [option] }, typed) !== null);
+  return { conservation: listed?.factor ?? null, state: listed?.label ?? typed };
+}
+
+/** The Cons. cell of a row as it reads back: «Nuevo = 0.98» when a state was picked or written, the factor alone otherwise. */
+export function conservationText(row: { conservation: number | null; conservationState?: string | null }): string {
+  const state = row.conservationState?.trim();
+  if (row.conservation === null) return state ?? "";
+  return state ? `${state} = ${row.conservation}` : String(row.conservation);
+}
+
+/**
+ * The word of a row's conservation (Nuevo, Bueno, Regular…), as the table of
+ * the construction section prints it linked to the cost approach (video 8.6,
+ * 1:10): the state picked, or the estado of its Ross-Heidecke calificación;
+ * null when the row only has a factor.
+ */
+export function conservationWord(row: { conservationState?: string | null; conservationRating?: number | null }): string | null {
+  const state = row.conservationState?.trim();
+  if (state) return state;
+  return CONSERVATION_RATINGS.find((item) => item.rating === row.conservationRating)?.state ?? null;
+}
+
+/**
+ * P/C of an installation as it is written (video 8.12, 31:10: «lo pueden
+ * escribir»): P or C, or the word (Privativa, Común), in any case; null when
+ * it is something else.
+ */
+export function readInstallationShare(text: string): "P" | "C" | null {
+  const typed = text.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (typed === "p" || typed === "privativa" || typed === "privativo") return "P";
+  if (typed === "c" || typed === "comun") return "C";
+  return null;
 }
 
 /** Factors the appraiser may add to the demerit factors of a table, after "Otro". */
@@ -495,6 +551,26 @@ export function installationHasData(row: InstallationDto) {
     || [row.quantity, row.age, row.usefulLife, row.conservation, row.conservationRating, row.ageFactor, row.resultantFactor, row.unitReplacementCost].some((value) => value !== null && value !== undefined);
 }
 
+/**
+ * What a row still lacks to enter the calculation, among what is captured in
+ * the cost approach: marked in its cell from the start (video 8.7, 5:39), not
+ * only once the column has figures. An installation without any datum is
+ * not marked: it is a row being started.
+ */
+export function missingCostFields(row: ConstructionDto | InstallationDto, kind: "constructions" | "installations"): Array<"quantity" | "age" | "usefulLife" | "conservation" | "unitReplacementCost"> {
+  if (kind === "installations" && !installationHasData(row as InstallationDto)) return [];
+  const missing: Array<"quantity" | "age" | "usefulLife" | "conservation" | "unitReplacementCost"> = [];
+  if (kind === "installations") {
+    const installation = row as InstallationDto;
+    if (!positive(installation.quantity)) missing.push("quantity");
+    if (installation.age === null || installation.age < 0) missing.push("age");
+    if (!positive(installation.usefulLife)) missing.push("usefulLife");
+  }
+  if (!positive(effectiveConservation(row))) missing.push("conservation");
+  if (!positive(row.unitReplacementCost)) missing.push("unitReplacementCost");
+  return missing;
+}
+
 export function isInstallationComplete(row: InstallationDto) {
   return positive(row.quantity) && row.age !== null && row.age >= 0 && positive(row.usefulLife)
     && positive(effectiveConservation(row)) && positive(row.unitReplacementCost);
@@ -592,4 +668,16 @@ export function toCostEngineInput(
       indirects,
     },
   };
+}
+
+/**
+ * What the lote tipo field of the cost approach shows while it is empty:
+ * where the measure comes from and the measure itself (video 8.7, 1:10:
+ * «igual al sujeto… debería especificar el dato»).
+ */
+export function landReferencePlaceholder(calculation: Pick<CostCalculationDto, "land" | "market">): string {
+  const area = (value: number) => `${value.toLocaleString("es-MX", { maximumFractionDigits: 2 })} m²`;
+  if (calculation.market.baseArea !== null) return `De mercado: ${area(calculation.market.baseArea)}`;
+  const subject = calculation.land.subjectArea ?? calculation.market.subjectArea;
+  return subject !== null && subject > 0 ? `Igual al sujeto: ${area(subject)}` : "Igual al sujeto (falta su superficie)";
 }

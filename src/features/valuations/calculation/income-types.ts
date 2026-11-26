@@ -12,9 +12,10 @@ import { withPrecision, type CalculationPrecision } from "./calculation-precisio
 import { DEFAULT_ENGINE_CONFIG, type EngineConfig, type RoundingDigits } from "../engine/config";
 
 export const INCOME_METHOD_LABELS: Record<IncomeMethod, string> = {
-  tabla: "Tabla de tasa (formato TCH)",
-  anualidad: "Anualidad con TIIE (formato TU)",
-  mercado: "Tasa de mercado venta / renta (formato TR)",
+  // The name of each way of getting the rate, never the code of a book of the firm (video 8.12, 32:40; 8.10, 26:50).
+  tabla: "Cálculo de tasa por Bravo Armejo",
+  anualidad: "Anualidad con TIIE",
+  mercado: "Tasa de mercado (venta / renta)",
 };
 
 /** Deductions of the TCH book with their default rates. */

@@ -31,7 +31,8 @@ test("the income blocks show rents, deductions, the rate table and the value", (
   const blocks = incomeDocumentBlocks(tch, computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG));
   assert.deepEqual(blocks.map((block) => block.id), ["motor-ingresos-rentas", "motor-ingresos-deducciones", "motor-ingresos-tasa", "motor-ingresos-resultado"]);
   // «XII.3 Cálculo de tasa» and «XII.4 Tasa a utilizar», as the TCH book.
-  assert.deepEqual(blocks[2].tables.map((table) => table.title), ["Cálculo de tasa", "Tasa a utilizar"]);
+  // The results of the ratings in a table of their own under the criteria (video 8.10, 24:30).
+  assert.deepEqual(blocks[2].tables.map((table) => table.title), ["Cálculo de tasa", "Resultado del cálculo de tasa", "Tasa a utilizar"]);
   // The capitalized value with the legal tender mark (FAL-45).
   assert.equal(blocks[3].concepts[0].value, "$700,902.93 M.N.");
 });
@@ -61,7 +62,7 @@ test("without the rate the blocks print what was captured and «Sin tasa de capi
   assert.equal(values["motor-ingresos-rentas-neta-anual"], "$82,800.00");
   assert.equal(values["motor-ingresos-resultado-valor"], "Califica los siete criterios de la tabla de tasa, o captura la tasa.");
   // The rate table prints with nothing rated yet: «Tasa a utilizar» says the rate is missing.
-  const toUse = blocks[2].tables[1] as unknown as { rows: Array<{ cells: Record<string, { value: string }> }> };
+  const toUse = blocks[2].tables[2] as unknown as { rows: Array<{ cells: Record<string, { value: string }> }> };
   assert.equal(toUse.rows[0].cells["col-2"].value, "—");
   assert.ok(!NO_CAPITALIZATION_RATE.includes("—"));
   // Without any rent the rents say so; without anything captured the pages still print, with dashes, instead of the template's.

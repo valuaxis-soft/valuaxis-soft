@@ -15,6 +15,7 @@ import {
   LAND_FACTOR_SHORT_LABELS,
   costColumnsOf,
   costEngineConfig,
+  conservationText,
   effectiveConservation,
   extraFactorLabel,
   extraFactorsOf,
@@ -95,6 +96,9 @@ export function costDocumentBlocks(
   // Factors with the decimals of the valuation (two unless it chose four).
   const decimals = factorDecimals(calculation.precision);
   const factor = (found: number | null | undefined) => figure(found, decimals);
+  // Being captured, the Cons. cell holds what is written in it («Nuevo = 0.98»), so its column is as wide as that; printed, the factor.
+  const consCell = (row: { conservation: number | null; conservationRating?: number | null; conservationState?: string | null }) =>
+    (capture && row.conservationState && row.conservation !== null ? conservationText(row) : factor(effectiveConservation(row)));
   const apartados: Apartado[] = [];
 
   if (value("costos.terreno.valor") !== undefined || capture) {
@@ -143,7 +147,7 @@ export function costDocumentBlocks(
             const key = `costos.construcciones.${row.ref}`;
             return [
               row.ref, row.description || EMPTY, figure(row.area), whole(row.age), whole(row.usefulLife), remainingLife(row.usefulLife, row.age),
-              factor(effectiveConservation(row)), factor(value(`${key}.factorEdad`)), factor(row.otherFactor),
+              consCell(row), factor(value(`${key}.factorEdad`)), factor(row.otherFactor),
               ...extraFactorsOf(row, columns.constructions).map((extra) => factor(extra)), factor(value(`${key}.factorResultante`)),
               percent(row.completion), percent(row.undivided),
             ];
@@ -192,6 +196,7 @@ export function costDocumentBlocks(
       }, config);
       return { age: preview.ageFactor, resultant: preview.resultantFactor };
     };
+    const totalNewValue = valued.reduce((sum, row) => sum + (value(`costos.instalaciones.${row.ref}.vrnParcial`) ?? 0), 0);
     const priced = (row: (typeof installations)[number], key: string) => value(`costos.instalaciones.${row.ref}.vnrParcial`) !== undefined ? amount(key) : EMPTY;
     const item = [figureColumn("P/C"), figureColumn("Ref."), textColumn("Descripción"), figureColumn("Unidad"), figureColumn("Cant.")];
     const itemCells = (row: (typeof installations)[number]) => [row.share, row.ref, installationName(row) || EMPTY, row.unit || EMPTY, figure(row.quantity)];
@@ -206,7 +211,7 @@ export function costDocumentBlocks(
             const factors = demerit(row);
             return [
               ...itemCells(row), whole(row.age), whole(row.usefulLife), remainingLife(row.usefulLife, row.age),
-              factor(effectiveConservation(row)), factor(factors.age), factor(row.otherFactor),
+              consCell(row), factor(factors.age), factor(row.otherFactor),
               ...extraFactorsOf(row, columns.installations).map((extra) => factor(extra)), factor(factors.resultant),
               percent(row.completion), percent(row.undivided),
             ];
@@ -230,14 +235,22 @@ export function costDocumentBlocks(
             ];
           }),
           { rowKeys: installations.map((row) => row.ref), summaryBoxes: [
+            // The total of the VRN column, then the sums and the VNR, as the appraiser's book (video 8.7, 11:55).
+            {
+              id: "vrn",
+              position: "bottom",
+              align: "center",
+              rows: [{ id: "total", label: "Valor de Reposición Nuevo (V.R.N.):", value: valued.length ? money(totalNewValue) : EMPTY }],
+            },
             {
               id: "sumas",
               position: "bottom",
               align: "end",
+              // Their ids are their places of before, so a label the appraiser renamed stays on its row.
               rows: [
-                { label: "Suma Privativa (P):", value: valued.length ? amount("costos.instalaciones.privativas") : EMPTY },
-                { label: "Suma Común (C):", value: valued.length ? amount("costos.instalaciones.comunes") : EMPTY },
-                { label: "Subtotal:", value: valued.length && result ? money(input("costos.instalaciones.valor", "subtotal") ?? result.specialInstallations) : EMPTY },
+                { id: "0", label: "Suma Privativa (P):", value: valued.length ? amount("costos.instalaciones.privativas") : EMPTY },
+                { id: "1", label: "Suma Común (C):", value: valued.length ? amount("costos.instalaciones.comunes") : EMPTY },
+                { id: "2", label: "Valor Neto de Reposición (V.N.R.):", value: valued.length && result ? money(input("costos.instalaciones.valor", "subtotal") ?? result.specialInstallations) : EMPTY },
               ],
             },
             {
@@ -296,12 +309,15 @@ export function costDocumentBlocks(
     ...(valued.length ? [{ letter: "C", label: "C) Valor de Instalaciones Especiales:", amount: result.specialInstallations }] : []),
     ...(result.indirects ? [{ letter: "D", label: "D) Costos Indirectos:", amount: result.indirects }] : []),
   ];
+  // The part whose own box closes the same table is not written again under it (video 8.7, 11:40: «me muestran C y luego otra vez C»).
+  const letterOf: Record<string, string> = { [`${PREFIX}-terreno`]: "A", [`${PREFIX}-construcciones`]: "B", [`${PREFIX}-instalaciones`]: "C", [`${PREFIX}-indirectos`]: "D" };
+  const above = letterOf[last.id];
   const closing: TableSummaryBox = {
     id: "valor-fisico",
     position: "bottom",
     align: "end",
     rows: [
-      ...parts.map((part) => ({ id: part.letter, label: part.label, value: money(part.amount) })),
+      ...parts.filter((part) => part.letter !== above).map((part) => ({ id: part.letter, label: part.label, value: money(part.amount) })),
       // As the appraiser's current book closes the page (Bugambilias, video of 20 Oct 2026; REAL_ARANDAS).
       { id: "total", label: `VALOR FÍSICO DE REPOSICIÓN (${parts.map((part) => part.letter).join("+")}):`, value: money(result.physicalValue), emphasis: "total" },
     ],

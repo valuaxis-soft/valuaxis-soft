@@ -1,22 +1,37 @@
 "use client";
 
+import { Eye, EyeOff, Plus, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
+
 import {
+  MAX_EXTRA_BOX_ROWS,
   MAX_EXTRA_COLUMNS,
+  arrangedBoxRows,
   editGeneratedTable,
   layoutOf,
   sourceOf,
   summaryCaptionKey,
-  summaryRowKey,
   withBoxLabel,
+  withBoxRows,
   applyTableLayout,
+  type ArrangedBoxRow,
 } from "@/features/valuations/calculation/generated-table-layout";
 import type { TableContent } from "@/features/valuations/model";
-import { appendTableColumn, ensureTableV2, insertTableRow, type TableV2 } from "@/features/valuations/services/table";
+import {
+  appendTableColumn,
+  ensureTableV2,
+  insertTableRow,
+  type GeneratedBoxRows,
+  type GeneratedTableLayout,
+  type TableSummaryBox,
+  type TableV2,
+} from "@/features/valuations/services/table";
 import { cn } from "@/lib/utils";
 import { CommitCell } from "../calculation/commit-cell";
+import { SortableRows, useSortableRow } from "../calculation/sortable-rows";
 import { CALCULATED_CELL_HINT, CalculatedTableProvider, type CalculatedTableLock } from "./calculated-table-context";
 import { CaptureSlotTarget, useCaptureDeclared, useCaptureStore } from "./capture-host";
 import { TableEditorItem } from "./table-editor";
@@ -117,52 +132,180 @@ function BoxValue(props: { table: string; box: string; value: string }) {
 
 /**
  * The boxes printed with the table (subtotals, the value it gives), under the
- * grid as they print: each label is written as it should print («Valor neto
- * de reposición»), the figure stays the calculation's; empty, the label is
- * the calculation's again.
+ * grid as they print, each a small table (video 8.7, 13:10): its rows are
+ * dragged to another order, hidden from the dictamen (shown again faded),
+ * and rows of the appraiser's own are added (a label and a value as written)
+ * and removed. A label is written as it should print («Valor neto de
+ * reposición») and shows as plain text, not as a faded hint; the figure stays
+ * the calculation's. Emptied, the label is the calculation's again.
  */
 function GeneratedBoxLabels(props: { table: TableContent; readOnly: boolean; onUpdate: (updater: (table: TableContent) => TableContent) => void }) {
   const source = sourceOf(props.table);
   const layout = layoutOf(props.table);
   const boxes = source.schema?.summaryBoxes ?? [];
   if (!boxes.length) return null;
-  const rename = (key: string, text: string) =>
-    props.onUpdate((current) => applyTableLayout(sourceOf(current), withBoxLabel(layoutOf(current), key, text)));
+  const change = (next: (current: ReturnType<typeof layoutOf>) => ReturnType<typeof layoutOf>) =>
+    props.onUpdate((current) => applyTableLayout(sourceOf(current), next(layoutOf(current))));
+  const rename = (key: string, text: string) => change((current) => withBoxLabel(current, key, text));
   return (
     <div className="mt-3 grid gap-2 border-t pt-3 text-xs" data-generated-table-boxes>
-      <p className="text-muted-foreground">Recuadros de la tabla: escribe el nombre con el que se imprime cada renglón; la cifra la sigue escribiendo el cálculo. Vacío, vuelve el nombre del cálculo.</p>
+      <p className="text-muted-foreground">
+        Recuadros de la tabla: escribe el nombre con el que se imprime cada renglón (vacío, vuelve el del cálculo); la cifra la escribe el cálculo.
+        Arrastra para cambiar el orden, oculta lo que no quieras imprimir o agrega renglones tuyos.
+      </p>
       <div className="flex flex-wrap items-start gap-3">
         {boxes.map((box) => (
-          <div key={box.id} className="grid min-w-56 gap-1 rounded-md border bg-background p-2">
-            {box.caption !== undefined ? (
-              <CommitCell
-                ariaLabel={`Etiqueta ${box.caption}`}
-                disabled={props.readOnly}
-                value={layout.boxLabels?.[summaryCaptionKey(box)] ?? ""}
-                placeholder={box.caption}
-                className="border-input text-xs font-semibold"
-                onCommit={(text) => rename(summaryCaptionKey(box), text)}
-              />
-            ) : null}
-            {box.rows.map((row, index) => {
-              const key = summaryRowKey(box, row, index);
-              return (
-                <div key={key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-                  <CommitCell
-                    ariaLabel={`Etiqueta ${row.label}`}
-                    disabled={props.readOnly}
-                    value={layout.boxLabels?.[key] ?? ""}
-                    placeholder={row.label}
-                    className="border-input text-xs"
-                    onCommit={(text) => rename(key, text)}
-                  />
-                  <BoxValue table={source.id} box={key} value={row.value} />
-                </div>
-              );
-            })}
-          </div>
+          <BoxRowsEditor
+            key={box.id}
+            box={box}
+            table={source.id}
+            layout={layout}
+            readOnly={props.readOnly}
+            onRename={rename}
+            onArrange={(arrange) => change((current) => withBoxRows(current, box.id, arrange))}
+          />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** One box under the table, as a small table of label and figure. */
+function BoxRowsEditor(props: {
+  box: TableSummaryBox;
+  table: string;
+  layout: GeneratedTableLayout;
+  readOnly: boolean;
+  onRename: (key: string, text: string) => void;
+  onArrange: (arrange: (current: GeneratedBoxRows) => GeneratedBoxRows) => void;
+}) {
+  const { box, layout } = props;
+  const rows = arrangedBoxRows(box, layout);
+  const keys = rows.map((item) => item.key);
+  const extras = layout.boxRows?.[box.id]?.extra ?? [];
+  const setExtra = (id: string, patch: Partial<{ label: string; value: string }>) =>
+    props.onArrange((current) => ({ ...current, extra: (current.extra ?? []).map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
+  const toggleHidden = (key: string) => props.onArrange((current) => {
+    const hidden = new Set(current.hidden ?? []);
+    if (hidden.has(key)) hidden.delete(key);
+    else hidden.add(key);
+    return { ...current, hidden: [...hidden] };
+  });
+  const remove = (item: ArrangedBoxRow) => {
+    if (!item.own) {
+      // A row of the calculation is not deleted: it is left out of the dictamen and comes back with «Mostrar».
+      toggleHidden(item.key);
+      toast.info(`«${item.row.label}» ya no se imprime.`, { description: "Es un renglón del cálculo: queda oculto y vuelve con el ojo." });
+      return;
+    }
+    props.onArrange((current) => ({
+      ...current,
+      extra: (current.extra ?? []).filter((extra) => `${box.id}.${extra.id}` !== item.key),
+      order: (current.order ?? []).filter((key) => key !== item.key),
+      hidden: (current.hidden ?? []).filter((key) => key !== item.key),
+    }));
+  };
+  const add = () => {
+    if (extras.length >= MAX_EXTRA_BOX_ROWS) {
+      toast.info(`Un recuadro lleva hasta ${MAX_EXTRA_BOX_ROWS} renglones tuyos.`);
+      return;
+    }
+    const taken = new Set(extras.map((item) => item.id));
+    let number = extras.length + 1;
+    while (taken.has(`propio-${number}`)) number += 1;
+    props.onArrange((current) => ({ ...current, extra: [...(current.extra ?? []), { id: `propio-${number}`, label: "", value: "" }] }));
+  };
+  return (
+    <div className="grid min-w-64 gap-1 rounded-md border bg-background p-2" data-box-editor={box.id}>
+      {box.caption !== undefined ? (
+        <CommitCell
+          ariaLabel={`Etiqueta ${box.caption}`}
+          disabled={props.readOnly}
+          value={layout.boxLabels?.[summaryCaptionKey(box)] ?? box.caption}
+          className="border-input text-xs font-semibold"
+          onCommit={(text) => props.onRename(summaryCaptionKey(box), text === box.caption ? "" : text)}
+        />
+      ) : null}
+      <SortableRows ids={keys} onMove={(order) => props.onArrange((current) => ({ ...current, order }))}>
+        {rows.map((item) => (
+          <BoxRowEditor
+            key={item.key}
+            item={item}
+            table={props.table}
+            label={item.own ? item.row.label : layout.boxLabels?.[item.key] ?? item.row.label}
+            readOnly={props.readOnly}
+            onLabel={(text) => (item.own ? setExtra(item.row.id as string, { label: text }) : props.onRename(item.key, text === item.row.label ? "" : text))}
+            onValue={(text) => setExtra(item.row.id as string, { value: text })}
+            onToggleHidden={() => toggleHidden(item.key)}
+            onRemove={() => remove(item)}
+          />
+        ))}
+      </SortableRows>
+      {!props.readOnly ? (
+        <Button type="button" size="sm" variant="ghost" className="h-7 w-fit text-xs" onClick={add} data-box-add-row={box.id}>
+          <Plus data-icon="inline-start" /> Renglón
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function BoxRowEditor(props: {
+  item: ArrangedBoxRow;
+  table: string;
+  label: string;
+  readOnly: boolean;
+  onLabel: (text: string) => void;
+  onValue: (text: string) => void;
+  onToggleHidden: () => void;
+  onRemove: () => void;
+}) {
+  const { item } = props;
+  const sortable = useSortableRow(item.key, { disabled: props.readOnly, label: `Mover «${props.label || "renglón"}»` });
+  return (
+    <div
+      {...sortable.row}
+      className={cn("grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-1", sortable.className, item.hidden && "opacity-50")}
+      data-box-row={item.key}
+      data-box-row-hidden={item.hidden ? "" : undefined}
+    >
+      {sortable.handle ?? <span />}
+      <CommitCell
+        ariaLabel={`Etiqueta ${item.row.label || "del renglón"}`}
+        disabled={props.readOnly}
+        value={props.label}
+        placeholder={item.own ? "Nombre del renglón" : item.row.label}
+        className={cn("border-input text-xs text-foreground", item.row.emphasis && "font-semibold")}
+        onCommit={props.onLabel}
+      />
+      {item.own ? (
+        <CommitCell
+          ariaLabel={`Valor de ${props.label || "el renglón"}`}
+          disabled={props.readOnly}
+          value={item.row.value}
+          placeholder="Valor"
+          className="w-28 border-input text-right text-xs"
+          onCommit={props.onValue}
+        />
+      ) : <BoxValue table={props.table} box={item.key} value={item.row.value} />}
+      {!props.readOnly ? (
+        <span className="flex items-center">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-pressed={item.hidden}
+            aria-label={item.hidden ? `Mostrar «${props.label}» en el dictamen` : `Ocultar «${props.label}» en el dictamen`}
+            title={item.hidden ? "Oculto en el dictamen: clic para mostrarlo" : "Ocultar en el dictamen"}
+            onClick={props.onToggleHidden}
+          >
+            {item.hidden ? <EyeOff /> : <Eye />}
+          </Button>
+          <Button type="button" size="icon-sm" variant="ghost" aria-label={`Quitar «${props.label || "el renglón"}»`} title={item.own ? "Quitar el renglón" : "Es del cálculo: se oculta"} onClick={props.onRemove}>
+            <Trash2 />
+          </Button>
+        </span>
+      ) : null}
     </div>
   );
 }

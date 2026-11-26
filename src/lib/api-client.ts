@@ -46,6 +46,7 @@ import type { OptionalConsents } from "@/features/legal/consent-rules";
 import type { NotificationListDto, NotificationPreferences } from "@/features/notifications/notification-types";
 import type { FactorCatalog } from "@/features/valuations/calculation/factor-catalog";
 import type { CustomFactor } from "@/features/firm/custom-factors";
+import type { CriterionScope, SavedConservationCriterion } from "@/features/firm/conservation-criteria";
 import type { DraftInput } from "@/features/ai/draft-writing";
 import type { ListingProposal } from "@/features/ai/listing-extraction";
 import type { ValuationDetail, ValuationListItem } from "@/features/valuations/repositories/valuation.repository";
@@ -570,6 +571,12 @@ export const api = {
     addFirmListItem: (item: FirmListItem) =>
       request<{ lists: FirmLists }>(`/organizacion/despacho/listas`, { method: "POST", body: JSON.stringify(item) }),
     customFactors: () => request<{ factors: CustomFactor[] }>(`/organizacion/despacho/factores/personalizados`),
+    /** «Criterio propio» of conservation kept for the firm or for the user (conservation-criteria.ts). */
+    conservationCriteria: () => request<{ criteria: SavedConservationCriterion[] }>(`/organizacion/despacho/criterios-conservacion`),
+    saveConservationCriterion: (criterion: SavedConservationCriterion) =>
+      request<{ criteria: SavedConservationCriterion[] }>(`/organizacion/despacho/criterios-conservacion`, { method: "POST", body: JSON.stringify(criterion) }),
+    removeConservationCriterion: (input: { name: string; scope: CriterionScope }) =>
+      request<{ criteria: SavedConservationCriterion[] }>(`/organizacion/despacho/criterios-conservacion`, { method: "DELETE", body: JSON.stringify(input) }),
     addCustomFactor: (label: string) =>
       request<{ factors: CustomFactor[]; factor: CustomFactor | null }>(`/organizacion/despacho/factores/personalizados`, {
         method: "POST",

@@ -135,6 +135,7 @@ import {
   calculatedCellReasons,
   calculatedColumnReasons,
   calculatedRowReasons,
+  lockedCellReason,
   useCalculatedTable,
 } from "./calculated-table-context";
 
@@ -243,6 +244,9 @@ const takesParameter = (operation: FormulaSelectionOperation) => operation === "
 const sourceLimit = (operation: FormulaSelectionOperation) => (operation === "LN" ? 1 : takesParameter(operation) || operation === "LOG" ? 2 : Infinity);
 
 const NO_SUGGESTIONS: string[] = [];
+/** What the calculation writes where it cannot give a figure yet. */
+const MISSING_FIGURE = "—";
+const MISSING_DATA_HINT = "Falta un dato de este renglón: captúralo en las celdas en blanco y la cifra se calcula.";
 /** Narrowest a column gets in the editor, in characters, before the table scrolls sideways: a short header ("Clas", "Re") stays whole. */
 const EDITOR_MIN_COLUMN_CHARS = 8;
 /** About what a character of the editor's cells takes, and what a header's handle, letter and menu take. */
@@ -706,7 +710,7 @@ function EditableTableCell({
   // A number typed in a cell with a format shows as the format says; entered, it shows as typed.
   const formatted = cell?.kind === "value" && Boolean(cell.format ?? column.format) && displayValue !== cell.value;
   // Letters in a numeric cell: marked, and left out of the calculations.
-  const numericProblem = numericCellProblem(tableV2, column.id, cell);
+  const numericProblemOfCell = numericCellProblem(tableV2, column.id, cell);
   const [focused, setFocused] = useState(false);
   // In a selection of several cells, the right click acts on all of them (video 5.7).
   const selection = useContext(TableSelectionContext);
@@ -727,6 +731,8 @@ function EditableTableCell({
   const captured = capturedById || capturedByPlace;
   const captureAddress = capturedById ? addressById : addressByPlace;
   const locked = !captured && Boolean(calculatedTable?.row(row.id) && calculatedTable.column(column.id));
+  // A figure the calculation cannot give yet («—») in a table captured in place: marked from the start, in every row (video 8.7, 5:39).
+  const missingData = locked && Boolean(calculatedTable?.inPlace) && cell?.kind === "value" && cell.value.trim() === MISSING_FIGURE;
 
   /* ---- What was already written in the column, offered while typing ---- */
   const [typed, setTyped] = useState<string | null>(null);
@@ -772,7 +778,10 @@ function EditableTableCell({
   const reference = useFormulaReferenceTarget(fieldKey, (homeTableId) => cellReferenceText(index, tableId, tableV2, row.id, column.id, homeTableId));
   // A formula without a number (it divides by zero, reads an empty or deleted cell): an amber warning; the dictamen prints «—».
   const noNumber = Boolean(result && !result.ok);
-  const title = result && !result.ok
+  // The «—» of the calculation is not letters typed in a figure: it is a datum still missing in the row.
+  const numericProblem = missingData ? null : numericProblemOfCell;
+  const title = missingData ? MISSING_DATA_HINT
+    : result && !result.ok
     ? `${formulaErrorMessage(result.error)} En el dictamen se imprime «—». ${formulaText ?? ""}`
     : unreadFormula ? "Esta fórmula no se pudo leer: corrígela o bórrala."
     : numericProblem ? `${numericProblem}: lo escrito no entra en los cálculos.`
@@ -1035,7 +1044,8 @@ function EditableTableCell({
                 data-row={rowIndex}
                 data-col={columnIndex}
                 data-calculated={locked ? "" : undefined}
-                aria-invalid={numericProblem || noNumber ? true : undefined}
+                aria-invalid={numericProblem || noNumber || missingData ? true : undefined}
+                data-missing-data={missingData ? "" : undefined}
                 data-formula-warning={noNumber ? title : undefined}
                 onChange={(event) => {
                   if (locked) return;
@@ -1059,6 +1069,8 @@ function EditableTableCell({
                   if (!locked) onBlur(event);
                 }}
                 onKeyDown={locked ? undefined : handleKeyDown}
+                // Trying to write in a gray cell says why it is not written here (video 8.6, 0:10).
+                onDoubleClick={locked ? () => toast.info(missingData ? MISSING_DATA_HINT : lockedCellReason(calculatedTable), { id: "locked-cell", duration: 10_000 }) : undefined}
                 onMouseDown={locked ? undefined : onMouseDown}
                 onScroll={(event) => {
                   // The colored text follows the field when a long formula scrolls in it.
@@ -1074,8 +1086,9 @@ function EditableTableCell({
                   // A numeric cell with letters: a red border, and the reason when hovered.
                   numericProblem && draftText === null && "border border-destructive ring-1 ring-destructive/40 text-destructive dark:text-red-400",
                   locked && "cursor-default rounded-sm bg-muted/70 tabular-nums",
+                  missingData && "ring-1 ring-destructive/60 text-destructive dark:text-red-400",
                 )}
-                title={locked ? (calculatedTable?.capture ? CAPTURE_CELL_HINT : calculatedTable?.inPlace ? CALCULATED_IN_PLACE_HINT : CALCULATED_CELL_HINT) : title}
+                title={locked ? (missingData ? MISSING_DATA_HINT : calculatedTable?.capture ? CAPTURE_CELL_HINT : calculatedTable?.inPlace ? CALCULATED_IN_PLACE_HINT : CALCULATED_CELL_HINT) : title}
                 // Bold, italic, underline and alignment chosen on a selection, as the dictamen prints them.
                 style={cellStyleCss(cellStyle)}
               />
@@ -1607,8 +1620,17 @@ export function TableEditorItem({
     const cell = tableV2.rows[point.row]?.cells[displayColumns[point.col]?.id ?? ""];
     return cell?.kind === "formula" || (cell?.kind === "value" && cell.value !== "");
   };
+  // A figure the calculation writes (or that comes linked from it) is not cleared here: it would come back at once (video 8.6, 0:50).
+  const lockedPoint = (point: GridPoint) => {
+    const { rowId, columnId } = cellAt(point);
+    return Boolean(calculated?.row(rowId) && calculated.column(columnId));
+  };
   const clearPoints = (points: GridPoint[]) => {
-    const filled = points.filter((point) => point.row >= 0 && hasContent(point));
+    const withContent = points.filter((point) => point.row >= 0 && hasContent(point));
+    const filled = withContent.filter((point) => !lockedPoint(point));
+    if (withContent.length > filled.length) {
+      toast.info(filled.length ? "Las cifras en gris no se borraron." : "Esta cifra no se borra aquí.", { description: lockedCellReason(calculated), duration: 10_000 });
+    }
     if (!filled.length) return;
     const cells = filled.map(cellAt);
     clearCells({ count: filled.length, onClear: () => onUpdate(table.id, v2Updater((v2) => writeCellTexts(v2, cells.map((cell) => ({ ...cell, text: "" }))))) });
@@ -1813,7 +1835,12 @@ export function TableEditorItem({
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
-            <Table className="table-fixed text-xs" style={{ minWidth: tableMinWidth }}>
+            {/* «Ajustar al contenido»: as narrow as its columns in the editor too, not only in the dictamen (video 8.10, 24:52). */}
+            <Table
+              className="table-fixed text-xs"
+              style={{ minWidth: tableMinWidth, ...(tableV2.schema?.widthMode === "content" ? { width: tableMinWidth } : {}) }}
+              data-width-mode={tableV2.schema?.widthMode ?? "page"}
+            >
               <colgroup>
                 <col className="w-6" />
                 {displayColumns.map((col) => (

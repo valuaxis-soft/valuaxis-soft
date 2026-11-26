@@ -18,6 +18,33 @@ import {
 /** The event that takes the editor to a section by its key ("CARATULA"): the workspace listens for it. */
 export const OPEN_SECTION_EVENT = "valuaxis:open-section";
 
+/** A place of the valuation to go to: its section (by id or by key) and, in it, what to show (a CSS selector). */
+export type ValuationPlace = { sectionId?: string; sectionKey?: string; selector?: string };
+
+/**
+ * Takes the editor to a place of the valuation, as «Buscar valor» does: its
+ * section opens and, once it is drawn, the element is brought into view and
+ * blinks (the links of «Vinculado», video 8.5, 13:20).
+ */
+export function openValuationPlace(place: ValuationPlace) {
+  window.dispatchEvent(new CustomEvent(OPEN_SECTION_EVENT, { detail: place }));
+  if (!place.selector) return;
+  const selector = place.selector;
+  let tries = 0;
+  const find = () => {
+    const element = document.querySelector<HTMLElement>(selector);
+    if (!element) {
+      tries += 1;
+      if (tries < 20) window.setTimeout(find, 100);
+      return;
+    }
+    element.scrollIntoView({ block: "center", behavior: "smooth" });
+    element.dataset.placeFound = "";
+    window.setTimeout(() => delete element.dataset.placeFound, 2000);
+  };
+  window.setTimeout(find, 100);
+}
+
 /**
  * What a calculation panel says of the precision: the choice in force and
  * where it is changed, Carátula › Configuración del avalúo. The control itself

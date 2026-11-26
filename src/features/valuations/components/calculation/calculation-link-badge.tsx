@@ -23,6 +23,7 @@ export function CalculationLinkBadge({
   disabled = false,
   onUnlink,
   onRelink,
+  places,
 }: {
   linked: boolean;
   labels: { linked: string; unlinked: string; title: { linked: string; unlinked: string }; relink: string };
@@ -34,6 +35,8 @@ export function CalculationLinkBadge({
   disabled?: boolean;
   onUnlink: () => void;
   onRelink: () => void;
+  /** Where what is linked appears, each with the way to go there (video 8.5, 13:20). */
+  places?: Array<{ label: string; detail?: string; onOpen: () => void }>;
 }) {
   return (
     <Popover>
@@ -47,6 +50,22 @@ export function CalculationLinkBadge({
       <PopoverContent align="end" className="grid w-80 gap-2 p-3 text-xs">
         <p className="text-sm font-medium">{linked ? labels.title.linked : labels.title.unlinked}</p>
         <p className="text-muted-foreground">{description}</p>
+        {linked && places?.length ? (
+          <div className="grid gap-1" data-linked-places="">
+            <p className="font-medium text-muted-foreground">Dónde aparece</p>
+            {places.map((place) => (
+              <button
+                key={place.label}
+                type="button"
+                className="grid gap-0.5 rounded-md border bg-card px-2 py-1.5 text-left hover:bg-muted"
+                onClick={place.onOpen}
+              >
+                <span className="font-medium">{place.label}</span>
+                {place.detail ? <span className="text-muted-foreground">{place.detail}</span> : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
         {notice ? (
           <p className="text-muted-foreground">{notice}</p>
         ) : !readOnly ? (
