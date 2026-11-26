@@ -191,6 +191,24 @@ function visibleRuns(pieces: readonly StreetWay[], center: LatLon, zoom: number)
 
 type Box = { x: number; y: number; halfX: number; halfY: number };
 
+/** Rings of spots around a point of the street, nearest first, inside the image: where a name goes when its street has no room. */
+const AROUND_STEP = 12;
+const AROUND_RINGS = 16;
+const AROUND_DIRECTIONS = 16;
+
+function aroundSpots(sample: Sample, center: LatLon, zoom: number): LatLon[] {
+  const spots: LatLon[] = [];
+  for (let ring = 1; ring <= AROUND_RINGS; ring += 1) {
+    for (let step = 0; step < AROUND_DIRECTIONS; step += 1) {
+      const radians = (step / AROUND_DIRECTIONS) * 2 * Math.PI;
+      const x = sample.x + Math.cos(radians) * ring * AROUND_STEP;
+      const y = sample.y + Math.sin(radians) * ring * AROUND_STEP;
+      if (x >= 0 && x <= STATIC_MAP_SIZE.width && y >= 0 && y <= STATIC_MAP_SIZE.height) spots.push(pointAtPixel(center, zoom, x, y));
+    }
+  }
+  return spots;
+}
+
 function boxOf(center: LatLon, zoom: number, label: Pick<StreetLabel, "name" | "point" | "angle">): Box {
   const box = streetLabelBox(center, zoom, label);
   const radians = (box.angle * Math.PI) / 180;
@@ -265,7 +283,12 @@ export function frameLabels(drawn: readonly HighlightedWay[], center: LatLon, zo
       const box = boxOf(center, zoom, label);
       return taken.reduce((sum, other) => sum + overlapArea(box, other), 0);
     };
-    const chosen = candidates.find((label) => covering(label) === 0) ?? candidates.reduce((best, label) => (covering(label) < covering(best) ? label : best), candidates[0]);
+    // Nothing free on or beside its street (a short line, a crowded macro): the nearest free spot around it, so a
+    // name never covers another (PR #171: «Circuito del León» hidden under a free line's name). Covering is the last resort.
+    const chosen =
+      candidates.find((label) => covering(label) === 0) ??
+      aroundSpots(samples[0], center, zoom).map((point): StreetLabel => ({ name, point, color, angle: samples[0].angle })).find((label) => covering(label) === 0) ??
+      candidates.reduce((best, label) => (covering(label) < covering(best) ? label : best), candidates[0]);
     taken.push(boxOf(center, zoom, chosen));
     labels.set(name, chosen);
   }

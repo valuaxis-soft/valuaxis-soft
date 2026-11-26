@@ -25,7 +25,7 @@ import { croquisStreets } from "../src/features/maps/croquis-streets";
 import { readFreeLines, withLineName, type FreeLine } from "../src/features/maps/free-lines";
 import { DEFAULT_HIGHLIGHT_STYLES, touchableRank, type StreetHighlights } from "../src/features/maps/highlights";
 import { MAP_TYPES, isScreenOnlyMapType } from "../src/features/maps/map-styles";
-import { renderCroquisImage, resolveCroquisStreets, type CroquisSources } from "../src/features/maps/server/croquis-image.service";
+import { composeCroquisImage, renderCroquisImage, resolveCroquisStreets, type CroquisSources } from "../src/features/maps/server/croquis-image.service";
 import { getStreetsInView, type ViewStreetsSource } from "../src/features/maps/server/streets.service";
 import { northArrowBox } from "../src/features/maps/north-arrow-symbols";
 import { STATIC_MAP_SCALE, STATIC_MAP_SIZE, imagePixel, pointAtPixel } from "../src/features/maps/static-map";
@@ -323,4 +323,52 @@ test("video 8.5, 12:05: a click on an image of the editor opens it enlarged, wit
     <ImageEditorItem image={{ id: "img-1", title: "Croquis de microlocalización", src: "/api/archivos/imagen?key=uploads/micro.jpg", enabled: true }} onRemove={NO_OP} onUpdate={NO_OP} readOnly={false} />,
   );
   assert.match(item, /<button[^>]*aria-label="Ver en grande: Croquis de microlocalización"[^>]*>[\s\S]*?<img[^>]*src="\/api\/archivos\/imagen\?key=uploads\/micro.jpg"/);
+});
+
+test("PR #171: a name never hides another, even on a crowded macro croquis: each name's band is drawn whole, over every line", async () => {
+  // As in the first macro sample: the front street crossing near the pin, and a free line too short for its long name right beside it.
+  const zoom = 13;
+  const px = (x: number, y: number) => pointAtPixel(SUBJECT, zoom, x, y);
+  const pin = imagePixel(SUBJECT, zoom, SUBJECT);
+  const front: StreetWay = { id: 10, n: "Circuito del León Poniente", r: 4, g: [px(pin.x + 20, 40), px(pin.x + 24, 340)] };
+  const avenue: StreetWay = { id: 11, n: "Prolongación Avenida Inventada", r: 3, g: [px(40, pin.y + 40), px(600, pin.y - 60)] };
+  const line: FreeLine = { id: "t", color: "#2f8a4f", weight: 5, points: [px(pin.x - 12, pin.y + 4), px(pin.x + 14, pin.y + 4)], name: "Calle del Trazo Inventada" };
+  const painted: StreetHighlights = { front: front.n, streets: [{ name: avenue.n, category: "principal" }], styles: DEFAULT_HIGHLIGHT_STYLES, names: true };
+  const streets = croquisStreets("macro", SUBJECT, zoom, painted, [front, avenue], SUBJECT, { lines: [line], corner: "top-right" });
+  assert.equal(streets.labels.length, 3);
+  // No two bands share a pixel (their turned boxes do not touch).
+  const boxes = streets.labels.map((label) => {
+    const box = streetLabelBox(SUBJECT, zoom, label);
+    const radians = (box.angle * Math.PI) / 180;
+    return {
+      name: label.name,
+      x: box.x,
+      y: box.y,
+      halfX: Math.abs((box.width / 2) * Math.cos(radians)) + Math.abs((box.height / 2) * Math.sin(radians)),
+      halfY: Math.abs((box.width / 2) * Math.sin(radians)) + Math.abs((box.height / 2) * Math.cos(radians)),
+    };
+  });
+  for (const a of boxes) for (const b of boxes) if (a !== b) assert.ok(Math.abs(a.x - b.x) >= a.halfX + b.halfX || Math.abs(a.y - b.y) >= a.halfY + b.halfY, `${a.name} / ${b.name}`);
+
+  // Pixels: along each name's text, the image with every name is the image with that name alone (same base, streets and lines under it).
+  const sharp = (await import("sharp")).default;
+  const base = await sharp({ create: { width: STATIC_MAP_SIZE.width * 2, height: STATIC_MAP_SIZE.height * 2, channels: 3, background: "#f2efe9" } }).png().toBuffer();
+  const input = { center: SUBJECT, zoom, northArrow: { style: "flecha" as const, corner: "top-right" as const }, pins: [], lines: [line], subject: SUBJECT };
+  const raw = async (jpeg: Buffer) => sharp(jpeg).raw().toBuffer({ resolveWithObject: true });
+  const all = await raw(await composeCroquisImage(base, input, streets));
+  for (const label of streets.labels) {
+    const alone = await raw(await composeCroquisImage(base, input, { ...streets, labels: [label] }));
+    const box = streetLabelBox(SUBJECT, zoom, label);
+    const radians = (box.angle * Math.PI) / 180;
+    let differing = 0;
+    let samples = 0;
+    for (let t = -0.45; t <= 0.45; t += 0.01) {
+      const x = Math.round((box.x + Math.cos(radians) * t * box.width) * 2);
+      const y = Math.round((box.y + Math.sin(radians) * t * box.width) * 2);
+      const offset = (y * all.info.width + x) * all.info.channels;
+      samples += 1;
+      if ([0, 1, 2].some((channel) => Math.abs(all.data[offset + channel] - alone.data[offset + channel]) > 24)) differing += 1;
+    }
+    assert.equal(differing, 0, `«${label.name}»: ${differing} of ${samples} points of its text drawn over`);
+  }
 });
