@@ -49,7 +49,12 @@ test("a construction added in the cost table, with no type yet, creates it with 
   approach = await storedApproach(fixture);
   // 200 · 12,550 · 0.98 · (1 − (7/70)^1.4) = 2,361,873.60 → 2,360,000.
   assert.equal(Number(approach.NValorConstrucciones), 2360000);
-  const construction = await prisma.construccionAvaluo.findFirstOrThrow({ where: { tiposConstruccion: { some: { SReferencia: "T-1" } } }, orderBy: { IdConstruccionAvaluo: "desc" } });
+  // Scoped to this valuation's working version: other tests running at the same time also have a T-1.
+  const avaluo = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  const construction = await prisma.construccionAvaluo.findFirstOrThrow({
+    where: { IdVersionAvaluo: avaluo.IdVersionTrabajo ?? -1, tiposConstruccion: { some: { SReferencia: "T-1" } } },
+    orderBy: { IdConstruccionAvaluo: "desc" },
+  });
   assert.equal(Number(construction.NSuperficieConstruida), 200, "the built area follows its types");
 
   // A value of his own counts in the physical value and is kept with the approach.
