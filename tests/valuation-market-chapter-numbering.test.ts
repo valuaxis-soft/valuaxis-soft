@@ -48,7 +48,7 @@ const ROMAN: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100 };
 const fromRoman = (label: string) => [...label].reduce((total, char, index, all) =>
   total + (ROMAN[char] < (ROMAN[all[index + 1]] ?? 0) ? -ROMAN[char] : ROMAN[char]), 0);
 
-test("the first comparable renumbers only after its photos' page: the empty template pages took no numeral; tabs and dictamen read the same", () => {
+test("the first comparable renumbers nothing: the empty template pages took no numeral and its fichas print without one (video 8.14); tabs and dictamen read the same", () => {
   const before = resequenceSections(createInitialSections());
   const after = resequenceSections(withFirstComparable(before));
 
@@ -56,18 +56,42 @@ test("the first comparable renumbers only after its photos' page: the empty temp
   // homologation are tables with nothing written, which print nothing and take no numeral (FAL-17/18).
   assert.equal(numerals(before, "MERCADO_VENTA"), 1);
   // After: the calculation's page stands in for the three, one block with its apartados;
-  // the comparable's photo adds a page to «Croquis y fotografías de comparables».
+  // the comparable's ficha adds a page to «Croquis y fotografías de comparables», with no numeral of its own.
   assert.equal(numerals(after, "MERCADO_VENTA"), 1);
-  assert.equal(numerals(after, "CROQUIS_COMPARABLES"), numerals(before, "CROQUIS_COMPARABLES") + 1);
+  assert.equal(numerals(after, "CROQUIS_COMPARABLES"), numerals(before, "CROQUIS_COMPARABLES"));
+  const croquis = after.find((item) => getCanonicalSectionKey(item.id) === "CROQUIS_COMPARABLES")!;
+  const fichas = croquis.blocks.find((block) => block.id.endsWith("-fotos"))!;
+  assert.equal(fichas.sectionLabel, "");
 
   const shift = (key: string) => fromRoman(tabs(before)[key]) - fromRoman(tabs(after)[key]);
-  assert.equal(shift("MERCADO_VENTA"), 0);
-  assert.equal(shift("MERCADO_RENTAS"), 0);
-  assert.equal(shift("CROQUIS_COMPARABLES"), 0);
-  // One more after the page of the comparable's photos.
-  assert.equal(shift("CONCLUSIONES"), -1);
+  for (const key of ["MERCADO_VENTA", "MERCADO_RENTAS", "CROQUIS_COMPARABLES", "CONCLUSIONES"]) {
+    assert.equal(shift(key), 0, key);
+  }
 
   // The tabs read exactly what the dictamen prints, before and after.
   assert.deepEqual(tabs(before), printed(before));
   assert.deepEqual(tabs(after), printed(after));
+});
+
+test("the fichas of two markets push no chapter; with the chapter's own block hidden, the first ficha block carries its numeral", () => {
+  const rent: MarketCalculationDto = { settings: defaultMarketSettings("INMUEBLE_RENTA"), comparables: [{ ...comparable, id: "c-2" }], locked: false };
+  const withBoth = (sections: AppSection[]) => withFirstComparable(sections).map((section) =>
+    getCanonicalSectionKey(section.id) === "CROQUIS_COMPARABLES"
+      ? withGeneratedBlocks(section, "INMUEBLE_RENTA", marketPhotoBlocks(rent), { kind: "fotos", position: "end" })
+      : section);
+  const before = resequenceSections(createInitialSections());
+  const after = resequenceSections(withBoth(before));
+  assert.equal(numerals(after, "CROQUIS_COMPARABLES"), 1);
+  assert.equal(tabs(after).CONCLUSIONES, tabs(before).CONCLUSIONES);
+
+  // The template's block hidden: the chapter keeps one numeral, on its first ficha block.
+  const hidden = resequenceSections(after.map((section) =>
+    getCanonicalSectionKey(section.id) === "CROQUIS_COMPARABLES"
+      ? { ...section, blocks: section.blocks.map((block) => (block.id.endsWith("-fotos") ? block : { ...block, enabled: false })) }
+      : section));
+  const croquis = hidden.find((item) => getCanonicalSectionKey(item.id) === "CROQUIS_COMPARABLES")!;
+  assert.deepEqual(croquis.blocks.filter((block) => block.enabled).map((block) => Boolean(block.sectionLabel)), [true, false]);
+  assert.equal(croquis.label, tabs(before).CROQUIS_COMPARABLES);
+  assert.equal(tabs(hidden).CONCLUSIONES, tabs(before).CONCLUSIONES);
+  assert.deepEqual(tabs(hidden), printed(hidden));
 });
