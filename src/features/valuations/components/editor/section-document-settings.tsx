@@ -13,28 +13,29 @@ import {
   sectionDocumentRole,
 } from "@/features/valuations/services/document-structure";
 import {
-  REPORT_APPROACH_LABELS,
-  approachIncluded,
+  reportSwitchIncluded,
   sectionLeftOutOfReport,
   sectionReportApproaches,
-  withApproachIncluded,
+  sectionReportSwitches,
+  withReportSwitch,
 } from "@/features/valuations/services/report-approaches";
 import { ConfigSwitch, EditorConfigPanel } from "./editor-config-panel";
 
 const ANNEX_TITLE_MAX = 60;
 
 /** "No incluido en el informe": the section, or some of its approaches, stay out of the dictamen. */
-export function ReportInclusionBadge({ section }: { section: AppSection }) {
+export function ReportInclusionBadge({ section, machinery = false }: { section: AppSection; machinery?: boolean }) {
   const held = sectionReportApproaches(section);
   if (!held.length) return null;
   if (sectionLeftOutOfReport(section)) {
     return <Badge variant="destructive" data-report-inclusion="out">No incluido en el informe</Badge>;
   }
-  const out = held.filter((approach) => !approachIncluded(section, approach));
+  // A machinery valuation names its switches as it shows them (one market, not land and buildings).
+  const out = sectionReportSwitches(section, { machinery }).filter((entry) => !reportSwitchIncluded(section, entry));
   if (!out.length) return null;
   return (
     <Badge variant="outline" className="border-destructive/50 text-destructive" data-report-inclusion="partial">
-      No incluido en el informe: {out.map((approach) => REPORT_APPROACH_LABELS[approach].toLowerCase()).join(", ")}
+      No incluido en el informe: {out.map((entry) => entry.label.toLowerCase()).join(", ")}
     </Badge>
   );
 }
@@ -49,14 +50,17 @@ export function SectionDocumentSettings({
   allSections,
   readOnly,
   onUpdateSection,
+  machinery = false,
 }: {
   section: AppSection;
   allSections: AppSection[];
   readOnly: boolean;
   onUpdateSection: (sectionId: string, patch: Partial<AppSection>) => void;
+  /** A machinery valuation: its market section has one switch, of machinery and equipment. */
+  machinery?: boolean;
 }) {
   if (section.id === "caratula") return null;
-  const approaches = sectionReportApproaches(section);
+  const switches = sectionReportSwitches(section, { machinery });
   const role = sectionDocumentRole(section, allSections);
   const choosesRole = canChooseDocumentRole(section);
   const pageBreak = section.pageBreak ?? "new-page";
@@ -64,18 +68,19 @@ export function SectionDocumentSettings({
 
   return (
     <EditorConfigPanel title="Configuración de la sección">
-      {approaches.length ? (
+      {switches.length ? (
         <div className="grid gap-2" data-report-approaches="">
-          {approaches.map((approach) => (
+          {switches.map((entry) => (
             <ConfigSwitch
-              key={approach}
-              checked={approachIncluded(section, approach)}
+              key={entry.key}
+              checked={reportSwitchIncluded(section, entry)}
               disabled={readOnly}
-              label={approaches.length > 1 ? `Agregar al informe valuatorio: ${REPORT_APPROACH_LABELS[approach].toLowerCase()}` : "Agregar al informe valuatorio"}
-              description={approachIncluded(section, approach)
+              // Named when the section has more than one, or when its one is not the section's only approach (machinery's market).
+              label={switches.length > 1 || entry.approaches.length > 1 ? `Agregar al informe valuatorio: ${entry.label.toLowerCase()}` : "Agregar al informe valuatorio"}
+              description={reportSwitchIncluded(section, entry)
                 ? "Se imprime en el dictamen y entra a la conclusión."
                 : "No se imprime ni entra a la conclusión; sus cálculos se conservan."}
-              onCheckedChange={(included) => onUpdateSection(section.id, { excludedFromReport: withApproachIncluded(section, approach, included) })}
+              onCheckedChange={(included) => onUpdateSection(section.id, { excludedFromReport: withReportSwitch(section, entry, included) })}
             />
           ))}
         </div>

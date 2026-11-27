@@ -359,19 +359,22 @@ export function machineryMarketBlocks(
   const life = (row: { usefulLife: number | null }) => row.usefulLife ?? market.usefulLife;
   const remaining = (age: number | null, usefulLife: number | null) => (age === null || usefulLife === null ? EMPTY : whole(Math.max(usefulLife - age, 0)));
   type Characteristic = [string, string, (row: (typeof offers)[number]) => string];
+  // What the subject has no datum for here (it has no offer price, G75 of the book is blank; its location is the
+  // valuation's, not one of these rows): blank, not the «—» of a datum still to capture, which the editor marks as missing.
+  const NOT_APPLICABLE = "";
   // As the book: what describes the equipment first, the appraiser's own rows after it, and the lives and the price at the end.
   const description: Characteristic[] = [
     [rowLabel("brand", "Marca"), cell(subject.brand), (row) => cell(row.brand)],
     [rowLabel("model", "Modelo"), cell(subject.model), (row) => cell(row.model)],
     [rowLabel("year", "Año"), cell(subject.year), (row) => cell(row.year)],
     [rowLabel("hours", use.characteristic), cell(subject.hours), (row) => cell(row.hours)],
-    [rowLabel("location", "Ubicación"), EMPTY, (row) => cell(row.location)],
+    [rowLabel("location", "Ubicación"), NOT_APPLICABLE, (row) => cell(row.location)],
   ];
   const figures: Characteristic[] = [
     [rowLabel("age", "Edad"), whole(subject.age), (row) => whole(row.age)],
     [rowLabel("usefulLife", "V.U.T."), whole(subject.usefulLife), (row) => whole(life(row))],
     ["V.U.R.", remaining(subject.age, subject.usefulLife), (row) => remaining(row.age, life(row))],
-    [rowLabel("price", "Precio Oferta"), EMPTY, (row) => (row.price === null ? EMPTY : money(row.price))],
+    [rowLabel("price", "Precio Oferta"), NOT_APPLICABLE, (row) => (row.price === null ? EMPTY : money(row.price))],
   ];
   const fixed = ([concept, subjectValue, value]: Characteristic) => [concept, subjectValue, ...offers.map(value)];
   // The editor keeps the rows still without a concept, to write it in them.

@@ -4,6 +4,7 @@ import { ConceptCreationControl } from "../editor/concept-creation-control";
 import { toast } from "sonner";
 import { isGeneratedBlock, isRenamableGeneratedTitle } from "@/features/valuations/calculation/market-document";
 import { isMachineryMarketBlock } from "@/features/valuations/calculation/machinery-document";
+import { isMachineryPropertyKind } from "@/features/valuations/calculation/machinery-types";
 import { captureDisplayBlocks, templateStripSpaceSection } from "@/features/valuations/calculation/capture-display";
 import { CaptureSlotTarget, CaptureStore, CaptureStoreProvider, SECTION_TOP_SLOT, useCapturePages } from "../editor/capture-host";
 import { COMPARABLE_TYPE_LABELS } from "@/features/valuations/calculation/market-types";
@@ -479,7 +480,7 @@ export function ValuationEditorPanel(props: {
             : isTerreno
               ? `${section.label} ${section.title}`
             : sectionDisplayName(section)}
-          <span className="ml-2 inline-flex align-middle font-sans tracking-normal"><ReportInclusionBadge section={section} /></span>
+          <span className="ml-2 inline-flex align-middle font-sans tracking-normal"><ReportInclusionBadge section={section} machinery={isMachineryPropertyKind(props.meta?.propertyKind)} /></span>
         </CardTitle>
         <CardDescription>
           {isCaratula
@@ -518,7 +519,7 @@ export function ValuationEditorPanel(props: {
         {isCaratula ? (
           <ValuationSettingsPanel section={section} readOnly={props.readOnly} valuationId={props.valuationId} onUpdateSection={props.onUpdateSection} />
         ) : (
-          <SectionDocumentSettings section={section} allSections={props.allSections} readOnly={props.readOnly} onUpdateSection={props.onUpdateSection} />
+          <SectionDocumentSettings section={section} allSections={props.allSections} readOnly={props.readOnly} onUpdateSection={props.onUpdateSection} machinery={isMachineryPropertyKind(props.meta?.propertyKind)} />
         )}
         {/* Matrix 1.4: where the solicitante and the propietario are captured, once per tab (a template has no third parties). */}
         {props.valuationId && (isCaratula || isDatosGenerales) ? <ThirdPartyDataNotice /> : null}

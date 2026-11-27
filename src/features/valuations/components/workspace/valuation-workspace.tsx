@@ -593,7 +593,7 @@ export function ValuationWorkspace({
             ) : getCanonicalSectionKey(section.id) === "INGRESOS" ? (
               <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} approach={approachInReport(section, "ingresos")} {...captureHeadersOf(section)} />
             ) : getCanonicalSectionKey(section.id) === "CONCLUSIONES" ? (
-              <ConclusionPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConclusionCalculation} />
+              <ConclusionPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConclusionCalculation} machinery={machinery} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CROQUIS_COMPARABLES" ? (
               <CroquisSectionAccess captures={["macro", "micro"]} sections={sections} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "MAPA_COMPARABLES" ? (
