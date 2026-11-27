@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { UploadError } from "@/features/files/services/upload";
-import { comparablePhotoFramingSchema, comparableTypeSchema } from "@/features/valuations/calculation/market-schemas";
-import { addComparablePhoto, getMarketCalculation, removeComparablePhoto, setComparablePhotoFraming } from "@/features/valuations/calculation/market.service";
+import { comparableMainPhotoSchema, comparablePhotoFramingSchema, comparableTypeSchema } from "@/features/valuations/calculation/market-schemas";
+import { addComparablePhoto, getMarketCalculation, removeComparablePhoto, setComparableMainPhoto, setComparablePhotoFraming } from "@/features/valuations/calculation/market.service";
 import { valuationErrorResponse } from "@/features/valuations/services/valuation-error-response";
 import { readJsonBody } from "@/lib/api-response";
 import { requireApiUser } from "@/security/guards/api-guard";
@@ -30,17 +31,18 @@ export async function POST(request: Request, { params }: Context) {
   }
 }
 
-/** «Encuadre» and «Zoom» of one photo, as it prints in the dictamen's annex. */
+/** «Encuadre» and «Zoom» of one photo, as it prints in the dictamen's annex; or (video 8.14) which photo is the main one. */
 export async function PATCH(request: Request, { params }: Context) {
   try {
     const auth = await requireApiUser(AUTH_PERMISSIONS.editValuations);
     if (!auth.ok) return auth.response;
     const type = comparableTypeSchema.safeParse(new URL(request.url).searchParams.get("tipo"));
     if (!type.success) return NextResponse.json({ error: "Tipo de comparable inválido" }, { status: 400 });
-    const body = await readJsonBody(request, comparablePhotoFramingSchema);
+    const body = await readJsonBody(request, z.union([comparableMainPhotoSchema, comparablePhotoFramingSchema]));
     if (!body.ok) return body.response;
     const { id, comparableId } = await params;
-    await setComparablePhotoFraming(id, auth.user, comparableId, body.data.photoId, body.data.framing);
+    if ("main" in body.data) await setComparableMainPhoto(id, auth.user, comparableId, body.data.photoId);
+    else await setComparablePhotoFraming(id, auth.user, comparableId, body.data.photoId, body.data.framing);
     return NextResponse.json({ data: await getMarketCalculation(id, auth.user.organizationId, type.data) });
   } catch (error) {
     return valuationErrorResponse("COMPARABLE_PHOTO_FRAMING", error, "No se pudo guardar el encuadre de la fotografía.");

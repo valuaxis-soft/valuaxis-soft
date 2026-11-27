@@ -80,7 +80,7 @@ const MAX_PHOTOS_PER_COMPARABLE = MAX_COMPARABLE_PHOTOS;
 const COMPARABLE_ENTITY = "ComparableAvaluo";
 
 /** A stored photo; `framing` is its place and zoom in its frame of the dictamen (absent: whole and centered). */
-type PhotoSnapshot = { id: string; key: string; title: string; framing?: unknown };
+type PhotoSnapshot = { id: string; key: string; title: string; framing?: unknown; main?: boolean };
 /** A stored photo of a comparable, as another comparable may take it. */
 export type StoredComparablePhoto = Omit<PhotoSnapshot, "id" | "framing">;
 type PropertySnapshot = {
@@ -292,6 +292,7 @@ export async function toComparableDto(row: ComparableRow, withPhotoUrls: boolean
         title: photo.title,
         url: await imageUrl(photo.key, withPhotoUrls),
         ...(framing ? { framing } : {}),
+        ...(photo.main === true ? { main: true } : {}),
       };
     })),
     folio: row.propiedad.IFolioComparable ?? null,
@@ -1706,6 +1707,29 @@ export async function setComparablePhotoFraming(publicId: string, user: AuthUser
           if (photo.id !== photoId) return photo;
           const { framing: _previous, ...rest } = photo;
           return stored ? { ...rest, framing: stored } : rest;
+        }) as Prisma.InputJsonValue,
+      },
+    });
+  });
+}
+
+/**
+ * Video 8.14: the comparable's main photo, the one its ficha prints in
+ * «Croquis y fotografías de comparables»; the others keep their place in
+ * the gallery. Only one is marked.
+ */
+export async function setComparableMainPhoto(publicId: string, user: AuthUser, comparableId: string, photoId: string) {
+  return prisma.$transaction(async (tx) => {
+    const { versionId } = await writableVersion(tx, publicId, user);
+    const current = await findComparable(tx, versionId, comparableId);
+    const photos = Array.isArray(current.JImagenesSnapshot) ? (current.JImagenesSnapshot as PhotoSnapshot[]) : [];
+    if (!photos.some((photo) => photo.id === photoId)) throw new ValuationWorkflowError("Fotografía no encontrada", 404);
+    await tx.comparableAvaluo.update({
+      where: { IdComparableAvaluo: current.IdComparableAvaluo },
+      data: {
+        JImagenesSnapshot: photos.map((photo) => {
+          const { main: _previous, ...rest } = photo;
+          return photo.id === photoId ? { ...rest, main: true } : rest;
         }) as Prisma.InputJsonValue,
       },
     });

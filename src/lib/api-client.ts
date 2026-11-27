@@ -446,6 +446,12 @@ export const api = {
         `/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}`,
         { method: "PATCH", body: JSON.stringify({ photoId, framing }) },
       ),
+    /** Video 8.14: the photo the comparable's ficha prints. */
+    setMainPhoto: (id: ApiId, type: ComparableType, comparableId: string, photoId: string) =>
+      request<MarketCalculationDto>(
+        `/avaluos/${id}/mercado/comparables/${comparableId}/fotos?tipo=${type}`,
+        { method: "PATCH", body: JSON.stringify({ photoId, main: true }) },
+      ),
   },
   /** AI assistance: both answer a draft to review; neither saves anything. */
   /** The firm's base of comparables (/comparables): import without a valuation, or to the valuations of each row's folio. */

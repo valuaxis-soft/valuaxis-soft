@@ -294,7 +294,19 @@ export type ComparableFactorDto = {
 };
 
 /** A photo of a comparable; `framing`, its place and zoom in its frame of the dictamen, when the appraiser set one. */
-export type ComparablePhotoDto = { id: string; title: string; url: string; framing?: ImageFraming };
+export type ComparablePhotoDto = {
+  id: string;
+  title: string;
+  url: string;
+  framing?: ImageFraming;
+  /** Video 8.14: the comparable's main photo, the one its ficha prints; without one marked, the first. */
+  main?: boolean;
+};
+
+/** The photo a comparable's ficha prints: the one marked main, or the first of its gallery. */
+export function mainComparablePhoto<T extends Pick<ComparablePhotoDto, "id"> & { main?: boolean }>(photos: readonly T[]): T | undefined {
+  return photos.find((photo) => photo.main) ?? photos[0];
+}
 
 /** A characteristic added to one comparable: its name and its value, as written. */
 export type ComparableAttribute = { name: string; value: string };

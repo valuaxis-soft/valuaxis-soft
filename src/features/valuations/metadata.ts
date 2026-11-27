@@ -1,3 +1,4 @@
+import { readPhotoGrid, type PhotoGridSettings } from "@/features/valuations/model";
 import type { BlockFlowV2, ConceptDateFormat, ConceptType, ConceptValueFormat, ContentLayout, HeaderExtraField, ImageCaption, ImageLayoutWidth, ImageRotation, ApartadoPresentationMode, ValueChartStyle } from "@/features/valuations/model";
 import { readStoredCaptions, readStoredRotation } from "@/features/valuations/services/image-captions";
 import { isDefaultImageFraming, readStoredImageFraming, type ImageFraming } from "@/features/valuations/services/image-framing";
@@ -127,6 +128,8 @@ export type BlockMetadata = {
   flowSpacingBeforePx?: number;
   /** The carátula's company header block only: the extra header data. */
   headerFields?: HeaderExtraField[];
+  /** Video 8.14: a block of photographs, its photos a row and their size. */
+  photoGrid?: PhotoGridSettings;
   /** The carátula's company header block only: the size of the principal cover image. */
   coverImageSize?: CoverImageSize;
   /** The block of the concluded value only: it prints the chart of the values (V7.1-26). */
@@ -347,6 +350,7 @@ export function blockMetadataFromContent(content: BlockMetadataContent): BlockMe
     flowSpacingBeforePx: content.flowSpacingBeforePx,
     headerFields: content.headerFields,
     coverImageSize: content.coverImageSize,
+    ...(readPhotoGrid(content.photoGrid) ? { photoGrid: readPhotoGrid(content.photoGrid) } : {}),
     valueChart: content.valueChart || undefined,
     ...(content.valueTitle?.trim() ? { valueTitle: content.valueTitle.trim().slice(0, VALUE_TITLE_MAX) } : {}),
     ...(content.removedApartados?.length ? { removedApartados: readRemovedApartados(content.removedApartados) } : {}),
@@ -367,6 +371,7 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
   const pageOrientation = readConfigMetadata(config, (value) => (isRecord(value) && isPageOrientation(value.pageOrientation) ? value.pageOrientation : undefined));
   const valueTitle = readConfigMetadata(config, (value) => (isRecord(value) && typeof value.valueTitle === "string" && value.valueTitle.trim() ? value.valueTitle.trim().slice(0, VALUE_TITLE_MAX) : undefined));
   const removedApartados = readConfigMetadata(config, (value) => (isRecord(value) ? readRemovedApartados(value.removedApartados) : undefined));
+  const photoGrid = readConfigMetadata(config, (value) => (isRecord(value) ? readPhotoGrid(value.photoGrid) : undefined));
   return {
     enabled: true,
     ...(sectionBooleanMetadata(config, "titleHidden") ? { titleHidden: true } : {}),
@@ -382,6 +387,7 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
     ...(readConfigMetadata(config, (value) => readBooleanMetadata(value, "valueChart")) ? { valueChart: true } : {}),
     ...(valueTitle ? { valueTitle } : {}),
     ...(removedApartados ? { removedApartados } : {}),
+    ...(photoGrid ? { photoGrid } : {}),
   };
 }
 

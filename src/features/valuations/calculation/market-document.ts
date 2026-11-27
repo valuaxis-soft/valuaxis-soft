@@ -9,6 +9,7 @@
 import { printableAdvertiser } from "../services/advertiser-data";
 import type { MarketApproachResult } from "../engine/market";
 import type { AppSection, Block, TableContent } from "../model";
+import { isContentLayout } from "../services/content-layout";
 import { ensureTableV2, type GeneratedTableLayout, type TableNote, type TableSummaryBox, type TableSummaryRow } from "../services/table";
 import { factorDecimals } from "./calculation-precision";
 import { exchangeNote } from "./comparable-currency";
@@ -59,6 +60,7 @@ import {
   type MarketSettingsDto,
   type MarketStatistic,
   type StatisticKey,
+  mainComparablePhoto,
   printedStatisticsOf,
 } from "./market-types";
 import { GENERATED_ID_PREFIX, withAppraiserLayout } from "./generated-block-layout";
@@ -715,12 +717,13 @@ function fichaData(comparable: MarketCalculationDto["comparables"][number]) {
  */
 export function marketPhotoBlocks(calculation: MarketCalculationDto): Block[] {
   const images = calculation.comparables.flatMap((comparable) => {
-    const photo = comparable.photos[0];
+    const photo = mainComparablePhoto(comparable.photos);
     if (!photo) return [];
     const data = fichaData(comparable);
     return [
       {
-        id: `${GENERATED_BLOCK_PREFIX}foto-${photo.id}`,
+        // The comparable and its main photo: another main photo rewrites the ficha, and it keeps its place (`withFichaIds`).
+        id: `${GENERATED_BLOCK_PREFIX}ficha-${comparable.id}--${photo.id}`,
         title: `Comparable ${comparable.reference}: ${comparable.location}`,
         src: photo.url,
         // «Encuadre» and «Zoom» set on the comparable's photo (video 5.5).
@@ -736,6 +739,38 @@ export function marketPhotoBlocks(calculation: MarketCalculationDto): Block[] {
   if (!images.length) return [];
   const prefix = prefixFor(calculation.settings.comparableType);
   return [generatedBlock(`${prefix}-fotos`, `FOTOGRAFÍAS DE COMPARABLES: ${COMPARABLE_TYPE_LABELS[calculation.settings.comparableType].toUpperCase()}`, { images })];
+}
+
+/** The comparable of a ficha's image id (`motor-ficha-<comparable>--<photo>`), or null. */
+const fichaComparable = (imageId: string) => /ficha-(.+)--[^-]/.exec(imageId)?.[1]?.toLowerCase() ?? null;
+
+/**
+ * Video 8.14: the fichas the appraiser ordered by hand keep their order
+ * when one of them takes another main photo (its image id changes): the
+ * old id in his layout becomes the new one of the same comparable.
+ */
+function withFichaIds(block: Block, previous: Block | undefined): Block | undefined {
+  if (!previous || !isContentLayout(previous.contentLayout)) return previous;
+  const now = new Map(block.images.flatMap((image) => {
+    const comparable = fichaComparable(image.id);
+    return comparable ? [[comparable, image.id] as const] : [];
+  }));
+  if (!now.size) return previous;
+  let changed = false;
+  const rows = previous.contentLayout.rows.map((row) => ({
+    ...row,
+    columns: row.columns.map((column) => ({
+      ...column,
+      items: column.items.map((item) => {
+        const comparable = item.type === "image" ? fichaComparable(item.id) : null;
+        const id = comparable ? now.get(comparable) : undefined;
+        if (!id || id === item.id) return item;
+        changed = true;
+        return { ...item, id };
+      }),
+    })),
+  }));
+  return changed ? { ...previous, contentLayout: { version: 2, rows } } : previous;
 }
 
 /** The page of a market's approach: its name is the appraiser's once he renames it (video 8.7: «que sea modificable el nombre»). */
@@ -765,6 +800,8 @@ function withBlockPresentation(block: Block, previous: Block | undefined): Block
     ...(previous.pageOrientation ? { pageOrientation: previous.pageOrientation } : {}),
     ...(previous.conceptPresentation ? { conceptPresentation: previous.conceptPresentation } : {}),
     ...(previous.removedApartados?.length ? { removedApartados: previous.removedApartados } : {}),
+    // Video 8.14: the fichas' photos a row and size.
+    ...(previous.photoGrid ? { photoGrid: previous.photoGrid } : {}),
   };
 }
 
@@ -804,7 +841,7 @@ export function replaceGeneratedBlocks(
   // and so do his own tables in the block and how its tables are laid out (side by side, their order).
   const laidOut = withTableLayouts(blocks, current).map((item) => {
     const before = previous.get(item.id.toLowerCase());
-    return withAppraiserTitle(withAppraiserLayout(withoutRemovedApartados(item, before?.removedApartados), before), before);
+    return withAppraiserTitle(withAppraiserLayout(withoutRemovedApartados(item, before?.removedApartados), withFichaIds(item, before)), before);
   });
   if (sameContent(current, laidOut) && !section.blocks.some(isPlaceholder)) return section;
   // What the appraiser chose for a block stays when the calculation writes it again: hidden, its page break and orientation.

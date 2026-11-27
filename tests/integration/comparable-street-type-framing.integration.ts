@@ -11,10 +11,12 @@ import type { ComparableInputPayload } from "../../src/features/valuations/calcu
 import {
   createComparable,
   getMarketCalculation,
+  setComparableMainPhoto,
   setComparablePhotoFraming,
   updateComparable,
 } from "../../src/features/valuations/calculation/market.service";
-import { comparableFormValues } from "../../src/features/valuations/calculation/market-types";
+import { comparableFormValues, mainComparablePhoto } from "../../src/features/valuations/calculation/market-types";
+import { marketPhotoBlocks } from "../../src/features/valuations/calculation/market-document";
 import type { StreetType } from "../../src/features/valuations/calculation/comparable-card";
 import { searchComparables } from "../../src/features/valuations/comparable-search/comparable-search.service";
 import type { ComparableSearchQuery } from "../../src/features/valuations/comparable-search/types";
@@ -101,4 +103,32 @@ test("V5.5-06: a photo's framing is kept in the comparable, goes back to the def
   assert.deepEqual(row.JImagenesSnapshot, [{ id: "foto-inventada", key: "organizaciones/prueba/foto-inventada.jpg", title: "Fachada" }], "the default is not stored");
 
   await assert.rejects(() => setComparablePhotoFraming(fixture.publicId, fixture.user, id, "otra-foto", framing), /Fotografía no encontrada/);
+});
+
+test("video 8.14: a comparable's main photo is kept in it, only one at a time, and its ficha prints that one", async () => {
+  const fixture = await createValuationFixture();
+  await createComparable(fixture.publicId, fixture.user, "TERRENO_VENTA", comparable("Calle Inventada 9, Arandas"));
+  const [{ id }] = (await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA")).comparables;
+  await prisma.comparableAvaluo.updateMany({
+    where: { UIdentificadorPublico: id },
+    data: {
+      JImagenesSnapshot: [
+        { id: "foto-a", key: "organizaciones/prueba/foto-a.jpg", title: "Fachada" },
+        { id: "foto-b", key: "organizaciones/prueba/foto-b.jpg", title: "Interior" },
+        { id: "foto-c", key: "organizaciones/prueba/foto-c.jpg", title: "Patio" },
+      ],
+    },
+  });
+  const calculation = async () => getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
+  const mainOf = async () => mainComparablePhoto((await calculation()).comparables[0].photos)?.id;
+  assert.equal(await mainOf(), "foto-a", "the first of the gallery by default");
+  await setComparableMainPhoto(fixture.publicId, fixture.user, id, "foto-c");
+  assert.equal(await mainOf(), "foto-c");
+  await setComparableMainPhoto(fixture.publicId, fixture.user, id, "foto-b");
+  const photos = (await calculation()).comparables[0].photos;
+  assert.deepEqual(photos.map((photo) => [photo.id, photo.main ?? false]), [["foto-a", false], ["foto-b", true], ["foto-c", false]], "one main, the gallery keeps its order");
+  const [block] = marketPhotoBlocks(await calculation());
+  assert.equal(block.images.length, 1);
+  assert.match(block.images[0].id, /ficha-.*--foto-b$/);
+  await assert.rejects(() => setComparableMainPhoto(fixture.publicId, fixture.user, id, "otra-foto"), /Fotografía no encontrada/);
 });

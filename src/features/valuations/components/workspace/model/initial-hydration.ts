@@ -242,6 +242,7 @@ function normalizeInitialSections(initialValuation: Pick<ValuationDetail, "secti
       flowSpacingBeforePx: block.flowSpacingBeforePx,
       ...(block.headerFields ? { headerFields: block.headerFields } : {}),
       ...(block.coverImageSize ? { coverImageSize: block.coverImageSize } : {}),
+      ...(block.photoGrid ? { photoGrid: block.photoGrid } : {}),
       ...(block.valueChart ? { valueChart: true } : {}),
       ...(block.valueTitle ? { valueTitle: block.valueTitle } : {}),
       ...(block.removedApartados?.length ? { removedApartados: block.removedApartados } : {}),

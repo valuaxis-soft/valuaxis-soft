@@ -62,6 +62,7 @@ import { MarketCalculationPanel } from "@/features/valuations/components/calcula
 import { StatisticalMethodsPanel } from "@/features/valuations/components/calculation/statistical-methods-panel";
 import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
 import { CroquisGeneratorProvider, CroquisSectionAccess } from "@/features/maps/components/croquis-generator";
+import { ComparableFichasPanel } from "./comparable-fichas-panel";
 import { COMPARABLE_TYPES, RENT_COMPARABLE_TYPES, SALE_COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { findSubjectFacts } from "@/features/valuations/calculation/market-subject-facts";
 import { hiddenMarketBlocks, withMarketBlocksShown, type ActiveMarket } from "@/features/valuations/components/workspace/model/active-market";
@@ -596,7 +597,19 @@ export function ValuationWorkspace({
             ) : getCanonicalSectionKey(section.id) === "CONCLUSIONES" ? (
               <ConclusionPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onConclusionCalculation} machinery={machinery} />
             ) : !machinery && getCanonicalSectionKey(section.id) === "CROQUIS_COMPARABLES" ? (
-              <CroquisSectionAccess captures={["macro", "micro"]} sections={sections} />
+              <>
+                <CroquisSectionAccess captures={["macro", "micro"]} sections={sections} />
+                <ComparableFichasPanel
+                  section={section}
+                  readOnly={!canEdit}
+                  onChangeBlock={(blockId, update) =>
+                    updateSections((current) =>
+                      current.map((item) => (item.id === section.id ? { ...item, blocks: item.blocks.map((block) => (block.id === blockId ? update(block) : block)) } : item)),
+                    )
+                  }
+                  onUndo={() => void undo()}
+                />
+              </>
             ) : !machinery && getCanonicalSectionKey(section.id) === "MAPA_COMPARABLES" ? (
               <CroquisSectionAccess captures={["comparables"]} sections={sections} />
             ) : undefined)}
