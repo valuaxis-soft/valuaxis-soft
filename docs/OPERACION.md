@@ -370,6 +370,17 @@ Para apagarla, quitar la variable o ponerla en `false` y recrear la app: la opci
 
 El gasto por despacho sale de la auditoría (acción `AI_COMPARABLE_SEARCH`); la consulta está en [IA.md](IA.md).
 
+### 13.1 Comparables quitados de su mercado antes del 26 nov 2026 (`pnpm comparables:keep-removed`, una vez)
+
+Desde el 26 nov 2026 un comparable que se quita de un mercado se queda en la base del despacho. Los que se quitaron antes (el valuador reportó C-00144 a C-00147, creados con «Buscar con IA») no aparecen en Comparables. Una vez, después de desplegar:
+
+```bash
+docker exec valuos-app node --import tsx scripts/comparables-keep-removed.ts          # dice cuáles devolvería
+docker exec valuos-app node --import tsx scripts/comparables-keep-removed.ts --apply  # los devuelve
+```
+
+Es idempotente: copia la ficha de cada comparable quitado (en la versión que hoy muestra su avalúo) a la base sin avalúo, con su mismo número, fotos y pantalla, solo si nada más de la base tiene ese número. No cambia ningún avalúo ni da números nuevos.
+
 ## 14. Operador de la plataforma (`OPERATOR_EMAILS`)
 
 El dueño de la plataforma necesita saber quién es cada persona registrada (si una autoridad pregunta quién hizo un avalúo), sin ver el contenido de sus avalúos. Para eso existe `/operador/usuarios`: nombre, correo, teléfono (tal como lo capturó, sin verificar), despachos y rol, acreditación, alta, último acceso y cuántos avalúos creó y concluyó. Nada más de sus avalúos. Ver [AUTHORIZATION.md](AUTHORIZATION.md#operador-de-la-plataforma).

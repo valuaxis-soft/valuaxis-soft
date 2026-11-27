@@ -13,7 +13,10 @@
  */
 import { z } from "zod";
 
-import { BUILT_AREA_TOLERANCE, REVIEW_CHECKS, REVIEW_CHECK_HINTS, REVIEW_CHECK_LABELS, type ReviewChecks } from "./comparable-review";
+import {
+  BUILT_AREA_TOLERANCE, DEFAULT_REVIEW_STATUS_LIST, REVIEW_CHECKS, REVIEW_CHECK_HINTS, REVIEW_CHECK_LABELS, REVIEW_STATUSES, REVIEW_TONES,
+  type ReviewChecks, type ReviewStatusItem,
+} from "./comparable-review";
 import { isLandComparableType, type ComparableType } from "./market-types";
 
 export type ReviewChecklistItem = {
@@ -121,4 +124,46 @@ export function moveCheck<T>(items: readonly T[], index: number, delta: -1 | 1):
   const [item] = next.splice(index, 1);
   next.splice(target, 0, item);
   return next;
+}
+
+/* ------------------------------------------------------------------ */
+/*  The states of the review (V8.12)                                   */
+/* ------------------------------------------------------------------ */
+
+export const MAX_REVIEW_STATUSES = 20;
+
+/** The key of a state the firm adds: never one of Valuaxis, never repeated. */
+export const reviewStatusKeySchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,39}$/, "Estado de revisión inválido.");
+
+/**
+ * The firm's states (V8.12, 04:49): it adds, renames and deletes them. «Sin
+ * revisar» stays, first: it is the state of a comparable nobody reviewed yet.
+ * Deleting a state changes no comparable: each one keeps the state it has
+ * until the appraiser gives it another.
+ */
+export const reviewStatusListSchema = z.object({
+  statuses: z.array(z.object({
+    key: reviewStatusKeySchema,
+    label: z.string().trim().min(1, "Cada estado necesita un nombre.").max(60, "El nombre de un estado admite hasta 60 caracteres."),
+    tone: z.enum(REVIEW_TONES, "Elige el color del estado."),
+  }))
+    .min(1, "La lista necesita al menos un estado.")
+    .max(MAX_REVIEW_STATUSES, `La lista admite hasta ${MAX_REVIEW_STATUSES} estados.`)
+    .refine((items) => items[0]?.key === "POR_REVISAR", "«Sin revisar» va primero y no se quita: es el estado de un comparable que nadie ha revisado.")
+    .refine((items) => new Set(items.map((item) => item.key)).size === items.length, "Hay estados repetidos.")
+    .refine((items) => new Set(items.map((item) => plainLabel(item.label))).size === items.length, "Hay dos estados con el mismo nombre."),
+});
+export type ReviewStatusList = z.infer<typeof reviewStatusListSchema>;
+
+/** The firm's stored states, or the built-in five. */
+export function resolveReviewStatuses(stored: unknown): ReviewStatusItem[] {
+  const parsed = reviewStatusListSchema.safeParse(stored);
+  return parsed.success ? parsed.data.statuses : DEFAULT_REVIEW_STATUS_LIST;
+}
+
+/** A key for a state the firm adds, unique in its list and never one of Valuaxis. */
+export function newStatusKey(existing: readonly string[], random = () => Math.random().toString(36).slice(2, 8)) {
+  let key = `custom-${random()}`;
+  while (existing.includes(key) || (REVIEW_STATUSES as readonly string[]).includes(key)) key = `custom-${random()}`;
+  return key;
 }

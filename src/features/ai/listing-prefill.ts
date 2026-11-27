@@ -186,6 +186,33 @@ export function listingRows(proposal: ListingProposal, type: ComparableType, pri
   };
 }
 
+/** What «Pegar anuncio» hands the card: its values, each row with its fragment, what to know and what was discarded. */
+export type ListingReading = { values: ComparablePrefill; rows: ListingRow[]; notices: string[]; discarded: number };
+
+/**
+ * The card's values from a verified proposal. The offer is dated `today` when
+ * the listing writes no date (V8.12: «si hoy lo estoy agregando, debería
+ * quedar al día de hoy»), and its row says so.
+ */
+export function listingPrefill(proposal: ListingProposal, type: ComparableType, priceLabel: string, today: string): ListingReading {
+  const { rows, notices } = listingRows(proposal, type, priceLabel);
+  const dated = rows.map((row) => (row.field === "offerDate" && !row.value.trim()
+    ? { ...row, value: today, note: "El anuncio no dice su fecha: se puso la de hoy, el día en que lo capturas. Cámbiala si la sabes." }
+    : row));
+  const values = Object.fromEntries(dated.filter((row) => row.value.trim()).map((row) => [row.field, row.value.trim()])) as ComparablePrefill;
+  return { values, rows: dated, notices, discarded: proposal.discarded.length };
+}
+
+/** The sections of the card each field read from the listing goes to, in the card's order. */
+export const LISTING_SECTIONS: Array<{ title: string; fields: ListingFormField[] }> = [
+  { title: "Oferta", fields: ["price", "area", "offerDate"] },
+  { title: "Ubicación", fields: ["state", "municipality", "postalCode", "neighborhood", "subdivision", "street", "number"] },
+  { title: "Fuente de información", fields: ["sourceName", "contactName", "contactPhone", "url", "publicationId"] },
+  { title: "Terreno", fields: ["frontCount", "frontage", "depth", "shape", "zone", "landUse", "topography", "services"] },
+  { title: "Construcción", fields: ["landArea", "constructionType", "bedrooms", "bathrooms", "parking", "levels", "age", "conservation"] },
+  { title: "Características y observaciones", fields: ["notes"] },
+];
+
 /** The colonia without the «Col.» the listing writes before it: the dictamen prints its own «col.». */
 function neighborhoodName(item: Item): Item {
   if (!item) return null;

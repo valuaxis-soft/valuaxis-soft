@@ -4,7 +4,8 @@
  * are read again as «Pegar anuncio» reads a pasted listing: the extraction
  * model copies fragments and the server keeps only those literally in the
  * page (`verifyListingExtraction`). What the page confirms fills the fields
- * the search model left empty; a value both give and that agrees is marked
+ * the search model left empty, except the street, number, colonia,
+ * fraccionamiento and C.P. (V8.11); a value both give and that agrees is marked
  * as verified. Where they disagree the search model's stays and is not marked:
  * a page often lists other, similar listings, and the appraiser checks it.
  */
@@ -59,6 +60,9 @@ export function pageValues(proposal: ListingProposal): Partial<Record<keyof WebL
   };
 }
 
+/** The parts of the address that only the search model's own reading of the listing fills. */
+const PAGE_NEVER_FILLS = new Set<keyof WebListingVerifiable>(["street", "streetNumber", "subdivision", "postalCode", "neighborhood"]);
+
 const same = (left: Value, right: Value) =>
   typeof left === "string" && typeof right === "string"
     ? left.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().trim() === right.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().trim()
@@ -76,6 +80,9 @@ export function withPageReading(type: ComparableType, candidate: WebListingCandi
   for (const [field, value] of Object.entries(values) as Array<[keyof WebListingVerifiable, Value]>) {
     if (value === null || value === undefined) continue;
     const current = record[field] ?? null;
+    // The address of the listing is never filled from its page: a page lists other, similar listings
+    // and a card took another one's street and number (V8.11, «Callejón del Iris»). It is only confirmed.
+    if (current === null && PAGE_NEVER_FILLS.has(field)) continue;
     if (current === null) {
       record[field] = value;
       verified.push(field);

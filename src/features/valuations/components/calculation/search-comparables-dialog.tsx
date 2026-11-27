@@ -509,7 +509,19 @@ export function SearchComparablesDialog({
                 </div>
                 {readOnly ? (
                   <p className="text-xs text-muted-foreground">El avalúo es de solo lectura: puedes consultar los comparables, pero no agregarlos.</p>
-                ) : null}
+                ) : (
+                  // V8.7 (22:28): «¿cómo se agregan los seleccionados?» — the button lives with the boxes it adds, and counts them.
+                  <div className="flex flex-wrap items-center gap-2" data-add-selected>
+                    <Button type="button" size="sm" disabled={busy !== null || !chosen.length} onClick={() => void add()}>
+                      {busy === "add" ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}
+                      {onChoose ? "Usar" : "Agregar"} seleccionados ({chosen.length})
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {chosen.length ? "" : "Marca la casilla de cada resultado que quieras agregar. "}
+                      En el mapa, toca un pin y usa «Agregar como comparable».
+                    </span>
+                  </div>
+                )}
               </>
             ) : null}
           </div>
@@ -533,15 +545,9 @@ export function SearchComparablesDialog({
           ) : null}
 
           <DialogFooter>
-            <Button type="button" variant="ghost" disabled={busy === "add"} onClick={() => { setOpen(false); reset(); }}>
-              {readOnly ? "Cerrar" : "Cancelar"}
+            <Button type="button" variant="outline" disabled={busy === "add"} onClick={() => { setOpen(false); reset(); }} data-search-close>
+              Cerrar
             </Button>
-            {!readOnly ? (
-              <Button type="button" disabled={busy !== null || !chosen.length} onClick={() => void add()}>
-                {busy === "add" ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}
-                Agregar seleccionados ({chosen.length})
-              </Button>
-            ) : null}
           </DialogFooter>
           </div>
         </DialogContent>

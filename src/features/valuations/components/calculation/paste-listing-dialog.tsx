@@ -1,59 +1,62 @@
 "use client";
 
-import { ClipboardPaste, Info, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AI_NOTICE } from "@/features/ai/ai-assist-context";
 import { LISTING_TEXT_MAX, LISTING_TEXT_MIN } from "@/features/ai/listing-extraction";
-import { listingRows, type ComparablePrefill, type ListingRow } from "@/features/ai/listing-prefill";
+import { listingPrefill, type ListingReading } from "@/features/ai/listing-prefill";
+import { todayInMexico } from "@/features/valuations/calculation/comparable-card";
 import type { ComparableType } from "@/features/valuations/calculation/market-types";
 import { imageCount, NO_IMAGES, type PendingImages } from "@/features/valuations/comparable-search/listing-images";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { ListingImagesPicker } from "./listing-images-picker";
-import { AiResultReviewNotice } from "../legal-notice";
 
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudieron leer los datos del anuncio.";
 
-type Review = { rows: ListingRow[]; notices: string[]; discarded: number };
+/** The button that reads the listing: reading it is to create its card (V8.12, 11:40). */
+export const PASTE_LISTING_SUBMIT = "Extraer datos y crear ficha";
 
 /**
- * "Pegar anuncio": the appraiser pastes the text of a listing, reviews the
- * data read from it next to the fragment each one came from, corrects what
- * is needed and sends it to the comparable form. Nothing is saved here.
+ * "Pegar anuncio", inside «Agregar comparable» (V8.12): the appraiser pastes
+ * the text of a listing and its link, and «Extraer datos y crear ficha» opens
+ * the comparable's card already filled, with the look of every card (Oferta,
+ * Ubicación, Fuente de información, Terreno, Construcción…) and, under each
+ * value, the fragment of the listing it was read from. Nothing is saved here:
+ * the card is saved with «Guardar comparable».
  */
 export function PasteListingDialog({
+  open,
+  onOpenChange,
   valuationId,
   type,
   priceLabel,
   onUse,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   valuationId: string;
   type: ComparableType;
   priceLabel: string;
   /**
-   * Opens the comparable form with these values, the pasted text (kept as
-   * evidence) and the screenshot and photos pasted for the listing, which go
-   * up when the appraiser saves it.
+   * Opens the comparable's card with what was read (each value with its
+   * fragment), the pasted text (kept as evidence) and the screenshot and
+   * photos pasted for the listing, which go up when the card is saved.
    */
-  onUse: (values: ComparablePrefill, listingText: string, images: PendingImages) => void;
+  onUse: (reading: ListingReading, listingText: string, images: PendingImages) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
   const [images, setImages] = useState<PendingImages>(NO_IMAGES);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [review, setReview] = useState<Review | null>(null);
-  // With many fields, only those the listing gave can be shown.
-  const [onlyFound, setOnlyFound] = useState(false);
-  // Only the answer to the last request is shown.
+  // Only the answer to the last request is used.
   const lastRequest = useRef(0);
 
   const reset = () => {
@@ -63,8 +66,10 @@ export function PasteListingDialog({
     setImages(NO_IMAGES);
     setBusy(false);
     setError(null);
-    setReview(null);
-    setOnlyFound(false);
+  };
+  const close = () => {
+    onOpenChange(false);
+    reset();
   };
 
   const extract = async (event: FormEvent) => {
@@ -83,7 +88,9 @@ export function PasteListingDialog({
     try {
       const proposal = await api.ai.extractListing(valuationId, { text, url: url.trim() || null });
       if (current !== lastRequest.current) return;
-      setReview({ ...listingRows(proposal, type, priceLabel), discarded: proposal.discarded.length });
+      // Without a date in the listing, the offer is dated the day it is captured (V8.12, 06:37).
+      onUse(listingPrefill(proposal, type, priceLabel, todayInMexico()), text.trim(), images);
+      close();
     } catch (failure) {
       if (current === lastRequest.current) setError(errorMessage(failure));
     } finally {
@@ -91,151 +98,59 @@ export function PasteListingDialog({
     }
   };
 
-  const edit = (field: ListingRow["field"], value: string) =>
-    setReview((current) => current && { ...current, rows: current.rows.map((row) => (row.field === field ? { ...row, value } : row)) });
-
-  const use = () => {
-    if (!review) return;
-    onUse(Object.fromEntries(review.rows.filter((row) => row.value.trim()).map((row) => [row.field, row.value.trim()])), text.trim(), images);
-    setOpen(false);
-    reset();
-  };
-
-  const found = review?.rows.filter((row) => row.evidence).length ?? 0;
-  const shownRows = review ? review.rows.filter((row) => !onlyFound || row.evidence || row.value.trim()) : [];
-  const picker = (
-    <Field>
-      <FieldLabel>Captura del anuncio y fotos (opcional)</FieldLabel>
-      <ListingImagesPicker
-        images={images}
-        onChange={setImages}
-        label="Captura del anuncio y fotos"
-        baseName="anuncio"
-        disabled={busy}
-        hint={imageCount(images) ? "Se guardan con el comparable al guardarlo." : "Ábrelo en tu navegador y toma la captura; Valuaxis no descarga nada del portal."}
-      />
-    </Field>
-  );
-
   return (
-    <>
-      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
-        <ClipboardPaste data-icon="inline-start" /> Pegar anuncio
-      </Button>
-      <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) reset(); }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Pegar anuncio</DialogTitle>
-            <DialogDescription>
-              {review
-                ? "Revisa cada dato contra el fragmento del anuncio de donde se leyó y corrige lo que haga falta. Lo que el anuncio no dice queda vacío."
-                : "Pega el texto de un anuncio y se leerán los datos que trae escritos para llenar el comparable. No se estima ni se completa nada que el anuncio no diga."}
-            </DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) close(); else onOpenChange(true); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Pegar anuncio</DialogTitle>
+          <DialogDescription>
+            Pega el texto de un anuncio y su liga. Se leen los datos que trae escritos y se abre la ficha del comparable con ellos, para que la revises y la guardes.
+            No se estima ni se completa nada que el anuncio no diga.
+          </DialogDescription>
+        </DialogHeader>
 
-          {!review ? (
-            <form id="paste-listing-form" className="grid gap-3" onSubmit={(event) => void extract(event)} noValidate>
-              <Field>
-                <FieldLabel htmlFor="paste-listing-text">Texto del anuncio</FieldLabel>
-                <Textarea
-                  id="paste-listing-text"
-                  className="max-h-72 min-h-48"
-                  autoFocus
-                  maxLength={LISTING_TEXT_MAX}
-                  placeholder="Copia el anuncio completo del portal y pégalo aquí."
-                  disabled={busy}
-                  value={text}
-                  onChange={(event) => setText(event.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="paste-listing-url">Liga del anuncio (opcional)</FieldLabel>
-                <Input id="paste-listing-url" type="url" placeholder="https://" maxLength={1000} disabled={busy} value={url} onChange={(event) => setUrl(event.target.value)} />
-              </Field>
-              {picker}
-              {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
-            </form>
-          ) : (
-            <div className="grid gap-3">
-              {/* Matrix 1.5: next to every result; nothing is saved until the comparable form is saved. */}
-              <AiResultReviewNotice />
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm" aria-live="polite">
-                  <span className="font-medium" data-listing-found>
-                    {found} de {review.rows.length} campos de la ficha leídos del anuncio.
-                  </span>
-                  {review.discarded ? (
-                    <span className="text-muted-foreground"> Se descart{review.discarded === 1 ? "ó 1 dato" : `aron ${review.discarded} datos`} que no se pudo{review.discarded === 1 ? "" : "ieron"} comprobar en el texto.</span>
-                  ) : null}
-                </p>
-                <label className="flex items-center gap-1.5 text-xs">
-                  <Checkbox checked={onlyFound} onCheckedChange={(checked) => setOnlyFound(checked === true)} />
-                  Ver solo los que trae el anuncio
-                </label>
-              </div>
-              {review.notices.map((notice) => (
-                <p key={notice} className="flex items-start gap-1.5 text-xs text-highlight-strong">
-                  <Info className="mt-0.5 size-3.5 shrink-0" /> {notice}
-                </p>
-              ))}
-              <div className="grid gap-2">
-                {shownRows.map((row) => (
-                  <div
-                    key={row.field}
-                    className="grid gap-1 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)_minmax(0,1fr)] sm:items-start sm:gap-3"
-                    data-listing-field={row.field}
-                    data-listing-found={row.evidence ? "" : undefined}
-                  >
-                    <label htmlFor={`listing-${row.field}`} className="pt-1.5 text-sm">{row.label}</label>
-                    {row.field === "notes" ? (
-                      <Textarea
-                        id={`listing-${row.field}`}
-                        rows={3}
-                        maxLength={1000}
-                        className="max-h-40 text-sm"
-                        value={row.value}
-                        onChange={(event) => edit(row.field, event.target.value)}
-                      />
-                    ) : (
-                      <Input
-                        id={`listing-${row.field}`}
-                        type={row.field === "offerDate" ? "date" : "text"}
-                        autoComplete="off"
-                        value={row.value}
-                        onChange={(event) => edit(row.field, event.target.value)}
-                      />
-                    )}
-                    <div className="pt-1.5 text-xs text-muted-foreground">
-                      {row.evidence ? <q className="break-words" data-evidence>{row.evidence}</q> : <span>El anuncio no lo dice.</span>}
-                      {row.note ? <p className="mt-0.5 text-highlight-strong">{row.note}</p> : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {picker}
-            </div>
-          )}
+        <form id="paste-listing-form" className="grid gap-3" onSubmit={(event) => void extract(event)} noValidate>
+          <Field>
+            <FieldLabel htmlFor="paste-listing-text">Texto del anuncio</FieldLabel>
+            <Textarea
+              id="paste-listing-text"
+              className="max-h-72 min-h-48"
+              autoFocus
+              maxLength={LISTING_TEXT_MAX}
+              placeholder="Copia el anuncio completo del portal y pégalo aquí."
+              disabled={busy}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="paste-listing-url">Liga del anuncio (opcional)</FieldLabel>
+            <Input id="paste-listing-url" type="url" placeholder="https://" maxLength={1000} disabled={busy} value={url} onChange={(event) => setUrl(event.target.value)} />
+          </Field>
+          <Field>
+            <FieldLabel>Captura del anuncio y fotos (opcional)</FieldLabel>
+            <ListingImagesPicker
+              images={images}
+              onChange={setImages}
+              label="Captura del anuncio y fotos"
+              baseName="anuncio"
+              disabled={busy}
+              hint={imageCount(images) ? "Se guardan con el comparable al guardarlo." : "Ábrelo en tu navegador y toma la captura; Valuaxis no descarga nada del portal."}
+            />
+          </Field>
+          {error ? <p className="text-sm text-destructive" role="alert" data-paste-listing-error>{error}</p> : null}
+        </form>
 
-          <p className="text-xs text-muted-foreground">{AI_NOTICE}</p>
+        <p className="text-xs text-muted-foreground">{AI_NOTICE}</p>
 
-          <DialogFooter>
-            {review ? (
-              <>
-                <Button type="button" variant="ghost" onClick={() => { setReview(null); setError(null); }}>Volver al texto</Button>
-                <Button type="button" onClick={use}>Usar estos datos</Button>
-              </>
-            ) : (
-              <>
-                <Button type="button" variant="ghost" disabled={busy} onClick={() => { setOpen(false); reset(); }}>Cancelar</Button>
-                <Button type="submit" form="paste-listing-form" disabled={busy}>
-                  {busy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}
-                  {busy ? "Leyendo el anuncio…" : "Extraer datos"}
-                </Button>
-              </>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        <DialogFooter>
+          <Button type="button" variant="ghost" disabled={busy} onClick={close}>Cancelar</Button>
+          <Button type="submit" form="paste-listing-form" disabled={busy}>
+            {busy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}
+            {busy ? "Leyendo el anuncio…" : PASTE_LISTING_SUBMIT}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

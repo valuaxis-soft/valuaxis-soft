@@ -42,8 +42,9 @@ import {
   type UrbanProximity,
 } from "./comparable-card";
 import { addMonths, comparableDataChanged } from "./comparable-validity";
-import { PENDING_REVIEW, REVIEW_STATUSES, type ComparableReviewDto } from "./comparable-review";
-import { labelsForReview } from "./comparable-review-checklist";
+import { PENDING_REVIEW, isBuiltInStatus, reviewStatusOf, type ComparableReviewDto } from "./comparable-review";
+import { labelsForReview, reviewStatusKeySchema } from "./comparable-review-checklist";
+import { FIRM_BASE_FROM, firmBaseCondition } from "../comparable-search/own-base-sql";
 import { getComparableReviewSettings } from "@/features/firm/comparable-review-settings.service";
 import type { ComparableInputPayload, ComparableReviewPayload, MarketSettingsPayload } from "./market-schemas";
 import {
@@ -200,9 +201,12 @@ const addressOf = (snapshot: Partial<AddressSnapshot>): ComparableAddress | null
 /** The stored review, or "por revisar" when there is none. */
 function reviewOf(stored: Prisma.JsonValue | null): ComparableReviewDto {
   const review = asRecord(stored) as Partial<ReviewSnapshot>;
-  if (!review.status || !(REVIEW_STATUSES as readonly string[]).includes(review.status)) return PENDING_REVIEW;
+  // A built-in state or one of the firm's («custom-…»): a state the firm deleted keeps reading with its saved name.
+  if (!review.status || !(isBuiltInStatus(review.status) || reviewStatusKeySchema.safeParse(review.status).success)) return PENDING_REVIEW;
   return {
     status: review.status,
+    ...(typeof review.statusLabel === "string" && review.statusLabel ? { statusLabel: review.statusLabel } : {}),
+    ...(typeof review.statusTone === "string" && review.statusTone ? { statusTone: review.statusTone } : {}),
     checks: review.checks ?? {},
     ...(review.labels && typeof review.labels === "object" ? { labels: review.labels } : {}),
     notes: review.notes ?? null,
@@ -724,10 +728,11 @@ export async function deleteMarket(publicId: string, user: AuthUser, type: Compa
     const typeId = await comparableTypeId(tx, type);
     const comparables = await tx.comparableAvaluo.findMany({
       where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, BIncluido: true },
-      select: { UIdentificadorPublico: true },
+      select: { UIdentificadorPublico: true, IdComparableAvaluo: true },
     });
     if (comparables.length) {
       await tx.comparableAvaluo.updateMany({ where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId, BIncluido: true }, data: { BIncluido: false, DFechaExclusion: new Date(), SMotivoExclusion: MARKET_REMOVED_REASON } });
+      await keepInFirmBase(tx, user, comparables.map((row) => row.IdComparableAvaluo));
     }
     await tx.enfoqueMercado.deleteMany({ where: { IdVersionAvaluo: versionId, IdTipoComparable: typeId } });
     await tx.ejecucionCalculo.deleteMany({ where: { IdVersionAvaluo: versionId, SClaveCalculo: `MOTOR.MERCADO.${type}` } });
@@ -1032,7 +1037,7 @@ export type InsertTarget =
 export async function insertComparable(
   tx: Tx,
   target: InsertTarget,
-  user: AuthUser,
+  user: Pick<AuthUser, "id" | "organizationId">,
   type: ComparableType,
   payload: ComparableInputPayload,
   reused: ReusedComparableEvidence = {},
@@ -1088,9 +1093,11 @@ export async function insertComparable(
 }
 
 /**
- * `mergeInto` is the answer "es el mismo" to a possible duplicate: the
- * comparable keeps the number of that one of the base, and the most recent
- * data of the two stays.
+ * `mergeInto` is the answer «Es el mismo: actualizar los datos de su ficha» to
+ * a possible duplicate (V8.12): the comparable keeps the number, photos and
+ * screenshot of that one of the base and the data the appraiser captures now
+ * become its card for this valuation and the ones to come (the base shows its
+ * most recent capture). A concluded valuation keeps its own capture as it was.
  */
 export async function createComparable(
   publicId: string,
@@ -1102,7 +1109,7 @@ export async function createComparable(
   return prisma.$transaction(async (tx) => {
     const { avaluo, versionId } = await writableVersion(tx, publicId, user);
     const typeId = await comparableTypeId(tx, type);
-    const merged = options.mergeInto ? await mergedInput(tx, user.organizationId, options.mergeInto, payload) : { payload, reused: {} };
+    const merged = options.mergeInto ? await mergedInput(tx, user.organizationId, options.mergeInto, payload, { update: true }) : { payload, reused: {} };
     const id = await insertComparable(tx, { kind: "valuation", avaluo, versionId, typeId }, user, type, merged.payload, merged.reused);
     await recompute(tx, versionId, type);
     return id;
@@ -1164,13 +1171,14 @@ export const capturedDay = (payload: Pick<ComparableInputPayload, "consultedOn" 
  * and its validity starts again. When the base's data is the more recent
  * (an import of an older offer), the base's comparable is used as it is.
  */
-async function mergedInput(tx: Tx, organizationId: number, sourceId: string, payload: ComparableInputPayload) {
+async function mergedInput(tx: Tx, organizationId: number, sourceId: string, payload: ComparableInputPayload, options: { update?: boolean } = {}) {
   const source = await tx.comparableAvaluo.findFirst({
     where: { UIdentificadorPublico: sourceId, ...inFirmBase(organizationId) },
     include: { propiedad: { select: { IFolioComparable: true } } },
   });
   if (!source) throw new ValuationWorkflowError("Comparable no encontrado", 404);
-  if (todayInMexico(source.DFechaActualizacionDatos) > capturedDay(payload)) return reusedInput(tx, organizationId, sourceId);
+  // An import keeps the most recent; «actualizar los datos de su ficha», chosen in the card, always takes the capture.
+  if (!options.update && todayInMexico(source.DFechaActualizacionDatos) > capturedDay(payload)) return reusedInput(tx, organizationId, sourceId);
   const { dataUpdatedAt: _kept, ...evidence } = reusedEvidenceOf(source);
   return { payload, reused: evidence };
 }
@@ -1438,6 +1446,7 @@ export async function deleteComparable(publicId: string, user: AuthUser, compara
       where: { IdComparableAvaluo: current.IdComparableAvaluo },
       data: { BIncluido: false, DFechaExclusion: new Date(), SMotivoExclusion: COMPARABLE_REMOVED_REASON },
     });
+    await keepInFirmBase(tx, user, [current.IdComparableAvaluo]);
     // Keep references 1..n in capture order, as the dictamen numbers them.
     const remaining = await tx.comparableAvaluo.findMany({
       where: { IdVersionAvaluo: versionId, IdTipoComparable: current.IdTipoComparable, BIncluido: true },
@@ -1450,6 +1459,48 @@ export async function deleteComparable(publicId: string, user: AuthUser, compara
     await recompute(tx, versionId, current.tipoComparable.SClave as ComparableType);
   });
 }
+
+/**
+ * A comparable taken out of a market stays in the firm's base (V8.8, 14:23:
+ * «si ya eligieron crear ficha… ya se les guarda como comparables y los pueden
+ * reutilizar», C-00144 to C-00147): when nothing else of the base holds its
+ * number, a copy of its card is kept in the base without a valuation, with the
+ * same number, photos and screenshot, and without factors. Numbers are never
+ * given again: the copy keeps the one it had.
+ */
+export async function keepInFirmBase(tx: Tx, user: Pick<AuthUser, "id" | "organizationId">, comparableIds: bigint[]): Promise<number> {
+  let kept = 0;
+  for (const id of comparableIds) {
+    const source = await tx.comparableAvaluo.findUniqueOrThrow({
+      where: { IdComparableAvaluo: id },
+      include: { ...comparableInclude, tipoComparable: { select: { SClave: true } } },
+    });
+    const folio = source.propiedad.IFolioComparable;
+    if (folio !== null) {
+      const held = await tx.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
+        SELECT c."IdComparableAvaluo" AS "id" ${FIRM_BASE_FROM}
+        WHERE ${firmBaseCondition(user.organizationId)} AND p."IFolioComparable" = ${folio} AND c."IdComparableAvaluo" <> ${id}
+        LIMIT 1`);
+      if (held.length) continue;
+    }
+    const type = source.tipoComparable.SClave as ComparableType;
+    const { formulas, ...values } = comparableFormValues(await toComparableDto(source, false));
+    const payload: ComparableInputPayload = {
+      ...values,
+      // The factors are of the valuation it left, and so are their formulas.
+      formulas: Object.fromEntries(Object.entries(formulas ?? {}).filter(([path]) => !path.startsWith("factors."))),
+      factors: [],
+    };
+    const typeId = await comparableTypeId(tx, type);
+    const propertyTypeId = await basePropertyTypeId(tx, type, payload);
+    await insertComparable(tx, { kind: "base", typeId, propertyTypeId }, user, type, payload, reusedEvidenceOf(source));
+    kept += 1;
+  }
+  return kept;
+}
+
+/** Why a comparable was set aside: taken out of its market, or with its whole market. */
+export const SET_ASIDE_REASONS = [COMPARABLE_REMOVED_REASON, MARKET_REMOVED_REASON];
 
 /**
  * The comparables of a market in the order the appraiser gave them (V7.2-14:
@@ -1657,8 +1708,12 @@ export async function saveComparableReview(publicId: string, user: AuthUser, com
     const { versionId } = await writableVersion(tx, publicId, user);
     const current = await findComparable(tx, versionId, comparableId);
     const checklist = await getComparableReviewSettings(user.organizationId, tx);
+    // The state's name and colour as the firm has them today, kept with the review (V8.12: deleting a state changes no comparable).
+    const status = reviewStatusOf(payload.status, checklist.statuses);
     const review: ReviewSnapshot = {
       status: payload.status,
+      statusLabel: status.label,
+      statusTone: status.tone,
       checks: payload.checks,
       // The name of each check as the firm calls it today: the review reads the same after the list changes.
       labels: labelsForReview(payload.checks, checklist),

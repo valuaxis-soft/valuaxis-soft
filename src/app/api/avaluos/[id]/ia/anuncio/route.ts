@@ -24,6 +24,6 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     });
     return NextResponse.json({ data: proposal });
   } catch (error) {
-    return aiErrorResponse("AI_LISTING_EXTRACT", error, "No se pudieron leer los datos del anuncio.");
+    return aiErrorResponse("AI_LISTING_EXTRACT", error, "No se pudieron leer los datos del anuncio por una falla del sistema. Vuelve a intentarlo; si se repite, envíanos este código.");
   }
 }

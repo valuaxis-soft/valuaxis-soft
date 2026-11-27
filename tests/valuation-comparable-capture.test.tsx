@@ -15,6 +15,7 @@ import {
   REVIEW_CHECK_LABELS,
   REVIEW_STATUSES,
   REVIEW_STATUS_LABELS,
+  reviewStatusOf,
   groupByComparableType,
   isVerifiedStatus,
   markAllChecks,
@@ -100,9 +101,9 @@ test("V5.4-06 (13 nov): with every check marked, unmarking the link gives «no v
   assert.equal(status, "VERIFICADO");
   for (let round = 0; round < 3; round++) {
     status = statusAfterLinkCheck(status, false);
-    assert.equal(REVIEW_STATUS_LABELS[status], "Verificado y no vigente", `unmarked, round ${round}`);
+    assert.equal(reviewStatusOf(status, null).label, "Verificado y no vigente", `unmarked, round ${round}`);
     status = statusAfterLinkCheck(status, true);
-    assert.equal(REVIEW_STATUS_LABELS[status], "Verificado y vigente", `marked again, round ${round}`);
+    assert.equal(reviewStatusOf(status, null).label, "Verificado y vigente", `marked again, round ${round}`);
   }
   assert.equal(marked.checks.link, true);
   // Marking the link alone does not verify a comparable nobody reviewed.

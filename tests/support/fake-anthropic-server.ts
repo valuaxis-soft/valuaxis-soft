@@ -40,6 +40,16 @@ export async function startFakeAnthropicServer(turns: FakeTurn[] | ((request: Re
         response.end(JSON.stringify({ type: "error", error: turn.error }));
         return;
       }
+      // A request without `stream` (the extraction) gets one message as JSON, its text being the turn's `text`.
+      if (received.body.stream !== true) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          id: `msg_fake_${index}`, type: "message", role: "assistant", model: String(received.body.model),
+          content: [{ type: "text", text: turn.text ?? "" }], stop_reason: turn.stopReason, stop_sequence: null,
+          usage: turn.usage ?? { input_tokens: 900, output_tokens: 300 },
+        }));
+        return;
+      }
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       const send = (event: Record<string, unknown>) => response.write(`event: ${String(event.type)}\ndata: ${JSON.stringify(event)}\n\n`);
       const usage = turn.usage ?? { input_tokens: 21_000, output_tokens: 1_500 };

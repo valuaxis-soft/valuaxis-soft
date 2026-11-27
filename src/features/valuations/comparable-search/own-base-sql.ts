@@ -19,15 +19,25 @@ export const FIRM_BASE_FROM = Prisma.sql`FROM "devpware_comparables_avaluos" c
     JOIN "devpware_tipos_comparables" t ON t."IdTipoComparable" = c."IdTipoComparable"
     JOIN "devpware_propiedades" p ON p."IdPropiedad" = c."IdPropiedad"`;
 
+/** The custom field of the organization that lists the numbers of its comparables in the trash (comparable-trash.service.ts). */
+export const COMPARABLE_TRASH_FIELD_KEY = "PAPELERA_COMPARABLES";
+
 /**
  * The tenant and what counts as the base: of an alive valuation of the
  * organization, only the version it shows today (reopening copies its
  * comparables); and those kept in the organization's base without a valuation.
+ * A number the firm sent to the trash («Borrar comparables viejos», V8.8) is
+ * out of the base until it is restored; its valuations do not change.
  */
 export const firmBaseCondition = (organizationId: number) => Prisma.sql`c."BIncluido" AND (
       (c."IdAvaluo" IS NOT NULL AND a."IdOrganizacion" = ${organizationId} AND a."BActivo" AND a."DFechaEliminacion" IS NULL
         AND c."IdVersionAvaluo" = COALESCE(a."IdVersionTrabajo", a."IdVersionFinal"))
       OR (c."IdAvaluo" IS NULL AND c."IdOrganizacion" = ${organizationId})
+    ) AND NOT EXISTS (
+      SELECT 1 FROM "devpware_campos_personalizados" trash
+        CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(trash."JConfiguracion"->'items') = 'array' THEN trash."JConfiguracion"->'items' ELSE '[]'::jsonb END) AS trashed(item)
+      WHERE trash."IdOrganizacion" = ${organizationId} AND trash."SClave" = ${COMPARABLE_TRASH_FIELD_KEY} AND trash."DFechaEliminacion" IS NULL
+        AND jsonb_typeof(trashed.item->'folio') = 'number' AND (trashed.item->>'folio')::int = p."IFolioComparable"
     )`;
 
 export const likePattern = (token: string) => `%${token.replace(/[\\%_]/g, "\\$&")}%`;

@@ -18,11 +18,14 @@ import type { WebSearchSubject } from "@/features/valuations/comparable-search/w
 import type { DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
 import type { CalculationPrecision } from "@/features/valuations/calculation/calculation-precision";
 import type { CalculationPrecisionDto } from "@/features/valuations/calculation/calculation-precision.service";
-import type { ComparableReviewDto } from "@/features/valuations/calculation/comparable-review";
+import type { ComparableReviewDto, ReviewStatusItem } from "@/features/valuations/calculation/comparable-review";
 import type { ImageFraming } from "@/features/valuations/services/image-framing";
 import type { ComparableSearchHit, ComparableSearchResponse } from "@/features/valuations/comparable-search/types";
 import type { WebListingCandidateInput } from "@/features/valuations/comparable-search/web-listings";
-import type { AiComparableQuota, WebListingOutcome, WebSearchStatusDto } from "@/features/valuations/comparable-search/web-search.service";
+import type {
+  AiComparableQuota, MachineryListingOutcome, WebListingOutcome, WebSearchRoundDto, WebSearchStatusDto,
+} from "@/features/valuations/comparable-search/web-search.service";
+import type { WebSearchTarget } from "@/features/valuations/comparable-search/web-search-history";
 import type { ConstructionTypeDto, ConstructionTypesDto, CostCalculationDto, CostInputDto } from "@/features/valuations/calculation/cost-types";
 import type { ConclusionCalculationDto, ConclusionSettingsDto } from "@/features/valuations/calculation/conclusion-types";
 import type { IncomeCalculationDto, IncomeInputDto } from "@/features/valuations/calculation/income-types";
@@ -34,6 +37,7 @@ import type { ComparableReviewSettingsInput, FirmSettingsInput } from "@/feature
 import type { FirmSettingsDto } from "@/features/firm/firm.service";
 import type { FirmListItem, FirmLists } from "@/features/firm/firm-lists";
 import type { ComparableReviewSettingsDto } from "@/features/firm/comparable-review-settings.service";
+import type { TrashedComparable } from "@/features/valuations/comparable-base/comparable-trash.service";
 import type { FirmDocumentPaletteDto } from "@/features/firm/document-palette.service";
 import type { DocumentPalette } from "@/features/valuations/services/document-palette";
 import type { BillingOverviewDto } from "@/features/billing/billing.service";
@@ -432,6 +436,12 @@ export const api = {
   /** AI assistance: both answer a draft to review; neither saves anything. */
   /** The firm's base of comparables (/comparables): import without a valuation, or to the valuations of each row's folio. */
   comparableBase: {
+    /** «Borrar comparables viejos» (V8.8): how many older than 6, 12 or 24 months would go to the trash. */
+    trashPreview: (months: number) =>
+      request<{ months: number; cutoff: string; count: number; sample: string[] }>(`/comparables/papelera?meses=${months}`),
+    trashOld: (months: number) => request<{ folios: number[] }>("/comparables/papelera", { method: "POST", body: JSON.stringify({ months }) }),
+    trash: () => request<{ items: TrashedComparable[] }>("/comparables/papelera"),
+    restoreTrash: (folios: number[] | "all") => request<{ restored: number }>("/comparables/papelera", { method: "PUT", body: JSON.stringify({ folios }) }),
     previewImport: (file: File, destination?: ImportDestination, type?: ComparableType) =>
       uploadForm<{ preview: ComparableImportPreview }>("/comparables/importar", { file, destino: destination, tipo: type }),
     importComparables: (
@@ -468,16 +478,19 @@ export const api = {
       request<ListingProposal>(`/avaluos/${id}/ia/anuncio`, { method: "POST", body: JSON.stringify(input) }),
     writeDraft: (id: ApiId, input: DraftInput) =>
       request<{ text: string }>(`/avaluos/${id}/ia/redaccion`, { method: "POST", body: JSON.stringify(input) }),
-    /** «Buscar con IA»: whether it can run and the request its box starts with. */
-    webSearchSetup: (id: ApiId, type: ComparableType) =>
+    /** «Buscar con IA»: whether it can run, the request its box starts with and the searches already made (V8.8). */
+    webSearchSetup: (id: ApiId, type: ComparableType, target: WebSearchTarget = "market") =>
       request<{
         enabled: boolean; disabledReason: string | null; suggestion: string; maxSearches: number; batch: number; quota: AiComparableQuota;
-        subject: WebSearchSubject; kind: ComparableKind | null;
+        subject: WebSearchSubject; kind: ComparableKind | null; history: WebSearchRoundDto[];
       }>(
-        `/avaluos/${id}/mercado/comparables/buscar-ia?tipo=${type}`,
+        `/avaluos/${id}/mercado/comparables/buscar-ia?tipo=${type}${target === "machinery" ? "&destino=maquinaria" : ""}`,
       ),
     /** Starts a search; its progress and results are asked for with `webSearchStatus`. */
-    startWebSearch: (id: ApiId, type: ComparableType, input: { text: string; previous: string[]; knownUrls: string[]; count: number; kind?: ComparableKind | null }) =>
+    startWebSearch: (
+      id: ApiId, type: ComparableType,
+      input: { text: string; previous: string[]; knownUrls: string[]; count: number; kind?: ComparableKind | null; target?: WebSearchTarget },
+    ) =>
       request<{ jobId: string; count: number }>(`/avaluos/${id}/mercado/comparables/buscar-ia?tipo=${type}`, { method: "POST", body: JSON.stringify(input) }),
     webSearchStatus: (id: ApiId, jobId: string) =>
       request<WebSearchStatusDto>(`/avaluos/${id}/mercado/comparables/buscar-ia/${jobId}`, { cache: "no-store" }),
@@ -486,6 +499,12 @@ export const api = {
       request<{ created: number; reused: number; skipped: number; items: WebListingOutcome[]; calculation: MarketCalculationDto; quota: AiComparableQuota }>(
         `/avaluos/${id}/mercado/comparables/buscar-ia/fichas?tipo=${type}`,
         { method: "POST", body: JSON.stringify({ candidates, kind }) },
+      ),
+    /** «Crear ofertas» of the machinery panel: cards of the firm's base, which the panel adds as offers. */
+    addMachineryListings: (id: ApiId, type: ComparableType, candidates: WebListingCandidateInput[], kind: ComparableKind | null = null) =>
+      request<{ items: MachineryListingOutcome[]; quota: AiComparableQuota }>(
+        `/avaluos/${id}/mercado/comparables/buscar-ia/fichas?tipo=${type}`,
+        { method: "POST", body: JSON.stringify({ candidates, kind, target: "machinery" }) },
       ),
   },
   /** Decimals shown and "calcular con la precisión mostrada" of the valuation; saving recomputes every approach. */
@@ -554,6 +573,9 @@ export const api = {
     factors: () => request<{ catalog: FactorCatalog; customized: boolean }>(`/organizacion/despacho/factores`),
     /** Despacho → Revisión de comparables: the checklist and thresholds of the review. */
     reviewChecklist: () => request<ComparableReviewSettingsDto>(`/organizacion/despacho/revision-comparables`),
+    /** «Estados de revisión» of the comparables (V8.12): the firm's list, from the review itself. */
+    saveReviewStatuses: (statuses: ReviewStatusItem[]) =>
+      request<ComparableReviewSettingsDto>(`/organizacion/despacho/estados-revision`, { method: "PUT", body: JSON.stringify({ statuses }) }),
     saveReviewChecklist: (input: ComparableReviewSettingsInput) =>
       request<ComparableReviewSettingsDto>(`/organizacion/despacho/revision-comparables`, { method: "PUT", body: JSON.stringify(input) }),
     /** Despacho → Colores del dictamen: the palette new valuations and templates start with. */

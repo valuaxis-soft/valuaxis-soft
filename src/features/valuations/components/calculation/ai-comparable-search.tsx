@@ -31,7 +31,10 @@ import {
   type WebSearchSubject,
   type WebListingDetails,
 } from "@/features/valuations/comparable-search/web-listings";
-import type { AiComparableQuota, WebSearchCandidateDto, WebSearchPhase, WebSearchStatusDto } from "@/features/valuations/comparable-search/web-search.service";
+import type {
+  AiComparableQuota, MachineryListingOutcome, WebSearchCandidateDto, WebSearchPhase, WebSearchRoundDto, WebSearchStatusDto,
+} from "@/features/valuations/comparable-search/web-search.service";
+import type { WebSearchTarget } from "@/features/valuations/comparable-search/web-search-history";
 import { ListingImagesPicker } from "./listing-images-picker";
 import { ComparableKindField } from "./comparable-kind-field";
 import { AiResultReviewNotice } from "../legal-notice";
@@ -46,8 +49,26 @@ const errorMessage = (error: unknown) =>
 
 type Setup = {
   enabled: boolean; disabledReason: string | null; suggestion: string; maxSearches: number; batch: number; quota: AiComparableQuota;
-  subject: WebSearchSubject; kind: ComparableKind | null;
+  subject: WebSearchSubject; kind: ComparableKind | null; history: WebSearchRoundDto[];
 };
+
+/** «3/25 anuncios encontrados con IA» (V8.8, 00:26): the listings found, used or not, of the 25 of the valuation. */
+export const quotaText = (quota: Pick<AiComparableQuota, "used" | "cap">) => `${quota.used}/${quota.cap} anuncios encontrados con IA`;
+
+/** What the box says of the count (V8.8: «no es que se cobre, más bien se contabiliza»). */
+export const QUOTA_NOTE = (cap: number, batch: number) =>
+  `El avalúo puede tener hasta ${cap} anuncios encontrados con IA, sumando todos sus mercados. Cada búsqueda propone hasta ${batch} anuncios y `
+  + "se contabilizan aunque no uses ninguno: elige bien dónde buscar. Lo que ya encontraste queda abajo, por búsqueda, para usarlo cuando quieras sin volver a buscar. "
+  + "Si te faltan comparables, captúralos o búscalos a mano.";
+
+/** The listings of every search, each once, in the order they were found. */
+export function candidatesOfRounds(rounds: readonly Pick<WebSearchRoundDto, "candidates">[]): WebSearchCandidateDto[] {
+  const seen = new Set<string>();
+  return rounds.flatMap((round) => round.candidates.filter((candidate) => (seen.has(candidate.key) ? false : (seen.add(candidate.key), true))));
+}
+
+/** A listing chosen in the machinery panel, with its card of the firm's base: the panel adds it as an offer. */
+export type MachineryListingChoice = { candidate: WebSearchCandidateDto; item: MachineryListingOutcome };
 type Running = { searches: number; maxSearches: number; fetches: number; phase: WebSearchPhase; query: string | null; elapsedSeconds: number };
 type Round = Pick<Extract<WebSearchStatusDto, { status: "done" }>, "discarded" | "discards" | "marketNote" | "searches" | "elapsedSeconds" | "count"> & { found: number };
 
@@ -95,7 +116,7 @@ const zoneOf = (candidate: WebSearchCandidateDto) =>
  * owns the dialog, not in the dialog: closing it by accident does not throw
  * away results that cost a search, and a search in course keeps going.
  */
-export function useAiComparableSearch(valuationId: string, type: ComparableType, active: boolean) {
+export function useAiComparableSearch(valuationId: string, type: ComparableType, active: boolean, target: WebSearchTarget = "market") {
   const [setup, setSetup] = useState<Setup | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -103,7 +124,8 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
   const [kind, setKind] = useState<ComparableKind | null>(null);
   /** What was asked so far in this search, oldest first. */
   const [asked, setAsked] = useState<string[]>([]);
-  const [candidates, setCandidates] = useState<WebSearchCandidateDto[]>([]);
+  /** Every search of this market kept with the valuation, with its listings (V8.8): shown by search, oldest first. */
+  const [rounds, setRounds] = useState<WebSearchRoundDto[]>([]);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [running, setRunning] = useState<Running | null>(null);
   const [round, setRound] = useState<Round | null>(null);
@@ -111,29 +133,41 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
   const [creating, setCreating] = useState(false);
   /** Listings the next search asks for: five, or fewer for «Buscar N más». */
   const [count, setCount] = useState(WEB_SEARCH_BATCH);
-  /** Comparables found with AI the valuation includes, across its markets, and how many it may. */
+  /** Listings found with AI in the valuation, across its markets, and how many it may have. */
   const [quota, setQuota] = useState<AiComparableQuota | null>(null);
   // The appraiser's own screenshot and photos of each listing, by its key, until its comparable is created.
   const [images, setImages] = useState<Record<string, PendingImages>>({});
   const requested = useRef(false);
   // Bumped on unmount and on «Nueva búsqueda»: an answer of before is not applied.
   const generation = useRef(0);
+  const candidates = useMemo(() => candidatesOfRounds(rounds), [rounds]);
 
+  // Read again every time the dialog opens: the subject's address may have changed, and so the request it starts with (V8.8).
   useEffect(() => {
-    if (!active || requested.current) return;
+    if (!active) {
+      requested.current = false;
+      return;
+    }
+    if (requested.current) return;
     requested.current = true;
-    api.ai.webSearchSetup(valuationId, type)
+    api.ai.webSearchSetup(valuationId, type, target)
       .then((loaded) => {
         setSetup(loaded);
+        setSetupError(null);
         setQuota(loaded.quota);
-        setKind(loaded.kind);
+        setKind((current) => current ?? loaded.kind);
+        setRounds((current) => {
+          // A search finished in this page and not yet in the history read stays.
+          const known = new Set(loaded.history.map((item) => item.id));
+          return [...loaded.history, ...current.filter((item) => !known.has(item.id))];
+        });
         setText((current) => current || loaded.suggestion);
       })
       .catch((failure) => {
         requested.current = false;
         setSetupError(errorMessage(failure));
       });
-  }, [active, valuationId, type]);
+  }, [active, valuationId, type, target]);
 
   useEffect(() => () => { generation.current += 1; }, []);
 
@@ -154,6 +188,7 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
         knownUrls: candidates.slice(-WEB_SEARCH_MAX_KNOWN).map((candidate) => candidate.url),
         count,
         kind,
+        target,
       });
       let missed = 0;
       for (;;) {
@@ -176,11 +211,12 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
           continue;
         }
         if (status.status === "failed") throw new Error(status.error);
-        // What was found before stays; a listing found again is not listed twice.
-        setCandidates((previous) => {
-          const known = new Set(previous.map((candidate) => candidate.key));
-          return [...previous, ...status.candidates.filter((candidate) => !known.has(candidate.key))];
-        });
+        // Each search is kept apart, with what was asked; a listing found again is not listed twice.
+        const kept: WebSearchRoundDto = status.round ?? {
+          id: jobId, type, target, request, kind, searchedAt: new Date().toISOString(), count: status.count, found: status.candidates.length,
+          marketNote: status.marketNote, candidates: status.candidates,
+        };
+        setRounds((previous) => [...previous, kept]);
         setRound({
           found: status.candidates.length, discarded: status.discarded, discards: status.discards, marketNote: status.marketNote,
           searches: status.searches, elapsedSeconds: status.elapsedSeconds, count: status.count,
@@ -195,7 +231,7 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
     } finally {
       if (current === generation.current) setRunning(null);
     }
-  }, [asked, candidates, count, kind, setup, text, type, valuationId]);
+  }, [asked, candidates, count, kind, setup, target, text, type, valuationId]);
 
   /**
    * Another kind: the request the box starts with is written again for it,
@@ -208,22 +244,34 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
     setText((current) => (!current.trim() || current === before || current === setup.suggestion ? suggestedWebSearchText(type, setup.subject, next) : current));
   }, [kind, setup, type]);
 
+  /**
+   * «Nueva búsqueda» (V8.8, 03:20): a search apart from the last one, which
+   * starts with the last request written, to edit it. What was found before
+   * stays below, by search.
+   */
   const restart = useCallback(() => {
     generation.current += 1;
+    const last = asked[asked.length - 1] ?? rounds[rounds.length - 1]?.request ?? setup?.suggestion ?? "";
     setAsked([]);
-    setCandidates([]);
     setSelected(new Set());
     setRunning(null);
     setRound(null);
     setError(null);
-    setImages({});
-    setText(setup?.suggestion ?? "");
-  }, [setup]);
+    setText(last);
+  }, [asked, rounds, setup]);
 
   /** The screenshot and photos the appraiser pasted for a listing; adding some chooses it. */
   const setImagesFor = useCallback((key: string, next: PendingImages) => {
     setImages((current) => ({ ...current, [key]: next }));
     if (imageCount(next)) setSelected((current) => (current.has(key) ? current : new Set([...current, key])));
+  }, []);
+
+  /** The listings chosen are marked as used: in the valuation, or in the firm's base. */
+  const markUsed = useCallback((keys: ReadonlySet<string>, existing: (candidate: WebSearchCandidateDto) => WebSearchCandidateDto["existing"]) => {
+    setRounds((previous) => previous.map((item) => ({
+      ...item,
+      candidates: item.candidates.map((candidate) => (keys.has(candidate.key) ? { ...candidate, existing: existing(candidate) } : candidate)),
+    })));
   }, []);
 
   const create = useCallback(async (): Promise<MarketCalculationDto | null> => {
@@ -235,9 +283,7 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
       setQuota(result.quota);
       const keys = new Set(chosen.map((candidate) => candidate.key));
       // They are in the valuation now: shown as such, and not offered again.
-      setCandidates((previous) => previous.map((candidate) => (keys.has(candidate.key)
-        ? { ...candidate, existing: { comparableId: candidate.existing?.comparableId ?? "", folio: candidate.existing?.folio ?? null, inValuation: true } }
-        : candidate)));
+      markUsed(keys, (candidate) => ({ comparableId: candidate.existing?.comparableId ?? "", folio: candidate.existing?.folio ?? null, inValuation: true }));
       setSelected(new Set());
       // The images pasted for each listing go to the comparable it became, through the routes of the form.
       let calculation = result.calculation;
@@ -272,7 +318,7 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
         ...(result.skipped ? [`${result.skipped} ya estaba${result.skipped === 1 ? "" : "n"} en el avalúo`] : []),
         ...(uploaded ? [`${uploaded} imagen${uploaded === 1 ? "" : "es"} adjunta${uploaded === 1 ? "" : "s"}`] : []),
       ];
-      toast.success(`${parts.join("; ")}. Quedan «Sin revisar»: verifica cada una contra su anuncio${uploaded ? "" : " y agrega fotos y pantalla de referencia"}.`);
+      toast.success(`${parts.join("; ")}. Quedan «Sin revisar» y en la base del despacho: verifica cada una contra su anuncio${uploaded ? "" : " y agrega fotos y pantalla de referencia"}.`);
       if (failed) toast.error(`${failed === 1 ? "Una imagen no se pudo" : `${failed} imágenes no se pudieron`} guardar: ${errorMessage(firstError)} Agrégala${failed === 1 ? "" : "s"} desde la ficha.`);
       if (notAttached) toast.info(`${notAttached === 1 ? "Una imagen no se adjuntó" : `${notAttached} imágenes no se adjuntaron`}: su anuncio ya estaba en tu base y se usó esa ficha con su evidencia.`);
       return calculation;
@@ -282,11 +328,52 @@ export function useAiComparableSearch(valuationId: string, type: ComparableType,
     } finally {
       setCreating(false);
     }
-  }, [candidates, images, kind, selected, type, valuationId]);
+  }, [candidates, images, kind, markUsed, selected, type, valuationId]);
+
+  /**
+   * «Crear ofertas» of the machinery panel: the chosen listings become cards
+   * of the firm's base and the panel adds them as offers. Images pasted for
+   * them go to their card in the base.
+   */
+  const createMachinery = useCallback(async (): Promise<MachineryListingChoice[] | null> => {
+    const chosen = candidates.filter((candidate) => selected.has(candidate.key));
+    if (!chosen.length) return null;
+    setCreating(true);
+    try {
+      const result = await api.ai.addMachineryListings(valuationId, type, chosen.map(candidateInputOf), kind);
+      setQuota(result.quota);
+      const keys = new Set(chosen.map((candidate) => candidate.key));
+      const byUrl = new Map(result.items.map((item) => [item.url, item]));
+      markUsed(keys, (candidate) => {
+        const item = byUrl.get(candidate.url);
+        return item ? { comparableId: item.comparableId, folio: item.folio, inValuation: false } : candidate.existing;
+      });
+      setSelected(new Set());
+      for (const candidate of chosen) {
+        const pending = images[candidate.key];
+        const item = byUrl.get(candidate.url);
+        if (!imageCount(pending) || !pending || item?.outcome !== "CREATED") continue;
+        await uploadListingImages(pending, {
+          screenshot: (file) => api.comparableBase.uploadScreenshot(item.comparableId, file).then(() => null),
+          photo: (file) => api.comparableBase.uploadPhoto(item.comparableId, file).then(() => null),
+        });
+      }
+      setImages((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.has(key))));
+      return chosen.flatMap((candidate) => {
+        const item = byUrl.get(candidate.url);
+        return item ? [{ candidate, item }] : [];
+      });
+    } catch (failure) {
+      toast.error(errorMessage(failure));
+      return null;
+    } finally {
+      setCreating(false);
+    }
+  }, [candidates, images, kind, markUsed, selected, type, valuationId]);
 
   return {
-    setup, setupError, text, setText, asked, candidates, selected, setSelected, images, setImagesFor, running, round, error, creating, search, restart, create,
-    count, setCount, quota, kind, chooseKind,
+    setup, setupError, text, setText, asked, rounds, candidates, selected, setSelected, images, setImagesFor, running, round, error, creating, search, restart, create,
+    createMachinery, count, setCount, quota, kind, chooseKind, target,
   };
 }
 
@@ -309,34 +396,46 @@ function SortHeader({ label, column, sort, onSort, align }: { label: string; col
   );
 }
 
+/** «26/11/2026 10:42»: when a search was made, as the history lists it. */
+const searchedAt = (iso: string) => new Date(iso).toLocaleString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
 /**
  * «Buscar con IA»: a request in the appraiser's words, already written from
  * the subject, and the listings the web search found, in a table to choose
- * from. Every result is unverified: the table says so and links the listing.
+ * from, by search (V8.8: «de la búsqueda 1 se encontró uno; de la búsqueda 2,
+ * cuatro»). Every search of the market stays, so its listings are turned into
+ * cards later without searching again. Every result is unverified: the table
+ * says so and links the listing.
+ *
+ * From the machinery panel (`onMachineryOffers`) the chosen listings become
+ * cards of the firm's base and offers of the panel («Crear ofertas»).
  */
 export function AiComparableSearchPanel({
   search,
   type,
   readOnly,
   onCreated,
+  onMachineryOffers,
   onClose,
 }: {
   search: AiSearch;
   type: ComparableType;
   readOnly: boolean;
-  onCreated: (calculation: MarketCalculationDto) => void;
+  onCreated?: (calculation: MarketCalculationDto) => void;
+  onMachineryOffers?: (chosen: MachineryListingChoice[]) => void;
   onClose: () => void;
 }) {
-  const { setup, candidates, selected, setSelected, running, round } = search;
-  const land = isLandComparableType(type);
+  const { setup, candidates, selected, setSelected, running, round, rounds } = search;
+  const machinery = search.target === "machinery";
+  const land = isLandComparableType(type) && !machinery;
   const rent = isRentComparableType(type);
   const [sort, setSort] = useState<Sort | null>(null);
   // The listing whose screenshot and photos are being pasted, under its row.
   const [openImages, setOpenImages] = useState<string | null>(null);
   const areaOf = useCallback((candidate: WebSearchCandidateDto) => (land ? candidate.landArea : candidate.builtArea), [land]);
 
-  const rows = useMemo(() => {
-    if (!sort) return candidates;
+  const sortRows = useCallback((items: WebSearchCandidateDto[]) => {
+    if (!sort) return items;
     const value = (candidate: WebSearchCandidateDto): number | string | null =>
       sort.key === "area" ? areaOf(candidate)
         : sort.key === "price" ? candidate.price
@@ -344,19 +443,30 @@ export function AiComparableSearchPanel({
             : sort.key === "zone" ? zoneOf(candidate).toLowerCase() || null
               : candidate.portal.toLowerCase();
     const sign = sort.direction === "asc" ? 1 : -1;
-    return [...candidates].sort((a, b) => {
+    return [...items].sort((a, b) => {
       const left = value(a);
       const right = value(b);
       // Listings without the datum go last in both directions.
       if (left === null || right === null) return left === right ? 0 : left === null ? 1 : -1;
       return sign * (typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right), "es"));
     });
-  }, [areaOf, candidates, sort]);
+  }, [areaOf, sort]);
+  // Each search with its listings, the newest first; a listing found again is listed once, in its first search.
+  const groups = useMemo(() => {
+    const seen = new Set<string>();
+    return rounds.map((item, index) => ({
+      round: item,
+      number: index + 1,
+      rows: sortRows(item.candidates.filter((candidate) => (seen.has(candidate.key) ? false : (seen.add(candidate.key), true)))),
+    })).reverse();
+  }, [rounds, sortRows]);
 
   const onSort = (key: SortKey) =>
     setSort((current) => (current?.key !== key ? { key, direction: "asc" } : current.direction === "asc" ? { key, direction: "desc" } : null));
 
-  const selectable = candidates.filter((candidate) => !candidate.existing?.inValuation);
+  // In the machinery panel a listing already in the base can be added again as an offer; in a market, not twice.
+  const usable = (candidate: WebSearchCandidateDto) => (machinery ? true : !candidate.existing?.inValuation);
+  const selectable = candidates.filter(usable);
   const chosen = selectable.filter((candidate) => selected.has(candidate.key));
   const toggle = (key: string, checked: boolean) =>
     setSelected((current) => {
@@ -371,9 +481,17 @@ export function AiComparableSearchPanel({
     void search.search();
   };
   const create = async () => {
+    if (machinery) {
+      const offers = await search.createMachinery();
+      if (offers) {
+        onMachineryOffers?.(offers);
+        onClose();
+      }
+      return;
+    }
     const calculation = await search.create();
     if (calculation) {
-      onCreated(calculation);
+      onCreated?.(calculation);
       onClose();
     }
   };
@@ -396,35 +514,32 @@ export function AiComparableSearchPanel({
   // «Buscar N más» never asks for more than the places left.
   const counts = Array.from({ length: Math.min(setup.batch, left) }, (_, index) => index + 1);
   const asking = Math.min(search.count, left);
-  const tooMany = chosen.length > left;
+  const tooMany = !machinery && chosen.length > Math.max(0, quota.cap - quota.cards);
   return (
     <>
       <div className="grid gap-1 rounded-md border bg-muted/40 p-3 text-xs" data-ai-quota>
         <p className="flex flex-wrap items-center gap-2 text-sm">
-          <Badge variant={left ? "secondary" : "outline"} className="tabular-nums">{quota.used} de {quota.cap} con IA</Badge>
-          <span className="text-muted-foreground">comparables encontrados con IA en este avalúo, sumando todos sus mercados</span>
+          <Badge variant={left ? "secondary" : "outline"} className="tabular-nums" data-ai-quota-count>{quotaText(quota)}</Badge>
+          <span className="text-muted-foreground">en este avalúo, sumando todos sus mercados{quota.cards ? ` · ${quota.cards} ya son comparables` : ""}</span>
         </p>
-        <p className="text-muted-foreground">
-          El avalúo puede incluir hasta {AI_COMPARABLES_PER_VALUATION} comparables encontrados con IA. Cada búsqueda propone hasta {setup.batch} anuncios y se cobra
-          aunque no uses ninguno: elige bien dónde buscar. Si te faltan comparables, captúralos o búscalos a mano.
-        </p>
+        <p className="text-muted-foreground">{QUOTA_NOTE(AI_COMPARABLES_PER_VALUATION, setup.batch)}</p>
       </div>
       <form className="grid gap-2" onSubmit={submit} noValidate>
         {refining ? (
           <ol className="grid gap-1 text-xs text-muted-foreground" aria-label="Lo que ya buscaste">
-            {search.asked.map((request, index) => <li key={index}><span className="font-medium">Búsqueda {index + 1}:</span> {request}</li>)}
+            {search.asked.map((request, index) => <li key={index}><span className="font-medium">Búsqueda {rounds.length - search.asked.length + index + 1}:</span> {request}</li>)}
           </ol>
         ) : null}
-        {/* What is searched for: the default request is written for it, and the cards take it. Only real estate in a market. */}
+        {/* What is searched for: the default request is written for it, and the cards take it. Real estate in a market, machinery in its panel. */}
         <Field className="max-w-sm">
-          <FieldLabel htmlFor="ai-search-kind">Tipo de inmueble</FieldLabel>
+          <FieldLabel htmlFor="ai-search-kind">{machinery ? "Tipo de bien" : "Tipo de inmueble"}</FieldLabel>
           <ComparableKindField
             id="ai-search-kind"
-            kindClass={comparableClassOfType(type)}
+            kindClass={machinery ? "MAQUINARIA" : comparableClassOfType(type)}
             disabled={busy}
-            emptyLabel="El del mercado"
+            emptyLabel={machinery ? "Maquinaria y equipo" : "El del mercado"}
             value={{ key: search.kind?.key ?? "", label: search.kind?.label ?? "" }}
-            onChange={(next) => search.chooseKind(next.key ? { key: next.key, label: next.label || "Otro", class: comparableClassOfType(type) } : null)}
+            onChange={(next) => search.chooseKind(next.key ? { key: next.key, label: next.label || "Otro", class: machinery ? "MAQUINARIA" : comparableClassOfType(type) } : null)}
           />
         </Field>
         <Field>
@@ -436,7 +551,9 @@ export function AiComparableSearchPanel({
             maxLength={WEB_SEARCH_TEXT_MAX}
             value={search.text}
             disabled={busy}
-            placeholder={refining ? "Opcional: también los libramientos norte y sur, hasta 9,000 m². Vacío, busca más de lo mismo." : "Por ejemplo: terrenos en venta de 5,000 a 7,000 m² en la mancha urbana de Arandas, Jalisco"}
+            placeholder={refining
+              ? "Opcional: también los libramientos norte y sur, hasta 9,000 m². Vacío, busca más de lo mismo."
+              : machinery ? "Por ejemplo: retroexcavadoras Caterpillar 416F de 2015 a 2020 en venta en Jalisco" : "Por ejemplo: terrenos en venta de 5,000 a 7,000 m² en la mancha urbana de Arandas, Jalisco"}
             aria-describedby="ai-search-hint"
             onChange={(event) => search.setText(event.target.value)}
           />
@@ -457,19 +574,19 @@ export function AiComparableSearchPanel({
             </>
           ) : (
             <p className="text-sm text-highlight-strong" role="status">
-              Este avalúo ya tiene sus {quota.cap} comparables encontrados con IA. Captura los demás a mano o búscalos en la base del despacho.
+              Este avalúo ya tiene sus {quota.cap} anuncios encontrados con IA. Usa los de abajo, captura los demás a mano o búscalos en la base del despacho.
             </p>
           )}
-          {refining ? (
-            <Button type="button" variant="ghost" disabled={busy} onClick={search.restart}>
+          {refining || rounds.length ? (
+            <Button type="button" variant="ghost" disabled={busy} onClick={search.restart} title="Empieza otra búsqueda con la última descripción, para que la cambies">
               <RotateCcw data-icon="inline-start" /> Nueva búsqueda
             </Button>
           ) : null}
         </div>
         <p id="ai-search-hint" className={search.error ? "text-sm text-destructive" : "text-xs text-muted-foreground"} role={search.error ? "alert" : undefined}>
           {search.error ?? (refining
-            ? "Los resultados anteriores se conservan y no se vuelven a proponer; lo nuevo se agrega a la tabla."
-            : "La descripción se arma con los datos del sujeto; edítala a tu gusto. Se envía a un servicio de IA que busca anuncios en la web. No incluyas datos del cliente.")}
+            ? "Los resultados anteriores se conservan y no se vuelven a proponer; lo nuevo se agrega abajo como otra búsqueda. «Nueva búsqueda» empieza con tu última descripción para que la cambies."
+            : "La descripción se arma con los datos y la ubicación del avalúo; edítala a tu gusto. Se envía a un servicio de IA que busca anuncios en la web. No incluyas datos del cliente.")}
         </p>
       </form>
 
@@ -492,9 +609,9 @@ export function AiComparableSearchPanel({
 
         {round && !running ? (
           <p className="text-sm">
-            <span className="font-medium">{candidates.length} anuncio{candidates.length === 1 ? "" : "s"} encontrado{candidates.length === 1 ? "" : "s"}</span>
+            <span className="font-medium">{round.found} anuncio{round.found === 1 ? "" : "s"} encontrado{round.found === 1 ? "" : "s"} en la última búsqueda</span>
             <span className="text-muted-foreground">
-              {refining && search.asked.length > 1 ? ` (${round.found} de ${round.count} pedidos en la última búsqueda)` : round.found < round.count ? ` de ${round.count} pedidos` : ""}
+              {round.found < round.count ? ` de ${round.count} pedidos` : ""}
               {" · "}{round.searches} búsqueda{round.searches === 1 ? "" : "s"} en la web en {round.elapsedSeconds} s
               {discardsText(round)}
             </span>
@@ -526,7 +643,10 @@ export function AiComparableSearchPanel({
             </p>
             {/* Matrix 1.5: the same review notice as «Pegar anuncio», next to the results. */}
             <AiResultReviewNotice />
-            <div className="max-h-96 overflow-auto rounded-md border">
+            <p className="text-sm font-medium" data-ai-history>
+              Historial de búsquedas de {machinery ? "maquinaria y equipo" : "este mercado"}: {rounds.length} búsqueda{rounds.length === 1 ? "" : "s"}, {candidates.length} anuncio{candidates.length === 1 ? "" : "s"}
+            </p>
+            <div className="max-h-[28rem] overflow-auto rounded-md border">
               <table className="w-full min-w-[760px] text-xs">
                 <thead className="sticky top-0 z-10 bg-muted">
                   <tr className="text-left">
@@ -541,133 +661,150 @@ export function AiComparableSearchPanel({
                       </th>
                     ) : null}
                     <th className="px-2 py-1.5">Anuncio</th>
-                    <SortHeader label={land ? "Superficie" : "Sup. construida"} column="area" sort={sort} onSort={onSort} align="right" />
+                    <SortHeader label={machinery ? "Superficie" : land ? "Superficie" : "Sup. construida"} column="area" sort={sort} onSort={onSort} align="right" />
                     <SortHeader label={rent ? "Renta mensual" : "Precio"} column="price" sort={sort} onSort={onSort} align="right" />
                     <SortHeader label={rent ? "$/m²/mes" : "$/m²"} column="unitValue" sort={sort} onSort={onSort} align="right" />
                     <SortHeader label="Zona" column="zone" sort={sort} onSort={onSort} />
                     <SortHeader label="Fuente" column="portal" sort={sort} onSort={onSort} />
                   </tr>
                 </thead>
-                <tbody>
-                  {rows.map((candidate) => {
-                    const area = areaOf(candidate);
-                    const folio = formatComparableId(candidate.existing?.folio);
-                    const details = publishedDetails(candidate);
-                    const pending = search.images[candidate.key] ?? NO_IMAGES;
-                    // Images go to a comparable created from this listing: not to one already in the valuation or brought from the base.
-                    const takesImages = !readOnly && !candidate.existing;
-                    const imagesOpen = openImages === candidate.key;
-                    return (
-                      <Fragment key={candidate.key}>
-                      <tr className="border-t align-top" data-selected={selected.has(candidate.key) || undefined}>
-                        {!readOnly ? (
+                {groups.map((group) => (
+                  <tbody key={group.round.id} data-ai-round={group.number}>
+                    <tr className="border-t bg-muted/60">
+                      <td colSpan={7} className="px-2 py-1.5">
+                        <span className="font-semibold">Búsqueda {group.number}</span>
+                        <span className="text-muted-foreground"> · {searchedAt(group.round.searchedAt)} · {group.round.found} de {group.round.count} anuncio{group.round.count === 1 ? "" : "s"}</span>
+                        <span className="block text-muted-foreground">«{group.round.request}»</span>
+                      </td>
+                    </tr>
+                    {!group.rows.length ? (
+                      <tr className="border-t"><td colSpan={7} className="px-2 py-1.5 text-muted-foreground">Sin anuncios nuevos en esta búsqueda.</td></tr>
+                    ) : null}
+                    {group.rows.map((candidate) => {
+                      const area = areaOf(candidate);
+                      const folio = formatComparableId(candidate.existing?.folio);
+                      const details = publishedDetails(candidate);
+                      const pending = search.images[candidate.key] ?? NO_IMAGES;
+                      // Images go to a card created from this listing: not to one already in the valuation or brought from the base.
+                      const takesImages = !readOnly && !candidate.existing;
+                      const imagesOpen = openImages === candidate.key;
+                      return (
+                        <Fragment key={candidate.key}>
+                        <tr className="border-t align-top" data-selected={selected.has(candidate.key) || undefined}>
+                          {!readOnly ? (
+                            <td className="px-2 py-1.5">
+                              <Checkbox
+                                aria-label={`Elegir ${candidate.title}`}
+                                checked={selected.has(candidate.key) && usable(candidate)}
+                                disabled={!usable(candidate)}
+                                onCheckedChange={(checked) => toggle(candidate.key, checked)}
+                              />
+                            </td>
+                          ) : null}
                           <td className="px-2 py-1.5">
-                            <Checkbox
-                              aria-label={`Elegir ${candidate.title}`}
-                              checked={selected.has(candidate.key) && !candidate.existing?.inValuation}
-                              disabled={Boolean(candidate.existing?.inValuation)}
-                              onCheckedChange={(checked) => toggle(candidate.key, checked)}
-                            />
-                          </td>
-                        ) : null}
-                        <td className="px-2 py-1.5">
-                          <span className="block text-sm">{candidate.title}</span>
-                          <span className="mt-0.5 flex flex-wrap items-center gap-1 text-muted-foreground">
-                            <Badge variant="outline">Sin verificar</Badge>
-                            {candidate.existing?.inValuation ? <Badge variant="secondary">Ya está en este avalúo</Badge>
-                              : candidate.existing ? <Badge variant="secondary">Ya está en tu base{folio ? ` (${folio})` : ""}: se usará esa ficha</Badge> : null}
-                            {candidate.pageRead ? (
-                              <Badge variant="secondary" data-page-read>
-                                Página abierta: sigue publicado{candidate.verifiedFields.length ? ` · ${candidate.verifiedFields.length} datos confirmados en ella` : ""}
-                              </Badge>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-highlight-strong" data-page-unread>
-                                <AlertTriangle className="size-3" /> No se pudo abrir el anuncio: confirma que siga publicado
-                              </span>
-                            )}
-                            {!candidate.urlConfirmed ? (
-                              <span className="inline-flex items-center gap-1 text-highlight-strong">
-                                <AlertTriangle className="size-3" /> La liga no salió tal cual en el buscador: ábrela antes de elegirlo
+                            <span className="block text-sm">{candidate.title}</span>
+                            <span className="mt-0.5 flex flex-wrap items-center gap-1 text-muted-foreground">
+                              <Badge variant="outline">Sin verificar</Badge>
+                              {candidate.existing?.inValuation ? <Badge variant="secondary">Ya está en este avalúo{folio ? ` (${folio})` : ""}</Badge>
+                                : candidate.existing ? <Badge variant="secondary">Ya está en tu base{folio ? ` (${folio})` : ""}: se usará esa ficha</Badge> : null}
+                              {candidate.pageRead ? (
+                                <Badge variant="secondary" data-page-read>
+                                  Página abierta: sigue publicado{candidate.verifiedFields.length ? ` · ${candidate.verifiedFields.length} datos confirmados en ella` : ""}
+                                </Badge>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-highlight-strong" data-page-unread>
+                                  <AlertTriangle className="size-3" /> No se pudo abrir el anuncio: confirma que siga publicado
+                                </span>
+                              )}
+                              {!candidate.urlConfirmed ? (
+                                <span className="inline-flex items-center gap-1 text-highlight-strong">
+                                  <AlertTriangle className="size-3" /> La liga no salió tal cual en el buscador: ábrela antes de elegirlo
+                                </span>
+                              ) : null}
+                              {!land && candidate.landArea ? <span>· Terreno {number(candidate.landArea)} m²</span> : null}
+                              {candidate.listingDate ? <span>· Publicado {candidate.listingDate.split("-").reverse().join("/")}</span> : null}
+                            </span>
+                            {candidate.notes ? <span className="mt-0.5 block text-muted-foreground">{candidate.notes}</span> : null}
+                            {details.length ? (
+                              <span className="mt-0.5 block" data-listing-details>
+                                <span className="font-medium">Datos del anuncio ({details.length}):</span>{" "}
+                                <span className="text-muted-foreground">{details.map((key) => detailText(candidate, key)).join(" · ")}</span>
                               </span>
                             ) : null}
-                            {!land && candidate.landArea ? <span>· Terreno {number(candidate.landArea)} m²</span> : null}
-                            {candidate.listingDate ? <span>· Publicado {candidate.listingDate.split("-").reverse().join("/")}</span> : null}
-                          </span>
-                          {candidate.notes ? <span className="mt-0.5 block text-muted-foreground">{candidate.notes}</span> : null}
-                          {details.length ? (
-                            <span className="mt-0.5 block" data-listing-details>
-                              <span className="font-medium">Datos del anuncio ({details.length}):</span>{" "}
-                              <span className="text-muted-foreground">{details.map((key) => detailText(candidate, key)).join(" · ")}</span>
-                            </span>
-                          ) : null}
-                          {takesImages ? (
-                            <Button
-                              type="button" size="xs" variant={imageCount(pending) ? "secondary" : "ghost"} className="mt-1"
-                              aria-expanded={imagesOpen}
-                              onClick={() => setOpenImages(imagesOpen ? null : candidate.key)}
-                              data-listing-images-toggle
+                            {takesImages ? (
+                              <Button
+                                type="button" size="xs" variant={imageCount(pending) ? "secondary" : "ghost"} className="mt-1"
+                                aria-expanded={imagesOpen}
+                                onClick={() => setOpenImages(imagesOpen ? null : candidate.key)}
+                                data-listing-images-toggle
+                              >
+                                <ImagePlus data-icon="inline-start" />
+                                {imageCount(pending)
+                                  ? `Captura y fotos (${imageCount(pending)})`
+                                  : "Pegar captura y fotos"}
+                              </Button>
+                            ) : null}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">
+                            {area ? `${number(area)} m²` : <span className="text-muted-foreground">{machinery ? "—" : "Superficie no publicada"}</span>}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">
+                            {candidate.price === null ? <span className="text-muted-foreground">Precio no publicado</span>
+                              : candidate.currency === "USD" ? <>USD {number(candidate.price)}<span className="block text-muted-foreground">en dólares, sin convertir</span></>
+                                : pesos(candidate.price)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{candidate.unitValue === null ? "—" : pesos(candidate.unitValue)}</td>
+                          <td className="px-2 py-1.5">
+                            <span className="block">{zoneOf(candidate) || <span className="text-muted-foreground">Zona no publicada</span>}</span>
+                            {candidate.neighborhood || candidate.reference
+                              ? <span className="block text-muted-foreground">{[candidate.municipality, candidate.state].filter(Boolean).join(", ")}</span> : null}
+                          </td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">
+                            <span className="block">{candidate.portal}</span>
+                            <a
+                              className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+                              href={candidate.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`Abrir el anuncio «${candidate.title}» en otra pestaña`}
                             >
-                              <ImagePlus data-icon="inline-start" />
-                              {imageCount(pending)
-                                ? `Captura y fotos (${imageCount(pending)})`
-                                : "Pegar captura y fotos"}
-                            </Button>
-                          ) : null}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">
-                          {area ? `${number(area)} m²` : <span className="text-muted-foreground">Superficie no publicada</span>}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">
-                          {candidate.price === null ? <span className="text-muted-foreground">Precio no publicado</span>
-                            : candidate.currency === "USD" ? <>USD {number(candidate.price)}<span className="block text-muted-foreground">en dólares, sin convertir</span></>
-                              : pesos(candidate.price)}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{candidate.unitValue === null ? "—" : pesos(candidate.unitValue)}</td>
-                        <td className="px-2 py-1.5">
-                          <span className="block">{zoneOf(candidate) || <span className="text-muted-foreground">Zona no publicada</span>}</span>
-                          {candidate.neighborhood || candidate.reference
-                            ? <span className="block text-muted-foreground">{[candidate.municipality, candidate.state].filter(Boolean).join(", ")}</span> : null}
-                        </td>
-                        <td className="px-2 py-1.5 whitespace-nowrap">
-                          <span className="block">{candidate.portal}</span>
-                          <a
-                            className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"
-                            href={candidate.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-label={`Abrir el anuncio «${candidate.title}» en otra pestaña`}
-                          >
-                            <ExternalLink className="size-3.5" /> Abrir anuncio
-                          </a>
-                        </td>
-                      </tr>
-                      {takesImages && imagesOpen ? (
-                        <tr className="bg-muted/30" data-listing-images-row>
-                          <td colSpan={7} className="px-2 py-2">
-                            <ListingImagesPicker
-                              images={pending}
-                              onChange={(next) => search.setImagesFor(candidate.key, next)}
-                              label={`Captura y fotos de «${candidate.title}»`}
-                              baseName="anuncio"
-                              disabled={busy}
-                              autoFocus
-                              hint="Abre el anuncio, toma la captura y pégala. Se guardan con la ficha al crearla."
-                            />
+                              <ExternalLink className="size-3.5" /> Abrir anuncio
+                            </a>
                           </td>
                         </tr>
-                      ) : null}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
+                        {takesImages && imagesOpen ? (
+                          <tr className="bg-muted/30" data-listing-images-row>
+                            <td colSpan={7} className="px-2 py-2">
+                              <ListingImagesPicker
+                                images={pending}
+                                onChange={(next) => search.setImagesFor(candidate.key, next)}
+                                label={`Captura y fotos de «${candidate.title}»`}
+                                baseName="anuncio"
+                                disabled={busy}
+                                autoFocus
+                                hint="Abre el anuncio, toma la captura y pégala. Se guardan con la ficha al crearla."
+                              />
+                            </td>
+                          </tr>
+                        ) : null}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                ))}
               </table>
             </div>
             {readOnly ? (
               <p className="text-xs text-muted-foreground">El avalúo es de solo lectura: puedes buscar y abrir los anuncios, pero no crear fichas.</p>
+            ) : machinery ? (
+              <p className="text-xs text-muted-foreground">
+                «Crear ofertas» guarda cada anuncio elegido como ficha de maquinaria en la base del despacho («Sin revisar», con su liga y su fuente) y lo agrega como oferta
+                de este enfoque de mercado. Las fichas se quedan en la base aunque después quites la oferta.
+              </p>
             ) : (
               <p className="text-xs text-muted-foreground">
                 «Crear fichas» agrega los anuncios elegidos a este mercado y a la base del despacho, con su liga, su fuente y los datos que publica, como «Sin revisar»;
-                la fecha de la oferta es la de consulta si el anuncio no dice otra, y la vigencia, de 6 meses.
+                se quedan en la base aunque después los quites del avalúo. La fecha de la oferta es la de consulta si el anuncio no dice otra, y la vigencia, de 6 meses.
                 Con «Pegar captura y fotos» pegas la captura del anuncio que abriste y sus fotos: se guardan como pantalla de referencia y fotografías de la ficha.
               </p>
             )}
@@ -678,14 +815,12 @@ export function AiComparableSearchPanel({
       <DialogFooter>
         <Button type="button" variant="ghost" disabled={search.creating} onClick={onClose}>Cerrar</Button>
         {!readOnly && tooMany ? (
-          <p className="text-xs text-destructive" role="alert">
-            {left ? `Solo puedes agregar ${left} más con IA en este avalúo: elige menos anuncios.` : "Este avalúo ya tiene sus comparables encontrados con IA."}
-          </p>
+          <p className="text-xs text-destructive" role="alert">Solo puedes agregar {Math.max(0, quota.cap - quota.cards)} comparables más con IA en este avalúo: elige menos anuncios.</p>
         ) : null}
         {!readOnly ? (
           <Button type="button" disabled={busy || !chosen.length || tooMany} onClick={() => void create()}>
             {search.creating ? <Loader2 data-icon="inline-start" className="animate-spin motion-reduce:animate-none" /> : null}
-            Crear fichas ({chosen.length})
+            {machinery ? `Crear ofertas (${chosen.length})` : `Crear fichas (${chosen.length})`}
           </Button>
         ) : null}
       </DialogFooter>

@@ -1,0 +1,105 @@
+"use client";
+
+import { Loader2, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { REVIEW_TONES, REVIEW_TONE_LABELS, type ReviewStatusItem, type ReviewTone } from "@/features/valuations/calculation/comparable-review";
+import { MAX_REVIEW_STATUSES, newStatusKey, reviewStatusListSchema } from "@/features/valuations/calculation/comparable-review-checklist";
+import { api } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
+import { REVIEW_TONE_STYLES } from "./review-status-style";
+
+/**
+ * «Estados de revisión» (V8.12, 04:49: «una opción aquí arribita… que si desean
+ * añadir otro o eliminar algún estado lo puedan eliminar o modificar, y así se
+ * marca para todos»): one row per state with its name and its colour, in the
+ * look the review already has. Deleting a state changes no comparable: each
+ * keeps it, with its name, until the appraiser gives it another.
+ */
+export function ReviewStatusEditor(props: { statuses: ReviewStatusItem[]; onSaved: (statuses: ReviewStatusItem[]) => void; onClose: () => void }) {
+  const [draft, setDraft] = useState<ReviewStatusItem[]>(props.statuses);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const edit = (index: number, change: Partial<ReviewStatusItem>) =>
+    setDraft((current) => current.map((item, at) => (at === index ? { ...item, ...change } : item)));
+
+  const save = async () => {
+    const parsed = reviewStatusListSchema.safeParse({ statuses: draft.map((item) => ({ ...item, label: item.label.trim() })) });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Revisa los estados.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await api.firm.saveReviewStatuses(parsed.data.statuses);
+      props.onSaved(saved.statuses);
+      toast.success("Estados de revisión guardados para todo el despacho.");
+      props.onClose();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "No se pudieron guardar los estados.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="grid gap-2 rounded-md border bg-muted/30 p-3" aria-label="Estados de revisión" data-review-status-editor>
+      <div>
+        <h3 className="text-sm font-semibold">Estados de revisión del despacho</h3>
+        <p className="text-xs text-muted-foreground">
+          Agrega, cambia el nombre o quita estados; valen para todos los comparables del despacho. Quitar un estado no cambia los comparables que lo tienen:
+          lo conservan hasta que les pongas otro. «Sin revisar» va primero y no se quita.
+        </p>
+      </div>
+      <ul className="grid gap-1.5">
+        {draft.map((item, index) => (
+          <li key={item.key} className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,8rem)_auto] items-center gap-2" data-review-status-row={item.key}>
+            <span className={cn("size-3 rounded-full", REVIEW_TONE_STYLES[item.tone].solid)} aria-hidden="true" />
+            <Input
+              aria-label={`Nombre del estado ${index + 1}`}
+              maxLength={60}
+              value={item.label}
+              onChange={(event) => edit(index, { label: event.target.value })}
+            />
+            <NativeSelect className="w-full" aria-label={`Color del estado ${item.label || index + 1}`} value={item.tone} onChange={(event) => edit(index, { tone: event.target.value as ReviewTone })}>
+              {REVIEW_TONES.map((tone) => <NativeSelectOption key={tone} value={tone}>{REVIEW_TONE_LABELS[tone]}</NativeSelectOption>)}
+            </NativeSelect>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-label={`Quitar el estado ${item.label}`}
+              disabled={index === 0}
+              title={index === 0 ? "«Sin revisar» no se quita" : "Quitar este estado de la lista; los comparables que lo tienen lo conservan"}
+              onClick={() => setDraft((current) => current.filter((_, at) => at !== index))}
+            >
+              <Trash2 />
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={draft.length >= MAX_REVIEW_STATUSES}
+          onClick={() => setDraft((current) => [...current, { key: newStatusKey(current.map((item) => item.key)), label: "", tone: "ocre" }])}
+        >
+          <Plus data-icon="inline-start" /> Agregar estado
+        </Button>
+        <span className="flex-1" />
+        <Button type="button" size="sm" variant="ghost" disabled={saving} onClick={props.onClose}>Cancelar</Button>
+        <Button type="button" size="sm" disabled={saving} onClick={() => void save()}>
+          {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}
+          Guardar estados
+        </Button>
+      </div>
+    </section>
+  );
+}

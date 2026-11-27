@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CircleHelp, ClipboardCheck, ExternalLink, Image as ImageIcon, Loader2, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, CircleHelp, ClipboardCheck, ExternalLink, Image as ImageIcon, ListChecks, Loader2, RefreshCw, Search } from "lucide-react";
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -15,15 +15,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatComparableId } from "@/features/valuations/calculation/comparable-card";
 import type { ReviewRowDto } from "@/features/valuations/calculation/comparable-card.service";
 import {
+  DEFAULT_REVIEW_STATUS_LIST,
   PENDING_REVIEW,
-  REVIEW_STATUSES,
-  REVIEW_STATUS_LABELS,
   WARNING_HELP,
   groupByComparableType,
   isVerifiedStatus,
   markAllChecks,
+  reviewStatusOf,
   statusAfterLinkCheck,
   type ComparableReviewDto,
+  type ReviewStatusItem,
   type ComparableWarning,
   type ReviewChecks,
   type ReviewStatus,
@@ -38,7 +39,8 @@ import { COMPARABLE_TYPES, COMPARABLE_TYPE_LABELS, isRentComparableType } from "
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { ComparableCardButton } from "./comparable-card-dialog";
-import { REVIEW_STATUS_STYLES } from "./review-status-style";
+import { REVIEW_TONE_STYLES } from "./review-status-style";
+import { ReviewStatusEditor } from "./review-status-editor";
 import { useExpandableDialog } from "./expandable-dialog";
 
 const money = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" }));
@@ -51,7 +53,7 @@ const statusOf = (row: ReviewRowDto): ReviewStatus => row.comparable.review?.sta
 export const REVIEW_LOAD_TIMEOUT_MS = 25_000;
 
 /** Words of the comparable to find it by: number, reference, location, source, contact, notes and warnings. */
-export function reviewRowMatches(row: ReviewRowDto, query: string) {
+export function reviewRowMatches(row: ReviewRowDto, query: string, statuses: readonly ReviewStatusItem[] = DEFAULT_REVIEW_STATUS_LIST) {
   const plain = (text: string) => text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const words = plain(query).split(/\s+/).filter(Boolean);
   if (!words.length) return true;
@@ -59,7 +61,7 @@ export function reviewRowMatches(row: ReviewRowDto, query: string) {
   const haystack = plain([
     formatComparableId(comparable.folio) ?? "", `comparable ${comparable.reference}`, COMPARABLE_TYPE_LABELS[row.type], comparable.location,
     comparable.sourceName ?? "", comparable.contactName ?? "", comparable.contactPhone ?? "", comparable.url ?? "",
-    comparable.review?.notes ?? "", REVIEW_STATUS_LABELS[statusOf(row)], ...row.warnings.map((warning) => warning.message),
+    comparable.review?.notes ?? "", reviewStatusOf(statusOf(row), statuses, comparable.review).label, ...row.warnings.map((warning) => warning.message),
   ].join(" "));
   return words.every((word) => haystack.includes(word));
 }
@@ -95,6 +97,7 @@ function ReviewRow(props: {
   onSaved: (review: ComparableReviewDto) => void;
   valuationId: string;
   checklist: ComparableReviewChecklist;
+  statuses: ReviewStatusItem[];
 }) {
   const { comparable, type, warnings } = props.row;
   const stored = comparable.review ?? PENDING_REVIEW;
@@ -104,6 +107,9 @@ function ReviewRow(props: {
   const [saving, setSaving] = useState(false);
   const id = formatComparableId(comparable.folio);
   const unitValue = comparable.area && comparable.price ? comparable.price / comparable.area : null;
+  const storedStatus = reviewStatusOf(stored.status, props.statuses, stored);
+  // A state the firm took out of its list is still offered to the comparable that has it, under its name.
+  const options = props.statuses.some((item) => item.key === stored.status) ? props.statuses : [...props.statuses, storedStatus];
   // The firm's points (Despacho → Revisión de comparables); the built area is not one of a land comparable.
   const checksShown = checklistFor(props.checklist, type);
   const allChecked = checksShown.every((check) => checks[check.key] === true);
@@ -135,13 +141,13 @@ function ReviewRow(props: {
   };
 
   return (
-    <li className={cn("grid gap-2 rounded-md border p-3", REVIEW_STATUS_STYLES[stored.status].row)} data-review-row={id ?? comparable.id} data-review-status={stored.status}>
+    <li className={cn("grid gap-2 rounded-md border p-3", REVIEW_TONE_STYLES[storedStatus.tone].row)} data-review-row={id ?? comparable.id} data-review-status={stored.status}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
             <span className="font-mono">{id ?? "Sin número"}</span>
             <Badge variant="secondary">{COMPARABLE_TYPE_LABELS[type]} · {comparable.reference}</Badge>
-            <span className={cn("rounded-sm px-1.5 py-0.5 text-xs font-medium", REVIEW_STATUS_STYLES[stored.status].solid)}>{REVIEW_STATUS_LABELS[stored.status]}</span>
+            <span className={cn("rounded-sm px-1.5 py-0.5 text-xs font-medium", REVIEW_TONE_STYLES[storedStatus.tone].solid)}>{storedStatus.label}</span>
           </p>
           <p className="truncate text-sm">{comparable.location}</p>
           <p className="text-xs text-muted-foreground tabular-nums">
@@ -175,7 +181,7 @@ function ReviewRow(props: {
           <label className="grid gap-1 text-xs">
             Estado
             <NativeSelect className="w-full" value={status} onChange={(event) => setStatus(event.target.value as ReviewStatus)} aria-label={`Estado de ${id ?? comparable.reference}`}>
-              {REVIEW_STATUSES.map((item) => <NativeSelectOption key={item} value={item}>{REVIEW_STATUS_LABELS[item]}</NativeSelectOption>)}
+              {options.map((item) => <NativeSelectOption key={item.key} value={item.key}>{item.label}</NativeSelectOption>)}
             </NativeSelect>
           </label>
           <ul className="grid gap-1 text-xs">
@@ -243,13 +249,16 @@ export function ComparableReviewDialog(props: {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<ReviewRowDto[] | null>(null);
   const [checklist, setChecklist] = useState<ComparableReviewChecklist>(DEFAULT_REVIEW_CHECKLIST);
+  /** The firm's states (V8.12): edited here, for the whole firm. */
+  const [statuses, setStatuses] = useState<ReviewStatusItem[]>(DEFAULT_REVIEW_STATUS_LIST);
+  const [editingStatuses, setEditingStatuses] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Which states to show (none chosen: all) and the words to find a comparable by.
   const [statusFilter, setStatusFilter] = useState<ReviewStatus | null>(null);
   const [query, setQuery] = useState("");
   const shown = useMemo(
-    () => rows?.filter((row) => (statusFilter === null || statusOf(row) === statusFilter) && reviewRowMatches(row, query)) ?? null,
-    [rows, statusFilter, query],
+    () => rows?.filter((row) => (statusFilter === null || statusOf(row) === statusFilter) && reviewRowMatches(row, query, statuses)) ?? null,
+    [rows, statusFilter, query, statuses],
   );
 
   // Which load is the latest: an answer of an earlier one (or one that arrives after the dialog closed) is not shown.
@@ -265,9 +274,15 @@ export function ComparableReviewDialog(props: {
       if (current()) setError(`La revisión tardó más de ${REVIEW_LOAD_TIMEOUT_MS / 1000} segundos en cargar. Revisa tu conexión e inténtalo de nuevo.`);
     }, REVIEW_LOAD_TIMEOUT_MS);
     // The firm's checklist; without it (an older server, a network hiccup) the built-in list.
-    const checklistLoad = api.firm.reviewChecklist().catch(() => DEFAULT_REVIEW_CHECKLIST);
+    const checklistLoad = api.firm.reviewChecklist().catch(() => ({ ...DEFAULT_REVIEW_CHECKLIST, statuses: DEFAULT_REVIEW_STATUS_LIST }));
     Promise.all([api.market.review(props.valuationId), checklistLoad])
-      .then(([next, firmChecklist]) => { if (current()) { setError(null); setChecklist(firmChecklist); setRows(next); } })
+      .then(([next, firmChecklist]) => {
+        if (!current()) return;
+        setError(null);
+        setChecklist(firmChecklist);
+        setStatuses(firmChecklist.statuses ?? DEFAULT_REVIEW_STATUS_LIST);
+        setRows(next);
+      })
       .catch((failure: unknown) => { if (current()) setError(failure instanceof Error ? failure.message : "No se pudo cargar la revisión."); })
       .finally(() => window.clearTimeout(timer));
   };
@@ -278,7 +293,10 @@ export function ComparableReviewDialog(props: {
   };
 
   const expandable = useExpandableDialog();
-  const counts = REVIEW_STATUSES.map((status) => [status, rows?.filter((row) => statusOf(row) === status).length ?? 0] as const);
+  // The firm's states, and those a comparable keeps after the firm took them out of its list.
+  const kept = (rows ?? []).flatMap((row) => (statuses.some((item) => item.key === statusOf(row)) ? [] : [reviewStatusOf(statusOf(row), null, row.comparable.review)]));
+  const shownStatuses = [...statuses, ...kept.filter((item, index) => kept.findIndex((other) => other.key === item.key) === index)];
+  const counts = shownStatuses.map((status) => [status, rows?.filter((row) => statusOf(row) === status.key).length ?? 0] as const);
 
   return (
     <>
@@ -295,6 +313,9 @@ export function ComparableReviewDialog(props: {
               despacho → Revisión de comparables). El estado es tu registro de la revisión: no cambia ningún cálculo ni impide concluir.
             </DialogDescription>
           </DialogHeader>
+          {editingStatuses ? (
+            <ReviewStatusEditor statuses={statuses} onSaved={setStatuses} onClose={() => setEditingStatuses(false)} />
+          ) : null}
           {rows ? (
             <div className="grid gap-2" data-review-filters>
               <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por estado">
@@ -303,18 +324,24 @@ export function ComparableReviewDialog(props: {
                 </Button>
                 {counts.map(([status, count]) => (
                   <Button
-                    key={status}
+                    key={status.key}
                     type="button"
                     size="sm"
                     variant="outline"
-                    aria-pressed={statusFilter === status}
-                    className={cn(statusFilter === status && cn(REVIEW_STATUS_STYLES[status].solid, "border-transparent hover:opacity-90"))}
-                    onClick={() => setStatusFilter((current) => (current === status ? null : status))}
+                    aria-pressed={statusFilter === status.key}
+                    className={cn(statusFilter === status.key && cn(REVIEW_TONE_STYLES[status.tone].solid, "border-transparent hover:opacity-90"))}
+                    onClick={() => setStatusFilter((current) => (current === status.key ? null : status.key))}
                   >
-                    <span className={cn("size-2 rounded-full", REVIEW_STATUS_STYLES[status].solid)} aria-hidden="true" />
-                    {REVIEW_STATUS_LABELS[status]}: {count}
+                    <span className={cn("size-2 rounded-full", REVIEW_TONE_STYLES[status.tone].solid)} aria-hidden="true" />
+                    {status.label}: {count}
                   </Button>
                 ))}
+                {/* V8.12: the list of states, editable here, «una opción aquí arribita». */}
+                {!props.readOnly && !editingStatuses ? (
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setEditingStatuses(true)} data-edit-review-statuses>
+                    <ListChecks data-icon="inline-start" /> Editar estados
+                  </Button>
+                ) : null}
               </div>
               <div className="relative max-w-md">
                 <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -354,6 +381,7 @@ export function ComparableReviewDialog(props: {
                         readOnly={props.readOnly}
                         valuationId={props.valuationId}
                         checklist={checklist}
+                        statuses={statuses}
                         onSaved={(review) => saved(row.comparable.id, review)}
                       />
                     ))}

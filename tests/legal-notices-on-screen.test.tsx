@@ -92,10 +92,14 @@ test("the third parties' notice shows once where the solicitante, the propietari
 
 test("«Pegar anuncio» warns next to the result; «Buscar con IA» warns too", () => {
   const paste = source("src/features/valuations/components/calculation/paste-listing-dialog.tsx");
-  assert.match(paste, /<AiResultReviewNotice \/>\s*<div className="flex flex-wrap items-center justify-between gap-2">/, "next to the result");
-  // Nothing is saved in the dialog: «Usar estos datos» only opens the comparable form.
+  // Nothing is saved in the dialog: «Extraer datos y crear ficha» only opens the comparable's card (V8.12).
   assert.doesNotMatch(paste, /api\.market\.|saveComparable|createComparable/);
-  assert.match(source("src/features/valuations/components/calculation/comparable-dialog.tsx"), /!comparable && props\.prefill && !readOnly \? <AiResultReviewNotice \/>/);
+  // The result is the card itself: the notice goes right before what was read from the listing.
+  assert.match(
+    source("src/features/valuations/components/calculation/comparable-dialog.tsx"),
+    /!comparable && props\.prefill && !readOnly \? <AiResultReviewNotice \/> : null}\s*\{!comparable && props\.listingEvidence && !readOnly \? <ListingEvidence/,
+    "next to the result",
+  );
   assert.match(source("src/features/valuations/components/calculation/ai-comparable-search.tsx"), /<AiResultReviewNotice \/>/);
 });
 

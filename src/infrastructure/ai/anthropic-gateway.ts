@@ -22,7 +22,8 @@ const EXTRACTION_TIMEOUT_MS = 30_000;
 const DRAFTING_TIMEOUT_MS = 45_000;
 /** The SDK retries rate limits, overloads and connection errors; once is enough for a person waiting. */
 const MAX_RETRIES = 1;
-const EXTRACTION_MAX_TOKENS = 2048;
+/** A long listing with its amenities and other facts reached 2,048 and its answer came cut (V8.12). */
+const EXTRACTION_MAX_TOKENS = 4096;
 /** Thinking counts toward the limit on models that always think. */
 const DRAFTING_MAX_TOKENS = 4096;
 const FALLBACK_BETA = "server-side-fallback-2026-07-01";
@@ -70,6 +71,19 @@ function translate(error: unknown): unknown {
     if (typeof error.status === "number" && error.status >= 500) return new AiGatewayError("unavailable");
   }
   return error;
+}
+
+/** A structured answer read with its schema; anything else is a reply that could not be read, never a bare error. */
+function parseStructured<T>(text: string, schema: z.ZodType<T>): T {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new AiGatewayError("invalid_output");
+  }
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) throw new AiGatewayError("invalid_output");
+  return parsed.data;
 }
 
 function assertCompleted(stopReason: string | null) {
@@ -225,16 +239,19 @@ export function createAnthropicGateway(options: { apiKey: string; extractionMode
 
     async extract<T>(prompt: AiPrompt, schema: z.ZodType<T>) {
       try {
-        const response = await client.messages.parse({
+        // Not `messages.parse`: it parses before the stop reason can be read, and an answer cut at the
+        // token limit threw a bare SDK error the user read as «… Código: G-…» (V8.12, «Pegar anuncio» again).
+        const { schema: jsonSchema } = zodOutputFormat(schema);
+        const response = await client.messages.create({
           model: extractionModel,
           max_tokens: EXTRACTION_MAX_TOKENS,
           system: system(prompt.system),
           messages: [{ role: "user", content: prompt.user }],
-          output_config: { format: zodOutputFormat(schema), ...(takesEffort(extractionModel) ? { effort: "low" as const } : {}) },
+          output_config: { format: { type: "json_schema", schema: jsonSchema }, ...(takesEffort(extractionModel) ? { effort: "low" as const } : {}) },
         }, { timeout: EXTRACTION_TIMEOUT_MS });
         assertCompleted(response.stop_reason);
-        if (response.parsed_output === null) throw new AiGatewayError("invalid_output");
-        return { data: response.parsed_output as T, usage: toUsage(response.model, response.usage) };
+        const text = response.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
+        return { data: parseStructured(text, schema), usage: toUsage(response.model, response.usage) };
       } catch (error) {
         throw translate(error);
       }

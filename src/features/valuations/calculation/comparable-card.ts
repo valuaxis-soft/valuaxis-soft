@@ -191,6 +191,26 @@ export function customLocationText(location: string | null | undefined, address:
   return stored && normalizeCrossing(stored) === formatAddress(address) ? "" : stored;
 }
 
+/**
+ * V8.11: a card of «Circuito Del Lince Poniente» printed «Callejón del Iris
+ * 155…», another comparable's address, because its «Ubicación como la imprime
+ * el dictamen» kept a line typed apart from its fields. The name of the street
+ * of the fields (without its type) when a typed line does not mention it, so
+ * the card can say so; null when the line names it, or there is nothing typed
+ * or no street to compare.
+ */
+export function typedLocationMismatch(typed: string | null | undefined, address: ComparableAddress | null | undefined): string | null {
+  const line = plainWord(part(typed)).replace(/[^\p{L}\d]+/gu, " ").trim();
+  const street = normalizeCrossing(part(address?.street));
+  if (!line || !street) return null;
+  // The words that name the street: «Del Lince Poniente» → lince, poniente; articles and its type do not count.
+  const words = plainWord(street).replace(/[^\p{L}\d]+/gu, " ").split(" ")
+    .filter((word) => word.length > 2 && !["del", "las", "los", "calle", "avenida", "circuito", "privada", "andador", "callejon"].includes(word));
+  if (!words.length) return null;
+  const said = ` ${line} `;
+  return words.some((word) => said.includes(` ${word} `)) ? null : streetWithType({ ...address, street } as ComparableAddress);
+}
+
 const NEIGHBORHOOD_PREFIX = /^(?:colonia(?!\p{L})|col\.|col(?=\s))\s*/iu;
 const SUBDIVISION_PREFIX = /^(?:fraccionamiento(?!\p{L})|fracc?\.|fracc?(?=\s))\s*/iu;
 const POSTAL_CODE_PREFIX = /^(?:c\.\s?p\.?|cp(?!\p{L}))\s*:?\s*/iu;

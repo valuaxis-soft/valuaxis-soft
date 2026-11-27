@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, ExternalLink, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Copy, ExternalLink, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
 import {
   useEffect, useEffectEvent, useRef, useState, type ChangeEvent, type ClipboardEvent, type ComponentProps, type FormEvent, type ReactNode,
 } from "react";
@@ -15,7 +15,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea";
 import { api, type ComparableFormValues } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import type { ComparablePrefill } from "@/features/ai/listing-prefill";
+import type { ComparablePrefill, ListingReading } from "@/features/ai/listing-prefill";
 import type { PendingImages } from "@/features/valuations/comparable-search/listing-images";
 import { PasteImageButton } from "@/features/files/components/paste-image-button";
 import {
@@ -39,6 +39,7 @@ import {
   parseCoordinate,
   parseCoordinatePair,
   todayInMexico,
+  typedLocationMismatch,
   type AddressPart,
   type ComparableAddress,
   type ComparablePropertyDetails,
@@ -55,20 +56,21 @@ import {
 } from "@/features/valuations/calculation/comparable-card";
 import type { ComparableCardDto, DuplicateMatchDto } from "@/features/valuations/calculation/comparable-card.service";
 import { geocodingQueryOf } from "@/features/valuations/calculation/comparable-geocoding";
-import { DUPLICATE_REASON_LABELS, duplicateProbeOf, type DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
+import { duplicateProbeOf, type DuplicateProbe } from "@/features/valuations/calculation/comparable-duplicates";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
-import { comparableClassOf, comparableMarketLabel, type ComparableClass } from "@/features/valuations/calculation/comparable-classes";
+import { comparableClassOf, type ComparableClass } from "@/features/valuations/calculation/comparable-classes";
 import { defaultExchangeRateSource, exchangeNote, pesosOf } from "@/features/valuations/calculation/comparable-currency";
 import { defaultKindOfType, isVehicleKind, kindOfComparable } from "@/features/valuations/calculation/comparable-kinds";
 import { ComparableKindField, kindFieldLabel } from "./comparable-kind-field";
 import { ComparableLocationPicker } from "@/features/valuations/comparable-base/components/comparable-location-picker";
-import { ComparableCardButton } from "./comparable-card-dialog";
 import { ComparableCardHeader, ComparableCardReview, ComparableCardUses, ComparableCardWarnings, listingDetailItems } from "./comparable-card-view";
 import { ComparableValidityLine } from "./comparable-validity-badge";
 import { COMPARABLE_VALIDITY_MONTHS, addMonths, validityMonthsOf } from "@/features/valuations/calculation/comparable-validity";
 import { FormulaInput } from "./formula-input";
 import { useExpandableDialog } from "./expandable-dialog";
 import { ScreenshotSlot } from "./screenshot-slot";
+import { ListingEvidence } from "./listing-evidence";
+import { DuplicateChoice, type DuplicateDecision } from "./duplicate-decision";
 import { AiResultReviewNotice, ThirdPartyDataNotice } from "../legal-notice";
 import { previewUrl } from "./listing-images-picker";
 import { ComparablePhotoFraming } from "./comparable-photo-framing";
@@ -103,7 +105,6 @@ import {
 } from "@/features/valuations/calculation/market-types";
 
 const text = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value));
-const money = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" }));
 
 type DraftKey =
   | "location" | "area" | "price" | "sourceName" | "contactName" | "contactPhone" | "url" | "offerDate" | "landUse"
@@ -373,6 +374,8 @@ export type ComparableDialogProps = {
   prefill?: ComparablePrefill;
   /** The pasted listing a new comparable comes from, kept as evidence. */
   listingText?: string;
+  /** What «Pegar anuncio» read, each value with its fragment of the listing: shown in the card, in its sections. */
+  listingEvidence?: Pick<ListingReading, "rows" | "notices" | "discarded">;
   /** The screenshot and photos a new comparable opens with (pasted in «Pegar anuncio»); uploaded when it is saved. */
   initialImages?: PendingImages;
   characteristicFields: CharacteristicField[];
@@ -500,6 +503,8 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
   const [duplicates, setDuplicates] = useState<DuplicateMatchDto[] | null>(null);
   // What the check while typing found, shown above the form without stopping the capture.
   const [liveMatches, setLiveMatches] = useState<DuplicateMatchDto[]>([]);
+  // The appraiser's answer to the possible duplicates: one of three, before saving (V8.12).
+  const [decided, setDecided] = useState<DuplicateDecision | null>(null);
   // What the firm's base knows of an existing comparable: its warnings, its review, its uses and its listing's other facts.
   const [loadedCard, setLoadedCard] = useState<ComparableCardDto | null>(null);
   const card = props.card === undefined ? loadedCard : props.card;
@@ -697,16 +702,28 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     else setError({ message: "No se pudo guardar el comparable. Lo capturado sigue aquí: revisa el aviso y vuelve a intentarlo." });
   };
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    void save(true);
-  };
-
   const reuse = async (comparableId: string) => {
     setSaving(true);
     const ok = await props.onReuse(comparableId);
     setSaving(false);
     if (ok) props.onOpenChange(false);
+  };
+
+  /** The answer to a possible duplicate, once chosen (V8.12): nothing is saved before. */
+  const apply = (chosen: DuplicateDecision) => {
+    if (chosen.action === "reuse") void reuse(chosen.comparableId);
+    else if (chosen.action === "update") void save(false, chosen.comparableId);
+    else void save(false);
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    // With a possible duplicate on screen, saving is the answer chosen to it.
+    if (pendingDuplicates) {
+      if (decision) apply(decision);
+      return;
+    }
+    void save(true);
   };
 
   const room = MAX_COMPARABLE_PHOTOS - (comparable?.photos.length ?? 0) - pendingPhotos.length;
@@ -745,6 +762,8 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     setUploading(null);
   };
 
+  // A line typed apart from the fields that does not name the street of the fields (V8.11): perhaps another comparable's address.
+  const locationMismatch = typedLocationMismatch(draft.location, address);
   const area = parseDecimal(draft.area);
   // The unit value and the duplicates read the pesos.
   const price = dollars ? pesos : parseDecimal(draft.price);
@@ -762,6 +781,10 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
   // Something to compare: an area, a listing, a phone or a street number.
   const checkWhileTyping = !comparable && !readOnly
     && Boolean(probe.area || probe.url || (probe.contactPhone?.replace(/\D/g, "").length ?? 0) >= 7 || /\d/.test(location));
+  // Matches on screen ask for an answer before saving; an answer about a comparable no longer listed does not count.
+  const pendingDuplicates = checkWhileTyping && liveMatches.length > 0;
+  const decision = decided && (decided.action === "different" || liveMatches.concat(duplicates ?? []).some((match) => match.comparableId === decided.comparableId))
+    ? decided : null;
   const onCheckDuplicates = useEffectEvent((next: DuplicateProbe) => props.onCheckDuplicates(next));
   useEffect(() => {
     if (!checkWhileTyping) return;
@@ -1038,40 +1061,43 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     ), { htmlFor: FIELD_IDS.postalCode }),
     field("neighborhood", ADDRESS_LABELS.neighborhood, suggestedAddress("neighborhood"), { htmlFor: FIELD_IDS.neighborhood }),
     field("subdivision", ADDRESS_LABELS.subdivision, suggestedAddress("subdivision"), { htmlFor: FIELD_IDS.subdivision }),
+    // «Otro» asks which inside the same cell (video 7.2, 13:14), so every card has the same rows (V8.11, 01:49: «homogenizar»).
     field("streetType", STREET_TYPE_LABEL, (
-      <NativeSelect
-        id={FIELD_IDS.streetType}
-        className="w-full"
-        value={draft.streetType}
-        onChange={(event) => setDraft((current) => ({ ...current, streetType: event.target.value as StreetType }))}
-      >
-        {STREET_TYPES.map((item) => <NativeSelectOption key={item} value={item}>{STREET_TYPE_LABELS[item]}</NativeSelectOption>)}
-      </NativeSelect>
-    ), { htmlFor: FIELD_IDS.streetType }),
-    // «Otro» asks which (video 7.2, 13:14); once written, the firm's other comparables offer it.
-    ...(draft.streetType === "OTRO" ? [field("streetTypeOther", "¿Cuál tipo de vialidad?", (
-      <>
-        <SuggestInput
-          value={draft.streetTypeOther}
-          options={suggestions.address.streetTypeOther}
-          label="Tipos de vialidad que ya usó el despacho"
-          onPick={(value) => setDraft((current) => ({ ...current, streetTypeOther: value }))}
+      <div className="grid gap-1" data-street-type>
+        <NativeSelect
+          id={FIELD_IDS.streetType}
+          className="w-full"
+          value={draft.streetType}
+          onChange={(event) => setDraft((current) => ({ ...current, streetType: event.target.value as StreetType }))}
         >
-          {(combobox) => (
-            <Input
-              id={FIELD_IDS.streetTypeOther}
-              autoComplete={NO_BROWSER_AUTOFILL}
-              maxLength={60}
-              placeholder="Callejuela, Retorno…"
-              {...combobox}
+          {STREET_TYPES.map((item) => <NativeSelectOption key={item} value={item}>{STREET_TYPE_LABELS[item]}</NativeSelectOption>)}
+        </NativeSelect>
+        {draft.streetType === "OTRO" ? (
+          <>
+            <SuggestInput
               value={draft.streetTypeOther}
-              onChange={(event) => setDraft((current) => ({ ...current, streetTypeOther: event.target.value }))}
-            />
-          )}
-        </SuggestInput>
-        <p className="text-[11px] text-muted-foreground">Se imprime antes del nombre y queda en la lista de todas las fichas del despacho.</p>
-      </>
-    ), { htmlFor: FIELD_IDS.streetTypeOther })] : []),
+              options={suggestions.address.streetTypeOther}
+              label="Tipos de vialidad que ya usó el despacho"
+              onPick={(value) => setDraft((current) => ({ ...current, streetTypeOther: value }))}
+            >
+              {(combobox) => (
+                <Input
+                  id={FIELD_IDS.streetTypeOther}
+                  aria-label="¿Cuál tipo de vialidad?"
+                  autoComplete={NO_BROWSER_AUTOFILL}
+                  maxLength={60}
+                  placeholder="¿Cuál? Callejuela, Retorno…"
+                  {...combobox}
+                  value={draft.streetTypeOther}
+                  onChange={(event) => setDraft((current) => ({ ...current, streetTypeOther: event.target.value }))}
+                />
+              )}
+            </SuggestInput>
+            <p className="text-[11px] text-muted-foreground">Se imprime antes del nombre y queda en la lista de todas las fichas del despacho.</p>
+          </>
+        ) : null}
+      </div>
+    ), { htmlFor: FIELD_IDS.streetType }),
     field("street", ADDRESS_LABELS.street, (
       <Input id={FIELD_IDS.street} autoComplete={NO_BROWSER_AUTOFILL} value={draft.address.street} onChange={setAddress("street")} />
     ), { htmlFor: FIELD_IDS.street }),
@@ -1114,6 +1140,16 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
             ? "Se imprime el texto que escribiste («&», «cruce con» o «esq.» se imprimen «esquina con»). Bórralo para que se arme con los campos."
             : "Se arma con la calle, el número, la esquina, la colonia, el C.P., el municipio y el estado."}
         </p>
+        {/* V8.11: a card printed another comparable's address; a typed line that does not name its own street is told. */}
+        {locationMismatch ? (
+          <p className="flex flex-wrap items-center gap-1.5 rounded-sm border border-highlight/60 bg-highlight/10 px-1.5 py-1 text-xs text-highlight-strong" role="status" data-location-mismatch>
+            <AlertTriangle className="size-3.5 shrink-0" />
+            El texto no menciona la vialidad de esta ficha («{locationMismatch}»): revisa que sea la dirección de este comparable.
+            <Button type="button" size="xs" variant="outline" onClick={() => setDraft((current) => ({ ...current, location: "" }))}>
+              Usar la que arman los campos
+            </Button>
+          </p>
+        ) : null}
       </>
     ), { htmlFor: FIELD_IDS.location, wide: true }),
     field("latitude", "Latitud", (
@@ -1292,6 +1328,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         {card ? <ComparableCardWarnings warnings={card.warnings} /> : null}
         {/* Matrix 1.5: the data «Pegar anuncio» proposed are not saved until «Guardar comparable». */}
         {!comparable && props.prefill && !readOnly ? <AiResultReviewNotice /> : null}
+        {!comparable && props.listingEvidence && !readOnly ? <ListingEvidence reading={props.listingEvidence} /> : null}
         {/* Matrix 1.4: the advertiser's name and phone are third parties' data. */}
         {!readOnly ? <ThirdPartyDataNotice /> : null}
 
@@ -1299,21 +1336,20 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
           <section className="grid gap-3 rounded-md border border-highlight/50 bg-highlight/10 p-3" aria-label="Posibles duplicados" data-duplicates>
             <p className="flex items-start gap-1.5 text-sm font-medium text-foreground">
               <Copy className="mt-0.5 size-4 shrink-0" />
-              Posible duplicado: este inmueble parece estar ya en la base del despacho.
+              Posible duplicado: este inmueble parece estar ya en la base del despacho. Elige qué hacer.
             </p>
-            <p className="text-xs text-muted-foreground">
-              Si es el mismo, se conserva su número y se queda la información más reciente (la que capturas ahora), con sus fotos.
-              Si son diferentes, se guardan los dos, cada uno con su número.
-            </p>
-            <DuplicateMatchList
+            <DuplicateChoice
               matches={duplicates}
               assetClass={machinery ? "MAQUINARIA" : "INMUEBLE"}
-              busy={saving}
-              onSame={(comparableId) => void save(false, comparableId)}
-              onReuse={(comparableId) => void reuse(comparableId)}
+              decision={decision}
+              onDecision={setDecided}
+              disabled={saving}
             />
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => void save(false)}>Son diferentes: conservar ambos</Button>
+              <Button type="button" size="sm" disabled={saving || !decision} onClick={() => { if (decision) apply(decision); }} data-duplicate-confirm>
+                {saving ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
+                Guardar con esta opción
+              </Button>
               <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={() => setDuplicates(null)}>Volver a la captura</Button>
             </div>
           </section>
@@ -1321,7 +1357,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
 
         {/* Chrome's address autofill wrote «México» in the land area and the comparable would not save: see NO_BROWSER_AUTOFILL. */}
         <form ref={form} className="grid gap-3" onSubmit={submit} hidden={duplicates !== null} autoComplete="off" data-no-browser-autofill>
-          {checkWhileTyping && liveMatches.length ? (
+          {pendingDuplicates ? (
             <section
               className="grid gap-2 rounded-md border border-highlight/50 bg-highlight/10 p-3"
               aria-label="Ya está en la base"
@@ -1330,14 +1366,14 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
             >
               <p className="flex items-start gap-1.5 text-sm font-medium text-foreground">
                 <Copy className="mt-0.5 size-4 shrink-0" />
-                Este inmueble parece estar ya en la base del despacho. Puedes usar el existente en lugar de capturarlo otra vez.
+                Este inmueble parece estar ya en la base del despacho. Elige qué hacer; «Guardar comparable» se activa al elegir.
               </p>
-              <DuplicateMatchList
+              <DuplicateChoice
                 matches={liveMatches}
                 assetClass={machinery ? "MAQUINARIA" : "INMUEBLE"}
-                busy={saving}
-                onSame={(comparableId) => void save(false, comparableId)}
-                onReuse={(comparableId) => void reuse(comparableId)}
+                decision={decision}
+                onDecision={setDecided}
+                disabled={saving}
               />
             </section>
           ) : null}
@@ -1522,6 +1558,20 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
           {card ? <ComparableCardUses uses={card.uses} /> : null}
 
           {error ? <p className="text-sm text-destructive" role="alert" data-form-error={error.field}>{error.message}</p> : null}
+          {/* The same question beside the save button, where the appraiser ends the capture (V8.12). */}
+          {pendingDuplicates ? (
+            <section className="grid gap-2 rounded-md border border-highlight/50 bg-highlight/10 p-2" aria-label="Posible duplicado, antes de guardar" data-duplicates-footer>
+              <p className="flex items-start gap-1.5 text-sm font-medium"><Copy className="mt-0.5 size-4 shrink-0" /> Posible duplicado: elige qué hacer antes de guardar.</p>
+              <DuplicateChoice
+                compact
+                matches={liveMatches}
+                assetClass={machinery ? "MAQUINARIA" : "INMUEBLE"}
+                decision={decision}
+                onDecision={setDecided}
+                disabled={saving}
+              />
+            </section>
+          ) : null}
           <DialogFooter className="sticky -bottom-4 z-10 -mx-1 bg-popover px-1 pt-2 pb-4 sm:-bottom-6 sm:pb-6">
             {comparable ? (
               <a className={cn(buttonVariants({ variant: "outline" }), "sm:mr-auto")} href={`/comparables/${comparable.id}`} target="_blank" rel="noopener noreferrer">
@@ -1532,7 +1582,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
               {readOnly ? "Cerrar" : "Cancelar"}
             </Button>
             {!readOnly ? (
-              <Button type="submit" disabled={saving}>
+              <Button type="submit" disabled={saving || (pendingDuplicates && !decision)} title={pendingDuplicates && !decision ? "Elige antes qué hacer con el posible duplicado" : undefined}>
                 {saving ? <Loader2 className="animate-spin" data-icon="inline-start" /> : null}
                 Guardar comparable
               </Button>
@@ -1558,51 +1608,5 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         </AlertDialogContent>
       </AlertDialog>
     </>
-  );
-}
-
-/** The comparables of the base a capture matches, with what they match on and the answers. */
-function DuplicateMatchList(props: {
-  matches: DuplicateMatchDto[];
-  /** The sheet's class: the base only offers duplicates of the same one. */
-  assetClass: ComparableClass;
-  busy: boolean;
-  onSame: (comparableId: string) => void;
-  onReuse: (comparableId: string) => void;
-}) {
-  return (
-    <ul className="grid gap-2">
-      {props.matches.map((match) => (
-        <li key={match.comparableId} className="grid gap-2 rounded-md border bg-background p-2 text-sm sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center" data-duplicate={formatComparableId(match.folio) ?? match.comparableId}>
-          {match.thumbnailUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={match.thumbnailUrl} alt="" className="size-12 rounded object-cover" />
-          ) : <span className="hidden sm:block sm:w-12" />}
-          <div className="min-w-0">
-            <p className="font-medium">
-              Coincide con <span className="font-mono">{formatComparableId(match.folio) ?? "un comparable sin número"}</span> · {match.location}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {comparableMarketLabel(match.type, props.assetClass)} · {money(match.price)}
-              {match.area ? ` · ${match.area.toLocaleString("es-MX", { maximumFractionDigits: 2 })} m²` : ""}
-              {match.contactPhone ? ` · tel. ${match.contactPhone}` : ""} · {match.valuation ? `avalúo ${match.valuation.folio}` : "base general"}
-              {match.sameValuation ? " (este avalúo)" : ""} · datos del {formatDay(match.updatedOn)}
-            </p>
-            <p className="text-xs font-medium text-foreground">
-              Coinciden: {match.reasons.map((reason) => DUPLICATE_REASON_LABELS[reason]).join(", ")}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            <ComparableCardButton comparableId={match.comparableId} />
-            <Button type="button" size="sm" disabled={props.busy} onClick={() => props.onReuse(match.comparableId)}>
-              Usar el existente
-            </Button>
-            <Button type="button" size="sm" variant="outline" disabled={props.busy} onClick={() => props.onSame(match.comparableId)}>
-              Es el mismo: conservar lo que capturo
-            </Button>
-          </div>
-        </li>
-      ))}
-    </ul>
   );
 }
