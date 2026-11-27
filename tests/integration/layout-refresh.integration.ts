@@ -18,8 +18,8 @@ import { buildSectionsPayload } from "../../src/features/valuations/components/w
 import { computeIncomeApproach } from "../../src/features/valuations/engine/income";
 import type { AppSection, Block } from "../../src/features/valuations/model";
 import { getValuationByPublicId } from "../../src/features/valuations/repositories/valuation.repository";
-import { LAYOUT_VERSION, layoutStepsFor, layoutVersionOf, refreshDocumentLayout } from "../../src/features/valuations/services/layout-refresh";
-import { planLayoutRefreshes } from "../../src/features/valuations/services/layout-refresh.service";
+import { LAYOUT_VERSION, hasPendingLayoutSteps, layoutStepsFor, layoutVersionOf, refreshDocumentLayout } from "../../src/features/valuations/services/layout-refresh";
+import { planLayoutRefreshes, stampCurrentLayoutVersion } from "../../src/features/valuations/services/layout-refresh.service";
 import { saveValuationSections } from "../../src/features/valuations/services/valuation-workflow.service";
 import { createValuationFixture, prisma } from "./support";
 
@@ -132,4 +132,22 @@ test("the report lists an old valuation by its folio and leaves concluded valuat
   // Nothing was written: the concluded one reads as before, the other is still unrefreshed.
   assert.deepEqual(await load(concluded.fixture), before);
   assert.equal(layoutVersionOf(await load(fixture)), 0);
+});
+
+test("a valuation created now is stamped with the current format: opening it changes nothing and «Actualizar formato» is not highlighted", async () => {
+  const fixture = await createValuationFixture();
+  // Its sections written, as «Crear avalúo» writes them (initializeWorkingVersionStructure).
+  await save(fixture, await load(fixture));
+  const { IdAvaluo } = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  const version = await prisma.versionAvaluo.findFirstOrThrow({ where: { IdAvaluo }, orderBy: { IdVersionAvaluo: "desc" } });
+  assert.equal(layoutVersionOf(await load(fixture)), 0, "as created before the stamp");
+  await prisma.$transaction((tx) => stampCurrentLayoutVersion(tx, version.IdVersionAvaluo));
+
+  const stamped = await load(fixture);
+  assert.equal(layoutVersionOf(stamped), LAYOUT_VERSION);
+  assert.equal(hasPendingLayoutSteps(stamped), false);
+  assert.equal(layoutStepsFor({ policy: "all", version: layoutVersionOf(stamped) }).length, 0, "opening it runs no step");
+  // Saved by the editor, the version stays with the carátula.
+  await save(fixture, stamped);
+  assert.equal(layoutVersionOf(await load(fixture)), LAYOUT_VERSION);
 });

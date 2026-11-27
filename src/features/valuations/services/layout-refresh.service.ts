@@ -1,7 +1,10 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma-client";
+import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { initialSectionsFor } from "@/features/valuations/components/workspace/model/initial-hydration";
 import { getValuationByPublicId } from "@/features/valuations/repositories/valuation.repository";
 import {
+  LAYOUT_VERSION,
   describeLayoutChanges,
   layoutStepsFor,
   layoutVersionOf,
@@ -9,6 +12,28 @@ import {
   type LayoutChange,
   type LayoutRefreshPolicy,
 } from "./layout-refresh";
+
+/**
+ * A valuation created now is in the current format: its carátula keeps the
+ * current version (`layoutVersion` of its JConfiguracion, as the editor
+ * saves it), so opening it neither refreshes it nor highlights «Actualizar
+ * formato». The rest of the configuration stays.
+ */
+export async function stampCurrentLayoutVersion(tx: Prisma.TransactionClient, versionId: number) {
+  const sections = await tx.seccionDocumento.findMany({
+    where: { IdVersionAvaluo: versionId },
+    select: { IdSeccionDocumento: true, SClave: true, JConfiguracion: true },
+  });
+  const cover = sections.find((section) => getCanonicalSectionKey(section.SClave) === "CARATULA");
+  if (!cover) return;
+  const config = cover.JConfiguracion && typeof cover.JConfiguracion === "object" && !Array.isArray(cover.JConfiguracion) ? cover.JConfiguracion : {};
+  const payload = config.payload && typeof config.payload === "object" && !Array.isArray(config.payload) ? config.payload : null;
+  await tx.seccionDocumento.update({
+    where: { IdSeccionDocumento: cover.IdSeccionDocumento },
+    // Where the editor reads it first (the payload, when the section has one) and beside it.
+    data: { JConfiguracion: { ...config, ...(payload ? { payload: { ...payload, layoutVersion: LAYOUT_VERSION } } : {}), layoutVersion: LAYOUT_VERSION } as Prisma.InputJsonObject },
+  });
+}
 
 export type LayoutRefreshPlan = {
   organizationId: number;
