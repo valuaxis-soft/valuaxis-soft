@@ -211,10 +211,13 @@ test("a capture that still carries the type's data creates the type (valuations 
   assert.equal(costs.constructions[0].area, 467.27);
   assert.equal((await storedConstructionValue(fixture)).value, 6530000);
 
-  // Once the type exists, the section is the source: the type's data sent with the costs is ignored.
+  // Since 27 Nov 2026 (video 8.14, 43:20) the type's data is also captured in the cost table: sent with the costs, it is
+  // written in the type, which the construction section shows. A cost save without it leaves the type as it is.
   await saveCostCalculation(fixture.publicId, user, costsOf([{ ...arandasType, ...arandasCost, age: 50, area: 1 }]));
-  assert.equal((await getCostCalculation(fixture.publicId, fixture.organizationId)).constructions[0].age, 2);
-  assert.equal((await getConstructionTypes(fixture.publicId, fixture.organizationId)).types[0].area, 467.27);
+  assert.equal((await getCostCalculation(fixture.publicId, fixture.organizationId)).constructions[0].age, 50);
+  assert.equal((await getConstructionTypes(fixture.publicId, fixture.organizationId)).types[0].area, 1);
+  await saveCostCalculation(fixture.publicId, user, costsOf([arandasCost]));
+  assert.equal((await getConstructionTypes(fixture.publicId, fixture.organizationId)).types[0].area, 1);
 });
 
 test("the types belong to the organization and a concluded valuation keeps them read-only", async () => {

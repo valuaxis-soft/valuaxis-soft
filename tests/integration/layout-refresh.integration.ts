@@ -69,12 +69,14 @@ async function oldValuation() {
   let sections = await load(fixture);
   sections = withSection(sections, "ingresos", (section) => ({ ...section, blocks: [...stale, ...section.blocks.filter((block) => !INCOME_TEMPLATE_BLOCK_IDS.includes(block.id))] }));
   // The conclusion of a firm template made before: the approaches with their values, the appraiser's text, no concluded value.
+  // (One block with the concepts, as conclusions were before their subbloques of 27 Nov 2026.)
   sections = withSection(sections, "conclusiones", (section) => ({
     ...section,
     blocks: section.blocks.map((block, index) => (index ? block : {
       ...block,
-      concepts: block.concepts
-        .filter((concept) => ![CONCLUSION_KEYS.value, CONCLUSION_KEYS.words].includes(concept.calculationKey as never))
+      apartados: [],
+      concepts: [...block.concepts, ...block.apartados.flatMap((apartado) => apartado.concepts)]
+        .filter((concept) => ![CONCLUSION_KEYS.value, CONCLUSION_KEYS.words, CONCLUSION_KEYS.signerName, CONCLUSION_KEYS.signerCedula].includes(concept.calculationKey as never))
         .map(({ calculationKey: _key, ...concept }) => (concept.label === "Observaciones finales" ? { ...concept, value: "Observación propia del valuador." } : concept)),
     })),
   }));
@@ -91,9 +93,11 @@ test("an old valuation opened takes the current format and income pages and keep
   const opened = await open(fixture);
   assert.ok(opened.changes.length > 0);
   const conclusion = sectionOf(opened.sections, "conclusiones");
-  const valueBlock = conclusion.blocks.find(isConcludedValueBlock);
-  assert.ok(valueBlock, "the conclusion prints in the despacho's format");
-  assert.equal(valueBlock.concepts.find((concept) => concept.label === "Observaciones finales")?.value, "Observación propia del valuador.");
+  // Given its concluded value (step 1) and arranged in subbloques (step 4), as the appraiser's Excel.
+  assert.equal(conclusion.blocks.some(isConcludedValueBlock), false);
+  const parts = conclusion.blocks[0].apartados;
+  assert.ok(parts.some((apartado) => apartado.concepts.some((concept) => concept.calculationKey === CONCLUSION_KEYS.value)), "the concluded value in its subbloque");
+  assert.equal(parts.flatMap((apartado) => apartado.concepts).find((concept) => concept.label === "Observaciones finales")?.value, "Observación propia del valuador.");
   const income = sectionOf(opened.sections, "ingresos").blocks.filter((block) => block.id.startsWith(INCOME_BLOCK_PREFIX));
   assert.deepEqual(income.map((block) => block.title), current.map((block) => block.title), "every page of the current generator, with its current title");
   assert.equal(income[0].enabled, false, "the page the appraiser hid stays hidden");
@@ -101,7 +105,7 @@ test("an old valuation opened takes the current format and income pages and keep
   await save(fixture, opened.sections);
   const reopened = await load(fixture);
   assert.equal(layoutVersionOf(reopened), LAYOUT_VERSION, "the version is saved with the carátula");
-  assert.equal(sectionOf(reopened, "conclusiones").blocks.find(isConcludedValueBlock)?.concepts.find((concept) => concept.calculationKey === CONCLUSION_KEYS.value)?.label, "Valor concluido");
+  assert.equal(sectionOf(reopened, "conclusiones").blocks[0].apartados.flatMap((apartado) => apartado.concepts).find((concept) => concept.calculationKey === CONCLUSION_KEYS.value)?.label, "Valor concluido");
 
   // Opened again: nothing to do, nothing changes.
   const again = await open(fixture);
