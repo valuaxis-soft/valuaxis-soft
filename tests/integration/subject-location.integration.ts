@@ -114,7 +114,7 @@ test("a croquis is composed with the pins and the north arrow, stored as an imag
   assert.equal(stored.mimeType, "image/jpeg");
   const file = await prisma.archivo.findFirst({ where: { SClaveObjeto: stored.key } });
   assert.equal(file?.IdOrganizacion, fixture.organizationId);
-  assert.deepEqual(file?.JMetadatos, { uso: "CROQUIS", base: "openstreetmap" });
+  assert.deepEqual(file?.JMetadatos, { uso: "CROQUIS", base: "openstreetmap", estilo: "2" });
 
   // Placed in the Croquis section and saved with the document, it reads back as any image of the valuation.
   const sections = initialSectionsFor((await getValuationByPublicId(fixture.publicId, fixture.organizationId))!);

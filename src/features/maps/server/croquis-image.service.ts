@@ -35,13 +35,14 @@ import { freeLinesOverlaySvg, type FreeLine } from "../free-lines";
 import { hasHighlights, placedStreetLabels, type CroquisLabelPlacement, type StreetHighlights } from "../highlights";
 import type { NorthArrow } from "../map-styles";
 import { NORTH_ARROW_HEIGHT, NORTH_ARROW_MARGIN, northArrowBox, northArrowPlacement, northArrowSvg } from "../north-arrow-symbols";
-import { attributionBox, attributionSvg, type BaseMapObstacle, type BaseMapWay } from "../osm-base-map";
+import type { BaseMapArea } from "../osm-areas";
+import { CROQUIS_BASE_STYLE, attributionBox, attributionSvg, type BaseMapObstacle, type BaseMapWay } from "../osm-base-map";
 import { STATIC_MAP_SCALE, STATIC_MAP_SIZE, imagePixel } from "../static-map";
 import { spellingKey, withPreferredStreetNames } from "../street-names";
 import type { StreetWay } from "../streets";
 import { mergedStreetWays, type StreetsAroundDto, type ViewBounds } from "../streets-osm";
 import type { LatLon } from "../types";
-import { baseMapWays, renderBaseMapPng } from "./osm-base.service";
+import { baseMapAreas, baseMapWays, renderBaseMapPng } from "./osm-base.service";
 import { streetsNamedInBox } from "./streets-db";
 import { getStreetsAround } from "./streets.service";
 
@@ -61,6 +62,8 @@ export interface CroquisRenderInput {
   lines?: readonly FreeLine[];
   /** FAL-35: the carátula's address; its street's spelling wins over OpenStreetMap's. */
   address?: string;
+  /** Video 8.14: the subject's name in the legend; empty is «Inmueble valuado». */
+  subjectLegend?: string;
 }
 
 const NO_STREETS: CroquisStreets = { paths: [], labels: [], omitted: [] };
@@ -91,7 +94,7 @@ const noNamedStreets: NamedInFrame = async () => [];
  * free lines with a name print it too.
  */
 export async function resolveCroquisStreets(
-  input: Pick<CroquisRenderInput, "kind" | "center" | "zoom" | "subject" | "streets" | "labels" | "pins" | "northArrow" | "address" | "lines">,
+  input: Pick<CroquisRenderInput, "kind" | "center" | "zoom" | "subject" | "streets" | "labels" | "pins" | "northArrow" | "address" | "lines" | "subjectLegend">,
   streetsAround: (point: LatLon) => Promise<StreetsAroundDto> = getStreetsAround,
   namedInFrame: NamedInFrame = namedStreetsInFrame,
 ): Promise<CroquisStreets> {
@@ -104,7 +107,7 @@ export async function resolveCroquisStreets(
     found = mergedStreetWays(around.ways, inFrame);
   }
   const { ways, highlights } = withPreferredStreetNames(found, input.streets, input.address ?? "");
-  const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject);
+  const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject, input.subjectLegend);
   const streets = croquisStreets(input.kind, input.center, input.zoom, highlights, ways, input.subject, {
     placements: input.labels,
     pins: pinsInFrame(input.center, input.zoom, input.pins).map((pin) => pin.point),
@@ -143,7 +146,7 @@ const boxObstacle = ({ x, y, width, height }: { x: number; y: number; width: num
  * draws over it (the highlighted streets' names, the pins with their
  * numbers, the legend, the north arrow and the credit).
  */
-function baseMapObstacles(input: Pick<CroquisRenderInput, "center" | "zoom" | "pins" | "northArrow" | "subject">, streets: CroquisStreets): BaseMapObstacle[] {
+function baseMapObstacles(input: Pick<CroquisRenderInput, "center" | "zoom" | "pins" | "northArrow" | "subject" | "subjectLegend">, streets: CroquisStreets): BaseMapObstacle[] {
   const { center, zoom } = input;
   const obstacles: BaseMapObstacle[] = [boxObstacle(northArrowBox(input.northArrow.corner)), boxObstacle(attributionBox(input.northArrow.corner))];
   const pin = imagePixel(center, zoom, input.subject);
@@ -152,7 +155,7 @@ function baseMapObstacles(input: Pick<CroquisRenderInput, "center" | "zoom" | "p
     const at = imagePixel(center, zoom, comparable.point);
     obstacles.push({ x: at.x + 16, y: at.y, halfX: 30, halfY: 12 });
   }
-  const legend = croquisLegendPlacement(center, zoom, input.pins, input.northArrow.corner, input.subject);
+  const legend = croquisLegendPlacement(center, zoom, input.pins, input.northArrow.corner, input.subject, input.subjectLegend);
   if (legend) obstacles.push(boxObstacle(legend.box));
   for (const label of streets.labels) {
     const box = streetLabelBox(center, zoom, label);
@@ -175,7 +178,7 @@ function baseMapObstacles(input: Pick<CroquisRenderInput, "center" | "zoom" | "p
  */
 export async function composeCroquisImage(
   base: Buffer,
-  input: Pick<CroquisRenderInput, "center" | "zoom" | "northArrow" | "pins" | "lines"> & Partial<Pick<CroquisRenderInput, "subject">>,
+  input: Pick<CroquisRenderInput, "center" | "zoom" | "northArrow" | "pins" | "lines"> & Partial<Pick<CroquisRenderInput, "subject" | "subjectLegend">>,
   streets: CroquisStreets = NO_STREETS,
 ) {
   const image = sharp(base);
@@ -200,7 +203,7 @@ export async function composeCroquisImage(
   }
   if (input.pins.length) {
     // V7.3-09, FAL-10: what each color means, with the numbers the image shows, in the corner that hides the fewest pins; under the pins.
-    const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject ?? input.center);
+    const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject ?? input.center, input.subjectLegend);
     if (legend) layers.push({ input: Buffer.from(legendOverlaySvg(legend.entries, legend.corner, scale)), left: 0, top: 0 });
     const pins = Buffer.from(pinsOverlaySvg(input.center, input.zoom, input.pins, scale, input.subject));
     layers.push({ input: pins, left: 0, top: 0 });
@@ -217,6 +220,8 @@ export async function composeCroquisImage(
 export interface CroquisSources {
   /** The streets of the base map of the frame (our copy of OpenStreetMap). */
   baseWays: (center: LatLon, zoom: number) => Promise<BaseMapWay[]>;
+  /** The parks, water, land uses and buildings of the frame (our copy, or Overpass while it is empty); none when absent. */
+  baseAreas?: (center: LatLon, zoom: number) => Promise<BaseMapArea[]>;
   /** The named streets around the subject, for the highlighted ones. */
   streetsAround: (point: LatLon) => Promise<StreetsAroundDto>;
   /** Every piece of the highlighted streets crossing the frame; none when absent. */
@@ -225,6 +230,7 @@ export interface CroquisSources {
 
 const DEFAULT_SOURCES: CroquisSources = {
   baseWays: (center, zoom) => baseMapWays(center, zoom),
+  baseAreas: (center, zoom) => baseMapAreas(center, zoom),
   streetsAround: (point) => getStreetsAround(point),
   namedInFrame: namedStreetsInFrame,
 };
@@ -237,8 +243,9 @@ const DEFAULT_SOURCES: CroquisSources = {
  */
 export async function renderCroquisImage(input: CroquisRenderInput, sources: CroquisSources = DEFAULT_SOURCES) {
   const streets = await resolveCroquisStreets(input, sources.streetsAround, sources.namedInFrame ?? noNamedStreets);
-  const ways = await sources.baseWays(input.center, input.zoom);
+  const [ways, areas] = await Promise.all([sources.baseWays(input.center, input.zoom), sources.baseAreas?.(input.center, input.zoom) ?? []]);
   const base = await renderBaseMapPng(input.center, input.zoom, ways, {
+    areas,
     scale: STATIC_MAP_SCALE,
     obstacles: baseMapObstacles(input, streets),
     namedElsewhere: new Set(streets.labels.map((label) => label.name)),
@@ -249,12 +256,12 @@ export async function renderCroquisImage(input: CroquisRenderInput, sources: Cro
 }
 
 /** How the file registry tells a croquis apart: its «uso», and since 25 nov 2026 the base it was drawn on (the regeneration skips those). */
-export const CROQUIS_FILE_METADATA = { uso: "CROQUIS", base: "openstreetmap" } as const;
+export const CROQUIS_FILE_METADATA = { uso: "CROQUIS", base: "openstreetmap", estilo: CROQUIS_BASE_STYLE } as const;
 
 /** The composed image stored as an image of the editor, with its stable address. */
 export async function storeCroquisImage(user: Pick<AuthUser, "id" | "organizationId">, kind: CroquisKind, jpeg: Buffer): Promise<EditorImageDto> {
   const file = new File([new Uint8Array(jpeg)], `${CROQUIS_IMAGE_IDS[kind]}.jpg`, { type: "image/jpeg" });
-  return storeEditorImage(user, file, CROQUIS_FILE_METADATA.uso, { base: CROQUIS_FILE_METADATA.base });
+  return storeEditorImage(user, file, CROQUIS_FILE_METADATA.uso, { base: CROQUIS_FILE_METADATA.base, estilo: CROQUIS_FILE_METADATA.estilo });
 }
 
 /** Render and store, in that order. */

@@ -192,6 +192,8 @@ export function useImageMutations({
           title: isDatos ? uploaded.filename : file.name,
           src: uploaded.url ?? "",
           enabled: true,
+          // Video 8.14 (27 nov 2026): a new image takes the whole width of the page; the appraiser narrows it if he wants.
+          ...(replaceImageId ? {} : { layoutWidth: "full" as const }),
         });
       } catch (err) {
         toast.error(documentImageUploadError(file.name, err instanceof Error ? err.message : "error desconocido."));

@@ -16,6 +16,40 @@ const PHOTO_SECTION_KEY = "FOTOS_SUJETO";
 /** The calculation's photo block of a market («FOTOGRAFÍAS DE COMPARABLES: …»): `motor-…-fotos`. */
 const COMPARABLE_PHOTOS = new RegExp(`^${GENERATED_BLOCK_PREFIX}.*-fotos`, "i");
 
+/** Whether a block is the fichas of a market's comparables («Croquis y fotografías de comparables»). */
+export const isComparableFichasBlock = (block: Pick<Block, "id">) => COMPARABLE_PHOTOS.test(block.id);
+
+/** The images of a block of fichas in the order the appraiser left them (its layout), the enabled and the hidden ones. */
+export function fichasInOrder(block: Block): ImageContent[] {
+  const byId = new Map(block.images.map((image) => [image.id, image]));
+  const ordered = resolveContentLayout(block).rows.flatMap((row) => row.columns.flatMap((column) => column.items))
+    .flatMap((item) => (item.type === "image" && byId.has(item.id) ? [byId.get(item.id)!] : []));
+  return [...ordered, ...block.images.filter((image) => !ordered.includes(image))];
+}
+
+/**
+ * Video 8.14: the fichas in this order, each in a row of its own (the
+ * print groups them 2 or 3 a row, `photoGridBlock`); the concepts and
+ * tables of the block, if the appraiser added any, keep their rows first.
+ */
+export function withFichasOrder(block: Block, imageIds: readonly string[]): Block {
+  const images = new Set(block.images.map((image) => image.id));
+  const others = resolveContentLayout(block).rows
+    .map((row) => ({ ...row, columns: row.columns.map((column) => ({ ...column, items: column.items.filter((item) => item.type !== "image") })).filter((column) => column.items.length) }))
+    .filter((row) => row.columns.length);
+  const rows: ContentLayoutRowV2[] = imageIds.filter((id) => images.has(id)).map((id) => ({ id: `r-image-${id}`, columns: [{ id: `c-image-${id}`, items: [{ type: "image", id }] }] }));
+  return { ...block, contentLayout: { version: 2, rows: [...others, ...rows] } };
+}
+
+/** Moves one item of a list to another place (the fichas dragged or moved with ↑ ↓). */
+export function movedTo<T>(items: readonly T[], from: number, to: number): T[] {
+  const next = [...items];
+  if (from < 0 || from >= next.length || to < 0 || to >= next.length || from === to) return next;
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
 /** Whether a block's images are photographs: every block of the subject's photos, and the comparables' photo blocks. */
 export function isPhotoBlock(sectionKey: string, block: Pick<Block, "id">) {
   return sectionKey === PHOTO_SECTION_KEY || COMPARABLE_PHOTOS.test(block.id);
@@ -38,14 +72,14 @@ function withCaption(image: ImageContent): ImageContent {
 }
 
 /**
- * The rows of a container with its lone photos paired: two rows in a row
- * that each hold only one photo become one row of two columns, in order. Rows with
- * anything else (concepts, tables, a croquis, images the appraiser already
- * put side by side) stay as they are, and a pair never crosses them. A
- * last photo without a pair stays alone in its row; the renderer prints it
- * at the half width of the others (`inPhotoGrid`).
+ * The rows of a container with its lone photos grouped `perRow` a row (two
+ * by default): consecutive rows that each hold only one photo become rows
+ * of that many columns, in order. Rows with anything else (concepts,
+ * tables, a croquis, images the appraiser already put side by side) stay
+ * as they are, and a group never crosses them. The last group may be
+ * shorter; the renderer prints it with the width of the full ones (`inPhotoGrid`).
  */
-export function pairedPhotoRows(layout: ContentLayout, images: ReadonlyMap<string, ImageContent>): ContentLayoutRowV2[] {
+export function pairedPhotoRows(layout: ContentLayout, images: ReadonlyMap<string, ImageContent>, perRow = 2): ContentLayoutRowV2[] {
   const lonePhoto = (row: ContentLayoutRowV2) => {
     if (row.columns.length !== 1 || row.columns[0].items.length !== 1) return false;
     const item = row.columns[0].items[0];
@@ -62,24 +96,34 @@ export function pairedPhotoRows(layout: ContentLayout, images: ReadonlyMap<strin
     if (!lonePhoto(row)) {
       flush();
       rows.push(row);
-    } else if (pending) {
-      const first: ContentLayoutRowV2 = pending;
-      rows.push({ ...first, columns: [first.columns[0], row.columns[0]] });
+      continue;
+    }
+    const grown: ContentLayoutRowV2 = pending ? { ...pending, columns: [...pending.columns, row.columns[0]] } : row;
+    if (grown.columns.length >= perRow) {
+      rows.push(grown);
       pending = null;
-    } else pending = row;
+    } else pending = grown;
   }
   flush();
   return rows;
 }
 
-function photoGrid<T extends Block | Apartado>(container: T): T {
-  if (!container.images.length) return container;
-  const images = container.images.map(withCaption);
-  const layout = resolveContentLayout(container);
-  return { ...container, images, contentLayout: { version: 2, rows: pairedPhotoRows(layout, new Map(images.map((image) => [image.id, image]))) } };
+/** Video 8.14: the photos a row and the size of each, as the appraiser chose them for a block of fichas; two a row at full size by default. */
+export function photoGridOf(block: Pick<Block, "photoGrid">) {
+  return { perRow: block.photoGrid?.perRow ?? 2, size: block.photoGrid?.size ?? 100 };
 }
 
-/** The block as its photographs print: two per row, with their captions, in the block and in its apartados. */
+function photoGrid<T extends Block | Apartado>(container: T, perRow: number, size: number): T {
+  if (!container.images.length) return container;
+  // The chosen size, for the photos the appraiser did not size one by one.
+  const images = container.images.map(withCaption).map((image) =>
+    size < 100 && image.layoutWidthPercent === undefined && !image.layoutWidth ? { ...image, layoutWidthPercent: size } : image);
+  const layout = resolveContentLayout(container);
+  return { ...container, images, contentLayout: { version: 2, rows: pairedPhotoRows(layout, new Map(images.map((image) => [image.id, image])), perRow) } };
+}
+
+/** The block as its photographs print: two per row (or as chosen), with their captions, in the block and in its apartados. */
 export function photoGridBlock(block: Block): Block {
-  return { ...photoGrid(block), apartados: block.apartados.map((apartado) => photoGrid(apartado)) };
+  const { perRow, size } = photoGridOf(block);
+  return { ...photoGrid(block, perRow, size), apartados: block.apartados.map((apartado) => photoGrid(apartado, perRow, size)) };
 }

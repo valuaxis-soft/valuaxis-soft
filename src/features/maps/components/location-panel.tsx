@@ -36,6 +36,7 @@ import {
   comparablesFitFrame,
   croquisKind,
   includesComparables,
+  pinsOfMarkets,
   pinsOutsideFrame,
   type ComparablePin,
   type CroquisKind,
@@ -77,9 +78,11 @@ import {
   NORTH_ARROW_STYLES,
   SATELLITE_NOTICE,
   frameCenter,
+  formatZoom,
   frameFromView,
   isScreenOnlyMapType,
   sameFraming,
+  snapZoom,
   type CroquisFrame,
   type MapCorner,
   type MapType,
@@ -90,7 +93,7 @@ import { detectStreets, metersPerPixel, type StreetWay } from "../streets";
 import { OSM_ATTRIBUTION, boxContains, mergedStreetWays, viewStreetMaxRank, viewStreetsBox, type ViewBounds } from "../streets-osm";
 import { preferredStreetName, renamedHighlights, renamedWays, unifiedHighlights } from "../street-names";
 import type { LatLon } from "../types";
-import { CroquisDoneNotice, CroquisFramesSection, ScreenOnlyMapNotice, generationFrame } from "./croquis-generator-parts";
+import { ComparableMarketsChoice, CroquisDoneNotice, CroquisFramesSection, ScreenOnlyMapNotice, generationFrame } from "./croquis-generator-parts";
 import { CroquisLabelEditor } from "./croquis-label-editor";
 import { FreeLinesPanel } from "./free-lines-panel";
 import { NorthArrow } from "./north-arrow";
@@ -109,6 +112,9 @@ const LABELS_SAVE_DELAY_MS = 600;
 const SAME_VERTEX_PIXELS = 4;
 /** The frame the map shows saves this long after the map stops, not on every step of a pan. */
 const FRAME_SAVE_DELAY_MS = 800;
+/** The zooms a croquis frame goes between with − and + (a state to a block). */
+const MIN_FRAME_ZOOM = 3;
+const MAX_FRAME_ZOOM = 20;
 /** The streets of the view load this long after the map stops. */
 const VIEW_STREETS_DELAY_MS = 350;
 /** A free line's name saves this long after the last key. */
@@ -675,13 +681,25 @@ export function CroquisGeneratorBody({
     if (pending) {
       // One map pixel at that zoom, in degrees: the map reports the center it was given within that.
       const pixel = 360 / (256 * 2 ** pending.zoom);
-      const arrived = Math.round(next.zoom) === pending.zoom && Math.abs(next.center[0] - pending.center[0]) <= pixel && Math.abs(next.center[1] - pending.center[1]) <= pixel;
+      const arrived = snapZoom(next.zoom) === pending.zoom && Math.abs(next.center[0] - pending.center[0]) <= pixel && Math.abs(next.center[1] - pending.center[1]) <= pixel;
       if (arrived || Date.now() - pending.at > 2000) pendingMove.current = null;
       if (arrived) return;
     }
     if (!framing.current || !subject || !canEdit) return;
     const frame = frameFromView(next, subject);
     if (!sameFrame(frame, frameOf(active))) changeFrame(active, frame);
+    // Video 8.14: the wheel stops between steps; the map settles on the quarter the croquis is generated with, so the box shows exactly the image.
+    if (Math.abs(next.zoom - frame.zoom) > 0.001) moveMapTo(frame, subject);
+  };
+
+  /** Video 8.14: a quarter of a zoom closer or farther for this croquis, without leaving its center; the map follows. */
+  const nudgeZoom = (kind: CroquisKind, delta: number) => {
+    if (!subject) return;
+    const current = frameOf(kind);
+    const frame = { ...current, zoom: Math.min(MAX_FRAME_ZOOM, Math.max(MIN_FRAME_ZOOM, snapZoom(current.zoom + delta))) };
+    setActiveKind(kind);
+    changeFrame(kind, frame);
+    moveMapTo(frame, subject);
   };
 
   /** FAL-10: the frame that shows the subject and every comparable, for this croquis; the map moves to it. */
@@ -692,7 +710,7 @@ export function CroquisGeneratorBody({
     setFrames((current) => ({ ...current, [kind]: frame }));
     updateSettings({ [kind]: frame });
     moveMapTo(frame, subject);
-    toast(`Encuadre de ${croquisKind(kind).title.toLowerCase()} ajustado a los ${comparables.length} comparables (zoom ${frame.zoom})`);
+    toast(`Encuadre de ${croquisKind(kind).title.toLowerCase()} ajustado a los ${comparables.length} comparables (zoom ${formatZoom(frame.zoom)})`);
   };
 
   const framesAlike = captures.includes("macro") && captures.includes("micro") && subject !== null && sameFraming(frameOf("macro"), frameOf("micro"), subject[0]);
@@ -731,6 +749,8 @@ export function CroquisGeneratorBody({
           mapType: settings.mapType,
           labels: labelPlacements,
           lines: settings.lines,
+          markets: settings.markets[kind],
+          subjectLegend: settings.subjectLegend,
         });
         generated.push({ kind, src: image.url, marker: { kind, frame, ...(labelPlacements.length ? { labels: labelPlacements } : {}) } });
         if (omittedStreets.length) omitted.push(`${croquisKind(kind).title}: ${omittedStreets.join(", ")}`);
@@ -840,7 +860,7 @@ export function CroquisGeneratorBody({
             data-croquis-frame-box={active}
           >
             <span className="absolute top-1 left-1 rounded-sm bg-background/90 px-1.5 py-0.5 text-[11px] font-medium text-foreground tabular-nums">
-              {croquisKind(active).title} · zoom {frameOf(active).zoom}
+              {croquisKind(active).title} · zoom {formatZoom(frameOf(active).zoom)}
             </span>
           </div>
         ) : null}
@@ -948,6 +968,17 @@ export function CroquisGeneratorBody({
             </Label>
           )}
           <ScreenOnlyMapNotice mapType={settings.mapType} />
+          {captures.some(includes) && comparables.length ? (
+            <ComparableMarketsChoice
+              kinds={captures.filter(includes)}
+              comparables={comparables}
+              markets={settings.markets}
+              subjectLegend={settings.subjectLegend}
+              disabled={!canEdit}
+              onMarketsChange={(kind, markets) => updateSettings({ markets: { ...settings.markets, [kind]: markets } })}
+              onSubjectLegendChange={(subjectLegend) => updateSettings({ subjectLegend })}
+            />
+          ) : null}
           <span className="inline-flex items-center gap-1.5">
             <Label htmlFor={`${valuationId}-north-style`} className="text-xs text-muted-foreground">
               Norte
@@ -985,7 +1016,7 @@ export function CroquisGeneratorBody({
           rows={captures.map((kind) => {
             const frame = frameOf(kind);
             // FAL-10: the comparables this frame leaves out, said before generating.
-            return { kind, zoom: frame.zoom, outside: subject && includes(kind) ? pinsOutsideFrame(frameCenter(frame, subject), frame.zoom, comparables) : [] };
+            return { kind, zoom: frame.zoom, outside: subject && includes(kind) ? pinsOutsideFrame(frameCenter(frame, subject), frame.zoom, pinsOfMarkets(comparables, settings.markets[kind])) : [] };
           })}
           active={active}
           placed={subject !== null}
@@ -995,6 +1026,7 @@ export function CroquisGeneratorBody({
           alikeZoom={framesAlike ? frameOf("macro").zoom : null}
           onFrameOnMap={frameOnMap}
           onFitComparables={fitComparables}
+          onNudgeZoom={nudgeZoom}
         />
 
         {withStreets ? (

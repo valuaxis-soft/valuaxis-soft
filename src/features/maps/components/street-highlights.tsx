@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { cn } from "@/lib/utils";
 
 import {
   HIGHLIGHT_TITLES,
   STREET_CATEGORIES,
+  NAME_SIZE_CHOICES,
   WEIGHT_RANGE,
   weightFromInput,
   type CategoryKey,
@@ -84,9 +86,31 @@ export function StreetHighlightsPanel({ value, category, onCategoryChange, onCha
           />
         ))}
       </div>
-      <Label className="text-[13px] font-normal">
-        <Checkbox checked={value.names} disabled={disabled} onCheckedChange={(on) => onChange({ names: on === true })} /> Mostrar nombres
-      </Label>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        <Label className="text-[13px] font-normal">
+          <Checkbox checked={value.names} disabled={disabled} onCheckedChange={(on) => onChange({ names: on === true })} /> Mostrar nombres
+        </Label>
+        {/* Video 8.14: the names' size, like the strokes' widths; «Automático» makes them smaller on a wide frame. */}
+        <span className="inline-flex items-center gap-1.5">
+          <Label htmlFor="croquis-name-size" className="text-xs text-muted-foreground">
+            Tamaño de los nombres
+          </Label>
+          <NativeSelect
+            id="croquis-name-size"
+            size="sm"
+            value={value.nameSize ? String(value.nameSize) : ""}
+            disabled={disabled || !value.names}
+            onChange={(event) => onChange({ nameSize: event.target.value ? Number(event.target.value) : null })}
+          >
+            <NativeSelectOption value="">Automático (según el zoom)</NativeSelectOption>
+            {NAME_SIZE_CHOICES.map((size) => (
+              <NativeSelectOption key={size.value} value={String(size.value)}>
+                {size.title}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </span>
+      </div>
       {value.streets.length ? (
         <ul className="grid gap-0.5 text-xs" aria-label="Calles pintadas">
           {value.streets.map((street) => (

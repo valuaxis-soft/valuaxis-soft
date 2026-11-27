@@ -25,19 +25,21 @@ import { DocumentTechnicalList } from "./document-technical-list";
 import type { DocumentFlowItem } from "./document-preview-page";
 
 /**
- * FAL-11: the rows printed inside it are of a block of photographs: a photo
- * left alone in its row (the last of an odd number) keeps the half width
- * and the frame of the pairs, instead of growing to a page of its own.
+ * FAL-11: the rows printed inside it are of a block of photographs, with
+ * this many photos a row (0: not a block of photographs). The last row,
+ * shorter than the others (a photo alone, or two of three), keeps the
+ * width and the frame of the full rows instead of growing to a page of its
+ * own. Video 8.14: 2 or 3 a row, as the appraiser chooses for the fichas.
  */
-const PhotoGridContext = createContext(false);
+const PhotoGridContext = createContext(0);
 
-/** Wraps the flow items of a block of photographs (photo-layout.ts). */
-export function inPhotoGrid(items: DocumentFlowItem[]): DocumentFlowItem[] {
+/** Wraps the flow items of a block of photographs (photo-layout.ts), `perRow` a row. */
+export function inPhotoGrid(items: DocumentFlowItem[], perRow = 2): DocumentFlowItem[] {
   return items.map((item) => ({
     ...item,
-    node: <PhotoGridContext.Provider value>{item.node}</PhotoGridContext.Provider>,
+    node: <PhotoGridContext.Provider value={perRow}>{item.node}</PhotoGridContext.Provider>,
     ...(item.renderTableFragment
-      ? { renderTableFragment: (fragment: DocumentTableFragment) => <PhotoGridContext.Provider value>{item.renderTableFragment!(fragment)}</PhotoGridContext.Provider> }
+      ? { renderTableFragment: (fragment: DocumentTableFragment) => <PhotoGridContext.Provider value={perRow}>{item.renderTableFragment!(fragment)}</PhotoGridContext.Provider> }
       : {}),
   }));
 }
@@ -425,10 +427,10 @@ function DocumentContentRow({
   const theme = useDocumentTheme();
   const photoGrid = useContext(PhotoGridContext);
   const columnCount = layoutRow.columns.length;
-  const lonePhoto = photoGrid && columnCount === 1 && layoutRow.columns[0].items.length === 1 && layoutRow.columns[0].items[0].type === "image"
-    && !imagesById.get(layoutRow.columns[0].items[0].id)?.croquis;
-  // A lone photo of a block of photographs prints as the first of a pair.
-  const shownColumns = lonePhoto ? 2 : columnCount;
+  const shortPhotoRow = photoGrid > 0 && columnCount < photoGrid && layoutRow.columns.every((column) =>
+    column.items.length === 1 && column.items[0].type === "image" && !imagesById.get(column.items[0].id)?.croquis);
+  // The last, shorter row of a block of photographs prints with the columns of the full ones.
+  const shownColumns = shortPhotoRow ? photoGrid : columnCount;
   const gridClass = shownColumns === 1
     ? "grid-cols-1"
     : shownColumns === 2

@@ -375,7 +375,23 @@ export type Block = {
    * The calculation does not write them again; «Deshacer» brings them back.
    */
   removedApartados?: string[];
+  /** Video 8.14: a block of photographs (the comparables' fichas): how many a row and the size of each, in % of its cell. */
+  photoGrid?: PhotoGridSettings;
 };
+
+/** The photos a row (2 or 3) and the size of each (in % of its cell, 50–100) of a block of photographs. */
+export type PhotoGridSettings = { perRow: 2 | 3; size: number };
+
+export const PHOTO_GRID_SIZES = { min: 50, max: 100 } as const;
+
+/** The settings as stored, or undefined when they are not valid. */
+export function readPhotoGrid(value: unknown): PhotoGridSettings | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const { perRow, size } = value as Record<string, unknown>;
+  if (perRow !== 2 && perRow !== 3) return undefined;
+  const width = typeof size === "number" && Number.isFinite(size) ? Math.min(PHOTO_GRID_SIZES.max, Math.max(PHOTO_GRID_SIZES.min, Math.round(size))) : 100;
+  return { perRow, size: width };
+}
 
 export type AppSection = {
   id: string;

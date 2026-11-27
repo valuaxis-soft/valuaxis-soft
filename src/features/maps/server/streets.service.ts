@@ -75,7 +75,7 @@ const cache = new Map<string, CacheEntry>();
 /** One request per key at a time: a reload while the first one runs waits for it. */
 const inFlight = new Map<string, Promise<StreetsAroundDto>>();
 
-async function queryMirror(url: string, query: string, fetchImpl: typeof fetch, signal: AbortSignal) {
+async function queryMirror<T>(url: string, query: string, parse: (elements: never[]) => T, fetchImpl: typeof fetch, signal: AbortSignal) {
   const response = await fetchImpl(url, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": OVERPASS_USER_AGENT },
@@ -83,8 +83,8 @@ async function queryMirror(url: string, query: string, fetchImpl: typeof fetch, 
     signal,
   });
   if (!response.ok) throw new Error(`Overpass ${url} answered ${response.status}`);
-  const body = (await response.json()) as { elements?: OverpassElement[] };
-  return parseOverpassWays(body.elements ?? []);
+  const body = (await response.json()) as { elements?: never[] };
+  return parse(body.elements ?? []);
 }
 
 /**
@@ -101,9 +101,19 @@ export function fetchStreetsFromOverpass(
   mirrors = OVERPASS_MIRRORS,
   timing: OverpassTiming = OVERPASS_TIMING,
 ): Promise<StreetWay[]> {
-  const query = overpassQuery(point, radiusMeters);
+  return fetchFromOverpass(overpassQuery(point, radiusMeters), (elements: OverpassElement[]) => parseOverpassWays(elements), fetchImpl, mirrors, timing);
+}
+
+/** Any Overpass query raced over the mirrors as above, its elements parsed by `parse` (the streets, the areas of the base map). */
+export function fetchFromOverpass<T>(
+  query: string,
+  parse: (elements: never[]) => T,
+  fetchImpl: typeof fetch = fetch,
+  mirrors = OVERPASS_MIRRORS,
+  timing: OverpassTiming = OVERPASS_TIMING,
+): Promise<T> {
   const everything = new AbortController();
-  return new Promise<StreetWay[]>((resolve, reject) => {
+  return new Promise<T>((resolve, reject) => {
     let next = 0;
     let running = 0;
     let settled = false;
@@ -129,8 +139,8 @@ export function fetchStreetsFromOverpass(
       running += 1;
       clearTimeout(hedge);
       if (next < mirrors.length) hedge = setTimeout(launch, timing.hedgeAfterMs);
-      queryMirror(url, query, fetchImpl, AbortSignal.any([everything.signal, AbortSignal.timeout(timing.mirrorTimeoutMs)])).then(
-        (ways) => finish(() => resolve(ways)),
+      queryMirror(url, query, parse, fetchImpl, AbortSignal.any([everything.signal, AbortSignal.timeout(timing.mirrorTimeoutMs)])).then(
+        (result) => finish(() => resolve(result)),
         (error: unknown) => {
           running -= 1;
           if (settled) return;

@@ -10,9 +10,13 @@
  * and nothing of the document changes.
  *
  * Only files the generator stored («uso» CROQUIS) are touched, never an
- * image the appraiser uploaded; the ones already drawn on OpenStreetMap are
- * skipped, so it can run again. Concluded valuations are left alone unless
- * asked: their dictamen was already delivered. The report is counts only.
+ * image the appraiser uploaded; the ones already drawn on OpenStreetMap with
+ * the current look are skipped, so it can run again. Since 27 nov 2026 the
+ * ones drawn on the first OpenStreetMap base (one beige tone, no parks nor
+ * water) are drawn again too, with the look of the standard map
+ * (`CROQUIS_BASE_STYLE`), but only in valuations still open: a concluded one
+ * keeps the croquis its dictamen was delivered with. A Google image in a
+ * concluded valuation is redrawn only when asked. The report is counts only.
  */
 import { Prisma } from "@prisma/client";
 
@@ -20,7 +24,7 @@ import { keyFromStoredImageUrl } from "@/features/files/services/stored-image-ur
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
 
-import { includesComparables } from "../croquis";
+import { includesComparables, pinsOfMarkets } from "../croquis";
 import { readCroquisMarker, withLegacyCroquisMarker, type CroquisImageMarker } from "../croquis-marker";
 import { frameCenter } from "../map-styles";
 import { readSubjectCroquisSettings, readSubjectLocation } from "../subject-location";
@@ -131,12 +135,14 @@ export async function regenerateCroquis(options: CroquisRegenerationOptions): Pr
           report.notGenerated += 1;
           continue;
         }
-        if (metadata.base === CROQUIS_FILE_METADATA.base) {
+        const onOpenStreetMap = metadata.base === CROQUIS_FILE_METADATA.base;
+        if (onOpenStreetMap && metadata.estilo === CROQUIS_FILE_METADATA.estilo) {
           report.alreadyOpenStreetMap += 1;
           continue;
         }
-        versions.forEach((id) => oldVersions.add(id));
-        if (valuation.BBloqueado && !options.includeConcluded) {
+        if (!onOpenStreetMap) versions.forEach((id) => oldVersions.add(id));
+        // A concluded valuation keeps the croquis it was delivered with: only a Google image (which may not be kept) is ever redrawn there, and only when asked.
+        if (valuation.BBloqueado && (onOpenStreetMap || !options.includeConcluded)) {
           report.concluded += 1;
           continue;
         }
@@ -157,11 +163,12 @@ export async function regenerateCroquis(options: CroquisRegenerationOptions): Pr
             zoom: frame.zoom,
             subject: location.point,
             northArrow: settings.northArrow,
-            pins: includesComparables(marker.kind, settings) ? pins : [],
+            pins: includesComparables(marker.kind, settings) ? pinsOfMarkets(pins, settings.markets[marker.kind]) : [],
             streets: settings.streets,
             labels: marker.labels ?? settings.labels[marker.kind] ?? [],
             lines: settings.lines,
             address: valuation.propiedadSujeto?.direccionesPropiedad[0]?.SDireccionCompleta ?? "",
+            subjectLegend: settings.subjectLegend,
           });
           const stored = await storageProvider.createUpload({ buffer: jpeg, filename: file.SNombreOriginal, mimeType: "image/jpeg", key, generateDownloadUrl: false });
           await prisma.archivo.update({
@@ -170,7 +177,7 @@ export async function regenerateCroquis(options: CroquisRegenerationOptions): Pr
               ITamanoBytes: BigInt(stored.size),
               SChecksum: stored.checksum,
               STipoMime: "image/jpeg",
-              JMetadatos: { ...metadata, base: CROQUIS_FILE_METADATA.base, regenerado: new Date().toISOString() } as Prisma.InputJsonObject,
+              JMetadatos: { ...metadata, base: CROQUIS_FILE_METADATA.base, estilo: CROQUIS_FILE_METADATA.estilo, regenerado: new Date().toISOString() } as Prisma.InputJsonObject,
             },
           });
           report.regenerated += 1;

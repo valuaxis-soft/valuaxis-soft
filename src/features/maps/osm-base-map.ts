@@ -2,8 +2,10 @@
  * The base map of every stored croquis, drawn by us from OpenStreetMap data
  * (our copy, `devpware_calles_osm`), never from Google: Google Maps Platform
  * does not allow storing its images (terms 3.2.3 a/b), so since 25 nov 2026
- * the croquis, the memoria and the PDF carry no Google imagery at all. The
- * streets by hierarchy with the colors of the usual OpenStreetMap map, their
+ * the croquis, the memoria and the PDF carry no Google imagery at all. Since
+ * 27 nov 2026 the parks, water, land uses and buildings under the streets
+ * (osm-areas.ts) and carto's road widths, so it reads like the standard map
+ * instead of one beige tone. The streets by hierarchy with the colors of the usual OpenStreetMap map, their
  * names along them where they fit, and the credit «© colaboradores de
  * OpenStreetMap» that the ODbL asks for. Pure functions over SVG text,
  * tested without a database; the server rasterizes them with sharp
@@ -15,6 +17,7 @@ import { STATIC_MAP_SIZE, imagePixel } from "./static-map";
 import { bestSpellings, spellingKey } from "./street-names";
 import { metersPerPixel, simplifyPolyline } from "./streets";
 import { uprightAngle } from "./highlights";
+import { AREA_MIN_ZOOM, AREA_STYLES, isLineKind, minimumAreaM2, type AreaKind, type BaseMapArea } from "./osm-areas";
 import type { LatLon } from "./types";
 
 /** One piece of street as the base map draws it: its OpenStreetMap `highway` class keeps the motorway apart from the avenue. */
@@ -49,21 +52,64 @@ function roadClass(highway: string): RoadClass | null {
 
 /**
  * Fill and edge of each class, the ones of the standard OpenStreetMap map
- * (openstreetmap-carto), so a valuer who knows that map reads this one; the
- * width is in map pixels at zoom 17 and narrows as the frame widens.
+ * (openstreetmap-carto), so a valuer who knows that map reads this one.
  */
-const ROAD_STYLES: Record<RoadClass, { fill: string; casing: string; width: number }> = {
-  motorway: { fill: "#e892a2", casing: "#dc2a67", width: 12 },
-  trunk: { fill: "#f9b29c", casing: "#c84e2f", width: 11.5 },
-  primary: { fill: "#fcd6a4", casing: "#a06b00", width: 11 },
-  secondary: { fill: "#f7fabf", casing: "#707d05", width: 10 },
-  tertiary: { fill: "#ffffff", casing: "#8f8f8f", width: 9 },
-  minor: { fill: "#ffffff", casing: "#bbbbbb", width: 7 },
-  pedestrian: { fill: "#dddde8", casing: "#999999", width: 5 },
+const ROAD_STYLES: Record<RoadClass, { fill: string; casing: string }> = {
+  motorway: { fill: "#e892a2", casing: "#dc2a67" },
+  trunk: { fill: "#f9b29c", casing: "#c84e2f" },
+  primary: { fill: "#fcd6a4", casing: "#a06b00" },
+  secondary: { fill: "#f7fabf", casing: "#707d05" },
+  tertiary: { fill: "#ffffff", casing: "#8f8f8f" },
+  minor: { fill: "#ffffff", casing: "#bbbbbb" },
+  pedestrian: { fill: "#dddde8", casing: "#999999" },
 };
+
+/**
+ * Width of each class by zoom, in map pixels, edge included, as carto draws
+ * them (roads.mss): before 27 nov 2026 a residential street was 7 px wide on
+ * a micro frame with a hairline of edge and read as a thread on the land
+ * color; on the standard map it is about twice that, white between two grey
+ * edges, and stands out against the blocks.
+ */
+const ROAD_WIDTHS: Record<RoadClass, Record<number, number>> = {
+  motorway: { 8: 1, 10: 1.8, 12: 3.5, 13: 6, 15: 10, 16: 12.5, 17: 18, 18: 21, 19: 27 },
+  trunk: { 8: 1, 10: 1.8, 12: 3.5, 13: 6, 15: 10, 16: 12.5, 17: 18, 18: 21, 19: 27 },
+  primary: { 9: 1, 10: 1.2, 12: 3.5, 13: 6, 15: 10, 16: 12.5, 17: 18, 18: 21, 19: 27 },
+  secondary: { 11: 1.2, 12: 3, 13: 5, 15: 9, 16: 11, 17: 17, 18: 20, 19: 26 },
+  tertiary: { 12: 2.5, 13: 4, 15: 7, 16: 9.5, 17: 15, 18: 18, 19: 24 },
+  minor: { 13: 2.5, 14: 3.2, 15: 5.5, 16: 8.5, 17: 14.5, 18: 18, 19: 23 },
+  pedestrian: { 15: 4, 16: 6, 17: 10, 18: 13, 19: 16 },
+};
+
+/** The edge on each side, in map pixels: carto's casing, a little wider on the main roads. */
+const CASING_WIDTHS: Record<"major" | "minor", Record<number, number>> = {
+  major: { 10: 0.3, 12: 0.4, 13: 0.5, 15: 0.7, 17: 1, 19: 1.2 },
+  minor: { 13: 0.5, 15: 0.7, 16: 0.8, 17: 1, 19: 1.25 },
+};
+
+/** The value at a zoom of a table by zoom: linear between its stops, the end value beyond them. */
+export function atZoom(stops: Record<number, number>, zoom: number) {
+  const zooms = Object.keys(stops)
+    .map(Number)
+    .sort((a, b) => a - b);
+  if (zoom <= zooms[0]) return stops[zooms[0]];
+  if (zoom >= zooms[zooms.length - 1]) return stops[zooms[zooms.length - 1]];
+  const upper = zooms.findIndex((stop) => stop >= zoom);
+  const [from, to] = [zooms[upper - 1], zooms[upper]];
+  return stops[from] + ((stops[to] - stops[from]) * (zoom - from)) / (to - from);
+}
 
 /** The land color of the OpenStreetMap map. */
 export const BASE_MAP_BACKGROUND = "#f2efe9";
+
+/**
+ * The look of the base map a croquis is drawn with, kept in the stored
+ * file's metadata: "2" since 27 nov 2026 (parks, water, land uses and
+ * buildings under streets of carto's widths). A croquis without it has the
+ * beige base of one tone, and `pnpm maps:regenerate-croquis` draws it again
+ * while its valuation is open.
+ */
+export const CROQUIS_BASE_STYLE = "2";
 
 /** The credit the ODbL asks for, on every stored croquis. */
 export const OSM_CROQUIS_ATTRIBUTION = "© colaboradores de OpenStreetMap";
@@ -80,10 +126,16 @@ export function baseMapHighways(zoom: number): string[] {
     .flatMap(([highway]) => [highway, `${highway}_link`]);
 }
 
-/** Width of a class's line at this zoom, in map pixels. */
+/** Width of a class's line at this zoom, in map pixels, its edge included. */
 function roadWidth(kind: RoadClass, zoom: number, link: boolean) {
-  const width = ROAD_STYLES[kind].width * 2 ** ((zoom - 17) * 0.7) * (link ? 0.7 : 1);
-  return Math.max(kind === "minor" || kind === "pedestrian" ? 0.8 : 1.4, width);
+  return Math.max(kind === "minor" || kind === "pedestrian" ? 0.8 : 1.2, atZoom(ROAD_WIDTHS[kind], zoom) * (link ? 0.65 : 1));
+}
+
+/** The edge on each side of a class's line at this zoom; none where the line is too thin to hold one. */
+function casingWidth(kind: RoadClass, zoom: number) {
+  const minor = kind === "minor" || kind === "pedestrian" || kind === "tertiary";
+  if (zoom < (minor ? 13 : 10)) return 0;
+  return atZoom(CASING_WIDTHS[minor ? "minor" : "major"], zoom);
 }
 
 /** A box on the image in map pixels, by its center and half sizes: what a street name must not cover. */
@@ -101,6 +153,60 @@ export interface BaseMapOptions {
   obstacles?: readonly BaseMapObstacle[];
   /** Streets whose name the croquis already prints in its own band (the highlighted ones): no second name under it. */
   namedElsewhere?: ReadonlySet<string>;
+  /** The parks, water, land uses and buildings of the frame, painted under the streets (osm-areas.ts). */
+  areas?: readonly BaseMapArea[];
+}
+
+/** Width of a waterway's line by zoom, in map pixels (carto's water.mss). */
+const WATERWAY_WIDTHS: Record<"river" | "canal" | "stream" | "drain", Record<number, number>> = {
+  river: { 8: 0.7, 12: 1.5, 13: 2.2, 14: 3, 15: 4, 16: 6, 17: 9, 18: 12, 19: 16 },
+  canal: { 12: 1.2, 13: 2, 14: 3, 15: 4, 16: 6, 17: 8, 18: 11, 19: 14 },
+  stream: { 13: 0.7, 14: 1.2, 15: 1.8, 16: 2.4, 17: 3, 18: 4, 19: 5 },
+  drain: { 15: 1, 16: 1.5, 17: 2, 18: 3, 19: 4 },
+};
+
+/** Where each kind goes in the drawing: land and grounds (largest first), then water, then waterways, then buildings; the streets go over all of them. */
+const areaLayer = (kind: AreaKind) => (kind === "building" ? 3 : isLineKind(kind) ? 2 : kind === "water" ? 1 : 0);
+
+/**
+ * The areas as SVG paths in map pixels times `scale`: each polygon's rings
+ * in one path filled even-odd (its holes stay open), simplified to what a
+ * pixel shows; what is too small for the zoom is left out, and the larger
+ * land lies under the smaller one, as carto orders its landcover.
+ */
+function areasSvg(center: LatLon, zoom: number, areas: readonly BaseMapArea[], scale: number) {
+  if (!areas.length) return "";
+  const tolerance = metersPerPixel(zoom, center[0]) * 0.5;
+  const smallest = minimumAreaM2(zoom, center[0]);
+  const toPath = (points: readonly LatLon[], close: boolean) =>
+    points
+      .map((point, index) => {
+        const { x, y } = imagePixel(center, zoom, point);
+        return `${index ? "L" : "M"}${(x * scale).toFixed(1)} ${(y * scale).toFixed(1)}`;
+      })
+      .join("") + (close ? "Z" : "");
+  const edgeWidth = zoom >= 17 ? 1 : zoom >= 15 ? 0.6 : 0;
+  const shown = areas
+    .filter((area) => zoom >= AREA_MIN_ZOOM[area.kind] && (isLineKind(area.kind) || area.areaM2 >= smallest))
+    .map((area, order) => ({ area, order }))
+    .sort((a, b) => areaLayer(a.area.kind) - areaLayer(b.area.kind) || b.area.areaM2 - a.area.areaM2 || a.order - b.order);
+  return shown
+    .map(({ area }) => {
+      const style = AREA_STYLES[area.kind];
+      if (isLineKind(area.kind)) {
+        const d = area.lines.map((line) => toPath(simplifyPolyline(line, tolerance), false)).join("");
+        const lineWidth = atZoom(WATERWAY_WIDTHS[area.kind as keyof typeof WATERWAY_WIDTHS], zoom);
+        return d ? `<path d="${d}" fill="none" stroke="${style.fill}" stroke-width="${(lineWidth * scale).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>` : "";
+      }
+      const d = area.polygons
+        .flatMap((polygon) => polygon.map((ring) => simplifyPolyline(ring, tolerance)).filter((ring) => ring.length >= 3))
+        .map((ring) => toPath(ring, true))
+        .join("");
+      if (!d) return "";
+      const edge = style.edge && edgeWidth ? ` stroke="${style.edge}" stroke-width="${(edgeWidth * scale).toFixed(2)}" stroke-linejoin="round"` : "";
+      return `<path d="${d}" fill="${style.fill}" fill-rule="evenodd"${edge}/>`;
+    })
+    .join("");
 }
 
 const NAME_FONT = 10.5;
@@ -260,8 +366,13 @@ export function baseMapSvg(center: LatLon, zoom: number, ways: readonly BaseMapW
     const d = byClass.get(kind)!.filter((item) => item.link === link).map((item) => item.d).join("");
     return d ? `<path d="${d}" fill="none" stroke="${color}" stroke-width="${(stroke * scale).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>` : "";
   };
-  const casings = drawOrder.flatMap((kind) => [true, false].map((link) => group(kind, link, ROAD_STYLES[kind].casing, roadWidth(kind, zoom, link) + (zoom >= 14 ? 1.6 : 0.9))));
-  const fills = drawOrder.flatMap((kind) => [true, false].map((link) => group(kind, link, ROAD_STYLES[kind].fill, roadWidth(kind, zoom, link))));
+  // carto's way: the edge is the whole width in the edge's color, the fill the width minus both edges over it.
+  const casings = drawOrder.flatMap((kind) =>
+    casingWidth(kind, zoom) ? [true, false].map((link) => group(kind, link, ROAD_STYLES[kind].casing, roadWidth(kind, zoom, link))) : [],
+  );
+  const fills = drawOrder.flatMap((kind) =>
+    [true, false].map((link) => group(kind, link, ROAD_STYLES[kind].fill, Math.max(0.5, roadWidth(kind, zoom, link) - 2 * casingWidth(kind, zoom)))),
+  );
   const names = placeNames(byName, center, zoom, options).map(
     ({ name, x, y, angle }) =>
       `<g transform="translate(${(x * scale).toFixed(1)} ${(y * scale).toFixed(1)}) rotate(${angle.toFixed(1)})">` +
@@ -272,6 +383,7 @@ export function baseMapSvg(center: LatLon, zoom: number, ways: readonly BaseMapW
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
     `<rect width="${width}" height="${height}" fill="${BASE_MAP_BACKGROUND}"/>` +
+    areasSvg(center, zoom, options.areas ?? [], scale) +
     casings.join("") +
     fills.join("") +
     names.join("") +

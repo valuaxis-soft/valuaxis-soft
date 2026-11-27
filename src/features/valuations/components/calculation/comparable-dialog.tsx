@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Copy, ExternalLink, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Copy, ExternalLink, ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
 import {
   useEffect, useEffectEvent, useRef, useState, type ChangeEvent, type ClipboardEvent, type ComponentProps, type FormEvent, type ReactNode,
 } from "react";
@@ -104,6 +104,7 @@ import {
   type ComparableDto,
   type ComparableType,
 } from "@/features/valuations/calculation/market-types";
+import { mainComparablePhoto, type ComparablePhotoDto } from "@/features/valuations/calculation/market-types";
 
 const text = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value));
 
@@ -400,6 +401,8 @@ export type ComparableDialogProps = {
   onRemovePhoto: (photoId: string) => Promise<void>;
   /** «Encuadre» and «Zoom» of a photo as it prints; without it the photos have no framing control. */
   onFramePhoto?: (photoId: string, framing: ImageFraming | null) => Promise<void>;
+  /** Video 8.14: «Foto principal», the one the comparable's ficha prints; without it there is no choice. */
+  onSetMainPhoto?: (photoId: string) => Promise<void>;
   onUploadScreenshot: (file: File) => Promise<void>;
   onRemoveScreenshot: () => Promise<void>;
   /** Comparables of the firm's base that look like the same property. */
@@ -739,6 +742,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
   };
 
   const room = MAX_COMPARABLE_PHOTOS - (comparable?.photos.length ?? 0) - pendingPhotos.length;
+  const mainPhoto = mainComparablePhoto(comparable?.photos ?? []);
   /**
    * Several photos at once, one after the other so they keep their order; past
    * the ten a comparable keeps, it says so. A new comparable keeps them until
@@ -1417,9 +1421,16 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
             <SheetFormSection title="Fotografías del inmueble">
               <div className="flex flex-wrap gap-2" data-comparable-photos>
                 {(comparable?.photos ?? []).map((photo) => (
-                  <figure key={photo.id} className="relative size-24 overflow-hidden rounded-md border bg-muted">
+                  <figure
+                    key={photo.id}
+                    className={cn("relative size-24 overflow-hidden rounded-md border bg-muted", mainPhoto?.id === photo.id && (comparable?.photos.length ?? 0) > 1 && "ring-2 ring-primary")}
+                    data-main-photo={mainPhoto?.id === photo.id ? "" : undefined}
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={photo.url} alt={photo.title} className="size-full object-cover" />
+                    {mainPhoto?.id === photo.id && (comparable?.photos.length ?? 0) > 1 ? (
+                      <span className="absolute top-1 left-1 rounded-sm bg-primary px-1 text-[10px] font-medium text-primary-foreground">Principal</span>
+                    ) : null}
                     {props.onFramePhoto ? (
                       <span className="absolute bottom-1 left-1">
                         <ComparablePhotoFraming photo={photo} readOnly={readOnly} onSave={props.onFramePhoto} />
@@ -1475,6 +1486,9 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
                 ) : null}
                 {readOnly && !comparable?.photos.length ? <p className="text-xs text-muted-foreground">Sin fotografías.</p> : null}
               </div>
+              {props.onSetMainPhoto && comparable && comparable.photos.length > 1 ? (
+                <MainPhotoChooser photos={comparable.photos} main={mainPhoto} disabled={readOnly} onChoose={props.onSetMainPhoto} />
+              ) : null}
               {!readOnly ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <PasteImageButton baseName="foto-comparable" multiple disabled={uploading !== null || room <= 0} onFiles={(files) => void uploadPhotos(files)} />
@@ -1643,5 +1657,32 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+/**
+ * Video 8.14 (27 nov 2026): «Foto principal», the photo the comparable's
+ * ficha prints in «Croquis y fotografías de comparables»; the first of the
+ * gallery until he chooses another with ‹ and ›.
+ */
+function MainPhotoChooser({ photos, main, disabled, onChoose }: {
+  photos: readonly ComparablePhotoDto[];
+  main: ComparablePhotoDto | undefined;
+  disabled: boolean;
+  onChoose: (photoId: string) => Promise<void>;
+}) {
+  const index = Math.max(0, photos.findIndex((photo) => photo.id === main?.id));
+  const go = (step: number) => void onChoose(photos[(index + step + photos.length) % photos.length].id);
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs" data-main-photo-chooser="">
+      <span className="text-muted-foreground">Foto principal (la de su ficha):</span>
+      <Button type="button" size="icon-sm" variant="outline" disabled={disabled} aria-label="Foto principal anterior" onClick={() => go(-1)}>
+        <ChevronLeft />
+      </Button>
+      <span className="tabular-nums">{index + 1} de {photos.length}</span>
+      <Button type="button" size="icon-sm" variant="outline" disabled={disabled} aria-label="Foto principal siguiente" onClick={() => go(1)}>
+        <ChevronRight />
+      </Button>
+    </div>
   );
 }

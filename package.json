@@ -37,6 +37,7 @@
     "valuations:fix-status": "tsx --env-file-if-exists=.env scripts/ops/corregir-estado-nuevo.ts",
     "valuations:refresh-layout": "tsx --env-file-if-exists=.env scripts/ops/actualizar-formato.ts",
     "streets:import": "tsx --env-file-if-exists=.env scripts/ops/importar-calles.ts",
+    "areas:import": "tsx --env-file-if-exists=.env scripts/ops/importar-areas.ts",
     "maps:regenerate-croquis": "tsx --env-file-if-exists=.env scripts/ops/regenerar-croquis.ts",
     "legal:publish": "tsx --env-file-if-exists=.env scripts/ops/publicar-legal.ts",
     "accounts:inactivity": "tsx --env-file-if-exists=.env scripts/ops/inactividad-cuentas.ts",

@@ -140,6 +140,7 @@ export type ValuationBlockDto = {
   headerFields?: HeaderExtraField[];
   /** The carátula's company header block: the size of the principal cover image. */
   coverImageSize?: CoverImageSize;
+  photoGrid?: BlockMetadata["photoGrid"];
   /** The block of the concluded value (or the conclusion's subbloque of the chart): it prints the chart of the values. */
   valueChart?: boolean;
   /** The conclusion's subbloque of the chart: its style. */
@@ -840,6 +841,7 @@ function mapNodeToBlock(node: DbNode, label: string, read: TextReader): Valuatio
     flowSpacingBeforePx: blockMetadata.flowSpacingBeforePx,
     ...(blockMetadata.headerFields ? { headerFields: blockMetadata.headerFields } : {}),
     ...(blockMetadata.coverImageSize ? { coverImageSize: blockMetadata.coverImageSize } : {}),
+    ...(blockMetadata.photoGrid ? { photoGrid: blockMetadata.photoGrid } : {}),
     ...(blockMetadata.valueChart ? { valueChart: true } : {}),
     ...(blockMetadata.valueTitle ? { valueTitle: blockMetadata.valueTitle } : {}),
     ...(blockMetadata.removedApartados ? { removedApartados: blockMetadata.removedApartados } : {}),

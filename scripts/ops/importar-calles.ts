@@ -20,28 +20,14 @@
  *
  * Inside the production container: node --import tsx scripts/ops/importar-calles.ts [...]
  */
-import { createWriteStream } from "node:fs";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-import type { ReadableStream as WebReadableStream } from "node:stream/web";
 
 import { readOsmStreets, type OsmBbox } from "../../src/features/maps/server/osm-pbf";
 import { deleteStreetsLoadedBefore, saveStreets, storedStreetsSize } from "../../src/features/maps/server/streets-db";
 import { prisma } from "../../src/infrastructure/database/prisma-client";
-
-const MEXICO_EXTRACT = "https://download.geofabrik.de/north-america/mexico-latest.osm.pbf";
-
-function parseBbox(value: string | undefined): OsmBbox {
-  const parts = (value ?? "").split(",").map(Number);
-  const [west, south, east, north] = parts;
-  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part)) || west >= east || south >= north || Math.abs(south) > 90 || Math.abs(north) > 90) {
-    throw new Error("--bbox espera west,south,east,north en grados, por ejemplo --bbox -102.40,20.65,-102.28,20.76");
-  }
-  return [west, south, east, north];
-}
+import { MEXICO_EXTRACT, download, megabytes, parseBbox, seconds } from "./osm-extract";
 
 function parseArgs(argv: string[]) {
   let file: string | null = null;
@@ -57,21 +43,6 @@ function parseArgs(argv: string[]) {
     else throw new Error(`Opción desconocida: ${arg}`);
   }
   return { file, url, bbox, keep };
-}
-
-const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-const seconds = (since: number) => `${((Date.now() - since) / 1000).toFixed(1)} s`;
-
-async function download(url: string, target: string) {
-  const started = Date.now();
-  console.log(`Descargando ${url} …`);
-  const response = await fetch(url, { headers: { "User-Agent": "Valuaxis/1.0 (+https://valuaxissoft.com)" } });
-  if (!response.ok || !response.body) throw new Error(`La descarga respondió ${response.status}.`);
-  await pipeline(Readable.fromWeb(response.body as WebReadableStream<Uint8Array>), createWriteStream(target));
-  const { size } = await stat(target);
-  const expected = Number(response.headers.get("content-length"));
-  if (expected && size !== expected) throw new Error(`La descarga quedó incompleta (${megabytes(size)} de ${megabytes(expected)}); vuelve a correr el comando.`);
-  console.log(`Descargado: ${megabytes(size)} en ${seconds(started)}.`);
 }
 
 async function main() {

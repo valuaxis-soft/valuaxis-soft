@@ -149,6 +149,8 @@ export function SubjectMap(props: SubjectMapProps) {
       // The panel's own «Ampliar» keeps the controls beside the map; Google's full screen would hide them.
       fullscreenControl: false,
       clickableIcons: false,
+      // Video 8.14: frames between whole zooms; the panel snaps them to quarter steps.
+      isFractionalZoomEnabled: true,
       styles: mapStyles(latest.current.clean),
       mapTypeId: latest.current.mapType,
     });

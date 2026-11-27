@@ -155,6 +155,8 @@ export interface StreetLabel {
    * down (-90 to 90).
    */
   angle: number;
+  /** Video 8.14: the height of the name's letters in map pixels (`streetLabelFontSize`); the usual 13 when absent. */
+  size?: number;
 }
 
 /** A text angle readable from below: -90° to 90°. */
@@ -234,6 +236,19 @@ export function placedStreetLabels(labels: readonly StreetLabel[], placements: r
 
 /** Street names are OpenStreetMap's; longer ones are not streets. */
 const MAX_STREET_NAME = 120;
+
+/** The sizes of the street names the generator offers, in map pixels (the letters' height). */
+export const NAME_SIZE_RANGE = { min: 7, max: 18 } as const;
+/** The sizes the generator's «Tamaño de los nombres» offers. */
+export const NAME_SIZE_CHOICES = [
+  { value: 7, title: "Muy chico" },
+  { value: 9, title: "Chico" },
+  { value: 11, title: "Mediano" },
+  { value: 13, title: "Normal" },
+  { value: 15, title: "Grande" },
+  { value: 18, title: "Muy grande" },
+] as const;
+
 /** More painted streets than this would not fit the croquis URL anyway. */
 export const MAX_PAINTED_STREETS = 60;
 
@@ -262,6 +277,11 @@ export const streetHighlightsSchema = z.object({
   styles: highlightStylesSchema,
   /** "Mostrar nombres": the street names next to the highlighted streets. */
   names: z.boolean(),
+  /**
+   * Video 8.14 (27 nov 2026): the size of the names, like the widths of the
+   * strokes; null or absent follows the frame (smaller on a wide one).
+   */
+  nameSize: z.number().min(NAME_SIZE_RANGE.min).max(NAME_SIZE_RANGE.max).nullable().optional(),
 });
 
 export type StreetHighlights = z.infer<typeof streetHighlightsSchema>;

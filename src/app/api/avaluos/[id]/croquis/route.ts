@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
-import { CROQUIS_KINDS, croquisSettingsSchema, latLonSchema, northArrowSchema, type CroquisKind } from "@/features/maps/croquis";
+import { CROQUIS_KINDS, MAX_SUBJECT_LEGEND, croquisSettingsSchema, latLonSchema, northArrowSchema, pinsOfMarkets, type CroquisKind } from "@/features/maps/croquis";
+import { COMPARABLE_TYPES } from "@/features/valuations/calculation/market-types";
 import { MAX_LABEL_PLACEMENTS, croquisLabelPlacementSchema } from "@/features/maps/highlights";
 import { freeLinesSchema } from "@/features/maps/free-lines";
+import { isZoomStep } from "@/features/maps/map-styles";
 import { streetHighlightsSchema } from "@/features/maps/highlights";
 import { renderAndStoreCroquis } from "@/features/maps/server/croquis-image.service";
 import { getSubjectLocation } from "@/features/maps/server/subject-location.service";
@@ -19,7 +21,8 @@ import { uploadRateLimitResponse } from "@/security/rate-limit/upload-limit";
 const bodySchema = z.object({
   kind: z.enum(CROQUIS_KINDS.map((item) => item.kind) as [CroquisKind, ...CroquisKind[]]),
   center: latLonSchema,
-  zoom: z.number().int().min(1).max(21),
+  /** Quarter steps since 27 nov 2026 (video 8.14). */
+  zoom: z.number().min(1).max(21).refine(isZoomStep),
   /** Options of the on-screen map: the stored croquis is always the OpenStreetMap street drawing (no businesses, no photo), so they are accepted and not used. */
   clean: z.boolean(),
   northArrow: northArrowSchema,
@@ -31,6 +34,10 @@ const bodySchema = z.object({
   labels: z.array(croquisLabelPlacementSchema).max(MAX_LABEL_PLACEMENTS).optional(),
   /** «Trazo libre»: the lines drawn by hand. */
   lines: freeLinesSchema.optional(),
+  /** Video 8.14: the markets of comparables this croquis shows; absent or empty, all of them. */
+  markets: z.array(z.enum(COMPARABLE_TYPES)).max(COMPARABLE_TYPES.length).optional(),
+  /** Video 8.14: the subject's name in the legend. */
+  subjectLegend: z.string().trim().max(MAX_SUBJECT_LEGEND).optional(),
 });
 
 /**
@@ -56,18 +63,19 @@ export async function POST(request: Request, { params }: RouteContext<"/api/aval
     const stored = await getSubjectLocation(id, auth.user.organizationId);
     if (!stored.location) throw new ValuationWorkflowError("Primero ubica el inmueble sujeto en el mapa.", 400);
 
-    const { kind, center, zoom, northArrow, includeComparables, streets, labels, lines } = body.data;
+    const { kind, center, zoom, northArrow, includeComparables, streets, labels, lines, markets, subjectLegend } = body.data;
     const result = await renderAndStoreCroquis(auth.user, {
       kind,
       center,
       zoom,
       subject: stored.location.point,
       northArrow,
-      pins: includeComparables ? stored.comparables : [],
+      pins: includeComparables ? pinsOfMarkets(stored.comparables, markets) : [],
       streets,
       labels,
       lines,
       address: stored.address,
+      subjectLegend,
     });
     return NextResponse.json({ data: result }, { status: 201 });
   } catch (error) {

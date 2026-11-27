@@ -48,7 +48,7 @@ import { useDocumentPaletteStyle } from "./page-presentation-context";
 import { UnaccreditedNotice, useUnaccreditedNotice } from "@/features/accreditation/components/unaccredited-notice";
 import { NOTICE_SECTION_KEYS } from "@/features/accreditation/accreditation-notice";
 import { titlePrints } from "@/features/valuations/services/block-title";
-import { isPhotoBlock, photoGridBlock } from "@/features/valuations/services/photo-layout";
+import { isPhotoBlock, photoGridBlock, photoGridOf } from "@/features/valuations/services/photo-layout";
 
 /** The root of a document: always light, with the colours of its palette as CSS variables. */
 function DocumentRoot({ children }: { children: ReactNode }) {
@@ -294,7 +294,7 @@ function sectionBlockItems(section: AppSection, applyConceptLayout: boolean, car
   return section.blocks
     .filter((block) => block.enabled)
     // FAL-11: the photographs of the subject and of the comparables, two per row with their captions.
-    .flatMap((block) => (isPhotoBlock(key, block) ? inPhotoGrid(print(photoGridBlock(block))) : conclusion ? conclusionBlockFlowItems(block, caratula, print) : print(block)));
+    .flatMap((block) => (isPhotoBlock(key, block) ? inPhotoGrid(print(photoGridBlock(block)), photoGridOf(block).perRow) : conclusion ? conclusionBlockFlowItems(block, caratula, print) : print(block)));
 }
 
 const NOTICE_SECTIONS: ReadonlySet<string> = new Set(NOTICE_SECTION_KEYS);

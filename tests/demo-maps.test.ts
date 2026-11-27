@@ -172,7 +172,8 @@ test("north arrow: three styles, four corners, top right by default; the croquis
   assert.equal(MACRO_FRAME.zoom, 15);
   assert.equal(MICRO_FRAME.zoom, 17);
   const frame = frameFromView({ center: [20.6354, -103.4034], zoom: 16.6 }, SUBJECT_START);
-  assert.equal(frame.zoom, 17);
+  // Video 8.14: quarters of a zoom since 27 nov 2026 (it was the whole 17).
+  assert.equal(frame.zoom, 16.5);
   assert.ok(Math.abs(frame.offset[0] - 0.00098) < 1e-9 && Math.abs(frame.offset[1] - -0.00101) < 1e-9);
   const moved: [number, number] = [20.64, -103.4];
   const center = frameCenter(frame, moved);

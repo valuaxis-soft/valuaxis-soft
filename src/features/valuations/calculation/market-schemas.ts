@@ -341,6 +341,9 @@ export const comparablePhotoFramingSchema = z.object({
   }).nullable(),
 });
 
+/** Video 8.14: «Foto principal» of a comparable. */
+export const comparableMainPhotoSchema = z.object({ photoId: z.string().trim().min(1).max(80), main: z.literal(true) });
+
 /** What the duplicate check reads of a comparable being captured. */
 export const duplicateProbeSchema = z.object({
   url: z.string().trim().max(1000).nullable().default(null),

@@ -13,7 +13,7 @@ import { COMPARABLE_TYPES, type ComparableType } from "@/features/valuations/cal
 
 import { freeLinesSchema, readFreeLines } from "./free-lines";
 import { DEFAULT_STREET_HIGHLIGHTS, MAX_LABEL_PLACEMENTS, croquisLabelPlacementSchema, streetHighlightsSchema, type CroquisLabelPlacement, type StreetLabel } from "./highlights";
-import { DEFAULT_NORTH_ARROW, MACRO_FRAME, MAP_CORNERS, MAP_TYPES, MICRO_FRAME, NORTH_ARROW_STYLES, type CroquisFrame, type MapCorner, type MapType, type NorthArrow } from "./map-styles";
+import { DEFAULT_NORTH_ARROW, MACRO_FRAME, MAP_CORNERS, MAP_TYPES, MICRO_FRAME, NORTH_ARROW_STYLES, ZOOM_STEP, isZoomStep, type CroquisFrame, type MapCorner, type MapType, type NorthArrow } from "./map-styles";
 import { STATIC_MAP_SIZE, imagePixel, imagePosition, pointAtPixel } from "./static-map";
 import type { LatLon } from "./types";
 
@@ -51,7 +51,7 @@ export const COMPARABLES_FRAME: CroquisFrame = { offset: [0, 0], zoom: 15 };
 
 const frameSchema = z.object({
   offset: z.tuple([z.number().finite(), z.number().finite()]).readonly(),
-  zoom: z.number().int().min(1).max(21),
+  zoom: z.number().min(1).max(21).refine(isZoomStep, "El zoom va en cuartos."),
 });
 
 export const northArrowSchema = z.object({
@@ -66,6 +66,15 @@ const labelPlacementsSchema = z.object({ macro: labelListSchema, micro: labelLis
 export type CroquisLabelPlacements = Partial<Record<CroquisKind, CroquisLabelPlacement[]>>;
 
 const mapTypeSchema = z.enum(MAP_TYPES.map((item) => item.key) as [MapType, ...MapType[]]);
+
+/** Video 8.14: the markets of comparables each croquis shows; a croquis without an entry shows them all. */
+const marketListSchema = z.array(z.enum(COMPARABLE_TYPES)).max(COMPARABLE_TYPES.length);
+const croquisMarketsSchema = z.object({ macro: marketListSchema, micro: marketListSchema, comparables: marketListSchema }).partial();
+
+/** The longest name of the subject in the legend. */
+export const MAX_SUBJECT_LEGEND = 40;
+/** The subject's row of the legend when the appraiser names it nothing else. */
+export const DEFAULT_SUBJECT_LEGEND = "Inmueble valuado";
 
 export const croquisSettingsSchema = z.object({
   macro: frameSchema,
@@ -86,6 +95,10 @@ export const croquisSettingsSchema = z.object({
   lines: freeLinesSchema.default([]),
   /** FAL-35 (24 nov 2026): the street names placed by hand («Letreros» or dragged on the map), per croquis; settings stored before have none. */
   labels: labelPlacementsSchema.default({}),
+  /** Video 8.14 (27 nov 2026): which markets of comparables each croquis shows; settings stored before have none (all of them). */
+  markets: croquisMarketsSchema.default({}),
+  /** Video 8.14: the subject's name in the legend («Bien sujeto», «Bien valuado»…); empty is «Inmueble valuado». */
+  subjectLegend: z.string().trim().max(MAX_SUBJECT_LEGEND).default(""),
 });
 
 export type CroquisSettings = z.infer<typeof croquisSettingsSchema>;
@@ -102,6 +115,8 @@ export const DEFAULT_CROQUIS_SETTINGS: CroquisSettings = {
   mapType: "roadmap",
   lines: [],
   labels: {},
+  markets: {},
+  subjectLegend: "",
 };
 
 /** Settings as stored, completed with the defaults; invalid or missing pieces take the default. */
@@ -126,6 +141,8 @@ export function readCroquisSettings(value: unknown): CroquisSettings {
     // One damaged line never loses the others.
     lines: readFreeLines(record.lines),
     labels: pick(labelPlacementsSchema, "labels", DEFAULT_CROQUIS_SETTINGS.labels),
+    markets: pick(croquisMarketsSchema, "markets", DEFAULT_CROQUIS_SETTINGS.markets),
+    subjectLegend: pick(z.string().trim().max(MAX_SUBJECT_LEGEND), "subjectLegend", DEFAULT_CROQUIS_SETTINGS.subjectLegend),
   };
 }
 
@@ -134,6 +151,8 @@ export function readCroquisSettings(value: unknown): CroquisSettings {
 /* ------------------------------------------------------------------ */
 
 export const SUBJECT_PIN_COLOR = "#c0392b";
+/** The subject's drop in a 30 × 40 box with its tip at (15, 38): the stored image and the generator's «Letreros» draw the same. */
+export const SUBJECT_PIN_PATH = "M15 38C15 38 3 23 3 14a12 12 0 0 1 24 0c0 9-12 24-12 24z";
 
 /** One color per comparable type, the ones of the demonstration. */
 export const COMPARABLE_PIN_COLORS: Record<ComparableType, string> = {
@@ -237,9 +256,20 @@ export function pinsOverlaySvg(center: LatLon, zoom: number, pins: readonly Comp
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${items.join("")}</svg>`;
 }
 
-/** Height of a street name on the image, in map pixels; its width follows the text. */
+/** Height of a street name's band on the image, in map pixels, for letters of `LABEL_FONT`; its width follows the text. */
 const LABEL_HEIGHT = 20;
 const LABEL_FONT = 13;
+
+/**
+ * The size of the street names on a frame (video 8.14, 27 nov 2026: on a
+ * wide map the names were as big as on a block's and covered it): the
+ * appraiser's size when he chose one, otherwise 13 from zoom 17 in, a
+ * point less for each zoom out, 9 at most on a city's frame.
+ */
+export function streetLabelFontSize(zoom: number, chosen?: number | null) {
+  if (chosen) return chosen;
+  return Math.round(Math.min(LABEL_FONT, Math.max(9, LABEL_FONT - (17 - zoom))) * 2) / 2;
+}
 /** Average width of a character of the label's bold font, in map pixels. */
 const LABEL_CHAR_WIDTH = 7.8;
 /** The font of the names: the document's, then the ones a server without it has. */
@@ -251,10 +281,12 @@ export const STREET_LABEL_FONT_FAMILY = "'Open Sans', 'DejaVu Sans', Arial, Helv
  * generator's «Letreros» and the server's image use the same box, so what
  * the appraiser arranges is what prints.
  */
-export function streetLabelBox(center: LatLon, zoom: number, label: Pick<StreetLabel, "name" | "point" | "angle">) {
+export function streetLabelBox(center: LatLon, zoom: number, label: Pick<StreetLabel, "name" | "point" | "angle" | "size">) {
   const at = imagePixel(center, zoom, label.point);
-  const width = label.name.length * LABEL_CHAR_WIDTH + 14;
-  const height = LABEL_HEIGHT;
+  const fontSize = label.size ?? LABEL_FONT;
+  const ratio = fontSize / LABEL_FONT;
+  const width = (label.name.length * LABEL_CHAR_WIDTH + 14) * ratio;
+  const height = LABEL_HEIGHT * ratio;
   const radians = (label.angle * Math.PI) / 180;
   const halfX = Math.abs((width / 2) * Math.cos(radians)) + Math.abs((height / 2) * Math.sin(radians));
   const halfY = Math.abs((width / 2) * Math.sin(radians)) + Math.abs((height / 2) * Math.cos(radians));
@@ -267,7 +299,7 @@ export function streetLabelBox(center: LatLon, zoom: number, label: Pick<StreetL
     width,
     height,
     angle: label.angle,
-    fontSize: LABEL_FONT,
+    fontSize,
   };
 }
 
@@ -296,6 +328,13 @@ export function streetLabelsOverlaySvg(center: LatLon, zoom: number, labels: rea
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${items.join("")}</svg>`;
 }
 
+/** Video 8.14: the pins of the markets a croquis shows; no choice (or an empty one) keeps them all. */
+export function pinsOfMarkets(pins: readonly ComparablePin[], markets: readonly ComparableType[] | undefined) {
+  if (!markets?.length) return [...pins];
+  const wanted = new Set(markets);
+  return pins.filter((pin) => wanted.has(pin.type));
+}
+
 /** The pins that would show on an image framed this way (for the legend and the tests). */
 export function pinsInFrame(center: LatLon, zoom: number, pins: readonly ComparablePin[]) {
   return pins.filter((pin) => imagePosition(center, zoom, pin.point) !== null);
@@ -315,12 +354,12 @@ const FIT_MIN_ZOOM = 3;
 /**
  * FAL-10: the frame of the map of comparables that shows the subject and
  * every comparable with coordinates, as close as they fit: centered on all
- * of them, at the largest whole zoom where they stay inside the image with
+ * of them, at the largest zoom (in quarter steps) where they stay inside the image with
  * room for their numbers. Without comparables, the default frame.
  */
 export function comparablesFitFrame(subject: LatLon, pins: readonly ComparablePin[]): CroquisFrame {
   if (!pins.length) return COMPARABLES_FRAME;
-  for (let zoom = FIT_MAX_ZOOM; zoom >= FIT_MIN_ZOOM; zoom -= 1) {
+  for (let zoom = FIT_MAX_ZOOM; zoom >= FIT_MIN_ZOOM; zoom -= ZOOM_STEP) {
     const pixels = [subject, ...pins.map((pin) => pin.point)].map((point) => imagePixel(subject, zoom, point));
     const xs = pixels.map((at) => at.x);
     const ys = pixels.map((at) => at.y);
@@ -351,6 +390,9 @@ const COMPARABLE_LEGEND_LABELS: Record<ComparableType, string> = {
   TERRENO_RENTA: "Terrenos en renta",
 };
 
+/** The markets the generator offers, with the legend's names. */
+export const COMPARABLE_MARKETS = COMPARABLE_TYPES.map((type) => ({ type, title: COMPARABLE_LEGEND_LABELS[type] }));
+
 /** "C-1 a C-3, C-5": the numbers of the pins, the runs written as ranges. */
 export function pinNumbers(references: readonly number[]) {
   const sorted = [...new Set(references)].sort((a, b) => a - b);
@@ -369,11 +411,11 @@ export function pinNumbers(references: readonly number[]) {
  * image shows, in the order of the markets, each with the numbers it shows
  * (the dictamen's, per market); nothing when no comparable falls in the frame.
  */
-export function croquisLegend(center: LatLon, zoom: number, pins: readonly ComparablePin[]): CroquisLegendEntry[] {
+export function croquisLegend(center: LatLon, zoom: number, pins: readonly ComparablePin[], subjectLegend = ""): CroquisLegendEntry[] {
   const shown = pinsInFrame(center, zoom, pins);
   if (!shown.length) return [];
   return [
-    { color: SUBJECT_PIN_COLOR, label: "Inmueble valuado", shape: "subject" },
+    { color: SUBJECT_PIN_COLOR, label: subjectLegend.trim() || DEFAULT_SUBJECT_LEGEND, shape: "subject" },
     ...COMPARABLE_TYPES.flatMap((type): CroquisLegendEntry[] => {
       const numbers = shown.filter((pin) => pin.type === type).map((pin) => pin.reference);
       return numbers.length ? [{ color: COMPARABLE_PIN_COLORS[type], label: `${COMPARABLE_LEGEND_LABELS[type]}: ${pinNumbers(numbers)}`, shape: "comparable" }] : [];
@@ -452,8 +494,8 @@ export function legendOverlaySvg(entries: readonly CroquisLegendEntry[], corner:
 }
 
 /** The legend of an image with comparables, its corner and its box; null when no comparable falls in the frame. */
-export function croquisLegendPlacement(center: LatLon, zoom: number, pins: readonly ComparablePin[], northCorner: MapCorner, subject: LatLon = center) {
-  const entries = croquisLegend(center, zoom, pins);
+export function croquisLegendPlacement(center: LatLon, zoom: number, pins: readonly ComparablePin[], northCorner: MapCorner, subject: LatLon = center, subjectLegend = "") {
+  const entries = croquisLegend(center, zoom, pins, subjectLegend);
   if (!entries.length) return null;
   const corner = legendCorner(entries, northCorner, center, zoom, pinsInFrame(center, zoom, pins), subject);
   return { entries, corner, box: legendBox(entries, corner) };
@@ -478,7 +520,7 @@ export function subjectPinSvg(center: LatLon, zoom: number, subject: LatLon, sca
   const y = at.y * height - 38 * scale;
   return open
     + `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${scale})">`
-    + `<path d="M15 38C15 38 3 23 3 14a12 12 0 0 1 24 0c0 9-12 24-12 24z" fill="${SUBJECT_PIN_COLOR}" stroke="#fff" stroke-width="3"/>`
+    + `<path d="${SUBJECT_PIN_PATH}" fill="${SUBJECT_PIN_COLOR}" stroke="#fff" stroke-width="3"/>`
     + `<circle cx="15" cy="14" r="4" fill="#fff"/>`
     + `</g></svg>`;
 }

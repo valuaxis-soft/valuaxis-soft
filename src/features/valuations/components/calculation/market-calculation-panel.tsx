@@ -1557,6 +1557,9 @@ function MarketTypePanel(props: {
           onFramePhoto={async (photoId, framing) => {
             if (editingComparable) await run(() => api.market.framePhoto(valuationId, type, editingComparable.id, photoId, framing), "Encuadre de la fotografía guardado");
           }}
+          onSetMainPhoto={async (photoId) => {
+            if (editingComparable) await run(() => api.market.setMainPhoto(valuationId, type, editingComparable.id, photoId), "Foto principal elegida: es la de su ficha");
+          }}
           onUploadScreenshot={async (file) => {
             if (editingComparable) await run(() => api.market.uploadScreenshot(valuationId, type, editingComparable.id, file), "Pantalla de referencia guardada");
           }}

@@ -5,7 +5,7 @@
  * image from them (croquis-image.service.ts).
  */
 import type { CroquisKind } from "./croquis";
-import { streetLabelBox } from "./croquis";
+import { streetLabelBox, streetLabelFontSize } from "./croquis";
 import type { FreeLine } from "./free-lines";
 import {
   highlightedWays,
@@ -110,7 +110,7 @@ export function croquisStreets(
   const named = [...(highlights.names ? drawn : []), ...namedLines(avoid.lines ?? [])];
   return {
     paths: drawn.map(({ way, style }) => ({ color: style.color, weight: style.weight, points: way.g })),
-    labels: named.length ? frameLabels(named, center, zoom, subject, avoid) : [],
+    labels: named.length ? frameLabels(named, center, zoom, subject, { nameSize: highlights.nameSize, ...avoid }) : [],
     omitted: [...omitted].filter((name) => !drawnNames.has(name)),
   };
 }
@@ -150,6 +150,8 @@ export interface LabelObstacles {
   pins?: readonly LatLon[];
   /** In map pixels of the image. */
   legend?: { x: number; y: number; width: number; height: number } | null;
+  /** Video 8.14: the size the appraiser chose for the names; absent, it follows the zoom. */
+  nameSize?: number | null;
 }
 
 interface Sample {
@@ -209,7 +211,7 @@ function aroundSpots(sample: Sample, center: LatLon, zoom: number): LatLon[] {
   return spots;
 }
 
-function boxOf(center: LatLon, zoom: number, label: Pick<StreetLabel, "name" | "point" | "angle">): Box {
+function boxOf(center: LatLon, zoom: number, label: Pick<StreetLabel, "name" | "point" | "angle" | "size">): Box {
   const box = streetLabelBox(center, zoom, label);
   const radians = (box.angle * Math.PI) / 180;
   return {
@@ -242,6 +244,7 @@ export function frameLabels(drawn: readonly HighlightedWay[], center: LatLon, zo
     entry.pieces.push(way);
     byName.set(way.n, entry);
   }
+  const size = streetLabelFontSize(zoom, avoid.nameSize);
   const pin = imagePixel(center, zoom, subject);
   // The subject's drop stands above its point (subjectPinSvg: 30 × 38 map pixels); a name keeps off all of it.
   const taken: Box[] = [{ x: pin.x, y: pin.y - 17, halfX: LABEL_MARGIN + 3, halfY: 21 }];
@@ -263,7 +266,7 @@ export function frameLabels(drawn: readonly HighlightedWay[], center: LatLon, zo
     const placement = placed.get(name);
     if (!placement) continue;
     const label: StreetLabel = { name, point: placement.point, color, angle: uprightAngle(placement.angle) };
-    taken.push(boxOf(center, zoom, label));
+    taken.push(boxOf(center, zoom, { ...label, size }));
     labels.set(name, label);
   }
   const ordered = [...byName.entries()].sort(([, a], [, b]) => Number(b.front) - Number(a.front));
@@ -280,7 +283,7 @@ export function frameLabels(drawn: readonly HighlightedWay[], center: LatLon, zo
       }),
     );
     const covering = (label: StreetLabel) => {
-      const box = boxOf(center, zoom, label);
+      const box = boxOf(center, zoom, { ...label, size });
       return taken.reduce((sum, other) => sum + overlapArea(box, other), 0);
     };
     // Nothing free on or beside its street (a short line, a crowded macro): the nearest free spot around it, so a
@@ -289,8 +292,8 @@ export function frameLabels(drawn: readonly HighlightedWay[], center: LatLon, zo
       candidates.find((label) => covering(label) === 0) ??
       aroundSpots(samples[0], center, zoom).map((point): StreetLabel => ({ name, point, color, angle: samples[0].angle })).find((label) => covering(label) === 0) ??
       candidates.reduce((best, label) => (covering(label) < covering(best) ? label : best), candidates[0]);
-    taken.push(boxOf(center, zoom, chosen));
+    taken.push(boxOf(center, zoom, { ...chosen, size }));
     labels.set(name, chosen);
   }
-  return ordered.flatMap(([name]) => (labels.has(name) ? [labels.get(name)!] : []));
+  return ordered.flatMap(([name]) => (labels.has(name) ? [{ ...labels.get(name)!, size }] : []));
 }
