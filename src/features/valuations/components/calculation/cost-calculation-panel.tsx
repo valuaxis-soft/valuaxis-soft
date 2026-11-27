@@ -59,6 +59,7 @@ import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/feat
 import type { CapturePages } from "@/features/valuations/calculation/capture-display";
 import {
   COST_PHYSICAL_VALUE_BOX,
+  costPartRowId,
   COST_TEMPLATE_BLOCK_IDS,
   costCaptureColumns,
   costExtraValueRowId,
@@ -123,6 +124,8 @@ const ROUNDING_FIELDS: { key: keyof CostRoundingDto; label: string }[] = [
   { key: "installations", label: "Instalaciones" },
   { key: "physicalValue", label: "Valor físico" },
 ];
+
+const PART_LETTERS = { land: "A", constructions: "B", installations: "C" } as const;
 
 /** Each value as its box prints it, already rounded as chosen. */
 const roundedAmount = (result: CostApproachResult, key: keyof CostRoundingDto) =>
@@ -1271,7 +1274,9 @@ export function CostCalculationPanel(props: {
   const result = live.result;
   const roundingSlots = result ? ROUNDING_FIELDS.flatMap((field) => {
     const table = roundingTable(field.key);
-    const box = field.key === "physicalValue" ? `${COST_PHYSICAL_VALUE_BOX}.total` : "valor.0";
+    // A part whose own box is folded into the physical value (it closes the same table) has its rounding on its row there.
+    const box = field.key === "physicalValue" ? `${COST_PHYSICAL_VALUE_BOX}.total`
+      : table === physicalTable ? `${COST_PHYSICAL_VALUE_BOX}.${costPartRowId(PART_LETTERS[field.key])}` : "valor.0";
     return table ? [{ field, address: { table, box } as CaptureAddress, amount: roundedAmount(result, field.key) }] : [];
   }) : [];
   const setRounding = (key: keyof CostRoundingDto, digits: RoundingDigits) => change({ rounding: { ...draft.rounding, [key]: digits } });

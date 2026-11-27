@@ -306,8 +306,8 @@ export function costDocumentBlocks(
   // The physical value closes the page, under the last table, with the parts it adds up.
   const last = apartados.at(-1);
   if (!last) return [];
-  // A, B and C are always listed, with what each one adds (zero when there is none): the sum reads as the
-  // appraiser's book, and a part missing shows (video 8.14, 43:08: «valor del terreno, valor de las
+  // A, B and C are always listed, with what each one adds (zero when there is none), and D when there are
+  // indirects: the sum reads as the appraiser's book, and a part missing shows (video 8.14, 43:08: «valor del terreno, valor de las
   // construcciones y valor de las instalaciones»; the sum said A+C and nobody saw that B was not there).
   const additions = costAdditionsOf(calculation.columns);
   const parts = [
@@ -321,20 +321,31 @@ export function costDocumentBlocks(
       return { letter, label: `${letter}) ${item.label.replace(/:$/, "")}:`, amount: item.amount, id: costExtraValueRowId(item.id) };
     }),
   ];
-  // The part whose own box closes the same table is not written again under it (video 8.7, 11:40: «me muestran C y luego otra vez C»).
-  const letterOf: Record<string, string> = { [`${PREFIX}-terreno`]: "A", [`${PREFIX}-construcciones`]: "B", [`${PREFIX}-instalaciones`]: "C", [`${PREFIX}-indirectos`]: "D" };
-  const above = letterOf[last.id];
+  // The part whose own box closes the same table is written once, here, with the wording of its own box («C) Valor de
+  // Instalaciones Especiales, Elementos Accesorios y Obras Complementarias:», as N65 of his book).
+  const lastTable = last.tables.at(-1);
+  const folded = lastTable ? ensureTableV2(lastTable).schema?.summaryBoxes?.find((box) => box.id === PART_BOX)?.rows[0]?.label : undefined;
+  const foldedLetter = ({ [`${PREFIX}-terreno`]: "A", [`${PREFIX}-construcciones`]: "B", [`${PREFIX}-instalaciones`]: "C", [`${PREFIX}-indirectos`]: "D" } as Record<string, string>)[last.id];
   const closing: TableSummaryBox = {
     id: COST_PHYSICAL_VALUE_BOX,
     position: "bottom",
     align: "end",
     rows: [
-      ...parts.filter((part) => part.letter !== above).map((part) => ({ id: "id" in part ? part.id : part.letter, label: part.label, value: money(part.amount) })),
+      // Every part the sum adds is a row of the box, in order: the label «(A+B+C+D)» lists what the rows show
+      // (QA of video 8.14, 43:08: B at $0 was left out under «(A+B+C)», and D never showed although it was added).
+      ...parts.map((part) => ({
+        id: "id" in part ? part.id : part.letter,
+        label: folded && part.letter === foldedLetter ? folded : part.label,
+        value: money(part.amount),
+      })),
       // As the appraiser's current book closes the page (Bugambilias, video of 20 Oct 2026; REAL_ARANDAS).
       { id: "total", label: `VALOR FÍSICO DE REPOSICIÓN (${parts.map((part) => part.letter).join("+")}):`, value: money(result.physicalValue), emphasis: "total" },
     ],
   };
-  const closed = { ...last, tables: last.tables.map((item, index) => (index === last.tables.length - 1 ? withSummaryBox(item, closing) : item)) };
+  // Each part once, as his TCH book closes the page (VI. ENF. COSTOS: N65 C), N67 D), N69 VALOR FÍSICO (A+B+C+D)):
+  // the own box of the part that closes the last table folds into the physical value as its row, not printed
+  // beside it again (video 8.7, 11:40: «me muestran C y luego otra vez C»).
+  const closed = { ...last, tables: last.tables.map((item, index) => (index === last.tables.length - 1 ? withSummaryBox(withoutPartBox(item), closing) : item)) };
   return [generatedBlock(PREFIX, "ENFOQUE FÍSICO O DE COSTOS", { apartados: [...apartados.slice(0, -1), closed] })];
 }
 
@@ -428,6 +439,19 @@ export function costCaptureColumns(columns: { constructions: DemeritColumnsDto; 
       amount: generatedColumnId(3),
     },
   };
+}
+
+/** The own box of a part (A, B, C or D), «valor»: folded into the physical value when it closes the same table. */
+const PART_BOX = "valor";
+
+/** The row of the physical value's box that prints a part (A, B, C, D): where its rounding sits when its own box is folded there. */
+export const costPartRowId = (letter: "A" | "B" | "C" | "D") => letter;
+
+function withoutPartBox(tableItem: TableContent): TableContent {
+  const normalized = ensureTableV2(tableItem);
+  const boxes = normalized.schema?.summaryBoxes;
+  if (!boxes?.some((box) => box.id === PART_BOX)) return tableItem;
+  return { ...normalized, schema: { ...normalized.schema!, summaryBoxes: boxes.filter((box) => box.id !== PART_BOX) } } as unknown as TableContent;
 }
 
 /** The table with one more summary box after the ones it has. */

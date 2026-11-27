@@ -86,6 +86,17 @@ export function conceptCalculationKey(concept: Pick<Concept, "label" | "calculat
   return concept.calculationKey ?? LEGACY_LABEL_KEYS.get(normalize(concept.label));
 }
 
+const WORDS_KEYS = new Set<string>([CONCLUSION_KEYS.words, CONCLUSION_KEYS.caratulaWords]);
+
+/**
+ * A value that reads in words, «(OCHO MILLONES … 00/100 M.N.)»: the concluded
+ * value and the carátula's figure in letters, or any amount whose format is
+ * «En letra». The editor shows it whole, on the lines it takes.
+ */
+export function readsInWords(concept: Pick<Concept, "label" | "calculationKey" | "valueFormat">) {
+  return concept.valueFormat === "words" || WORDS_KEYS.has(conceptCalculationKey(concept) ?? "");
+}
+
 const APPROACH_KEYS = new Set<string>([CONCLUSION_KEYS.costos, CONCLUSION_KEYS.mercado, CONCLUSION_KEYS.ingresos]);
 
 /** A row of the resumen de valores: one of the three approaches, or a row the appraiser chose. */

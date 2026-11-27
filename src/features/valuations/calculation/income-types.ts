@@ -254,20 +254,30 @@ export const DEFAULT_INCOME: IncomeInputDto = {
   rounding: null,
 };
 
+/** Two figures the same to the cent: an area or rent typed as the market's, whatever its float noise. */
+const sameFigure = (a: number, b: number) => Math.abs(a - b) < 0.005;
+
 /**
  * The monthly rent the rent market concluded, when the income approach takes
- * it as its gross rent: one rentable surface that inherits the market's rent
- * and the subject's area (or has that same area typed). Otherwise null: the
- * surfaces are worked out as before, area × rent.
+ * it as its gross rent: one rentable surface that refers to the market's
+ * result, its area and unit rent blank (inherited) or typed as the market's
+ * subject area and adopted rent (video 8.14, 02:46: he had 236 m² and $130
+ * typed, the same as the market's, and the gross rent stayed $30,680 instead
+ * of the $31,000 concluded). In his books the income sheet takes the rent
+ * «a utilizar» of the rent market (TCH IX!Q15 = VIII!T46). Otherwise null: a
+ * surface with another area or a rent he changed is worked out as area × rent.
  */
 export function concludedMonthlyRentFor(calculation: Pick<IncomeCalculationDto, "rentableUnits" | "rentMarket">): number | null {
   const concluded = calculation.rentMarket.concludedMonthlyRent;
   const units = calculation.rentableUnits;
-  if (!concluded || concluded <= 0 || units.length !== 1 || units[0].unitRent !== null) return null;
+  if (!concluded || concluded <= 0 || units.length !== 1) return null;
   const adopted = calculation.rentMarket.adoptedUnitRent;
   const subjectArea = calculation.rentMarket.subjectArea;
   if (!adopted || adopted <= 0 || !subjectArea || subjectArea <= 0) return null;
-  return units[0].area === null || units[0].area === subjectArea ? concluded : null;
+  const [unit] = units;
+  const marketRent = unit.unitRent === null || sameFigure(unit.unitRent, adopted);
+  const marketArea = unit.area === null || sameFigure(unit.area, subjectArea);
+  return marketRent && marketArea ? concluded : null;
 }
 
 type EngineInputResult = { ok: true; input: IncomeApproachInput } | { ok: false; reason: string };
@@ -321,7 +331,8 @@ export function toIncomeEngineInput(
     rentableUnits: units.map((unit) => ({
       description: unit.description || "Superficie rentable",
       area: unit.area as number,
-      ...(unit.unitRent !== null ? { unitRent: unit.unitRent } : {}),
+      // The market's own rent typed again is the market's: the concluded rent applies (the engine takes it for a surface without its own rent).
+      ...(unit.unitRent !== null && concluded === null ? { unitRent: unit.unitRent } : {}),
     })),
     deductions,
   };

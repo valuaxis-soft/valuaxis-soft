@@ -373,7 +373,9 @@ function BoxRowEditor(props: {
         disabled={props.readOnly}
         value={props.label}
         placeholder={item.own ? "Nombre del renglón" : item.row.label}
-        className={cn("border-input text-sm text-foreground", item.row.emphasis && "font-semibold")}
+        // As wide as its text, the box with it: «Valor homologado a utilizar» read «Valor homologado a utiliz»
+        // next to the one figure he types (QA of video 8.13, 04:14), and «VALOR FÍSICO DE REPOS…» in costs.
+        className={cn("field-sizing-content border-input text-sm text-foreground", item.row.emphasis && "font-semibold")}
         onCommit={props.onLabel}
       />
       {item.own ? (

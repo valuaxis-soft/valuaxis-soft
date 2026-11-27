@@ -47,6 +47,10 @@ function compute(calculation: CostCalculationDto) {
 }
 
 /** A generated table as the dictamen prints it. */
+/** The letters of the parts (A, B, C, D) written in a table's boxes, in order: each part once in the closing area. */
+const partLetters = (boxes: Record<string, string[][]>) =>
+  Object.values(boxes).flat().map(([label]) => /^([A-D])\)/.exec(label)?.[1]).filter((letter): letter is string => Boolean(letter));
+
 function printed(table: TableContent) {
   const v2 = ensureTableV2(table);
   return {
@@ -112,15 +116,17 @@ test("the cost page is one block with land, constructions and installations, eac
   assert.deepEqual(itemValues.boxes, {
     "bottom:vrn": [["Valor de Reposición Nuevo (V.R.N.):", "$ 548,314.43"]],
     "bottom:sumas": [["Suma Privativa (P):", "$ 516,865.31"], ["Suma Común (C):", "$ 0.00"], ["Valor Neto de Reposición (V.N.R.):", "$ 516,865.31"]],
-    "bottom:valor": [["C) Valor de Instalaciones Especiales, Elementos Accesorios y Obras Complementarias:", "$ 517,000.00"]],
-    // The physical value closes the page under the last table; C), right above it in its own box, is not written twice (video 8.7, 11:40).
+    // The physical value closes the page under the last table with every part it adds; C)'s own box folds into it, with its
+    // wording, so C is written once (video 8.7, 11:40; his book: N65 C), N67 D), N69 VALOR FÍSICO).
     "bottom:valor-fisico": [
       ["A) Valor del Terreno:", "$ 1,528,000.00"],
       ["B) Valor de las Construcciones:", "$ 6,530,000.00"],
+      ["C) Valor de Instalaciones Especiales, Elementos Accesorios y Obras Complementarias:", "$ 517,000.00"],
       ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 8,580,000.00"],
     ],
   });
   assert.equal(itemValues.schema?.summaryBoxes?.at(-1)?.rows.at(-1)?.emphasis, "total");
+  assert.deepEqual(partLetters(itemValues.boxes), ["A", "B", "C"], "each part once in the closing area");
 });
 
 test("the land block prints the book's A) TERRENO: lote tipo, market value, the factor table with Sup. = (lote tipo / sujeto)^(1/n), and the value", () => {
@@ -147,9 +153,9 @@ test("the land block prints the book's A) TERRENO: lote tipo, market value, the 
     "top:valor-mercado": [["Valor comparativo de Mercado ($/m²):", "$ 5,000.00"]],
     "bottom:superficie": [["Superficie valuada:", "160.00 m²"]],
     "bottom:medio": [["Valor Unitario Medio ($/m²):", "$ 4,293.33"]],
-    "bottom:valor": [["A) Valor del Terreno:", "$ 690,000.00"]],
-    // A, B and C are always listed, with zero for what is missing (video 8.14, 43:08).
+    // A, B and C are always listed, with zero for what is missing (video 8.14, 43:08); A's own box folds into the sum.
     "bottom:valor-fisico": [
+      ["A) Valor del Terreno:", "$ 690,000.00"],
       ["B) Valor de las Construcciones:", "$ 0.00"],
       ["C) Valor de Instalaciones Especiales:", "$ 0.00"],
       ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 690,000.00"],
@@ -165,7 +171,7 @@ test("the land block prints the book's A) TERRENO: lote tipo, market value, the 
   const directLand = printed(costDocumentBlocks(direct, directResult, directTrace)[0].apartados[0].tables[0]);
   assert.deepEqual(directLand.boxes["top:lote-tipo"], [["Lote Sujeto:", "160.00 m²"]], "against the subject the box says so");
   assert.equal(directLand.rows[0][5], "1.00");
-  assert.deepEqual(directLand.boxes["bottom:valor"], [["A) Valor del Terreno:", "$ 720,000.00"]]);
+  assert.deepEqual(directLand.boxes["bottom:valor-fisico"][0], ["A) Valor del Terreno:", "$ 720,000.00"]);
 });
 
 test("indirects print only when there are any, and the physical value adds only the parts captured", () => {
@@ -180,15 +186,25 @@ test("indirects print only when there are any, and the physical value adds only 
   const indirects = printed(apartados.at(-1)!.tables[0]);
   assert.deepEqual(indirects.columns, ["Concepto", "Porcentaje", "Base $", "Importe $"]);
   assert.deepEqual(indirects.rows, [["Proyecto y licencias", "5.00%", "$ 7,047,000.00", "$ 352,350.00"]]);
-  assert.deepEqual(indirects.boxes["bottom:valor"], [["D) Costos Indirectos:", "$ 352,350.00"]]);
+  assert.equal(indirects.boxes["bottom:valor"], undefined, "D)'s own box folds into the physical value: D is written once");
   assert.equal(indirects.boxes["bottom:valor-fisico"].at(-1)?.[0], "VALOR FÍSICO DE REPOSICIÓN (A+B+C+D):");
+  // D) is a row of the sum too, though its own box closes the same table (QA of video 8.14, 43:08: it never showed).
+  assert.deepEqual(indirects.boxes["bottom:valor-fisico"].map(([label]) => label), [
+    "A) Valor del Terreno:", "B) Valor de las Construcciones:", "C) Valor de Instalaciones Especiales:", "D) Costos Indirectos:", "VALOR FÍSICO DE REPOSICIÓN (A+B+C+D):",
+  ]);
+  assert.deepEqual(partLetters(indirects.boxes), ["A", "B", "C", "D"], "each part once in the closing area");
+  // The installations' table keeps its own C) box: the physical value is not under it.
+  assert.deepEqual(printed(apartados[2].tables[1]).boxes["bottom:valor"], [["C) Valor de Instalaciones Especiales, Elementos Accesorios y Obras Complementarias:", "$ 517,000.00"]]);
+  assert.deepEqual(indirects.boxes["bottom:valor-fisico"].find(([label]) => label.startsWith("D)")), ["D) Costos Indirectos:", "$ 352,350.00"]);
   assert.equal(printed(apartados[2].tables[1]).boxes["bottom:valor-fisico"], undefined, "the closing box moves to the last table");
 
   const landOnly: CostCalculationDto = { ...arandas, constructions: [], installations: [] };
   const land = compute(landOnly);
   const [block] = costDocumentBlocks(landOnly, land.result, land.trace);
   assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["A) TERRENO EN ESTUDIO"]);
+  assert.deepEqual(partLetters(printed(block.apartados[0].tables[0]).boxes), ["A", "B", "C"], "A once: its own box folds into the sum");
   assert.deepEqual(printed(block.apartados[0].tables[0]).boxes["bottom:valor-fisico"], [
+    ["A) Valor del Terreno:", "$ 1,528,000.00"],
     ["B) Valor de las Construcciones:", "$ 0.00"],
     ["C) Valor de Instalaciones Especiales:", "$ 0.00"],
     ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 1,530,000.00"],
