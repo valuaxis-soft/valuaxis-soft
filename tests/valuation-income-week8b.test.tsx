@@ -90,6 +90,24 @@ test("the gross rent is the monthly rent concluded in the rent market, with its 
   assert.equal(resultOf({ ...bugambilias, rentableUnits: [{ description: "Local", area: 236, unitRent: null }] }).grossMonthlyRent, 31000);
 });
 
+test("the market's area and rent typed again (236 m², $130) still take the rent concluded there: $31,000, not $30,680 (QA of video 8.14, 02:46)", () => {
+  const typed = { ...bugambilias, rentableUnits: [{ description: "Superficie rentable", area: 236, unitRent: 130 }] };
+  const result = resultOf(typed);
+  assert.equal(result.grossMonthlyRent, 31000);
+  assert.equal(result.netMonthlyRent, 21390);
+  assert.equal(Math.round(result.value * 100) / 100, 3208500);
+  // The rents table prints the concluded rent in the surface's row, and the annuity method takes it too.
+  const units = tableIn(incomeDocumentBlocks(typed, result), INCOME_CAPTURE.units.table);
+  assert.deepEqual(texts(units)[0], ["Superficie rentable", "236.00 m²", "$130.00 /m²/mes", "$31,000.00"]);
+  // The same figure with float noise from the market (129.999999…) is still the market's rent.
+  assert.equal(resultOf({ ...typed, rentMarket: { ...typed.rentMarket, adoptedUnitRent: 130.0000001 } }).grossMonthlyRent, 31000);
+  // A rent he changed on purpose, or another area, is his own: area × his rent.
+  assert.equal(resultOf({ ...typed, rentableUnits: [{ description: "Superficie rentable", area: 236, unitRent: 125 }] }).grossMonthlyRent, 29500);
+  assert.equal(resultOf({ ...typed, rentableUnits: [{ description: "Superficie rentable", area: 230, unitRent: 130 }] }).grossMonthlyRent, 29900);
+  // Two surfaces are his own breakdown, as before.
+  assert.equal(resultOf({ ...typed, rentableUnits: [{ description: "A", area: 136, unitRent: 130 }, { description: "B", area: 100, unitRent: 130 }] }).grossMonthlyRent, 30680);
+});
+
 test("every datum of the income approach is in a table and the value is in the dark bar of the other approaches (video 8.14, 13:35 and 26:25)", () => {
   const blocks = incomeDocumentBlocks({ ...bugambilias, rounding: -4 }, resultOf({ ...bugambilias, rounding: -4 }));
   const result = tableIn(blocks, INCOME_CAPTURE.result.table);
