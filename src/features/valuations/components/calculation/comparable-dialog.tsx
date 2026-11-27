@@ -61,6 +61,7 @@ import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { comparableClassOf, type ComparableClass } from "@/features/valuations/calculation/comparable-classes";
 import { defaultExchangeRateSource, exchangeNote, pesosOf } from "@/features/valuations/calculation/comparable-currency";
 import { defaultKindOfType, isVehicleKind, kindOfComparable } from "@/features/valuations/calculation/comparable-kinds";
+import { cardFieldDefaultLabel } from "@/features/valuations/calculation/market-table-columns";
 import { ComparableKindField, kindFieldLabel } from "./comparable-kind-field";
 import { ComparableLocationPicker } from "@/features/valuations/comparable-base/components/comparable-location-picker";
 import { ComparableCardHeader, ComparableCardReview, ComparableCardUses, ComparableCardWarnings, listingDetailItems } from "./comparable-card-view";
@@ -162,6 +163,9 @@ const AREA_FIELD_LABELS: Record<ComparableType, string> = {
   INMUEBLE_VENTA: "Superficie construida (m²)",
   INMUEBLE_RENTA: "Superficie rentable (m²)",
 };
+
+/** The fields of the sheet whose key is not the key of the datum of the card they hold (market-table-columns.ts). */
+const SHEET_CARD_KEYS: Record<string, string> = { source: "sourceName", contact: "contactName", phone: "contactPhone", validity: "validUntil", proximity: "urbanProximity" };
 
 /** «FORMA» of the market's list reads «Forma» in the card; the zoning key, «Clave de uso de suelo». */
 const characteristicLabel = (field: CharacteristicField) => {
@@ -381,6 +385,12 @@ export type ComparableDialogProps = {
   characteristicFields: CharacteristicField[];
   /** The names of the card's data in this market, the same as the columns of its tables (video 8.9): renamed in a header, renamed here. */
   fieldLabels?: Record<string, string>;
+  /**
+   * A datum of the card renamed from the card (its fixed data and the
+   * characteristics added to the market): the same name as its column in the
+   * tables of this market. Without it the names are not renamed here.
+   */
+  onRenameField?: (key: string, label: string) => void;
   comparableType: ComparableType;
   unitLabel: string;
   readOnly: boolean;
@@ -1319,6 +1329,26 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
     ...fields.filter((item) => item.key === "notes").map((item) => ({ ...characteristicField(item), label: "Observaciones" })),
   ];
 
+  /*
+   * The data of the card the market names (the columns of its tables, video 8.9) are renamed from the card too:
+   * the fixed data with the market's names, the characteristics added to the market with theirs. The
+   * characteristics of the format keep the names of the list of the market's table.
+   */
+  const renamable = (items: SheetField[]): SheetField[] => {
+    const rename = props.onRenameField;
+    if (!rename || readOnly) return items;
+    const listed = new Map(props.characteristicFields.map((item) => [item.key, item]));
+    return items.map((item) => {
+      const key = SHEET_CARD_KEYS[item.key] ?? item.key;
+      const characteristic = listed.get(key);
+      if (characteristic) {
+        return isBuiltinCharacteristic(key) ? item : { ...item, label: characteristic.label, rename: { key, onRename: (label: string) => rename(key, label) } };
+      }
+      if (cardFieldDefaultLabel(key) === null || key === "kind" || typeof item.label !== "string") return item;
+      return { ...item, label: named(key, item.label), rename: { key, onRename: (label: string) => rename(key, label) } };
+    });
+  };
+
   const details = card ? listingDetailItems(card.comparable) : [];
   const where = card?.valuation ? `Capturado en el avalúo ${card.valuation.folio}`
     : card ? "En la base general, sin avalúo"
@@ -1472,9 +1502,9 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
           {/* Matrix 1.5, «Fotografías y textos»: beside where the photos and the screenshot go up. */}
 
           <fieldset disabled={readOnly || saving} className="grid min-w-0 gap-3">
-            <SheetSection title="Oferta"><SheetFieldTable items={offer} /></SheetSection>
+            <SheetSection title="Oferta"><SheetFieldTable items={renamable(offer)} autoComplete={NO_BROWSER_AUTOFILL} /></SheetSection>
             <SheetSection title="Ubicación">
-              <SheetFieldTable items={place} />
+              <SheetFieldTable items={renamable(place)} autoComplete={NO_BROWSER_AUTOFILL} />
               {/* V7.2-06 and V8.2: the pin on the map fills the latitude and longitude; the address is looked up in a map's words. */}
               <ComparableLocationPicker
                 className="border-t p-1.5"
@@ -1487,22 +1517,22 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
                 onChange={(point) => setDraft((current) => ({ ...current, latitude: String(point.latitude), longitude: String(point.longitude) }))}
               />
             </SheetSection>
-            <SheetSection title="Fuente de información"><SheetFieldTable items={source} /></SheetSection>
+            <SheetSection title="Fuente de información"><SheetFieldTable items={renamable(source)} autoComplete={NO_BROWSER_AUTOFILL} /></SheetSection>
             {machinery ? (
               <MachineryDetailsFields draft={machineryDraft} onChange={setMachineryDraft} invalidField={error?.field} autoComplete={NO_BROWSER_AUTOFILL} vehicle={vehicle} />
             ) : (
-              <SheetSection title="Terreno"><SheetFieldTable items={land} /></SheetSection>
+              <SheetSection title="Terreno"><SheetFieldTable items={renamable(land)} autoComplete={NO_BROWSER_AUTOFILL} /></SheetSection>
             )}
             {built && !machinery ? (
               <SheetSection title="Construcción">
-                <SheetFieldTable items={construction} />
+                <SheetFieldTable items={renamable(construction)} autoComplete={NO_BROWSER_AUTOFILL} />
                 <p className="border-t px-2 py-1 text-[11px] text-muted-foreground">
                   La superficie de terreno, las recámaras, los baños, la edad, los niveles y los estacionamientos sirven para buscarlo en la base del despacho;
                   el cálculo y el dictamen no los usan.
                 </p>
               </SheetSection>
             ) : null}
-            <SheetSection title="Características y observaciones"><SheetFieldTable items={others} /></SheetSection>
+            <SheetSection title="Características y observaciones"><SheetFieldTable items={renamable(others)} autoComplete={NO_BROWSER_AUTOFILL} /></SheetSection>
 
             <SheetFormSection
               title="Características agregadas"

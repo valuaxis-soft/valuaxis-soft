@@ -63,6 +63,8 @@ export type ComparableCardDto = {
   history: ComparableCaptureDto[];
   /** Name of each characteristic the appraiser added to the market, by its key, so the card never shows the internal key. */
   characteristicLabels?: Record<string, string>;
+  /** The names the market gives the card's other data (its columns renamed, or renamed in the card): video 8.9. */
+  fieldLabels?: Record<string, string>;
 };
 
 export type ReviewRowDto = { comparable: ComparableDto; type: ComparableType; warnings: ComparableWarning[] };
@@ -87,18 +89,21 @@ export type DuplicateMatchDto = {
   updatedOn: string;
 };
 
-/** The name of each characteristic column of the market of a version where the comparable was captured. */
-async function characteristicLabels(versionId: number, type: ComparableType): Promise<Record<string, string>> {
+/** The names of the market of a version where the comparable was captured: each characteristic column's, and the card's other data. */
+async function marketLabels(versionId: number, type: ComparableType): Promise<{ characteristicLabels: Record<string, string>; fieldLabels: Record<string, string> }> {
   const market = await prisma.enfoqueMercado.findFirst({
     where: { IdVersionAvaluo: versionId, tipoComparable: { SClave: type } },
     select: { JConfiguracion: true },
   });
-  const fields = asRecord(market?.JConfiguracion ?? null).characteristicFields;
-  if (!Array.isArray(fields)) return {};
-  return Object.fromEntries(fields.flatMap((field) => {
+  const configuration = asRecord(market?.JConfiguracion ?? null);
+  const fields = Array.isArray(configuration.characteristicFields) ? configuration.characteristicFields : [];
+  const characteristicLabels = Object.fromEntries(fields.flatMap((field) => {
     const { key, label } = asRecord(field) as { key?: unknown; label?: unknown };
     return typeof key === "string" && typeof label === "string" && label.trim() ? [[key, label]] : [];
   }));
+  const fieldLabels = Object.fromEntries(Object.entries(asRecord(configuration.fieldLabels ?? null))
+    .flatMap(([key, label]) => (typeof label === "string" && label.trim() ? [[key, label.trim()]] : [])));
+  return { characteristicLabels, fieldLabels };
 }
 
 /** The subject's area of each market of a version, for the ±20 % rule of buildings. */
@@ -202,7 +207,7 @@ export async function getComparableCard(comparableId: string, organizationId: nu
       reference: comparable.reference, addedOn: row.DFechaSeleccion.toISOString().slice(0, 10),
     }],
     history,
-    characteristicLabels: row.IdVersionAvaluo ? await characteristicLabels(row.IdVersionAvaluo, type) : {},
+    ...(row.IdVersionAvaluo ? await marketLabels(row.IdVersionAvaluo, type) : { characteristicLabels: {} }),
   };
 }
 

@@ -29,6 +29,7 @@ import { toMachineryCostEngineInput, toMachineryMarketEngineInput, type Machiner
 import type { StatisticalCalculationDto } from "../calculation/statistical-types";
 import { statisticalRuns } from "./statistical-memory";
 import { isGeneratedBlock } from "../calculation/market-document";
+import { cardFieldLabels } from "../calculation/market-table-columns";
 import {
   COMPARABLE_TYPE_LABELS,
   FACTOR_TYPE_LABELS,
@@ -773,5 +774,6 @@ export function memoryComparableCards(
       uses: [],
       history: [],
       characteristicLabels: Object.fromEntries((market.settings.characteristicFields ?? []).map((field) => [field.key, field.label])),
+      fieldLabels: cardFieldLabels(market.settings),
     })));
 }
