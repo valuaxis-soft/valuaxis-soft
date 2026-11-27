@@ -13,7 +13,7 @@ import {
   validateCaratula,
 } from "@/features/valuations/services/caratula-validation";
 import { buildSectionsPayload, valuationMetaPayload } from "../model/save-payload";
-import { leavingLinkHref, setLeaveGuard, type PendingExit } from "../model/navigation-guard";
+import { isCalculationTypingField, leavingLinkHref, sendFocusedCalculationField, setLeaveGuard, type PendingExit } from "../model/navigation-guard";
 import { errorCodeOf, isSaveShortcut, shouldAutosave, statusAfterSave } from "../model/save-status";
 import type { EditorState } from "./use-editor-state";
 import type { AppSection } from "@/features/valuations/model";
@@ -81,8 +81,26 @@ export function useValuationSave({
   const hasUnsavedChanges = saveStatus === "dirty" || saveStatus === "error";
   // A calculation panel saving on its own (a comparable, a factor) still on its way: leaving now would lose it.
   const panelSaving = useSyncExternalStore(subscribePendingMutations, pendingMutations, () => 0) > 0;
+  // A field of a panel typed in and still focused: it sends what it holds when it is left, so leaving from it
+  // (the back arrow without taking the focus, Atrás, the command palette) lost it without asking (27 Nov 2026).
+  const [unsentField, setUnsentField] = useState(false);
+  useEffect(() => {
+    const onInput = (event: Event) => {
+      if (isCalculationTypingField(event.target)) setUnsentField(true);
+    };
+    // Left, the field sends it: by the next task it is on its way, and `panelSaving` holds the editor from there.
+    const onFocusOut = (event: FocusEvent) => {
+      if (isCalculationTypingField(event.target)) window.setTimeout(() => setUnsentField(false), 0);
+    };
+    document.addEventListener("input", onInput, true);
+    document.addEventListener("focusout", onFocusOut, true);
+    return () => {
+      document.removeEventListener("input", onInput, true);
+      document.removeEventListener("focusout", onFocusOut, true);
+    };
+  }, []);
   /** Leaving now loses work: the editor asks first, wherever the appraiser goes. */
-  const mustAskBeforeLeaving = hasUnsavedChanges || panelSaving;
+  const mustAskBeforeLeaving = hasUnsavedChanges || panelSaving || unsentField;
 
   // Closing or reloading the tab with unsaved changes asks for confirmation.
   useEffect(() => {
@@ -272,6 +290,8 @@ export function useValuationSave({
 
   const handleSaveAndExit = async () => {
     const exit = pendingExit;
+    // A field still holding what was typed sends it first (the dialog usually took the focus already).
+    await sendFocusedCalculationField();
     const ok = !hasUnsavedChanges || (await handleSave());
     // What the calculation panels were still saving arrives before leaving.
     await pendingMutationsSettled();

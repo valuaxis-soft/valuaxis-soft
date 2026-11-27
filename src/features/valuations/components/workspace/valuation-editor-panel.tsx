@@ -524,7 +524,7 @@ export function ValuationEditorPanel(props: {
         {/* Where the appraiser is (a market's «Estás en»), in sight over the whole section while it scrolls (video 8.7). */}
         <CaptureSlotTarget address={{ table: SECTION_TOP_SLOT, part: "before" }} className="sticky top-0 z-20 empty:hidden" />
         {/* The calculation panels save on their own: Ctrl+Z in their fields is the browser's (or the panel's) own. */}
-        {props.calculationPanel ? <div data-native-undo="">{props.calculationPanel}</div> : null}
+        {props.calculationPanel ? <div data-native-undo="" data-calculation-panel="">{props.calculationPanel}</div> : null}
         {isCaratula && props.caratula && props.meta && props.onUpdateCaratula && props.onUpdateMeta ? (
           <CaratulaEditor
             caratula={props.caratula}
