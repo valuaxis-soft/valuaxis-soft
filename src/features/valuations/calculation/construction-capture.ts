@@ -30,6 +30,7 @@ import {
   type TableV2,
 } from "../services/table";
 import {
+  conservationWord,
   effectiveConservation,
   remainingUsefulLife,
   type ConstructionTypeDto,
@@ -401,7 +402,8 @@ export function normalizeCapture(tableContent: TableContent, costs: Pick<CostCal
         if (record) {
           const cost = costOf(ref);
           if (column.key === "vur") text = computedText(remainingUsefulLife({ age: record.age as number | null, usefulLife: record.usefulLife as number | null }), column.digits ?? 0);
-          else if (column.key === "conservacion") text = computedText(cost ? effectiveConservation(cost) : null, column.digits ?? 2);
+          // The word of the state (Nuevo, Bueno…) when the cost approach has one; its factor otherwise (video 8.6, 1:10).
+          else if (column.key === "conservacion") text = (cost && conservationWord(cost)) ?? computedText(cost ? effectiveConservation(cost) : null, column.digits ?? 2);
           else if (column.key === "vrn_unitario") text = computedText(cost?.unitReplacementCost ?? null, column.digits ?? 2);
         }
         next = withCell(next, columnId, text);

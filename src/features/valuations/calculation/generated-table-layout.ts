@@ -17,6 +17,7 @@ import {
   tablePrintLayout,
   getDisplayColumns,
   type ColumnPresentation,
+  type GeneratedBoxRows,
   type GeneratedExtraColumn,
   type GeneratedExtraRow,
   type GeneratedHeaderGroup,
@@ -74,13 +75,58 @@ export const summaryCaptionKey = (box: Pick<TableSummaryBox, "id">) => `${box.id
 /** The key of a cell of the calculation in `cellFormats`. */
 const cellKey = (rowId: string, columnId: string) => `${rowId}:${columnId}`;
 
-/** The boxes with the labels the appraiser gave them; the figures stay the calculation's. */
-function relabeledBoxes(boxes: TableSummaryBox[], labels: Record<string, string>): TableSummaryBox[] {
+/** Rows of his own the appraiser may add to one box. */
+export const MAX_EXTRA_BOX_ROWS = 6;
+
+/** A row of a box as the editor lists it: the calculation's or the appraiser's, in its place, shown or hidden. */
+export type ArrangedBoxRow = { key: string; row: TableSummaryRow; own: boolean; hidden: boolean };
+
+/**
+ * The rows of a box in the order the appraiser left them, with his own rows
+ * among them and the hidden ones marked; a row the calculation writes for
+ * the first time goes after the row it follows in the calculation's order.
+ */
+export function arrangedBoxRows(box: TableSummaryBox, layout: GeneratedTableLayout): ArrangedBoxRow[] {
+  const arrangement = layout.boxRows?.[box.id] ?? {};
+  const hidden = new Set(arrangement.hidden ?? []);
+  const natural: ArrangedBoxRow[] = [
+    ...box.rows.map((row, index) => ({ key: summaryRowKey(box, row, index), row, own: false, hidden: false })),
+    ...(arrangement.extra ?? []).slice(0, MAX_EXTRA_BOX_ROWS).map((extra) => ({
+      key: `${box.id}.${extra.id}`, row: { id: extra.id, label: extra.label, value: extra.value }, own: true, hidden: false,
+    })),
+  ].map((item) => ({ ...item, hidden: hidden.has(item.key) }));
+  const order = arrangement.order ?? [];
+  if (!order.length) return natural;
+  const byKey = new Map(natural.map((item) => [item.key, item]));
+  const result: ArrangedBoxRow[] = [];
+  for (const key of order) {
+    const item = byKey.get(key);
+    if (item && !result.includes(item)) result.push(item);
+  }
+  natural.forEach((item, index) => {
+    if (result.includes(item)) return;
+    const before = natural.slice(0, index).reverse().find((candidate) => result.includes(candidate));
+    result.splice(before ? result.indexOf(before) + 1 : 0, 0, item);
+  });
+  return result;
+}
+
+/** The box arrangement with one change: `order` given as keys; a hidden key toggled; an own row added, changed or removed. */
+export function withBoxRows(layout: GeneratedTableLayout, boxId: string, change: (current: GeneratedBoxRows) => GeneratedBoxRows): GeneratedTableLayout {
+  const { [boxId]: current, ...others } = layout.boxRows ?? {};
+  const next = change(current ?? {});
+  const kept = filled(next) ? { ...others, [boxId]: next } : others;
+  return { ...layout, boxRows: kept };
+}
+
+/** The boxes with the labels the appraiser gave them and his rows arranged; the figures stay the calculation's. */
+function relabeledBoxes(boxes: TableSummaryBox[], layout: GeneratedTableLayout): TableSummaryBox[] {
+  const labels = layout.boxLabels ?? {};
   const label = (key: string, name: string) => labels[key]?.trim() || name;
   return boxes.map((box) => ({
     ...box,
     ...(box.caption !== undefined ? { caption: label(summaryCaptionKey(box), box.caption) } : {}),
-    rows: box.rows.map((row, index) => ({ ...row, label: label(summaryRowKey(box, row, index), row.label) })),
+    rows: arrangedBoxRows(box, layout).filter((item) => !item.hidden).map(({ key, row, own }) => (own ? row : { ...row, label: label(key, row.label) })),
   }));
 }
 
@@ -247,7 +293,7 @@ export function applyTableLayout(table: TableContent | TableV2, layout: Generate
   const hiddenColumns = (layout.hidden ?? []).filter((id) => present.has(id));
   const rowIds = new Set(rows.map((row) => row.id));
   const hiddenRows = (layout.hiddenRows ?? []).filter((id) => rowIds.has(id));
-  const summaryBoxes = schema.summaryBoxes ? relabeledBoxes(schema.summaryBoxes, layout.boxLabels ?? {}) : undefined;
+  const summaryBoxes = schema.summaryBoxes ? relabeledBoxes(schema.summaryBoxes, layout) : undefined;
   const {
     generated: _previous, widthMode: sourceWidth, decimals: sourceDecimals, hideCaption: sourceHideCaption,
     headerGroups: _sourceGroups, hiddenColumns: _hiddenColumns, hiddenRows: _hiddenRows, columnPresentation: _presentation, ...rest
@@ -347,6 +393,7 @@ export function layoutFromTable(source: TableV2, shown: TableV2, previous: Gener
   const layout: GeneratedTableLayout = {};
 
   if (filled(previous.boxLabels)) layout.boxLabels = previous.boxLabels;
+  if (filled(previous.boxRows)) layout.boxRows = previous.boxRows;
   if (shown.title.trim() && shown.title.trim() !== source.title.trim()) layout.title = shown.title.trim();
 
   const hidden = [

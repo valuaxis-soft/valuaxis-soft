@@ -40,6 +40,28 @@ export function linkableConcepts(sections: AppSection[]): LinkableConcept[] {
   });
 }
 
+/** Another place where a linked concept's datum is (and its title too, when the whole concept is linked). */
+export type LinkedPlace = LinkableConcept & { shares: "dato" | "título y dato" };
+
+/**
+ * Where else the datum of a linked concept is (video 8.5, 13:20: «mostrar a
+ * qué concepto está relacionado… aparece en carátula, en este subbloque»):
+ * every other concept that shares its value or its title, in document order,
+ * with its place, as the results of «Buscar valor» list them.
+ */
+export function linkedPlaces(sections: AppSection[], conceptId: string): LinkedPlace[] {
+  const all = linkableConcepts(sections);
+  const target = all.find((item) => item.concept.id === conceptId)?.concept;
+  if (!target || (!target.valueKey && !target.labelKey)) return [];
+  return all.flatMap((item) => {
+    if (item.concept.id === conceptId) return [];
+    const value = Boolean(target.valueKey && item.concept.valueKey === target.valueKey);
+    const label = Boolean(target.labelKey && item.concept.labelKey === target.labelKey);
+    if (!value && !label) return [];
+    return [{ ...item, shares: value && label ? "título y dato" as const : "dato" as const }];
+  });
+}
+
 /** Titles that say nothing: a new concept is not «the same» as another new one. */
 const GENERIC_TITLES = new Set(["", "nuevo concepto", "concepto", "titulo", "sin titulo", "dato"]);
 

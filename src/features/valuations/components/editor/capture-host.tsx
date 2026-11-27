@@ -7,8 +7,10 @@ import {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
+  useState,
   useSyncExternalStore,
   type ClipboardEvent,
+  type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -19,6 +21,7 @@ import type { CapturePages } from "@/features/valuations/calculation/capture-dis
 import { toast } from "sonner";
 
 import { parseTabularText } from "@/features/valuations/services/cell-selection";
+import { cn } from "@/lib/utils";
 import { capturedText, focusCaptureCell, writeCaptureCell } from "../calculation/calc-table-context-menu";
 
 /**
@@ -282,13 +285,63 @@ export function notifyCaptureWrite(written: Array<{ field: CaptureField; previou
   });
 }
 
+const plainKey = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+/**
+ * What was already written in the same column of the table and starts with
+ * what is being typed (video 8.7, 3:50: «un 80… la recomendación de que si ya
+ * puse ese valor, Enter o tabulador para confirmar»), as the editor's tables
+ * offer it: the other cells of the column, each value once, up to five.
+ */
+export function columnCaptureSuggestions(field: HTMLInputElement, limit = 5): string[] {
+  const typed = plainKey(field.value);
+  if (!typed || typed.startsWith("=")) return [];
+  const cell = field.closest("td");
+  const body = cell?.closest("tbody");
+  const column = (cell as HTMLElement | null)?.dataset.gridCol;
+  if (!cell || !body || column === undefined) return [];
+  const seen = new Set<string>();
+  const found: string[] = [];
+  for (const other of body.querySelectorAll<HTMLElement>(`:scope > tr > td[data-grid-col="${column}"]`)) {
+    if (other === cell) continue;
+    const input = captureFieldIn(other);
+    const text = (input && !(input instanceof HTMLSelectElement) ? captureFieldText(input) : "").trim();
+    const key = plainKey(text);
+    if (!text || text.startsWith("=") || key === typed || !key.startsWith(typed) || seen.has(key)) continue;
+    seen.add(key);
+    found.push(text);
+    if (found.length === limit) break;
+  }
+  return found;
+}
+
+type Offer = { field: HTMLInputElement; options: string[]; index: number; left: number; top: number; width: number };
+
 /**
  * What a field keeps of the table it sits in. React hands its events to the
- * panel (the portal's parent), so the two the table answers are passed on by
- * hand: the right click opens the menu of the table's cell, and Enter goes
- * to the cell below (Shift+Enter, above), as in every table.
+ * panel (the portal's parent), so the ones the table answers are passed on by
+ * hand: the right click opens the menu of the table's cell, Enter goes to the
+ * cell below (Shift+Enter, above), and what the column already holds is
+ * offered while typing (Tab or Enter takes it), as in every table.
  */
 function CaptureSlotContent({ element, children }: { element: HTMLElement; children: ReactNode }) {
+  const [offer, setOffer] = useState<Offer | null>(null);
+  const onInput = (event: FormEvent<HTMLElement>) => {
+    const field = event.target;
+    if (!(field instanceof HTMLInputElement) || field.type === "checkbox") return;
+    const options = columnCaptureSuggestions(field);
+    if (!options.length) {
+      setOffer(null);
+      return;
+    }
+    const box = field.getBoundingClientRect();
+    setOffer({ field, options, index: 0, left: box.left, top: box.bottom, width: box.width });
+  };
+  const take = (value: string) => {
+    if (!offer) return;
+    writeCaptureCell(offer.field, value);
+    setOffer(null);
+  };
   const onContextMenu = (event: MouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -297,6 +350,21 @@ function CaptureSlotContent({ element, children }: { element: HTMLElement; child
     element.dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: event.clientX, clientY: event.clientY, button: 2 }));
   };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (offer && event.target === offer.field) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : offer.options.length - 1;
+        setOffer({ ...offer, index: (offer.index + step) % offer.options.length });
+        return;
+      }
+      if (event.key === "Escape") {
+        setOffer(null);
+        return;
+      }
+      // Tab or Enter takes the value offered; then Tab or Enter go on as always.
+      if (event.key === "Tab" || event.key === "Enter") take(offer.options[offer.index]);
+      else setOffer(null);
+    }
     if (event.key !== "Enter" || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     const field = event.target;
     if (!(field instanceof HTMLInputElement) || field.type === "checkbox") return;
@@ -313,8 +381,35 @@ function CaptureSlotContent({ element, children }: { element: HTMLElement; child
     notifyCaptureWrite(pasteCaptureRange(field, parseTabularText(text)), "pegadas");
   };
   return (
-    <span className="contents" onContextMenu={onContextMenu} onKeyDown={onKeyDown} onPaste={onPaste}>
+    <span className="contents" onContextMenu={onContextMenu} onKeyDown={onKeyDown} onPaste={onPaste} onInput={onInput} onBlur={() => setOffer(null)}>
       {children}
+      {offer ? createPortal(
+        <ul
+          className="fixed z-50 max-h-48 overflow-y-auto rounded-md border bg-popover py-1 text-xs text-popover-foreground shadow-md"
+          style={{ left: offer.left, top: offer.top + 2, minWidth: Math.max(offer.width, 160) }}
+          role="listbox"
+          aria-label="Valores de la columna"
+          data-column-suggestions=""
+        >
+          {offer.options.map((option, position) => (
+            <li
+              key={option}
+              role="option"
+              aria-selected={position === offer.index}
+              className={cn("cursor-pointer px-2 py-1", position === offer.index && "bg-accent text-accent-foreground")}
+              // The field keeps the focus: the click only takes the value.
+              onMouseDown={(event) => {
+                event.preventDefault();
+                take(option);
+              }}
+            >
+              {option}
+            </li>
+          ))}
+          <li className="border-t px-2 pt-1 text-[10px] text-muted-foreground">Tab o Enter para usarlo</li>
+        </ul>,
+        document.body,
+      ) : null}
     </span>
   );
 }

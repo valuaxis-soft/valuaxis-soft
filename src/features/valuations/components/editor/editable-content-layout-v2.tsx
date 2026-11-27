@@ -135,6 +135,8 @@ export type EditableContentLayoutProps = {
    * Required when dndContextMode="external" so inner drop zones can show indicators.
    */
   externalActiveTarget?: string | null;
+  /** How a table is drawn, in place of the editor's table (the tables a calculation writes, GeneratedBlockTables). */
+  renderTable?: (table: TableContent) => ReactNode;
 };
 
 /* ------------------------------------------------------------------ */
@@ -221,6 +223,7 @@ export function EditableContentLayout({
   containerRef,
   externalActiveColumnId,
   externalActiveTarget,
+  renderTable,
 }: EditableContentLayoutProps) {
   // "Linderos y colindancias según" prints under the table of measures: it is edited there, not among the concepts.
   const boundaries = useMemo(() => {
@@ -481,6 +484,7 @@ export function EditableContentLayout({
           requireTitle,
           showTerrenoLengthHint,
           tableFooter,
+          renderTable,
         }),
     [
       conceptsById,
@@ -497,6 +501,7 @@ export function EditableContentLayout({
       requireTitle,
       showTerrenoLengthHint,
       tableFooter,
+      renderTable,
     ],
   );
 
@@ -686,6 +691,7 @@ export function renderLayoutItem({
   requireTitle,
   showTerrenoLengthHint,
   tableFooter,
+  renderTable,
 }: {
   itemRef: ContentLayoutItemRef;
   columnId?: string;
@@ -705,6 +711,7 @@ export function renderLayoutItem({
   showTerrenoLengthHint: boolean;
   /** What a table prints with it and is edited under its grid. */
   tableFooter?: { tableId: string; node: ReactNode };
+  renderTable?: (table: TableContent) => ReactNode;
 }) {
   if (itemRef.type === "concept") {
     const concept = conceptsById.get(itemRef.id);
@@ -750,6 +757,7 @@ export function renderLayoutItem({
   if (itemRef.type === "table") {
     const table = tablesById.get(itemRef.id);
     if (!table) return null;
+    if (renderTable) return renderTable(table);
     return (
       <EditorTable
         table={table}

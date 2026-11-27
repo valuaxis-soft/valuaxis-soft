@@ -10,7 +10,7 @@ export const CALCULATED_CELL_HINT = "Esta cifra la calcula el sistema; cámbiala
 /** The same, in a table whose blank cells are the capture of its calculation. */
 export const CALCULATED_IN_PLACE_HINT = "Esta cifra la calcula el sistema con lo que capturas en las celdas en blanco de la tabla.";
 /** The same, in a capture table of the construction section. */
-export const CAPTURE_CELL_HINT = "Esta cifra la calcula el sistema: el VUR es VUT − Edad; la conservación y el valor unitario vienen del enfoque de costos.";
+export const CAPTURE_CELL_HINT = "Vinculada con el enfoque de costos: el VUR es VUT − Edad; la conservación y el valor unitario se capturan en el enfoque de costos y aquí solo se muestran, por eso no se escriben ni se borran en esta tabla. Cámbialos allá, o desvincula la tabla para escribir aquí lo tuyo.";
 const CALCULATED_COLUMN_HINT = "Esta columna la escribe el cálculo: ocúltala en el dictamen en lugar de eliminarla.";
 const CALCULATED_ROW_HINT = "Esta fila la escribe el cálculo, en su orden: ocúltala en el dictamen en lugar de eliminarla o moverla.";
 const CALCULATED_SORT_HINT = "Las filas de esta tabla siguen el orden del cálculo.";
@@ -94,4 +94,10 @@ function captureColumnReasons(lock: CalculatedTableLock, columnId: string): Menu
   if (lock.column(columnId)) return { "delete-column": CAPTURE_COMPUTED_COLUMN_HINT };
   if (lock.capture?.keyColumn(columnId)) return { "delete-column": CAPTURE_COLUMN_HINT };
   return undefined;
+}
+
+/** Why a gray cell is neither typed nor cleared where it is, as its tooltip says it. */
+export function lockedCellReason(lock: CalculatedTableLock | null): string {
+  if (lock?.capture) return CAPTURE_CELL_HINT;
+  return lock?.inPlace ? CALCULATED_IN_PLACE_HINT : CALCULATED_CELL_HINT;
 }

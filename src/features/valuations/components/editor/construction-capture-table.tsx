@@ -19,6 +19,7 @@ import { constructionTypesLinkedToCosts, costColumnsOf, type CostCalculationDto 
 import type { AppSection, TableContent } from "@/features/valuations/model";
 import { ensureTableV2 } from "@/features/valuations/services/table";
 import { CalculationLinkBadge } from "../calculation/calculation-link-badge";
+import { openValuationPlace } from "../calculation/calculation-precision-control";
 import { CalculatedTableProvider, type CalculatedTableLock } from "./calculated-table-context";
 import { deleteConfirmation } from "./delete-confirm";
 import { TableEditorItem } from "./table-editor";
@@ -269,6 +270,24 @@ function CaptureTableEditor({ table, kind, context, readOnly, onAddColumn, onRem
  * installations it leaves the table as the appraiser's own, and the cost
  * approach keeps what it has.
  */
+/** The tables of the cost approach a capture table of the construction section feeds, as the «Vinculado» popover lists them. */
+const COST_PLACES: Record<CaptureKind, Array<{ label: string; detail: string; table: string }>> = {
+  types: [
+    { label: "Enfoque de costos › B) Construcciones", detail: "Tipos de construcción: referencia, descripción, superficie, edad y vida útil vienen de aquí; Cons. y los factores se capturan allá.", table: "tabla-construcciones-tipos" },
+    { label: "Enfoque de costos › B) Valor de las construcciones", detail: "El valor unitario de reposición nuevo se captura allá y se muestra aquí.", table: "tabla-construcciones-valores" },
+  ],
+  installations: [
+    { label: "Enfoque de costos › C) Instalaciones especiales", detail: "Descripción, unidad, cantidad, edad y vida útil vienen de aquí; la conservación (Cons.) y los factores se capturan allá y se muestran aquí.", table: "tabla-instalaciones-partidas" },
+    { label: "Enfoque de costos › C) Valor de las instalaciones", detail: "El valor unitario de reposición nuevo se captura allá.", table: "tabla-instalaciones-valores" },
+  ],
+};
+
+const costPlaces = (kind: CaptureKind) => COST_PLACES[kind].map((place) => ({
+  label: place.label,
+  detail: place.detail,
+  onOpen: () => openValuationPlace({ sectionKey: "COSTOS", selector: `[data-generated-table$="-${place.table}" i]` }),
+}));
+
 function CaptureLinkBadge({ kind, table, context, readOnly, onUnlinkTable, onRelinkTable }: {
   kind: CaptureKind;
   table: TableContent;
@@ -288,6 +307,7 @@ function CaptureLinkBadge({ kind, table, context, readOnly, onUnlinkTable, onRel
           ? "Lo que escribas en esta tabla (descripción, unidad, cantidad, edad, vida útil y mantenimiento) entra al enfoque de costos, y lo que cambies allá se escribe aquí. Al desvincularla, la tabla queda como tuya y el enfoque de costos conserva lo que tiene."
           : "La tabla es tuya: lo que escribas aquí no entra al enfoque de costos. Al volver a sincronizar, cada instalación de costos llena su fila y las filas nuevas entran a costos."}
         readOnly={readOnly}
+        places={costPlaces(kind)}
         onUnlink={() => {
           if (window.confirm("¿Desvincular la tabla del enfoque de costos? Lo que escribas en ella ya no entrará a costos; costos conserva las instalaciones que tiene.")) onUnlinkTable();
         }}
@@ -309,6 +329,7 @@ function CaptureLinkBadge({ kind, table, context, readOnly, onUnlinkTable, onRel
         : "Los tipos no entran solos al enfoque de costos. Los que ya tienen renglón ahí lo conservan y siguen leyendo sus datos de esta tabla; los demás vuelven con «+ Construcción» o al sincronizar."}
       notice={costs.configured ? undefined : "El enfoque de costos aún no se ha capturado: el vínculo se podrá soltar cuando exista."}
       readOnly={readOnly}
+      places={costPlaces(kind)}
       disabled={!named.length}
       onUnlink={() => {
         if (window.confirm("¿Desvincular los tipos del enfoque de costos? Dejarán de entrar solos; los que ya tienen renglón ahí lo conservan y vuelven con «+ Construcción».")) void context.setExcludedTypes(named);

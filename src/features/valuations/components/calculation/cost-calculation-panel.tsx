@@ -1,7 +1,7 @@
 "use client";
 
-import { Calculator, Link2, Link2Off, Loader2, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
-import { Fragment, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { Calculator, ChevronDown, Link2, Link2Off, Loader2, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
+import { Fragment, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -20,15 +20,18 @@ import {
   conservationCriterionOf,
   addConstructionDisabledReason,
   conservationCriterionOfColumns,
-  conservationOfRating,
-  conservationOfState,
+  conservationText,
+  readConservationText,
+  readInstallationShare,
   costColumnsOf,
   costEngineConfig,
   emptyConstructionCost,
   emptyInstallation,
   findConstructionType,
   installationHasData,
+  missingCostFields,
   landReferenceArea,
+  landReferencePlaceholder,
   landUnitValue,
   toCostEngineInput,
   typesToAdd,
@@ -65,6 +68,8 @@ import { useSerializedSave } from "./use-serialized-save";
 import { CALCULATION_REDO_LABEL, CALCULATION_UNDO_LABEL, useDraftHistory } from "./use-draft-history";
 import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
 import { SaveRefusedNotice, saveRefusedMessage } from "./save-refused";
+import { SortableRows, useSortableRow } from "./sortable-rows";
+import type { CriterionScope, SavedConservationCriterion } from "@/features/firm/conservation-criteria";
 
 /** Completion and undivided share are fractions (1 = 100 %) edited as percentages; the added factors are texts too. */
 type PercentRow<T> = Omit<Texts<T>, "completion" | "undivided" | "extraFactors"> & { completion: string; undivided: string; extraFactors: string[] };
@@ -108,26 +113,37 @@ const fractionOf = (text: string) => {
 type CostRow = { completion: number; undivided: number; extraFactors?: number[] };
 
 function percentRow<T extends CostRow>(row: T): PercentRow<T> {
+  // Cons. reads «Nuevo = 0.98» when a state was picked: the word and its factor in one cell (video 8.12, 29:30).
+  const { conservationState: _state, ...texts } = textsOf(row) as Texts<T> & { conservationState?: unknown };
+  const conservation = (row as unknown as { conservation?: number | null }).conservation;
   return {
-    ...textsOf(row),
+    ...texts,
+    ...(conservation === undefined ? {} : { conservation: conservationText(row as unknown as { conservation: number | null; conservationState?: string | null }) }),
     completion: percentText(row.completion),
     undivided: percentText(row.undivided),
     extraFactors: (row.extraFactors ?? []).map(String),
   } as PercentRow<T>;
 }
 
-/** An added factor left empty is 1, as "Otro". */
-function fractionRow<T extends CostRow>(row: PercentRow<T>, template: T): T {
-  // The state of a criterion other than Ross-Heidecke is a text: the template of numbers does not carry it.
-  const state = (row as unknown as { conservationState?: unknown }).conservationState;
+/**
+ * An added factor left empty is 1, as "Otro". Cons. is read from its cell
+ * («Nuevo = 0.98», «0.98» or «Nuevo»): the number enters the calculation and
+ * the word is kept as its state.
+ */
+function fractionRow<T extends CostRow>(row: PercentRow<T>, template: T, criterion: ConservationCriterionDto): T {
   // An installation's own name in the cost approach; empty, it is linked to its description again.
   const costName = (row as unknown as { costName?: unknown }).costName;
+  const typedConservation = (row as unknown as { conservation?: unknown }).conservation;
+  const read = typeof typedConservation === "string" ? readConservationText(typedConservation, criterion) : null;
+  // P/C written as a letter or a word; anything else counts as P and is marked in its cell.
+  const share = (row as unknown as { share?: unknown }).share;
   return {
     ...numbersOf(row as unknown as Texts<T>, template),
     completion: fractionOf(row.completion),
     undivided: fractionOf(row.undivided),
     extraFactors: row.extraFactors.map((text) => parseDecimal(text) ?? 1),
-    ...(typeof state === "string" && state ? { conservationState: state } : {}),
+    ...(read ? { conservation: read.conservation, ...(read.state ? { conservationState: read.state } : {}) } : {}),
+    ...(typeof share === "string" ? { share: readInstallationShare(share) ?? "P" } : {}),
     ...(typeof costName === "string" && costName.trim() ? { costName: costName.trim() } : {}),
   };
 }
@@ -171,8 +187,8 @@ function inputOf(draft: Draft): PanelInput {
       surfaceFactor: parseDecimal(draft.land.surfaceFactor),
       resultantFactor: parseDecimal(draft.land.resultantFactor),
     },
-    constructions: draft.constructions.map((row) => fractionRow(row, emptyConstructionCost())),
-    installations: draft.installations.map((row, index) => fractionRow(row, emptyInstallation(index))),
+    constructions: draft.constructions.map((row) => fractionRow(row, emptyConstructionCost(), conservationCriterionOfColumns(draft.columns.constructions))),
+    installations: draft.installations.map((row, index) => fractionRow(row, emptyInstallation(index), conservationCriterionOfColumns(draft.columns.installations))),
     indirects: draft.indirects.map((row) => numbersOf(row, { concept: "", percentage: null, base: null })),
     rounding: draft.rounding,
     columns: draft.columns,
@@ -269,7 +285,11 @@ function computeCalculation(calculation: CostCalculationDto) {
   return { result: computeCostApproach(input.input, costEngineConfig(calculation), trace), trace, reason: null };
 }
 
-const cell = "h-7 min-w-0 px-1.5 text-xs";
+/** A cell of the capture as a cell of any table: no box around it until it is pointed at or typed in (video 8.12, 28:30). */
+const cell = "h-7 min-w-0 rounded-sm border-transparent px-1.5 text-xs shadow-none hover:border-input focus-visible:border-ring";
+/** A datum the row still needs to enter the calculation: marked from the start, in every row (video 8.7, 5:39). */
+const MISSING_CELL = "border-destructive/70 ring-1 ring-destructive/30";
+const MISSING_HINT = "Falta este dato: sin él el renglón no entra al cálculo.";
 const resultCell = cn(cell, CALC_RESULT);
 const figure = (value: number | null | undefined, digits = 2) =>
   (value === null || value === undefined ? "—" : value.toLocaleString("es-MX", { maximumFractionDigits: digits }));
@@ -345,45 +365,38 @@ function DemeritColumnsEditor(props: {
 const CONSERVATION_STATES = [...new Set(CONSERVATION_RATINGS.map((row) => row.state))];
 
 /**
- * Estado de conservación and calificación of a row, as the sheet rates them;
- * "Sin calificar" leaves the Cons. to be typed, as before the ratings.
+ * The list beside the Cons. of a row (video 8.12, 29:30): only its arrow
+ * shows in the cell, next to the free field. Picking a state writes «Nuevo =
+ * 0.98» in the field (Ross-Heidecke: the estado, its calificación and its
+ * factor); «Sin calificar» empties it. The factor can still be typed over.
  */
 function ConservationRatingSelect(props: { value: string; label: string; criterion: ConservationCriterionDto; disabled?: boolean; onChange: (value: string) => void }) {
-  if (props.criterion.kind !== "ROSS_HEIDECKE") {
-    const listed = props.criterion.options.some((option) => option.label === props.value);
-    return (
+  const ross = props.criterion.kind === "ROSS_HEIDECKE";
+  const listed = ross || props.criterion.options.some((option) => option.label === props.value);
+  return (
+    <span className="relative flex h-7 w-5 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground" data-conservation-list="">
       <select
         aria-label={props.label}
-        className="h-6 w-full min-w-0 rounded-md border border-input bg-background px-1 text-[11px] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-        value={props.value}
+        title={props.label}
+        className="absolute inset-0 cursor-pointer appearance-none bg-transparent text-transparent outline-none focus-visible:ring-2 focus-visible:ring-ring/50 [&_option]:text-foreground [&_optgroup]:text-foreground"
+        value={listed ? props.value : ""}
         disabled={props.disabled}
         onChange={(event) => props.onChange(event.target.value)}
       >
         <option value="">Sin calificar</option>
-        {props.value && !listed ? <option value={props.value}>{props.value}</option> : null}
-        {props.criterion.options.filter((option) => option.label.trim()).map((option) => (
+        {ross ? CONSERVATION_STATES.map((state) => (
+          <optgroup key={state} label={state}>
+            {CONSERVATION_RATINGS.filter((row) => row.state === state).map((row) => (
+              <option key={row.rating} value={String(row.rating)}>{state} {row.rating} = {row.factor.toFixed(3)}</option>
+            ))}
+          </optgroup>
+        )) : props.criterion.options.filter((option) => option.label.trim()).map((option) => (
           <option key={option.label} value={option.label}>{option.label} = {option.factor.toFixed(2)}</option>
         ))}
       </select>
-    );
-  }
-  return (
-    <select
-      aria-label={props.label}
-      className="h-6 w-full min-w-0 rounded-md border border-input bg-background px-1 text-[11px] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-      value={props.value}
-      disabled={props.disabled}
-      onChange={(event) => props.onChange(event.target.value)}
-    >
-      <option value="">Sin calificar</option>
-      {CONSERVATION_STATES.map((state) => (
-        <optgroup key={state} label={state}>
-          {CONSERVATION_RATINGS.filter((row) => row.state === state).map((row) => (
-            <option key={row.rating} value={String(row.rating)}>{state} {row.rating} = {row.factor.toFixed(3)}</option>
-          ))}
-        </optgroup>
-      ))}
-    </select>
+      {/* Over the list (a capture table paints its lists white): only the arrow shows. */}
+      <ChevronDown aria-hidden className="pointer-events-none relative z-10 size-3.5" />
+    </span>
   );
 }
 
@@ -400,8 +413,34 @@ function ConservationCriterionEditor(props: {
   criterion: ConservationCriterionDto;
   readOnly: boolean;
   onChange: (next: ConservationCriterionDto, commit: boolean) => void;
+  /** The criteria kept by the firm and by the user, offered in the list (video 8.7, 1:40). */
+  saved: SavedConservationCriterion[];
+  onSave: (criterion: SavedConservationCriterion) => void;
 }) {
   const { criterion } = props;
+  const [scope, setScope] = useState<CriterionScope>("despacho");
+  const [arrangement, setArrangement] = useState(0);
+  const pickKind = (value: string) => {
+    const saved = value.startsWith("guardado:") ? props.saved[Number(value.slice("guardado:".length))] : null;
+    if (saved) {
+      setArrangement((current) => current + 1);
+      props.onChange({ kind: "PROPIO", name: saved.name, options: saved.options.map((option) => ({ ...option })) }, true);
+      return;
+    }
+    setArrangement((current) => current + 1);
+    props.onChange(conservationCriterionOf(value as ConservationCriterion, criterion), true);
+  };
+  // Dragged to another order (video 8.7, 3:55): the list beside Cons. offers them in it.
+  const optionIds = criterion.options.map((_, index) => `opcion-${index}`);
+  const moveOptions = (ids: string[]) => {
+    setArrangement((current) => current + 1);
+    moveOptionsTo(ids);
+  };
+  const moveOptionsTo = (ids: string[]) => props.onChange({
+    ...criterion,
+    options: ids.map((id) => criterion.options[Number(id.slice("opcion-".length))]),
+  }, true);
+  const savable = criterion.kind === "PROPIO" && criterion.name.trim() !== "" && criterion.options.some((option) => option.label.trim());
   const setOption = (index: number, patch: Partial<{ label: string; factor: string }>) => props.onChange({
     ...criterion,
     options: criterion.options.map((option, position) => (position === index ? {
@@ -418,9 +457,18 @@ function ConservationCriterionEditor(props: {
           className="h-7 rounded-md border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           value={criterion.kind}
           disabled={props.readOnly}
-          onChange={(event) => props.onChange(conservationCriterionOf(event.target.value as ConservationCriterion, criterion), true)}
+          onChange={(event) => pickKind(event.target.value)}
         >
           {CONSERVATION_CRITERIA.map((kind) => <option key={kind} value={kind}>{CONSERVATION_CRITERION_LABELS[kind]}</option>)}
+          {props.saved.length ? (
+            <optgroup label="Guardados">
+              {props.saved.map((saved, index) => (
+                <option key={`${saved.scope}:${saved.name}`} value={`guardado:${index}`}>
+                  {saved.name} ({saved.scope === "personal" ? "míos" : "del despacho"})
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
         </select>
         <span className="text-muted-foreground">
           {criterion.kind === "ROSS_HEIDECKE"
@@ -448,11 +496,12 @@ function ConservationCriterionEditor(props: {
       ) : null}
       {criterion.kind !== "ROSS_HEIDECKE" ? (
         <div className="grid gap-1">
-          <div className="grid max-w-md grid-cols-[minmax(0,1fr)_6rem_auto] gap-1 font-medium text-muted-foreground">
-            <span>Calificación</span><span>Factor</span><span className="sr-only">Acciones</span>
+          <div className="grid max-w-md grid-cols-[auto_minmax(0,1fr)_6rem_auto] gap-1 font-medium text-muted-foreground">
+            <span className="w-7" /><span>Calificación</span><span>Factor</span><span className="sr-only">Acciones</span>
           </div>
+          <SortableRows ids={optionIds} onMove={moveOptions}>
           {criterion.options.map((option, index) => (
-            <div key={index} className="grid max-w-md grid-cols-[minmax(0,1fr)_6rem_auto] items-center gap-1">
+            <CriterionOptionRow key={optionIds[index]} id={optionIds[index]} disabled={props.readOnly} label={option.label}>
               <Input
                 aria-label={`Calificación ${index + 1}`}
                 className="h-7 text-xs"
@@ -461,6 +510,8 @@ function ConservationCriterionEditor(props: {
                 onChange={(event) => setOption(index, { label: event.target.value })}
               />
               <Input
+                // Typed freely ("0."), it is read again after a reorder or a saved criterion picked.
+                key={`${arrangement}-${index}`}
                 aria-label={`Factor de ${option.label || `la calificación ${index + 1}`}`}
                 className="h-7 text-xs"
                 inputMode="decimal"
@@ -478,8 +529,9 @@ function ConservationCriterionEditor(props: {
                   <Trash2 />
                 </Button>
               ) : <span />}
-            </div>
+            </CriterionOptionRow>
           ))}
+          </SortableRows>
           {!props.readOnly ? (
             <Button
               type="button"
@@ -492,8 +544,47 @@ function ConservationCriterionEditor(props: {
               <Plus data-icon="inline-start" /> Calificación
             </Button>
           ) : null}
+          {criterion.kind === "PROPIO" && !props.readOnly ? (
+            <div className="flex flex-wrap items-center gap-2 border-t pt-2" data-criterion-save="">
+              <span className="text-muted-foreground">Guardar este criterio para usarlo en otros avalúos:</span>
+              <select
+                aria-label="Para quién se guarda el criterio"
+                className="h-7 rounded-md border border-input bg-background px-1 text-xs"
+                value={scope}
+                onChange={(event) => setScope(event.target.value as CriterionScope)}
+              >
+                <option value="despacho">Para el despacho (todo el equipo)</option>
+                <option value="personal">Solo para mí</option>
+              </select>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!savable}
+                title={savable ? undefined : "Escribe el nombre del criterio y al menos un estado."}
+                onClick={() => props.onSave({
+                  name: criterion.name,
+                  scope,
+                  options: criterion.options.filter((option) => option.label.trim()).map((option) => ({ label: option.label.trim(), factor: option.factor })),
+                })}
+              >
+                Guardar criterio
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** A state of the criterion, dragged by its handle to another place. */
+function CriterionOptionRow(props: { id: string; disabled: boolean; label: string; children: ReactNode }) {
+  const sortable = useSortableRow(props.id, { disabled: props.disabled, label: `Mover «${props.label || "estado"}»` });
+  return (
+    <div {...sortable.row} className={cn("grid max-w-md grid-cols-[auto_minmax(0,1fr)_6rem_auto] items-center gap-1", sortable.className)} data-criterion-option="">
+      {sortable.handle ?? <span className="w-7" />}
+      {props.children}
     </div>
   );
 }
@@ -613,6 +704,26 @@ export function CostCalculationPanel(props: {
     if (calculation) report(calculation);
   }, [calculation]);
 
+  // The criteria kept by the firm and by the user; without them, the list offers the three of always.
+  const [savedCriteria, setSavedCriteria] = useState<SavedConservationCriterion[]>([]);
+  useEffect(() => {
+    let active = true;
+    api.firm.conservationCriteria()
+      .then((data) => { if (active) setSavedCriteria(data.criteria); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  const saveCriterion = (criterion: SavedConservationCriterion) => {
+    api.firm.saveConservationCriterion(criterion)
+      .then((data) => {
+        setSavedCriteria(data.criteria);
+        toast.success(`«${criterion.name}» quedó guardado ${criterion.scope === "personal" ? "para ti" : "para el despacho"}.`, {
+          description: "Ya aparece en la lista de criterios de cualquier avalúo.",
+        });
+      })
+      .catch(() => toast.error("No se pudo guardar el criterio. Intenta de nuevo."));
+  };
+
   const draftRef = useRef<Draft | null>(null);
   useEffect(() => {
     draftRef.current = draft;
@@ -731,21 +842,19 @@ export function CostCalculationPanel(props: {
       },
     });
   }
-  // The calificación is a select too: it saves at once and gives the Cons. Picking one replaces a Cons.
-  // typed before (it used to win over the calificación, so changing the calificación changed nothing).
-  // With another criterion the state picked writes its factor in Cons., which stays editable.
+  // The list beside Cons. is a select too: it saves at once. The state picked is written in the cell with its factor,
+  // «Nuevo = 0.98», replacing what was typed (video 8.12, 29:30); the calculation takes the number. «Sin calificar» empties it.
   const pickRating = (list: "constructions" | "installations", index: number, rating: string) => {
     const criterion = conservationCriterionOfColumns(draft.columns[list]);
     const ross = criterion.kind === "ROSS_HEIDECKE";
-    const factor = ross ? null : conservationOfState(criterion, rating);
+    const picked = ross
+      ? CONSERVATION_RATINGS.find((item) => String(item.rating) === rating)
+      : criterion.options.find((option) => option.label === rating);
+    const text = !picked ? "" : "rating" in picked ? `${picked.state} = ${picked.factor}` : `${picked.label} = ${picked.factor}`;
     record(null);
     const next = {
       ...draft,
-      [list]: draft[list].map((row, rowIndex) => {
-        if (rowIndex !== index) return row;
-        if (ross) return { ...row, conservationRating: rating, conservationState: null, ...(rating ? { conservation: "" } : {}) };
-        return { ...row, conservationRating: "", conservationState: rating || null, ...(factor === null ? {} : { conservation: String(factor) }) };
-      }),
+      [list]: draft[list].map((row, rowIndex) => (rowIndex !== index ? row : { ...row, conservationRating: ross ? rating : "", conservation: text })),
     };
     setDraft(next);
     save(next);
@@ -849,20 +958,22 @@ export function CostCalculationPanel(props: {
   /** `grouping`: amounts and areas show their thousands separator; factors, ages and percentages do not. */
   const textInput = (
     list: "constructions" | "installations" | "indirects", index: number, key: string, current: string, label: string, numeric = true, placeholder?: string, grouping = false, title?: string,
+    missing = false,
   ) => {
     const Control = numeric ? FormulaInput : Input;
     return (
       <Control
         {...(numeric && grouping ? { grouping: true } : {})}
         aria-label={label}
-        className={cell}
+        className={cn(cell, missing && MISSING_CELL)}
         disabled={readOnly}
         value={current}
         placeholder={placeholder}
         // The browser's own suggestions (1.1, 100…) covered the cells (video 7.4, 26:45).
         autoComplete="off"
         data-cost-cell={`${list}.${index}.${key}`}
-        title={title ?? (placeholder === undefined ? undefined : `${label}. ${FORMULA_HINT}`)}
+        data-missing-data={missing ? "" : undefined}
+        title={missing ? `${label}. ${MISSING_HINT}` : title ?? (placeholder === undefined ? undefined : `${label}. ${FORMULA_HINT}`)}
         // The age factor, the base of an indirect and a conservation from its rating are calculated while empty.
         data-no-fill={key === "ageFactor" || key === "base" || (key === "conservation" && placeholder !== undefined) ? "computed" : undefined}
         onChange={(event) => setRow(list, index, key, event.target.value)}
@@ -906,15 +1017,19 @@ export function CostCalculationPanel(props: {
     usefulLife: number | null,
     cellAt: (column: string) => CaptureAddress,
     columns: { conservation: string; ageFactor: string; otherFactor: string; extraFactors: string[]; resultantFactor: string; completion: string; undivided: string },
+    missing: string[],
   ) => {
     const criterion = conservationCriterionOfColumns(draft.columns[list]);
     const ross = criterion.kind === "ROSS_HEIDECKE";
-    const fromRating = ross ? conservationOfRating(parseDecimal(row.conservationRating)) : null;
-    const state = (row as { conservationState?: string | null }).conservationState ?? "";
+    const rated = ross ? CONSERVATION_RATINGS.find((item) => String(item.rating) === row.conservationRating) ?? null : null;
+    const fromRating = rated?.factor ?? null;
+    const read = readConservationText(row.conservation, criterion);
+    const consProblem = row.conservation.trim() !== "" && read.conservation === null;
+    const consMissing = missing.includes("conservation") && !consProblem;
     // Edad and FRe as the calculation gives them; a row without its value (or not complete) gets them too.
     const extras = draft.columns[list].extra.map((_, position) => parseDecimal(row.extraFactors[position] ?? "") ?? 1);
     const base = {
-      ref: key, age, usefulLife, conservation: parseDecimal(row.conservation) ?? fromRating,
+      ref: key, age, usefulLife, conservation: read.conservation ?? fromRating,
       otherFactor: parseDecimal(row.otherFactor) ?? 1, ...(extras.length ? { extraFactors: extras } : {}),
     };
     const typedAge = parseDecimal(row.ageFactor);
@@ -924,15 +1039,30 @@ export function CostCalculationPanel(props: {
     const ageLabel = "Factor de edad = 1 − (edad / vida útil)^1.4";
     return (
       <>
-        {/* Cons.: the factor, and beside it the state of conservation that proposes it (not a column of the dictamen). */}
+        {/* Cons.: a free cell («0.98», «Nuevo = 0.98») and, beside it, the list of the criterion's states: one row, as any cell (video 8.12, 29:30). */}
         <CaptureSlot at={cellAt(columns.conservation)}>
-          <span className="grid w-full min-w-24 gap-0.5 py-0.5">
-            {textInput(list, index, "conservation", row.conservation, "Factor de conservación (Cons.)", true, fromRating === null ? undefined : figure(fromRating, 3))}
+          <span className="flex w-full min-w-24 items-center gap-0.5">
+            <Input
+              aria-label="Factor de conservación (Cons.)"
+              className={cn(cell, "flex-1", (consProblem || consMissing) && MISSING_CELL)}
+              disabled={readOnly}
+              value={row.conservation}
+              placeholder={rated ? `${rated.state} = ${rated.factor}` : undefined}
+              autoComplete="off"
+              data-cost-cell={`${list}.${index}.conservation`}
+              data-no-fill={rated ? "computed" : undefined}
+              data-missing-data={consMissing ? "" : undefined}
+              aria-invalid={consProblem || undefined}
+              title={consProblem
+                ? "No se lee un factor: escribe un número (0.98), un estado de la lista o «Estado = factor»."
+                : consMissing ? `Factor de conservación (Cons.). ${MISSING_HINT}` : "Escribe el factor (0.98) o elige el estado en la flecha: se escribe «Nuevo = 0.98» y el cálculo toma el número."}
+              onChange={(event) => setRow(list, index, "conservation", event.target.value)}
+            />
             <ConservationRatingSelect
-              value={ross ? row.conservationRating : state}
+              value={ross ? row.conservationRating : read.state ?? ""}
               criterion={criterion}
               disabled={readOnly}
-              label={ross ? "Estado de conservación y calificación" : `Estado de conservación (${criterion.name.trim() || CONSERVATION_CRITERION_LABELS[criterion.kind]})`}
+              label={ross ? "Estado de conservación y calificación (Ross-Heidecke)" : `Estado de conservación (${criterion.name.trim() || CONSERVATION_CRITERION_LABELS[criterion.kind]})`}
               onChange={(rating) => pickRating(list, index, rating)}
             />
           </span>
@@ -1036,7 +1166,7 @@ export function CostCalculationPanel(props: {
                 id="cost-land-reference" autoComplete="off"
                 grouping
                 value={draft.land.referenceArea}
-                placeholder={calculation.market.baseArea !== null ? `De mercado: ${calculation.market.baseArea}` : reference.area ? `Sujeto: ${reference.area}` : "Igual al sujeto"}
+                placeholder={landReferencePlaceholder({ land: input.land, market: calculation.market })}
                 onChange={setLand("referenceArea")}
               />
             </Field>
@@ -1068,6 +1198,8 @@ export function CostCalculationPanel(props: {
                 title="B) Construcciones: criterio de conservación"
                 criterion={conservationCriterionOfColumns(draft.columns.constructions)}
                 readOnly={readOnly}
+                saved={savedCriteria}
+                onSave={saveCriterion}
                 onChange={(criterion, commit) => changeCriterion("constructions", criterion, commit)}
               />
               <DemeritColumnsEditor
@@ -1085,6 +1217,8 @@ export function CostCalculationPanel(props: {
                 title="C) Instalaciones: criterio de conservación"
                 criterion={conservationCriterionOfColumns(draft.columns.installations)}
                 readOnly={readOnly}
+                saved={savedCriteria}
+                onSave={saveCriterion}
                 onChange={(criterion, commit) => changeCriterion("installations", criterion, commit)}
               />
               <DemeritColumnsEditor
@@ -1214,6 +1348,7 @@ export function CostCalculationPanel(props: {
       {draft.constructions.map((row, index) => {
         const type = findConstructionType(calculation.types, row.ref);
         const rowId = constructionRowIds[index];
+        const missing = missingCostFields(withConstructionType(input.constructions[index], calculation.types), "constructions");
         const cellAt = (column: string) => ({ table: at.constructions.table, row: rowId, column });
         return (
           <Fragment key={index}>
@@ -1230,9 +1365,9 @@ export function CostCalculationPanel(props: {
                 {calculation.types.map((option) => <option key={option.ref} value={option.ref}>{option.ref}</option>)}
               </select>
             </CaptureSlot>
-            {demeritCells("constructions", index, row, `costos.construcciones.${row.ref}`, type?.age ?? null, type?.usefulLife ?? null, cellAt, at.constructions)}
+            {demeritCells("constructions", index, row, `costos.construcciones.${row.ref}`, type?.age ?? null, type?.usefulLife ?? null, cellAt, at.constructions, missing)}
             <CaptureSlot at={{ table: at.constructionValues.table, row: constructionValueRowIds[index], column: at.constructionValues.unitReplacementCost }}>
-              {textInput("constructions", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario ($/m²)", true, undefined, true)}
+              {textInput("constructions", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario ($/m²)", true, undefined, true, undefined, missing.includes("unitReplacementCost"))}
             </CaptureSlot>
             {!readOnly ? (
               <CaptureSlot at={{ table: at.constructions.table, row: rowId }}>
@@ -1247,22 +1382,26 @@ export function CostCalculationPanel(props: {
       {draft.installations.map((row, index) => {
         const numbers = input.installations[index];
         const rowId = installationRowIds[index];
+        const missing = missingCostFields(numbers, "installations");
+        const shareProblem = readInstallationShare(row.share) === null;
         const cellAt = (column: string) => ({ table: at.installations.table, row: rowId, column });
         const ownName = typeof row.costName === "string";
         return (
           <Fragment key={index}>
+            {/* P/C is written, as any cell (video 8.12, 31:10): P or C, or the word; anything else is marked. */}
             <CaptureSlot at={cellAt(at.installations.share)}>
-              <select
+              <Input
                 aria-label="P/C (P = Privativa, C = Común)"
-                title="P = Privativa, C = Común"
-                className="h-7 w-full min-w-12 rounded-md border border-input bg-background px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                title={shareProblem ? "Escribe P (privativa) o C (común): mientras tanto cuenta como privativa." : "P = Privativa, C = Común"}
+                className={cn(cell, "min-w-10 text-center uppercase", shareProblem && MISSING_CELL)}
+                aria-invalid={shareProblem || undefined}
+                autoComplete="off"
+                maxLength={10}
                 value={row.share}
                 disabled={readOnly}
+                data-cost-cell={`installations.${index}.share`}
                 onChange={(event) => setRow("installations", index, "share", event.target.value)}
-              >
-                <option value="P">P</option>
-                <option value="C">C</option>
-              </select>
+              />
             </CaptureSlot>
             <CaptureSlot at={cellAt(at.installations.ref)}>
               <InstallationRefInput
@@ -1288,12 +1427,12 @@ export function CostCalculationPanel(props: {
                 : textInput("installations", index, "description", row.description, "Descripción", false)}
             </CaptureSlot>
             <CaptureSlot at={cellAt(at.installations.unit)}>{textInput("installations", index, "unit", row.unit, "Unidad", false)}</CaptureSlot>
-            <CaptureSlot at={cellAt(at.installations.quantity)}>{textInput("installations", index, "quantity", row.quantity, "Cantidad", true, undefined, true)}</CaptureSlot>
-            <CaptureSlot at={cellAt(at.installations.age)}>{textInput("installations", index, "age", row.age, "Edad")}</CaptureSlot>
-            <CaptureSlot at={cellAt(at.installations.usefulLife)}>{textInput("installations", index, "usefulLife", row.usefulLife, "Vida útil")}</CaptureSlot>
-            {demeritCells("installations", index, row, installationKey(row.ref), numbers.age, numbers.usefulLife, cellAt, at.installations)}
+            <CaptureSlot at={cellAt(at.installations.quantity)}>{textInput("installations", index, "quantity", row.quantity, "Cantidad", true, undefined, true, undefined, missing.includes("quantity"))}</CaptureSlot>
+            <CaptureSlot at={cellAt(at.installations.age)}>{textInput("installations", index, "age", row.age, "Edad", true, undefined, false, undefined, missing.includes("age"))}</CaptureSlot>
+            <CaptureSlot at={cellAt(at.installations.usefulLife)}>{textInput("installations", index, "usefulLife", row.usefulLife, "Vida útil", true, undefined, false, undefined, missing.includes("usefulLife"))}</CaptureSlot>
+            {demeritCells("installations", index, row, installationKey(row.ref), numbers.age, numbers.usefulLife, cellAt, at.installations, missing)}
             <CaptureSlot at={{ table: at.installationValues.table, row: installationValueRowIds[index], column: at.installationValues.unitReplacementCost }}>
-              {textInput("installations", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario", true, undefined, true)}
+              {textInput("installations", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario", true, undefined, true, undefined, missing.includes("unitReplacementCost"))}
             </CaptureSlot>
             {!readOnly ? (
               <CaptureSlot at={{ table: at.installations.table, row: rowId }}>

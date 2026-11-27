@@ -12,7 +12,7 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { moveTableRow, placeTableAlone, placeTableBeside, tablePlacement, withAppraiserLayout } from "../src/features/valuations/calculation/generated-block-layout";
+import { tableRowsOf, withAppraiserLayout, withTableRows } from "../src/features/valuations/calculation/generated-block-layout";
 import {
   BRAVO_ARMEJO_SOURCE,
   INCOME_CAPTURE,
@@ -26,7 +26,7 @@ import { replaceGeneratedBlocks } from "../src/features/valuations/calculation/m
 import { DocumentTable } from "../src/features/valuations/components/document-table";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeIncomeApproach, rateTableBreakdown } from "../src/features/valuations/engine/income";
-import type { AppSection, Block, TableContent } from "../src/features/valuations/model";
+import type { AppSection, Block, ContentLayout, TableContent } from "../src/features/valuations/model";
 import { resolveContentLayout } from "../src/features/valuations/services/content-layout";
 import { ensureTableV2, type TableV2 } from "../src/features/valuations/services/table";
 import { splitTableRows } from "../src/features/valuations/services/table-pagination";
@@ -93,20 +93,42 @@ test("«Cálculo de tasa» prints exactly as the book: TASAS over 7 %…12 %, ea
   assert.deepEqual(rows[9], ["RELACIÓN", "MAYOR 3-1", "HASTA 3-1", "HASTA 2-1", "1 -1", "HASTA 3-1", "MAYOR 3-1"]);
   assert.deepEqual(rows[12], ["INMUEBLE", "UNIF.", "HAB-COM", "CONDOM.", "CONDOM.", "UNIF.", "INDUSTRIA"]);
   assert.deepEqual(rows[14], ["CLASIFICACIÓN DE ZONA", "LUJO", "1ER. ORDEN", "2DO. ORDEN", "3ER. ORDEN", "PROL. SERV. COM.", "PROL. SERV. INC."]);
-  assert.deepEqual(rows.slice(-4), [
+  assert.equal(rows.at(-1)![0], "calificación", "the criteria end with the last «calificación»: the results go apart");
+  // What the ratings give, as a table of its own under the criteria (video 8.10, 24:30), Bravo Armejo cited under it.
+  const results = tableIn(blocks, INCOME_CAPTURE.rateResult.table);
+  assert.deepEqual(rowsText(results), [
     ["SUMA CALIFICACIONES", "1", "2", "2", "1", "1", "0"],
     ["CAPITALIZACIÓN", "1.0000", "1.1429", "1.2857", "1.4286", "1.5714", "1.7143"],
     ["TASAS PARCIALES", "1.0000", "2.2857", "2.5714", "1.4286", "1.5714", "0.0000"],
-    ["", "", "", "", "", "TASA RESULTANTE:", "8.8571%"],
+    ["TASA RESULTANTE", "", "", "", "", "", "8.8571%"],
   ]);
+  assert.deepEqual(results.schema?.notes, [{ position: "bottom", text: BRAVO_ARMEJO_SOURCE, small: true }]);
+  assert.equal(results.schema?.keepTogether, true);
   // Only the seven «calificación» rows take the alternate color; the rest print white.
   const shaded = new Set(table.schema?.shadedRows);
   assert.deepEqual(table.rows.filter((row) => shaded.has(row.id)).map((row) => text(table, row.id)[0]), Array(7).fill("calificación"));
-  assert.deepEqual(table.schema?.notes, [{ position: "bottom", text: BRAVO_ARMEJO_SOURCE, small: true }]);
   const html = renderToStaticMarkup(createElement(DocumentTable, { variant: "report", table: table as unknown as TableContent }));
   assert.equal((html.match(/data-shaded-row=""/g) ?? []).length, 7);
   assert.equal((html.match(/var\(--doc-zebra,#F1F5F9\)/g) ?? []).length, 7, "the palette's alternate color, with the color of always as fallback");
-  assert.ok(html.includes("Fuente: tabla de Bravo Armejo para la construcción de la tasa de capitalización."));
+  const resultsHtml = renderToStaticMarkup(createElement(DocumentTable, { variant: "report", table: results as unknown as TableContent }));
+  assert.ok(resultsHtml.includes("Fuente: tabla de Bravo Armejo para la construcción de la tasa de capitalización."));
+});
+
+test("«Cálculo de tasa» reads as his Excel: every cell centered, criteria in bold, «RELACIÓN» and «INMUEBLE» in italics under theirs, «calificación» plain (video 8.10, 23:20)", () => {
+  const blocks = incomeDocumentBlocks(tch, resultOf(tch));
+  const table = tableIn(blocks, INCOME_CAPTURE.rating.table);
+  const styles = table.schema?.cellStyles ?? {};
+  const styleOf = (rowIndex: number, column = 0) => styles[`${table.rows[rowIndex].id}:${table.columns[column].id}`];
+  for (const row of table.rows.keys()) for (const column of table.columns.keys()) assert.equal(styleOf(row, column)?.align, "center", `row ${row + 1}, column ${column + 1}`);
+  assert.deepEqual(styleOf(0), { align: "center", bold: true }, "EDAD (AÑOS)");
+  assert.deepEqual(styleOf(1), { align: "center" }, "calificación");
+  assert.deepEqual(styleOf(9), { align: "center", italic: true }, "RELACIÓN");
+  assert.deepEqual(styleOf(12), { align: "center", italic: true }, "INMUEBLE");
+  // The results: bold and centered, the resultant rate beside its label.
+  const results = tableIn(blocks, INCOME_CAPTURE.rateResult.table);
+  const resultStyles = results.schema?.cellStyles ?? {};
+  assert.deepEqual(resultStyles[`${results.rows[0].id}:${results.columns[0].id}`], { align: "center", bold: true });
+  assert.deepEqual(resultStyles[`${results.rows[3].id}:${results.columns[6].id}`], { bold: true, align: "center" });
 });
 
 test("«Tasa a utilizar»: I) resultant, II) market and III) weighted when captured, IV) the rate applied", () => {
@@ -201,36 +223,50 @@ test("the rate tables print whole on one page: they move to the next page instea
 const ownTable = { id: "tabla-propia-1", title: "Notas del valuador", columns: ["A", "B"], rows: [["x", "y"]], enabled: true } as TableContent;
 const section = (blocks: Block[]): AppSection => ({ id: "ingresos", label: "XII", title: "ENFOQUE DE INGRESOS", sourceFile: "", enabled: true, required: false, blocks });
 
-test("two tables of a generated block side by side, split again and moved, as any block's", () => {
+/** Two tables side by side in one row of a layout: the row of `first` takes `second` beside it. */
+function besideIn(layout: ContentLayout, first: string, second: string): ContentLayout {
+  const ids = new Set([first, second]);
+  const tables = tableRowsOf(layout, ids);
+  const rowOf = (id: string) => tables.rows.find((row) => row.columns.some((column) => column.items.some((item) => item.id === id)))!;
+  const target = rowOf(first);
+  const moved = rowOf(second);
+  const rows = tables.rows.filter((row) => row !== moved).map((row) => (row === target ? { ...row, columns: [...row.columns, ...moved.columns] } : row));
+  return withTableRows(layout, { version: 2, rows }, ids);
+}
+
+test("the tables of a generated block are arranged as any block's: its rows of tables are taken out and put back in their place (video 8.10, 25:40)", () => {
   const rate = incomeDocumentBlocks(tch, resultOf(tch)).find((block) => block.id === "motor-ingresos-tasa")!;
   const layout = resolveContentLayout(rate);
-  const [first, second] = rate.tables.map((table) => table.id);
-  assert.deepEqual(tablePlacement(layout, second), { beside: true, alone: false, up: true, down: false });
-  const beside = placeTableBeside(layout, second);
+  const ids = new Set(rate.tables.map((table) => table.id));
+  const [first, , third] = rate.tables.map((table) => table.id);
+  // Only the rows of tables are dragged; given back unchanged, the layout is the same.
+  assert.deepEqual(tableRowsOf(layout, ids).rows.map((row) => row.columns[0].items[0].id), rate.tables.map((table) => table.id));
+  assert.deepEqual(withTableRows(layout, tableRowsOf(layout, ids), ids).rows.map((row) => row.columns.map((column) => column.items[0].id)), layout.rows.map((row) => row.columns.map((column) => column.items[0].id)));
+  // «Tasa a utilizar» dropped beside «Cálculo de tasa»: one row with the two.
+  const beside = besideIn(layout, first, third);
   assert.equal(beside.rows.length, layout.rows.length - 1);
-  assert.deepEqual(beside.rows.at(-1)!.columns.map((column) => column.items[0].id), [first, second]);
-  assert.deepEqual(tablePlacement(beside, second).alone, true);
-  const apart = placeTableAlone(beside, second);
-  assert.deepEqual(apart.rows.map((row) => row.columns.map((column) => column.items[0].id)), layout.rows.map((row) => row.columns.map((column) => column.items[0].id)));
-  const moved = moveTableRow(apart, second, -1);
-  assert.deepEqual(moved.rows.map((row) => row.columns[0].items[0].id), [second, first]);
+  assert.deepEqual(beside.rows.find((row) => row.columns.length === 2)!.columns.map((column) => column.items[0].id), [first, third]);
+  // A row of concepts keeps its place among the rows of tables.
+  const withConcept: ContentLayout = { version: 2, rows: [{ id: "r-concepto", columns: [{ id: "c-concepto", items: [{ type: "concept", id: "nota" }] }] }, ...layout.rows] };
+  const arranged = withTableRows(withConcept, { version: 2, rows: [...tableRowsOf(withConcept, ids).rows].reverse() }, ids);
+  assert.deepEqual(arranged.rows.map((row) => row.columns[0].items[0].id), ["nota", ...[...rate.tables.map((table) => table.id)].reverse()]);
 });
 
 test("the appraiser's own table and the layout stay when the calculation writes the block again", () => {
   const written = incomeDocumentBlocks(tch, resultOf(tch));
   const rate = written.find((block) => block.id === "motor-ingresos-tasa")!;
   const withOwn = { ...rate, tables: [...rate.tables, ownTable] };
-  const [, toUse] = rate.tables.map((table) => table.id);
-  const arranged: Block = { ...withOwn, contentLayout: placeTableBeside(resolveContentLayout(withOwn), toUse) };
+  const [, , toUse] = rate.tables.map((table) => table.id);
+  const arranged: Block = { ...withOwn, contentLayout: besideIn(resolveContentLayout(withOwn), rate.tables[0].id, toUse) };
   const before = section(written.map((block) => (block.id === rate.id ? arranged : block)));
   // Another rating: the rate table changes, the appraiser's table and the two tables side by side stay.
   const again = { ...tch, ratingColumns: [1, 0, 1, 0, 4, 0, 1] };
   const after = replaceGeneratedBlocks(before, (block) => block.id.startsWith("motor-ingresos"), incomeDocumentBlocks(again, resultOf(again)));
   const kept = after.blocks.find((block) => block.id === rate.id)!;
   assert.deepEqual(kept.tables.map((table) => table.id), [...rate.tables.map((table) => table.id), ownTable.id]);
-  assert.ok(text(tableIn([kept], INCOME_CAPTURE.rating.table), tableIn([kept], INCOME_CAPTURE.rating.table).rows.at(-1)!.id).includes("8.0000%"));
+  assert.ok(text(tableIn([kept], INCOME_CAPTURE.rateResult.table), tableIn([kept], INCOME_CAPTURE.rateResult.table).rows.at(-1)!.id).includes("8.0000%"));
   const rows = resolveContentLayout(kept).rows.map((row) => row.columns.map((column) => column.items[0].id));
-  assert.deepEqual(rows, [[rate.tables[0].id, toUse], [ownTable.id]]);
+  assert.deepEqual(rows, [[rate.tables[0].id, toUse], [rate.tables[1].id], [ownTable.id]]);
   // Written again the same, nothing changes.
   assert.equal(replaceGeneratedBlocks(after, (block) => block.id.startsWith("motor-ingresos"), incomeDocumentBlocks(again, resultOf(again))), after);
   // A block without anything of the appraiser's is written as the calculation gives it.

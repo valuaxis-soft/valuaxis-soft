@@ -306,7 +306,8 @@ test("the editor shows the types table as the capture: «Vinculado con Costos»,
   assert.match(html, /data-capture-add="types"[^>]*>.*Tipo de construcción/);
   const locked = html.match(/<input[^>]*data-calculated=""[^>]*>/g) ?? [];
   assert.equal(locked.length, 2, "Conservación and VUR of T-1");
-  assert.ok(locked.every((input) => /Esta cifra la calcula el sistema/.test(input)));
+  // Each says why it is not written there: it comes linked from the cost approach (video 8.6, 0:10).
+  assert.ok(locked.every((input) => /Vinculada con el enfoque de costos/.test(input) && /no se escriben ni se borran en esta tabla/.test(input)));
   // Its own data is written in the table: not locked.
   assert.match(html, /<input(?![^>]*data-calculated)[^>]*value="Edificio de uso mixto"/);
 });

@@ -215,9 +215,12 @@ export function ValuationWorkspace({
   };
   // A panel's "Se cambia en Carátula › Configuración del avalúo" opens that section at its top.
   const openSectionByKey = useEffectEvent((event: Event) => {
-    const key = (event as CustomEvent<string>).detail;
-    const target = sections.find((section) => !section.removed && getCanonicalSectionKey(section.id) === key);
-    if (target) handleActiveSectionChange(target.id);
+    // A key ("CARATULA"), or a place: a section by its id or its key (openValuationPlace).
+    const detail = (event as CustomEvent<string | { sectionId?: string; sectionKey?: string }>).detail;
+    const place = typeof detail === "string" ? { sectionKey: detail } : detail ?? {};
+    const target = sections.find((section) => !section.removed
+      && (place.sectionId ? section.id === place.sectionId : getCanonicalSectionKey(section.id) === place.sectionKey));
+    if (target && target.id !== activeSectionId) handleActiveSectionChange(target.id);
   });
   useEffect(() => {
     const listener = (event: Event) => openSectionByKey(event);

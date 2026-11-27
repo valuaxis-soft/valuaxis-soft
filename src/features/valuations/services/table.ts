@@ -166,6 +166,16 @@ export type TableSummaryBox = {
 /** `small`: a source note, printed smaller than the table («Fuente: …»). */
 export type TableNote = { position: "top" | "table" | "bottom"; label?: string; text: string; heading?: boolean; small?: boolean };
 
+/** How the appraiser arranged the rows of a box under a table the calculation writes. */
+export type GeneratedBoxRows = {
+  /** Row keys (`summaryRowKey`) in the order shown; a row not named keeps its place after the one before it. */
+  order?: string[];
+  /** Row keys left out of the dictamen; the editor shows them faded. */
+  hidden?: string[];
+  /** Rows of the appraiser's own, by id; their key is `boxId.id`. */
+  extra?: Array<{ id: string; label: string; value: string }>;
+};
+
 /**
  * A column the appraiser adds to a table the calculation writes: text or
  * formulas that print and do not enter the calculation, by row id.
@@ -232,6 +242,13 @@ export type GeneratedTableLayout = {
    * printed as "Valor neto de reposición", keeping the figure.
    */
   boxLabels?: Record<string, string>;
+  /**
+   * The rows of each box as the appraiser arranged them, by box id (video
+   * 8.7, 13:10: «agregar, quitar, ocultar y reacomodar, como una tablita»):
+   * their order by row key, the ones hidden in the dictamen and rows of his
+   * own (a label and a value as written, never calculated).
+   */
+  boxRows?: Record<string, GeneratedBoxRows>;
   /** "Formato de la tabla": how wide it prints, over what the calculation set. */
   widthMode?: TableWidthMode;
   /** "Formato de la tabla": decimals its figures print with (0–4); the calculation's values are kept whole. */

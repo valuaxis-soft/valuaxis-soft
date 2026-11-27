@@ -11,7 +11,6 @@
  */
 import type { Block, ContentLayout, ContentLayoutItemRef, ContentLayoutRowV2, TableContent } from "../model";
 import {
-  CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW,
   isContentLayout,
   normalizeContentLayout,
   reconcileContentLayout,
@@ -86,71 +85,6 @@ export function withAppraiserLayout(block: Block, previous: Block | undefined): 
   return { ...next, contentLayout: keptContentLayout(next, previous.contentLayout) };
 }
 
-/* ------------------------------------------------------------------ */
-/*  Moving a table                                                     */
-/* ------------------------------------------------------------------ */
-
-const tableKey = (tableId: string) => refKey({ type: "table", id: tableId });
-const rowOfTable = (layout: ContentLayout, tableId: string) => layout.rows.findIndex((row) => rowHas(row, tableKey(tableId)));
-const onlyTables = (row: ContentLayoutRowV2) => row.columns.every((column) => column.items.every((item) => item.type === "table"));
-
-function cloneRows(layout: ContentLayout): ContentLayoutRowV2[] {
-  return layout.rows.map((row) => ({ ...row, columns: row.columns.map((column) => ({ ...column, items: [...column.items] })) }));
-}
-
-/** The row of tables right before the table's, where it can sit beside them; null when there is none or it is full. */
-function rowBefore(layout: ContentLayout, tableId: string): number | null {
-  const at = rowOfTable(layout, tableId);
-  if (at <= 0) return null;
-  const row = layout.rows[at - 1];
-  return onlyTables(row) && row.columns.length < CONTENT_LAYOUT_V2_MAX_COLUMNS_PER_ROW ? at - 1 : null;
-}
-
-/** What can be done with a table of the block: put it beside the table before it, on a row of its own, or move it up or down. */
-export function tablePlacement(layout: ContentLayout, tableId: string) {
-  const at = rowOfTable(layout, tableId);
-  const row = layout.rows[at];
-  return {
-    beside: at !== -1 && (row?.columns.length ?? 0) === 1 && rowBefore(layout, tableId) !== null,
-    alone: at !== -1 && (row?.columns.length ?? 0) > 1,
-    up: at > 0,
-    down: at !== -1 && at < layout.rows.length - 1,
-  };
-}
-
-/** The table beside the tables of the row before it: two (or three) tables side by side. */
-export function placeTableBeside(layout: ContentLayout, tableId: string): ContentLayout {
-  const target = rowBefore(layout, tableId);
-  const at = rowOfTable(layout, tableId);
-  if (target === null || layout.rows[at].columns.length !== 1) return layout;
-  const rows = cloneRows(layout);
-  const [moved] = rows[at].columns;
-  rows[target].columns.push(moved);
-  rows.splice(at, 1);
-  return { version: 2, rows };
-}
-
-/** The table on a row of its own, right after the one it shared. */
-export function placeTableAlone(layout: ContentLayout, tableId: string): ContentLayout {
-  const at = rowOfTable(layout, tableId);
-  if (at === -1 || layout.rows[at].columns.length < 2) return layout;
-  const rows = cloneRows(layout);
-  const index = rows[at].columns.findIndex((column) => column.items.some((item) => refKey(item) === tableKey(tableId)));
-  const [moved] = rows[at].columns.splice(index, 1);
-  rows.splice(at + 1, 0, { id: `r-table-${tableId}`, columns: [moved] });
-  return { version: 2, rows: uniqueRowIds(rows) };
-}
-
-/** The table's row one place up or down, with what shares it. */
-export function moveTableRow(layout: ContentLayout, tableId: string, direction: -1 | 1): ContentLayout {
-  const at = rowOfTable(layout, tableId);
-  const to = at + direction;
-  if (at === -1 || to < 0 || to >= layout.rows.length) return layout;
-  const rows = cloneRows(layout);
-  [rows[at], rows[to]] = [rows[to], rows[at]];
-  return { version: 2, rows };
-}
-
 /** Row ids stay unique: a row split again takes a numbered id. */
 function uniqueRowIds(rows: ContentLayoutRowV2[]): ContentLayoutRowV2[] {
   const used = new Set<string>();
@@ -160,4 +94,34 @@ function uniqueRowIds(rows: ContentLayoutRowV2[]): ContentLayoutRowV2[] {
     used.add(id);
     return id === row.id ? row : { ...row, id };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/*  The tables' rows, dragged as in any block                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The rows of a block's layout that hold only tables of `tableIds` (the ones
+ * the editor lays out among themselves): what is dragged, side by side or to
+ * another row, exactly as the tables of any block (video 8.10, 25:40).
+ */
+export function tableRowsOf(layout: ContentLayout, tableIds: ReadonlySet<string>): ContentLayout {
+  const ids = new Set([...tableIds].map((id) => id.toLowerCase()));
+  const movable = (row: ContentLayoutRowV2) => row.columns.length > 0
+    && row.columns.every((column) => column.items.length > 0 && column.items.every((item) => item.type === "table" && ids.has(item.id.toLowerCase())));
+  return { version: 2, rows: layout.rows.filter(movable) };
+}
+
+/**
+ * The block's layout with its rows of tables as they were arranged
+ * (`tables`, from `tableRowsOf`): the rows of concepts and of other content
+ * stay where they were, and the rows of tables take the place of the first
+ * of them.
+ */
+export function withTableRows(layout: ContentLayout, tables: ContentLayout, tableIds: ReadonlySet<string>): ContentLayout {
+  const before = new Set(tableRowsOf(layout, tableIds).rows);
+  const at = layout.rows.findIndex((row) => before.has(row));
+  const kept = layout.rows.filter((row) => !before.has(row));
+  const place = at === -1 ? kept.length : layout.rows.slice(0, at).filter((row) => !before.has(row)).length;
+  return { version: 2, rows: uniqueRowIds([...kept.slice(0, place), ...tables.rows, ...kept.slice(place)]) };
 }
