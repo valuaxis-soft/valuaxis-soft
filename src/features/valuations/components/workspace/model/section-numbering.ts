@@ -3,6 +3,7 @@ import { ensureTerrenoSections } from "@/features/valuations/sections/terreno";
 import { blockPrintsNothing } from "@/features/valuations/services/hidden-content";
 import { annexLabel, sectionDocumentRole } from "@/features/valuations/services/document-structure";
 import { titlePrints } from "@/features/valuations/services/block-title";
+import { isComparableFichasBlock } from "@/features/valuations/services/photo-layout";
 import {
   blockLeftOutOfReport,
   excludedReportApproaches,
@@ -40,7 +41,12 @@ function asChapterBlock(block: Block): Block {
  * sections after the conclusion (or the ones the appraiser made annexes)
  * print "ANEXO 1", "ANEXO 2"… on the title of their first block and number
  * nothing inside. A section or a page left out of the dictamen takes no number,
- * nor a block whose title does not print.
+ * nor a block whose title does not print. The fichas of each market's
+ * comparables («FOTOGRAFÍAS DE COMPARABLES: …», written by the calculation in
+ * «Croquis y fotografías de comparables») print their titles without a
+ * numeral, as in the appraiser's template: they belong to that chapter and
+ * do not push the chapters after it (video 8.14). Only when nothing else of
+ * the chapter takes a number does the first of them carry the chapter's.
  */
 export function resequenceSections(sections: AppSection[]) {
   const excluded = excludedReportApproaches(sections);
@@ -78,11 +84,18 @@ export function resequenceSections(sections: AppSection[]) {
       return { ...section, label: "", blocks: section.blocks.map((block) => ({ ...asChapterBlock(block), sectionLabel: "" })) };
     }
     // Sections the appraiser adds may push the count past the registry's: the numerals keep going.
+    const numbered = (block: Block) => prints(block) && titlePrints(block);
+    const chapterHasOwnNumber = section.blocks.some((block) => numbered(block) && !isComparableFichasBlock(block));
+    let fichasNumbered = false;
     const blocks = section.blocks.map((original) => {
       const block = asChapterBlock(original);
       // A block that prints nothing (hidden, all its content hidden, or left out of the dictamen) takes no number,
       // nor one whose title does not print (empty, or «Imprimir título» off): the number goes on the title.
-      if (!prints(block) || !titlePrints(block)) return { ...block, sectionLabel: "" };
+      if (!numbered(block)) return { ...block, sectionLabel: "" };
+      if (isComparableFichasBlock(block)) {
+        if (chapterHasOwnNumber || fichasNumbered) return { ...block, sectionLabel: "" };
+        fichasNumbered = true;
+      }
       globalBlockIndex += 1;
       return { ...block, sectionLabel: toRomanNumeral(globalBlockIndex) };
     });

@@ -9,6 +9,7 @@ import {
   ensureCompanyHeaderFields,
 } from "@/features/valuations/services/caratula-company-header";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
+import { replacedImage } from "@/features/valuations/services/document-image-layout";
 import { newId } from "../model/content-factories";
 import { imageContentFromDocumentHeaderImage } from "../model/initial-hydration";
 import { textEditGroupKey } from "../model/editor-history";
@@ -218,7 +219,7 @@ export function useImageMutations({
           return ensureBlockContentIntegrity({
             ...block,
             images: block.images.map((current) => current.id === replaceImageId
-              ? { ...replacement, id: current.id, title: current.title || replacement.title }
+              ? replacedImage(current, replacement)
               : current),
           });
         }
@@ -235,7 +236,7 @@ export function useImageMutations({
             const updated = {
               ...subBlock,
               images: subBlock.images.map((current) => current.id === replaceImageId
-                ? { ...replacement, id: current.id, title: current.title || replacement.title }
+                ? replacedImage(current, replacement)
                 : current),
             };
             return { ...updated, contentLayout: resolveContentLayout(updated) };

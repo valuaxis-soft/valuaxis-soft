@@ -31,7 +31,7 @@ export type ConceptMenuItem = {
 export type ConceptMenuGroup = ConceptMenuItem[];
 
 /** Why what the calculation owns in a concept it writes is disabled. */
-export const GENERATED_CONCEPT_HINT = "Lo escribe el cálculo: el dato, su lugar y su formato se cambian en el panel de cálculo.";
+export const GENERATED_CONCEPT_HINT = "Lo escribe el cálculo: el dato cambia con lo que captures en el cálculo; su lugar y su formato los pone el cálculo.";
 /** Why a value the calculation writes cannot be deleted. */
 export const GENERATED_CONCEPT_DELETE_HINT = "Es un valor calculado: el cálculo lo volvería a escribir. Si no debe imprimirse, oculta el bloque.";
 export const READ_ONLY_CONCEPT_HINT = "El avalúo es de solo lectura.";

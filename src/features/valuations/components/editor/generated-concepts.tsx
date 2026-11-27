@@ -1,6 +1,7 @@
 "use client";
 
 import type { Apartado, Block, Concept, ContentRowTagStyle } from "@/features/valuations/model";
+import { isOwnApartado } from "@/features/valuations/calculation/generated-block-layout";
 import { withConceptLabel } from "@/features/valuations/calculation/generated-table-layout";
 import { GENERATED_CONCEPT_HINT } from "@/features/valuations/services/concept-context-menu";
 import { supportsValueFormat } from "@/features/valuations/services/concept-value-format";
@@ -34,7 +35,8 @@ export function GeneratedConcepts(props: { block: Block; readOnly: boolean; onCh
   const { block, readOnly } = props;
   const containers: Array<{ container: Block | Apartado; apartado?: Apartado }> = [
     { container: block },
-    ...block.apartados.map((apartado) => ({ container: apartado, apartado })),
+    // A subbloque of the appraiser's own is edited as any subbloque, not here.
+    ...block.apartados.filter((apartado) => !isOwnApartado(apartado)).map((apartado) => ({ container: apartado, apartado })),
   ].filter(({ container }) => container.concepts.length > 0);
   if (!containers.length) return null;
 

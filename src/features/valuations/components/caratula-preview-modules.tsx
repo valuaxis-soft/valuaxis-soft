@@ -2,6 +2,8 @@
 
 import { ImageIcon } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+
 
 import type { Block, CaratulaFormData, PrincipalCoverImage } from "../model";
 import type { ValuationMeta } from "../model";
@@ -204,11 +206,15 @@ export function CaratulaSignaturesModule({ caratula }: { caratula: CaratulaFormD
  * Each signature with room to sign, its line, the name, the cédula and the
  * role: the carátula's, and the conclusion's FIRMAS (V7.1-24).
  */
-export function SignatureLines({ signatures: given }: { signatures: readonly ValuationSignature[] }) {
+export function SignatureLines({ signatures: given, trailingRoom = true }: {
+  signatures: readonly ValuationSignature[];
+  /** The room under the signatures; the conclusion's go without it: the gap to what follows is the flow's. */
+  trailingRoom?: boolean;
+}) {
   const signatures: readonly ValuationSignature[] = given.length ? given : [{ name: "", cedula: "", role: "", specialty: "" }];
 
   return (
-    <section className="mb-2 flex flex-wrap justify-center gap-x-6" data-caratula-signatures>
+    <section className={cn("flex flex-wrap justify-center gap-x-6", trailingRoom && "mb-2")} data-caratula-signatures>
       {signatures.map((signature, index) => (
         <div className="mt-2 w-[30%] min-w-[150px] break-inside-avoid text-center" key={index}>
           {/* Room to sign by hand over the line. An image saved with the signature is not printed:

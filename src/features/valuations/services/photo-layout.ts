@@ -7,7 +7,7 @@
  * touching what the editor stores. Pure functions.
  */
 import type { Apartado, Block, ContentLayout, ContentLayoutRowV2, ImageContent } from "../model";
-import { GENERATED_BLOCK_PREFIX } from "../calculation/market-document";
+import { GENERATED_ID_PREFIX as GENERATED_BLOCK_PREFIX } from "../calculation/generated-block-layout";
 import { resolveContentLayout } from "./content-layout";
 import { printedImageCaptions } from "./image-captions";
 
