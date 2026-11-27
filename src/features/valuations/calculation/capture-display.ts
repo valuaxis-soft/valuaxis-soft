@@ -15,7 +15,7 @@
  */
 import type { Apartado, Block, TableContent } from "../model";
 import type { TableV2 } from "../services/table";
-import { applyTableLayout, layoutOf, sourceOf } from "./generated-table-layout";
+import { applyTableLayout, carriedLayout, layoutOf, sourceOf } from "./generated-table-layout";
 
 /** The pages of a calculation as its capture holds them, for the editor. */
 export type CapturePages = {
@@ -41,7 +41,10 @@ const key = (id: string) => id.toLowerCase();
 
 /** The table of the capture with the layout the appraiser gave the one in the dictamen. */
 function captureTable(live: TableContent, saved: TableContent | undefined): TableContent {
-  return saved ? applyTableLayout(withColumnIdsOf(sourceOf(live), sourceOf(saved)), layoutOf(saved)) : live;
+  if (!saved) return live;
+  const source = withColumnIdsOf(sourceOf(live), sourceOf(saved));
+  // A factor added or taken out since it was saved moves the calculation's columns: the layout follows them.
+  return applyTableLayout(source, carriedLayout(layoutOf(saved), sourceOf(saved), source));
 }
 
 /**

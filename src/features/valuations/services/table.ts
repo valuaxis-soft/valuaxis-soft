@@ -825,6 +825,28 @@ export function moveTableColumnTo(table: TableV2, columnId: string, targetColumn
 }
 
 /**
+ * Moves a column right before or right after `targetColumnId`, as the side of
+ * the header it is dropped on says (video 8.13, 22:29: dropped beside a
+ * double header, it «se metió aquí abajo»). It joins the zone of that column,
+ * so dropped on the right half of the last column out of a group it stays
+ * out, beside the group, and on the right half of a group's last column it
+ * goes in, at its end.
+ */
+export function moveTableColumnBeside(table: TableV2, columnId: string, targetColumnId: string, side: "before" | "after"): TableV2 {
+  if (columnId === targetColumnId) return table;
+  const shown = getDisplayColumns(table).map((column) => column.id);
+  if (!shown.includes(columnId) || !shown.includes(targetColumnId)) return table;
+  const order = shown.filter((id) => id !== columnId);
+  order.splice(order.indexOf(targetColumnId) + (side === "after" ? 1 : 0), 0, columnId);
+  if (order.join("|") === shown.join("|") && findZoneForColumn(table.schema ?? { zones: [] }, columnId) === findZoneForColumn(table.schema ?? { zones: [] }, targetColumnId)) return table;
+  if (!table.schema?.zones.length) return withColumnOrder(table, order, new Map());
+  const zoneOf = new Map(table.schema.zones.flatMap((zone) => zone.columnIds.map((id): [string, string] => [id, zone.id])));
+  const targetZone = findZoneForColumn(table.schema, targetColumnId);
+  if (targetZone) zoneOf.set(columnId, targetZone.id);
+  return withColumnOrder(table, order, zoneOf);
+}
+
+/**
  * The table with its columns in `order` (ids as shown) and each column in
  * the zone `zoneOf` gives it. `table.columns` follows the order shown, so
  * the stored order and the printed one never disagree.
@@ -1601,6 +1623,217 @@ export function ungroupTableHeaders(table: TableV2, groupId: string): TableV2 {
   if (!table.schema?.headerGroups?.some((group) => group.id === groupId)) return table;
   const headerGroups = table.schema.headerGroups.filter((group) => group.id !== groupId);
   return { ...table, schema: { ...table.schema, headerGroups } };
+}
+
+/* ── Columns in and out of a double header (video 8.13, 22:00–25:05) ── */
+
+/** The group of each column under a double header, by column id. */
+function headerGroupMembership(table: Pick<TableV2, "schema">): Map<string, string> {
+  const zones = new Map((table.schema?.zones ?? []).map((zone) => [zone.id, zone]));
+  return new Map((table.schema?.headerGroups ?? []).flatMap((group) => (zones.get(group.zoneId)?.columnIds ?? []).map((id): [string, string] => [id, group.id])));
+}
+
+/** The double header a column is under, if any. */
+export function headerGroupOfColumn(table: Pick<TableV2, "schema">, columnId: string): HeaderGroup | undefined {
+  const groupId = headerGroupMembership(table).get(columnId);
+  return groupId ? table.schema?.headerGroups?.find((group) => group.id === groupId) : undefined;
+}
+
+/** The columns under a double header, as shown. */
+export function headerGroupColumns(table: TableV2, groupId: string): string[] {
+  const membership = headerGroupMembership(table);
+  return getDisplayColumns(table).map((column) => column.id).filter((id) => membership.get(id) === groupId);
+}
+
+/**
+ * The table with its columns in `order` and each one under the double header
+ * `groupOf` gives it (none when missing). Each run of a group's columns is its
+ * zone; a group keeps its id, title and zone; a group left without columns is
+ * dropped, and a second run of the same group's columns leaves it. The
+ * columns out of any group keep the zone they had when they can.
+ */
+function withHeaderRuns(table: TableV2, order: string[], groupOf: Map<string, string>): TableV2 {
+  const groups = new Map((table.schema?.headerGroups ?? []).map((group) => [group.id, group]));
+  const previous = new Map((table.schema?.zones ?? []).map((zone) => [zone.id, zone]));
+  const groupZones = new Set([...groups.values()].map((group) => group.zoneId));
+  const zoneOfColumn = new Map((table.schema?.zones ?? []).flatMap((zone) => zone.columnIds.map((id): [string, string] => [id, zone.id])));
+  const runs: Array<{ groupId: string; columnIds: string[] }> = [];
+  for (const columnId of order) {
+    const groupId = groups.has(groupOf.get(columnId) ?? "") ? groupOf.get(columnId)! : "";
+    const last = runs.at(-1);
+    if (last && last.groupId === groupId) last.columnIds.push(columnId);
+    else runs.push({ groupId, columnIds: [columnId] });
+  }
+  const placed = new Set<string>();
+  const used = new Set<string>();
+  const unique = (id: string) => {
+    let candidate = id;
+    for (let index = 2; used.has(candidate); index += 1) candidate = `${id}-${index}`;
+    used.add(candidate);
+    return candidate;
+  };
+  const zones: StructuralZone[] = runs.map((run) => {
+    const group = run.groupId && !placed.has(run.groupId) ? groups.get(run.groupId) : undefined;
+    if (group) {
+      placed.add(group.id);
+      used.add(group.zoneId);
+      const zone = previous.get(group.zoneId);
+      return zone ? { ...zone, columnIds: run.columnIds } : { id: group.zoneId, kind: "fixed", columnIds: run.columnIds };
+    }
+    const kept = zoneOfColumn.get(run.columnIds[0]);
+    const zone = kept && !groupZones.has(kept) && !used.has(kept) ? previous.get(kept) : undefined;
+    if (zone) {
+      used.add(zone.id);
+      return { ...zone, columnIds: run.columnIds };
+    }
+    return { id: unique(`zone-${run.columnIds[0]}`), kind: "fixed", columnIds: run.columnIds };
+  });
+  const headerGroups = (table.schema?.headerGroups ?? []).filter((group) => placed.has(group.id));
+  const byId = new Map(table.columns.map((column) => [column.id, column]));
+  const columns = [...order.flatMap((id) => byId.get(id) ?? []), ...table.columns.filter((column) => !order.includes(column.id))];
+  const schema: TableSchema = { ...(table.schema ?? { zones: [] }), zones };
+  if (headerGroups.length) schema.headerGroups = headerGroups;
+  else delete schema.headerGroups;
+  return { ...table, columns, schema };
+}
+
+/** Whether the double headers of the table are the appraiser's to rearrange. */
+const rearrangeable = (table: TableV2) => canGroupTableHeaders(table) && Boolean(table.schema?.headerGroups?.length);
+
+/**
+ * A column at the edge of a double header: under it, as its first or last
+ * column (`inside`), or right beside it, out of it. What a drag that leaves
+ * a column there is offered: taking it out or putting it in, without moving
+ * it (video 8.13, 23:19: «cuando se arrastren me debe dar la opción de
+ * sacarla afuera y de dejarla ahí»). Null elsewhere.
+ */
+export function headerGroupEdge(table: TableV2, columnId: string): { group: HeaderGroup; inside: boolean } | null {
+  if (!rearrangeable(table)) return null;
+  const own = headerGroupOfColumn(table, columnId);
+  if (own) {
+    const columns = headerGroupColumns(table, own.id);
+    return columns[0] === columnId || columns.at(-1) === columnId ? { group: own, inside: true } : null;
+  }
+  const shown = getDisplayColumns(table).map((column) => column.id);
+  const index = shown.indexOf(columnId);
+  for (const neighbour of [shown[index - 1], shown[index + 1]]) {
+    if (!neighbour) continue;
+    const group = headerGroupOfColumn(table, neighbour);
+    if (!group) continue;
+    const columns = headerGroupColumns(table, group.id);
+    if (columns[0] === neighbour || columns.at(-1) === neighbour) return { group, inside: false };
+  }
+  return null;
+}
+
+/**
+ * The double header a column's menu offers it to leave or to join: the one it
+ * is under, or the nearest one when it is under none. Null when the table has
+ * no double header the appraiser rearranges.
+ */
+export function headerGroupChoice(table: TableV2, columnId: string): { group: HeaderGroup; inside: boolean } | null {
+  if (!rearrangeable(table)) return null;
+  const own = headerGroupOfColumn(table, columnId);
+  if (own) return { group: own, inside: true };
+  const shown = getDisplayColumns(table).map((column) => column.id);
+  const index = shown.indexOf(columnId);
+  const distance = (group: HeaderGroup) => Math.min(...headerGroupColumns(table, group.id).map((id) => Math.abs(shown.indexOf(id) - index)));
+  const nearest = [...(table.schema?.headerGroups ?? [])]
+    .filter((group) => headerGroupColumns(table, group.id).length)
+    .sort((a, b) => distance(a) - distance(b))[0];
+  return nearest ? { group: nearest, inside: false } : null;
+}
+
+/**
+ * The column out of its double header, right beside it: before the group
+ * when it was its first column, after it otherwise. The other columns stay
+ * under the group; a group left without columns is dropped.
+ */
+export function moveColumnOutOfHeaderGroup(table: TableV2, columnId: string): TableV2 {
+  const group = rearrangeable(table) ? headerGroupOfColumn(table, columnId) : undefined;
+  if (!group) return table;
+  const members = headerGroupColumns(table, group.id);
+  const rest = members.filter((id) => id !== columnId);
+  const order = getDisplayColumns(table).map((column) => column.id).filter((id) => id !== columnId);
+  if (rest.length) {
+    const first = members[0] === columnId;
+    const at = first ? order.indexOf(rest[0]) : order.indexOf(rest.at(-1)!) + 1;
+    order.splice(at, 0, columnId);
+  } else {
+    order.splice(getDisplayColumns(table).findIndex((column) => column.id === columnId), 0, columnId);
+  }
+  const groupOf = headerGroupMembership(table);
+  groupOf.delete(columnId);
+  return withHeaderRuns(table, order, groupOf);
+}
+
+/**
+ * The column under the double header `groupId`: one beside it joins it where
+ * it is; one farther goes to its end. A group it was under loses it.
+ */
+export function moveColumnIntoHeaderGroup(table: TableV2, columnId: string, groupId: string): TableV2 {
+  if (!rearrangeable(table) || !table.schema?.headerGroups?.some((group) => group.id === groupId)) return table;
+  const members = headerGroupColumns(table, groupId);
+  if (members.includes(columnId) || !members.length) return table;
+  const shown = getDisplayColumns(table).map((column) => column.id);
+  const before = shown.indexOf(columnId) < shown.indexOf(members[0]);
+  const order = shown.filter((id) => id !== columnId);
+  order.splice(before ? order.indexOf(members[0]) : order.indexOf(members.at(-1)!) + 1, 0, columnId);
+  const groupOf = headerGroupMembership(table);
+  groupOf.set(columnId, groupId);
+  return withHeaderRuns(table, order, groupOf);
+}
+
+/**
+ * The double header with all its columns moved to the place of
+ * `targetColumnId`, as one (video 8.13, 25:00: «¿cómo muevo en conjunto este
+ * apartado?»): after it when it was to the right, before it when it was to
+ * the left; a column of another group is passed over with its whole group.
+ */
+export function moveHeaderGroupTo(table: TableV2, groupId: string, targetColumnId: string): TableV2 {
+  if (!rearrangeable(table)) return table;
+  const members = headerGroupColumns(table, groupId);
+  if (!members.length || members.includes(targetColumnId)) return table;
+  const shown = getDisplayColumns(table).map((column) => column.id);
+  if (!shown.includes(targetColumnId)) return table;
+  const right = shown.indexOf(targetColumnId) > shown.indexOf(members[0]);
+  const targetGroup = headerGroupOfColumn(table, targetColumnId);
+  const targetBlock = targetGroup ? headerGroupColumns(table, targetGroup.id) : [targetColumnId];
+  const order = shown.filter((id) => !members.includes(id));
+  const at = right ? order.indexOf(targetBlock.at(-1)!) + 1 : order.indexOf(targetBlock[0]);
+  order.splice(at, 0, ...members);
+  return withHeaderRuns(table, order, headerGroupMembership(table));
+}
+
+/** The double header one column (or one whole group) to the left (-1) or to the right (1); as it was at the edge of the table. */
+export function moveHeaderGroupBy(table: TableV2, groupId: string, direction: -1 | 1): TableV2 {
+  const members = headerGroupColumns(table, groupId);
+  if (!members.length) return table;
+  const shown = getDisplayColumns(table).map((column) => column.id);
+  const neighbour = shown[direction < 0 ? shown.indexOf(members[0]) - 1 : shown.indexOf(members.at(-1)!) + 1];
+  return neighbour ? moveHeaderGroupTo(table, groupId, neighbour) : table;
+}
+
+/**
+ * The columns a double header spans changed to those from `fromColumnId` to
+ * `toColumnId` as shown, keeping its title (video 8.13, 22:46: «no me
+ * muestra de dónde a dónde; solamente si la quiero eliminar»): the columns
+ * that leave it keep their place out of it, the ones that come in leave the
+ * group they were under.
+ */
+export function setHeaderGroupRange(table: TableV2, groupId: string, fromColumnId: string, toColumnId: string): TableV2 {
+  if (!rearrangeable(table) || !table.schema?.headerGroups?.some((group) => group.id === groupId)) return table;
+  const shown = getDisplayColumns(table).map((column) => column.id);
+  let from = shown.indexOf(fromColumnId);
+  let to = shown.indexOf(toColumnId);
+  if (from === -1 || to === -1) return table;
+  if (from > to) [from, to] = [to, from];
+  const groupOf = headerGroupMembership(table);
+  shown.forEach((id, index) => {
+    if (index >= from && index <= to) groupOf.set(id, groupId);
+    else if (groupOf.get(id) === groupId) groupOf.delete(id);
+  });
+  return withHeaderRuns(table, shown, groupOf);
 }
 
 /** How wide the table prints: the page's width or its content's. */

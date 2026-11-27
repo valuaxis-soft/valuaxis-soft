@@ -175,9 +175,13 @@ test("V7.3-01: «Formato de la tabla» is a gear with its name, not the ⅄ alon
 test("V7.3-01: the right click on a cell, a header, a row or the title offers the format and the title in the dictamen", () => {
   const cell = tableContextMenu("editable", { kind: "cell", editable: true, hasFormula: false, canPaste: true, canInsertRow: true, canInsertColumn: true, canDeleteColumn: true, canDeleteRow: true });
   const shown = withTableFormatGroup(cell, { captionShown: true }).at(-1)!;
-  assert.deepEqual(shown.map((item) => item.label), ["Formato de la tabla (espacio, sangría, decimales)…", "Ocultar el título en el dictamen"]);
+  // One item with its check (video 8.14, 20:46): checked hides the title, unchecked shows it.
+  assert.deepEqual(shown.map((item) => item.label), ["Formato de la tabla (espacio, sangría, decimales)…", "Mostrar el título en el dictamen"]);
+  assert.equal(shown[1].checked, true);
+  assert.equal(shown[1].action, "caption-hide");
   const hidden = withTableFormatGroup(cell, { captionShown: false }).at(-1)!;
   assert.equal(hidden[1].action, "caption-show");
+  assert.equal(hidden[1].checked, false);
   // Units and decimals stay in the cell's own menu.
   assert.ok(cell.flat().some((item) => item.label === "Unidades de valor"));
   assert.ok(cell.flat().some((item) => item.label === "Decimales"));

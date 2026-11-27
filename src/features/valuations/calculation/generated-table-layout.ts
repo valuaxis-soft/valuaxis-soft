@@ -26,6 +26,7 @@ import {
   type GeneratedTableLayout,
   type HeaderGroup,
   type StructuralZone,
+  type FormulaExpression,
   type TableCellFormat,
   type TableCellV2,
   type TableColumn,
@@ -312,7 +313,7 @@ export function applyTableLayout(table: TableContent | TableV2, layout: Generate
   const printLayout = { ...tablePrintLayout({ schema }), ...layoutPrint(layout) };
   return {
     ...source,
-    title: layout.title?.trim() || source.title,
+    title: layout.title?.trim() ? layout.title : source.title,
     columns,
     rows,
     schema: {
@@ -401,7 +402,9 @@ export function layoutFromTable(source: TableV2, shown: TableV2, previous: Gener
   if (filled(previous.boxLabels)) layout.boxLabels = previous.boxLabels;
   if (filled(previous.boxRows)) layout.boxRows = previous.boxRows;
   if (previous.notes) layout.notes = previous.notes;
-  if (shown.title.trim() && shown.title.trim() !== source.title.trim()) layout.title = shown.title.trim();
+  // As typed, spaces too: the title is written key by key and a space at its end is the next word's (video 8.13, 00:10:
+  // «no me deja dar espacio»). The dictamen prints it trimmed.
+  if (shown.title.trim() && shown.title !== source.title) layout.title = shown.title;
 
   const hidden = (shown.schema?.hiddenColumns ?? []).filter((id) => shownIds.has(id));
   if (hidden.length) layout.hidden = [...new Set(hidden)];
@@ -435,6 +438,9 @@ export function layoutFromTable(source: TableV2, shown: TableV2, previous: Gener
   const sourceGroups = groupsOf(source);
   if (!sameStructure(shownGroups, sourceGroups)) {
     layout.groups = shownGroups;
+    // With the order too, though no column moved: a column taken out of its group in place (video 8.13, 22:00) is
+    // known, so it is not taken for one the calculation writes for the first time and put back under the group.
+    layout.order = order;
   } else {
     for (const group of shownGroups) {
       const written = sourceGroups.find((candidate) => candidate.id === group.id);
@@ -504,8 +510,10 @@ export function layoutFromTable(source: TableV2, shown: TableV2, previous: Gener
   if (widthOf(shown) !== widthOf(source)) layout.widthMode = widthOf(shown);
   const decimals = shown.schema?.decimals;
   if (decimals !== undefined && decimals !== source.schema?.decimals) layout.decimals = decimals;
+  // Once chosen, kept as chosen: the table the dictamen prints may be written with another default than the one
+  // the editor shows (the income approach's rents and deductions), so «Mostrar el título» always says what prints.
   const captionHidden = shown.schema?.hideCaption === true;
-  if (captionHidden !== (source.schema?.hideCaption === true)) layout.hideCaption = captionHidden;
+  if (previous.hideCaption !== undefined || captionHidden !== (source.schema?.hideCaption === true)) layout.hideCaption = captionHidden;
   const print = tablePrintLayout(shown);
   const writtenPrint = tablePrintLayout(source);
   for (const key of Object.keys(print) as Array<keyof TablePrintLayout>) {
@@ -522,7 +530,119 @@ export function layoutFromTable(source: TableV2, shown: TableV2, previous: Gener
 export function editGeneratedTable(table: TableContent, edit: (table: TableContent) => TableContent): TableContent {
   const source = sourceOf(table);
   const edited = ensureTableV2(edit(table));
-  return applyTableLayout(source, layoutFromTable(source, edited, layoutOf(table)));
+  const layout = layoutFromTable(source, edited, layoutOf(table));
+  // «Mostrar el título en el dictamen» clicked: what was chosen is kept, whatever the calculation's default (video 8.14, 20:44).
+  const hidden = edited.schema?.hideCaption === true;
+  if (hidden !== (ensureTableV2(table).schema?.hideCaption === true)) layout.hideCaption = hidden;
+  return applyTableLayout(source, layout);
+}
+
+/* ── The layout when the calculation's columns move ───────────────── */
+
+/**
+ * Where each column of the calculation went when it writes the table again:
+ * the calculation names some columns by their place (a market's factors,
+ * its FRe and its homologated value are col-5, col-6…), so a factor added
+ * or taken out moves the ones after it to other ids. A column is followed by
+ * what the calculation calls it: the same id with the same name is the same
+ * column; one whose id changed is found by its name among the new ones; a
+ * renamed one (a factor renamed in its panel) keeps its id. A column the
+ * calculation no longer writes maps to an id no column has, so nothing set
+ * on it lands on the column that took its place. Null when nothing moved.
+ */
+export function movedColumns(before: Pick<TableV2, "columns">, after: Pick<TableV2, "columns">): Map<string, string> | null {
+  const name = (column: TableColumn) => column.name.trim().toLowerCase();
+  const next = new Map(after.columns.map((column) => [column.id, column]));
+  const moved = new Map<string, string>();
+  const claimed = new Set<string>();
+  for (const column of before.columns) {
+    const same = next.get(column.id);
+    if (same && name(same) === name(column)) {
+      moved.set(column.id, column.id);
+      claimed.add(column.id);
+    }
+  }
+  for (const column of before.columns) {
+    if (moved.has(column.id)) continue;
+    const found = after.columns.find((candidate) => !claimed.has(candidate.id) && name(candidate) === name(column));
+    if (!found) continue;
+    moved.set(column.id, found.id);
+    claimed.add(found.id);
+  }
+  for (const column of before.columns) {
+    if (moved.has(column.id)) continue;
+    const stays = next.has(column.id) && !claimed.has(column.id);
+    moved.set(column.id, stays ? column.id : `${column.id}~sin-columna`);
+    if (stays) claimed.add(column.id);
+  }
+  return [...moved].some(([from, to]) => from !== to) ? moved : null;
+}
+
+/** A formula of the appraiser's with its references to the calculation's columns where they went. */
+function expressionOnColumns(expression: FormulaExpression, to: (columnId: string) => string): FormulaExpression {
+  const corner = <T extends { columnId: string }>(cell: T): T => ({ ...cell, columnId: to(cell.columnId) });
+  switch (expression.type) {
+    case "operand": {
+      const operand = expression.operand;
+      if (operand.type === "cell" && !operand.tableId) return { type: "operand", operand: corner(operand) };
+      if (operand.type === "column") return { type: "operand", operand: corner(operand) };
+      if (operand.type === "range") return { type: "operand", operand: { ...operand, cells: operand.cells.map(corner) } };
+      if (operand.type === "span" && !operand.tableId) return { type: "operand", operand: { ...operand, from: corner(operand.from), to: corner(operand.to) } };
+      return expression;
+    }
+    case "binary":
+    case "compare":
+      return { ...expression, left: expressionOnColumns(expression.left, to), right: expressionOnColumns(expression.right, to) };
+    case "function":
+      return { ...expression, args: expression.args.map((arg) => expressionOnColumns(arg, to)) };
+    default:
+      return expression;
+  }
+}
+
+/**
+ * The layout the appraiser gave the table written as `before`, for the same
+ * table written as `after` (video 8.13, 20:46: a factor added and the
+ * headers «factor resultante» and the value swapped, the «valor unitario
+ * resultante» lost): everything set on a column (its name, place, group,
+ * width, format, hidden or taken out, the cells and formulas of the rows and
+ * columns of his own that read it) follows the column, not its old id.
+ */
+export function carriedLayout(layout: GeneratedTableLayout, before: Pick<TableV2, "columns">, after: Pick<TableV2, "columns">): GeneratedTableLayout {
+  const moved = movedColumns(before, after);
+  if (!moved || isEmptyLayout(layout)) return layout;
+  const to = (id: string) => moved.get(id) ?? id;
+  const keys = <T,>(record: Record<string, T> | undefined, key: (id: string) => string = to) =>
+    record ? Object.fromEntries(Object.entries(record).map(([id, value]) => [key(id), value])) : undefined;
+  // "rowId:columnId" (a cell) or "header:columnId"; the title's key has no column.
+  const cellKeyTo = (cell: string) => {
+    const split = cell.lastIndexOf(":");
+    return split === -1 ? cell : `${cell.slice(0, split)}:${to(cell.slice(split + 1))}`;
+  };
+  const cell = (written: TableCellV2): TableCellV2 =>
+    written.kind === "formula" ? { ...written, formula: { ...written.formula, expression: expressionOnColumns(written.formula.expression, to) } } : written;
+  const cells = (record: Record<string, TableCellV2>) => Object.fromEntries(Object.entries(record).map(([id, value]) => [id, cell(value)]));
+  const next: GeneratedTableLayout = { ...layout };
+  const set = <K extends keyof GeneratedTableLayout>(key: K, value: GeneratedTableLayout[K] | undefined) => {
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+  };
+  set("hidden", layout.hidden?.map(to));
+  set("removed", layout.removed?.map(to));
+  set("order", layout.order?.map(to));
+  set("labels", keys(layout.labels));
+  set("formats", keys(layout.formats));
+  set("widths", keys(layout.widths));
+  set("cellFormats", keys(layout.cellFormats, cellKeyTo));
+  set("cellStyles", keys(layout.cellStyles, cellKeyTo));
+  set("groups", layout.groups?.map((group) => ({ ...group, columnIds: group.columnIds.map(to) })));
+  set("extraColumns", layout.extraColumns?.map((column) => ({
+    ...column,
+    after: column.after === null ? null : to(column.after),
+    ...(column.cells ? { cells: cells(column.cells) } : {}),
+  })));
+  set("extraRows", layout.extraRows?.map((row) => ({ ...row, cells: cells(keys(row.cells) ?? {}) })));
+  return next;
 }
 
 /** Every table of the blocks, by id in lower case (saved ids come back in lower case). */
@@ -592,15 +712,15 @@ function withRowStyles<T extends Block | Apartado>(container: T, styles: Map<str
 export function withTableLayouts(blocks: Block[], previous: Block[]): Block[] {
   const layouts = new Map([...tablesById(previous)].flatMap(([id, table]) => {
     const layout = layoutOf(table);
-    return isEmptyLayout(layout) ? [] : [[id, layout] as const];
+    return isEmptyLayout(layout) ? [] : [[id, { layout, source: sourceOf(table) }] as const];
   }));
   const labels = renamedConcepts(previous);
   const spacing = conceptSpacing(previous);
   const rowStyles = conceptRowStyles(previous);
   if (!layouts.size && !labels.size && !spacing.size && !rowStyles.size) return blocks;
   const apply = (tables: TableContent[]) => tables.map((table) => {
-    const layout = layouts.get(table.id.toLowerCase());
-    return layout ? applyTableLayout(table, layout) : table;
+    const kept = layouts.get(table.id.toLowerCase());
+    return kept ? applyTableLayout(table, carriedLayout(kept.layout, kept.source, sourceOf(table))) : table;
   });
   const relabel = (concepts: Concept[]) => concepts.map((concept) => {
     const label = labels.get(concept.id.toLowerCase());
