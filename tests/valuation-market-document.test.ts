@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { money } from "../src/features/valuations/calculation/generated-content";
-import { DEFAULT_HOMOLOGATION_NOTE, marketDocumentBlocks, marketPhotoBlocks, withGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
+import { DEFAULT_HOMOLOGATION_NOTE, FICHA_PHOTO_FRAMING, marketDocumentBlocks, marketPhotoBlocks, withGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
 import { defaultMarketSettings, toMarketEngineInput, type ComparableDto, type MarketCalculationDto } from "../src/features/valuations/calculation/market-types";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeMarketApproach } from "../src/features/valuations/engine/market";
@@ -294,7 +294,8 @@ test("video 8.14: each comparable prints as a ficha, its main photo with its num
 test("V5.5-06: the «Encuadre» and «Zoom» of a comparable's photo print in the annex, and changing them rewrites it", () => {
   const annex = section([templateBlock("croquis")]);
   const plain = withGeneratedBlocks(annex, "TERRENO_VENTA", marketPhotoBlocks(calculation), { kind: "fotos", position: "end" });
-  assert.equal(plain.blocks[1].images[0].framing, undefined, "without framing, whole and centered as before");
+  // Video 8.14: without a framing of its own, a ficha's photo fills its frame, centered (no white bars at its sides).
+  assert.deepEqual(plain.blocks[1].images[0].framing, FICHA_PHOTO_FRAMING);
   const framing = { focus: { x: 50, y: 20 }, size: { fit: "cover" as const, scale: 140 } };
   const framed: MarketCalculationDto = {
     ...calculation,

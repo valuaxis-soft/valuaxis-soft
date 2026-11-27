@@ -14,6 +14,7 @@ import { blockMetadataFromContent, hydrateBlockMetadata } from "../src/features/
 import { readPhotoGrid, type AppSection, type Block } from "../src/features/valuations/model";
 import { fichasInOrder, isComparableFichasBlock, movedTo, pairedPhotoRows, photoGridBlock, withFichasOrder } from "../src/features/valuations/services/photo-layout";
 import { resolveContentLayout } from "../src/features/valuations/services/content-layout";
+import { imageFramingStyle } from "../src/features/valuations/services/image-framing";
 
 function comparable(reference: number, photos: string[], main?: string): ComparableDto {
   return {
@@ -64,6 +65,18 @@ test("the order the appraiser gives the fichas is the order they print, and it s
   assert.match(order[1], /ficha-c-1--f1b$/);
   assert.equal(order[0], ids[4]);
   assert.equal(remained.blocks[0].images.find((image) => image.id === order[1])?.src, "/api/archivos/imagen?key=f1b");
+});
+
+test("a ficha's photo fills its frame, centered, unless the comparable's photo has a framing of its own; other photos keep theirs", () => {
+  const framed = { focus: { x: 30, y: 70 }, size: { fit: "contain" as const, scale: 120 } };
+  const withFraming = calculation([comparable(1, ["f1a"]), { ...comparable(2, ["f2a"]), photos: [{ id: "f2a", title: "f2a", url: "/api/archivos/imagen?key=f2a", framing: framed }] }]);
+  const printed = photoGridBlock(marketPhotoBlocks(withFraming)[0]);
+  const [plain, own] = printed.images;
+  assert.deepEqual(imageFramingStyle(plain.framing).objectFit, "cover", "no white bars at its sides");
+  assert.equal(imageFramingStyle(plain.framing).objectPosition, "50% 50%");
+  assert.deepEqual(own.framing, framed, "the framing set on the comparable's photo wins");
+  // A photo of the subject (or any image) without a framing is still shown whole.
+  assert.equal(imageFramingStyle(undefined).objectFit, "contain");
 });
 
 test("the grid is saved with the block and read back; anything else is not taken", () => {

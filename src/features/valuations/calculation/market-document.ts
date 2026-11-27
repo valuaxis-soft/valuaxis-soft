@@ -694,6 +694,9 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
   return boxes;
 }
 
+/** A ficha's photo without a framing of its own: it fills its frame, centered, at its own size. */
+export const FICHA_PHOTO_FRAMING = { focus: { x: 50, y: 50 }, size: { fit: "cover" as const, scale: 100 } };
+
 /**
  * The data a comparable's ficha prints under its photo: price, surface and
  * observations, each only when captured.
@@ -726,8 +729,9 @@ export function marketPhotoBlocks(calculation: MarketCalculationDto): Block[] {
         id: `${GENERATED_BLOCK_PREFIX}ficha-${comparable.id}--${photo.id}`,
         title: `Comparable ${comparable.reference}: ${comparable.location}`,
         src: photo.url,
-        // «Encuadre» and «Zoom» set on the comparable's photo (video 5.5).
-        ...(photo.framing ? { framing: photo.framing } : {}),
+        // «Encuadre» and «Zoom» set on the comparable's photo (video 5.5); without them the photo fills its frame, centered,
+        // not whole with white bars at its sides (video 8.14: a ficha's photo looked wrong that way).
+        framing: photo.framing ?? FICHA_PHOTO_FRAMING,
         captions: [
           { id: "ficha-titulo", text: `C-${comparable.reference} · ${comparable.location}`, position: "top" as const, align: "center" as const },
           ...(data.length ? [{ id: "ficha-datos", text: data.join(" · "), position: "bottom" as const, align: "center" as const }] : []),
