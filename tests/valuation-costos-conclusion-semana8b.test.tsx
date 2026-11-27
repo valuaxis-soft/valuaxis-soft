@@ -94,15 +94,43 @@ test("the physical value adds A, B and C as the firm's book: $3,740,000 (VI. ENF
   assert.equal(result.physicalValue, 3740000);
 });
 
+test("each part is written once where the page closes: its own box folds into the physical value (video 8.7, 11:40; QA of video 8.14)", () => {
+  // Every box of the table the physical value closes, in order.
+  const closingLabels = (blocks: Block[]) => {
+    const tableId = costPhysicalValueTable(blocks);
+    assert.ok(tableId);
+    const table = blocks.flatMap((block) => block.apartados.flatMap((apartado) => apartado.tables)).find((item) => item.id === tableId)!;
+    return (ensureTableV2(table) as TableV2).schema!.summaryBoxes!.flatMap((box) => box.rows.map((row) => row.label));
+  };
+  const letters = (labels: string[]) => labels.map((label) => /^([A-E])\)/.exec(label)?.[1]).filter(Boolean);
+  const noB: CostCalculationDto = { ...tch, types: [], constructions: [] };
+  const withD: CostCalculationDto = { ...tch, indirects: [{ concept: "Honorarios inventados", percentage: 0.1, base: 3_000_000 }] };
+  // B at zero closing the page being captured (QA shot 41: «B) $0.00» in its box, A and C in the sum).
+  const bLast: CostCalculationDto = { ...noB, installations: [] };
+  const cases: Array<[string, CostCalculationDto, boolean, string[]]> = [
+    ["C closes", tch, false, ["A", "B", "C"]],
+    ["B at zero", noB, false, ["A", "B", "C"]],
+    ["D closes", withD, false, ["A", "B", "C", "D"]],
+    ["B at zero closes the capture", bLast, true, ["A", "B", "C"]],
+  ];
+  for (const [name, calculation, capture, expected] of cases) {
+    const computed = compute(calculation);
+    const labels = closingLabels(costDocumentBlocks(calculation, computed.result, computed.trace, { capture }));
+    assert.deepEqual(letters(labels), expected, `${name}: each part once, in order`);
+    assert.equal(new Set(labels).size, labels.length, `${name}: no label twice`);
+    assert.match(labels.at(-1)!, new RegExp(`^VALOR FÍSICO DE REPOSICIÓN \\(${expected.join("\\+")}\\):$`), `${name}: the label adds what the rows show`);
+  }
+});
+
 test("video 8.14, 42:27: the summary always lists A, B and C, so a missing B shows instead of silently adding A + C", () => {
   const withB = compute(tch);
   const page = costDocumentBlocks(tch, withB.result, withB.trace);
   assert.deepEqual(boxRows(page), [
     ["A) Valor del Terreno:", "$ 750,000.00"],
     ["B) Valor de las Construcciones:", "$ 2,950,000.00"],
-    ["C) Valor de Instalaciones Especiales:", "$ 38,000.00"],
+    ["C) Valor de Instalaciones Especiales, Elementos Accesorios y Obras Complementarias:", "$ 38,000.00"],
     ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 3,740,000.00"],
-  ], "C is listed too, though its own box closes the same table: the rows are what the label adds (QA of video 8.14, 43:08)");
+  ], "C is listed once, its own box folded into the sum with its wording: the rows are what the label adds (QA of video 8.14, 43:08; video 8.7, 11:40)");
 
   // Without any construction (his valuation had none), B still reads, at zero, and the sum says A+B+C.
   const noB: CostCalculationDto = { ...tch, types: [], constructions: [] };
@@ -111,7 +139,7 @@ test("video 8.14, 42:27: the summary always lists A, B and C, so a missing B sho
   assert.deepEqual(boxRows(costDocumentBlocks(noB, without.result, without.trace)), [
     ["A) Valor del Terreno:", "$ 750,000.00"],
     ["B) Valor de las Construcciones:", "$ 0.00"],
-    ["C) Valor de Instalaciones Especiales:", "$ 38,000.00"],
+    ["C) Valor de Instalaciones Especiales, Elementos Accesorios y Obras Complementarias:", "$ 38,000.00"],
     ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 790,000.00"],
   ]);
   // Being captured, the page has B) with its tables, empty: the place to add a construction.
