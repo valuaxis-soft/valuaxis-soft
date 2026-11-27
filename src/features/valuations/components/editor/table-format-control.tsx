@@ -17,6 +17,8 @@ import {
   canGroupTableHeaders,
   getDisplayColumns,
   groupTableHeaders,
+  headerGroupColumns,
+  setHeaderGroupRange,
   setTableCaptionShown,
   setTableDecimals,
   setTablePrintLayout,
@@ -174,6 +176,42 @@ export function TableFormatControl({
           <div className="grid gap-2">
             <p className="text-sm font-medium">Encabezado doble</p>
             <p className="text-xs text-muted-foreground">Un título de grupo sobre varias columnas, como combinar las celdas del encabezado.</p>
+            {/* Each double header with the columns it spans, changed here without taking it off and combining again (video 8.13, 22:46). */}
+            {groups.length ? (
+              <ul className="grid gap-2 text-sm" aria-label="Encabezados dobles de la tabla">
+                {groups.map((group) => {
+                  const spanned = headerGroupColumns(table, group.id);
+                  if (!spanned.length) return null;
+                  const first = spanned[0];
+                  const last = spanned.at(-1)!;
+                  return (
+                    <li key={group.id} className="grid gap-1.5 rounded-md border px-2 py-1.5" data-header-group-range={group.id}>
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate font-medium">{group.title}</span>
+                        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Separar el grupo ${group.title}`} title="Quitar el encabezado doble" onClick={() => onChange((current) => ungroupTableHeaders(current, group.id))}>
+                          <Trash2 />
+                        </Button>
+                      </span>
+                      <span className="grid grid-cols-2 gap-2">
+                        <Field className="gap-1">
+                          <FieldLabel className="text-xs" htmlFor={`group-${group.id}-from`}>De la columna</FieldLabel>
+                          <NativeSelect id={`group-${group.id}-from`} className="w-full" value={first} onChange={(event) => onChange((current) => setHeaderGroupRange(current, group.id, event.target.value, last))}>
+                            {columns.map((column) => <NativeSelectOption key={column.id} value={column.id}>{label(column.id)}</NativeSelectOption>)}
+                          </NativeSelect>
+                        </Field>
+                        <Field className="gap-1">
+                          <FieldLabel className="text-xs" htmlFor={`group-${group.id}-to`}>A la columna</FieldLabel>
+                          <NativeSelect id={`group-${group.id}-to`} className="w-full" value={last} onChange={(event) => onChange((current) => setHeaderGroupRange(current, group.id, first, event.target.value))}>
+                            {columns.map((column) => <NativeSelectOption key={column.id} value={column.id}>{label(column.id)}</NativeSelectOption>)}
+                          </NativeSelect>
+                        </Field>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            {groups.length ? <p className="text-xs font-medium">Otro encabezado doble</p> : null}
             <div className="grid grid-cols-2 gap-2">
               <Field className="gap-1">
                 <FieldLabel className="text-xs" htmlFor={`group-from-${table.id}`}>De la columna</FieldLabel>
@@ -206,18 +244,6 @@ export function TableFormatControl({
           <FieldDescription>El encabezado de esta tabla sigue su propio formato.</FieldDescription>
         )}
 
-        {groupable && groups.length ? (
-          <ul className="grid gap-1 text-sm">
-            {groups.map((group) => (
-              <li key={group.id} className="flex items-center justify-between gap-2 rounded-md border px-2 py-1">
-                <span className="min-w-0 truncate">{group.title}</span>
-                <Button type="button" size="icon-sm" variant="ghost" aria-label={`Separar el grupo ${group.title}`} title="Separar los encabezados" onClick={() => onChange((current) => ungroupTableHeaders(current, group.id))}>
-                  <Trash2 />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
       </PopoverContent>
     </Popover>
   );

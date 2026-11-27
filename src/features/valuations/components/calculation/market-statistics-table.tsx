@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { CommitCell } from "./commit-cell";
+import { SortableRows, steppedIds, useSortableRow } from "./sortable-rows";
 
 const money = (value: number) => value.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
@@ -49,8 +50,11 @@ const MARKET_STATISTICS_HINT = "Las marcadas se imprimen en este orden: el prome
  * The statistics of a market as a small table (video 8.10, 00:28–06:20):
  * which print (the box), their names as they print, their order, and
  * statistics of the appraiser's own (moda, desviación… or a formula over
- * PROMEDIO, MEDIANA, MINIMO, MAXIMO, DESVEST, N). The real estate markets
- * and the machinery market edit them the same way; `hint` says where they print.
+ * PROMEDIO, MEDIANA, MINIMO, MAXIMO, DESVEST, N). Each row is dragged by its
+ * handle to another place, as the rows of every table (video 8.13, 01:27: the
+ * arrows «está confuso cómo es que se ordenan»); from the keyboard, Space on
+ * the handle, the arrows and Space again. The real estate markets and the
+ * machinery market edit them the same way; `hint` says where they print.
  */
 export function StatisticsTable(props: {
   choice: PrintedStatistics;
@@ -61,85 +65,38 @@ export function StatisticsTable(props: {
 }) {
   const { choice, readOnly } = props;
   const [adding, setAdding] = useState<ExtraStatisticKind | "">("");
-  const move = (index: number, by: -1 | 1) => {
-    const order = [...choice.order];
-    const [key] = order.splice(index, 1);
-    order.splice(index + by, 0, key);
-    props.onChange({ ...choice, order });
-  };
   const add = (kind: ExtraStatisticKind) => props.onChange(withExtraStatistic(choice, kind, `custom:${Date.now().toString(36)}`));
   return (
     <div className="grid gap-1.5">
-      <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly>
-        <table className={cn(CALC_TABLE, "w-full text-sm")} aria-label="Estadísticas del mercado">
-          <thead className={CALC_HEAD}>
-            <tr>
-              <th className={cn(CALC_HEAD_CELL, "w-16")}>Imprimir</th>
-              <th className={cn(CALC_HEAD_CELL, "text-left")}>Estadístico (como se imprime)</th>
-              <th className={cn(CALC_HEAD_CELL, "w-40 text-right")}>Valor</th>
-              <th className={cn(CALC_HEAD_CELL, "w-28")}><span className="sr-only">Orden</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {choice.order.map((key, index) => {
-              const extra = choice.extra?.find((item) => item.id === key);
-              const label = statisticLabel(choice, key);
-              return (
-                <tr key={key} className={CALC_ROW} data-statistic={key}>
-                  <td className="px-2 py-1 text-center">
-                    <Checkbox
-                      aria-label={`Imprimir ${label}`}
-                      checked={!choice.hidden.includes(key)}
-                      disabled={readOnly}
-                      onCheckedChange={(checked) => props.onChange({ ...choice, hidden: checked === true ? choice.hidden.filter((item) => item !== key) : [...choice.hidden, key] })}
-                    />
-                  </td>
-                  <td className="px-1 py-1">
-                    <span className="grid gap-1">
-                      <CommitCell
-                        ariaLabel={`Nombre de ${label}`}
-                        disabled={readOnly}
-                        value={label}
-                        className="border-input text-sm text-foreground"
-                        onCommit={(text) => props.onChange(withStatisticLabel(choice, key, text))}
-                      />
-                      {extra?.kind === "formula" ? (
-                        <CommitCell
-                          ariaLabel={`Fórmula de ${label}`}
-                          disabled={readOnly}
-                          value={extra.formula ?? ""}
-                          placeholder="=PROMEDIO*0.95"
-                          title="Usa PROMEDIO, MEDIANA, MINIMO, MAXIMO, DESVEST y N: =(MAXIMO-MINIMO)/PROMEDIO"
-                          className="border-input font-mono text-xs"
-                          onCommit={(text) => props.onChange(withExtraStatisticFormula(choice, key, text))}
-                        />
-                      ) : null}
-                    </span>
-                  </td>
-                  <td className="px-2 py-1 text-right tabular-nums">{props.values(key)}</td>
-                  <td className="px-1 py-1">
-                    {!readOnly ? (
-                      <span className="flex items-center justify-end gap-0.5">
-                        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Subir ${label}`} disabled={index === 0} onClick={() => move(index, -1)}>
-                          <ArrowUp />
-                        </Button>
-                        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Bajar ${label}`} disabled={index === choice.order.length - 1} onClick={() => move(index, 1)}>
-                          <ArrowDown />
-                        </Button>
-                        {extra ? (
-                          <Button type="button" size="icon-sm" variant="ghost" className="text-destructive" aria-label={`Quitar ${label}`} onClick={() => props.onChange(withoutExtraStatistic(choice, key))}>
-                            <Trash2 />
-                          </Button>
-                        ) : null}
-                      </span>
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </CalcTableContextMenu>
+      {/* The whole table is the drag's context: its announcements for the screen reader never land inside the <tbody>. */}
+      <SortableRows ids={choice.order} onMove={(order) => props.onChange({ ...choice, order: order as StatisticKey[] })}>
+        <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly>
+          <table className={cn(CALC_TABLE, "w-full text-sm")} aria-label="Estadísticas del mercado">
+            <thead className={CALC_HEAD}>
+              <tr>
+                <th className={cn(CALC_HEAD_CELL, "w-8")}><span className="sr-only">Mover</span></th>
+                <th className={cn(CALC_HEAD_CELL, "w-16")}>Imprimir</th>
+                <th className={cn(CALC_HEAD_CELL, "text-left")}>Estadístico (como se imprime)</th>
+                <th className={cn(CALC_HEAD_CELL, "w-40 text-right")}>Valor</th>
+                <th className={cn(CALC_HEAD_CELL, "w-10")}><span className="sr-only">Quitar</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {choice.order.map((key) => (
+                <StatisticRow
+                key={key}
+                statistic={key}
+                choice={choice}
+                value={props.values(key)}
+                readOnly={readOnly}
+                onChange={props.onChange}
+                onStep={(direction) => props.onChange({ ...choice, order: steppedIds(choice.order, key, direction) as StatisticKey[] })}
+              />
+              ))}
+            </tbody>
+          </table>
+        </CalcTableContextMenu>
+      </SortableRows>
       {!readOnly ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <NativeSelect
@@ -161,5 +118,63 @@ export function StatisticsTable(props: {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** One statistic of the table: its handle, whether it prints, its name (and formula) and its figure. */
+function StatisticRow(props: {
+  statistic: StatisticKey;
+  choice: PrintedStatistics;
+  value: string;
+  readOnly: boolean;
+  onChange: (choice: PrintedStatistics) => void;
+  onStep: (direction: -1 | 1) => void;
+}) {
+  const { statistic: key, choice, readOnly } = props;
+  const extra = choice.extra?.find((item) => item.id === key);
+  const label = statisticLabel(choice, key);
+  const sortable = useSortableRow(key, { disabled: readOnly, label: `Mover ${label}`, onStep: props.onStep });
+  return (
+    <tr {...sortable.row} className={cn(CALC_ROW, sortable.className)} data-statistic={key}>
+      <td className="px-1 py-1 text-center">{sortable.handle}</td>
+      <td className="px-2 py-1 text-center">
+        <Checkbox
+          aria-label={`Imprimir ${label}`}
+          checked={!choice.hidden.includes(key)}
+          disabled={readOnly}
+          onCheckedChange={(checked) => props.onChange({ ...choice, hidden: checked === true ? choice.hidden.filter((item) => item !== key) : [...choice.hidden, key] })}
+        />
+      </td>
+      <td className="px-1 py-1">
+        <span className="grid gap-1">
+          <CommitCell
+            ariaLabel={`Nombre de ${label}`}
+            disabled={readOnly}
+            value={label}
+            className="border-input text-sm text-foreground"
+            onCommit={(text) => props.onChange(withStatisticLabel(choice, key, text))}
+          />
+          {extra?.kind === "formula" ? (
+            <CommitCell
+              ariaLabel={`Fórmula de ${label}`}
+              disabled={readOnly}
+              value={extra.formula ?? ""}
+              placeholder="=PROMEDIO*0.95"
+              title="Usa PROMEDIO, MEDIANA, MINIMO, MAXIMO, DESVEST y N: =(MAXIMO-MINIMO)/PROMEDIO"
+              className="border-input font-mono text-xs"
+              onCommit={(text) => props.onChange(withExtraStatisticFormula(choice, key, text))}
+            />
+          ) : null}
+        </span>
+      </td>
+      <td className="px-2 py-1 text-right tabular-nums">{props.value}</td>
+      <td className="px-1 py-1 text-center">
+        {!readOnly && extra ? (
+          <Button type="button" size="icon-sm" variant="ghost" className="text-destructive" aria-label={`Quitar ${label}`} onClick={() => props.onChange(withoutExtraStatistic(choice, key))}>
+            <Trash2 />
+          </Button>
+        ) : null}
+      </td>
+    </tr>
   );
 }

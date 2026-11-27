@@ -85,6 +85,14 @@ function legacyTable(id: string, title: string, columns: string[], rows: string[
   return { id, title, columns, rows, enabled: true };
 }
 
+/** A table the calculation writes, with its title printed as the saved tables of rents and deductions print it. */
+function withCaption(table: TableContent): TableContent {
+  const v2 = table as unknown as TableV2;
+  if (!v2.schema?.hideCaption) return table;
+  const { hideCaption: _hidden, ...schema } = v2.schema;
+  return { ...v2, schema } as unknown as TableContent;
+}
+
 /** Printed where the rate is missing: the value cannot be capitalized yet. */
 export const NO_CAPITALIZATION_RATE = "Sin tasa de capitalización";
 /** Printed where the rent is missing: no unit rent captured nor adopted in the rent market. */
@@ -283,8 +291,10 @@ function rentBlocks(calculation: IncomeCalculationDto, result: IncomeApproachRes
   ]);
   const deductions = options.capture ? calculation.deductions : calculation.deductions.filter((deduction) => deduction.concept.trim());
   // The capture names its columns as the calculation (col-1…), the same on every render, so a field being typed in stays in its cell.
+  // The dictamen prints their titles («Deducciones sobre la renta bruta»): the capture says so too, so «Mostrar el
+  // título en el dictamen» starts checked and unchecking it hides it (video 8.14, 20:44).
   const table = (id: string, title: string, columns: string[], tableRows: string[][]) => (options.capture
-    ? generatedTable(id, title, columns.map((name) => textColumn(name)), tableRows)
+    ? withCaption(generatedTable(id, title, columns.map((name) => textColumn(name)), tableRows))
     : legacyTable(id, title, columns, tableRows));
   const blocks: Block[] = [
     ...dispersionBlock(calculation, result),

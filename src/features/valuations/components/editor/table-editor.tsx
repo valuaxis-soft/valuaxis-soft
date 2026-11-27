@@ -23,7 +23,7 @@ import {
   type TableAlign,
   type TableFormula,
   moveTableColumnBy,
-  moveTableColumnTo,
+  moveTableColumnBeside,
   canMoveTableColumn,
   canRemoveTableColumn,
   canInsertBesideColumn,
@@ -59,6 +59,15 @@ import {
   getDisplayColumns,
   tablePrintLayout,
   updateHeaderGroupTitle,
+  canGroupTableHeaders,
+  headerGroupChoice,
+  headerGroupEdge,
+  moveColumnIntoHeaderGroup,
+  moveColumnOutOfHeaderGroup,
+  moveHeaderGroupBy,
+  moveHeaderGroupTo,
+  ungroupTableHeaders,
+  type HeaderGroup,
 } from "../../services/table";
 import {
   fillReplaceConfirmation,
@@ -161,12 +170,14 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
 import {
   DndContext,
   closestCenter,
   PointerSensor,
+  useDraggable,
   useSensor,
   useSensors,
   type CollisionDetection,
@@ -181,6 +192,7 @@ import {
   useSortable,
   horizontalListSortingStrategy,
   verticalListSortingStrategy,
+  type SortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -360,7 +372,12 @@ export function MenuGroups({ groups, parts, handlers }: { groups: TableMenuGroup
         disabled={item.disabled}
         aria-description={item.disabled ? item.hint : undefined}
         onClick={() => handlers.onAction(item.action)}
+        role={item.checked !== undefined ? "menuitemcheckbox" : undefined}
+        aria-checked={item.checked}
+        data-menu-checked={item.checked === undefined ? undefined : String(item.checked)}
       >
+        {/* A choice that is on or off shows its check (video 8.14, 20:46: «no me aparece la palomita»). */}
+        {item.checked !== undefined ? <Check className={cn("size-3.5", item.checked ? "opacity-100" : "opacity-0")} aria-hidden /> : null}
         {item.label}
       </Item>
     );
@@ -430,6 +447,126 @@ const selectedCellClass = (selected: boolean, active: boolean) => cn(
 );
 
 /* ================================================================== */
+/*  Double headers: dragged and arranged as one (video 8.13, 25:00)     */
+/* ================================================================== */
+
+/** The id a double header is dragged by, among the columns' ids. */
+const GROUP_DRAG_PREFIX = "header-group:";
+
+type DropSide = "before" | "after";
+
+/** Where the pointer is: where it was pressed plus how far it went. */
+function pointerX(event: DragOverEvent | DragEndEvent): number | null {
+  const pressed = event.activatorEvent as PointerEvent | MouseEvent | null;
+  return pressed && typeof pressed.clientX === "number" ? pressed.clientX + event.delta.x : null;
+}
+
+/** The half of the header under the pointer: its left half drops before it, its right half after it. */
+function dropSide(event: DragOverEvent | DragEndEvent): DropSide {
+  const x = pointerX(event);
+  const over = event.over?.rect;
+  if (x === null || !over) return "before";
+  return x > over.left + over.width / 2 ? "after" : "before";
+}
+
+/** Headers in two rows do not slide aside while a column is dragged: the header it lands on is outlined instead. */
+const NO_SHIFT: SortingStrategy = () => null;
+
+/** The header under the pointer, by its left and right edges; the nearest one when the pointer is past them all. */
+function headerUnderPointer(
+  x: number,
+  containers: Parameters<CollisionDetection>[0]["droppableContainers"],
+  rects: Parameters<CollisionDetection>[0]["droppableRects"],
+): ReturnType<CollisionDetection> {
+  let best: { container: (typeof containers)[number]; distance: number } | null = null;
+  for (const container of containers) {
+    const rect = rects.get(container.id);
+    if (!rect) continue;
+    const distance = x < rect.left ? rect.left - x : x > rect.right ? x - rect.right : 0;
+    if (!best || distance < best.distance) best = { container, distance };
+  }
+  return best ? [{ id: best.container.id, data: { droppableContainer: best.container, value: best.distance } }] : [];
+}
+
+/**
+ * The title of a double header: dragged by its handle with all its columns,
+ * moved a column to either side, its columns changed in «Formato de la
+ * tabla» (from–to), renamed and taken off, from its right click and its menu.
+ * A header the table's own structure sets (the homologation preset) is only renamed.
+ */
+function HeaderGroupTitle(props: {
+  group: HeaderGroup;
+  colSpan: number;
+  tableV2: TableV2;
+  readOnly: boolean;
+  isDragging: boolean;
+  onRename: () => void;
+  onMove: (direction: -1 | 1) => void;
+  onColumns: () => void;
+  onUngroup: () => void;
+}) {
+  const { group } = props;
+  const arranged = canGroupTableHeaders(props.tableV2) && !props.readOnly;
+  const { attributes, listeners, setNodeRef } = useDraggable({ id: `${GROUP_DRAG_PREFIX}${group.id}`, disabled: !arranged });
+  const items = (Item: typeof ContextMenuItem | typeof DropdownMenuItem) => (
+    <>
+      {group.titleEditable !== false ? <Item onClick={props.onRename}>Renombrar el encabezado</Item> : null}
+      {arranged ? (
+        <>
+          <Item onClick={() => props.onMove(-1)}>Mover el grupo a la izquierda</Item>
+          <Item onClick={() => props.onMove(1)}>Mover el grupo a la derecha</Item>
+          <Item onClick={props.onColumns}>Cambiar sus columnas (de–a)…</Item>
+          <Item variant="destructive" onClick={props.onUngroup}>Quitar el encabezado doble</Item>
+        </>
+      ) : null}
+    </>
+  );
+  return (
+    <TableHead colSpan={props.colSpan} className={cn("p-0 text-center", CALC_HEAD, props.isDragging && "opacity-50")} data-header-group={group.id}>
+      <ContextMenu>
+        <ContextMenuTrigger>
+          <div className="flex items-center justify-center gap-1 rounded px-2 py-1 text-xs font-semibold">
+            {arranged ? (
+              <button
+                type="button"
+                ref={setNodeRef}
+                {...attributes}
+                {...listeners}
+                className="shrink-0 cursor-grab touch-none rounded-sm text-muted-foreground/70 hover:text-foreground"
+                aria-label={`Arrastrar el encabezado ${group.title} con sus columnas`}
+                title="Arrastra para mover el grupo con todas sus columnas"
+                data-header-group-grip={group.id}
+              >
+                <GripVertical className="h-3 w-3" />
+              </button>
+            ) : null}
+            <span
+              className="min-w-0 cursor-pointer truncate"
+              onDoubleClick={() => {
+                if (group.titleEditable !== false) props.onRename();
+              }}
+            >
+              {group.title}
+            </span>
+            {arranged ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Button type="button" size="icon-sm" variant="ghost" className="h-4 w-4 shrink-0 text-muted-foreground" aria-label={`Opciones del encabezado ${group.title}`} title="Opciones del encabezado doble" />}
+                >
+                  <ChevronDown className="h-3 w-3" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-60">{items(DropdownMenuItem)}</DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
+        </ContextMenuTrigger>
+        {!props.readOnly ? <ContextMenuContent className="w-60">{items(ContextMenuItem)}</ContextMenuContent> : null}
+      </ContextMenu>
+    </TableHead>
+  );
+}
+
+/* ================================================================== */
 /*  Sortable column header                                             */
 /* ================================================================== */
 
@@ -447,12 +584,15 @@ function SortableColumnHeader({
   capability,
   isOver,
   isDragging,
+  dropSide: side,
   rowSpan,
   colSpan,
   cellStyle,
   onUpdate,
   onColumnAction,
 }: {
+  /** The side a column dragged over this header is dropped on. */
+  dropSide?: DropSide;
   column: TableColumn;
   /** Place of the column as shown, in the selection of cells. */
   columnIndex: number;
@@ -512,6 +652,8 @@ function SortableColumnHeader({
     opacity: isDragging ? 0.5 : undefined,
   };
 
+  // Its double header: «Sacar de…» when it is under one, «Meter en…» the nearest one otherwise (video 8.13, 22:00).
+  const groupChoice = headerGroupChoice(tableV2, column.id);
   // The actions of the right click and of the header's menu, the same in both.
   const { groups, handlers } = withTableItems(tableContextMenu("editable", {
     kind: "column",
@@ -522,6 +664,7 @@ function SortableColumnHeader({
     canDelete: capability.removable !== false && canRemoveTableColumn(tableV2, column.id),
     hidden,
     canHide: true,
+    headerGroup: groupChoice ? { title: groupChoice.group.title, inside: groupChoice.inside } : null,
     // A table the calculation writes: its columns are hidden, not deleted, and its rows keep the calculation's order.
     reasons: calculatedColumnReasons(calculated, column.id),
   }), {
@@ -551,6 +694,9 @@ function SortableColumnHeader({
               // Every table shows its headers as the dictamen prints them: in the palette of the valuation (video 8.12, 25:50).
               CALC_HEAD, "border-transparent [&_textarea]:text-inherit",
               isOver && !isDragging && "border-blue-400 bg-blue-50 dark:bg-blue-500/15",
+              // Where it lands: a thick rule on the side it goes to.
+              isOver && !isDragging && side === "before" && "border-l-4 border-l-primary",
+              isOver && !isDragging && side === "after" && "border-r-4 border-r-primary",
               formulaMode && "opacity-60",
               hidden && "opacity-50",
               selected && "border-primary/50 bg-primary/15 dark:bg-primary/25",
@@ -1212,6 +1358,9 @@ function SortableRow({
   structure: CellStructureActions;
 }) {
   const calculated = useCalculatedTable();
+  // A row the calculation writes keeps its order (the comparables' order, set where they are captured): no handle
+  // that does not move it (video 8.13, 25:45: «¿para qué me ponen esas opciones si no funcionan aquí?»).
+  const rowFixed = Boolean(calculated?.row(row.id) && !calculated.capture);
   const {
     attributes,
     listeners,
@@ -1219,7 +1368,7 @@ function SortableRow({
     setActivatorNodeRef,
     transform,
     transition,
-  } = useSortable({ id: row.id, disabled: readOnly || !!formulaMode || Boolean(calculated?.row(row.id) && !calculated.capture) });
+  } = useSortable({ id: row.id, disabled: readOnly || !!formulaMode || rowFixed });
 
   const style: React.CSSProperties = {
     transform: CSS.Translate.toString(transform),
@@ -1294,19 +1443,23 @@ function SortableRow({
       {/* Row context menu + drag handle */}
       <TableCell className="w-8 p-0.5">
         <div className="flex items-center">
-          <ContextMenu>
-            <ContextMenuTrigger>
-              <div
-                className="flex items-center justify-center"
-                ref={setActivatorNodeRef}
-                {...attributes}
-                {...listeners}
-              >
-                <GripVertical className="h-3.5 w-3.5 cursor-grab text-muted-foreground/70" />
-              </div>
-            </ContextMenuTrigger>
-            {menu}
-          </ContextMenu>
+          {!rowFixed ? (
+            <ContextMenu>
+              <ContextMenuTrigger>
+                <div
+                  className="flex items-center justify-center"
+                  ref={setActivatorNodeRef}
+                  {...attributes}
+                  {...listeners}
+                  data-row-grip=""
+                  title="Arrastra para mover la fila"
+                >
+                  <GripVertical className="h-3.5 w-3.5 cursor-grab text-muted-foreground/70" />
+                </div>
+              </ContextMenuTrigger>
+              {menu}
+            </ContextMenu>
+          ) : null}
           {/* What the calculation's capture does with the row (taking it out of the calculation, its links). */}
           {rowCaptured ? <CaptureSlotTarget address={{ table: tableId, row: row.id }} className="flex items-center" /> : null}
         </div>
@@ -1400,6 +1553,8 @@ export function TableEditorItem({
   /* ---- Column and row DnD state ---- */
   const [activeColId, setActiveColId] = useState<string | null>(null);
   const [overColId, setOverColId] = useState<string | null>(null);
+  // The side of the header under the pointer a column is dropped on: before it or after it.
+  const [overSide, setOverSide] = useState<DropSide>("before");
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [overRowId, setOverRowId] = useState<string | null>(null);
 
@@ -1407,27 +1562,31 @@ export function TableEditorItem({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
-  // Columns and rows are dragged in one context: a column is dropped on columns, a row on rows.
+  // Columns and rows are dragged in one context: a column (or a double header with its columns) is dropped on columns, a row on rows.
   const columnIdSet = useMemo(() => new Set(tableV2.columns.map((column) => column.id)), [tableV2.columns]);
+  const isColumnDrag = useCallback((id: string) => columnIdSet.has(id) || id.startsWith(GROUP_DRAG_PREFIX), [columnIdSet]);
   const collisionDetection = useCallback<CollisionDetection>((args) => {
-    const draggingColumn = columnIdSet.has(String(args.active.id));
-    return closestCenter({
-      ...args,
-      droppableContainers: args.droppableContainers.filter((container) => columnIdSet.has(String(container.id)) === draggingColumn),
-    });
-  }, [columnIdSet]);
+    const draggingColumn = isColumnDrag(String(args.active.id));
+    const droppableContainers = args.droppableContainers.filter((container) => columnIdSet.has(String(container.id)) === draggingColumn);
+    // A column lands on the header under the pointer across the table, in either row of a double header (video 8.13,
+    // 22:29: «lo suelto y no se mueve; se metió aquí abajo»): the nearest center mixed the two rows.
+    if (draggingColumn && args.pointerCoordinates) return headerUnderPointer(args.pointerCoordinates.x, droppableContainers, args.droppableRects);
+    return closestCenter({ ...args, droppableContainers });
+  }, [columnIdSet, isColumnDrag]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const id = String(event.active.id);
-    if (columnIdSet.has(id)) setActiveColId(id);
+    if (isColumnDrag(id)) setActiveColId(id);
     else setActiveRowId(id);
-  }, [columnIdSet]);
+  }, [isColumnDrag]);
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const overId = event.over ? String(event.over.id) : null;
-    if (columnIdSet.has(String(event.active.id))) setOverColId(overId);
-    else setOverRowId(overId);
-  }, [columnIdSet]);
+    if (isColumnDrag(String(event.active.id))) {
+      setOverColId(overId);
+      setOverSide(dropSide(event));
+    } else setOverRowId(overId);
+  }, [isColumnDrag]);
 
   const handleDragCancel = useCallback(() => {
     setActiveColId(null);
@@ -1436,22 +1595,50 @@ export function TableEditorItem({
     setOverRowId(null);
   }, []);
 
+  /**
+   * A column dropped at the edge of a double header may be meant in it or out
+   * of it: it says where it stayed and offers the other, in place (video
+   * 8.13, 24:24: «si yo saco una, me lo debe detectar»).
+   */
+  const offerHeaderGroupEdge = useCallback((moved: TableV2, columnId: string) => {
+    const edge = headerGroupEdge(moved, columnId);
+    if (!edge) return;
+    const name = moved.columns.find((column) => column.id === columnId)?.name.trim() || "La columna";
+    toast.info(edge.inside ? `«${name}» quedó dentro de «${edge.group.title}».` : `«${name}» quedó fuera de «${edge.group.title}», a su lado.`, {
+      id: `header-group-edge-${table.id}`,
+      description: edge.inside ? "Si la querías fuera del encabezado doble, sácala sin moverla de lugar." : "Si la querías bajo el encabezado doble, métela sin moverla de lugar.",
+      action: {
+        label: edge.inside ? "Sacarla" : "Meterla",
+        onClick: () => onUpdate(table.id, v2Updater((v2) => (edge.inside ? moveColumnOutOfHeaderGroup(v2, columnId) : moveColumnIntoHeaderGroup(v2, columnId, edge.group.id)))),
+      },
+    });
+  }, [table.id, onUpdate]);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     handleDragCancel();
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const activeId = String(active.id);
     const overId = String(over.id);
+    if (activeId.startsWith(GROUP_DRAG_PREFIX)) {
+      // A double header moves with all its columns (video 8.13, 25:00).
+      const groupId = activeId.slice(GROUP_DRAG_PREFIX.length);
+      if (columnIdSet.has(overId)) onUpdate(table.id, v2Updater((v2) => moveHeaderGroupTo(v2, groupId, overId)));
+      return;
+    }
     if (columnIdSet.has(activeId)) {
-      // The column takes the place of the one it is dropped on, and its zone in a structured table.
-      onUpdate(table.id, v2Updater((v2) => moveTableColumnTo(v2, activeId, overId)));
+      // The column goes before or after the one it is dropped on, by the half under the pointer, and takes its zone.
+      const side = dropSide(event);
+      onUpdate(table.id, v2Updater((v2) => moveTableColumnBeside(v2, activeId, overId, side)));
+      // Left at the edge of a double header, in or out of it: the other choice is offered, without dragging again.
+      offerHeaderGroupEdge(moveTableColumnBeside(tableV2, activeId, overId, side), activeId);
       return;
     }
     const fromIndex = tableV2.rows.findIndex((r) => r.id === activeId);
     const toIndex = tableV2.rows.findIndex((r) => r.id === overId);
     if (fromIndex < 0 || toIndex < 0) return;
     onUpdate(table.id, v2Updater((v2) => moveTableRow(v2, fromIndex, toIndex)));
-  }, [columnIdSet, handleDragCancel, table.id, tableV2.rows, onUpdate]);
+  }, [columnIdSet, handleDragCancel, table.id, tableV2, onUpdate, offerHeaderGroupEdge]);
 
   /* ---- Formula selection mode ---- */
   const startFormulaMode = useCallback((rowId: string, columnId: string, op: FormulaSelectionOperation) => {
@@ -1513,6 +1700,12 @@ export function TableEditorItem({
       }
       case "move-left": onUpdate(table.id, v2Updater((v2) => moveTableColumnBy(v2, columnId, -1))); return;
       case "move-right": onUpdate(table.id, v2Updater((v2) => moveTableColumnBy(v2, columnId, 1))); return;
+      case "group-leave": onUpdate(table.id, v2Updater((v2) => moveColumnOutOfHeaderGroup(v2, columnId))); return;
+      case "group-join": {
+        const choice = headerGroupChoice(tableV2, columnId);
+        if (choice && !choice.inside) onUpdate(table.id, v2Updater((v2) => moveColumnIntoHeaderGroup(v2, columnId, choice.group.id)));
+        return;
+      }
       case "column-width": {
         const current = columnWidthOf(tableV2, columnId);
         const typed = prompt("Ancho de la columna en píxeles (vacío: según su contenido):", current === undefined ? "" : String(current));
@@ -1618,6 +1811,7 @@ export function TableEditorItem({
     formulaMode,
     capability: resolveColumnCapability(columnId, tableV2.schema),
     isOver: overColId === columnId,
+    dropSide: overColId === columnId ? overSide : undefined,
     isDragging: activeColId === columnId,
     cellStyle: getColumnWidth(columnId),
     onUpdate,
@@ -1879,7 +2073,7 @@ export function TableEditorItem({
               </colgroup>
               <TableHeader>
                 {/* Every column header moves among all the others, in either header row. */}
-                <SortableContext items={displayColumnIds} strategy={horizontalListSortingStrategy}>
+                <SortableContext items={displayColumnIds} strategy={headerLayout.hasGroups ? NO_SHIFT : horizontalListSortingStrategy}>
                 {headerLayout.hasGroups ? (
                   <>
                     {/* Row 1: ungrouped columns (rowSpan=2) + group titles (colSpan) */}
@@ -1889,31 +2083,18 @@ export function TableEditorItem({
                         cell.kind === "column" ? (
                           <SortableColumnHeader key={cell.columnId} {...headerProps(cell.columnId)} rowSpan={cell.rowSpan} />
                         ) : (
-                          <TableHead
+                          <HeaderGroupTitle
                             key={cell.group.id}
+                            group={cell.group}
                             colSpan={cell.colSpan}
-                            className={cn("p-0 text-center", CALC_HEAD)}
-                          >
-                            <ContextMenu>
-                              <ContextMenuTrigger>
-                                <div
-                                  className="px-2 py-1 text-xs font-semibold cursor-pointer hover:bg-accent rounded"
-                                  onDoubleClick={() => {
-                                    if (cell.group.titleEditable !== false) {
-                                      ctxRenameGroupTitle(cell.group.id, cell.group.title);
-                                    }
-                                  }}
-                                >
-                                  {cell.group.title}
-                                </div>
-                              </ContextMenuTrigger>
-                              <ContextMenuContent className="w-40">
-                                <ContextMenuItem onClick={() => ctxRenameGroupTitle(cell.group.id, cell.group.title)}>
-                                  Renombrar grupo
-                                </ContextMenuItem>
-                              </ContextMenuContent>
-                            </ContextMenu>
-                          </TableHead>
+                            tableV2={tableV2}
+                            readOnly={readOnly || Boolean(formulaMode)}
+                            isDragging={activeColId === `${GROUP_DRAG_PREFIX}${cell.group.id}`}
+                            onRename={() => ctxRenameGroupTitle(cell.group.id, cell.group.title)}
+                            onMove={(direction) => onUpdate(table.id, v2Updater((v2) => moveHeaderGroupBy(v2, cell.group.id, direction)))}
+                            onColumns={() => window.setTimeout(() => setFormatOpen(true), 80)}
+                            onUngroup={() => onUpdate(table.id, v2Updater((v2) => ungroupTableHeaders(v2, cell.group.id)))}
+                          />
                         )
                       ))}
                       <TableHead className="w-8 p-0" rowSpan={2} />

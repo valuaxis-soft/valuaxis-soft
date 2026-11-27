@@ -24,7 +24,7 @@ export type TableMenuAction =
   | "edit-formula" | "fill-column" | "fill-row" | "fill-column-empty" | "fill-row-empty" | "remove-formula"
   | "format" | "format-decimals" | "clear"
   | "bold" | "italic" | "underline" | "align" | "clear-format"
-  | "rename" | "move-left" | "move-right" | "column-width" | "sort-asc" | "sort-desc" | "hide-column" | "show-column" | "column-format" | "column-decimals"
+  | "rename" | "move-left" | "move-right" | "group-leave" | "group-join" | "column-width" | "sort-asc" | "sort-desc" | "hide-column" | "show-column" | "column-format" | "column-decimals"
   | "duplicate-row" | "move-row-up" | "move-row-down" | "hide-row" | "show-row"
   | "table-format" | "caption-show" | "caption-hide"
   | "block-rename" | "block-copy" | "block-duplicate" | "block-move" | "block-hide" | "block-show" | "block-page-break" | "block-print-title" | "block-delete";
@@ -105,6 +105,12 @@ export type ColumnMenuTarget = {
   hidden: boolean;
   /** The column can be hidden in the dictamen (a generated table hides it with its layout). */
   canHide: boolean;
+  /**
+   * The double header the column is under (`inside`), or the nearest one it
+   * can join: «Sacar de…» or «Meter en…» (video 8.13, 22:00), without
+   * dragging it through every column on the way.
+   */
+  headerGroup?: { title: string; inside: boolean } | null;
   reasons?: MenuReasons;
 };
 
@@ -216,6 +222,11 @@ function columnMenu(kind: TableMenuKind, target: ColumnMenuTarget): TableMenuGro
       disabledWhen({ action: "rename", label: "Renombrar" }, !target.canRename, "El nombre de esta columna lo pone el cálculo."),
       structure({ action: "move-left", label: "Mover a la izquierda" }, target.canMoveLeft, "La columna ya es la primera."),
       structure({ action: "move-right", label: "Mover a la derecha" }, target.canMoveRight, "La columna ya es la última."),
+      ...(target.headerGroup
+        ? [target.headerGroup.inside
+          ? { action: "group-leave" as const, label: `Sacar del encabezado «${target.headerGroup.title}»` }
+          : { action: "group-join" as const, label: `Meter en el encabezado «${target.headerGroup.title}»` }]
+        : []),
       own({ action: "column-width", label: "Ancho de columna…" }, true, ""),
       own({ action: "column-format", label: "Unidades de valor de la columna", submenu: "units" }, true, ""),
       own({ action: "column-decimals", label: "Decimales de la columna", submenu: "decimals" }, true, ""),
@@ -387,9 +398,8 @@ export type TableFormatMenuTarget = { captionShown: boolean };
 export function tableFormatGroup(target: TableFormatMenuTarget): TableMenuGroup {
   return [
     { action: "table-format", label: "Formato de la tabla (espacio, sangría, decimales)…" },
-    target.captionShown
-      ? { action: "caption-hide", label: "Ocultar el título en el dictamen" }
-      : { action: "caption-show", label: "Mostrar el título en el dictamen" },
+    // One choice with its check, as «Imprimir título» of a block (video 8.14, 20:46: «no me aparece la palomita»).
+    { action: target.captionShown ? "caption-hide" : "caption-show", label: "Mostrar el título en el dictamen", checked: target.captionShown },
   ];
 }
 
