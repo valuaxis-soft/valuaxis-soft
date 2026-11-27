@@ -114,3 +114,53 @@ test("kept subbloques go after the one before them, else before the one after th
   // Neither is there any more: at the end.
   assert.deepEqual(withKeptApartados([a("motor-3")], [a("motor-1"), a("p1")], keep).map((item) => item.id), ["motor-3", "p1"]);
 });
+
+/* ── Its place through delete, «Deshacer» and recalculations (QA of #187) ── */
+
+const recalculate = (current: AppSection, rent: number) => {
+  const changed = { ...income, rentMarket: { ...income.rentMarket!, concludedMonthlyRent: rent } };
+  return replaceGeneratedBlocks(current, (item) => item.id.startsWith("motor-ingresos"), incomeDocumentBlocks(changed, resultOf(changed)));
+};
+const ids = (current: AppSection) => current.blocks[0].apartados.map((apartado) => apartado.id);
+const at = (current: AppSection, apartados: Apartado[]) => section([{ ...current.blocks[0], apartados }]);
+
+test("anchored to the first subbloque of the calculation, his subbloque stays second through every recalculation", () => {
+  const written = withIncomeBlocks(section([]), incomeDocumentBlocks(income, resultOf(income)));
+  const [first, ...rest] = written.blocks[0].apartados;
+  let current = at(written, [first, own, ...rest]);
+  for (const rent of [26000, 21000, 24000]) {
+    current = recalculate(current, rent);
+    assert.equal(ids(current).indexOf(own.id), 1, `rent ${rent}`);
+  }
+  // Placed first by him, it stays first: the top is only where he puts it.
+  const top = recalculate(at(written, [own, ...written.blocks[0].apartados]), 26000);
+  assert.equal(ids(top)[0], own.id);
+});
+
+test("deleted, recalculated, then «Deshacer»: the restored subbloque goes back where it was, not to the top", () => {
+  const written = withIncomeBlocks(section([]), incomeDocumentBlocks(income, resultOf(income)));
+  const calc = written.blocks[0].apartados;
+  // His two subbloques: one after the first of the calculation, one at the end.
+  const second: Apartado = { ...own, id: "e5f6a7b8-segunda-nota", title: "OTRA NOTA" };
+  const before = at(written, [calc[0], own, ...calc.slice(1), second]);
+  // Deleted (the editor's removeApartado) and the calculation lands before he undoes.
+  const deleted = recalculate(at(before, before.blocks[0].apartados.filter((apartado) => apartado.id !== own.id)), 26000);
+  assert.ok(!ids(deleted).includes(own.id), "a deleted subbloque is not brought back by the calculation");
+  assert.equal(ids(deleted).at(-1), second.id);
+  // «Deshacer» restores the snapshot before the delete (calculation pages are not steps of the history); the calculation then writes again.
+  const undone = recalculate(before, 26000);
+  assert.deepEqual(ids(undone), ids(before));
+  // And while the calculation captures, the editor shows it in the same place.
+  const shown = captureDisplayBlocks(undone.blocks, { blocks: incomeCaptureBlocks(income, null), placeholderIds: [] });
+  assert.deepEqual(shown[0].block.apartados.map((apartado) => apartado.id), ids(before));
+});
+
+test("when the calculation stops writing the subbloque before his, it goes after the one before that, not to the top", () => {
+  const written = withIncomeBlocks(section([]), incomeDocumentBlocks(income, resultOf(income)));
+  const calc = written.blocks[0].apartados;
+  // A subbloque only the old pages had (the rate from the market, for another method), then his.
+  const gone: Apartado = { id: "motor-ingresos-enfoque-tasa-mercado", title: "TASA DE MERCADO", enabled: true, concepts: [], tables: [], images: [] };
+  const stored = at(written, [calc[0], gone, own, ...calc.slice(1)]);
+  const next = recalculate(stored, 26000);
+  assert.equal(ids(next).indexOf(own.id), 1);
+});
