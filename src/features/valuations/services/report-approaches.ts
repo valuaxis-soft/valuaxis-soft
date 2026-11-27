@@ -21,6 +21,40 @@ export const REPORT_APPROACH_LABELS: Record<ReportApproach, string> = {
   ingresos: "Enfoque de ingresos",
 };
 
+/** One switch «Agregar al informe valuatorio» of a section: the approaches it turns on or off together, and its name. */
+export type ReportSwitch = { key: string; label: string; approaches: readonly ReportApproach[] };
+
+/**
+ * The switches of a section. A machinery valuation has one market, not land
+ * and buildings (27 nov 2026: «que hable de maquinaria»): its market section
+ * has one switch, «mercado de maquinaria y equipo», that turns both of the
+ * section's markets on or off, so its market is left out exactly when both
+ * are (`marketLeftOut`, as the conclusion reads it).
+ */
+export function sectionReportSwitches(section: { id: string }, options: { machinery?: boolean } = {}): ReportSwitch[] {
+  const held = sectionReportApproaches(section);
+  if (options.machinery && getCanonicalSectionKey(section.id) === "MERCADO_VENTA") {
+    return [{ key: "mercado-maquinaria", label: MACHINERY_MARKET_REPORT_LABEL, approaches: held }];
+  }
+  return held.map((approach) => ({ key: approach, label: REPORT_APPROACH_LABELS[approach], approaches: [approach] }));
+}
+
+export const MACHINERY_MARKET_REPORT_LABEL = "Mercado de maquinaria y equipo";
+
+/** Whether a switch is on: any of its approaches goes into the dictamen. */
+export const reportSwitchIncluded = (section: SectionWithExclusions, entry: ReportSwitch) => entry.approaches.some((approach) => approachIncluded(section, approach));
+
+/** The exclusions of the section once a switch is turned on or off: all of its approaches with it. */
+export function withReportSwitch(section: SectionWithExclusions, entry: ReportSwitch, included: boolean): ReportApproach[] | undefined {
+  let current: SectionWithExclusions = section;
+  let next: ReportApproach[] | undefined = section.excludedFromReport ? sectionExclusions(section) : undefined;
+  for (const approach of entry.approaches) {
+    next = withApproachIncluded(current, approach, included);
+    current = { ...current, excludedFromReport: next };
+  }
+  return next;
+}
+
 /** The approaches each section holds, by its registry key. */
 const SECTION_APPROACHES: Record<string, readonly ReportApproach[]> = {
   COSTOS: ["costos"],

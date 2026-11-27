@@ -143,7 +143,8 @@ export function homologate(
   return { comparables, stats };
 }
 
-function describe(values: number[], offers: number[]): HomologationStats {
+/** The statistics of homologated values (`values`) and of the offers they come from (`offers`); a machinery market reads them too. */
+export function describe(values: number[], offers: number[]): HomologationStats {
   const count = values.length;
   const mean = values.reduce((sum, value) => sum + value, 0) / count;
   const sorted = [...values].sort((a, b) => a - b);

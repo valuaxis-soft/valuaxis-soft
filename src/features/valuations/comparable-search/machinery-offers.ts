@@ -24,6 +24,8 @@ export function offerFromListing(
   ].filter(Boolean).join(". ");
   return {
     ...emptyOffer(index),
+    // Its card in the firm's base: the summary prints its ID beside the reference.
+    folio,
     description: candidate.title,
     date: candidate.listingDate ? candidate.listingDate.split("-").reverse().join("/") : "",
     price: dollars ? null : candidate.price,

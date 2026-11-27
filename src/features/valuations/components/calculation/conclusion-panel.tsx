@@ -57,6 +57,13 @@ const APPROACH_UNAVAILABLE_REASONS: Record<Approach, string> = {
   ingresos: "Aún no hay valor por capitalización: calcula el enfoque de ingresos (rentas y tasa), si el bien lo lleva.",
 };
 
+/** The same reasons in a valuation of machinery and equipment: its approaches are the MEH book's, and it has no income approach. */
+export const MACHINERY_UNAVAILABLE_REASONS: Record<Approach, string> = {
+  costos: "Aún no hay valor físico: calcula el enfoque de costos del bien (cotización, gastos y depreciación).",
+  mercado: "Aún no hay valor de mercado: calcula el enfoque de mercado con las ofertas de equipos similares.",
+  ingresos: "Un avalúo de maquinaria y equipo no lleva enfoque de ingresos.",
+};
+
 /** Whether the document leaves the approach out of the dictamen ("Agregar al informe valuatorio" off). */
 function leftOut(calculation: ConclusionCalculationDto, approach: Approach) {
   const excluded = new Set(calculation.excluded ?? []);
@@ -150,7 +157,8 @@ function ConclusionSummaryEditor({
 
 /** Concluded value: which approach (or weights) and why, from the values each approach stored. */
 /** The value of each approach, or why it has none. */
-export function ApproachValues({ calculation }: { calculation: ConclusionCalculationDto }) {
+export function ApproachValues({ calculation, machinery = false }: { calculation: ConclusionCalculationDto; machinery?: boolean }) {
+  const reasons = machinery ? MACHINERY_UNAVAILABLE_REASONS : APPROACH_UNAVAILABLE_REASONS;
   return (
     <dl className="grid gap-x-4 gap-y-1 rounded-md border bg-background p-3 text-sm sm:grid-cols-3">
       {APPROACHES.map((approach) => (
@@ -165,7 +173,7 @@ export function ApproachValues({ calculation }: { calculation: ConclusionCalcula
               : calculation.values[approach] === null ? "No aplica" : money(calculation.values[approach] as number)}
           </dd>
           {!leftOut(calculation, approach) && calculation.values[approach] === null ? (
-            <dd className="text-xs text-muted-foreground" data-approach-unavailable={approach}>{APPROACH_UNAVAILABLE_REASONS[approach]}</dd>
+            <dd className="text-xs text-muted-foreground" data-approach-unavailable={approach}>{reasons[approach]}</dd>
           ) : null}
         </div>
       ))}
@@ -177,6 +185,8 @@ export function ConclusionPanel(props: {
   valuationId: string;
   readOnly: boolean;
   onCalculation: (calculation: ConclusionCalculationDto) => void;
+  /** A valuation of machinery and equipment: the reasons speak of its approaches. */
+  machinery?: boolean;
 }) {
   const { valuationId } = props;
   const [calculation, setCalculation] = useState<ConclusionCalculationDto | null>(null);
@@ -287,7 +297,7 @@ export function ConclusionPanel(props: {
 
       <div className="grid gap-2">
         <h4 className={CALC_SECTION_HEADING}>Valores de los enfoques</h4>
-        <ApproachValues calculation={calculation} />
+        <ApproachValues calculation={calculation} machinery={props.machinery} />
       </div>
 
       <ConclusionSummaryEditor

@@ -62,6 +62,24 @@ const statisticKeyName = z.string().refine(
   "Estadístico inválido.",
 );
 const statisticKey = statisticKeyName.transform((key) => key as StatisticKey);
+
+/** The appraiser's choice of the statistics of a box (a real estate market's, a machinery market's). */
+export const printedStatisticsSchema = z.object({
+  order: z.array(statisticKey).max(MARKET_STATISTICS.length + MAX_EXTRA_STATISTICS),
+  hidden: z.array(statisticKey).max(MARKET_STATISTICS.length + MAX_EXTRA_STATISTICS),
+  labels: z.record(statisticKeyName, z.string().trim().max(80)).optional(),
+  extra: z.array(z.object({
+    id: z.string().regex(EXTRA_STATISTIC_KEY, "Estadístico inválido."),
+    label: z.string().trim().min(1, "Cada estadístico necesita un nombre.").max(80),
+    kind: z.enum(EXTRA_STATISTIC_KINDS),
+    formula: z.string().trim().max(300).nullable().optional(),
+  })).max(MAX_EXTRA_STATISTICS, `Hasta ${MAX_EXTRA_STATISTICS} estadísticos propios.`).optional(),
+});
+
+/** The options of «Nivel de oferta observada», as the appraiser names them. */
+export const offerLabelsSchema = z.array(z.string().trim().min(1, "Cada opción del nivel de oferta necesita un nombre.").max(40))
+  .max(MAX_OFFER_OPTIONS, `El nivel de oferta lleva hasta ${MAX_OFFER_OPTIONS} opciones.`);
+export const offerMarkSchema = z.number().int().min(0).max(MAX_OFFER_OPTIONS - 1);
 /** A datum of the card, or a name of the specifications ("spec.frontage"). */
 const fieldLabelKey = z.string().regex(/^(spec\.)?[A-Za-z][A-Za-z0-9]{0,40}$/, "Dato inválido.");
 /** A datum of the card shown as a column: one of the card's, or a characteristic. */
@@ -220,9 +238,8 @@ export const marketSettingsSchema = z.object({
   rounding: roundingSchema.optional(),
   // Captures of the appraiser's format; clients that do not send them leave them as stored.
   offerLevel: z.enum(OFFER_LEVELS).nullable().optional(),
-  offerLabels: z.array(z.string().trim().min(1, "Cada opción del nivel de oferta necesita un nombre.").max(40))
-    .max(MAX_OFFER_OPTIONS, `El nivel de oferta lleva hasta ${MAX_OFFER_OPTIONS} opciones.`).nullable().optional(),
-  offerMark: z.number().int().min(0).max(MAX_OFFER_OPTIONS - 1).nullable().optional(),
+  offerLabels: offerLabelsSchema.nullable().optional(),
+  offerMark: offerMarkSchema.nullable().optional(),
   offerIntro: text(300).optional(),
   homologationBasis: z.enum(HOMOLOGATION_BASES).nullable().optional(),
   typicalFrontage: positive.optional(),
@@ -244,17 +261,7 @@ export const marketSettingsSchema = z.object({
   showHomologationNote: z.boolean().optional(),
   homologationNote: text(500).optional(),
   homologate: z.boolean().optional(),
-  printedStatistics: z.object({
-    order: z.array(statisticKey).max(MARKET_STATISTICS.length + MAX_EXTRA_STATISTICS),
-    hidden: z.array(statisticKey).max(MARKET_STATISTICS.length + MAX_EXTRA_STATISTICS),
-    labels: z.record(statisticKeyName, z.string().trim().max(80)).optional(),
-    extra: z.array(z.object({
-      id: z.string().regex(EXTRA_STATISTIC_KEY, "Estadístico inválido."),
-      label: z.string().trim().min(1, "Cada estadístico necesita un nombre.").max(80),
-      kind: z.enum(EXTRA_STATISTIC_KINDS),
-      formula: z.string().trim().max(300).nullable().optional(),
-    })).max(MAX_EXTRA_STATISTICS, `Hasta ${MAX_EXTRA_STATISTICS} estadísticos propios.`).optional(),
-  }).nullable().optional(),
+  printedStatistics: printedStatisticsSchema.nullable().optional(),
   // The names of the card's data in this market and the data shown as columns of its tables (video 8.9).
   fieldLabels: z.record(fieldLabelKey, z.string().trim().max(60)).nullable().optional(),
   linkedColumns: z.object({

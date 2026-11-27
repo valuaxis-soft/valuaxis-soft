@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { MACHINERY_CONSERVATION } from "../engine/machinery";
-import { MACHINERY_CHARACTERISTICS_MAX } from "./machinery-types";
+import { EXTRA_FACTOR_KEY, MACHINERY_CHARACTERISTICS_MAX, MACHINERY_FACTORS, MAX_MACHINERY_FACTORS } from "./machinery-types";
+import { MACHINERY_OFFER_FIELD_KEYS } from "./machinery-market-columns";
 import { OFFER_LEVELS } from "./market-types";
 import { capturedFormulasSchema } from "./captured-formulas";
-import { roundingSchema } from "./market-schemas";
+import { offerLabelsSchema, offerMarkSchema, printedStatisticsSchema, roundingSchema } from "./market-schemas";
 
 const text = (max: number) => z.string().trim().max(max);
 const amount = z.number().finite().min(0).max(1e12).nullable();
@@ -58,11 +59,30 @@ const costSchema = z.object({
   formulas: capturedFormulasSchema.optional(),
 });
 
+const fieldKey = z.string().refine((key) => MACHINERY_OFFER_FIELD_KEYS.includes(key), "Dato inválido.");
+const linkedFields = z.array(fieldKey).max(MACHINERY_OFFER_FIELD_KEYS.length);
+const factorColumnKey = z.string().refine((key) => MACHINERY_FACTORS.some((item) => item.key === key) || EXTRA_FACTOR_KEY.test(key), "Factor inválido.");
+
 const marketSchema = z.object({
   offerLevel: z.enum(OFFER_LEVELS).nullable(),
+  // Captures of the appraiser's format; clients that do not send them leave them as the defaults.
+  offerLabels: offerLabelsSchema.nullable().optional(),
+  offerMark: offerMarkSchema.nullable().optional(),
+  offerIntro: text(300).nullable().optional(),
+  factorColumns: z.array(z.object({ key: factorColumnKey, label: text(40) }))
+    .max(MAX_MACHINERY_FACTORS, `La homologación lleva hasta ${MAX_MACHINERY_FACTORS} factores (sin contar FEd ni FRe).`)
+    .refine((columns) => new Set(columns.map((column) => column.key)).size === columns.length, "Cada factor va una sola vez.")
+    .nullable().optional(),
+  fieldLabels: z.record(fieldKey, text(60)).nullable().optional(),
+  linkedColumns: z.object({ resumen: linkedFields.optional(), contacto: linkedFields.optional(), homologacion: linkedFields.optional() }).nullable().optional(),
+  printedStatistics: printedStatisticsSchema.nullable().optional(),
+  additionalAmount: z.number().finite().min(0).max(1e12).optional(),
+  justification: text(2000).nullable().optional(),
   usefulLife: years,
   offers: z.array(z.object({
     ref: ref("Cada oferta necesita su referencia."),
+    folio: z.number().int().positive().nullable().optional(),
+    extraFactors: z.record(z.string().regex(EXTRA_FACTOR_KEY), factor).optional(),
     description: text(300), brand: text(120), model: text(120), year: text(20), hours: text(60), attachments: text(300), date: text(60),
     price: amount,
     contact: text(200), company: text(200), phone: text(60), email: text(200), link: text(500), location: text(200), notes: text(1000),

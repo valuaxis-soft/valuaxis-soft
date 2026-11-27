@@ -707,7 +707,7 @@ export function marketPhotoBlocks(calculation: MarketCalculationDto): Block[] {
 }
 
 /** The page of a market's approach: its name is the appraiser's once he renames it (video 8.7: «que sea modificable el nombre»). */
-export const isRenamableGeneratedTitle = (blockId: string) => /^motor-mercado-[a-z_]+-enfoque$/i.test(blockId);
+export const isRenamableGeneratedTitle = (blockId: string) => /^motor-(mercado-[a-z_]+-enfoque|maquinaria-mercado)$/i.test(blockId);
 
 /** The block with the name the appraiser gave it, when it is one of those he names; the calculation writes the rest. */
 function withAppraiserTitle(block: Block, previous: Block | undefined): Block {

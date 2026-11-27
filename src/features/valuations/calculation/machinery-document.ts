@@ -9,8 +9,10 @@
 import { printableMachineryContact } from "../services/advertiser-data";
 import { amountInWords } from "../engine/amount-in-words";
 import type { MachineryCostResult, MachineryMarketResult } from "../engine/machinery";
+import { describe, type HomologationStats } from "../engine/market";
 import type { Apartado, Block } from "../model";
-import type { TableSummaryBox } from "../services/table";
+import type { TableNote, TableSummaryBox, TableSummaryRow } from "../services/table";
+import { formatComparableId } from "./comparable-card";
 import { withSummaryBox } from "./cost-document";
 import {
   EMPTY,
@@ -19,10 +21,12 @@ import {
   resultantColumn,
   generatedApartado,
   generatedBlock,
+  generatedColumnId,
+  generatedRowIds,
   generatedTable,
   money,
   moneyColumn,
-  offerLevelTable,
+  offerOptionsTable,
   percent,
   textColumn,
   whole,
@@ -33,10 +37,20 @@ import {
   QUOTATION_KINDS,
   isAttachmentComplete,
   isOfferComplete,
+  machineryFactorColumns,
+  machineryOfferFactor,
+  machineryStatisticsOf,
   type MachineryCostDto,
+  type MachineryFactorColumn,
+  type MachineryLinkTable,
   type MachineryMarketDto,
+  type MachineryOfferDto,
 } from "./machinery-types";
-import { GENERATED_BLOCK_PREFIX } from "./market-document";
+import { machineryFieldLabel, machineryLinkedFields, machineryOwnFieldLabel } from "./machinery-market-columns";
+import { FACTOR_JUSTIFICATION_TITLE, GENERATED_BLOCK_PREFIX } from "./market-document";
+import { extraStatisticText, statisticLabel } from "./market-statistics";
+import { linkedColumnId } from "./market-table-columns";
+import { offerLabelsOf, offerMarkOf, type PrintedStatistics, type StatisticKey } from "./market-types";
 
 /** Prefix of every block the machinery calculation writes. */
 export const MACHINERY_BLOCK_PREFIX = `${GENERATED_BLOCK_PREFIX}maquinaria`;
@@ -186,101 +200,253 @@ export function machineryCostBlocks(cost: MachineryCostDto, result: MachineryCos
   return [generatedBlock(COST_PREFIX, "ENFOQUE FÍSICO O DE COSTOS", { apartados: [...apartados.slice(0, -1), closed] })];
 }
 
+/** The tables of the market's page, by name: where the editor captures each datum (one table, 20 nov 2026). */
+export type MachineryMarketTable = "oferta" | "resumen" | "contacto" | "caracteristicas" | "homologacion";
+export const machineryMarketTableId = (name: MachineryMarketTable) => `${MARKET_PREFIX}-tabla-${name}`;
+
+/** The columns of the homologation the calculation writes, by their ids: the same ones before and after factors are added or taken out. */
+export const MACHINERY_HOMOLOGATION_COLUMNS = { ref: "col-1", price: "col-2", fees: "col-3", installation: "col-4", expenses: "col-5", onSite: "col-6", age: "col-7", resultant: "col-12", value: "col-13" } as const;
+const BOOK_FACTOR_COLUMNS: Record<string, string> = { conservation: "col-8", maintenance: "col-9", technological: "col-10", economic: "col-11" };
+/** The column of a factor: the book's keep the places they always had, the appraiser's their own id. */
+export const machineryFactorColumnId = (key: string) => BOOK_FACTOR_COLUMNS[key] ?? `factor-${key.toLowerCase()}`;
+/** The factor a column of the homologation is, by its id; null for the other columns. */
+export const machineryFactorAt = (columns: readonly MachineryFactorColumn[], columnId: string) =>
+  columns.findIndex((column) => machineryFactorColumnId(column.key) === columnId.toLowerCase());
+
+/** The columns of the technical characteristics: the concept, the subject and one per offer. */
+export const machineryCharacteristicColumn = { label: "col-1", subject: "col-2", offer: (place: number) => generatedColumnId(place + 2) } as const;
+
+/** Rows of the technical characteristics the calculation writes before the appraiser's own (Marca, Modelo, Año, use, Ubicación). */
+const DESCRIPTION_ROWS = 5;
+
+/**
+ * Where each datum of the offers sits in the tables of the page: the row of
+ * each offer in the summary, the contact and the homologation, and in the
+ * technical characteristics the row of each of the appraiser's own concepts
+ * and those of the age and the useful life. In the editor every offer has
+ * its rows, also those still being written.
+ */
+export function machineryCaptureRows(market: Pick<MachineryMarketDto, "offers" | "characteristics">) {
+  const count = market.offers.length;
+  const rows = (name: MachineryMarketTable) => generatedRowIds(machineryMarketTableId(name), count);
+  const characteristics = generatedRowIds(machineryMarketTableId("caracteristicas"), DESCRIPTION_ROWS + market.characteristics.length + 4);
+  return {
+    resumen: rows("resumen"),
+    contacto: rows("contacto"),
+    homologacion: rows("homologacion"),
+    characteristics: {
+      free: characteristics.slice(DESCRIPTION_ROWS, DESCRIPTION_ROWS + market.characteristics.length),
+      age: characteristics[DESCRIPTION_ROWS + market.characteristics.length],
+      usefulLife: characteristics[DESCRIPTION_ROWS + market.characteristics.length + 1],
+    },
+  };
+}
+
+/** The statistics of the homologated values of the offers, as a real estate market's (the offers' are their asking prices). */
+export function machineryStatistics(market: Pick<MachineryMarketDto, "offers">, result: MachineryMarketResult | null): HomologationStats | null {
+  if (!result?.offers.length) return null;
+  const prices = new Map(market.offers.map((offer) => [offer.ref, offer.price ?? 0]));
+  return describe(result.offers.map((row) => row.value), result.offers.map((row) => prices.get(row.id) ?? row.adjustedPrice));
+}
+
+/** A statistic of the box as it prints: in pesos, a dispersion with two decimals; «—» when it cannot be computed. */
+export function machineryStatisticText(key: StatisticKey, choice: PrintedStatistics, stats: HomologationStats, values: readonly number[]): string {
+  const extra = choice.extra?.find((item) => item.id === key);
+  if (extra) return extraStatisticText(extra, stats, values) ?? EMPTY;
+  switch (key) {
+    case "initialDispersion": return figure(stats.initialDispersion, 2);
+    case "dispersion": return figure(stats.dispersion, 2);
+    case "offerMin": case "offerMax": case "min": case "max": case "mean": case "median": return money(stats[key]);
+    default: return EMPTY;
+  }
+}
+
+/** Under the homologation, the appraiser's justification of the factors, with its title on a line of its own. */
+const justificationNotes = (market: Pick<MachineryMarketDto, "justification">): TableNote[] => {
+  const text = market.justification?.trim();
+  return text ? [{ position: "bottom", heading: true, text: FACTOR_JUSTIFICATION_TITLE }, { position: "bottom", text }] : [];
+};
+
 /**
  * The block of the market section, with the subject of the cost capture next
- * to the offers. None while there are no offers.
+ * to the offers, in the order of the book's sheet «V. ENF. MERCADO»: the
+ * offer level, the summary of the comparables and their contact, the
+ * technical characteristics against the subject, and the homologation with
+ * its factors as columns, the statistics and the value. None while there
+ * are no offers, except in the editor (`capture`), where the structure is
+ * always there to capture in (video 8.7: «que sí se vea la estructura
+ * siempre»), with every offer, also those still being written.
  */
-export function machineryMarketBlocks(market: MachineryMarketDto, subject: MachineryCostDto["item"], result: MachineryMarketResult | null, options: MachineryDocumentOptions = {}): Block[] {
+export function machineryMarketBlocks(
+  market: MachineryMarketDto,
+  subject: MachineryCostDto["item"],
+  result: MachineryMarketResult | null,
+  options: MachineryDocumentOptions & { capture?: boolean } = {},
+): Block[] {
+  const capture = options.capture === true;
   const use = machineryUseLabels(options);
+  // A row of the characteristics reads the book's name, or the one the appraiser gave the datum in a column.
+  const rowLabel = (key: string, book: string) => machineryOwnFieldLabel(market, key) ?? book;
   // Each offer keeps its place in the capture: the free characteristics carry one value per place.
-  const places = market.offers.map((row, place) => ({ row, place })).filter(({ row }) => row.ref.trim());
+  const places = market.offers.map((row, place) => ({ row, place })).filter(({ row }) => capture || row.ref.trim());
   const offers = places.map(({ row }) => row);
-  if (!offers.length) return [];
+  if (!offers.length && !capture) return [];
   const apartados: Apartado[] = [];
 
-  if (market.offerLevel) {
+  // The offer level of the research: the options of the book (or the appraiser's), with an X on the one observed.
+  // The editor always has its place, where it is chosen; the dictamen prints it once one is marked.
+  const offerMark = offerMarkOf({ offerMark: market.offerMark ?? undefined, offerLevel: market.offerLevel, offerLabels: market.offerLabels });
+  if (offerMark !== null || capture) {
     apartados.push(generatedApartado(`${MARKET_PREFIX}-oferta`, "BIENES SIMILARES EN VENTA", {
-      tables: [offerLevelTable(`${MARKET_PREFIX}-tabla-oferta`, "Nivel de oferta observada durante la investigación de mercado.", market.offerLevel)],
+      tables: [offerOptionsTable(machineryMarketTableId("oferta"), market.offerIntro?.trim() || MACHINERY_OFFER_INTRO, offerLabelsOf({ offerLabels: market.offerLabels }), offerMark ?? -1)],
     }));
   }
 
+  const linked = (table: MachineryLinkTable) => machineryLinkedFields(market, table);
+  const linkedColumns = (table: MachineryLinkTable) => linked(table).map((field) => ({
+    ...(field.figure ? figureColumn(plainLabel(field.key)) : textColumn(plainLabel(field.key))),
+    id: linkedColumnId(field.key),
+  }));
+  const linkedCells = (table: MachineryLinkTable, offer: MachineryOfferDto) => linked(table).map((field) => field.text(offer));
+  // The card's number in the firm's base, beside the reference, once an offer has one (the AI search's).
+  const withFolio = offers.some((offer) => offer.folio);
+  const plainLabel = (key: string) => machineryFieldLabel(market, key, options);
+
   apartados.push(generatedApartado(`${MARKET_PREFIX}-datos`, "DATOS DE COMPARABLES", {
     tables: [
-      generatedTable(`${MARKET_PREFIX}-tabla-resumen`, "Resumen de comparables",
+      generatedTable(machineryMarketTableId("resumen"), "Resumen de comparables",
         [
-          figureColumn("REF."), textColumn("Descripción"), textColumn("Marca", "center"), textColumn("Modelo", "center"), figureColumn("Año"),
-          figureColumn(use.summary), textColumn("Aditamentos"), figureColumn("Fecha"), moneyColumn("Valor de Oferta"),
+          { ...figureColumn("REF."), id: "col-1" },
+          ...(withFolio ? [{ ...figureColumn(plainLabel("folio")), id: "col-folio" }] : []),
+          { ...textColumn(plainLabel("description")), id: "col-2" },
+          { ...textColumn(plainLabel("brand"), "center"), id: "col-3" },
+          { ...textColumn(plainLabel("model"), "center"), id: "col-4" },
+          { ...figureColumn(plainLabel("year")), id: "col-5" },
+          { ...figureColumn(plainLabel("hours")), id: "col-6" },
+          { ...textColumn(plainLabel("attachments")), id: "col-7" },
+          { ...figureColumn(plainLabel("date")), id: "col-8" },
+          { ...moneyColumn(plainLabel("price")), id: "col-9" },
+          ...linkedColumns("resumen"),
         ],
-        offers.map((row) => [row.ref, cell(row.description), cell(row.brand), cell(row.model), cell(row.year), cell(row.hours), cell(row.attachments), cell(row.date), money(row.price ?? 0)]),
+        offers.map((row) => [
+          row.ref, ...(withFolio ? [formatComparableId(row.folio) ?? EMPTY] : []),
+          cell(row.description), cell(row.brand), cell(row.model), cell(row.year), cell(row.hours), cell(row.attachments), cell(row.date),
+          row.price === null ? (capture ? EMPTY : money(0)) : money(row.price),
+          ...linkedCells("resumen", row),
+        ]),
         { notes: [{ position: "top", label: "Obtención del valor unitario.", text: "Comparables de bienes en venta semejantes en uso al sujeto que se valúa." }] }),
-      generatedTable(`${MARKET_PREFIX}-tabla-contacto`, "Información de contacto",
-        [figureColumn("REF."), textColumn("Contacto"), textColumn("Empresa"), figureColumn("Teléfono"), textColumn("Correo"), textColumn("Link"), textColumn("Ubicación"), textColumn("Observaciones")],
-        offers.map((offer) => printableMachineryContact(offer, options.advertiserData === true))
-          .map((row) => [row.ref, cell(row.contact), cell(row.company), cell(row.phone), cell(row.email), cell(row.link), cell(row.location), cell(row.notes)])),
+      generatedTable(machineryMarketTableId("contacto"), "Información de contacto",
+        [
+          { ...figureColumn("REF."), id: "col-1" },
+          { ...textColumn(plainLabel("contact")), id: "col-2" },
+          { ...textColumn(plainLabel("company")), id: "col-3" },
+          { ...figureColumn(plainLabel("phone")), id: "col-4" },
+          { ...textColumn(plainLabel("email")), id: "col-5" },
+          { ...textColumn(plainLabel("link")), id: "col-6" },
+          { ...textColumn(plainLabel("location")), id: "col-7" },
+          { ...textColumn(plainLabel("notes")), id: "col-8" },
+          ...linkedColumns("contacto"),
+        ],
+        // The editor sees the advertiser's data it captured; the dictamen prints them only when the carátula says so.
+        offers.map((offer) => ({ offer, shown: printableMachineryContact(offer, capture || options.advertiserData === true) }))
+          .map(({ offer, shown: row }) => [
+            row.ref, cell(row.contact), cell(row.company), cell(row.phone), cell(row.email), cell(row.link), cell(row.location), cell(row.notes),
+            ...linkedCells("contacto", offer),
+          ])),
     ],
   }));
 
   const life = (row: { usefulLife: number | null }) => row.usefulLife ?? market.usefulLife;
   const remaining = (age: number | null, usefulLife: number | null) => (age === null || usefulLife === null ? EMPTY : whole(Math.max(usefulLife - age, 0)));
   type Characteristic = [string, string, (row: (typeof offers)[number]) => string];
+  // What the subject has no datum for here (it has no offer price, G75 of the book is blank; its location is the
+  // valuation's, not one of these rows): blank, not the «—» of a datum still to capture, which the editor marks as missing.
+  const NOT_APPLICABLE = "";
   // As the book: what describes the equipment first, the appraiser's own rows after it, and the lives and the price at the end.
   const description: Characteristic[] = [
-    ["Marca", cell(subject.brand), (row) => cell(row.brand)],
-    ["Modelo", cell(subject.model), (row) => cell(row.model)],
-    ["Año", cell(subject.year), (row) => cell(row.year)],
-    [use.characteristic, cell(subject.hours), (row) => cell(row.hours)],
-    ["Ubicación", EMPTY, (row) => cell(row.location)],
+    [rowLabel("brand", "Marca"), cell(subject.brand), (row) => cell(row.brand)],
+    [rowLabel("model", "Modelo"), cell(subject.model), (row) => cell(row.model)],
+    [rowLabel("year", "Año"), cell(subject.year), (row) => cell(row.year)],
+    [rowLabel("hours", use.characteristic), cell(subject.hours), (row) => cell(row.hours)],
+    [rowLabel("location", "Ubicación"), NOT_APPLICABLE, (row) => cell(row.location)],
   ];
   const figures: Characteristic[] = [
-    ["Edad", whole(subject.age), (row) => whole(row.age)],
-    ["V.U.T.", whole(subject.usefulLife), (row) => whole(life(row))],
+    [rowLabel("age", "Edad"), whole(subject.age), (row) => whole(row.age)],
+    [rowLabel("usefulLife", "V.U.T."), whole(subject.usefulLife), (row) => whole(life(row))],
     ["V.U.R.", remaining(subject.age, subject.usefulLife), (row) => remaining(row.age, life(row))],
-    ["Precio Oferta", EMPTY, (row) => (row.price === null ? EMPTY : money(row.price))],
+    [rowLabel("price", "Precio Oferta"), NOT_APPLICABLE, (row) => (row.price === null ? EMPTY : money(row.price))],
   ];
   const fixed = ([concept, subjectValue, value]: Characteristic) => [concept, subjectValue, ...offers.map(value)];
+  // The editor keeps the rows still without a concept, to write it in them.
   const free = market.characteristics
-    .filter((row) => row.label.trim())
-    .map((row) => [row.label.trim(), cell(row.subject), ...places.map(({ place }) => cell(row.values[place] ?? ""))]);
+    .filter((row) => capture || row.label.trim())
+    .map((row) => [row.label.trim() || EMPTY, cell(row.subject), ...places.map(({ place }) => cell(row.values[place] ?? ""))]);
   apartados.push(generatedApartado(`${MARKET_PREFIX}-caracteristicas`, "CARACTERÍSTICAS TÉCNICAS", {
-    tables: [generatedTable(`${MARKET_PREFIX}-tabla-caracteristicas`, "Características técnicas",
+    tables: [generatedTable(machineryMarketTableId("caracteristicas"), "Características técnicas",
       [textColumn("Concepto"), figureColumn("Sujeto"), ...offers.map((row) => figureColumn(`Comparable ${row.ref}`))],
       [...description.map(fixed), ...free, ...figures.map(fixed)])],
   }));
 
-  const homologated = offers.filter((row) => isOfferComplete(row, market.usefulLife));
+  const homologated = capture ? offers : offers.filter((row) => isOfferComplete(row, market.usefulLife));
   const computed = new Map(result?.offers.map((row) => [row.id, row]) ?? []);
-  if (result && homologated.length) {
+  if ((result && homologated.length) || capture) {
+    const factors = machineryFactorColumns(market);
+    const columns = MACHINERY_HOMOLOGATION_COLUMNS;
+    const choice = machineryStatisticsOf(market);
+    const stats = machineryStatistics(market, result);
+    const values = result?.offers.map((row) => row.value) ?? [];
+    const statisticRows: TableSummaryRow[] = stats
+      ? choice.order.filter((key) => !choice.hidden.includes(key)).map((key) => ({ id: key, label: `${statisticLabel(choice, key)}:`, value: machineryStatisticText(key, choice, stats, values) }))
+      : [];
     apartados.push(generatedApartado(`${MARKET_PREFIX}-homologacion`, "CÁLCULO DE V.N.R. HOMOLOGADO", {
-      tables: [generatedTable(`${MARKET_PREFIX}-tabla-homologacion`, "V.N.R. homologado",
+      tables: [generatedTable(machineryMarketTableId("homologacion"), "V.N.R. homologado",
         [
-          figureColumn("REF."), moneyColumn("Valor de Oferta"), figureColumn("F.E.E.S."), figureColumn("Gastos Instal."), figureColumn("Σ Gast"),
-          moneyColumn("Valor de oferta puesto en sitio"),
-          figureColumn("FEd", { group: HOMOLOGATION }),
-          ...MACHINERY_FACTORS.map((factor) => figureColumn(factor.short, { group: HOMOLOGATION })),
-          resultantColumn("FRe", HOMOLOGATION),
-          moneyColumn("V.N.R. Unitario Instalado"),
+          { ...figureColumn("REF."), id: columns.ref },
+          { ...moneyColumn(plainLabel("price")), id: columns.price },
+          { ...figureColumn(plainLabel("fees")), id: columns.fees },
+          { ...figureColumn(plainLabel("installation")), id: columns.installation },
+          { ...figureColumn("Σ Gast"), id: columns.expenses },
+          { ...moneyColumn("Valor de oferta puesto en sitio"), id: columns.onSite },
+          { ...figureColumn("FEd", { group: HOMOLOGATION }), id: columns.age },
+          ...factors.map((factor) => ({ ...figureColumn(factor.label, { group: HOMOLOGATION }), id: machineryFactorColumnId(factor.key) })),
+          { ...resultantColumn("FRe", HOMOLOGATION), id: columns.resultant },
+          { ...moneyColumn("V.N.R. Unitario Instalado"), id: columns.value },
+          ...linkedColumns("homologacion"),
         ],
         homologated.map((row) => {
           const values = computed.get(row.ref);
           return [
-            row.ref, money(row.price ?? 0), rate(row.fees), rate(row.installation), rate(row.fees + row.installation),
-            money(values?.adjustedPrice ?? 0),
-            figure(values?.ageFactor), ...MACHINERY_FACTORS.map((factor) => figure(row[factor.key])), figure(values?.resultantFactor),
-            money(values?.value ?? 0),
+            row.ref, row.price === null ? EMPTY : money(row.price), rate(row.fees), rate(row.installation), rate(row.fees + row.installation),
+            values ? money(values.adjustedPrice) : EMPTY,
+            values ? figure(values.ageFactor) : EMPTY,
+            ...factors.map((factor) => figure(machineryOfferFactor(row, factor.key))),
+            values ? figure(values.resultantFactor) : EMPTY,
+            values ? money(values.value) : EMPTY,
+            ...linkedCells("homologacion", row),
           ];
         }),
-        { summaryBoxes: [
-          {
-            id: "valores",
-            position: "bottom",
-            align: "end",
-            caption: "Valores homologados resultantes",
-            rows: [{ label: "Valor Prom. Homologado:", value: money(result.mean) }, { label: "Mediana:", value: money(result.median), emphasis: "strong" }],
-          },
-          closingBox("VALOR COMPARATIVO DE MERCADO:", result.value),
-        ] })],
+        {
+          summaryBoxes: result ? [
+            { id: "valores", position: "bottom", align: "end", caption: "Valores homologados resultantes", rows: statisticRows },
+            {
+              id: "valor",
+              position: "bottom",
+              align: "end",
+              rows: [
+                ...(market.additionalAmount ? [{ id: "adicional", label: "Monto adicional a considerar:", value: money(market.additionalAmount) }] : []),
+                { id: "valor", label: "VALOR COMPARATIVO DE MERCADO:", value: money(result.value), emphasis: "total" as const },
+                { id: "letras", label: "Cifra en letras:", value: amountInWords(result.value) },
+              ],
+            },
+          ] : [],
+          notes: justificationNotes(market),
+        })],
     }));
   }
 
   return [generatedBlock(MARKET_PREFIX, "ENFOQUE COMPARATIVO DE MERCADO", { apartados })];
 }
+
+/** The sentence over the offer level, unless the appraiser writes another. */
+export const MACHINERY_OFFER_INTRO = "Nivel de oferta observada durante la investigación de mercado.";
+
