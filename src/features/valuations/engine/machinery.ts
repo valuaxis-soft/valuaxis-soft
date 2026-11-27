@@ -204,6 +204,8 @@ export type MachineryOfferInput = {
   usefulLife?: number;
   rating: number;
   factors: MachineryFactors;
+  /** Factors the appraiser added to the homologation, after the book's; they multiply the FRe too. */
+  extra?: { label: string; value: number }[];
 };
 
 export type MachineryMarketInput = {
@@ -211,6 +213,8 @@ export type MachineryMarketInput = {
   offers: MachineryOfferInput[];
   /** Excel ROUND digits of the market value, the appraiser's choice; the book rounds to tens of thousands (−4). */
   rounding?: RoundingDigits;
+  /** «Monto adicional a considerar», added to the rounded median (as a real estate market adds it); none in the book. */
+  additionalAmount?: number;
 };
 
 export type MachineryMarketResult = {
@@ -244,10 +248,12 @@ export function computeMachineryMarket(input: MachineryMarketInput, trace = new 
       value: (1 - (offer.age / life) ** 1.4) * ratingFactor,
     });
     const { conservation, maintenance, technological, economic } = offer.factors;
+    const extra = offer.extra ?? [];
     const resultantFactor = trace.record({
-      key: `${key}.fre`, label: `Factor resultante ${offer.id}`, formula: "FEd · FCo · FMt · FOt · FOe",
-      inputs: { FEd: ageFactor, FCo: conservation, FMt: maintenance, FOt: technological, FOe: economic },
-      value: ageFactor * conservation * maintenance * technological * economic,
+      key: `${key}.fre`, label: `Factor resultante ${offer.id}`,
+      formula: ["FEd · FCo · FMt · FOt · FOe", ...extra.map((factor) => factor.label)].join(" · "),
+      inputs: { FEd: ageFactor, FCo: conservation, FMt: maintenance, FOt: technological, FOe: economic, ...Object.fromEntries(extra.map((factor) => [factor.label, factor.value])) },
+      value: extra.reduce((product, factor) => product * factor.value, ageFactor * conservation * maintenance * technological * economic),
     });
     const value = trace.record({
       key: `${key}.valor`, label: `Valor homologado ${offer.id}`, formula: "FRe · precioAjustado",
@@ -268,9 +274,12 @@ export function computeMachineryMarket(input: MachineryMarketInput, trace = new 
     inputs: { n: values.length }, value: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2,
   });
   const digits = input.rounding === undefined ? MACHINERY_ROUNDING.market : input.rounding;
+  const rounded = roundIfSet(median, digits);
+  const additional = input.additionalAmount ?? 0;
   const value = trace.record({
-    key: "meh.mercado.valor", label: "Valor de mercado", formula: digits === null ? "mediana" : `ROUND(mediana, ${digits})`,
-    inputs: { mediana: median }, value: roundIfSet(median, digits),
+    key: "meh.mercado.valor", label: "Valor de mercado",
+    formula: `${digits === null ? "mediana" : `ROUND(mediana, ${digits})`}${additional ? " + monto adicional" : ""}`,
+    inputs: additional ? { mediana: median, adicional: additional } : { mediana: median }, value: rounded + additional,
     ...(digits === null ? {} : { rounding: digits }),
   });
   return { offers, mean, median, value, trace };

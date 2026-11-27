@@ -20,15 +20,13 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError, type ComparableFormValues } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
-import { CalcTableContextMenu } from "./calc-table-context-menu";
+import { CALC_SECTION_HEADING } from "./calculation-table-style";
 import { useAiAssist } from "@/features/ai/ai-assist-context";
 import type { ListingReading } from "@/features/ai/listing-prefill";
 import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
-import { computeMarketApproach, type HomologationStats, type MarketApproachResult } from "@/features/valuations/engine/market";
+import { computeMarketApproach, type MarketApproachResult } from "@/features/valuations/engine/market";
 import {
   COMPARABLE_TYPE_LABELS,
-  EXTRA_STATISTIC_KINDS,
   FACTOR_TYPES,
   FACTOR_TYPE_LABELS,
   MARKET_LABELS,
@@ -54,13 +52,10 @@ import {
   type CharacteristicField,
   type ComparableDto,
   type ComparableType,
-  type ExtraStatisticKind,
   type FactorSlotConfig,
   type HomologationBasis,
   type MarketCalculationDto,
   type MarketSettingsDto,
-  type PrintedStatistics,
-  type StatisticKey,
 } from "@/features/valuations/calculation/market-types";
 import { ADOPTED_VALUE_OUTSIDE_MESSAGE } from "@/features/valuations/calculation/adopted-value-check";
 import {
@@ -77,15 +72,6 @@ import {
   marketTableId,
   suggestedSubjectAreaFor,
 } from "@/features/valuations/calculation/market-document";
-import {
-  EXTRA_STATISTIC_LABELS,
-  extraStatisticText,
-  statisticLabel,
-  withExtraStatistic,
-  withExtraStatisticFormula,
-  withStatisticLabel,
-  withoutExtraStatistic,
-} from "@/features/valuations/calculation/market-statistics";
 import {
   SPEC_LABEL_KEYS,
   cardFieldLabels,
@@ -128,6 +114,7 @@ import { MarketEditSession, rebaseDraft } from "./market-edit-session";
 import { mirroredAttributes, sharedCharacteristics, unsharedAttributes } from "@/features/valuations/calculation/market-characteristic-sharing";
 import type { SubjectFacts } from "@/features/valuations/calculation/market-subject-facts";
 import { MarketHomologationCapture } from "./market-homologation-table";
+import { StatisticsTable, statisticValueText } from "./market-statistics-table";
 
 /** A datum of a comparable in its cell of the table of the dictamen: framed as a field, the appraiser's among the gray figures. */
 const CAPTURE_TEXT_CELL = "border-input bg-background text-xs";
@@ -1726,141 +1713,5 @@ function ComparableRowActions(props: {
         </Button>
       ) : null}
     </span>
-  );
-}
-
-/** The figure of a statistic of the box, as it prints: in pesos with thousands, a dispersion with two decimals; «—» while there is no result. */
-function statisticValueText(key: StatisticKey, choice: PrintedStatistics, stats: HomologationStats | null, homologated: readonly number[]): string {
-  if (!stats) return "—";
-  const extra = choice.extra?.find((item) => item.id === key);
-  if (extra) return extraStatisticText(extra, stats, homologated) ?? "—";
-  switch (key) {
-    case "initialDispersion": return stats.initialDispersion.toFixed(2);
-    case "dispersion": return stats.dispersion.toFixed(2);
-    case "offerMin": return money(stats.offerMin);
-    case "offerMax": return money(stats.offerMax);
-    case "min": return money(stats.min);
-    case "max": return money(stats.max);
-    case "mean": return money(stats.mean);
-    case "median": return money(stats.median);
-    default: return "—";
-  }
-}
-
-/**
- * The statistics of the market as a small table (video 8.10, 00:28–06:20):
- * which print (the box), their names as they print, their order, and
- * statistics of the appraiser's own (moda, desviación… or a formula over
- * PROMEDIO, MEDIANA, MINIMO, MAXIMO, DESVEST, N). The mean and the median
- * print beside the adopted value, the rest in the box of the dispersion.
- */
-function StatisticsTable(props: {
-  choice: PrintedStatistics;
-  values: (key: StatisticKey) => string;
-  readOnly: boolean;
-  onChange: (choice: PrintedStatistics) => void;
-}) {
-  const { choice, readOnly } = props;
-  const [adding, setAdding] = useState<ExtraStatisticKind | "">("");
-  const move = (index: number, by: -1 | 1) => {
-    const order = [...choice.order];
-    const [key] = order.splice(index, 1);
-    order.splice(index + by, 0, key);
-    props.onChange({ ...choice, order });
-  };
-  const add = (kind: ExtraStatisticKind) => props.onChange(withExtraStatistic(choice, kind, `custom:${Date.now().toString(36)}`));
-  return (
-    <div className="grid gap-1.5">
-      <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly>
-        <table className={cn(CALC_TABLE, "w-full text-sm")} aria-label="Estadísticas del mercado">
-          <thead className={CALC_HEAD}>
-            <tr>
-              <th className={cn(CALC_HEAD_CELL, "w-16")}>Imprimir</th>
-              <th className={cn(CALC_HEAD_CELL, "text-left")}>Estadístico (como se imprime)</th>
-              <th className={cn(CALC_HEAD_CELL, "w-40 text-right")}>Valor</th>
-              <th className={cn(CALC_HEAD_CELL, "w-28")}><span className="sr-only">Orden</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {choice.order.map((key, index) => {
-              const extra = choice.extra?.find((item) => item.id === key);
-              const label = statisticLabel(choice, key);
-              return (
-                <tr key={key} className={CALC_ROW} data-statistic={key}>
-                  <td className="px-2 py-1 text-center">
-                    <Checkbox
-                      aria-label={`Imprimir ${label}`}
-                      checked={!choice.hidden.includes(key)}
-                      disabled={readOnly}
-                      onCheckedChange={(checked) => props.onChange({ ...choice, hidden: checked === true ? choice.hidden.filter((item) => item !== key) : [...choice.hidden, key] })}
-                    />
-                  </td>
-                  <td className="px-1 py-1">
-                    <span className="grid gap-1">
-                      <CommitCell
-                        ariaLabel={`Nombre de ${label}`}
-                        disabled={readOnly}
-                        value={label}
-                        className="border-input text-sm text-foreground"
-                        onCommit={(text) => props.onChange(withStatisticLabel(choice, key, text))}
-                      />
-                      {extra?.kind === "formula" ? (
-                        <CommitCell
-                          ariaLabel={`Fórmula de ${label}`}
-                          disabled={readOnly}
-                          value={extra.formula ?? ""}
-                          placeholder="=PROMEDIO*0.95"
-                          title="Usa PROMEDIO, MEDIANA, MINIMO, MAXIMO, DESVEST y N: =(MAXIMO-MINIMO)/PROMEDIO"
-                          className="border-input font-mono text-xs"
-                          onCommit={(text) => props.onChange(withExtraStatisticFormula(choice, key, text))}
-                        />
-                      ) : null}
-                    </span>
-                  </td>
-                  <td className="px-2 py-1 text-right tabular-nums">{props.values(key)}</td>
-                  <td className="px-1 py-1">
-                    {!readOnly ? (
-                      <span className="flex items-center justify-end gap-0.5">
-                        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Subir ${label}`} disabled={index === 0} onClick={() => move(index, -1)}>
-                          <ArrowUp />
-                        </Button>
-                        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Bajar ${label}`} disabled={index === choice.order.length - 1} onClick={() => move(index, 1)}>
-                          <ArrowDown />
-                        </Button>
-                        {extra ? (
-                          <Button type="button" size="icon-sm" variant="ghost" className="text-destructive" aria-label={`Quitar ${label}`} onClick={() => props.onChange(withoutExtraStatistic(choice, key))}>
-                            <Trash2 />
-                          </Button>
-                        ) : null}
-                      </span>
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </CalcTableContextMenu>
-      {!readOnly ? (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <NativeSelect
-            size="sm"
-            aria-label="Estadístico por agregar"
-            value={adding}
-            className="w-56 text-xs"
-            onChange={(event) => setAdding(event.target.value as ExtraStatisticKind | "")}
-          >
-            <NativeSelectOption value="">Agregar estadístico…</NativeSelectOption>
-            {EXTRA_STATISTIC_KINDS.map((kind) => (
-              <NativeSelectOption key={kind} value={kind}>{EXTRA_STATISTIC_LABELS[kind]}</NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={!adding} onClick={() => { if (adding) add(adding); setAdding(""); }}>
-            <Plus data-icon="inline-start" /> Agregar
-          </Button>
-          <span className="text-muted-foreground">Las marcadas se imprimen en este orden: el promedio y la mediana junto al valor adoptado, las demás en el recuadro de la dispersión.</span>
-        </div>
-      ) : null}
-    </div>
   );
 }

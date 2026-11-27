@@ -220,3 +220,28 @@ test("the free technical characteristics are saved with the market capture, and 
   assert.deepEqual(old.market, { ...workbookMarket, formulas: {} });
   assert.deepEqual(old.market.characteristics, []);
 });
+
+test("the market's factors as columns, its additional amount and its names save, and the conclusion takes the value", async () => {
+  const fixture = await machineryFixture();
+  // FCo taken out of the homologation and a factor of the appraiser's left empty (1), plus 20,000.
+  const market = {
+    ...workbookMarket,
+    factorColumns: [{ key: "maintenance", label: "Mant." }, { key: "technological", label: "FOt" }, { key: "economic", label: "FOe" }, { key: "xpropio", label: "Factor propio" }],
+    additionalAmount: 20000,
+    fieldLabels: { brand: "Fabricante" },
+    linkedColumns: { homologacion: ["location"] },
+    offerLabels: ["ALTA", "MEDIA", "BAJA"],
+    offerMark: 0,
+    justification: "Factores del valuador.",
+  };
+  await saveMachineryCalculation(fixture.publicId, fixture.user, machineryInputSchema.parse({ market }));
+  const back = await getMachineryCalculation(fixture.publicId, fixture.organizationId);
+  assert.deepEqual(back.market.factorColumns, market.factorColumns);
+  assert.deepEqual(back.market.fieldLabels, { brand: "Fabricante" });
+  assert.deepEqual(back.market.linkedColumns, { homologacion: ["location"] });
+  assert.equal(back.market.offerMark, 0);
+  // The book's V.N.R. of each offer (AK81:AK85) over its FCo (AA81:AA85): 1,403,342.80 · 1,669,476.83 · 1,223,423.42 ·
+  // 877,243.69 · 1,502,557.65; median 1,403,342.80, ROUND(…, −4) = 1,400,000, plus 20,000.
+  assert.equal((await stored(fixture.publicId)).market, 1420000);
+  assert.equal((await getConclusionCalculation(fixture.publicId, fixture.organizationId)).values.mercado, 1420000);
+});

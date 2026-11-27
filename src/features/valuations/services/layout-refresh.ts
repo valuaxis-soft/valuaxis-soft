@@ -213,14 +213,35 @@ function withAutoFitColumns(table: TableContent): TableContent | null {
  * it holds (the factors narrow) and the table fits the page.
  */
 function marketTablesStep(sections: AppSection[]): { sections: AppSection[]; changes: LayoutChange[] } {
-  const step = "market-tables";
+  return changedTables(sections, "market-tables", (table, block) => asPlainTable(table) ?? (isMarketPage(block) ? withAutoFitColumns(table) : null));
+}
+
+/** The machinery market's page the calculation writes (machinery-document.ts). */
+const isMachineryMarketPage = (block: Block) => /^motor-maquinaria-mercado$/i.test(block.id);
+
+/**
+ * The machinery market as the real estate markets since step 2 (26 Nov 2026:
+ * every change applies to every approach): its tables drop the widths they
+ * were given, so each column fits what it holds (its factors narrow) and the
+ * table fits the page, now that the factors are its columns.
+ */
+function machineryMarketTablesStep(sections: AppSection[]): { sections: AppSection[]; changes: LayoutChange[] } {
+  return changedTables(sections, "machinery-market-tables", (table, block) => (isMachineryMarketPage(block) ? withAutoFitColumns(table) : null));
+}
+
+/** Every table of the document a step changes (`replace` gives the new one, or null to leave it), each change recorded to undo it. */
+function changedTables(
+  sections: AppSection[],
+  step: string,
+  replace: (table: TableContent, block: Block) => TableContent | null,
+): { sections: AppSection[]; changes: LayoutChange[] } {
   const changes: LayoutChange[] = [];
   const next = sections.map((section) => {
     if (section.removed) return section;
     let touched = false;
     const blocks = section.blocks.map((block) => {
       const change = (table: TableContent) => {
-        const replaced = asPlainTable(table) ?? (isMarketPage(block) ? withAutoFitColumns(table) : null);
+        const replaced = replace(table, block);
         if (!replaced) return table;
         changes.push({ step, kind: "table-changed", sectionId: section.id, blockId: block.id, tableId: table.id, previous: table });
         touched = true;
@@ -254,6 +275,13 @@ export const LAYOUT_STEPS: readonly LayoutStep[] = [
     since: "2026-11-26",
     description: "Las tablas de homologación son tablas como cualquier otra, con su nota, y las columnas de las tablas de mercado se ajustan a su contenido.",
     apply: marketTablesStep,
+  },
+  {
+    version: 3,
+    id: "machinery-market-tables",
+    since: "2026-11-27",
+    description: "Las tablas del mercado de maquinaria y equipo ajustan sus columnas a su contenido, como las de los mercados de inmuebles.",
+    apply: machineryMarketTablesStep,
   },
 ];
 

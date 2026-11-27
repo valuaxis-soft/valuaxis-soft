@@ -14,7 +14,7 @@ import {
   type MachineryMarketInput,
 } from "../engine/machinery";
 import type { CapturedFormulas } from "./captured-formulas";
-import type { OfferLevel } from "./market-types";
+import { MARKET_STATISTICS, printedStatisticsOf, type OfferLevel, type PrintedStatistics } from "./market-types";
 
 /** Key of the property type (TipoInmueble) whose valuations use the machinery panels. */
 export const MACHINERY_PROPERTY_TYPE = "MAQUINARIA_EQUIPO";
@@ -142,6 +142,8 @@ export type MachineryCostDto = {
 
 export type MachineryOfferDto = {
   ref: string;
+  /** Number of its card in the firm's base (C-00091), when it came from one (the AI search); null for an offer typed here. */
+  folio: number | null;
   // Resumen de comparables.
   description: string;
   brand: string;
@@ -172,6 +174,8 @@ export type MachineryOfferDto = {
   maintenance: number;
   technological: number;
   economic: number;
+  /** The factors the appraiser added to the homologation, by their key (`MachineryFactorColumn`); a missing one is 1. */
+  extraFactors: Record<string, number>;
 };
 
 /**
@@ -188,8 +192,26 @@ export type MachineryCharacteristicDto = {
 
 export const MACHINERY_CHARACTERISTICS_MAX = 30;
 
+/**
+ * A factor of the market's homologation, a column of its table (video 8.10:
+ * the factors are the homologation's columns): one of the book's (FCo, FMt,
+ * FOt, FOe) with the name the appraiser gives it, or one he added (`x…`),
+ * whose value each offer carries in `extraFactors`. FEd, the age factor,
+ * always multiplies; the FRe is FEd times these.
+ */
+export type MachineryFactorColumn = { key: string; label: string };
+
+/** The tables of the market a datum of the offer can be added to as a column. */
+export const MACHINERY_LINK_TABLES = ["resumen", "contacto", "homologacion"] as const;
+export type MachineryLinkTable = (typeof MACHINERY_LINK_TABLES)[number];
+
 export type MachineryMarketDto = {
+  /** The book's level, as captured before its options could be renamed; `offerMark` is read first. */
   offerLevel: OfferLevel | null;
+  /** The options of «Nivel de oferta observada», the place of the one observed and the sentence above, as a real estate market. */
+  offerLabels?: string[] | null;
+  offerMark?: number | null;
+  offerIntro?: string | null;
   /** Useful life (V.U.T.) of the offers that do not carry their own. */
   usefulLife: number | null;
   offers: MachineryOfferDto[];
@@ -199,6 +221,18 @@ export type MachineryMarketDto = {
   formulas?: CapturedFormulas;
   /** Excel ROUND digits of the market value, the appraiser's choice; null is no rounding. */
   rounding: RoundingDigits;
+  /** The factors of the homologation in their order; absent, the book's four. */
+  factorColumns?: MachineryFactorColumn[] | null;
+  /** The names the appraiser gave the data of the offers, by key: the column, the row and the card read the same one. */
+  fieldLabels?: Record<string, string> | null;
+  /** Data of the offer shown as columns of a table, in the order added. */
+  linkedColumns?: Partial<Record<MachineryLinkTable, string[]>> | null;
+  /** The statistics of the box under the homologation: which print, their names, their order and the appraiser's own. */
+  printedStatistics?: PrintedStatistics | null;
+  /** «Monto adicional a considerar», added to the rounded median; 0 by default. */
+  additionalAmount?: number;
+  /** «Justificación de los factores utilizados», after the homologation; none by default. */
+  justification?: string | null;
 };
 
 export type MachineryInputDto = { cost?: MachineryCostDto; market?: MachineryMarketDto };
@@ -248,9 +282,10 @@ export function emptyAttachment(index: number): MachineryAttachmentDto {
 
 export function emptyOffer(index: number): MachineryOfferDto {
   return {
-    ref: `C${index + 1}`, description: "", brand: "", model: "", year: "", hours: "", attachments: "", date: "", price: null,
+    ref: `C${index + 1}`, folio: null, description: "", brand: "", model: "", year: "", hours: "", attachments: "", date: "", price: null,
     contact: "", company: "", phone: "", email: "", link: "", location: "", notes: "",
     fees: 0, installation: 0, age: null, usefulLife: null, rating: null, conservation: 1, maintenance: 1, technological: 1, economic: 1,
+    extraFactors: {},
   };
 }
 
@@ -304,8 +339,64 @@ export function isOfferComplete(row: MachineryOfferDto, sharedUsefulLife: number
     && positive(row.usefulLife ?? sharedUsefulLife);
 }
 
+/** The book's factors of the homologation after the age factor, with their short names. */
+const MACHINERY_FACTOR_KEYS: readonly string[] = MACHINERY_FACTORS.map((factor) => factor.key);
+const isBookFactor = (key: string): key is keyof MachineryFactors => MACHINERY_FACTOR_KEYS.includes(key);
+const DEFAULT_MACHINERY_FACTOR_COLUMNS: readonly MachineryFactorColumn[] = MACHINERY_FACTORS.map((factor) => ({ key: factor.key, label: factor.short }));
+/** Key of a factor the appraiser added. */
+export const EXTRA_FACTOR_KEY = /^x[a-z0-9]{1,20}$/;
+export const MAX_MACHINERY_FACTORS = 10;
+
+/** The name the book gives one of its factors (FCo…), or null for one the appraiser added. */
+export const bookFactorShort = (key: string) => MACHINERY_FACTORS.find((factor) => factor.key === key)?.short ?? null;
+
+/** The factors of the market's homologation, in their order: the appraiser's, or the book's four. */
+export function machineryFactorColumns(market: Pick<MachineryMarketDto, "factorColumns">): MachineryFactorColumn[] {
+  const chosen = market.factorColumns;
+  if (!chosen) return [...DEFAULT_MACHINERY_FACTOR_COLUMNS];
+  const seen = new Set<string>();
+  return chosen
+    .filter((column) => {
+      if (!(isBookFactor(column.key) || EXTRA_FACTOR_KEY.test(column.key)) || seen.has(column.key)) return false;
+      seen.add(column.key);
+      return true;
+    })
+    .map((column) => ({ key: column.key, label: column.label.trim() || bookFactorShort(column.key) || "Factor" }));
+}
+
+/** The value of one factor of an offer: the book's from its field, the added ones from `extraFactors` (1 while empty). */
+export function machineryOfferFactor(offer: Pick<MachineryOfferDto, keyof MachineryFactors | "extraFactors">, key: string): number {
+  if (isBookFactor(key)) return offer[key];
+  const value = offer.extraFactors?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : 1;
+}
+
+/**
+ * The factors of an offer as the engine multiplies them: a factor of the book
+ * taken out of the table counts as 1, the ones added come after them. With
+ * the book's four, exactly the book's.
+ */
+function offerFactorsFor(offer: MachineryOfferDto, columns: readonly MachineryFactorColumn[]) {
+  const keys = new Set(columns.map((column) => column.key));
+  const factors = Object.fromEntries(MACHINERY_FACTOR_KEYS.map((key) => [key, keys.has(key) ? machineryOfferFactor(offer, key) : 1])) as MachineryFactors;
+  const extra = columns.filter((column) => !isBookFactor(column.key)).map((column) => ({ label: column.label, value: machineryOfferFactor(offer, column.key) }));
+  return extra.length ? { factors, extra } : { factors };
+}
+
+/** The book's statistics in the box: the mean and the median; the others may be printed too. */
+export const DEFAULT_MACHINERY_STATISTICS: PrintedStatistics = {
+  order: ["mean", "median", ...MARKET_STATISTICS.filter((key) => key !== "mean" && key !== "median")],
+  hidden: MARKET_STATISTICS.filter((key) => key !== "mean" && key !== "median"),
+  labels: { mean: "Valor Prom. Homologado", median: "Mediana" },
+};
+
+/** The appraiser's choice of statistics, every one once; missing, the book's. */
+export const machineryStatisticsOf = (market: Pick<MachineryMarketDto, "printedStatistics">): PrintedStatistics =>
+  (market.printedStatistics ? printedStatisticsOf({ printedStatistics: market.printedStatistics }) : DEFAULT_MACHINERY_STATISTICS);
+
 export function toMachineryMarketEngineInput(market: MachineryMarketDto): { ok: true; input: MachineryMarketInput } | { ok: false; reason: string } {
   const offers = market.offers.filter((row) => isOfferComplete(row, market.usefulLife));
+  const columns = machineryFactorColumns(market);
   if (!offers.length) return { ok: false, reason: "Captura al menos una oferta con su precio, edad, vida útil y calificación de conservación." };
   return {
     ok: true,
@@ -319,9 +410,10 @@ export function toMachineryMarketEngineInput(market: MachineryMarketDto): { ok: 
         age: row.age as number,
         ...(row.usefulLife === null ? {} : { usefulLife: row.usefulLife }),
         rating: row.rating as number,
-        factors: factorsOf(row),
+        ...offerFactorsFor(row, columns),
       })),
       rounding: market.rounding,
+      ...(market.additionalAmount ? { additionalAmount: market.additionalAmount } : {}),
     },
   };
 }
