@@ -240,7 +240,9 @@ export function DemoMaps({ googleMapsKey, nonce }: { googleMapsKey: string | nul
   const pending = applied.key !== liveKey;
 
   const applyToCroquis = () => {
-    const frame = frameFromView(liveView.current, subject);
+    // The demonstration asks the Static API, which takes whole zooms only.
+    const view = frameFromView(liveView.current, subject);
+    const frame = { ...view, zoom: Math.round(view.zoom) };
     const macro = isMacroZoom(frame.zoom);
     setApplied((previous) => ({
       key: liveKey,
