@@ -10,9 +10,11 @@ import "./globals.css";
 
 // next/font downloads the files at build time and serves them from our own
 // origin, so the CSP needs no font host. See docs/DISENO.md.
+// Its italic too: a figure the calculation gives (in italic) slanted by the browser lost its last digit in a narrow cell.
 const plexSans = IBM_Plex_Sans({
   variable: "--font-plex-sans",
   subsets: ["latin"],
+  style: ["normal", "italic"],
   display: "swap",
 });
 
