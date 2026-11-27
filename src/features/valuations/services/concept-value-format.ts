@@ -1,4 +1,5 @@
 import type { Concept, ConceptDateFormat, ConceptValueFormat } from "@/features/valuations/model";
+import { amountInWords } from "@/features/valuations/engine/amount-in-words";
 import { formatMexicanPhone } from "@/features/valuations/services/caratula-validation";
 import { DEFAULT_NUMBER_PRESENTATION, type NumberPresentation } from "@/features/valuations/services/number-presentation";
 
@@ -20,6 +21,8 @@ export const NUMERIC_VALUE_FORMAT_OPTIONS: Array<{ value: ConceptValueFormat; la
   { value: "kg", label: "kg", symbol: "kg" },
   { value: "g", label: "g", symbol: "g" },
   { value: "l", label: "L", symbol: "L" },
+  // Video 8.14, 49:30: «formato del valor… en letra», for any linked amount (the concluded value, the carátula's).
+  { value: "words", label: "En letra" },
   { value: "custom", label: "Otra unidad" },
 ];
 
@@ -135,6 +138,7 @@ export function resolveConceptValueFormat(
 export function conceptValueFormatLabel(concept: Pick<Concept, "type" | "valueFormat" | "customUnit">) {
   const format = resolveConceptValueFormat(concept);
   if (format === "custom") return concept.customUnit?.trim() || "Otra";
+  if (format === "words") return "Letra";
   return FORMAT_SYMBOLS[format] ?? "Sin";
 }
 
@@ -246,7 +250,7 @@ export function formatNumericConceptValue(
 }
 
 /** Formats that represent non-physical or non-convertible dimensions. */
-const NON_CONVERTIBLE_FORMATS = new Set<ConceptValueFormat>(["plain", "mxn", "mxn-mn", "percent", "custom"]);
+const NON_CONVERTIBLE_FORMATS = new Set<ConceptValueFormat>(["plain", "mxn", "mxn-mn", "percent", "words", "custom"]);
 
 /** Money as the dictamen prints it: "$2,200,000.00", with the legal tender mark when asked ("$2,200,000.00 M.N."). */
 export function formatMoneyForDocument(value: number, options: { legalTender?: boolean } = {}) {
@@ -287,6 +291,12 @@ export function formatNumericValue(
   const formattedNumber = formatPlainNumber(displayValue, presentation.thousandsSeparator);
 
   if (format === "plain") return formattedNumber;
+
+  // In words, as the firm's Excel: «(OCHO MILLONES QUINIENTOS MIL PESOS 00/100 M.N.)».
+  if (format === "words") {
+    const num = Number(numericValue);
+    return Number.isFinite(num) && num >= 0 ? amountInWords(num) : rawValue;
+  }
 
   // Money keeps its separators whatever the document chose (number-presentation.ts).
   if (format === "mxn" || format === "mxn-mn") {

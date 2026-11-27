@@ -28,8 +28,26 @@ const calculation: ConclusionCalculationDto = {
 };
 const FIRMAS = [{ name: "Arq. Persona Inventada", cedula: "1234567", role: "Valuador" }];
 
+/**
+ * The conclusion as valuations made before 27 Nov 2026 keep it until their
+ * format is refreshed: the resumen and the concluded value in one block, and
+ * FIRMAS a block of its own. It still prints as the despacho's book.
+ */
+function legacy(section: AppSection): AppSection {
+  const [conclusion, declarations] = section.blocks;
+  const part = (index: number) => conclusion.apartados[index].concepts;
+  return {
+    ...section,
+    blocks: [
+      { ...conclusion, concepts: [...part(0), ...part(3), ...part(2).filter((concept) => concept.label === "Observaciones finales")], apartados: [] },
+      declarations,
+      { ...declarations, id: "conclusiones-block-3-firmas", title: "FIRMAS", concepts: part(4) },
+    ],
+  };
+}
+
 function synced(): AppSection {
-  const section = structuredClone(conclusionesSection);
+  const section = legacy(structuredClone(conclusionesSection));
   const result = concludeValue(conclusionInput(calculation), DEFAULT_ENGINE_CONFIG);
   return withConceptValues(withConceptValues(section, conclusionValues(calculation, result)), signatureConceptValues(FIRMAS));
 }

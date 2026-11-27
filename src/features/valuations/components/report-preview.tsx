@@ -28,7 +28,7 @@ import { isTerrenoSection } from "@/features/valuations/sections/terreno";
 import { ConstruccionPreview, construccionFlowItemsInFlow, isConstruccionSection } from "./construccion-preview";
 import { usePrintVersion } from "./print-version-context";
 import { CURRENT_PRINT_VERSION } from "@/features/valuations/services/print-version";
-import { documentBlockFlowItems, inPhotoGrid } from "./document-block-renderer";
+import { documentBlockFlowItems, inPhotoGrid, type ApartadoHead } from "./document-block-renderer";
 import { DocumentPreviewHeader } from "./document-preview-header";
 import {
   AutoPaginatedDocumentFlow,
@@ -287,7 +287,8 @@ export function sectionFlowItems(
  * and its FIRMAS print in the despacho's format (video 7.1).
  */
 function sectionBlockItems(section: AppSection, applyConceptLayout: boolean, caratula?: Pick<CaratulaFormData, "firmas">): DocumentFlowItem[] {
-  const print = (block: Block) => reportBlockFlowItems(block, applyConceptLayout);
+  const print = (block: Block, options?: { renderApartadoHead?: (subBlock: Apartado, displayLabel: string) => ApartadoHead | null }) =>
+    reportBlockFlowItems(block, applyConceptLayout, options);
   const key = getCanonicalSectionKey(section.id);
   const conclusion = key === "CONCLUSIONES";
   return section.blocks
@@ -491,6 +492,7 @@ function reportBlockFlowItems(
     renderTitleBar?: boolean;
     renderBlockTitle?: (block: Block) => ReactNode;
     renderApartadoTitle?: (block: Block, subBlock: Apartado, displayLabel: string) => ReactNode;
+    renderApartadoHead?: (subBlock: Apartado, displayLabel: string) => ApartadoHead | null;
   },
 ): DocumentFlowItem[] {
   return documentBlockFlowItems(block, {
@@ -498,5 +500,6 @@ function reportBlockFlowItems(
     renderTitleBar: options?.renderTitleBar ?? true,
     renderBlockTitle: options?.renderBlockTitle,
     renderApartadoTitle: options?.renderApartadoTitle,
+    renderApartadoHead: options?.renderApartadoHead,
   });
 }

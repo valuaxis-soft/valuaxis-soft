@@ -211,13 +211,15 @@ export function documentBlockFlowItems(
     // instead of being cut at the end of this one.
     if (firstItem.type === "apartado" && structuralRow.items.length === 1) {
       const subBlock = subBlocksById.get(firstItem.apartadoId);
-      if (!subBlock || subBlock.enabled === false || apartadoPrintsNothing(subBlock)) continue;
+      if (!subBlock || subBlock.enabled === false) continue;
+      // An apartado in a format of its own prints what it makes (the conclusion's chart has no concept of its own).
+      const head = apartadoHead(subBlock);
+      if (!head && apartadoPrintsNothing(subBlock)) continue;
       const apId = `ap-${block.id}-${structuralRow.id}`;
       // The first apartado sits right under the block's title bar.
       const underTitle = previous === "title" ? true : undefined;
       previous = "apartado";
       previousTableRoom = false;
-      const head = apartadoHead(subBlock);
       // Whether the row before this one of the apartado is a table with "Espacio después".
       const afterRoomOf = (rows: ContentLayoutRowV2[], index: number) => index > 0 && tableRoom(rows[index - 1], subBlock, "after");
       if (head) {

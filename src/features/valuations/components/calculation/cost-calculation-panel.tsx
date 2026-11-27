@@ -13,12 +13,13 @@ import {
   CONSERVATION_CRITERION_LABELS,
   CONSERVATION_RATINGS,
   DEFAULT_COST_ROUNDING,
+  DEFAULT_EXTRA_VALUE_LABEL,
+  MAX_COST_EXTRA_VALUES,
   LAND_FACTORS,
   MAX_CONSERVATION_OPTIONS,
   MAX_EXTRA_DEMERIT_FACTORS,
   constructionCostOf,
   conservationCriterionOf,
-  addConstructionDisabledReason,
   conservationCriterionOfColumns,
   conservationText,
   readConservationText,
@@ -43,6 +44,7 @@ import {
   type CostColumnsDto,
   type CostLandDto,
   type CostRoundingDto,
+  type ConstructionTypeDto,
   type DemeritColumnsDto,
   type IndirectDto,
   type InstallationDto,
@@ -54,11 +56,19 @@ import { Trace } from "@/features/valuations/engine/trace";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { collectFormulas, withFormulaTexts, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import type { CapturePages } from "@/features/valuations/calculation/capture-display";
-import { COST_TEMPLATE_BLOCK_IDS, costCaptureColumns, costDocumentBlocks, costIndirectOrder } from "@/features/valuations/calculation/cost-document";
+import {
+  COST_PHYSICAL_VALUE_BOX,
+  COST_TEMPLATE_BLOCK_IDS,
+  costCaptureColumns,
+  costExtraValueRowId,
+  costDocumentBlocks,
+  costIndirectOrder,
+  costPhysicalValueTable,
+} from "@/features/valuations/calculation/cost-document";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { CALC_RESULT } from "./calculation-table-style";
 import { ApproachLeftOutNotice, ApproachRemoval, type ApproachInReport } from "./approach-removal";
-import { CaptureSlot, usePublishCapturePages, type CaptureAddress } from "../editor/capture-host";
+import { CaptureSlot, useCaptureColumns, usePublishCapturePages, type CaptureAddress, type CaptureHeaderRename } from "../editor/capture-host";
 import { cn } from "@/lib/utils";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
 import { FormulaInput } from "./formula-input";
@@ -74,9 +84,18 @@ import type { CriterionScope, SavedConservationCriterion } from "@/features/firm
 /** Completion and undivided share are fractions (1 = 100 %) edited as percentages; the added factors are texts too. */
 type PercentRow<T> = Omit<Texts<T>, "completion" | "undivided" | "extraFactors"> & { completion: string; undivided: string; extraFactors: string[] };
 
+/**
+ * The data of a construction's type written in the cost approach's own table
+ * (video 8.14, 42:59: B is captured where it prints): present only once
+ * written there, or for a construction added here that has no type yet.
+ */
+type TypeTexts = Partial<Record<(typeof TYPE_FIELDS)[number], string>>;
+const TYPE_FIELDS = ["description", "area", "age", "usefulLife"] as const;
+type TypeData = Partial<Pick<ConstructionTypeDto, (typeof TYPE_FIELDS)[number]>>;
+
 type Draft = {
   land: Omit<Texts<CostLandDto>, "factors"> & { factors: Record<LandFactorKey, string> };
-  constructions: PercentRow<ConstructionCostDto>[];
+  constructions: Array<PercentRow<ConstructionCostDto> & TypeTexts>;
   installations: PercentRow<InstallationDto>[];
   indirects: Texts<IndirectDto>[];
   rounding: CostRoundingDto;
@@ -86,7 +105,7 @@ type Draft = {
 /** What the panel edits: every column of the capture, factors with a formula empty (null) when they take it. */
 type PanelInput = {
   land: CostLandDto;
-  constructions: ConstructionCostDto[];
+  constructions: Array<ConstructionCostDto & TypeData>;
   installations: InstallationDto[];
   indirects: IndirectDto[];
   rounding: CostRoundingDto;
@@ -170,7 +189,8 @@ function plainDraftOf(input: CostCalculationDto): Draft {
       ...typesToAdd(input.types, input.constructions, costColumnsOf(input.columns).excludedTypes).map((type) => percentRow(emptyConstructionCost(type.ref))),
     ],
     installations: input.installations.map(percentRow),
-    indirects: input.indirects.map(textsOf),
+    // The percentage of an indirect is typed as such (10 = 10 %) and kept as its fraction (video 8.14, 45:09).
+    indirects: input.indirects.map((row) => ({ ...textsOf(row), percentage: row.percentage === null ? "" : percentText(row.percentage) })),
     rounding: input.rounding ?? DEFAULT_COST_ROUNDING,
     columns: costColumnsOf(input.columns),
   };
@@ -187,15 +207,67 @@ function inputOf(draft: Draft): PanelInput {
       surfaceFactor: parseDecimal(draft.land.surfaceFactor),
       resultantFactor: parseDecimal(draft.land.resultantFactor),
     },
-    constructions: draft.constructions.map((row) => fractionRow(row, emptyConstructionCost(), conservationCriterionOfColumns(draft.columns.constructions))),
+    constructions: draft.constructions.map((row) => ({ ...fractionRow(row, emptyConstructionCost(), conservationCriterionOfColumns(draft.columns.constructions)), ...typeDataOf(row) })),
     installations: draft.installations.map((row, index) => fractionRow(row, emptyInstallation(index), conservationCriterionOfColumns(draft.columns.installations))),
-    indirects: draft.indirects.map((row) => numbersOf(row, { concept: "", percentage: null, base: null })),
+    indirects: draft.indirects.map((row) => {
+      const numbers = numbersOf(row, { concept: "", percentage: null, base: null });
+      const percent = parseDecimal(row.percentage);
+      return { ...numbers, percentage: percent === null ? null : Number((percent / 100).toFixed(10)) };
+    }),
     rounding: draft.rounding,
     columns: draft.columns,
   };
 }
 
 const keptRows = <T,>(rows: T[], keep: (row: T) => boolean) => rows.flatMap((row, index) => (keep(row) ? [index] : []));
+
+const INDIRECT_COLUMNS = costCaptureColumns({ constructions: { other: "", extra: [] }, installations: { other: "", extra: [] } }).indirects;
+const INDIRECTS_TABLE = INDIRECT_COLUMNS.table;
+/** Base and Importe of the indirects: the appraiser may take them out of the table; Concepto and Porcentaje are the capture. */
+const REMOVABLE_INDIRECT_COLUMNS = new Set([INDIRECT_COLUMNS.base, INDIRECT_COLUMNS.amount]);
+
+/**
+ * What the cost approach says of the columns and boxes of its tables: the
+ * indirects' Base and Importe may be taken out (they stay out), and the
+ * values added to the physical value are edited under its table, not among
+ * the labels of its box.
+ */
+function costTableColumnsManager(): CaptureHeaderRename {
+  return {
+    handles: () => false,
+    rename: () => undefined,
+    removable: (columnId) => REMOVABLE_INDIRECT_COLUMNS.has(columnId),
+    boxRowManaged: (rowKey) => rowKey.startsWith(`${COST_PHYSICAL_VALUE_BOX}.${costExtraValueRowId("")}`),
+  };
+}
+
+/** The type's data written in the row, as numbers; nothing for what was not written here. */
+function typeDataOf(row: TypeTexts): TypeData {
+  const data: TypeData = {};
+  if (row.description !== undefined) data.description = row.description;
+  for (const key of ["area", "age", "usefulLife"] as const) {
+    if (row[key] !== undefined) data[key] = parseDecimal(row[key] ?? "");
+  }
+  return data;
+}
+
+/**
+ * The type's data a row sends: all of it for a construction whose type does
+ * not exist yet (the server creates it), and for one that exists only what
+ * differs from it (the server writes it in the type), so a save that changes
+ * nothing sends nothing.
+ */
+function typeDataToSend(row: ConstructionCostDto & TypeData, types: ConstructionTypeDto[]): TypeData {
+  const type = findConstructionType(types, row.ref);
+  const data: TypeData = {};
+  for (const key of TYPE_FIELDS) {
+    const value = row[key];
+    if (value === undefined) continue;
+    if (!type || type[key] !== value) Object.assign(data, { [key]: value });
+  }
+  if (!type) return { description: "", area: null, age: null, usefulLife: null, ...data };
+  return data;
+}
 
 /**
  * The installations after one is taken out: numbered 1, 2, 3… as they were,
@@ -240,14 +312,18 @@ function withRowBack(current: Draft, list: "constructions" | "installations" | "
  * What can be saved: rows still being written (no reference or description)
  * wait in the draft. The formulas typed in the rows saved go with them.
  */
-function payloadOf(draft: Draft): PanelInput {
+function payloadOf(draft: Draft, types: ConstructionTypeDto[]): PanelInput {
   const input = inputOf(draft);
   const constructions = keptRows(input.constructions, (row) => Boolean(row.ref.trim()));
   const installations = keptRows(input.installations, (row) => Boolean(row.ref.trim()) && installationHasData(row));
   const indirects = keptRows(input.indirects, (row) => Boolean(row.concept.trim()));
   const payload = {
     land: input.land,
-    constructions: constructions.map((index) => input.constructions[index]),
+    constructions: constructions.map((index) => {
+      const row = input.constructions[index];
+      const cost = Object.fromEntries(Object.entries(row).filter(([key]) => !(TYPE_FIELDS as readonly string[]).includes(key))) as ConstructionCostDto;
+      return { ...cost, ...typeDataToSend(row, types) };
+    }),
     installations: installations.map((index) => input.installations[index]),
     indirects: indirects.map((index) => input.indirects[index]),
     rounding: input.rounding,
@@ -602,6 +678,32 @@ export function installationRefProblem(refs: string[], index: number, ref: strin
  * Linked with the table of INF. CONSTRUCCIÓN it is written there too; with
  * that table unlinked, this is where it is changed.
  */
+/**
+ * The name or the amount of a value added to the physical value: written
+ * freely and saved when left. The panel's own save on leaving a field is
+ * stopped, as it would send what it held before this change.
+ */
+function ExtraValueField(props: { label: string; value: string; placeholder: string; className: string; numeric?: boolean; disabled: boolean; onCommit: (text: string) => void }) {
+  const [typed, setTyped] = useState<string | null>(null);
+  const shared = {
+    "aria-label": props.label,
+    className: cn(cell, "border-input", props.className),
+    autoComplete: "off",
+    disabled: props.disabled,
+    placeholder: props.placeholder,
+    value: typed ?? props.value,
+    onChange: (event: { target: { value: string } }) => setTyped(event.target.value),
+    onBlur: (event: { stopPropagation: () => void }) => {
+      const text = typed;
+      setTyped(null);
+      if (text === null || text.trim() === props.value.trim()) return;
+      event.stopPropagation();
+      props.onCommit(text);
+    },
+  };
+  return props.numeric ? <FormulaInput {...shared} grouping /> : <Input {...shared} />;
+}
+
 function InstallationRefInput(props: { value: string; disabled: boolean; onCommit: (ref: string) => void }) {
   const [typed, setTyped] = useState<string | null>(null);
   return (
@@ -671,8 +773,9 @@ export function CostCalculationPanel(props: {
     }
   });
   // Undo and redo of the panel (Ctrl+Z, Ctrl+Y), as in the market panel: taking out a row comes back too (video 7.4, 20:27).
+  const typesRef = useRef<ConstructionTypeDto[]>([]);
   const saveDraft = (next: Draft) => {
-    if (!readOnly) void enqueueSave(payloadOf(next));
+    if (!readOnly) void enqueueSave(payloadOf(next, typesRef.current));
   };
   const history = useDraftHistory<Draft>({
     apply: (next) => {
@@ -727,6 +830,7 @@ export function CostCalculationPanel(props: {
   const draftRef = useRef<Draft | null>(null);
   useEffect(() => {
     draftRef.current = draft;
+    typesRef.current = calculation?.types ?? [];
   });
 
   // The page of the approach as the capture holds it right now: its tables are where it is captured (one table, 20 nov 2026).
@@ -746,6 +850,12 @@ export function CostCalculationPanel(props: {
     return { blocks: costDocumentBlocks(captured, live.result, live.trace, { capture: true }), placeholderIds: COST_TEMPLATE_BLOCK_IDS };
   }, [calculation, pagesDraft]);
   usePublishCapturePages(capturePages);
+  // The table the physical value closes (its box lists the values added to it, edited under the table) and the
+  // indirects' table, whose Base and Importe may be taken out (video 8.14, 47:18: «no la puedo eliminar»).
+  const physicalValueTable = capturePages ? costPhysicalValueTable(capturePages.blocks) : null;
+  const costTableColumns = useMemo(() => costTableColumnsManager(), []);
+  useCaptureColumns(INDIRECTS_TABLE, costTableColumns);
+  useCaptureColumns(physicalValueTable ?? INDIRECTS_TABLE, costTableColumns);
 
   if (loadError) return <p className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">{loadError}</p>;
   if (!calculation || !draft || !derived) {
@@ -770,7 +880,6 @@ export function CostCalculationPanel(props: {
   const reference = landReferenceArea({ land: input.land, market: calculation.market });
   const pickedRefs = new Set(draft.constructions.map((row) => row.ref.trim().toLowerCase()));
   const unpickedTypes = calculation.types.filter((type) => !pickedRefs.has(type.ref.trim().toLowerCase()));
-  const addConstructionReason = addConstructionDisabledReason(calculation.types.length, unpickedTypes.length);
 
   const save = (next = draft) => saveDraft(next);
   // Each change is one step of «Deshacer»; typing in one field is one step, as in the document.
@@ -931,6 +1040,30 @@ export function CostCalculationPanel(props: {
     setDraft(next);
     save(next);
   };
+  // The values the appraiser adds to the physical value (video 8.14, 43:50): saved at once, as a row taken out.
+  const changeExtraValues = (change: (items: NonNullable<CostColumnsDto["extraValues"]>) => NonNullable<CostColumnsDto["extraValues"]>) => {
+    record(null);
+    const items = change(draft.columns.extraValues ?? []);
+    const { extraValues: _before, ...rest } = draft.columns;
+    const next = { ...draft, columns: items.length ? { ...rest, extraValues: items } : rest };
+    setDraft(next);
+    save(next);
+  };
+  const addExtraValue = () => {
+    const items = draft.columns.extraValues ?? [];
+    if (items.length >= MAX_COST_EXTRA_VALUES) {
+      toast.info(`El valor físico lleva hasta ${MAX_COST_EXTRA_VALUES} valores agregados.`);
+      return;
+    }
+    const taken = new Set(items.map((item) => item.id));
+    let number = items.length + 1;
+    while (taken.has(`v${number}`)) number += 1;
+    changeExtraValues((current) => [...current, { id: `v${number}`, label: DEFAULT_EXTRA_VALUE_LABEL, amount: null }]);
+  };
+  const setExtraValue = (id: string, patch: Partial<{ label: string; amount: number | null }>) =>
+    changeExtraValues((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  const removeExtraValue = (id: string) => changeExtraValues((current) => current.filter((item) => item.id !== id));
+
   const addRow = (list: "constructions" | "installations" | "indirects") => {
     record(null);
     insertRow(list);
@@ -938,13 +1071,20 @@ export function CostCalculationPanel(props: {
   const insertRow = (list: "constructions" | "installations" | "indirects") => setDraft((current) => {
     if (!current) return current;
     // A new construction row picks the first type not valued yet, and takes it back into the cost approach.
+    // With every type valued (or none at all), it is a new type, T-1, T-2…: its data is written in this same
+    // table and the type is created with it, in INF. CONSTRUCCIÓN too (video 8.14, 43:20: B could not be captured).
     if (list === "constructions") {
-      const ref = unpickedTypes[0]?.ref ?? "";
-      const excludedTypes = (current.columns.excludedTypes ?? []).filter((item) => item.trim().toLowerCase() !== ref.trim().toLowerCase());
+      const picked = unpickedTypes[0]?.ref;
+      if (!picked) {
+        const ref = nextCaptureRef("types", [...calculation.types.map((type) => type.ref), ...current.constructions.map((row) => row.ref)]);
+        const fresh = { ...percentRow(emptyConstructionCost(ref)), description: "", area: "", age: "", usefulLife: "" };
+        return { ...current, constructions: [...current.constructions, fresh] };
+      }
+      const excludedTypes = (current.columns.excludedTypes ?? []).filter((item) => item.trim().toLowerCase() !== picked.trim().toLowerCase());
       return {
         ...current,
         columns: { ...current.columns, excludedTypes },
-        constructions: [...current.constructions, percentRow(emptyConstructionCost(ref))],
+        constructions: [...current.constructions, percentRow(emptyConstructionCost(picked))],
       };
     }
     // The next free number: with 1 and 3 left, a new one is 4, not a second 3 the save refuses (and the row was lost on reloading).
@@ -981,14 +1121,16 @@ export function CostCalculationPanel(props: {
     );
   };
   // A percentage from 0 to 100, stored as a fraction; the % sign sits next to it.
-  const percentInput = (list: "constructions" | "installations", index: number, key: "completion" | "undivided", current: string, label: string) => (
+  const percentInput = (
+    list: "constructions" | "installations" | "indirects", index: number, key: "completion" | "undivided" | "percentage", current: string, label: string, placeholder = "100",
+  ) => (
     <div className="flex items-center gap-0.5">
       <FormulaInput
         aria-label={`${label} (%)`}
         className={cell}
         disabled={readOnly}
         value={current}
-        placeholder="100"
+        placeholder={placeholder}
         autoComplete="off"
         data-cost-cell={`${list}.${index}.${key}`}
         onChange={(event) => setRow(list, index, key, event.target.value)}
@@ -1113,6 +1255,8 @@ export function CostCalculationPanel(props: {
   const indirectRowIds = at.indirects.rows(draft.indirects.length);
   const indirectPlaces = costIndirectOrder(input.indirects);
   const landCell = (column: string) => ({ table: at.land.table, row: at.land.row, column });
+  // The table the physical value closes, where the values added to it are captured.
+  const physicalTable = capturePages ? costPhysicalValueTable(capturePages.blocks) : null;
   const surfaceFormula = step("costos.terreno.factorSuperficie")?.formula;
   const addRowButton = (list: "constructions" | "installations" | "indirects", label: string, reason: string | null = null) => (
     <span title={reason ?? undefined} className="inline-flex items-center gap-2">
@@ -1243,23 +1387,23 @@ export function CostCalculationPanel(props: {
           <p className="mt-1" data-testid="cost-installations-legend">
             C) P/C: P = Privativa, C = Común. Las sumas privativa y común son informativas; el subtotal incluye las dos. Las instalaciones están vinculadas con su tabla de la sección INF. CONSTRUCCIÓN: lo que agregues o cambies allá (descripción, unidad, cantidad, edad, vida útil) llega aquí, y lo de aquí se escribe allá. Con la cadena de cada renglón desvinculas solo el nombre, para escribir aquí uno más breve.
           </p>
-          <p className="mt-1">D) Costos indirectos, solo si el avalúo los lleva: concepto, porcentaje (0.05 = 5 %) y base. Con la base vacía se calculan sobre el valor de construcciones e instalaciones.</p>
+          <p className="mt-1">D) Costos indirectos, solo si el avalúo los lleva: concepto, porcentaje (10 = 10 %) y base. Con la base vacía se calculan sobre el valor de construcciones e instalaciones. Las columnas Base e Importe se pueden eliminar de la tabla.</p>
+          <p className="mt-1">Valor físico: suma A, B y C (y D, si hay indirectos). Con «+ Valor» agregas otro renglón al resumen con su importe, y el valor físico lo suma.</p>
         </details>
         {unpickedTypes.length ? (
           <p className="text-xs text-muted-foreground" data-testid="cost-unpicked-types">
             Fuera del cálculo (solo descritos en la sección de construcciones): {unpickedTypes.map((type) => type.ref).join(", ")}.
           </p>
         ) : null}
-        {!calculation.types.length ? (
-          <p className="text-xs text-muted-foreground">Aún no hay tipos de construcción: escríbelos en la tabla de tipos de la sección INF. CONSTRUCCIÓN.</p>
-        ) : null}
-        {addConstructionReason && calculation.types.length ? (
-          <p className="text-xs text-muted-foreground" data-testid="cost-add-construction-reason">{addConstructionReason}</p>
+        {!draft.constructions.length ? (
+          <p className="rounded-md border border-[color:var(--warning,var(--border))] bg-muted/40 px-2 py-1.5 text-xs" data-testid="cost-no-constructions">
+            B) Sin construcciones: el valor físico no incluye el valor de las construcciones. Agrégalas con «+ Construcción» en la tabla B) (se escriben también en INF. CONSTRUCCIÓN) o en la tabla de tipos de esa sección.
+          </p>
         ) : null}
         {/* Adding a row goes under its table; while the page has no such table yet, here. */}
         <div className="flex flex-wrap items-center gap-2 empty:hidden" data-testid="cost-add-rows">
           <CaptureSlot at={{ table: at.constructions.table, part: "footer" }} fallback>
-            {addRowButton("constructions", "Construcción", addConstructionReason)}
+            {addRowButton("constructions", "Construcción")}
           </CaptureSlot>
           <CaptureSlot at={{ table: at.installations.table, part: "footer" }} fallback>
             {addRowButton("installations", "Instalación")}
@@ -1348,8 +1492,39 @@ export function CostCalculationPanel(props: {
       {draft.constructions.map((row, index) => {
         const type = findConstructionType(calculation.types, row.ref);
         const rowId = constructionRowIds[index];
-        const missing = missingCostFields(withConstructionType(input.constructions[index], calculation.types), "constructions");
+        const typed = withConstructionType(input.constructions[index], calculation.types);
+        const missing = missingCostFields(typed, "constructions");
         const cellAt = (column: string) => ({ table: at.constructions.table, row: rowId, column });
+        // The type's data, written here as in INF. CONSTRUCCIÓN: what the row has written, else the type's.
+        const typeText = (key: (typeof TYPE_FIELDS)[number]) => row[key] ?? (key === "description" ? type?.description ?? "" : toText(type?.[key] ?? null));
+        const setTypeField = (key: (typeof TYPE_FIELDS)[number], text: string) => {
+          record(`constructions.${index}.${key}`);
+          setDraft((current) => current && {
+            ...current,
+            constructions: current.constructions.map((item, position) => (position !== index ? item : {
+              ...Object.fromEntries(TYPE_FIELDS.map((field) => [field, item[field] ?? (field === "description" ? type?.description ?? "" : toText(type?.[field] ?? null))])),
+              ...item,
+              [key]: text,
+            })),
+          });
+        };
+        const typeInput = (key: (typeof TYPE_FIELDS)[number], label: string, missingField = false) => (key === "description" ? (
+          <Input
+            aria-label={label} autoComplete="off" className={cell} disabled={readOnly} value={typeText(key)}
+            data-cost-cell={`constructions.${index}.${key}`}
+            title={`${label}: se escribe también en la tabla de tipos de INF. CONSTRUCCIÓN.`}
+            onChange={(event) => setTypeField(key, event.target.value)}
+          />
+        ) : (
+          <FormulaInput
+            aria-label={label} autoComplete="off" className={cn(cell, missingField && MISSING_CELL)} disabled={readOnly} value={typeText(key)}
+            {...(key === "area" ? { grouping: true } : {})}
+            data-cost-cell={`constructions.${index}.${key}`}
+            data-missing-data={missingField ? "" : undefined}
+            title={missingField ? `${label}. ${MISSING_HINT}` : `${label}: se escribe también en la tabla de tipos de INF. CONSTRUCCIÓN.`}
+            onChange={(event) => setTypeField(key, event.target.value)}
+          />
+        ));
         return (
           <Fragment key={index}>
             <CaptureSlot at={cellAt(at.constructions.ref)}>
@@ -1365,7 +1540,11 @@ export function CostCalculationPanel(props: {
                 {calculation.types.map((option) => <option key={option.ref} value={option.ref}>{option.ref}</option>)}
               </select>
             </CaptureSlot>
-            {demeritCells("constructions", index, row, `costos.construcciones.${row.ref}`, type?.age ?? null, type?.usefulLife ?? null, cellAt, at.constructions, missing)}
+            <CaptureSlot at={cellAt(at.constructions.description)}>{typeInput("description", "Tipo de construcción (descripción)")}</CaptureSlot>
+            <CaptureSlot at={cellAt(at.constructions.area)}>{typeInput("area", "Superficie construida (m²)", missing.includes("area"))}</CaptureSlot>
+            <CaptureSlot at={cellAt(at.constructions.age)}>{typeInput("age", "Edad", missing.includes("age"))}</CaptureSlot>
+            <CaptureSlot at={cellAt(at.constructions.usefulLife)}>{typeInput("usefulLife", "Vida útil", missing.includes("usefulLife"))}</CaptureSlot>
+            {demeritCells("constructions", index, row, `costos.construcciones.${row.ref}`, typed.age, typed.usefulLife, cellAt, at.constructions, missing)}
             <CaptureSlot at={{ table: at.constructionValues.table, row: constructionValueRowIds[index], column: at.constructionValues.unitReplacementCost }}>
               {textInput("constructions", index, "unitReplacementCost", row.unitReplacementCost, "VRN unitario ($/m²)", true, undefined, true, undefined, missing.includes("unitReplacementCost"))}
             </CaptureSlot>
@@ -1458,6 +1637,52 @@ export function CostCalculationPanel(props: {
         );
       })}
 
+      {/* The values added to the physical value, under the table it closes: each one's name and amount, which the sum adds (its row of the box prints them). */}
+      {physicalTable ? (
+        <CaptureSlot at={{ table: physicalTable, part: "after" }}>
+          <div className="grid gap-1.5 pt-2" data-cost-extra-values>
+            {(draft.columns.extraValues ?? []).map((item, position) => {
+              const letter = String.fromCharCode("E".charCodeAt(0) + position);
+              return (
+                <div key={item.id} className="flex flex-wrap items-center gap-1.5 text-xs" data-cost-extra-value={item.id}>
+                  <span className="w-5 font-semibold text-muted-foreground">{letter})</span>
+                  <ExtraValueField
+                    label={`Nombre del valor ${letter}`}
+                    className="w-64"
+                    disabled={readOnly}
+                    value={item.label}
+                    placeholder={DEFAULT_EXTRA_VALUE_LABEL}
+                    onCommit={(text) => setExtraValue(item.id, { label: text.trim() })}
+                  />
+                  <ExtraValueField
+                    label={`Importe del valor ${letter}`}
+                    className="w-36 text-right"
+                    numeric
+                    disabled={readOnly}
+                    value={item.amount === null ? "" : String(item.amount)}
+                    placeholder="$"
+                    onCommit={(text) => setExtraValue(item.id, { amount: parseDecimal(text) })}
+                  />
+                  {!readOnly ? (
+                    <Button type="button" size="icon-sm" variant="ghost" aria-label={`Quitar el valor ${letter} del valor físico`} onClick={() => removeExtraValue(item.id)}>
+                      <Trash2 />
+                    </Button>
+                  ) : null}
+                </div>
+              );
+            })}
+            {!readOnly ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" size="sm" variant="outline" className="w-fit" onClick={addExtraValue} data-testid="cost-add-extra-value">
+                  <Plus data-icon="inline-start" /> Valor
+                </Button>
+                <span className="text-xs text-muted-foreground">Agrega un renglón al resumen con su nombre e importe: el valor físico lo suma.</span>
+              </div>
+            ) : null}
+          </div>
+        </CaptureSlot>
+      ) : null}
+
       {/* D) Costos indirectos: each one in its row of the table. */}
       {draft.indirects.map((row, index) => {
         const rowId = indirectRowIds[indirectPlaces.indexOf(index)];
@@ -1466,7 +1691,7 @@ export function CostCalculationPanel(props: {
         return (
           <Fragment key={index}>
             <CaptureSlot at={cellAt(at.indirects.concept)}>{textInput("indirects", index, "concept", row.concept, "Concepto", false)}</CaptureSlot>
-            <CaptureSlot at={cellAt(at.indirects.percentage)}>{textInput("indirects", index, "percentage", row.percentage, "Porcentaje (0.05 = 5 %)")}</CaptureSlot>
+            <CaptureSlot at={cellAt(at.indirects.percentage)}>{percentInput("indirects", index, "percentage", row.percentage, "Porcentaje", "")}</CaptureSlot>
             <CaptureSlot at={cellAt(at.indirects.base)}>{textInput("indirects", index, "base", row.base, "Base ($); vacía: construcciones e instalaciones", true, "Construcciones e instalaciones", true)}</CaptureSlot>
             {!readOnly ? (
               <CaptureSlot at={{ table: at.indirects.table, row: rowId }}>

@@ -54,7 +54,12 @@ function synced(section: AppSection, dto: ConclusionCalculationDto): AppSection 
   return withConceptValues(withSummaryRowConcepts(section, dto), conclusionValues(dto, result));
 }
 
-const rowsOf = (section: AppSection) => section.blocks[0].concepts.map((concept) => [concept.label, concept.value]);
+/** Every concept of the conclusion's block, its subbloques' in their order (since 27 Nov 2026 the resumen and the value are subbloques). */
+const conceptsOf = (section: AppSection) => [...section.blocks[0].concepts, ...section.blocks[0].apartados.flatMap((apartado) => apartado.concepts)];
+/** The values the calculation writes, in the order they print: the resumen, then the concluded value. */
+const rowsOf = (section: AppSection) => conceptsOf(section)
+  .filter((concept) => concept.calculationKey || concept.id.startsWith("conclusion-resumen-"))
+  .map((concept) => [concept.label, concept.value]);
 
 /* ── FAL-03 / FAL-45: the resumen de valores ─────────────────────── */
 
@@ -83,7 +88,7 @@ test("FAL-03: adding a value leaves the others in the dictamen, and removing the
   ]);
 
   const removed = synced(added, calculation({ summaryRows: [] }));
-  const concepts = removed.blocks[0].concepts;
+  const concepts = conceptsOf(removed);
   assert.equal(concepts.some((concept) => concept.id.startsWith("conclusion-resumen-")), false, "the rows go");
   assert.deepEqual(rowsOf(removed).slice(0, 4), [
     ["Valor por enfoque de costos", "8010000.00"],
@@ -100,9 +105,9 @@ test("FAL-03: adding a value leaves the others in the dictamen, and removing the
 test("FAL-45: income prints rounded as the conclusion says, in a row of the resumen too; «Sin redondeo» keeps the cents", () => {
   const rows = { summaryRows: [{ source: "ingresos" as const, label: "Valor por enfoque de ingresos" }, { source: "costos" as const, label: "Valor físico" }] };
   const tens = synced(structuredClone(conclusionesSection), calculation(rows));
-  assert.equal(tens.blocks[0].concepts.find((concept) => concept.id === "conclusion-resumen-1")!.value, "3150000.00");
+  assert.equal(conceptsOf(tens).find((concept) => concept.id === "conclusion-resumen-1")!.value, "3150000.00");
   const exact = synced(structuredClone(conclusionesSection), calculation({ ...rows, rounding: null }));
-  assert.equal(exact.blocks[0].concepts.find((concept) => concept.id === "conclusion-resumen-1")!.value, "3148754.45");
+  assert.equal(conceptsOf(exact).find((concept) => concept.id === "conclusion-resumen-1")!.value, "3148754.45");
 });
 
 /* ── FAL-19: a weighted conclusion reaches the dictamen ───────────── */
@@ -110,9 +115,9 @@ test("FAL-45: income prints rounded as the conclusion says, in a row of the resu
 test("FAL-19: concluding 30 % costos and 70 % mercado writes $7,580,000.00 in the dictamen and the carátula", () => {
   const weighted = calculation({ values: { costos: 8010000, mercado: 7390000, ingresos: null }, method: { kind: "weighted", weights: { costos: 0.3, mercado: 0.7 } } });
   const section = synced(structuredClone(conclusionesSection), weighted);
-  const concluded = section.blocks[0].concepts.find((concept) => concept.calculationKey === CONCLUSION_KEYS.value)!;
+  const concluded = conceptsOf(section).find((concept) => concept.calculationKey === CONCLUSION_KEYS.value)!;
   assert.equal(concluded.value, "7580000.00");
-  assert.equal(section.blocks[0].concepts.find((concept) => concept.calculationKey === CONCLUSION_KEYS.words)!.value, "(SIETE MILLONES QUINIENTOS OCHENTA MIL PESOS 00/100 M.N.)");
+  assert.equal(conceptsOf(section).find((concept) => concept.calculationKey === CONCLUSION_KEYS.words)!.value, "(SIETE MILLONES QUINIENTOS OCHENTA MIL PESOS 00/100 M.N.)");
 });
 
 /* ── FAL-16: «Desvincular» of a value the conclusion writes ─────── */
@@ -153,7 +158,14 @@ test("whole words only: «marcador», «Marcos», «comercial» or «empresarial
 test("only the names of the concluded values are checked: the conclusion's titles and values, and the carátula's conclusion", () => {
   const section = structuredClone(conclusionesSection);
   assert.equal(intangibleConclusiveName([section]), null);
-  const renamed = (label: string) => ({ ...section, blocks: [{ ...section.blocks[0], concepts: section.blocks[0].concepts.map((concept) => (concept.calculationKey === CONCLUSION_KEYS.value ? { ...concept, label } : concept)) }, ...section.blocks.slice(1)] });
+  // The concluded value is in its subbloque: its name is checked there too.
+  const renamed = (label: string) => ({
+    ...section,
+    blocks: [{
+      ...section.blocks[0],
+      apartados: section.blocks[0].apartados.map((apartado) => ({ ...apartado, concepts: apartado.concepts.map((concept) => (concept.calculationKey === CONCLUSION_KEYS.value ? { ...concept, label } : concept)) })),
+    }, ...section.blocks.slice(1)],
+  });
   assert.equal(intangibleConclusiveName([renamed("Valor del negocio en marcha")]), "Valor del negocio en marcha");
   assert.equal(intangibleConclusiveName([{ ...section, blocks: [{ ...section.blocks[0], title: "CONCLUSIÓN DEL VALOR DE LA MARCA" }] }]), "CONCLUSIÓN DEL VALOR DE LA MARCA");
   // A row of the resumen.

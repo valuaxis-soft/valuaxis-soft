@@ -17,6 +17,7 @@ import {
   ConceptValueFormatEverywhere,
   LongTextConceptEditor,
 } from "../editor/concept-editor";
+import { ValueChartStyleControl } from "../editor/value-chart-style-control";
 import { ConceptSelectionScope } from "../editor/concept-selection";
 import {
   ApartadoTransferMenu,
@@ -1124,6 +1125,13 @@ function SortableBlockEditor(props: {
                     />
                   )}
                 >
+                {subBlock.valueChart ? (
+                  <ValueChartStyleControl
+                    style={subBlock.valueChartStyle ?? "bars"}
+                    readOnly={readOnly}
+                    onChange={(valueChartStyle) => props.onUpdateApartado(section.id, block.id, subBlock.id, { valueChartStyle })}
+                  />
+                ) : null}
                 <DraftScopeProvider title={subBlock.title} tables={subBlock.tables}>
                 <EditableContentLayout
                   container={subBlock}

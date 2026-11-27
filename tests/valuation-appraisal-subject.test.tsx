@@ -181,9 +181,9 @@ test("the value's title of a machinery valuation names what is valued; real esta
   assert.deepEqual(conclusion, ["CONCLUSIÓN", "VALOR COMERCIAL DE LA RETROEXCAVADORA", "$980,000.00 M.N.", "(NOVECIENTOS OCHENTA MIL PESOS 00/100 M.N.)"]);
 
   // The conclusion's template names it too, and the calculation still fills it by its key.
-  const labels = buildCanonicalValuationSections([], MACHINERY, "Retroexcavadora").find((section) => section.label === "CONCLUSIONES")?.blocks[0].concepts;
-  assert.equal(labels?.[3].label, "Valor comercial de la retroexcavadora");
-  assert.equal(labels?.[3].calculationKey, "conclusion:value");
+  const labels = buildCanonicalValuationSections([], MACHINERY, "Retroexcavadora").find((section) => section.label === "CONCLUSIONES")?.blocks[0].subBlocks.flatMap((apartado) => apartado.concepts);
+  const concluded = labels?.find((concept) => concept.calculationKey === "conclusion:value");
+  assert.equal(concluded?.label, "Valor comercial de la retroexcavadora");
 });
 
 test("a machinery carátula asks for the machine's data, not the street, the land or the levels (FAL-21), and never says «inmueble»", () => {

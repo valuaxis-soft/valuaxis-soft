@@ -25,6 +25,7 @@ import {
   costColumnsOf,
   costEngineConfig,
   isConservationRating,
+  remainingUsefulLife,
   toCostEngineInput,
   type CostCalculationDto,
   type CostColumnsDto,
@@ -255,8 +256,28 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
     const types = await loadConstructionTypes(tx, versionId);
     const typeByRef = new Map(types.map((type) => [type.ref.trim().toLowerCase(), type]));
     let createdTypes = 0;
+    let typesWritten = false;
     for (const [index, row] of payload.constructions.entries()) {
       let type = typeByRef.get(row.ref.trim().toLowerCase());
+      // The type's data written in the cost approach's table (video 8.14, 43:20) is the type's: it is written in it,
+      // and the construction section shows it. Only what the row carries changes.
+      if (type) {
+        const written = {
+          ...(row.description !== undefined ? { SDescripcion: row.description || null } : {}),
+          ...(row.area !== undefined ? { NSuperficie: row.area } : {}),
+          ...(row.age !== undefined ? { NEdad: row.age } : {}),
+          ...(row.usefulLife !== undefined ? { NVidaUtilTotal: row.usefulLife } : {}),
+        };
+        if (Object.keys(written).length) {
+          const age = row.age !== undefined ? row.age : type.age;
+          const usefulLife = row.usefulLife !== undefined ? row.usefulLife : type.usefulLife;
+          await tx.tipoConstruccionAvaluo.update({
+            where: { IdTipoConstruccionAvaluo: type.id },
+            data: { ...written, NVidaUtilRemanente: remainingUsefulLife({ age: age ?? null, usefulLife: usefulLife ?? null }) },
+          });
+          typesWritten = true;
+        }
+      }
       if (!type) {
         // A capture that still carries the type's data (saved before the types had their own panel) creates it.
         const carriesType = row.area !== undefined || row.age !== undefined || row.usefulLife !== undefined || row.description !== undefined;
@@ -286,6 +307,7 @@ export async function saveCostCalculation(publicId: string, user: AuthUser, payl
       });
     }
     if (construction && createdTypes) await updateBuiltArea(tx, construction.IdConstruccionAvaluo);
+    else if (typesWritten) await updateBuiltArea(tx, (await constructionOf(tx, versionId)).IdConstruccionAvaluo);
     if (Object.keys(factors.constructions).length) {
       await tx.enfoqueCosto.update({ where: { IdEnfoqueCosto: approach.IdEnfoqueCosto }, data: { JConfiguracion: storedConfiguration(payload, factors, formulas, columns) } });
     }

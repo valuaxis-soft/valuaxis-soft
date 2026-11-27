@@ -138,7 +138,8 @@ test("a machinery valuation is created with its class and essence: the carátula
     assert.ok(!concepts.some((concept) => ["Calle", "Código postal", "Superficie total terreno", "Numero de niveles"].includes(concept.label)), "no real estate field (FAL-21)");
   }
   const conclusion = detail.sections.find((section) => section.label === "CONCLUSIONES")!;
-  assert.ok(conclusion.blocks[0].concepts.some((concept) => concept.label === "Valor comercial de la retroexcavadora"));
+  // The concluded value is its own subbloque of the conclusion (video 8.15).
+  assert.ok(conclusion.blocks[0].subBlocks.flatMap((apartado) => apartado.concepts).some((concept) => concept.label === "Valor comercial de la retroexcavadora"));
 
   const { items } = await listValuationsPage({ organizationId: fixture.organizationId, page: 1, pageSize: 20 });
   const row = items.find((item) => item.id === publicId)!;

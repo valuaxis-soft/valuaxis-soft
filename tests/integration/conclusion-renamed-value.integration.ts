@@ -45,13 +45,22 @@ async function synced(fixture: Fixture, sections: AppSection[]) {
   return sections.map((section) => (isConclusion(section) ? withConceptValues(section, values) : section));
 }
 
-const mapConcluded = (sections: AppSection[], update: (concept: Concept) => Concept) => sections.map((section) => (!isConclusion(section) ? section : {
-  ...section,
-  blocks: section.blocks.map((block) => ({ ...block, concepts: block.concepts.map((concept) => (concept.label === "Valor concluido" || concept.calculationKey === CONCLUSION_KEYS.value ? update(concept) : concept)) })),
-}));
+const mapConcluded = (sections: AppSection[], update: (concept: Concept) => Concept) => {
+  const change = (concept: Concept) => (concept.label === "Valor concluido" || concept.calculationKey === CONCLUSION_KEYS.value ? update(concept) : concept);
+  return sections.map((section) => (!isConclusion(section) ? section : {
+    ...section,
+    // The concluded value is in its own subbloque since 27 Nov 2026.
+    blocks: section.blocks.map((block) => ({
+      ...block,
+      concepts: block.concepts.map(change),
+      apartados: block.apartados.map((apartado) => ({ ...apartado, concepts: apartado.concepts.map(change) })),
+    })),
+  }));
+};
 
-const concludedOf = (sections: AppSection[]) =>
-  sections.find(isConclusion)!.blocks.flatMap((block) => block.concepts).find((concept) => concept.calculationKey === CONCLUSION_KEYS.value);
+const conclusionConcepts = (sections: AppSection[]) =>
+  sections.find(isConclusion)!.blocks.flatMap((block) => [...block.concepts, ...block.apartados.flatMap((apartado) => apartado.concepts)]);
+const concludedOf = (sections: AppSection[]) => conclusionConcepts(sections).find((concept) => concept.calculationKey === CONCLUSION_KEYS.value);
 
 test("a concluded value renamed «Valor de mercado» keeps its name and keeps receiving the value after saving and opening again", async () => {
   const fixture = await valuation(8_530_000);
@@ -77,7 +86,7 @@ test("a valuation saved before the key existed: recognized by its label once, th
   const fixture = await valuation(8_530_000);
   // As saved before: the concept without its key.
   await save(fixture, mapConcluded(await load(fixture), ({ calculationKey: _key, ...concept }) => concept));
-  const before = (await load(fixture)).find(isConclusion)!.blocks[0].concepts.find((concept) => concept.label === "Valor concluido");
+  const before = conclusionConcepts(await load(fixture)).find((concept) => concept.label === "Valor concluido");
   assert.equal(before?.calculationKey, undefined);
 
   await save(fixture, await synced(fixture, await load(fixture)));

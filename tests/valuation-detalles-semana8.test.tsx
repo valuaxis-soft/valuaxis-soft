@@ -148,10 +148,14 @@ test("the interface loads the italic of its font: a figure the calculation gives
 
 const conclusionWithoutValue = (sections: AppSection[]) => sections.map((section) => (section.id !== "conclusiones" ? section : {
   ...section,
-  blocks: section.blocks.map((block, index) => (index ? block : {
-    ...block,
-    concepts: block.concepts.filter((concept) => !concept.calculationKey).map(({ calculationKey: _key, ...concept }) => concept),
-  })),
+  blocks: section.blocks.map((block, index) => {
+    if (index) return block;
+    const unkeyed = <T extends { concepts: AppSection["blocks"][number]["concepts"] }>(container: T): T => ({
+      ...container,
+      concepts: container.concepts.filter((concept) => !concept.calculationKey).map(({ calculationKey: _key, ...concept }) => concept),
+    });
+    return { ...unkeyed(block), apartados: block.apartados.map(unkeyed) };
+  }),
 }));
 
 test("a valuation created now has the current format and version: nothing is pending, so the button is not highlighted", () => {

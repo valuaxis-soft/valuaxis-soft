@@ -101,6 +101,8 @@ export type ConceptValueFormat =
   | "kg"
   | "g"
   | "l"
+  /** The amount in words, as the firm's Excel writes it (CIFRAENLETRAS): «(OCHO MILLONES … PESOS 00/100 M.N.)». */
+  | "words"
   | "custom";
 
 export type ConceptDateFormat = "short" | "long" | "normal";
@@ -316,7 +318,18 @@ export type Apartado = {
   conceptPresentation?: import("./services/concept-presentation").ConceptPresentation;
   presentationMode?: ApartadoPresentationMode;
   flowSpacingBeforePx?: number;
+  /**
+   * The conclusion's subbloque of the chart of the values (video 8.15, 3:10:
+   * «la grafiquita, con alguna personalización, estilo»): it prints the chart
+   * of the resumen de valores, moved, hidden and titled as any subbloque.
+   */
+  valueChart?: boolean;
+  /** Its style; absent, vertical bars. */
+  valueChartStyle?: ValueChartStyle;
 };
+
+/** How the chart of the values is drawn: vertical bars, bars in relief or horizontal bars. */
+export type ValueChartStyle = "bars" | "bars-3d" | "horizontal";
 
 export type Block = {
   id: string;

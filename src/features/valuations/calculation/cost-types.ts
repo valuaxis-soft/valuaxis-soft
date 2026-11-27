@@ -223,7 +223,21 @@ export type CostColumnsDto = {
    * own, with its data filled; the appraiser only captures its cost columns.
    */
   excludedTypes?: string[];
+  /**
+   * Values the appraiser adds to the summary of the approach, each one a line
+   * of it that the physical value adds (video 8.14, 43:50: «estoy bloqueado…
+   * quiero cualquier otro dato» that counts).
+   */
+  extraValues?: CostExtraValueDto[];
 };
+
+export type CostExtraValueDto = { id: string; label: string; amount: number | null };
+
+/** Values of his own the appraiser may add to the physical value. */
+export const MAX_COST_EXTRA_VALUES = 6;
+
+/** The name an added value prints with while it has none. */
+export const DEFAULT_EXTRA_VALUE_LABEL = "Otro valor";
 
 export const DEFAULT_OTHER_FACTOR_LABEL = "Otro";
 
@@ -252,12 +266,25 @@ export function costColumnsOf(stored: unknown): CostColumnsDto {
   const excluded = Array.isArray(columns.excludedTypes)
     ? [...new Set(columns.excludedTypes.filter((ref): ref is string => typeof ref === "string" && Boolean(ref.trim())).map((ref) => ref.trim()))].slice(0, 30)
     : [];
+  const extraValues = Array.isArray(columns.extraValues)
+    ? columns.extraValues.flatMap((item): CostExtraValueDto[] => {
+        const { id, label, amount } = record(item);
+        if (typeof id !== "string" || !id.trim()) return [];
+        return [{ id, label: typeof label === "string" ? label : "", amount: typeof amount === "number" && Number.isFinite(amount) ? amount : null }];
+      }).slice(0, MAX_COST_EXTRA_VALUES)
+    : [];
   return {
     constructions: demerit(columns.constructions),
     installations: demerit(columns.installations),
     showMaintenance: typeof columns.showMaintenance === "boolean" ? columns.showMaintenance : null,
     ...(excluded.length ? { excludedTypes: excluded } : {}),
+    ...(extraValues.length ? { extraValues } : {}),
   };
+}
+
+/** The values added to the physical value that enter it: the ones with an amount. */
+export function costAdditionsOf(columns: Pick<CostColumnsDto, "extraValues"> | undefined): Array<{ id: string; label: string; amount: number }> {
+  return (columns?.extraValues ?? []).flatMap((item) => (item.amount === null ? [] : [{ id: item.id, label: item.label.trim() || DEFAULT_EXTRA_VALUE_LABEL, amount: item.amount }]));
 }
 
 /** The criterion a table rates its conservation by. */
@@ -337,17 +364,6 @@ export type ConstructionDto = ConstructionTypeDto & ConstructionCostDto;
 /** Remaining useful life, as the books: total minus age, never below zero. */
 export function remainingUsefulLife(type: Pick<ConstructionTypeDto, "age" | "usefulLife">): number | null {
   return type.usefulLife !== null && type.age !== null ? Math.max(type.usefulLife - type.age, 0) : null;
-}
-
-/**
- * Why «+ Construcción» of the cost approach adds nothing, or null when it
- * adds a row: it only brings back a type of the construction section that
- * is not in the calculation.
- */
-export function addConstructionDisabledReason(typeCount: number, typesOutOfCalculation: number): string | null {
-  if (!typeCount) return "Aún no hay tipos de construcción: escríbelos en su tabla de la sección INF. CONSTRUCCIÓN y entran aquí solos.";
-  if (!typesOutOfCalculation) return "Todos los tipos de construcción ya están en el cálculo. Para agregar otro, agrega su fila en la tabla de tipos de la sección INF. CONSTRUCCIÓN.";
-  return null;
 }
 
 export function emptyConstructionType(index: number): ConstructionTypeDto {
@@ -478,7 +494,8 @@ export type CostInputDto = {
 };
 
 /** Completion and undivided share are typed as percentages and stored as fractions. */
-export const COST_PERCENT_FIELDS: PercentFields = (path) => /^(constructions|installations)\.\d+\.(completion|undivided)$/.test(path);
+export const COST_PERCENT_FIELDS: PercentFields = (path) =>
+  /^(constructions|installations)\.\d+\.(completion|undivided)$/.test(path) || /^indirects\.\d+\.percentage$/.test(path);
 
 /** The engine settings of the cost approach: the roundings the appraiser chose and the valuation's precision. */
 export function costEngineConfig(calculation: Pick<CostInputDto, "rounding"> & { precision?: CalculationPrecision | null }): EngineConfig {
@@ -557,14 +574,20 @@ export function installationHasData(row: InstallationDto) {
  * only once the column has figures. An installation without any datum is
  * not marked: it is a row being started.
  */
-export function missingCostFields(row: ConstructionDto | InstallationDto, kind: "constructions" | "installations"): Array<"quantity" | "age" | "usefulLife" | "conservation" | "unitReplacementCost"> {
+export function missingCostFields(row: ConstructionDto | InstallationDto, kind: "constructions" | "installations"): Array<"quantity" | "area" | "age" | "usefulLife" | "conservation" | "unitReplacementCost"> {
   if (kind === "installations" && !installationHasData(row as InstallationDto)) return [];
-  const missing: Array<"quantity" | "age" | "usefulLife" | "conservation" | "unitReplacementCost"> = [];
+  const missing: Array<"quantity" | "area" | "age" | "usefulLife" | "conservation" | "unitReplacementCost"> = [];
   if (kind === "installations") {
     const installation = row as InstallationDto;
     if (!positive(installation.quantity)) missing.push("quantity");
     if (installation.age === null || installation.age < 0) missing.push("age");
     if (!positive(installation.usefulLife)) missing.push("usefulLife");
+  } else {
+    // The type's data, now captured in the cost approach's table too (video 8.14, 43:20).
+    const construction = row as ConstructionDto;
+    if (!positive(construction.area)) missing.push("area");
+    if (construction.age === null || construction.age < 0) missing.push("age");
+    if (!positive(construction.usefulLife)) missing.push("usefulLife");
   }
   if (!positive(effectiveConservation(row))) missing.push("conservation");
   if (!positive(row.unitReplacementCost)) missing.push("unitReplacementCost");
@@ -608,7 +631,8 @@ export function toCostEngineInput(
   const hasLand = positive(subjectArea) && positive(unitValue);
   const constructions = calculation.constructions.filter(isConstructionComplete);
   const installations = calculation.installations.filter(isInstallationComplete);
-  if (!hasLand && !constructions.length && !installations.length) {
+  const additions = costAdditionsOf(columns).map(({ label, amount }) => ({ label, amount }));
+  if (!hasLand && !constructions.length && !installations.length && !additions.length) {
     return { ok: false, reason: "Captura la superficie y el valor unitario del terreno, o una construcción." };
   }
   if (!(land.surfacePower > 0)) return { ok: false, reason: "La potencia n debe ser mayor que cero." };
@@ -666,6 +690,7 @@ export function toCostEngineInput(
         unitReplacementCost: row.unitReplacementCost as number,
       })),
       indirects,
+      ...(additions.length ? { additions } : {}),
     },
   };
 }

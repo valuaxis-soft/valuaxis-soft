@@ -29,10 +29,13 @@ test("las secciones valuatorias restantes exponen sus bloques base editables", (
     "TASA DE CAPITALIZACIÓN",
     "RESULTADO DEL ENFOQUE DE INGRESOS",
   ]);
+  // The signature is a subbloque of the conclusion, as the appraiser's Excel (video 8.15).
   assert.deepEqual(blockTitles("conclusiones"), [
     "CONCLUSIÓN DEL VALOR",
     "DECLARACIONES Y CERTIFICACIÓN",
-    "FIRMAS",
+  ]);
+  assert.deepEqual(section("conclusiones").blocks[0].apartados.map((apartado) => apartado.title), [
+    "RESUMEN DE VALORES", "GRÁFICA DE VALORES", "CÓMO SE CONCLUYE", "VALOR CONCLUIDO", "FIRMA",
   ]);
 });
 

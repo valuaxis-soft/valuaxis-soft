@@ -11,6 +11,7 @@ import { CONCLUSION_KEYS, isConcludedValueBlock } from "../src/features/valuatio
 import type { AppSection, Block, Concept } from "../src/features/valuations/model";
 import { createInitialSections } from "../src/features/valuations/sections";
 import {
+  LAYOUT_STEPS,
   LAYOUT_VERSION,
   layoutRefreshPolicy,
   layoutStepsFor,
@@ -47,6 +48,8 @@ function document(conclusion: AppSection): AppSection[] {
 }
 
 const conclusionOf = (sections: AppSection[]) => sections.find((section) => section.id === "conclusiones")!;
+/** Step 1 alone: the concluded value in the block, before step 4 arranges the block in subbloques. */
+const STEP_1 = LAYOUT_STEPS.filter((step) => step.id === "conclusion-value");
 
 test("a fresh valuation is already in the current format: nothing changes and it is not marked unsaved", () => {
   const sections = createInitialSections();
@@ -57,7 +60,7 @@ test("a fresh valuation is already in the current format: nothing changes and it
 
 test("an old conclusion gets the concluded value and its words after the resumen, keeping every concept, value and flag", () => {
   const sections = document(oldConclusion());
-  const result = refreshDocumentLayout(sections);
+  const result = refreshDocumentLayout(sections, STEP_1);
   const block = conclusionOf(result.sections).blocks[0];
   assert.deepEqual(block.concepts.map((item) => item.label), [
     "Valor por enfoque de costos", "Valor por enfoque de mercado", "Valor por enfoque de ingresos",
@@ -85,7 +88,7 @@ test("running it twice changes nothing the second time", () => {
 
 test("a concluded value the appraiser renamed before it had its key keeps his name and value and takes the key", () => {
   const sections = document(oldConclusion([concept("c-4", "Valor comercial", "8500000.00"), concept("c-5", "Cifra con letra", "OCHO MILLONES…")]));
-  const result = refreshDocumentLayout(sections);
+  const result = refreshDocumentLayout(sections, STEP_1);
   const block = conclusionOf(result.sections).blocks[0];
   assert.equal(block.concepts.length, 6, "nothing added");
   assert.deepEqual(
@@ -101,23 +104,31 @@ test("a conclusion without any resumen gets the template's block first; the appr
   const result = refreshDocumentLayout(sections);
   const blocks = conclusionOf(result.sections).blocks;
   assert.equal(blocks.length, 2);
-  assert.ok(isConcludedValueBlock(blocks[0]));
+  // The template's block: the concluded value in its subbloque (video 8.15).
+  assert.ok(!isConcludedValueBlock(blocks[0]));
+  assert.ok(blocks[0].apartados.some((apartado) => apartado.concepts.some((item) => item.calculationKey === CONCLUSION_KEYS.value)));
   assert.equal(blocks[1], conclusion.blocks[1]);
 });
 
 test("«Deshacer» takes back only what the refresh did and keeps the document from refreshing again on its own", () => {
   const sections = document(oldConclusion([concept("c-4", "Valor comercial", "8500000.00")]));
   const { sections: refreshed, changes } = refreshDocumentLayout(sections);
-  // The appraiser writes after the refresh; the undo keeps it.
+  // The appraiser writes after the refresh (in its subbloque «Cómo se concluye»); the undo keeps it.
+  const write = (item: Concept) => (item.id === "c-9" ? { ...item, value: "Escrito después" } : item);
   const edited = refreshed.map((section) => (section.id !== "conclusiones" ? section : {
     ...section,
-    blocks: section.blocks.map((block, index) => (index ? block : { ...block, concepts: block.concepts.map((item) => (item.id === "c-9" ? { ...item, value: "Escrito después" } : item)) })),
+    blocks: section.blocks.map((block, index) => (index ? block : {
+      ...block,
+      concepts: block.concepts.map(write),
+      apartados: block.apartados.map((apartado) => ({ ...apartado, concepts: apartado.concepts.map(write) })),
+    })),
   }));
   const reverted = revertLayoutRefresh(edited, changes);
   const block = conclusionOf(reverted).blocks[0];
   assert.deepEqual(block.concepts.map((item) => item.label), ["Valor por enfoque de costos", "Valor por enfoque de mercado", "Valor por enfoque de ingresos", "Valor comercial", "Observaciones finales"]);
   assert.equal(block.concepts.find((item) => item.id === "c-4")?.calculationKey, undefined);
   assert.equal(block.concepts.at(-1)?.value, "Escrito después");
+  assert.deepEqual(block.apartados, [], "the subbloques the refresh made are gone");
   assert.equal(layoutVersionOf(reverted), LAYOUT_VERSION);
   assert.equal(layoutStepsFor({ policy: "all", version: layoutVersionOf(reverted) }).length, 0, "not refreshed again on opening");
   assert.equal(layoutStepsFor({ policy: "all", version: layoutVersionOf(reverted), force: true }).length > 0, true, "the button still can");

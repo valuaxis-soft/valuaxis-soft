@@ -318,6 +318,16 @@ export function readCapture(tableContent: TableContent | TableV2, kind: CaptureK
   });
 }
 
+/**
+ * Whether the table still has the column of its references: without it
+ * nothing can be read from it, and reading it as empty would take every type
+ * (or installation) out of the server, with what the cost approach captured
+ * for them (B disappeared from the physical value, video 8.14, 42:27).
+ */
+export function captureReadable(tableContent: TableContent | TableV2, kind: CaptureKind): boolean {
+  return columnMap(ensureTableV2(tableContent), kind).byKey.has(columnsOf(kind)[0].key);
+}
+
 /** The two lists hold the same types (or installations), in the same order. */
 export function sameItems(left: Array<{ item: CaptureItem }> | null, right: Array<{ item: CaptureItem }> | null): boolean {
   if (!left || !right) return left === right;

@@ -1,9 +1,10 @@
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { api } from "@/lib/api-client";
 import { printsAdvertiserData } from "@/features/valuations/services/advertiser-data";
 import {
   caratulaConclusionValues,
+  conclusionSourceLabels,
   conclusionValues,
   signatureConceptValues,
   withConceptValues,
@@ -213,8 +214,11 @@ export function useCalculationDocumentSync({
 
   // The last conclusion, to write it again when the appraiser links a concept to it again.
   const lastConclusion = useRef<ConclusionCalculationDto | null>(null);
+  // What each concept of the conclusion is linked to, for its badge in the editor.
+  const [conclusionSources, setConclusionSources] = useState<Record<string, string>>({});
   const applyConclusion = (calculation: ConclusionCalculationDto) => {
     lastConclusion.current = calculation;
+    setConclusionSources(conclusionSourceLabels(calculation));
     if (!canEdit || calculation.locked || !canConclude(calculation)) return;
     const result = concludeValue(conclusionInput(calculation), conclusionEngineConfig(calculation));
     const sectionValues = conclusionValues(calculation, result);
@@ -384,6 +388,7 @@ export function useCalculationDocumentSync({
     onMachineryCalculation,
     onStatisticalCalculation: applyStatistical,
     onConclusionCalculation: applyConclusion,
+    conclusionSources,
     suggestedSubjectAreas: { land: findSubjectLandArea(sections), built: findSubjectBuiltArea(sections) },
   };
 }

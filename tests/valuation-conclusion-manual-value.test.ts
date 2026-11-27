@@ -154,12 +154,14 @@ test("V7.3-28: a concluded value renamed by the appraiser still receives the val
 });
 
 test("a new valuation's template carries the keys of what the calculation writes, and only those", () => {
-  const keys = conclusionesSection.blocks.flatMap((block) => block.concepts.map((item) => [item.label, item.calculationKey ?? null]));
+  const keys = conclusionesSection.blocks.flatMap((block) => [...block.concepts, ...block.apartados.flatMap((apartado) => apartado.concepts)]
+    .map((item) => [item.label, item.calculationKey ?? null]));
   assert.deepEqual(keys, [
     ["Valor por enfoque de costos", CONCLUSION_KEYS.costos], ["Valor por enfoque de mercado", CONCLUSION_KEYS.mercado], ["Valor por enfoque de ingresos", CONCLUSION_KEYS.ingresos],
-    ["Valor concluido", CONCLUSION_KEYS.value], ["Valor concluido con letra", CONCLUSION_KEYS.words], ["Observaciones finales", null],
-    ["Declaración del valuador", null], ["Alcance del avalúo", null], ["Limitaciones", null], ["Fecha de emisión", null],
+    ["Cómo se concluye", null], ["Observaciones finales", null],
+    ["Valor concluido", CONCLUSION_KEYS.value], ["Valor concluido con letra", CONCLUSION_KEYS.words],
     ["Valuador", CONCLUSION_KEYS.signerName], ["Cédula profesional", CONCLUSION_KEYS.signerCedula], ["Registro", null], ["Firma", null],
+    ["Declaración del valuador", null], ["Alcance del avalúo", null], ["Limitaciones", null], ["Fecha de emisión", null],
   ]);
 });
 

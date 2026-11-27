@@ -8,7 +8,7 @@ import {
   type ValuationSectionDefinition,
 } from "@/features/valuations/sections/section-registry";
 import { getInitialSectionTemplate } from "@/features/valuations/sections";
-import type { Block, BlockFlowV2, ConceptType, ConceptValueFormat, ContentLayout, HeaderExtraField, Apartado, TableContent } from "@/features/valuations/model";
+import type { Block, BlockFlowV2, ConceptType, ConceptValueFormat, ContentLayout, HeaderExtraField, Apartado, TableContent, ValueChartStyle } from "@/features/valuations/model";
 import { isBoundaryDistanceValueFormat } from "@/features/valuations/services/concept-value-format";
 import {
   hydrateBlockMetadata,
@@ -140,8 +140,10 @@ export type ValuationBlockDto = {
   headerFields?: HeaderExtraField[];
   /** The carátula's company header block: the size of the principal cover image. */
   coverImageSize?: CoverImageSize;
-  /** The block of the concluded value: it prints the chart of the values. */
+  /** The block of the concluded value (or the conclusion's subbloque of the chart): it prints the chart of the values. */
   valueChart?: boolean;
+  /** The conclusion's subbloque of the chart: its style. */
+  valueChartStyle?: ValueChartStyle;
   /** The carátula's conclusion: the title of the value's box written by hand. */
   valueTitle?: string;
   concepts: ValuationConceptDto[];
@@ -777,6 +779,9 @@ function mapTemplateApartado(subBlock: Apartado, sortOrder: number): ValuationAp
     id: subBlock.id,
     title: subBlock.title,
     enabled: subBlock.enabled,
+    ...(subBlock.titleHidden ? { titleHidden: true } : {}),
+    ...(subBlock.valueChart ? { valueChart: true } : {}),
+    ...(subBlock.valueChartStyle ? { valueChartStyle: subBlock.valueChartStyle } : {}),
     sortOrder,
     startOnNewPage: subBlock.startOnNewPage ?? false,
     concepts: subBlock.concepts.map((concept) => ({ ...concept, enabled: concept.enabled ?? true })),

@@ -148,7 +148,12 @@ test("the land block prints the book's A) TERRENO: lote tipo, market value, the 
     "bottom:superficie": [["Superficie valuada:", "160.00 m²"]],
     "bottom:medio": [["Valor Unitario Medio ($/m²):", "$ 4,293.33"]],
     "bottom:valor": [["A) Valor del Terreno:", "$ 690,000.00"]],
-    "bottom:valor-fisico": [["VALOR FÍSICO DE REPOSICIÓN (A):", "$ 690,000.00"]],
+    // A, B and C are always listed, with zero for what is missing (video 8.14, 43:08).
+    "bottom:valor-fisico": [
+      ["B) Valor de las Construcciones:", "$ 0.00"],
+      ["C) Valor de Instalaciones Especiales:", "$ 0.00"],
+      ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 690,000.00"],
+    ],
   });
 
   // Direct homologation: no lote tipo anywhere, the table shows the subject and Sup. = 1.
@@ -184,7 +189,9 @@ test("indirects print only when there are any, and the physical value adds only 
   const [block] = costDocumentBlocks(landOnly, land.result, land.trace);
   assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["A) TERRENO EN ESTUDIO"]);
   assert.deepEqual(printed(block.apartados[0].tables[0]).boxes["bottom:valor-fisico"], [
-    ["VALOR FÍSICO DE REPOSICIÓN (A):", "$ 1,530,000.00"],
+    ["B) Valor de las Construcciones:", "$ 0.00"],
+    ["C) Valor de Instalaciones Especiales:", "$ 0.00"],
+    ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 1,530,000.00"],
   ]);
   assert.deepEqual(costDocumentBlocks({ ...arandas, installations: [] }, null, null), [], "nothing computed, no page");
   // Installations captured print without a result too (video 7.4, 24:21), with no physical value yet.

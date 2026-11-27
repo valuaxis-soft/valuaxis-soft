@@ -43,8 +43,8 @@ test("a real estate valuation prints the same fixed wordings as before", () => {
   // No property type (a header rendered alone) is real estate too.
   assert.match(renderToStaticMarkup(createElement(DocumentPreviewHeader, { caratula, letterhead })), />\s*DICTAMEN VALUATORIO\s*<\/div>/);
   assert.deepEqual(
-    getInitialSectionTemplate("CONCLUSIONES", "casa")?.blocks[0].concepts.map((concept) => concept.label),
-    ["Valor por enfoque de costos", "Valor por enfoque de mercado", "Valor por enfoque de ingresos", "Valor concluido", "Valor concluido con letra", "Observaciones finales"],
+    getInitialSectionTemplate("CONCLUSIONES", "casa")?.blocks[0].apartados.flatMap((apartado) => apartado.concepts.map((concept) => concept.label)),
+    ["Valor por enfoque de costos", "Valor por enfoque de mercado", "Valor por enfoque de ingresos", "Cómo se concluye", "Observaciones finales", "Valor concluido", "Valor concluido con letra", "Valuador", "Cédula profesional", "Registro", "Firma"],
   );
   assert.deepEqual(getInitialSectionTemplate("CONCLUSIONES", "casa"), getInitialSectionTemplate("CONCLUSIONES"));
 });
@@ -62,18 +62,18 @@ test("the conclusion template of a machinery valuation names the concluded value
   const template = getInitialSectionTemplate("CONCLUSIONES", MACHINERY);
   assert.ok(template);
   const real = getInitialSectionTemplate("CONCLUSIONES", "casa");
-  assert.deepEqual(template.blocks[0].concepts.map((concept) => concept.label), [
-    "Valor por enfoque de costos", "Valor por enfoque de mercado", "Valor por enfoque de ingresos", "Valor comercial de la maquinaria", "Valor concluido con letra", "Observaciones finales",
-  ]);
+  // The concluded value is its own subbloque (video 8.15).
+  assert.deepEqual(template.blocks[0].apartados[3].concepts.map((concept) => concept.label), ["Valor comercial de la maquinaria", "Valor concluido con letra"]);
   // Only that label changes: same blocks, same concept ids.
-  assert.deepEqual(template.blocks.map((block) => block.concepts.map((concept) => concept.id)), real?.blocks.map((block) => block.concepts.map((concept) => concept.id)));
+  const ids = (section: typeof template | null | undefined) => section?.blocks.map((block) => [...block.concepts, ...block.apartados.flatMap((apartado) => apartado.concepts)].map((concept) => concept.id));
+  assert.deepEqual(ids(template), ids(real));
   // The carátula asks for the machine's data (valuation-appraisal-subject.test.tsx); the rest are the same.
   for (const key of ["COSTOS", "MERCADO_VENTA"]) assert.deepEqual(getInitialSectionTemplate(key, MACHINERY), getInitialSectionTemplate(key), key);
 
   // A valuation that never saved its conclusion section loads the template of its type.
-  const labels = (kind: string) => buildCanonicalValuationSections([], kind).find((section) => section.label === "CONCLUSIONES")?.blocks[0].concepts.map((concept) => concept.label);
-  assert.equal(labels(MACHINERY)?.[3], "Valor comercial de la maquinaria");
-  assert.equal(labels("casa")?.[3], "Valor concluido");
+  const labels = (kind: string) => buildCanonicalValuationSections([], kind).find((section) => section.label === "CONCLUSIONES")?.blocks[0].subBlocks[3].concepts.map((concept) => concept.label);
+  assert.equal(labels(MACHINERY)?.[0], "Valor comercial de la maquinaria");
+  assert.equal(labels("casa")?.[0], "Valor concluido");
 
   const values = { costos: 930000, mercado: 980000, ingresos: null };
   const method = { kind: "single" as const, approach: "mercado" as const };
@@ -82,5 +82,5 @@ test("the conclusion template of a machinery valuation names the concluded value
     { ...template, label: "X" },
     conclusionValues({ values, marketSource: "MAQUINARIA_VENTA", method, justification: null, configured: true, locked: false }, result),
   );
-  assert.deepEqual(filled.blocks[0].concepts.slice(3, 5).map((concept) => formatConceptValueForDocument(concept)), ["$980,000.00 M.N.", "(NOVECIENTOS OCHENTA MIL PESOS 00/100 M.N.)"]);
+  assert.deepEqual(filled.blocks[0].apartados[3].concepts.map((concept) => formatConceptValueForDocument(concept)), ["$980,000.00 M.N.", "(NOVECIENTOS OCHENTA MIL PESOS 00/100 M.N.)"]);
 });

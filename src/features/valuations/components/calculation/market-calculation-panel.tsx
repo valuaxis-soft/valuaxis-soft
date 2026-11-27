@@ -1407,11 +1407,17 @@ function MarketTypePanel(props: {
                     grouping
                     disabled={readOnly}
                     aria-label={labels.adopted}
-                    title={`${labels.adopted}: escríbelo aquí. Vacío, el promedio homologado.`}
+                    title={`${labels.adopted}: el único valor que escribes tú entre los que calcula el sistema. Vacío, el promedio homologado.`}
                     value={draft.adoptedUnitValue}
                     placeholder={stats ? `Promedio: ${money(stats.mean)}` : labels.adopted}
+                    data-adopted-input=""
                     // Saved as typed: the field is always free to be retyped or cleared; only concluding waits for a value within the range.
-                    className={cn("h-7 min-w-28 text-right", result?.adoptedOutsideLimits && "border-destructive focus-visible:ring-destructive/30")}
+                    // The one cell typed among the automated ones, in a colour of its own and wide enough for the whole figure
+                    // (video 8.13, 04:14: «no aparece el dato completo… resálteme dónde se pone el valor a utilizar»).
+                    className={cn(
+                      "h-8 w-44 min-w-40 border-2 border-highlight-strong bg-highlight/15 text-right font-semibold tabular-nums",
+                      result?.adoptedOutsideLimits && "border-destructive focus-visible:ring-destructive/30",
+                    )}
                     onChange={setDraftField("adoptedUnitValue")}
                     onBlur={() => saveSettings()}
                   />
